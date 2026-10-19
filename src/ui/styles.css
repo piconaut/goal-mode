@@ -19,7 +19,10 @@
   --series-4: #c98500;
   --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  color-scheme: dark;
 }
+/* Dark-first: bare :root holds the dark palette; light values apply for a light OS setting
+   (unless the viewer chose dark) and for an explicit light choice. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
     --bg: #f5f7fa;
@@ -28,12 +31,29 @@
     --border: #d0d7de;
     --text: #1f2328;
     --muted: #59636e;
+    --green-bg: #050d06;
     /* Light steps (validated vs #ffffff; slots 3–4 below 3:1, so charts carry direct labels + a table). */
     --series-1: #2a78d6;
     --series-2: #eb6834;
     --series-3: #1baf7a;
     --series-4: #eda100;
+    color-scheme: light;
   }
+}
+:root[data-theme='light'] {
+    --bg: #f5f7fa;
+    --panel: #ffffff;
+    --panel-2: #eef2f7;
+    --border: #d0d7de;
+    --text: #1f2328;
+    --muted: #59636e;
+    --green-bg: #050d06;
+    /* Light steps (validated vs #ffffff; slots 3–4 below 3:1, so charts carry direct labels + a table). */
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
+    color-scheme: light;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
