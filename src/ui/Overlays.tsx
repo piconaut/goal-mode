@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { EVIDENCE } from '../content/evidence';
+import type { Hypothesis } from '../game/aiops';
 import { formatClock } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
@@ -131,7 +132,7 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
             <span className="muted">{v.pins.length} pinned</span>
           </div>
           {open.map((i) => (
-            <Rca key={i.id} incidentId={i.id} label={`#${i.id} ${i.workloadId} · ${windowText(i)} · worst ${i.worstAttainmentPct.toFixed(0)}%`} v={v} game={game} />
+            <Rca key={i.id} incidentId={i.id} label={`#${i.id} ${i.workloadId} · ${windowText(i)} · worst ${i.worstAttainmentPct.toFixed(0)}%`} hypotheses={i.aiops ?? []} v={v} game={game} />
           ))}
         </div>
       )}
@@ -172,7 +173,7 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
 const windowText = (i: { startTick: number; hours: number }) =>
   `breached ${formatClock(i.startTick).slice(-8, -3)}–${formatClock(i.startTick + i.hours * TICKS_PER_HOUR).slice(-8, -3)}`;
 
-function Rca({ incidentId, label, v, game }: { incidentId: number; label: string; v: ViewModel; game: GameHandle }) {
+function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; label: string; hypotheses: Hypothesis[]; v: ViewModel; game: GameHandle }) {
   const [m, setM] = useState<Mechanism>('CPU_PRIORITY');
   const [t, setT] = useState<Trigger>('POLICY');
   const [ev, setEv] = useState<number[]>([]);
@@ -193,6 +194,26 @@ function Rca({ incidentId, label, v, game }: { incidentId: number; label: string
         </select>
         <button onClick={() => game.send({ type: 'RCA', incidentId, mechanism: m, trigger: t, evidenceIds: ev })}>Submit{ev.length ? ` with ${ev.length} evidence` : ''}</button>
       </div>
+      {hypotheses.length > 0 && (
+        <div style={{ fontSize: 12, paddingLeft: 12 }}>
+          <span className="muted">AIOps hypotheses (can be wrong):</span>
+          {hypotheses.map((h, k) => (
+            <div key={k} className="form" style={{ margin: '2px 0' }}>
+              <span>
+                {k + 1}. {h.mechanism} / {h.trigger} · {Math.round(h.confidence * 100)}%
+              </span>
+              <button
+                onClick={() => {
+                  setM(h.mechanism);
+                  setT(h.trigger);
+                }}
+              >
+                use
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {v.pins.length > 0 && (
         <div style={{ fontSize: 12, paddingLeft: 12 }}>
           <span className="muted">

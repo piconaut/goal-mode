@@ -8,6 +8,7 @@ import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
 import { ALERTS } from '../content/alerts';
 import { PLANNER } from '../content/planner';
+import { aiopsHypotheses, type Hypothesis } from './aiops';
 import { emptyAlerts, evaluateAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { emptyPolicyBook, scheduledActivation } from './policies';
@@ -22,7 +23,7 @@ import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import type { WorkloadDef } from '../sim/workload/types';
 import { failRiskFor, FIXES, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
-import { hourAttainment, mechanismOf, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
+import { hourAttainment, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
   type ActiveEvent,
@@ -487,6 +488,13 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
     } else {
       const mechanism = mechanismOf(parts, baselines[w.id] ?? {}, h, Object.keys(r.sim.routing[w.id] ?? w.routing));
       const isNew = r.sim.extraWorkloads.some((x) => x.id === w.id);
+      const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
+      let aiops: Hypothesis[] | undefined;
+      if (toolOn(r, 'AIOPS')) {
+        const [hs, r2] = withRng(r, (rng) => aiopsHypotheses(truth, rankedMechanismGroups(parts, baselines[w.id] ?? {}), rng));
+        aiops = hs;
+        r = r2;
+      }
       incidents = [
         ...incidents,
         {
@@ -497,7 +505,8 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
           endTick: null,
           hours: 1,
           worstAttainmentPct: att.attainmentPct,
-          truth: { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) },
+          truth,
+          ...(aiops ? { aiops } : {}),
           rca: null,
           trustLost: loss,
         },

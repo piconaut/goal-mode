@@ -49,3 +49,14 @@ export const AUTOMATION = {
   maxPerDayDefault: 2,
   logKept: 50,
 };
+
+// FICTIONAL: AIOps hypothesis quality. Right often enough to be worth 50 Insight, wrong often enough
+// that accepting it blindly loses RCAs.
+export const AIOPS = {
+  /** Chance the top-ranked mechanism is the true one. */
+  mechanismAccuracy: 0.7,
+  triggerAccuracy: 0.75,
+  hypotheses: 3,
+  /** Confidence shown for the top hypothesis (uniform in this range; uncorrelated with being right). */
+  topConfidence: [0.55, 0.88] as [number, number],
+};

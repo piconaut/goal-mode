@@ -1,5 +1,6 @@
 // Game-layer state (SPEC §2, §7–§12). Wraps the deterministic sim; plain data.
 
+import type { Hypothesis } from './aiops';
 import type { AlertsState } from './alerts';
 import type { AutomationState } from './automation';
 import type { PolicyBook } from './policies';
@@ -118,6 +119,8 @@ export interface Incident {
   hours: number;
   worstAttainmentPct: number;
   truth: { mechanism: Mechanism; trigger: Trigger };
+  /** AIOps hypotheses when the incident opened (tool AIOPS), best first. */
+  aiops?: Hypothesis[];
   rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number } | null;
   trustLost: number;
 }

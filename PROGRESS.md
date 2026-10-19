@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7.5 (tier 4 AIOps, Codex, report class advisor, strategic options); M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (181 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (185 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -296,7 +296,12 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   whole policies are swapped (APPROX, same effect for the game). 2 tests; Chromium: 07:00 NIGHTPOL, 08:00 DAYPOL
 
 **M7.5 Tier 4 & strategic options**
-- [ ] AIOps anomaly detection: ranked RCA hypotheses with confidence, sometimes wrong (seeded), from `incident.truth` plus noise
+- [x] AIOps (loop 24, tool AIOPS now buyable): when an incident opens, 3 ranked hypotheses (`game/aiops.ts`)
+  built from the same evidence (`rankedMechanismGroups` of RT parts vs baseline): top mechanism right 70%,
+  else the evidence runner-up with the truth second; trigger right 75%; confidence 55–88%, deliberately
+  uncorrelated with being right. Seeded from the run RNG. Shown on the console incident list and in the RCA
+  form with "use" buttons; accepting a wrong one loses the RCA. 4 tests (accuracy band, plausibility,
+  determinism, only with the tool)
 - [ ] Tailored Fit Pricing offer (mid-run event): switch billing to consumption (MSU-hours vs baseline); capping no longer saves money
 - [ ] SCRT-style monthly report renderer (from `cost.hourly`/`cost.bills`) and Finance view
 - [ ] Multi-day projects (SPEC §6): threadsafe CICS conversion (qrFrac ↓), zIIP-enable Java, Db2 compression, SQL tuning sprint; progress per day, hours each day
@@ -432,6 +437,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 24, hourly task):** AIOps hypotheses (tier 4). 185 tests.
 - **2026-10-19 (loop 23, hourly task):** Codex (22 sourced entries, discovery, career persistence). 181 tests.
 - **2026-10-19 (loop 22, hourly task):** what-if simulator; M7.4 complete. 179 tests.
 - **2026-10-19 (loop 21, hourly task):** M8.1 bench + profile; behaviour-neutral micro-optimisations

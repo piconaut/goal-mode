@@ -274,6 +274,11 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
             <span className={`tag ${i.endTick === null ? 'bad' : 'warn'}`}>
               {i.endTick === null ? 'OPEN' : 'closed'} · {i.hours}h · worst {i.worstAttainmentPct.toFixed(0)}%
             </span>
+            {i.aiops?.[0] && (
+              <span className="muted" style={{ fontSize: 11 }} title="AIOps top hypothesis (can be wrong)">
+                AIOps: {i.aiops[0].mechanism} ({Math.round(i.aiops[0].confidence * 100)}%)
+              </span>
+            )}
           </div>
         ))}
       </div>

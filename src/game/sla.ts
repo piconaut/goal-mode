@@ -36,6 +36,14 @@ const GROUPS: Record<string, string[]> = {
   STORAGE: ['paging'],
 };
 
+/** Mechanism groups ordered by how much they grew against the healthy baseline (AIOps uses the runners-up). */
+export function rankedMechanismGroups(parts: Record<string, number>, baseline: Record<string, number>): string[] {
+  return Object.entries(GROUPS)
+    .map(([g, keys]) => [g, keys.reduce((a, k) => a + (parts[k] ?? 0) - (baseline[k] ?? 0), 0)] as const)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .map(([g]) => g);
+}
+
 /** Which mechanism grew most relative to the workload's healthy baseline. */
 export function mechanismOf(parts: Record<string, number>, baseline: Record<string, number>, hour: HourAcc, lpars: readonly string[]): Mechanism {
   let best = 'CPU';

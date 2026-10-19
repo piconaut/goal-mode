@@ -192,8 +192,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: ['DB2_ACCT', 'CICS_MON', 'ALERTS'],
     unlocks: ['AIOPS'],
     overhead: null,
-    reveals: 'Flags anomalies and ranks RCA hypotheses with a confidence. Sometimes wrong.',
-    comingSoon: true,
+    reveals: 'Ranks root-cause hypotheses for each new incident with a confidence, from the same evidence you see. Usually right; sometimes confidently wrong.',
   },
 ];
 
