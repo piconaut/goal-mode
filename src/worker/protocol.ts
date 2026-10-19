@@ -1,6 +1,7 @@
 // Messages between the UI thread and the game worker.
 
 import type { AlertRule } from '../game/alerts';
+import type { AutoRule } from '../game/automation';
 import type { ScheduleEntry } from '../game/policies';
 import type { PinRequest } from '../game/evidence';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
@@ -54,6 +55,8 @@ export type ToWorker =
   | { type: 'GET_MON3_CHARTS'; fromSample: number; fromMarker: number }
   | { type: 'ALERT_ADD'; rule: Omit<AlertRule, 'id'> }
   | { type: 'ALERT_REMOVE'; id: number }
+  | { type: 'AUTO_ADD'; rule: Omit<AutoRule, 'id'> }
+  | { type: 'AUTO_REMOVE'; id: number }
   | { type: 'SAVE_POLICY'; name: string }
   | { type: 'DELETE_POLICY'; name: string }
   | { type: 'SET_POLICY_SCHEDULE'; schedule: ScheduleEntry[] }

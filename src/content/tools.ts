@@ -183,8 +183,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: ['ALERTS'],
     unlocks: ['AUTOMATION', 'CPM'],
     overhead: null,
-    reveals: 'IF/THEN rules (switch policy, restart a job, activate CoD). Saves hours; can misfire.',
-    comingSoon: true,
+    reveals: 'IF alert/abend THEN switch policy, restart the job once, or activate On/Off CoD (Capacity Provisioning). No engineer-hours or emergency trust cost; each action can misfire.',
   },
   {
     id: 'AIOPS',

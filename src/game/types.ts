@@ -1,6 +1,7 @@
 // Game-layer state (SPEC §2, §7–§12). Wraps the deterministic sim; plain data.
 
 import type { AlertsState } from './alerts';
+import type { AutomationState } from './automation';
 import type { PolicyBook } from './policies';
 import type { EvidencePin, PinVerdict } from './evidence';
 import type { Mon3ChartState } from './mon3Charts';
@@ -180,6 +181,8 @@ export interface RunState {
   capacityToday: CapacityDay | null;
   /** Saved WLM service policies and the daily switch schedule. */
   policies: PolicyBook;
+  /** Automation rules and their state (tool AUTOMATION). */
+  automation: AutomationState;
   /** Alerting rules and their state (tool ALERTS). */
   alerts: AlertsState;
   /** Evidence pinned from reports for RCAs (oldest drop off). */

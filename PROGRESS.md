@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.4 automation rules (IF alert THEN action; can misfire) and Capacity Provisioning; what-if needs M8.1 perf first.
+- **Next up:** M8.1 headless performance (≤ 2 s/day; currently ~8 s), which unblocks the M7.4 what-if simulator; then M7.5.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (174 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (177 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -276,8 +276,12 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   pause (worker stops the clock and toasts the page; VIEW now carries `speed` so the UI shows it). Night pages
   (20:00–06:00) add 0.5 fatigue each: noisy rules cost. Monitor III tab panel with suggested rules, add/remove,
   firing tags and a page log. 3 tests; Chromium: a CPC rule paged at 06:05 and paused the game
-- [ ] Automation rules (System Automation-like): `IF condition THEN command`, e.g. restart abended job once, activate policy override at 20:00; misfires possible and logged
-- [ ] Capacity Provisioning Manager: On/Off CoD rules (refused for hard-capped LPARs, per IBM guidance)
+- [x] Automation rules (loop 20, tool AUTOMATION now buyable): ≤ 8 rules `IF alert fires THEN activate saved
+  policy | On/Off CoD`, `IF (critical) job abends THEN restart once`; max actions per rule per day. Actions go
+  through `requestChange` as pre-approved changes (`automated`): 0 engineer-hours, no emergency trust cost,
+  8% seeded misfire (logged in red). Scheduled switches cover "activate at 20:00". Panel on Monitor III
+- [x] Capacity Provisioning: the CoD action is the CPM; refused while any LPAR has an absolute (hard) cap. Opex
+  per CoD day still applies, so a noisy alert driving CoD costs real money. 3 tests; Chromium: alert → policy
 - [x] WLM service policies + daily schedule (loop 19): save the pending/active policy under a name (≤ 4),
   schedule up to 4 daily switches (`game/policies.ts`); the run issues `V WLM,POLICY=name` on the hour at no
   cost; editing the schedule costs 0.5 h and is blocked by a change freeze. Change Desk section "WLM service
@@ -405,6 +409,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 20, hourly task):** automation rules + Capacity Provisioning (CoD) with misfires. 177 tests.
 - **2026-10-19 (loop 19, hourly task):** saved WLM service policies with a daily switch schedule. 174 tests.
 - **2026-10-19 (loop 18, hourly task; session had restarted):** alert rules with pause-on-page and night
   fatigue. 172 tests.

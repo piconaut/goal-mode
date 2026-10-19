@@ -39,3 +39,13 @@ export const POLICY_SCHEDULE = {
   /** Engineer-hours to change the schedule (test the switch, update the automation table). */
   editHours: 0.5,
 };
+
+// FICTIONAL: automation (System Automation-style rules and Capacity Provisioning).
+export const AUTOMATION = {
+  maxRules: 8,
+  /** Chance an automated action does not do what was intended (stale table, wrong system, race). */
+  misfireFrac: 0.08,
+  /** Default and hard cap on actions per rule per day. */
+  maxPerDayDefault: 2,
+  logKept: 50,
+};

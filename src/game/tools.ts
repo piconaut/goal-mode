@@ -4,6 +4,7 @@ import type { Scenario } from '../sim/core/scenario';
 import type { ChangeOutcome } from './run';
 import { allWorkloads } from './workloads';
 import { emptyAlerts } from './alerts';
+import { emptyAutomation } from './automation';
 import { emptyPolicyBook } from './policies';
 import type { RunState } from './types';
 
@@ -21,6 +22,7 @@ export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
     mon3Charts: run.mon3Charts ?? null,
     pins: run.pins ?? [],
     alerts: run.alerts ?? emptyAlerts(),
+    automation: run.automation ?? emptyAutomation(),
     policies: run.policies ?? emptyPolicyBook(),
     capacityDays: run.capacityDays ?? [],
     capacityToday: run.capacityToday ?? null,

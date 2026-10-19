@@ -9,6 +9,7 @@ import { initState } from '../sim/core/init';
 import { ALERTS } from '../content/alerts';
 import { PLANNER } from '../content/planner';
 import { emptyAlerts, evaluateAlerts } from './alerts';
+import { emptyAutomation, runAutomation } from './automation';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { MON3_CHARTS } from '../content/tools';
 import { EVIDENCE } from '../content/evidence';
@@ -100,6 +101,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     mon3Charts: null,
     pins: [],
     alerts: emptyAlerts(),
+    automation: emptyAutomation(),
     policies: emptyPolicyBook(),
     capacityDays: [],
     capacityToday: null,
@@ -181,6 +183,8 @@ export interface ChangeRequest {
   commands?: Command[];
   hardwareId?: string;
   fixId?: string;
+  /** Pre-approved automation: no engineer-hours, no emergency trust cost, a misfire chance instead. */
+  automated?: { misfireFrac: number };
 }
 
 export interface ChangeOutcome {
@@ -214,7 +218,8 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
   const commands = hw ? hw.commands(run.sim) : (req.commands ?? []);
-  const { hours, capex } = preview;
+  const hours = req.automated ? 0 : preview.hours;
+  const { capex } = preview;
 
   let r = spendHours(run, hours);
   r = { ...r, capexRemaining: r.capexRemaining - capex };
@@ -237,20 +242,25 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
 
   if (live) {
     // Emergency change board: costs trust, more when no incident justifies it.
-    const trustCost = preview.trustCostEach;
+    const trustCost = req.automated ? 0 : preview.trustCostEach;
     r = { ...r, trust: Object.fromEntries(FACETS.map((f) => [f, clampTrust(r.trust[f] - trustCost)])) as Record<Facet, number> };
     if (fix?.trustCost) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet] - fix.trustCost.amount) } };
-    const [failed, r2] = withRng(r, (rng) => rng.chance(failRisk(r)));
+    const risk = req.automated ? req.automated.misfireFrac : failRisk(r);
+    const [failed, r2] = withRng(r, (rng) => rng.chance(risk));
     r = r2;
     if (failed && !fix) {
       r = { ...r, changes: [...r.changes, { ...change, status: 'FAILED' }] };
-      return { run: logLine(r, `Emergency change FAILED: ${req.label}`), ok: false, message: `Change failed during implementation (risk ${(100 * failRisk(r)).toFixed(0)}%): ${req.label}` };
+      return {
+        run: logLine(r, `${req.automated ? 'Automation MISFIRED' : 'Emergency change FAILED'}: ${req.label}`),
+        ok: false,
+        message: `${req.automated ? 'Automation misfired' : 'Change failed during implementation'} (risk ${(100 * risk).toFixed(0)}%): ${req.label}`,
+      };
     }
     if (change.activateDay === r.day) {
       r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
     } else r = { ...r, changes: [...r.changes, change] };
     if (fix) r = endEventByFix(r, content, fix.id);
-    return { run: logLine(r, `Emergency change: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
+    return { run: logLine(r, `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
   }
   return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned for day ${change.activateDay + 1}: ${req.label}` };
 }
@@ -370,7 +380,14 @@ export function advance(run: RunState, scenario: Scenario, content: GameContent,
     const sim = step(r.sim, cmds, scenario);
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);
-    if ((tick + 1) % ALERTS.evalTicks === 0 && toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = evaluateAlerts(r, scenario);
+    if ((tick + 1) % ALERTS.evalTicks === 0) {
+      const before = r.alerts?.firing ?? [];
+      if (toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = evaluateAlerts(r, scenario);
+      if (toolOn(r, 'AUTOMATION') && r.phase === 'LIVE') {
+        const fired = (r.alerts?.firing ?? []).filter((id) => !before.includes(id));
+        r = runAutomation(r, content, fired, requestChange);
+      }
+    }
     if (chartsActive(r)) {
       r = accumulateMon3(r);
       if ((tick + 1) % MON3_CHARTS.sampleTicks === 0) r = recordMon3(r, scenario);

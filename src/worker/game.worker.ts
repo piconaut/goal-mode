@@ -7,6 +7,7 @@ import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
+import { addAutoRule, removeAutoRule } from '../game/automation';
 import { deletePolicy, savePolicy, setSchedule } from '../game/policies';
 import { addPin, removePin } from '../game/evidence';
 import { buildView } from '../game/view';
@@ -207,6 +208,15 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       post({ type: 'RESULT', ok: out.ok, message: out.message });
       break;
     }
+    case 'AUTO_ADD': {
+      const out = addAutoRule(run, m.rule);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      break;
+    }
+    case 'AUTO_REMOVE':
+      run = removeAutoRule(run, m.id);
+      break;
     case 'ALERT_REMOVE':
       run = removeAlertRule(run, m.id);
       break;
