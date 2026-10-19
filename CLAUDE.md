@@ -26,7 +26,10 @@ npm run dev          # Vite dev server
 npm test             # Vitest (unit + realism + golden)
 npm run typecheck    # tsc --noEmit
 npm run lint
-npm run sim -- --scenario midwest --days 40 --bot donothing --seed 42   # headless runner
+npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
+npm run bot -- --bot donothing|textbook|oraclerca --seed 42        # full runs with strategy bots
+npx vite build && npx vite preview --port 4173 &                  # then:
+node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
 ```
 
 ## Architecture rules (non-negotiable)

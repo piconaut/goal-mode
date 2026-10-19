@@ -37,7 +37,7 @@ const GROUPS: Record<string, string[]> = {
 };
 
 /** Which mechanism grew most relative to the workload's healthy baseline. */
-export function mechanismOf(parts: Record<string, number>, baseline: Record<string, number>, hour: HourAcc): Mechanism {
+export function mechanismOf(parts: Record<string, number>, baseline: Record<string, number>, hour: HourAcc, lpars: readonly string[]): Mechanism {
   let best = 'CPU';
   let bestExcess = -Infinity;
   for (const [g, keys] of Object.entries(GROUPS)) {
@@ -48,7 +48,8 @@ export function mechanismOf(parts: Record<string, number>, baseline: Record<stri
     }
   }
   if (best !== 'CPU') return best as Mechanism;
-  if (hour.maxCappedFrac > 0.05) return 'CAPPING';
+  // Only capping of the images this workload runs on counts.
+  if (lpars.some((l) => (hour.cappedByLpar[l] ?? 0) > 0.05)) return 'CAPPING';
   const busy = hour.ticks > 0 ? hour.cpcBusySum / hour.ticks : 0;
   return busy > 0.95 ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
 }

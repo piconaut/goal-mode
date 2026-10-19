@@ -534,7 +534,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   // Retry storms: timed-out requests come back next tick.
   for (const wr of workloadRt) {
     const w = workloadById[wr.id]!;
-    wr.retryRate = ((failedBy[wr.id] ?? 0) * w.retryFrac) / TICK_SEC;
+    // Clients back off (circuit breakers, retry budgets): retries are capped at twice the
+    // organic arrival rate so a storm hurts badly but stays bounded.
+    const organic = rates[wr.id]! - (prevWl[wr.id]?.retryRate ?? 0);
+    wr.retryRate = Math.min(2 * Math.max(0, organic), ((failedBy[wr.id] ?? 0) * w.retryFrac) / TICK_SEC);
     const wt = wlTick[wr.id]!;
     if (wt.completions > 1e-9) wr.lastRtSec = wt.rtSumSec / wt.completions;
   }

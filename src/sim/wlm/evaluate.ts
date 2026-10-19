@@ -339,8 +339,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
 
     const arrivals = s.rate * TICK_SEC;
     const subsysFailed = arrivals * s.failFrac;
-    failed += subsysFailed;
-    const completions = arrivals - subsysFailed;
+    // A transaction fails once: subsystem rejections and timeouts together are bounded by arrivals.
+    failed = Math.min(arrivals, failed + subsysFailed);
+    const completions = arrivals - failed;
     const ioRate = s.rate * s.ioPerTxn;
     return {
       key: s.key,

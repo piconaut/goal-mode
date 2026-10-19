@@ -13,7 +13,8 @@ export interface EventDef {
   weight: number;
   trigger: Trigger;
   affects: string[];
-  /** Wall-clock start hour range and duration in hours (null = until fixed). */
+  /** Wall-clock start hour range and duration in hours (null = until fixed). Events with a
+   * fix still end on their own eventually; fixing them early limits the damage. */
   startHour: [number, number];
   durationHours: number | null;
   begin: Command[];
@@ -85,7 +86,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     trigger: 'RUNAWAY_WORK',
     affects: ['MOBILE', 'ADHOC'],
     startHour: [9, 15],
-    durationHours: null,
+    durationHours: 5, // Db2 RLF governor eventually cancels it
     begin: [mod('cpu', 'ADHOC', 10)],
     end: [mod('cpu', 'ADHOC', 1)],
     fix: 'CANCEL_RUNAWAY',
@@ -102,7 +103,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     trigger: 'ACCESS_PATH_REGRESSION',
     affects: ['RBANK'],
     startHour: [6.5, 8],
-    durationHours: null,
+    durationHours: 30, // someone on the DBA team notices eventually
     begin: [mod('cpu', 'RBANK', 3)],
     end: [mod('cpu', 'RBANK', 1)],
     fix: 'REBIND_REVERT',
@@ -187,7 +188,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     trigger: 'POLICY',
     affects: ['MOBILE', 'RBANK'],
     startHour: [6, 7],
-    durationHours: null,
+    durationHours: 48,
     begin: [mod('asCpu', 'MONAGENT', 12)],
     end: [mod('asCpu', 'MONAGENT', 1)],
     fix: 'ROLLBACK_MONITOR',

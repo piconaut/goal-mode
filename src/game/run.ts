@@ -288,6 +288,7 @@ const newHour = (tick: number): HourAcc => ({
   ticks: 0,
   workloads: {},
   maxCappedFrac: 0,
+  cappedByLpar: {},
   cpcBusySum: 0,
   lockIndexSum: 0,
 });
@@ -342,10 +343,12 @@ function accumulateHour(run: RunState): RunState {
   }
   let capped = 0;
   let delivered = 0;
+  const cappedByLpar = { ...h.cappedByLpar };
   for (const l of run.sim.lpars) {
     const cp = l.pools.find((p) => p.pool === 'CP');
     if (!cp) continue;
     capped = Math.max(capped, cp.cappedFrac);
+    cappedByLpar[l.id] = Math.max(cappedByLpar[l.id] ?? 0, cp.cappedFrac);
     delivered += cp.deliveredEngines;
   }
   const engines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
@@ -356,6 +359,7 @@ function accumulateHour(run: RunState): RunState {
       ticks: h.ticks + 1,
       workloads,
       maxCappedFrac: Math.max(h.maxCappedFrac, capped),
+      cappedByLpar,
       cpcBusySum: h.cpcBusySum + (engines > 0 ? delivered / engines : 0),
       lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
     },
@@ -388,7 +392,7 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
       const inc = incidents[openIdx]!;
       incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
     } else {
-      const mechanism = mechanismOf(parts, baselines[w.id] ?? {}, h);
+      const mechanism = mechanismOf(parts, baselines[w.id] ?? {}, h, Object.keys(r.sim.routing[w.id] ?? w.routing));
       const isNew = r.sim.extraWorkloads.some((x) => x.id === w.id);
       incidents = [
         ...incidents,

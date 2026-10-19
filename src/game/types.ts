@@ -76,6 +76,8 @@ export interface HourAcc {
   ticks: number;
   workloads: Record<string, WorkloadHour>;
   maxCappedFrac: number;
+  /** Max capped fraction per LPAR during the hour. */
+  cappedByLpar: Record<string, number>;
   cpcBusySum: number;
   lockIndexSum: number;
 }

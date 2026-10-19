@@ -6,7 +6,8 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M4 done (M2 leftovers: RG minimum, discretionary capping). The sim is feature-complete for a headless day: online, batch, I/O, CF, subsystems, capping, MLC and RMF reports.
 - **Last updated:** 2026-10-19
-- **Next up:** finish M5: fix NaN response time under total collapse (PAYMQ, day 8 of the do-nothing bot), balance pass on event severity/stacking, a "textbook" bot, game-layer docs. Then M6 UI.
+- **Phase:** M5 done; M6 vertical slice playable in the browser (`npm run dev`).
+- **Next up:** M6 polish (batch Gantt, R4HA chart, policy editor UX, save/load), then M7 analytics tiers (Monitor III live view, Insight spending), weekend auto-sim.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
 - **Health:** `npm run check` green (102 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
@@ -90,19 +91,23 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Hourly SLA accounting, incidents with ground-truth mechanism/trigger vs healthy baseline, RCA scoring (`game/sla.ts`)
 - [x] Draft rewards and perks (`content/draft.ts`); scoring; win/loss (trust, 2 batch misses, opex > 125%)
 - [x] Bot runner `npm run bot -- --bot donothing|oraclerca` (`tools/bot.ts`, `tools/strategies.ts`)
-- [ ] BUG: NaN response time/attainment under total collapse (PAYMQ, seed 42 day 8)
-- [ ] Balance: do-nothing currently dies on day 8 (target 12–18), because persistent events (regression, runaway) stack and never get fixed
+- [x] BUG fixed: retry storms diverged to NaN (a failure counted by QR overload *and* as a timeout); retries now capped at 2× organic rate, failures per tick ≤ arrivals
+- [x] Balance (seed 42): do-nothing loses on **day 15** (target 12–18); textbook bot (day-1 fixes F1–F11 + restarts + fixes) loses on **day 29** (target 28–32). Persistent events now self-resolve eventually (RLF governor 5 h, DBA 30 h, monitor rollback 48 h)
+- [x] Incident capping attribution limited to the LPARs a workload runs on
 - [ ] End-of-run report; weekend auto-sim; Insight spending (M7)
 - [ ] Midwest Mutual scenario with flaws F1–F12 (F1–F11 in place; F12 trivially)
 
 ### M6 — UI (playable vertical slice)
-- [ ] Worker host + message protocol; snapshot coalescing
-- [ ] Ops Console (PI heat map, LPAR strips, SLA tickers, R4HA gauge, batch Gantt, alerts)
-- [ ] RMF report browser (text + charts, pin as evidence)
-- [ ] WLM policy editor + classification test bench
-- [ ] HMC screen with live polarity preview
-- [ ] Briefing/inbox/calendar, Debrief/RCA/draft
-- [ ] Save/load (IndexedDB)
+- [x] Game in a Web Worker (`src/worker/game.worker.ts`), message protocol, 10 Hz view model with fog of war (`src/game/view.ts`)
+- [x] Ops Console: LPAR CP/zIIP/ICF bars with polarity, MSU/R4HA/DC/CAPPED; SLA tickers; PI heat map (blue↔orange, colour-blind safe); batch window; incidents; ops log; speed controls 0–8×
+- [x] RMF report browser (green-screen Postprocessor text): WLM summary/detail per system, Partition Data, CF, DASD; only intervals before today's 06:00 during the live day (tier-0 fog)
+- [x] Change Desk: HMC (weight, logical CPs/zIIPs, defined capacity), WLM structured edits (period goals, new class, CPU critical, classification rules) + JSON review/activate, z/OS/Db2/CICS/CF/batch/routing actions, hardware orders, event fixes, job restarts
+- [x] Briefing, end-of-day report card, RCA form, draft cards, game-over/victory overlays
+- [x] Headless screenshot driver `node tools/screenshot.mjs <dir>` (needs `npx vite preview`); verified no JS errors and no mobile horizontal overflow
+- [ ] Batch Gantt, R4HA/MSU time-series charts (uPlot), PI history heat map
+- [ ] HMC live polarity preview while editing weights
+- [ ] Classification test bench ("where does this work go?")
+- [ ] Save/load (IndexedDB), pin report values as RCA evidence
 
 ### M7 — Analytics tool tree & depth
 - [ ] Tier 1–4 tools (SPEC §8); Monitor III screens; WLM activity log
@@ -211,3 +216,6 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   incidents + RCA, events, draft, bots. 112 tests. Do-nothing bot (seed 42): mild incidents on
   days 1–2 (batch overlap), then a calm stretch, then collapse on day 8 under stacked unfixed
   events (regression + runaway + CF link). Created the git repo and pushed to GitHub.
+- **2026-10-19 (loop 6):** Switched to a 10-minute cron loop. Fixed the retry-storm NaN; bounded
+  persistent events; textbook bot. Balance on target (do-nothing day 15, textbook day 29).
+  M6 vertical slice: worker, view model, Ops Console, RMF browser, Change Desk, overlays.
