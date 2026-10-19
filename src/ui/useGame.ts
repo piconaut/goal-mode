@@ -5,6 +5,7 @@ import type { ViewModel } from '../game/view';
 import type { ClassificationResult } from '../sim/wlm/classify';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { WhatIfSummary } from '../game/whatif';
+import type { FinanceView } from '../game/finance';
 import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from '../worker/protocol';
 
 export interface GameHandle {
@@ -16,6 +17,7 @@ export interface GameHandle {
   pending: PendingPolicyView | null;
   classified: { result: ClassificationResult; pending: boolean } | null;
   smf: SmfData | null;
+  finance: FinanceView | null;
   whatIf: { progress: number | null; result: { label: string; base: WhatIfSummary; proposal: WhatIfSummary } | null };
   speed: number;
   charts: { samples: Mon3Sample[]; markers: ChartMarker[] };
@@ -36,6 +38,7 @@ export function useGame(): GameHandle {
   const [pending, setPending] = useState<PendingPolicyView | null>(null);
   const [classified, setClassified] = useState<GameHandle['classified']>(null);
   const [smf, setSmf] = useState<SmfData | null>(null);
+  const [finance, setFinance] = useState<FinanceView | null>(null);
   const [whatIf, setWhatIf] = useState<GameHandle['whatIf']>({ progress: null, result: null });
   const [speed, setSpeed] = useState(1);
   const [charts, setCharts] = useState<GameHandle['charts']>({ samples: [], markers: [] });
@@ -58,6 +61,7 @@ export function useGame(): GameHandle {
         setSpeed(m.speed);
       } else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
       else if (m.type === 'SMF') setSmf(m.data);
+      else if (m.type === 'FINANCE') setFinance(m.finance);
       else if (m.type === 'WHATIF_PROGRESS') setWhatIf((w) => ({ ...w, progress: m.frac }));
       else if (m.type === 'WHATIF_RESULT') setWhatIf({ progress: null, result: { label: m.label, base: m.base, proposal: m.proposal } });
       else if (m.type === 'MON3_CHARTS')
@@ -80,5 +84,5 @@ export function useGame(): GameHandle {
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
-  return { view, report, policy, history, savedRunDay, pending, classified, smf, whatIf, speed, charts, rules, toast, results, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, charts, rules, toast, results, send };
 }

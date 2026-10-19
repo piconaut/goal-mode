@@ -7,11 +7,13 @@ export interface ProductPeak {
   product: string;
   peakMsu: number;
   peakTick: number;
+  /** Each LPAR's (DC-limited) R4HA in the peak hour: who drove the bill. */
+  peakByLpar?: Record<string, number>;
 }
 
 export interface Bill {
   month: number;
-  lines: { product: string; peakMsu: number; peakTick: number; cost: number }[];
+  lines: { product: string; peakMsu: number; peakTick: number; cost: number; peakByLpar?: Record<string, number> }[];
   total: number;
 }
 
@@ -41,13 +43,15 @@ export function recordHour(
   const peaks = cost.peaks.map((pk) => {
     const p = products.find((x) => x.id === pk.product)!;
     let msu = 0;
+    const byLpar: Record<string, number> = {};
     for (const l of p.lpars) {
       const v = r4haByLpar[l] ?? 0;
       const lim = limitByLpar[l];
-      msu += lim != null ? Math.min(v, lim) : v;
+      byLpar[l] = lim != null ? Math.min(v, lim) : v;
+      msu += byLpar[l]!;
     }
     hourly[pk.product] = [...(cost.hourly[pk.product] ?? []), msu];
-    return msu > pk.peakMsu ? { ...pk, peakMsu: msu, peakTick: tick } : pk;
+    return msu > pk.peakMsu ? { ...pk, peakMsu: msu, peakTick: tick, peakByLpar: byLpar } : pk;
   });
   return { ...cost, peaks, hourly };
 }
@@ -55,12 +59,12 @@ export function recordHour(
 export function closeMonth(cost: CostState, products: readonly ProductDef[]): CostState {
   const lines = cost.peaks.map((pk) => {
     const p = products.find((x) => x.id === pk.product)!;
-    return { product: pk.product, peakMsu: pk.peakMsu, peakTick: pk.peakTick, cost: tieredMonthlyCost(pk.peakMsu, p.priceFactor) };
+    return { product: pk.product, peakMsu: pk.peakMsu, peakTick: pk.peakTick, cost: tieredMonthlyCost(pk.peakMsu, p.priceFactor), peakByLpar: pk.peakByLpar };
   });
   const bill: Bill = { month: cost.month, lines, total: lines.reduce((a, l) => a + l.cost, 0) };
   return {
     month: cost.month + 1,
-    peaks: cost.peaks.map((pk) => ({ ...pk, peakMsu: 0, peakTick: 0 })),
+    peaks: cost.peaks.map((pk) => ({ product: pk.product, peakMsu: 0, peakTick: 0 })),
     hourly: Object.fromEntries(Object.keys(cost.hourly).map((k) => [k, [] as number[]])),
     bills: [...cost.bills, bill],
   };

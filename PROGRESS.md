@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7.5 (tier 4 AIOps, Codex, report class advisor, strategic options); M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (185 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (186 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -303,7 +303,13 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   form with "use" buttons; accepting a wrong one loses the RCA. 4 tests (accuracy band, plausibility,
   determinism, only with the tool)
 - [ ] Tailored Fit Pricing offer (mid-run event): switch billing to consumption (MSU-hours vs baseline); capping no longer saves money
-- [ ] SCRT-style monthly report renderer (from `cost.hourly`/`cost.bills`) and Finance view
+- [x] SCRT-style report + Finance tab (loop 25): `renderScrt` (product, LPARs, peak 4HRA MSU, peak hour,
+  charge, peak-hour contribution per LPAR; fictional tiers); cost state now keeps each product's per-LPAR
+  R4HA at its peak hour (`peakByLpar`). Finance tab (`game/finance.ts`, `GET_FINANCE`): MLC month-to-date,
+  CFO −10% target with on-track/over, opex vs budget, product table with peak contributors, hourly z/OS MSU
+  chart with the peak line, bills, SCRT text. First check showed the z/OS peak at 00:00 (batch drives the
+  bill), which is the point of the view. Bench hash changed to `46a31c68f88db587` (cost state shape, no
+  behaviour change)
 - [ ] Multi-day projects (SPEC §6): threadsafe CICS conversion (qrFrac ↓), zIIP-enable Java, Db2 compression, SQL tuning sprint; progress per day, hours each day
 - [x] Codex (loop 23): 22 entries in `content/codex/entries.ts` (WLM, PR/SM, capacity & cost, subsystems, I/O &
   CF, measurement), each with sources from SPEC §18 (no invented links; label-only where unverified). Discovered
@@ -325,7 +331,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 **M8.1 Performance (prerequisite for bots and what-if)**
 - [ ] Target ≤ 2 s per headless day (now ~7–8 s): incremental dispatch in policy-adjust projections, skip receivers that failed recently, precomputed log-normal bucket tables, avoid per-tick object churn in batch/RMF accumulators (profile first; keep determinism)
 - [x] Benchmark script `npm run bench [-- --days N --seed S --hash]` (`tools/bench.ts`); `--hash` prints a
-  SHA-256 of the end state so optimisations can prove they are behaviour-neutral (seed 42, 1 day: `e82b0d3ff34ccf60`)
+  SHA-256 of the end state so optimisations can prove they are behaviour-neutral (seed 42, 1 day: `46a31c68f88db587` since loop 25)
 - Loop 21 profile (esbuild bundle + `--cpu-prof`, 1 day ≈ 8.5 s, 1.0 ms/tick): flat. Inclusive: evaluateLpar 27%
   (of which policy-adjust projections 7%), step's own loops ~20%, dispatch 7%, RMF accumulateTick 5%, GC 7%,
   log-normal buckets 5%. Safe wins applied (hoisted log-normal invariants + early exit, bucket `map`→loops,
@@ -437,6 +443,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 25, hourly task):** SCRT-style report and Finance tab. 186 tests.
 - **2026-10-19 (loop 24, hourly task):** AIOps hypotheses (tier 4). 185 tests.
 - **2026-10-19 (loop 23, hourly task):** Codex (22 sourced entries, discovery, career persistence). 181 tests.
 - **2026-10-19 (loop 22, hourly task):** what-if simulator; M7.4 complete. 179 tests.

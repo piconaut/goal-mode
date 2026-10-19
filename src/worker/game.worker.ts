@@ -12,6 +12,7 @@ import { deletePolicy, savePolicy, setSchedule } from '../game/policies';
 import { addPin, removePin } from '../game/evidence';
 import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
+import { financeView } from '../game/finance';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -215,6 +216,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       setTimeout(() => whatIfChunk(token), 0);
       break;
     }
+    case 'GET_FINANCE':
+      post({ type: 'FINANCE', finance: financeView(run, scenario) });
+      break;
     case 'GET_SMF': {
       const need = SMF_FEATURE[m.kind];
       if (!hasFeature(run, need)) break;

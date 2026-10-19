@@ -1,6 +1,8 @@
 // Postprocessor-style text renderers for RMF interval records. Layouts evoke the real
 // WLMGL / CPU Activity / Partition Data / CF / DASD reports without copying them exactly.
 
+import { tieredMonthlyCost, type ProductDef } from '../../content/pricing';
+import type { CostState } from '../cost/mlc';
 import { clockAt } from '../core/clock';
 import { BUCKET_BOUNDS } from '../wlm/goals';
 import type { RmfInterval, WlmRecord } from './rmf';
@@ -168,6 +170,39 @@ export function renderDasdSummary(iv: RmfInterval): string {
     for (const l of iv.lcus) {
       out.push(`${padR(l.id, 4)} ${padR(l.label, 22)} ${f(l.volumes, 0, 4)} ${f(l.aliases, 0, 8)} ${f(l.iops, 0, 14)} ${f(l.rtMs, 3, 13)} ${f(l.iosqMs, 3, 10)} ${f(l.aliasesPerHotVol, 2, 16)}`);
     }
+  }
+  return out.join('\n');
+}
+
+/** SCRT-style sub-capacity report for a month (prices are the game's fictional ones). */
+export function renderScrt(
+  cost: CostState,
+  products: readonly ProductDef[],
+  month: 'current' | number,
+  clockText: (tick: number) => string,
+): string {
+  const bill = month === 'current' ? null : cost.bills.find((b) => b.month === month);
+  const lines = bill
+    ? bill.lines
+    : cost.peaks.map((pk) => ({ product: pk.product, peakMsu: pk.peakMsu, peakTick: pk.peakTick, peakByLpar: pk.peakByLpar, cost: tieredMonthlyCost(pk.peakMsu, products.find((p) => p.id === pk.product)!.priceFactor) }));
+  const out = [
+    '                         S U B - C A P A C I T Y   R E P O R T   (SCRT-style)',
+    `REPORTING PERIOD: MONTH ${(bill ? bill.month : cost.month) + 1}${bill ? '' : ' (month to date)'}      PRICES: FICTIONAL GAME TIERS`,
+    '',
+    'PRODUCT          LPARS                         PEAK 4HRA MSU   PEAK HOUR (ENDING)        CHARGE',
+  ];
+  for (const l of lines) {
+    const p = products.find((x) => x.id === l.product)!;
+    out.push(`${padR(p.name, 16)} ${padR(p.lpars.join(','), 29)} ${f(l.peakMsu, 1, 13)}   ${padR(l.peakMsu > 0 ? clockText(l.peakTick) : '-', 22)} ${f(l.cost, 0, 10)}`);
+  }
+  out.push('', `TOTAL ${f(lines.reduce((a, l) => a + l.cost, 0), 0, 82)}`, '', 'PEAK-HOUR CONTRIBUTION BY LPAR (R4HA, limited by defined capacity)');
+  for (const l of lines) {
+    const by = l.peakByLpar ?? {};
+    const parts = Object.keys(by)
+      .sort()
+      .map((k) => `${k} ${f(by[k]!, 1, 0)}`)
+      .join('  ');
+    out.push(`${padR(products.find((x) => x.id === l.product)!.name, 16)} ${parts || '-'}`);
   }
   return out.join('\n');
 }

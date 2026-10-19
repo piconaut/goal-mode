@@ -5,6 +5,7 @@ import type { HistoryPoint } from '../game/history';
 import { Actions } from './Actions';
 import { Analytics } from './Analytics';
 import { Codex } from './Codex';
+import { Finance } from './Finance';
 import { LineChart } from './LineChart';
 import { Monitor } from './Monitor';
 import { Overlays } from './Overlays';
@@ -13,7 +14,7 @@ import { Smf } from './Smf';
 import { EvidenceBoard } from './Evidence';
 import { useGame, type GameHandle } from './useGame';
 
-type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'analytics' | 'codex' | 'inbox';
+type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
 export function App() {
   const game = useGame();
@@ -24,9 +25,9 @@ export function App() {
     <div className="app">
       <TopBar v={v} game={game} />
       <div className="tabs">
-        {(['console', 'monitor', 'reports', 'changes', 'analytics', 'codex', 'inbox'] as Tab[]).map((t) => (
+        {(['console', 'monitor', 'reports', 'changes', 'finance', 'analytics', 'codex', 'inbox'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t === 'console' ? 'Ops Console' : t === 'monitor' ? (v.mon3 ? `Monitor III${v.mon3.exceptions.length ? ` (${v.mon3.exceptions.length}!)` : ''}` : 'Monitor III 🔒') : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'analytics' ? `Analytics (${v.insight}◆)` : t === 'codex' ? 'Codex' : `Inbox (${v.inbox.length})`}
+            {t === 'console' ? 'Ops Console' : t === 'monitor' ? (v.mon3 ? `Monitor III${v.mon3.exceptions.length ? ` (${v.mon3.exceptions.length}!)` : ''}` : 'Monitor III 🔒') : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'finance' ? 'Finance' : t === 'analytics' ? `Analytics (${v.insight}◆)` : t === 'codex' ? 'Codex' : `Inbox (${v.inbox.length})`}
           </button>
         ))}
       </div>
@@ -41,6 +42,7 @@ export function App() {
       )}
       {tab === 'changes' && <Actions v={v} game={game} />}
       {tab === 'analytics' && <Analytics v={v} game={game} />}
+      {tab === 'finance' && <Finance v={v} game={game} />}
       {tab === 'codex' && <Codex v={v} />}
       {tab === 'inbox' && <Inbox v={v} />}
       <Overlays v={v} game={game} />

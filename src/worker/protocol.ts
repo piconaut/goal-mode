@@ -4,6 +4,7 @@ import type { AlertRule } from '../game/alerts';
 import type { AutoRule } from '../game/automation';
 import type { ScheduleEntry } from '../game/policies';
 import type { PinRequest } from '../game/evidence';
+import type { FinanceView } from '../game/finance';
 import type { WhatIfSummary } from '../game/whatif';
 import type { Command } from '../sim/core/commands';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
@@ -54,6 +55,7 @@ export type ToWorker =
   | { type: 'GET_RULES' }
   | { type: 'CANCEL_CHANGE'; changeId: number }
   | { type: 'GET_SMF'; kind: SmfKind; hour: string }
+  | { type: 'GET_FINANCE' }
   | { type: 'WHATIF_RUN'; commands: Command[]; label: string }
   | { type: 'GET_MON3_CHARTS'; fromSample: number; fromMarker: number }
   | { type: 'ALERT_ADD'; rule: Omit<AlertRule, 'id'> }
@@ -73,6 +75,7 @@ export type FromWorker =
   | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null; speed: number }
   | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
   | { type: 'SMF'; data: SmfData }
+  | { type: 'FINANCE'; finance: FinanceView }
   | { type: 'WHATIF_PROGRESS'; frac: number }
   | { type: 'WHATIF_RESULT'; label: string; base: WhatIfSummary; proposal: WhatIfSummary }
   | { type: 'MON3_CHARTS'; fromSample: number; fromMarker: number; samples: Mon3Sample[]; markers: ChartMarker[] }
