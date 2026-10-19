@@ -36,3 +36,25 @@ export function tieredMonthlyCost(msu: number, factor: number, tiers: [number, n
   }
   return cost;
 }
+
+// Tailored Fit Pricing (Enterprise Consumption) offer. Real TFP sets the baseline from the past
+// 12 months of MSU consumption, charges growth above it at a discount, and makes capping pointless
+// (IBM, "What is Tailored Fit Pricing for IBM Z?"; Precisely, TFP overview).
+// APPROX: real contracts are multi-year with unused MSUs rolling over; a game quarter is too short,
+// so the baseline is a committed monthly minimum and unused MSU-hours are lost.
+// FICTIONAL: terms. The quoted baseline cost is a small discount on the sub-capacity bill at the
+// current peak (practitioners note TFP rarely lowers the bill for existing work); growth is cheap.
+export const TFP_OFFER = {
+  /** The offer arrives at the end of this played day (0-based). */
+  offerDay: 9,
+  /** Days the offer stays open after it arrives. */
+  openDays: 4,
+  /** Discount of the committed baseline vs the sub-capacity bill at this month's peak. */
+  discountFrac: 0.03,
+  /** Baseline = month-to-date average product MSU × 720 h × (1 + growth). */
+  baselineGrowthFrac: 0.03,
+  /** MSU-hours above the baseline cost this fraction of the baseline price. */
+  overageFrac: 0.5,
+  /** Engineer-hours to review and sign the contract. */
+  acceptHours: 2,
+};

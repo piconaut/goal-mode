@@ -21,6 +21,7 @@ import type { Scenario } from '../sim/core/scenario';
 import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
+import { tfpAtDayEnd } from './tfp';
 import type { WorkloadDef } from '../sim/workload/types';
 import { failRiskFor, FIXES, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
 import { hourAttainment, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
@@ -605,6 +606,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     hoursLeft: r.baseHours + bonus.reduce((a, b) => a + b.hours, 0),
   };
 
+  r = tfpAtDayEnd(r, scenario);
   const overall = overallTrust(r);
   if (!endReason && (overall <= 0 || FACETS.some((f) => r.trust[f] <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
   if (!endReason && consecutive >= 2) endReason = 'Two consecutive batch deadline misses: the regulator has opened a formal review.';

@@ -17,15 +17,40 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
   const zos = f.products[0];
   // The products move together (same LPARs, same R4HAs); chart the largest and keep the rest in the table.
   const series: Series[] = zos ? [{ id: zos.name, color: 'var(--series-1)', values: f.hourly.series[zos.id] ?? [] }] : [];
+  const o = f.offer;
+  const tfp = f.pricing === 'TFP';
   return (
     <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
+      {o && o.status === 'OFFERED' && (
+        <div className="panel" style={{ borderColor: 'var(--warn)' }}>
+          <h3>Offer: Tailored Fit Pricing</h3>
+          <div className="help">
+            Pay for MSU-hours consumed instead of each product&apos;s monthly peak R4HA. Committed baseline <b>{k$(o.baselineMonthly)}</b>/month (sub-capacity at this month&apos;s peak:{' '}
+            {k$(o.subcapMonthly)}); growth above the baseline costs {Math.round(o.overageFrac * 100)}% of the price. Capping and peak-shaving no longer save money, night batch
+            counts in full, and unused baseline is not refunded. Only CPU efficiency (and zIIP offload) lowers the bill. The rest of this month stays sub-capacity, prorated.
+          </div>
+          <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: 'flex-start' }}>
+            <button disabled={!o.canDecide} onClick={() => game.send({ type: 'TFP_DECIDE', accept: true })}>
+              Sign ({o.acceptHours}h)
+            </button>
+            <button disabled={!o.canDecide} onClick={() => game.send({ type: 'TFP_DECIDE', accept: false })}>
+              Decline
+            </button>
+            <span className="muted" style={{ fontSize: 12 }}>
+              {o.canDecide ? `open until the day ${o.untilDay + 1} briefing` : 'decide during the briefing'}
+            </span>
+          </div>
+        </div>
+      )}
       <div className="panel">
-        <h3>Software cost: month {f.month + 1}</h3>
+        <h3>
+          Software cost: month {f.month + 1} <span className={`tag ${tfp ? 'good' : ''}`}>{tfp ? 'Tailored Fit Pricing' : o?.status === 'ACCEPTED' ? 'TFP signed: in force from 06:00' : 'sub-capacity'}</span>
+        </h3>
         <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
           <div className="card" style={{ cursor: 'default' }}>
             <div className="muted">MLC month to date</div>
             <div style={{ fontSize: 22, fontFamily: 'var(--mono)' }}>{k$(f.monthToDate)}</div>
-            <div className="muted" style={{ fontSize: 12 }}>at the peaks so far; a higher peak later raises it</div>
+            <div className="muted" style={{ fontSize: 12 }}>{tfp ? 'committed baseline plus growth so far' : 'at the peaks so far; a higher peak later raises it'}</div>
           </div>
           {f.cfoTarget !== null && (
             <div className="card" style={{ cursor: 'default', borderColor: overTarget ? 'var(--crit)' : 'var(--good)' }}>
@@ -42,8 +67,35 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
             <div className="muted" style={{ fontSize: 12 }}>CoD and other temporary charges</div>
           </div>
         </div>
+        {f.tfp && (
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Product</th>
+                  <th className="num">MSU-hours used</th>
+                  <th className="num">baseline (prorated)</th>
+                  <th className="num">over baseline</th>
+                  <th className="num">total charge</th>
+                </tr>
+              </thead>
+              <tbody>
+                {f.tfp.map((p) => (
+                  <tr key={p.id}>
+                    <td>{p.name}</td>
+                    <td className="num">{Math.round(p.msuHours).toLocaleString()}</td>
+                    <td className="num">{Math.round(p.baselineMsuHours).toLocaleString()}</td>
+                    <td className="num">{Math.round(Math.max(0, p.msuHours - p.baselineMsuHours)).toLocaleString()}</td>
+                    <td className="num">{k$(p.charge)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="help">Under TFP the peaks below no longer set the bill{f.products.some((p) => p.peakMsu > 0) ? ' (any sub-capacity part of this month still uses them, prorated)' : ''}.</div>
+          </div>
+        )}
         <div className="help" style={{ marginTop: 8 }}>
-          Each product is billed on its highest hourly sum of R4HA across the LPARs it runs on (defined capacity limits the R4HA, as SCRT does). Lowering the peak hour lowers the
+          {tfp && 'Sub-capacity part of the month (zero after the signing month): '}Each product is billed on its highest hourly sum of R4HA across the LPARs it runs on (defined capacity limits the R4HA, as SCRT does). Lowering the peak hour lowers the
           bill even if the day&apos;s total work is unchanged. Prices are fictional.
         </div>
         <div style={{ overflowX: 'auto' }}>
@@ -54,7 +106,7 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
                 <th className="num">peak MSU</th>
                 <th>peak hour (ending)</th>
                 <th>by LPAR at the peak</th>
-                <th className="num">charge</th>
+                <th className="num">{tfp ? 'sub-cap part' : 'charge'}</th>
               </tr>
             </thead>
             <tbody>

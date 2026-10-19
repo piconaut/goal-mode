@@ -56,6 +56,8 @@ export type ToWorker =
   | { type: 'CANCEL_CHANGE'; changeId: number }
   | { type: 'GET_SMF'; kind: SmfKind; hour: string }
   | { type: 'GET_FINANCE' }
+  | { type: 'TFP_DECIDE'; accept: boolean }
+  | { type: 'DEV_TFP_OFFER' }
   | { type: 'PROJECT_WORK'; id: string; hours: number }
   | { type: 'WHATIF_RUN'; commands: Command[]; label: string }
   | { type: 'GET_MON3_CHARTS'; fromSample: number; fromMarker: number }

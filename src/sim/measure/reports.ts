@@ -1,8 +1,8 @@
 // Postprocessor-style text renderers for RMF interval records. Layouts evoke the real
 // WLMGL / CPU Activity / Partition Data / CF / DASD reports without copying them exactly.
 
-import { tieredMonthlyCost, type ProductDef } from '../../content/pricing';
-import type { CostState } from '../cost/mlc';
+import type { ProductDef } from '../../content/pricing';
+import { billLines, type CostState } from '../cost/mlc';
 import { clockAt } from '../core/clock';
 import { BUCKET_BOUNDS } from '../wlm/goals';
 import type { RmfInterval, WlmRecord } from './rmf';
@@ -184,7 +184,7 @@ export function renderScrt(
   const bill = month === 'current' ? null : cost.bills.find((b) => b.month === month);
   const lines = bill
     ? bill.lines
-    : cost.peaks.map((pk) => ({ product: pk.product, peakMsu: pk.peakMsu, peakTick: pk.peakTick, peakByLpar: pk.peakByLpar, cost: tieredMonthlyCost(pk.peakMsu, products.find((p) => p.id === pk.product)!.priceFactor) }));
+    : billLines(cost, products);
   const out = [
     '                         S U B - C A P A C I T Y   R E P O R T   (SCRT-style)',
     `REPORTING PERIOD: MONTH ${(bill ? bill.month : cost.month) + 1}${bill ? '' : ' (month to date)'}      PRICES: FICTIONAL GAME TIERS`,
@@ -203,6 +203,14 @@ export function renderScrt(
       .map((k) => `${k} ${f(by[k]!, 1, 0)}`)
       .join('  ');
     out.push(`${padR(products.find((x) => x.id === l.product)!.name, 16)} ${parts || '-'}`);
+  }
+  if (lines.some((l) => l.msuHours !== undefined)) {
+    out.push('', 'CONSUMPTION (TAILORED FIT PRICING; CHARGE ABOVE INCLUDES ANY SUB-CAPACITY PART OF THE MONTH)', 'PRODUCT          MSU-HOURS USED   BASELINE (PRORATED)   OVER BASELINE');
+    for (const l of lines) {
+      const used = l.msuHours ?? 0;
+      const base = l.baselineMsuHours ?? 0;
+      out.push(`${padR(products.find((x) => x.id === l.product)!.name, 16)} ${f(used, 0, 14)}   ${f(base, 0, 19)}   ${f(Math.max(0, used - base), 0, 13)}`);
+    }
   }
   return out.join('\n');
 }

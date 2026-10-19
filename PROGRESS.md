@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.5 (tier 4 AIOps, Codex, report class advisor, strategic options); M8.1 structural perf in parallel.
+- **Next up:** M7.5 remainder (contextual Codex "?" links, report class advisor tool); M7 sim leftovers; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (189 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (192 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -302,7 +302,16 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   uncorrelated with being right. Seeded from the run RNG. Shown on the console incident list and in the RCA
   form with "use" buttons; accepting a wrong one loses the RCA. 4 tests (accuracy band, plausibility,
   determinism, only with the tool)
-- [ ] Tailored Fit Pricing offer (mid-run event): switch billing to consumption (MSU-hours vs baseline); capping no longer saves money
+- [x] Tailored Fit Pricing offer (loop 27): IBM offers TFP at the end of day 10 (`game/tfp.ts`, terms in
+  `content/pricing.ts` TFP_OFFER), open 4 days, signed in the Finance tab during a briefing (2 h). Baseline =
+  month-to-date mean product MSU × 720 h × 1.03 at 97% of the sub-capacity bill at the current peak; growth at
+  50% of the price; unused baseline lost (APPROX: real contracts roll it over). Sim: `SET_PRICING` command,
+  `cost.tfp` accrues CP MSU-hours per product each tick, signing month prorated (`subcapFrac`); SCRT report and
+  Finance tab show consumption vs baseline. Codex entry `tfp` (2 sources). Bench hash unchanged. Bot flag
+  `--tfp sign`. Balance (textbook, seed 42, both lose day 28 to batch): month 1 bill $736k → $732k signed;
+  month 2 committed $708k vs $739k sub-cap at day-1 peaks. Modest saving for a passive player; a player who
+  soft-caps DEVT and moves batch off the peak can beat it on sub-cap, and growth events cost less on TFP.
+  3 tests; Chromium: offer → sign → live TFP view (dev hook `DEV_TFP_OFFER`)
 - [x] SCRT-style report + Finance tab (loop 25): `renderScrt` (product, LPARs, peak 4HRA MSU, peak hour,
   charge, peak-hour contribution per LPAR; fictional tiers); cost state now keeps each product's per-LPAR
   R4HA at its peak hour (`peakByLpar`). Finance tab (`game/finance.ts`, `GET_FINANCE`): MLC month-to-date,
@@ -408,6 +417,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 | 2026-10-19 | Months are 30 played-calendar days; MLC samples hourly at tick boundaries | Simple, deterministic; ~1.3 bills per standard run |
 | 2026-10-19 | Short-engine PR/SM delay coefficient lowered 0.35 → 0.15 | 10–25% PR/SM delay in the Partition Data report was implausibly high |
 | 2026-10-19 | Classification rules live inside the Change Desk WLM section, expandable, not a separate tab | User feedback: rules are part of the policy you're editing; keeps the change board and pending banner in view |
+| 2026-10-19 | TFP baseline is a committed monthly minimum, not a multi-year pool with rollover | A 40-day run is too short for annual true-ups; keeps the trade-off (lose capping savings, gain cheap growth) visible within the run |
 | 2026-10-19 | CF load comes from named structures placed on CFs; lock requests never convert to async | Gives CF placement a real diagnosis path (lock vs GBP) and a trap; per-CF request shares were opaque |
 
 ## Open questions
@@ -448,6 +458,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 27, /loop dynamic):** Tailored Fit Pricing offer. 192 tests.
 - **2026-10-19 (loop 26, hourly task):** multi-day projects with new project modifiers. 189 tests.
 - **2026-10-19 (loop 25, hourly task):** SCRT-style report and Finance tab. 186 tests.
 - **2026-10-19 (loop 24, hourly task):** AIOps hypotheses (tier 4). 185 tests.

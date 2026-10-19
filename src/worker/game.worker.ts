@@ -13,6 +13,7 @@ import { addPin, removePin } from '../game/evidence';
 import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
 import { financeView } from '../game/finance';
+import { decideTfp, offerTfp } from '../game/tfp';
 import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
@@ -179,6 +180,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'DEV_INSIGHT':
       if (import.meta.env.DEV) run = { ...run, insight: run.insight + m.amount };
       break;
+    case 'DEV_TFP_OFFER':
+      if (import.meta.env.DEV && !run.tfpOffer) run = offerTfp(run, scenario);
+      break;
     case 'DEV_FAST_DAYS':
       // Play whole days headlessly (skipping drafts) to reach later-game states quickly.
       if (import.meta.env.DEV) {
@@ -221,6 +225,13 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       const out = workOnProject(run, m.id, m.hours);
       run = out.run;
       post({ type: 'RESULT', ok: out.ok, message: out.message });
+      break;
+    }
+    case 'TFP_DECIDE': {
+      const out = decideTfp(run, m.accept);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      post({ type: 'FINANCE', finance: financeView(run, scenario) });
       break;
     }
     case 'GET_FINANCE':

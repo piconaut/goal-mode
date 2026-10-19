@@ -13,13 +13,16 @@ export interface CodexEntry {
   body: string;
   sources: CodexSource[];
   /** How it is discovered: known from the start, or on buying a tool, opening a report kind, or an event. */
-  discover: { start?: boolean; tools?: string[]; reports?: string[]; events?: string[] };
+  discover: { start?: boolean; tools?: string[]; reports?: string[]; events?: string[]; flags?: CodexFlag[] };
 }
 
 const ABCS_WLM: CodexSource = { label: 'IBM Redbook SG24-7621, ABCs of z/OS System Programming Vol. 12 (WLM)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf' };
 const PAICE_WLM: CodexSource = { label: 'Colin Paice, One Minute MVS performance: looking at WLM reports', url: 'https://colinpaice.blog/2021/06/27/one-minute-mvs-performance-work-load-manager-looking-at-wlm-reports/' };
 const IEAOPT: CodexSource = { label: 'IBM docs: IEAOPTxx parameters', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieae200/spi.htm' };
 const GROUP_CAP: CodexSource = { label: 'IBM docs: Group capacity', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieaw100/grcap.htm' };
+/** Run milestones that reveal entries (not events or tools). */
+export type CodexFlag = 'TFP_OFFER';
+
 const MLC_CAPPING: CodexSource = { label: 'IntelliMagic (John Baker), MLC Capping 101', url: 'https://www.intellimagic.com/?p=7302' };
 const HORNE: CodexSource = {
   label: "Cheryl Watson's Tuning Letter 2022 No. 1 (Jim Horne), A Different Way to Define LPAR Weights",
@@ -138,6 +141,17 @@ export const CODEX: CodexEntry[] = [
     body: 'For sub-capacity pricing, the monthly bill is driven by the highest hourly sum of R4HAs across the LPARs running each product (the “peak of sums”), as reported by IBM’s SCRT tool. Shifting work out of the peak hour lowers the bill even if total work is the same. Prices in this game are fictional.',
     sources: [MLC_CAPPING, { label: 'Planet Mainframe, Sub-capacity pricing and capping 101', url: 'https://planetmainframe.com/?p=1640' }],
     discover: { start: true },
+  },
+  {
+    id: 'tfp',
+    title: 'Tailored Fit Pricing (consumption)',
+    category: 'Capacity & cost',
+    body: 'IBM’s Tailored Fit Pricing Enterprise Consumption model bills total MSU consumption against a baseline set from past usage, with growth above it charged at a discount. Peaks and the R4HA stop mattering, so capping no longer saves money; only doing the same work with fewer MSU does. Real contracts are multi-year and roll unused MSUs over; the game simplifies this to a monthly commitment, and its prices are fictional.',
+    sources: [
+      { label: 'IBM, What is Tailored Fit Pricing for IBM Z?', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.3.0/com.ibm.zos.v2r3.izsc100/containerPricingOverview.htm' },
+      { label: 'Precisely, IBM Tailored Fit Pricing: optimise mainframe costs', url: 'https://www.precisely.com/blog/mainframe/ibm-tailored-fit-pricing-optimize-mainframe/' },
+    ],
+    discover: { flags: ['TFP_OFFER'] },
   },
   {
     id: 'ziip',

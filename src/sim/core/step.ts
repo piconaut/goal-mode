@@ -3,7 +3,7 @@
 // subsystem concurrency) use the previous tick's values carried in `env`.
 
 import { evaluateCf, type CfImageInput } from '../cf/cf';
-import { closeMonth, recordHour } from '../cost/mlc';
+import { accrueTfp, closeMonth, recordHour } from '../cost/mlc';
 import { groupShares, newR4ha, stepR4ha } from '../cost/r4ha';
 import { accumulateTick, closeInterval, newRmfAcc, type JobEndRecord } from '../measure/rmf';
 import { cpSpeed, msuPerCp, suPerCpuSecOf, ziipSpeed } from '../hw/cpc';
@@ -560,7 +560,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   for (const r of cappingLpars) r4haBy[r.id] = r.r4ha;
 
   // MLC: hourly SCRT-style sample, monthly bill.
-  let cost = prev.cost;
+  let cost = prev.cost.tfp ? accrueTfp(prev.cost, scenario.products, msuBy, TICK_SEC) : prev.cost;
   const nextTick = prev.tick + 1;
   if (nextTick % 360 === 0) {
     const dcBy: Record<string, number | null> = {};

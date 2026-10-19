@@ -9,6 +9,7 @@ import { FACETS } from '../src/game/types';
 import { TICKS_PER_DAY } from '../src/sim/core/units';
 import { instanceClock } from '../src/sim/core/step';
 import { STRATEGIES } from './strategies';
+import { decideTfp } from '../src/game/tfp';
 
 function arg(name: string, dflt: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -20,6 +21,8 @@ const content = MIDWEST_GAME;
 const seed = Number(arg('seed', '42'));
 const days = Number(arg('days', String(content.maxDays)));
 const botName = arg('bot', 'donothing');
+/** `--tfp sign` signs the Tailored Fit Pricing offer when it arrives; default declines by ignoring it. */
+const tfp = arg('tfp', 'ignore');
 const bot = STRATEGIES[botName];
 if (!bot) throw new Error(`Unknown bot ${botName}; have ${Object.keys(STRATEGIES).join(', ')}`);
 
@@ -30,6 +33,7 @@ console.log('day  overall  ' + FACETS.map((f) => f.slice(0, 6).padStart(7)).join
 while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
   if (run.phase === 'BRIEFING') {
     run = bot.briefing(run, scenario, content);
+    if (tfp === 'sign' && run.tfpOffer?.status === 'OFFERED') run = decideTfp(run, true).run;
     run = startDay(run, content);
     while (run.phase === 'LIVE') {
       run = advance(run, scenario, content, 360);
@@ -52,4 +56,5 @@ while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
 }
 console.log(`\n${run.phase}: ${run.endReason ?? ''}  day ${run.day + 1}  score ${run.score}  (${((performance.now() - t0) / 1000).toFixed(0)} s)`);
 for (const b of run.sim.cost.bills) console.log(`bill month ${b.month + 1}: $${Math.round(b.total).toLocaleString()}`);
+console.log(`month ${run.sim.cost.month + 1} to date: $${Math.round(run.reports.at(-1)?.mlcEstimate ?? 0).toLocaleString()}${run.sim.cost.tfp ? ' (TFP)' : ''}`);
 void chooseDraft;

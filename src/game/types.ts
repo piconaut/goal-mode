@@ -1,3 +1,4 @@
+import type { TfpOffer } from './tfp';
 // Game-layer state (SPEC §2, §7–§12). Wraps the deterministic sim; plain data.
 
 import type { Hypothesis } from './aiops';
@@ -185,6 +186,8 @@ export interface RunState {
   capacityToday: CapacityDay | null;
   /** Multi-day engineering projects in progress or done. */
   projects: ProjectState[];
+  /** Tailored Fit Pricing offer, once made. */
+  tfpOffer?: TfpOffer | null;
   /** Saved WLM service policies and the daily switch schedule. */
   policies: PolicyBook;
   /** Automation rules and their state (tool AUTOMATION). */

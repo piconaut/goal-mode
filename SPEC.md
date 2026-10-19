@@ -660,7 +660,11 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 - **Tailored Fit Pricing (TFP)** offer (mid-run event): switch to consumption pricing
   (pay per total MSU-hours with a committed baseline). Capping becomes pointless, total
   efficiency becomes everything, and peaks no longer matter. The incentive shift is real and a
-  strategic choice.
+  strategic choice. Implemented as an IBM offer at the end of day 10, open 4 days, signed in the
+  Finance tab during the briefing (2 h): baseline = month-to-date average product MSU × 720 h
+  × 1.03, priced at 97% of the sub-capacity bill at the current peak; growth above it at 50% of
+  the price; unused baseline is lost (APPROX: real contracts roll it over). The rest of the
+  signing month stays sub-capacity, prorated (`content/pricing.ts` TFP_OFFER, `game/tfp.ts`).
 
 #### 5.11.3 Hardware economics (fictional prices)
 
@@ -1110,6 +1114,7 @@ never touches the DOM.
 | HiperDispatch polarity rules | **Real (published rule of thumb)** | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | Prices fictional |
+| Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
 | Monitor III views (SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s range; PROCU by service-class period, not job |
@@ -1171,8 +1176,12 @@ Primary IBM sources:
   https://www-03.ibm.com/systems/z/os/zos/features/cpm
 - IBM: *RMF Monitor III reports* (SYSINFO, DELAY, WFEX, ENCLAVE…).
   https://www.ibm.com/docs/SSLTBW_2.2.0/com.ibm.zos.v2r2.erbb500/toc.htm
+- IBM: *What is Tailored Fit Pricing for IBM Z?* (consumption baseline, discounted growth, no capping).
+  https://www.ibm.com/support/knowledgecenter/SSLTBW_2.3.0/com.ibm.zos.v2r3.izsc100/containerPricingOverview.htm
 
 Practitioner sources:
+- Precisely, *IBM Tailored Fit Pricing: optimize mainframe* (baseline from 12 months of MSU, rollover).
+  https://www.precisely.com/blog/mainframe/ibm-tailored-fit-pricing-optimize-mainframe/
 - Watson & Walker, *Cheryl Watson's Tuning Letter* 2022 No. 1 (Jim Horne), "A Different Way
   to Define LPAR Weights": HiperDispatch polarity rules.
   https://tuningletter.planetmainframe.com/wp-content/uploads/samples/Reprint-of-Jims-LPAR-Management-article.pdf

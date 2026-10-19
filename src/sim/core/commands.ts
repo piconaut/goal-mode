@@ -1,6 +1,7 @@
 // Player and event commands (SPEC §6). Applied at the start of a tick; each returns a new
 // state or a validation error. Commands are plain data so runs can be replayed.
 
+import { startTfp, type TfpTerms } from '../cost/mlc';
 import { LCU_MAX_DEVICES } from '../io/dasd';
 import type { ServiceDefinition } from '../wlm/types';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
@@ -34,6 +35,7 @@ export type Command =
   | { kind: 'ADD_ADDRESS_SPACE'; addressSpace: AddressSpaceDef }
   | { kind: 'ABEND_JOB'; critical: boolean }
   | { kind: 'RESTART_JOB'; day: number; name: string }
+  | { kind: 'SET_PRICING'; tfp: TfpTerms }
   | { kind: 'NOTE'; text: string };
 
 export interface CommandResult {
@@ -276,6 +278,10 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       j.queuedTick = s.tick;
       return ok({ ...s, batch: { ...s.batch, jobs } }, `${cmd.name} restarted from checkpoint`);
     }
+
+    case 'SET_PRICING':
+      if (s.cost.tfp) return fail(s, 'Tailored Fit Pricing is already in force');
+      return ok({ ...s, cost: startTfp(s.cost, cmd.tfp, s.tick) }, 'Billing switched to Tailored Fit Pricing');
 
     case 'NOTE':
       return ok(s, cmd.text);
