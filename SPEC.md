@@ -789,8 +789,9 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 **Tier 3:**
 - **Capacity planner**: forecast R4HA, utilisation and SLA risk *N* days ahead from growth
   trends, with confidence bands that widen with horizon.
-- **What-if simulator**: fork the deterministic sim state and run *tomorrow* with a proposed
-  config at ~100×, using *forecast* arrivals (no knowledge of hidden events). Costs hours.
+- **What-if simulator**: during the briefing, fork the run and play *today* twice (as planned, and with
+  the change basket), using *forecast* arrivals: no hidden events and a re-seeded noise stream. Compares
+  SLA breach hours, incidents, batch end, CPC and R4HA peaks and the MLC estimate. 1 engineer-hour per run.
   This is the "zPCR-like" planning experience.
 - **Alerting rules**: custom thresholds raise pager alerts (`PI(ONLHI#1) > 1.5 for 5 min`), optionally
   pausing the game; pages at night cost team fatigue, so noisy rules have a price.

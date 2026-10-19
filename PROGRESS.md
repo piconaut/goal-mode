@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.4 what-if simulator (briefing-time, chunked), then M7.5; M8.1 structural perf work in parallel.
+- **Next up:** M7.5 (tier 4 AIOps, Codex, report class advisor, strategic options); M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (177 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (179 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -260,8 +260,14 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
 - UI: "SMF analytics" panel under the RMF Postprocessor (Reports tab); data via `GET_SMF`/`SMF` worker messages; Db2/CICS views earn report Insight per hour viewed
 - Tests (8): LSPR table, hour retention, regression → package, lock escalation → lock ms, CICS rows, SMF 113 ranges, Gantt, tier-2 tools buyable
 
-**M7.4 Tier 3: planning & automation**
-- [ ] What-if simulator: fork `RunState.sim`, apply proposed changes, run tomorrow headless with forecast arrivals and no hidden events; report SLA/batch/R4HA deltas; costs hours + Insight. Needs ≥ 4× headless speed (see M8.1 perf)
+**M7.4 Tier 3: planning & automation** — done (loops 17–22)
+- [x] What-if simulator (loop 22, tool WHAT_IF now buyable): during the briefing, "What-if" in the change basket
+  forks the run twice (`game/whatif.ts`): as planned (today's planned changes assumed to succeed) and with the
+  basket. Forks have no events and a re-seeded noise stream (forecast only, no leak of the real day). The
+  worker plays both in 360-tick chunks with a progress bar (~15 s in Chromium) and compares SLA breach hours
+  (total + per workload), incidents, critical batch end, online CPC peak, R4HA sum peak, MLC estimate, batch
+  deadline. Costs 1 engineer-hour, earns +2 Insight. 2 tests (proposal vs baseline, real run untouched, no
+  events/new noise). Example: DC 250 on PROD2 → MLC $708k → $682k but 54 breach hours
 - [x] Capacity planner (loop 17, tool CAP_PLANNER now buyable): daily peaks recorded at each day end
   (`RunState.capacityDays`: online-hours CPC busy 08–18, R4HA per LPAR and summed, DC, critical batch end).
   `game/planner.ts` fits a log-linear trend over the last 10 days (≥ 3) and projects 14 days with a 90%
@@ -421,6 +427,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 22, hourly task):** what-if simulator; M7.4 complete. 179 tests.
 - **2026-10-19 (loop 21, hourly task):** M8.1 bench + profile; behaviour-neutral micro-optimisations
   (hash-verified); what-if decoupled from perf. 177 tests.
 - **2026-10-19 (loop 20, hourly task):** automation rules + Capacity Provisioning (CoD) with misfires. 177 tests.

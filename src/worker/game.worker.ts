@@ -10,6 +10,8 @@ import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
 import { deletePolicy, savePolicy, setSchedule } from '../game/policies';
 import { addPin, removePin } from '../game/evidence';
+import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
+import { INSIGHT } from '../content/tools';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -134,10 +136,30 @@ setInterval(() => {
   sendView();
 }, FRAME_MS);
 
+// What-if forks run in chunks between messages so the worker stays responsive.
+let whatIf: { token: number; label: string; base: RunState; prop: RunState; ticks: number } | null = null;
+let whatIfToken = 0;
+const forkContent = whatIfContent(content);
+function whatIfChunk(token: number) {
+  const w = whatIf;
+  if (!w || w.token !== token) return;
+  w.base = advance(w.base, scenario, forkContent, INSIGHT.whatIfChunkTicks);
+  w.prop = advance(w.prop, scenario, forkContent, INSIGHT.whatIfChunkTicks);
+  w.ticks += INSIGHT.whatIfChunkTicks;
+  if (w.base.phase === 'LIVE' || w.prop.phase === 'LIVE') {
+    post({ type: 'WHATIF_PROGRESS', frac: Math.min(1, w.ticks / TICKS_PER_DAY) });
+    setTimeout(() => whatIfChunk(token), 0);
+    return;
+  }
+  post({ type: 'WHATIF_RESULT', label: w.label, base: summarizeWhatIf(w.base), proposal: summarizeWhatIf(w.prop) });
+  whatIf = null;
+}
+
 self.onmessage = (e: MessageEvent<ToWorker>) => {
   const m = e.data;
   switch (m.type) {
     case 'NEW_RUN':
+      whatIf = null;
       run = newRun(scenario, content, m.seed);
       history = [];
       historyDirty = true;
@@ -173,6 +195,24 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       const c = run.mon3Charts;
       if (!c || !hasFeature(run, 'MON3_CHARTS')) break;
       post({ type: 'MON3_CHARTS', fromSample: m.fromSample, fromMarker: m.fromMarker, samples: c.samples.slice(m.fromSample), markers: c.markers.slice(m.fromMarker) });
+      break;
+    }
+    case 'WHATIF_RUN': {
+      if (!hasFeature(run, 'WHAT_IF')) break;
+      if (run.phase !== 'BRIEFING') {
+        post({ type: 'RESULT', ok: false, message: 'What-if runs during the briefing' });
+        break;
+      }
+      if (run.hoursLeft < INSIGHT.whatIfHours) {
+        post({ type: 'RESULT', ok: false, message: `A what-if needs ${INSIGHT.whatIfHours}h` });
+        break;
+      }
+      run = { ...run, hoursLeft: run.hoursLeft - INSIGHT.whatIfHours, insight: run.insight + INSIGHT.perWhatIf };
+      whatIfToken++;
+      whatIf = { token: whatIfToken, label: m.label, base: forkForWhatIf(run, content, []), prop: forkForWhatIf(run, content, m.commands), ticks: 0 };
+      post({ type: 'WHATIF_PROGRESS', frac: 0 });
+      const token = whatIfToken;
+      setTimeout(() => whatIfChunk(token), 0);
       break;
     }
     case 'GET_SMF': {

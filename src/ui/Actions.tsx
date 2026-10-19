@@ -9,6 +9,7 @@ import type { Command } from '../sim/core/commands';
 import { entitlements, polarity } from '../sim/hw/prsm';
 import type { Goal, Importance, Qualifier, SubsystemType, WorkAttributes } from '../sim/wlm/types';
 import { RulesView } from './RulesView';
+import { WhatIf } from './WhatIf';
 import type { GameHandle } from './useGame';
 
 /** Everything a control needs to preview, stage or apply a change. */
@@ -38,7 +39,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
       {game.pending && <PendingBanner v={v} game={game} />}
       <div className="grid">
         <Board v={v} game={game} />
-        <Basket desk={desk} basket={basket} setBasket={setBasket} />
+        <Basket desk={desk} basket={basket} setBasket={setBasket} game={game} />
         <Results game={game} />
         <Section title="HMC: LPAR image profile">
           <Prsm desk={desk} />
@@ -231,7 +232,7 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
   );
 }
 
-function Basket({ desk, basket, setBasket }: { desk: Desk; basket: Command[]; setBasket: (b: Command[]) => void }) {
+function Basket({ desk, basket, setBasket, game }: { desk: Desk; basket: Command[]; setBasket: (b: Command[]) => void; game: GameHandle }) {
   const p = preview(desk.v, { commands: basket });
   return (
     <div className="panel">
@@ -267,6 +268,7 @@ function Basket({ desk, basket, setBasket }: { desk: Desk; basket: Command[]; se
           </div>
         </>
       )}
+      <WhatIf v={desk.v} game={game} basket={orderBasket(desk.cfg, basket)} label={basket.length ? basketLabel(basket, desk.cfg) : ''} />
     </div>
   );
 }

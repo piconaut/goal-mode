@@ -162,8 +162,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: ['CAP_PLANNER'],
     unlocks: ['WHAT_IF'],
     overhead: null,
-    reveals: 'Run tomorrow with a proposed configuration against forecast arrivals. Costs hours.',
-    comingSoon: true,
+    reveals: 'During the briefing, simulate today with and without your basket (forecast arrivals, no hidden events) and compare SLAs, batch, R4HA and MLC. 1 engineer-hour per run.',
   },
   {
     id: 'ALERTS',
@@ -206,6 +205,10 @@ export const INSIGHT = {
   reportCapPerDay: 5,
   /** Per what-if run (M7.4). */
   perWhatIf: 2,
+  /** Engineer-hours to set up and read a what-if run. */
+  whatIfHours: 1,
+  /** Ticks simulated per worker chunk, so the UI stays responsive. */
+  whatIfChunkTicks: 360,
 };
 
 // Monitor III chart history: one sample per sim-minute for the played day (cf. RMF Data Portal graphs).
