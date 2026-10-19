@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.5 remainder (contextual Codex "?" links, report class advisor tool); M7 sim leftovers; M8.1 structural perf in parallel.
+- **Next up:** M7.5 remainder (report class advisor tool, F6); M7 sim leftovers; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (192 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (193 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -329,8 +329,11 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   CF, measurement), each with sources from SPEC §18 (no invented links; label-only where unverified). Discovered
   at start (12), by buying tools, opening report kinds or meeting events (`game/codex.ts`); remembered across
   runs in localStorage (career Codex). Codex tab with search, categories, "new" badges, undiscovered counts.
-  Integrity test checks every discovery hook names a real tool/event/report. Contextual "?" links from UI
-  panels into the Codex are still to do
+  Integrity test checks every discovery hook names a real tool/event/report. Contextual "?" links (loop 28):
+  `ui/CodexHint.tsx` shows the entry in place (popover with sources; Escape/outside click closes; doesn't
+  toggle the Change Desk section it sits in) next to ~20 panel and section titles (Console processor/PI/
+  capacity, Change Desk sections and projects, rules, Monitor III, Postprocessor, SMF, Finance). Shown even
+  if undiscovered, since the panel already shows the concept. Test checks every hint id is a real entry
 
 **M7 sim leftovers that the tools expose**
 - [ ] Resource group *minimum*; discretionary goal management (SG24-7621 §4.22 conditions)
@@ -458,6 +461,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 28, hourly task):** contextual Codex "?" hints. 193 tests.
 - **2026-10-19 (loop 27, /loop dynamic):** Tailored Fit Pricing offer. 192 tests.
 - **2026-10-19 (loop 26, hourly task):** multi-day projects with new project modifiers. 189 tests.
 - **2026-10-19 (loop 25, hourly task):** SCRT-style report and Finance tab. 186 tests.

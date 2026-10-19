@@ -179,3 +179,8 @@ tr:hover .pin { opacity: 0.8; }
 details.codex { border-bottom: 1px solid var(--border); padding: 4px 0; }
 details.codex > summary { color: var(--text); font-size: 14px; margin: 0; }
 a { color: var(--accent); }
+.codex-hint { position: relative; display: inline-block; margin-left: 6px; vertical-align: middle; text-transform: none; letter-spacing: normal; font-weight: normal; }
+.codex-hint > button { width: 18px; height: 18px; padding: 0; border-radius: 50%; font-size: 11px; line-height: 16px; color: var(--muted); }
+.codex-hint > button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
+.codex-card { position: absolute; z-index: 50; top: 22px; left: 0; width: min(380px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); font-size: 13px; color: var(--text); cursor: default; white-space: normal; }
+.codex-body { line-height: 1.45; }

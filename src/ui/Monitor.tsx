@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CodexHints } from './CodexHint';
 import type { EvidenceMetric } from '../content/evidence';
 import { explainWlmLog, type Mon3Row, type Mon3View } from '../game/mon3';
 import type { ViewModel } from '../game/view';
@@ -49,6 +50,7 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
     <div className="panel">
       <h3>
         RMF Monitor III · {v.clock} · range ≈ {m.rangeSec} s
+        <CodexHints ids={['rmf', 'blocked-workload']} />
       </h3>
       <div className="form">
         {VIEWS.map((x) => (

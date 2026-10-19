@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CodexHints } from './CodexHint';
 import { FACETS } from '../game/types';
 import type { ViewModel } from '../game/view';
 import type { HistoryPoint } from '../game/history';
@@ -138,7 +139,10 @@ function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
   const mk = (key: 'msu' | 'r4ha') => SERIES_LPARS.map((id, i) => ({ id, color: seriesColor(i), values: pts.map((p) => p[key][id] ?? null) }));
   return (
     <div className="panel" style={{ gridColumn: '1 / -1' }}>
-      <h3>Capacity today</h3>
+      <h3>
+        Capacity today
+        <CodexHints ids={['r4ha']} />
+      </h3>
       <div className="grid">
         <div>
           <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>MSU consumption per LPAR (5-minute samples)</div>
@@ -158,7 +162,10 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
     <div className="grid">
       <Capacity v={v} history={history} />
       <div className="panel">
-        <h3>Processor (CPC busy {v.cpcBusyPct.toFixed(0)}%)</h3>
+        <h3>
+          Processor (CPC busy {v.cpcBusyPct.toFixed(0)}%)
+          <CodexHints ids={['lpar-weights', 'hiperdispatch']} />
+        </h3>
         {v.lpars.map((l) => (
           <div key={l.id} style={{ marginBottom: 8 }}>
             <div className="row">
@@ -228,7 +235,10 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
       </div>
 
       <div className="panel">
-        <h3>WLM performance index (sysplex)</h3>
+        <h3>
+          WLM performance index (sysplex)
+          <CodexHints ids={['perf-index', 'policy-adjustment']} />
+        </h3>
         <div className="heat">
           {v.piHeat.map((c) => (
             <div className="cell" key={c.scKey} style={{ background: piColor(c.pi) }} title={c.goal}>

@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { CodexHints } from './CodexHint';
 import type { ViewModel } from '../game/view';
 import { LineChart, type Series } from './LineChart';
 import type { GameHandle } from './useGame';
@@ -23,7 +24,10 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
     <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
       {o && o.status === 'OFFERED' && (
         <div className="panel" style={{ borderColor: 'var(--warn)' }}>
-          <h3>Offer: Tailored Fit Pricing</h3>
+          <h3>
+            Offer: Tailored Fit Pricing
+            <CodexHints ids={['tfp']} />
+          </h3>
           <div className="help">
             Pay for MSU-hours consumed instead of each product&apos;s monthly peak R4HA. Committed baseline <b>{k$(o.baselineMonthly)}</b>/month (sub-capacity at this month&apos;s peak:{' '}
             {k$(o.subcapMonthly)}); growth above the baseline costs {Math.round(o.overageFrac * 100)}% of the price. Capping and peak-shaving no longer save money, night batch
@@ -44,7 +48,8 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
       )}
       <div className="panel">
         <h3>
-          Software cost: month {f.month + 1} <span className={`tag ${tfp ? 'good' : ''}`}>{tfp ? 'Tailored Fit Pricing' : o?.status === 'ACCEPTED' ? 'TFP signed: in force from 06:00' : 'sub-capacity'}</span>
+          Software cost: month {f.month + 1}
+          <CodexHints ids={o ? ['mlc', 'r4ha', 'tfp'] : ['mlc', 'r4ha']} /> <span className={`tag ${tfp ? 'good' : ''}`}>{tfp ? 'Tailored Fit Pricing' : o?.status === 'ACCEPTED' ? 'TFP signed: in force from 06:00' : 'sub-capacity'}</span>
         </h3>
         <div className="cards" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
           <div className="card" style={{ cursor: 'default' }}>

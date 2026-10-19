@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CodexHints } from './CodexHint';
 import { nightClock, type BatchNight } from '../game/smf';
 import { SMF_FEATURE } from '../game/tools';
 import type { ViewModel } from '../game/view';
@@ -38,7 +39,10 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
   const d = game.smf && game.smf.kind === k ? game.smf : null;
   return (
     <div className="panel" style={{ marginTop: 12 }}>
-      <h3>SMF analytics</h3>
+      <h3>
+        SMF analytics
+        <CodexHints ids={['smf113']} />
+      </h3>
       <div className="form">
         {owned.map((o) => (
           <button key={o.kind} className={k === o.kind ? 'active' : ''} onClick={() => setKind(o.kind)}>

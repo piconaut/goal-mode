@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { CodexHints } from './CodexHint';
 import { DASD_REBALANCE, HARDWARE } from '../content/hardware-catalog';
 import { LCU_MAX_DEVICES } from '../sim/io/dasd';
 import { FIXES, previewChange, type ChangePreview } from '../game/catalog';
@@ -41,30 +42,30 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         <Board v={v} game={game} />
         <Basket desk={desk} basket={basket} setBasket={setBasket} game={game} />
         <Results game={game} />
-        <Section title="HMC: LPAR image profile">
+        <Section title="HMC: LPAR image profile" codex={['lpar-weights', 'logical-physical', 'hiperdispatch']}>
           <Prsm desk={desk} />
         </Section>
-        <Section title={`WLM policy: active ${v.policyName}`}>
+        <Section title={`WLM policy: active ${v.policyName}`} codex={['service-class', 'importance', 'velocity', 'perf-index']}>
           <Wlm v={v} game={game} rulesOpen={rulesOpen} toggleRules={() => setRulesOpen(!rulesOpen)} />
         </Section>
         {rulesOpen && <RulesView v={v} game={game} onClose={() => setRulesOpen(false)} />}
-        <Section title="WLM service policies and daily schedule">
+        <Section title="WLM service policies and daily schedule" codex={['service-policies']}>
           <PolicySchedule v={v} game={game} />
         </Section>
-        <Section title="z/OS and coupling facilities">
+        <Section title="z/OS and coupling facilities" codex={['cf-sync-async']}>
           <Systems desk={desk} />
         </Section>
-        <Section title="DASD: HyperPAV aliases per LCU">
+        <Section title="DASD: HyperPAV aliases per LCU" codex={['hyperpav']}>
           <Dasd desk={desk} />
         </Section>
-        <Section title="Db2 and CICS">
+        <Section title="Db2 and CICS" codex={['db2-velocity', 'qr-tcb']}>
           <Subsystems desk={desk} />
         </Section>
         <Section title="Routing and batch initiators">
           <Routing desk={desk} />
           <JobClasses desk={desk} />
         </Section>
-        <Section title={`Hardware orders (capex $${Math.round(v.capexRemaining / 1000)}k left)`}>
+        <Section title={`Hardware orders (capex $${Math.round(v.capexRemaining / 1000)}k left)`} codex={['ziip', 'cod']}>
           <Hardware v={v} game={game} />
         </Section>
         <Section title="Projects (multi-day)">
@@ -78,11 +79,14 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Section({ title, codex = [], children }: { title: string; codex?: string[]; children: ReactNode }) {
   return (
     <details className="panel section" open>
       <summary>
-        <h3>{title}</h3>
+        <h3>
+          {title}
+          <CodexHints ids={codex} />
+        </h3>
       </summary>
       {children}
     </details>
@@ -1101,7 +1105,10 @@ function Projects({ v, game }: { v: ViewModel; game: GameHandle }) {
         return (
           <div key={p.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
             <div className="row">
-              <b>{p.name}</b>
+              <b>
+                {p.name}
+                {p.codex && <CodexHints ids={[p.codex]} />}
+              </b>
               {p.done ? <span className="tag good">done</span> : <span className="num muted">{p.hoursDone}/{p.hours}h</span>}
             </div>
             <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>

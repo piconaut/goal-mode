@@ -1,4 +1,5 @@
 import { EVIDENCE_METRICS, type EvidenceMetric } from '../content/evidence';
+import { CodexHints } from './CodexHint';
 import { REPORT_FEATURE } from '../game/tools';
 import { useEffect, useState } from 'react';
 import type { ViewModel } from '../game/view';
@@ -39,7 +40,10 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
   const scKeys = v.piHeat.map((c) => c.scKey);
   return (
     <div className="panel">
-      <h3>RMF Postprocessor</h3>
+      <h3>
+        RMF Postprocessor
+        <CodexHints ids={['rmf']} />
+      </h3>
       <div className="form">
         <select value={sel ?? ''} onChange={(e) => setIdx(Number(e.target.value))}>
           {[...v.reports].reverse().map((r) => (

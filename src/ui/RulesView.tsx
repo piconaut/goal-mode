@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { CodexHints } from './CodexHint';
 import { diffRows, type RowChange, type RuleRow, type SubsystemExplain } from '../game/classifyExplain';
 import type { ViewModel } from '../game/view';
 import type { RulePath } from '../game/wlmEdit';
@@ -26,6 +27,7 @@ export function RulesView({ v, game, onClose }: { v: ViewModel; game: GameHandle
       <div className="row">
         <h3 style={{ margin: 0 }}>
           Classification rules: {game.pending ? <span className="tag warn">pending {game.pending.policyName} (not active)</span> : `active ${v.policyName}`}
+          <CodexHints ids={['classification', 'system-classes']} />
         </h3>
         <button onClick={onClose} aria-label="Close classification rules">
           Close ✕
