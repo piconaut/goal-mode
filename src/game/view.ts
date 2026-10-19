@@ -16,6 +16,7 @@ import { goalText } from '../sim/wlm/goals';
 import type { PreviewContext } from './catalog';
 import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
+import type { LcuConfig } from '../sim/io/dasd';
 import { allWorkloads, overallTrust, previewContext } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
@@ -95,7 +96,7 @@ export interface ConfigView {
   systems: ZosSystemConfig[];
   routing: { workloadId: string; name: string; shares: Record<string, number> }[];
   rmfIntervalMin: number;
-  dasdAliases: number;
+  dasd: { lcus: LcuConfig[]; spareAliases: number };
 }
 
 export interface ViewModel {
@@ -311,6 +312,6 @@ function configView(run: RunState, scenario: Scenario): ConfigView {
     systems: c.systems,
     routing: allWorkloads(scenario, run).map((w) => ({ workloadId: w.id, name: w.name, shares: run.sim.routing[w.id] ?? w.routing })),
     rmfIntervalMin: c.rmfIntervalMin,
-    dasdAliases: c.dasd.aliasPool,
+    dasd: { lcus: c.dasd.lcus, spareAliases: c.dasd.spareAliases },
   };
 }

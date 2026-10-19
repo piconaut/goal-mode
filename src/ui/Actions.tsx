@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
-import { HARDWARE } from '../content/hardware-catalog';
+import { DASD_REBALANCE, HARDWARE } from '../content/hardware-catalog';
+import { LCU_MAX_DEVICES } from '../sim/io/dasd';
 import { FIXES, previewChange, type ChangePreview } from '../game/catalog';
-import { addToBasket, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../game/changeDesk';
+import { addToBasket, basketLabel, describeCommand, orderBasket, spareAfterBasket, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../game/changeDesk';
 import type { PlannedChange } from '../game/types';
 import type { ConfigView, ViewModel } from '../game/view';
 import type { Command } from '../sim/core/commands';
@@ -14,6 +15,7 @@ import type { GameHandle } from './useGame';
 interface Desk {
   v: ViewModel;
   cfg: ConfigView;
+  basket: Command[];
   apply: (label: string, commands: Command[]) => void;
   stage: (commands: Command[]) => void;
 }
@@ -27,6 +29,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
   const desk: Desk = {
     v,
     cfg: v.config,
+    basket,
     apply: (label, commands) => game.send({ type: 'CHANGE', req: { label, commands } }),
     stage: (commands) => setBasket((b) => addToBasket(b, commands)),
   };
@@ -46,6 +49,9 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         {rulesOpen && <RulesView v={v} game={game} onClose={() => setRulesOpen(false)} />}
         <Section title="z/OS and coupling facilities">
           <Systems desk={desk} />
+        </Section>
+        <Section title="DASD: HyperPAV aliases per LCU">
+          <Dasd desk={desk} />
         </Section>
         <Section title="Db2 and CICS">
           <Subsystems desk={desk} />
@@ -247,7 +253,7 @@ function Basket({ desk, basket, setBasket }: { desk: Desk; basket: Command[]; se
               disabled={!p.ok}
               title={p.reason ?? undefined}
               onClick={() => {
-                desk.apply(basketLabel(basket, desk.cfg), basket);
+                desk.apply(basketLabel(basket, desk.cfg), orderBasket(desk.cfg, basket));
                 setBasket([]);
               }}
             >
@@ -734,6 +740,52 @@ function Structures({ desk }: { desk: Desk }) {
         or shared CF makes every Db2 transaction spin. The CF Activity report shows each structure.
       </div>
     </>
+  );
+}
+
+function Dasd({ desk }: { desk: Desk }) {
+  const { lcus, spareAliases } = desk.cfg.dasd;
+  return (
+    <>
+      <div className="form">
+        <span>
+          Spare aliases: <b>{spareAliases}</b>
+        </span>
+        <span className="muted" style={{ fontSize: 12 }}>
+          Lower an LCU to free aliases, raise another to use them; stage both in the basket to move them in one change.
+        </span>
+      </div>
+      {lcus.map((l) => (
+        <LcuRow key={`${l.id}:${l.aliases}:${l.hotSkew}:${spareAliases}`} desk={desk} lcuId={l.id} />
+      ))}
+      <div className="help">
+        HyperPAV aliases are pooled per logical control unit (LCU) and cannot be borrowed across LCUs; an LCU addresses at most {LCU_MAX_DEVICES} devices
+        (volumes + aliases). IOSQ in the DASD Activity LCU summary means an LCU has run out. Rebalancing moves hot data sets off its busiest volumes.
+      </div>
+    </>
+  );
+}
+
+function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
+  const l = desk.cfg.dasd.lcus.find((x) => x.id === lcuId)!;
+  const [val, setVal] = useState(String(l.aliases));
+  const n = num(val);
+  // Aliases freed by edits already in the basket count as spare here.
+  const spare = spareAfterBasket(desk.cfg, desk.basket, lcuId);
+  const max = Math.min(LCU_MAX_DEVICES - l.volumes, l.aliases + spare);
+  const err = !(Number.isInteger(n) && n >= 0) ? 'Whole number ≥ 0' : n > LCU_MAX_DEVICES - l.volumes ? `Max ${LCU_MAX_DEVICES - l.volumes} (256 devices per LCU)` : n - l.aliases > spare ? `Only ${spare} spare` : null;
+  const skew = Math.max(DASD_REBALANCE.minSkew, l.hotSkew * DASD_REBALANCE.skewFactor);
+  return (
+    <ChangeForm desk={desk} label={`LCU ${lcuId} aliases ${val}`} commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]} error={err}>
+      <label>
+        <b>LCU {l.id}</b> <span className="muted">{l.label} · {l.volumes} vols</span> aliases{' '}
+        <input value={val} onChange={(e) => setVal(e.target.value)} size={3} inputMode="numeric" />
+      </label>
+      <Now>
+        {l.aliases} (max {max})
+      </Now>
+      <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_LCU', lcuId, hotSkew: skew }]} disabled={l.hotSkew <= DASD_REBALANCE.minSkew} text="rebalance" />
+    </ChangeForm>
   );
 }
 

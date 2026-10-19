@@ -7,7 +7,9 @@ import type { RunState } from './types';
 
 /** Fill fields added after a run was saved (IndexedDB autosaves outlive releases). */
 export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
-  const config = run.sim.config.cfStructures || !scenario ? run.sim.config : { ...run.sim.config, cfStructures: structuredClone(scenario.world.cfStructures) };
+  let config = run.sim.config.cfStructures || !scenario ? run.sim.config : { ...run.sim.config, cfStructures: structuredClone(scenario.world.cfStructures) };
+  // Saves from before per-LCU DASD: take the scenario's LCU layout.
+  if (scenario && !config.dasd.lcus) config = { ...config, dasd: { ...structuredClone(scenario.world.dasd), backendDegrade: config.dasd.backendDegrade ?? 1 } };
   return {
     ...run,
     tools: run.tools ?? [],

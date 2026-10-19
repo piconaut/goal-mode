@@ -1,6 +1,7 @@
 // Player and event commands (SPEC §6). Applied at the start of a tick; each returns a new
 // state or a validation error. Commands are plain data so runs can be replayed.
 
+import { LCU_MAX_DEVICES } from '../io/dasd';
 import type { ServiceDefinition } from '../wlm/types';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
 import type { PoolType, SimModifiers, SimState, ZosSystemConfig } from './types';
@@ -25,6 +26,7 @@ export type Command =
   | { kind: 'SET_CF'; lparId: string; thinInterrupts?: boolean; degrade?: number }
   | { kind: 'MOVE_STRUCTURE'; name: string; cfLparId: string }
   | { kind: 'SET_DASD'; changes: Partial<SimState['config']['dasd']> }
+  | { kind: 'SET_LCU'; lcuId: string; aliases?: number; hotSkew?: number; extraIops?: Partial<Record<'RANDOM' | 'SEQ', number>> }
   | { kind: 'SET_ROUTING'; workloadId: string; routing: Record<string, number> }
   | { kind: 'SET_MODIFIER'; mod: keyof Omit<SimModifiers, 'lockBoost'>; key: string; value: number }
   | { kind: 'SET_LOCK_BOOST'; value: number }
@@ -204,6 +206,29 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
           c.cfStructures.find((x) => x.name === cmd.name)!.cfLparId = cmd.cfLparId;
         }),
         `${cmd.name} rebuilt in ${cmd.cfLparId}`,
+      );
+    }
+
+    case 'SET_LCU': {
+      const lcu = s.config.dasd.lcus.find((x) => x.id === cmd.lcuId);
+      if (!lcu) return fail(s, `No LCU ${cmd.lcuId}`);
+      if (cmd.aliases !== undefined) {
+        const delta = cmd.aliases - lcu.aliases;
+        if (cmd.aliases < 0 || !Number.isInteger(cmd.aliases)) return fail(s, 'Alias count must be a whole number ≥ 0');
+        if (delta > s.config.dasd.spareAliases) return fail(s, `Only ${s.config.dasd.spareAliases} spare aliases`);
+        if (lcu.volumes + cmd.aliases > LCU_MAX_DEVICES) return fail(s, `LCU ${lcu.id} can address ${LCU_MAX_DEVICES - lcu.volumes} aliases at most`);
+      }
+      return ok(
+        withConfig(s, (c) => {
+          const l = c.dasd.lcus.find((x) => x.id === cmd.lcuId)!;
+          if (cmd.aliases !== undefined) {
+            c.dasd.spareAliases -= cmd.aliases - l.aliases;
+            l.aliases = cmd.aliases;
+          }
+          if (cmd.hotSkew !== undefined) l.hotSkew = Math.min(1, Math.max(0.05, cmd.hotSkew));
+          if (cmd.extraIops !== undefined) l.extraIops = { ...cmd.extraIops };
+        }),
+        `LCU ${cmd.lcuId} updated`,
       );
     }
 

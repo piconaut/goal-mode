@@ -104,6 +104,14 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
       if (cmd.thinInterrupts !== undefined) parts.push(`thin interrupts ${c?.thinInterrupts ? 'on' : 'off'} → ${cmd.thinInterrupts ? 'on' : 'off'}`);
       return `${cmd.lparId} ${parts.join(', ')}`;
     }
+    case 'SET_LCU': {
+      const l = cfg.dasd.lcus.find((x) => x.id === cmd.lcuId);
+      const parts: string[] = [];
+      if (cmd.aliases !== undefined) parts.push(`aliases ${l?.aliases ?? '?'} → ${cmd.aliases}`);
+      if (cmd.hotSkew !== undefined) parts.push('rebalance hot data sets');
+      if (cmd.extraIops !== undefined) parts.push('utility I/O');
+      return `LCU ${cmd.lcuId} ${parts.join(', ')}`;
+    }
     case 'MOVE_STRUCTURE': {
       const st = cfg.cfStructures.find((x) => x.name === cmd.name);
       return `Rebuild ${cmd.name} ${st?.cfLparId ?? '?'} → ${cmd.cfLparId}`;
@@ -143,6 +151,8 @@ export function commandTarget(cmd: Command): string {
       return `${cmd.kind}:${cmd.lparId}:${cmd.thinInterrupts !== undefined ? 'thin' : ''}`;
     case 'MOVE_STRUCTURE':
       return `${cmd.kind}:${cmd.name}`;
+    case 'SET_LCU':
+      return `${cmd.kind}:${cmd.lcuId}:${cmd.aliases !== undefined ? 'aliases' : ''}${cmd.hotSkew !== undefined ? 'skew' : ''}`;
     case 'SET_DB2':
       return `${cmd.kind}:${cmd.ssid}:${cmd.bufferPoolGb !== undefined ? 'bp' : ''}${cmd.maxDbat !== undefined ? 'dbat' : ''}`;
     case 'SET_CICS':
@@ -188,4 +198,21 @@ export function nextAorName(existing: readonly string[]): string {
     if (!existing.includes(n)) return n;
   }
   return 'CICSAOXX';
+}
+
+/** Spare HyperPAV aliases after the alias changes already staged in the basket (other LCUs only). */
+export function spareAfterBasket(cfg: ConfigView, basket: readonly Command[], exceptLcu: string): number {
+  let spare = cfg.dasd.spareAliases;
+  for (const c of basket) {
+    if (c.kind !== 'SET_LCU' || c.aliases === undefined || c.lcuId === exceptLcu) continue;
+    const cur = cfg.dasd.lcus.find((l) => l.id === c.lcuId)?.aliases ?? c.aliases;
+    spare += cur - c.aliases;
+  }
+  return spare;
+}
+
+/** Commands run in order: release aliases before other LCUs claim them. */
+export function orderBasket(cfg: ConfigView, basket: readonly Command[]): Command[] {
+  const freed = (c: Command) => (c.kind === 'SET_LCU' && c.aliases !== undefined ? (cfg.dasd.lcus.find((l) => l.id === c.lcuId)?.aliases ?? 0) - c.aliases : 0);
+  return [...basket].sort((a, b) => (freed(b) > 0 ? 1 : 0) - (freed(a) > 0 ? 1 : 0));
 }

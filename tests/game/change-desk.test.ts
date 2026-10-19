@@ -90,3 +90,16 @@ describe('change desk helpers', () => {
     expect(nextAorName(Array.from({ length: 9 }, (_, i) => `CICSAOR${i + 1}`))).toBe('CICSAO10');
   });
 });
+
+describe('alias moves in the basket', () => {
+  it('counts staged releases as spare and submits releases first', async () => {
+    const { orderBasket, spareAfterBasket } = await import('../../src/game/changeDesk');
+    const cfg = buildView(fresh(), MIDWEST).config;
+    const add: Command = { kind: 'SET_LCU', lcuId: '21', aliases: 41 };
+    const free: Command = { kind: 'SET_LCU', lcuId: '30', aliases: 1 };
+    expect(spareAfterBasket(cfg, [free], '21')).toBe(20);
+    expect(orderBasket(cfg, [add, free])).toEqual([free, add]);
+    const out = requestChange(fresh(), content, { label: 'move', commands: orderBasket(cfg, [add, free]) });
+    expect(out.ok).toBe(true);
+  });
+});

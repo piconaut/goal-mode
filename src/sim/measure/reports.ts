@@ -157,9 +157,17 @@ export function renderCfActivity(iv: RmfInterval): string {
 
 export function renderDasdSummary(iv: RmfInterval): string {
   const d = iv.dasd;
-  return [
+  const out = [
     ...header('DIRECT ACCESS DEVICE ACTIVITY', iv),
     'DEVICE GROUP   ACTIVITY RATE   AVG RESP(ms)  IOSQ   PEND   DISC   CONN    SEQ RESP(ms)',
     `ALL VOLUMES    ${f(d.iops, 0, 13)}   ${f(d.rtRandomMs, 3, 10)} ${f(d.iosqMs, 3, 6)} ${f(d.pendMs, 3, 6)} ${f(d.discMs, 3, 6)} ${f(d.connMs, 3, 6)} ${f(d.rtSeqMs, 3, 13)}`,
-  ].join('\n');
+  ];
+  if ((iv.lcus ?? []).length) {
+    out.push('', 'LOGICAL CONTROL UNIT SUMMARY (HyperPAV aliases are pooled per LCU)');
+    out.push('LCU  CONTENTS               VOLS  ALIASES  ACTIVITY RATE  AVG RESP(ms)   IOSQ(ms)  ALIASES/HOT VOL');
+    for (const l of iv.lcus) {
+      out.push(`${padR(l.id, 4)} ${padR(l.label, 22)} ${f(l.volumes, 0, 4)} ${f(l.aliases, 0, 8)} ${f(l.iops, 0, 14)} ${f(l.rtMs, 3, 13)} ${f(l.iosqMs, 3, 10)} ${f(l.aliasesPerHotVol, 2, 16)}`);
+    }
+  }
+  return out.join('\n');
 }

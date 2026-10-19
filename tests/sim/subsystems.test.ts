@@ -17,7 +17,7 @@ describe('DASD', () => {
   });
   it('IOSQ grows when HyperPAV aliases are scarce', () => {
     const many = evaluateDasd(dasd, { RANDOM: 60_000, SEQ: 30_000 }).classes.RANDOM.iosqSec;
-    const few = evaluateDasd({ ...dasd, aliasPool: 8 }, { RANDOM: 60_000, SEQ: 30_000 }).classes.RANDOM.iosqSec;
+    const few = evaluateDasd({ ...dasd, lcus: dasd.lcus.map((l) => ({ ...l, aliases: 1 })) }, { RANDOM: 60_000, SEQ: 30_000 }).classes.RANDOM.iosqSec;
     expect(few).toBeGreaterThan(2 * many);
   });
   it('back-end degradation shows up as disconnect time', () => {
@@ -25,6 +25,24 @@ describe('DASD', () => {
     const bad = evaluateDasd({ ...dasd, backendDegrade: 5 }, { RANDOM: 10_000, SEQ: 0 }).classes.RANDOM;
     expect(bad.discSec).toBeGreaterThan(4 * ok.discSec);
     expect(bad.connSec).toBeCloseTo(ok.connSec);
+  });
+});
+
+describe('DASD logical control units', () => {
+  const load = { RANDOM: 6_000, SEQ: 2_000 };
+  const storm = { ...dasd, lcus: dasd.lcus.map((l) => (l.id === '21' ? { ...l, extraIops: { SEQ: 55_000 } } : l)) };
+  const lcu = (r: ReturnType<typeof evaluateDasd>, id: string) => r.lcus.find((x) => x.id === id)!;
+  it('day-to-day load does not queue with HyperPAV', () => {
+    for (const l of evaluateDasd(dasd, load).lcus) expect(l.iosqSec).toBeLessThan(0.00002);
+  });
+  it('a utility storm queues on its own LCU only: aliases are not borrowed across LCUs', () => {
+    const r = evaluateDasd(storm, load);
+    expect(lcu(r, '21').iosqSec).toBeGreaterThan(0.0001);
+    expect(lcu(r, '10').iosqSec).toBeLessThan(lcu(r, '21').iosqSec / 20);
+  });
+  it('moving aliases to the hot LCU cuts its IOSQ', () => {
+    const more = { ...storm, lcus: storm.lcus.map((l) => (l.id === '21' ? { ...l, aliases: 56 } : l)) };
+    expect(lcu(evaluateDasd(more, load), '21').iosqSec).toBeLessThan(lcu(evaluateDasd(storm, load), '21').iosqSec / 2);
   });
 });
 

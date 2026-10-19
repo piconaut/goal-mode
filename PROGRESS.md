@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.3 remainder (per-LCU DASD model and HyperPAV alias editor), then M7.4.
+- **Next up:** M7.4 (tier 3: capacity planner, what-if, alerts, automation).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (160 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (165 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -225,7 +225,7 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
 - [x] Report classes are editable in the rules view (per-rule field + "report class" on Add rule);
   `applyWlmEdit` validates the name and registers it in `reportClasses`. Report-class RMF/WLMGL rows remain M7.5
 
-**M7.3 Tier 2: deep data** — partly done (loop 12)
+**M7.3 Tier 2: deep data** — done (loops 12–16)
 - [x] CF per structure (loop 15): `config.cfStructures` (name, LOCK/CACHE/LIST, share of requests, CF,
   cost) replaces the per-CF `requestShare`; a CF's load is the sum of its structures. Lock requests are never
   converted to async (APPROX), so a lock structure on a slow/shared CF spins every Db2 transaction on the z/OS
@@ -233,7 +233,15 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   (req/s, sync %, sync and average service); Change Desk structure placement table. Initial placement keeps the
   70/30 split (GBP0 + list structures on the weak CF02 = F8). Realism test: LOCK1 → CF02 more than doubles
   RBANK's CF time and raises PROD1 CPU; GBP0 → CF01 lowers it. Bots unchanged (do-nothing day 15, textbook day 29)
-- [ ] DASD/cache: per LCU hot volumes, alias usage, IOSQ; HyperPAV alias editor — needs per-LCU state in `sim/io`
+- [x] DASD per LCU (loop 16): 6 LCUs × 200 volumes (`config.dasd.lcus`: volumes, aliases, per-class I/O share,
+  hot skew, utility `extraIops`) + `spareAliases`. HyperPAV aliases pool per LCU and are never borrowed across
+  LCUs; an LCU addresses ≤ 256 devices. Utility I/O lands on hot volumes. `SET_LCU` (aliases from/to spares,
+  hot skew, extra I/O); +64 aliases hardware now buys spares to assign. DASD Activity gets an LCU summary
+  (vols, aliases, rate, resp, IOSQ, aliases per hot volume). Change Desk "DASD" section: aliases per LCU
+  (staged releases count as spare; releases run first), rebalance (4 h, hot skew ×0.7, floor 0.15). New event
+  REORG_OVERRUN (day ≥ 6, 20:30–22:30, 3 h): 55k utility I/O/s on LCU 21 exhausts its aliases → batch
+  stretches; clues in the LCU summary and SMF 30; fixes: move aliases to LCU 21, or -TERM UTILITY (new fix,
+  Finance trust −1). Day-to-day IOSQ stays ≈ 0 (calibrated against the old model: RANDOM resp ≈ 0.22 ms)
 - [x] SMF 113 counters (`game/smf.ts` `smf113`): L1MP/RNI/CPI per image from the share of work off VH engines and CPC busy (FICTIONAL coefficients in `content/smf.ts`); LSPR category from IBM's L1MP/RNI table (`lsprCategory`)
 - [x] Db2 accounting (SMF 101): per package (`DB2_PACKAGES`), class 1 elapsed, CPU/txn vs the workload's healthy baseline, class 3 lock / sync I/O / CF, not-accounted, DBAT queue; per closed hour (`RunState.smfHours`, 48 h) or the current hour. A ×3 REGRESSION shows as RB01 ×3 vs base; lock escalation as lock ms
 - [x] CICS monitoring (SMF 110): per transaction CPU vs baseline, QR wait, MXT wait, dispatch wait, failures. Per-AOR QR busy not shown (the sim computes QR per LPAR, not per region)
@@ -380,6 +388,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 16, hourly task):** per-LCU DASD model, alias editor, LCU report, REORG_OVERRUN
+  event + TERM_UTILITY fix; basket orders alias releases first. M7.3 complete. 165 tests. Bots (seed 42):
+  do-nothing day 15 (unchanged); textbook day 28 by two consecutive batch misses (was day 29, trust) since
+  it ignores REORG_OVERRUN; still inside the 28–32 target. Lesson: `pgrep -f` wait loops match their own
+  command line; wait on files/PIDs instead.
 - **2026-10-19 (loop 15, hourly task):** per-structure CF model and placement editor; CF Activity
   structure summary; realism test; bots re-run (unchanged). 160 tests.
 - **2026-10-19 (loop 14, hourly task):** RCA evidence pinning end to end (pins, board, judging, review

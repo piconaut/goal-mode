@@ -52,15 +52,24 @@ export const MIDWEST_WORLD: WorldConfig = {
     iipHonorPriority: true,
   })),
   dasd: {
-    activeVolumes: 1200,
-    aliasPool: 128,
+    // FICTIONAL layout: 6 LCUs × 200 volumes. Aliases are spread evenly although the I/O is not
+    // (the Db2 data LCUs and the batch LCUs carry most of it): harmless day to day with HyperPAV,
+    // but an LCU that gets hammered (utilities, batch) runs out of aliases first.
+    lcus: [
+      { id: '10', label: 'Db2 data 1', volumes: 200, aliases: 22, ioShare: { RANDOM: 0.3, SEQ: 0.1 }, hotSkew: 0.45 },
+      { id: '11', label: 'Db2 data 2', volumes: 200, aliases: 22, ioShare: { RANDOM: 0.25, SEQ: 0.1 }, hotSkew: 0.35 },
+      { id: '12', label: 'Db2 indexes + logs', volumes: 200, aliases: 21, ioShare: { RANDOM: 0.2, SEQ: 0.05 }, hotSkew: 0.3 },
+      { id: '20', label: 'Batch 1', volumes: 200, aliases: 21, ioShare: { RANDOM: 0.08, SEQ: 0.35 }, hotSkew: 0.3 },
+      { id: '21', label: 'Batch 2 / settlement', volumes: 200, aliases: 21, ioShare: { RANDOM: 0.07, SEQ: 0.3 }, hotSkew: 0.3 },
+      { id: '30', label: 'System + catalogs', volumes: 200, aliases: 21, ioShare: { RANDOM: 0.1, SEQ: 0.1 }, hotSkew: 0.3 },
+    ],
+    spareAliases: 0,
     fabricCapacityIops: 220_000,
     backendCapacityIops: 45_000,
     cacheHitFrac: { RANDOM: 0.88, SEQ: 0.97 },
     connectSec: { RANDOM: 0.00012, SEQ: 0.00035 },
     backendLatencySec: 0.0006,
     pendBaseSec: 0.00003,
-    hotSkew: 0.35,
     backendDegrade: 1,
   },
   cfs: [

@@ -99,12 +99,16 @@ export const HARDWARE: HardwareItem[] = [
   {
     id: 'HYPERPAV_64',
     name: '+64 HyperPAV aliases',
-    description: 'More alias devices for the DASD subsystem; reduces IOSQ on hot volumes.',
+    description: 'More HyperPAV alias devices, defined as spares: assign them to the LCUs that queue (Change Desk › DASD). Each LCU addresses at most 256 devices.',
     capex: 25_000,
     opexPerDay: 0,
     leadDays: 2,
     durationDays: null,
-    commands: (s) => [{ kind: 'SET_DASD', changes: { aliasPool: s.config.dasd.aliasPool + 64 } }],
+    commands: (s) => [{ kind: 'SET_DASD', changes: { spareAliases: s.config.dasd.spareAliases + 64 } }],
     revert: () => [],
   },
 ];
+
+// FICTIONAL: moving hot data sets off an LCU's busiest volumes (DFSMS migrate/reallocate) spreads its
+// hot spots but takes a storage admin half a day.
+export const DASD_REBALANCE = { hours: 4, skewFactor: 0.7, minSkew: 0.15 };
