@@ -196,6 +196,27 @@ end-of-day reports to live diagnosis and what-if planning, and the bots show too
 - Tests (6): visibility gating, PROCU ≈ delivered CPU, ENCLAVE zIIP use, a CPU regression raises delay + WFEX, log explanations, velocity scale
 - Dev aid: in `npm run dev` builds `globalThis.__goalMode.send(msg)` reaches the worker, and `DEV_INSIGHT` grants Insight (used by headless UI checks)
 
+**M7.2.1 Monitor III charting (user request 2026-10-19)**
+New tier-2 tool **"RMF Monitor III charting"** (prereq: RMF Monitor III; ~10 Insight; small extra
+RMFGAT CPU for the longer sample history; cf. RMF Data Portal / RMF Spreadsheet Reporter graphs).
+Charts today's Monitor III data over time instead of only the current ~100 s snapshot. Chart only
+the metrics that drive diagnosis; everything else stays in the tables:
+- [ ] Sampling: game-layer ring buffer of compact Mon III samples every 1 sim-minute (6 ticks) for the
+  played day (1,440 points max), built from the same WLM accumulators as `buildMon3`; deterministic,
+  kept in `RunState` only while the tool is owned and on (cleared at the day boundary)
+- [ ] **PI by service-class period** (importance 1–2 periods by default, toggle others), with the PI = 1 goal line
+- [ ] **CPU and zIIP busy per system**, plus CPC busy, with the 100% line
+- [ ] **Delay breakdown for one chosen period** (stacked: CPU, zIIP, I/O, CAP, other/UNK) — the "what is it
+  waiting for, and since when" chart
+- [ ] **Capping and PR/SM**: % capped and PR/SM dispatch delay per LPAR, R4HA vs defined capacity
+- [ ] **DDF/enclave**: ended/s and response time for the DDF periods, with zIIP vs IIPCP engines
+- [ ] **Event markers** on every chart: WLM receiver/donor decisions, applied changes, policy activations,
+  so cause and effect line up on the time axis
+- [ ] Reuse `LineChart` (crosshair, legend, table view); add a stacked-area mode for the delay chart;
+  zoom to a time range by drag; the shared time range drives all charts
+- [ ] Tests: sample cadence and buffer bound, determinism (same seed ⇒ same samples), delay stack sums to
+  DLY%, charts hidden without the tool
+
 **M7.3 Tier 2: deep data** — partly done (loop 12)
 - [ ] CF Activity per structure (lock / GBP / list) with sync/async counts; structure placement editor (replaces the fixed `requestShare`) — needs a per-structure CF model in `sim/cf`
 - [ ] DASD/cache: per LCU hot volumes, alias usage, IOSQ; HyperPAV alias editor — needs per-LCU state in `sim/io`
