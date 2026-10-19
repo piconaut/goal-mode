@@ -4,12 +4,11 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 ## Current status
 
-- **Phase:** M0–M4 done (M2 leftovers: RG minimum, discretionary capping). The sim is feature-complete for a headless day: online, batch, I/O, CF, subsystems, capping, MLC and RMF reports.
+- **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Phase:** M5 done; M6 vertical slice playable in the browser (`npm run dev`).
-- **Next up:** finish M6 (UI for charts/history, polarity preview, classification bench, Continue button — worker side committed in 3cf224b), then M7.1/M7.2.
+- **Next up:** M6.1 user requests (classification rules view) first, then M7.1 (Insight economy & tool tree) and M7.2 (Monitor III live views).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (102 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (112 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -104,10 +103,34 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Change Desk: HMC (weight, logical CPs/zIIPs, defined capacity), WLM structured edits (period goals, new class, CPU critical, classification rules) + JSON review/activate, z/OS/Db2/CICS/CF/batch/routing actions, hardware orders, event fixes, job restarts
 - [x] Briefing, end-of-day report card, RCA form, draft cards, game-over/victory overlays
 - [x] Headless screenshot driver `node tools/screenshot.mjs <dir>` (needs `npx vite preview`); verified no JS errors and no mobile horizontal overflow
-- [ ] Batch Gantt, R4HA/MSU time-series charts (uPlot), PI history heat map
-- [ ] HMC live polarity preview while editing weights
-- [ ] Classification test bench ("where does this work go?")
-- [ ] Save/load (IndexedDB), pin report values as RCA evidence
+- [x] MSU and R4HA per-LPAR line charts (5-min samples): own SVG component instead of uPlot (crosshair tooltip, legend, direct labels, table view; palette validated with the dataviz validator in both themes) (`src/ui/LineChart.tsx`)
+- [x] HMC live polarity preview while editing weights/logicals, with the 2:1 logical:physical warning
+- [x] Classification test bench ("where does this work go?") against the pending or active policy
+- [x] Autosave to IndexedDB on every phase change; "Continue saved run" in the day-1 briefing (`src/worker/storage.ts`)
+- [x] BUG fixed (user report): WLM button edits seemed to do nothing. They edited a hidden pending policy, and "Install & activate" sent stale or empty JSON. Now the pending policy (auto-named BASEPOL2, 3, …) is shown with changed rows highlighted, Install activates it directly, Discard drops it, and the JSON view stays in sync (verified end to end in Chromium)
+- [x] Theme tokens follow the artifact contract (dark-first, explicit light/dark overrides, `color-scheme`); build published as a multi-file artifact (`vite build --base ./`)
+- [ ] Batch Gantt, PI history heat map (→ M7.3 / M8.5)
+- [ ] Pin report values as RCA evidence (→ M7.3)
+
+### M6.1 — User requests (do these first)
+- [ ] **Classification rules view** (requested 2026-10-19). A dedicated, readable view of the WLM
+  classification rules, so players can see where work goes without reading JSON:
+  - New "WLM policy" area (tab or full-width Change Desk panel) listing, per subsystem type
+    (STC, JES, CICS, DDF, TSO, OMVS…): the default service class/report class, then the rules
+    **in evaluation order** (first match wins), nested rules indented, each row showing
+    qualifier type, pattern, → service class, report class
+  - Show active and pending side by side, or pending with a diff marker (added / removed / changed
+    rows), consistent with the pending-policy indicator in the WLM panel
+  - Per-rule actions: move up/down (order matters), edit target class, delete; "add rule here"
+    (needs new `WlmEdit` ops: `MOVE_RULE`, `SET_RULE_TARGET`, plus nested insert)
+  - "What lands here" column: which known workloads/address spaces each rule currently catches
+    (run `classify` over the scenario's workloads + address spaces), and an "unclassified →
+    SYSOTHER" warning row (ties into the audit constraint and new-app events)
+  - Highlight the forced-SYSTEM address spaces and built-in defaults (SYSSTC for STC, SYSOTHER
+    otherwise) so the implicit rules are visible too
+  - Tests: `applyWlmEdit` for the new ops; a pure `explainClassification(def, scenario)` helper
+    that returns rule → matched work, unit-tested against BASEPOL (e.g. `DB*` catches
+    DB1AMSTR/DBM1/DIST but not DB1AIRLM, which `*IRLM` takes first)
 
 ### M7 — Analytics, fog of war & strategic depth
 Goal: turn "half blind" into the progression spine (SPEC §8). Insight is earned by investigating and
@@ -289,6 +312,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   incidents + RCA, events, draft, bots. 112 tests. Do-nothing bot (seed 42): mild incidents on
   days 1–2 (batch overlap), then a calm stretch, then collapse on day 8 under stacked unfixed
   events (regression + runaway + CF link). Created the git repo and pushed to GitHub.
+- **2026-10-19 (loop 7):** Fleshed out M7/M8. Session restarted; 30-minute cron loop. M6
+  finished (charts, polarity preview, classification bench, autosave/continue) and the WLM editor
+  bug fixed; build published as an artifact. Added M6.1 (classification rules view, user request).
 - **2026-10-19 (loop 6):** Switched to a 10-minute cron loop. Fixed the retry-storm NaN; bounded
   persistent events; textbook bot. Balance on target (do-nothing day 15, textbook day 29).
   M6 vertical slice: worker, view model, Ops Console, RMF browser, Change Desk, overlays.
