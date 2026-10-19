@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { explainWlmLog, type Mon3Row, type Mon3View } from '../game/mon3';
 import type { ViewModel } from '../game/view';
 import { piColor } from './App';
+import { Mon3Charts } from './Mon3Charts';
+import type { GameHandle } from './useGame';
 
 type View3 = 'SYSINFO' | 'DELAY' | 'PROCU' | 'ENCLAVE' | 'CPC' | 'WFEX' | 'WLM';
 const VIEWS: { id: View3; help: string }[] = [
@@ -19,7 +21,7 @@ const ms = (x: number | null) => (x === null ? '-' : x < 10_000 ? x.toFixed(0) :
 const piCell = (pi: number | null) => <td className="num" style={{ background: piColor(pi) }}>{pi === null ? '-' : pi.toFixed(2)}</td>;
 
 /** RMF Monitor III live views (unlocked by the Monitor III tool). */
-export function Monitor({ v }: { v: ViewModel }) {
+export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
   const [view, setView] = useState<View3>('SYSINFO');
   const [system, setSystem] = useState('*PLEX');
   const m = v.mon3;
@@ -32,6 +34,7 @@ export function Monitor({ v }: { v: ViewModel }) {
     );
   const systems = ['*PLEX', ...m.systems.map((s) => s.system)];
   return (
+    <>
     <div className="panel">
       <h3>
         RMF Monitor III · {v.clock} · range ≈ {m.rangeSec} s
@@ -62,6 +65,8 @@ export function Monitor({ v }: { v: ViewModel }) {
         {view === 'WLM' && <WlmLog lines={v.wlmLog} />}
       </div>
     </div>
+    <Mon3Charts v={v} game={game} />
+    </>
   );
 }
 

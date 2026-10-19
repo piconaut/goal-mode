@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7.3 remainder (RCA evidence pinning; per-structure CF and per-LCU DASD models), then M7.4.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (146 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (150 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -196,26 +196,26 @@ end-of-day reports to live diagnosis and what-if planning, and the bots show too
 - Tests (6): visibility gating, PROCU ≈ delivered CPU, ENCLAVE zIIP use, a CPU regression raises delay + WFEX, log explanations, velocity scale
 - Dev aid: in `npm run dev` builds `globalThis.__goalMode.send(msg)` reaches the worker, and `DEV_INSIGHT` grants Insight (used by headless UI checks)
 
-**M7.2.1 Monitor III charting (user request 2026-10-19)**
-New tier-2 tool **"RMF Monitor III charting"** (prereq: RMF Monitor III; ~10 Insight; small extra
-RMFGAT CPU for the longer sample history; cf. RMF Data Portal / RMF Spreadsheet Reporter graphs).
-Charts today's Monitor III data over time instead of only the current ~100 s snapshot. Chart only
-the metrics that drive diagnosis; everything else stays in the tables:
-- [ ] Sampling: game-layer ring buffer of compact Mon III samples every 1 sim-minute (6 ticks) for the
-  played day (1,440 points max), built from the same WLM accumulators as `buildMon3`; deterministic,
-  kept in `RunState` only while the tool is owned and on (cleared at the day boundary)
-- [ ] **PI by service-class period** (importance 1–2 periods by default, toggle others), with the PI = 1 goal line
-- [ ] **CPU and zIIP busy per system**, plus CPC busy, with the 100% line
-- [ ] **Delay breakdown for one chosen period** (stacked: CPU, zIIP, I/O, CAP, other/UNK) — the "what is it
-  waiting for, and since when" chart
-- [ ] **Capping and PR/SM**: % capped and PR/SM dispatch delay per LPAR, R4HA vs defined capacity
-- [ ] **DDF/enclave**: ended/s and response time for the DDF periods, with zIIP vs IIPCP engines
-- [ ] **Event markers** on every chart: WLM receiver/donor decisions, applied changes, policy activations,
-  so cause and effect line up on the time axis
-- [ ] Reuse `LineChart` (crosshair, legend, table view); add a stacked-area mode for the delay chart;
-  zoom to a time range by drag; the shared time range drives all charts
-- [ ] Tests: sample cadence and buffer bound, determinism (same seed ⇒ same samples), delay stack sums to
-  DLY%, charts hidden without the tool
+**M7.2.1 Monitor III charting (user request 2026-10-19)** — done (loop 13)
+New tier-2 tool **"Monitor III charting"** (`MON3_CHARTS`: prereq Monitor III, 10 Insight, RMFGAT CPU ×1.5)
+charting today's Monitor III data over time; only the diagnosis-driving metrics are charted:
+- [x] Sampling (`game/mon3Charts.ts`): one compact sample per sim-minute (`MON3_CHARTS.sampleTicks` = 6) from
+  `buildMon3`, while both tools are on; reset at 06:00 (`startDay`); ≤ 1,440 samples/day (~1.7 MB JSON
+  for a full day in `RunState.mon3Charts`); +~0.5 s per headless day only when owned
+- [x] PI by period (importance 1–2 by default, toggle all) with the PI = 1 goal line
+- [x] CP busy per system + CPC busy with the 100% line
+- [x] Stacked delay breakdown for a chosen period (CPU, zIIP, I/O, CAP, other/UNK)
+- [x] PR/SM dispatch delay per LPAR; % capped per LPAR (shown once any LPAR was capped)
+- [x] DDF: response time of period 1 (toggle later periods: long queries would flatten it) and stacked
+  zIIP vs IIPCP engines
+- [x] Markers on every chart: WLM receiver decisions (tick at top), changes and policy activations
+  (dashed), events/incidents (dotted); hover lists them; capped at 400/day (WLM ones trimmed first)
+- [x] `LineChart` gained stacked areas, markers and drag-to-zoom; one shared zoom range drives all
+  charts; palette extended to 8 validated categorical slots (light + dark, dataviz validator)
+- [x] Worker sends history incrementally (`GET_MON3_CHARTS` from index) instead of in every VIEW
+- [x] Tests (4): cadence + determinism, off without either tool, delay stack = DLY%, change markers + daily reset.
+  Chromium: light + dark, zoom, tooltip; fixed a crash from a stale hover index after zooming
+- Planned changes applied at 06:00 are now logged ("Planned change applied: …") so they show as markers
 
 **M7.3 Tier 2: deep data** — partly done (loop 12)
 - [ ] CF Activity per structure (lock / GBP / list) with sync/async counts; structure placement editor (replaces the fixed `requestShare`) — needs a per-structure CF model in `sim/cf`
@@ -355,6 +355,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 13, hourly backstop after a session restart):** re-created the 15-min cron
+  (8378d3ec). M7.2.1 Monitor III charting tool (user request). `allWorkloads` moved to
+  `game/workloads.ts` to keep game modules free of import cycles. 150 tests.
 - **2026-10-19 (loop 12):** M7.3 tier-2 data: Db2 accounting, CICS monitoring, SMF 30 Gantt and
   SMF 113 counters; four tools now buyable; 48 h of hourly SMF detail kept in the run. Caught
   two tools still marked "coming soon" by a sloppy scripted edit (screenshot), fixed + test.

@@ -7,7 +7,7 @@ import { TICK_SEC } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
 import { goalText, velocityOf } from '../sim/wlm/goals';
 import { ACC_DECAY, accPi, goalInfo, sumAcc, type ScpAcc } from '../sim/wlm/runtime';
-import { allWorkloads } from './run';
+import { allWorkloads } from './workloads';
 import type { RunState } from './types';
 
 /** Steady-state normaliser: a decayed sum × (1 − d) is the per-tick average. */

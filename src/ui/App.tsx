@@ -29,7 +29,7 @@ export function App() {
         ))}
       </div>
       {tab === 'console' && <Console v={v} history={game.history} />}
-      {tab === 'monitor' && <Monitor v={v} />}
+      {tab === 'monitor' && <Monitor v={v} game={game} />}
       {tab === 'reports' && (
         <>
           <Reports v={v} game={game} />

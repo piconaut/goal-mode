@@ -8,6 +8,7 @@ import type { SubsystemType } from '../sim/wlm/types';
 /** Feature flags that game/view and the UI check before showing data. */
 export type ToolFeature =
   | 'MON3'
+  | 'MON3_CHARTS'
   | 'WLM_ACTIVITY_LOG'
   | 'PARTITION_REPORT'
   | 'REPORT_CLASS_ADVISOR'
@@ -82,6 +83,16 @@ export const TOOLS: ToolDef[] = [
     overhead: null,
     reveals: 'Suggests report classes so WLMGL shows one row per business workload.',
     comingSoon: true,
+  },
+  {
+    id: 'MON3_CHARTS',
+    name: 'Monitor III charting',
+    tier: 2,
+    insightCost: 10,
+    prereqs: ['RMF_MON3'],
+    unlocks: ['MON3_CHARTS'],
+    overhead: { addressSpaces: { jobnames: ['RMFGAT'], cpuFrac: 0.5 } },
+    reveals: 'Today’s Monitor III data over time: PI, busy, delay breakdown, capping and PR/SM delay, DDF, with WLM decisions and changes marked.',
   },
   {
     id: 'CF_DASD',
@@ -198,6 +209,13 @@ export const INSIGHT = {
   reportCapPerDay: 5,
   /** Per what-if run (M7.4). */
   perWhatIf: 2,
+};
+
+// Monitor III chart history: one sample per sim-minute for the played day (cf. RMF Data Portal graphs).
+export const MON3_CHARTS = {
+  sampleTicks: 6,
+  /** WLM decision and change markers kept per day. */
+  maxMarkers: 400,
 };
 
 export const toolDef = (id: string): ToolDef | undefined => TOOLS.find((t) => t.id === id);

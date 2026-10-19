@@ -3,6 +3,7 @@ import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
 import type { ClassificationResult } from '../sim/wlm/classify';
+import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from '../worker/protocol';
 
 export interface GameHandle {
@@ -14,6 +15,7 @@ export interface GameHandle {
   pending: PendingPolicyView | null;
   classified: { result: ClassificationResult; pending: boolean } | null;
   smf: SmfData | null;
+  charts: { samples: Mon3Sample[]; markers: ChartMarker[] };
   rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] } | null;
   toast: { ok: boolean; message: string } | null;
   /** Every change-board result this session, newest last (toasts vanish; this doesn't). */
@@ -31,6 +33,7 @@ export function useGame(): GameHandle {
   const [pending, setPending] = useState<PendingPolicyView | null>(null);
   const [classified, setClassified] = useState<GameHandle['classified']>(null);
   const [smf, setSmf] = useState<SmfData | null>(null);
+  const [charts, setCharts] = useState<GameHandle['charts']>({ samples: [], markers: [] });
   const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
   const [results, setResults] = useState<GameHandle['results']>([]);
@@ -49,6 +52,11 @@ export function useGame(): GameHandle {
         setPending(m.pending);
       } else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
       else if (m.type === 'SMF') setSmf(m.data);
+      else if (m.type === 'MON3_CHARTS')
+        setCharts((c) => ({
+          samples: [...(m.fromSample === 0 ? [] : c.samples.slice(0, m.fromSample)), ...m.samples],
+          markers: [...(m.fromMarker === 0 ? [] : c.markers.slice(0, m.fromMarker)), ...m.markers],
+        }));
       else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
@@ -64,5 +72,5 @@ export function useGame(): GameHandle {
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
-  return { view, report, policy, history, savedRunDay, pending, classified, smf, rules, toast, results, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, smf, charts, rules, toast, results, send };
 }

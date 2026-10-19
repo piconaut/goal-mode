@@ -141,6 +141,8 @@ export interface ViewModel {
   tools: ToolView[];
   reportsOpenedToday: number;
   smfHours: SmfHourRef[];
+  /** Monitor III chart history sizes (fetch with GET_MON3_CHARTS); null without the tool. */
+  mon3Charts: { samples: number; markers: number; firstTick: number | null } | null;
   serviceClasses: { id: string; periods: string[] }[];
 }
 
@@ -264,6 +266,10 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
     smfHours: smfHourRefs(run),
+    mon3Charts:
+      feats.has('MON3_CHARTS') && run.mon3Charts
+        ? { samples: run.mon3Charts.samples.length, markers: run.mon3Charts.markers.length, firstTick: run.mon3Charts.samples[0]?.tick ?? null }
+        : null,
     config: configView(run, scenario),
     serviceClasses: def.classes.map((x) => ({ id: x.id, periods: x.periods.map((p) => goalText(p)) })),
   };

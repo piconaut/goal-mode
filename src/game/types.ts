@@ -1,5 +1,6 @@
 // Game-layer state (SPEC §2, §7–§12). Wraps the deterministic sim; plain data.
 
+import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
 import type { RngState } from '../sim/core/rng';
 import type { SimState } from '../sim/core/types';
@@ -158,6 +159,8 @@ export interface RunState {
   toolsOff: string[];
   /** Closed hours of per-workload measurements (SMF 101/110-style detail), newest last, ~2 days. */
   smfHours: SmfHour[];
+  /** Monitor III chart history for the played day (only while the charting tool is on). */
+  mon3Charts: Mon3ChartState | null;
   /** Distinct reports opened this played day (Insight is earned per report, capped per day). */
   reportsOpenedToday: string[];
   perks: string[];

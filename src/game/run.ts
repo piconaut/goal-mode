@@ -6,6 +6,8 @@ import type { EventDef, ScriptedBeat } from '../content/events/midwest-events';
 import type { Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
+import { MON3_CHARTS } from '../content/tools';
+import { emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import { step } from '../sim/core/step';
@@ -62,9 +64,8 @@ function logLine(run: RunState, text: string): RunState {
 /** Seconds after the played day's 06:00 start for a wall-clock hour (24+ = next morning). */
 const secAfterStart = (hour: number) => ((hour - 6 + 48) % 24) * 3600;
 
-export function allWorkloads(scenario: Scenario, run: RunState): WorkloadDef[] {
-  return [...scenario.workloads, ...run.sim.extraWorkloads];
-}
+export { allWorkloads } from './workloads';
+import { allWorkloads } from './workloads';
 
 export function newRun(scenario: Scenario, content: GameContent, seed: number): RunState {
   const trust = Object.fromEntries(FACETS.map((f) => [f, 70])) as Record<Facet, number>;
@@ -90,6 +91,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     toolsOff: [],
     reportsOpenedToday: [],
     smfHours: [],
+    mon3Charts: null,
     perks: [],
     constraints: [],
     batchDeadlineSec: 24 * 3600,
@@ -299,13 +301,16 @@ export function startDay(run: RunState, content: GameContent): RunState {
       }
       pending.push(...c.commands);
       changes.push({ ...c, status: 'APPLIED' });
+      r = logLine(r, `Planned change applied: ${c.label}`);
       if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
     } else {
       if (c.status === 'APPLIED' && c.revertDay === r.day) pending.push(...c.revertCommands);
       changes.push(c);
     }
   }
-  r = { ...r, changes, pendingCommands: pending, phase: 'LIVE', hour: newHour(r.sim.tick) };
+  r = { ...r, changes, pendingCommands: pending, phase: 'LIVE', hour: newHour(r.sim.tick), mon3Charts: null };
+  // Today's chart history starts at 06:00 and shows the planned changes just applied.
+  if (chartsActive(r)) r = { ...r, mon3Charts: { ...emptyCharts(r), logSeen: run.log.length } };
   return r;
 }
 
@@ -318,6 +323,9 @@ const newHour = (tick: number): HourAcc => ({
   cpcBusySum: 0,
   lockIndexSum: 0,
 });
+
+const toolOn = (r: RunState, id: string) => r.tools.includes(id) && !r.toolsOff.includes(id);
+const chartsActive = (r: RunState) => toolOn(r, 'MON3_CHARTS') && toolOn(r, 'RMF_MON3');
 
 /** Advance the live day by up to `ticks` ticks. Ends the day automatically at 06:00. */
 export function advance(run: RunState, scenario: Scenario, content: GameContent, ticks: number): RunState {
@@ -346,6 +354,7 @@ export function advance(run: RunState, scenario: Scenario, content: GameContent,
     const sim = step(r.sim, cmds, scenario);
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);
+    if ((tick + 1) % MON3_CHARTS.sampleTicks === 0 && chartsActive(r)) r = recordMon3(r, scenario);
     if ((tick + 1) % TICKS_PER_HOUR === 0) r = closeHour(r, scenario);
     if ((tick + 1) % TICKS_PER_DAY === 0) r = endDay(r, scenario, content);
   }

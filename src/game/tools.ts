@@ -1,7 +1,8 @@
 import { INSIGHT, toolDef, TOOLS, type ToolDef, type ToolFeature } from '../content/tools';
 import type { Command } from '../sim/core/commands';
 import type { Scenario } from '../sim/core/scenario';
-import { allWorkloads, type ChangeOutcome } from './run';
+import type { ChangeOutcome } from './run';
+import { allWorkloads } from './workloads';
 import type { RunState } from './types';
 
 /** Fill fields added after a run was saved (IndexedDB autosaves outlive releases). */
@@ -12,6 +13,7 @@ export function normalizeRun(run: RunState): RunState {
     toolsOff: run.toolsOff ?? [],
     reportsOpenedToday: run.reportsOpenedToday ?? [],
     smfHours: run.smfHours ?? [],
+    mon3Charts: run.mon3Charts ?? null,
     sim: { ...run.sim, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },
   };
 }

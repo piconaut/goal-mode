@@ -17,6 +17,10 @@
   --series-2: #d95926;
   --series-3: #199e70;
   --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-7: #9085e9;
+  --series-8: #e66767;
   --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   color-scheme: dark;
@@ -37,6 +41,10 @@
     --series-2: #eb6834;
     --series-3: #1baf7a;
     --series-4: #eda100;
+    --series-5: #e87ba4;
+    --series-6: #008300;
+    --series-7: #6250d6;
+    --series-8: #e34948;
     color-scheme: light;
   }
 }
@@ -53,6 +61,10 @@
     --series-2: #eb6834;
     --series-3: #1baf7a;
     --series-4: #eda100;
+    --series-5: #e87ba4;
+    --series-6: #008300;
+    --series-7: #6250d6;
+    --series-8: #e34948;
     color-scheme: light;
 }
 * { box-sizing: border-box; }
@@ -150,3 +162,4 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .gantt-queue { position: absolute; top: 2px; height: 4px; background: var(--muted); opacity: 0.5; }
 .gantt-run { position: absolute; top: 0; height: 8px; background: var(--accent); border-radius: 2px; }
 .gantt-run.crit { background: var(--warn); }
+.chart .tip .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }

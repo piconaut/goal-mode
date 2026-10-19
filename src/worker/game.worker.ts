@@ -142,6 +142,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'DEV_INSIGHT':
       if (import.meta.env.DEV) run = { ...run, insight: run.insight + m.amount };
       break;
+    case 'GET_MON3_CHARTS': {
+      const c = run.mon3Charts;
+      if (!c || !hasFeature(run, 'MON3_CHARTS')) break;
+      post({ type: 'MON3_CHARTS', fromSample: m.fromSample, fromMarker: m.fromMarker, samples: c.samples.slice(m.fromSample), markers: c.markers.slice(m.fromMarker) });
+      break;
+    }
     case 'GET_SMF': {
       const need = SMF_FEATURE[m.kind];
       if (!hasFeature(run, need)) break;

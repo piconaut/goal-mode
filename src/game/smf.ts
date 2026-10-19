@@ -6,7 +6,7 @@ import { clockAt, formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import type { WorkloadDef } from '../sim/workload/types';
-import { allWorkloads } from './run';
+import { allWorkloads } from './workloads';
 import type { RunState, WorkloadHour } from './types';
 
 export interface SmfHourRef {

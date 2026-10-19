@@ -778,6 +778,8 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 - **Report class design tool**: suggests report classes for granularity.
 
 **Tier 2:**
+- **Monitor III charting** (requires Monitor III): today's PI, busy, delay breakdown, PR/SM delay,
+  capping and DDF over time at 1-minute resolution, with WLM decisions and changes marked.
 - **CF Activity** and **DASD/Cache** reports.
 - **SMF 113 counters** (RNI, CPI, L1MP; LSPR workload classification).
 - **Db2 accounting** (SMF 101; CPU cost when on).
