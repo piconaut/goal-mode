@@ -30,6 +30,7 @@ npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim +
 npm run bot -- --bot donothing|textbook|oraclerca --seed 42        # full runs with strategy bots
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
+# In `npm run dev` builds, globalThis.__goalMode.send(msg) talks to the worker (e.g. DEV_INSIGHT).
 ```
 
 ## Architecture rules (non-negotiable)

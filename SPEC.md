@@ -1103,6 +1103,7 @@ never touches the DOM.
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | Prices fictional |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
+| Monitor III views (SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s range; PROCU by service-class period, not job |
 | Response-time distributions | **Log-normal assumption** | Tunable σ per workload |
 | CF sync/async, 50% CF guideline, shared-CF penalties | **Real concepts, invented coefficients** | |
 | CICS QR TCB single-engine limit | **Real** | |

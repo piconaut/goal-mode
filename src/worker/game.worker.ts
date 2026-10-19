@@ -138,6 +138,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         saved = null;
       }
       break;
+    case 'DEV_INSIGHT':
+      if (import.meta.env.DEV) run = { ...run, insight: run.insight + m.amount };
+      break;
     case 'BUY_TOOL':
     case 'SET_TOOL_ACTIVE': {
       const out = m.type === 'BUY_TOOL' ? buyTool(run, scenario, m.toolId) : setToolActive(run, scenario, m.toolId, m.active);

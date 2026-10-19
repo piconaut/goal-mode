@@ -2,6 +2,7 @@
 // worker every frame). Applies the fog of war: what the player is allowed to see.
 
 import type { ToolFeature } from '../content/tools';
+import { buildMon3, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
 import { formatClock, clockAt } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
@@ -134,6 +135,8 @@ export interface ViewModel {
   config: ConfigView;
   /** Data the player's active analytics tools unlock (fog of war). */
   features: ToolFeature[];
+  /** RMF Monitor III live views (null without the tool). */
+  mon3: Mon3View | null;
   tools: ToolView[];
   reportsOpenedToday: number;
   serviceClasses: { id: string; periods: string[] }[];
@@ -245,7 +248,8 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     incidents: run.incidents.slice(-30),
     inbox: run.inbox.slice(-40),
     log: run.log.slice(-40),
-    wlmLog: run.phase === 'LIVE' ? [] : sim.wlm.log.slice(-60),
+    // The WLM activity log is live only with Monitor III; otherwise it is readable after the day.
+    wlmLog: run.phase === 'LIVE' && !feats.has('WLM_ACTIVITY_LOG') ? [] : sim.wlm.log.slice(-60),
     changes: run.changes.slice(-30),
     reports,
     lastReport: run.reports[run.reports.length - 1] ?? null,
@@ -254,6 +258,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     policyName: def.policyName,
     previewCtx: previewContext(run),
     features: [...feats].sort(),
+    mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
     config: configView(run, scenario),

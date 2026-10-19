@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.2 (Monitor III live views; make the Monitor III promise real: SYSINFO/DELAY/PROCU/ENCLAVE/WFEX, WLM activity log).
+- **Next up:** M7.3 (tier 2 deep data: SMF 113, Db2 accounting, CICS monitoring, SMF 30 batch Gantt; make those tools buyable).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (132 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (138 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -185,12 +185,16 @@ end-of-day reports to live diagnosis and what-if planning, and the bots show too
 - [x] Tests (4): prereqs/Insight, overhead on/off, SMF 110 overhead visible in WLMGL APPL% (+0.5–4%), report Insight cap/reset
 - Tools whose data views don't exist yet are listed as "Coming soon" (all tier 2 except CF/DASD, tiers 3–4) so players can plan; they become buyable as M7.2–M7.5 land
 
-**M7.2 Tier 1: live visibility**
-- [ ] Fog of war becomes tool-driven in `game/view.ts` (today: tier-0 hard-coded): reports for the *current* day only with Monitor III; RMF interval < 15 min needs the tool too
-- [ ] RMF Monitor III views (live, last 100 s window from `sim.last`): SYSINFO (per-system goal/actual/PI), DELAY (top delayed workloads by delay type: CPU, zIIP, I/O, STO, CAP, UNK), PROCU (top CPU consumers incl. address spaces), ENCLAVE (DDF by period), WFEX (exceptions: PI > 2, capped, QR > 0.8, MXT/DBAT queueing)
-- [ ] WLM activity log in the console (`sim.wlm.log`), unlocked by Monitor III; decision tooltips ("why did ONLHI move to F9?")
-- [ ] Partition Data detail with live polarity, PR/SM delay, logical:physical ratio warning (> 2:1)
-- [ ] Report classes start to matter: per-workload report classes in the policy editor give per-workload WLMGL rows (F6)
+**M7.2 Tier 1: live visibility** — mostly done (loop 11)
+- [x] Fog of war is tool-driven (`features(run)` in `game/tools.ts`): today's intervals with Monitor III; Partition/CF/DASD gated (M7.1)
+- [ ] ~~RMF interval < 15 min needs the tool~~ dropped: the Postprocessor interval is just SMF INTVAL on real systems, so gating it would be fake. The 30→15 planted inefficiency stays
+- [x] RMF Monitor III tab (`src/ui/Monitor.tsx`, `src/game/mon3.ts`): SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX, built from WLM's smoothed accumulators (≈ 67 s effective range; APPROX for Monitor III's 100 s MINTIME)
+- [x] WLM activity log live with Monitor III (otherwise readable after the day); click/hover explains each decision (`explainWlmLog`)
+- [x] Live CPC view: weights, logicals, polarity, busy, PR/SM delay, overhead, capped %, L:P warning above 2:1
+- [ ] PROCU is per service-class period, not per address space (slices are not kept per tick). Add top address spaces if a diagnosis needs it
+- [ ] Report classes start to matter (per-workload WLMGL rows, F6): moved to M7.5 with the report class advisor tool
+- Tests (6): visibility gating, PROCU ≈ delivered CPU, ENCLAVE zIIP use, a CPU regression raises delay + WFEX, log explanations, velocity scale
+- Dev aid: in `npm run dev` builds `globalThis.__goalMode.send(msg)` reaches the worker, and `DEV_INSIGHT` grants Insight (used by headless UI checks)
 
 **M7.3 Tier 2: deep data**
 - [ ] CF Activity per structure (lock / GBP / list) with sync/async counts; structure placement editor (replaces the fixed `requestShare`)
@@ -327,6 +331,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 11):** M7.2 Monitor III: live SYSINFO/DELAY/PROCU/ENCLAVE/CPC/WFEX views,
+  live WLM log with explanations, dev hook for headless UI checks. 138 tests. Found and fixed a
+  velocity ×100 bug via screenshots. Dropped "RMF interval < 15 needs a tool" (not realistic).
 - **2026-10-19 (loop 10):** M7.1 Insight economy and tool tree: tool content, buy/switch-off,
   `mods.measureCpu` overhead, report gating, Analytics tab, Insight per report. 132 tests.
   Textbook bot unchanged (loses day 29). Lesson repeated: `pkill -f` matching its own shell

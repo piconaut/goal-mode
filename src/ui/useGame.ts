@@ -59,5 +59,7 @@ export function useGame(): GameHandle {
   }, []);
 
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
+  // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
+  if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
   return { view, report, policy, history, savedRunDay, pending, classified, rules, toast, results, send };
 }
