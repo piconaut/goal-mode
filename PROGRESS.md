@@ -6,7 +6,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M6.1 user requests (classification rules view) first, then M7.1 (Insight economy & tool tree) and M7.2 (Monitor III live views).
+- **Next up:** M6.1 user requests (classification rules view, Change Desk quality-of-life) first, then M7.1 (Insight economy & tool tree) and M7.2 (Monitor III live views).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
 - **Health:** `npm run check` green (112 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
@@ -131,6 +131,33 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   - Tests: `applyWlmEdit` for the new ops; a pure `explainClassification(def, scenario)` helper
     that returns rule → matched work, unit-tested against BASEPOL (e.g. `DB*` catches
     DB1AMSTR/DBM1/DIST but not DB1AIRLM, which `*IRLM` takes first)
+- [ ] **Change Desk quality-of-life pass** (requested 2026-10-19). Make every control show what it
+  will change, what it costs, and what happened:
+  - **Current values everywhere:** inputs prefill from the live config and show "now: X" beside
+    the field (DEVT defined capacity, zIIP logicals, Db2 BP size and MAXDBAT, CICS MXT, job-class
+    initiators, CF settings, routing). No hard-coded defaults such as `BP 60` or `zIIP 1`
+  - **Cost preview before submit:** each submit button shows hours (e.g. "Set · 0.5h"). During the
+    live day it also shows the emergency trust cost and the change-failure risk at current fatigue.
+    Disable buttons the player can't afford, and say why
+  - **Inline validation** instead of post-hoc toasts: weight 1–999, logical CPs ≤ online + reserved
+    (show the max), memory vs unassigned CPC memory, defined capacity ≥ 1 MSU, freeze constraint
+  - **Change basket:** stage several edits (weights, logicals, caps, policy) and submit them as one
+    change-board item with one failure roll. Show a diff summary ("PROD1 weight 500 → 565")
+  - **Change board:** cancel/undo a PLANNED change before the day starts (refund hours/capex);
+    group by day; show what's on order (hardware delivery day, CoD expiry); collapse applied history
+  - **Feedback that sticks:** keep a results log in the panel (toasts vanish after 4 s); failures
+    say what to do next
+  - **Subsystem controls driven by data, not presets:** Db2 member list from config; name new CICS
+    AORs (no random names) and list existing regions with MXT/QR load; a generic routing editor
+    (per workload, a share per LPAR, normalised); job-class editor (mode, initiators per LPAR)
+  - **Context:** short "what this does / trade-off" help per control with a Codex link (M7.5);
+    units on every field (MSU, GB, CPs × 100, seconds)
+  - **Only relevant actions:** event fixes enabled only while a matching symptom is plausible (or
+    marked "no active issue"); abended-job restarts listed with the job's stream and critical flag
+  - **Layout:** collapsible sections (HMC, WLM, Subsystems, Hardware, Operations), Enter submits,
+    visible focus states, works at phone width; keep the pending-policy banner pinned while editing
+  - Tests: pure helpers for cost/risk preview and basket diff; one Chromium run through
+    basket → submit → start day → applied
 
 ### M7 — Analytics, fog of war & strategic depth
 Goal: turn "half blind" into the progression spine (SPEC §8). Insight is earned by investigating and
