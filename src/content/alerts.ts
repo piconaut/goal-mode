@@ -31,3 +31,11 @@ export const ALERTS = {
   nightStart: 20,
   nightEnd: 6,
 };
+
+// FICTIONAL: WLM service-policy schedule.
+export const POLICY_SCHEDULE = {
+  maxSaved: 4,
+  maxEntries: 4,
+  /** Engineer-hours to change the schedule (test the switch, update the automation table). */
+  editHours: 0.5,
+};

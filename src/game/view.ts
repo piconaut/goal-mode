@@ -4,6 +4,7 @@
 import type { ToolFeature } from '../content/tools';
 import { ruleText, type AlertEvent, type AlertRule } from './alerts';
 import type { EvidencePin } from './evidence';
+import type { ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, type Mon3View } from './mon3';
@@ -147,6 +148,8 @@ export interface ViewModel {
   reportsOpenedToday: number;
   smfHours: SmfHourRef[];
   pins: EvidencePin[];
+  /** Saved service policies (with one-line goal summaries) and the daily switch schedule. */
+  policies: { saved: { name: string; summary: string }[]; schedule: ScheduleEntry[] };
   /** Alert rules, firing ids and recent pages (null without the tool). */
   alerts: { rules: (AlertRule & { text: string })[]; firing: number[]; log: AlertEvent[] } | null;
   /** Capacity planner forecasts (null without the tool). */
@@ -277,6 +280,10 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     reportsOpenedToday: run.reportsOpenedToday.length,
     smfHours: smfHourRefs(run),
     pins: run.pins ?? [],
+    policies: {
+      saved: (run.policies?.saved ?? []).map((p) => ({ name: p.policyName, summary: p.classes.map((c) => `${c.id} ${c.periods.map((x) => goalText(x)).join('/')}`).join(' · ') })),
+      schedule: run.policies?.schedule ?? [],
+    },
     alerts: feats.has('ALERTS')
       ? { rules: (run.alerts?.rules ?? []).map((r) => ({ ...r, text: ruleText(r) })), firing: run.alerts?.firing ?? [], log: (run.alerts?.log ?? []).slice(-20) }
       : null,

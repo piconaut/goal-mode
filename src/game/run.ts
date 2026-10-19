@@ -9,6 +9,7 @@ import { initState } from '../sim/core/init';
 import { ALERTS } from '../content/alerts';
 import { PLANNER } from '../content/planner';
 import { emptyAlerts, evaluateAlerts } from './alerts';
+import { emptyPolicyBook, scheduledActivation } from './policies';
 import { MON3_CHARTS } from '../content/tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
@@ -99,6 +100,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     mon3Charts: null,
     pins: [],
     alerts: emptyAlerts(),
+    policies: emptyPolicyBook(),
     capacityDays: [],
     capacityToday: null,
     perks: [],
@@ -342,6 +344,11 @@ export function advance(run: RunState, scenario: Scenario, content: GameContent,
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
     const cmds: Command[] = [...r.pendingCommands];
+    const switchTo = scheduledActivation(r);
+    if (switchTo) {
+      cmds.push(switchTo);
+      r = logLine(r, `V WLM,POLICY=${switchTo.kind === 'ACTIVATE_POLICY' ? switchTo.definition.policyName : ''} (scheduled)`);
+    }
     let events = r.events;
     for (const e of events) {
       const def = content.events.find((d) => d.id === e.defId);

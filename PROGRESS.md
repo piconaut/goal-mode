@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.4 automation rules and WLM policy overrides; what-if needs M8.1 perf first.
+- **Next up:** M7.4 automation rules (IF alert THEN action; can misfire) and Capacity Provisioning; what-if needs M8.1 perf first.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (172 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (174 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -278,7 +278,12 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   firing tags and a page log. 3 tests; Chromium: a CPC rule paged at 06:05 and paused the game
 - [ ] Automation rules (System Automation-like): `IF condition THEN command`, e.g. restart abended job once, activate policy override at 20:00; misfires possible and logged
 - [ ] Capacity Provisioning Manager: On/Off CoD rules (refused for hard-capped LPARs, per IBM guidance)
-- [ ] WLM policy overrides: named overrides (NIGHT, MONTHEND) with scheduled activation
+- [x] WLM service policies + daily schedule (loop 19): save the pending/active policy under a name (≤ 4),
+  schedule up to 4 daily switches (`game/policies.ts`); the run issues `V WLM,POLICY=name` on the hour at no
+  cost; editing the schedule costs 0.5 h and is blocked by a change freeze. Change Desk section "WLM service
+  policies and daily schedule". Trade-off: a batch-friendly night policy hurts night online spikes; a manual
+  activation is replaced at the next switch. Real WLM "policy overrides" inside one policy are not modelled:
+  whole policies are swapped (APPROX, same effect for the game). 2 tests; Chromium: 07:00 NIGHTPOL, 08:00 DAYPOL
 
 **M7.5 Tier 4 & strategic options**
 - [ ] AIOps anomaly detection: ranked RCA hypotheses with confidence, sometimes wrong (seeded), from `incident.truth` plus noise
@@ -400,6 +405,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 19, hourly task):** saved WLM service policies with a daily switch schedule. 174 tests.
 - **2026-10-19 (loop 18, hourly task; session had restarted):** alert rules with pause-on-page and night
   fatigue. 172 tests.
 - **2026-10-19 (loop 17, hourly task):** capacity planner (daily peak history, trend + 90% bands,

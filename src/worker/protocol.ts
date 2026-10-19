@@ -1,6 +1,7 @@
 // Messages between the UI thread and the game worker.
 
 import type { AlertRule } from '../game/alerts';
+import type { ScheduleEntry } from '../game/policies';
 import type { PinRequest } from '../game/evidence';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { BatchNight, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
@@ -53,6 +54,9 @@ export type ToWorker =
   | { type: 'GET_MON3_CHARTS'; fromSample: number; fromMarker: number }
   | { type: 'ALERT_ADD'; rule: Omit<AlertRule, 'id'> }
   | { type: 'ALERT_REMOVE'; id: number }
+  | { type: 'SAVE_POLICY'; name: string }
+  | { type: 'DELETE_POLICY'; name: string }
+  | { type: 'SET_POLICY_SCHEDULE'; schedule: ScheduleEntry[] }
   | { type: 'BUY_TOOL'; toolId: string }
   /** Dev builds only: grant Insight for UI testing. */
   | { type: 'DEV_INSIGHT'; amount: number }

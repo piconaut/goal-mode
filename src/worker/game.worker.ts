@@ -7,6 +7,7 @@ import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
+import { deletePolicy, savePolicy, setSchedule } from '../game/policies';
 import { addPin, removePin } from '../game/evidence';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
@@ -187,6 +188,21 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'ALERT_ADD': {
       const out = addAlertRule(run, m.rule);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      break;
+    }
+    case 'SAVE_POLICY':
+    case 'DELETE_POLICY':
+    case 'SET_POLICY_SCHEDULE': {
+      let out;
+      if (m.type === 'SAVE_POLICY') {
+        const name = m.name.trim().toUpperCase();
+        out = /^[A-Z][A-Z0-9#@$]{0,7}$/.test(name)
+          ? savePolicy(run, { ...(pendingPolicy ?? run.sim.wlm.definition), policyName: name })
+          : { run, ok: false, message: 'Policy names are 1–8 characters, starting with a letter' };
+      } else if (m.type === 'DELETE_POLICY') out = deletePolicy(run, m.name);
+      else out = setSchedule(run, m.schedule);
       run = out.run;
       post({ type: 'RESULT', ok: out.ok, message: out.message });
       break;

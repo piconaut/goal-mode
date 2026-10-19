@@ -4,6 +4,7 @@ import type { Scenario } from '../sim/core/scenario';
 import type { ChangeOutcome } from './run';
 import { allWorkloads } from './workloads';
 import { emptyAlerts } from './alerts';
+import { emptyPolicyBook } from './policies';
 import type { RunState } from './types';
 
 /** Fill fields added after a run was saved (IndexedDB autosaves outlive releases). */
@@ -20,6 +21,7 @@ export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
     mon3Charts: run.mon3Charts ?? null,
     pins: run.pins ?? [],
     alerts: run.alerts ?? emptyAlerts(),
+    policies: run.policies ?? emptyPolicyBook(),
     capacityDays: run.capacityDays ?? [],
     capacityToday: run.capacityToday ?? null,
     sim: { ...run.sim, config, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },

@@ -47,6 +47,9 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
           <Wlm v={v} game={game} rulesOpen={rulesOpen} toggleRules={() => setRulesOpen(!rulesOpen)} />
         </Section>
         {rulesOpen && <RulesView v={v} game={game} onClose={() => setRulesOpen(false)} />}
+        <Section title="WLM service policies and daily schedule">
+          <PolicySchedule v={v} game={game} />
+        </Section>
         <Section title="z/OS and coupling facilities">
           <Systems desk={desk} />
         </Section>
@@ -621,6 +624,95 @@ function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHand
         )}
       </div>
       {showJson && <textarea aria-label="Policy JSON" rows={14} value={jsonEdited ? json : game.policy} onChange={(e) => setJson(e.target.value)} />}
+    </>
+  );
+}
+
+/** Saved service policies and the daily V WLM,POLICY= schedule. */
+function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const { saved, schedule } = v.policies;
+  const [name, setName] = useState('');
+  const [rows, setRows] = useState(schedule);
+  // Re-sync the editor when the stored schedule changes.
+  useEffect(() => setRows(schedule), [JSON.stringify(schedule)]); // eslint-disable-line react-hooks/exhaustive-deps
+  const dirty = JSON.stringify(rows) !== JSON.stringify(schedule);
+  const hours = Array.from({ length: 24 }, (_, h) => h);
+  const nameErr = name && !/^[A-Z][A-Z0-9#@$]{0,7}$/.test(name) ? '1–8 chars, starts with a letter' : null;
+  return (
+    <>
+      <form
+        className="form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (name && !nameErr) game.send({ type: 'SAVE_POLICY', name });
+        }}
+      >
+        <label>
+          Save {game.pending ? `pending ${game.pending.policyName}` : `active ${v.policyName}`} as{' '}
+          <input value={name} onChange={(e) => setName(e.target.value.toUpperCase())} placeholder="e.g. NIGHTPOL" size={9} />
+        </label>
+        <button type="submit" disabled={!name || nameErr !== null}>
+          Save policy
+        </button>
+        {nameErr && <span className="err">{nameErr}</span>}
+      </form>
+      {saved.length === 0 ? (
+        <div className="muted">No saved policies. Edit the policy above, then save it under a name (DAYPOL, NIGHTPOL…) to schedule it.</div>
+      ) : (
+        <ul className="diff">
+          {saved.map((p) => (
+            <li key={p.name}>
+              <details>
+                <summary>
+                  {p.name}
+                  {p.name === v.policyName && <span className="tag good"> active</span>}
+                </summary>
+                <div className="muted" style={{ fontSize: 11, whiteSpace: 'normal' }}>{p.summary}</div>
+              </details>
+              <button aria-label={`Delete policy ${p.name}`} onClick={() => game.send({ type: 'DELETE_POLICY', name: p.name })}>
+                ✕
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div style={{ marginTop: 8 }}>
+        <b style={{ fontSize: 13 }}>Daily switches</b>
+        {rows.map((r, i) => (
+          <div className="form" key={i}>
+            at
+            <select aria-label="Switch hour" value={r.hour} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, hour: Number(e.target.value) } : x)))}>
+              {hours.map((h) => (
+                <option key={h} value={h}>
+                  {String(h).padStart(2, '0')}:00
+                </option>
+              ))}
+            </select>
+            activate
+            <select aria-label="Policy to activate" value={r.policyName} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, policyName: e.target.value } : x)))}>
+              {saved.map((p) => (
+                <option key={p.name}>{p.name}</option>
+              ))}
+            </select>
+            <button type="button" aria-label="Remove switch" onClick={() => setRows(rows.filter((_, j) => j !== i))}>
+              ✕
+            </button>
+          </div>
+        ))}
+        <div className="form">
+          <button type="button" disabled={saved.length === 0 || rows.length >= 4} onClick={() => setRows([...rows, { hour: rows.length ? 20 : 6, policyName: saved[0]!.name }])}>
+            + switch
+          </button>
+          <button type="button" className="primary" disabled={!dirty} onClick={() => game.send({ type: 'SET_POLICY_SCHEDULE', schedule: rows })}>
+            Apply schedule · 0.5h
+          </button>
+          {dirty && <button onClick={() => setRows(schedule)}>Revert</button>}
+        </div>
+      </div>
+      <div className="help">
+        Operations automation issues V WLM,POLICY=name at each switch time, every day, at no further cost. A night policy that favours batch helps the window but hurts any online
+        work that arrives at night; a manually activated policy is replaced at the next switch.
+      </div>
     </>
   );
 }
