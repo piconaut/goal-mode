@@ -792,7 +792,8 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 - **What-if simulator**: fork the deterministic sim state and run *tomorrow* with a proposed
   config at ~100×, using *forecast* arrivals (no knowledge of hidden events). Costs hours.
   This is the "zPCR-like" planning experience.
-- **Alerting rules**: custom thresholds raise pager alerts (`PI(RBANK) > 1.5 for 5 min`).
+- **Alerting rules**: custom thresholds raise pager alerts (`PI(ONLHI#1) > 1.5 for 5 min`), optionally
+  pausing the game; pages at night cost team fatigue, so noisy rules have a price.
 - **Automation rules** (System-Automation-like): `IF CARDAUTH PI > 2 THEN ACTIVATE POLICY
   PEAKPOL`; `IF job X abends THEN restart once`. Saves hours, can misfire.
 - **Capacity Provisioning Manager**: rules that activate On/Off CoD automatically (not with

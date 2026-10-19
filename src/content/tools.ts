@@ -173,8 +173,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: ['RMF_MON3'],
     unlocks: ['ALERTS'],
     overhead: null,
-    reveals: 'Custom thresholds page you (PI, capping, batch at risk).',
-    comingSoon: true,
+    reveals: 'Threshold rules over Monitor III data page you (and can pause the game): PI, CPC busy, capping, R4HA vs DC, batch slack. Night pages tire the team.',
   },
   {
     id: 'AUTOMATION',

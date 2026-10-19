@@ -3,6 +3,7 @@ import type { EvidenceMetric } from '../content/evidence';
 import { explainWlmLog, type Mon3Row, type Mon3View } from '../game/mon3';
 import type { ViewModel } from '../game/view';
 import { piColor } from './App';
+import { Alerts } from './Alerts';
 import { EvidenceBoard, PinButton } from './Evidence';
 import { Mon3Charts } from './Mon3Charts';
 import type { GameHandle } from './useGame';
@@ -75,6 +76,7 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
       </div>
     </div>
     <Mon3Charts v={v} game={game} />
+    <Alerts v={v} game={game} />
     <EvidenceBoard v={v} game={game} />
     </>
   );

@@ -6,6 +6,7 @@ import { advance, cancelChange, chooseDraft, newRun, requestChange, startDay, su
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
+import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addPin, removePin } from '../game/evidence';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
@@ -80,7 +81,7 @@ function activate(def: ServiceDefinition) {
 }
 
 const sendView = () => {
-  post({ type: 'VIEW', view: buildView(run, scenario), history: historyDirty ? history : null, savedRunDay: saved && saved.day > 0 ? saved.day : null, pending: pendingView() });
+  post({ type: 'VIEW', view: buildView(run, scenario), history: historyDirty ? history : null, savedRunDay: saved && saved.day > 0 ? saved.day : null, pending: pendingView(), speed });
   historyDirty = false;
 };
 
@@ -120,6 +121,14 @@ setInterval(() => {
   if (n <= 0) return;
   carry -= n;
   advanceSampled(n);
+  if (run.alerts?.pauseRequested) {
+    // A pausing alert rule fired: stop the clock and tell the player why.
+    speed = 0;
+    carry = 0;
+    const page = [...run.alerts.log].reverse().find((e) => e.kind === 'FIRED');
+    run = { ...run, alerts: { ...run.alerts, pauseRequested: false } };
+    post({ type: 'RESULT', ok: false, message: `Paused: ${page?.text ?? 'alert fired'}` });
+  }
   sendView();
 }, FRAME_MS);
 
@@ -176,6 +185,15 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       post({ type: 'SMF', data });
       break;
     }
+    case 'ALERT_ADD': {
+      const out = addAlertRule(run, m.rule);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      break;
+    }
+    case 'ALERT_REMOVE':
+      run = removeAlertRule(run, m.id);
+      break;
     case 'BUY_TOOL':
     case 'SET_TOOL_ACTIVE': {
       const out = m.type === 'BUY_TOOL' ? buyTool(run, scenario, m.toolId) : setToolActive(run, scenario, m.toolId, m.active);

@@ -6,7 +6,9 @@ import type { EventDef, ScriptedBeat } from '../content/events/midwest-events';
 import type { Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
+import { ALERTS } from '../content/alerts';
 import { PLANNER } from '../content/planner';
+import { emptyAlerts, evaluateAlerts } from './alerts';
 import { MON3_CHARTS } from '../content/tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
@@ -96,6 +98,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     smfHours: [],
     mon3Charts: null,
     pins: [],
+    alerts: emptyAlerts(),
     capacityDays: [],
     capacityToday: null,
     perks: [],
@@ -360,6 +363,7 @@ export function advance(run: RunState, scenario: Scenario, content: GameContent,
     const sim = step(r.sim, cmds, scenario);
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);
+    if ((tick + 1) % ALERTS.evalTicks === 0 && toolOn(r, 'ALERTS') && toolOn(r, 'RMF_MON3')) r = evaluateAlerts(r, scenario);
     if (chartsActive(r)) {
       r = accumulateMon3(r);
       if ((tick + 1) % MON3_CHARTS.sampleTicks === 0) r = recordMon3(r, scenario);

@@ -2,6 +2,7 @@
 // worker every frame). Applies the fog of war: what the player is allowed to see.
 
 import type { ToolFeature } from '../content/tools';
+import { ruleText, type AlertEvent, type AlertRule } from './alerts';
 import type { EvidencePin } from './evidence';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
@@ -146,6 +147,8 @@ export interface ViewModel {
   reportsOpenedToday: number;
   smfHours: SmfHourRef[];
   pins: EvidencePin[];
+  /** Alert rules, firing ids and recent pages (null without the tool). */
+  alerts: { rules: (AlertRule & { text: string })[]; firing: number[]; log: AlertEvent[] } | null;
   /** Capacity planner forecasts (null without the tool). */
   planner: { forecasts: Forecast[]; daysRecorded: number } | null;
   /** Monitor III chart history sizes (fetch with GET_MON3_CHARTS); null without the tool. */
@@ -274,6 +277,9 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     reportsOpenedToday: run.reportsOpenedToday.length,
     smfHours: smfHourRefs(run),
     pins: run.pins ?? [],
+    alerts: feats.has('ALERTS')
+      ? { rules: (run.alerts?.rules ?? []).map((r) => ({ ...r, text: ruleText(r) })), firing: run.alerts?.firing ?? [], log: (run.alerts?.log ?? []).slice(-20) }
+      : null,
     planner: feats.has('CAPACITY_PLANNER') ? { forecasts: capacityForecasts(run), daysRecorded: (run.capacityDays ?? []).length } : null,
     mon3Charts:
       feats.has('MON3_CHARTS') && run.mon3Charts

@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.4 alert rules, automation rules, policy overrides; what-if needs M8.1 perf first.
+- **Next up:** M7.4 automation rules and WLM policy overrides; what-if needs M8.1 perf first.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (169 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (172 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -270,7 +270,12 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   plain verdict. Panel on the Analytics tab. Uses measured history only. Night CPC busy was excluded after the
   first Chromium check showed 99.6% every day (batch soaks up free CPU)
 - Dev aid: `DEV_FAST_DAYS {days}` (dev builds) plays whole days headlessly to reach later-game states
-- [ ] Alert rules: user thresholds (PI, CPC busy, R4HA vs DC, batch projection) → pager alerts in the live day
+- [x] Alert rules (loop 18, tool ALERTS now buyable): up to 10 rules over Monitor III data (`content/alerts.ts`:
+  PI of a period, CPC busy, LPAR capped %, R4HA % of DC, batch slack to 06:00), evaluated every sim-minute in
+  `game/alerts.ts`; a rule pages once after holding for N minutes and again only after clearing; optional
+  pause (worker stops the clock and toasts the page; VIEW now carries `speed` so the UI shows it). Night pages
+  (20:00–06:00) add 0.5 fatigue each: noisy rules cost. Monitor III tab panel with suggested rules, add/remove,
+  firing tags and a page log. 3 tests; Chromium: a CPC rule paged at 06:05 and paused the game
 - [ ] Automation rules (System Automation-like): `IF condition THEN command`, e.g. restart abended job once, activate policy override at 20:00; misfires possible and logged
 - [ ] Capacity Provisioning Manager: On/Off CoD rules (refused for hard-capped LPARs, per IBM guidance)
 - [ ] WLM policy overrides: named overrides (NIGHT, MONTHEND) with scheduled activation
@@ -395,6 +400,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 18, hourly task; session had restarted):** alert rules with pause-on-page and night
+  fatigue. 172 tests.
 - **2026-10-19 (loop 17, hourly task):** capacity planner (daily peak history, trend + 90% bands,
   Analytics panel), `DEV_FAST_DAYS` dev aid. 169 tests.
 - **2026-10-19 (loop 16, hourly task):** per-LCU DASD model, alias editor, LCU report, REORG_OVERRUN

@@ -1,5 +1,6 @@
 // Game-layer state (SPEC §2, §7–§12). Wraps the deterministic sim; plain data.
 
+import type { AlertsState } from './alerts';
 import type { EvidencePin, PinVerdict } from './evidence';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
@@ -176,6 +177,8 @@ export interface RunState {
   /** Daily capacity peaks so far (all days), and today's running peaks. */
   capacityDays: CapacityDay[];
   capacityToday: CapacityDay | null;
+  /** Alerting rules and their state (tool ALERTS). */
+  alerts: AlertsState;
   /** Evidence pinned from reports for RCAs (oldest drop off). */
   pins: EvidencePin[];
   /** Monitor III chart history for the played day (only while the charting tool is on). */

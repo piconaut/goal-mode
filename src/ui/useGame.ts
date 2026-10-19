@@ -15,6 +15,7 @@ export interface GameHandle {
   pending: PendingPolicyView | null;
   classified: { result: ClassificationResult; pending: boolean } | null;
   smf: SmfData | null;
+  speed: number;
   charts: { samples: Mon3Sample[]; markers: ChartMarker[] };
   rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] } | null;
   toast: { ok: boolean; message: string } | null;
@@ -33,6 +34,7 @@ export function useGame(): GameHandle {
   const [pending, setPending] = useState<PendingPolicyView | null>(null);
   const [classified, setClassified] = useState<GameHandle['classified']>(null);
   const [smf, setSmf] = useState<SmfData | null>(null);
+  const [speed, setSpeed] = useState(1);
   const [charts, setCharts] = useState<GameHandle['charts']>({ samples: [], markers: [] });
   const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
@@ -50,6 +52,7 @@ export function useGame(): GameHandle {
         if (m.history) setHistory(m.history);
         setSavedRunDay(m.savedRunDay);
         setPending(m.pending);
+        setSpeed(m.speed);
       } else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
       else if (m.type === 'SMF') setSmf(m.data);
       else if (m.type === 'MON3_CHARTS')
@@ -72,5 +75,5 @@ export function useGame(): GameHandle {
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
-  return { view, report, policy, history, savedRunDay, pending, classified, smf, charts, rules, toast, results, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, smf, speed, charts, rules, toast, results, send };
 }

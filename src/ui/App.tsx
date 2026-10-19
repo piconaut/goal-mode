@@ -48,11 +48,8 @@ export function App() {
 }
 
 function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
-  const [speed, setSpeed] = useState(1);
-  const set = (s: number) => {
-    setSpeed(s);
-    game.send({ type: 'SET_SPEED', speed: s });
-  };
+  const speed = game.speed;
+  const set = (s: number) => game.send({ type: 'SET_SPEED', speed: s });
   const progress = (100 * v.tickOfDay) / v.ticksPerDay;
   return (
     <div className="topbar">

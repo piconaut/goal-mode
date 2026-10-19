@@ -1,5 +1,6 @@
 // Messages between the UI thread and the game worker.
 
+import type { AlertRule } from '../game/alerts';
 import type { PinRequest } from '../game/evidence';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { BatchNight, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
@@ -50,6 +51,8 @@ export type ToWorker =
   | { type: 'CANCEL_CHANGE'; changeId: number }
   | { type: 'GET_SMF'; kind: SmfKind; hour: string }
   | { type: 'GET_MON3_CHARTS'; fromSample: number; fromMarker: number }
+  | { type: 'ALERT_ADD'; rule: Omit<AlertRule, 'id'> }
+  | { type: 'ALERT_REMOVE'; id: number }
   | { type: 'BUY_TOOL'; toolId: string }
   /** Dev builds only: grant Insight for UI testing. */
   | { type: 'DEV_INSIGHT'; amount: number }
@@ -57,7 +60,7 @@ export type ToWorker =
   | { type: 'SET_TOOL_ACTIVE'; toolId: string; active: boolean };
 
 export type FromWorker =
-  | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null }
+  | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null; speed: number }
   | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
   | { type: 'SMF'; data: SmfData }
   | { type: 'MON3_CHARTS'; fromSample: number; fromMarker: number; samples: Mon3Sample[]; markers: ChartMarker[] }
