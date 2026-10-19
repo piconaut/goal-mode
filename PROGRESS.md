@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7.3 remainder (RCA evidence pinning; per-structure CF and per-LCU DASD models), then M7.4.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (150 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (152 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -216,6 +216,14 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
 - [x] Tests (4): cadence + determinism, off without either tool, delay stack = DLY%, change markers + daily reset.
   Chromium: light + dark, zoom, tooltip; fixed a crash from a stale hover index after zooming
 - Planned changes applied at 06:00 are now logged ("Planned change applied: …") so they show as markers
+- [x] (user request) **Response time chart with a class picker** replaces the DDF-only RT chart: a dropdown of
+  every transactional service-class period and every report class seen today, up to 8 at once; each picked
+  class keeps its colour slot until unpicked. Samples now carry `rt` (period RT from the Mon III window)
+  and `rcRt` (report-class RT from per-workload completions accumulated every tick since the last sample)
+- [x] (user request) Colours follow the entity: series are ordered by first appearance in the day
+  (`firstSeen`), so a new class (e.g. `DDFMOB`, which sorts before `DDFPRD`) no longer repaints older lines
+- [x] Report classes are editable in the rules view (per-rule field + "report class" on Add rule);
+  `applyWlmEdit` validates the name and registers it in `reportClasses`. Report-class RMF/WLMGL rows remain M7.5
 
 **M7.3 Tier 2: deep data** — partly done (loop 12)
 - [ ] CF Activity per structure (lock / GBP / list) with sync/async counts; structure placement editor (replaces the fixed `requestShare`) — needs a per-structure CF model in `sim/cf`
@@ -355,6 +363,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (user request):** Monitor III charts: response-time chart with a service/report class
+  picker, first-seen colour order, report classes editable in the rules view. 152 tests.
 - **2026-10-19 (loop 13, hourly backstop after a session restart):** re-created the 15-min cron
   (8378d3ec). M7.2.1 Monitor III charting tool (user request). `allWorkloads` moved to
   `game/workloads.ts` to keep game modules free of import cycles. 150 tests.

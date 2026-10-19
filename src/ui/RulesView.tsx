@@ -118,7 +118,14 @@ function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; activ
                     </select>
                     {row.catches.length > 0 && row.effectiveClass !== row.serviceClass && <span className="muted"> → {row.effectiveClass}</span>}
                   </td>
-                  <td className="muted">{row.reportClass ?? '-'}</td>
+                  <td>
+                    <ReportClassInput
+                      key={`${row.path.join('.')}:${row.reportClass ?? ''}`}
+                      current={row.reportClass}
+                      label={`Report class for rule ${row.qualifier}=${row.pattern}`}
+                      onSet={(rc) => edit({ type: 'WLM_EDIT', edit: { op: 'SET_RULE_TARGET', subsystem: sub, path: row.path, serviceClass: row.serviceClass, reportClass: rc } })}
+                    />
+                  </td>
                   <td style={{ fontSize: 12, minWidth: 160 }}>{row.catches.length ? row.catches.join(', ') : <span className="muted">nothing today</span>}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <RowActions sub={sub} row={row} edit={edit} />
@@ -165,6 +172,28 @@ function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; activ
   );
 }
 
+/** Report class: type a name and press Enter (or leave the field); blank clears it. */
+function ReportClassInput({ current, label, onSet }: { current: string | null; label: string; onSet: (rc: string | null) => void }) {
+  const [val, setVal] = useState(current ?? '');
+  const commit = () => {
+    const rc = val.trim().toUpperCase() || null;
+    if (rc !== current) onSet(rc);
+  };
+  return (
+    <input
+      aria-label={label}
+      placeholder="none"
+      size={8}
+      value={val}
+      onChange={(e) => setVal(e.target.value.toUpperCase())}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') commit();
+      }}
+    />
+  );
+}
+
 function RowActions({ sub, row, edit }: { sub: SubsystemType; row: RuleRow; edit: (e: Parameters<GameHandle['send']>[0]) => void }) {
   const move = (delta: -1 | 1) => edit({ type: 'WLM_EDIT', edit: { op: 'MOVE_RULE', subsystem: sub, path: row.path, delta } });
   return (
@@ -188,12 +217,14 @@ function AddRule({ sub, count, classIds, edit }: { sub: SubsystemType; count: nu
   const [cls, setCls] = useState(classIds[3] ?? 'SYSSTC');
   const [pos, setPos] = useState('1');
   const [parent, setParent] = useState('');
+  const [rc, setRc] = useState('');
   const submit = () => {
     const at: RulePath = parent.trim()
       ? [...parent.split('.').map((x) => Number(x) - 1), Math.max(0, Number(pos) - 1)]
       : [Math.max(0, Math.min(count, Number(pos) - 1))];
-    edit({ type: 'WLM_EDIT', edit: { op: 'ADD_RULE', subsystem: sub, qualifier: q, pattern, serviceClass: cls, at } });
+    edit({ type: 'WLM_EDIT', edit: { op: 'ADD_RULE', subsystem: sub, qualifier: q, pattern, serviceClass: cls, reportClass: rc.trim() || null, at } });
     setPattern('');
+    setRc('');
   };
   return (
     <form
@@ -218,6 +249,8 @@ function AddRule({ sub, count, classIds, edit }: { sub: SubsystemType; count: nu
           <option key={c}>{c}</option>
         ))}
       </select>
+      report class
+      <input aria-label="Report class (optional)" placeholder="none" value={rc} onChange={(e) => setRc(e.target.value.toUpperCase())} size={8} />
       at position
       <input aria-label="Position" value={pos} onChange={(e) => setPos(e.target.value)} size={2} />
       under rule

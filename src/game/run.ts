@@ -7,7 +7,7 @@ import type { Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
 import { MON3_CHARTS } from '../content/tools';
-import { emptyCharts, recordMon3 } from './mon3Charts';
+import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import { step } from '../sim/core/step';
@@ -354,7 +354,10 @@ export function advance(run: RunState, scenario: Scenario, content: GameContent,
     const sim = step(r.sim, cmds, scenario);
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);
-    if ((tick + 1) % MON3_CHARTS.sampleTicks === 0 && chartsActive(r)) r = recordMon3(r, scenario);
+    if (chartsActive(r)) {
+      r = accumulateMon3(r);
+      if ((tick + 1) % MON3_CHARTS.sampleTicks === 0) r = recordMon3(r, scenario);
+    }
     if ((tick + 1) % TICKS_PER_HOUR === 0) r = closeHour(r, scenario);
     if ((tick + 1) % TICKS_PER_DAY === 0) r = endDay(r, scenario, content);
   }

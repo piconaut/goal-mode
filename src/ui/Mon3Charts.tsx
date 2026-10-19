@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
+import { firstSeen, type ChartMarker, type Mon3Sample } from '../game/mon3Charts';
 import type { ViewModel } from '../game/view';
 import { formatClock } from '../sim/core/clock';
 import { LineChart, type Series } from './LineChart';
 import type { GameHandle } from './useGame';
 
 const color = (i: number) => (i < 8 ? `var(--series-${i + 1})` : 'var(--muted)');
+const MAX_PICKED = 8;
+
+const RC = 'RC ';
 const DELAYS: { key: keyof Mon3Sample['delay'][string]; label: string }[] = [
   { key: 'cpu', label: 'CPU' },
   { key: 'ziip', label: 'zIIP' },
@@ -27,7 +30,8 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
 
   const [zoom, setZoom] = useState<[number, number] | null>(null);
   const [allPeriods, setAllPeriods] = useState(false);
-  const [allDdf, setAllDdf] = useState(false);
+  // Response-time picker: each picked class keeps its colour slot until it is unpicked.
+  const [picked, setPicked] = useState<Record<string, number> | null>(null);
   const [delayKey, setDelayKey] = useState('');
 
   const importance = useMemo(() => Object.fromEntries((v.mon3?.rows ?? []).filter((r) => r.system === '*PLEX').map((r) => [r.scKey, r.importance])), [v.mon3]);
@@ -53,10 +57,10 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
   const common = { xLabels, markers, onZoom, emptyText: 'Collecting samples (one per simulated minute)…' };
 
   // Fixed colour per entity (sorted), so filtering never repaints the survivors.
-  const piKeys = [...new Set(all.flatMap((s) => Object.keys(s.pi)))].sort();
+  const piKeys = firstSeen(all, (s) => s.pi);
   const shownPi = piKeys.filter((k) => allPeriods || (importance[k] ?? 9) <= 2);
   const piSeries: Series[] = shownPi.slice(0, 8).map((k) => ({ id: k, color: color(piKeys.indexOf(k)), values: samples.map((s) => s.pi[k] ?? null) }));
-  const systems = [...new Set(all.flatMap((s) => Object.keys(s.sys)))].sort();
+  const systems = firstSeen(all, (s) => s.sys);
   const busySeries: Series[] = [
     ...systems.map((id, i) => ({ id, color: color(i), values: samples.map((s) => s.sys[id]?.cpPct ?? null) })),
     { id: 'CPC', color: color(systems.length), values: samples.map((s) => s.cpcBusyPct) },
@@ -67,11 +71,28 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
   const prsmSeries: Series[] = systems.map((id, i) => ({ id, color: color(i), values: samples.map((s) => s.sys[id]?.prsmDelayPct ?? null) }));
   const anyCap = all.some((s) => Object.values(s.sys).some((x) => x.cappedPct > 0));
   const capSeries: Series[] = systems.map((id, i) => ({ id, color: color(i), values: samples.map((s) => s.sys[id]?.cappedPct ?? null) }));
-  const ddfKeys = [...new Set(all.flatMap((s) => Object.keys(s.ddf)))].sort();
-  // Later periods hold long-running queries (seconds to minutes) that would flatten period 1.
-  const ddfRt: Series[] = ddfKeys
-    .map((k, i) => ({ id: k, color: color(i), values: samples.map((s) => s.ddf[k]?.rtMs ?? null) }))
-    .filter((x) => allDdf || x.id.endsWith('#1'));
+  const ddfKeys = firstSeen(all, (s) => s.ddf);
+  const rtPeriods = firstSeen(all, (s) => s.rt);
+  const rtReports = firstSeen(all, (s) => s.rcRt).map((k) => RC + k);
+  // Default: the DDF first periods (later DDF periods hold long queries that would flatten them).
+  const slots: Record<string, number> = picked ?? Object.fromEntries(ddfKeys.filter((k) => k.endsWith('#1')).map((k, i) => [k, i]));
+  const pickedKeys = Object.keys(slots).sort((a, b) => slots[a]! - slots[b]!);
+  const toggle = (k: string) => {
+    const next = { ...slots };
+    if (k in next) delete next[k];
+    else {
+      const used = new Set(Object.values(next));
+      let slot = 0;
+      while (used.has(slot)) slot++;
+      next[k] = slot;
+    }
+    setPicked(next);
+  };
+  const rtSeries: Series[] = pickedKeys.map((k) => ({
+    id: k,
+    color: color(slots[k]!),
+    values: samples.map((s) => (k.startsWith(RC) ? (s.rcRt?.[k.slice(RC.length)] ?? null) : (s.rt?.[k] ?? null))),
+  }));
   const ddfEng: Series[] = [
     { id: 'zIIP', color: color(0), values: samples.map((s) => Object.values(s.ddf).reduce((a, d) => a + d.ziipEngines, 0)) },
     { id: 'IIPCP (zIIP work on CPs)', color: color(1), values: samples.map((s) => Object.values(s.ddf).reduce((a, d) => a + d.iipcpEngines, 0)) },
@@ -125,17 +146,37 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
           </div>
           {anyCap ? <LineChart title="% capped" unit="%" series={capSeries} {...common} /> : <div className="muted">No LPAR has been capped today.</div>}
         </div>
+        <div>
+          <div className="form">
+            <b style={{ fontSize: 13 }}>Response time</b>
+            <details className="picker">
+              <summary>
+                Classes ({pickedKeys.length}/{MAX_PICKED}) ▾
+              </summary>
+              <div className="picker-menu" role="group" aria-label="Classes to chart">
+                <div className="muted" style={{ fontSize: 11 }}>Service class periods</div>
+                {rtPeriods.map((k) => (
+                  <label key={k}>
+                    <input type="checkbox" checked={k in slots} disabled={!(k in slots) && pickedKeys.length >= MAX_PICKED} onChange={() => toggle(k)} /> {k}
+                  </label>
+                ))}
+                <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>Report classes</div>
+                {rtReports.length === 0 && (
+                  <div className="muted" style={{ fontSize: 11, maxWidth: 220 }}>None yet. Give a classification rule a report class (Change Desk › WLM › Classification rules).</div>
+                )}
+                {rtReports.map((k) => (
+                  <label key={k}>
+                    <input type="checkbox" checked={k in slots} disabled={!(k in slots) && pickedKeys.length >= MAX_PICKED} onChange={() => toggle(k)} /> {k.slice(RC.length)}{' '}
+                    <span className="muted">(report)</span>
+                  </label>
+                ))}
+              </div>
+            </details>
+          </div>
+          {rtSeries.length ? <LineChart title="Response time" unit="ms" series={rtSeries} {...common} /> : <div className="muted">Pick classes to chart.</div>}
+        </div>
         {ddfKeys.length > 0 && (
           <>
-            <div>
-              <div className="form">
-                <b style={{ fontSize: 13 }}>DDF response time</b>
-                <label className="muted" style={{ fontSize: 12 }}>
-                  <input type="checkbox" checked={allDdf} onChange={(e) => setAllDdf(e.target.checked)} /> later periods too
-                </label>
-              </div>
-              <LineChart title="DDF response time" unit="ms" series={ddfRt} {...common} />
-            </div>
             <div>
               <div className="form">
                 <b style={{ fontSize: 13 }}>DDF engines: zIIP vs on CPs</b>

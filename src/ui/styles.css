@@ -163,3 +163,9 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .gantt-run { position: absolute; top: 0; height: 8px; background: var(--accent); border-radius: 2px; }
 .gantt-run.crit { background: var(--warn); }
 .chart .tip .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
+
+/* Multi-select picker */
+.picker { position: relative; }
+.picker > summary { list-style: none; margin: 0; font-size: 13px; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; }
+.picker > summary::-webkit-details-marker { display: none; }
+.picker-menu { position: absolute; z-index: 5; top: 110%; left: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px; max-height: 280px; overflow-y: auto; min-width: 180px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25); }

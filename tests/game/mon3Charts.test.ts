@@ -2,6 +2,8 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { MON3_CHARTS } from '../../src/content/tools';
 import { buildMon3 } from '../../src/game/mon3';
+import { firstSeen } from '../../src/game/mon3Charts';
+import { applyWlmEdit } from '../../src/game/wlmEdit';
 import { advance, chooseDraft, newRun, requestChange, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
@@ -46,5 +48,37 @@ describe('Monitor III charting', () => {
     expect(r.mon3Charts!.samples.length).toBeLessThanOrEqual(TICKS_PER_DAY / MON3_CHARTS.sampleTicks);
     r = startDay(chooseDraft(r, content, null), content);
     expect(r.mon3Charts!.samples).toHaveLength(0);
+  });
+});
+
+describe('response time by class', () => {
+  it('records new service classes and report classes, keeping first-seen colour order', () => {
+    let r = advance(startDay(withCharts(), content), MIDWEST, content, 360);
+    let def = r.sim.wlm.definition;
+    const step1 = applyWlmEdit(def, { op: 'ADD_CLASS', classId: 'DDFMOB', description: 'mobile', goal: { kind: 'PCT', pct: 90, rtSec: 0.3 }, importance: 2, cpuCritical: false });
+    if (typeof step1 === 'string') throw new Error(step1);
+    const step2 = applyWlmEdit(step1, { op: 'ADD_RULE', subsystem: 'DDF', qualifier: 'UI', pattern: 'MOBAPI', serviceClass: 'DDFMOB', reportClass: 'RMOBILE', at: [0] });
+    if (typeof step2 === 'string') throw new Error(step2);
+    def = { ...step2, policyName: 'TEST2' };
+    const before = firstSeen(r.mon3Charts!.samples, (s) => s.rt);
+    r = advance({ ...r, pendingCommands: [{ kind: 'ACTIVATE_POLICY', definition: def }] }, MIDWEST, content, 60);
+    const last = r.mon3Charts!.samples.at(-1)!;
+    expect(last.rt['DDFMOB#1']).toBeGreaterThan(0);
+    expect(last.rcRt.RMOBILE).toBeGreaterThan(0);
+    const after = firstSeen(r.mon3Charts!.samples, (s) => s.rt);
+    // DDFMOB sorts before DDFPRD but arrives later: existing series keep their positions.
+    expect(after.slice(0, before.length)).toEqual(before);
+    expect(after.at(-1)).toBe('DDFMOB#1');
+  });
+});
+
+describe('report class edits', () => {
+  it('validates names and registers them in the definition', () => {
+    const def = newRun(MIDWEST, content, 7).sim.wlm.definition;
+    const ok = applyWlmEdit(def, { op: 'ADD_RULE', subsystem: 'CICS', qualifier: 'TN', pattern: 'RB*', serviceClass: 'ONLHI', reportClass: 'RRETAIL', at: [0] });
+    expect(typeof ok).not.toBe('string');
+    expect((ok as typeof def).reportClasses).toContain('RRETAIL');
+    expect(applyWlmEdit(def, { op: 'ADD_RULE', subsystem: 'CICS', qualifier: 'TN', pattern: 'RB*', serviceClass: 'ONLHI', reportClass: 'ONLHI' })).toMatch(/service class/);
+    expect(applyWlmEdit(def, { op: 'ADD_RULE', subsystem: 'CICS', qualifier: 'TN', pattern: 'RB*', serviceClass: 'ONLHI', reportClass: 'TOOLONGNAME' })).toMatch(/1–8/);
   });
 });

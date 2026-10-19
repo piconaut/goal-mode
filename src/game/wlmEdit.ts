@@ -26,6 +26,15 @@ export type WlmEdit =
   | { op: 'SET_RULE_TARGET'; subsystem: SubsystemType; path: RulePath; serviceClass: string | null; reportClass?: string | null }
   | { op: 'SET_DEFAULT'; subsystem: SubsystemType; serviceClass: string | null };
 
+/** Validate a report class name and register it in the definition (report classes are just names). */
+function useReportClass(d: ServiceDefinition, rc: string | null | undefined): string | null {
+  if (rc === undefined || rc === null) return null;
+  if (!/^[A-Z][A-Z0-9#@$]{0,7}$/.test(rc)) return 'Report class names are 1–8 characters, starting with a letter';
+  if (d.classes.some((c) => c.id === rc)) return `${rc} is a service class; report classes need their own names`;
+  if (!d.reportClasses.includes(rc)) d.reportClasses.push(rc);
+  return null;
+}
+
 export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | string {
   const d = structuredClone(def);
   switch (e.op) {
@@ -54,6 +63,8 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
     case 'ADD_RULE': {
       if (!knownClass(d, e.serviceClass)) return `No class ${e.serviceClass}`;
       if (!e.pattern.trim()) return 'A rule needs a pattern';
+      const rcErr = useReportClass(d, e.reportClass);
+      if (rcErr) return rcErr;
       let ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
       if (!ss) {
         ss = { subsystem: e.subsystem, defaultServiceClass: null, defaultReportClass: null, rules: [] };
@@ -91,6 +102,8 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
       const list = ss && listAt(ss, e.path.slice(0, -1));
       const r = list?.[e.path[e.path.length - 1] ?? -1];
       if (!r) return 'No such rule';
+      const rcErr = useReportClass(d, e.reportClass);
+      if (rcErr) return rcErr;
       r.serviceClass = e.serviceClass;
       if (e.reportClass !== undefined) r.reportClass = e.reportClass;
       return d;
