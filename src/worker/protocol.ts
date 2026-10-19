@@ -33,7 +33,8 @@ export type ToWorker =
   | { type: 'DISCARD_PENDING' }
   | { type: 'CLASSIFY'; work: WorkAttributes }
   | { type: 'CONTINUE_SAVED' }
-  | { type: 'GET_RULES' };
+  | { type: 'GET_RULES' }
+  | { type: 'CANCEL_CHANGE'; changeId: number };
 
 export type FromWorker =
   | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null }

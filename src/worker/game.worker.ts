@@ -2,7 +2,7 @@
 
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { MIDWEST } from '../content/scenarios';
-import { advance, chooseDraft, newRun, requestChange, startDay, submitRca } from '../game/run';
+import { advance, cancelChange, chooseDraft, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
@@ -137,6 +137,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         saved = null;
       }
       break;
+    case 'CANCEL_CHANGE': {
+      const out = cancelChange(run, m.changeId);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      break;
+    }
     case 'GET_RULES':
       postRules();
       break;

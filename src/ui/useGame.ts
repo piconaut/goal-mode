@@ -15,6 +15,8 @@ export interface GameHandle {
   classified: { result: ClassificationResult; pending: boolean } | null;
   rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] } | null;
   toast: { ok: boolean; message: string } | null;
+  /** Every change-board result this session, newest last (toasts vanish; this doesn't). */
+  results: { ok: boolean; message: string; clock: string }[];
   send: (m: ToWorker) => void;
 }
 
@@ -29,6 +31,8 @@ export function useGame(): GameHandle {
   const [classified, setClassified] = useState<GameHandle['classified']>(null);
   const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
+  const [results, setResults] = useState<GameHandle['results']>([]);
+  const clockRef = useRef('');
 
   useEffect(() => {
     const w = new Worker(new URL('../worker/game.worker.ts', import.meta.url), { type: 'module' });
@@ -37,6 +41,7 @@ export function useGame(): GameHandle {
       const m = e.data;
       if (m.type === 'VIEW') {
         setView(m.view);
+        clockRef.current = m.view.clock;
         if (m.history) setHistory(m.history);
         setSavedRunDay(m.savedRunDay);
         setPending(m.pending);
@@ -46,6 +51,7 @@ export function useGame(): GameHandle {
       else if (m.type === 'POLICY') setPolicy(m.json);
       else if (m.type === 'RESULT') {
         setToast({ ok: m.ok, message: m.message });
+        setResults((r) => [...r, { ok: m.ok, message: m.message, clock: clockRef.current }].slice(-50));
         window.setTimeout(() => setToast(null), 4000);
       }
     };
@@ -53,5 +59,5 @@ export function useGame(): GameHandle {
   }, []);
 
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
-  return { view, report, policy, history, savedRunDay, pending, classified, rules, toast, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, rules, toast, results, send };
 }

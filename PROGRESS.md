@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M6.1 Change Desk quality-of-life pass, then M7.1 (Insight economy & tool tree) and M7.2 (Monitor III live views).
+- **Next up:** M7.1 (Insight economy & tool tree) and M7.2 (Monitor III live views).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (120 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (128 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -135,7 +135,14 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   - Tests: `applyWlmEdit` for the new ops; a pure `explainClassification(def, scenario)` helper
     that returns rule → matched work, unit-tested against BASEPOL (e.g. `DB*` catches
     DB1AMSTR/DBM1/DIST but not DB1AIRLM, which `*IRLM` takes first)
-- [ ] **Change Desk quality-of-life pass** (requested 2026-10-19). Make every control show what it
+- [x] **Change Desk quality-of-life pass** (requested 2026-10-19). Done: `src/ui/Actions.tsx` rewritten
+  on a `ConfigView` (live config in the view model), shared `previewChange` (catalog.ts; also used by
+  `requestChange`), pure helpers in `src/game/changeDesk.ts` (validation, "now → new" descriptions,
+  basket merge, AOR naming), `cancelChange` + `CANCEL_CHANGE`, persistent results log. Enter stages
+  into the basket (applying costs hours, so it takes an explicit click); one-click choices apply on
+  click, shift-click stages. 8 tests; Chromium: stage → submit → cancel (refund) and
+  stage → submit → start day → APPLIED, no phone-width overflow. Not done: Codex links (wait for
+  M7.5); fixes are labelled "no open incident" rather than hidden. Original brief: Make every control show what it
   will change, what it costs, and what happened:
   - **Current values everywhere:** inputs prefill from the live config and show "now: X" beside
     the field (DEVT defined capacity, zIIP logicals, Db2 BP size and MAXDBAT, CICS MXT, job-class
@@ -318,6 +325,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 9, hourly backstop):** M6.1 Change Desk QoL: live values, cost/risk on every
+  button with disabled reasons, inline validation, change basket with diff summary, change board
+  grouped by day with cancel/refund, on-order and CoD expiry, results log, data-driven Db2/CICS/
+  CF/IEAOPT/routing/job-class editors, collapsible sections, pinned pending-policy banner. 128 tests.
 
 - **2026-10-19:** Wrote the design. Researched IBM docs (WLM Redbook SG24-7621, Db2 WLM
   guidance, zIIP config, group capacity, IEAOPT, CF sync/async, LSPR/RNI, Capacity Provisioning)

@@ -11,7 +11,7 @@ import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import type { WorkloadDef } from '../sim/workload/types';
-import { FIXES, hardwareItem, hoursFor } from './catalog';
+import { failRiskFor, FIXES, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
 import { hourAttainment, mechanismOf, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
@@ -35,9 +35,7 @@ export interface GameContent {
 
 const TICKS_PER_HOUR = 3600 / TICK_SEC;
 const BASE_HOURS = 8;
-const MAX_OVERTIME = 4;
 const FATIGUE_PER_OVERTIME_HOUR = 6;
-const CHANGE_FAIL_BASE = 0.03;
 const FACET_WEIGHT: Record<Facet, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
 
 const facetOf = (w: WorkloadDef): Facet | null => (w.stakeholder === 'Internal' ? null : w.stakeholder);
@@ -174,25 +172,31 @@ export interface ChangeOutcome {
 }
 
 function failRisk(run: RunState): number {
-  return CHANGE_FAIL_BASE * (1 + run.fatigue / 50) * (run.perks.includes('BELT_AND_BRACES') ? 0.5 : 1);
+  return failRiskFor(run.fatigue, run.perks);
+}
+
+/** Context for previewChange from the current run. */
+export function previewContext(run: RunState) {
+  return {
+    phase: run.phase,
+    perks: run.perks,
+    fatigue: run.fatigue,
+    hoursLeft: run.hoursLeft,
+    capexRemaining: run.capexRemaining,
+    incidentOpen: run.incidents.some((i) => i.endTick === null),
+    constraints: run.constraints,
+  };
 }
 
 /** Plan (BRIEFING) or make an emergency change (LIVE). */
 export function requestChange(run: RunState, content: GameContent, req: ChangeRequest): ChangeOutcome {
-  if (run.phase !== 'BRIEFING' && run.phase !== 'LIVE') return { run, ok: false, message: 'No changes outside briefing or the live day' };
   const live = run.phase === 'LIVE';
-  if (!live && run.constraints.includes('FREEZE') && !req.fixId) return { run, ok: false, message: 'Change freeze: only emergency changes during the live day' };
-
+  const preview = previewChange(previewContext(run), req);
+  if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
-  if (req.hardwareId && !hw) return { run, ok: false, message: `Unknown hardware item ${req.hardwareId}` };
-  if (req.fixId && !fix) return { run, ok: false, message: `Unknown fix ${req.fixId}` };
-
   const commands = hw ? hw.commands(run.sim) : (req.commands ?? []);
-  const hours = fix ? fix.hours : hw ? 2 : hoursFor(commands, run.perks);
-  if (hours > run.hoursLeft + MAX_OVERTIME) return { run, ok: false, message: `Needs ${hours}h; only ${run.hoursLeft.toFixed(1)}h left (+${MAX_OVERTIME}h overtime)` };
-  const capex = hw?.capex ?? 0;
-  if (capex > run.capexRemaining) return { run, ok: false, message: `Capex $${capex.toLocaleString()} exceeds remaining $${run.capexRemaining.toLocaleString()}` };
+  const { hours, capex } = preview;
 
   let r = spendHours(run, hours);
   r = { ...r, capexRemaining: r.capexRemaining - capex };
@@ -204,6 +208,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     capex,
     opexPerDay: hw?.opexPerDay ?? 0,
     activateDay: run.day + (hw?.leadDays ?? 0),
+    plannedDay: run.day,
     emergency: live,
     status: 'PLANNED',
     revertDay: hw?.durationDays ? run.day + (hw.leadDays ?? 0) + hw.durationDays : null,
@@ -214,8 +219,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
 
   if (live) {
     // Emergency change board: costs trust, more when no incident justifies it.
-    const incidentOpen = r.incidents.some((i) => i.endTick === null);
-    const trustCost = (incidentOpen ? 0.5 : 1.5) * (r.perks.includes('NIGHT_OWL') ? 0.5 : 1);
+    const trustCost = preview.trustCostEach;
     r = { ...r, trust: Object.fromEntries(FACETS.map((f) => [f, clampTrust(r.trust[f] - trustCost)])) as Record<Facet, number> };
     if (fix?.trustCost) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet] - fix.trustCost.amount) } };
     const [failed, r2] = withRng(r, (rng) => rng.chance(failRisk(r)));
@@ -234,6 +238,23 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
 }
 
 /** End every active event whose card names this fix. */
+/** Cancel a change that has not taken effect yet. Capex is refunded; hours only on the day they were spent. */
+export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
+  const c = run.changes.find((x) => x.id === changeId);
+  if (!c) return { run, ok: false, message: 'No such change' };
+  if (c.status !== 'PLANNED') return { run, ok: false, message: `Already ${c.status.toLowerCase()}` };
+  if (c.activateDay === run.day && run.phase !== 'BRIEFING') return { run, ok: false, message: 'It activates today and the day has started' };
+  const refundHours = c.plannedDay === run.day ? c.hours : 0;
+  return {
+    run: logLine(
+      { ...run, changes: run.changes.filter((x) => x.id !== changeId), capexRemaining: run.capexRemaining + c.capex, hoursLeft: run.hoursLeft + refundHours },
+      `Change cancelled: ${c.label}`,
+    ),
+    ok: true,
+    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}`,
+  };
+}
+
 function endEventByFix(run: RunState, content: GameContent, fixId: string): RunState {
   const tick = run.sim.tick;
   let r = run;

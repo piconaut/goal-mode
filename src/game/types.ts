@@ -40,6 +40,8 @@ export interface PlannedChange {
   opexPerDay: number;
   /** Played day on whose start the change takes effect. */
   activateDay: number;
+  /** Played day the change was requested (hours can be refunded only on that day). */
+  plannedDay: number;
   emergency: boolean;
   status: 'PLANNED' | 'APPLIED' | 'FAILED';
   /** Temporary changes (On/Off CoD) revert at the start of this day. */

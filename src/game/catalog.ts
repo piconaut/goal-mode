@@ -51,3 +51,62 @@ export const FIXES: FixDef[] = [
 ];
 
 export const hardwareItem = (id: string): HardwareItem | undefined => HARDWARE.find((h) => h.id === id);
+
+export const MAX_OVERTIME = 4;
+export const CHANGE_FAIL_BASE = 0.03;
+
+export interface PreviewContext {
+  phase: string;
+  perks: readonly string[];
+  fatigue: number;
+  hoursLeft: number;
+  capexRemaining: number;
+  incidentOpen: boolean;
+  constraints: readonly string[];
+}
+
+export interface ChangePreview {
+  hours: number;
+  capex: number;
+  opexPerDay: number;
+  leadDays: number;
+  emergency: boolean;
+  /** Trust lost by every stakeholder if this is an emergency change. */
+  trustCostEach: number;
+  failRisk: number;
+  ok: boolean;
+  reason: string | null;
+}
+
+export function failRiskFor(fatigue: number, perks: readonly string[]): number {
+  return CHANGE_FAIL_BASE * (1 + fatigue / 50) * (perks.includes('BELT_AND_BRACES') ? 0.5 : 1);
+}
+
+/** What a change would cost and whether it is allowed, without making it (UI and requestChange share this). */
+export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; hardwareId?: string; fixId?: string }): ChangePreview {
+  const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
+  const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
+  const live = ctx.phase === 'LIVE';
+  const hours = fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks);
+  const capex = hw?.capex ?? 0;
+  const base: ChangePreview = {
+    hours,
+    capex,
+    opexPerDay: hw?.opexPerDay ?? 0,
+    leadDays: hw?.leadDays ?? 0,
+    emergency: live,
+    trustCostEach: live ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
+    failRisk: fix ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
+    ok: true,
+    reason: null,
+  };
+  const no = (reason: string): ChangePreview => ({ ...base, ok: false, reason });
+  if (ctx.phase !== 'BRIEFING' && ctx.phase !== 'LIVE') return no('Changes are made during the briefing or the live day');
+  if (!live && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
+  if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
+  if (req.fixId && !fix) return no(`Unknown fix ${req.fixId}`);
+  if (!hw && !fix && (req.commands ?? []).length === 0) return no('Nothing to change');
+  if (hours > ctx.hoursLeft + MAX_OVERTIME) return no(`Needs ${hours}h; only ${ctx.hoursLeft.toFixed(1)}h left (+${MAX_OVERTIME}h overtime)`);
+  if (capex > ctx.capexRemaining) return no(`Capex $${capex.toLocaleString()} exceeds the $${ctx.capexRemaining.toLocaleString()} left`);
+  return base;
+}

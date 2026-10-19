@@ -8,7 +8,10 @@ import { TICKS_PER_DAY } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import { accPi, goalInfo, sumAcc } from '../sim/wlm/runtime';
 import { goalText } from '../sim/wlm/goals';
-import { allWorkloads, overallTrust } from './run';
+import type { PreviewContext } from './catalog';
+import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
+import type { CfConfig } from '../sim/cf/cf';
+import { allWorkloads, overallTrust, previewContext } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
 
@@ -51,7 +54,7 @@ export interface BatchView {
   queued: number;
   held: number;
   done: number;
-  abended: { name: string; day: number }[];
+  abended: { name: string; day: number; stream: string; critical: boolean }[];
   total: number;
   projectedCriticalEnd: string | null;
   deadline: string;
@@ -62,6 +65,31 @@ export interface ReportRef {
   index: number;
   label: string;
   endTick: number;
+}
+
+/** Current configuration the Change Desk forms start from. */
+export interface ConfigView {
+  lpars: {
+    id: string;
+    kind: 'ZOS' | 'CF';
+    cpLogical: number;
+    cpReserved: number;
+    ziipLogical: number;
+    ziipReserved: number;
+    weight: number;
+    memoryGb: number;
+    definedCapacity: number | null;
+  }[];
+  cpcMemoryGb: number;
+  unassignedMemoryGb: number;
+  db2: Db2MemberConfig[];
+  cics: CicsRegionConfig[];
+  jobClasses: JobClassConfig[];
+  cfs: CfConfig[];
+  systems: ZosSystemConfig[];
+  routing: { workloadId: string; name: string; shares: Record<string, number> }[];
+  rmfIntervalMin: number;
+  dasdAliases: number;
 }
 
 export interface ViewModel {
@@ -100,6 +128,8 @@ export interface ViewModel {
   draft: DraftOption[] | null;
   endReason: string | null;
   policyName: string;
+  previewCtx: PreviewContext;
+  config: ConfigView;
   serviceClasses: { id: string; periods: string[] }[];
 }
 
@@ -167,7 +197,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     queued: jobs.filter((j) => j.status === 'QUEUED').length,
     held: jobs.filter((j) => j.status === 'HELD').length,
     done: jobs.filter((j) => j.status === 'DONE').length,
-    abended: jobs.filter((j) => j.status === 'ABENDED').map((j) => ({ name: j.def.name, day: j.day })),
+    abended: jobs.filter((j) => j.status === 'ABENDED').map((j) => ({ name: j.def.name, day: j.day, stream: j.def.stream, critical: j.def.critical })),
     total: jobs.length,
     projectedCriticalEnd: proj !== null ? instanceClock(proj) : null,
     deadline: instanceClock(run.batchDeadlineSec),
@@ -215,8 +245,43 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     draft: run.draft,
     endReason: run.endReason,
     policyName: def.policyName,
+    previewCtx: previewContext(run),
+    config: configView(run, scenario),
     serviceClasses: def.classes.map((x) => ({ id: x.id, periods: x.periods.map((p) => goalText(p)) })),
   };
 }
 
 export { FACETS };
+
+function configView(run: RunState, scenario: Scenario): ConfigView {
+  const c = run.sim.config;
+  const cpc = c.cpcs[0]!;
+  const assigned = c.lpars.filter((l) => l.cpcId === cpc.id).reduce((a, l) => a + l.memoryGb, 0);
+  return {
+    lpars: c.lpars.map((l) => {
+      const cp = l.pools.find((p) => p.pool === (l.kind === 'CF' ? 'ICF' : 'CP'));
+      const zi = l.pools.find((p) => p.pool === 'ZIIP');
+      return {
+        id: l.id,
+        kind: l.kind,
+        cpLogical: cp?.logical ?? 0,
+        cpReserved: cp?.reserved ?? 0,
+        ziipLogical: zi?.logical ?? 0,
+        ziipReserved: zi?.reserved ?? 0,
+        weight: cp?.weight ?? 0,
+        memoryGb: l.memoryGb,
+        definedCapacity: l.definedCapacityMsu,
+      };
+    }),
+    cpcMemoryGb: cpc.memoryGb,
+    unassignedMemoryGb: cpc.memoryGb - assigned,
+    db2: c.db2,
+    cics: c.cics,
+    jobClasses: c.jobClasses,
+    cfs: c.cfs,
+    systems: c.systems,
+    routing: allWorkloads(scenario, run).map((w) => ({ workloadId: w.id, name: w.name, shares: run.sim.routing[w.id] ?? w.routing })),
+    rmfIntervalMin: c.rmfIntervalMin,
+    dasdAliases: c.dasd.aliasPool,
+  };
+}

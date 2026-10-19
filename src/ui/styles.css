@@ -112,3 +112,18 @@ th { color: var(--muted); font-weight: 500; }
 .legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
 .legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
 details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 6px; }
+
+/* Change Desk */
+.banner { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: var(--panel); border: 1px solid var(--warn); border-radius: 10px; padding: 8px 12px; margin-bottom: 12px; }
+details.section > summary { list-style: none; margin: 0; }
+details.section > summary::-webkit-details-marker { display: none; }
+details.section > summary h3 { display: inline; }
+details.section > summary h3::before { content: '▾ '; }
+details.section:not([open]) > summary h3::before { content: '▸ '; }
+.now { font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.err { font-size: 12px; color: var(--crit); }
+.help { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
+.diff { margin: 0; padding-left: 18px; font-family: var(--mono); font-size: 12px; }
+.diff li { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 2px 0; }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .form label { flex-wrap: wrap; } }
