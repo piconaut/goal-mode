@@ -64,9 +64,20 @@ export const MIDWEST_WORLD: WorldConfig = {
     backendDegrade: 1,
   },
   cfs: [
-    { lparId: 'CF01', requestShare: 0.7, thinInterrupts: true },
+    { lparId: 'CF01', thinInterrupts: true },
     // F8: no thin interrupts on the shared CF.
-    { lparId: 'CF02', requestShare: 0.3, thinInterrupts: false },
+    { lparId: 'CF02', thinInterrupts: false },
+  ],
+  // FICTIONAL request mix. Placement reproduces the original 70/30 CF01/CF02 split; GBP0 and the
+  // list structures on the weak shared CF02 are the F8 flaw. Lock requests are never converted to
+  // async, so moving DB1G_LOCK1 to CF02 would hurt every Db2 transaction (a trap with a clue).
+  cfStructures: [
+    { name: 'DB1G_LOCK1', type: 'LOCK', requestShare: 0.4, cfLparId: 'CF01', costMult: 1 },
+    { name: 'DB1G_GBP1', type: 'CACHE', requestShare: 0.3, cfLparId: 'CF01', costMult: 1 },
+    { name: 'DB1G_GBP0', type: 'CACHE', requestShare: 0.18, cfLparId: 'CF02', costMult: 1 },
+    { name: 'IXC_DEFAULT_1', type: 'LIST', requestShare: 0.06, cfLparId: 'CF02', costMult: 1 },
+    { name: 'CSQ_ADMIN', type: 'LIST', requestShare: 0.04, cfLparId: 'CF02', costMult: 1 },
+    { name: 'DB1G_SCA', type: 'LIST', requestShare: 0.02, cfLparId: 'CF02', costMult: 1 },
   ],
   db2: [
     { ssid: 'DB1A', lparId: 'PROD1', bufferPoolGb: 40, maxDbat: 400 },

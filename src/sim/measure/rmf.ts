@@ -47,6 +47,8 @@ export interface RmfAcc {
   lpars: Record<string, LparIntervalAcc>;
   dasd: { ticks: number; iops: number; rtRandom: number; iosq: number; pend: number; disc: number; conn: number; rtSeq: number };
   cf: Record<string, { busy: number; rate: number; sync: number; async: number; service: number; ticks: number }>;
+  /** Per structure: request-weighted sums (rate × value) so interval averages weight busy ticks. */
+  cfStructures: Record<string, { type: string; cfLparId: string; rate: number; syncReq: number; syncSecW: number; serviceSecW: number; ticks: number }>;
 }
 
 export interface WlmRecord {
@@ -110,6 +112,7 @@ export interface RmfInterval {
   wlm: WlmRecord[];
   dasd: { iops: number; rtRandomMs: number; rtSeqMs: number; iosqMs: number; pendMs: number; discMs: number; connMs: number };
   cf: { lparId: string; busyPct: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
+  cfStructures: { name: string; type: string; cfLparId: string; reqPerSec: number; syncPct: number; syncUs: number; serviceUs: number }[];
   jobs: JobEndRecord[];
 }
 
@@ -120,6 +123,7 @@ export const newRmfAcc = (startTick: number): RmfAcc => ({
   lpars: {},
   dasd: { ticks: 0, iops: 0, rtRandom: 0, iosq: 0, pend: 0, disc: 0, conn: 0, rtSeq: 0 },
   cf: {},
+  cfStructures: {},
 });
 
 export function accumulateTick(
@@ -178,7 +182,23 @@ export function accumulateTick(
       ticks: a.ticks + 1,
     };
   }
-  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, cf: c };
+  const cs = { ...(acc.cfStructures ?? {}) };
+  for (const r of cf) {
+    for (const st of r.structures ?? []) {
+      const a = cs[st.name] ?? { type: st.type, cfLparId: st.cfLparId, rate: 0, syncReq: 0, syncSecW: 0, serviceSecW: 0, ticks: 0 };
+      const syncRate = st.requestRate * (1 - st.asyncFrac);
+      cs[st.name] = {
+        type: st.type,
+        cfLparId: st.cfLparId,
+        rate: a.rate + st.requestRate,
+        syncReq: a.syncReq + syncRate,
+        syncSecW: a.syncSecW + syncRate * st.syncSec,
+        serviceSecW: a.serviceSecW + st.requestRate * st.serviceSec,
+        ticks: a.ticks + 1,
+      };
+    }
+  }
+  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, cf: c, cfStructures: cs };
 }
 
 function addScp(scps: Record<string, ScpIntervalAcc>, lparId: string, t: ScpTick) {
@@ -344,6 +364,17 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
       asyncPct: (100 * a.async) / a.ticks,
       serviceUs: (1e6 * a.service) / a.ticks,
     })),
+    cfStructures: Object.entries(acc.cfStructures ?? {})
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([name, a]) => ({
+        name,
+        type: a.type,
+        cfLparId: a.cfLparId,
+        reqPerSec: a.rate / Math.max(1, a.ticks),
+        syncPct: a.rate > 0 ? (100 * a.syncReq) / a.rate : 0,
+        syncUs: a.syncReq > 0 ? (1e6 * a.syncSecW) / a.syncReq : 0,
+        serviceUs: a.rate > 0 ? (1e6 * a.serviceSecW) / a.rate : 0,
+      })),
     jobs: ctx.jobs,
   };
 }

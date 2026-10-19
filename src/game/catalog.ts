@@ -19,6 +19,7 @@ const HOURS: Partial<Record<Command['kind'], number>> = {
   ADD_AOR: 3,
   SET_JOB_CLASS: 1,
   SET_CF: 1,
+  MOVE_STRUCTURE: 1,
   SET_ROUTING: 0.5,
   RESTART_JOB: 0.5,
 };

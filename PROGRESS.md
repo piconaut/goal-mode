@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.3 remainder (per-structure CF and per-LCU DASD models), then M7.4.
+- **Next up:** M7.3 remainder (per-LCU DASD model and HyperPAV alias editor), then M7.4.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (157 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (160 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -226,7 +226,13 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   `applyWlmEdit` validates the name and registers it in `reportClasses`. Report-class RMF/WLMGL rows remain M7.5
 
 **M7.3 Tier 2: deep data** — partly done (loop 12)
-- [ ] CF Activity per structure (lock / GBP / list) with sync/async counts; structure placement editor (replaces the fixed `requestShare`) — needs a per-structure CF model in `sim/cf`
+- [x] CF per structure (loop 15): `config.cfStructures` (name, LOCK/CACHE/LIST, share of requests, CF,
+  cost) replaces the per-CF `requestShare`; a CF's load is the sum of its structures. Lock requests are never
+  converted to async (APPROX), so a lock structure on a slow/shared CF spins every Db2 transaction on the z/OS
+  CP. New `MOVE_STRUCTURE` command (SETXCF REBUILD, 1 h); CF Activity report gets a STRUCTURE SUMMARY
+  (req/s, sync %, sync and average service); Change Desk structure placement table. Initial placement keeps the
+  70/30 split (GBP0 + list structures on the weak CF02 = F8). Realism test: LOCK1 → CF02 more than doubles
+  RBANK's CF time and raises PROD1 CPU; GBP0 → CF01 lowers it. Bots unchanged (do-nothing day 15, textbook day 29)
 - [ ] DASD/cache: per LCU hot volumes, alias usage, IOSQ; HyperPAV alias editor — needs per-LCU state in `sim/io`
 - [x] SMF 113 counters (`game/smf.ts` `smf113`): L1MP/RNI/CPI per image from the share of work off VH engines and CPC busy (FICTIONAL coefficients in `content/smf.ts`); LSPR category from IBM's L1MP/RNI table (`lsprCategory`)
 - [x] Db2 accounting (SMF 101): per package (`DB2_PACKAGES`), class 1 elapsed, CPU/txn vs the workload's healthy baseline, class 3 lock / sync I/O / CF, not-accounted, DBAT queue; per closed hour (`RunState.smfHours`, 48 h) or the current hour. A ×3 REGRESSION shows as RB01 ×3 vs base; lock escalation as lock ms
@@ -334,6 +340,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 | 2026-10-19 | Months are 30 played-calendar days; MLC samples hourly at tick boundaries | Simple, deterministic; ~1.3 bills per standard run |
 | 2026-10-19 | Short-engine PR/SM delay coefficient lowered 0.35 → 0.15 | 10–25% PR/SM delay in the Partition Data report was implausibly high |
 | 2026-10-19 | Classification rules live inside the Change Desk WLM section, expandable, not a separate tab | User feedback: rules are part of the policy you're editing; keeps the change board and pending banner in view |
+| 2026-10-19 | CF load comes from named structures placed on CFs; lock requests never convert to async | Gives CF placement a real diagnosis path (lock vs GBP) and a trap; per-CF request shares were opaque |
 
 ## Open questions
 
@@ -373,6 +380,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 15, hourly task):** per-structure CF model and placement editor; CF Activity
+  structure summary; realism test; bots re-run (unchanged). 160 tests.
 - **2026-10-19 (loop 14, hourly task):** RCA evidence pinning end to end (pins, board, judging, review
   verdicts), verified in Chromium by playing day 1. Fixed: average-RT SLA attainment could show > 100%
   when an hour failed only on errors (display/log only; scoring uses breach hours). 157 tests.

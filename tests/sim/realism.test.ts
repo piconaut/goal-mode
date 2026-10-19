@@ -100,3 +100,34 @@ describe('determinism', () => {
     expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });
+
+describe('CF structure placement', () => {
+  // Midday state once, then three placements for 30 minutes each.
+  let base = initState(42, MIDWEST);
+  beforeAll(() => {
+    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+  });
+  const run = (cmds: Parameters<typeof step>[1]) => {
+    let s = step(base, cmds, MIDWEST);
+    let cfPart = 0;
+    let n = 0;
+    for (let i = 0; i < 180; i++) {
+      s = step(s, [], MIDWEST);
+      const w = s.last.workloads.find((x) => x.id === 'RBANK')!;
+      if (w.completions > 0) {
+        cfPart += (w.parts.cf ?? 0) / w.completions;
+        n++;
+      }
+    }
+    return { cfMsPerTxn: (1000 * cfPart) / Math.max(1, n), lpar: s.lpars.find((l) => l.id === 'PROD1')!.pools.find((p) => p.pool === 'CP')!.deliveredEngines };
+  };
+  it('a lock structure on the weak shared CF hurts every Db2 transaction; moving GBP0 off it helps', () => {
+    const asIs = run([]);
+    const lockOnCf02 = run([{ kind: 'MOVE_STRUCTURE', name: 'DB1G_LOCK1', cfLparId: 'CF02' }]);
+    const gbp0OnCf01 = run([{ kind: 'MOVE_STRUCTURE', name: 'DB1G_GBP0', cfLparId: 'CF01' }]);
+    expect(lockOnCf02.cfMsPerTxn).toBeGreaterThan(2 * asIs.cfMsPerTxn);
+    // Synchronous lock requests spin the z/OS CP for the whole (slow) service time.
+    expect(lockOnCf02.lpar).toBeGreaterThan(asIs.lpar);
+    expect(gbp0OnCf01.cfMsPerTxn).toBeLessThan(asIs.cfMsPerTxn);
+  }, 60_000);
+});

@@ -15,7 +15,7 @@ import { accPi, goalInfo, sumAcc } from '../sim/wlm/runtime';
 import { goalText } from '../sim/wlm/goals';
 import type { PreviewContext } from './catalog';
 import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
-import type { CfConfig } from '../sim/cf/cf';
+import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import { allWorkloads, overallTrust, previewContext } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
@@ -91,6 +91,7 @@ export interface ConfigView {
   cics: CicsRegionConfig[];
   jobClasses: JobClassConfig[];
   cfs: CfConfig[];
+  cfStructures: CfStructureConfig[];
   systems: ZosSystemConfig[];
   routing: { workloadId: string; name: string; shares: Record<string, number> }[];
   rmfIntervalMin: number;
@@ -306,6 +307,7 @@ function configView(run: RunState, scenario: Scenario): ConfigView {
     cics: c.cics,
     jobClasses: c.jobClasses,
     cfs: c.cfs,
+    cfStructures: c.cfStructures ?? [],
     systems: c.systems,
     routing: allWorkloads(scenario, run).map((w) => ({ workloadId: w.id, name: w.name, shares: run.sim.routing[w.id] ?? w.routing })),
     rmfIntervalMin: c.rmfIntervalMin,

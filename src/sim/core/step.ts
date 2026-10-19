@@ -130,9 +130,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   let cfServiceSec = 0;
   let cfZosCpuSec = 0;
   for (const r of env.cf) {
-    const share = config.cfs.find((c) => c.lparId === r.lparId)?.requestShare ?? 0;
-    cfServiceSec += share * r.serviceSec;
-    cfZosCpuSec += share * r.zosCpuSec;
+    for (const st of r.structures ?? []) {
+      const share = config.cfStructures.find((x) => x.name === st.name)?.requestShare ?? 0;
+      cfServiceSec += share * st.serviceSec;
+      cfZosCpuSec += share * st.zosCpuSec;
+    }
   }
 
   // 3–4. Slices and demand per z/OS image.
@@ -501,7 +503,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     if (!l || !icf || !rt) return [];
     return [{ cfg, availableEngines: rt.availableEngines, entitlementEngines: rt.entitlementEngines, dedicated: icf.dedicated }];
   });
-  const cf = evaluateCf(cfImages, cfRequests, scenario.cfTunables);
+  const cf = evaluateCf(cfImages, config.cfStructures, cfRequests, scenario.cfTunables);
   const lockIndex = batch.jobs.reduce((a, j) => (j.status === 'RUNNING' ? a + j.def.lockIntensity : a), 0) + prev.mods.lockBoost;
 
   // Batch critical-path projection and end-of-night summary.

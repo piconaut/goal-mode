@@ -108,7 +108,7 @@ function autosave() {
 }
 
 void loadRun().then((r) => {
-  saved = r ? normalizeRun(r) : null;
+  saved = r ? normalizeRun(r, scenario) : null;
   sendView();
 });
 

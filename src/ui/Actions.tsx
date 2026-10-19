@@ -666,9 +666,10 @@ function Systems({ desk }: { desk: Desk }) {
       </div>
       <div className="help">BLWLINTHD: seconds a starved unit of work waits before blocked-workload promotion. IIPHONORPRIORITY=YES lets zIIP work overflow to CPs.</div>
       {cfg.cfs.map((c) => (
-        <CfRow key={`${c.lparId}:${c.requestShare}:${c.thinInterrupts}`} desk={desk} lparId={c.lparId} />
+        <CfRow key={`${c.lparId}:${c.thinInterrupts}`} desk={desk} lparId={c.lparId} />
       ))}
       <div className="help">Thin interrupts let a CF on shared engines wake on demand instead of waiting for a dispatch interval.</div>
+      <Structures desk={desk} />
     </>
   );
 }
@@ -687,21 +688,51 @@ function ChangeButtonsInline({ desk, commands, disabled, text }: { desk: Desk; c
 
 function CfRow({ desk, lparId }: { desk: Desk; lparId: string }) {
   const c = desk.cfg.cfs.find((x) => x.lparId === lparId)!;
-  const [share, setShare] = useState(String(Math.round(c.requestShare * 100)));
-  const s = num(share);
-  const err = !(s >= 0 && s <= 100) ? 'Share is 0–100%' : null;
+  const share = desk.cfg.cfStructures.filter((x) => x.cfLparId === lparId).reduce((a, x) => a + x.requestShare, 0);
+  return (
+    <div className="form">
+      <b>{lparId}</b> thin interrupts {c.thinInterrupts ? 'on' : 'off'}
+      <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_CF', lparId, thinInterrupts: !c.thinInterrupts }]} disabled={false} text={c.thinInterrupts ? 'turn off' : 'turn on'} />
+      <Now>{Math.round(share * 100)}% of CF requests</Now>
+    </div>
+  );
+}
+
+/** Structure placement (SETXCF START,REBUILD): which CF each structure lives in. */
+function Structures({ desk }: { desk: Desk }) {
+  const cfs = desk.cfg.cfs.map((c) => c.lparId);
   return (
     <>
-      <div className="form">
-        <b>{lparId}</b> thin interrupts {c.thinInterrupts ? 'on' : 'off'}
-        <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_CF', lparId, thinInterrupts: !c.thinInterrupts }]} disabled={false} text={c.thinInterrupts ? 'turn off' : 'turn on'} />
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Structure</th>
+              <th>Type</th>
+              <th className="num">share of requests</th>
+              <th>CF</th>
+            </tr>
+          </thead>
+          <tbody>
+            {desk.cfg.cfStructures.map((st) => (
+              <tr key={st.name}>
+                <td>{st.name}</td>
+                <td>{st.type}</td>
+                <td className="num">{Math.round(st.requestShare * 100)}%</td>
+                <td>
+                  {cfs.map((cf) => (
+                    <ChangeButtonsInline key={cf} desk={desk} commands={[{ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf }]} disabled={st.cfLparId === cf} text={cf} />
+                  ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
-      <ChangeForm desk={desk} label={`${lparId} request share ${share}%`} commands={[{ kind: 'SET_CF', lparId, requestShare: s / 100 }]} error={err}>
-        <label>
-          {lparId} structures (share of requests, %) <input value={share} onChange={(e) => setShare(e.target.value)} size={3} inputMode="numeric" />
-        </label>
-        <Now>{Math.round(c.requestShare * 100)}%</Now>
-      </ChangeForm>
+      <div className="help">
+        Rebuilding a structure moves its requests to the other CF. Cache and list requests that get slow are converted to asynchronous; lock requests are not, so a lock structure on a slow
+        or shared CF makes every Db2 transaction spin. The CF Activity report shows each structure.
+      </div>
     </>
   );
 }

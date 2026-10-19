@@ -145,6 +145,13 @@ export function renderCfActivity(iv: RmfInterval): string {
   for (const c of iv.cf) {
     out.push(`${padR(c.lparId, 8)} ${f(c.busyPct, 1, 6)} ${f(c.reqPerSec, 0, 10)} ${f(c.syncUs, 1, 14)} ${f(c.asyncPct, 1, 9)} ${f(c.serviceUs, 1, 14)}`);
   }
+  if ((iv.cfStructures ?? []).length) {
+    out.push('', 'STRUCTURE SUMMARY');
+    out.push('STRUCTURE NAME     TYPE   CF        REQ/SEC   SYNC %   SYNC SERV(us)   AVG SERV(us)');
+    for (const st of iv.cfStructures) {
+      out.push(`${padR(st.name, 18)} ${padR(st.type, 6)} ${padR(st.cfLparId, 8)} ${f(st.reqPerSec, 0, 8)} ${f(st.syncPct, 1, 8)} ${f(st.syncUs, 1, 15)} ${f(st.serviceUs, 1, 14)}`);
+    }
+  }
   return out.join('\n');
 }
 

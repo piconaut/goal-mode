@@ -1,7 +1,7 @@
 // Plain-data world configuration and runtime state. Everything here must be
 // JSON-serialisable and built in a deterministic order (arrays, not Maps).
 
-import type { CfConfig, CfResult } from '../cf/cf';
+import type { CfConfig, CfStructureConfig, CfResult } from '../cf/cf';
 import type { DasdConfig, DasdResult } from '../io/dasd';
 import type { BatchState } from '../subsys/batch';
 import type { CostState } from '../cost/mlc';
@@ -97,6 +97,7 @@ export interface WorldConfig {
   systems: ZosSystemConfig[];
   dasd: DasdConfig;
   cfs: CfConfig[];
+  cfStructures: CfStructureConfig[];
   db2: Db2MemberConfig[];
   cics: CicsRegionConfig[];
   jobClasses: JobClassConfig[];

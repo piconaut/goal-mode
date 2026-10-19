@@ -102,8 +102,11 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
       const c = cfg.cfs.find((x) => x.lparId === cmd.lparId);
       const parts: string[] = [];
       if (cmd.thinInterrupts !== undefined) parts.push(`thin interrupts ${c?.thinInterrupts ? 'on' : 'off'} → ${cmd.thinInterrupts ? 'on' : 'off'}`);
-      if (cmd.requestShare !== undefined) parts.push(`request share ${c ? pct(c.requestShare) : '?'} → ${pct(cmd.requestShare)}`);
       return `${cmd.lparId} ${parts.join(', ')}`;
+    }
+    case 'MOVE_STRUCTURE': {
+      const st = cfg.cfStructures.find((x) => x.name === cmd.name);
+      return `Rebuild ${cmd.name} ${st?.cfLparId ?? '?'} → ${cmd.cfLparId}`;
     }
     case 'SET_ROUTING': {
       const r = cfg.routing.find((x) => x.workloadId === cmd.workloadId);
@@ -137,7 +140,9 @@ export function commandTarget(cmd: Command): string {
     case 'SET_IEAOPT':
       return `${cmd.kind}:${cmd.lparId}:${Object.keys(cmd.changes).sort().join(',')}`;
     case 'SET_CF':
-      return `${cmd.kind}:${cmd.lparId}:${cmd.thinInterrupts !== undefined ? 'thin' : ''}${cmd.requestShare !== undefined ? 'share' : ''}`;
+      return `${cmd.kind}:${cmd.lparId}:${cmd.thinInterrupts !== undefined ? 'thin' : ''}`;
+    case 'MOVE_STRUCTURE':
+      return `${cmd.kind}:${cmd.name}`;
     case 'SET_DB2':
       return `${cmd.kind}:${cmd.ssid}:${cmd.bufferPoolGb !== undefined ? 'bp' : ''}${cmd.maxDbat !== undefined ? 'dbat' : ''}`;
     case 'SET_CICS':

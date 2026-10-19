@@ -30,29 +30,50 @@ describe('DASD', () => {
 
 describe('coupling facility', () => {
   const t = MIDWEST.cfTunables;
-  const ded = { cfg: { lparId: 'A', requestShare: 1, thinInterrupts: true }, availableEngines: 1, entitlementEngines: 1, dedicated: true };
+  const ded = { cfg: { lparId: 'A', thinInterrupts: true }, availableEngines: 1, entitlementEngines: 1, dedicated: true };
+  const one = [{ name: 'GBP', type: 'CACHE' as const, requestShare: 1, cfLparId: 'A', costMult: 1 }];
   it('dedicated CF at low load stays synchronous', () => {
-    const [r] = evaluateCf([ded], 10_000, t);
+    const [r] = evaluateCf([ded], one, 10_000, t);
     expect(r!.asyncFrac).toBe(0);
     expect(r!.syncSec).toBeLessThan(t.syncThresholdSec);
   });
   it('a shared, low-weight CF converts to async and burns more z/OS CPU per request', () => {
     const shared = { ...ded, dedicated: false, entitlementEngines: 0.1, cfg: { ...ded.cfg, thinInterrupts: false } };
-    const [d] = evaluateCf([ded], 10_000, t);
-    const [s] = evaluateCf([shared], 10_000, t);
+    const [d] = evaluateCf([ded], one, 10_000, t);
+    const [s] = evaluateCf([shared], one, 10_000, t);
     expect(s!.asyncFrac).toBeGreaterThan(0.9);
     expect(s!.serviceSec).toBeGreaterThan(10 * d!.serviceSec);
     expect(s!.zosCpuSec).toBeGreaterThan(d!.zosCpuSec);
   });
   it('thin interrupts shorten shared-CF service times', () => {
     const base = { ...ded, dedicated: false, entitlementEngines: 0.1 };
-    const [thin] = evaluateCf([{ ...base, cfg: { ...ded.cfg, thinInterrupts: true } }], 10_000, t);
-    const [poll] = evaluateCf([{ ...base, cfg: { ...ded.cfg, thinInterrupts: false } }], 10_000, t);
+    const [thin] = evaluateCf([{ ...base, cfg: { ...ded.cfg, thinInterrupts: true } }], one, 10_000, t);
+    const [poll] = evaluateCf([{ ...base, cfg: { ...ded.cfg, thinInterrupts: false } }], one, 10_000, t);
     expect(thin!.serviceSec).toBeLessThan(poll!.serviceSec);
   });
+  it('lock requests stay synchronous on a slow CF; cache requests convert', () => {
+    const shared = { ...ded, dedicated: false, entitlementEngines: 0.1, cfg: { ...ded.cfg, thinInterrupts: false } };
+    const mix = [
+      { name: 'LOCK1', type: 'LOCK' as const, requestShare: 0.5, cfLparId: 'A', costMult: 1 },
+      { name: 'GBP0', type: 'CACHE' as const, requestShare: 0.5, cfLparId: 'A', costMult: 1 },
+    ];
+    const [r] = evaluateCf([shared], mix, 10_000, t);
+    const lock = r!.structures.find((x) => x.type === 'LOCK')!;
+    const gbp = r!.structures.find((x) => x.type === 'CACHE')!;
+    expect(lock.asyncFrac).toBe(0);
+    expect(gbp.asyncFrac).toBeGreaterThan(0.9);
+    // Sync requests spin the z/OS CP for the whole service time.
+    expect(lock.zosCpuSec).toBeGreaterThan(5 * gbp.zosCpuSec);
+    expect(r!.requestRate).toBeCloseTo(10_000);
+  });
+  it('a CF with no structures carries no requests', () => {
+    const [r] = evaluateCf([ded], [{ ...one[0]!, cfLparId: 'B' }], 10_000, t);
+    expect(r!.requestRate).toBe(0);
+    expect(r!.busyFrac).toBe(0);
+  });
   it('utilisation rises with request rate', () => {
-    const [lo] = evaluateCf([ded], 5_000, t);
-    const [hi] = evaluateCf([ded], 50_000, t);
+    const [lo] = evaluateCf([ded], one, 5_000, t);
+    const [hi] = evaluateCf([ded], one, 50_000, t);
     expect(hi!.busyFrac).toBeGreaterThan(5 * lo!.busyFrac);
     expect(hi!.syncSec).toBeGreaterThan(lo!.syncSec);
   });

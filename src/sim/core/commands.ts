@@ -22,7 +22,8 @@ export type Command =
   | { kind: 'SET_CICS'; name: string; maxTasks?: number; qrFrac?: number }
   | { kind: 'ADD_AOR'; lparId: string; name: string; maxTasks: number; qrFrac: number }
   | { kind: 'SET_JOB_CLASS'; jobClass: string; mode?: 'JES' | 'WLM'; initiators?: Record<string, number> }
-  | { kind: 'SET_CF'; lparId: string; thinInterrupts?: boolean; requestShare?: number; degrade?: number }
+  | { kind: 'SET_CF'; lparId: string; thinInterrupts?: boolean; degrade?: number }
+  | { kind: 'MOVE_STRUCTURE'; name: string; cfLparId: string }
   | { kind: 'SET_DASD'; changes: Partial<SimState['config']['dasd']> }
   | { kind: 'SET_ROUTING'; workloadId: string; routing: Record<string, number> }
   | { kind: 'SET_MODIFIER'; mod: keyof Omit<SimModifiers, 'lockBoost'>; key: string; value: number }
@@ -189,15 +190,22 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
           if (!cf) return;
           if (cmd.thinInterrupts !== undefined) cf.thinInterrupts = cmd.thinInterrupts;
           if (cmd.degrade !== undefined) cf.degrade = cmd.degrade;
-          if (cmd.requestShare !== undefined) {
-            const others = c.cfs.filter((x) => x.lparId !== cmd.lparId);
-            const rest = others.reduce((a, x) => a + x.requestShare, 0);
-            cf.requestShare = Math.min(1, Math.max(0, cmd.requestShare));
-            for (const o of others) o.requestShare = rest > 0 ? ((1 - cf.requestShare) * o.requestShare) / rest : (1 - cf.requestShare) / others.length;
-          }
         }),
         `${cmd.lparId} CF settings updated`,
       );
+
+    case 'MOVE_STRUCTURE': {
+      const st = s.config.cfStructures.find((x) => x.name === cmd.name);
+      if (!st) return fail(s, `No structure ${cmd.name}`);
+      if (!s.config.cfs.some((x) => x.lparId === cmd.cfLparId)) return fail(s, `${cmd.cfLparId} is not a coupling facility`);
+      // SETXCF START,REBUILD: the structure is reallocated in the target CF.
+      return ok(
+        withConfig(s, (c) => {
+          c.cfStructures.find((x) => x.name === cmd.name)!.cfLparId = cmd.cfLparId;
+        }),
+        `${cmd.name} rebuilt in ${cmd.cfLparId}`,
+      );
+    }
 
     case 'SET_DASD':
       return ok(withConfig(s, (c) => Object.assign(c.dasd, cmd.changes)), 'DASD configuration updated');

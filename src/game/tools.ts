@@ -6,7 +6,8 @@ import { allWorkloads } from './workloads';
 import type { RunState } from './types';
 
 /** Fill fields added after a run was saved (IndexedDB autosaves outlive releases). */
-export function normalizeRun(run: RunState): RunState {
+export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
+  const config = run.sim.config.cfStructures || !scenario ? run.sim.config : { ...run.sim.config, cfStructures: structuredClone(scenario.world.cfStructures) };
   return {
     ...run,
     tools: run.tools ?? [],
@@ -15,7 +16,7 @@ export function normalizeRun(run: RunState): RunState {
     smfHours: run.smfHours ?? [],
     mon3Charts: run.mon3Charts ?? null,
     pins: run.pins ?? [],
-    sim: { ...run.sim, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },
+    sim: { ...run.sim, config, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },
   };
 }
 

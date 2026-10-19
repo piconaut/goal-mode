@@ -5,12 +5,35 @@
 
 export interface CfConfig {
   lparId: string;
-  /** Share of the sysplex's CF requests whose structures live here. */
-  requestShare: number;
   /** Dynamic CF dispatching with thin interrupts (only matters on shared engines). */
   thinInterrupts: boolean;
   /** Link/hardware degradation multiplier on service time (events), default 1. */
   degrade?: number;
+}
+
+/** LOCK (IRLM lock), CACHE (Db2 group buffer pools) or LIST (XCF signalling, SCA, MQ). */
+export type CfStructureType = 'LOCK' | 'CACHE' | 'LIST';
+
+export interface CfStructureConfig {
+  name: string;
+  type: CfStructureType;
+  /** Share of the sysplex's CF requests that go to this structure. */
+  requestShare: number;
+  /** CF image the structure is allocated in (SETXCF REBUILD moves it). */
+  cfLparId: string;
+  /** CF CPU per request relative to the average request. */
+  costMult: number;
+}
+
+export interface CfStructureResult {
+  name: string;
+  type: CfStructureType;
+  cfLparId: string;
+  requestRate: number;
+  syncSec: number;
+  asyncFrac: number;
+  serviceSec: number;
+  zosCpuSec: number;
 }
 
 export interface CfTunables {
@@ -43,26 +66,53 @@ export interface CfResult {
   serviceSec: number;
   /** z/OS CPU per request: spin time for sync, overhead for async. */
   zosCpuSec: number;
+  structures: CfStructureResult[];
 }
 
-export function evaluateCf(images: readonly CfImageInput[], totalRequestRate: number, t: CfTunables): CfResult[] {
+export function evaluateCf(images: readonly CfImageInput[], structures: readonly CfStructureConfig[], totalRequestRate: number, t: CfTunables): CfResult[] {
   return images.map((im) => {
-    const rate = totalRequestRate * im.cfg.requestShare;
-    const demand = rate * t.cpuSecPerRequest;
+    const here = structures.filter((x) => x.cfLparId === im.cfg.lparId);
+    const rates = here.map((x) => totalRequestRate * x.requestShare);
+    const rate = rates.reduce((a, r) => a + r, 0);
+    const demand = here.reduce((a, x, i) => a + rates[i]! * t.cpuSecPerRequest * x.costMult, 0);
     const cap = Math.max(1e-6, im.availableEngines);
     const busy = Math.min(0.97, demand / cap);
-    let sync = (t.linkSyncSec + t.cpuSecPerRequest / (1 - busy)) * (im.cfg.degrade ?? 1);
+    let extraWait = 0;
     if (!im.dedicated) {
       // A shared CF logical CP is not always dispatched when a request arrives.
       const undispatched = Math.max(0, 1 - Math.min(1, im.entitlementEngines));
-      const wait = im.cfg.thinInterrupts ? t.sharedDispatchWaitSec.thin : t.sharedDispatchWaitSec.polling;
-      sync += undispatched * wait;
+      extraWait = undispatched * (im.cfg.thinInterrupts ? t.sharedDispatchWaitSec.thin : t.sharedDispatchWaitSec.polling);
     }
-    // Heuristic conversion: the slower sync gets relative to the threshold, the more converts.
-    const asyncFrac = sync <= t.syncThresholdSec ? 0 : Math.min(0.98, 1 - t.syncThresholdSec / sync);
-    const asyncSec = t.asyncBaseSec + (sync - t.linkSyncSec);
-    const serviceSec = (1 - asyncFrac) * sync + asyncFrac * asyncSec;
-    const zosCpuSec = (1 - asyncFrac) * sync + asyncFrac * t.asyncZosCpuSec;
-    return { lparId: im.cfg.lparId, requestRate: rate, demandEngines: demand, busyFrac: busy, syncSec: sync, asyncFrac, serviceSec, zosCpuSec };
+    const syncFor = (costMult: number) => (t.linkSyncSec + (t.cpuSecPerRequest * costMult) / (1 - busy)) * (im.cfg.degrade ?? 1) + extraWait;
+    const res: CfStructureResult[] = here.map((x, i) => {
+      const sync = syncFor(x.costMult);
+      // Heuristic conversion: the slower sync gets relative to the threshold, the more converts.
+      // APPROX: lock requests are not converted (they spin however slow the CF is).
+      const asyncFrac = x.type === 'LOCK' || sync <= t.syncThresholdSec ? 0 : Math.min(0.98, 1 - t.syncThresholdSec / sync);
+      const asyncSec = t.asyncBaseSec + (sync - t.linkSyncSec);
+      return {
+        name: x.name,
+        type: x.type,
+        cfLparId: x.cfLparId,
+        requestRate: rates[i]!,
+        syncSec: sync,
+        asyncFrac,
+        serviceSec: (1 - asyncFrac) * sync + asyncFrac * asyncSec,
+        zosCpuSec: (1 - asyncFrac) * sync + asyncFrac * t.asyncZosCpuSec,
+      };
+    });
+    const w = (f: (r: CfStructureResult) => number, idle: number) => (rate > 0 ? res.reduce((a, r) => a + r.requestRate * f(r), 0) / rate : idle);
+    const idleSync = syncFor(1);
+    return {
+      lparId: im.cfg.lparId,
+      requestRate: rate,
+      demandEngines: demand,
+      busyFrac: busy,
+      syncSec: w((r) => r.syncSec, idleSync),
+      asyncFrac: w((r) => r.asyncFrac, 0),
+      serviceSec: w((r) => r.serviceSec, idleSync),
+      zosCpuSec: w((r) => r.zosCpuSec, idleSync),
+      structures: res,
+    };
   });
 }
