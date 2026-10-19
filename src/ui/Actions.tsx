@@ -67,6 +67,9 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         <Section title={`Hardware orders (capex $${Math.round(v.capexRemaining / 1000)}k left)`}>
           <Hardware v={v} game={game} />
         </Section>
+        <Section title="Projects (multi-day)">
+          <Projects v={v} game={game} />
+        </Section>
         <Section title="Operations">
           <Ops desk={desk} game={game} />
         </Section>
@@ -1080,6 +1083,46 @@ function Hardware({ v, game }: { v: ViewModel; game: GameHandle }) {
             <button disabled={!p.ok} title={p.reason ?? costText(p)} onClick={() => game.send({ type: 'CHANGE', req: { label: h.name, hardwareId: h.id } })}>
               {h.capex > 0 ? `$${Math.round(h.capex / 1000)}k` : `$${Math.round(h.opexPerDay / 1000)}k/day`} · {p.hours}h
             </button>
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+/** Multi-day projects: book engineer-hours each briefing for a permanent improvement. */
+function Projects({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const briefing = v.phase === 'BRIEFING';
+  return (
+    <>
+      <div className="help">Book engineer-hours during the briefing; each project takes several days and has a daily ceiling. Hours spent here are not there for firefighting.</div>
+      {v.projects.map((p) => {
+        const left = Math.min(p.maxHoursPerDay - p.hoursToday, p.hours - p.hoursDone);
+        return (
+          <div key={p.id} style={{ padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+            <div className="row">
+              <b>{p.name}</b>
+              {p.done ? <span className="tag good">done</span> : <span className="num muted">{p.hoursDone}/{p.hours}h</span>}
+            </div>
+            <div className="muted" style={{ fontSize: 12 }}>{p.description}</div>
+            {!p.done && (
+              <>
+                <span className="bar" style={{ height: 6, display: 'block', margin: '4px 0' }}>
+                  <span style={{ width: `${(100 * p.hoursDone) / p.hours}%`, background: 'var(--accent)' }} />
+                </span>
+                <div className="form">
+                  {left <= 0 && <span className="tag">today’s ceiling reached</span>}
+                  {left > 0 && [2, 4].filter((h) => h <= p.maxHoursPerDay).map((h) => (
+                    <button key={h} disabled={!briefing || left <= 0 || v.hoursLeft < Math.min(h, left)} onClick={() => game.send({ type: 'PROJECT_WORK', id: p.id, hours: h })}>
+                      +{Math.min(h, Math.max(0, left))}h today
+                    </button>
+                  ))}
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {p.hoursToday > 0 ? `${p.hoursToday}h booked today · ` : ''}max {p.maxHoursPerDay}h/day{!briefing ? ' · book during the briefing' : ''}
+                  </span>
+                </div>
+              </>
+            )}
           </div>
         );
       })}

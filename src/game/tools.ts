@@ -25,6 +25,7 @@ export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
     alerts: run.alerts ?? emptyAlerts(),
     automation: run.automation ?? emptyAutomation(),
     policies: run.policies ?? emptyPolicyBook(),
+    projects: run.projects ?? [],
     capacityDays: run.capacityDays ?? [],
     capacityToday: run.capacityToday ?? null,
     sim: { ...run.sim, config, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },

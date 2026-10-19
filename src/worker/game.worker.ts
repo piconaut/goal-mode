@@ -13,6 +13,7 @@ import { addPin, removePin } from '../game/evidence';
 import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
 import { financeView } from '../game/finance';
+import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -214,6 +215,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       post({ type: 'WHATIF_PROGRESS', frac: 0 });
       const token = whatIfToken;
       setTimeout(() => whatIfChunk(token), 0);
+      break;
+    }
+    case 'PROJECT_WORK': {
+      const out = workOnProject(run, m.id, m.hours);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
       break;
     }
     case 'GET_FINANCE':

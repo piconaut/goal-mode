@@ -184,6 +184,12 @@ export interface SimModifiers {
   asCpu: Record<string, number>;
   /** Measurement overhead (SMF 101/110 tracing, monitor gatherers) per workload id or jobname; stacks with cpu/asCpu. */
   measureCpu: Record<string, number>;
+  /** Permanent per-workload improvements from projects (stack multiplicatively with the others). */
+  efficiency?: Record<string, number>;
+  /** I/O per transaction multiplier per workload (compression, archiving). */
+  ioPerTxn?: Record<string, number>;
+  /** Share of a workload's general-CP time made zIIP-eligible (zIIP-enabling projects). */
+  ziipShift?: Record<string, number>;
   /** Extra lock contention index (lock escalation). */
   lockBoost: number;
 }

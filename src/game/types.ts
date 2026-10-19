@@ -4,6 +4,7 @@ import type { Hypothesis } from './aiops';
 import type { AlertsState } from './alerts';
 import type { AutomationState } from './automation';
 import type { PolicyBook } from './policies';
+import type { ProjectState } from './projects';
 import type { EvidencePin, PinVerdict } from './evidence';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
@@ -182,6 +183,8 @@ export interface RunState {
   /** Daily capacity peaks so far (all days), and today's running peaks. */
   capacityDays: CapacityDay[];
   capacityToday: CapacityDay | null;
+  /** Multi-day engineering projects in progress or done. */
+  projects: ProjectState[];
   /** Saved WLM service policies and the daily switch schedule. */
   policies: PolicyBook;
   /** Automation rules and their state (tool AUTOMATION). */

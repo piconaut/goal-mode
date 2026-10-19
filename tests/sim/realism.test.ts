@@ -131,3 +131,21 @@ describe('CF structure placement', () => {
     expect(gbp0OnCf01.cfMsPerTxn).toBeLessThan(asIs.cfMsPerTxn);
   }, 60_000);
 });
+
+describe('project modifiers', () => {
+  it('efficiency lowers CPU; zIIP shift moves MOBILE work from CPs to zIIPs', () => {
+    let base = initState(42, MIDWEST);
+    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    const run = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      for (let i = 0; i < 30; i++) s = step(s, [], MIDWEST);
+      const pool = (id: string, p: string) => s.lpars.find((l) => l.id === id)!.pools.find((x) => x.pool === p)?.deliveredEngines ?? 0;
+      return { cp: pool('PROD1', 'CP') + pool('PROD2', 'CP'), ziip: pool('PROD1', 'ZIIP') };
+    };
+    const asIs = run([]);
+    const tuned = run([{ kind: 'SET_MODIFIER', mod: 'efficiency', key: 'RBANK', value: 0.7 }]);
+    const shifted = run([{ kind: 'SET_MODIFIER', mod: 'ziipShift', key: 'MOBILE', value: 0.5 }]);
+    expect(tuned.cp).toBeLessThan(asIs.cp);
+    expect(shifted.ziip).toBeGreaterThan(asIs.ziip);
+  }, 60_000);
+});

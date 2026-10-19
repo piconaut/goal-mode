@@ -6,6 +6,7 @@ import { ruleText, type AlertEvent, type AlertRule } from './alerts';
 import { autoRuleText } from './automation';
 import { codexDiscovered } from './codex';
 import type { EvidencePin } from './evidence';
+import { projectsView } from './projects';
 import type { ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
@@ -150,6 +151,7 @@ export interface ViewModel {
   reportsOpenedToday: number;
   smfHours: SmfHourRef[];
   pins: EvidencePin[];
+  projects: ReturnType<typeof projectsView>;
   /** Codex entry ids met in this run. */
   codex: string[];
   /** Automation rules and their action log (null without the tool). */
@@ -286,6 +288,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     reportsOpenedToday: run.reportsOpenedToday.length,
     smfHours: smfHourRefs(run),
     pins: run.pins ?? [],
+    projects: projectsView(run),
     codex: codexDiscovered(run),
     automation: feats.has('AUTOMATION')
       ? {

@@ -105,6 +105,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     alerts: emptyAlerts(),
     automation: emptyAutomation(),
     policies: emptyPolicyBook(),
+    projects: [],
     capacityDays: [],
     capacityToday: null,
     perks: [],

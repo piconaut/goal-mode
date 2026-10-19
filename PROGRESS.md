@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7.5 (tier 4 AIOps, Codex, report class advisor, strategic options); M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (186 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (189 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -310,7 +310,12 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   chart with the peak line, bills, SCRT text. First check showed the z/OS peak at 00:00 (batch drives the
   bill), which is the point of the view. Bench hash changed to `46a31c68f88db587` (cost state shape, no
   behaviour change)
-- [ ] Multi-day projects (SPEC §6): threadsafe CICS conversion (qrFrac ↓), zIIP-enable Java, Db2 compression, SQL tuning sprint; progress per day, hours each day
+- [x] Multi-day projects (loop 26): 5 projects in `content/projects.ts` (threadsafe CICS 24h: QR share ×0.4;
+  zIIP-enable mobile API 20h: +25% zIIP-eligible; Db2 compression 16h: −25% I/O, +3% CPU; SQL tuning 12h:
+  −15% CPU RBANK/TELLER; archive 8h: −8% I/O). Hours booked during the briefing with a per-day ceiling
+  (`game/projects.ts`); on completion the effect is applied as sim commands. New stacking sim modifiers
+  `mods.efficiency`, `mods.ioPerTxn`, `mods.ziipShift` (bench hash unchanged when unused). Change Desk
+  "Projects" section with progress bars. 3 tests (ceiling/briefing/completion, QR + zIIP effects, sim effect)
 - [x] Codex (loop 23): 22 entries in `content/codex/entries.ts` (WLM, PR/SM, capacity & cost, subsystems, I/O &
   CF, measurement), each with sources from SPEC §18 (no invented links; label-only where unverified). Discovered
   at start (12), by buying tools, opening report kinds or meeting events (`game/codex.ts`); remembered across
@@ -443,6 +448,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 26, hourly task):** multi-day projects with new project modifiers. 189 tests.
 - **2026-10-19 (loop 25, hourly task):** SCRT-style report and Finance tab. 186 tests.
 - **2026-10-19 (loop 24, hourly task):** AIOps hypotheses (tier 4). 185 tests.
 - **2026-10-19 (loop 23, hourly task):** Codex (22 sourced entries, discovery, career persistence). 181 tests.
