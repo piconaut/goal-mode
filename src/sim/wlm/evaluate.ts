@@ -226,11 +226,12 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     ziipQueueRatio: number;
     prsmDelayRatio: number;
   }
+  const anyPromo = input.promoted !== undefined && input.promoted.size > 0;
   const shareOf = (i: number): Share => {
     const s = slices[i]!;
     const a = agg[s.scKey]!;
     const r = byId[s.scKey]!;
-    const promo = byId[`${s.scKey}~promo`];
+    const promo = anyPromo ? byId[`${s.scKey}~promo`] : undefined;
     const totCp = a.cp;
     const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
     const fz = a.zi > 0 ? sliceZi[i]! / a.zi : 0;

@@ -1,6 +1,6 @@
 // Performance index and response-time distribution buckets (SG24-7621 §3.10–3.11).
 
-import { lognormCdf } from '../core/math';
+import { lognormCdf, normCdf } from '../core/math';
 import type { Goal, PeriodDef } from './types';
 
 /** Upper bounds of the 14 RMF/WLM buckets as multiples of the goal; the last is open. */
@@ -21,12 +21,26 @@ export function addToBuckets(
   sigma: number,
 ): void {
   if (count <= 0) return;
+  // Same arithmetic as lognormCdf per bound, with the loop invariants hoisted (hot path).
+  const degenerate = !(meanRtSec > 0) || sigma <= 1e-9;
+  const mu = Math.log(meanRtSec) - (sigma * sigma) / 2;
   let prev = 0;
   for (let i = 0; i < BUCKETS; i++) {
     const bound = BUCKET_BOUNDS[i]!;
-    const cdf = bound === Infinity ? 1 : lognormCdf(bound * goalRtSec, meanRtSec, sigma);
+    let cdf: number;
+    if (bound === Infinity) cdf = 1;
+    else if (degenerate) cdf = lognormCdf(bound * goalRtSec, meanRtSec, sigma);
+    else {
+      const b = bound * goalRtSec;
+      cdf = b <= 0 ? 0 : normCdf((Math.log(b) - mu) / sigma);
+    }
     buckets[i] = (buckets[i] ?? 0) + count * Math.max(0, cdf - prev);
     prev = cdf;
+    // Once the CDF reaches 1 every later bucket would add exactly zero.
+    if (prev === 1) {
+      for (let j = i + 1; j < BUCKETS; j++) buckets[j] = buckets[j] ?? 0;
+      return;
+    }
   }
 }
 

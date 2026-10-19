@@ -130,6 +130,12 @@ export const newRmfAcc = (startTick: number): RmfAcc => ({
   cfStructures: {},
 });
 
+function addBuckets(a: readonly number[], b: readonly number[]): number[] {
+  const out = new Array<number>(a.length);
+  for (let i = 0; i < a.length; i++) out[i] = a[i]! + (b[i] ?? 0);
+  return out;
+}
+
 export function accumulateTick(
   acc: RmfAcc,
   lparTicks: readonly LparTick[],
@@ -231,7 +237,7 @@ function addScp(scps: Record<string, ScpIntervalAcc>, lparId: string, t: ScpTick
     dp: t.dp,
     completions: a.completions + t.completions,
     rtSumSec: a.rtSumSec + t.rtSumSec,
-    buckets: a.buckets.map((b, i) => b + (t.buckets[i] ?? 0)),
+    buckets: addBuckets(a.buckets, t.buckets),
     using: a.using + t.usingCpu + t.usingZiip + t.usingIo,
     delay: a.delay + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap,
     delayCpu: a.delayCpu + t.delayCpu,
@@ -301,7 +307,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
         ...p,
         completions: p.completions + a.completions,
         rtSumSec: p.rtSumSec + a.rtSumSec,
-        buckets: p.buckets.map((b, i) => b + (a.buckets[i] ?? 0)),
+        buckets: addBuckets(p.buckets, a.buckets),
         using: p.using + a.using,
         delay: p.delay + a.delay,
         delayCpu: p.delayCpu + a.delayCpu,

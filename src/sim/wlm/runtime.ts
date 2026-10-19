@@ -90,12 +90,18 @@ export const emptyAcc = (): ScpAcc => ({
   cpuEngines: 0,
 });
 
+function decayBuckets(acc: readonly number[], add: readonly number[], d: number): number[] {
+  const out = new Array<number>(acc.length);
+  for (let i = 0; i < acc.length; i++) out[i] = acc[i]! * d + (add[i] ?? 0);
+  return out;
+}
+
 export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
   const d = ACC_DECAY;
   return {
     completions: acc.completions * d + t.completions,
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,
-    buckets: acc.buckets.map((b, i) => b * d + (t.buckets[i] ?? 0)),
+    buckets: decayBuckets(acc.buckets, t.buckets, d),
     using: acc.using * d + t.usingCpu + t.usingZiip + t.usingIo,
     delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap,
     delayCpu: acc.delayCpu * d + t.delayCpu,
@@ -112,7 +118,7 @@ export function sumAcc(accs: readonly ScpAcc[]): ScpAcc {
   for (const a of accs) {
     out.completions += a.completions;
     out.rtSumSec += a.rtSumSec;
-    a.buckets.forEach((b, i) => (out.buckets[i] = (out.buckets[i] ?? 0) + b));
+    for (let i = 0; i < a.buckets.length; i++) out.buckets[i] = (out.buckets[i] ?? 0) + a.buckets[i]!;
     out.using += a.using;
     out.delay += a.delay;
     out.delayCpu += a.delayCpu;

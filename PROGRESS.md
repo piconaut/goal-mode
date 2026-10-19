@@ -6,7 +6,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M8.1 headless performance (≤ 2 s/day; currently ~8 s), which unblocks the M7.4 what-if simulator; then M7.5.
+- **Next up:** M7.4 what-if simulator (briefing-time, chunked), then M7.5; M8.1 structural perf work in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
 - **Health:** `npm run check` green (177 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
@@ -308,7 +308,19 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 
 **M8.1 Performance (prerequisite for bots and what-if)**
 - [ ] Target ≤ 2 s per headless day (now ~7–8 s): incremental dispatch in policy-adjust projections, skip receivers that failed recently, precomputed log-normal bucket tables, avoid per-tick object churn in batch/RMF accumulators (profile first; keep determinism)
-- [ ] Benchmark script `npm run bench` with a fixed seed; record results here
+- [x] Benchmark script `npm run bench [-- --days N --seed S --hash]` (`tools/bench.ts`); `--hash` prints a
+  SHA-256 of the end state so optimisations can prove they are behaviour-neutral (seed 42, 1 day: `e82b0d3ff34ccf60`)
+- Loop 21 profile (esbuild bundle + `--cpu-prof`, 1 day ≈ 8.5 s, 1.0 ms/tick): flat. Inclusive: evaluateLpar 27%
+  (of which policy-adjust projections 7%), step's own loops ~20%, dispatch 7%, RMF accumulateTick 5%, GC 7%,
+  log-normal buckets 5%. Safe wins applied (hoisted log-normal invariants + early exit, bucket `map`→loops,
+  promo lookups only when promoted): hash unchanged, ~5–10% (noise ±10% on this box)
+- [ ] Structural options for 4×, in expected-value order: (1) cache per-LPAR slice specs and only rebuild on
+  config/policy/event changes; (2) evaluate projections on a reduced slice set (only the receiver's and donors'
+  periods); (3) struct-of-arrays for scps/buckets to cut allocation (GC 7%); (4) evaluate DEVT/SYSP every 3rd
+  tick (low-importance images, APPROX); (5) RMF accumulation every tick → running sums without object spreads.
+  Each must keep the golden hash or regenerate it with a reason
+- Decision: the what-if simulator no longer waits on M8.1: it runs during the briefing (clock stopped), chunked
+  with a progress bar, so ~8 s per simulated day is acceptable
 
 **M8.2 Balance harness & targets (SPEC §16)**
 - [ ] `tools/sweep.ts`: run bots over N seeds in parallel processes → CSV (day lost, cause, score, MLC, incidents by mechanism)
@@ -409,6 +421,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 21, hourly task):** M8.1 bench + profile; behaviour-neutral micro-optimisations
+  (hash-verified); what-if decoupled from perf. 177 tests.
 - **2026-10-19 (loop 20, hourly task):** automation rules + Capacity Provisioning (CoD) with misfires. 177 tests.
 - **2026-10-19 (loop 19, hourly task):** saved WLM service policies with a daily switch schedule. 174 tests.
 - **2026-10-19 (loop 18, hourly task; session had restarted):** alert rules with pause-on-page and night
