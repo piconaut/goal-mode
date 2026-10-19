@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.4 (tier 3: capacity planner, what-if, alerts, automation).
+- **Next up:** M7.4 alert rules, automation rules, policy overrides; what-if needs M8.1 perf first.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (165 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (169 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -262,7 +262,14 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
 
 **M7.4 Tier 3: planning & automation**
 - [ ] What-if simulator: fork `RunState.sim`, apply proposed changes, run tomorrow headless with forecast arrivals and no hidden events; report SLA/batch/R4HA deltas; costs hours + Insight. Needs ≥ 4× headless speed (see M8.1 perf)
-- [ ] Capacity planner: R4HA/CPC-busy forecast N days ahead from growth rates, with confidence bands that widen with horizon; flags "out of capacity on day X"
+- [x] Capacity planner (loop 17, tool CAP_PLANNER now buyable): daily peaks recorded at each day end
+  (`RunState.capacityDays`: online-hours CPC busy 08–18, R4HA per LPAR and summed, DC, critical batch end).
+  `game/planner.ts` fits a log-linear trend over the last 10 days (≥ 3) and projects 14 days with a 90%
+  prediction interval (σ floor, widens with horizon). Forecasts: CPC busy (capped at 100%, limit 90%), R4HA
+  sum (MLC), R4HA vs DC per capped LPAR, critical batch end vs 06:00; "will cross" / "at risk" tags and a
+  plain verdict. Panel on the Analytics tab. Uses measured history only. Night CPC busy was excluded after the
+  first Chromium check showed 99.6% every day (batch soaks up free CPU)
+- Dev aid: `DEV_FAST_DAYS {days}` (dev builds) plays whole days headlessly to reach later-game states
 - [ ] Alert rules: user thresholds (PI, CPC busy, R4HA vs DC, batch projection) → pager alerts in the live day
 - [ ] Automation rules (System Automation-like): `IF condition THEN command`, e.g. restart abended job once, activate policy override at 20:00; misfires possible and logged
 - [ ] Capacity Provisioning Manager: On/Off CoD rules (refused for hard-capped LPARs, per IBM guidance)
@@ -388,6 +395,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 17, hourly task):** capacity planner (daily peak history, trend + 90% bands,
+  Analytics panel), `DEV_FAST_DAYS` dev aid. 169 tests.
 - **2026-10-19 (loop 16, hourly task):** per-LCU DASD model, alias editor, LCU report, REORG_OVERRUN
   event + TERM_UTILITY fix; basket orders alias releases first. M7.3 complete. 165 tests. Bots (seed 42):
   do-nothing day 15 (unchanged); textbook day 28 by two consecutive batch misses (was day 29, trust) since

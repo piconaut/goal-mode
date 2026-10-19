@@ -18,6 +18,8 @@ export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
     smfHours: run.smfHours ?? [],
     mon3Charts: run.mon3Charts ?? null,
     pins: run.pins ?? [],
+    capacityDays: run.capacityDays ?? [],
+    capacityToday: run.capacityToday ?? null,
     sim: { ...run.sim, config, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },
   };
 }

@@ -3,6 +3,7 @@
 
 import type { ToolFeature } from '../content/tools';
 import type { EvidencePin } from './evidence';
+import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
@@ -145,6 +146,8 @@ export interface ViewModel {
   reportsOpenedToday: number;
   smfHours: SmfHourRef[];
   pins: EvidencePin[];
+  /** Capacity planner forecasts (null without the tool). */
+  planner: { forecasts: Forecast[]; daysRecorded: number } | null;
   /** Monitor III chart history sizes (fetch with GET_MON3_CHARTS); null without the tool. */
   mon3Charts: { samples: number; markers: number; firstTick: number | null } | null;
   serviceClasses: { id: string; periods: string[] }[];
@@ -271,6 +274,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     reportsOpenedToday: run.reportsOpenedToday.length,
     smfHours: smfHourRefs(run),
     pins: run.pins ?? [],
+    planner: feats.has('CAPACITY_PLANNER') ? { forecasts: capacityForecasts(run), daysRecorded: (run.capacityDays ?? []).length } : null,
     mon3Charts:
       feats.has('MON3_CHARTS') && run.mon3Charts
         ? { samples: run.mon3Charts.samples.length, markers: run.mon3Charts.markers.length, firstTick: run.mon3Charts.samples[0]?.tick ?? null }

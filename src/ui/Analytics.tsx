@@ -1,6 +1,7 @@
 import { INSIGHT } from '../content/tools';
 import type { ToolView } from '../game/tools';
 import type { ViewModel } from '../game/view';
+import { Planner } from './Planner';
 import type { GameHandle } from './useGame';
 
 const TIER_TITLE: Record<number, string> = { 1: 'Tier 1: live visibility', 2: 'Tier 2: deep data', 3: 'Tier 3: planning & automation', 4: 'Tier 4: endgame' };
@@ -18,6 +19,7 @@ export function Analytics({ v, game }: { v: ViewModel; game: GameHandle }) {
           Measurement tools cost CPU while they are on; switch them off to save it, and you lose their data.
         </p>
       </div>
+      <Planner v={v} />
       <div className="tree">
         {[1, 2, 3, 4].map((tier) => (
           <div key={tier} className="tier">

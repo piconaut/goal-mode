@@ -82,6 +82,19 @@ export interface SmfHour {
   workloads: Record<string, WorkloadHour>;
 }
 
+/** One played day's capacity peaks (hourly averages), kept for the capacity planner. */
+export interface CapacityDay {
+  day: number;
+  /** Highest hourly CPC busy during the online prime shift. */
+  peakCpcBusyPct: number;
+  peakR4ha: Record<string, number>;
+  /** Peak of the sum of R4HAs across LPARs (what the MLC bill uses). */
+  peakR4haSum: number;
+  definedCapacity: Record<string, number | null>;
+  /** Critical batch end, seconds after the day's 06:00 (null if unfinished). */
+  criticalEndSec: number | null;
+}
+
 export interface HourAcc {
   hourIndex: number;
   ticks: number;
@@ -160,6 +173,9 @@ export interface RunState {
   toolsOff: string[];
   /** Closed hours of per-workload measurements (SMF 101/110-style detail), newest last, ~2 days. */
   smfHours: SmfHour[];
+  /** Daily capacity peaks so far (all days), and today's running peaks. */
+  capacityDays: CapacityDay[];
+  capacityToday: CapacityDay | null;
   /** Evidence pinned from reports for RCAs (oldest drop off). */
   pins: EvidencePin[];
   /** Monitor III chart history for the played day (only while the charting tool is on). */

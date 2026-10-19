@@ -15,6 +15,7 @@ import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from
 import { classify } from '../sim/wlm/classify';
 import { explainClassification, workItems } from '../game/classifyExplain';
 import { clockAt } from '../sim/core/clock';
+import { TICKS_PER_DAY } from '../sim/core/units';
 import { goalText } from '../sim/wlm/goals';
 import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from './protocol';
 import { loadRun, saveRun } from './storage';
@@ -142,6 +143,20 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'DEV_INSIGHT':
       if (import.meta.env.DEV) run = { ...run, insight: run.insight + m.amount };
+      break;
+    case 'DEV_FAST_DAYS':
+      // Play whole days headlessly (skipping drafts) to reach later-game states quickly.
+      if (import.meta.env.DEV) {
+        for (let d = 0; d < m.days && run.phase !== 'GAMEOVER' && run.phase !== 'VICTORY'; d++) {
+          if (run.phase === 'REVIEW') run = chooseDraft(run, content, null);
+          if (run.phase === 'BRIEFING') run = startDay(run, content);
+          run = advance(run, scenario, content, TICKS_PER_DAY);
+        }
+        if (run.phase === 'REVIEW') run = chooseDraft(run, content, null);
+        lastPhase = run.phase;
+        history = [];
+        historyDirty = true;
+      }
       break;
     case 'GET_MON3_CHARTS': {
       const c = run.mon3Charts;

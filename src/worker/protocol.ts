@@ -53,6 +53,7 @@ export type ToWorker =
   | { type: 'BUY_TOOL'; toolId: string }
   /** Dev builds only: grant Insight for UI testing. */
   | { type: 'DEV_INSIGHT'; amount: number }
+  | { type: 'DEV_FAST_DAYS'; days: number }
   | { type: 'SET_TOOL_ACTIVE'; toolId: string; active: boolean };
 
 export type FromWorker =

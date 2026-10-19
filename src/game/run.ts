@@ -6,6 +6,7 @@ import type { EventDef, ScriptedBeat } from '../content/events/midwest-events';
 import type { Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
+import { PLANNER } from '../content/planner';
 import { MON3_CHARTS } from '../content/tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
@@ -23,6 +24,7 @@ import {
   type ActiveEvent,
   type DayReport,
   type Facet,
+  type CapacityDay,
   type HourAcc,
   type Mechanism,
   type PlannedChange,
@@ -94,6 +96,8 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     smfHours: [],
     mon3Charts: null,
     pins: [],
+    capacityDays: [],
+    capacityToday: null,
     perks: [],
     constraints: [],
     batchDeadlineSec: 24 * 3600,
@@ -406,6 +410,23 @@ function accumulateHour(run: RunState): RunState {
   };
 }
 
+/** Fold this hour's averages into today's capacity peaks. */
+function hourPeaks(r: RunState, h: HourAcc): CapacityDay {
+  const t = r.capacityToday ?? { day: r.day, peakCpcBusyPct: 0, peakR4ha: {}, peakR4haSum: 0, definedCapacity: {}, criticalEndSec: null };
+  const peakR4ha = { ...t.peakR4ha };
+  let sum = 0;
+  for (const l of r.sim.capping.lpars) {
+    peakR4ha[l.id] = Math.max(peakR4ha[l.id] ?? 0, l.r4ha);
+    sum += l.r4ha;
+  }
+  const definedCapacity = Object.fromEntries(r.sim.config.lpars.filter((l) => l.kind === 'ZOS').map((l) => [l.id, l.definedCapacityMsu]));
+  // Online peak only: overnight batch fills whatever CPU is free, so night busy says nothing about headroom.
+  const startHour = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
+  const online = startHour >= PLANNER.onlineHours[0] && startHour < PLANNER.onlineHours[1];
+  const busy = online && h.ticks > 0 ? (100 * h.cpcBusySum) / h.ticks : 0;
+  return { ...t, peakCpcBusyPct: Math.max(t.peakCpcBusyPct, busy), peakR4ha, peakR4haSum: Math.max(t.peakR4haSum, sum), definedCapacity };
+}
+
 /** Hours of per-workload SMF detail kept in the run (two played days). */
 const SMF_HOURS_KEPT = 48;
 
@@ -456,6 +477,7 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
       r = logLine(r, `INCIDENT ${w.id}: SLA missed (${att.attainmentPct.toFixed(1)}%)`);
     }
   }
+  r = { ...r, capacityToday: hourPeaks(r, h) };
   const smfHours = [...(r.smfHours ?? []), { day: r.day, hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay), workloads: h.workloads }].slice(-SMF_HOURS_KEPT);
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }
@@ -493,6 +515,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     r = msg(r, 'Regulator', 'Batch deadline missed', 'Critical batch did not complete on time. A second consecutive miss will trigger a formal review.');
   } else if (night) trust.Regulator = clampTrust(trust.Regulator + 1);
   const consecutive = missed ? r.consecutiveBatchMisses + 1 : 0;
+  if (r.capacityToday) r = { ...r, capacityDays: [...(r.capacityDays ?? []), { ...r.capacityToday, day, criticalEndSec: night?.criticalEndSec ?? null }], capacityToday: null };
 
   // Opex: temporary capacity charges today; monthly MLC bills as they arrive.
   const codToday = r.changes.filter((c) => c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > day).reduce((a, c) => a + c.opexPerDay, 0);
