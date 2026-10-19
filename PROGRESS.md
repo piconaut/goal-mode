@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M6.1 user requests (classification rules view, Change Desk quality-of-life) first, then M7.1 (Insight economy & tool tree) and M7.2 (Monitor III live views).
+- **Next up:** M6.1 Change Desk quality-of-life pass, then M7.1 (Insight economy & tool tree) and M7.2 (Monitor III live views).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (112 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (120 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -113,7 +113,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] Pin report values as RCA evidence (→ M7.3)
 
 ### M6.1 — User requests (do these first)
-- [ ] **Classification rules view** (requested 2026-10-19). A dedicated, readable view of the WLM
+- [x] **Classification rules view** (requested 2026-10-19). Done: new "Classification" tab
+  (`src/ui/RulesView.tsx`); `explainClassification` + `diffRows` (`src/game/classifyExplain.ts`);
+  path-based `ADD_RULE` (with nesting), `DELETE_RULE`, `MOVE_RULE`, `SET_RULE_TARGET`,
+  `SET_DEFAULT` edits; 8 tests; verified in Chromium (retarget DB* → STCHI shows "changed",
+  pending BASEPOL2; no mobile overflow). Original brief: A dedicated, readable view of the WLM
   classification rules, so players can see where work goes without reading JSON:
   - New "WLM policy" area (tab or full-width Change Desk panel) listing, per subsystem type
     (STC, JES, CICS, DDF, TSO, OMVS…): the default service class/report class, then the rules
@@ -339,6 +343,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   incidents + RCA, events, draft, bots. 112 tests. Do-nothing bot (seed 42): mild incidents on
   days 1–2 (batch overlap), then a calm stretch, then collapse on day 8 under stacked unfixed
   events (regression + runaway + CF link). Created the git repo and pushed to GitHub.
+- **2026-10-19 (loop 8):** 15-minute cron loop. M6.1 classification rules view: per-subsystem
+  rules in evaluation order, what each rule catches (workloads, address spaces, batch streams),
+  SYSOTHER and forced-SYSTEM rows, pending-vs-active diff, move/retarget/delete/insert (nested).
 - **2026-10-19 (loop 7):** Fleshed out M7/M8. Session restarted; 30-minute cron loop. M6
   finished (charts, polarity preview, classification bench, autosave/continue) and the WLM editor
   bug fixed; build published as an artifact. Added M6.1 (classification rules view, user request).

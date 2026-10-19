@@ -6,9 +6,10 @@ import { Actions } from './Actions';
 import { LineChart } from './LineChart';
 import { Overlays } from './Overlays';
 import { Reports } from './Reports';
+import { RulesView } from './RulesView';
 import { useGame, type GameHandle } from './useGame';
 
-type Tab = 'console' | 'reports' | 'changes' | 'inbox';
+type Tab = 'console' | 'reports' | 'changes' | 'rules' | 'inbox';
 
 export function App() {
   const game = useGame();
@@ -19,15 +20,16 @@ export function App() {
     <div className="app">
       <TopBar v={v} game={game} />
       <div className="tabs">
-        {(['console', 'reports', 'changes', 'inbox'] as Tab[]).map((t) => (
+        {(['console', 'reports', 'changes', 'rules', 'inbox'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t === 'console' ? 'Ops Console' : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : `Inbox (${v.inbox.length})`}
+            {t === 'console' ? 'Ops Console' : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'rules' ? 'Classification' : `Inbox (${v.inbox.length})`}
           </button>
         ))}
       </div>
       {tab === 'console' && <Console v={v} history={game.history} />}
       {tab === 'reports' && <Reports v={v} game={game} />}
       {tab === 'changes' && <Actions v={v} game={game} />}
+      {tab === 'rules' && <RulesView v={v} game={game} />}
       {tab === 'inbox' && <Inbox v={v} />}
       <Overlays v={v} game={game} />
       {game.toast && <div className={`toast ${game.toast.ok ? '' : 'bad'}`}>{game.toast.message}</div>}

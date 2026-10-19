@@ -10,6 +10,8 @@ import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../sim/measure/reports';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { classify } from '../sim/wlm/classify';
+import { explainClassification, workItems } from '../game/classifyExplain';
+import { clockAt } from '../sim/core/clock';
 import { goalText } from '../sim/wlm/goals';
 import type { FromWorker, PendingPolicyView, ToWorker } from './protocol';
 import { loadRun, saveRun } from './storage';
@@ -42,7 +44,26 @@ function pendingView(): PendingPolicyView | null {
   };
 }
 
-const postPolicy = () => post({ type: 'POLICY', json: JSON.stringify(pendingPolicy ?? run.sim.wlm.definition, null, 2) });
+function postRules() {
+  const items = workItems(
+    [...scenario.workloads, ...run.sim.extraWorkloads],
+    [...scenario.addressSpaces, ...run.sim.extraAddressSpaces],
+    scenario.batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth),
+  );
+  const def = pendingPolicy ?? run.sim.wlm.definition;
+  post({
+    type: 'RULES',
+    active: explainClassification(run.sim.wlm.definition, items),
+    pending: pendingPolicy ? explainClassification(pendingPolicy, items) : null,
+    classIds: ['SYSTEM', 'SYSSTC', 'SYSOTHER', ...def.classes.map((c) => c.id)],
+  });
+}
+
+// Every policy change (edit, activation, discard) refreshes both the JSON and the rules view.
+const postPolicy = () => {
+  post({ type: 'POLICY', json: JSON.stringify(pendingPolicy ?? run.sim.wlm.definition, null, 2) });
+  postRules();
+};
 
 function activate(def: ServiceDefinition) {
   const out = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
@@ -115,6 +136,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         historyDirty = true;
         saved = null;
       }
+      break;
+    case 'GET_RULES':
+      postRules();
       break;
     case 'CLASSIFY':
       post({ type: 'CLASSIFIED', result: classify(pendingPolicy ?? run.sim.wlm.definition, m.work), pending: pendingPolicy !== null });

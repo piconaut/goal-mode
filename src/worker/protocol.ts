@@ -3,6 +3,7 @@
 import type { ChangeRequest } from '../game/run';
 import type { WlmEdit } from '../game/wlmEdit';
 import type { Mechanism, Trigger } from '../game/types';
+import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
 import type { ClassificationResult } from '../sim/wlm/classify';
@@ -31,11 +32,13 @@ export type ToWorker =
   | { type: 'ACTIVATE_PENDING' }
   | { type: 'DISCARD_PENDING' }
   | { type: 'CLASSIFY'; work: WorkAttributes }
-  | { type: 'CONTINUE_SAVED' };
+  | { type: 'CONTINUE_SAVED' }
+  | { type: 'GET_RULES' };
 
 export type FromWorker =
   | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null }
   | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
+  | { type: 'RULES'; active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] }
   | { type: 'REPORT'; text: string }
   | { type: 'POLICY'; json: string }
   | { type: 'RESULT'; ok: boolean; message: string };

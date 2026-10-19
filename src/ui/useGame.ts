@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
 import type { ClassificationResult } from '../sim/wlm/classify';
@@ -12,6 +13,7 @@ export interface GameHandle {
   savedRunDay: number | null;
   pending: PendingPolicyView | null;
   classified: { result: ClassificationResult; pending: boolean } | null;
+  rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] } | null;
   toast: { ok: boolean; message: string } | null;
   send: (m: ToWorker) => void;
 }
@@ -25,6 +27,7 @@ export function useGame(): GameHandle {
   const [savedRunDay, setSavedRunDay] = useState<number | null>(null);
   const [pending, setPending] = useState<PendingPolicyView | null>(null);
   const [classified, setClassified] = useState<GameHandle['classified']>(null);
+  const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
 
   useEffect(() => {
@@ -38,6 +41,7 @@ export function useGame(): GameHandle {
         setSavedRunDay(m.savedRunDay);
         setPending(m.pending);
       } else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
+      else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
       else if (m.type === 'RESULT') {
@@ -49,5 +53,5 @@ export function useGame(): GameHandle {
   }, []);
 
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
-  return { view, report, policy, history, savedRunDay, pending, classified, toast, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, rules, toast, send };
 }

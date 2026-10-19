@@ -1,14 +1,30 @@
 // Small structured edits to a WLM service definition (the UI's policy editor builds
 // ACTIVATE_POLICY commands from these). Pure: returns a new definition.
 
-import type { Goal, Importance, ServiceDefinition, SubsystemType, Qualifier } from '../sim/wlm/types';
+import type { ClassificationRule, Goal, Importance, ServiceDefinition, SubsystemRules, SubsystemType, Qualifier } from '../sim/wlm/types';
+
+/** Address of a rule: indices from the top-level list down through `children`. */
+export type RulePath = number[];
 
 export type WlmEdit =
   | { op: 'SET_PERIOD'; classId: string; period: number; goal: Goal; importance: Importance; durationSu?: number | null }
   | { op: 'ADD_CLASS'; classId: string; description: string; goal: Goal; importance: Importance; cpuCritical: boolean }
   | { op: 'SET_FLAGS'; classId: string; cpuCritical?: boolean; storageCritical?: boolean }
-  | { op: 'ADD_RULE'; subsystem: SubsystemType; qualifier: Qualifier; pattern: string; serviceClass: string }
-  | { op: 'REMOVE_RULE'; subsystem: SubsystemType; index: number };
+  | {
+      op: 'ADD_RULE';
+      subsystem: SubsystemType;
+      qualifier: Qualifier;
+      pattern: string;
+      serviceClass: string;
+      reportClass?: string | null;
+      /** Insert at this path (default: first top-level rule). A path into a rule's children nests it. */
+      at?: RulePath;
+    }
+  | { op: 'REMOVE_RULE'; subsystem: SubsystemType; index: number }
+  | { op: 'DELETE_RULE'; subsystem: SubsystemType; path: RulePath }
+  | { op: 'MOVE_RULE'; subsystem: SubsystemType; path: RulePath; delta: -1 | 1 }
+  | { op: 'SET_RULE_TARGET'; subsystem: SubsystemType; path: RulePath; serviceClass: string | null; reportClass?: string | null }
+  | { op: 'SET_DEFAULT'; subsystem: SubsystemType; serviceClass: string | null };
 
 export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | string {
   const d = structuredClone(def);
@@ -36,14 +52,57 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
       return d;
     }
     case 'ADD_RULE': {
-      if (!['SYSTEM', 'SYSSTC', 'SYSOTHER'].includes(e.serviceClass) && !d.classes.some((c) => c.id === e.serviceClass)) return `No class ${e.serviceClass}`;
+      if (!knownClass(d, e.serviceClass)) return `No class ${e.serviceClass}`;
+      if (!e.pattern.trim()) return 'A rule needs a pattern';
       let ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
       if (!ss) {
         ss = { subsystem: e.subsystem, defaultServiceClass: null, defaultReportClass: null, rules: [] };
         d.subsystems.push(ss);
       }
-      // New rules go first so they take precedence (first match wins).
-      ss.rules.unshift({ qualifier: e.qualifier, pattern: e.pattern.toUpperCase(), serviceClass: e.serviceClass, reportClass: null, children: [] });
+      // Default position is first, so the new rule takes precedence (first match wins).
+      const at = e.at ?? [0];
+      const list = listAt(ss, at.slice(0, -1));
+      if (!list) return 'No such rule position';
+      const idx = Math.min(Math.max(0, at[at.length - 1] ?? 0), list.length);
+      list.splice(idx, 0, { qualifier: e.qualifier, pattern: e.pattern.trim().toUpperCase(), serviceClass: e.serviceClass, reportClass: e.reportClass ?? null, children: [] });
+      return d;
+    }
+    case 'DELETE_RULE': {
+      const ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
+      const list = ss && listAt(ss, e.path.slice(0, -1));
+      const i = e.path[e.path.length - 1];
+      if (!list || i === undefined || !list[i]) return 'No such rule';
+      list.splice(i, 1);
+      return d;
+    }
+    case 'MOVE_RULE': {
+      const ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
+      const list = ss && listAt(ss, e.path.slice(0, -1));
+      const i = e.path[e.path.length - 1];
+      if (!list || i === undefined || !list[i]) return 'No such rule';
+      const j = i + e.delta;
+      if (j < 0 || j >= list.length) return e.delta < 0 ? 'Already the first rule at this level' : 'Already the last rule at this level';
+      [list[i], list[j]] = [list[j]!, list[i]!];
+      return d;
+    }
+    case 'SET_RULE_TARGET': {
+      if (e.serviceClass !== null && !knownClass(d, e.serviceClass)) return `No class ${e.serviceClass}`;
+      const ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
+      const list = ss && listAt(ss, e.path.slice(0, -1));
+      const r = list?.[e.path[e.path.length - 1] ?? -1];
+      if (!r) return 'No such rule';
+      r.serviceClass = e.serviceClass;
+      if (e.reportClass !== undefined) r.reportClass = e.reportClass;
+      return d;
+    }
+    case 'SET_DEFAULT': {
+      if (e.serviceClass !== null && !knownClass(d, e.serviceClass)) return `No class ${e.serviceClass}`;
+      let ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
+      if (!ss) {
+        ss = { subsystem: e.subsystem, defaultServiceClass: null, defaultReportClass: null, rules: [] };
+        d.subsystems.push(ss);
+      }
+      ss.defaultServiceClass = e.serviceClass;
       return d;
     }
     case 'REMOVE_RULE': {
@@ -53,4 +112,17 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
       return d;
     }
   }
+}
+
+const knownClass = (d: ServiceDefinition, id: string) => ['SYSTEM', 'SYSSTC', 'SYSOTHER'].includes(id) || d.classes.some((c) => c.id === id);
+
+/** The rule list at a parent path ([] = top level). */
+function listAt(ss: SubsystemRules, parent: RulePath): ClassificationRule[] | null {
+  let list = ss.rules;
+  for (const i of parent) {
+    const r = list[i];
+    if (!r) return null;
+    list = r.children;
+  }
+  return list;
 }

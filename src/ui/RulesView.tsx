@@ -1,0 +1,227 @@
+import { useEffect, useState } from 'react';
+import { diffRows, type RowChange, type RuleRow, type SubsystemExplain } from '../game/classifyExplain';
+import type { ViewModel } from '../game/view';
+import type { RulePath } from '../game/wlmEdit';
+import type { Qualifier, SubsystemType } from '../sim/wlm/types';
+import type { GameHandle } from './useGame';
+
+const QUALIFIERS: { q: Qualifier; label: string }[] = [
+  { q: 'TN', label: 'TN transaction / job name' },
+  { q: 'UI', label: 'UI userid' },
+  { q: 'TC', label: 'TC job / transaction class' },
+  { q: 'PK', label: 'PK Db2 package' },
+  { q: 'CI', label: 'CI correlation id' },
+  { q: 'SY', label: 'SY system name' },
+];
+
+/** Classification rules per subsystem, in evaluation order, with what each rule catches. */
+export function RulesView({ v, game }: { v: ViewModel; game: GameHandle }) {
+  useEffect(() => {
+    game.send({ type: 'GET_RULES' });
+  }, [game, v.policyName, v.day]);
+  const r = game.rules;
+  if (!r) return <div className="panel">Loading classification rules…</div>;
+  const shown = r.pending ?? r.active;
+  return (
+    <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
+      <div className="panel">
+        <h3>
+          Classification rules: active {v.policyName}
+          {game.pending && <span className="tag warn"> editing pending {game.pending.policyName} (not active)</span>}
+        </h3>
+        <p className="muted" style={{ margin: '0 0 8px' }}>
+          Work is classified by subsystem type. Rules are checked top to bottom and the first match wins; an indented rule refines the
+          rule above it. Work that matches nothing gets the subsystem default. Edits go to a pending policy until you install it.
+        </p>
+        <div className="form">
+          <button className="primary" disabled={!game.pending} onClick={() => game.send({ type: 'ACTIVATE_PENDING' })}>
+            Install &amp; activate{game.pending ? ` ${game.pending.policyName}` : ''}
+          </button>
+          {game.pending && <button onClick={() => game.send({ type: 'DISCARD_PENDING' })}>Discard pending edits</button>}
+          <span className="muted">Activation is a change-board item (1.5h; an emergency change during the live day).</span>
+        </div>
+        {shown.sysother.length > 0 && (
+          <div className="row" style={{ justifyContent: 'flex-start' }}>
+            <span className="tag bad">Unclassified → SYSOTHER (discretionary)</span>
+            <span>{shown.sysother.join(', ')}</span>
+          </div>
+        )}
+        <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
+          <span className="tag">Always SYSTEM (z/OS forces these)</span>
+          <span className="muted" style={{ fontSize: 12 }}>{shown.forcedSystem.join(', ')}</span>
+        </div>
+      </div>
+      {shown.subsystems.map((ss) => (
+        <Subsystem
+          key={ss.subsystem}
+          ss={ss}
+          active={r.pending ? r.active.subsystems.find((x) => x.subsystem === ss.subsystem) : undefined}
+          classIds={r.classIds}
+          game={game}
+        />
+      ))}
+    </div>
+  );
+}
+
+const MARK: Record<RowChange, { label: string; cls: string } | null> = {
+  added: { label: 'new', cls: 'good' },
+  changed: { label: 'changed', cls: 'warn' },
+  same: null,
+};
+
+function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; active: SubsystemExplain | undefined; classIds: string[]; game: GameHandle }) {
+  const diff = active ? diffRows(active.rows, ss.rows) : null;
+  const edit = (e: Parameters<GameHandle['send']>[0]) => game.send(e);
+  const sub = ss.subsystem;
+  return (
+    <div className="panel">
+      <h3>Subsystem {sub}</h3>
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th className="num">#</th>
+              <th>Rule</th>
+              <th>Service class</th>
+              <th>Report class</th>
+              <th>Catches now</th>
+              <th />
+            </tr>
+          </thead>
+          <tbody>
+            {ss.rows.map((row, i) => {
+              const mark = diff ? MARK[diff.changes[i]!] : null;
+              return (
+                <tr key={row.path.join('.')}>
+                  <td className="num muted">{row.path.map((p) => p + 1).join('.')}</td>
+                  <td style={{ paddingLeft: 6 + row.depth * 18, whiteSpace: 'nowrap' }}>
+                    {row.depth > 0 && <span className="muted">└ </span>}
+                    <span className="num">
+                      {row.qualifier}={row.pattern}
+                    </span>
+                    {mark && <span className={`tag ${mark.cls}`}> {mark.label}</span>}
+                  </td>
+                  <td>
+                    <select
+                      aria-label={`Service class for rule ${row.qualifier}=${row.pattern}`}
+                      value={row.serviceClass ?? ''}
+                      onChange={(e) => edit({ type: 'WLM_EDIT', edit: { op: 'SET_RULE_TARGET', subsystem: sub, path: row.path, serviceClass: e.target.value || null } })}
+                    >
+                      {row.depth > 0 && <option value="">(inherit)</option>}
+                      {classIds.map((c) => (
+                        <option key={c}>{c}</option>
+                      ))}
+                    </select>
+                    {row.catches.length > 0 && row.effectiveClass !== row.serviceClass && <span className="muted"> → {row.effectiveClass}</span>}
+                  </td>
+                  <td className="muted">{row.reportClass ?? '-'}</td>
+                  <td style={{ fontSize: 12, minWidth: 160 }}>{row.catches.length ? row.catches.join(', ') : <span className="muted">nothing today</span>}</td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <RowActions sub={sub} row={row} edit={edit} />
+                  </td>
+                </tr>
+              );
+            })}
+            {diff?.removed.map((row) => (
+              <tr key={`removed-${row.path.join('.')}`} style={{ textDecoration: 'line-through' }} className="muted">
+                <td className="num">–</td>
+                <td style={{ paddingLeft: 6 + row.depth * 18 }}>
+                  {row.qualifier}={row.pattern} <span className="tag bad">removed</span>
+                </td>
+                <td>{row.serviceClass}</td>
+                <td>{row.reportClass ?? '-'}</td>
+                <td style={{ fontSize: 12 }}>{row.catches.join(', ')}</td>
+                <td />
+              </tr>
+            ))}
+            <tr>
+              <td className="num muted">∗</td>
+              <td className="muted">default (no rule matched)</td>
+              <td>
+                <select
+                  aria-label={`Default service class for ${sub}`}
+                  value={ss.builtInDefault ? '' : ss.defaultServiceClass}
+                  onChange={(e) => edit({ type: 'WLM_EDIT', edit: { op: 'SET_DEFAULT', subsystem: sub, serviceClass: e.target.value || null } })}
+                >
+                  <option value="">{sub === 'STC' ? 'SYSSTC' : 'SYSOTHER'} (built-in)</option>
+                  {classIds.map((c) => (
+                    <option key={c}>{c}</option>
+                  ))}
+                </select>
+              </td>
+              <td />
+              <td style={{ fontSize: 12 }}>{ss.defaultCatches.length ? ss.defaultCatches.join(', ') : <span className="muted">nothing today</span>}</td>
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <AddRule sub={sub} count={ss.rows.filter((r) => r.depth === 0).length} classIds={classIds} edit={edit} />
+    </div>
+  );
+}
+
+function RowActions({ sub, row, edit }: { sub: SubsystemType; row: RuleRow; edit: (e: Parameters<GameHandle['send']>[0]) => void }) {
+  const move = (delta: -1 | 1) => edit({ type: 'WLM_EDIT', edit: { op: 'MOVE_RULE', subsystem: sub, path: row.path, delta } });
+  return (
+    <>
+      <button title="Move up (evaluated earlier)" aria-label="Move rule up" onClick={() => move(-1)}>
+        ↑
+      </button>{' '}
+      <button title="Move down (evaluated later)" aria-label="Move rule down" onClick={() => move(1)}>
+        ↓
+      </button>{' '}
+      <button title="Delete rule" aria-label="Delete rule" onClick={() => edit({ type: 'WLM_EDIT', edit: { op: 'DELETE_RULE', subsystem: sub, path: row.path } })}>
+        ✕
+      </button>
+    </>
+  );
+}
+
+function AddRule({ sub, count, classIds, edit }: { sub: SubsystemType; count: number; classIds: string[]; edit: (e: Parameters<GameHandle['send']>[0]) => void }) {
+  const [q, setQ] = useState<Qualifier>(sub === 'DDF' || sub === 'TSO' || sub === 'OMVS' ? 'UI' : 'TN');
+  const [pattern, setPattern] = useState('');
+  const [cls, setCls] = useState(classIds[3] ?? 'SYSSTC');
+  const [pos, setPos] = useState('1');
+  const [parent, setParent] = useState('');
+  const submit = () => {
+    const at: RulePath = parent.trim()
+      ? [...parent.split('.').map((x) => Number(x) - 1), Math.max(0, Number(pos) - 1)]
+      : [Math.max(0, Math.min(count, Number(pos) - 1))];
+    edit({ type: 'WLM_EDIT', edit: { op: 'ADD_RULE', subsystem: sub, qualifier: q, pattern, serviceClass: cls, at } });
+    setPattern('');
+  };
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <span className="muted">Add rule</span>
+      <select aria-label="Qualifier type" value={q} onChange={(e) => setQ(e.target.value as Qualifier)}>
+        {QUALIFIERS.map((x) => (
+          <option key={x.q} value={x.q}>
+            {x.label}
+          </option>
+        ))}
+      </select>
+      <input aria-label="Pattern" placeholder="pattern, e.g. DB1* or AUTH?" value={pattern} onChange={(e) => setPattern(e.target.value)} size={14} />
+      →
+      <select aria-label="Service class" value={cls} onChange={(e) => setCls(e.target.value)}>
+        {classIds.map((c) => (
+          <option key={c}>{c}</option>
+        ))}
+      </select>
+      at position
+      <input aria-label="Position" value={pos} onChange={(e) => setPos(e.target.value)} size={2} />
+      under rule
+      <input aria-label="Parent rule number (blank for top level)" placeholder="top" value={parent} onChange={(e) => setParent(e.target.value)} size={4} />
+      <button type="submit" disabled={!pattern.trim()}>
+        Add
+      </button>
+    </form>
+  );
+}
