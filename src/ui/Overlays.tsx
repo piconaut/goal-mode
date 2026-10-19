@@ -57,6 +57,9 @@ function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () 
         {planned.length > 0 ? `${planned.length} change(s) will activate at 06:00.` : 'No changes planned for today.'}
       </p>
       <div className="form">
+        {game.savedRunDay !== null && v.day === 0 && (
+          <button onClick={() => game.send({ type: 'CONTINUE_SAVED' })}>Continue saved run (day {game.savedRunDay + 1})</button>
+        )}
         <button onClick={hide}>Plan changes / read reports</button>
         <button className="primary" onClick={() => game.send({ type: 'START_DAY' })}>
           Start day (06:00)

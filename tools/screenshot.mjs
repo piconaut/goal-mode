@@ -4,7 +4,7 @@ import { chromium } from 'playwright-core';
 
 const out = process.argv[2] ?? '.';
 const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' });
-const page = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+const page = await browser.newPage({ viewport: { width: 1400, height: 1000 }, colorScheme: process.argv[3] === 'dark' ? 'dark' : 'light' });
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));

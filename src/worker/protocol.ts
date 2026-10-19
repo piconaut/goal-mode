@@ -8,6 +8,13 @@ import type { ViewModel } from '../game/view';
 import type { ClassificationResult } from '../sim/wlm/classify';
 import type { WorkAttributes } from '../sim/wlm/types';
 
+/** Summary of the edited-but-not-yet-activated WLM policy. */
+export interface PendingPolicyView {
+  policyName: string;
+  classes: { id: string; periods: string[]; cpuCritical: boolean }[];
+  rules: { subsystem: string; text: string }[];
+}
+
 export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DASD';
 
 export type ToWorker =
@@ -21,11 +28,13 @@ export type ToWorker =
   | { type: 'WLM_EDIT'; edit: WlmEdit }
   | { type: 'GET_POLICY' }
   | { type: 'ACTIVATE_JSON'; json: string }
+  | { type: 'ACTIVATE_PENDING' }
+  | { type: 'DISCARD_PENDING' }
   | { type: 'CLASSIFY'; work: WorkAttributes }
   | { type: 'CONTINUE_SAVED' };
 
 export type FromWorker =
-  | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null }
+  | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null }
   | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
   | { type: 'REPORT'; text: string }
   | { type: 'POLICY'; json: string }

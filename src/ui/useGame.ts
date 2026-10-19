@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
-import type { FromWorker, ToWorker } from '../worker/protocol';
+import type { ClassificationResult } from '../sim/wlm/classify';
+import type { FromWorker, PendingPolicyView, ToWorker } from '../worker/protocol';
 
 export interface GameHandle {
   view: ViewModel | null;
   report: string;
   policy: string;
+  history: HistoryPoint[];
+  savedRunDay: number | null;
+  pending: PendingPolicyView | null;
+  classified: { result: ClassificationResult; pending: boolean } | null;
   toast: { ok: boolean; message: string } | null;
   send: (m: ToWorker) => void;
 }
@@ -15,6 +21,10 @@ export function useGame(): GameHandle {
   const [view, setView] = useState<ViewModel | null>(null);
   const [report, setReport] = useState('');
   const [policy, setPolicy] = useState('');
+  const [history, setHistory] = useState<HistoryPoint[]>([]);
+  const [savedRunDay, setSavedRunDay] = useState<number | null>(null);
+  const [pending, setPending] = useState<PendingPolicyView | null>(null);
+  const [classified, setClassified] = useState<GameHandle['classified']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
 
   useEffect(() => {
@@ -22,7 +32,12 @@ export function useGame(): GameHandle {
     worker.current = w;
     w.onmessage = (e: MessageEvent<FromWorker>) => {
       const m = e.data;
-      if (m.type === 'VIEW') setView(m.view);
+      if (m.type === 'VIEW') {
+        setView(m.view);
+        if (m.history) setHistory(m.history);
+        setSavedRunDay(m.savedRunDay);
+        setPending(m.pending);
+      } else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
       else if (m.type === 'RESULT') {
@@ -34,5 +49,5 @@ export function useGame(): GameHandle {
   }, []);
 
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
-  return { view, report, policy, toast, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, toast, send };
 }

@@ -10,7 +10,8 @@ import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../sim/measure/reports';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { classify } from '../sim/wlm/classify';
-import type { FromWorker, ToWorker } from './protocol';
+import { goalText } from '../sim/wlm/goals';
+import type { FromWorker, PendingPolicyView, ToWorker } from './protocol';
 import { loadRun, saveRun } from './storage';
 
 const scenario = MIDWEST;
@@ -30,8 +31,31 @@ let saved: RunState | null = null;
 let lastPhase = run.phase;
 
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
+function pendingView(): PendingPolicyView | null {
+  if (!pendingPolicy) return null;
+  return {
+    policyName: pendingPolicy.policyName,
+    classes: pendingPolicy.classes.map((c) => ({ id: c.id, periods: c.periods.map((p) => goalText(p)), cpuCritical: c.cpuCritical })),
+    rules: pendingPolicy.subsystems.flatMap((ss) =>
+      ss.rules.map((r) => ({ subsystem: ss.subsystem, text: `${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(default)'}` })),
+    ),
+  };
+}
+
+const postPolicy = () => post({ type: 'POLICY', json: JSON.stringify(pendingPolicy ?? run.sim.wlm.definition, null, 2) });
+
+function activate(def: ServiceDefinition) {
+  const out = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
+  run = out.run;
+  if (out.ok) {
+    pendingPolicy = null;
+    postPolicy();
+  }
+  post({ type: 'RESULT', ok: out.ok, message: out.message });
+}
+
 const sendView = () => {
-  post({ type: 'VIEW', view: buildView(run, scenario), history: historyDirty ? history : null, savedRunDay: saved && saved.day > 0 ? saved.day : null });
+  post({ type: 'VIEW', view: buildView(run, scenario), history: historyDirty ? history : null, savedRunDay: saved && saved.day > 0 ? saved.day : null, pending: pendingView() });
   historyDirty = false;
 };
 
@@ -115,17 +139,28 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = submitRca(run, m.incidentId, m.mechanism, m.trigger);
       break;
     case 'WLM_EDIT': {
-      // Edits accumulate on the *pending* policy if one is planned for today, else the active one.
-      const res = applyWlmEdit(pendingPolicy ?? run.sim.wlm.definition, m.edit);
+      // Edits accumulate on a pending copy of the active policy until it is activated.
+      const base = pendingPolicy ?? { ...run.sim.wlm.definition, policyName: nextPolicyName(run.sim.wlm.definition.policyName) };
+      const res = applyWlmEdit(base, m.edit);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else {
         pendingPolicy = res;
-        post({ type: 'RESULT', ok: true, message: 'Policy edited (not yet active). Install & activate it from the Change Desk.' });
+        postPolicy();
+        post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.` });
       }
       break;
     }
+    case 'ACTIVATE_PENDING':
+      if (pendingPolicy) activate(pendingPolicy);
+      else post({ type: 'RESULT', ok: false, message: 'No pending policy edits' });
+      break;
+    case 'DISCARD_PENDING':
+      pendingPolicy = null;
+      postPolicy();
+      post({ type: 'RESULT', ok: true, message: 'Pending policy discarded' });
+      break;
     case 'GET_POLICY':
-      post({ type: 'POLICY', json: JSON.stringify(pendingPolicy ?? run.sim.wlm.definition, null, 2) });
+      postPolicy();
       break;
     case 'ACTIVATE_JSON': {
       let def: ServiceDefinition;
@@ -135,10 +170,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         post({ type: 'RESULT', ok: false, message: 'Policy JSON does not parse' });
         break;
       }
-      const out = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
-      run = out.run;
-      if (out.ok) pendingPolicy = null;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      activate(def);
       break;
     }
     case 'GET_REPORT': {
@@ -158,3 +190,11 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
 };
 
 sendView();
+
+/** BASEPOL → BASEPOL2 → BASEPOL3 … so RMF reports show which policy was active. */
+function nextPolicyName(name: string): string {
+  const m = /^(.*?)(\d+)$/.exec(name);
+  const stem = (m ? m[1]! : name).slice(0, 7);
+  const n = m ? Number(m[2]) + 1 : 2;
+  return `${stem}${n}`.slice(0, 8);
+}

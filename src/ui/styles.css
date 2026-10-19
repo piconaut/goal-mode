@@ -12,6 +12,11 @@
   --crit: #ff6b6b;
   --green-screen: #33ff66;
   --green-bg: #050d06;
+  /* Categorical series slots 1–4 (dataviz reference palette, dark steps; validated vs #161b22). */
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
   --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
   --sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -23,6 +28,11 @@
     --border: #d0d7de;
     --text: #1f2328;
     --muted: #59636e;
+    /* Light steps (validated vs #ffffff; slots 3–4 below 3:1, so charts carry direct labels + a table). */
+    --series-1: #2a78d6;
+    --series-2: #eb6834;
+    --series-3: #1baf7a;
+    --series-4: #eda100;
   }
 }
 * { box-sizing: border-box; }
@@ -72,3 +82,13 @@ td, th { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: l
 th { color: var(--muted); font-weight: 500; }
 .form { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 6px 0; }
 @media (max-width: 600px) { .app { padding: 8px 16px 40px; } .clock { font-size: 15px; } }
+
+.chart { position: relative; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart .grid line { stroke: var(--border); stroke-width: 1; }
+.chart .axis text { fill: var(--muted); font-size: 11px; font-family: var(--mono); }
+.chart .tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font-size: 12px; white-space: nowrap; z-index: 2; }
+.chart .tip b { font-family: var(--mono); }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.legend i { display: inline-block; width: 12px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 6px; }

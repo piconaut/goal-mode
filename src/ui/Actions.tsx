@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { HARDWARE } from '../content/hardware-catalog';
 import { FIXES } from '../game/catalog';
 import type { ViewModel } from '../game/view';
 import type { Command } from '../sim/core/commands';
-import type { Goal, Importance, Qualifier, SubsystemType } from '../sim/wlm/types';
+import { entitlements, polarity } from '../sim/hw/prsm';
+import type { Goal, Importance, Qualifier, SubsystemType, WorkAttributes } from '../sim/wlm/types';
 import type { GameHandle } from './useGame';
 
 export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
@@ -75,6 +76,7 @@ function Prsm({ v, change }: { v: ViewModel; change: ChangeFn }) {
         </select>
         <span className="muted">{l?.polarity}</span>
       </div>
+      <PolarityPreview v={v} lpar={lpar} weight={Number(weight) || 0} logical={Number(lcp) || 0} />
       <div className="form">
         CP weight <input value={weight} onChange={(e) => setWeight(e.target.value)} size={4} />
         <button onClick={() => change(`${lpar} CP weight ${weight}`, [{ kind: 'SET_WEIGHT', lparId: lpar, pool: 'CP', weight: Number(weight) }])}>Set</button>
@@ -98,6 +100,88 @@ function Prsm({ v, change }: { v: ViewModel; change: ChangeFn }) {
   );
 }
 
+/** Live HiperDispatch preview while editing a weight or logical count (SPEC §5.3.3). */
+function PolarityPreview({ v, lpar, weight, logical }: { v: ViewModel; lpar: string; weight: number; logical: number }) {
+  const shared = v.lpars.filter((l) => l.kind === 'ZOS');
+  const claims = shared.map((l) => ({
+    weight: l.id === lpar ? weight : l.weight,
+    logical: l.id === lpar ? logical : l.logicalCps,
+    demandEngines: 0,
+    capEngines: Infinity,
+  }));
+  const ents = entitlements(claims, v.cpcEngines.CP);
+  const totalLogical = claims.reduce((a, c) => a + c.logical, 0);
+  return (
+    <table style={{ margin: '6px 0' }}>
+      <thead>
+        <tr>
+          <th>LPAR</th>
+          <th className="num">weight</th>
+          <th className="num">entitled CPs</th>
+          <th>polarity (preview)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {shared.map((l, i) => {
+          const p = polarity(ents[i] ?? 0, claims[i]!.logical);
+          const changed = l.id === lpar;
+          return (
+            <tr key={l.id} style={changed ? { color: 'var(--accent)' } : undefined}>
+              <td>{l.id}</td>
+              <td className="num">{claims[i]!.weight}</td>
+              <td className="num">{(ents[i] ?? 0).toFixed(2)}</td>
+              <td>
+                {p.vh}VH {p.vm}VM {p.vl}VL
+              </td>
+            </tr>
+          );
+        })}
+        <tr>
+          <td colSpan={4} className="muted" style={{ fontSize: 12 }}>
+            Logical:physical {totalLogical}:{v.cpcEngines.CP} = {(totalLogical / v.cpcEngines.CP).toFixed(2)}
+            {totalLogical / v.cpcEngines.CP > 2 ? ' (above the 2:1 rule of thumb)' : ''}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  );
+}
+
+/** "Where does this work go?" against the pending (or active) policy. */
+function ClassifyBench({ game }: { game: GameHandle }) {
+  const [ss, setSs] = useState<SubsystemType>('DDF');
+  const [attrs, setAttrs] = useState<Record<string, string>>({ UI: 'MOBAPI' });
+  const quals: Qualifier[] = ['TN', 'UI', 'TC', 'PK', 'CI', 'SY'];
+  const run = () => {
+    const work: WorkAttributes = { subsystem: ss };
+    for (const q of quals) if (attrs[q]) work[q] = attrs[q]!.toUpperCase();
+    game.send({ type: 'CLASSIFY', work });
+  };
+  const c = game.classified;
+  return (
+    <>
+      <div className="form">
+        Test
+        <select value={ss} onChange={(e) => setSs(e.target.value as SubsystemType)}>
+          {(['STC', 'JES', 'CICS', 'DDF', 'TSO', 'OMVS'] as SubsystemType[]).map((x) => (
+            <option key={x}>{x}</option>
+          ))}
+        </select>
+        {quals.map((q) => (
+          <input key={q} placeholder={q} size={6} value={attrs[q] ?? ''} onChange={(e) => setAttrs({ ...attrs, [q]: e.target.value })} />
+        ))}
+        <button onClick={run}>Classify</button>
+      </div>
+      {c && (
+        <div className="muted" style={{ fontSize: 12 }}>
+          → <b style={{ color: 'var(--text)' }}>{c.result.serviceClass}</b>
+          {c.result.reportClass ? ` (report class ${c.result.reportClass})` : ''} via {c.result.path.join(' › ')} {c.pending ? '[pending policy]' : '[active policy]'}
+        </div>
+      )}
+    </>
+  );
+}
+
 const IMPS: Importance[] = [1, 2, 3, 4, 5];
 
 function Wlm({ v, game }: { v: ViewModel; game: GameHandle }) {
@@ -113,24 +197,51 @@ function Wlm({ v, game }: { v: ViewModel; game: GameHandle }) {
   const [target, setTarget] = useState('STCHI');
   const [newId, setNewId] = useState('');
   const [showJson, setShowJson] = useState(false);
+  // Local JSON edits; cleared whenever the worker sends a newer pending/active policy.
   const [json, setJson] = useState('');
+  useEffect(() => setJson(''), [game.policy]);
+  const jsonEdited = json !== '' && json !== game.policy;
   const goal = (): Goal => (kind === 'VEL' ? { kind, velocity: Number(val) } : kind === 'AVG' ? { kind, rtSec: Number(val) } : kind === 'PCT' ? { kind, rtSec: Number(val), pct: Number(pct) } : { kind: 'DISC' });
   return (
     <div className="panel">
-      <h3>WLM policy ({v.policyName})</h3>
+      <h3>
+        WLM policy: active {v.policyName}
+        {game.pending && <span className="tag warn"> pending {game.pending.policyName} (not active)</span>}
+      </h3>
       <table>
         <tbody>
-          {v.serviceClasses.map((c) => (
-            <tr key={c.id}>
-              <td>{c.id}</td>
-              <td className="muted" style={{ fontSize: 12 }}>{c.periods.map((p, i) => `P${i + 1}: ${p}`).join(' · ')}</td>
-            </tr>
-          ))}
+          {(game.pending?.classes ?? v.serviceClasses.map((c) => ({ ...c, cpuCritical: false }))).map((c) => {
+            const active = v.serviceClasses.find((a) => a.id === c.id);
+            const changed = game.pending !== null && (!active || active.periods.join('|') !== c.periods.join('|'));
+            return (
+              <tr key={c.id} style={changed ? { color: 'var(--warn)' } : undefined}>
+                <td>
+                  {c.id}
+                  {c.cpuCritical && <span className="muted"> (CPU crit)</span>}
+                </td>
+                <td style={{ fontSize: 12 }} className={changed ? '' : 'muted'}>
+                  {c.periods.map((p, i) => `P${i + 1}: ${p}`).join(' · ')}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
+      {game.pending && (
+        <details>
+          <summary>Pending classification rules ({game.pending.rules.length})</summary>
+          <div className="log">
+            {game.pending.rules.map((r, i) => (
+              <div key={i}>
+                {r.subsystem}: {r.text}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
       <div className="form">
         <select value={cls} onChange={(e) => setCls(e.target.value)}>
-          {v.serviceClasses.map((c) => (
+          {(game.pending?.classes ?? v.serviceClasses).map((c) => (
             <option key={c.id}>{c.id}</option>
           ))}
         </select>
@@ -172,20 +283,35 @@ function Wlm({ v, game }: { v: ViewModel; game: GameHandle }) {
         <input value={target} onChange={(e) => setTarget(e.target.value.toUpperCase())} size={8} />
         <button onClick={() => game.send({ type: 'WLM_EDIT', edit: { op: 'ADD_RULE', subsystem: ss, qualifier: q, pattern, serviceClass: target } })}>Add rule (first)</button>
       </div>
+      <ClassifyBench game={game} />
       <div className="form">
         <button
           onClick={() => {
             game.send({ type: 'GET_POLICY' });
-            setShowJson(true);
+            setShowJson(!showJson);
           }}
         >
-          Review pending policy
+          {showJson ? 'Hide' : 'Review'} policy JSON
         </button>
-        <button className="primary" onClick={() => game.send({ type: 'ACTIVATE_JSON', json: json || game.policy })} disabled={!game.policy && !json}>
-          Install &amp; activate
+        <button
+          className="primary"
+          disabled={!game.pending && !jsonEdited}
+          onClick={() => (jsonEdited ? game.send({ type: 'ACTIVATE_JSON', json }) : game.send({ type: 'ACTIVATE_PENDING' }))}
+        >
+          Install &amp; activate{jsonEdited ? ' (edited JSON)' : game.pending ? ` ${game.pending.policyName}` : ''}
         </button>
+        {(game.pending || jsonEdited) && (
+          <button
+            onClick={() => {
+              setJson('');
+              game.send({ type: 'DISCARD_PENDING' });
+            }}
+          >
+            Discard
+          </button>
+        )}
       </div>
-      {showJson && <textarea rows={14} value={json || game.policy} onChange={(e) => setJson(e.target.value)} />}
+      {showJson && <textarea rows={14} value={jsonEdited ? json : game.policy} onChange={(e) => setJson(e.target.value)} />}
     </div>
   );
 }

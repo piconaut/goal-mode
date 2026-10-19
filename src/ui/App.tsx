@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { FACETS } from '../game/types';
 import type { ViewModel } from '../game/view';
+import type { HistoryPoint } from '../game/history';
 import { Actions } from './Actions';
+import { LineChart } from './LineChart';
 import { Overlays } from './Overlays';
 import { Reports } from './Reports';
 import { useGame, type GameHandle } from './useGame';
@@ -23,7 +25,7 @@ export function App() {
           </button>
         ))}
       </div>
-      {tab === 'console' && <Console v={v} />}
+      {tab === 'console' && <Console v={v} history={game.history} />}
       {tab === 'reports' && <Reports v={v} game={game} />}
       {tab === 'changes' && <Actions v={v} game={game} />}
       {tab === 'inbox' && <Inbox v={v} />}
@@ -103,9 +105,42 @@ export function piColor(pi: number | null): string {
   return 'rgba(255,107,107,0.55)';
 }
 
-function Console({ v }: { v: ViewModel }) {
+const SERIES_LPARS = ['PROD1', 'PROD2', 'DEVT', 'SYSP'];
+const seriesColor = (i: number) => `var(--series-${i + 1})`;
+
+function hhmm(h: number): string {
+  const hh = Math.floor(h);
+  const mm = Math.round((h - hh) * 60) % 60;
+  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+}
+
+function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
+  // Today's samples only (since the played day's 06:00).
+  const dayStart = v.day * v.ticksPerDay;
+  const pts = history.filter((p) => p.tick > dayStart);
+  const xLabels = pts.map((p) => hhmm(p.hourOfDay));
+  const mk = (key: 'msu' | 'r4ha') => SERIES_LPARS.map((id, i) => ({ id, color: seriesColor(i), values: pts.map((p) => p[key][id] ?? null) }));
+  return (
+    <div className="panel" style={{ gridColumn: '1 / -1' }}>
+      <h3>Capacity today</h3>
+      <div className="grid">
+        <div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>MSU consumption per LPAR (5-minute samples)</div>
+          <LineChart title="MSU per LPAR" unit="MSU" xLabels={xLabels} series={mk('msu')} />
+        </div>
+        <div>
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Rolling 4-hour average per LPAR (drives soft capping and the MLC bill)</div>
+          <LineChart title="R4HA per LPAR" unit="MSU" xLabels={xLabels} series={mk('r4ha')} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
   return (
     <div className="grid">
+      <Capacity v={v} history={history} />
       <div className="panel">
         <h3>Processor (CPC busy {v.cpcBusyPct.toFixed(0)}%)</h3>
         {v.lpars.map((l) => (
