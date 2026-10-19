@@ -8,7 +8,10 @@ import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../sim/measure/reports';
+import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
+import { classify } from '../sim/wlm/classify';
 import type { FromWorker, ToWorker } from './protocol';
+import { loadRun, saveRun } from './storage';
 
 const scenario = MIDWEST;
 const content = MIDWEST_GAME;
@@ -21,8 +24,45 @@ let speed = 1;
 let pendingPolicy: ServiceDefinition | null = null;
 let carry = 0;
 
+let history: HistoryPoint[] = [];
+let historyDirty = true;
+let saved: RunState | null = null;
+let lastPhase = run.phase;
+
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
-const sendView = () => post({ type: 'VIEW', view: buildView(run, scenario) });
+const sendView = () => {
+  post({ type: 'VIEW', view: buildView(run, scenario), history: historyDirty ? history : null, savedRunDay: saved && saved.day > 0 ? saved.day : null });
+  historyDirty = false;
+};
+
+/** Advance in chunks so the chart history gets a sample every five minutes. */
+function advanceSampled(n: number) {
+  let left = n;
+  while (left > 0 && run.phase === 'LIVE') {
+    const toSample = HISTORY_EVERY_TICKS - (run.sim.tick % HISTORY_EVERY_TICKS);
+    const k = Math.min(left, toSample);
+    run = advance(run, scenario, content, k);
+    left -= k;
+    if (run.sim.tick % HISTORY_EVERY_TICKS === 0) {
+      history = [...history, samplePoint(run)].slice(-HISTORY_MAX);
+      historyDirty = true;
+    }
+  }
+  autosave();
+}
+
+/** Save whenever the phase changes (end of day, game over) so a reload resumes there. */
+function autosave() {
+  if (run.phase !== lastPhase) {
+    lastPhase = run.phase;
+    if (run.phase !== 'LIVE') void saveRun(run);
+  }
+}
+
+void loadRun().then((r) => {
+  saved = r;
+  sendView();
+});
 
 setInterval(() => {
   if (run.phase !== 'LIVE' || speed <= 0) return;
@@ -30,7 +70,7 @@ setInterval(() => {
   const n = Math.floor(carry);
   if (n <= 0) return;
   carry -= n;
-  run = advance(run, scenario, content, n);
+  advanceSampled(n);
   sendView();
 }, FRAME_MS);
 
@@ -39,6 +79,21 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
   switch (m.type) {
     case 'NEW_RUN':
       run = newRun(scenario, content, m.seed);
+      history = [];
+      historyDirty = true;
+      saved = null;
+      break;
+    case 'CONTINUE_SAVED':
+      if (saved) {
+        run = saved;
+        lastPhase = run.phase;
+        history = [];
+        historyDirty = true;
+        saved = null;
+      }
+      break;
+    case 'CLASSIFY':
+      post({ type: 'CLASSIFIED', result: classify(pendingPolicy ?? run.sim.wlm.definition, m.work), pending: pendingPolicy !== null });
       break;
     case 'START_DAY':
       run = startDay(run, content);
@@ -54,6 +109,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'DRAFT':
       run = chooseDraft(run, content, m.optionId);
+      autosave();
       break;
     case 'RCA':
       run = submitRca(run, m.incidentId, m.mechanism, m.trigger);

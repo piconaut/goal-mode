@@ -3,7 +3,10 @@
 import type { ChangeRequest } from '../game/run';
 import type { WlmEdit } from '../game/wlmEdit';
 import type { Mechanism, Trigger } from '../game/types';
+import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
+import type { ClassificationResult } from '../sim/wlm/classify';
+import type { WorkAttributes } from '../sim/wlm/types';
 
 export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DASD';
 
@@ -17,10 +20,13 @@ export type ToWorker =
   | { type: 'GET_REPORT'; index: number; kind: ReportKind; scKey?: string; system?: string }
   | { type: 'WLM_EDIT'; edit: WlmEdit }
   | { type: 'GET_POLICY' }
-  | { type: 'ACTIVATE_JSON'; json: string };
+  | { type: 'ACTIVATE_JSON'; json: string }
+  | { type: 'CLASSIFY'; work: WorkAttributes }
+  | { type: 'CONTINUE_SAVED' };
 
 export type FromWorker =
-  | { type: 'VIEW'; view: ViewModel }
+  | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null }
+  | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
   | { type: 'REPORT'; text: string }
   | { type: 'POLICY'; json: string }
   | { type: 'RESULT'; ok: boolean; message: string };
