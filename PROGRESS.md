@@ -6,7 +6,8 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M4 done (M2 leftovers: RG minimum, discretionary capping). The sim is feature-complete for a headless day: online, batch, I/O, CF, subsystems, capping, MLC and RMF reports.
 - **Last updated:** 2026-10-19
-- **Next up:** M5 game layer: run/day state machine, command handling (player verbs), economy (trust/hours/budget), change calendar, event deck, RCA, scoring.
+- **Next up:** finish M5: fix NaN response time under total collapse (PAYMQ, day 8 of the do-nothing bot), balance pass on event severity/stacking, a "textbook" bot, game-layer docs. Then M6 UI.
+- **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
 - **Health:** `npm run check` green (102 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -80,14 +81,19 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Tests: R4HA window and capping hysteresis, spikes under DC, SG24-7621 group-capacity example, donation, full-sim DC hold, MLC peak-of-sums + DC limit + tiers, interval records + renderers
 
 ### M5 — Game layer
-- [ ] Run/day state machine (briefing → live → review); calendar; weekends auto-sim
-- [ ] Economy: Trust (+facets), Engineer-Hours, Fatigue, Opex/Capex, Insight
-- [ ] Change calendar, CAB, emergency changes, change failure risk, freezes
-- [ ] Event deck engine + first 12 events (SPEC §9) with clues
-- [ ] RCA mini-game
-- [ ] Draft rewards, perks, constraint cards
-- [ ] Scoring, win/loss, end-of-run report
-- [ ] Midwest Mutual scenario with flaws F1–F12
+- [x] Sim command system for every player verb + event modifiers (rate/CPU/AS multipliers, CF/DASD degrade, lock boost, job abend/restart, new workloads, routing) (`sim/core/commands.ts`)
+- [x] Per-workload response-time component breakdown (for incident ground truth)
+- [x] Run/day state machine (briefing → live → review → draft) (`game/run.ts`); weekends not yet auto-simulated
+- [x] Economy: trust facets, engineer-hours + overtime → fatigue, opex (MLC + CoD) vs budget, capex, insight
+- [x] Change board: planned vs emergency changes, failure risk, freeze constraint, hardware lead times, temporary CoD with revert, event fixes (`game/catalog.ts`, `content/hardware-catalog.ts`)
+- [x] Event deck engine + 9 events with clues/fixes, scripted story beats (CFO mandate, 05:00 deadline, merger, freeze) (`content/events/`)
+- [x] Hourly SLA accounting, incidents with ground-truth mechanism/trigger vs healthy baseline, RCA scoring (`game/sla.ts`)
+- [x] Draft rewards and perks (`content/draft.ts`); scoring; win/loss (trust, 2 batch misses, opex > 125%)
+- [x] Bot runner `npm run bot -- --bot donothing|oraclerca` (`tools/bot.ts`, `tools/strategies.ts`)
+- [ ] BUG: NaN response time/attainment under total collapse (PAYMQ, seed 42 day 8)
+- [ ] Balance: do-nothing currently dies on day 8 (target 12–18), because persistent events (regression, runaway) stack and never get fixed
+- [ ] End-of-run report; weekend auto-sim; Insight spending (M7)
+- [ ] Midwest Mutual scenario with flaws F1–F12 (F1–F11 in place; F12 trivially)
 
 ### M6 — UI (playable vertical slice)
 - [ ] Worker host + message protocol; snapshot coalescing
@@ -201,3 +207,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - **2026-10-19 (loop 4):** M4: R4HA/DC/group capacity with CAP delay, MLC peak-of-sums billing,
   RMF interval records and Postprocessor-style renderers; headless `--report/--detail/--dc`.
   Verified a 420 MSU DC on PROD2 holds it there and hurts DDF. 102 tests.
+- **2026-10-19 (loop 5):** M5 core: commands/modifiers, run lifecycle, economy, change board,
+  incidents + RCA, events, draft, bots. 112 tests. Do-nothing bot (seed 42): mild incidents on
+  days 1–2 (batch overlap), then a calm stretch, then collapse on day 8 under stacked unfixed
+  events (regression + runaway + CF link). Created the git repo and pushed to GitHub.
