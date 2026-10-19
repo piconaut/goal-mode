@@ -1,0 +1,35 @@
+import { newCost } from '../cost/mlc';
+import { newR4ha } from '../cost/r4ha';
+import { newRmfAcc } from '../measure/rmf';
+import { emptyBatch } from '../subsys/batch';
+import { seedRng } from './rng';
+import type { Scenario } from './scenario';
+import type { SimState } from './types';
+
+export function initState(seed: number, scenario: Scenario): SimState {
+  return {
+    version: 1,
+    seed,
+    tick: 0,
+    rng: seedRng(seed),
+    config: structuredClone(scenario.world),
+    lpars: [],
+    wlm: { definition: structuredClone(scenario.definition), systems: [], log: [] },
+    workloads: scenario.workloads.map((w) => ({ id: w.id, noise: 0, retryRate: 0, lastRtSec: 0 })),
+    backlog: {},
+    last: { lpars: [], workloads: [] },
+    env: { dasd: null, cf: [], lockIndex: 0, rtByWorkloadLpar: {}, pagingFrac: {} },
+    batch: emptyBatch(),
+    capping: {
+      lpars: scenario.world.lpars.filter((l) => l.kind === 'ZOS').map((l) => newR4ha(l.id)),
+      groups: scenario.world.capacityGroups.map((g) => newR4ha(g.id)),
+    },
+    cost: newCost(scenario.products),
+    rmf: { acc: newRmfAcc(0), intervals: [], jobsThisInterval: [] },
+    mods: { rate: {}, cpu: {}, asCpu: {}, lockBoost: 0 },
+    extraWorkloads: [],
+    routing: {},
+    extraAddressSpaces: [],
+    commandLog: [],
+  };
+}

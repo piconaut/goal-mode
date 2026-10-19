@@ -1,0 +1,565 @@
+// Run lifecycle (SPEC §2): BRIEFING → LIVE (06:00→06:00) → REVIEW (draft) → next day.
+// Pure functions over plain data; the game RNG is separate from the sim's.
+
+import { DRAFT_OPTIONS } from '../content/draft';
+import type { EventDef, ScriptedBeat } from '../content/events/midwest-events';
+import type { Command } from '../sim/core/commands';
+import { initState } from '../sim/core/init';
+import { Rng, seedRng } from '../sim/core/rng';
+import type { Scenario } from '../sim/core/scenario';
+import { step } from '../sim/core/step';
+import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
+import { estimateMonth } from '../sim/cost/mlc';
+import type { WorkloadDef } from '../sim/workload/types';
+import { FIXES, hardwareItem, hoursFor } from './catalog';
+import { hourAttainment, mechanismOf, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
+import {
+  FACETS,
+  type ActiveEvent,
+  type DayReport,
+  type Facet,
+  type HourAcc,
+  type Mechanism,
+  type PlannedChange,
+  type RunState,
+  type Trigger,
+} from './types';
+
+export interface GameContent {
+  events: EventDef[];
+  story: ScriptedBeat[];
+  opexBudgetMonthly: number;
+  capexQuarter: number;
+  maxDays: number;
+}
+
+const TICKS_PER_HOUR = 3600 / TICK_SEC;
+const BASE_HOURS = 8;
+const MAX_OVERTIME = 4;
+const FATIGUE_PER_OVERTIME_HOUR = 6;
+const CHANGE_FAIL_BASE = 0.03;
+const FACET_WEIGHT: Record<Facet, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
+
+const facetOf = (w: WorkloadDef): Facet | null => (w.stakeholder === 'Internal' ? null : w.stakeholder);
+
+export const overallTrust = (run: RunState) => FACETS.reduce((a, f) => a + run.trust[f], 0) / FACETS.length;
+
+const clampTrust = (x: number) => Math.max(0, Math.min(100, x));
+
+function withRng<T>(run: RunState, f: (rng: Rng) => T): [T, RunState] {
+  const rng = new Rng(run.rng);
+  const out = f(rng);
+  return [out, { ...run, rng: rng.snapshot() }];
+}
+
+function msg(run: RunState, from: string, subject: string, body: string): RunState {
+  return { ...run, inbox: [...run.inbox, { day: run.day, from, subject, body }] };
+}
+
+function logLine(run: RunState, text: string): RunState {
+  return { ...run, log: [...run.log, text].slice(-300) };
+}
+
+/** Seconds after the played day's 06:00 start for a wall-clock hour (24+ = next morning). */
+const secAfterStart = (hour: number) => ((hour - 6 + 48) % 24) * 3600;
+
+export function allWorkloads(scenario: Scenario, run: RunState): WorkloadDef[] {
+  return [...scenario.workloads, ...run.sim.extraWorkloads];
+}
+
+export function newRun(scenario: Scenario, content: GameContent, seed: number): RunState {
+  const trust = Object.fromEntries(FACETS.map((f) => [f, 70])) as Record<Facet, number>;
+  let run: RunState = {
+    version: 1,
+    scenarioId: scenario.id,
+    seed,
+    rng: seedRng(seed ^ 0x5bd1e995),
+    sim: initState(seed, scenario),
+    phase: 'BRIEFING',
+    day: 0,
+    maxDays: content.maxDays,
+    trust,
+    hoursLeft: BASE_HOURS,
+    baseHours: BASE_HOURS,
+    bonusHours: [],
+    fatigue: 0,
+    opexBudgetMonthly: content.opexBudgetMonthly,
+    capexRemaining: content.capexQuarter,
+    opexSpentThisMonth: 0,
+    insight: 0,
+    perks: [],
+    constraints: [],
+    batchDeadlineSec: 24 * 3600,
+    changes: [],
+    nextId: 1,
+    events: [],
+    pendingCommands: [],
+    hour: null,
+    baselines: {},
+    incidents: [],
+    reports: [],
+    inbox: [],
+    draft: null,
+    score: 0,
+    consecutiveBatchMisses: 0,
+    billsSeen: 0,
+    log: [],
+    endReason: null,
+  };
+  run = drawEvents(run, content, 0);
+  return storyFor(run, content, 0);
+}
+
+/** Pick tomorrow's (or today's) events; forewarn when the card says so. */
+export function drawEvents(run: RunState, content: GameContent, day: number): RunState {
+  const [picked, r1] = withRng(run, (rng) => {
+    const lambda = 0.35 + 0.05 * day;
+    const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
+    const pool = content.events.filter((e) => day >= e.minDay);
+    const out: { def: EventDef; hour: number }[] = [];
+    for (let i = 0; i < n && pool.length > 0; i++) {
+      const def = rng.pickWeighted(pool, (e) => e.weight * (e.category === 'WORKLOAD' ? 1 : 1 + day / 20));
+      if (!def) break;
+      pool.splice(pool.indexOf(def), 1);
+      out.push({ def, hour: rng.range(def.startHour[0], def.startHour[1]) });
+    }
+    return out;
+  });
+  let r = r1;
+  for (const { def, hour } of picked) {
+    const startTick = day * TICKS_PER_DAY + Math.round(secAfterStart(hour) / TICK_SEC);
+    const endTick = def.durationHours === null ? null : startTick + Math.max(1, Math.round((def.durationHours * 3600) / TICK_SEC));
+    const ev: ActiveEvent = {
+      uid: `${def.id}@${day}`,
+      defId: def.id,
+      name: def.name,
+      startTick,
+      endTick,
+      trigger: def.trigger,
+      affects: def.affects,
+      endCommands: def.end,
+      started: false,
+      ended: false,
+    };
+    r = { ...r, events: [...r.events, ev] };
+    if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning);
+  }
+  return r;
+}
+
+function storyFor(run: RunState, content: GameContent, day: number): RunState {
+  let r = run;
+  for (const b of content.story.filter((x) => x.day === day)) {
+    r = msg(r, b.from, b.title, b.body);
+    if (b.constraint) {
+      r = { ...r, constraints: [...r.constraints, b.constraint] };
+      if (b.constraint === 'DEADLINE_0500') r = { ...r, batchDeadlineSec: 23 * 3600 };
+    }
+    if (b.commands) r = { ...r, pendingCommands: [...r.pendingCommands, ...b.commands] };
+  }
+  return r;
+}
+
+export interface ChangeRequest {
+  label: string;
+  commands?: Command[];
+  hardwareId?: string;
+  fixId?: string;
+}
+
+export interface ChangeOutcome {
+  run: RunState;
+  ok: boolean;
+  message: string;
+}
+
+function failRisk(run: RunState): number {
+  return CHANGE_FAIL_BASE * (1 + run.fatigue / 50) * (run.perks.includes('BELT_AND_BRACES') ? 0.5 : 1);
+}
+
+/** Plan (BRIEFING) or make an emergency change (LIVE). */
+export function requestChange(run: RunState, content: GameContent, req: ChangeRequest): ChangeOutcome {
+  if (run.phase !== 'BRIEFING' && run.phase !== 'LIVE') return { run, ok: false, message: 'No changes outside briefing or the live day' };
+  const live = run.phase === 'LIVE';
+  if (!live && run.constraints.includes('FREEZE') && !req.fixId) return { run, ok: false, message: 'Change freeze: only emergency changes during the live day' };
+
+  const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
+  const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
+  if (req.hardwareId && !hw) return { run, ok: false, message: `Unknown hardware item ${req.hardwareId}` };
+  if (req.fixId && !fix) return { run, ok: false, message: `Unknown fix ${req.fixId}` };
+
+  const commands = hw ? hw.commands(run.sim) : (req.commands ?? []);
+  const hours = fix ? fix.hours : hw ? 2 : hoursFor(commands, run.perks);
+  if (hours > run.hoursLeft + MAX_OVERTIME) return { run, ok: false, message: `Needs ${hours}h; only ${run.hoursLeft.toFixed(1)}h left (+${MAX_OVERTIME}h overtime)` };
+  const capex = hw?.capex ?? 0;
+  if (capex > run.capexRemaining) return { run, ok: false, message: `Capex $${capex.toLocaleString()} exceeds remaining $${run.capexRemaining.toLocaleString()}` };
+
+  let r = spendHours(run, hours);
+  r = { ...r, capexRemaining: r.capexRemaining - capex };
+  const change: PlannedChange = {
+    id: r.nextId,
+    label: req.label,
+    commands,
+    hours,
+    capex,
+    opexPerDay: hw?.opexPerDay ?? 0,
+    activateDay: run.day + (hw?.leadDays ?? 0),
+    emergency: live,
+    status: 'PLANNED',
+    revertDay: hw?.durationDays ? run.day + (hw.leadDays ?? 0) + hw.durationDays : null,
+    revertCommands: hw?.durationDays ? hw.revert(run.sim) : [],
+    endsEvent: fix?.id ?? null,
+  };
+  r = { ...r, nextId: r.nextId + 1 };
+
+  if (live) {
+    // Emergency change board: costs trust, more when no incident justifies it.
+    const incidentOpen = r.incidents.some((i) => i.endTick === null);
+    const trustCost = (incidentOpen ? 0.5 : 1.5) * (r.perks.includes('NIGHT_OWL') ? 0.5 : 1);
+    r = { ...r, trust: Object.fromEntries(FACETS.map((f) => [f, clampTrust(r.trust[f] - trustCost)])) as Record<Facet, number> };
+    if (fix?.trustCost) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet] - fix.trustCost.amount) } };
+    const [failed, r2] = withRng(r, (rng) => rng.chance(failRisk(r)));
+    r = r2;
+    if (failed && !fix) {
+      r = { ...r, changes: [...r.changes, { ...change, status: 'FAILED' }] };
+      return { run: logLine(r, `Emergency change FAILED: ${req.label}`), ok: false, message: `Change failed during implementation (risk ${(100 * failRisk(r)).toFixed(0)}%): ${req.label}` };
+    }
+    if (change.activateDay === r.day) {
+      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
+    } else r = { ...r, changes: [...r.changes, change] };
+    if (fix) r = endEventByFix(r, content, fix.id);
+    return { run: logLine(r, `Emergency change: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
+  }
+  return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned for day ${change.activateDay + 1}: ${req.label}` };
+}
+
+/** End every active event whose card names this fix. */
+function endEventByFix(run: RunState, content: GameContent, fixId: string): RunState {
+  const tick = run.sim.tick;
+  let r = run;
+  for (const e of r.events) {
+    const def = content.events.find((d) => d.id === e.defId);
+    if (e.started && !e.ended && def?.fix === fixId) {
+      r = {
+        ...r,
+        events: r.events.map((x) => (x.uid === e.uid ? { ...x, ended: true, endTick: tick } : x)),
+        pendingCommands: [...r.pendingCommands, ...e.endCommands],
+      };
+    }
+  }
+  return r;
+}
+
+function spendHours(run: RunState, hours: number): RunState {
+  const left = run.hoursLeft - hours;
+  const overtime = Math.max(0, -left) - Math.max(0, -run.hoursLeft);
+  return { ...run, hoursLeft: left, fatigue: Math.min(100, run.fatigue + overtime * FATIGUE_PER_OVERTIME_HOUR) };
+}
+
+/** BRIEFING → LIVE: activate planned changes due today (with failure risk). */
+export function startDay(run: RunState, content: GameContent): RunState {
+  if (run.phase !== 'BRIEFING') return run;
+  let r = run;
+  const changes: PlannedChange[] = [];
+  const pending: Command[] = [...r.pendingCommands];
+  for (const c of r.changes) {
+    if (c.status === 'PLANNED' && c.activateDay === r.day) {
+      const [failed, r2] = withRng(r, (rng) => rng.chance(failRisk(r)));
+      r = r2;
+      if (failed) {
+        changes.push({ ...c, status: 'FAILED' });
+        r = msg(r, 'Change board', `Change failed: ${c.label}`, 'Implementation backed out. Hours were spent; try again tomorrow.');
+        continue;
+      }
+      pending.push(...c.commands);
+      changes.push({ ...c, status: 'APPLIED' });
+      if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
+    } else {
+      if (c.status === 'APPLIED' && c.revertDay === r.day) pending.push(...c.revertCommands);
+      changes.push(c);
+    }
+  }
+  r = { ...r, changes, pendingCommands: pending, phase: 'LIVE', hour: newHour(r.sim.tick) };
+  return r;
+}
+
+const newHour = (tick: number): HourAcc => ({
+  hourIndex: Math.floor(tick / TICKS_PER_HOUR),
+  ticks: 0,
+  workloads: {},
+  maxCappedFrac: 0,
+  cpcBusySum: 0,
+  lockIndexSum: 0,
+});
+
+/** Advance the live day by up to `ticks` ticks. Ends the day automatically at 06:00. */
+export function advance(run: RunState, scenario: Scenario, content: GameContent, ticks: number): RunState {
+  let r = run;
+  for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
+    const tick = r.sim.tick;
+    const cmds: Command[] = [...r.pendingCommands];
+    let events = r.events;
+    for (const e of events) {
+      const def = content.events.find((d) => d.id === e.defId);
+      if (!e.started && e.startTick <= tick) {
+        cmds.push(...(def?.begin ?? []));
+        if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
+        r = logLine(r, `EVENT start: ${e.name}`);
+      }
+      if (e.started && !e.ended && e.endTick !== null && e.endTick <= tick) {
+        cmds.push(...e.endCommands);
+        r = logLine(r, `EVENT end: ${e.name}`);
+      }
+    }
+    events = events.map((e) => ({
+      ...e,
+      started: e.started || e.startTick <= tick,
+      ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
+    }));
+    const sim = step(r.sim, cmds, scenario);
+    r = { ...r, sim, events, pendingCommands: [] };
+    r = accumulateHour(r);
+    if ((tick + 1) % TICKS_PER_HOUR === 0) r = closeHour(r, scenario);
+    if ((tick + 1) % TICKS_PER_DAY === 0) r = endDay(r, scenario, content);
+  }
+  return r;
+}
+
+function accumulateHour(run: RunState): RunState {
+  const h = run.hour ?? newHour(run.sim.tick - 1);
+  const workloads = { ...h.workloads };
+  for (const w of run.sim.last.workloads) {
+    const a = workloads[w.id] ?? { completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
+    const parts = { ...a.parts };
+    for (const [k, v] of Object.entries(w.parts)) parts[k] = (parts[k] ?? 0) + v;
+    workloads[w.id] = {
+      completions: a.completions + w.completions,
+      withinSla: a.withinSla + w.withinSla,
+      failed: a.failed + w.failed,
+      rtSumSec: a.rtSumSec + w.rtSumSec,
+      parts,
+    };
+  }
+  let capped = 0;
+  let delivered = 0;
+  for (const l of run.sim.lpars) {
+    const cp = l.pools.find((p) => p.pool === 'CP');
+    if (!cp) continue;
+    capped = Math.max(capped, cp.cappedFrac);
+    delivered += cp.deliveredEngines;
+  }
+  const engines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
+  return {
+    ...run,
+    hour: {
+      ...h,
+      ticks: h.ticks + 1,
+      workloads,
+      maxCappedFrac: Math.max(h.maxCappedFrac, capped),
+      cpcBusySum: h.cpcBusySum + (engines > 0 ? delivered / engines : 0),
+      lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
+    },
+  };
+}
+
+function closeHour(run: RunState, scenario: Scenario): RunState {
+  const h = run.hour;
+  if (!h) return run;
+  let r = run;
+  const trust = { ...r.trust };
+  let incidents = [...r.incidents];
+  const baselines = { ...r.baselines };
+  for (const w of allWorkloads(scenario, r)) {
+    const wh = h.workloads[w.id];
+    if (!wh) continue;
+    const att = hourAttainment(w, wh);
+    if (!att) continue;
+    const parts = perTxnParts(wh);
+    const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
+    if (att.met) {
+      baselines[w.id] = updateBaseline(baselines[w.id], parts);
+      if (openIdx >= 0) incidents[openIdx] = { ...incidents[openIdx]!, endTick: r.sim.tick };
+      continue;
+    }
+    const facet = facetOf(w);
+    const loss = facet ? att.severity * 0.9 * FACET_WEIGHT[facet] : 0;
+    if (facet) trust[facet] = clampTrust(trust[facet] - loss);
+    if (openIdx >= 0) {
+      const inc = incidents[openIdx]!;
+      incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
+    } else {
+      const mechanism = mechanismOf(parts, baselines[w.id] ?? {}, h);
+      const isNew = r.sim.extraWorkloads.some((x) => x.id === w.id);
+      incidents = [
+        ...incidents,
+        {
+          id: r.nextId,
+          workloadId: w.id,
+          day: r.day,
+          startTick: r.sim.tick - TICKS_PER_HOUR,
+          endTick: null,
+          hours: 1,
+          worstAttainmentPct: att.attainmentPct,
+          truth: { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) },
+          rca: null,
+          trustLost: loss,
+        },
+      ];
+      r = { ...r, nextId: r.nextId + 1 };
+      r = logLine(r, `INCIDENT ${w.id}: SLA missed (${att.attainmentPct.toFixed(1)}%)`);
+    }
+  }
+  return { ...r, trust, incidents, baselines, hour: newHour(r.sim.tick) };
+}
+
+function endDay(run: RunState, scenario: Scenario, content: GameContent): RunState {
+  let r = run;
+  const day = r.day;
+  const trustBefore = { ...r.trust };
+  const trust = { ...r.trust };
+
+  // SLA summary for the day from hourly incidents.
+  const dayIncidents = r.incidents.filter((i) => i.day === day);
+  const sla = allWorkloads(scenario, r)
+    .filter((w) => w.sla.kind !== 'NONE')
+    .map((w) => {
+      const breach = dayIncidents.filter((i) => i.workloadId === w.id).reduce((a, i) => a + i.hours, 0);
+      return {
+        workloadId: w.id,
+        target: w.sla.kind === 'PCT' ? `${w.sla.pct}% < ${(w.sla.rtSec * 1000).toFixed(0)}ms` : w.sla.kind === 'AVG' ? `avg < ${w.sla.rtSec}s` : '-',
+        attainmentPct: 100 * (1 - breach / 24),
+        breachHours: breach,
+      };
+    });
+  for (const f of FACETS) {
+    const owned = allWorkloads(scenario, r).filter((w) => facetOf(w) === f);
+    if (owned.length > 0 && owned.every((w) => !dayIncidents.some((i) => i.workloadId === w.id))) trust[f] = clampTrust(trust[f] + 1.5);
+  }
+
+  // Batch deadline (the night that ended at this 06:00).
+  const night = r.sim.batch.nights.find((n) => n.day === day) ?? null;
+  const missed = night ? night.missedDeadline || night.criticalEndSec === null || night.criticalEndSec > r.batchDeadlineSec : false;
+  if (night && missed) {
+    trust.Regulator = clampTrust(trust.Regulator - 20);
+    trust.Retail = clampTrust(trust.Retail - 4);
+    r = msg(r, 'Regulator', 'Batch deadline missed', 'Critical batch did not complete on time. A second consecutive miss will trigger a formal review.');
+  } else if (night) trust.Regulator = clampTrust(trust.Regulator + 1);
+  const consecutive = missed ? r.consecutiveBatchMisses + 1 : 0;
+
+  // Opex: temporary capacity charges today; monthly MLC bills as they arrive.
+  const codToday = r.changes.filter((c) => c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > day).reduce((a, c) => a + c.opexPerDay, 0);
+  let opexSpent = r.opexSpentThisMonth + codToday;
+  let endReason: string | null = null;
+  const budget = r.opexBudgetMonthly * (r.perks.includes('FRIENDS_IN_FINANCE') ? 1.1 : 1);
+  const bills = r.sim.cost.bills;
+  for (let b = r.billsSeen; b < bills.length; b++) {
+    const total = bills[b]!.total + opexSpent;
+    const over = total / budget - 1;
+    if (over > 0) trust.Finance = clampTrust(trust.Finance - Math.min(40, over * 100));
+    else trust.Finance = clampTrust(trust.Finance + 5);
+    if (r.constraints.includes('CFO_MANDATE') && b > 0 && bills[b]!.total > 0.9 * bills[b - 1]!.total) {
+      trust.Finance = clampTrust(trust.Finance - 15);
+      r = msg(r, 'CFO', 'Cost target missed', `MLC $${Math.round(bills[b]!.total).toLocaleString()} vs target $${Math.round(0.9 * bills[b - 1]!.total).toLocaleString()}.`);
+    }
+    r = msg(r, 'Finance', `Month ${b + 1} bill`, `MLC $${Math.round(bills[b]!.total).toLocaleString()} + temporary capacity $${Math.round(opexSpent).toLocaleString()} vs budget $${Math.round(budget).toLocaleString()}.`);
+    if (over > 0.25) endReason = 'Opex overrun beyond 25%: the CFO has outsourced capacity planning.';
+    opexSpent = 0;
+  }
+
+  const trustDelta = Object.fromEntries(FACETS.map((f) => [f, trust[f] - trustBefore[f]])) as Record<Facet, number>;
+  const slaScore = sla.reduce((a, s) => a + 10 * (s.attainmentPct / 100), 0);
+  const rcaPoints = dayIncidents.reduce((a, i) => a + (i.rca?.points ?? 0), 0);
+  const dayScore = Math.round(slaScore + (night && !missed ? 15 : 0) + rcaPoints);
+  const report: DayReport = {
+    day,
+    sla,
+    batch: night,
+    batchMissed: missed,
+    trustDelta,
+    score: dayScore,
+    mlcEstimate: estimateMonth(r.sim.cost, scenario.products),
+    events: r.events.filter((e) => e.started && e.startTick < r.sim.tick && e.startTick >= day * TICKS_PER_DAY).map((e) => e.name),
+  };
+
+  const bonus = r.bonusHours.filter((b) => b.untilDay > day + 1);
+  r = {
+    ...r,
+    trust,
+    consecutiveBatchMisses: consecutive,
+    opexSpentThisMonth: opexSpent,
+    billsSeen: bills.length,
+    reports: [...r.reports, report],
+    score: r.score + dayScore,
+    fatigue: Math.max(0, r.fatigue - 8),
+    bonusHours: bonus,
+    hoursLeft: r.baseHours + bonus.reduce((a, b) => a + b.hours, 0),
+  };
+
+  const overall = overallTrust(r);
+  if (!endReason && (overall <= 0 || FACETS.some((f) => r.trust[f] <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
+  if (!endReason && consecutive >= 2) endReason = 'Two consecutive batch deadline misses: the regulator has opened a formal review.';
+  if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
+  if (day >= r.maxDays - 1) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
+
+  const [draft, r2] = withRng(r, (rng) => {
+    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id));
+    const out = [];
+    for (let i = 0; i < 3 && pool.length > 0; i++) {
+      const p = rng.pickWeighted(pool, (d) => d.weight)!;
+      pool.splice(pool.indexOf(p), 1);
+      out.push({ id: p.id, title: p.title, description: p.description });
+    }
+    return out;
+  });
+  r = drawEvents({ ...r2, phase: 'REVIEW', draft }, content, day + 1);
+  return r;
+}
+
+/** REVIEW → BRIEFING of the next day. */
+export function chooseDraft(run: RunState, content: GameContent, optionId: string | null): RunState {
+  if (run.phase !== 'REVIEW') return run;
+  let r: RunState = { ...run, draft: null };
+  switch (optionId) {
+    case 'CONTRACTOR':
+      r = { ...r, bonusHours: [...r.bonusHours, { hours: 4, untilDay: r.day + 4 }], hoursLeft: r.hoursLeft + 4 };
+      break;
+    case 'CFO_BONUS':
+      r = { ...r, capexRemaining: r.capexRemaining + 300_000 };
+      break;
+    case 'QUIET_DAY':
+      r = { ...r, fatigue: Math.max(0, r.fatigue - 30) };
+      break;
+    case 'GOODWILL':
+      r = { ...r, trust: Object.fromEntries(FACETS.map((f) => [f, clampTrust(r.trust[f] + 4)])) as Record<Facet, number> };
+      break;
+    case 'VENDOR_TRIAL':
+      r = { ...r, insight: r.insight + 15 };
+      break;
+    case 'HMC_NINJA':
+    case 'BELT_AND_BRACES':
+    case 'FRIENDS_IN_FINANCE':
+    case 'NIGHT_OWL':
+      r = { ...r, perks: [...r.perks, optionId] };
+      break;
+    default:
+      break;
+  }
+  r = { ...r, day: r.day + 1, phase: 'BRIEFING' };
+  return storyFor(r, content, r.day);
+}
+
+/** Root-cause analysis for an incident; scored against the ground truth. */
+export function submitRca(run: RunState, incidentId: number, mechanism: Mechanism, trigger: Trigger): RunState {
+  const inc = run.incidents.find((i) => i.id === incidentId);
+  if (!inc || inc.rca) return run;
+  const points = scoreRca(inc.truth, { mechanism, trigger });
+  const facetTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
+  const trust = Object.fromEntries(FACETS.map((f) => [f, clampTrust(run.trust[f] + facetTrust / 2)])) as Record<Facet, number>;
+  return {
+    ...run,
+    trust,
+    insight: run.insight + points,
+    score: run.score + points,
+    incidents: run.incidents.map((i) => (i.id === incidentId ? { ...i, rca: { mechanism, trigger, points } } : i)),
+  };
+}
