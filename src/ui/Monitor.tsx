@@ -1,7 +1,9 @@
 import { useState } from 'react';
+import type { EvidenceMetric } from '../content/evidence';
 import { explainWlmLog, type Mon3Row, type Mon3View } from '../game/mon3';
 import type { ViewModel } from '../game/view';
 import { piColor } from './App';
+import { EvidenceBoard, PinButton } from './Evidence';
 import { Mon3Charts } from './Mon3Charts';
 import type { GameHandle } from './useGame';
 
@@ -17,6 +19,13 @@ const VIEWS: { id: View3; help: string }[] = [
 ];
 
 const pct = (f: number) => (f * 100).toFixed(0);
+const DELAY_PINS: [keyof Mon3Row['delay'], EvidenceMetric][] = [
+  ['cpu', 'DELAY_CPU'],
+  ['ziip', 'DELAY_ZIIP'],
+  ['io', 'DELAY_IO'],
+  ['cap', 'DELAY_CAP'],
+  ['other', 'DELAY_OTHER'],
+];
 const ms = (x: number | null) => (x === null ? '-' : x < 10_000 ? x.toFixed(0) : '∞');
 const piCell = (pi: number | null) => <td className="num" style={{ background: piColor(pi) }}>{pi === null ? '-' : pi.toFixed(2)}</td>;
 
@@ -56,21 +65,22 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
       </div>
       <div className="help">{VIEWS.find((x) => x.id === view)!.help}</div>
       <div style={{ overflowX: 'auto' }}>
-        {view === 'SYSINFO' && <SysInfo m={m} system={system} />}
-        {view === 'DELAY' && <Delay rows={m.rows.filter((r) => r.system === system)} />}
-        {view === 'PROCU' && <Procu rows={m.rows.filter((r) => r.system === system)} />}
+        {view === 'SYSINFO' && <SysInfo m={m} system={system} game={game} />}
+        {view === 'DELAY' && <Delay rows={m.rows.filter((r) => r.system === system)} game={game} />}
+        {view === 'PROCU' && <Procu rows={m.rows.filter((r) => r.system === system)} game={game} />}
         {view === 'ENCLAVE' && <Enclave m={m} />}
-        {view === 'CPC' && <Cpc m={m} />}
+        {view === 'CPC' && <Cpc m={m} game={game} />}
         {view === 'WFEX' && <Wfex m={m} />}
         {view === 'WLM' && <WlmLog lines={v.wlmLog} />}
       </div>
     </div>
     <Mon3Charts v={v} game={game} />
+    <EvidenceBoard v={v} game={game} />
     </>
   );
 }
 
-function SysInfo({ m, system }: { m: Mon3View; system: string }) {
+function SysInfo({ m, system, game }: { m: Mon3View; system: string; game: GameHandle }) {
   const sys = m.systems.filter((s) => system === '*PLEX' || s.system === system);
   const rows = m.rows.filter((r) => r.system === system);
   return (
@@ -120,7 +130,10 @@ function SysInfo({ m, system }: { m: Mon3View; system: string }) {
               <td className="num">{r.velocity === null ? '-' : r.velocity.toFixed(0)}</td>
               <td className="num">{ms(r.avgRtMs)}</td>
               <td className="num">{r.endedPerSec >= 10 ? r.endedPerSec.toFixed(0) : r.endedPerSec.toFixed(2)}</td>
-              {piCell(r.pi)}
+              <td className="num" style={{ background: piColor(r.pi) }}>
+                {r.pi === null ? '-' : r.pi.toFixed(2)}
+                {r.pi !== null && <PinButton game={game} req={{ source: 'MON3', system, scKey: r.scKey, metric: 'PI' }} label={`${r.scKey} PI`} />}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -129,7 +142,7 @@ function SysInfo({ m, system }: { m: Mon3View; system: string }) {
   );
 }
 
-function Delay({ rows }: { rows: Mon3Row[] }) {
+function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle }) {
   const top = [...rows].filter((r) => r.delayFrac > 0.005).sort((a, b) => b.delayFrac - a.delayFrac || (a.scKey < b.scKey ? -1 : 1));
   if (top.length === 0) return <div className="muted">Nobody is waiting.</div>;
   return (
@@ -151,11 +164,12 @@ function Delay({ rows }: { rows: Mon3Row[] }) {
           <tr key={r.scKey}>
             <td>{r.scKey}</td>
             <td className="num">{pct(r.delayFrac)}</td>
-            <td className="num">{pct(r.delay.cpu)}</td>
-            <td className="num">{pct(r.delay.ziip)}</td>
-            <td className="num">{pct(r.delay.io)}</td>
-            <td className="num">{pct(r.delay.cap)}</td>
-            <td className="num">{pct(r.delay.other)}</td>
+            {DELAY_PINS.map(([k, metric]) => (
+              <td className="num" key={k}>
+                {pct(r.delay[k])}
+                {r.delay[k] > 0.005 && <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric }} label={`${r.scKey} ${k} delay`} />}
+              </td>
+            ))}
             <td>{r.primaryDelay ?? '-'}</td>
           </tr>
         ))}
@@ -164,7 +178,7 @@ function Delay({ rows }: { rows: Mon3Row[] }) {
   );
 }
 
-function Procu({ rows }: { rows: Mon3Row[] }) {
+function Procu({ rows, game }: { rows: Mon3Row[]; game: GameHandle }) {
   const top = [...rows].filter((r) => r.cpuEngines > 0.001).sort((a, b) => b.cpuEngines - a.cpuEngines || (a.scKey < b.scKey ? -1 : 1));
   const total = top.reduce((a, r) => a + r.cpuEngines, 0);
   return (
@@ -181,7 +195,10 @@ function Procu({ rows }: { rows: Mon3Row[] }) {
         {top.map((r) => (
           <tr key={r.scKey}>
             <td>{r.scKey}</td>
-            <td className="num">{(r.cpuEngines * 100).toFixed(1)}</td>
+            <td className="num">
+              {(r.cpuEngines * 100).toFixed(1)}
+              <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'APPL' }} label={`${r.scKey} APPL%`} />
+            </td>
             <td className="num">{total > 0 ? pct(r.cpuEngines / total) : '-'}%</td>
             <td>{r.importance ?? (r.goal === 'system' ? 'sys' : 'disc')}</td>
           </tr>
@@ -224,7 +241,7 @@ function Enclave({ m }: { m: Mon3View }) {
   );
 }
 
-function Cpc({ m }: { m: Mon3View }) {
+function Cpc({ m, game }: { m: Mon3View; game: GameHandle }) {
   return (
     <>
       <table>
@@ -251,9 +268,15 @@ function Cpc({ m }: { m: Mon3View }) {
               <td className="num">{c.logical}</td>
               <td>{c.polarity}</td>
               <td className="num">{c.busyPct.toFixed(0)}</td>
-              <td className="num">{c.prsmDelayPct.toFixed(1)}</td>
+              <td className="num">
+                {c.prsmDelayPct.toFixed(1)}
+                {c.kind === 'ZOS' && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'PRSM_DELAY' }} label={`${c.lparId} PR/SM delay`} />}
+              </td>
               <td className="num">{c.overheadPct.toFixed(1)}</td>
-              <td className="num">{c.cappedPct.toFixed(0)}</td>
+              <td className="num">
+                {c.cappedPct.toFixed(0)}
+                {c.cappedPct > 0 && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'CAPPED' }} label={`${c.lparId} capped`} />}
+              </td>
             </tr>
           ))}
         </tbody>

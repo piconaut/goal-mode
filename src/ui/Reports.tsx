@@ -1,3 +1,4 @@
+import { EVIDENCE_METRICS, type EvidenceMetric } from '../content/evidence';
 import { REPORT_FEATURE } from '../game/tools';
 import { useEffect, useState } from 'react';
 import type { ViewModel } from '../game/view';
@@ -73,7 +74,43 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
           </select>
         )}
       </div>
+      {(kind === 'WLM_SUMMARY' || kind === 'WLM_DETAIL') && sel !== null && <PinFromReport index={sel} system={system} scKeys={scKeys} initial={kind === 'WLM_DETAIL' ? scKey : undefined} game={game} />}
       <div className="green">{game.report}</div>
     </div>
+  );
+}
+
+const WLM_METRICS: EvidenceMetric[] = ['PI', 'APPL', 'ENDED_RATE', 'DELAY_CPU', 'DELAY_ZIIP', 'DELAY_IO', 'DELAY_STO', 'DELAY_CAP', 'DELAY_OTHER'];
+
+/** Pin one value from this Workload Activity interval as RCA evidence. */
+function PinFromReport({ index, system, scKeys, initial, game }: { index: number; system: string; scKeys: string[]; initial?: string; game: GameHandle }) {
+  const [sc, setSc] = useState(initial ?? scKeys[0] ?? '');
+  const [metric, setMetric] = useState<EvidenceMetric>('DELAY_CPU');
+  const target = initial ?? sc;
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        game.send({ type: 'PIN', req: { source: 'WLMGL', index, system, scKey: target, metric } });
+      }}
+    >
+      <span className="muted">📌 Pin from this interval:</span>
+      {!initial && (
+        <select aria-label="Service class period to pin" value={sc} onChange={(e) => setSc(e.target.value)}>
+          {scKeys.map((k) => (
+            <option key={k}>{k}</option>
+          ))}
+        </select>
+      )}
+      <select aria-label="Metric to pin" value={metric} onChange={(e) => setMetric(e.target.value as EvidenceMetric)}>
+        {WLM_METRICS.map((m) => (
+          <option key={m} value={m}>
+            {EVIDENCE_METRICS[m].label}
+          </option>
+        ))}
+      </select>
+      <button type="submit">Pin {initial ?? sc}</button>
+    </form>
   );
 }

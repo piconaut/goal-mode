@@ -9,6 +9,7 @@ import { Monitor } from './Monitor';
 import { Overlays } from './Overlays';
 import { Reports } from './Reports';
 import { Smf } from './Smf';
+import { EvidenceBoard } from './Evidence';
 import { useGame, type GameHandle } from './useGame';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'analytics' | 'inbox';
@@ -34,6 +35,7 @@ export function App() {
         <>
           <Reports v={v} game={game} />
           <Smf v={v} game={game} />
+          <EvidenceBoard v={v} game={game} />
         </>
       )}
       {tab === 'changes' && <Actions v={v} game={game} />}

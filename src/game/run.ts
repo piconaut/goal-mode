@@ -7,11 +7,13 @@ import type { Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
 import { MON3_CHARTS } from '../content/tools';
+import { EVIDENCE } from '../content/evidence';
+import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import { step } from '../sim/core/step';
-import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
+import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import type { WorkloadDef } from '../sim/workload/types';
 import { failRiskFor, FIXES, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
@@ -36,7 +38,6 @@ export interface GameContent {
   maxDays: number;
 }
 
-const TICKS_PER_HOUR = 3600 / TICK_SEC;
 const BASE_HOURS = 8;
 const FATIGUE_PER_OVERTIME_HOUR = 6;
 const FACET_WEIGHT: Record<Facet, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
@@ -92,6 +93,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     reportsOpenedToday: [],
     smfHours: [],
     mon3Charts: null,
+    pins: [],
     perks: [],
     constraints: [],
     batchDeadlineSec: 24 * 3600,
@@ -595,17 +597,24 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
 }
 
 /** Root-cause analysis for an incident; scored against the ground truth. */
-export function submitRca(run: RunState, incidentId: number, mechanism: Mechanism, trigger: Trigger): RunState {
+export function submitRca(run: RunState, incidentId: number, mechanism: Mechanism, trigger: Trigger, scenario?: Scenario, evidenceIds: readonly number[] = []): RunState {
   const inc = run.incidents.find((i) => i.id === incidentId);
   if (!inc || inc.rca) return run;
   const points = scoreRca(inc.truth, { mechanism, trigger });
+  const pins = (run.pins ?? []).filter((p) => evidenceIds.includes(p.id)).slice(0, EVIDENCE.perRca);
+  const verdicts = scenario ? judgeEvidence(run, scenario, inc, pins) : [];
+  const relevance = verdicts.reduce((a, v) => a + v.relevance, 0);
+  // Evidence only earns points when it supports the right mechanism (SPEC §10).
+  const evidencePoints = mechanism === inc.truth.mechanism ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
+  const strong = evidencePoints > 0 && relevance >= EVIDENCE.strongAt;
   const facetTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
   const trust = Object.fromEntries(FACETS.map((f) => [f, clampTrust(run.trust[f] + facetTrust / 2)])) as Record<Facet, number>;
+  const total = points + evidencePoints;
   return {
     ...run,
     trust,
-    insight: run.insight + points,
-    score: run.score + points,
-    incidents: run.incidents.map((i) => (i.id === incidentId ? { ...i, rca: { mechanism, trigger, points } } : i)),
+    insight: run.insight + total + (strong ? EVIDENCE.strongInsight : 0),
+    score: run.score + total,
+    incidents: run.incidents.map((i) => (i.id === incidentId ? { ...i, rca: { mechanism, trigger, points: total, evidence: verdicts, evidencePoints } } : i)),
   };
 }

@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.3 remainder (RCA evidence pinning; per-structure CF and per-LCU DASD models), then M7.4.
+- **Next up:** M7.3 remainder (per-structure CF and per-LCU DASD models), then M7.4.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (152 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (157 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -232,7 +232,17 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
 - [x] Db2 accounting (SMF 101): per package (`DB2_PACKAGES`), class 1 elapsed, CPU/txn vs the workload's healthy baseline, class 3 lock / sync I/O / CF, not-accounted, DBAT queue; per closed hour (`RunState.smfHours`, 48 h) or the current hour. A ×3 REGRESSION shows as RB01 ×3 vs base; lock escalation as lock ms
 - [x] CICS monitoring (SMF 110): per transaction CPU vs baseline, QR wait, MXT wait, dispatch wait, failures. Per-AOR QR busy not shown (the sim computes QR per LPAR, not per region)
 - [x] SMF 30 batch analytics: Gantt of the latest night from RMF interval job-end records (queue + elapsed, critical jobs highlighted, stream filter, last critical job)
-- [ ] RCA evidence pinning: pin up to 3 values from any report; evidence relevance scored against the event's clue set (SPEC §10)
+- [x] RCA evidence pinning (loop 14): 📌 on Monitor III (SYSINFO PI, DELAY reasons, PROCU APPL%, CPC PR/SM delay
+  and capped %), Db2 101 and CICS 110 cells, plus a "Pin from this interval" form on the Workload Activity /
+  WLMGL reports (tier 0 path). The worker builds each pin from a locator, so value and time are authoritative
+  (`game/evidence.ts`). Up to 12 pins on an evidence board (Reports and Monitor III tabs); up to 3 per RCA.
+  Each pin is judged (`judgeEvidence`): inside the incident window ± 1 h, about the hurt workload (its class,
+  LPARs or the sysplex; server-side clues such as CPU delay, lock and CF may sit elsewhere), notable
+  (FICTIONAL thresholds in `content/evidence.ts`), and pointing at the true mechanism or trigger. Specific
+  clues count 1, catch-alls (other/UNK, APPL%, rate) 0.5, PI 0 ("a symptom, not a cause"). Evidence points
+  only with the right mechanism; ≥ 2 relevance is "strong" (+5 Insight). The review shows a ✓/✗ verdict per
+  pin with the reason; "Investigate" hides the review so players can pin, and the RCA shows the breach window.
+  Codex unlock for strong evidence waits for the Codex (M7.5)
 - UI: "SMF analytics" panel under the RMF Postprocessor (Reports tab); data via `GET_SMF`/`SMF` worker messages; Db2/CICS views earn report Insight per hour viewed
 - Tests (8): LSPR table, hour retention, regression → package, lock escalation → lock ms, CICS rows, SMF 113 ranges, Gantt, tier-2 tools buyable
 
@@ -363,6 +373,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 14, hourly task):** RCA evidence pinning end to end (pins, board, judging, review
+  verdicts), verified in Chromium by playing day 1. Fixed: average-RT SLA attainment could show > 100%
+  when an hour failed only on errors (display/log only; scoring uses breach hours). 157 tests.
 - **2026-10-19 (user request):** Monitor III charts: response-time chart with a service/report class
   picker, first-seen colour order, report classes editable in the rules view. 152 tests.
 - **2026-10-19 (loop 13, hourly backstop after a session restart):** re-created the 15-min cron

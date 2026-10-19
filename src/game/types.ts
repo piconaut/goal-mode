@@ -1,5 +1,6 @@
 // Game-layer state (SPEC §2, §7–§12). Wraps the deterministic sim; plain data.
 
+import type { EvidencePin, PinVerdict } from './evidence';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
 import type { RngState } from '../sim/core/rng';
@@ -101,7 +102,7 @@ export interface Incident {
   hours: number;
   worstAttainmentPct: number;
   truth: { mechanism: Mechanism; trigger: Trigger };
-  rca: { mechanism: Mechanism; trigger: Trigger; points: number } | null;
+  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number } | null;
   trustLost: number;
 }
 
@@ -159,6 +160,8 @@ export interface RunState {
   toolsOff: string[];
   /** Closed hours of per-workload measurements (SMF 101/110-style detail), newest last, ~2 days. */
   smfHours: SmfHour[];
+  /** Evidence pinned from reports for RCAs (oldest drop off). */
+  pins: EvidencePin[];
   /** Monitor III chart history for the played day (only while the charting tool is on). */
   mon3Charts: Mon3ChartState | null;
   /** Distinct reports opened this played day (Insight is earned per report, capped per day). */

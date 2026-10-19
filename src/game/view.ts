@@ -2,6 +2,7 @@
 // worker every frame). Applies the fog of war: what the player is allowed to see.
 
 import type { ToolFeature } from '../content/tools';
+import type { EvidencePin } from './evidence';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
@@ -141,6 +142,7 @@ export interface ViewModel {
   tools: ToolView[];
   reportsOpenedToday: number;
   smfHours: SmfHourRef[];
+  pins: EvidencePin[];
   /** Monitor III chart history sizes (fetch with GET_MON3_CHARTS); null without the tool. */
   mon3Charts: { samples: number; markers: number; firstTick: number | null } | null;
   serviceClasses: { id: string; periods: string[] }[];
@@ -266,6 +268,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
     smfHours: smfHourRefs(run),
+    pins: run.pins ?? [],
     mon3Charts:
       feats.has('MON3_CHARTS') && run.mon3Charts
         ? { samples: run.mon3Charts.samples.length, markers: run.mon3Charts.markers.length, firstTick: run.mon3Charts.samples[0]?.tick ?? null }

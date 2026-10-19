@@ -16,7 +16,7 @@ export function hourAttainment(w: WorkloadDef, h: WorkloadHour): { met: boolean;
   const avg = h.completions > 0 ? h.rtSumSec / h.completions : Infinity;
   const failPct = (100 * h.failed) / total;
   const met = avg <= w.sla.rtSec && failPct < 1;
-  return { met, attainmentPct: met ? 100 : Math.max(0, 100 * (w.sla.rtSec / avg)) - failPct, severity: met ? 0 : Math.min(3, avg / w.sla.rtSec - 1 + failPct / 10) };
+  return { met, attainmentPct: met ? 100 : Math.max(0, Math.min(100, 100 * (w.sla.rtSec / avg)) - failPct), severity: met ? 0 : Math.min(3, avg / w.sla.rtSec - 1 + failPct / 10) };
 }
 
 /** Per-transaction parts for the hour. */

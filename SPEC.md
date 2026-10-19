@@ -889,6 +889,11 @@ At end of day, each **incident** (an SLA breach episode) can be investigated wit
    CPU delay 38%*). Evidence is scored for relevance against the event's hidden "clue set".
 4. Propose a **remediation** (it links to a change on the calendar).
 
+**Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
+Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident window (± 1 h), concerns the
+hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
+trigger (`content/evidence.ts`). PI is a symptom and never counts. Evidence points need the right mechanism.
+
 Rewards: correct cause → Trust + Insight. Correct cause with strong evidence → bonus and a codex
 unlock. Wrong cause → small Trust loss ("the problem recurs next week"). Recurring incidents
 after a correct RCA *and* remediation never recur. Players can skip RCAs (no penalty except

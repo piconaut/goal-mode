@@ -1,5 +1,6 @@
 // Messages between the UI thread and the game worker.
 
+import type { PinRequest } from '../game/evidence';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { BatchNight, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
@@ -34,7 +35,9 @@ export type ToWorker =
   | { type: 'SET_SPEED'; speed: number }
   | { type: 'CHANGE'; req: ChangeRequest }
   | { type: 'DRAFT'; optionId: string | null }
-  | { type: 'RCA'; incidentId: number; mechanism: Mechanism; trigger: Trigger }
+  | { type: 'RCA'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
+  | { type: 'PIN'; req: PinRequest }
+  | { type: 'UNPIN'; id: number }
   | { type: 'GET_REPORT'; index: number; kind: ReportKind; scKey?: string; system?: string }
   | { type: 'WLM_EDIT'; edit: WlmEdit }
   | { type: 'GET_POLICY' }

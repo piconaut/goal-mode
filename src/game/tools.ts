@@ -14,6 +14,7 @@ export function normalizeRun(run: RunState): RunState {
     reportsOpenedToday: run.reportsOpenedToday ?? [],
     smfHours: run.smfHours ?? [],
     mon3Charts: run.mon3Charts ?? null,
+    pins: run.pins ?? [],
     sim: { ...run.sim, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },
   };
 }

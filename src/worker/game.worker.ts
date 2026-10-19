@@ -6,6 +6,7 @@ import { advance, cancelChange, chooseDraft, newRun, requestChange, startDay, su
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
+import { addPin, removePin } from '../game/evidence';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -196,7 +197,16 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       autosave();
       break;
     case 'RCA':
-      run = submitRca(run, m.incidentId, m.mechanism, m.trigger);
+      run = submitRca(run, m.incidentId, m.mechanism, m.trigger, scenario, m.evidenceIds ?? []);
+      break;
+    case 'PIN': {
+      const out = addPin(run, scenario, m.req);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      break;
+    }
+    case 'UNPIN':
+      run = removePin(run, m.id);
       break;
     case 'WLM_EDIT': {
       // Edits accumulate on a pending copy of the active policy until it is activated.

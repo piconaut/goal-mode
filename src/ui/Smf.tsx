@@ -3,6 +3,7 @@ import { nightClock, type BatchNight } from '../game/smf';
 import { SMF_FEATURE } from '../game/tools';
 import type { ViewModel } from '../game/view';
 import type { SmfKind } from '../worker/protocol';
+import { PinButton } from './Evidence';
 import type { GameHandle } from './useGame';
 
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
@@ -87,12 +88,27 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
                     <td className="num">{f1(r.txnPerSec)}</td>
                     <td className="num">{f1(r.class1Ms)}</td>
                     <td className="num">{f1(r.cpuMs)}</td>
-                    <td className="num">{ratio(r.cpuVsBaseline)}</td>
-                    <td className="num">{f1(r.lockMs)}</td>
-                    <td className="num">{f1(r.syncIoMs)}</td>
-                    <td className="num">{f1(r.cfMs)}</td>
+                    <td className="num">
+                      {ratio(r.cpuVsBaseline)}
+                      {r.cpuVsBaseline !== null && <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'CPU_VS_BASE' }} label={`${r.package} CPU vs baseline`} />}
+                    </td>
+                    <td className="num">
+                      {f1(r.lockMs)}
+                      <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'LOCK_WAIT' }} label={`${r.package} lock wait`} />
+                    </td>
+                    <td className="num">
+                      {f1(r.syncIoMs)}
+                      <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'SYNC_IO' }} label={`${r.package} sync I/O`} />
+                    </td>
+                    <td className="num">
+                      {f1(r.cfMs)}
+                      <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'CF_WAIT' }} label={`${r.package} CF time`} />
+                    </td>
                     <td className="num">{f1(r.notAccountedMs)}</td>
-                    <td className="num">{f1(r.dbatQueueMs)}</td>
+                    <td className="num">
+                      {f1(r.dbatQueueMs)}
+                      {r.connType === 'DDF' && <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'DBAT_QUEUE' }} label={`${r.package} DBAT queue`} />}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -125,9 +141,18 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
                     <td className="num">{f1(r.txnPerSec)}</td>
                     <td className="num">{f1(r.avgRtMs)}</td>
                     <td className="num">{f1(r.cpuMs)}</td>
-                    <td className="num">{ratio(r.cpuVsBaseline)}</td>
-                    <td className="num">{f1(r.qrWaitMs)}</td>
-                    <td className="num">{f1(r.mxtWaitMs)}</td>
+                    <td className="num">
+                      {ratio(r.cpuVsBaseline)}
+                      {r.cpuVsBaseline !== null && <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'CPU_VS_BASE' }} label={`${r.tranId} CPU vs baseline`} />}
+                    </td>
+                    <td className="num">
+                      {f1(r.qrWaitMs)}
+                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'QR_WAIT' }} label={`${r.tranId} QR wait`} />
+                    </td>
+                    <td className="num">
+                      {f1(r.mxtWaitMs)}
+                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'MXT_WAIT' }} label={`${r.tranId} MXT wait`} />
+                    </td>
                     <td className="num">{f1(r.dispatchWaitMs)}</td>
                     <td className="num">{Math.round(r.failed)}</td>
                   </tr>

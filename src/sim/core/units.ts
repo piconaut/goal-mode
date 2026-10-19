@@ -4,6 +4,7 @@
 export const TICK_SEC = 10;
 export const DAY_SEC = 86_400;
 export const TICKS_PER_DAY = DAY_SEC / TICK_SEC;
+export const TICKS_PER_HOUR = 3600 / TICK_SEC;
 /** Played days run 06:00 → 06:00 so each ends on the batch deadline. */
 export const DAY_START_HOUR = 6;
 /** R4HA bookkeeping granularity: 48 five-minute values per 4 hours. */
