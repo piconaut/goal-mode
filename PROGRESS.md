@@ -113,8 +113,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] Pin report values as RCA evidence (→ M7.3)
 
 ### M6.1 — User requests (do these first)
-- [x] **Classification rules view** (requested 2026-10-19). Done: new "Classification" tab
-  (`src/ui/RulesView.tsx`); `explainClassification` + `diffRows` (`src/game/classifyExplain.ts`);
+- [x] **Classification rules view** (requested 2026-10-19). Done: `src/ui/RulesView.tsx`, now folded
+  into the Change Desk WLM section as a full-width expandable panel (user feedback; the separate tab is gone); `explainClassification` + `diffRows` (`src/game/classifyExplain.ts`);
   path-based `ADD_RULE` (with nesting), `DELETE_RULE`, `MOVE_RULE`, `SET_RULE_TARGET`,
   `SET_DEFAULT` edits; 8 tests; verified in Chromium (retarget DB* → STCHI shows "changed",
   pending BASEPOL2; no mobile overflow). Original brief: A dedicated, readable view of the WLM
@@ -292,6 +292,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 | 2026-10-19 | While capped, min(1, 4×cappedFrac) of undispatched CPU counts as CAP delay | APPROX attribution; keeps CAP visible in WLMGL and stops WLM chasing it |
 | 2026-10-19 | Months are 30 played-calendar days; MLC samples hourly at tick boundaries | Simple, deterministic; ~1.3 bills per standard run |
 | 2026-10-19 | Short-engine PR/SM delay coefficient lowered 0.35 → 0.15 | 10–25% PR/SM delay in the Partition Data report was implausibly high |
+| 2026-10-19 | Classification rules live inside the Change Desk WLM section, expandable, not a separate tab | User feedback: rules are part of the policy you're editing; keeps the change board and pending banner in view |
 
 ## Open questions
 
@@ -331,6 +332,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (user request):** Classification rules moved from their own tab into the Change Desk:
+  a "▸ Classification rules" toggle in the WLM section (with rule count and SYSOTHER warning)
+  expands the full rules view below it; install/discard via the pinned pending-policy banner.
 - **2026-10-19 (loop 11):** M7.2 Monitor III: live SYSINFO/DELAY/PROCU/ENCLAVE/CPC/WFEX views,
   live WLM log with explanations, dev hook for headless UI checks. 138 tests. Found and fixed a
   velocity ×100 bug via screenshots. Dropped "RMF interval < 15 needs a tool" (not realistic).

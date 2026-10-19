@@ -8,10 +8,9 @@ import { LineChart } from './LineChart';
 import { Monitor } from './Monitor';
 import { Overlays } from './Overlays';
 import { Reports } from './Reports';
-import { RulesView } from './RulesView';
 import { useGame, type GameHandle } from './useGame';
 
-type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'rules' | 'analytics' | 'inbox';
+type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'analytics' | 'inbox';
 
 export function App() {
   const game = useGame();
@@ -22,9 +21,9 @@ export function App() {
     <div className="app">
       <TopBar v={v} game={game} />
       <div className="tabs">
-        {(['console', 'monitor', 'reports', 'changes', 'rules', 'analytics', 'inbox'] as Tab[]).map((t) => (
+        {(['console', 'monitor', 'reports', 'changes', 'analytics', 'inbox'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t === 'console' ? 'Ops Console' : t === 'monitor' ? (v.mon3 ? `Monitor III${v.mon3.exceptions.length ? ` (${v.mon3.exceptions.length}!)` : ''}` : 'Monitor III 🔒') : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'rules' ? 'Classification' : t === 'analytics' ? `Analytics (${v.insight}◆)` : `Inbox (${v.inbox.length})`}
+            {t === 'console' ? 'Ops Console' : t === 'monitor' ? (v.mon3 ? `Monitor III${v.mon3.exceptions.length ? ` (${v.mon3.exceptions.length}!)` : ''}` : 'Monitor III 🔒') : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'analytics' ? `Analytics (${v.insight}◆)` : `Inbox (${v.inbox.length})`}
           </button>
         ))}
       </div>
@@ -32,7 +31,6 @@ export function App() {
       {tab === 'monitor' && <Monitor v={v} />}
       {tab === 'reports' && <Reports v={v} game={game} />}
       {tab === 'changes' && <Actions v={v} game={game} />}
-      {tab === 'rules' && <RulesView v={v} game={game} />}
       {tab === 'analytics' && <Analytics v={v} game={game} />}
       {tab === 'inbox' && <Inbox v={v} />}
       <Overlays v={v} game={game} />

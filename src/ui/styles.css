@@ -136,3 +136,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .tool.buyable { border-color: var(--accent); }
 .tool.locked { opacity: 0.7; }
 .tool.off { border-style: dashed; }
+
+/* Classification rules, expanded inside the Change Desk */
+.rules { border-color: var(--accent); }
+.rules-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); margin-top: 8px; }
+.subsys h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }

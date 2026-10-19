@@ -14,52 +14,55 @@ const QUALIFIERS: { q: Qualifier; label: string }[] = [
   { q: 'SY', label: 'SY system name' },
 ];
 
-/** Classification rules per subsystem, in evaluation order, with what each rule catches. */
-export function RulesView({ v, game }: { v: ViewModel; game: GameHandle }) {
+/** Classification rules per subsystem, in evaluation order, with what each rule catches (Change Desk, WLM section). */
+export function RulesView({ v, game, onClose }: { v: ViewModel; game: GameHandle; onClose: () => void }) {
   useEffect(() => {
-    game.send({ type: 'GET_RULES' });
-  }, [game, v.policyName, v.day]);
+    document.getElementById('classification-rules')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, []);
   const r = game.rules;
-  if (!r) return <div className="panel">Loading classification rules…</div>;
-  const shown = r.pending ?? r.active;
+  const shown = r ? (r.pending ?? r.active) : null;
   return (
-    <div className="grid" style={{ gridTemplateColumns: '1fr' }}>
-      <div className="panel">
-        <h3>
-          Classification rules: active {v.policyName}
-          {game.pending && <span className="tag warn"> editing pending {game.pending.policyName} (not active)</span>}
+    <div className="panel rules" style={{ gridColumn: '1 / -1' }} id="classification-rules">
+      <div className="row">
+        <h3 style={{ margin: 0 }}>
+          Classification rules: {game.pending ? <span className="tag warn">pending {game.pending.policyName} (not active)</span> : `active ${v.policyName}`}
         </h3>
-        <p className="muted" style={{ margin: '0 0 8px' }}>
-          Work is classified by subsystem type. Rules are checked top to bottom and the first match wins; an indented rule refines the
-          rule above it. Work that matches nothing gets the subsystem default. Edits go to a pending policy until you install it.
-        </p>
-        <div className="form">
-          <button className="primary" disabled={!game.pending} onClick={() => game.send({ type: 'ACTIVATE_PENDING' })}>
-            Install &amp; activate{game.pending ? ` ${game.pending.policyName}` : ''}
-          </button>
-          {game.pending && <button onClick={() => game.send({ type: 'DISCARD_PENDING' })}>Discard pending edits</button>}
-          <span className="muted">Activation is a change-board item (1.5h; an emergency change during the live day).</span>
-        </div>
-        {shown.sysother.length > 0 && (
-          <div className="row" style={{ justifyContent: 'flex-start' }}>
-            <span className="tag bad">Unclassified → SYSOTHER (discretionary)</span>
-            <span>{shown.sysother.join(', ')}</span>
-          </div>
-        )}
-        <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
-          <span className="tag">Always SYSTEM (z/OS forces these)</span>
-          <span className="muted" style={{ fontSize: 12 }}>{shown.forcedSystem.join(', ')}</span>
-        </div>
+        <button onClick={onClose} aria-label="Close classification rules">
+          Close ✕
+        </button>
       </div>
-      {shown.subsystems.map((ss) => (
-        <Subsystem
-          key={ss.subsystem}
-          ss={ss}
-          active={r.pending ? r.active.subsystems.find((x) => x.subsystem === ss.subsystem) : undefined}
-          classIds={r.classIds}
-          game={game}
-        />
-      ))}
+      <p className="muted" style={{ margin: '6px 0 8px' }}>
+        Work is classified by subsystem type. Rules are checked top to bottom and the first match wins; an indented rule refines the
+        rule above it. Work that matches nothing gets the subsystem default. Edits go to the pending policy; install it from the banner
+        at the top.
+      </p>
+      {!r || !shown ? (
+        <div className="muted">Loading classification rules…</div>
+      ) : (
+        <>
+          {shown.sysother.length > 0 && (
+            <div className="row" style={{ justifyContent: 'flex-start' }}>
+              <span className="tag bad">Unclassified → SYSOTHER (discretionary)</span>
+              <span>{shown.sysother.join(', ')}</span>
+            </div>
+          )}
+          <div className="row" style={{ justifyContent: 'flex-start', flexWrap: 'wrap' }}>
+            <span className="tag">Always SYSTEM (z/OS forces these)</span>
+            <span className="muted" style={{ fontSize: 12 }}>{shown.forcedSystem.join(', ')}</span>
+          </div>
+          <div className="rules-grid">
+            {shown.subsystems.map((ss) => (
+              <Subsystem
+                key={ss.subsystem}
+                ss={ss}
+                active={r.pending ? r.active.subsystems.find((x) => x.subsystem === ss.subsystem) : undefined}
+                classIds={r.classIds}
+                game={game}
+              />
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -75,8 +78,8 @@ function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; activ
   const edit = (e: Parameters<GameHandle['send']>[0]) => game.send(e);
   const sub = ss.subsystem;
   return (
-    <div className="panel">
-      <h3>Subsystem {sub}</h3>
+    <div className="subsys">
+      <h4>Subsystem {sub}</h4>
       <div style={{ overflowX: 'auto' }}>
         <table>
           <thead>

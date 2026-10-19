@@ -7,6 +7,7 @@ import type { ConfigView, ViewModel } from '../game/view';
 import type { Command } from '../sim/core/commands';
 import { entitlements, polarity } from '../sim/hw/prsm';
 import type { Goal, Importance, Qualifier, SubsystemType, WorkAttributes } from '../sim/wlm/types';
+import { RulesView } from './RulesView';
 import type { GameHandle } from './useGame';
 
 /** Everything a control needs to preview, stage or apply a change. */
@@ -22,6 +23,7 @@ const ACTIVATE_PREVIEW = [{ kind: 'ACTIVATE_POLICY' } as Command];
 
 export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
   const [basket, setBasket] = useState<Command[]>([]);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const desk: Desk = {
     v,
     cfg: v.config,
@@ -39,8 +41,9 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
           <Prsm desk={desk} />
         </Section>
         <Section title={`WLM policy: active ${v.policyName}`}>
-          <Wlm v={v} game={game} />
+          <Wlm v={v} game={game} rulesOpen={rulesOpen} toggleRules={() => setRulesOpen(!rulesOpen)} />
         </Section>
+        {rulesOpen && <RulesView v={v} game={game} onClose={() => setRulesOpen(false)} />}
         <Section title="z/OS and coupling facilities">
           <Systems desk={desk} />
         </Section>
@@ -457,7 +460,7 @@ function goalError(kind: Goal['kind'], val: number, pct: number): string | null 
   return null;
 }
 
-function Wlm({ v, game }: { v: ViewModel; game: GameHandle }) {
+function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHandle; rulesOpen: boolean; toggleRules: () => void }) {
   const classes = game.pending?.classes ?? v.serviceClasses.map((c) => ({ ...c, cpuCritical: false }));
   const [cls, setCls] = useState(v.serviceClasses[0]?.id ?? '');
   const [period, setPeriod] = useState('1');
@@ -470,6 +473,9 @@ function Wlm({ v, game }: { v: ViewModel; game: GameHandle }) {
   // Local JSON edits; cleared whenever the worker sends a newer pending/active policy.
   const [json, setJson] = useState('');
   useEffect(() => setJson(''), [game.policy]);
+  useEffect(() => {
+    game.send({ type: 'GET_RULES' });
+  }, [game, v.policyName, v.day]);
   const jsonEdited = json !== '' && json !== game.policy;
   const goal = (): Goal => (kind === 'VEL' ? { kind, velocity: Number(val) } : kind === 'AVG' ? { kind, rtSec: Number(val) } : kind === 'PCT' ? { kind, rtSec: Number(val), pct: Number(pct) } : { kind: 'DISC' });
   const gErr = goalError(kind, Number(val), Number(pct));
@@ -567,7 +573,18 @@ function Wlm({ v, game }: { v: ViewModel; game: GameHandle }) {
           CPU critical on {cls}
         </button>
       </form>
-      <div className="help">Classification rules are edited on the Classification tab. All edits go to a pending policy until you install it.</div>
+      <div className="form">
+        <button aria-expanded={rulesOpen} aria-controls="classification-rules" className={rulesOpen ? 'active' : ''} onClick={toggleRules}>
+          {rulesOpen ? '▾ Hide classification rules' : '▸ Classification rules'}
+        </button>
+        <span className="muted" style={{ fontSize: 12 }}>
+          {game.rules ? `${(game.rules.pending ?? game.rules.active).subsystems.reduce((a, s) => a + s.rows.length, 0)} rules` : ''}
+          {game.rules && (game.rules.pending ?? game.rules.active).sysother.length > 0 && (
+            <span className="tag bad"> {(game.rules.pending ?? game.rules.active).sysother.length} unclassified → SYSOTHER</span>
+          )}
+        </span>
+      </div>
+      <div className="help">Where work goes: rules per subsystem, first match wins. All edits go to a pending policy until you install it.</div>
       <ClassifyBench game={game} />
       <div className="form">
         <button
