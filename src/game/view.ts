@@ -4,6 +4,7 @@
 import type { ToolFeature } from '../content/tools';
 import { ruleText, type AlertEvent, type AlertRule } from './alerts';
 import { autoRuleText } from './automation';
+import { codexDiscovered } from './codex';
 import type { EvidencePin } from './evidence';
 import type { ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
@@ -149,6 +150,8 @@ export interface ViewModel {
   reportsOpenedToday: number;
   smfHours: SmfHourRef[];
   pins: EvidencePin[];
+  /** Codex entry ids met in this run. */
+  codex: string[];
   /** Automation rules and their action log (null without the tool). */
   automation: { rules: { id: number; text: string; doneToday: number }[]; log: { tick: number; text: string }[] } | null;
   /** Saved service policies (with one-line goal summaries) and the daily switch schedule. */
@@ -283,6 +286,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     reportsOpenedToday: run.reportsOpenedToday.length,
     smfHours: smfHourRefs(run),
     pins: run.pins ?? [],
+    codex: codexDiscovered(run),
     automation: feats.has('AUTOMATION')
       ? {
           rules: (run.automation?.rules ?? []).map((a) => ({

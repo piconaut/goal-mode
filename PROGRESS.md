@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7.5 (tier 4 AIOps, Codex, report class advisor, strategic options); M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (179 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (181 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -300,7 +300,12 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
 - [ ] Tailored Fit Pricing offer (mid-run event): switch billing to consumption (MSU-hours vs baseline); capping no longer saves money
 - [ ] SCRT-style monthly report renderer (from `cost.hourly`/`cost.bills`) and Finance view
 - [ ] Multi-day projects (SPEC §6): threadsafe CICS conversion (qrFrac ↓), zIIP-enable Java, Db2 compression, SQL tuning sprint; progress per day, hours each day
-- [ ] Codex: `content/codex/*.ts` entries per concept (WLM PI, velocity, polarity, R4HA, QR TCB, sync/async…) with IBM/practitioner source links; unlock on first encounter
+- [x] Codex (loop 23): 22 entries in `content/codex/entries.ts` (WLM, PR/SM, capacity & cost, subsystems, I/O &
+  CF, measurement), each with sources from SPEC §18 (no invented links; label-only where unverified). Discovered
+  at start (12), by buying tools, opening report kinds or meeting events (`game/codex.ts`); remembered across
+  runs in localStorage (career Codex). Codex tab with search, categories, "new" badges, undiscovered counts.
+  Integrity test checks every discovery hook names a real tool/event/report. Contextual "?" links from UI
+  panels into the Codex are still to do
 
 **M7 sim leftovers that the tools expose**
 - [ ] Resource group *minimum*; discretionary goal management (SG24-7621 §4.22 conditions)
@@ -427,6 +432,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 23, hourly task):** Codex (22 sourced entries, discovery, career persistence). 181 tests.
 - **2026-10-19 (loop 22, hourly task):** what-if simulator; M7.4 complete. 179 tests.
 - **2026-10-19 (loop 21, hourly task):** M8.1 bench + profile; behaviour-neutral micro-optimisations
   (hash-verified); what-if decoupled from perf. 177 tests.

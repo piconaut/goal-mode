@@ -189,6 +189,8 @@ export interface RunState {
   pins: EvidencePin[];
   /** Monitor III chart history for the played day (only while the charting tool is on). */
   mon3Charts: Mon3ChartState | null;
+  /** Report kinds ever opened (for Codex discovery). */
+  codexReports: string[];
   /** Distinct reports opened this played day (Insight is earned per report, capped per day). */
   reportsOpenedToday: string[];
   perks: string[];

@@ -97,6 +97,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     tools: [],
     toolsOff: [],
     reportsOpenedToday: [],
+    codexReports: [],
     smfHours: [],
     mon3Charts: null,
     pins: [],

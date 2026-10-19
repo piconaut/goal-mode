@@ -174,3 +174,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .pin { padding: 0 3px; margin-left: 4px; font-size: 10px; line-height: 1.4; opacity: 0.35; border-color: transparent; background: transparent; }
 .pin:hover, .pin:focus-visible { opacity: 1; border-color: var(--accent); }
 tr:hover .pin { opacity: 0.8; }
+
+/* Codex */
+details.codex { border-bottom: 1px solid var(--border); padding: 4px 0; }
+details.codex > summary { color: var(--text); font-size: 14px; margin: 0; }
+a { color: var(--accent); }

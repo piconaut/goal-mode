@@ -18,6 +18,7 @@ export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
     tools: run.tools ?? [],
     toolsOff: run.toolsOff ?? [],
     reportsOpenedToday: run.reportsOpenedToday ?? [],
+    codexReports: run.codexReports ?? [],
     smfHours: run.smfHours ?? [],
     mon3Charts: run.mon3Charts ?? null,
     pins: run.pins ?? [],
@@ -101,6 +102,8 @@ export function setToolActive(run: RunState, scenario: Scenario, toolId: string,
 
 /** Insight for reading: +1 per distinct report per played day, capped. */
 export function noteReportOpened(run: RunState, key: string): RunState {
+  const kind = key.split(':')[0]!;
+  if (!(run.codexReports ?? []).includes(kind)) run = { ...run, codexReports: [...(run.codexReports ?? []), kind] };
   if (run.reportsOpenedToday.includes(key)) return run;
   const earned = run.reportsOpenedToday.length < INSIGHT.reportCapPerDay ? INSIGHT.perReport : 0;
   return { ...run, reportsOpenedToday: [...run.reportsOpenedToday, key], insight: run.insight + earned };
