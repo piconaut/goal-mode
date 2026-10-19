@@ -141,3 +141,12 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .rules { border-color: var(--accent); }
 .rules-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); margin-top: 8px; }
 .subsys h4 { margin: 0 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+
+/* SMF 30 Gantt */
+.gantt { max-height: 420px; overflow-y: auto; font-size: 11px; font-family: var(--mono); }
+.gantt-row { display: flex; align-items: center; gap: 6px; height: 14px; }
+.gantt-name { width: 92px; flex: none; white-space: nowrap; overflow: hidden; }
+.gantt-track { position: relative; flex: 1; height: 8px; background: var(--panel-2); border-radius: 2px; }
+.gantt-queue { position: absolute; top: 2px; height: 4px; background: var(--muted); opacity: 0.5; }
+.gantt-run { position: absolute; top: 0; height: 8px; background: var(--accent); border-radius: 2px; }
+.gantt-run.crit { background: var(--warn); }

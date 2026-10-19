@@ -3,7 +3,7 @@ import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
 import type { ClassificationResult } from '../sim/wlm/classify';
-import type { FromWorker, PendingPolicyView, ToWorker } from '../worker/protocol';
+import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from '../worker/protocol';
 
 export interface GameHandle {
   view: ViewModel | null;
@@ -13,6 +13,7 @@ export interface GameHandle {
   savedRunDay: number | null;
   pending: PendingPolicyView | null;
   classified: { result: ClassificationResult; pending: boolean } | null;
+  smf: SmfData | null;
   rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] } | null;
   toast: { ok: boolean; message: string } | null;
   /** Every change-board result this session, newest last (toasts vanish; this doesn't). */
@@ -29,6 +30,7 @@ export function useGame(): GameHandle {
   const [savedRunDay, setSavedRunDay] = useState<number | null>(null);
   const [pending, setPending] = useState<PendingPolicyView | null>(null);
   const [classified, setClassified] = useState<GameHandle['classified']>(null);
+  const [smf, setSmf] = useState<SmfData | null>(null);
   const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
   const [results, setResults] = useState<GameHandle['results']>([]);
@@ -46,6 +48,7 @@ export function useGame(): GameHandle {
         setSavedRunDay(m.savedRunDay);
         setPending(m.pending);
       } else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
+      else if (m.type === 'SMF') setSmf(m.data);
       else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
@@ -61,5 +64,5 @@ export function useGame(): GameHandle {
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
-  return { view, report, policy, history, savedRunDay, pending, classified, rules, toast, results, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, smf, rules, toast, results, send };
 }

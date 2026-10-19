@@ -102,7 +102,6 @@ export const TOOLS: ToolDef[] = [
     unlocks: ['SMF113'],
     overhead: null,
     reveals: 'RNI, CPI and L1 miss rates per LPAR: why the same work costs more MSU on a busy box.',
-    comingSoon: true,
   },
   {
     id: 'DB2_ACCT',
@@ -113,7 +112,6 @@ export const TOOLS: ToolDef[] = [
     unlocks: ['DB2_ACCOUNTING'],
     overhead: { subsystems: { types: ['DDF', 'CICS'], cpuFrac: 0.03 } },
     reveals: 'Per-package CPU and class 3 suspensions (lock, sync I/O): finds access-path regressions.',
-    comingSoon: true,
   },
   {
     id: 'CICS_MON',
@@ -124,7 +122,6 @@ export const TOOLS: ToolDef[] = [
     unlocks: ['CICS_MONITORING'],
     overhead: { subsystems: { types: ['CICS'], cpuFrac: 0.04 } },
     reveals: 'Per-region dispatch, QR TCB busy and MXT waits.',
-    comingSoon: true,
   },
   {
     id: 'SMF30_BATCH',
@@ -135,7 +132,6 @@ export const TOOLS: ToolDef[] = [
     unlocks: ['BATCH_GANTT'],
     overhead: null,
     reveals: 'Critical-path Gantt with per-job CPU, I/O and initiator wait.',
-    comingSoon: true,
   },
   {
     id: 'CAP_PLANNER',

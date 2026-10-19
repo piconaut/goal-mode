@@ -1,5 +1,6 @@
 // Messages between the UI thread and the game worker.
 
+import type { BatchNight, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
 import type { WlmEdit } from '../game/wlmEdit';
 import type { Mechanism, Trigger } from '../game/types';
@@ -15,6 +16,14 @@ export interface PendingPolicyView {
   classes: { id: string; periods: string[]; cpuCritical: boolean }[];
   rules: { subsystem: string; text: string }[];
 }
+
+export type SmfKind = 'DB2' | 'CICS' | 'BATCH' | 'SMF113';
+
+export type SmfData =
+  | { kind: 'DB2'; hour: string; rows: Db2AcctRow[] }
+  | { kind: 'CICS'; hour: string; rows: CicsTxnRow[] }
+  | { kind: 'BATCH'; night: BatchNight | null }
+  | { kind: 'SMF113'; rows: Smf113Row[] };
 
 export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DASD';
 
@@ -35,6 +44,7 @@ export type ToWorker =
   | { type: 'CONTINUE_SAVED' }
   | { type: 'GET_RULES' }
   | { type: 'CANCEL_CHANGE'; changeId: number }
+  | { type: 'GET_SMF'; kind: SmfKind; hour: string }
   | { type: 'BUY_TOOL'; toolId: string }
   /** Dev builds only: grant Insight for UI testing. */
   | { type: 'DEV_INSIGHT'; amount: number }
@@ -43,6 +53,7 @@ export type ToWorker =
 export type FromWorker =
   | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null }
   | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
+  | { type: 'SMF'; data: SmfData }
   | { type: 'RULES'; active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] }
   | { type: 'REPORT'; text: string }
   | { type: 'POLICY'; json: string }

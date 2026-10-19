@@ -8,6 +8,7 @@ import { LineChart } from './LineChart';
 import { Monitor } from './Monitor';
 import { Overlays } from './Overlays';
 import { Reports } from './Reports';
+import { Smf } from './Smf';
 import { useGame, type GameHandle } from './useGame';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'analytics' | 'inbox';
@@ -29,7 +30,12 @@ export function App() {
       </div>
       {tab === 'console' && <Console v={v} history={game.history} />}
       {tab === 'monitor' && <Monitor v={v} />}
-      {tab === 'reports' && <Reports v={v} game={game} />}
+      {tab === 'reports' && (
+        <>
+          <Reports v={v} game={game} />
+          <Smf v={v} game={game} />
+        </>
+      )}
       {tab === 'changes' && <Actions v={v} game={game} />}
       {tab === 'analytics' && <Analytics v={v} game={game} />}
       {tab === 'inbox' && <Inbox v={v} />}

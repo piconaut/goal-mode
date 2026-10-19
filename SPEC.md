@@ -1104,6 +1104,8 @@ never touches the DOM.
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
 | Monitor III views (SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s range; PROCU by service-class period, not job |
+| SMF 101/110 views | **Faithful simplification** | From the sim's per-transaction response-time parts; all transaction CPU shown as class 1 CPU; CF time stands in for GBP/lock-structure suspensions |
+| SMF 113 counters, LSPR category | **Plausible model / real table** | L1MP/RNI/CPI are FICTIONAL functions of polarity mix and CPC busy; the LOW/AVERAGE/HIGH table is IBM's |
 | Response-time distributions | **Log-normal assumption** | Tunable σ per workload |
 | CF sync/async, 50% CF guideline, shared-CF penalties | **Real concepts, invented coefficients** | |
 | CICS QR TCB single-engine limit | **Real** | |

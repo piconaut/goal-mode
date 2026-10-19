@@ -4,6 +4,7 @@
 import { DRAFT_OPTIONS } from '../content/draft';
 import type { EventDef, ScriptedBeat } from '../content/events/midwest-events';
 import type { Command } from '../sim/core/commands';
+import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
 import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
@@ -88,6 +89,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     tools: [],
     toolsOff: [],
     reportsOpenedToday: [],
+    smfHours: [],
     perks: [],
     constraints: [],
     batchDeadlineSec: 24 * 3600,
@@ -390,6 +392,9 @@ function accumulateHour(run: RunState): RunState {
   };
 }
 
+/** Hours of per-workload SMF detail kept in the run (two played days). */
+const SMF_HOURS_KEPT = 48;
+
 function closeHour(run: RunState, scenario: Scenario): RunState {
   const h = run.hour;
   if (!h) return run;
@@ -437,7 +442,8 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
       r = logLine(r, `INCIDENT ${w.id}: SLA missed (${att.attainmentPct.toFixed(1)}%)`);
     }
   }
-  return { ...r, trust, incidents, baselines, hour: newHour(r.sim.tick) };
+  const smfHours = [...(r.smfHours ?? []), { day: r.day, hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay), workloads: h.workloads }].slice(-SMF_HOURS_KEPT);
+  return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }
 
 function endDay(run: RunState, scenario: Scenario, content: GameContent): RunState {

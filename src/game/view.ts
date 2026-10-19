@@ -2,6 +2,7 @@
 // worker every frame). Applies the fog of war: what the player is allowed to see.
 
 import type { ToolFeature } from '../content/tools';
+import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
 import { formatClock, clockAt } from '../sim/core/clock';
@@ -139,6 +140,7 @@ export interface ViewModel {
   mon3: Mon3View | null;
   tools: ToolView[];
   reportsOpenedToday: number;
+  smfHours: SmfHourRef[];
   serviceClasses: { id: string; periods: string[] }[];
 }
 
@@ -261,6 +263,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
+    smfHours: smfHourRefs(run),
     config: configView(run, scenario),
     serviceClasses: def.classes.map((x) => ({ id: x.id, periods: x.periods.map((p) => goalText(p)) })),
   };

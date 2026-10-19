@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.3 (tier 2 deep data: SMF 113, Db2 accounting, CICS monitoring, SMF 30 batch Gantt; make those tools buyable).
+- **Next up:** M7.3 remainder (RCA evidence pinning; per-structure CF and per-LCU DASD models), then M7.4.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (138 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (146 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -196,14 +196,16 @@ end-of-day reports to live diagnosis and what-if planning, and the bots show too
 - Tests (6): visibility gating, PROCU ≈ delivered CPU, ENCLAVE zIIP use, a CPU regression raises delay + WFEX, log explanations, velocity scale
 - Dev aid: in `npm run dev` builds `globalThis.__goalMode.send(msg)` reaches the worker, and `DEV_INSIGHT` grants Insight (used by headless UI checks)
 
-**M7.3 Tier 2: deep data**
-- [ ] CF Activity per structure (lock / GBP / list) with sync/async counts; structure placement editor (replaces the fixed `requestShare`)
-- [ ] DASD/cache: per LCU hot volumes, alias usage, IOSQ; HyperPAV alias editor
-- [ ] SMF 113 counters: per-LPAR CPI/RNI/L1MP derived from polarity mix + VL usage; LSPR workload classification per IBM's L1MP/RNI table
-- [ ] Db2 accounting (SMF 101): class 1/2/3 times per workload/package (from `WorkloadTick.parts`), lock/IO/log suspensions; makes REGRESSION and LOCK_ESCALATION diagnosable by package
-- [ ] CICS monitoring (SMF 110): per-transaction CPU, QR dispatch wait, MXT waits per AOR
-- [ ] SMF 30 batch analytics: Gantt of last night per job (queue, elapsed, stretch), critical path highlighted
+**M7.3 Tier 2: deep data** — partly done (loop 12)
+- [ ] CF Activity per structure (lock / GBP / list) with sync/async counts; structure placement editor (replaces the fixed `requestShare`) — needs a per-structure CF model in `sim/cf`
+- [ ] DASD/cache: per LCU hot volumes, alias usage, IOSQ; HyperPAV alias editor — needs per-LCU state in `sim/io`
+- [x] SMF 113 counters (`game/smf.ts` `smf113`): L1MP/RNI/CPI per image from the share of work off VH engines and CPC busy (FICTIONAL coefficients in `content/smf.ts`); LSPR category from IBM's L1MP/RNI table (`lsprCategory`)
+- [x] Db2 accounting (SMF 101): per package (`DB2_PACKAGES`), class 1 elapsed, CPU/txn vs the workload's healthy baseline, class 3 lock / sync I/O / CF, not-accounted, DBAT queue; per closed hour (`RunState.smfHours`, 48 h) or the current hour. A ×3 REGRESSION shows as RB01 ×3 vs base; lock escalation as lock ms
+- [x] CICS monitoring (SMF 110): per transaction CPU vs baseline, QR wait, MXT wait, dispatch wait, failures. Per-AOR QR busy not shown (the sim computes QR per LPAR, not per region)
+- [x] SMF 30 batch analytics: Gantt of the latest night from RMF interval job-end records (queue + elapsed, critical jobs highlighted, stream filter, last critical job)
 - [ ] RCA evidence pinning: pin up to 3 values from any report; evidence relevance scored against the event's clue set (SPEC §10)
+- UI: "SMF analytics" panel under the RMF Postprocessor (Reports tab); data via `GET_SMF`/`SMF` worker messages; Db2/CICS views earn report Insight per hour viewed
+- Tests (8): LSPR table, hour retention, regression → package, lock escalation → lock ms, CICS rows, SMF 113 ranges, Gantt, tier-2 tools buyable
 
 **M7.4 Tier 3: planning & automation**
 - [ ] What-if simulator: fork `RunState.sim`, apply proposed changes, run tomorrow headless with forecast arrivals and no hidden events; report SLA/batch/R4HA deltas; costs hours + Insight. Needs ≥ 4× headless speed (see M8.1 perf)
@@ -332,6 +334,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 12):** M7.3 tier-2 data: Db2 accounting, CICS monitoring, SMF 30 Gantt and
+  SMF 113 counters; four tools now buyable; 48 h of hourly SMF detail kept in the run. Caught
+  two tools still marked "coming soon" by a sloppy scripted edit (screenshot), fixed + test.
 - **2026-10-19 (user request):** Classification rules moved from their own tab into the Change Desk:
   a "▸ Classification rules" toggle in the WLM section (with rule count and SYSOTHER warning)
   expands the full rules view below it; install/discard via the pinned pending-policy banner.

@@ -11,6 +11,7 @@ export function normalizeRun(run: RunState): RunState {
     tools: run.tools ?? [],
     toolsOff: run.toolsOff ?? [],
     reportsOpenedToday: run.reportsOpenedToday ?? [],
+    smfHours: run.smfHours ?? [],
     sim: { ...run.sim, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },
   };
 }
@@ -138,3 +139,6 @@ export const REPORT_FEATURE: Record<string, ToolFeature | null> = {
   CF: 'CF_REPORT',
   DASD: 'DASD_REPORT',
 };
+
+/** Which tool feature each SMF analytics view needs. */
+export const SMF_FEATURE = { DB2: 'DB2_ACCOUNTING', CICS: 'CICS_MONITORING', BATCH: 'BATCH_GANTT', SMF113: 'SMF113' } as const satisfies Record<string, ToolFeature>;

@@ -59,3 +59,15 @@ describe('Insight accounting', () => {
     expect(noteReportOpened(r, 'WLM_SUMMARY:1').insight).toBe(r.insight + INSIGHT.perReport);
   });
 });
+
+describe('tier 2 availability', () => {
+  it('Db2 accounting, CICS monitoring, SMF 30 and SMF 113 are buyable once prerequisites are owned', () => {
+    let r = fresh(200);
+    for (const id of ['RMF_MON3', 'PARTITION_DATA', 'DB2_ACCT', 'CICS_MON', 'SMF30_BATCH', 'SMF113']) {
+      const out = buyTool(r, MIDWEST, id);
+      expect(out.ok, out.message).toBe(true);
+      r = out.run;
+    }
+    expect([...features(r)]).toEqual(expect.arrayContaining(['DB2_ACCOUNTING', 'CICS_MONITORING', 'BATCH_GANTT', 'SMF113']));
+  });
+});

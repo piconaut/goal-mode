@@ -73,6 +73,13 @@ export interface WorkloadHour {
   parts: Record<string, number>;
 }
 
+export interface SmfHour {
+  day: number;
+  /** Hour of day at the start of the hour (0..23). */
+  hourOfDay: number;
+  workloads: Record<string, WorkloadHour>;
+}
+
 export interface HourAcc {
   hourIndex: number;
   ticks: number;
@@ -149,6 +156,8 @@ export interface RunState {
   /** Analytics tools bought (content/tools.ts) and the ones switched off to save their CPU. */
   tools: string[];
   toolsOff: string[];
+  /** Closed hours of per-workload measurements (SMF 101/110-style detail), newest last, ~2 days. */
+  smfHours: SmfHour[];
   /** Distinct reports opened this played day (Insight is earned per report, capped per day). */
   reportsOpenedToday: string[];
   perks: string[];

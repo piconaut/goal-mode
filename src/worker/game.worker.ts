@@ -4,7 +4,8 @@ import { MIDWEST_GAME } from '../content/game-midwest';
 import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
-import { buyTool, noteReportOpened, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature } from '../game/tools';
+import { buyTool, noteReportOpened, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
+import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -14,7 +15,7 @@ import { classify } from '../sim/wlm/classify';
 import { explainClassification, workItems } from '../game/classifyExplain';
 import { clockAt } from '../sim/core/clock';
 import { goalText } from '../sim/wlm/goals';
-import type { FromWorker, PendingPolicyView, ToWorker } from './protocol';
+import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from './protocol';
 import { loadRun, saveRun } from './storage';
 
 const scenario = MIDWEST;
@@ -141,6 +142,18 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'DEV_INSIGHT':
       if (import.meta.env.DEV) run = { ...run, insight: run.insight + m.amount };
       break;
+    case 'GET_SMF': {
+      const need = SMF_FEATURE[m.kind];
+      if (!hasFeature(run, need)) break;
+      if (m.kind !== 'SMF113' && m.kind !== 'BATCH') run = noteReportOpened(run, `SMF:${m.kind}:${m.hour}`);
+      const data: SmfData =
+        m.kind === 'DB2' ? { kind: 'DB2', hour: m.hour, rows: db2Accounting(run, scenario, m.hour) }
+        : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, scenario, m.hour) }
+        : m.kind === 'BATCH' ? { kind: 'BATCH', night: batchNight(run) }
+        : { kind: 'SMF113', rows: smf113(run) };
+      post({ type: 'SMF', data });
+      break;
+    }
     case 'BUY_TOOL':
     case 'SET_TOOL_ACTIVE': {
       const out = m.type === 'BUY_TOOL' ? buyTool(run, scenario, m.toolId) : setToolActive(run, scenario, m.toolId, m.active);
