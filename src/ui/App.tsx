@@ -3,13 +3,14 @@ import { FACETS } from '../game/types';
 import type { ViewModel } from '../game/view';
 import type { HistoryPoint } from '../game/history';
 import { Actions } from './Actions';
+import { Analytics } from './Analytics';
 import { LineChart } from './LineChart';
 import { Overlays } from './Overlays';
 import { Reports } from './Reports';
 import { RulesView } from './RulesView';
 import { useGame, type GameHandle } from './useGame';
 
-type Tab = 'console' | 'reports' | 'changes' | 'rules' | 'inbox';
+type Tab = 'console' | 'reports' | 'changes' | 'rules' | 'analytics' | 'inbox';
 
 export function App() {
   const game = useGame();
@@ -20,9 +21,9 @@ export function App() {
     <div className="app">
       <TopBar v={v} game={game} />
       <div className="tabs">
-        {(['console', 'reports', 'changes', 'rules', 'inbox'] as Tab[]).map((t) => (
+        {(['console', 'reports', 'changes', 'rules', 'analytics', 'inbox'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
-            {t === 'console' ? 'Ops Console' : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'rules' ? 'Classification' : `Inbox (${v.inbox.length})`}
+            {t === 'console' ? 'Ops Console' : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'rules' ? 'Classification' : t === 'analytics' ? `Analytics (${v.insight}◆)` : `Inbox (${v.inbox.length})`}
           </button>
         ))}
       </div>
@@ -30,6 +31,7 @@ export function App() {
       {tab === 'reports' && <Reports v={v} game={game} />}
       {tab === 'changes' && <Actions v={v} game={game} />}
       {tab === 'rules' && <RulesView v={v} game={game} />}
+      {tab === 'analytics' && <Analytics v={v} game={game} />}
       {tab === 'inbox' && <Inbox v={v} />}
       <Overlays v={v} game={game} />
       {game.toast && <div className={`toast ${game.toast.ok ? '' : 'bad'}`}>{game.toast.message}</div>}
@@ -76,6 +78,9 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       ))}
       <span className="stat">
         Hours <b>{v.hoursLeft.toFixed(1)}</b>
+      </span>
+      <span className="stat">
+        Insight <b>{v.insight}</b>
       </span>
       <span className="stat">
         Fatigue <b>{v.fatigue.toFixed(0)}</b>

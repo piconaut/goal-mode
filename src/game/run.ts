@@ -85,6 +85,9 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     capexRemaining: content.capexQuarter,
     opexSpentThisMonth: 0,
     insight: 0,
+    tools: [],
+    toolsOff: [],
+    reportsOpenedToday: [],
     perks: [],
     constraints: [],
     batchDeadlineSec: 24 * 3600,
@@ -569,7 +572,7 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
     default:
       break;
   }
-  r = { ...r, day: r.day + 1, phase: 'BRIEFING' };
+  r = { ...r, day: r.day + 1, phase: 'BRIEFING', reportsOpenedToday: [] };
   return storyFor(r, content, r.day);
 }
 

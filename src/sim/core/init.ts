@@ -26,7 +26,7 @@ export function initState(seed: number, scenario: Scenario): SimState {
     },
     cost: newCost(scenario.products),
     rmf: { acc: newRmfAcc(0), intervals: [], jobsThisInterval: [] },
-    mods: { rate: {}, cpu: {}, asCpu: {}, lockBoost: 0 },
+    mods: { rate: {}, cpu: {}, asCpu: {}, measureCpu: {}, lockBoost: 0 },
     extraWorkloads: [],
     routing: {},
     extraAddressSpaces: [],

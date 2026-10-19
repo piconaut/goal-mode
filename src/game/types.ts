@@ -146,6 +146,11 @@ export interface RunState {
   capexRemaining: number;
   opexSpentThisMonth: number;
   insight: number;
+  /** Analytics tools bought (content/tools.ts) and the ones switched off to save their CPU. */
+  tools: string[];
+  toolsOff: string[];
+  /** Distinct reports opened this played day (Insight is earned per report, capped per day). */
+  reportsOpenedToday: string[];
   perks: string[];
   constraints: string[];
   /** Critical batch deadline, seconds after the played day's 06:00 start. */

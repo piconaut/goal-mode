@@ -1,6 +1,8 @@
 // View model: a compact, serialisable projection of RunState for the UI (posted from the
 // worker every frame). Applies the fog of war: what the player is allowed to see.
 
+import type { ToolFeature } from '../content/tools';
+import { features, toolsView, type ToolView } from './tools';
 import { formatClock, clockAt } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { instanceClock } from '../sim/core/step';
@@ -130,6 +132,10 @@ export interface ViewModel {
   policyName: string;
   previewCtx: PreviewContext;
   config: ConfigView;
+  /** Data the player's active analytics tools unlock (fog of war). */
+  features: ToolFeature[];
+  tools: ToolView[];
+  reportsOpenedToday: number;
   serviceClasses: { id: string; periods: string[] }[];
 }
 
@@ -204,8 +210,9 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     atRisk: proj !== null && proj > run.batchDeadlineSec - 1800,
   };
 
-  // Fog of war (tier 0): RMF Postprocessor data only for intervals before today's 06:00.
-  const visibleUntil = run.phase === 'LIVE' ? run.day * TICKS_PER_DAY : sim.tick;
+  // Fog of war: without Monitor III, RMF Postprocessor data only for intervals before today's 06:00.
+  const feats = features(run);
+  const visibleUntil = run.phase === 'LIVE' && !feats.has('MON3') ? run.day * TICKS_PER_DAY : sim.tick;
   const reports: ReportRef[] = sim.rmf.intervals
     .map((iv, index) => ({ index, endTick: iv.endTick, label: `D${clockAt(iv.startTick).day + 1} ${formatClock(iv.startTick).slice(-8, -3)}–${formatClock(iv.endTick).slice(-8, -3)}` }))
     .filter((r) => r.endTick <= visibleUntil);
@@ -246,6 +253,9 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     endReason: run.endReason,
     policyName: def.policyName,
     previewCtx: previewContext(run),
+    features: [...feats].sort(),
+    tools: toolsView(run),
+    reportsOpenedToday: run.reportsOpenedToday.length,
     config: configView(run, scenario),
     serviceClasses: def.classes.map((x) => ({ id: x.id, periods: x.periods.map((p) => goalText(p)) })),
   };

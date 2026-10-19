@@ -34,7 +34,9 @@ export type ToWorker =
   | { type: 'CLASSIFY'; work: WorkAttributes }
   | { type: 'CONTINUE_SAVED' }
   | { type: 'GET_RULES' }
-  | { type: 'CANCEL_CHANGE'; changeId: number };
+  | { type: 'CANCEL_CHANGE'; changeId: number }
+  | { type: 'BUY_TOOL'; toolId: string }
+  | { type: 'SET_TOOL_ACTIVE'; toolId: string; active: boolean };
 
 export type FromWorker =
   | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null }

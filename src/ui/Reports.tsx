@@ -1,3 +1,4 @@
+import { REPORT_FEATURE } from '../game/tools';
 import { useEffect, useState } from 'react';
 import type { ViewModel } from '../game/view';
 import type { ReportKind } from '../worker/protocol';
@@ -47,7 +48,13 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
           ))}
         </select>
         {KINDS.map((k) => (
-          <button key={k.kind} className={kind === k.kind ? 'active' : ''} onClick={() => setKind(k.kind)}>
+          <button
+            key={k.kind}
+            className={kind === k.kind ? 'active' : ''}
+            disabled={REPORT_FEATURE[k.kind] !== null && !v.features.includes(REPORT_FEATURE[k.kind]!)}
+            title={REPORT_FEATURE[k.kind] !== null && !v.features.includes(REPORT_FEATURE[k.kind]!) ? 'Unlock on the Analytics tab' : undefined}
+            onClick={() => setKind(k.kind)}
+          >
             {k.label}
           </button>
         ))}

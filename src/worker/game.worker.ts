@@ -4,6 +4,7 @@ import { MIDWEST_GAME } from '../content/game-midwest';
 import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
+import { buyTool, noteReportOpened, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature } from '../game/tools';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -105,7 +106,7 @@ function autosave() {
 }
 
 void loadRun().then((r) => {
-  saved = r;
+  saved = r ? normalizeRun(r) : null;
   sendView();
 });
 
@@ -137,6 +138,13 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         saved = null;
       }
       break;
+    case 'BUY_TOOL':
+    case 'SET_TOOL_ACTIVE': {
+      const out = m.type === 'BUY_TOOL' ? buyTool(run, scenario, m.toolId) : setToolActive(run, scenario, m.toolId, m.active);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      break;
+    }
     case 'CANCEL_CHANGE': {
       const out = cancelChange(run, m.changeId);
       run = out.run;
@@ -206,6 +214,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'GET_REPORT': {
       const iv = run.sim.rmf.intervals[m.index];
       if (!iv) break;
+      const need = REPORT_FEATURE[m.kind];
+      if (need && !hasFeature(run, need)) {
+        post({ type: 'REPORT', text: `This report needs an analytics tool (${need}). See the Analytics tab.` });
+        break;
+      }
+      run = noteReportOpened(run, `${m.kind}:${m.index}`);
       const text =
         m.kind === 'WLM_SUMMARY' ? renderWlmSummary(iv, m.system ?? '*PLEX')
         : m.kind === 'WLM_DETAIL' ? renderWlmDetail(iv, m.scKey ?? 'ONLHI#1', m.system ?? '*PLEX')

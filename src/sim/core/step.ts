@@ -670,11 +670,16 @@ function addParts(into: Record<string, number>, p: NonNullable<import('../wlm/ev
 }
 
 function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): SliceSpec[] {
+  const measure = mods.measureCpu ?? {};
   const hasCpu = Object.keys(mods.cpu).length > 0;
   const hasAs = Object.keys(mods.asCpu).length > 0;
-  if (!hasCpu && !hasAs) return slices;
+  if (!hasCpu && !hasAs && Object.keys(measure).length === 0) return slices;
   return slices.map((s) => {
-    const m = s.workloadId ? (mods.cpu[s.workloadId] ?? 1) : s.jobname ? (mods.asCpu[s.jobname] ?? 1) : 1;
+    const m = s.workloadId
+      ? (mods.cpu[s.workloadId] ?? 1) * (measure[s.workloadId] ?? 1)
+      : s.jobname
+        ? (mods.asCpu[s.jobname] ?? 1) * (measure[s.jobname] ?? 1)
+        : 1;
     if (m === 1) return s;
     return { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
   });

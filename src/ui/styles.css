@@ -127,3 +127,12 @@ details.section:not([open]) > summary h3::before { content: '▸ '; }
 .diff li { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 2px 0; }
 button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } .form label { flex-wrap: wrap; } }
+
+/* Analytics tree */
+.tree { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.tier h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+.tool { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 10px; }
+.tool.owned { border-color: var(--good); }
+.tool.buyable { border-color: var(--accent); }
+.tool.locked { opacity: 0.7; }
+.tool.off { border-style: dashed; }

@@ -181,6 +181,8 @@ export interface SimModifiers {
   cpu: Record<string, number>;
   /** Base CPU multiplier per address-space jobname (monitor creep, loops). */
   asCpu: Record<string, number>;
+  /** Measurement overhead (SMF 101/110 tracing, monitor gatherers) per workload id or jobname; stacks with cpu/asCpu. */
+  measureCpu: Record<string, number>;
   /** Extra lock contention index (lock escalation). */
   lockBoost: number;
 }

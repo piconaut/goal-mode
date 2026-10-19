@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.1 (Insight economy & tool tree) and M7.2 (Monitor III live views).
+- **Next up:** M7.2 (Monitor III live views; make the Monitor III promise real: SYSINFO/DELAY/PROCU/ENCLAVE/WFEX, WLM activity log).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (128 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (132 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -175,13 +175,15 @@ Goal: turn "half blind" into the progression spine (SPEC §8). Insight is earned
 spent on tools; better tools reveal more data but cost CPU. Done when a player can buy their way from
 end-of-day reports to live diagnosis and what-if planning, and the bots show tools change outcomes.
 
-**M7.1 Insight economy & tool tree (game layer)**
-- [ ] `content/tools.ts`: tool defs `{id, tier, insightCost, prereqs, cpuOverhead, unlocks}`; `RunState.unlocked: string[]`
-- [ ] Earning Insight: +1 per distinct report opened per day (cap 5), +RCA points (exists), +2 per what-if run, draft "vendor trial"
-- [ ] `game/run.ts` `buyTool(run, toolId)`: checks prereqs/Insight, applies the tool's CPU overhead via an `asCpu`/SMF modifier
-- [ ] Measurement overhead model: SMF 101 class 3 (+3% Db2 txn CPU), SMF 110 (+4% CICS txn CPU), 113 (≈0) as `mods.cpu` per workload family
-- [ ] UI: "Analytics" tab with the tree (tier columns, cost, overhead, what each tool reveals)
-- [ ] Tests: prereqs enforced, overhead visible in WLMGL APPL%, Insight accounting
+**M7.1 Insight economy & tool tree (game layer)** — done (loop 10)
+- [x] `content/tools.ts`: 13 tool defs `{id, tier, insightCost, prereqs, unlocks, overhead, reveals, comingSoon}`; `RunState.tools/toolsOff`
+- [x] Earning Insight: +1 per distinct report opened per played day (cap 5; resets at the next briefing), RCA points (exists), vendor trial (exists). +2 per what-if waits for M7.4
+- [x] `game/tools.ts` `buyTool` / `setToolActive`: prereqs, Insight, measurement overhead re-issued as `SET_MODIFIER measureCpu` commands; `normalizeRun` migrates old autosaves
+- [x] Measurement overhead model: new `mods.measureCpu` (stacks with event `cpu`/`asCpu` mods): SMF 101 +3% DDF/CICS, SMF 110 +4% CICS, Monitor III RMFGAT ×2, SMF 113 ≈ 0
+- [x] Report gating: Partition Data needs its tool, CF/DASD need tier 2 (worker refuses, Reports buttons disabled); Monitor III shows today's closed intervals
+- [x] UI: "Analytics" tab (tier columns, cost, overhead, prereqs, Install / Switch off), Insight in the top bar
+- [x] Tests (4): prereqs/Insight, overhead on/off, SMF 110 overhead visible in WLMGL APPL% (+0.5–4%), report Insight cap/reset
+- Tools whose data views don't exist yet are listed as "Coming soon" (all tier 2 except CF/DASD, tiers 3–4) so players can plan; they become buyable as M7.2–M7.5 land
 
 **M7.2 Tier 1: live visibility**
 - [ ] Fog of war becomes tool-driven in `game/view.ts` (today: tier-0 hard-coded): reports for the *current* day only with Monitor III; RMF interval < 15 min needs the tool too
@@ -325,6 +327,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-19 (loop 10):** M7.1 Insight economy and tool tree: tool content, buy/switch-off,
+  `mods.measureCpu` overhead, report gating, Analytics tab, Insight per report. 132 tests.
+  Textbook bot unchanged (loses day 29). Lesson repeated: `pkill -f` matching its own shell
+  kills the command (exit 144); use task IDs / `fuser -k`.
 - **2026-10-19 (loop 9, hourly backstop):** M6.1 Change Desk QoL: live values, cost/risk on every
   button with disabled reasons, inline validation, change basket with diff summary, change board
   grouped by day with cancel/refund, on-order and CoD expiry, results log, data-driven Db2/CICS/

@@ -800,6 +800,13 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 - **AIOps anomaly detection**: flags anomalies and offers ranked RCA hypotheses. *Sometimes
   wrong*, with confidence shown. Accepting a wrong hypothesis is your fault.
 
+**Implementation (M7.1):** tools live in `content/tools.ts` (`insightCost`, `prereqs`, `unlocks`
+feature flags, `overhead`). Buying is instant and costs no engineer-hours; owned tools with
+overhead can be switched off (data disappears, CPU is saved). Tier 0 reports are the Workload
+Activity summary and WLMGL detail; Partition Data needs its tool, CF and DASD reports need
+tier 2. Monitor III also lifts the "yesterday only" restriction on Postprocessor intervals.
+Insight income: +1 per distinct report opened per played day (cap 5), RCA points, vendor-trial draft.
+
 **Insight** is earned by doing analysis (opening and reading reports, running what-ifs), so
 players who investigate get stronger. Measurement has **CPU cost**. The tension between seeing
 everything and paying for it is deliberate and realistic.
@@ -1095,6 +1102,7 @@ never touches the DOM.
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | Prices fictional |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
+| Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
 | Response-time distributions | **Log-normal assumption** | Tunable σ per workload |
 | CF sync/async, 50% CF guideline, shared-CF penalties | **Real concepts, invented coefficients** | |
 | CICS QR TCB single-engine limit | **Real** | |
