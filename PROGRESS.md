@@ -7,7 +7,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Phase:** M0–M4 done (M2 leftovers: RG minimum, discretionary capping). The sim is feature-complete for a headless day: online, batch, I/O, CF, subsystems, capping, MLC and RMF reports.
 - **Last updated:** 2026-10-19
 - **Phase:** M5 done; M6 vertical slice playable in the browser (`npm run dev`).
-- **Next up:** M6 polish (batch Gantt, R4HA chart, policy editor UX, save/load), then M7 analytics tiers (Monitor III live view, Insight spending), weekend auto-sim.
+- **Next up:** finish M6 (UI for charts/history, polarity preview, classification bench, Continue button — worker side committed in 3cf224b), then M7.1/M7.2.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
 - **Health:** `npm run check` green (102 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
@@ -109,17 +109,90 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] Classification test bench ("where does this work go?")
 - [ ] Save/load (IndexedDB), pin report values as RCA evidence
 
-### M7 — Analytics tool tree & depth
-- [ ] Tier 1–4 tools (SPEC §8); Monitor III screens; WLM activity log
-- [ ] Capacity planner + what-if fork
-- [ ] Alert & automation rules engine; CPM
-- [ ] Codex with source links
+### M7 — Analytics, fog of war & strategic depth
+Goal: turn "half blind" into the progression spine (SPEC §8). Insight is earned by investigating and
+spent on tools; better tools reveal more data but cost CPU. Done when a player can buy their way from
+end-of-day reports to live diagnosis and what-if planning, and the bots show tools change outcomes.
 
-### M8 — Balance, polish, content
-- [ ] Strategy bots and balance targets (SPEC §16) met on Normal
-- [ ] Difficulty levels, Ironman, daily seed
-- [ ] Additional scenarios (insurer, tax agency, airline)
-- [ ] Audio/feedback polish, accessibility pass, tutorial (guided day 1)
+**M7.1 Insight economy & tool tree (game layer)**
+- [ ] `content/tools.ts`: tool defs `{id, tier, insightCost, prereqs, cpuOverhead, unlocks}`; `RunState.unlocked: string[]`
+- [ ] Earning Insight: +1 per distinct report opened per day (cap 5), +RCA points (exists), +2 per what-if run, draft "vendor trial"
+- [ ] `game/run.ts` `buyTool(run, toolId)`: checks prereqs/Insight, applies the tool's CPU overhead via an `asCpu`/SMF modifier
+- [ ] Measurement overhead model: SMF 101 class 3 (+3% Db2 txn CPU), SMF 110 (+4% CICS txn CPU), 113 (≈0) as `mods.cpu` per workload family
+- [ ] UI: "Analytics" tab with the tree (tier columns, cost, overhead, what each tool reveals)
+- [ ] Tests: prereqs enforced, overhead visible in WLMGL APPL%, Insight accounting
+
+**M7.2 Tier 1: live visibility**
+- [ ] Fog of war becomes tool-driven in `game/view.ts` (today: tier-0 hard-coded): reports for the *current* day only with Monitor III; RMF interval < 15 min needs the tool too
+- [ ] RMF Monitor III views (live, last 100 s window from `sim.last`): SYSINFO (per-system goal/actual/PI), DELAY (top delayed workloads by delay type: CPU, zIIP, I/O, STO, CAP, UNK), PROCU (top CPU consumers incl. address spaces), ENCLAVE (DDF by period), WFEX (exceptions: PI > 2, capped, QR > 0.8, MXT/DBAT queueing)
+- [ ] WLM activity log in the console (`sim.wlm.log`), unlocked by Monitor III; decision tooltips ("why did ONLHI move to F9?")
+- [ ] Partition Data detail with live polarity, PR/SM delay, logical:physical ratio warning (> 2:1)
+- [ ] Report classes start to matter: per-workload report classes in the policy editor give per-workload WLMGL rows (F6)
+
+**M7.3 Tier 2: deep data**
+- [ ] CF Activity per structure (lock / GBP / list) with sync/async counts; structure placement editor (replaces the fixed `requestShare`)
+- [ ] DASD/cache: per LCU hot volumes, alias usage, IOSQ; HyperPAV alias editor
+- [ ] SMF 113 counters: per-LPAR CPI/RNI/L1MP derived from polarity mix + VL usage; LSPR workload classification per IBM's L1MP/RNI table
+- [ ] Db2 accounting (SMF 101): class 1/2/3 times per workload/package (from `WorkloadTick.parts`), lock/IO/log suspensions; makes REGRESSION and LOCK_ESCALATION diagnosable by package
+- [ ] CICS monitoring (SMF 110): per-transaction CPU, QR dispatch wait, MXT waits per AOR
+- [ ] SMF 30 batch analytics: Gantt of last night per job (queue, elapsed, stretch), critical path highlighted
+- [ ] RCA evidence pinning: pin up to 3 values from any report; evidence relevance scored against the event's clue set (SPEC §10)
+
+**M7.4 Tier 3: planning & automation**
+- [ ] What-if simulator: fork `RunState.sim`, apply proposed changes, run tomorrow headless with forecast arrivals and no hidden events; report SLA/batch/R4HA deltas; costs hours + Insight. Needs ≥ 4× headless speed (see M8.1 perf)
+- [ ] Capacity planner: R4HA/CPC-busy forecast N days ahead from growth rates, with confidence bands that widen with horizon; flags "out of capacity on day X"
+- [ ] Alert rules: user thresholds (PI, CPC busy, R4HA vs DC, batch projection) → pager alerts in the live day
+- [ ] Automation rules (System Automation-like): `IF condition THEN command`, e.g. restart abended job once, activate policy override at 20:00; misfires possible and logged
+- [ ] Capacity Provisioning Manager: On/Off CoD rules (refused for hard-capped LPARs, per IBM guidance)
+- [ ] WLM policy overrides: named overrides (NIGHT, MONTHEND) with scheduled activation
+
+**M7.5 Tier 4 & strategic options**
+- [ ] AIOps anomaly detection: ranked RCA hypotheses with confidence, sometimes wrong (seeded), from `incident.truth` plus noise
+- [ ] Tailored Fit Pricing offer (mid-run event): switch billing to consumption (MSU-hours vs baseline); capping no longer saves money
+- [ ] SCRT-style monthly report renderer (from `cost.hourly`/`cost.bills`) and Finance view
+- [ ] Multi-day projects (SPEC §6): threadsafe CICS conversion (qrFrac ↓), zIIP-enable Java, Db2 compression, SQL tuning sprint; progress per day, hours each day
+- [ ] Codex: `content/codex/*.ts` entries per concept (WLM PI, velocity, polarity, R4HA, QR TCB, sync/async…) with IBM/practitioner source links; unlock on first encounter
+
+**M7 sim leftovers that the tools expose**
+- [ ] Resource group *minimum*; discretionary goal management (SG24-7621 §4.22 conditions)
+- [ ] I/O priority management, MPL/swap delay; MQ queue-depth model for PAYMQ
+- [ ] CF structure rebuild on CF failure (needs white space), duplexing cost
+- [ ] CICS REGION-mode management and the "free ride"
+
+### M8 — Balance, difficulty, content & polish
+Goal: a run that is fair, readable and replayable. Done when bots hit their targets on every difficulty,
+three scenarios ship, a new player can finish day 1 with the tutorial, and an accessibility pass is clean.
+
+**M8.1 Performance (prerequisite for bots and what-if)**
+- [ ] Target ≤ 2 s per headless day (now ~7–8 s): incremental dispatch in policy-adjust projections, skip receivers that failed recently, precomputed log-normal bucket tables, avoid per-tick object churn in batch/RMF accumulators (profile first; keep determinism)
+- [ ] Benchmark script `npm run bench` with a fixed seed; record results here
+
+**M8.2 Balance harness & targets (SPEC §16)**
+- [ ] `tools/sweep.ts`: run bots over N seeds in parallel processes → CSV (day lost, cause, score, MLC, incidents by mechanism)
+- [ ] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: SLA fine, loses on opex), expert (scripted good play incl. capacity orders and caps: wins with grade A on Normal)
+- [ ] Targets hold across ≥ 20 seeds (median and spread), not just seed 42; event-deck intensity, growth rates and trust weights tuned from sweeps
+- [ ] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
+
+**M8.3 Difficulty & run structure**
+- [ ] Difficulty presets (Story / Normal / Hard / Ironman): growth multipliers, event λ and severity tiers, budget generosity, starting flaws, pause disabled in Ironman
+- [ ] Weekend auto-simulation at high speed with a summary card (maintenance batch, REORGs); optional "play the weekend"
+- [ ] Endless mode after victory; daily seed challenge with shareable seed + score
+- [ ] End-of-run report: R4HA over time, PI heat-map history, decisions timeline, biggest incident, best RCA, grade S–D
+- [ ] Meta-progression (career XP → unlock scenarios, starting perks, starting tool; Codex persists) in IndexedDB
+
+**M8.4 Content**
+- [ ] Events to ~25 (SPEC §9): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT
+- [ ] More draft options and perks; constraint cards with persistent modifiers
+- [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
+- [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
+
+**M8.5 UX polish & accessibility**
+- [ ] Guided tutorial for day 1 (spot F1 via WLMGL, fix a classification rule, watch PI recover)
+- [ ] Charts everywhere they help (MSU/R4HA, PI history, batch Gantt) with crosshair tooltips and table views (dataviz rules: validated palette, no dual axes)
+- [ ] Keyboard-first controls, focus states, forced-colors support, every chart with a table view, contrast check in both themes
+- [ ] Sound/feedback: pager chime on incidents, subtle tick at hour boundaries (mutable)
+- [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
+- [ ] Deploy target (static hosting) and a README
 
 ## Decisions log
 
