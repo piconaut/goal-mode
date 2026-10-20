@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7 sim leftovers (MPL/swap, MQ queue depth, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (205 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (203 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -528,7 +528,7 @@ separate feature branch (e.g. `feature/simplified-mode`), not on `main`.**
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
-- **2026-10-20 (loop 32, /loop):** I/O priority management; Codex hint cards kept on screen (user nit). 205 tests.
+- **2026-10-20 (loop 32, /loop):** I/O priority management; Codex hint cards kept on screen (user nit). 203 tests.
 - **2026-10-20 (loop 31, /loop):** discretionary goal management; WLM-cap backlog fix. 201 tests.
 - **2026-10-20 (loop 30, /loop):** resource group minimum + resource group editor. 199 tests.
 - **2026-10-20 (loop 29, hourly task):** report classes in RMF + report class advisor (F6). 196 tests.
