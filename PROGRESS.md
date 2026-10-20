@@ -516,7 +516,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [x] Loop 49: event severity per difficulty (`eventSeverityMult`: Story 0.7, Normal 1, Hard/Ironman 1.25)
     scales each card's begin commands in the game layer (`scaleEventCommands`: multipliers by their excess
     over 1, lock boost and extra IOPS linearly). Normal and goldens unchanged
-  - [ ] Constraint frequency and starting flaws per difficulty; bot sweeps per difficulty
+  - [x] Loop 50: constraint timing per difficulty (`constraintDayShift`: Story +3 days, Hard/Ironman -4;
+    `skipConstraints`: Story has no CFO mandate) via `storyBeatsFor`, also used by the rumour mill. Normal unchanged
+  - [ ] Starting flaws per difficulty; bot sweeps per difficulty
 - [x] Morning hints on lower difficulties (user request 2026-10-20, SPEC §11.2): the briefing inbox nudges
   the player based on yesterday's problems (missed SLAs, late batch, capping, paging), pointing at the report
   and the question to ask, never the answer or the fix; built from the same ground truth as RCA scoring;
@@ -672,6 +674,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 50, restarted by the watchdog):** constraint timing per difficulty. 234 tests. ScheduleWakeup wakeups did not fire twice; loop now schedules with send_later.
 - **2026-10-20 (loop 49, restarted by the watchdog):** event severity tiers per difficulty. 231 tests.
 - **2026-10-20 (loop 48):** Morning hints on Story/Normal (M8.3); hourly cost-loop watchdog set up. 229 tests.
 - **2026-10-20 (loop 37):** balance sweep tool + first 20-seed sweep (findings under M8.2).

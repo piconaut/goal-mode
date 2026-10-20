@@ -19,7 +19,7 @@ import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
-import { difficultyOf, scaleEventCommands, scenarioFor } from './difficulty';
+import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
 import { morningHints } from './hints';
 import { HINT_SENDER } from '../content/hints';
 import { step } from '../sim/core/step';
@@ -179,7 +179,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
 
 function storyFor(run: RunState, content: GameContent, day: number): RunState {
   let r = run;
-  for (const b of content.story.filter((x) => x.day === day)) {
+  for (const b of storyBeatsFor(content.story, run.difficulty, day)) {
     r = msg(r, b.from, b.title, b.body);
     if (b.constraint) {
       r = { ...r, constraints: [...r.constraints, b.constraint] };

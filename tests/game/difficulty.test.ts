@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { SCENARIOS } from '../../src/content/scenarios';
-import { scaleEventCommands, scenarioFor } from '../../src/game/difficulty';
+import { scaleEventCommands, scenarioFor, storyBeatsFor } from '../../src/game/difficulty';
 import type { Command } from '../../src/sim/core/commands';
 import { drawEvents, newRun } from '../../src/game/run';
 
@@ -75,5 +75,26 @@ describe('scaleEventCommands', () => {
   it('keeps a shrinking multiplier positive when severity rises', () => {
     const [c] = scaleEventCommands([{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'MOBILE', value: 0.4 }], 2);
     expect(c).toMatchObject({ value: 0.05 });
+  });
+});
+
+describe('storyBeatsFor', () => {
+  const story = MIDWEST_GAME.story;
+  const ids = (d: Parameters<typeof storyBeatsFor>[1], day: number) => storyBeatsFor(story, d, day).map((b) => b.id);
+
+  it('keeps Normal on the scripted days', () => {
+    expect(ids('NORMAL', 12)).toEqual(['CFO_MANDATE']);
+    expect(ids('NORMAL', 20)).toEqual(['REG_DEADLINE']);
+  });
+
+  it('brings constraints earlier on Hard, later on Story, and drops the CFO mandate on Story', () => {
+    expect(ids('HARD', 16)).toEqual(['REG_DEADLINE']);
+    expect(ids('STORY', 23)).toEqual(['REG_DEADLINE']);
+    expect([...Array(40).keys()].flatMap((d) => ids('STORY', d))).not.toContain('CFO_MANDATE');
+  });
+
+  it('never moves non-constraint beats', () => {
+    expect(ids('HARD', 26)).toEqual(['MERGER']);
+    expect(ids('STORY', 0)).toEqual(['WELCOME']);
   });
 });

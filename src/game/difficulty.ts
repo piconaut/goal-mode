@@ -1,6 +1,7 @@
 // Difficulty is a game-layer concern: the sim sees an ordinary scenario whose growth has been scaled.
 
 import { DIFFICULTIES, type DifficultyDef, type DifficultyId } from '../content/difficulty';
+import type { ScriptedBeat } from '../content/events/midwest-events';
 import type { Command } from '../sim/core/commands';
 import type { Scenario } from '../sim/core/scenario';
 
@@ -56,4 +57,11 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
         return c;
     }
   });
+}
+
+/** The story beats due on a day at this difficulty: constraint beats shift or drop out (SPEC §11.2). */
+export function storyBeatsFor(story: readonly ScriptedBeat[], difficulty: DifficultyId | undefined, day: number): ScriptedBeat[] {
+  const d = difficultyOf(difficulty);
+  const beatDay = (b: ScriptedBeat) => (b.constraint ? Math.max(1, b.day + d.constraintDayShift) : b.day);
+  return story.filter((b) => beatDay(b) === day && !(b.constraint && d.skipConstraints.includes(b.constraint)));
 }

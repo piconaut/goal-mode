@@ -935,7 +935,8 @@ workload and batch growth rates are scaled; Normal is the untouched balance base
 | Ironman | as Hard | | | | | no (alerts slow to ½× instead) | none |
 
 Event severity scales each card's magnitudes (the excess of a multiplier over 1, lock boosts, extra I/O):
-Story 0.7×, Normal 1×, Hard/Ironman 1.25×. Not yet varied per difficulty: constraint frequency and the
+Story 0.7×, Normal 1×, Hard/Ironman 1.25×. Constraint beats arrive 3 days later on Story
+(which also drops the CFO mandate) and 4 days earlier on Hard/Ironman. Not yet varied per difficulty: the
 starting flaw list.
 
 **Morning hints (lower difficulties):** on Story (and optionally Normal) the briefing inbox gets a

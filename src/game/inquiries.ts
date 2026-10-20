@@ -2,6 +2,7 @@
 // engineer time, is answered hours later, and reveals at most one fragment of what the game hides
 // (critical jobs, lock-heavy jobs, job classes, how an app is classified, growth, what's coming up).
 
+import { storyBeatsFor } from './difficulty';
 import { APP_OWNERS, CALENDAR_FACTS, CURT_PREFIX, EVENT_RUMOURS, FRIENDLY_PREFIX, INQUIRY, INQUIRY_TOPICS, JOB_CLASS_MEANING, RUDE_REPLIES, STORY_RUMOURS, STREAM_STORY, type InquiryKind } from '../content/inquiries';
 import { clockAt } from '../sim/core/clock';
 import { Rng } from '../sim/core/rng';
@@ -173,8 +174,10 @@ function answer(run: RunState, scenario: Scenario, content: GameContent, p: Pend
         const when = Math.floor(e.startTick / TICKS_PER_DAY) === run.day ? 'later today' : 'in the next day or so';
         rumours.push({ key: `ev:${e.uid}`, v: `I heard ${EVENT_RUMOURS[e.defId]}, ${when}.` });
       }
-      for (const b of content.story) {
-        if (b.day > run.day && b.day <= run.day + 5 && STORY_RUMOURS[b.id]) rumours.push({ key: `story:${b.id}`, v: `Word is ${STORY_RUMOURS[b.id]}, within the week.` });
+      for (let d = run.day + 1; d <= run.day + 5; d++) {
+        for (const b of storyBeatsFor(content.story, run.difficulty, d)) {
+          if (STORY_RUMOURS[b.id]) rumours.push({ key: `story:${b.id}`, v: `Word is ${STORY_RUMOURS[b.id]}, within the week.` });
+        }
       }
       const c = fresh(rumours);
       if (c.length > 0) {
