@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { DIFFICULTIES, type DifficultyId } from '../content/difficulty';
 import { EVIDENCE } from '../content/evidence';
 import type { Hypothesis } from '../game/aiops';
 import { formatClock } from '../sim/core/clock';
@@ -54,13 +55,30 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
               <p>
                 Final score <b>{v.score}</b> after {v.day + 1} days.
               </p>
-              <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6) })}>
-                New run
-              </button>
+              <NewRun game={game} />
             </>
           )}
         </div>
       </div>
+    </>
+  );
+}
+
+function NewRun({ game }: { game: GameHandle }) {
+  const [difficulty, setDifficulty] = useState<DifficultyId>('NORMAL');
+  return (
+    <>
+      <div role="radiogroup" aria-label="Difficulty">
+        {Object.values(DIFFICULTIES).map((d) => (
+          <label key={d.id} style={{ display: 'block', margin: '4px 0' }}>
+            <input type="radio" name="difficulty" checked={difficulty === d.id} onChange={() => setDifficulty(d.id)} /> <b>{d.name}</b>{' '}
+            <span className="muted">{d.description}</span>
+          </label>
+        ))}
+      </div>
+      <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty })}>
+        New run
+      </button>
     </>
   );
 }

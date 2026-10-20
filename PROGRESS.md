@@ -480,7 +480,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     applied in the game layer (`scenarioFor` scales workload and batch growth; the sim is untouched, bench hash
     unchanged); Ironman blocks pause during the live day and alert pauses slow to ½×; `--difficulty` on bot/sweep.
     Goldens regenerated because RunState gained `difficulty` (state shape only)
-  - [ ] New-run picker in the UI; difficulty shown in the header; pause button disabled on Ironman
+  - [x] New-run picker on the end-of-run screen; difficulty shown in the header; pause button disabled on Ironman
+  - [ ] Difficulty choice at first start too (a fresh page load still starts Normal)
   - [ ] Severity tiers, constraint frequency and starting flaws per difficulty; bot sweeps per difficulty
 - [ ] Morning hints on lower difficulties (user request 2026-10-20, SPEC §11.2): the briefing inbox nudges
   the player based on yesterday's problems (missed SLAs, late batch, capping, paging), pointing at the report

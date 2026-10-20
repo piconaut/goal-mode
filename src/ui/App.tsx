@@ -76,7 +76,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="brand">GOAL MODE</span>
       <span className="clock">{v.clock}</span>
       <span className="stat">
-        Day <b>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</b>
+        Day <b>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</b> <span className="muted">· {v.difficulty.name}</span>
       </span>
       <span className="stat" style={{ minWidth: 120 }}>
         {v.phase}
@@ -87,7 +87,13 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       {v.phase === 'LIVE' && (
         <span className="speed">
           {[0, 0.5, 1, 2, 4, 8].map((s) => (
-            <button key={s} className={speed === s ? 'active' : ''} onClick={() => set(s)}>
+            <button
+              key={s}
+              className={speed === s ? 'active' : ''}
+              disabled={s === 0 && !v.difficulty.pauseAllowed}
+              title={s === 0 && !v.difficulty.pauseAllowed ? 'Ironman: no pause during the live day' : undefined}
+              onClick={() => set(s)}
+            >
               {s === 0 ? '❚❚' : `${s}×`}
             </button>
           ))}
