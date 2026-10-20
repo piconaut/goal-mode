@@ -107,3 +107,7 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
 - Work milestone by milestone (PROGRESS.md). Keep the sim runnable headless at every step.
 - Small, focused commits. Don't mix model changes with UI changes.
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
+- Delegation (to save usage): hand well-scoped tasks to the Sonnet subagents in `.claude/agents/` —
+  `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
+  brief) and `log-reader` (digest bot/sweep logs, test failures, long reports). Keep sim model changes,
+  balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
