@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7 sim leftovers (MPL/swap, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (206 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (207 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -113,6 +113,14 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] Pin report values as RCA evidence (→ M7.3)
 
 ### M6.1 — User requests (do these first)
+- [x] **Monitor III charts** (requested 2026-10-20): transaction arrival-rate chart per service class and
+  report class (shared class picker with response time); charts above the Monitor III box, collapsible
+- [x] **Service class / resource group editor** (requested 2026-10-20): the WLM section is full width; a
+  service-class table (periods with goal, importance and duration; flags; resource group) where clicking a
+  class opens an in-place editor: one row per period, add period (sets the previous period's duration),
+  remove last period, CPU/storage critical checkboxes, resource group pick or create, delete class (refused
+  while a rule uses it); new-class form; resource-group table with type/min/max editable. New WLM edits
+  `ADD_PERIOD`, `REMOVE_PERIOD`, `DELETE_CLASS`. 1 test; Chromium checked
 - [x] **Ask around in the Inbox** (requested 2026-10-20). Six questions to people in the organisation
   (`content/inquiries.ts`, `game/inquiries.ts`): critical path (batch scheduling), lock-heavy jobs (DBA), job
   classes (JES operations: what a class means, which class a critical job runs in), how an app reaches the
@@ -457,8 +465,9 @@ to `main` (this is the last push there; M9 goes on its feature branch).
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
 changes; simplified mode is a game/UI layer over the same commands, reports and scoring.
-**Process: start M9 only when M7–M8 and M8.9 (game-playing agents) are done, and do all M9 work on a
-separate feature branch (e.g. `feature/simplified-mode`), not on `main`.**
+**HOLD: do not start M9 until the user explicitly says to start it (user request 2026-10-20), even if
+M7–M8.9 are done; if the loop reaches this point, stop and ask instead.** When told to start: do all M9
+work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - [ ] Mode switch at run start (Expert / Simplified); same seed gives the same world in both modes
 - [ ] Keep the full WLM policy definition visible and editable, but offer **goal-level actions** that bundle
   the discrete changes an expert would make, e.g. "Protect mobile banking from ad-hoc queries" = new service
@@ -548,6 +557,7 @@ separate feature branch (e.g. `feature/simplified-mode`), not on `main`.**
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (user requests):** arrival-rate chart, charts on top + collapsible, service class editor; M9 on hold until the user says start. 207 tests.
 - **2026-10-20 (loop 33, /loop):** MQ queue depth for PAYMQ. 206 tests.
 - **2026-10-20 (user requests):** ask around in the Inbox (incl. job classes); basket persists across tabs; report card toggle. 205 tests.
 - **2026-10-20 (loop 32, /loop):** I/O priority management; Codex hint cards kept on screen (user nit). 203 tests.

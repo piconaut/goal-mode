@@ -27,7 +27,11 @@ export type WlmEdit =
   | { op: 'SET_DEFAULT'; subsystem: SubsystemType; serviceClass: string | null }
   /** Put a class in a resource group (created or updated with these limits), or take it out (group null). */
   | { op: 'SET_RESOURCE_GROUP'; classId: string; group: ResourceGroupDef | null }
-  | { op: 'SET_IO_PRIORITY'; on: boolean };
+  | { op: 'SET_IO_PRIORITY'; on: boolean }
+  /** Append a period; the previous last period needs a duration (service units) to hand work on. */
+  | { op: 'ADD_PERIOD'; classId: string; goal: Goal; importance: Importance; previousDurationSu: number }
+  | { op: 'REMOVE_PERIOD'; classId: string }
+  | { op: 'DELETE_CLASS'; classId: string };
 
 /** Validate a report class name and register it in the definition (report classes are just names). */
 function useReportClass(d: ServiceDefinition, rc: string | null | undefined): string | null {
@@ -56,6 +60,36 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
       if (!/^[A-Z][A-Z0-9]{0,7}$/.test(e.classId)) return 'Service class names are 1–8 characters, A–Z/0–9';
       d.classes.push({ id: e.classId, description: e.description, periods: [{ goal: e.goal, importance: e.importance, durationSu: null }], cpuCritical: e.cpuCritical, storageCritical: false, resourceGroup: null, honorPriority: true });
       return d;
+    case 'ADD_PERIOD': {
+      const c = d.classes.find((x) => x.id === e.classId);
+      if (!c) return `No class ${e.classId}`;
+      if (c.periods.length >= 8) return 'At most 8 periods';
+      const last = c.periods[c.periods.length - 1]!;
+      if (last.goal.kind === 'DISC') return 'Discretionary must stay the last period';
+      if (!(Number.isFinite(e.previousDurationSu) && e.previousDurationSu > 0)) return `Give period ${c.periods.length} a duration (service units) first`;
+      last.durationSu = Math.round(e.previousDurationSu);
+      c.periods.push({ goal: e.goal, importance: e.importance, durationSu: null });
+      return d;
+    }
+    case 'REMOVE_PERIOD': {
+      const c = d.classes.find((x) => x.id === e.classId);
+      if (!c) return `No class ${e.classId}`;
+      if (c.periods.length <= 1) return 'A class needs at least one period';
+      c.periods.pop();
+      c.periods[c.periods.length - 1]!.durationSu = null;
+      return d;
+    }
+    case 'DELETE_CLASS': {
+      const i = d.classes.findIndex((x) => x.id === e.classId);
+      if (i < 0) return `No class ${e.classId}`;
+      const uses = (rules: readonly ClassificationRule[]): boolean => rules.some((r) => r.serviceClass === e.classId || uses(r.children));
+      const used = d.subsystems.filter((ss) => ss.defaultServiceClass === e.classId || uses(ss.rules)).map((ss) => ss.subsystem);
+      if (used.length) return `${e.classId} is still used by classification rules (${used.join(', ')}); retarget them first`;
+      const rg = d.classes[i]!.resourceGroup;
+      d.classes.splice(i, 1);
+      if (rg && !d.classes.some((x) => x.resourceGroup === rg)) d.resourceGroups = d.resourceGroups.filter((g) => g.id !== rg);
+      return d;
+    }
     case 'SET_IO_PRIORITY':
       d.ioPriorityManagement = e.on;
       return d;

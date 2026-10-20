@@ -1,5 +1,5 @@
 import { inquiriesView } from './inquiries';
-import type { ResourceGroupDef } from '../sim/wlm/types';
+import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 // View model: a compact, serialisable projection of RunState for the UI (posted from the
 // worker every frame). Applies the fog of war: what the player is allowed to see.
 
@@ -172,6 +172,8 @@ export interface ViewModel {
   mon3Charts: { samples: number; markers: number; firstTick: number | null } | null;
   serviceClasses: { id: string; periods: string[]; resourceGroup: string | null }[];
   resourceGroups: ResourceGroupDef[];
+  /** Full service class definitions of the active policy (the editor's starting point). */
+  classDefs: ServiceClassDef[];
   inquiries: ReturnType<typeof inquiriesView>;
   ioPriorityManagement: boolean;
 }
@@ -327,6 +329,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     config: configView(run, scenario),
     serviceClasses: def.classes.map((x) => ({ id: x.id, periods: x.periods.map((p) => goalText(p)), resourceGroup: x.resourceGroup })),
     resourceGroups: def.resourceGroups,
+    classDefs: def.classes,
     inquiries: inquiriesView(run, scenario),
     ioPriorityManagement: def.ioPriorityManagement !== false,
   };

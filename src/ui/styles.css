@@ -188,3 +188,7 @@ a { color: var(--accent); }
 .rc-advisor > summary { cursor: pointer; }
 .modal { position: relative; }
 .modal-close { position: absolute; top: 8px; right: 8px; padding: 2px 8px; }
+.sc-table tr.selected td { background: var(--panel-2); }
+.sc-table tbody tr:hover td { background: var(--panel-2); }
+.sc-editor { border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; }
+.sc-editor h4, .panel h4 { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }

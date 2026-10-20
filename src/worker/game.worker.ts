@@ -53,6 +53,7 @@ function pendingView(): PendingPolicyView | null {
     policyName: pendingPolicy.policyName,
     classes: pendingPolicy.classes.map((c) => ({ id: c.id, periods: c.periods.map((p) => goalText(p)), cpuCritical: c.cpuCritical, resourceGroup: c.resourceGroup })),
     resourceGroups: pendingPolicy.resourceGroups,
+    classDefs: pendingPolicy.classes,
     ioPriorityManagement: pendingPolicy.ioPriorityManagement !== false,
     rules: pendingPolicy.subsystems.flatMap((ss) =>
       ss.rules.map((r) => ({ subsystem: ss.subsystem, text: `${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(default)'}` })),

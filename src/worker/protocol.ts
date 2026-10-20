@@ -1,5 +1,5 @@
 import type { InquiryKind } from '../content/inquiries';
-import type { ResourceGroupDef } from '../sim/wlm/types';
+import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 import type { RcAdvice } from '../game/rcAdvisor';
 // Messages between the UI thread and the game worker.
 
@@ -26,6 +26,7 @@ export interface PendingPolicyView {
   policyName: string;
   classes: { id: string; periods: string[]; cpuCritical: boolean; resourceGroup: string | null }[];
   resourceGroups: ResourceGroupDef[];
+  classDefs: ServiceClassDef[];
   ioPriorityManagement: boolean;
   rules: { subsystem: string; text: string }[];
 }

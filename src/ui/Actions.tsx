@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { CodexHints } from './CodexHint';
+import { ServiceClasses } from './ServiceClassEditor';
 import { DASD_REBALANCE, HARDWARE } from '../content/hardware-catalog';
 import { LCU_MAX_DEVICES } from '../sim/io/dasd';
 import { FIXES, previewChange, type ChangePreview } from '../game/catalog';
@@ -8,7 +9,7 @@ import type { PlannedChange } from '../game/types';
 import type { ConfigView, ViewModel } from '../game/view';
 import type { Command } from '../sim/core/commands';
 import { entitlements, polarity } from '../sim/hw/prsm';
-import type { Goal, Importance, Qualifier, SubsystemType, WorkAttributes } from '../sim/wlm/types';
+import type { Qualifier, SubsystemType, WorkAttributes } from '../sim/wlm/types';
 import { RulesView } from './RulesView';
 import { WhatIf } from './WhatIf';
 import type { GameHandle } from './useGame';
@@ -45,7 +46,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         <Section title="HMC: LPAR image profile" codex={['lpar-weights', 'logical-physical', 'hiperdispatch']}>
           <Prsm desk={desk} />
         </Section>
-        <Section title={`WLM policy: active ${v.policyName}`} codex={['service-class', 'importance', 'velocity', 'perf-index']}>
+        <Section title={`WLM policy: active ${v.policyName}`} codex={['service-class', 'importance', 'velocity', 'perf-index']} wide>
           <Wlm v={v} game={game} rulesOpen={rulesOpen} toggleRules={() => setRulesOpen(!rulesOpen)} />
         </Section>
         {rulesOpen && <RulesView v={v} game={game} onClose={() => setRulesOpen(false)} />}
@@ -79,9 +80,9 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
-function Section({ title, codex = [], children }: { title: string; codex?: string[]; children: ReactNode }) {
+function Section({ title, codex = [], wide = false, children }: { title: string; codex?: string[]; wide?: boolean; children: ReactNode }) {
   return (
-    <details className="panel section" open>
+    <details className="panel section" open style={wide ? { gridColumn: '1 / -1' } : undefined}>
       <summary>
         <h3>
           {title}
@@ -468,25 +469,8 @@ function ClassifyBench({ game }: { game: GameHandle }) {
   );
 }
 
-const IMPS: Importance[] = [1, 2, 3, 4, 5];
-
-function goalError(kind: Goal['kind'], val: number, pct: number): string | null {
-  if (kind === 'DISC') return null;
-  if (kind === 'VEL') return val >= 1 && val <= 99 ? null : 'Velocity is 1–99';
-  if (!(val > 0)) return 'Response time must be > 0 s';
-  if (kind === 'PCT' && !(pct >= 1 && pct <= 99)) return 'Percentile is 1–99';
-  return null;
-}
 
 function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHandle; rulesOpen: boolean; toggleRules: () => void }) {
-  const classes = game.pending?.classes ?? v.serviceClasses.map((c) => ({ ...c, cpuCritical: false }));
-  const [cls, setCls] = useState(v.serviceClasses[0]?.id ?? '');
-  const [period, setPeriod] = useState('1');
-  const [kind, setKind] = useState<Goal['kind']>('VEL');
-  const [val, setVal] = useState('50');
-  const [pct, setPct] = useState('95');
-  const [imp, setImp] = useState<Importance>(2);
-  const [newId, setNewId] = useState('');
   const [showJson, setShowJson] = useState(false);
   // Local JSON edits; cleared whenever the worker sends a newer pending/active policy.
   const [json, setJson] = useState('');
@@ -495,103 +479,11 @@ function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHand
     game.send({ type: 'GET_RULES' });
   }, [game, v.policyName, v.day]);
   const jsonEdited = json !== '' && json !== game.policy;
-  const goal = (): Goal => (kind === 'VEL' ? { kind, velocity: Number(val) } : kind === 'AVG' ? { kind, rtSec: Number(val) } : kind === 'PCT' ? { kind, rtSec: Number(val), pct: Number(pct) } : { kind: 'DISC' });
-  const gErr = goalError(kind, Number(val), Number(pct));
-  const selected = classes.find((c) => c.id === cls);
-  const pIdx = Number(period) - 1;
-  const periodErr = !selected ? 'Pick a class' : !(Number.isInteger(pIdx) && pIdx >= 0 && pIdx <= selected.periods.length) ? `Period 1–${selected.periods.length + 1}` : null;
-  const idErr = !/^[A-Z][A-Z0-9#@$]{0,7}$/.test(newId) ? '1–8 chars, starts with a letter' : classes.some((c) => c.id === newId) ? 'Class exists' : null;
   const p = preview(v, { commands: ACTIVATE_PREVIEW });
   return (
     <>
       {game.pending && <div className="tag warn">editing pending {game.pending.policyName} (not active)</div>}
-      <div style={{ overflowX: 'auto' }}>
-        <table>
-          <tbody>
-            {classes.map((c) => {
-              const active = v.serviceClasses.find((a) => a.id === c.id);
-              const changed = game.pending !== null && (!active || active.periods.join('|') !== c.periods.join('|'));
-              return (
-                <tr key={c.id} style={changed ? { color: 'var(--warn)' } : undefined}>
-                  <td>
-                    {c.id}
-                    {c.cpuCritical && <span className="muted"> (CPU crit)</span>}
-                  </td>
-                  <td style={{ fontSize: 12 }} className={changed ? '' : 'muted'}>
-                    {c.periods.map((x, i) => `P${i + 1}: ${x}`).join(' · ')}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!gErr && !periodErr) game.send({ type: 'WLM_EDIT', edit: { op: 'SET_PERIOD', classId: cls, period: pIdx, goal: goal(), importance: imp } });
-        }}
-      >
-        <select aria-label="Service class" value={cls} onChange={(e) => setCls(e.target.value)}>
-          {classes.map((c) => (
-            <option key={c.id}>{c.id}</option>
-          ))}
-        </select>
-        <label>
-          period <input value={period} onChange={(e) => setPeriod(e.target.value)} size={2} inputMode="numeric" />
-        </label>
-        <select aria-label="Goal type" value={kind} onChange={(e) => setKind(e.target.value as Goal['kind'])}>
-          <option value="VEL">velocity</option>
-          <option value="PCT">percentile RT</option>
-          <option value="AVG">average RT</option>
-          <option value="DISC">discretionary</option>
-        </select>
-        {kind === 'PCT' && (
-          <label>
-            <input value={pct} onChange={(e) => setPct(e.target.value)} size={3} inputMode="numeric" />% within
-          </label>
-        )}
-        {kind !== 'DISC' && (
-          <label>
-            <input value={val} onChange={(e) => setVal(e.target.value)} size={5} inputMode="decimal" /> {kind === 'VEL' ? '(velocity %)' : 's'}
-          </label>
-        )}
-        {kind !== 'DISC' && (
-          <label>
-            importance{' '}
-            <select value={imp} onChange={(e) => setImp(Number(e.target.value) as Importance)}>
-              {IMPS.map((i) => (
-                <option key={i}>{i}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <button type="submit" disabled={gErr !== null || periodErr !== null}>
-          Edit period
-        </button>
-        {(gErr ?? periodErr) && <span className="err">{gErr ?? periodErr}</span>}
-        {selected && <Now>{selected.periods[pIdx] ?? 'new period'}</Now>}
-      </form>
-      <form
-        className="form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!idErr && !gErr) game.send({ type: 'WLM_EDIT', edit: { op: 'ADD_CLASS', classId: newId, description: newId, goal: goal(), importance: imp, cpuCritical: false } });
-        }}
-      >
-        <label>
-          New class <input value={newId} onChange={(e) => setNewId(e.target.value.toUpperCase())} size={8} />
-        </label>
-        <button type="submit" disabled={idErr !== null || gErr !== null}>
-          Add (uses goal above)
-        </button>
-        {newId && idErr && <span className="err">{idErr}</span>}
-        <button type="button" disabled={!selected || selected.cpuCritical} onClick={() => game.send({ type: 'WLM_EDIT', edit: { op: 'SET_FLAGS', classId: cls, cpuCritical: true } })}>
-          CPU critical on {cls}
-        </button>
-      </form>
-      <ResourceGroupForm v={v} game={game} cls={cls} />
+      <ServiceClasses v={v} game={game} />
       <IoPriorityToggle v={v} game={game} />
       <div className="form">
         <button aria-expanded={rulesOpen} aria-controls="classification-rules" className={rulesOpen ? 'active' : ''} onClick={toggleRules}>
@@ -1206,69 +1098,6 @@ function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
         );
       })}
     </>
-  );
-}
-
-const RG_TYPES: { type: 1 | 2 | 3; label: string; unit: string }[] = [
-  { type: 3, label: 'type 3: CPs × 100', unit: 'CPs×100' },
-  { type: 2, label: 'type 2: % of LPAR share', unit: '%' },
-  { type: 1, label: 'type 1: SU/s, sysplex', unit: 'SU/s' },
-];
-
-/** Resource group for the selected class: a maximum caps it, a minimum protects it while it misses goals. */
-function ResourceGroupForm({ v, game, cls }: { v: ViewModel; game: GameHandle; cls: string }) {
-  const groups = game.pending?.resourceGroups ?? v.resourceGroups;
-  const current = (game.pending?.classes ?? v.serviceClasses).find((c) => c.id === cls)?.resourceGroup ?? null;
-  const g = groups.find((x) => x.id === current);
-  const [id, setId] = useState('');
-  const [type, setType] = useState<1 | 2 | 3>(3);
-  const [min, setMin] = useState('');
-  const [max, setMax] = useState('');
-  useEffect(() => {
-    setId(g?.id ?? `RG${cls}`.slice(0, 8));
-    setType(g?.type ?? 3);
-    setMin(g?.min != null ? String(g.min) : '');
-    setMax(g?.max != null ? String(g.max) : '');
-  }, [cls, g?.id, g?.type, g?.min, g?.max]);
-  const num = (x: string) => (x.trim() === '' ? null : Number(x));
-  const unit = RG_TYPES.find((t) => t.type === type)!.unit;
-  return (
-    <form
-      className="form"
-      onSubmit={(e) => {
-        e.preventDefault();
-        game.send({ type: 'WLM_EDIT', edit: { op: 'SET_RESOURCE_GROUP', classId: cls, group: { id: id.trim().toUpperCase(), type, min: num(min), max: num(max) } } });
-      }}
-    >
-      <span>
-        Resource group for <b>{cls}</b>
-        <CodexHints ids={['resource-groups']} />
-      </span>
-      <input aria-label="Resource group name" value={id} onChange={(e) => setId(e.target.value.toUpperCase())} size={8} />
-      <select aria-label="Resource group type" value={type} onChange={(e) => setType(Number(e.target.value) as 1 | 2 | 3)}>
-        {RG_TYPES.map((t) => (
-          <option key={t.type} value={t.type}>
-            {t.label}
-          </option>
-        ))}
-      </select>
-      <label>
-        min <input aria-label="Resource group minimum" value={min} onChange={(e) => setMin(e.target.value)} size={6} placeholder="none" />
-      </label>
-      <label>
-        max <input aria-label="Resource group maximum" value={max} onChange={(e) => setMax(e.target.value)} size={6} placeholder="none" />
-      </label>
-      <span className="muted">{unit}</span>
-      <button type="submit">Set</button>
-      {current && (
-        <button type="button" onClick={() => game.send({ type: 'WLM_EDIT', edit: { op: 'SET_RESOURCE_GROUP', classId: cls, group: null } })}>
-          Remove from {current}
-        </button>
-      )}
-      <span className="muted" style={{ fontSize: 12 }}>
-        Max is always enforced (CAP delay). Min is guaranteed only while the class misses its goals, even ahead of more important work.
-      </span>
-    </form>
   );
 }
 
