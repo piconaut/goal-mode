@@ -566,7 +566,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [x] Loop 56: screenshot check of the end screen (dev build, `DEV_FAST_DAYS` to a do-nothing game over on day 16):
     renders, no console errors, no mobile overflow; fixed doubled brackets in the incident/RCA cause text
   - [x] Loop 57: daily peak R4HA per LPAR as a line chart (LineChart, console LPAR colours) instead of the table bars
-- [ ] Meta-progression (career XP → unlock scenarios, starting perks, starting tool; Codex persists) in IndexedDB
+- [~] Meta-progression (career XP → unlock scenarios, starting perks, starting tool; Codex persists) in IndexedDB
+  (loop 78: career XP, six levels unlocking starting perks, picked in the day-1 briefing; stored in IndexedDB,
+  end screen shows XP earned and new unlocks. Checked in headless Chromium: a do-nothing run earned 140 XP.
+  Still open: scenario unlocks (one scenario so far), starting tool, Codex persistence across runs)
 
 **M8.4 Content**
 - [~] Events to ~25 (SPEC §9) (19 now; AUDIT_UNCLASSIFIED (5-day regulator audit of SYSOTHER, `auditUnclassified`); HIRING_FREEZE (-2 engineer-hours/day for 5 days, optional `hoursDelta`/`announcementFrom` card fields, rumoured; VENDOR_PRICE still pending: needs a run-level product price multiplier); 17 before; HSM_RECALL_STORM (LCU 30 recall I/O, fix HOLD_HSM_RECALLS, rumoured) and CP_SPARING (red-herring note, never attributed) added; 15 before; loop 60 added NEW_APP_GOLIVE (BOOKING lands in SYSOTHER and stays, once per run, rumoured) and POWER_CAP (one capacity setting down for 6 h, resolved at start so upgrades are not undone; new `oncePerRun`/`capacityDrop` card fields) with realism tests; earlier: 13; loop 58 added SHADOW_IT and QR_RELEASE with fixes, rumours and realism tests; re-sweep the bots once the deck is complete): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT
@@ -737,6 +740,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 78):** career v1 (XP across runs → starting-perk unlocks, IndexedDB). 270 tests.
 - **2026-10-20 (loop 77):** two pact draft cards (persistent perk + persistent downside). 267 tests.
 - **2026-10-20 (loop 76):** weekend auto-run (full sim at worker speed, report card as summary); weekday shown. 265 tests.
 - **2026-10-20 (loop 75):** day-1 guided tutorial (corner card, state-driven steps, F1 fix detection); ticked finished M7 items. 264 tests.

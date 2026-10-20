@@ -12,6 +12,9 @@ import type { ViewModel } from '../game/view';
 import { piColor, SERIES_LPARS, seriesColor } from './App';
 import { LineChart } from './LineChart';
 import type { GameHandle } from './useGame';
+import { CAREER_LEVELS } from '../content/career';
+import { DRAFT_OPTIONS } from '../content/draft';
+import { careerLevel, unlockedPerks } from '../game/career';
 
 export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
   useEffect(() => {
@@ -66,6 +69,7 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
               <p>
                 Final score <b>{v.score}</b> after {v.day + 1} days.
               </p>
+              <CareerLine game={game} />
               {v.endReport && <EndReportView r={v.endReport} />}
               {v.endReport && <ShareBox v={v} r={v.endReport} />}
               {v.phase === 'VICTORY' && v.endlessFromDay === null && (
@@ -231,6 +235,52 @@ function NewRun({ game }: { game: GameHandle }) {
   );
 }
 
+const perkTitle = (id: string) => DRAFT_OPTIONS.find((d) => d.id === id)?.title.replace(/^Perk: /, '') ?? id;
+
+function careerTitle(xp: number): string {
+  const lvl = careerLevel(xp);
+  const next = CAREER_LEVELS[lvl + 1];
+  return `${CAREER_LEVELS[lvl]!.title} (level ${lvl + 1}, ${xp} XP${next ? `; ${next.xp} for ${perkTitle(next.unlock ?? '')}` : ''})`;
+}
+
+/** Career XP from the run that just ended, and any perk it unlocked. */
+function CareerLine({ game }: { game: GameHandle }) {
+  const c = game.career;
+  if (!c || c.lastRunXp === null) return null;
+  const before = c.career.xp - c.lastRunXp;
+  const fresh = unlockedPerks(c.career.xp).filter((p) => !unlockedPerks(before).includes(p));
+  return (
+    <p>
+      Career: <b>+{c.lastRunXp} XP</b> · {careerTitle(c.career.xp)}
+      {fresh.length > 0 && <> · unlocked starting perk <b>{fresh.map(perkTitle).join(', ')}</b></>}
+    </p>
+  );
+}
+
+// Unlocked career perks: pick one before day 1 starts (not on the daily challenge, where everyone starts alike).
+function StartingPerk({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const xp = game.career?.career.xp ?? 0;
+  const perks = unlockedPerks(xp);
+  return (
+    <p>
+      <span className="muted">Career: {careerTitle(xp)}.</span>{' '}
+      {perks.length > 0 && !v.daily && (
+        <label>
+          Starting perk{' '}
+          <select value={v.perks[0] ?? ''} onChange={(e) => game.send({ type: 'SET_STARTING_PERK', perkId: e.target.value || null })}>
+            <option value="">None</option>
+            {perks.map((p) => (
+              <option key={p} value={p}>
+                {perkTitle(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </p>
+  );
+}
+
 // A fresh page load starts on Normal; until day 1 starts the player can restart on another preset.
 function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
   const plannedAny = v.changes.length > 0;
@@ -264,6 +314,7 @@ function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () 
     <>
       <h2>Morning briefing: day {v.day + 1}, {v.weekday}</h2>
       {v.day === 0 && <FirstDayDifficulty v={v} game={game} />}
+      {v.day === 0 && <StartingPerk v={v} game={game} />}
       {today.length === 0 && <p className="muted">Quiet inbox this morning.</p>}
       {today.map((m, i) => (
         <div key={i} className="panel" style={{ marginBottom: 8 }}>

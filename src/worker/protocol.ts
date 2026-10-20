@@ -9,6 +9,7 @@ import type { AutoRule } from '../game/automation';
 import type { ScheduleEntry } from '../game/policies';
 import type { PinRequest } from '../game/evidence';
 import type { FinanceView } from '../game/finance';
+import type { CareerState } from '../game/career';
 import type { WhatIfSummary } from '../game/whatif';
 import type { Command } from '../sim/core/commands';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
@@ -46,6 +47,7 @@ export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DA
 export type ToWorker =
   | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId; daily?: string }
   | { type: 'START_DAY'; auto?: boolean }
+  | { type: 'SET_STARTING_PERK'; perkId: string | null }
   /** After VICTORY: keep playing past the quarter (endless mode). */
   | { type: 'CONTINUE_ENDLESS' }
   /** speed AUTO_SPEED runs the day as fast as the worker can (weekend auto-run); 0 pauses. */
@@ -91,6 +93,7 @@ export type ToWorker =
   | { type: 'SET_TOOL_ACTIVE'; toolId: string; active: boolean };
 
 export type FromWorker =
+  | { type: 'CAREER'; career: CareerState; lastRunXp: number | null }
   | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null; speed: number }
   | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
   | { type: 'SMF'; data: SmfData }

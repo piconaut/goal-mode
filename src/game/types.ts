@@ -172,6 +172,8 @@ export interface RunState {
   seed: number;
   /** ISO date (UTC) when this is a daily-challenge run. */
   daily?: string;
+  /** Set once the run's end has been added to the career (so endless or reloads don't count it twice). */
+  careerRecorded?: boolean;
   /** Day the quarter closed when the player kept going (endless mode). */
   endlessFromDay?: number;
   rng: RngState;

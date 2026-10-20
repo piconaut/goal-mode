@@ -8,6 +8,7 @@ import type { ClassificationResult } from '../sim/wlm/classify';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { WhatIfSummary } from '../game/whatif';
 import type { FinanceView } from '../game/finance';
+import type { CareerState } from '../game/career';
 import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type ToWorker } from '../worker/protocol';
 
 export interface GameHandle {
@@ -22,6 +23,8 @@ export interface GameHandle {
   finance: FinanceView | null;
   whatIf: { progress: number | null; result: { label: string; base: WhatIfSummary; proposal: WhatIfSummary } | null };
   speed: number;
+  /** Career carried across runs, and the XP the run that just ended added. */
+  career: { career: CareerState; lastRunXp: number | null } | null;
   charts: { samples: Mon3Sample[]; markers: ChartMarker[] };
   rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null } | null;
   toast: { ok: boolean; message: string } | null;
@@ -46,6 +49,7 @@ export function useGame(): GameHandle {
   const [finance, setFinance] = useState<FinanceView | null>(null);
   const [whatIf, setWhatIf] = useState<GameHandle['whatIf']>({ progress: null, result: null });
   const [speed, setSpeed] = useState(1);
+  const [career, setCareer] = useState<GameHandle['career']>(null);
   const [basket, setBasket] = useState<Command[]>([]);
   const [charts, setCharts] = useState<GameHandle['charts']>({ samples: [], markers: [] });
   const [rules, setRules] = useState<GameHandle['rules']>(null);
@@ -65,7 +69,8 @@ export function useGame(): GameHandle {
         setSavedRunDay(m.savedRunDay);
         setPending(m.pending);
         setSpeed(m.speed);
-      } else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
+      } else if (m.type === 'CAREER') setCareer({ career: m.career, lastRunXp: m.lastRunXp });
+      else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
       else if (m.type === 'SMF') setSmf(m.data);
       else if (m.type === 'FINANCE') setFinance(m.finance);
       else if (m.type === 'WHATIF_PROGRESS') setWhatIf((w) => ({ ...w, progress: m.frac }));
@@ -99,7 +104,7 @@ export function useGame(): GameHandle {
   useEffect(() => send({ type: 'SET_BASKET', basket }), [basket, send]);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
-  return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, charts, rules, toast, results, basket, setBasket, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, rules, toast, results, basket, setBasket, send };
 }
 
 const SPEED_KEY = 'goalmode.speed';

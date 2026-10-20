@@ -30,7 +30,8 @@ import { clockAt } from '../sim/core/clock';
 import { TICKS_PER_DAY } from '../sim/core/units';
 import { goalText } from '../sim/wlm/goals';
 import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type ToWorker } from './protocol';
-import { loadDesk, loadRun, saveRun, type DeskState } from './storage';
+import { loadCareer, loadDesk, loadRun, saveCareer, saveRun, type DeskState } from './storage';
+import { EMPTY_CAREER, recordRun, runXp, setStartingPerk, type CareerState } from '../game/career';
 
 const BASE_SCENARIO = MIDWEST;
 /** The scenario as this run's difficulty shapes it (memoised). */
@@ -54,6 +55,9 @@ const AUTO_FRAME_BUDGET_MS = 60;
 let history: HistoryPoint[] = [];
 let historyDirty = true;
 let saved: RunState | null = null;
+let career: CareerState = EMPTY_CAREER;
+/** XP the run that just ended added to the career (shown on the end screen). */
+let lastRunXp: number | null = null;
 let savedDesk: DeskState | null = null;
 const LIVE_SAVE_EVERY_TICKS = 360; // one sim hour
 let lastLiveSaveHour = -1;
@@ -139,9 +143,24 @@ function advanceSampled(n: number) {
 
 /** Save whenever the phase changes (end of day, game over) so a reload resumes there, and every sim hour of the
  * live day so a crash or reload costs at most an hour (and cannot replay the day from its briefing). */
+const postCareer = () => post({ type: 'CAREER', career, lastRunXp });
+
+/** Add a finished run to the career once (endless continuation and reloads never count it again). */
+function recordCareer() {
+  if ((run.phase !== 'GAMEOVER' && run.phase !== 'VICTORY') || run.careerRecorded || !storageReady) return;
+  const rep = buildView(run, sc()).endReport;
+  if (!rep) return;
+  lastRunXp = runXp(rep, run.difficulty ?? 'NORMAL');
+  career = recordRun(career, rep, run.difficulty ?? 'NORMAL');
+  run = { ...run, careerRecorded: true };
+  void saveCareer(career);
+  postCareer();
+}
+
 function autosave() {
   if (run.phase !== lastPhase) {
     lastPhase = run.phase;
+    recordCareer();
     lastLiveSaveHour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
     if (run.phase !== 'LIVE' && storageReady) void saveRun(run, desk());
     return;
@@ -168,7 +187,9 @@ function persistSoon() {
   }, 400);
 }
 
-void Promise.all([loadRun(), loadDesk()]).then(([r, d]) => {
+void Promise.all([loadRun(), loadDesk(), loadCareer()]).then(([r, d, c]) => {
+  career = c ?? EMPTY_CAREER;
+  postCareer();
   saved = r ? normalizeRun(r, BASE_SCENARIO) : null;
   savedDesk = d;
   storageReady = true;
@@ -228,6 +249,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       post({ type: 'BASKET', basket });
       postPolicy();
       run = newRun(BASE_SCENARIO, content, m.seed, m.difficulty, m.daily);
+      lastRunXp = null;
+      postCareer();
       history = [];
       historyDirty = true;
       saved = null;
@@ -268,6 +291,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         }
         if (run.phase === 'REVIEW') run = chooseDraft(run, content, null);
         lastPhase = run.phase;
+        recordCareer();
         history = [];
         historyDirty = true;
       }
@@ -381,6 +405,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'CLASSIFY':
       post({ type: 'CLASSIFIED', result: classify(pendingPolicy ?? run.sim.wlm.definition, m.work), pending: pendingPolicy !== null });
+      break;
+    case 'SET_STARTING_PERK':
+      run = setStartingPerk(run, m.perkId, career.xp);
       break;
     case 'START_DAY':
       run = startDay(run, content);
