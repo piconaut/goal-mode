@@ -444,6 +444,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 
 **M8.3 Difficulty & run structure**
 - [ ] Difficulty presets (Story / Normal / Hard / Ironman): growth multipliers, event λ and severity tiers, budget generosity, starting flaws, pause disabled in Ironman
+- [ ] Morning hints on lower difficulties (user request 2026-10-20, SPEC §11.2): the briefing inbox nudges
+  the player based on yesterday's problems (missed SLAs, late batch, capping, paging), pointing at the report
+  and the question to ask, never the answer or the fix; built from the same ground truth as RCA scoring;
+  clearer on Story, vaguer on Normal, none on Hard/Ironman
 - [ ] Weekend auto-simulation at high speed with a summary card (maintenance batch, REORGs); optional "play the weekend"
 - [ ] Endless mode after victory; daily seed challenge with shareable seed + score
 - [ ] End-of-run report: R4HA over time, PI heat-map history, decisions timeline, biggest incident, best RCA, grade S–D

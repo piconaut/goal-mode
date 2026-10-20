@@ -924,6 +924,14 @@ lost reward).
 Growth multipliers, event-deck intensity (cards/day, severity tiers), constraint frequency,
 starting flaws count, budget generosity, Ironman (no pause during live, no undo).
 
+**Morning hints (lower difficulties):** on Story (and optionally Normal) the briefing inbox gets a
+nudge or two based on what went wrong the previous day: e.g. "MOBILE missed its SLA while batch
+ran; the DELAY breakdown in WLMGL for DDFPRD might show why" or "the critical path finished at
+05:52; which jobs were waiting for an initiator?". Hints point at the right report and question,
+never the answer or the fix, so diagnosis stays the gameplay (§13.3). They are built from the
+same ground truth as RCA scoring (incident mechanism and trigger, batch-window slack, capping,
+storage/paging) and get vaguer as difficulty rises; none on Hard or Ironman.
+
 ### 11.3 Meta-progression ("Career")
 - Career XP from runs → unlock **scenarios**: *Midwest Mutual* (bank), *Continental Insurance*
   (IMS-heavy, claims batch), *State Revenue Agency* (tax-season spike, strict regulator),
