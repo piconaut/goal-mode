@@ -493,6 +493,13 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     trim the textbook bot back to a "reads the manual, no diagnosis" floor, or keep it and treat the
     target as met by do-nothing + spend-to-win and move the "loses ≈ day 30" role to a new naive bot.
     No tuning done (balance decision)
+  - Loop 46 (user: cut it back): textbook now applies the day-0 F-fixes and reacts only to abends and open
+    SLA incidents; the diagnosing reactions moved to an internal `fixer` base that expert and spend-to-win
+    use unchanged. Re-sweep (seeds 1–20, Normal, 18 min): **textbook** 27 / 28 / 28, median 1758, ends
+    batch 18 · trust 2 (earliest seed 17 day 22, latest seed 16 day 29). Median is at the low edge of the
+    28–32 target, but the spread is still near zero: the batch-deadline wall (day-20 05:00 deadline + nightly
+    growth) decides almost every run on day 27–28. Widening it (randomised growth or deadline beat) is a
+    balance call for later
 - [x] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
   (loop 38: seed 42, 2 days with planned day-1 changes and an emergency change on day 2, ~20 s; hashes in
   `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
