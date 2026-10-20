@@ -147,16 +147,14 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
         {f.bills.length === 0 ? (
           <div className="muted">No bill yet: the first arrives at the end of month 1.</div>
         ) : (
-          <table>
-            <tbody>
-              {f.bills.map((b) => (
-                <tr key={b.month}>
-                  <td>Month {b.month + 1}</td>
-                  <td className="num">{k$(b.total)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          f.bills.map((b) => (
+            <details key={b.month}>
+              <summary>
+                Month {b.month + 1}: <span style={{ fontFamily: 'var(--mono)' }}>{k$(b.total)}</span> <span className="muted">(SCRT-style report)</span>
+              </summary>
+              <div className="green">{b.scrt}</div>
+            </details>
+          ))
         )}
         <details>
           <summary>SCRT-style report (month to date)</summary>

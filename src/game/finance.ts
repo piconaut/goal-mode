@@ -18,7 +18,8 @@ export interface FinanceView {
   products: { id: string; name: string; lpars: string[]; peakMsu: number; peakAt: string | null; charge: number; peakByLpar: Record<string, number> }[];
   /** Hourly product MSU (sum of DC-limited R4HA) for the month so far; hour labels end at each sample. */
   hourly: { labels: string[]; series: Record<string, number[]> };
-  bills: { month: number; total: number }[];
+  /** Closed months, each with its SCRT-style report. */
+  bills: { month: number; total: number; scrt: string }[];
   scrt: string;
   /** Billing model in force this month. */
   pricing: 'SUBCAP' | 'TFP';
@@ -50,7 +51,7 @@ export function financeView(run: RunState, scenario: Scenario): FinanceView {
       return { id: p.id, name: p.name, lpars: p.lpars, peakMsu: pk.peakMsu, peakAt: pk.peakMsu > 0 ? clock(pk.peakTick) : null, charge: cost.tfp ? (cost.subcapFrac ?? 0) * tieredMonthlyCost(pk.peakMsu, p.priceFactor) : lines[i]!.cost, peakByLpar: pk.peakByLpar ?? {} };
     }),
     hourly: { labels, series: cost.hourly },
-    bills: cost.bills.map((b) => ({ month: b.month, total: b.total })),
+    bills: cost.bills.map((b) => ({ month: b.month, total: b.total, scrt: renderScrt(cost, scenario.products, b.month, clock) })),
     scrt: renderScrt(cost, scenario.products, 'current', clock),
     pricing: cost.tfp ? 'TFP' : 'SUBCAP',
     offer: offer

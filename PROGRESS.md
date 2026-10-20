@@ -74,8 +74,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 ### M4 — Capping, cost, measurement
 - [x] R4HA (48 × 5-min slots from IPL zeros), defined capacity, group capacity (weight shares + donation), capping delay as a separate WLM delay state (CAP, not WLM-fixable) (`sim/cost/r4ha.ts`)
 - [x] MLC: hourly peak-of-sums per product with DC limiting, tiered price, monthly bill (`sim/cost/mlc.ts`, `content/pricing.ts`)
-- [ ] TFP alternative (arrives as an M5 event/choice)
-- [ ] SCRT-style monthly report renderer (data is there: `cost.hourly`, `cost.bills`)
+- [x] TFP alternative (arrives as an M5 event/choice; `game/tfp.ts`, Finance offer card)
+- [x] SCRT-style monthly report renderer (`renderScrt` in `sim/measure/reports.ts`; loop 41: every closed month's report under Finance → Bills, not just month to date)
 - [x] SMF/RMF interval accumulators and records: 70.1-like CPU/partition, 72.3-like WLM per system + sysplex roll-up (PI, velocity, using/delay %, APPL%, buckets), 74.1 DASD, 74.4 CF, 30 job ends; interval length from config (F11: 30 min) (`sim/measure/rmf.ts`)
 - [x] Postprocessor-style text renderers: WLM summary + detail with RT distribution, Partition Data, CF Activity, DASD (`sim/measure/reports.ts`)
 - [x] Tests: R4HA window and capping hysteresis, spikes under DC, SG24-7621 group-capacity example, donation, full-sim DC hold, MLC peak-of-sums + DC limit + tiers, interval records + renderers
