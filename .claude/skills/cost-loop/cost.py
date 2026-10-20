@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Price this Claude Code session from its transcript, for /cost-loop pacing.
 
-  python3 .claude/skills/cost-loop/cost.py [--rate 6] [--mark]
+  python3 <skill dir>/cost.py [--rate 6] [--mark]   (run from the project root)
 
 Reads ~/.claude/projects/<cwd slug>/<newest session>.jsonl plus its subagents/*.jsonl, sums per-turn
 token usage (deduplicated by message id) and prices it. Prints the session total, the cost since the
@@ -62,6 +62,8 @@ def main():
 
     proj = os.path.expanduser('~/.claude/projects/' + os.getcwd().replace('/', '-'))
     mains = sorted(glob.glob(proj + '/*.jsonl'), key=os.path.getmtime)
+    if not mains:  # run from another directory: fall back to the newest session anywhere
+        mains = sorted(glob.glob(os.path.expanduser('~/.claude/projects/*/*.jsonl')), key=os.path.getmtime)
     if not mains:
         sys.exit(f'no transcript under {proj}')
     main_path = mains[-1]

@@ -28,13 +28,13 @@ Input: `$ARGUMENTS`
    > in one line that the loop is alive.
 
    Delete watchdogs that point at an older session only if the user asked; otherwise mention them.
-3. **Work.** Do TASK: one item (or a batch of small related items), following the repo's CLAUDE.md.
+3. **Work.** Do TASK: one item (or a batch of small related items), following the repo's CLAUDE.md (if any).
    Commit and push. Keep the iteration lean: cost is mostly cache reads (context size × turns), so
    - avoid re-reading big files and long outputs; grep or tail instead;
-   - delegate log digests to `log-reader` and content/tests/small UI to `implementer` when the task
-     outweighs a subagent's ~30–40k-token start-up;
+   - delegate to cheaper subagents (e.g. Sonnet agents in `.claude/agents/`, or a general-purpose agent with
+     `model: sonnet`) when the task outweighs a subagent's ~30–40k-token start-up;
    - batch small items instead of spending a wakeup on each.
-4. **Price.** Run `python3 .claude/skills/cost-loop/cost.py --rate <RATE> --mark`. It prints the session
+4. **Price.** Run `python3 <this skill's base directory>/cost.py --rate <RATE> --mark` from the project root. It prints the session
    total, the cost of this iteration (since the previous mark) incl. subagents, the context size and the
    delay = iteration cost ÷ RATE, clamped to 600–3300 s (stays inside the 1-hour cache TTL).
    If subagents ran this iteration and `<scratchpad>/subagent-savings-log.md` exists, add a row with
