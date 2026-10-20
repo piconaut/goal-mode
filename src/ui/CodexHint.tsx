@@ -1,22 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CODEX } from '../content/codex/entries';
 
 /** "?" next to a panel title: the Codex entry for the concept, shown in place (SPEC §11.3). */
 export function CodexHint({ id }: { id: string }) {
   const e = CODEX.find((x) => x.id === id);
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const ref = useRef<HTMLSpanElement>(null);
+  const card = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (!open) return;
     const close = (ev: MouseEvent | KeyboardEvent) => {
       if (ev instanceof KeyboardEvent ? ev.key === 'Escape' : !ref.current?.contains(ev.target as Node)) setOpen(false);
     };
+    const dismiss = () => setOpen(false);
     document.addEventListener('mousedown', close);
     document.addEventListener('keydown', close);
+    window.addEventListener('scroll', dismiss, true);
+    window.addEventListener('resize', dismiss);
     return () => {
       document.removeEventListener('mousedown', close);
       document.removeEventListener('keydown', close);
+      window.removeEventListener('scroll', dismiss, true);
+      window.removeEventListener('resize', dismiss);
     };
+  }, [open]);
+  // Keep the card inside the viewport: clamp horizontally, flip above the "?" if it would run off the bottom.
+  useLayoutEffect(() => {
+    if (!open) return setPos(null);
+    const btn = ref.current?.querySelector('button')?.getBoundingClientRect();
+    const c = card.current?.getBoundingClientRect();
+    if (!btn || !c) return;
+    const gutter = 8;
+    const left = Math.max(gutter, Math.min(btn.left, window.innerWidth - c.width - gutter));
+    const below = btn.bottom + 4;
+    const top = below + c.height > window.innerHeight - gutter && btn.top - 4 - c.height >= gutter ? btn.top - 4 - c.height : below;
+    setPos({ left, top });
   }, [open]);
   if (!e) return null;
   return (
@@ -36,7 +55,14 @@ export function CodexHint({ id }: { id: string }) {
         ?
       </button>
       {open && (
-        <span className="codex-card" role="dialog" aria-label={e.title} onClick={(ev) => ev.preventDefault()}>
+        <span
+          className="codex-card"
+          ref={card}
+          role="dialog"
+          aria-label={e.title}
+          style={pos ? { left: pos.left, top: pos.top } : { visibility: 'hidden' }}
+          onClick={(ev) => ev.preventDefault()}
+        >
           <b>{e.title}</b>
           <span className="codex-body">{e.body}</span>
           <span className="muted" style={{ fontSize: 12 }}>

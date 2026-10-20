@@ -182,7 +182,7 @@ a { color: var(--accent); }
 .codex-hint { position: relative; display: inline-block; margin-left: 6px; vertical-align: middle; text-transform: none; letter-spacing: normal; font-weight: normal; }
 .codex-hint > button { width: 18px; height: 18px; padding: 0; border-radius: 50%; font-size: 11px; line-height: 16px; color: var(--muted); }
 .codex-hint > button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
-.codex-card { position: absolute; z-index: 50; top: 22px; left: 0; width: min(380px, calc(100vw - 32px)); display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); font-size: 13px; color: var(--text); cursor: default; white-space: normal; }
+.codex-card { position: fixed; z-index: 50; top: 0; left: 0; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); font-size: 13px; color: var(--text); cursor: default; white-space: normal; }
 .codex-body { line-height: 1.45; }
 .rc-advisor { margin: 6px 0 10px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
 .rc-advisor > summary { cursor: pointer; }
