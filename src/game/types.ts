@@ -1,3 +1,4 @@
+import type { DifficultyId } from '../content/difficulty';
 import type { InquiryState } from './inquiries';
 import type { TfpOffer } from './tfp';
 // Game-layer state (SPEC §2, §7–§12). Wraps the deterministic sim; plain data.
@@ -162,6 +163,8 @@ export interface DraftOption {
 export interface RunState {
   version: 1;
   scenarioId: string;
+  /** Absent in saves from before difficulty presets (= Normal). */
+  difficulty?: DifficultyId;
   seed: number;
   rng: RngState;
   sim: SimState;

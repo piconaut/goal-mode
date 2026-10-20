@@ -1,6 +1,6 @@
 import type { Scenario } from '../../sim/core/scenario';
 import { BASEPOL } from '../wlm/basepol';
-import { generateMidwestNetwork } from '../batch/midwest-batch';
+import { MIDWEST_BATCH_GROWTH_PER_DAY, generateMidwestNetwork } from '../batch/midwest-batch';
 import { MIDWEST_PRODUCTS } from '../pricing';
 import { MIDWEST_CF_BASE_ENGINES, MIDWEST_MEMORY, MIDWEST_WORLD } from './midwest';
 import { MIDWEST_ADDRESS_SPACES, MIDWEST_WORKLOADS } from './midwest-workloads';
@@ -25,6 +25,7 @@ export const MIDWEST: Scenario = {
   memory: MIDWEST_MEMORY,
   products: MIDWEST_PRODUCTS,
   batchNetwork: generateMidwestNetwork,
+  batchGrowthPerDay: MIDWEST_BATCH_GROWTH_PER_DAY,
 };
 
 export const SCENARIOS: Record<string, Scenario> = { midwest: MIDWEST };

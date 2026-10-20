@@ -1,3 +1,5 @@
+import type { DifficultyId } from '../content/difficulty';
+import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
 import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 // View model: a compact, serialisable projection of RunState for the UI (posted from the
@@ -115,6 +117,7 @@ export interface ViewModel {
   phase: Phase;
   day: number;
   maxDays: number;
+  difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
   clock: string;
   hourOfDay: number;
   tickOfDay: number;
@@ -263,6 +266,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     phase: run.phase,
     day: run.day,
     maxDays: run.maxDays,
+    difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,

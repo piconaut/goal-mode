@@ -28,8 +28,8 @@ npm run typecheck    # tsc --noEmit
 npm run check        # typecheck + tests (no lint script yet)
 npm run bench -- --hash   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
-npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign]   # full runs with strategy bots
-npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4]  # bots over many seeds in parallel → CSV + summary
+npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard]   # full runs with strategy bots
+npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard]  # bots over many seeds in parallel → CSV + summary
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
 # In `npm run dev` builds, globalThis.__goalMode.send(msg) talks to the worker (DEV_INSIGHT, DEV_FAST_DAYS, DEV_TFP_OFFER).

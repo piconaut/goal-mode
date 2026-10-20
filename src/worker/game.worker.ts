@@ -1,5 +1,6 @@
 // The game runs here, off the UI thread. At 1× a played day (8640 ticks) takes 10 minutes.
 
+import { difficultyOf, scenarioFor } from '../game/difficulty';
 import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { MIDWEST } from '../content/scenarios';
@@ -31,14 +32,18 @@ import { goalText } from '../sim/wlm/goals';
 import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from './protocol';
 import { loadDesk, loadRun, saveRun, type DeskState } from './storage';
 
-const scenario = MIDWEST;
+const BASE_SCENARIO = MIDWEST;
+/** The scenario as this run's difficulty shapes it (memoised). */
+const sc = () => scenarioFor(BASE_SCENARIO, run?.difficulty);
 const content = MIDWEST_GAME;
 /** Ticks per real second at 1×: 8640 ticks / 600 s. */
 const TICKS_PER_SEC_1X = 14.4;
 const FRAME_MS = 100;
 
-let run: RunState = newRun(scenario, content, Date.now() % 100000);
+let run: RunState = newRun(BASE_SCENARIO, content, Date.now() % 100000);
 let speed = 1;
+const IRONMAN_MIN_SPEED = 0.5;
+const canPause = () => run.phase !== 'LIVE' || difficultyOf(run.difficulty).pauseAllowed;
 let pendingPolicy: ServiceDefinition | null = null;
 let carry = 0;
 
@@ -71,9 +76,9 @@ function pendingView(): PendingPolicyView | null {
 
 const currentItems = () =>
   workItems(
-    [...scenario.workloads, ...run.sim.extraWorkloads],
-    [...scenario.addressSpaces, ...run.sim.extraAddressSpaces],
-    scenario.batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth),
+    [...sc().workloads, ...run.sim.extraWorkloads],
+    [...sc().addressSpaces, ...run.sim.extraAddressSpaces],
+    sc().batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth),
   );
 
 function postRules() {
@@ -105,7 +110,7 @@ function activate(def: ServiceDefinition) {
 }
 
 const sendView = () => {
-  post({ type: 'VIEW', view: buildView(run, scenario), history: historyDirty ? history : null, savedRunDay: saved ? saved.day : null, pending: pendingView(), speed });
+  post({ type: 'VIEW', view: buildView(run, sc()), history: historyDirty ? history : null, savedRunDay: saved ? saved.day : null, pending: pendingView(), speed });
   historyDirty = false;
 };
 
@@ -115,7 +120,7 @@ function advanceSampled(n: number) {
   while (left > 0 && run.phase === 'LIVE') {
     const toSample = HISTORY_EVERY_TICKS - (run.sim.tick % HISTORY_EVERY_TICKS);
     const k = Math.min(left, toSample);
-    run = advance(run, scenario, content, k);
+    run = advance(run, sc(), content, k);
     left -= k;
     if (run.sim.tick % HISTORY_EVERY_TICKS === 0) {
       history = [...history, samplePoint(run)].slice(-HISTORY_MAX);
@@ -148,7 +153,7 @@ function persistSoon() {
 }
 
 void Promise.all([loadRun(), loadDesk()]).then(([r, d]) => {
-  saved = r ? normalizeRun(r, scenario) : null;
+  saved = r ? normalizeRun(r, BASE_SCENARIO) : null;
   savedDesk = d;
   storageReady = true;
   sendView();
@@ -162,8 +167,8 @@ setInterval(() => {
   carry -= n;
   advanceSampled(n);
   if (run.alerts?.pauseRequested) {
-    // A pausing alert rule fired: stop the clock and tell the player why.
-    speed = 0;
+    // A pausing alert rule fired: stop the clock (Ironman: drop to the slowest speed) and tell the player why.
+    speed = canPause() ? 0 : IRONMAN_MIN_SPEED;
     carry = 0;
     const page = [...run.alerts.log].reverse().find((e) => e.kind === 'FIRED');
     run = { ...run, alerts: { ...run.alerts, pauseRequested: false } };
@@ -179,8 +184,8 @@ const forkContent = whatIfContent(content);
 function whatIfChunk(token: number) {
   const w = whatIf;
   if (!w || w.token !== token) return;
-  w.base = advance(w.base, scenario, forkContent, INSIGHT.whatIfChunkTicks);
-  w.prop = advance(w.prop, scenario, forkContent, INSIGHT.whatIfChunkTicks);
+  w.base = advance(w.base, sc(), forkContent, INSIGHT.whatIfChunkTicks);
+  w.prop = advance(w.prop, sc(), forkContent, INSIGHT.whatIfChunkTicks);
   w.ticks += INSIGHT.whatIfChunkTicks;
   if (w.base.phase === 'LIVE' || w.prop.phase === 'LIVE') {
     post({ type: 'WHATIF_PROGRESS', frac: Math.min(1, w.ticks / TICKS_PER_DAY) });
@@ -200,7 +205,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       basket = [];
       post({ type: 'BASKET', basket });
       postPolicy();
-      run = newRun(scenario, content, m.seed);
+      run = newRun(BASE_SCENARIO, content, m.seed, m.difficulty);
       history = [];
       historyDirty = true;
       saved = null;
@@ -226,7 +231,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (import.meta.env.DEV) run = { ...run, insight: run.insight + m.amount };
       break;
     case 'DEV_TFP_OFFER':
-      if (import.meta.env.DEV && !run.tfpOffer) run = offerTfp(run, scenario);
+      if (import.meta.env.DEV && !run.tfpOffer) run = offerTfp(run, sc());
       break;
     case 'DEV_FAST_DAYS':
       // Play whole days headlessly (skipping drafts) to reach later-game states quickly.
@@ -234,7 +239,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         for (let d = 0; d < m.days && run.phase !== 'GAMEOVER' && run.phase !== 'VICTORY'; d++) {
           if (run.phase === 'REVIEW') run = chooseDraft(run, content, null);
           if (run.phase === 'BRIEFING') run = startDay(run, content);
-          run = advance(run, scenario, content, TICKS_PER_DAY);
+          run = advance(run, sc(), content, TICKS_PER_DAY);
         }
         if (run.phase === 'REVIEW') run = chooseDraft(run, content, null);
         lastPhase = run.phase;
@@ -273,7 +278,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'ASK_AROUND': {
-      const out = askAround(run, m.topic, m.workloadId, scenario);
+      const out = askAround(run, m.topic, m.workloadId, sc());
       run = out.run;
       post({ type: 'RESULT', ok: out.ok, message: out.message });
       break;
@@ -282,19 +287,19 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       const out = decideTfp(run, m.accept);
       run = out.run;
       post({ type: 'RESULT', ok: out.ok, message: out.message });
-      post({ type: 'FINANCE', finance: financeView(run, scenario) });
+      post({ type: 'FINANCE', finance: financeView(run, sc()) });
       break;
     }
     case 'GET_FINANCE':
-      post({ type: 'FINANCE', finance: financeView(run, scenario) });
+      post({ type: 'FINANCE', finance: financeView(run, sc()) });
       break;
     case 'GET_SMF': {
       const need = SMF_FEATURE[m.kind];
       if (!hasFeature(run, need)) break;
       if (m.kind !== 'SMF113' && m.kind !== 'BATCH') run = noteReportOpened(run, `SMF:${m.kind}:${m.hour}`);
       const data: SmfData =
-        m.kind === 'DB2' ? { kind: 'DB2', hour: m.hour, rows: db2Accounting(run, scenario, m.hour) }
-        : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, scenario, m.hour) }
+        m.kind === 'DB2' ? { kind: 'DB2', hour: m.hour, rows: db2Accounting(run, sc(), m.hour) }
+        : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, sc(), m.hour) }
         : m.kind === 'BATCH' ? { kind: 'BATCH', night: batchNight(run) }
         : { kind: 'SMF113', rows: smf113(run) };
       post({ type: 'SMF', data });
@@ -335,7 +340,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'BUY_TOOL':
     case 'SET_TOOL_ACTIVE': {
-      const out = m.type === 'BUY_TOOL' ? buyTool(run, scenario, m.toolId) : setToolActive(run, scenario, m.toolId, m.active);
+      const out = m.type === 'BUY_TOOL' ? buyTool(run, sc(), m.toolId) : setToolActive(run, sc(), m.toolId, m.active);
       run = out.run;
       post({ type: 'RESULT', ok: out.ok, message: out.message });
       break;
@@ -356,7 +361,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = startDay(run, content);
       break;
     case 'SET_SPEED':
-      speed = m.speed;
+      if (m.speed <= 0 && !canPause()) {
+        speed = IRONMAN_MIN_SPEED;
+        post({ type: 'RESULT', ok: false, message: 'Ironman: the clock cannot be paused during the live day.' });
+      } else speed = m.speed;
       break;
     case 'CHANGE': {
       const out = requestChange(run, content, m.req);
@@ -369,10 +377,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       autosave();
       break;
     case 'RCA':
-      run = submitRca(run, m.incidentId, m.mechanism, m.trigger, scenario, m.evidenceIds ?? []);
+      run = submitRca(run, m.incidentId, m.mechanism, m.trigger, sc(), m.evidenceIds ?? []);
       break;
     case 'PIN': {
-      const out = addPin(run, scenario, m.req);
+      const out = addPin(run, sc(), m.req);
       run = out.run;
       post({ type: 'RESULT', ok: out.ok, message: out.message });
       break;

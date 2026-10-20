@@ -924,6 +924,18 @@ lost reward).
 Growth multipliers, event-deck intensity (cards/day, severity tiers), constraint frequency,
 starting flaws count, budget generosity, Ironman (no pause during live, no undo).
 
+Implemented presets (`src/content/difficulty.ts`, applied in the game layer: the sim sees a scenario whose
+workload and batch growth rates are scaled; Normal is the untouched balance baseline):
+
+| | Growth | Event cards/day | Opex budget | Capex | Start trust | Pause | Hints |
+|---|---|---|---|---|---|---|---|
+| Story | ×0.6 | ×0.6 | ×1.15 | ×1.3 | 75 | yes | clear |
+| Normal | ×1 | ×1 | ×1 | ×1 | 70 | yes | vague |
+| Hard | ×1.3 | ×1.3 | ×0.92 | ×0.85 | 65 | yes | none |
+| Ironman | as Hard | | | | | no (alerts slow to ½× instead) | none |
+
+Not yet varied per difficulty: event severity tiers, constraint frequency and the starting flaw list.
+
 **Morning hints (lower difficulties):** on Story (and optionally Normal) the briefing inbox gets a
 nudge or two based on what went wrong the previous day: e.g. "MOBILE missed its SLA while batch
 ran; the DELAY breakdown in WLMGL for DDFPRD might show why" or "the critical path finished at

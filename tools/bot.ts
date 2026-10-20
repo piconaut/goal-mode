@@ -26,9 +26,10 @@ const tfp = arg('tfp', 'ignore');
 const bot = STRATEGIES[botName];
 if (!bot) throw new Error(`Unknown bot ${botName}; have ${Object.keys(STRATEGIES).join(', ')}`);
 
-let run: RunState = newRun(scenario, content, seed);
+const difficulty = arg('difficulty', 'NORMAL').toUpperCase() as import('../src/content/difficulty').DifficultyId;
+let run: RunState = newRun(scenario, content, seed, difficulty);
 const t0 = performance.now();
-console.log(`bot=${botName} seed=${seed}`);
+console.log(`bot=${botName} seed=${seed} difficulty=${difficulty}`);
 console.log('day  overall  ' + FACETS.map((f) => f.slice(0, 6).padStart(7)).join('') + '  incid  batchEnd  score  MLCest     events');
 while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
   if (run.phase === 'BRIEFING') {

@@ -38,12 +38,15 @@ const STREAMS: StreamSpec[] = [
   { stream: 'DEV', count: 20, critical: false, startHour: 9, shape: 'parallel', cpuSecRef: [30, 300], ioCount: [20_000, 200_000], ziipFrac: 0, lockIntensity: 0, usesDb2: true, jobClass: 'D', sysaff: 'DEVT', after: null },
 ];
 
+/** FICTIONAL: data volumes grow with the business. */
+export const MIDWEST_BATCH_GROWTH_PER_DAY = 0.004;
+
 export function generateMidwestNetwork(seed: number, day: number, dayOfMonth: number): JobDef[] {
   const rng = new Rng([seed >>> 0, (day * 2654435761) >>> 0, 0x9e3779b9, 0x85ebca6b]);
   for (let i = 0; i < 8; i++) rng.nextU32();
   const monthEnd = dayOfMonth >= 29;
   // Data volumes grow with the business: batch work per job grows ~0.4% per played day.
-  const growth = Math.pow(1.004, day);
+  const growth = Math.pow(1 + MIDWEST_BATCH_GROWTH_PER_DAY, day);
   const jobs: JobDef[] = [];
   const lastOf: Record<string, string> = {};
   const nameOf = (stream: string, i: number) => `${stream}${String(i + 1).padStart(3, '0')}`.slice(0, 8);

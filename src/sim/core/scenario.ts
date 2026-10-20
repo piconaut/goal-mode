@@ -23,4 +23,6 @@ export interface Scenario {
   products: ProductDef[];
   /** Nightly job network for a played day (deterministic in seed and day). */
   batchNetwork: (seed: number, day: number, dayOfMonth: number) => JobDef[];
+  /** Compound daily growth of batch volumes built into `batchNetwork`. */
+  batchGrowthPerDay: number;
 }

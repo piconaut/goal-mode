@@ -1,3 +1,4 @@
+import type { DifficultyId } from '../content/difficulty';
 import type { InquiryKind } from '../content/inquiries';
 import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 import type { RcAdvice } from '../game/rcAdvisor';
@@ -43,7 +44,7 @@ export type SmfData =
 export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DASD';
 
 export type ToWorker =
-  | { type: 'NEW_RUN'; seed: number }
+  | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId }
   | { type: 'START_DAY' }
   | { type: 'SET_SPEED'; speed: number }
   | { type: 'CHANGE'; req: ChangeRequest }

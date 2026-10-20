@@ -18,6 +18,8 @@ import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
+import type { DifficultyId } from '../content/difficulty';
+import { difficultyOf, scenarioFor } from './difficulty';
 import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
@@ -77,11 +79,14 @@ const secAfterStart = (hour: number) => ((hour - 6 + 48) % 24) * 3600;
 export { allWorkloads } from './workloads';
 import { allWorkloads } from './workloads';
 
-export function newRun(scenario: Scenario, content: GameContent, seed: number): RunState {
-  const trust = Object.fromEntries(FACETS.map((f) => [f, 70])) as Record<Facet, number>;
+export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL'): RunState {
+  const diff = difficultyOf(difficulty);
+  const scenario = scenarioFor(baseScenario, difficulty);
+  const trust = Object.fromEntries(FACETS.map((f) => [f, diff.startTrust])) as Record<Facet, number>;
   let run: RunState = {
     version: 1,
     scenarioId: scenario.id,
+    difficulty,
     seed,
     rng: seedRng(seed ^ 0x5bd1e995),
     sim: initState(seed, scenario),
@@ -93,8 +98,8 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
     baseHours: BASE_HOURS,
     bonusHours: [],
     fatigue: 0,
-    opexBudgetMonthly: content.opexBudgetMonthly,
-    capexRemaining: content.capexQuarter,
+    opexBudgetMonthly: content.opexBudgetMonthly * diff.opexBudgetMult,
+    capexRemaining: content.capexQuarter * diff.capexMult,
     opexSpentThisMonth: 0,
     insight: 0,
     tools: [],
@@ -136,7 +141,7 @@ export function newRun(scenario: Scenario, content: GameContent, seed: number): 
 /** Pick tomorrow's (or today's) events; forewarn when the card says so. */
 export function drawEvents(run: RunState, content: GameContent, day: number): RunState {
   const [picked, r1] = withRng(run, (rng) => {
-    const lambda = 0.35 + 0.05 * day;
+    const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
     const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
     const pool = content.events.filter((e) => day >= e.minDay);
     const out: { def: EventDef; hour: number }[] = [];
@@ -354,7 +359,8 @@ const toolOn = (r: RunState, id: string) => r.tools.includes(id) && !r.toolsOff.
 const chartsActive = (r: RunState) => toolOn(r, 'MON3_CHARTS') && toolOn(r, 'RMF_MON3');
 
 /** Advance the live day by up to `ticks` ticks. Ends the day automatically at 06:00. */
-export function advance(run: RunState, scenario: Scenario, content: GameContent, ticks: number): RunState {
+export function advance(run: RunState, baseScenario: Scenario, content: GameContent, ticks: number): RunState {
+  const scenario = scenarioFor(baseScenario, run.difficulty);
   let r = run;
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
