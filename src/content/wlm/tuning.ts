@@ -18,3 +18,10 @@ export const DISC_GOAL_MGMT = {
   /** Capped periods get this fraction of their CP demand. */
   capFrac: 0.8,
 };
+
+// FICTIONAL: when SRM starts swapping. Shape: swapping kicks in as soon as running work would overcommit
+// real memory, and swaps down to a small margin so paging stays low for the work left in storage.
+export const STORAGE_SWAP = {
+  swapAboveFrac: 1.0,
+  swapToFrac: 0.97,
+};

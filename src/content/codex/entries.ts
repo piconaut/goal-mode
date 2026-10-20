@@ -95,6 +95,14 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'swap-mpl',
+    title: 'Swapping and MPL delay',
+    category: 'WLM',
+    body: 'When the work on an LPAR needs more real storage than it has, z/OS swaps whole address spaces out rather than let everything page. Swappable work (batch jobs, TSO users) goes first, least important first; CICS regions, Db2 and other started tasks are non-swappable. A swapped-out job is ready but does nothing, which RMF reports as swap/MPL delay against its service class. The work left in storage pages less.',
+    sources: [ABCS_WLM],
+    discover: { start: true },
+  },
+  {
     id: 'mq-queues',
     title: 'MQ queue depth and MAXDEPTH',
     category: 'Subsystems',

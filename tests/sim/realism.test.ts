@@ -2,7 +2,7 @@
 
 import { MIDWEST } from '../../src/content/scenarios';
 import { initState } from '../../src/sim/core/init';
-import { discretionaryCaps, rgMin, step } from '../../src/sim/core/step';
+import { discretionaryCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { emptyAcc } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
@@ -270,5 +270,31 @@ describe('MQ queue depth (PAYMQ)', () => {
     expect(mq.newBacklog).toBeGreaterThan(online.newBacklog);
     expect(full.failed).toBeGreaterThan(0);
     expect(full.newBacklog).toBeCloseTo(1000 * 0.01, 6);
+  });
+});
+
+describe('MPL / swap (storage overcommit)', () => {
+  const job = (name: string, jobClass: string, startTick: number) =>
+    ({
+      day: 0,
+      def: { name, stream: 'X', jobClass, sysaff: null, cpuSecRef: 1, ziipFrac: 0, ioCount: 1, lockIntensity: 0, usesDb2: false, preds: [], earliestSec: 0, critical: false, deadlineSec: 86400 },
+      status: 'RUNNING',
+      lparId: 'DEVT',
+      progress: 0,
+      queuedTick: 0,
+      startTick,
+      endTick: null,
+      stretch: 1,
+    }) as Parameters<typeof swapOut>[1][number];
+  // Class D → DEVBAT (discretionary), class A → BATCHPRD (importance 4).
+  const jobs = [job('PRD001', 'A', 10), job('DEV001', 'D', 5), job('DEV002', 'D', 20), job('PRD002', 'A', 30)];
+  it('swaps nothing while real memory holds the work', () => {
+    expect(swapOut(BASEPOL, jobs, 'DEVT', 20, 2, 40).size).toBe(0);
+  });
+  it('swaps the least important, latest-started jobs first until demand fits', () => {
+    // 20 GB fixed + 4 × 2 GB = 28 GB on a 24 GB LPAR: down to ≤ 23.3 GB takes three swaps,
+    // discretionary first, then the latest-started importance-4 job.
+    const out = [...swapOut(BASEPOL, jobs, 'DEVT', 20, 2, 24)].map((j) => j.def.name);
+    expect(out).toEqual(['DEV002', 'DEV001', 'PRD002']);
   });
 });

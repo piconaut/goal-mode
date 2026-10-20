@@ -25,9 +25,9 @@ import { baseRate, stepNoise } from '../workload/arrivals';
 import { buildSlices, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
-import { evaluateLpar, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
+import { emptyScpTick, evaluateLpar, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
-import { DISC_GOAL_MGMT } from '../../content/wlm/tuning';
+import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../content/wlm/tuning';
 import {
   decayInto,
   emptyAcc,
@@ -144,6 +144,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const zosLpars = config.lpars.filter((l) => l.kind === 'ZOS');
   const slicesBy: Record<string, SliceSpec[]> = {};
   const batchRefsBy: Record<string, BatchSliceRef[]> = {};
+  const swappedBy: Record<string, Set<JobRuntime>> = {};
   const pagingFrac: Record<string, number> = {};
   const demands: PoolDemand[] = [];
   for (const l of zosLpars) {
@@ -223,9 +224,17 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     // Batch: one slice per service-class period of running jobs on this image.
     const refs: Record<string, BatchSliceRef> = {};
     const seqRt = io.SEQ.rtSec;
+    // Storage: base + Db2 buffer pools + CICS regions + queued MQ messages + running jobs. When it
+    // overcommits real memory, SRM swaps out the least important batch jobs (MPL/swap delay).
+    const cicsRegions = cicsRegionCount(addressSpaces, l.id);
+    const fixedGb =
+      (scenario.memory.osBaseGb[l.id] ?? 20) + (db2?.bufferPoolGb ?? 0) + cicsRegions * scenario.memory.cicsRegionGb + queuedMsgGb(prev, workloadById, l.id);
+    const running = batch.jobs.filter((j) => j.status === 'RUNNING' && j.lparId === l.id);
+    const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb);
+    if (swapped.size > 0) swappedBy[l.id] = swapped;
     let runningJobs = 0;
-    for (const j of batch.jobs) {
-      if (j.status !== 'RUNNING' || j.lparId !== l.id) continue;
+    for (const j of running) {
+      if (swapped.has(j)) continue;
       runningJobs++;
       const cls = classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id });
       const scKey = scKeyOf(cls.serviceClass, 0);
@@ -277,14 +286,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const all = [...slices, ...batchRefs.map((r) => r.slice)];
     slicesBy[l.id] = all;
 
-    // Storage: base + Db2 buffer pools + CICS regions + running jobs.
-    const cicsRegions = cicsRegionCount(addressSpaces, l.id);
-    const memDemand =
-      (scenario.memory.osBaseGb[l.id] ?? 20) +
-      (db2?.bufferPoolGb ?? 0) +
-      cicsRegions * scenario.memory.cicsRegionGb +
-      runningJobs * scenario.memory.batchJobGb +
-      queuedMsgGb(prev, workloadById, l.id);
+    const memDemand = fixedGb + runningJobs * scenario.memory.batchJobGb;
     pagingFrac[l.id] = pagingDelayFrac(memDemand, l.memoryGb);
 
     let cp = 0;
@@ -418,6 +420,17 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
     const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
     const res = evaluateLpar({ ...evalInput, dpOf });
+    // Swapped-out jobs are ready but not in storage: swap/MPL delay for their class (RMF reports it
+    // with the storage delays; APPROX: one delayed sample per swapped job).
+    for (const j of swappedBy[l.id] ?? []) {
+      const k = scKeyOf(classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id }).serviceClass, 0);
+      let t = res.scps.find((x) => x.scKey === k);
+      if (!t) {
+        t = emptyScpTick(k, dpOf(k));
+        res.scps.push(t);
+      }
+      t.delayStorage += 1;
+    }
 
     const sliceIdx: Record<string, number> = {};
     const compBy: Record<string, number> = {};
@@ -642,6 +655,27 @@ function cicsRegionCount(addressSpaces: readonly AddressSpaceDef[], lparId: stri
     regionCountCache.set(addressSpaces, m);
   }
   return m[lparId] ?? 0;
+}
+
+/** Which running batch jobs SRM swaps out to fit real memory: least important first (discretionary
+ * before importance 5…1), latest started first within an importance (z/OS storage management,
+ * SG24-7621 MPL/swap; APPROX: swap-in is immediate once storage frees). */
+export function swapOut(def: SimState['wlm']['definition'], running: readonly JobRuntime[], lparId: string, fixedGb: number, jobGb: number, memoryGb: number): Set<JobRuntime> {
+  const out = new Set<JobRuntime>();
+  let demand = fixedGb + running.length * jobGb;
+  const limit = memoryGb * STORAGE_SWAP.swapToFrac;
+  if (fixedGb + running.length * jobGb <= memoryGb * STORAGE_SWAP.swapAboveFrac) return out;
+  const rank = (j: JobRuntime) => {
+    const g = goalInfo(def, scKeyOf(classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: lparId }).serviceClass, 0));
+    return !g || g.goal.kind === 'DISC' ? 6 : g.importance;
+  };
+  const order = [...running].sort((a, b) => rank(b) - rank(a) || (b.startTick ?? 0) - (a.startTick ?? 0) || (a.def.name < b.def.name ? -1 : 1));
+  for (const j of order) {
+    if (demand <= limit) break;
+    out.add(j);
+    demand -= jobGb;
+  }
+  return out;
 }
 
 /** Deep MQ queues spill from buffer pools into page sets and real memory (SPEC §5.10.3). */

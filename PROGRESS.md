@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7 sim leftovers (MPL/swap, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
+- **Next up:** M7 sim leftovers ( CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (207 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (210 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -396,7 +396,13 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   in the Change Desk "Db2, MQ and CICS" section; Console shows DIS QL CURDEPTH/MAXDEPTH. Codex `mq-queues`.
   Normal day: peak depth ~75, no failures. Bench hash → `34712383b172aea8`. Bots seed 42: do-nothing day 15;
   textbook day 29 (Retail trust; was day 28 batch), score 1836
-- [ ] MPL/swap delay
+- [x] MPL/swap delay (loop 34): when an LPAR's real-storage demand (OS + Db2 buffer pools + CICS regions +
+  queued MQ messages + running jobs) exceeds its memory, SRM swaps out running batch jobs, least important first
+  (discretionary before importance 5…1), latest started first, down to 97% of memory (`swapOut` in step.ts,
+  `STORAGE_SWAP` in content/wlm/tuning.ts). Swapped jobs make no progress and count as storage (swap/MPL) delay
+  for their class; the rest pages less. TSO users aren't modelled as swappable address spaces (APPROX). Codex
+  `swap-mpl`. Bench hash and bots unchanged (Midwest never overcommits on its own: shrinking an LPAR or growing
+  buffer pools triggers it). 2 tests
 - [ ] CF structure rebuild on CF failure (needs white space), duplexing cost
 - [ ] CICS REGION-mode management and the "free ride"
 
@@ -557,6 +563,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 34):** MPL/swap delay; Change Desk crash on old saves fixed (missing durationSu). 210 tests.
 - **2026-10-20 (user requests):** arrival-rate chart, charts on top + collapsible, service class editor; M9 on hold until the user says start. 207 tests.
 - **2026-10-20 (loop 33, /loop):** MQ queue depth for PAYMQ. 206 tests.
 - **2026-10-20 (user requests):** ask around in the Inbox (incl. job classes); basket persists across tabs; report card toggle. 205 tests.
