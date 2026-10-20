@@ -626,10 +626,17 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 ### M8.9 — Game-playing agents (last work on `main`; user request 2026-10-20)
 After M7–M8 are done and **before** starting M9, add AI agents that can play the game, then stop pushing
 to `main` (this is the last push there; M9 goes on its feature branch).
-- [ ] Headless play interface the agents drive: a CLI (`tools/play.ts`) that loads/saves a run, prints the
+- [~] Headless play interface the agents drive: a CLI (`tools/play.ts`) that loads/saves a run, prints the
   briefing, inbox, incidents and requested reports (WLMGL, Partition Data, CF, DASD, SMF, Monitor III
   snapshots) as text, and accepts Change Desk actions, WLM edits, RCAs, tool purchases and "advance N hours" as
   commands (JSON or simple verbs); same determinism as the sim (seed + command log)
+  - [x] Loop 80: `tools/play.ts` + `tools/playCore.ts` (`npm run play -- <runFile> <verb>`): new/status/start/
+    advance N hours/report (WLMGL summary+detail, Partition Data, CF, DASD)/change (JSON ChangeRequest)/wlm edit/
+    activate/discard/rca/draft/buy/tfp, or any command as JSON. The run file holds the RunState (Infinity tagged
+    so JSON round-trips bit-identically, tested), the pending policy and the command log; refused commands are
+    not logged. Status never prints incident ground truth. A full day advances in ~10 s
+  - [ ] Still to add: SMF/Monitor III snapshots, ask-around, projects, pins/evidence for RCAs, catalog listing
+    (hardware/fix ids, tools with prices) so an agent can discover Change Desk options without reading source
 - [ ] Agent definition files (e.g. `.claude/agents/goal-mode-player.md`, plus variants such as a cautious
   operator and a cost-cutter) that play a full run through that CLI: diagnose from reports, make changes,
   submit RCAs, keep a run log
