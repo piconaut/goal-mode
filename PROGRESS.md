@@ -520,6 +520,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
   - [x] Loop 43: theme toggle in the top bar (auto → dark → light, remembered in localStorage, sets
     `data-theme` on <html>); `useStored` hook moved to `src/ui/useStored.ts`. Error boundaries per tab already exist
+  - [x] Loop 44: classic 3270 colours as a fourth theme (green on black, 3279 base colours, mono font)
 - [x] Deploy target (static hosting) and a README (loop 40: `base: './'` so `dist/` runs from any sub-path; `README.md` with play, build, dev commands and layout)
 
 ### M8.9 — Game-playing agents (last work on `main`; user request 2026-10-20)

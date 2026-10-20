@@ -134,10 +134,10 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
-type Theme = 'system' | 'dark' | 'light';
-const NEXT_THEME: Record<Theme, Theme> = { system: 'dark', dark: 'light', light: 'system' };
+type Theme = 'system' | 'dark' | 'light' | '3270';
+const NEXT_THEME: Record<Theme, Theme> = { system: 'dark', dark: 'light', light: '3270', '3270': 'system' };
 
-/** System → dark → light; styles.css keys the palette off `data-theme` on <html>. */
+/** System → dark → light → 3270 green screen; styles.css keys the palette off `data-theme` on <html>. */
 function ThemeToggle() {
   const [theme, setTheme] = useStored<Theme>('goalmode.theme', 'system');
   useEffect(() => {
@@ -147,7 +147,7 @@ function ThemeToggle() {
   }, [theme]);
   return (
     <button style={{ marginLeft: 'auto' }} title="Colour theme (click to change)" aria-label={`Theme: ${theme}`} onClick={() => setTheme(NEXT_THEME[theme])}>
-      {theme === 'system' ? '◐ auto' : theme === 'dark' ? '● dark' : '○ light'}
+      {theme === 'system' ? '◐ auto' : theme === 'dark' ? '● dark' : theme === 'light' ? '○ light' : '▮ 3270'}
     </button>
   );
 }

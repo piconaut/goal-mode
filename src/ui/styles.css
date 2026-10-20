@@ -67,6 +67,32 @@
     --series-8: #e34948;
     color-scheme: light;
 }
+:root[data-theme='3270'] {
+  /* Classic 3279 base colours: green body text, blue/turquoise chrome, red/yellow/white for state. */
+  --bg: #000000;
+  --panel: #000000;
+  --panel-2: #0a140a;
+  --border: #1f6f8b;
+  --text: #33ff66;
+  --muted: #40c0c0;
+  --accent: #5f9fff;
+  --good: #33ff66;
+  --warn: #ffff33;
+  --bad: #ff9933;
+  --crit: #ff3333;
+  --green-screen: #33ff66;
+  --green-bg: #000000;
+  --series-1: #33ff66;
+  --series-2: #ff3333;
+  --series-3: #40c0c0;
+  --series-4: #ffff33;
+  --series-5: #ff66ff;
+  --series-6: #ffffff;
+  --series-7: #5f9fff;
+  --series-8: #ff9933;
+  --sans: var(--mono);
+  color-scheme: dark;
+}
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
 button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
