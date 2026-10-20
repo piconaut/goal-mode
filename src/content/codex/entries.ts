@@ -95,6 +95,14 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'cf-failure',
+    title: 'CF failure, structure rebuild and duplexing',
+    category: 'I/O & CF',
+    body: 'If a coupling facility fails, z/OS rebuilds its structures into another CF on each structure’s CFRM preference list, but only where there is enough free CF storage (“white space”). A structure that cannot be rebuilt is lost: losing the Db2 lock or SCA structure stops the data sharing group, losing a group buffer pool leaves pages needing recovery. Duplexing keeps a second copy in another CF so a failure costs nothing, but every request then waits for both CFs, so it costs CF CPU and response time all the time.',
+    sources: [{ label: 'IBM: System-Managed Coupling Facility Structure Duplexing (white paper)' }, { label: 'IBM Redbook: Parallel Sysplex Application Considerations / CF structure rebuild' }],
+    discover: { events: ['CF_FAILURE'], tools: ['CF_DASD'] },
+  },
+  {
     id: 'swap-mpl',
     title: 'Swapping and MPL delay',
     category: 'WLM',

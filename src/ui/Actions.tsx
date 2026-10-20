@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { CodexHints } from './CodexHint';
+import { cfUsedGb, duplexSecondary, type CfConfig, type CfStructureConfig } from '../sim/cf/cf';
 import { ServiceClasses } from './ServiceClassEditor';
 import { DASD_REBALANCE, HARDWARE } from '../content/hardware-catalog';
 import { LCU_MAX_DEVICES } from '../sim/io/dasd';
@@ -53,7 +54,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         <Section title="WLM service policies and daily schedule" codex={['service-policies']}>
           <PolicySchedule v={v} game={game} />
         </Section>
-        <Section title="z/OS and coupling facilities" codex={['cf-sync-async']}>
+        <Section title="z/OS and coupling facilities" codex={['cf-sync-async', 'cf-failure']} wide>
           <Systems desk={desk} />
         </Section>
         <Section title="DASD: HyperPAV aliases per LCU" codex={['hyperpav']}>
@@ -689,14 +690,28 @@ function ChangeButtonsInline({ desk, commands, disabled, text }: { desk: Desk; c
 
 function CfRow({ desk, lparId }: { desk: Desk; lparId: string }) {
   const c = desk.cfg.cfs.find((x) => x.lparId === lparId)!;
-  const share = desk.cfg.cfStructures.filter((x) => x.cfLparId === lparId).reduce((a, x) => a + x.requestShare, 0);
+  const share = desk.cfg.cfStructures.filter((x) => x.cfLparId === lparId && !x.lost).reduce((a, x) => a + x.requestShare, 0);
+  const up = desk.cfg.cfs.filter((x) => !x.failed).map((x) => x.lparId);
+  const used = cfUsedGb(desk.cfg.cfStructures, up)[lparId] ?? 0;
+  const mem = desk.cfg.lpars.find((l) => l.id === lparId)?.memoryGb ?? 0;
   return (
     <div className="form">
-      <b>{lparId}</b> thin interrupts {c.thinInterrupts ? 'on' : 'off'}
+      <b>{lparId}</b>
+      {c.failed && <span className="tag bad">DOWN</span>}
+      thin interrupts {c.thinInterrupts ? 'on' : 'off'}
       <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_CF', lparId, thinInterrupts: !c.thinInterrupts }]} disabled={false} text={c.thinInterrupts ? 'turn off' : 'turn on'} />
-      <Now>{Math.round(share * 100)}% of CF requests</Now>
+      <Now>
+        {Math.round(share * 100)}% of CF requests · storage {used.toFixed(0)} of {mem} GB ({Math.max(0, mem - used).toFixed(0)} GB white space)
+      </Now>
     </div>
   );
+}
+
+function structureStatus(st: CfStructureConfig, cfs: readonly CfConfig[], tick: number): ReactNode {
+  if (st.lost) return <span className="tag bad">LOST</span>;
+  if (st.rebuildUntilTick !== undefined && st.rebuildUntilTick > tick) return <span className="tag warn">rebuilding</span>;
+  const sec = duplexSecondary(st, cfs.filter((c) => !c.failed).map((c) => c.lparId));
+  return sec ? <span className="tag good">duplexed into {sec}</span> : <span className="muted">simplex</span>;
 }
 
 /** Structure placement (SETXCF START,REBUILD): which CF each structure lives in. */
@@ -711,7 +726,10 @@ function Structures({ desk }: { desk: Desk }) {
               <th>Structure</th>
               <th>Type</th>
               <th className="num">share of requests</th>
+              <th className="num">size</th>
+              <th>status</th>
               <th>CF</th>
+              <th>duplex</th>
             </tr>
           </thead>
           <tbody>
@@ -720,10 +738,21 @@ function Structures({ desk }: { desk: Desk }) {
                 <td>{st.name}</td>
                 <td>{st.type}</td>
                 <td className="num">{Math.round(st.requestShare * 100)}%</td>
+                <td className="num">{st.sizeGb ?? '-'} GB</td>
+                <td>{structureStatus(st, desk.cfg.cfs, desk.v.tick)}</td>
                 <td>
                   {cfs.map((cf) => (
-                    <ChangeButtonsInline key={cf} desk={desk} commands={[{ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf }]} disabled={st.cfLparId === cf} text={cf} />
+                    <ChangeButtonsInline
+                      key={cf}
+                      desk={desk}
+                      commands={[{ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf }]}
+                      disabled={(st.cfLparId === cf && !st.lost) || !!desk.cfg.cfs.find((x) => x.lparId === cf)?.failed}
+                      text={cf}
+                    />
                   ))}
+                </td>
+                <td>
+                  <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_DUPLEX', name: st.name, on: !st.duplexed }]} disabled={!!st.lost} text={st.duplexed ? 'stop' : 'duplex'} />
                 </td>
               </tr>
             ))}
@@ -732,7 +761,9 @@ function Structures({ desk }: { desk: Desk }) {
       </div>
       <div className="help">
         Rebuilding a structure moves its requests to the other CF. Cache and list requests that get slow are converted to asynchronous; lock requests are not, so a lock structure on a slow
-        or shared CF makes every Db2 transaction spin. The CF Activity report shows each structure.
+        or shared CF makes every Db2 transaction spin. The CF Activity report shows each structure. If a CF fails, its structures are rebuilt into the other CF only if it has white space
+        for them; a structure that doesn&apos;t fit is lost (lock or SCA: Db2 is down; GBP: pages in recovery; MQ admin: shared queues stop). Duplexing keeps a copy in the other CF, so a
+        failure costs nothing, but every request then waits for both CFs.
       </div>
     </>
   );

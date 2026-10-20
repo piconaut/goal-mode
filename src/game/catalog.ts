@@ -20,6 +20,8 @@ const HOURS: Partial<Record<Command['kind'], number>> = {
   SET_JOB_CLASS: 1,
   SET_CF: 1,
   MOVE_STRUCTURE: 1,
+  // CFRM policy change + SETXCF START,REBUILD,DUPLEX.
+  SET_DUPLEX: 1,
   // HCD change + dynamic activate to move HyperPAV aliases between LCUs.
   SET_LCU: 1,
   SET_ROUTING: 0.5,

@@ -6,7 +6,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7 sim leftovers (CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
+- **Next up:** M7 sim leftover (CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
 - **Health:** `npm run check` green (213 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
@@ -413,7 +413,17 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   for their class; the rest pages less. TSO users aren't modelled as swappable address spaces (APPROX). Codex
   `swap-mpl`. Bench hash and bots unchanged (Midwest never overcommits on its own: shrinking an LPAR or growing
   buffer pools triggers it). 2 tests
-- [ ] CF structure rebuild on CF failure (needs white space), duplexing cost
+- [x] CF structure rebuild on CF failure (loop 35): new HARDWARE event CF_FAILURE (CF01 down 3 h, from day 10,
+  `FAIL_CF`). Duplexed structures switch to their copy; others rebuild into the first CF on their CFRM
+  preference list with enough white space (lock → list → cache), stalling requesters meanwhile; the rest are
+  lost (lock/SCA: Db2 work fails; GBP: pages in recovery, 40% of Db2 work fails; MQ admin: PAYMQ fails). When
+  the CF returns, lost structures are reallocated there and recover; rebuilt ones stay until moved.
+  `SET_DUPLEX` (1 h) duplexes into the second CF (needs white space; requests wait for both CFs ×1.6, GBPs
+  copy writes only). `MOVE_STRUCTURE` checks white space. Structure sizes/preference lists in content;
+  tunables in `content/cf.ts`. Change Desk CF section (now full width): storage used/white space per CF,
+  structure size/status (LOST/rebuilding/duplexed into…), duplex button. Codex `cf-failure`. 3 tests.
+  Bench hash → `aa88ddcb5b470f25` (config shape). Bots seed 42: do-nothing day 15; textbook day 26 (batch,
+  was 29) because the new card changes the event draws; CF01 did not fail in either run. Check across seeds in M8.2
 - [ ] CICS REGION-mode management and the "free ride"
 
 ### M8 — Balance, difficulty, content & polish
@@ -423,7 +433,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 **M8.1 Performance (prerequisite for bots and what-if)**
 - [ ] Target ≤ 2 s per headless day (now ~7–8 s): incremental dispatch in policy-adjust projections, skip receivers that failed recently, precomputed log-normal bucket tables, avoid per-tick object churn in batch/RMF accumulators (profile first; keep determinism)
 - [x] Benchmark script `npm run bench [-- --days N --seed S --hash]` (`tools/bench.ts`); `--hash` prints a
-  SHA-256 of the end state so optimisations can prove they are behaviour-neutral (seed 42, 1 day: `34712383b172aea8` since loop 33)
+  SHA-256 of the end state so optimisations can prove they are behaviour-neutral (seed 42, 1 day: `aa88ddcb5b470f25` since loop 35)
 - Loop 21 profile (esbuild bundle + `--cpu-prof`, 1 day ≈ 8.5 s, 1.0 ms/tick): flat. Inclusive: evaluateLpar 27%
   (of which policy-adjust projections 7%), step's own loops ~20%, dispatch 7%, RMF accumulateTick 5%, GC 7%,
   log-normal buckets 5%. Safe wins applied (hoisted log-normal invariants + early exit, bucket `map`→loops,
@@ -577,6 +587,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 35):** CF failure, structure rebuild, duplexing. 217 tests.
 - **2026-10-20 (user requests):** WLMGL header alignment fix; saves keep planned changes, basket and pending policy. 214 tests.
 - **2026-10-20 (user request):** stakeholder mood in Ask around. 213 tests.
 - **2026-10-20 (loop 34):** MPL/swap delay; Change Desk crash on old saves fixed (missing durationSu). 210 tests.

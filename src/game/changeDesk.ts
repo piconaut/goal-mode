@@ -120,6 +120,8 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
       const st = cfg.cfStructures.find((x) => x.name === cmd.name);
       return `Rebuild ${cmd.name} ${st?.cfLparId ?? '?'} → ${cmd.cfLparId}`;
     }
+    case 'SET_DUPLEX':
+      return `${cmd.on ? 'Start' : 'Stop'} duplexing ${cmd.name}`;
     case 'SET_ROUTING': {
       const r = cfg.routing.find((x) => x.workloadId === cmd.workloadId);
       return `${cmd.workloadId} routing ${r ? shares(r.shares) : '?'} → ${shares(cmd.routing)}`;
@@ -154,6 +156,7 @@ export function commandTarget(cmd: Command): string {
     case 'SET_CF':
       return `${cmd.kind}:${cmd.lparId}:${cmd.thinInterrupts !== undefined ? 'thin' : ''}`;
     case 'MOVE_STRUCTURE':
+    case 'SET_DUPLEX':
       return `${cmd.kind}:${cmd.name}`;
     case 'SET_LCU':
       return `${cmd.kind}:${cmd.lcuId}:${cmd.aliases !== undefined ? 'aliases' : ''}${cmd.hotSkew !== undefined ? 'skew' : ''}`;

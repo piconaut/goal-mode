@@ -118,6 +118,8 @@ export interface ViewModel {
   clock: string;
   hourOfDay: number;
   tickOfDay: number;
+  /** Absolute sim tick (for comparing with tick-stamped state). */
+  tick: number;
   ticksPerDay: number;
   trust: Record<Facet, number>;
   trustOverall: number;
@@ -263,6 +265,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,
+    tick: sim.tick,
     ticksPerDay: TICKS_PER_DAY,
     trust: run.trust,
     trustOverall: overallTrust(run),
