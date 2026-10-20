@@ -65,6 +65,8 @@ export type ToWorker =
   | { type: 'DISCARD_PENDING' }
   | { type: 'CLASSIFY'; work: WorkAttributes }
   | { type: 'CONTINUE_SAVED' }
+  /** Spectator mode: show this run file (written by tools/play.ts) read-only; replaces the shown run. */
+  | { type: 'SPECTATE'; text: string }
   /** The UI's change basket, mirrored so it is saved with the run. */
   | { type: 'SET_BASKET'; basket: Command[] }
   | { type: 'GET_RULES' }

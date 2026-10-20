@@ -1,6 +1,6 @@
 import type { Command } from '../sim/core/commands';
 import type { RcAdvice } from '../game/rcAdvisor';
-import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
@@ -13,6 +13,8 @@ import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type
 
 export interface GameHandle {
   view: ViewModel | null;
+  /** Spectator mode (`?spectate=<run>`): the watched run file and its latest command, or the fetch error. */
+  spectate: { name: string; last: string; error: string | null } | null;
   report: string;
   policy: string;
   history: HistoryPoint[];
@@ -56,6 +58,8 @@ export function useGame(): GameHandle {
   const [toast, setToast] = useState<GameHandle['toast']>(null);
   const [results, setResults] = useState<GameHandle['results']>([]);
   const clockRef = useRef('');
+  const spectateName = useMemo(() => new URLSearchParams(window.location.search).get('spectate'), []);
+  const [spectate, setSpectate] = useState<GameHandle['spectate']>(spectateName ? { name: spectateName, last: '', error: null } : null);
 
   useEffect(() => {
     const w = new Worker(new URL('../worker/game.worker.ts', import.meta.url), { type: 'module' });
@@ -104,10 +108,34 @@ export function useGame(): GameHandle {
   useEffect(() => send({ type: 'SET_BASKET', basket }), [basket, send]);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
-  return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, rules, toast, results, basket, setBasket, send };
+  // Spectator mode: poll the run file the dev server exposes and hand every new version to the worker.
+  useEffect(() => {
+    if (!spectateName) return;
+    let lastText = '';
+    const poll = async () => {
+      try {
+        const res = await fetch(`./__spectate/${encodeURIComponent(spectateName)}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+        const text = await res.text();
+        if (text === lastText) return;
+        lastText = text;
+        worker.current?.postMessage({ type: 'SPECTATE', text } satisfies ToWorker);
+        const log = (JSON.parse(text) as { log?: unknown[] }).log ?? [];
+        setSpectate({ name: spectateName, last: JSON.stringify(log.at(-1) ?? null), error: null });
+      } catch (e) {
+        setSpectate((s) => ({ name: spectateName, last: s?.last ?? '', error: String(e) }));
+      }
+    };
+    void poll();
+    const id = window.setInterval(() => void poll(), SPECTATE_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [spectateName]);
+
+  return { spectate, view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, rules, toast, results, basket, setBasket, send };
 }
 
 const SPEED_KEY = 'goalmode.speed';
+const SPECTATE_POLL_MS = 1500;
 const readPref = (key: string): string | null => {
   try {
     return localStorage.getItem(key);

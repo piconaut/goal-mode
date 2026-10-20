@@ -36,6 +36,11 @@ export function App() {
   return (
     <div className="app">
       <TopBar v={v} game={game} />
+      {game.spectate && (
+        <div className="spectate-banner" role="status">
+          Spectating <b>{game.spectate.name}</b> (read-only){game.spectate.error ? ` · cannot read the run file: ${game.spectate.error}` : game.spectate.last ? ` · last command ${game.spectate.last}` : ''}
+        </div>
+      )}
       <div className="tabs">
         {TABS.map((t, i) => (
           <button key={t} className={tab === t ? 'active' : ''} title={`Alt+${i + 1}`} onClick={() => setTab(t)}>

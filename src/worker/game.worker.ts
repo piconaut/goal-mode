@@ -23,6 +23,7 @@ import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../sim/measure/reports';
+import { decodeRunJson } from '../game/runFile';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { classify } from '../sim/wlm/classify';
 import { explainClassification, workItems } from '../game/classifyExplain';
@@ -158,6 +159,7 @@ function recordCareer() {
 }
 
 function autosave() {
+  if (spectating) return;
   if (run.phase !== lastPhase) {
     lastPhase = run.phase;
     recordCareer();
@@ -179,6 +181,7 @@ const desk = (): DeskState => ({ pendingPolicy, basket });
  * basket and pending WLM edits), not just on phase changes. Never while an older save is still on offer:
  * it is only replaced once this run reaches a phase change, as before. */
 function persistSoon() {
+  if (spectating) return;
   if (!storageReady || saved !== null || run.phase === 'LIVE') return;
   if (persistTimer) clearTimeout(persistTimer);
   persistTimer = setTimeout(() => {
@@ -239,9 +242,35 @@ function whatIfChunk(token: number) {
   whatIf = null;
 }
 
+/** Spectator mode shows a run file another process plays; only reading messages get through. */
+let spectating = false;
+const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'CLASSIFY', 'SET_BASKET']);
+
+function spectate(text: string) {
+  const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null }>(text);
+  const next = normalizeRun(f.run, BASE_SCENARIO);
+  // Same run moving forward: extend the charts; otherwise (new run, earlier file) start them over.
+  const sameRun = spectating && next.seed === run.seed && next.sim.tick >= run.sim.tick;
+  spectating = true;
+  speed = 0;
+  whatIf = null;
+  saved = null;
+  if (!sameRun) history = [];
+  run = next;
+  lastPhase = run.phase;
+  if (run.phase === 'LIVE' && history.at(-1)?.tick !== run.sim.tick) history = [...history, samplePoint(run)].slice(-HISTORY_MAX);
+  historyDirty = true;
+  pendingPolicy = f.pendingPolicy ? normalizeDefinition(f.pendingPolicy) : null;
+  postPolicy();
+}
+
 self.onmessage = (e: MessageEvent<ToWorker>) => {
   const m = e.data;
+  if (spectating && !SPECTATOR_OK.has(m.type)) return;
   switch (m.type) {
+    case 'SPECTATE':
+      spectate(m.text);
+      break;
     case 'NEW_RUN':
       whatIf = null;
       pendingPolicy = null;

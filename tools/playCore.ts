@@ -18,6 +18,7 @@ import { adviseReportClasses } from '../src/game/rcAdvisor';
 import { workItems } from '../src/game/classifyExplain';
 import { clockAt, formatClock } from '../src/sim/core/clock';
 import { decideTfp } from '../src/game/tfp';
+import { decodeRunJson, encodeRunJson } from '../src/game/runFile';
 import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
 import { addPin, removePin, type PinRequest } from '../src/game/evidence';
@@ -78,18 +79,8 @@ function needs(feature: ToolFeature, what: string): string {
   return `${what} needs the ${tools.join(' or ') || feature} tool (buy ${tools[0] ?? feature}; see catalog).`;
 }
 
-// JSON has no Infinity/NaN; the sim uses Infinity for "uncapped", so tag them to keep the state bit-identical.
-export function encodePlayFile(f: PlayFile): string {
-  return JSON.stringify(f, (_k, v: unknown) =>
-    typeof v === 'number' && !Number.isFinite(v) ? { $num: String(v) } : v,
-  );
-}
-
-export function decodePlayFile(text: string): PlayFile {
-  return JSON.parse(text, (_k, v: unknown) =>
-    v !== null && typeof v === 'object' && '$num' in v && Object.keys(v).length === 1 ? Number((v as { $num: string }).$num) : v,
-  ) as PlayFile;
-}
+export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
+export const decodePlayFile = (text: string): PlayFile => decodeRunJson<PlayFile>(text);
 
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL'): PlayFile {
   return { version: 1, run: newRun(MIDWEST, content, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty }] };

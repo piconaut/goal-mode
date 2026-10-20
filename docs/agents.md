@@ -62,6 +62,18 @@ The run file holds the same serialised `RunState` the browser saves, the pending
 log. Seed + command log replays the run exactly (the sim is deterministic), and the file round-trips through
 JSON bit-identically (tested in `tests/tools/play.test.ts`). A full simulated day takes about 10 s.
 
+## Watching an agent play (spectator mode)
+
+```
+npm run dev                                   # or build, then serve with the Vite preview server
+open http://localhost:5173/?spectate=a        # watches runs/a.json
+```
+
+The page polls `runs/<name>.json` every 1.5 s through a dev/preview-server route (`/__spectate/<name>`) and shows it
+in the normal UI, read-only: speed buttons and actions are ignored, and nothing is saved over your own
+browser save. A banner shows the agent's latest command. Charts start when you open the page and grow with each
+new state the CLI writes.
+
 ## What an agent can see
 
 Only what a player sees in the browser: the briefing and inbox, the status line, RMF reports, SMF and Monitor
