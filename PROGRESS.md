@@ -521,7 +521,21 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [x] Loop 51: starting flaws per difficulty (`GameContent.startingFixes`): Story starts with F7, F8 and F11
     fixed and a "Handover notes" message listing them; the WLM and PR/SM flaws stay. Hard/Ironman keep the
     standard twelve (no extra flaws invented yet)
-  - [ ] Bot sweeps per difficulty (Story, Hard) to check the presets land where SPEC §11.2 says
+  - [~] Bot sweeps per difficulty (Story, Hard) to check the presets land where SPEC §11.2 says
+    - Loop 52 sweep (seeds 1–10, textbook + expert, after loops 48–51; 27 + 25 min, `--jobs 4`):
+      **Story** textbook 28 / 29 / 30, median 1858, ends batch 5 · trust 5 (all trust ends are Retail at 0 while
+      overall trust is 59–86); expert 40 / 40 / 40, median 2736, victory 10/10.
+      **Hard** textbook 18 / 24 / 26, median 1495, ends batch 4 · trust 6; expert 33 / 40 / 40, median 2693,
+      victory 5 · trust 5.
+      Normal for comparison (loop 46/45, seeds 1–20): textbook 27 / 28 / 28, expert victory 20/20.
+    - Reading: Hard separates well (textbook ~4 days earlier, expert loses half its runs). **Story barely
+      helps a non-diagnosing player**: textbook dies on the same day-28 wall as on Normal. Two walls ignore
+      the presets: the batch deadline (05:00 from day 23 on Story; slower growth is not enough slack) and the
+      day-26 merger (ACQBANK lands in SYSOTHER and drags Retail trust to 0; textbook never classifies it).
+      Options, for the user to pick (balance decision, no tuning done): (a) Story skips or softens the 05:00
+      deadline like the CFO mandate; (b) Story pre-classifies the merger workload or warns about it in a
+      clear hint; (c) a softer per-facet trust floor on Story (game over only on overall trust); (d) accept it,
+      since a Story player reading the hints is expected to beat the textbook bot
 - [x] Morning hints on lower difficulties (user request 2026-10-20, SPEC §11.2): the briefing inbox nudges
   the player based on yesterday's problems (missed SLAs, late batch, capping, paging), pointing at the report
   and the question to ask, never the answer or the fix; built from the same ground truth as RCA scoring;
@@ -639,6 +653,10 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 
 ## Open questions
 
+- **Story difficulty vs the textbook bot (2026-10-20, loop 52):** Story does not move the textbook bot off the
+  day-28 wall (batch deadline + merger Retail collapse). Soften those walls on Story (options a–c under M8.3), or
+  accept it (d)? Waiting on the user.
+
 - Resource group minimum for discretionary members: what exactly counts as "missing goals"? Modelled as delay > using.
 
 - WLM I/O using vs delay: is disconnect time counted as using? Currently connect+disconnect = using.
@@ -677,6 +695,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 52):** Story/Hard bot sweep recorded (M8.3); Story does not help the textbook bot. Open question to the user.
 - **2026-10-20 (loop 51):** Story starts with F7/F8/F11 fixed. 235 tests.
 - **2026-10-20 (loop 50, restarted by the watchdog):** constraint timing per difficulty. 234 tests. ScheduleWakeup wakeups did not fire twice; loop now schedules with send_later.
 - **2026-10-20 (loop 49, restarted by the watchdog):** event severity tiers per difficulty. 231 tests.
