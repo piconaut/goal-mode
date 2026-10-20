@@ -415,11 +415,26 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
 - [ ] Deploy target (static hosting) and a README
 
+### M8.9 — Game-playing agents (last work on `main`; user request 2026-10-20)
+After M7–M8 are done and **before** starting M9, add AI agents that can play the game, then stop pushing
+to `main` (this is the last push there; M9 goes on its feature branch).
+- [ ] Headless play interface the agents drive: a CLI (`tools/play.ts`) that loads/saves a run, prints the
+  briefing, inbox, incidents and requested reports (WLMGL, Partition Data, CF, DASD, SMF, Monitor III
+  snapshots) as text, and accepts Change Desk actions, WLM edits, RCAs, tool purchases and "advance N hours" as
+  commands (JSON or simple verbs); same determinism as the sim (seed + command log)
+- [ ] Agent definition files (e.g. `.claude/agents/goal-mode-player.md`, plus variants such as a cautious
+  operator and a cost-cutter) that play a full run through that CLI: diagnose from reports, make changes,
+  submit RCAs, keep a run log
+- [ ] Documentation (`docs/agents.md`, linked from the README and CLAUDE.md): how to start a run, how to launch
+  each agent, what it can see and do (no access to hidden ground truth), where logs and scores go, and how to
+  compare agents with the strategy bots
+- [ ] Smoke test: an agent completes at least day 1 headlessly; record its outcome in PROGRESS.md
+
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
 changes; simplified mode is a game/UI layer over the same commands, reports and scoring.
-**Process: start M9 only when M7–M8 are done, and do all M9 work on a separate feature branch
-(e.g. `feature/simplified-mode`), not on `main`.**
+**Process: start M9 only when M7–M8 and M8.9 (game-playing agents) are done, and do all M9 work on a
+separate feature branch (e.g. `feature/simplified-mode`), not on `main`.**
 - [ ] Mode switch at run start (Expert / Simplified); same seed gives the same world in both modes
 - [ ] Keep the full WLM policy definition visible and editable, but offer **goal-level actions** that bundle
   the discrete changes an expert would make, e.g. "Protect mobile banking from ad-hoc queries" = new service
