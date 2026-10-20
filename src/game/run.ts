@@ -3,7 +3,7 @@
 
 import { DRAFT_OPTIONS } from '../content/draft';
 import type { EventDef, ScriptedBeat } from '../content/events/midwest-events';
-import type { Command } from '../sim/core/commands';
+import { applyCommands, type Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
 import { ALERTS } from '../content/alerts';
@@ -49,6 +49,8 @@ export interface GameContent {
   opexBudgetMonthly: number;
   capexQuarter: number;
   maxDays: number;
+  /** Planted flaws already fixed at the start on a difficulty (SPEC §11.2, §13.3). */
+  startingFixes?: Partial<Record<DifficultyId, { flaw: string; label: string; commands: Command[] }[]>>;
 }
 
 const BASE_HOURS = 8;
@@ -91,7 +93,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     difficulty,
     seed,
     rng: seedRng(seed ^ 0x5bd1e995),
-    sim: initState(seed, scenario),
+    sim: applyCommands(initState(seed, scenario), (content.startingFixes?.[difficulty] ?? []).flatMap((f) => f.commands)),
     phase: 'BRIEFING',
     day: 0,
     maxDays: content.maxDays,
@@ -136,6 +138,8 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     log: [],
     endReason: null,
   };
+  const fixed = content.startingFixes?.[difficulty] ?? [];
+  if (fixed.length > 0) run = msg(run, 'Previous team', 'Handover notes', `Before leaving we sorted out a few things: ${fixed.map((f) => f.label).join('; ')}. The rest is yours.`);
   run = drawEvents(run, content, 0);
   return storyFor(run, content, 0);
 }

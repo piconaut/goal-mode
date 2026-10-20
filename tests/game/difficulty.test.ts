@@ -98,3 +98,14 @@ describe('storyBeatsFor', () => {
     expect(ids('STORY', 0)).toEqual(['WELCOME']);
   });
 });
+
+describe('starting flaws per difficulty', () => {
+  it('hands Story the infrastructure fixes and says so; Normal keeps every flaw', () => {
+    const story = newRun(base, MIDWEST_GAME, 7, 'STORY');
+    const normal = newRun(base, MIDWEST_GAME, 7);
+    expect(story.sim.config.rmfIntervalMin).toBe(15);
+    expect(normal.sim.config.rmfIntervalMin).toBe(30);
+    expect(story.inbox.some((m) => m.subject === 'Handover notes')).toBe(true);
+    expect(normal.inbox.some((m) => m.subject === 'Handover notes')).toBe(false);
+  });
+});
