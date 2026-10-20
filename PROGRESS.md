@@ -550,7 +550,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [x] Loop 54: `src/game/endReport.ts` (per-day score, worst SLA, peak R4HA sum, batch; applied-change timeline;
     biggest incident; best RCA; grade S–D from survival, mean SLA and final trust, weights and bands in
     `src/content/endReport.ts`, early exits capped at B) shown on the end screen with day-by-day and decisions sections
-  - [ ] PI heat-map history (needs per-day PI kept in RunState) and an R4HA chart instead of the table bars
+  - [x] Loop 55: PI heat-map history: worst sysplex PI per service-class period per day (`DayReport.piWorst`), shown
+    as a class × day grid on the end screen
+  - [ ] An R4HA chart instead of the table bars; screenshot check of the end screen
 - [ ] Meta-progression (career XP → unlock scenarios, starting perks, starting tool; Codex persists) in IndexedDB
 
 **M8.4 Content**
@@ -699,6 +701,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 55):** PI heat-map history on the end screen. 238 tests.
 - **2026-10-20 (loop 54):** end-of-run report and grade (game + end screen). 238 tests.
 - **2026-10-20 (loop 53):** fix: morning hints and event forewarnings were dated the day that ended, so the next briefing never showed them (Inbox tab only); now dated for the morning they are for. Goldens regenerated. 236 tests.
 - **2026-10-20 (loop 52):** Story/Hard bot sweep recorded (M8.3); Story does not help the textbook bot. Open question to the user.

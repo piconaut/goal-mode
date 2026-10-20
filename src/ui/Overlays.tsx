@@ -8,6 +8,7 @@ import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
 import type { ViewModel } from '../game/view';
+import { piColor } from './App';
 import type { GameHandle } from './useGame';
 
 export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
@@ -119,6 +120,37 @@ function EndReportView({ r }: { r: EndReport }) {
           </tbody>
         </table>
       </details>
+      {r.piHeat.scKeys.length > 0 && (
+        <details>
+          <summary>PI heat map (worst interval per day)</summary>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Class</th>
+                  {r.days.map((d) => (
+                    <th key={d.day} className="num">
+                      {d.day + 1}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {r.piHeat.scKeys.map((k, i) => (
+                  <tr key={k}>
+                    <td>{k}</td>
+                    {r.piHeat.byDay[i]!.map((pi, d) => (
+                      <td key={d} className="num" style={{ background: piColor(pi), padding: '2px 4px' }} title={`${k} day ${d + 1}: PI ${pi === null ? '-' : pi.toFixed(2)}`}>
+                        {pi === null ? '' : pi.toFixed(1)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
       <details>
         <summary>Decisions ({r.decisions.length} changes applied)</summary>
         <ul>
