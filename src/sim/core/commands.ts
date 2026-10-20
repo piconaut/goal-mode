@@ -1,7 +1,10 @@
 // Player and event commands (SPEC §6). Applied at the start of a tick; each returns a new
 // state or a validation error. Commands are plain data so runs can be replayed.
 
+import { CF_FAILURE } from '../../content/cf';
+import { cfUsedGb, duplexSecondary, failCf, type CfStructureConfig } from '../cf/cf';
 import { startTfp, type TfpTerms } from '../cost/mlc';
+import { TICK_SEC } from './units';
 import { LCU_MAX_DEVICES } from '../io/dasd';
 import type { ServiceDefinition } from '../wlm/types';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
@@ -26,6 +29,8 @@ export type Command =
   | { kind: 'SET_JOB_CLASS'; jobClass: string; mode?: 'JES' | 'WLM'; initiators?: Record<string, number> }
   | { kind: 'SET_CF'; lparId: string; thinInterrupts?: boolean; degrade?: number }
   | { kind: 'MOVE_STRUCTURE'; name: string; cfLparId: string }
+  | { kind: 'FAIL_CF'; lparId: string; failed: boolean }
+  | { kind: 'SET_DUPLEX'; name: string; on: boolean }
   | { kind: 'SET_DASD'; changes: Partial<SimState['config']['dasd']> }
   | { kind: 'SET_LCU'; lcuId: string; aliases?: number; hotSkew?: number; extraIops?: Partial<Record<'RANDOM' | 'SEQ', number>> }
   | { kind: 'SET_ROUTING'; workloadId: string; routing: Record<string, number> }
@@ -202,13 +207,69 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
     case 'MOVE_STRUCTURE': {
       const st = s.config.cfStructures.find((x) => x.name === cmd.name);
       if (!st) return fail(s, `No structure ${cmd.name}`);
-      if (!s.config.cfs.some((x) => x.lparId === cmd.cfLparId)) return fail(s, `${cmd.cfLparId} is not a coupling facility`);
+      const cf = s.config.cfs.find((x) => x.lparId === cmd.cfLparId);
+      if (!cf) return fail(s, `${cmd.cfLparId} is not a coupling facility`);
+      if (cf.failed) return fail(s, `${cmd.cfLparId} is down`);
+      if (st.cfLparId !== cmd.cfLparId || st.lost) {
+        const free = cfFreeGb(s, cmd.cfLparId, cmd.name);
+        if ((st.sizeGb ?? 0) > free) return fail(s, `${cmd.cfLparId} has only ${free.toFixed(1)} GB free; ${cmd.name} needs ${st.sizeGb} GB`);
+      }
       // SETXCF START,REBUILD: the structure is reallocated in the target CF.
       return ok(
         withConfig(s, (c) => {
-          c.cfStructures.find((x) => x.name === cmd.name)!.cfLparId = cmd.cfLparId;
+          const x = c.cfStructures.find((y) => y.name === cmd.name)!;
+          x.cfLparId = cmd.cfLparId;
+          x.lost = false;
+          if (x.duplexed && x.prefList && duplexSecondaryOf(c, x) === null) x.duplexed = false;
         }),
         `${cmd.name} rebuilt in ${cmd.cfLparId}`,
+      );
+    }
+
+    case 'SET_DUPLEX': {
+      const st = s.config.cfStructures.find((x) => x.name === cmd.name);
+      if (!st) return fail(s, `No structure ${cmd.name}`);
+      if (st.lost) return fail(s, `${cmd.name} is lost; reallocate it first`);
+      if (!cmd.on) return ok(withConfig(s, (c) => void (c.cfStructures.find((y) => y.name === cmd.name)!.duplexed = false)), `${cmd.name} duplexing stopped`);
+      const probe = { ...st, duplexed: true };
+      const sec = duplexSecondaryOf(s.config, probe);
+      if (!sec) return fail(s, `No second CF on ${cmd.name}'s preference list is up`);
+      const free = cfFreeGb(s, sec, null);
+      if ((st.sizeGb ?? 0) > free) return fail(s, `${sec} has only ${free.toFixed(1)} GB free for the duplex copy (${st.sizeGb} GB)`);
+      return ok(withConfig(s, (c) => void (c.cfStructures.find((y) => y.name === cmd.name)!.duplexed = true)), `${cmd.name} duplexed into ${sec}`);
+    }
+
+    case 'FAIL_CF': {
+      const cf = s.config.cfs.find((x) => x.lparId === cmd.lparId);
+      if (!cf) return fail(s, `${cmd.lparId} is not a coupling facility`);
+      if (cmd.failed) {
+        if (cf.failed) return fail(s, `${cmd.lparId} is already down`);
+        const up = s.config.cfs.filter((x) => !x.failed).map((x) => x.lparId);
+        const mem = (id: string) => s.config.lpars.find((l) => l.id === id)?.memoryGb ?? 0;
+        const r = failCf(s.config.cfStructures, cmd.lparId, up, mem, s.tick, TICK_SEC);
+        return ok(
+          withConfig(s, (c) => {
+            c.cfs.find((x) => x.lparId === cmd.lparId)!.failed = true;
+            c.cfStructures = r.structures;
+          }),
+          `IXC518I ${cmd.lparId} FAILED. ${r.notes.join('; ')}`,
+        );
+      }
+      if (!cf.failed) return fail(s, `${cmd.lparId} is not down`);
+      // The CF is back: lost structures are reallocated in it and recover (GRECP/LPL recovery for GBPs).
+      const recover = Math.ceil(CF_FAILURE.recoverySec / TICK_SEC);
+      const lost = s.config.cfStructures.filter((x) => x.lost).map((x) => x.name);
+      return ok(
+        withConfig(s, (c) => {
+          c.cfs.find((x) => x.lparId === cmd.lparId)!.failed = false;
+          for (const x of c.cfStructures)
+            if (x.lost) {
+              x.lost = false;
+              x.cfLparId = cmd.lparId;
+              x.rebuildUntilTick = s.tick + recover;
+            }
+        }),
+        `${cmd.lparId} back online${lost.length ? `; reallocated ${lost.join(', ')}` : ''}. Structures rebuilt elsewhere stay there until moved back.`,
       );
     }
 
@@ -292,6 +353,20 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       return ok(s, cmd.text);
   }
 }
+
+/** CF storage left in a CF, optionally ignoring one structure (when moving it). */
+function cfFreeGb(s: SimState, cfId: string, ignore: string | null): number {
+  const up = s.config.cfs.filter((x) => !x.failed).map((x) => x.lparId);
+  const used = cfUsedGb(s.config.cfStructures.filter((x) => x.name !== ignore), up);
+  return (s.config.lpars.find((l) => l.id === cfId)?.memoryGb ?? 0) - (used[cfId] ?? 0);
+}
+
+const duplexSecondaryOf = (c: SimState['config'], x: CfStructureConfig) =>
+  duplexSecondary(
+    x,
+    c.cfs.filter((y) => !y.failed).map((y) => y.lparId),
+  );
+
 
 export function applyCommands(s: SimState, cmds: readonly Command[]): SimState {
   if (cmds.length === 0) return s;

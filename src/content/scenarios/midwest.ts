@@ -30,6 +30,8 @@ const zos = (id: string, pools: LparPoolConfig[], memoryGb: number): LparConfig 
   capacityGroup: null,
 });
 
+const PROD_CFS = ['CF01', 'CF02'];
+
 export const MIDWEST_WORLD: WorldConfig = {
   cpcs: [{ id: 'CPCA', generation: 'M1', capacitySetting: 6, engines: { CP: 8, ZIIP: 2, ICF: 2 }, memoryGb: 768 }],
   lpars: [
@@ -77,16 +79,19 @@ export const MIDWEST_WORLD: WorldConfig = {
     // F8: no thin interrupts on the shared CF.
     { lparId: 'CF02', thinInterrupts: false },
   ],
-  // FICTIONAL request mix. Placement reproduces the original 70/30 CF01/CF02 split; GBP0 and the
+  // FICTIONAL request mix and sizes. CF01 holds 16 GB, CF02 13 GB, each 32 GB: either can absorb the
+  // other's structures in a failure, but everything then lands on whichever CF survives (CF02 is the
+  // weak shared one). CFTEST is not on the production preference list.
+  // Placement reproduces the original 70/30 CF01/CF02 split; GBP0 and the
   // list structures on the weak shared CF02 are the F8 flaw. Lock requests are never converted to
   // async, so moving DB1G_LOCK1 to CF02 would hurt every Db2 transaction (a trap with a clue).
   cfStructures: [
-    { name: 'DB1G_LOCK1', type: 'LOCK', requestShare: 0.4, cfLparId: 'CF01', costMult: 1 },
-    { name: 'DB1G_GBP1', type: 'CACHE', requestShare: 0.3, cfLparId: 'CF01', costMult: 1 },
-    { name: 'DB1G_GBP0', type: 'CACHE', requestShare: 0.18, cfLparId: 'CF02', costMult: 1 },
-    { name: 'IXC_DEFAULT_1', type: 'LIST', requestShare: 0.06, cfLparId: 'CF02', costMult: 1 },
-    { name: 'CSQ_ADMIN', type: 'LIST', requestShare: 0.04, cfLparId: 'CF02', costMult: 1 },
-    { name: 'DB1G_SCA', type: 'LIST', requestShare: 0.02, cfLparId: 'CF02', costMult: 1 },
+    { name: 'DB1G_LOCK1', type: 'LOCK', requestShare: 0.4, cfLparId: 'CF01', costMult: 1, sizeGb: 2, prefList: PROD_CFS, lostImpact: 'DB2_DOWN' },
+    { name: 'DB1G_GBP1', type: 'CACHE', requestShare: 0.3, cfLparId: 'CF01', costMult: 1, sizeGb: 14, prefList: PROD_CFS, lostImpact: 'DB2_GRECP' },
+    { name: 'DB1G_GBP0', type: 'CACHE', requestShare: 0.18, cfLparId: 'CF02', costMult: 1, sizeGb: 10, prefList: PROD_CFS, lostImpact: 'DB2_GRECP' },
+    { name: 'IXC_DEFAULT_1', type: 'LIST', requestShare: 0.06, cfLparId: 'CF02', costMult: 1, sizeGb: 1, prefList: PROD_CFS, lostImpact: 'NONE' },
+    { name: 'CSQ_ADMIN', type: 'LIST', requestShare: 0.04, cfLparId: 'CF02', costMult: 1, sizeGb: 1, prefList: PROD_CFS, lostImpact: 'MQ_DOWN' },
+    { name: 'DB1G_SCA', type: 'LIST', requestShare: 0.02, cfLparId: 'CF02', costMult: 1, sizeGb: 1, prefList: PROD_CFS, lostImpact: 'DB2_DOWN' },
   ],
   db2: [
     { ssid: 'DB1A', lparId: 'PROD1', bufferPoolGb: 40, maxDbat: 400 },

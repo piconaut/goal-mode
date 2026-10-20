@@ -298,3 +298,50 @@ describe('MPL / swap (storage overcommit)', () => {
     expect(out).toEqual(['DEV002', 'DEV001', 'PRD002']);
   });
 });
+
+describe('CF failure, rebuild and duplexing', () => {
+  let base = initState(42, MIDWEST);
+  beforeAll(() => {
+    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+  });
+  const rbankCfMs = (s: typeof base) => {
+    const w = s.last.workloads.find((x) => x.id === 'RBANK')!;
+    return w.completions > 0 ? (1000 * (w.parts.cf ?? 0)) / w.completions : 0;
+  };
+  const run = (cmds: Parameters<typeof step>[1], ticks = 30) => {
+    let s = step(base, cmds, MIDWEST);
+    for (let i = 0; i < ticks; i++) s = step(s, [], MIDWEST);
+    return s;
+  };
+  it('a failed CF rebuilds its structures into the surviving CF on the preference list', () => {
+    const s = run([{ kind: 'FAIL_CF', lparId: 'CF01', failed: true }]);
+    expect(s.config.cfStructures.every((x) => x.cfLparId === 'CF02' && !x.lost)).toBe(true);
+    expect(s.env.cf.map((c) => c.lparId)).not.toContain('CF01');
+    // Everything on the weak shared CF: Db2 work waits longer for the CF.
+    expect(rbankCfMs(s)).toBeGreaterThan(2 * rbankCfMs(run([])));
+  }, 60_000);
+  it('with no white space a structure is lost and Db2 work fails until the CF returns', () => {
+    const tight = run([{ kind: 'SET_LPAR_MEMORY', lparId: 'CF02', memoryGb: 20 }, { kind: 'FAIL_CF', lparId: 'CF01', failed: true }], 6);
+    const gbp1 = tight.config.cfStructures.find((x) => x.name === 'DB1G_GBP1')!;
+    expect(gbp1.lost).toBe(true);
+    expect(tight.config.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!.cfLparId).toBe('CF02');
+    const during = tight.last.workloads.find((x) => x.id === 'RBANK')!;
+    expect(during.failed).toBeGreaterThan(0);
+    let back = step(tight, [{ kind: 'FAIL_CF', lparId: 'CF01', failed: false }], MIDWEST);
+    expect(back.config.cfStructures.find((x) => x.name === 'DB1G_GBP1')!).toMatchObject({ lost: false, cfLparId: 'CF01' });
+    // Recovery: work completes again at once; the retry storm and backlog take a few minutes to drain.
+    for (let i = 0; i < 60; i++) back = step(back, [], MIDWEST);
+    const after = back.last.workloads.find((x) => x.id === 'RBANK')!;
+    expect(after.completions).toBeGreaterThan(0);
+    expect(after.failed).toBeLessThan(0.3 * during.failed);
+  }, 60_000);
+  it('a duplexed structure switches to its copy with no rebuild, but duplexing costs sync time', () => {
+    const duplexed = run([{ kind: 'SET_DUPLEX', name: 'DB1G_LOCK1', on: true }]);
+    expect(duplexed.config.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!.duplexed).toBe(true);
+    expect(rbankCfMs(duplexed)).toBeGreaterThan(rbankCfMs(run([])));
+    const failed = step(duplexed, [{ kind: 'FAIL_CF', lparId: 'CF01', failed: true }], MIDWEST);
+    const lock = failed.config.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!;
+    expect(lock).toMatchObject({ cfLparId: 'CF02', duplexed: false });
+    expect(lock.rebuildUntilTick).toBeUndefined();
+  }, 60_000);
+});

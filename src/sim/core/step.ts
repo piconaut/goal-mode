@@ -28,6 +28,7 @@ import { classify } from '../wlm/classify';
 import { emptyScpTick, evaluateLpar, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../content/wlm/tuning';
+import { CF_FAILURE } from '../../content/cf';
 import {
   decayInto,
   emptyAcc,
@@ -139,6 +140,16 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       cfZosCpuSec += share * st.zosCpuSec;
     }
   }
+  // CF failure: structures being rebuilt stall their requesters; lost ones take work down.
+  let db2FailFrac = 0;
+  let mqFailFrac = 0;
+  for (const x of config.cfStructures) {
+    if (x.rebuildUntilTick !== undefined && x.rebuildUntilTick > prev.tick) cfServiceSec += x.requestShare * CF_FAILURE.stallSecPerRequest;
+    if (!x.lost) continue;
+    if (x.lostImpact === 'DB2_DOWN') db2FailFrac = Math.max(db2FailFrac, CF_FAILURE.db2DownFailFrac);
+    else if (x.lostImpact === 'DB2_GRECP') db2FailFrac = Math.max(db2FailFrac, CF_FAILURE.grecpFailFrac);
+    else if (x.lostImpact === 'MQ_DOWN') mqFailFrac = Math.max(mqFailFrac, CF_FAILURE.mqDownFailFrac);
+  }
 
   // 3–4. Slices and demand per z/OS image.
   const zosLpars = config.lpars.filter((l) => l.kind === 'ZOS');
@@ -207,6 +218,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
         failFrac = qr.failFrac;
       }
       if (w.subsystem === 'DDF') outside += dbatWait;
+      if (db2FailFrac > 0 && usesRole(w.servers, 'DB2.')) failFrac = Math.max(failFrac, db2FailFrac);
+      if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
       const mqMax = w.mq && s.mqQueueFrac !== undefined ? { maxQueueMsgs: (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac } : {};
       return {
         ...s,
@@ -526,6 +539,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   // I/O subsystem and CF for next tick.
   const dasd = evaluateDasd(config.dasd, { RANDOM: randomIops, SEQ: seqIops });
   const cfImages: CfImageInput[] = config.cfs.flatMap((cfg) => {
+    if (cfg.failed) return [];
     const l = config.lpars.find((x) => x.id === cfg.lparId);
     const icf = l?.pools.find((p) => p.pool === 'ICF');
     const rt = lpars.find((x) => x.id === cfg.lparId)?.pools.find((p) => p.pool === 'ICF');
