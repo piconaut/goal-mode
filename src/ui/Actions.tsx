@@ -37,58 +37,168 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
     apply: (label, commands) => game.send({ type: 'CHANGE', req: { label, commands } }),
     stage: (commands) => setBasket((b) => addToBasket(b, commands)),
   };
+  const [area, setArea] = useStored<Area>('goalmode.desk.area', 'wlm');
+  const pendingProjects = v.projects.filter((p) => p.hoursDone > 0 && !p.done).length;
+  const counts: Partial<Record<Area, ReactNode>> = {
+    wlm: game.pending ? <span className="tag warn">pending</span> : null,
+    ops: v.batch.abended.length > 0 ? <span className="tag bad">{v.batch.abended.length} abended</span> : null,
+    projects: pendingProjects > 0 ? <span className="tag">{pendingProjects} in progress</span> : null,
+  };
+  const up = v.config.cfs.filter((c) => !c.failed).map((c) => c.lparId);
+  const cfUsed = cfUsedGb(v.config.cfStructures, up);
+  const summary = {
+    wlm: `${(game.pending?.classDefs ?? v.classDefs).length} service classes · ${game.rules ? (game.rules.pending ?? game.rules.active).subsystems.reduce((a, x) => a + x.rows.length, 0) : '…'} classification rules`,
+    policies: `${v.policies.saved.length} saved · ${v.policies.schedule.length} scheduled switch${v.policies.schedule.length === 1 ? '' : 'es'}`,
+    hmc: v.config.lpars
+      .filter((l) => l.kind === 'ZOS')
+      .map((l) => `${l.id} w${l.weight}`)
+      .join(' · '),
+    hardware: `$${Math.round(v.capexRemaining / 1000)}k capex left`,
+    systems: `RMF interval ${v.config.rmfIntervalMin} min · IEAOPT per system`,
+    cf: v.config.cfs.map((c) => (c.failed ? `${c.lparId} DOWN` : `${c.lparId} ${Math.round(cfUsed[c.lparId] ?? 0)} GB used`)).join(' · ') + ` · ${v.config.cfStructures.filter((x) => x.lost).length} lost`,
+    dasd: `${v.config.dasd.lcus.length} LCUs · ${v.config.dasd.spareAliases} spare aliases`,
+    subsys: `${v.config.db2.length} Db2 · ${v.config.cics.length} CICS AORs · ${v.config.mq.length} MQ queue${v.config.mq.length === 1 ? '' : 's'}`,
+    routing: `${v.config.routing.length} workloads · ${v.config.jobClasses.length} job classes`,
+    projects: `${v.projects.filter((p) => p.done).length} done · ${pendingProjects} in progress · ${v.projects.length} available`,
+    ops: v.batch.abended.length ? `${v.batch.abended.length} abended job(s) to restart` : 'no abended jobs · event fixes',
+  };
   return (
     <>
       {game.pending && <PendingBanner v={v} game={game} />}
-      <div className="grid">
+      <div className="grid desk-top">
         <Board v={v} game={game} />
         <Basket desk={desk} basket={basket} setBasket={setBasket} game={game} />
         <Results game={game} />
-        <Section title="HMC: LPAR image profile" codex={['lpar-weights', 'logical-physical', 'hiperdispatch']}>
-          <Prsm desk={desk} />
-        </Section>
-        <Section title={`WLM policy: active ${v.policyName}`} codex={['service-class', 'importance', 'velocity', 'perf-index']} wide>
-          <Wlm v={v} game={game} rulesOpen={rulesOpen} toggleRules={() => setRulesOpen(!rulesOpen)} />
-        </Section>
-        {rulesOpen && <RulesView v={v} game={game} onClose={() => setRulesOpen(false)} />}
-        <Section title="WLM service policies and daily schedule" codex={['service-policies']}>
-          <PolicySchedule v={v} game={game} />
-        </Section>
-        <Section title="z/OS and coupling facilities" codex={['cf-sync-async', 'cf-failure']} wide>
-          <Systems desk={desk} />
-        </Section>
-        <Section title="DASD: HyperPAV aliases per LCU" codex={['hyperpav']}>
-          <Dasd desk={desk} />
-        </Section>
-        <Section title="Db2, MQ and CICS" codex={['db2-velocity', 'mq-queues', 'qr-tcb']}>
-          <Subsystems desk={desk} />
-        </Section>
-        <Section title="Routing and batch initiators">
-          <Routing desk={desk} />
-          <JobClasses desk={desk} />
-        </Section>
-        <Section title={`Hardware orders (capex $${Math.round(v.capexRemaining / 1000)}k left)`} codex={['ziip', 'cod']}>
-          <Hardware v={v} game={game} />
-        </Section>
-        <Section title="Projects (multi-day)">
-          <Projects v={v} game={game} />
-        </Section>
-        <Section title="Operations">
-          <Ops desk={desk} game={game} />
-        </Section>
+      </div>
+      <div className="subtabs" role="tablist" aria-label="Change Desk areas">
+        {AREAS.map((a) => (
+          <button key={a.id} role="tab" aria-selected={area === a.id} className={area === a.id ? 'active' : ''} onClick={() => setArea(a.id)} title={a.hint}>
+            {a.label} {counts[a.id]}
+          </button>
+        ))}
+      </div>
+      <div className="muted desk-hint">{AREAS.find((a) => a.id === area)?.hint}</div>
+      <div className="grid">
+        {area === 'wlm' && (
+          <>
+            <Section id="wlm" title={`WLM policy: active ${v.policyName}`} summary={summary.wlm} codex={['service-class', 'importance', 'velocity', 'perf-index']} wide>
+              <Wlm v={v} game={game} rulesOpen={rulesOpen} toggleRules={() => setRulesOpen(!rulesOpen)} />
+            </Section>
+            {rulesOpen && <RulesView v={v} game={game} onClose={() => setRulesOpen(false)} />}
+            <Section id="policies" title="WLM service policies and daily schedule" summary={summary.policies} codex={['service-policies']} wide>
+              <PolicySchedule v={v} game={game} />
+            </Section>
+          </>
+        )}
+        {area === 'lpars' && (
+          <>
+            <Section id="hmc" title="HMC: LPAR image profile" summary={summary.hmc} codex={['lpar-weights', 'logical-physical', 'hiperdispatch']}>
+              <Prsm desk={desk} />
+            </Section>
+            <Section id="hardware" title="Hardware orders" summary={summary.hardware} codex={['ziip', 'cod']}>
+              <Hardware v={v} game={game} />
+            </Section>
+          </>
+        )}
+        {area === 'systems' && (
+          <>
+            <Section id="cf" title="Coupling facilities and structures" summary={summary.cf} codex={['cf-sync-async', 'cf-failure']} wide>
+              <CouplingFacilities desk={desk} />
+            </Section>
+            <Section id="systems" title="z/OS options" summary={summary.systems}>
+              <Systems desk={desk} />
+            </Section>
+            <Section id="dasd" title="DASD: HyperPAV aliases per LCU" summary={summary.dasd} codex={['hyperpav']}>
+              <Dasd desk={desk} />
+            </Section>
+            <Section id="subsys" title="Db2, MQ and CICS" summary={summary.subsys} codex={['db2-velocity', 'mq-queues', 'qr-tcb']}>
+              <Subsystems desk={desk} />
+            </Section>
+          </>
+        )}
+        {area === 'ops' && (
+          <>
+            <Section id="ops" title="Operations" summary={summary.ops}>
+              <Ops desk={desk} game={game} />
+            </Section>
+            <Section id="routing" title="Routing and batch initiators" summary={summary.routing}>
+              <Routing desk={desk} />
+              <JobClasses desk={desk} />
+            </Section>
+          </>
+        )}
+        {area === 'projects' && (
+          <Section id="projects" title="Projects (multi-day)" summary={summary.projects} wide>
+            <Projects v={v} game={game} />
+          </Section>
+        )}
       </div>
     </>
   );
 }
 
-function Section({ title, codex = [], wide = false, children }: { title: string; codex?: string[]; wide?: boolean; children: ReactNode }) {
+type Area = 'wlm' | 'lpars' | 'systems' | 'ops' | 'projects';
+const AREAS: { id: Area; label: string; hint: string }[] = [
+  { id: 'wlm', label: 'WLM', hint: 'Service classes, goals, resource groups, classification rules, report classes and the daily policy schedule.' },
+  { id: 'lpars', label: 'LPARs & hardware', hint: 'PR/SM weights, logical CPs, capping and memory per LPAR; capacity and hardware orders.' },
+  { id: 'systems', label: 'Systems, CF & I/O', hint: 'z/OS options, coupling facilities and structures, DASD aliases, Db2, MQ and CICS settings.' },
+  { id: 'ops', label: 'Batch & operations', hint: 'Restart abended jobs and apply event fixes; workload routing and batch initiators.' },
+  { id: 'projects', label: 'Projects', hint: 'Multi-day improvements booked during the briefing.' },
+];
+
+/** A per-viewer UI preference kept in localStorage (falls back to the default if storage is blocked). */
+function useStored<T extends string>(key: string, initial: T): [T, (v: T) => void] {
+  const [val, setVal] = useState<T>(() => {
+    try {
+      return (localStorage.getItem(key) as T | null) ?? initial;
+    } catch {
+      return initial;
+    }
+  });
+  const set = (v: T) => {
+    setVal(v);
+    try {
+      localStorage.setItem(key, v);
+    } catch {
+      // Storage blocked: the choice just isn't remembered.
+    }
+  };
+  return [val, set];
+}
+
+const CLOSED_KEY = 'goalmode.desk.closed';
+const loadClosed = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(CLOSED_KEY) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+
+function Section({ id, title, summary, codex = [], wide = false, children }: { id: string; title: string; summary?: string; codex?: string[]; wide?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(() => !loadClosed().includes(id));
   return (
-    <details className="panel section" open style={wide ? { gridColumn: '1 / -1' } : undefined}>
+    <details
+      className="panel section"
+      open={open}
+      style={wide ? { gridColumn: '1 / -1' } : undefined}
+      onToggle={(e) => {
+        const o = (e.currentTarget as HTMLDetailsElement).open;
+        setOpen(o);
+        try {
+          const closed = loadClosed().filter((x) => x !== id);
+          localStorage.setItem(CLOSED_KEY, JSON.stringify(o ? closed : [...closed, id]));
+        } catch {
+          // Storage blocked: fine.
+        }
+      }}
+    >
       <summary>
         <h3>
           {title}
           <CodexHints ids={codex} />
         </h3>
+        {summary && <span className="section-summary">{summary}</span>}
       </summary>
       {children}
     </details>
@@ -161,7 +271,7 @@ function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
   const days = [...new Set(planned.map((c) => c.activateDay))].sort((a, b) => a - b);
   const codActive = done.filter((c) => c.status === 'APPLIED' && c.revertDay !== null && c.revertDay > v.day);
   return (
-    <div className="panel" style={{ gridColumn: '1 / -1' }}>
+    <div className="panel">
       <h3>Change board</h3>
       <div className="muted">
         {live
@@ -484,9 +594,12 @@ function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHand
   return (
     <>
       {game.pending && <div className="tag warn">editing pending {game.pending.policyName} (not active)</div>}
+      <h4>Service classes</h4>
       <ServiceClasses v={v} game={game} />
+      <h4>Policy options</h4>
       <IoPriorityToggle v={v} game={game} />
       <CicsModeToggle v={v} game={game} />
+      <h4>Classification</h4>
       <div className="form">
         <button aria-expanded={rulesOpen} aria-controls="classification-rules" className={rulesOpen ? 'active' : ''} onClick={toggleRules}>
           {rulesOpen ? '▾ Hide classification rules' : '▸ Classification rules'}
@@ -498,17 +611,11 @@ function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHand
           )}
         </span>
       </div>
-      <div className="help">Where work goes: rules per subsystem, first match wins. All edits go to a pending policy until you install it.</div>
+      <div className="help">Where work goes: rules per subsystem, first match wins. Test a piece of work below to see which rule catches it.</div>
       <ClassifyBench game={game} />
+      <h4>Install</h4>
+      <div className="help">All edits go to a pending policy until you install and activate it.</div>
       <div className="form">
-        <button
-          onClick={() => {
-            game.send({ type: 'GET_POLICY' });
-            setShowJson(!showJson);
-          }}
-        >
-          {showJson ? 'Hide' : 'Review'} policy JSON
-        </button>
         <button
           className="primary"
           disabled={(!game.pending && !jsonEdited) || !p.ok}
@@ -527,6 +634,14 @@ function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHand
             Discard
           </button>
         )}
+        <button
+          onClick={() => {
+            game.send({ type: 'GET_POLICY' });
+            setShowJson(!showJson);
+          }}
+        >
+          {showJson ? 'Hide' : 'Review'} policy JSON
+        </button>
       </div>
       {showJson && <textarea aria-label="Policy JSON" rows={14} value={jsonEdited ? json : game.policy} onChange={(e) => setJson(e.target.value)} />}
     </>
@@ -668,7 +783,14 @@ function Systems({ desk }: { desk: Desk }) {
         </table>
       </div>
       <div className="help">BLWLINTHD: seconds a starved unit of work waits before blocked-workload promotion. IIPHONORPRIORITY=YES lets zIIP work overflow to CPs.</div>
-      {cfg.cfs.map((c) => (
+    </>
+  );
+}
+
+function CouplingFacilities({ desk }: { desk: Desk }) {
+  return (
+    <>
+      {desk.cfg.cfs.map((c) => (
         <CfRow key={`${c.lparId}:${c.thinInterrupts}`} desk={desk} lparId={c.lparId} />
       ))}
       <div className="help">Thin interrupts let a CF on shared engines wake on demand instead of waiting for a dispatch interval.</div>

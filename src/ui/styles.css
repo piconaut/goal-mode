@@ -192,3 +192,11 @@ a { color: var(--accent); }
 .sc-table tbody tr:hover td { background: var(--panel-2); }
 .sc-editor { border: 1px solid var(--accent); border-radius: 8px; padding: 8px 10px; margin: 6px 0 10px; }
 .sc-editor h4, .panel h4 { margin: 10px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); }
+.subtabs { display: flex; gap: 4px; flex-wrap: wrap; margin: 14px 0 4px; border-bottom: 1px solid var(--border); }
+.subtabs button { border: 1px solid transparent; border-bottom: none; border-radius: 8px 8px 0 0; background: transparent; padding: 6px 12px; margin-bottom: -1px; }
+.subtabs button.active { background: var(--panel); border-color: var(--border); color: var(--text); font-weight: 600; }
+.desk-hint { font-size: 12px; margin: 6px 0 10px; }
+.desk-top { margin-bottom: 4px; }
+.section-summary { margin-left: 10px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+details.section[open] > summary { margin-bottom: 8px; }
+@media (min-width: 1000px) { .desk-top { grid-template-columns: 2fr 1.3fr 1fr; } }

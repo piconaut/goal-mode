@@ -133,6 +133,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   (Briefing / Day N review / Day N report card) opens and closes the overlay in any phase, including mid-day
   for the last report card; ✕ and Escape close it; the overlay stays mounted while hidden so half-filled RCA
   forms survive. Chromium: review → close → Reports → reopen → Esc → draft → live → report card
+- [x] **Change Desk polish** (requested 2026-10-20): change board, basket and results in one strip at the top;
+  everything else in five sub-tabs (WLM · LPARs & hardware · Systems, CF & I/O · Batch & operations · Projects)
+  with a one-line hint and badges (pending policy, abended jobs, projects in progress); every section collapses
+  and shows a one-line summary of its state; the WLM section is split into Service classes / Policy options /
+  Classification / Install; z/OS options and coupling facilities are separate sections. Tab and collapsed
+  sections remembered per browser. Chromium at 1400 and 390 px, no horizontal scroll
 - [x] **Saves keep Change Desk work** (requested 2026-10-20): the run is saved ~0.4 s after any action outside
   the live day (planned changes, purchases, project hours…), not only on phase changes; the change basket
   (mirrored to the worker) and the pending WLM policy are saved alongside (`DeskState` in worker/storage.ts) and
@@ -593,6 +599,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (user request):** Change Desk polish (sub-tabs, summaries, collapsible sections).
 - **2026-10-20 (loop 36, restarted by the watchdog):** CICS region management; M7 sim leftovers done. 219 tests.
 - **2026-10-20 (loop 35):** CF failure, structure rebuild, duplexing. 217 tests.
 - **2026-10-20 (user requests):** WLMGL header alignment fix; saves keep planned changes, basket and pending policy. 214 tests.
