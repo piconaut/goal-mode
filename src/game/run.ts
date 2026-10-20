@@ -19,7 +19,7 @@ import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
-import { difficultyOf, scenarioFor } from './difficulty';
+import { difficultyOf, scaleEventCommands, scenarioFor } from './difficulty';
 import { morningHints } from './hints';
 import { HINT_SENDER } from '../content/hints';
 import { step } from '../sim/core/step';
@@ -376,7 +376,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     for (const e of events) {
       const def = content.events.find((d) => d.id === e.defId);
       if (!e.started && e.startTick <= tick) {
-        cmds.push(...(def?.begin ?? []));
+        cmds.push(...scaleEventCommands(def?.begin ?? [], difficultyOf(r.difficulty).eventSeverityMult));
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
         r = logLine(r, `EVENT start: ${e.name}`);
       }

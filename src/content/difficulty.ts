@@ -11,6 +11,8 @@ export interface DifficultyDef {
   growthMult: number;
   /** Scales the expected number of event cards per day. */
   eventRateMult: number;
+  /** Scales how hard event cards hit: the excess of each multiplier over 1, lock boosts and extra I/O. */
+  eventSeverityMult: number;
   /** Scales the monthly opex budget and the quarter's capex. */
   opexBudgetMult: number;
   capexMult: number;
@@ -28,6 +30,7 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
     description: 'Slower growth, fewer events, more budget. Morning hints point at the report to read.',
     growthMult: 0.6,
     eventRateMult: 0.6,
+    eventSeverityMult: 0.7,
     opexBudgetMult: 1.15,
     capexMult: 1.3,
     startTrust: 75,
@@ -40,6 +43,7 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
     description: 'The intended balance. Occasional vague hints.',
     growthMult: 1,
     eventRateMult: 1,
+    eventSeverityMult: 1,
     opexBudgetMult: 1,
     capexMult: 1,
     startTrust: 70,
@@ -52,6 +56,7 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
     description: 'Faster growth, more events, tighter budgets. No hints.',
     growthMult: 1.3,
     eventRateMult: 1.3,
+    eventSeverityMult: 1.25,
     opexBudgetMult: 0.92,
     capexMult: 0.85,
     startTrust: 65,
@@ -64,6 +69,7 @@ export const DIFFICULTIES: Record<DifficultyId, DifficultyDef> = {
     description: 'Hard, and the clock cannot be paused while the day is live.',
     growthMult: 1.3,
     eventRateMult: 1.3,
+    eventSeverityMult: 1.25,
     opexBudgetMult: 0.92,
     capexMult: 0.85,
     startTrust: 65,

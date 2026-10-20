@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { SCENARIOS } from '../../src/content/scenarios';
-import { scenarioFor } from '../../src/game/difficulty';
+import { scaleEventCommands, scenarioFor } from '../../src/game/difficulty';
+import type { Command } from '../../src/sim/core/commands';
 import { drawEvents, newRun } from '../../src/game/run';
 
 const base = SCENARIOS.midwest!;
@@ -50,5 +51,29 @@ describe('difficulty presets', () => {
     const [s, n, h] = [count('STORY'), count('NORMAL'), count('HARD')];
     expect(s).toBeLessThan(n);
     expect(h).toBeGreaterThan(n);
+  });
+});
+
+describe('scaleEventCommands', () => {
+  it('leaves Normal untouched and scales multipliers by their excess over 1', () => {
+    const cmds: Command[] = [
+      { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 3 },
+      { kind: 'SET_CF', lparId: 'CF01', degrade: 6 },
+      { kind: 'SET_LOCK_BOOST', value: 4 },
+      { kind: 'SET_LCU', lcuId: '21', extraIops: { SEQ: 1000 } },
+      { kind: 'ABEND_JOB', critical: true },
+    ];
+    expect(scaleEventCommands(cmds, 1)).toEqual(cmds);
+    const story = scaleEventCommands(cmds, 0.5);
+    expect(story[0]).toMatchObject({ value: 2 });
+    expect(story[1]).toMatchObject({ degrade: 3.5 });
+    expect(story[2]).toMatchObject({ value: 2 });
+    expect(story[3]).toMatchObject({ extraIops: { SEQ: 500 } });
+    expect(story[4]).toEqual(cmds[4]);
+  });
+
+  it('keeps a shrinking multiplier positive when severity rises', () => {
+    const [c] = scaleEventCommands([{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'MOBILE', value: 0.4 }], 2);
+    expect(c).toMatchObject({ value: 0.05 });
   });
 });

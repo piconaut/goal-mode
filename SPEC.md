@@ -934,7 +934,9 @@ workload and batch growth rates are scaled; Normal is the untouched balance base
 | Hard | ×1.3 | ×1.3 | ×0.92 | ×0.85 | 65 | yes | none |
 | Ironman | as Hard | | | | | no (alerts slow to ½× instead) | none |
 
-Not yet varied per difficulty: event severity tiers, constraint frequency and the starting flaw list.
+Event severity scales each card's magnitudes (the excess of a multiplier over 1, lock boosts, extra I/O):
+Story 0.7×, Normal 1×, Hard/Ironman 1.25×. Not yet varied per difficulty: constraint frequency and the
+starting flaw list.
 
 **Morning hints (lower difficulties):** on Story (and optionally Normal) the briefing inbox gets a
 nudge or two based on what went wrong the previous day: e.g. "MOBILE missed its SLA while batch
