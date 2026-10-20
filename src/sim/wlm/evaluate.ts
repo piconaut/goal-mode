@@ -196,6 +196,8 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   // equivalent to dispatching per slice and much cheaper.
   const sliceCp: number[] = [];
   const sliceZi: number[] = [];
+  /** CP demand withheld by a resource group maximum or discretionary goal management cap. */
+  const sliceCut: number[] = [];
   const agg: Record<string, { cp: number; zi: number; overflow: boolean }> = {};
   const order: string[] = [];
   slices.forEach((s) => {
@@ -203,8 +205,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const tot = s.cpEngines + s.ziipEngines;
     const blRate = bl / TICK_SEC;
     const cpShare = tot > 0 ? s.cpEngines / tot : 1;
-    let cp = s.cpEngines + blRate * cpShare;
-    if (input.capOf) cp = Math.min(cp, input.capOf(s));
+    const uncapped = s.cpEngines + blRate * cpShare;
+    const cp = input.capOf ? Math.min(uncapped, input.capOf(s)) : uncapped;
+    sliceCut.push(uncapped - cp);
     const zi = s.ziipEngines + blRate * (1 - cpShare);
     sliceCp.push(cp);
     sliceZi.push(zi);
@@ -321,7 +324,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     // on the cap rather than on priority.
     const capFrac = Math.min(1, 4 * (input.cappedFrac ?? 0));
     const unmetCp = r.cpUnmet * (1 - capFrac);
-    const capDelay = r.cpUnmet * capFrac;
+    // Work held back by a WLM cap waits on the cap and stays queued.
+    const cut = sliceCut[i]!;
+    const capDelay = r.cpUnmet * capFrac + cut;
     const unmetZiip = r.ziipUnmet;
 
     const io = input.io[s.ioClass];
@@ -355,7 +360,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     }
 
     // Transactions: backlog of unserved work and Little's-law wait.
-    const wantSec = want * TICK_SEC;
+    const wantSec = (want + cut) * TICK_SEC;
     const gotSec = got * TICK_SEC;
     let newBacklog = Math.max(0, wantSec - gotSec);
     const gotRate = Math.max(got, 1e-9);

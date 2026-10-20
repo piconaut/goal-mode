@@ -27,9 +27,11 @@ import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { evaluateLpar, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
+import { DISC_GOAL_MGMT } from '../../content/wlm/tuning';
 import {
   decayInto,
   emptyAcc,
+  ACC_DECAY,
   accPi,
   goalInfo,
   initialDp,
@@ -402,7 +404,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       io,
       pagingFrac: pagingFrac[l.id] ?? 0,
       storageCritical,
-      capOf: resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)),
+      capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
       ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)),
       promoted,
       promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
@@ -741,6 +743,39 @@ function resolveRgCapEngines(
   if (type === 3) return max / 100;
   if (type === 2) return ((cpRt?.entitlementEngines ?? 0) * max) / 100;
   return max / suPerSec / Math.max(1, systemsWithMembers);
+}
+
+const combineCaps = (a: ((s: SliceSpec) => number) | undefined, b: ((s: SliceSpec) => number) | undefined) =>
+  a && b ? (s: SliceSpec) => Math.min(a(s), b(s)) : (a ?? b);
+
+/** Discretionary goal management (SG24-7621 §4.22): while discretionary work on this image is
+ * waiting, over-achieving periods with loose goals are capped so it gets cycles. Only if not in a
+ * resource group, not a small consumer, velocity ≤ 30 or response goal > 1 min, and PI < 0.7.
+ * APPROX: the "not a recent receiver or donor" condition is not modelled. */
+export function discretionaryCaps(def: SimState['wlm']['definition'], slices: readonly SliceSpec[], scps: readonly ScpState[]): ((s: SliceSpec) => number) | undefined {
+  const D = DISC_GOAL_MGMT;
+  const byKey: Record<string, ScpState> = {};
+  for (const st of scps) byKey[st.scKey] = st;
+  const discWaiting = scps.some((st) => goalInfo(def, st.scKey)?.goal.kind === 'DISC' && st.acc.delay > st.acc.using);
+  if (!discWaiting) return undefined;
+  const capped = new Set<string>();
+  for (const st of scps) {
+    const g = goalInfo(def, st.scKey);
+    if (!g || g.resourceGroup) continue;
+    const goal = g.goal;
+    const loose = goal.kind === 'VEL' ? goal.velocity <= D.maxVelocity : goal.kind === 'AVG' || goal.kind === 'PCT' ? goal.rtSec > D.minRtSec : false;
+    if (!loose) continue;
+    const samples = st.acc.using + st.acc.delay;
+    // Decayed sum → steady-state engines.
+    const engines = st.acc.cpuEngines * (1 - ACC_DECAY);
+    if (engines < D.minEngines) continue;
+    const pi = accPi(goal, st.acc);
+    if (pi === null) continue;
+    const wasCapped = st.acc.delayCap > 0.05 * samples;
+    if (pi < D.piBelow || (wasCapped && pi < D.stayCappedPiBelow)) capped.add(st.scKey);
+  }
+  if (capped.size === 0) return undefined;
+  return (s) => (capped.has(s.scKey) ? s.cpEngines * D.capFrac : Infinity);
 }
 
 /** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly

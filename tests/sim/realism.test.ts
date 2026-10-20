@@ -2,7 +2,7 @@
 
 import { MIDWEST } from '../../src/content/scenarios';
 import { initState } from '../../src/sim/core/init';
-import { rgMin, step } from '../../src/sim/core/step';
+import { discretionaryCaps, rgMin, step } from '../../src/sim/core/step';
 import { emptyAcc } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
@@ -214,5 +214,30 @@ describe('resource group minimum', () => {
     expect(rgMin(d, sl, st(9, 1), undefined, 1000)).toEqual({});
     expect(rgMin(d, sl, st(1, 9), undefined, 1000).minOf).toEqual({ 'STCMED#1': 1.5 });
     expect(rgMin(BASEPOL, sl, st(1, 9), undefined, 1000)).toEqual({});
+  });
+});
+
+describe('WLM caps (resource group maximum, discretionary goal management)', () => {
+  it('capped transaction work queues and shows as CAP delay instead of vanishing', () => {
+    const slices = [txn({ key: 'T', scKey: 'T#1', cpEngines: 1 })];
+    const base = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0, dpOf: () => 200 };
+    const free = evaluateLpar(base).slices[0]!;
+    const capped = evaluateLpar({ ...base, capOf: () => 0.6 }).slices[0]!;
+    expect(capped.cpGranted).toBeCloseTo(0.6, 2);
+    expect(capped.delayCap).toBeCloseTo(0.4, 2);
+    expect(capped.newBacklog).toBeGreaterThan(free.newBacklog + 3);
+  });
+
+  it('caps over-achieving loose-goal work only while discretionary work waits', () => {
+    const acc = (using: number, delay: number, cpuEngines: number) => ({ ...emptyAcc(), using, delay, cpuEngines });
+    const sl = [server({ key: 'TSO2', scKey: 'TSO#2', cpEngines: 1 }), server({ key: 'ONL', scKey: 'ONLHI#1', cpEngines: 1 })];
+    const tso2 = { scKey: 'TSO#2', dp: 200, starvedSec: 0, acc: acc(9, 1, 6) }; // velocity 90 vs goal 20: PI 0.22
+    const disc = (waiting: boolean) => ({ scKey: 'DEVBAT#1', dp: 150, starvedSec: 0, acc: waiting ? acc(1, 9, 1) : acc(9, 1, 1) });
+    expect(discretionaryCaps(BASEPOL, sl, [tso2, disc(false)])).toBeUndefined();
+    const cap = discretionaryCaps(BASEPOL, sl, [tso2, disc(true), { scKey: 'ONLHI#1', dp: 240, starvedSec: 0, acc: acc(9, 1, 6) }])!;
+    expect(cap(sl[0]!)).toBeCloseTo(0.8);
+    expect(cap(sl[1]!)).toBe(Infinity); // tight response-time goal: never capped
+    // Small consumers are left alone.
+    expect(discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: acc(9, 1, 0.1) }, disc(true)])).toBeUndefined();
   });
 });
