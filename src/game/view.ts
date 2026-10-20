@@ -99,6 +99,8 @@ export interface ConfigView {
   cpcMemoryGb: number;
   unassignedMemoryGb: number;
   db2: Db2MemberConfig[];
+  /** MQ queues of message-driven workloads (DISPLAY QLOCAL CURDEPTH/MAXDEPTH). */
+  mq: { workloadId: string; queue: string; maxDepth: number; depthByLpar: Record<string, number> }[];
   cics: CicsRegionConfig[];
   jobClasses: JobClassConfig[];
   cfs: CfConfig[];
@@ -355,6 +357,14 @@ function configView(run: RunState, scenario: Scenario): ConfigView {
     cpcMemoryGb: cpc.memoryGb,
     unassignedMemoryGb: cpc.memoryGb - assigned,
     db2: c.db2,
+    mq: allWorkloads(scenario, run)
+      .filter((w) => w.mq)
+      .map((w) => ({
+        workloadId: w.id,
+        queue: w.mq!.queue,
+        maxDepth: run.sim.mqMaxDepth?.[w.id] ?? w.mq!.maxDepthMsgs,
+        depthByLpar: run.sim.last.workloads.find((x) => x.id === w.id)?.queueDepth ?? {},
+      })),
     cics: c.cics,
     jobClasses: c.jobClasses,
     cfs: c.cfs,

@@ -58,7 +58,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         <Section title="DASD: HyperPAV aliases per LCU" codex={['hyperpav']}>
           <Dasd desk={desk} />
         </Section>
-        <Section title="Db2 and CICS" codex={['db2-velocity', 'qr-tcb']}>
+        <Section title="Db2, MQ and CICS" codex={['db2-velocity', 'mq-queues', 'qr-tcb']}>
           <Subsystems desk={desk} />
         </Section>
         <Section title="Routing and batch initiators">
@@ -901,6 +901,15 @@ function Subsystems({ desk }: { desk: Desk }) {
         <Db2Row key={`${d.ssid}:${d.bufferPoolGb}:${d.maxDbat}`} desk={desk} ssid={d.ssid} />
       ))}
       <div className="help">Bigger buffer pools raise the hit ratio (fewer sync I/Os) but use LPAR memory. MAXDBAT caps concurrent DDF threads; above it requests queue.</div>
+      {cfg.mq.map((q) => (
+        <MqRow key={`${q.workloadId}:${q.maxDepth}`} desk={desk} workloadId={q.workloadId} />
+      ))}
+      {cfg.mq.length > 0 && (
+        <div className="help">
+          Messages wait on the queue instead of timing out, so a slow consumer shows up as queue depth and end-to-end latency. Past MAXDEPTH, puts fail (MQRC 2053) and the
+          sender retries. A deeper queue rides out longer bursts but holds more messages in memory.
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
         {cfg.cics.map((r) => (
           <CicsRow key={`${r.name}:${r.maxTasks}:${r.qrFrac}`} desk={desk} name={r.name} />
@@ -909,6 +918,25 @@ function Subsystems({ desk }: { desk: Desk }) {
       <AddAor desk={desk} lpars={prodLpars} />
       <div className="help">MXT limits concurrent tasks per region. The QR share is CPU that must run on the single QR TCB (non-threadsafe code), so one region tops out near one engine.</div>
     </>
+  );
+}
+
+function MqRow({ desk, workloadId }: { desk: Desk; workloadId: string }) {
+  const q = desk.cfg.mq.find((x) => x.workloadId === workloadId)!;
+  const [depth, setDepth] = useState(String(q.maxDepth));
+  const n = num(depth);
+  return (
+    <ChangeForm
+      desk={desk}
+      label={`ALTER QLOCAL(${q.queue}) MAXDEPTH(${depth})`}
+      commands={[{ kind: 'SET_MQ', workloadId, maxDepthMsgs: n }]}
+      error={Number.isInteger(n) && n >= 1 && n <= 999_999_999 ? null : 'MAXDEPTH is a whole number 1–999999999'}
+    >
+      <label>
+        <b>{q.queue}</b> <span className="muted">({workloadId})</span> MAXDEPTH <input value={depth} onChange={(e) => setDepth(e.target.value)} size={8} inputMode="numeric" />
+      </label>
+      <Now>{q.maxDepth.toLocaleString()}</Now>
+    </ChangeForm>
   );
 }
 

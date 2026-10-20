@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7 sim leftovers (MPL/swap, MQ queue depth, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
+- **Next up:** M7 sim leftovers (MPL/swap, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (205 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (206 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -382,7 +382,13 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   ordered by DP (non-preemptive priority M/M/1 split, renormalised so the mean is unchanged; `iosqByPriority`
   in evaluate.ts); NO: FIFO IOSQ and I/O samples left out of velocity. Change Desk WLM checkbox
   (`SET_IO_PRIORITY`), Codex `io-priority`. Bench hash → `fae244a217b81ced`; bots seed 42 unchanged
-- [ ] MPL/swap delay; MQ queue-depth model for PAYMQ
+- [x] MQ queue-depth model for PAYMQ (loop 33): workload `mq` block (queue, MAXDEPTH, message size); messages
+  wait on the queue (no timeout), puts past MAXDEPTH fail (MQRC 2053) and are retried; depth per queue manager
+  in `WorkloadTick.queueDepth`; deep queues add to LPAR memory demand; `SET_MQ` (ALTER QLOCAL MAXDEPTH, 0.25 h)
+  in the Change Desk "Db2, MQ and CICS" section; Console shows DIS QL CURDEPTH/MAXDEPTH. Codex `mq-queues`.
+  Normal day: peak depth ~75, no failures. Bench hash → `34712383b172aea8`. Bots seed 42: do-nothing day 15;
+  textbook day 29 (Retail trust; was day 28 batch), score 1836
+- [ ] MPL/swap delay
 - [ ] CF structure rebuild on CF failure (needs white space), duplexing cost
 - [ ] CICS REGION-mode management and the "free ride"
 
@@ -393,7 +399,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 **M8.1 Performance (prerequisite for bots and what-if)**
 - [ ] Target ≤ 2 s per headless day (now ~7–8 s): incremental dispatch in policy-adjust projections, skip receivers that failed recently, precomputed log-normal bucket tables, avoid per-tick object churn in batch/RMF accumulators (profile first; keep determinism)
 - [x] Benchmark script `npm run bench [-- --days N --seed S --hash]` (`tools/bench.ts`); `--hash` prints a
-  SHA-256 of the end state so optimisations can prove they are behaviour-neutral (seed 42, 1 day: `fae244a217b81ced` since loop 32)
+  SHA-256 of the end state so optimisations can prove they are behaviour-neutral (seed 42, 1 day: `34712383b172aea8` since loop 33)
 - Loop 21 profile (esbuild bundle + `--cpu-prof`, 1 day ≈ 8.5 s, 1.0 ms/tick): flat. Inclusive: evaluateLpar 27%
   (of which policy-adjust projections 7%), step's own loops ~20%, dispatch 7%, RMF accumulateTick 5%, GC 7%,
   log-normal buckets 5%. Safe wins applied (hoisted log-normal invariants + early exit, bucket `map`→loops,
@@ -542,6 +548,7 @@ separate feature branch (e.g. `feature/simplified-mode`), not on `main`.**
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 33, /loop):** MQ queue depth for PAYMQ. 206 tests.
 - **2026-10-20 (user requests):** ask around in the Inbox (incl. job classes); basket persists across tabs; report card toggle. 205 tests.
 - **2026-10-20 (loop 32, /loop):** I/O priority management; Codex hint cards kept on screen (user nit). 203 tests.
 - **2026-10-20 (loop 31, /loop):** discretionary goal management; WLM-cap backlog fix. 201 tests.

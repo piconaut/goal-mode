@@ -23,6 +23,7 @@ const HOURS: Partial<Record<Command['kind'], number>> = {
   // HCD change + dynamic activate to move HyperPAV aliases between LCUs.
   SET_LCU: 1,
   SET_ROUTING: 0.5,
+  SET_MQ: 0.25,
   RESTART_JOB: 0.5,
 };
 

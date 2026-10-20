@@ -95,6 +95,14 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'mq-queues',
+    title: 'MQ queue depth and MAXDEPTH',
+    category: 'Subsystems',
+    body: 'Message-driven work does not time out like an online request: messages wait on a queue until a consumer (here the CICS bridge) gets them. A slow consumer therefore shows up as rising queue depth (DISPLAY QLOCAL CURDEPTH) and end-to-end latency rather than failed transactions. When a queue reaches its MAXDEPTH, further puts fail with reason code 2053 (MQRC_Q_FULL) and senders retry. Deep queues also hold more messages in buffer pools, page sets and memory.',
+    sources: [{ label: 'IBM MQ documentation: ALTER QLOCAL MAXDEPTH; reason code 2053 (MQRC_Q_FULL)' }],
+    discover: { start: true },
+  },
+  {
     id: 'io-priority',
     title: 'I/O priority management',
     category: 'I/O & CF',

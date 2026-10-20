@@ -242,6 +242,22 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
             ))}
           </tbody>
         </table>
+        {v.config.mq.length > 0 && (
+          <div className="muted" style={{ fontSize: 12, marginTop: 6, fontFamily: 'var(--mono)' }}>
+            {v.config.mq.map((q) => (
+              <div key={q.workloadId}>
+                DIS QL({q.queue}) CURDEPTH{' '}
+                {Object.keys(q.depthByLpar).length === 0
+                  ? '0'
+                  : Object.keys(q.depthByLpar)
+                      .sort()
+                      .map((l) => `${l} ${Math.round(q.depthByLpar[l]!).toLocaleString()}`)
+                      .join(' · ')}{' '}
+                / MAXDEPTH {q.maxDepth.toLocaleString()} each
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="panel">

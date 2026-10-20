@@ -76,6 +76,10 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
     }
     case 'SET_RMF_INTERVAL':
       return `RMF interval ${cfg.rmfIntervalMin} → ${cmd.minutes} min`;
+    case 'SET_MQ': {
+      const q = cfg.mq.find((x) => x.workloadId === cmd.workloadId);
+      return `ALTER QLOCAL(${q?.queue ?? cmd.workloadId}) MAXDEPTH ${q?.maxDepth ?? '?'} → ${cmd.maxDepthMsgs}`;
+    }
     case 'SET_DB2': {
       const d = cfg.db2.find((x) => x.ssid === cmd.ssid);
       const parts: string[] = [];
@@ -160,6 +164,7 @@ export function commandTarget(cmd: Command): string {
     case 'SET_JOB_CLASS':
       return `${cmd.kind}:${cmd.jobClass}`;
     case 'SET_ROUTING':
+    case 'SET_MQ':
       return `${cmd.kind}:${cmd.workloadId}`;
     case 'SET_RMF_INTERVAL':
       return cmd.kind;
