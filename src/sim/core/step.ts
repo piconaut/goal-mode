@@ -30,6 +30,7 @@ import { emptyBuckets } from '../wlm/goals';
 import {
   decayInto,
   emptyAcc,
+  accPi,
   goalInfo,
   initialDp,
   sysplexPis,
@@ -402,6 +403,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       pagingFrac: pagingFrac[l.id] ?? 0,
       storageCritical,
       capOf: resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)),
+      ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)),
       promoted,
       promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
     };
@@ -739,6 +741,40 @@ function resolveRgCapEngines(
   if (type === 3) return max / 100;
   if (type === 2) return ((cpRt?.entitlementEngines ?? 0) * max) / 100;
   return max / suPerSec / Math.max(1, systemsWithMembers);
+}
+
+/** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly
+ * waiting (APPROX: WLM's exact test for discretionary members is not documented here). */
+function missingGoal(def: SimState['wlm']['definition'], st: ScpState | undefined, scKey: string): boolean {
+  if (!st) return false;
+  const g = goalInfo(def, scKey)?.goal;
+  if (!g) return false;
+  if (g.kind === 'DISC') return st.acc.delay > st.acc.using;
+  const pi = accPi(g, st.acc);
+  return pi !== null && pi > 1;
+}
+
+/** Resource group minimums in force: per-period CP engines, only while the group misses goals. */
+export function rgMin(
+  def: SimState['wlm']['definition'],
+  slices: readonly SliceSpec[],
+  scps: readonly ScpState[],
+  cpRt: LparPoolRuntime | undefined,
+  suPerSec: number,
+): { minOf?: Record<string, number> } {
+  const groups = def.resourceGroups.filter((g) => g.min !== null && g.min > 0);
+  if (groups.length === 0) return {};
+  const minOf: Record<string, number> = {};
+  for (const g of groups) {
+    const demand: Record<string, number> = {};
+    for (const s of slices) if (goalInfo(def, s.scKey)?.resourceGroup === g.id) demand[s.scKey] = (demand[s.scKey] ?? 0) + s.cpEngines;
+    const keys = Object.keys(demand).sort();
+    const total = keys.reduce((a, k) => a + demand[k]!, 0);
+    if (total <= 0 || !keys.some((k) => missingGoal(def, scps.find((x) => x.scKey === k), k))) continue;
+    const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, 1);
+    for (const k of keys) minOf[k] = (min * demand[k]!) / total;
+  }
+  return Object.keys(minOf).length > 0 ? { minOf } : {};
 }
 
 function resourceGroupCaps(

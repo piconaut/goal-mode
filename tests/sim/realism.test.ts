@@ -2,7 +2,8 @@
 
 import { MIDWEST } from '../../src/content/scenarios';
 import { initState } from '../../src/sim/core/init';
-import { step } from '../../src/sim/core/step';
+import { rgMin, step } from '../../src/sim/core/step';
+import { emptyAcc } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
@@ -190,4 +191,28 @@ describe('report classes (F6)', () => {
     else expect(adhoc.pi).not.toBeNull();
     expect(renderWlmSummary(rc.rmf.intervals.at(-1)!)).toMatch(/REPORT CLASSES[\s\S]*RMOBILE/);
   }, 60_000);
+});
+
+describe('resource group minimum', () => {
+  const slices = [txn({ key: 'HI', scKey: 'HI#1', cpEngines: 4 }), txn({ key: 'LO', scKey: 'LO#1', cpEngines: 2 })];
+  const base = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0, dpOf: (k: string) => (k === 'HI#1' ? 240 : 200) };
+  it('guarantees the minimum ahead of more important work', () => {
+    const without = evaluateLpar(base);
+    const withMin = evaluateLpar({ ...base, minOf: { 'LO#1': 1.5 } });
+    expect(without.slices[1]!.cpGranted).toBeLessThan(0.2);
+    expect(withMin.slices[1]!.cpGranted).toBeCloseTo(1.5, 1);
+    expect(withMin.slices[0]!.cpGranted).toBeLessThan(without.slices[0]!.cpGranted - 1);
+  });
+
+  it('is honoured only while the group misses its goals', () => {
+    const d = structuredClone(BASEPOL);
+    d.resourceGroups = [{ id: 'RGSTC', type: 3, min: 150, max: null }];
+    d.classes.find((c) => c.id === 'STCMED')!.resourceGroup = 'RGSTC';
+    const sl = [server({ key: 'DBM1', scKey: 'STCMED#1', cpEngines: 0.6 }), server({ key: 'X', scKey: 'STCLO#1', cpEngines: 1 })];
+    const st = (using: number, delay: number) => [{ scKey: 'STCMED#1', dp: 230, starvedSec: 0, acc: { ...emptyAcc(), using, delay } }];
+    // Velocity goal 40: 90% using is happy, 10% using is missing.
+    expect(rgMin(d, sl, st(9, 1), undefined, 1000)).toEqual({});
+    expect(rgMin(d, sl, st(1, 9), undefined, 1000).minOf).toEqual({ 'STCMED#1': 1.5 });
+    expect(rgMin(BASEPOL, sl, st(1, 9), undefined, 1000)).toEqual({});
+  });
 });

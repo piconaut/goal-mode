@@ -85,6 +85,8 @@ export interface LparEvalInput {
   dpOf: (scKey: string) => number;
   /** Optional per-slice CP cap (resource group maximums), engines. */
   capOf?: (slice: SliceSpec) => number;
+  /** Resource group minimums in force this tick: CP engines per service-class period. */
+  minOf?: Readonly<Record<string, number>>;
   io: Record<IoClass, IoService>;
   /** Paging delay fraction on this image (storage-critical classes are exempt). */
   pagingFrac: number;
@@ -183,6 +185,9 @@ export interface LparEvalResult {
   roleHealth: Record<string, { health: number; queueRatio: number }>;
 }
 
+/** Above every goal-managed period, below SYSTEM/SYSSTC and blocked-workload promotion. */
+const RG_MIN_DP = 252;
+
 export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const { slices, backlog } = input;
 
@@ -235,6 +240,21 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     }
   }
 
+  // Resource group minimum: while the group misses goals, WLM guarantees it up to the minimum
+  // even at the expense of more important work (SG24-7621 §4.17).
+  const minOf = input.minOf;
+  if (minOf) {
+    for (const d of [...demands]) {
+      const m = minOf[d.id];
+      if (!m || d.id.endsWith('~promo')) continue;
+      const lift = Math.min(m, d.cpEngines);
+      if (lift > 0) {
+        d.cpEngines -= lift;
+        demands.push({ id: `${d.id}~rgmin`, dp: RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
+      }
+    }
+  }
+
   const dres = dispatch({
     cpCapacityEngines: input.cpCapacityEngines,
     cpServers: input.cpServers,
@@ -262,14 +282,15 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const a = agg[s.scKey]!;
     const r = byId[s.scKey]!;
     const promo = anyPromo ? byId[`${s.scKey}~promo`] : undefined;
+    const rgmin = minOf ? byId[`${s.scKey}~rgmin`] : undefined;
     const totCp = a.cp;
     const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
     const fz = a.zi > 0 ? sliceZi[i]! / a.zi : 0;
     return {
-      cpGranted: (r.cpGranted + (promo?.cpGranted ?? 0)) * fc,
+      cpGranted: (r.cpGranted + (promo?.cpGranted ?? 0) + (rgmin?.cpGranted ?? 0)) * fc,
       ziipGranted: r.ziipGranted * fz,
       iipcpGranted: r.iipcpGranted * fz,
-      cpUnmet: (r.cpUnmet + (promo?.cpUnmet ?? 0)) * fc,
+      cpUnmet: (r.cpUnmet + (promo?.cpUnmet ?? 0) + (rgmin?.cpUnmet ?? 0)) * fc,
       ziipUnmet: r.ziipUnmet * fz,
       cpQueueRatio: r.cpQueueRatio,
       ziipQueueRatio: r.ziipQueueRatio,
