@@ -854,7 +854,8 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 ### 9.3 Hardware events
 | Event | Hidden mechanic | Clues |
 |---|---|---|
-| CP failure (sparing) | Transparent; a note in the log | HMC message |
+| CP failure, sparing (`CP_SPARING`) | Transparent: a spare PU takes over; only a log note and an announcement (day ≥ 3, any hour, ~6 min; `affects` empty so it is never blamed for an incident) | HMC message only; a red herring |
+| DFSMShsm recall storm (`HSM_RECALL_STORM`) | Month-old migration policy change: 75k random I/O/s of recalls on LCU 30 (system + catalogs) for 2.5 h, exhausting its aliases; rumoured, trigger `DEMAND_SURGE` | DASD Activity: LCU 30 IOSQ/RESP up, Db2 LCUs normal; anything opening data sets slows. Fixes: hold HSM recalls (Retail trust −1), or move aliases to LCU 30 |
 | Power cap (`POWER_CAP`) | Cooling fault: CPC one capacity setting below its current one for ~6 h, then back to that setting, not rumoured | SYSINFO / Partition Data: same engines, less MSU per LPAR; CPU delay ↑ everywhere. Fixes: cap/quiesce DEVT, defer discretionary batch, protect imp-1 work |
 | CF link degraded | CF sync time ↑, async conversion | CF Activity |
 | CF02 failure | Structures rebuild to CF01; it must have white space | CF util before/after |

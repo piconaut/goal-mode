@@ -364,6 +364,44 @@ export const MIDWEST_EVENTS: EventDef[] = [
     announcement: 'Facilities: "Cooling fault on the raised floor; the CPC is running at reduced capacity until the chiller is fixed."',
     clue: 'SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEVT, defer discretionary batch, protect importance-1 work.',
   },
+  {
+    // A month-old HSM migration policy change makes hundreds of users' data sets recall from ML2 at once.
+    id: 'HSM_RECALL_STORM',
+    name: 'DFSMShsm recall storm',
+    category: 'SOFTWARE',
+    minDay: 4,
+    weight: 1,
+    // Closest existing trigger: a surge of user-driven demand (no dedicated policy-side trigger fits a month-old change).
+    trigger: 'DEMAND_SURGE',
+    // Every workload does some catalog/system I/O on LCU 30, so RCA credits the card for the I/O-heavy online apps.
+    affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
+    startHour: [7, 10],
+    durationHours: 2.5,
+    // FICTIONAL magnitude: 75_000 random I/Os per second on LCU 30's hot volumes: exhausts its 21 aliases, response ≈ 0.2 ms → ≈ 3 ms.
+    begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 75_000 } }],
+    end: [{ kind: 'SET_LCU', lcuId: '30', extraIops: {} }],
+    fix: 'HOLD_HSM_RECALLS',
+    forewarning: null,
+    announcement: null,
+    clue: 'DASD Activity: LCU 30 (system + catalogs) IOSQ and RESP up with random I/O ×n while Db2 LCUs are normal; everything that opens data sets slows. Fixes: hold HSM recalls, or move aliases to LCU 30.',
+  },
+  {
+    id: 'CP_SPARING',
+    name: 'CP failure, transparent sparing',
+    category: 'HARDWARE',
+    minDay: 3,
+    weight: 0.6,
+    trigger: 'HARDWARE_FAULT',
+    affects: [],
+    startHour: [0, 23],
+    durationHours: 0.1,
+    begin: [{ kind: 'NOTE', text: 'HMC: CP 05 failed; spare PU assigned transparently. No action needed.' }],
+    end: [],
+    fix: null,
+    forewarning: null,
+    announcement: 'Hardware: "HMC reported a CP failure; the spare took over. IBM will replace the part at the next service window."',
+    clue: 'HMC message only: no performance impact. A red herring if you are chasing another problem.',
+  },
 ];
 
 /** Scripted story beats: constraints and big events on fixed days (SPEC §11.1). */

@@ -57,6 +57,7 @@ export const FIXES: FixDef[] = [
   { id: 'ROLLBACK_MONITOR', name: 'Roll back the monitoring agent', hours: 1, trustCost: null, description: 'Revert to the previous agent release.' },
   { id: 'STOP_SHADOW_IT', name: 'Stop the unapproved TSO workload', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Find the users behind the TSO CPU and have the model training moved off the mainframe.' },
   { id: 'ROLLBACK_TELLER_RELEASE', name: 'Roll back the teller release', hours: 1.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'Back out release 4.2 from the PROD1 CICS regions until it is made threadsafe.' },
+  { id: 'HOLD_HSM_RECALLS', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'HOLD RECALL until the storm drains; users wait for their data sets.' },
 ];
 
 export const hardwareItem = (id: string): HardwareItem | undefined => HARDWARE.find((h) => h.id === id);

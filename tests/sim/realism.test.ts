@@ -423,4 +423,22 @@ describe('event cards (SPEC §9)', () => {
     expect(wl && classify(BASEPOL, wl.work).serviceClass).toBe('SYSOTHER');
     expect(run(begin).bookingDone).toBeGreaterThan(0);
   }, 60_000);
+
+  it('an HSM recall storm raises LCU 30 IOSQ and response time', () => {
+    const lcu30 = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let iosq = 0;
+      let rt = 0;
+      for (let i = 0; i < 180; i++) {
+        s = step(s, [], MIDWEST);
+        const l = s.env.dasd?.lcus.find((x) => x.id === '30');
+        iosq += (l?.iosqSec ?? 0) / 180;
+        rt += (l?.rtSec ?? 0) / 180;
+      }
+      return { iosq, rt };
+    };
+    const asIs = lcu30([]);
+    const storm = lcu30(card('HSM_RECALL_STORM'));
+    expect(storm.rt).toBeGreaterThan(3 * asIs.rt);
+  }, 60_000);
 });
