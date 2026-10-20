@@ -95,6 +95,14 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'io-priority',
+    title: 'I/O priority management',
+    category: 'I/O & CF',
+    body: 'A service definition option. With it on, z/OS orders the I/O queued for a device (IOSQ) by the dispatching priority WLM gives each period, so important work waits less when aliases run short; the average wait is unchanged, it is only reordered. I/O using and delay samples also count in execution velocity, so velocity goals for I/O-heavy work read lower. With it off, IOSQ is first come, first served and velocity reflects CPU only.',
+    sources: [ABCS_WLM],
+    discover: { start: true },
+  },
+  {
     id: 'resource-groups',
     title: 'Resource groups (minimum and maximum)',
     category: 'WLM',

@@ -169,6 +169,7 @@ export interface ViewModel {
   mon3Charts: { samples: number; markers: number; firstTick: number | null } | null;
   serviceClasses: { id: string; periods: string[]; resourceGroup: string | null }[];
   resourceGroups: ResourceGroupDef[];
+  ioPriorityManagement: boolean;
 }
 
 export function buildView(run: RunState, scenario: Scenario): ViewModel {
@@ -322,6 +323,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     config: configView(run, scenario),
     serviceClasses: def.classes.map((x) => ({ id: x.id, periods: x.periods.map((p) => goalText(p)), resourceGroup: x.resourceGroup })),
     resourceGroups: def.resourceGroups,
+    ioPriorityManagement: def.ioPriorityManagement !== false,
   };
 }
 

@@ -26,7 +26,8 @@ export type WlmEdit =
   | { op: 'SET_RULE_TARGET'; subsystem: SubsystemType; path: RulePath; serviceClass: string | null; reportClass?: string | null }
   | { op: 'SET_DEFAULT'; subsystem: SubsystemType; serviceClass: string | null }
   /** Put a class in a resource group (created or updated with these limits), or take it out (group null). */
-  | { op: 'SET_RESOURCE_GROUP'; classId: string; group: ResourceGroupDef | null };
+  | { op: 'SET_RESOURCE_GROUP'; classId: string; group: ResourceGroupDef | null }
+  | { op: 'SET_IO_PRIORITY'; on: boolean };
 
 /** Validate a report class name and register it in the definition (report classes are just names). */
 function useReportClass(d: ServiceDefinition, rc: string | null | undefined): string | null {
@@ -54,6 +55,9 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
       if (d.classes.some((x) => x.id === e.classId) || ['SYSTEM', 'SYSSTC', 'SYSOTHER'].includes(e.classId)) return `${e.classId} already exists`;
       if (!/^[A-Z][A-Z0-9]{0,7}$/.test(e.classId)) return 'Service class names are 1–8 characters, A–Z/0–9';
       d.classes.push({ id: e.classId, description: e.description, periods: [{ goal: e.goal, importance: e.importance, durationSu: null }], cpuCritical: e.cpuCritical, storageCritical: false, resourceGroup: null, honorPriority: true });
+      return d;
+    case 'SET_IO_PRIORITY':
+      d.ioPriorityManagement = e.on;
       return d;
     case 'SET_RESOURCE_GROUP': {
       const c = d.classes.find((x) => x.id === e.classId);

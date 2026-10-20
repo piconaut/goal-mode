@@ -592,6 +592,7 @@ function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHand
         </button>
       </form>
       <ResourceGroupForm v={v} game={game} cls={cls} />
+      <IoPriorityToggle v={v} game={game} />
       <div className="form">
         <button aria-expanded={rulesOpen} aria-controls="classification-rules" className={rulesOpen ? 'active' : ''} onClick={toggleRules}>
           {rulesOpen ? '▾ Hide classification rules' : '▸ Classification rules'}
@@ -1240,5 +1241,23 @@ function ResourceGroupForm({ v, game, cls }: { v: ViewModel; game: GameHandle; c
         Max is always enforced (CAP delay). Min is guaranteed only while the class misses its goals, even ahead of more important work.
       </span>
     </form>
+  );
+}
+
+/** Service coefficient option: I/O priority management (YES orders the IOSQ by priority and counts I/O in velocity). */
+function IoPriorityToggle({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const on = game.pending ? game.pending.ioPriorityManagement : v.ioPriorityManagement;
+  return (
+    <div className="form">
+      <label>
+        <input type="checkbox" checked={on} onChange={(e) => game.send({ type: 'WLM_EDIT', edit: { op: 'SET_IO_PRIORITY', on: e.target.checked } })} /> I/O priority management
+        <CodexHints ids={['io-priority']} />
+      </label>
+      <span className="muted" style={{ fontSize: 12 }}>
+        {on
+          ? 'YES: z/OS queues I/O (IOSQ) by dispatching priority, and I/O using/delay count in execution velocity.'
+          : 'NO: I/O is queued first come, first served, and velocity counts CPU and zIIP only (velocity goals read differently).'}
+      </span>
+    </div>
   );
 }

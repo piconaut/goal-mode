@@ -25,6 +25,7 @@ export interface PendingPolicyView {
   policyName: string;
   classes: { id: string; periods: string[]; cpuCritical: boolean; resourceGroup: string | null }[];
   resourceGroups: ResourceGroupDef[];
+  ioPriorityManagement: boolean;
   rules: { subsystem: string; text: string }[];
 }
 

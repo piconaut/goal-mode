@@ -1138,6 +1138,7 @@ never touches the DOM.
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
 | Discretionary capping conditions | **Real** | |
+| WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved); NO excludes I/O from velocity |
 | Discretionary goal management | **Simplified** | SG24-7621 §4.22 conditions except the recent receiver/donor test; cap level fictional |
 | Resource group types 1/2/3 semantics | **Real** | Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members) |
 | HiperDispatch polarity rules | **Real (published rule of thumb)** | Watson & Walker 2022 |
