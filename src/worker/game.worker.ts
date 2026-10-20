@@ -4,7 +4,7 @@ import { MIDWEST_GAME } from '../content/game-midwest';
 import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
-import { buyTool, noteReportOpened, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
+import { buyTool, noteReportOpened, normalizeDefinition, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
@@ -395,7 +395,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'ACTIVATE_JSON': {
       let def: ServiceDefinition;
       try {
-        def = JSON.parse(m.json) as ServiceDefinition;
+        def = normalizeDefinition(JSON.parse(m.json) as ServiceDefinition);
       } catch {
         post({ type: 'RESULT', ok: false, message: 'Policy JSON does not parse' });
         break;

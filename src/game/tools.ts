@@ -1,3 +1,4 @@
+import type { ServiceDefinition } from '../sim/wlm/types';
 import { INSIGHT, toolDef, TOOLS, type ToolDef, type ToolFeature } from '../content/tools';
 import type { Command } from '../sim/core/commands';
 import type { Scenario } from '../sim/core/scenario';
@@ -28,8 +29,14 @@ export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
     projects: run.projects ?? [],
     capacityDays: run.capacityDays ?? [],
     capacityToday: run.capacityToday ?? null,
-    sim: { ...run.sim, config, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} } },
+    sim: { ...run.sim, config, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} }, wlm: { ...run.sim.wlm, definition: normalizeDefinition(run.sim.wlm.definition) } },
   };
+}
+
+/** Older saves (and hand-edited policy JSON) can lack a period's durationSu; the model means null. */
+export function normalizeDefinition(d: ServiceDefinition): ServiceDefinition {
+  if (d.classes.every((c) => c.periods.every((p) => p.durationSu !== undefined))) return d;
+  return { ...d, classes: d.classes.map((c) => ({ ...c, periods: c.periods.map((p) => ({ ...p, durationSu: p.durationSu ?? null })) })) };
 }
 
 export const activeTools = (run: RunState): string[] => run.tools.filter((t) => !run.toolsOff.includes(t));

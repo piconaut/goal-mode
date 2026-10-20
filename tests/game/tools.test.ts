@@ -2,7 +2,7 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { INSIGHT } from '../../src/content/tools';
 import { advance, chooseDraft, newRun, startDay } from '../../src/game/run';
-import { buyTool, features, measurementCommands, noteReportOpened, setToolActive } from '../../src/game/tools';
+import { buyTool, features, measurementCommands, normalizeRun, noteReportOpened, setToolActive } from '../../src/game/tools';
 import type { RunState } from '../../src/game/types';
 
 const content = { ...MIDWEST_GAME, events: [] };
@@ -69,5 +69,15 @@ describe('tier 2 availability', () => {
       r = out.run;
     }
     expect([...features(r)]).toEqual(expect.arrayContaining(['DB2_ACCOUNTING', 'CICS_MONITORING', 'BATCH_GANTT', 'SMF113']));
+  });
+});
+
+describe('save migration', () => {
+  it('fills a missing period duration with null', () => {
+    const r = newRun(MIDWEST, content, 3);
+    const def = structuredClone(r.sim.wlm.definition);
+    delete (def.classes[0]!.periods[0] as { durationSu?: number | null }).durationSu;
+    const n = normalizeRun({ ...r, sim: { ...r.sim, wlm: { ...r.sim.wlm, definition: def } } });
+    expect(n.sim.wlm.definition.classes[0]!.periods[0]!.durationSu).toBeNull();
   });
 });

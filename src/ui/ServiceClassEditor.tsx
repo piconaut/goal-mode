@@ -52,7 +52,7 @@ export function ServiceClasses({ v, game }: { v: ViewModel; game: GameHandle }) 
                     {c.periods.map((p, i) => (
                       <div key={i}>
                         <span className="muted">P{i + 1}</span> {goalText(p)}
-                        {p.durationSu !== null && <span className="muted"> · for {p.durationSu.toLocaleString()} SU</span>}
+                        {p.durationSu != null && <span className="muted"> · for {p.durationSu.toLocaleString()} SU</span>}
                       </div>
                     ))}
                   </td>
@@ -132,7 +132,7 @@ function PeriodRow({ c, i, send }: { c: ServiceClassDef; i: number; send: (e: Ed
   const p = c.periods[i]!;
   const last = i === c.periods.length - 1;
   const g = useGoalState(p);
-  const [dur, setDur] = useState(p.durationSu === null ? '' : String(p.durationSu));
+  const [dur, setDur] = useState(p.durationSu == null ? '' : String(p.durationSu));
   const durErr = !last && !(Number(dur) > 0) ? 'Duration (SU) > 0' : null;
   const err = g.err ?? durErr;
   return (
