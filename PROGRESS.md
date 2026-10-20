@@ -695,6 +695,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 53):** fix: morning hints and event forewarnings were dated the day that ended, so the next briefing never showed them (Inbox tab only); now dated for the morning they are for. Goldens regenerated. 236 tests.
 - **2026-10-20 (loop 52):** Story/Hard bot sweep recorded (M8.3); Story does not help the textbook bot. Open question to the user.
 - **2026-10-20 (loop 51):** Story starts with F7/F8/F11 fixed. 235 tests.
 - **2026-10-20 (loop 50, restarted by the watchdog):** constraint timing per difficulty. 234 tests. ScheduleWakeup wakeups did not fire twice; loop now schedules with send_later.

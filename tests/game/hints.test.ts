@@ -35,3 +35,19 @@ describe('morningHints', () => {
     expect(tight[1]).toContain('10 min');
   });
 });
+
+describe('morning hints in a run', () => {
+  it('are dated for the next morning so the briefing shows them', async () => {
+    const { MIDWEST_GAME } = await import('../../src/content/game-midwest');
+    const { SCENARIOS } = await import('../../src/content/scenarios');
+    const { advance, newRun, startDay } = await import('../../src/game/run');
+    const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
+    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 42, 'NORMAL'), MIDWEST_GAME);
+    run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
+    const hints = run.inbox.filter((m) => m.subject === 'A thought for this morning');
+    expect(hints.length).toBeGreaterThan(0);
+    expect(hints.every((m) => m.day === 1)).toBe(true);
+    const forewarnings = run.inbox.filter((m) => m.subject === 'For day 2');
+    expect(forewarnings.every((m) => m.day === 1)).toBe(true);
+  }, 120_000);
+});

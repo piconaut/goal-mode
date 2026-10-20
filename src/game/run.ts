@@ -69,8 +69,9 @@ function withRng<T>(run: RunState, f: (rng: Rng) => T): [T, RunState] {
   return [out, { ...run, rng: rng.snapshot() }];
 }
 
-function msg(run: RunState, from: string, subject: string, body: string): RunState {
-  return { ...run, inbox: [...run.inbox, { day: run.day, from, subject, body }] };
+/** `day` dates the message for a later morning's briefing (default: today). */
+function msg(run: RunState, from: string, subject: string, body: string, day = run.day): RunState {
+  return { ...run, inbox: [...run.inbox, { day, from, subject, body }] };
 }
 
 function logLine(run: RunState, text: string): RunState {
@@ -176,7 +177,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       ended: false,
     };
     r = { ...r, events: [...r.events, ev] };
-    if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning);
+    if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning, day);
   }
   return r;
 }
@@ -627,7 +628,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (day >= r.maxDays - 1) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
   for (const h of morningHints(difficultyOf(r.difficulty).hints, dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null))
-    r = msg(r, HINT_SENDER, 'A thought for this morning', h);
+    r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);
 
   const [draft, r2] = withRng(r, (rng) => {
     const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id));
