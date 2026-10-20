@@ -20,6 +20,8 @@ import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf, scenarioFor } from './difficulty';
+import { morningHints } from './hints';
+import { HINT_SENDER } from '../content/hints';
 import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
@@ -619,6 +621,9 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (!endReason && consecutive >= 2) endReason = 'Two consecutive batch deadline misses: the regulator has opened a formal review.';
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
   if (day >= r.maxDays - 1) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
+
+  for (const h of morningHints(difficultyOf(r.difficulty).hints, dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null))
+    r = msg(r, HINT_SENDER, 'A thought for this morning', h);
 
   const [draft, r2] = withRng(r, (rng) => {
     const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id));

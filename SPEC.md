@@ -942,7 +942,9 @@ ran; the DELAY breakdown in WLMGL for DDFPRD might show why" or "the critical pa
 05:52; which jobs were waiting for an initiator?". Hints point at the right report and question,
 never the answer or the fix, so diagnosis stays the gameplay (§13.3). They are built from the
 same ground truth as RCA scoring (incident mechanism and trigger, batch-window slack, capping,
-storage/paging) and get vaguer as difficulty rises; none on Hard or Ironman.
+storage/paging) and get vaguer as difficulty rises; none on Hard or Ironman. Implemented: Story shows up to two
+hints (workload, report and question), Normal one (the report only); a missed batch deadline leads, a tight
+window (<30 min slack) comes after incident hints.
 
 ### 11.3 Meta-progression ("Career")
 - Career XP from runs → unlock **scenarios**: *Midwest Mutual* (bank), *Continental Insurance*

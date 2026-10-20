@@ -5,7 +5,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 ## Current status
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
-- **Last updated:** 2026-10-19
+- **Last updated:** 2026-10-20
 - **Next up:** M8 (balance harness M8.2 first: sweeps across seeds; M8.1 structural perf in parallel).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
 - **Health:** `npm run check` green (213 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
@@ -514,10 +514,14 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [x] Difficulty choice at first start: a selector in the day-1 briefing restarts the run on another preset
     (confirms first if changes are already planned)
   - [ ] Severity tiers, constraint frequency and starting flaws per difficulty; bot sweeps per difficulty
-- [ ] Morning hints on lower difficulties (user request 2026-10-20, SPEC §11.2): the briefing inbox nudges
+- [x] Morning hints on lower difficulties (user request 2026-10-20, SPEC §11.2): the briefing inbox nudges
   the player based on yesterday's problems (missed SLAs, late batch, capping, paging), pointing at the report
   and the question to ask, never the answer or the fix; built from the same ground truth as RCA scoring;
   clearer on Story, vaguer on Normal, none on Hard/Ironman
+  (loop 48: `src/game/hints.ts` picks yesterday's worst incidents by their true mechanism and a late or
+  tight (<30 min slack) batch window; texts in `src/content/hints.ts`; Story up to 2 hints naming workload,
+  report and question, Normal 1 hint naming only the report; sent from "Senior sysprog" at day end.
+  Run goldens regenerated (inbox content on Normal), sim bench hash unchanged)
 - [ ] Weekend auto-simulation at high speed with a summary card (maintenance batch, REORGs); optional "play the weekend"
 - [ ] Endless mode after victory; daily seed challenge with shareable seed + score
 - [ ] End-of-run report: R4HA over time, PI heat-map history, decisions timeline, biggest incident, best RCA, grade S–D
@@ -665,6 +669,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 48):** Morning hints on Story/Normal (M8.3); hourly cost-loop watchdog set up. 229 tests.
 - **2026-10-20 (loop 37):** balance sweep tool + first 20-seed sweep (findings under M8.2).
 - **2026-10-20 (user request):** Change Desk polish (sub-tabs, summaries, collapsible sections).
 - **2026-10-20 (loop 36, restarted by the watchdog):** CICS region management; M7 sim leftovers done. 219 tests.
