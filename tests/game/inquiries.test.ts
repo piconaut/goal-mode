@@ -1,4 +1,5 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
+import { FRIENDLY_PREFIX, RUDE_REPLIES } from '../../src/content/inquiries';
 import { MIDWEST } from '../../src/content/scenarios';
 import { askAround, deliverInquiries } from '../../src/game/inquiries';
 import { newRun, startDay } from '../../src/game/run';
@@ -49,5 +50,33 @@ describe('ask around', () => {
       seen.add(k);
     }
     expect(seen.size).toBeGreaterThan(5);
+  });
+});
+
+describe('ask around: stakeholder mood', () => {
+  const askMobile = (trust: number, seed: number) => {
+    let r = startDay(newRun(MIDWEST, content, seed), content);
+    r = { ...r, trust: { ...r.trust, Digital: trust } };
+    r = ok(askAround(r, 'APP_ENTRY', 'MOBILE', MIDWEST));
+    return deliverInquiries(at(r, 9), MIDWEST, content);
+  };
+  it('a stakeholder who has lost trust is rude and tells you nothing', () => {
+    for (let seed = 1; seed <= 5; seed++) {
+      const r = askMobile(10, seed);
+      expect(RUDE_REPLIES).toContain(r.inbox.at(-1)!.body);
+      expect(r.inquiries!.revealed).toEqual([]);
+    }
+  });
+  it('a happy stakeholder is friendly', () => {
+    const bodies = [1, 2, 3, 4, 5].map((seed) => askMobile(95, seed).inbox.at(-1)!.body);
+    expect(bodies.some((b) => FRIENDLY_PREFIX.some((p) => b.startsWith(p)))).toBe(true);
+    expect(bodies.some((b) => RUDE_REPLIES.includes(b))).toBe(false);
+  });
+  it('IT colleagues answer on the merits whatever the business thinks', () => {
+    let r = startDay(newRun(MIDWEST, content, 3), content);
+    r = { ...r, trust: { Retail: 5, Cards: 5, Digital: 5, Payments: 5, Finance: 5, Regulator: 5 } };
+    r = ok(askAround(r, 'JOB_CLASSES', null, MIDWEST));
+    r = deliverInquiries(at(r, 9), MIDWEST, content);
+    expect(RUDE_REPLIES).not.toContain(r.inbox.at(-1)!.body);
   });
 });

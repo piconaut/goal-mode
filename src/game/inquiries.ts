@@ -2,13 +2,13 @@
 // engineer time, is answered hours later, and reveals at most one fragment of what the game hides
 // (critical jobs, lock-heavy jobs, job classes, how an app is classified, growth, what's coming up).
 
-import { APP_OWNERS, CALENDAR_FACTS, EVENT_RUMOURS, INQUIRY, INQUIRY_TOPICS, JOB_CLASS_MEANING, STORY_RUMOURS, STREAM_STORY, type InquiryKind } from '../content/inquiries';
+import { APP_OWNERS, CALENDAR_FACTS, CURT_PREFIX, EVENT_RUMOURS, FRIENDLY_PREFIX, INQUIRY, INQUIRY_TOPICS, JOB_CLASS_MEANING, RUDE_REPLIES, STORY_RUMOURS, STREAM_STORY, type InquiryKind } from '../content/inquiries';
 import { clockAt } from '../sim/core/clock';
 import { Rng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import type { GameContent } from './run';
-import type { RunState } from './types';
+import { FACETS, type Facet, type RunState } from './types';
 import { allWorkloads } from './workloads';
 
 export interface PendingInquiry {
@@ -66,16 +66,40 @@ export function deliverInquiries(run: RunState, scenario: Scenario, content: Gam
   for (const p of due) {
     const t = INQUIRY_TOPICS.find((x) => x.id === p.topic)!;
     const subject = `Re: ${t.question}${p.workloadId ? ` (${p.workloadId})` : ''}`;
+    const mood = moodOf(trustOf(run, scenario, p), rng);
     let body: string;
-    if (rng.chance(t.dontKnowFrac)) body = shrug(p.topic, rng);
+    if (mood === 'RUDE') body = pick(rng, RUDE_REPLIES);
+    else if (rng.chance(t.dontKnowFrac * (mood === 'CURT' ? INQUIRY.mood.grumpyDontKnowMult : mood === 'FRIENDLY' ? INQUIRY.mood.friendlyDontKnowMult : 1))) body = shrug(p.topic, rng);
     else {
       const ans = answer(run, scenario, content, p, revealed, rng);
-      body = ans.text;
+      body = (mood === 'CURT' ? pick(rng, CURT_PREFIX) : mood === 'FRIENDLY' ? pick(rng, FRIENDLY_PREFIX) : '') + ans.text;
       if (ans.key) revealed = [...revealed, ans.key];
     }
     inbox.push({ day: run.day, from: who(p.topic, p.workloadId), subject, body });
   }
   return { ...run, rng: rng.snapshot(), inbox, inquiries: { pending: st.pending.filter((p) => !due.includes(p)), revealed } };
+}
+
+type Mood = 'RUDE' | 'CURT' | 'NEUTRAL' | 'FRIENDLY';
+
+/** Trust of whoever answers: app owners speak for their workload's stakeholder, planning for Finance,
+ * the relationship manager for the business overall; IT colleagues (null) answer on the merits. */
+function trustOf(run: RunState, scenario: Scenario, p: PendingInquiry): number | null {
+  if (p.topic === 'APP_ENTRY') {
+    const w = allWorkloads(scenario, run).find((x) => x.id === p.workloadId);
+    return w && w.stakeholder !== 'Internal' ? run.trust[w.stakeholder as Facet] : null;
+  }
+  if (p.topic === 'GROWTH') return run.trust.Finance;
+  if (p.topic === 'CALENDAR') return FACETS.reduce((a, f) => a + run.trust[f], 0) / FACETS.length;
+  return null;
+}
+
+function moodOf(trust: number | null, rng: Rng): Mood {
+  const m = INQUIRY.mood;
+  if (trust === null) return 'NEUTRAL';
+  if (trust < m.hostileBelow) return 'RUDE';
+  if (trust < m.grumpyBelow) return rng.chance((m.grumpyBelow - trust) / (m.grumpyBelow - m.hostileBelow)) ? 'RUDE' : 'CURT';
+  return trust >= m.friendlyFrom ? 'FRIENDLY' : 'NEUTRAL';
 }
 
 const SHRUGS: Record<InquiryKind, string[]> = {

@@ -34,7 +34,31 @@ export const INQUIRY = {
   growthNoiseFrac: 0.35,
   /** Replies only arrive between these wall-clock hours. */
   officeHours: [8, 18] as [number, number],
+  /** Business contacts answer according to their trust in you (0–100). IT colleagues don't. */
+  mood: {
+    /** Below this they are rude and tell you nothing. */
+    hostileBelow: 25,
+    /** Below this they may be rude (more likely the lower it is), else curt and less helpful. */
+    grumpyBelow: 45,
+    /** At or above this they are friendly and rarely shrug. */
+    friendlyFrom: 80,
+    grumpyDontKnowMult: 1.5,
+    friendlyDontKnowMult: 0.4,
+  },
 };
+
+/** FICTIONAL: what a stakeholder who has lost patience with you says instead of answering. */
+export const RUDE_REPLIES: string[] = [
+  'After the week we have had? Figure it out yourself.',
+  'You want MY help? Maybe keep the systems up first and then we can talk.',
+  'I am not answering questions from the team that took us down twice this week.',
+  'Read the documentation. Oh wait, there is none, because you never wrote it.',
+  'No. And I have copied my director on this reply.',
+  'I have an outage report to write, thanks to you. Ask someone else.',
+];
+
+export const CURT_PREFIX: string[] = ['Fine. ', 'Briefly, because I am busy: ', 'For what it is worth: ', 'This once: '];
+export const FRIENDLY_PREFIX: string[] = ['Happy to help, thanks for keeping things running! ', 'Good question. ', 'Anything for the team that saved payday: ', 'Sure thing. '];
 
 /** What each critical stream feeds, in business words (Midwest). */
 export const STREAM_STORY: Record<string, string> = {

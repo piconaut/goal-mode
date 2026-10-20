@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7 sim leftovers (CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (210 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (213 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -133,6 +133,10 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   (Briefing / Day N review / Day N report card) opens and closes the overlay in any phase, including mid-day
   for the last report card; ✕ and Escape close it; the overlay stays mounted while hidden so half-filled RCA
   forms survive. Chromium: review → close → Reports → reopen → Esc → draft → live → report card
+- [x] **Stakeholder mood in Ask around** (requested 2026-10-20): app owners answer according to their
+  workload's stakeholder trust, business planning by Finance trust, the relationship manager by overall trust;
+  IT colleagues ignore trust. < 25: rude, no information; 25–45: rude with rising probability, else curt and
+  shrugs ×1.5; ≥ 80: friendly, shrugs ×0.4 (`INQUIRY.mood`, `RUDE_REPLIES` in content/inquiries.ts). 3 tests
 - [x] **Change basket survives leaving the Change Desk tab** (requested 2026-10-20): basket state moved
   from the Actions component into `useGame`
 - [x] **Classification rules view** (requested 2026-10-19). Done: `src/ui/RulesView.tsx`, now folded
@@ -563,6 +567,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (user request):** stakeholder mood in Ask around. 213 tests.
 - **2026-10-20 (loop 34):** MPL/swap delay; Change Desk crash on old saves fixed (missing durationSu). 210 tests.
 - **2026-10-20 (user requests):** arrival-rate chart, charts on top + collapsible, service class editor; M9 on hold until the user says start. 207 tests.
 - **2026-10-20 (loop 33, /loop):** MQ queue depth for PAYMQ. 206 tests.

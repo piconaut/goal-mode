@@ -14,7 +14,7 @@ export function AskAround({ v, game }: { v: ViewModel; game: GameHandle }) {
     <div style={{ marginBottom: 12, paddingBottom: 10, borderBottom: '1px solid var(--border)' }}>
       <h3>Ask around</h3>
       <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
-        People know things the reports don&apos;t show. Answers take a few hours, arrive during office hours, and rarely tell the whole story.
+        People know things the reports don&apos;t show. Answers take a few hours, arrive during office hours, and rarely tell the whole story. Business people answer as well as they trust you; your IT colleagues just answer.
       </div>
       <form
         className="form"
