@@ -216,8 +216,8 @@ export function piColor(pi: number | null): string {
   return 'rgba(255,107,107,0.55)';
 }
 
-const SERIES_LPARS = ['PROD1', 'PROD2', 'DEVT', 'SYSP'];
-const seriesColor = (i: number) => `var(--series-${i + 1})`;
+export const SERIES_LPARS = ['PROD1', 'PROD2', 'DEVT', 'SYSP'];
+export const seriesColor = (i: number) => `var(--series-${i + 1})`;
 
 function hhmm(h: number): string {
   const hh = Math.floor(h);

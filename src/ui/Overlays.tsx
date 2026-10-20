@@ -8,7 +8,8 @@ import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
 import type { ViewModel } from '../game/view';
-import { piColor } from './App';
+import { piColor, SERIES_LPARS, seriesColor } from './App';
+import { LineChart } from './LineChart';
 import type { GameHandle } from './useGame';
 
 export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
@@ -68,7 +69,6 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
 }
 
 function EndReportView({ r }: { r: EndReport }) {
-  const maxR4ha = Math.max(1, ...r.days.map((d) => d.peakR4haSum ?? 0));
   return (
     <div className="panel" style={{ marginBottom: 8 }}>
       <h3>
@@ -84,6 +84,14 @@ function EndReportView({ r }: { r: EndReport }) {
         </p>
       )}
       <p>{r.bestRca ? <>Best RCA: <b>{r.bestRca.workloadId}</b> on day {r.bestRca.day + 1}, {r.bestRca.points} points: {r.bestRca.cause}.</> : 'No root cause analysis scored points.'}</p>
+      {r.r4haByLpar.lparIds.length > 0 && r.days.length >= 2 && (
+        <LineChart
+          title="Daily peak R4HA per LPAR"
+          unit="MSU"
+          xLabels={r.days.map((d) => `day ${d.day + 1}`)}
+          series={r.r4haByLpar.lparIds.map((id, i) => ({ id, color: seriesColor(SERIES_LPARS.includes(id) ? SERIES_LPARS.indexOf(id) : SERIES_LPARS.length + i), values: r.r4haByLpar.byDay[i]! }))}
+        />
+      )}
       <details>
         <summary>Day by day</summary>
         <table>
@@ -102,18 +110,7 @@ function EndReportView({ r }: { r: EndReport }) {
                 <td>{d.day + 1}</td>
                 <td>{d.score}</td>
                 <td>{d.worstSlaPct.toFixed(1)}%</td>
-                <td>
-                  {d.peakR4haSum === null ? (
-                    <span className="muted">-</span>
-                  ) : (
-                    <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                      <span style={{ minWidth: 40 }}>{Math.round(d.peakR4haSum)}</span>
-                      <span className="bar" aria-hidden="true">
-                        <span style={{ width: `${(100 * d.peakR4haSum) / maxR4ha}%`, background: 'var(--accent)' }} />
-                      </span>
-                    </span>
-                  )}
-                </td>
+                <td>{d.peakR4haSum === null ? <span className="muted">-</span> : Math.round(d.peakR4haSum)}</td>
                 <td>{d.batchMissed ? <span className="tag bad">missed</span> : 'on time'}</td>
               </tr>
             ))}
