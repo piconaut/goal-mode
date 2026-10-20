@@ -658,8 +658,10 @@ to `main` (this is the last push there; M9 goes on its feature branch).
     tool ids; MOBILE was invisible (shares a service class) with no hint that report classes are needed (reports
     now list the interval's report classes or explain how to add them; new `rcadvice` verb); incidents now show
     start clock and RMF interval; `mon3` has a legend; "hours left" → "engineer-hours left"
-  - Open: agent saw 45–70% OTH delay on ONLHI/DDFPRD at PI 0.5 and found it unexplained. Check what OTH
-    collects in the WLMGL render and whether the Codex explains it
+  - Resolved (loop 85): agent saw 45–70% OTH delay on ONLHI/DDFPRD at PI 0.5 and found it unexplained. OTH
+    is lock waits + sync CF time + QR waits + server-dependency latency (`step.ts` extraOtherSec, `evaluate.ts`
+    depDelay); WLM can't manage it, so it doesn't lower velocity and is normal for Db2/CICS work. Model is
+    fine; the gap was the explanation, so there's a new start-known Codex entry `delay-other`
 - [ ] Spectator mode (user request 2026-10-20: watch agents play through the real UI): `play.ts` writes the run
   (same serialised RunState the browser saves) to a run file after every command; a small Vite dev-server
   plugin serves it, and the UI opened with `?spectate=<run>` polls it and renders the normal tabs (Monitor III

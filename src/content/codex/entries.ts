@@ -63,6 +63,14 @@ export const CODEX: CodexEntry[] = [
     discover: { start: true },
   },
   {
+    id: 'delay-other',
+    title: 'OTH delay: waits WLM cannot manage',
+    category: 'Measurement',
+    body: 'Delay samples in the WLMGL report and Monitor III DELAY are split into states WLM can act on (CPU, zIIP, I/O, storage, capping) and the rest. In this game OTH collects the rest: Db2 lock waits, synchronous CF requests, CICS QR TCB waits and waiting for a server address space (Db2, CICS, MQ) that is itself slow. A large OTH share is normal for Db2 and CICS work and harmless while the PI is below 1; it matters when it grows. WLM cannot fix it by raising priority, so look in the subsystem data (Db2 accounting, CICS monitoring) and CF Activity for which wait it is. Real RMF reports these as unknown, idle or subsystem-specific states; the single OTH column is a simplification.',
+    sources: [ABCS_WLM, PAICE_WLM],
+    discover: { start: true },
+  },
+  {
     id: 'classification',
     title: 'Classification rules',
     category: 'WLM',
