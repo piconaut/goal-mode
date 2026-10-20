@@ -157,15 +157,24 @@ const textbook: Strategy = {
   review: passive.review,
 };
 
+const ON_SIGHT_FIXES: Record<string, string> = {
+  REORG_OVERRUN: 'TERM_UTILITY',
+  MONITOR_CREEP: 'ROLLBACK_MONITOR',
+  SHADOW_IT: 'STOP_SHADOW_IT',
+  QR_RELEASE: 'ROLLBACK_TELLER_RELEASE',
+  HSM_RECALL_STORM: 'HOLD_HSM_RECALLS',
+};
+
 // Fixer: textbook plus the diagnosing reactions (batch capacity on the trend, classifying new work,
-// CF structures back home, terminate the overrunning REORG). The base for expert and spend-to-win.
+// CF structures back home, ending cards on sight with their fix). The base for expert and spend-to-win.
 const fixer: Strategy = {
   briefing: (r, _s, c) => (r.day === 0 ? textbookDay0(r, c) : reactBriefing(r, c)),
   hourly: (r, _s, c) => {
     let run = obviousHourly(moveStructuresHome(r, c), c);
-    // The REORG overrun raises no SLA incident, only batch stretch (IOSQ on LCU 21): terminate it on sight.
-    if (run.events.some((e) => e.defId === 'REORG_OVERRUN' && e.started && !e.ended)) {
-      run = requestChange(run, c, { label: 'Fix TERM_UTILITY', fixId: 'TERM_UTILITY' }).run;
+    // Cards an analyst spots from their clue and ends with the card's own fix, incident or not (the REORG
+    // overrun raises no SLA incident at all, only batch stretch).
+    for (const [defId, fixId] of Object.entries(ON_SIGHT_FIXES)) {
+      if (run.events.some((e) => e.defId === defId && e.started && !e.ended)) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
     }
     return run;
   },
