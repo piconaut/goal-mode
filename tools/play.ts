@@ -1,7 +1,7 @@
 // Headless play CLI for agents (PROGRESS M8.9). Each call loads the run file, applies one command, saves it.
 // Usage:
 //   npm run play -- runs/a.json new 42 [normal|story|hard|ironman]
-//   npm run play -- runs/a.json status
+//   npm run play -- runs/a.json status | catalog | mon3 | smf DB2|CICS|BATCH|SMF113 [hour]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [index] | report WLM_DETAIL 5 ONLHI#1
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json activate | discard | tfp yes|no
@@ -11,8 +11,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { DifficultyId } from '../src/content/difficulty';
 import type { Mechanism, Trigger } from '../src/game/types';
-import type { ReportKind } from '../src/worker/protocol';
-import { applyPlayCommand, decodePlayFile, encodePlayFile, statusText, type PlayCommand } from './playCore';
+import type { ReportKind, SmfKind } from '../src/worker/protocol';
+import { applyPlayCommand, catalogText, decodePlayFile, encodePlayFile, mon3Text, statusText, type PlayCommand } from './playCore';
 
 const [path, verb, ...rest] = process.argv.slice(2);
 if (!path || !verb) {
@@ -20,9 +20,13 @@ if (!path || !verb) {
   process.exit(1);
 }
 
-function parse(): PlayCommand | 'status' {
+type ReadOnly = 'status' | 'catalog' | 'mon3';
+function parse(): PlayCommand | ReadOnly {
   switch (verb) {
     case 'status': return 'status';
+    case 'catalog': return 'catalog';
+    case 'mon3': return 'mon3';
+    case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, hour: rest[1] };
     case 'new': return { cmd: 'new', seed: Number(rest[0] ?? 42), difficulty: (rest[1] ?? 'normal').toUpperCase() as DifficultyId };
     case 'start': return { cmd: 'start' };
     case 'advance': return { cmd: 'advance', hours: Number(rest[0] ?? 1) };
@@ -39,10 +43,11 @@ function parse(): PlayCommand | 'status' {
 }
 
 const c = parse();
-if (c !== 'status' && c.cmd !== 'new' && !existsSync(path)) throw new Error(`${path} does not exist; start with: new <seed>`);
-let file = c !== 'status' && c.cmd === 'new' ? null : decodePlayFile(readFileSync(path, 'utf8'));
-if (c === 'status') {
-  console.log(statusText(file!));
+const isNew = typeof c === 'object' && c.cmd === 'new';
+if (!isNew && !existsSync(path)) throw new Error(`${path} does not exist; start with: new <seed>`);
+let file = isNew ? null : decodePlayFile(readFileSync(path, 'utf8'));
+if (typeof c === 'string') {
+  console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : mon3Text(file!));
 } else {
   const res = applyPlayCommand(file ?? ({ version: 1, log: [] } as never), c);
   file = res.file;
@@ -50,7 +55,7 @@ if (c === 'status') {
   if (res.ok) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, encodePlayFile(file));
-    if (c.cmd !== 'report') console.log('\n' + statusText(file));
+    if (c.cmd !== 'report' && c.cmd !== 'smf') console.log('\n' + statusText(file));
   }
   process.exitCode = res.ok ? 0 : 2;
 }

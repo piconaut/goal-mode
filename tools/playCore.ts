@@ -9,14 +9,17 @@ import { scenarioFor } from '../src/game/difficulty';
 import { advance, chooseDraft, newRun, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { FACETS } from '../src/game/types';
-import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE } from '../src/game/tools';
+import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
+import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
+import { FIXES } from '../src/game/catalog';
+import { HARDWARE } from '../src/content/hardware-catalog';
 import { decideTfp } from '../src/game/tfp';
 import { applyWlmEdit, type WlmEdit } from '../src/game/wlmEdit';
 import { buildView } from '../src/game/view';
 import { MECHANISMS, TRIGGERS } from '../src/game/sla';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
 import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../src/sim/measure/reports';
-import type { ReportKind } from '../src/worker/protocol';
+import type { ReportKind, SmfKind } from '../src/worker/protocol';
 
 const content = MIDWEST_GAME;
 const TICKS_PER_HOUR = 360;
@@ -33,7 +36,8 @@ export type PlayCommand =
   | { cmd: 'discard' }
   | { cmd: 'buy'; toolId: string }
   | { cmd: 'tfp'; accept: boolean }
-  | { cmd: 'report'; kind: ReportKind; index?: number; scKey?: string; system?: string };
+  | { cmd: 'report'; kind: ReportKind; index?: number; scKey?: string; system?: string }
+  | { cmd: 'smf'; kind: SmfKind; hour?: string };
 
 export interface PlayFile {
   version: 1;
@@ -152,6 +156,22 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         : renderDasdSummary(iv);
       return done(noteReportOpened(run, `${c.kind}:${index}`), text);
     }
+    case 'smf': {
+      const need = SMF_FEATURE[c.kind];
+      if (!need) return fail(`SMF kinds: ${Object.keys(SMF_FEATURE).join(' ')}`);
+      if (!hasFeature(run, need)) return fail(`This SMF view needs an analytics tool (${need}).`);
+      const hours = smfHourRefs(run);
+      const hour = c.hour ?? hours[0]?.key;
+      const rows =
+        c.kind === 'DB2' ? (hour ? db2Accounting(run, sc(run), hour) : [])
+        : c.kind === 'CICS' ? (hour ? cicsMonitoring(run, sc(run), hour) : [])
+        : c.kind === 'BATCH' ? batchNight(run)
+        : smf113(run);
+      const head = c.kind === 'DB2' || c.kind === 'CICS' ? `hour ${hour ?? 'none'} (hours: ${hours.map((h) => h.key).join(' ')})\n` : '';
+      const body = Array.isArray(rows) ? rows.map((r) => JSON.stringify(r)).join('\n') : JSON.stringify(rows, null, 1);
+      const r = c.kind === 'DB2' || c.kind === 'CICS' ? noteReportOpened(run, `SMF:${c.kind}:${hour}`) : run;
+      return done(r, head + (body || 'no data'));
+    }
   }
 }
 
@@ -188,5 +208,27 @@ export function statusText(file: PlayFile): string {
   if (v.reports.length) out.push(`RMF intervals: 0..${v.reports.length - 1} (latest ${v.reports.at(-1)!.label})`);
   if (v.endReason) out.push(`END: ${v.endReason}`);
   out.push(`next: ${v.phase === 'BRIEFING' ? 'plan changes, then start' : v.phase === 'LIVE' ? 'advance <hours>' : v.phase === 'REVIEW' ? 'file RCAs, read reports, then draft <id|none> to close the day' : 'run over'}`);
+  return out.join('\n');
+}
+
+/** Monitor III (tool MON3): the last range's delay rows, CPC view and exceptions, one JSON object per line. */
+export function mon3Text(file: PlayFile): string {
+  const m = buildView(file.run, sc(file.run)).mon3;
+  if (!m) return 'Monitor III needs the MON3 tool.';
+  return [`range ${m.rangeSec}s  L:P ${m.logicalToPhysical.toFixed(2)}`, ...m.systems.map((x) => JSON.stringify(x)), ...m.cpc.map((x) => JSON.stringify(x)),
+    ...m.rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
+}
+
+/** What can be ordered or fixed: the Change Desk catalog, the tool tree and the RCA vocabulary. */
+export function catalogText(file: PlayFile): string {
+  const v = buildView(file.run, sc(file.run));
+  const out = ['hardware (change {"label":..,"hardwareId":ID}):'];
+  for (const h of HARDWARE) out.push(`  ${h.id}: ${h.name}. capex $${h.capex.toLocaleString()}, opex $${h.opexPerDay.toLocaleString()}/day, lead ${h.leadDays}d${h.durationDays ? `, lasts ${h.durationDays}d` : ''}. ${h.description}`);
+  out.push('fixes (change {"label":..,"fixId":ID}):');
+  for (const f of FIXES) out.push(`  ${f.id}: ${f.name}. ${f.hours}h${f.trustCost ? `, ${f.trustCost.facet} trust -${f.trustCost.amount}` : ''}. ${f.description}`);
+  out.push(`tools (buy ID; insight ${v.insight}):`);
+  for (const t of v.tools) out.push(`  ${t.id}${t.owned ? ' [owned]' : ''}${t.comingSoon ? ' [coming soon]' : ''}: ${t.name}, tier ${t.tier}, ${t.insightCost} insight${t.prereqs.length ? `, needs ${t.prereqs.join('+')}` : ''}. ${t.reveals}`);
+  out.push(`RCA mechanisms: ${MECHANISMS.join(' ')}`, `RCA triggers: ${TRIGGERS.join(' ')}`);
+  out.push('Config/WLM commands for change {"label":..,"commands":[...]}: see the Command type in src/sim/core/commands.ts; WLM edits: WlmEdit in src/game/wlmEdit.ts');
   return out.join('\n');
 }

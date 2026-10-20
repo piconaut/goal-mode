@@ -635,8 +635,9 @@ to `main` (this is the last push there; M9 goes on its feature branch).
     activate/discard/rca/draft/buy/tfp, or any command as JSON. The run file holds the RunState (Infinity tagged
     so JSON round-trips bit-identically, tested), the pending policy and the command log; refused commands are
     not logged. Status never prints incident ground truth. A full day advances in ~10 s
-  - [ ] Still to add: SMF/Monitor III snapshots, ask-around, projects, pins/evidence for RCAs, catalog listing
-    (hardware/fix ids, tools with prices) so an agent can discover Change Desk options without reading source
+  - [x] Loop 81: `catalog` (hardware, fixes, tool tree with insight costs, RCA vocabulary), `smf DB2|CICS|BATCH|SMF113
+    [hour]` (tool-gated, counts as an opened report like the browser) and `mon3` (Monitor III rows as JSON lines)
+  - [ ] Still to add: ask-around, projects, pins/evidence for RCAs, a short reference of Command/WlmEdit shapes
 - [ ] Agent definition files (e.g. `.claude/agents/goal-mode-player.md`, plus variants such as a cautious
   operator and a cost-cutter) that play a full run through that CLI: diagnose from reports, make changes,
   submit RCAs, keep a run log

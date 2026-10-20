@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, decodePlayFile, encodePlayFile, newPlayFile, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, encodePlayFile, newPlayFile, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   for (const c of cmds) {
@@ -30,5 +30,14 @@ describe('headless play interface', () => {
     const text = statusText(newPlayFile(7));
     expect(text).toContain('BRIEFING');
     expect(text).not.toMatch(/truth|mechanism/i);
+  });
+
+  it('catalog lists orderable items; Monitor III shows once the tool is owned', () => {
+    let f = newPlayFile(7);
+    expect(catalogText(f)).toContain('PERM_CP');
+    expect(mon3Text(f)).toContain('needs the MON3 tool');
+    f = { ...f, run: { ...f.run, insight: 50 } };
+    f = run(f, [{ cmd: 'buy', toolId: 'RMF_MON3' }, { cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    expect(mon3Text(f)).toMatch(/^range \d+s/);
   });
 });
