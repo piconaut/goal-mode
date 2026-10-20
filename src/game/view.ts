@@ -17,6 +17,7 @@ import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
+import { db2AboveItsClients, installedPolicy } from './tutorial';
 import { formatClock, clockAt } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { instanceClock } from '../sim/core/step';
@@ -168,6 +169,8 @@ export interface ViewModel {
   mon3: Mon3View | null;
   tools: ToolView[];
   reportsOpenedToday: number;
+  /** Day-1 tutorial: the installed policy puts Db2 at or above the CICS regions (F1 fixed). */
+  tutorialDb2Fixed: boolean;
   smfHours: SmfHourRef[];
   pins: EvidencePin[];
   projects: ReturnType<typeof projectsView>;
@@ -317,6 +320,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
+    tutorialDb2Fixed: db2AboveItsClients(installedPolicy(run)),
     smfHours: smfHourRefs(run),
     pins: run.pins ?? [],
     projects: projectsView(run),

@@ -93,8 +93,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] BUG fixed: retry storms diverged to NaN (a failure counted by QR overload *and* as a timeout); retries now capped at 2× organic rate, failures per tick ≤ arrivals
 - [x] Balance (seed 42): do-nothing loses on **day 15** (target 12–18); textbook bot (day-1 fixes F1–F11 + restarts + fixes) loses on **day 29** (target 28–32). Persistent events now self-resolve eventually (RLF governor 5 h, DBA 30 h, monitor rollback 48 h)
 - [x] Incident capping attribution limited to the LPARs a workload runs on
-- [ ] End-of-run report; weekend auto-sim; Insight spending (M7)
-- [ ] Midwest Mutual scenario with flaws F1–F12 (F1–F11 in place; F12 trivially)
+- [x] End-of-run report; Insight spending (M7) (weekend auto-sim tracked in M8.3)
+- [x] Midwest Mutual scenario with flaws F1–F12 (F12 is the IBM-default BLWLINTHD/IIPHONORPRIORITY "understand it" item: modelled, editable, Codex entry)
 
 ### M6 — UI (playable vertical slice)
 - [x] Game in a Web Worker (`src/worker/game.worker.ts`), message protocol, 10 Hz view model with fog of war (`src/game/view.ts`)
@@ -109,8 +109,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] Autosave to IndexedDB on every phase change; "Continue saved run" in the day-1 briefing (`src/worker/storage.ts`)
 - [x] BUG fixed (user report): WLM button edits seemed to do nothing. They edited a hidden pending policy, and "Install & activate" sent stale or empty JSON. Now the pending policy (auto-named BASEPOL2, 3, …) is shown with changed rows highlighted, Install activates it directly, Discard drops it, and the JSON view stays in sync (verified end to end in Chromium)
 - [x] Theme tokens follow the artifact contract (dark-first, explicit light/dark overrides, `color-scheme`); build published as a multi-file artifact (`vite build --base ./`)
-- [ ] Batch Gantt, PI history heat map (→ M7.3 / M8.5)
-- [ ] Pin report values as RCA evidence (→ M7.3)
+- [x] Batch Gantt (SMF › Batch), PI history heat map (end report) (→ M7.3 / M8.5)
+- [x] Pin report values as RCA evidence (→ M7.3)
 
 ### M6.1 — User requests (do these first)
 - [x] **Monitor III charts** (requested 2026-10-20): transaction arrival-rate chart per service class and
@@ -592,7 +592,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
 
 **M8.5 UX polish & accessibility**
-- [ ] Guided tutorial for day 1 (spot F1 via WLMGL, fix a classification rule, watch PI recover)
+- [x] Guided tutorial for day 1 (spot F1 via WLMGL, fix a classification rule, watch PI recover)
 - [ ] Charts everywhere they help (MSU/R4HA, PI history, batch Gantt) with crosshair tooltips and table views (dataviz rules: validated palette, no dual axes)
 - [ ] Keyboard-first controls, focus states, forced-colors support, every chart with a table view, contrast check in both themes
   - [x] Loop 42: forced-colors support (`@media (forced-colors: active)` in `styles.css`: data bars, Gantt runs,
@@ -732,6 +732,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 75):** day-1 guided tutorial (corner card, state-driven steps, F1 fix detection); ticked finished M7 items. 264 tests.
 - **2026-10-20 (loop 74):** three new draft options (Weekend push, Friend at the Vendor, Well Connected). 262 tests.
 - **2026-10-20 (loop 73):** hourly autosave during the live day (resume mid-day after a crash or reload; no more replaying a day from its briefing).
 - **2026-10-20 (loop 72):** endless mode after victory (fresh capex, counts as a win, endless days in report and share line). 259 tests.

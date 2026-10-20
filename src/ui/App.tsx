@@ -17,6 +17,7 @@ import { Smf } from './Smf';
 import { EvidenceBoard } from './Evidence';
 import { useGame, type GameHandle } from './useGame';
 import { useStored } from './useStored';
+import { Tutorial } from './Tutorial';
 import { hourTick, pagerChime } from './sound';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
@@ -62,6 +63,7 @@ export function App() {
       {tab === 'codex' && <Codex v={v} />}
       {tab === 'inbox' && <Inbox v={v} game={game} />}
       </ErrorBoundary>
+      <Tutorial v={v} />
       <ErrorBoundary where="briefing / review" onReset={() => setOverlayOpen(false)}>
       <Overlays v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
       </ErrorBoundary>

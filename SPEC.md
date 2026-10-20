@@ -933,6 +933,9 @@ lost reward).
   scenario's own compound growth carrying on past the quarter (no extra multiplier); the event deck keeps drawing,
   a fresh quarter's capex arrives when the player continues, and the run counts as a victory whenever it ends
   (grade uncapped; the end report and share line show the endless days).
+- **Day-1 tutorial:** a skippable corner card walks the first day: watch the PI heat map, read WLMGL after the
+  day closes, move the `DB*` STC rule above its clients (flaw F1), and check day 2. Steps advance from game state
+  (`tutorialDb2Fixed` checks the installed or pending policy); progress is kept per viewer in localStorage.
 
 ### 11.2 Difficulty knobs
 Growth multipliers, event-deck intensity (cards/day, severity tiers), constraint frequency,
