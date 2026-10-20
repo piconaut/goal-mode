@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CodexHints } from './CodexHint';
 import { FACETS } from '../game/types';
 import type { ViewModel } from '../game/view';
@@ -17,6 +17,7 @@ import { Smf } from './Smf';
 import { EvidenceBoard } from './Evidence';
 import { useGame, type GameHandle } from './useGame';
 import { useStored } from './useStored';
+import { hourTick, pagerChime } from './sound';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
@@ -129,6 +130,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="stat">
         Score <b>{v.score}</b>
       </span>
+      <SoundToggle v={v} />
       <ThemeToggle />
     </div>
   );
@@ -146,8 +148,30 @@ function ThemeToggle() {
     else root.dataset.theme = theme;
   }, [theme]);
   return (
-    <button style={{ marginLeft: 'auto' }} title="Colour theme (click to change)" aria-label={`Theme: ${theme}`} onClick={() => setTheme(NEXT_THEME[theme])}>
+    <button title="Colour theme (click to change)" aria-label={`Theme: ${theme}`} onClick={() => setTheme(NEXT_THEME[theme])}>
       {theme === 'system' ? '◐ auto' : theme === 'dark' ? '● dark' : theme === 'light' ? '○ light' : '▮ 3270'}
+    </button>
+  );
+}
+
+/** Pager chime on each new incident and a faint tick each sim hour; off until the player turns it on. */
+function SoundToggle({ v }: { v: ViewModel }) {
+  const [sound, setSound] = useStored<'on' | 'off'>('goalmode.sound', 'off');
+  const lastIncident = useRef<number | null>(null);
+  const lastHour = useRef<number | null>(null);
+  const newestId = v.incidents.at(-1)?.id ?? 0;
+  const hour = Math.floor((v.day * v.ticksPerDay + v.tickOfDay) / 360);
+  useEffect(() => {
+    if (sound === 'on' && lastIncident.current !== null && newestId > lastIncident.current) pagerChime();
+    lastIncident.current = newestId;
+  }, [newestId, sound]);
+  useEffect(() => {
+    if (sound === 'on' && v.phase === 'LIVE' && lastHour.current !== null && hour !== lastHour.current) hourTick();
+    lastHour.current = hour;
+  }, [hour, sound, v.phase]);
+  return (
+    <button style={{ marginLeft: 'auto' }} aria-pressed={sound === 'on'} title="Pager chime on incidents, tick each hour" onClick={() => setSound(sound === 'on' ? 'off' : 'on')}>
+      {sound === 'on' ? '🔔 sound' : '🔕 muted'}
     </button>
   );
 }

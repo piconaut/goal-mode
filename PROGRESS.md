@@ -528,7 +528,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Keyboard-first controls, focus states, forced-colors support, every chart with a table view, contrast check in both themes
   - [x] Loop 42: forced-colors support (`@media (forced-colors: active)` in `styles.css`: data bars, Gantt runs,
     selected rows, active subtab, primary button and status tags stay distinguishable in system colours)
-- [ ] Sound/feedback: pager chime on incidents, subtle tick at hour boundaries (mutable)
+- [x] Sound/feedback: pager chime on incidents, subtle tick at hour boundaries (mutable) (loop 46: Web Audio
+  tones in `src/ui/sound.ts`, top-bar toggle, off by default, remembered in localStorage)
 - [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
   - [x] Loop 43: theme toggle in the top bar (auto → dark → light, remembered in localStorage, sets
     `data-theme` on <html>); `useStored` hook moved to `src/ui/useStored.ts`. Error boundaries per tab already exist
