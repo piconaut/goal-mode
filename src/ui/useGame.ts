@@ -85,13 +85,35 @@ export function useGame(): GameHandle {
         window.setTimeout(() => setToast(null), 4000);
       }
     };
+    // Start at the player's last running speed (never paused: a reload shouldn't leave the clock stopped).
+    const stored = Number(readPref(SPEED_KEY));
+    if (stored > 0) w.postMessage({ type: 'SET_SPEED', speed: stored } satisfies ToWorker);
     return () => w.terminate();
   }, []);
 
-  const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
+  const send = useCallback((m: ToWorker) => {
+    if (m.type === 'SET_SPEED' && m.speed > 0) writePref(SPEED_KEY, String(m.speed));
+    worker.current?.postMessage(m);
+  }, []);
   // Mirror the basket to the worker so it is saved with the run.
   useEffect(() => send({ type: 'SET_BASKET', basket }), [basket, send]);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
   return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, charts, rules, toast, results, basket, setBasket, send };
 }
+
+const SPEED_KEY = 'goalmode.speed';
+const readPref = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+const writePref = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // Storage blocked: the speed just isn't remembered.
+  }
+};
