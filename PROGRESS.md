@@ -514,6 +514,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Guided tutorial for day 1 (spot F1 via WLMGL, fix a classification rule, watch PI recover)
 - [ ] Charts everywhere they help (MSU/R4HA, PI history, batch Gantt) with crosshair tooltips and table views (dataviz rules: validated palette, no dual axes)
 - [ ] Keyboard-first controls, focus states, forced-colors support, every chart with a table view, contrast check in both themes
+  - [x] Loop 42: forced-colors support (`@media (forced-colors: active)` in `styles.css`: data bars, Gantt runs,
+    selected rows, active subtab, primary button and status tags stay distinguishable in system colours)
 - [ ] Sound/feedback: pager chime on incidents, subtle tick at hour boundaries (mutable)
 - [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
 - [x] Deploy target (static hosting) and a README (loop 40: `base: './'` so `dist/` runs from any sub-path; `README.md` with play, build, dev commands and layout)
