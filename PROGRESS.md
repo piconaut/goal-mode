@@ -121,6 +121,10 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   beats within 5 days, else calendar facts). Each costs 0.25–0.5 h, at most 3 open; answers arrive 1–10
   sim-hours later and only in office hours (08–18); 10–25% are shrugs; each reply gives one fragment and
   never repeats one. Seeded from the run RNG. 2 tests; Chromium checked
+- [x] **Flip between the report card / review and the interface** (requested 2026-10-20): a tab-bar button
+  (Briefing / Day N review / Day N report card) opens and closes the overlay in any phase, including mid-day
+  for the last report card; ✕ and Escape close it; the overlay stays mounted while hidden so half-filled RCA
+  forms survive. Chromium: review → close → Reports → reopen → Esc → draft → live → report card
 - [x] **Change basket survives leaving the Change Desk tab** (requested 2026-10-20): basket state moved
   from the Actions component into `useGame`
 - [x] **Classification rules view** (requested 2026-10-19). Done: `src/ui/RulesView.tsx`, now folded
@@ -538,7 +542,7 @@ separate feature branch (e.g. `feature/simplified-mode`), not on `main`.**
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
-- **2026-10-20 (user requests):** ask around in the Inbox (incl. job classes); basket persists across tabs. 205 tests.
+- **2026-10-20 (user requests):** ask around in the Inbox (incl. job classes); basket persists across tabs; report card toggle. 205 tests.
 - **2026-10-20 (loop 32, /loop):** I/O priority management; Codex hint cards kept on screen (user nit). 203 tests.
 - **2026-10-20 (loop 31, /loop):** discretionary goal management; WLM-cap backlog fix. 201 tests.
 - **2026-10-20 (loop 30, /loop):** resource group minimum + resource group editor. 199 tests.

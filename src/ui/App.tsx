@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CodexHints } from './CodexHint';
 import { FACETS } from '../game/types';
 import type { ViewModel } from '../game/view';
@@ -21,7 +21,11 @@ type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytic
 export function App() {
   const game = useGame();
   const [tab, setTab] = useState<Tab>('console');
+  const [overlayOpen, setOverlayOpen] = useState(true);
   const v = game.view;
+  const phase = v?.phase;
+  // A new briefing, review or end of run opens the overlay; the live day starts with it closed.
+  useEffect(() => setOverlayOpen(phase !== 'LIVE'), [phase, v?.day]);
   if (!v) return <div className="app">Starting the sysplex…</div>;
   return (
     <div className="app">
@@ -32,6 +36,11 @@ export function App() {
             {t === 'console' ? 'Ops Console' : t === 'monitor' ? (v.mon3 ? `Monitor III${v.mon3.exceptions.length ? ` (${v.mon3.exceptions.length}!)` : ''}` : 'Monitor III 🔒') : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'finance' ? 'Finance' : t === 'analytics' ? `Analytics (${v.insight}◆)` : t === 'codex' ? 'Codex' : `Inbox (${v.inbox.length})`}
           </button>
         ))}
+        {(v.lastReport || v.phase === 'BRIEFING' || v.phase === 'REVIEW') && (
+          <button className={overlayOpen ? 'active' : ''} aria-pressed={overlayOpen} onClick={() => setOverlayOpen(!overlayOpen)}>
+            {v.phase === 'REVIEW' ? `Day ${v.day + 1} review` : v.phase === 'BRIEFING' ? 'Briefing' : `Day ${v.lastReport!.day + 1} report card`}
+          </button>
+        )}
       </div>
       {tab === 'console' && <Console v={v} history={game.history} />}
       {tab === 'monitor' && <Monitor v={v} game={game} />}
@@ -47,7 +56,7 @@ export function App() {
       {tab === 'finance' && <Finance v={v} game={game} />}
       {tab === 'codex' && <Codex v={v} />}
       {tab === 'inbox' && <Inbox v={v} game={game} />}
-      <Overlays v={v} game={game} />
+      <Overlays v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
       {game.toast && <div className={`toast ${game.toast.ok ? '' : 'bad'}`}>{game.toast.message}</div>}
     </div>
   );

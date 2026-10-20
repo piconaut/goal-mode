@@ -186,3 +186,5 @@ a { color: var(--accent); }
 .codex-body { line-height: 1.45; }
 .rc-advisor { margin: 6px 0 10px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
 .rc-advisor > summary { cursor: pointer; }
+.modal { position: relative; }
+.modal-close { position: absolute; top: 8px; right: 8px; padding: 2px 8px; }

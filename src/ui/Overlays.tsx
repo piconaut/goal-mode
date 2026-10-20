@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { EVIDENCE } from '../content/evidence';
 import type { Hypothesis } from '../game/aiops';
 import { formatClock } from '../sim/core/clock';
@@ -8,46 +8,60 @@ import type { Mechanism, Trigger } from '../game/types';
 import type { ViewModel } from '../game/view';
 import type { GameHandle } from './useGame';
 
-export function Overlays({ v, game }: { v: ViewModel; game: GameHandle }) {
-  const [hidden, setHidden] = useState(false);
-  if (v.phase === 'LIVE') return null;
-  if (hidden && v.phase === 'REVIEW')
-    return (
-      <div className="toast">
-        Investigating day {v.day + 1}: pin evidence from Reports or Monitor III.{' '}
-        <button className="primary" onClick={() => setHidden(false)}>
-          Back to the review
-        </button>
-      </div>
-    );
-  if (hidden && v.phase === 'BRIEFING')
-    return (
-      <div className="toast">
-        <button className="primary" onClick={() => game.send({ type: 'START_DAY' })}>
-          Start day {v.day + 1} (06:00)
-        </button>{' '}
-        <button onClick={() => setHidden(false)}>Briefing</button>
-      </div>
-    );
+export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [open, setOpen]);
+  const ended = v.phase === 'GAMEOVER' || v.phase === 'VICTORY';
+  // Mid-day the overlay is just the last report card, opened from the tab bar.
+  if (v.phase === 'LIVE' && (!open || !v.lastReport)) return null;
   return (
-    <div className="overlay">
-      <div className="modal">
-        {v.phase === 'BRIEFING' && <Briefing v={v} game={game} hide={() => setHidden(true)} />}
-        {v.phase === 'REVIEW' && <Review v={v} game={game} investigate={() => setHidden(true)} />}
-        {(v.phase === 'GAMEOVER' || v.phase === 'VICTORY') && (
-          <>
-            <h2>{v.phase === 'VICTORY' ? 'Quarter closed' : 'Run over'}</h2>
-            <p>{v.endReason}</p>
-            <p>
-              Final score <b>{v.score}</b> after {v.day + 1} days.
-            </p>
-            <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6) })}>
-              New run
+    <>
+      {!open && v.phase === 'REVIEW' && (
+        <div className="toast">
+          Day {v.day + 1} review: pin evidence from Reports or Monitor III, then come back.{' '}
+          <button className="primary" onClick={() => setOpen(true)}>
+            Back to the review
+          </button>
+        </div>
+      )}
+      {!open && v.phase === 'BRIEFING' && (
+        <div className="toast">
+          <button className="primary" onClick={() => game.send({ type: 'START_DAY' })}>
+            Start day {v.day + 1} (06:00)
+          </button>{' '}
+          <button onClick={() => setOpen(true)}>Briefing</button>
+        </div>
+      )}
+      {/* Kept mounted while hidden so half-filled RCA forms survive flipping back and forth. */}
+      <div className="overlay" style={open || ended ? undefined : { display: 'none' }}>
+        <div className="modal">
+          {!ended && (
+            <button className="modal-close" aria-label="Close and go to the interface" title="Close (Esc); reopen from the tab bar" onClick={() => setOpen(false)}>
+              ✕
             </button>
-          </>
-        )}
+          )}
+          {v.phase === 'LIVE' && v.lastReport && <DaySummary v={v} />}
+          {v.phase === 'BRIEFING' && <Briefing v={v} game={game} hide={() => setOpen(false)} />}
+          {v.phase === 'REVIEW' && <Review v={v} game={game} investigate={() => setOpen(false)} />}
+          {ended && (
+            <>
+              <h2>{v.phase === 'VICTORY' ? 'Quarter closed' : 'Run over'}</h2>
+              <p>{v.endReason}</p>
+              <p>
+                Final score <b>{v.score}</b> after {v.day + 1} days.
+              </p>
+              <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6) })}>
+                New run
+              </button>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
