@@ -1135,7 +1135,8 @@ never touches the DOM.
   same actions the UI offers (Change Desk requests, WLM edits, RCAs, tool purchases, advance N hours).
   Agents see only what a player sees; no hidden ground truth. Runs are deterministic (seed + command log),
   so agent results can be compared with the strategy bots. Agent definitions live in `.claude/agents/`;
-  `docs/agents.md` explains how to run them.
+  `docs/agents.md` explains how to run them. A spectator mode lets a person watch an agent's run live in the normal UI
+  (read-only, polling the run file `play.ts` writes after every command).
 - **Performance budget:** ≤ 2 s per headless day on a mid laptop; ≤ 4 ms per tick in the
   worker at 8×.
 

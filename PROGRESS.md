@@ -511,6 +511,12 @@ to `main` (this is the last push there; M9 goes on its feature branch).
   each agent, what it can see and do (no access to hidden ground truth), where logs and scores go, and how to
   compare agents with the strategy bots
 - [ ] Smoke test: an agent completes at least day 1 headlessly; record its outcome in PROGRESS.md
+- [ ] Spectator mode (user request 2026-10-20: watch agents play through the real UI): `play.ts` writes the run
+  (same serialised RunState the browser saves) to a run file after every command; a small Vite dev-server
+  plugin serves it, and the UI opened with `?spectate=<run>` polls it and renders the normal tabs (Monitor III
+  charts, RMF reports, inbox, Change Desk, report card) read-only, with the agent's latest command and
+  reasoning line in a banner. Optional "follow along" pacing in `play.ts` (`--pace 2s`) so a human can watch;
+  a finished run can be imported as an ordinary save and replayed
 
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
