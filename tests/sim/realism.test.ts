@@ -241,3 +241,20 @@ describe('WLM caps (resource group maximum, discretionary goal management)', () 
     expect(discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: acc(9, 1, 0.1) }, disc(true)])).toBeUndefined();
   });
 });
+
+describe('WLM I/O priority management', () => {
+  const io = { RANDOM: { rtSec: 0.004, delaySec: 0.0025, iosqSec: 0.002 }, SEQ: IO.SEQ };
+  const slices = [txn({ key: 'HI', scKey: 'HI#1', cpEngines: 0.5, ioPerTxn: 5 }), txn({ key: 'LO', scKey: 'LO#1', cpEngines: 0.5, ioPerTxn: 5 })];
+  const base = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io, pagingFrac: 0, dpOf: (k: string) => (k === 'HI#1' ? 240 : 200) };
+  it('orders the IOSQ by dispatching priority without changing the mean', () => {
+    const r = evaluateLpar(base).slices;
+    const perIo = (x: (typeof r)[number]) => x.delayIo / (100 * 5);
+    expect(perIo(r[0]!)).toBeLessThan(perIo(r[1]!));
+    expect((perIo(r[0]!) + perIo(r[1]!)) / 2).toBeCloseTo(io.RANDOM.delaySec, 6);
+  });
+  it('when off, IOSQ is first come first served and I/O samples leave velocity', () => {
+    const r = evaluateLpar({ ...base, ioPriority: false }).slices;
+    expect(r[0]!.parts!.io).toBeCloseTo(r[1]!.parts!.io, 9);
+    expect(r[0]!.usingIo + r[0]!.delayIo).toBe(0);
+  });
+});

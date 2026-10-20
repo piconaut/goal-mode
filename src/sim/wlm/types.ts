@@ -64,6 +64,8 @@ export interface ServiceDefinition {
   classes: ServiceClassDef[];
   reportClasses: string[];
   resourceGroups: ResourceGroupDef[];
+  /** Service coefficient option "I/O priority management" (absent = YES). */
+  ioPriorityManagement?: boolean;
   subsystems: SubsystemRules[];
 }
 

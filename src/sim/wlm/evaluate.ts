@@ -16,6 +16,8 @@ const MAX_QUEUE_RATIO = 50;
 export interface IoService {
   rtSec: number;
   delaySec: number;
+  /** IOSQ part of delaySec (z/OS UCB queue: the only part WLM I/O priority can reorder). */
+  iosqSec?: number;
 }
 
 export interface SliceSpec {
@@ -88,6 +90,8 @@ export interface LparEvalInput {
   /** Resource group minimums in force this tick: CP engines per service-class period. */
   minOf?: Readonly<Record<string, number>>;
   io: Record<IoClass, IoService>;
+  /** WLM I/O priority management: IOSQ ordered by DP and I/O samples count in velocity. */
+  ioPriority?: boolean;
   /** Paging delay fraction on this image (storage-critical classes are exempt). */
   pagingFrac: number;
   /** Fraction of the image's CP demand withheld by capping this tick. */
@@ -183,6 +187,50 @@ export interface LparEvalResult {
   /** Report classes (only when the policy assigns any). */
   rcs?: ReportClassTick[];
   roleHealth: Record<string, { health: number; queueRatio: number }>;
+}
+
+/** WLM I/O priority on the z/OS IOSQ: requests are queued by dispatching priority. Non-preemptive
+ * priority M/M/1 split, W_k = W0 / ((1 − σ_{k−1})(1 − σ_k)), renormalised so the I/O-weighted mean
+ * IOSQ is unchanged (work is reordered, not removed). APPROX: one queue per I/O class per image. */
+function iosqByPriority(slices: readonly SliceSpec[], input: LparEvalInput): Partial<Record<IoClass, IoService[]>> | null {
+  let out: Partial<Record<IoClass, IoService[]>> | null = null;
+  for (const cls of ['RANDOM', 'SEQ'] as const) {
+    const io = input.io[cls];
+    const iosq = io.iosqSec ?? 0;
+    if (iosq <= 1e-9) continue;
+    const rate = slices.map((s) => (s.ioClass === cls ? s.rate * s.ioPerTxn + s.ioRate : 0));
+    const total = rate.reduce((a, x) => a + x, 0);
+    if (total <= 0) continue;
+    const byDp: Record<number, number> = {};
+    slices.forEach((s, i) => {
+      if (rate[i]! > 0) {
+        const dp = input.dpOf(s.scKey);
+        byDp[dp] = (byDp[dp] ?? 0) + rate[i]!;
+      }
+    });
+    const dps = Object.keys(byDp).map(Number).sort((a, b) => b - a);
+    if (dps.length < 2) continue;
+    const svc = Math.max(1e-6, io.rtSec - iosq);
+    const rho = Math.min(0.95, iosq / (iosq + svc));
+    const w0 = rho * svc;
+    const waitByDp: Record<number, number> = {};
+    let sigma = 0;
+    let mean = 0;
+    for (const dp of dps) {
+      const prev = sigma;
+      sigma += (rho * byDp[dp]!) / total;
+      waitByDp[dp] = w0 / ((1 - prev) * (1 - sigma));
+      mean += (byDp[dp]! / total) * waitByDp[dp]!;
+    }
+    const scale = mean > 0 ? iosq / mean : 1;
+    const list = slices.map((s) => {
+      if (s.ioClass !== cls) return io;
+      const w = waitByDp[input.dpOf(s.scKey)]! * scale;
+      return Number.isFinite(w) ? { rtSec: io.rtSec - iosq + w, delaySec: io.delaySec - iosq + w, iosqSec: w } : io;
+    });
+    (out ??= {})[cls] = list;
+  }
+  return out;
 }
 
 /** Above every goal-managed period, below SYSTEM/SYSSTC and blocked-workload promotion. */
@@ -316,6 +364,11 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     return { r, cpGranted: r.cpGranted, want, got, health, queueRatio };
   });
 
+  const prio = input.ioPriority === false ? null : iosqByPriority(slices, input);
+  const ioOf = (i: number, s: SliceSpec): IoService => prio?.[s.ioClass]?.[i] ?? input.io[s.ioClass];
+  // Without I/O priority management, I/O samples don't count towards velocity.
+  const ioSamples = input.ioPriority === false ? 0 : 1;
+
   const results: SliceResult[] = slices.map((s, i) => {
     const { r, cpGranted, want, got, health, queueRatio } = prelim[i]!;
     const zq = Math.min(MAX_QUEUE_RATIO, r.ziipQueueRatio);
@@ -329,7 +382,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const capDelay = r.cpUnmet * capFrac + cut;
     const unmetZiip = r.ziipUnmet;
 
-    const io = input.io[s.ioClass];
+    const io = ioOf(i, s);
     const pg = input.storageCritical?.has(s.scKey) ? 0 : input.pagingFrac;
     if (s.kind === 'AS') {
       return {
@@ -340,10 +393,10 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         iipcpGranted: r.iipcpGranted,
         usingCpu: cpUsing,
         usingZiip: r.ziipGranted,
-        usingIo: s.ioRate * (io.rtSec - io.delaySec),
+        usingIo: ioSamples * s.ioRate * (io.rtSec - io.delaySec),
         delayCpu: cpUsing * queueRatio + unmetCp,
         delayZiip: r.ziipGranted * zq + unmetZiip,
-        delayIo: s.ioRate * io.delaySec,
+        delayIo: ioSamples * s.ioRate * io.delaySec,
         delayOther: 0,
         delayStorage: (cpUsing + r.ziipGranted) * pg,
         delayCap: capDelay,
@@ -408,10 +461,10 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       iipcpGranted: r.iipcpGranted,
       usingCpu: cpUsing,
       usingZiip: r.ziipGranted,
-      usingIo: ioRate * (io.rtSec - io.delaySec),
+      usingIo: ioSamples * ioRate * (io.rtSec - io.delaySec),
       delayCpu: cpUsing * queueRatio + unmetCp,
       delayZiip: r.ziipGranted * zq + unmetZiip,
-      delayIo: ioRate * io.delaySec,
+      delayIo: ioSamples * ioRate * io.delaySec,
       delayOther: s.rate * otherSec,
       delayStorage: s.rate * pagingSec,
       delayCap: capDelay,

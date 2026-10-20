@@ -124,8 +124,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
 
   const io: Record<IoClass, IoService> = env.dasd
     ? {
-        RANDOM: { rtSec: env.dasd.classes.RANDOM.rtSec, delaySec: env.dasd.classes.RANDOM.iosqSec + env.dasd.classes.RANDOM.pendSec },
-        SEQ: { rtSec: env.dasd.classes.SEQ.rtSec, delaySec: env.dasd.classes.SEQ.iosqSec + env.dasd.classes.SEQ.pendSec },
+        RANDOM: { rtSec: env.dasd.classes.RANDOM.rtSec, delaySec: env.dasd.classes.RANDOM.iosqSec + env.dasd.classes.RANDOM.pendSec, iosqSec: env.dasd.classes.RANDOM.iosqSec },
+        SEQ: { rtSec: env.dasd.classes.SEQ.rtSec, delaySec: env.dasd.classes.SEQ.iosqSec + env.dasd.classes.SEQ.pendSec, iosqSec: env.dasd.classes.SEQ.iosqSec },
       }
     : DEFAULT_IO;
 
@@ -402,6 +402,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       slices: slices.map((s) => (sysCfg && !sysCfg.iipHonorPriority ? { ...s, mayOverflow: false } : s)),
       backlog: prev.backlog,
       io,
+      ...(def.ioPriorityManagement === false ? { ioPriority: false } : {}),
       pagingFrac: pagingFrac[l.id] ?? 0,
       storageCritical,
       capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
