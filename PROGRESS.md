@@ -476,7 +476,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     1 and 7). **Expert** (capacity setting +1 on day 0) 38 / 40 / 40, median 2688, ends victory 16 · batch 4
     (seeds 2 and 20 on days 29/27, 12 and 19 on days 38/39). Month-1 bill $736k–898k against a $780k budget.
     The wall is beatable now, but expert still hits it early on seeds 2 and 20: next, read those two runs
-    (which chain or event pushes the critical path even at speed 1.0) before tuning growth or the deadline
+    (which chain or event pushes the critical path even at speed 1.0) before tuning growth or the deadline.
+    Seed 20: the REORG overrun (no SLA incident, only batch stretch via IOSQ on LCU 21) took batch to
+    05:21–05:57 on days 23/26/27 because no bot reacted to it. Textbook/expert now -TERM UTILITY on sight;
+    expert seed 20 → VICTORY, score 2716
 - [x] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
   (loop 38: seed 42, 2 days with planned day-1 changes and an emergency change on day 2, ~20 s; hashes in
   `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)

@@ -137,6 +137,10 @@ const textbook: Strategy = {
       const active = run.events.some((e) => e.started && !e.ended && e.trigger === inc.truth.trigger);
       if (fixId && active) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
     }
+    // The REORG overrun raises no SLA incident, only batch stretch (IOSQ on LCU 21): terminate it on sight.
+    if (run.events.some((e) => e.defId === 'REORG_OVERRUN' && e.started && !e.ended)) {
+      run = requestChange(run, c, { label: 'Fix TERM_UTILITY', fixId: 'TERM_UTILITY' }).run;
+    }
     return run;
   },
   review: passive.review,
