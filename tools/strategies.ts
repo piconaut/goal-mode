@@ -67,16 +67,23 @@ const FIX_BY_TRIGGER: Partial<Record<string, string>> = {
   ACCESS_PATH_REGRESSION: 'REBIND_REVERT',
 };
 
-/** The acquired bank's API (SPEC story beat MERGER) arrives unclassified in SYSOTHER; give it a goal. */
-function classifyMerger(run: RunState, c: GameContent): RunState {
-  if (!run.sim.workloads.some((w) => w.id === 'ACQBANK')) return run;
+/** Work that arrives with no classification rule and lands in SYSOTHER (the MERGER story beat, the
+ * NEW_APP_GOLIVE card): give each its own goal class, all in one policy change so neither overwrites the other. */
+const NEW_ARRIVALS = [
+  { workloadId: 'ACQBANK', classId: 'ACQAPI', description: 'Acquired bank API', userid: 'ACQSVC' },
+  { workloadId: 'BOOKING', classId: 'BOOKAPI', description: 'Branch booking', userid: 'BOOKSVC' },
+];
+function classifyNewArrivals(run: RunState, c: GameContent): RunState {
   const def = structuredClone(run.sim.wlm.definition);
-  if (def.classes.some((x) => x.id === 'ACQAPI')) return run;
-  def.classes.push({ id: 'ACQAPI', description: 'Acquired bank API', periods: [{ goal: { kind: 'PCT', pct: 90, rtSec: 0.5 }, importance: 2, durationSu: null }], cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
+  const due = NEW_ARRIVALS.filter((a) => run.sim.workloads.some((w) => w.id === a.workloadId) && !def.classes.some((x) => x.id === a.classId));
+  if (due.length === 0) return run;
   let omvs = def.subsystems.find((x) => x.subsystem === 'OMVS');
   if (!omvs) def.subsystems.push((omvs = { subsystem: 'OMVS', defaultServiceClass: null, defaultReportClass: null, rules: [] }));
-  omvs.rules = [{ qualifier: 'UI', pattern: 'ACQSVC', serviceClass: 'ACQAPI', reportClass: null, children: [] }, ...omvs.rules];
-  return requestChange(run, c, { label: 'Classify acquired bank API', commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] }).run;
+  for (const a of due) {
+    def.classes.push({ id: a.classId, description: a.description, periods: [{ goal: { kind: 'PCT', pct: 90, rtSec: 0.5 }, importance: 2, durationSu: null }], cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
+    omvs.rules = [{ qualifier: 'UI', pattern: a.userid, serviceClass: a.classId, reportClass: null, children: [] }, ...omvs.rules];
+  }
+  return requestChange(run, c, { label: `Classify ${due.map((a) => a.description).join(', ')}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] }).run;
 }
 
 /** Critical batch is a single-threaded chain: once it trends toward the deadline only faster engines help. */
@@ -89,7 +96,7 @@ function batchCapacity(run: RunState, c: GameContent): RunState {
 }
 
 function reactBriefing(r: RunState, c: GameContent): RunState {
-  return batchCapacity(classifyMerger(r, c), c);
+  return batchCapacity(classifyNewArrivals(r, c), c);
 }
 
 /** After a CF failure XES leaves rebuilt structures where they landed; put them back on their preferred CF. */
@@ -150,7 +157,7 @@ const textbook: Strategy = {
   review: passive.review,
 };
 
-// Fixer: textbook plus the diagnosing reactions (batch capacity on the trend, merger classification,
+// Fixer: textbook plus the diagnosing reactions (batch capacity on the trend, classifying new work,
 // CF structures back home, terminate the overrunning REORG). The base for expert and spend-to-win.
 const fixer: Strategy = {
   briefing: (r, _s, c) => (r.day === 0 ? textbookDay0(r, c) : reactBriefing(r, c)),
