@@ -14,6 +14,7 @@ import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
 import { financeView } from '../game/finance';
 import { decideTfp, offerTfp } from '../game/tfp';
+import { askAround } from '../game/inquiries';
 import { adviseReportClasses } from '../game/rcAdvisor';
 import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
@@ -230,6 +231,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'PROJECT_WORK': {
       const out = workOnProject(run, m.id, m.hours);
+      run = out.run;
+      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      break;
+    }
+    case 'ASK_AROUND': {
+      const out = askAround(run, m.topic, m.workloadId, scenario);
       run = out.run;
       post({ type: 'RESULT', ok: out.ok, message: out.message });
       break;

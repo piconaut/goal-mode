@@ -1,3 +1,4 @@
+import type { InquiryKind } from '../content/inquiries';
 import type { ResourceGroupDef } from '../sim/wlm/types';
 import type { RcAdvice } from '../game/rcAdvisor';
 // Messages between the UI thread and the game worker.
@@ -62,6 +63,7 @@ export type ToWorker =
   | { type: 'CANCEL_CHANGE'; changeId: number }
   | { type: 'GET_SMF'; kind: SmfKind; hour: string }
   | { type: 'GET_FINANCE' }
+  | { type: 'ASK_AROUND'; topic: InquiryKind; workloadId: string | null }
   | { type: 'TFP_DECIDE'; accept: boolean }
   | { type: 'DEV_TFP_OFFER' }
   | { type: 'PROJECT_WORK'; id: string; hours: number }

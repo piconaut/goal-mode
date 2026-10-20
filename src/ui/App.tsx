@@ -5,6 +5,7 @@ import type { ViewModel } from '../game/view';
 import type { HistoryPoint } from '../game/history';
 import { Actions } from './Actions';
 import { Analytics } from './Analytics';
+import { AskAround } from './AskAround';
 import { Codex } from './Codex';
 import { Finance } from './Finance';
 import { LineChart } from './LineChart';
@@ -45,7 +46,7 @@ export function App() {
       {tab === 'analytics' && <Analytics v={v} game={game} />}
       {tab === 'finance' && <Finance v={v} game={game} />}
       {tab === 'codex' && <Codex v={v} />}
-      {tab === 'inbox' && <Inbox v={v} />}
+      {tab === 'inbox' && <Inbox v={v} game={game} />}
       <Overlays v={v} game={game} />
       {game.toast && <div className={`toast ${game.toast.ok ? '' : 'bad'}`}>{game.toast.message}</div>}
     </div>
@@ -307,9 +308,10 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
   );
 }
 
-function Inbox({ v }: { v: ViewModel }) {
+function Inbox({ v, game }: { v: ViewModel; game: GameHandle }) {
   return (
     <div className="panel">
+      <AskAround v={v} game={game} />
       <h3>Inbox</h3>
       {[...v.inbox].reverse().map((m, i) => (
         <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>

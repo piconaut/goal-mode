@@ -22,6 +22,7 @@ import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import { tfpAtDayEnd } from './tfp';
+import { deliverInquiries } from './inquiries';
 import type { WorkloadDef } from '../sim/workload/types';
 import { failRiskFor, FIXES, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
 import { hourAttainment, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
@@ -396,7 +397,7 @@ export function advance(run: RunState, scenario: Scenario, content: GameContent,
       r = accumulateMon3(r);
       if ((tick + 1) % MON3_CHARTS.sampleTicks === 0) r = recordMon3(r, scenario);
     }
-    if ((tick + 1) % TICKS_PER_HOUR === 0) r = closeHour(r, scenario);
+    if ((tick + 1) % TICKS_PER_HOUR === 0) r = deliverInquiries(closeHour(r, scenario), scenario, content);
     if ((tick + 1) % TICKS_PER_DAY === 0) r = endDay(r, scenario, content);
   }
   return r;

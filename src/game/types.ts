@@ -1,3 +1,4 @@
+import type { InquiryState } from './inquiries';
 import type { TfpOffer } from './tfp';
 // Game-layer state (SPEC §2, §7–§12). Wraps the deterministic sim; plain data.
 
@@ -186,6 +187,8 @@ export interface RunState {
   capacityToday: CapacityDay | null;
   /** Multi-day engineering projects in progress or done. */
   projects: ProjectState[];
+  /** "Ask around" questions and fragments already given. */
+  inquiries?: InquiryState;
   /** Tailored Fit Pricing offer, once made. */
   tfpOffer?: TfpOffer | null;
   /** Saved WLM service policies and the daily switch schedule. */

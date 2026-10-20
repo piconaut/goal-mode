@@ -1042,6 +1042,9 @@ editor, HMC image profile). Toggle "classic 3270 colours" for purists.
 6. **Topology map:** sysplex diagram with the dependency graph; nodes glow by health; click to
    inspect a server address space.
 7. **Change Calendar & Inbox:** scheduled changes, CAB status, lead-time deliveries,
+   **Ask around** (questions to people in the organisation: costs a little time, answers arrive
+   hours later in office hours, one incomplete fragment each: a critical job, a lock-heavy job, a job
+   class's meaning, how an app is classified, a growth estimate, a rumour of what's coming),
    stakeholder messages.
 8. **Capacity Planner / What-if** (unlock).
 9. **Debrief:** SLA report card, MLC tracker, trust deltas, RCA board, draft choice.

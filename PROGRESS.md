@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M7 sim leftovers (MPL/swap, MQ queue depth, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (203 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (205 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -113,6 +113,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [ ] Pin report values as RCA evidence (→ M7.3)
 
 ### M6.1 — User requests (do these first)
+- [x] **Ask around in the Inbox** (requested 2026-10-20). Six questions to people in the organisation
+  (`content/inquiries.ts`, `game/inquiries.ts`): critical path (batch scheduling), lock-heavy jobs (DBA), job
+  classes (JES operations: what a class means, which class a critical job runs in), how an app reaches the
+  mainframe (app owner: subsystem, transaction prefix, user ID, correlation ID, package), growth (planning:
+  noisy ±35%), and what's coming up (relationship manager: rumours of today's/tomorrow's events and of story
+  beats within 5 days, else calendar facts). Each costs 0.25–0.5 h, at most 3 open; answers arrive 1–10
+  sim-hours later and only in office hours (08–18); 10–25% are shrugs; each reply gives one fragment and
+  never repeats one. Seeded from the run RNG. 2 tests; Chromium checked
+- [x] **Change basket survives leaving the Change Desk tab** (requested 2026-10-20): basket state moved
+  from the Actions component into `useGame`
 - [x] **Classification rules view** (requested 2026-10-19). Done: `src/ui/RulesView.tsx`, now folded
   into the Change Desk WLM section as a full-width expandable panel (user feedback; the separate tab is gone); `explainClassification` + `diffRows` (`src/game/classifyExplain.ts`);
   path-based `ADD_RULE` (with nesting), `DELETE_RULE`, `MOVE_RULE`, `SET_RULE_TARGET`,
@@ -528,6 +538,7 @@ separate feature branch (e.g. `feature/simplified-mode`), not on `main`.**
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (user requests):** ask around in the Inbox (incl. job classes); basket persists across tabs. 205 tests.
 - **2026-10-20 (loop 32, /loop):** I/O priority management; Codex hint cards kept on screen (user nit). 203 tests.
 - **2026-10-20 (loop 31, /loop):** discretionary goal management; WLM-cap backlog fix. 201 tests.
 - **2026-10-20 (loop 30, /loop):** resource group minimum + resource group editor. 199 tests.
