@@ -327,13 +327,14 @@ describe('CF failure, rebuild and duplexing', () => {
     expect(tight.config.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!.cfLparId).toBe('CF02');
     const during = tight.last.workloads.find((x) => x.id === 'RBANK')!;
     expect(during.failed).toBeGreaterThan(0);
-    let back = step(tight, [{ kind: 'FAIL_CF', lparId: 'CF01', failed: false }], MIDWEST);
+    // CF01 is back: the lost GBP is reallocated there. The lock structure stays on the slow shared CF02
+    // until moved; with it moved back, the retry storm drains within minutes.
+    let back = step(tight, [{ kind: 'FAIL_CF', lparId: 'CF01', failed: false }, { kind: 'MOVE_STRUCTURE', name: 'DB1G_LOCK1', cfLparId: 'CF01' }], MIDWEST);
     expect(back.config.cfStructures.find((x) => x.name === 'DB1G_GBP1')!).toMatchObject({ lost: false, cfLparId: 'CF01' });
-    // Recovery: work completes again at once; the retry storm and backlog take a few minutes to drain.
     for (let i = 0; i < 60; i++) back = step(back, [], MIDWEST);
     const after = back.last.workloads.find((x) => x.id === 'RBANK')!;
     expect(after.completions).toBeGreaterThan(0);
-    expect(after.failed).toBeLessThan(0.3 * during.failed);
+    expect(after.failed).toBe(0);
   }, 60_000);
   it('a duplexed structure switches to its copy with no rebuild, but duplexing costs sync time', () => {
     const duplexed = run([{ kind: 'SET_DUPLEX', name: 'DB1G_LOCK1', on: true }]);
@@ -344,4 +345,27 @@ describe('CF failure, rebuild and duplexing', () => {
     expect(lock).toMatchObject({ cfLparId: 'CF02', duplexed: false });
     expect(lock.rebuildUntilTick).toBeUndefined();
   }, 60_000);
+});
+
+describe('CICS region management', () => {
+  // Online work in two classes plus batch competing for 2 engines.
+  const slices = [
+    txn({ key: 'HI', scKey: 'ONLHI#1', cpEngines: 1 }),
+    txn({ key: 'MED', scKey: 'ONLMED#1', cpEngines: 1 }),
+    txn({ key: 'BAT', scKey: 'BAT#1', cpEngines: 1.5 }),
+  ];
+  const dps: Record<string, number> = { 'ONLHI#1': 250, 'ONLMED#1': 200, 'BAT#1': 220, 'STCHI#1': 240 };
+  const base = { cpCapacityEngines: 2, cpServers: 2, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0, dpOf: (k: string) => dps[k]! };
+  const med = (r: ReturnType<typeof evaluateLpar>) => r.slices[1]!.cpGranted;
+  it('TRANSACTION mode: less important CICS work rides free at the region DP set by the most important class', () => {
+    const own = evaluateLpar(base);
+    const free = evaluateLpar({ ...base, regions: { keys: ['ONLHI#1', 'ONLMED#1'], mode: 'TRANSACTION', regionKey: 'STCHI#1' } });
+    expect(med(own)).toBeLessThan(0.2); // below batch on its own DP
+    expect(med(free)).toBeGreaterThan(0.4); // shares the region's DP with ONLHI, ahead of batch
+  });
+  it('REGION mode: all CICS work runs at the region class DP', () => {
+    const region = evaluateLpar({ ...base, dpOf: (k) => ({ ...dps, 'STCHI#1': 210 })[k]!, regions: { keys: ['ONLHI#1', 'ONLMED#1'], mode: 'REGION', regionKey: 'STCHI#1' } });
+    // Region class below batch: even ONLHI waits behind batch.
+    expect(region.slices[0]!.cpGranted).toBeLessThan(evaluateLpar(base).slices[0]!.cpGranted);
+  });
 });

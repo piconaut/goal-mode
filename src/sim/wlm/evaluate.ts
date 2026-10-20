@@ -93,6 +93,9 @@ export interface LparEvalInput {
   capOf?: (slice: SliceSpec) => number;
   /** Resource group minimums in force this tick: CP engines per service-class period. */
   minOf?: Readonly<Record<string, number>>;
+  /** CICS work runs inside region address spaces, so it shares their dispatching priority: the most
+   * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION). */
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string };
   io: Record<IoClass, IoService>;
   /** WLM I/O priority management: IOSQ ordered by DP and I/O samples count in velocity. */
   ioPriority?: boolean;
@@ -273,9 +276,11 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     a.zi += zi;
   });
 
+  const reg = input.regions;
+  const regionDp = reg ? (reg.mode === 'REGION' ? input.dpOf(reg.regionKey) : Math.max(...reg.keys.map((k) => input.dpOf(k)))) : 0;
   const demands: DispatchDemand[] = order.map((k) => ({
     id: k,
-    dp: input.dpOf(k),
+    dp: reg && reg.keys.includes(k) ? regionDp : input.dpOf(k),
     cpEngines: agg[k]!.cp,
     ziipEngines: agg[k]!.zi,
     ziipMayOverflow: agg[k]!.overflow,

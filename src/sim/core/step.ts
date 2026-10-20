@@ -425,6 +425,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       storageCritical,
       capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
       ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)),
+      ...cicsRegions(def, slices, workloadById, addressSpaces, l.id),
       promoted,
       promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
     };
@@ -844,6 +845,21 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
   }
   if (capped.size === 0) return undefined;
   return (s) => (capped.has(s.scKey) ? s.cpEngines * D.capFrac : Infinity);
+}
+
+/** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). */
+function cicsRegions(
+  def: SimState['wlm']['definition'],
+  slices: readonly SliceSpec[],
+  byId: Record<string, WorkloadDef>,
+  addressSpaces: readonly AddressSpaceDef[],
+  lparId: string,
+): { regions?: LparEvalInput['regions'] } {
+  const keys = [...new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.scKey))].sort();
+  const aor = addressSpaces.find((a) => a.lparId === lparId && a.role === 'CICS.AOR');
+  if (keys.length === 0 || !aor) return {};
+  const regionKey = scKeyOf(classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, 0);
+  return { regions: { keys, mode: def.cicsRegionMode ?? 'TRANSACTION', regionKey } };
 }
 
 /** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly

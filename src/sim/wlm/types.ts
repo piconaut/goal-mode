@@ -64,6 +64,8 @@ export interface ServiceDefinition {
   classes: ServiceClassDef[];
   reportClasses: string[];
   resourceGroups: ResourceGroupDef[];
+  /** "Manage regions using goals of" for CICS regions (absent = TRANSACTION). */
+  cicsRegionMode?: 'TRANSACTION' | 'REGION';
   /** Service coefficient option "I/O priority management" (absent = YES). */
   ioPriorityManagement?: boolean;
   subsystems: SubsystemRules[];
