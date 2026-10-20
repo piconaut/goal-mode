@@ -58,3 +58,31 @@ console.log(`\n${run.phase}: ${run.endReason ?? ''}  day ${run.day + 1}  score $
 for (const b of run.sim.cost.bills) console.log(`bill month ${b.month + 1}: $${Math.round(b.total).toLocaleString()}`);
 console.log(`month ${run.sim.cost.month + 1} to date: $${Math.round(run.reports.at(-1)?.mlcEstimate ?? 0).toLocaleString()}${run.sim.cost.tfp ? ' (TFP)' : ''}`);
 void chooseDraft;
+
+// One machine-readable summary line for tools/sweep.ts.
+if (process.argv.includes('--json')) {
+  const reason = run.endReason ?? '';
+  const cause = run.phase === 'VICTORY' ? 'victory' : /trust/i.test(reason) ? 'trust' : /batch/i.test(reason) ? 'batch' : /opex|outsourc/i.test(reason) ? 'opex' : run.phase === 'GAMEOVER' ? 'other' : 'unfinished';
+  const byMech: Record<string, number> = {};
+  for (const i of run.incidents) byMech[i.truth.mechanism] = (byMech[i.truth.mechanism] ?? 0) + 1;
+  const lowest = FACETS.reduce((a, f) => (run.trust[f] < run.trust[a] ? f : a), FACETS[0]!);
+  console.log(
+    'JSON:' +
+      JSON.stringify({
+        bot: botName,
+        seed,
+        phase: run.phase,
+        cause,
+        // Day the run ended on (1-based), or days completed when it was cut short by --days.
+        day: run.phase === 'GAMEOVER' || run.phase === 'VICTORY' ? run.day + 1 : run.day,
+        score: run.score,
+        overallTrust: Math.round(overallTrust(run) * 10) / 10,
+        lowestFacet: lowest,
+        bill1: Math.round(run.sim.cost.bills[0]?.total ?? 0),
+        incidents: run.incidents.length,
+        byMechanism: byMech,
+        batchMisses: run.reports.filter((r) => r.batchMissed).length,
+        events: [...new Set(run.events.filter((e) => e.started).map((e) => e.defId))].sort(),
+      }),
+  );
+}

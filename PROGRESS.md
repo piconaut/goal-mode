@@ -459,7 +459,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   with a progress bar, so ~8 s per simulated day is acceptable
 
 **M8.2 Balance harness & targets (SPEC §16)**
-- [ ] `tools/sweep.ts`: run bots over N seeds in parallel processes → CSV (day lost, cause, score, MLC, incidents by mechanism)
+- [x] `tools/sweep.ts` (loop 37): `npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs N] [--days D] [--out f.csv]` runs each bot×seed as a `tools/bot.ts --json` process in parallel → CSV (phase, cause, day, score, trust, lowest facet, month-1 bill, incidents by mechanism, batch misses, events) and a per-bot summary (day p10/median/p90, median score, ends by cause)
 - [ ] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: SLA fine, loses on opex), expert (scripted good play incl. capacity orders and caps: wins with grade A on Normal)
 - [ ] Targets hold across ≥ 20 seeds (median and spread), not just seed 42; event-deck intensity, growth rates and trust weights tuned from sweeps
 - [ ] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
