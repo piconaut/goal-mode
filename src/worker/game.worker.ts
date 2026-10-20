@@ -51,6 +51,9 @@ let history: HistoryPoint[] = [];
 let historyDirty = true;
 let saved: RunState | null = null;
 let savedDesk: DeskState | null = null;
+const LIVE_SAVE_EVERY_TICKS = 360; // one sim hour
+let lastLiveSaveHour = -1;
+let liveSaveInFlight = false;
 /** Mirror of the UI's change basket, so it can be saved with the run. */
 let basket: Command[] = [];
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -130,11 +133,20 @@ function advanceSampled(n: number) {
   autosave();
 }
 
-/** Save whenever the phase changes (end of day, game over) so a reload resumes there. */
+/** Save whenever the phase changes (end of day, game over) so a reload resumes there, and every sim hour of the
+ * live day so a crash or reload costs at most an hour (and cannot replay the day from its briefing). */
 function autosave() {
   if (run.phase !== lastPhase) {
     lastPhase = run.phase;
+    lastLiveSaveHour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
     if (run.phase !== 'LIVE' && storageReady) void saveRun(run, desk());
+    return;
+  }
+  const hour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
+  if (run.phase === 'LIVE' && hour !== lastLiveSaveHour && storageReady && saved === null && !liveSaveInFlight) {
+    lastLiveSaveHour = hour;
+    liveSaveInFlight = true;
+    void saveRun(run, desk()).finally(() => (liveSaveInFlight = false));
   }
 }
 

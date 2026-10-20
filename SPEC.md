@@ -1106,7 +1106,7 @@ keyboard-first.
 - **Determinism:** seeded PRNG (xoshiro128** or similar); *no* `Math.random`, `Date.now` or
   wall-clock in the sim. State is plain serialisable data. `step(state, commands, rng) → state`.
   Same seed + same command log ⇒ identical run (replays, daily seeds, bug repro, what-if forks).
-- **Save system:** state snapshot at each day boundary, plus a command log; IndexedDB.
+- **Save system:** state snapshot at each phase change and every sim hour of the live day (crash-safe: a reload resumes mid-day, so a day cannot be replayed from its briefing), plus a command log; IndexedDB.
 
 ```
 src/

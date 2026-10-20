@@ -598,11 +598,14 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     ignored while typing in a field)
 - [x] Sound/feedback: pager chime on incidents, subtle tick at hour boundaries (mutable) (loop 46: Web Audio
   tones in `src/ui/sound.ts`, top-bar toggle, off by default, remembered in localStorage)
-- [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
+- [x] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
   - [x] Loop 43: theme toggle in the top bar (auto → dark → light, remembered in localStorage, sets
     `data-theme` on <html>); `useStored` hook moved to `src/ui/useStored.ts`. Error boundaries per tab already exist
   - [x] Loop 44: classic 3270 colours as a fourth theme (green on black, 3279 base colours, mono font)
   - [x] Loop 45: speed default: the last running speed is remembered (localStorage) and restored on reload
+  - [x] Loop 73: crash-safe autosave: the worker also saves every sim hour of the live day (one save in flight at a
+    time; ~0.8 MB, ~14 ms clone at midday 1), so a reload resumes mid-day instead of replaying it from the briefing
+    (which also closes an Ironman save-scum). Checked in headless Chromium: 8× to 09:51, reload, continue → LIVE 09:30
 - [x] Deploy target (static hosting) and a README (loop 40: `base: './'` so `dist/` runs from any sub-path; `README.md` with play, build, dev commands and layout)
 
 ### M8.9 — Game-playing agents (last work on `main`; user request 2026-10-20)
@@ -726,6 +729,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 73):** hourly autosave during the live day (resume mid-day after a crash or reload; no more replaying a day from its briefing).
 - **2026-10-20 (loop 72):** endless mode after victory (fresh capex, counts as a win, endless days in report and share line). 259 tests.
 - **2026-10-20 (loop 69):** daily seed challenge (implementer subagent, reviewed): UTC-date seed, share line with Copy on the end screen. 257 tests.
 - **2026-10-20 (loop 68):** 20-seed Normal sweep with 19 cards: expert 20/20, textbook median 26 (booking go-live drives early Retail collapses). Asked the user.
