@@ -80,10 +80,10 @@ function EndReportView({ r }: { r: EndReport }) {
       </p>
       {r.biggestIncident && (
         <p>
-          Biggest incident: <b>{r.biggestIncident.workloadId}</b> on day {r.biggestIncident.day + 1}, {r.biggestIncident.hours} h ({r.biggestIncident.cause}).
+          Biggest incident: <b>{r.biggestIncident.workloadId}</b> on day {r.biggestIncident.day + 1}, {r.biggestIncident.hours} h: {r.biggestIncident.cause}.
         </p>
       )}
-      <p>{r.bestRca ? <>Best RCA: <b>{r.bestRca.workloadId}</b> on day {r.bestRca.day + 1}, {r.bestRca.points} points ({r.bestRca.cause}).</> : 'No root cause analysis scored points.'}</p>
+      <p>{r.bestRca ? <>Best RCA: <b>{r.bestRca.workloadId}</b> on day {r.bestRca.day + 1}, {r.bestRca.points} points: {r.bestRca.cause}.</> : 'No root cause analysis scored points.'}</p>
       <details>
         <summary>Day by day</summary>
         <table>
