@@ -569,7 +569,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [~] Meta-progression (career XP → unlock scenarios, starting perks, starting tool; Codex persists) in IndexedDB
   (loop 78: career XP, six levels unlocking starting perks, picked in the day-1 briefing; stored in IndexedDB,
   end screen shows XP earned and new unlocks. Checked in headless Chromium: a do-nothing run earned 140 XP.
-  Still open: scenario unlocks (one scenario so far), starting tool, Codex persistence across runs)
+  Codex already persists across runs (localStorage, `goalmode.codex.v1`). Still open: scenario unlocks (one
+  scenario so far), starting tool)
 
 **M8.4 Content**
 - [~] Events to ~25 (SPEC §9) (19 now; AUDIT_UNCLASSIFIED (5-day regulator audit of SYSOTHER, `auditUnclassified`); HIRING_FREEZE (-2 engineer-hours/day for 5 days, optional `hoursDelta`/`announcementFrom` card fields, rumoured; VENDOR_PRICE still pending: needs a run-level product price multiplier); 17 before; HSM_RECALL_STORM (LCU 30 recall I/O, fix HOLD_HSM_RECALLS, rumoured) and CP_SPARING (red-herring note, never attributed) added; 15 before; loop 60 added NEW_APP_GOLIVE (BOOKING lands in SYSOTHER and stays, once per run, rumoured) and POWER_CAP (one capacity setting down for 6 h, resolved at start so upgrades are not undone; new `oncePerRun`/`capacityDrop` card fields) with realism tests; earlier: 13; loop 58 added SHADOW_IT and QR_RELEASE with fixes, rumours and realism tests; re-sweep the bots once the deck is complete): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT
@@ -601,8 +602,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 
 **M8.5 UX polish & accessibility**
 - [x] Guided tutorial for day 1 (spot F1 via WLMGL, fix a classification rule, watch PI recover)
-- [ ] Charts everywhere they help (MSU/R4HA, PI history, batch Gantt) with crosshair tooltips and table views (dataviz rules: validated palette, no dual axes)
-- [ ] Keyboard-first controls, focus states, forced-colors support, every chart with a table view, contrast check in both themes
+- [x] Charts everywhere they help (MSU/R4HA, PI history, batch Gantt) with crosshair tooltips and table views (dataviz rules: validated palette, no dual axes)
+- [x] Keyboard-first controls, focus states, forced-colors support, every chart with a table view, contrast check in both themes
+  - [x] Loop 79: contrast audit: the light theme had kept the dark status colours (accent/good/warn/bad/crit at
+    ~2.4:1 on white); now darkened light values, primary button label uses `--bg`. `tests/ui/contrast.test.ts` checks
+    text and status tokens ≥ 4.5:1 on every surface in dark, light and 3270. Focus rings were already in place
   - [x] Loop 42: forced-colors support (`@media (forced-colors: active)` in `styles.css`: data bars, Gantt runs,
     selected rows, active subtab, primary button and status tags stay distinguishable in system colours)
   - [x] Loop 47: keyboard shortcuts: Space pause/resume, 1–5 speed ½×…8×, Alt+1–8 tabs (hints in button titles;
@@ -740,6 +744,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 79):** contrast audit fixed the light theme's status colours; contrast test for all themes. 273 tests.
 - **2026-10-20 (loop 78):** career v1 (XP across runs → starting-perk unlocks, IndexedDB). 270 tests.
 - **2026-10-20 (loop 77):** two pact draft cards (persistent perk + persistent downside). 267 tests.
 - **2026-10-20 (loop 76):** weekend auto-run (full sim at worker speed, report card as summary); weekday shown. 265 tests.
