@@ -4,6 +4,10 @@
 //   npm run play -- runs/a.json status | catalog | mon3 | smf DB2|CICS|BATCH|SMF113 [hour]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [index] | report WLM_DETAIL 5 ONLHI#1
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
+//   npm run play -- runs/a.json rca <incident> <MECHANISM> <TRIGGER> --evidence 1,3
+//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin <id>
+//   npm run play -- runs/a.json pin WLMGL <interval> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric>
+//   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED | pin DB2|CICS <hour> <workloadId> <metric>
 //   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json json '{"cmd":"change","req":{...}}'   (any PlayCommand, e.g. wlm edits)
 
@@ -11,6 +15,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { DifficultyId } from '../src/content/difficulty';
 import type { Mechanism, Trigger } from '../src/game/types';
+import type { PinRequest } from '../src/game/evidence';
+import type { EvidenceMetric } from '../src/content/evidence';
+import type { InquiryKind } from '../src/content/inquiries';
 import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { applyPlayCommand, catalogText, decodePlayFile, encodePlayFile, mon3Text, statusText, type PlayCommand } from './playCore';
 
@@ -18,6 +25,15 @@ const [path, verb, ...rest] = process.argv.slice(2);
 if (!path || !verb) {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).join('\n'));
   process.exit(1);
+}
+
+function pinRequest(a: string[]): PinRequest {
+  const src = (a[0] ?? '').toUpperCase();
+  if (src === 'WLMGL') return { source: 'WLMGL', index: Number(a[1]), system: a[2] ?? '*PLEX', scKey: a[3] ?? '', metric: a[4] as EvidenceMetric };
+  if (src === 'MON3') return { source: 'MON3', system: a[1] ?? '', scKey: a[2] ?? '', metric: a[3] as EvidenceMetric };
+  if (src === 'CPC') return { source: 'CPC', lparId: a[1] ?? '', metric: (a[2] ?? 'PRSM_DELAY') as 'PRSM_DELAY' | 'CAPPED' };
+  if (src === 'DB2' || src === 'CICS') return { source: src, hour: a[1] ?? '', workloadId: a[2] ?? '', metric: a[3] as EvidenceMetric };
+  throw new Error('pin source: WLMGL | MON3 | CPC | DB2 | CICS');
 }
 
 type ReadOnly = 'status' | 'catalog' | 'mon3';
@@ -31,7 +47,14 @@ function parse(): PlayCommand | ReadOnly {
     case 'start': return { cmd: 'start' };
     case 'advance': return { cmd: 'advance', hours: Number(rest[0] ?? 1) };
     case 'draft': return { cmd: 'draft', optionId: rest[0] && rest[0] !== 'none' ? rest[0] : null };
-    case 'rca': return { cmd: 'rca', incidentId: Number(rest[0]), mechanism: rest[1] as Mechanism, trigger: rest[2] as Trigger };
+    case 'rca': {
+      const ev = rest.indexOf('--evidence');
+      return { cmd: 'rca', incidentId: Number(rest[0]), mechanism: rest[1] as Mechanism, trigger: rest[2] as Trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map(Number) : [] };
+    }
+    case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
+    case 'project': return { cmd: 'project', id: rest[0] ?? '', hours: Number(rest[1] ?? 1) };
+    case 'unpin': return { cmd: 'unpin', id: Number(rest[0]) };
+    case 'pin': return { cmd: 'pin', req: pinRequest(rest) };
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
     case 'activate': return { cmd: 'activate' };
     case 'rcadvice': return { cmd: 'rcadvice', workloadId: rest[0] ?? null };

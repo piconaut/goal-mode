@@ -626,7 +626,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 ### M8.9 — Game-playing agents (last work on `main`; user request 2026-10-20)
 After M7–M8 are done and **before** starting M9, add AI agents that can play the game, then stop pushing
 to `main` (this is the last push there; M9 goes on its feature branch).
-- [~] Headless play interface the agents drive: a CLI (`tools/play.ts`) that loads/saves a run, prints the
+- [x] Headless play interface the agents drive: a CLI (`tools/play.ts`) that loads/saves a run, prints the
   briefing, inbox, incidents and requested reports (WLMGL, Partition Data, CF, DASD, SMF, Monitor III
   snapshots) as text, and accepts Change Desk actions, WLM edits, RCAs, tool purchases and "advance N hours" as
   commands (JSON or simple verbs); same determinism as the sim (seed + command log)
@@ -637,7 +637,10 @@ to `main` (this is the last push there; M9 goes on its feature branch).
     not logged. Status never prints incident ground truth. A full day advances in ~10 s
   - [x] Loop 81: `catalog` (hardware, fixes, tool tree with insight costs, RCA vocabulary), `smf DB2|CICS|BATCH|SMF113
     [hour]` (tool-gated, counts as an opened report like the browser) and `mon3` (Monitor III rows as JSON lines)
-  - [ ] Still to add: ask-around, projects, pins/evidence for RCAs, a short reference of Command/WlmEdit shapes
+  - [x] Loop 84: `ask TOPIC [workloadId]`, `project ID hours`, `pin WLMGL|MON3|CPC|DB2|CICS …`, `unpin`, and
+    `rca … --evidence 1,2` (through the same game functions as the worker); `catalog` lists inquiry topics,
+    projects and evidence sources/metrics; status shows pins and unanswered questions; `docs/agents.md` has a
+    quick reference of Change Desk command and WLM edit shapes (agents are pointed at it)
 - [x] Agent definition files (e.g. `.claude/agents/goal-mode-player.md`, plus variants such as a cautious
   operator and a cost-cutter) that play a full run through that CLI: diagnose from reports, make changes,
   submit RCAs, keep a run log

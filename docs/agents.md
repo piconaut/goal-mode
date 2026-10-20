@@ -14,7 +14,10 @@ npm run -s play -- runs/a.json advance 2          # advance the live day 1–24 
 npm run -s play -- runs/a.json report WLM_SUMMARY [index] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour]
 npm run -s play -- runs/a.json mon3               # Monitor III (needs the RMF_MON3 tool)
-npm run -s play -- runs/a.json rca 3 CPU_PRIORITY POLICY
+npm run -s play -- runs/a.json rca 3 CPU_PRIORITY POLICY [--evidence 1,4]
+npm run -s play -- runs/a.json pin WLMGL 12 '*PLEX' ONLHI#1 DELAY_CPU   # also MON3, CPC, DB2, CICS (see catalog)
+npm run -s play -- runs/a.json ask CALENDAR       # ask around; APP_ENTRY/GROWTH take a workload id
+npm run -s play -- runs/a.json project SQL_TUNING 4   # spend engineer-hours on a multi-day project
 npm run -s play -- runs/a.json buy RMF_MON3
 npm run -s play -- runs/a.json draft <id|none>    # closes the end-of-day review
 npm run -s play -- runs/a.json json '{"cmd":"change","req":{"label":"+1 CP","hardwareId":"PERM_CP"}}'
@@ -24,6 +27,36 @@ npm run -s play -- runs/a.json json '{"cmd":"wlm","edit":{...}}'   # then: activ
 Each call loads the run file, applies one command and saves it. Refused commands print `REFUSED: …`, exit
 with code 2 and change nothing. Shapes: `PlayCommand` in `tools/playCore.ts`, Change Desk commands in
 `src/sim/core/commands.ts`, WLM edits in `src/game/wlmEdit.ts`.
+
+### Command shapes (quick reference)
+
+Change Desk (`json '{"cmd":"change","req":{"label":"…","commands":[…]}}'`), most used `Command` kinds:
+
+```
+{"kind":"SET_WEIGHT","lparId":"PROD1","pool":"CP","weight":600}
+{"kind":"SET_LOGICAL","lparId":"PROD1","pool":"CP","logical":6}
+{"kind":"SET_DEFINED_CAPACITY","lparId":"PROD1","msu":null}          # null removes the cap
+{"kind":"SET_JOB_CLASS","jobClass":"B","initiators":{"SYSA":4}}
+{"kind":"SET_DB2","ssid":"DBP1","maxDbat":400}
+{"kind":"SET_CICS","name":"CICSAOR1","maxTasks":250}
+{"kind":"MOVE_STRUCTURE","name":"DB2_LOCK1","cfLparId":"CF01"}
+{"kind":"SET_RMF_INTERVAL","minutes":15}
+```
+
+WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy until `activate`). Goals are
+`{"kind":"AVG","rtSec":0.5}`, `{"kind":"PCT","rtSec":0.5,"pct":90}`, `{"kind":"VEL","velocity":40}` or
+`{"kind":"DISC"}`; importance 1–5; qualifiers TN UI TC PK CI SY; subsystems STC JES CICS DDF TSO MQ OMVS.
+
+```
+{"op":"SET_PERIOD","classId":"ONLHI","period":1,"goal":{"kind":"PCT","rtSec":0.3,"pct":90},"importance":1}
+{"op":"ADD_CLASS","classId":"MOBILE","description":"Mobile API","goal":{"kind":"AVG","rtSec":0.4},"importance":2,"cpuCritical":false}
+{"op":"ADD_RULE","subsystem":"DDF","qualifier":"UI","pattern":"MOB*","serviceClass":"MOBILE","reportClass":"RMOBILE"}
+{"op":"SET_RULE_TARGET","subsystem":"DDF","path":[0],"serviceClass":null,"reportClass":"RMOBILE"}
+{"op":"SET_RESOURCE_GROUP","classId":"BATLO","group":{"id":"RGBAT","type":2,"min":null,"max":30}}
+```
+
+Names here are illustrative; take the real LPAR, class, subsystem and structure names from `status` and the
+reports. The full unions are in `src/sim/core/commands.ts` and `src/game/wlmEdit.ts`.
 
 The run file holds the same serialised `RunState` the browser saves, the pending WLM policy and the command
 log. Seed + command log replays the run exactly (the sim is deterministic), and the file round-trips through

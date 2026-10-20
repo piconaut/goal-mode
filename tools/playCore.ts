@@ -18,6 +18,11 @@ import { adviseReportClasses } from '../src/game/rcAdvisor';
 import { workItems } from '../src/game/classifyExplain';
 import { clockAt, formatClock } from '../src/sim/core/clock';
 import { decideTfp } from '../src/game/tfp';
+import { askAround, inquiriesView } from '../src/game/inquiries';
+import { projectsView, workOnProject } from '../src/game/projects';
+import { addPin, removePin, type PinRequest } from '../src/game/evidence';
+import { EVIDENCE_METRICS } from '../src/content/evidence';
+import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, type WlmEdit } from '../src/game/wlmEdit';
 import { buildView } from '../src/game/view';
 import { MECHANISMS, TRIGGERS } from '../src/game/sla';
@@ -34,7 +39,11 @@ export type PlayCommand =
   | { cmd: 'advance'; hours: number }
   | { cmd: 'change'; req: ChangeRequest }
   | { cmd: 'draft'; optionId: string | null }
-  | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger }
+  | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
+  | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
+  | { cmd: 'project'; id: string; hours: number }
+  | { cmd: 'pin'; req: PinRequest }
+  | { cmd: 'unpin'; id: number }
   | { cmd: 'wlm'; edit: WlmEdit }
   | { cmd: 'activate' }
   | { cmd: 'discard' }
@@ -130,9 +139,27 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const inc = run.incidents.find((i) => i.id === c.incidentId);
       if (!inc) return fail(`No incident ${c.incidentId}`);
       if (inc.rca) return fail(`Incident ${c.incidentId} already has an RCA`);
-      const r = submitRca(run, c.incidentId, c.mechanism, c.trigger, sc(run));
-      const pts = r.incidents.find((i) => i.id === c.incidentId)?.rca?.points ?? 0;
-      return done(r, `RCA filed for incident ${c.incidentId}: ${pts} points.`);
+      const missing = (c.evidenceIds ?? []).filter((id) => !run.pins.some((p) => p.id === id));
+      if (missing.length) return fail(`No pinned evidence ${missing.join(' ')}`);
+      const r = submitRca(run, c.incidentId, c.mechanism, c.trigger, sc(run), c.evidenceIds ?? []);
+      const rca = r.incidents.find((i) => i.id === c.incidentId)?.rca;
+      return done(r, `RCA filed for incident ${c.incidentId}: ${rca?.points ?? 0} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}.`);
+    }
+    case 'ask': {
+      const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));
+      return done(o.run, o.message, o.ok);
+    }
+    case 'project': {
+      const o = workOnProject(run, c.id, c.hours);
+      return done(o.run, o.message, o.ok);
+    }
+    case 'pin': {
+      const o = addPin(run, sc(run), c.req);
+      return done(o.run, o.message, o.ok);
+    }
+    case 'unpin': {
+      if (!run.pins.some((p) => p.id === c.id)) return fail(`No pin ${c.id}`);
+      return done(removePin(run, c.id), `Unpinned ${c.id}.`);
     }
     case 'wlm': {
       const base = file.pendingPolicy ?? { ...run.sim.wlm.definition, policyName: nextPolicyName(run.sim.wlm.definition.policyName) };
@@ -242,6 +269,9 @@ export function statusText(file: PlayFile): string {
   }
   const open = v.incidents.filter((i) => !i.rca);
   if (open.length) out.push('incidents without RCA: ' + open.map((i) => `#${i.id} ${i.workloadId} day ${i.day + 1} from ${formatClock(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%`).join('; '));
+  if (run.pins.length) out.push('pinned evidence (rca ... --evidence ids):\n' + run.pins.map((p) => `  ${p.id}: ${p.text}`).join('\n'));
+  const asks = inquiriesView(run, sc(run)).pending;
+  if (asks.length) out.push('waiting for replies: ' + asks.map((p) => `${p.who}: ${p.question}${p.workloadId ? ` (${p.workloadId})` : ''}`).join('; '));
   const planned = v.changes.filter((c) => c.status === 'PLANNED');
   if (planned.length) out.push('planned changes: ' + planned.map((c) => `#${c.id} ${c.label} (day ${c.activateDay + 1})`).join('; '));
   if (v.draft) out.push('draft options: ' + v.draft.map((d) => `${d.id}: ${d.title}. ${d.description}`).join('\n  '));
@@ -269,6 +299,14 @@ export function catalogText(file: PlayFile): string {
   out.push(`tools (buy ID; insight ${v.insight}):`);
   for (const t of v.tools) out.push(`  ${t.id}${t.owned ? ' [owned]' : ''}${t.comingSoon ? ' [coming soon]' : ''}: ${t.name}, tier ${t.tier}, ${t.insightCost} insight${t.prereqs.length ? `, needs ${t.prereqs.join('+')}` : ''}. ${t.reveals}`);
   out.push(`RCA mechanisms: ${MECHANISMS.join(' ')}`, `RCA triggers: ${TRIGGERS.join(' ')}`);
+  const iq = inquiriesView(file.run, sc(file.run));
+  out.push(`ask around (ask TOPIC [workloadId]; replies arrive in the inbox hours later; at most ${iq.maxOpen} open):`);
+  for (const t of iq.topics) out.push(`  ${t.id}: ${t.contact}, ${t.hours}h. ${t.question}${t.perWorkload ? ' Needs a workload id.' : ''}`);
+  out.push(`  workloads: ${iq.apps.map((a) => a.id).join(' ')}`);
+  out.push('projects (project ID hours; engineer-hours spread over days):');
+  for (const p of projectsView(file.run)) out.push(`  ${p.id}${p.done ? ' [done]' : ''}: ${p.name}, ${p.hoursDone}/${p.hours}h, max ${p.maxHoursPerDay}h/day. ${p.description}`);
+  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> | CPC <lparId> PRSM_DELAY|CAPPED | DB2|CICS <hour> <workloadId> <metric>');
+  out.push(`  metrics: ${Object.keys(EVIDENCE_METRICS).join(' ')}`);
   out.push('Config/WLM commands for change {"label":..,"commands":[...]}: see the Command type in src/sim/core/commands.ts; WLM edits: WlmEdit in src/game/wlmEdit.ts');
   return out.join('\n');
 }

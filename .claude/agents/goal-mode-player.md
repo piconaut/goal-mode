@@ -11,7 +11,7 @@ one command; the run file is saved after every accepted command.
 
 ## Rules of engagement
 - Play from what the game shows: `status`, `report ...`, `smf ...`, `mon3`, `catalog`. You may read the type
-  definitions in `src/sim/core/commands.ts` (Change Desk command shapes) and `src/game/wlmEdit.ts` (WLM edit
+  definitions in `docs/agents.md` (quick reference of command shapes), `src/sim/core/commands.ts` (Change Desk command shapes) and `src/game/wlmEdit.ts` (WLM edit
   shapes) and the Codex in `src/content/codex/`. Do **not** read anything else under `src/`, `tests/` or
   `tools/strategies.ts`: scenario files hold the planted flaws and event ground truth, and reading them is cheating.
 - Never edit the run file by hand.
