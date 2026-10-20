@@ -1,5 +1,6 @@
 // The game runs here, off the UI thread. At 1× a played day (8640 ticks) takes 10 minutes.
 
+import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, newRun, requestChange, startDay, submitRca } from '../game/run';
@@ -28,7 +29,7 @@ import { clockAt } from '../sim/core/clock';
 import { TICKS_PER_DAY } from '../sim/core/units';
 import { goalText } from '../sim/wlm/goals';
 import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from './protocol';
-import { loadRun, saveRun } from './storage';
+import { loadDesk, loadRun, saveRun, type DeskState } from './storage';
 
 const scenario = MIDWEST;
 const content = MIDWEST_GAME;
@@ -44,6 +45,12 @@ let carry = 0;
 let history: HistoryPoint[] = [];
 let historyDirty = true;
 let saved: RunState | null = null;
+let savedDesk: DeskState | null = null;
+/** Mirror of the UI's change basket, so it can be saved with the run. */
+let basket: Command[] = [];
+let persistTimer: ReturnType<typeof setTimeout> | null = null;
+/** False until the previous save has been read: nothing may overwrite it before then. */
+let storageReady = false;
 let lastPhase = run.phase;
 
 const post = (m: FromWorker) => (self as unknown as Worker).postMessage(m);
@@ -97,7 +104,7 @@ function activate(def: ServiceDefinition) {
 }
 
 const sendView = () => {
-  post({ type: 'VIEW', view: buildView(run, scenario), history: historyDirty ? history : null, savedRunDay: saved && saved.day > 0 ? saved.day : null, pending: pendingView(), speed });
+  post({ type: 'VIEW', view: buildView(run, scenario), history: historyDirty ? history : null, savedRunDay: saved ? saved.day : null, pending: pendingView(), speed });
   historyDirty = false;
 };
 
@@ -121,12 +128,28 @@ function advanceSampled(n: number) {
 function autosave() {
   if (run.phase !== lastPhase) {
     lastPhase = run.phase;
-    if (run.phase !== 'LIVE') void saveRun(run);
+    if (run.phase !== 'LIVE' && storageReady) void saveRun(run, desk());
   }
 }
 
-void loadRun().then((r) => {
+const desk = (): DeskState => ({ pendingPolicy, basket });
+
+/** Save soon after any action outside the live day (planned changes, purchases, project hours, the
+ * basket and pending WLM edits), not just on phase changes. Never while an older save is still on offer:
+ * it is only replaced once this run reaches a phase change, as before. */
+function persistSoon() {
+  if (!storageReady || saved !== null || run.phase === 'LIVE') return;
+  if (persistTimer) clearTimeout(persistTimer);
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    if (storageReady && saved === null && run.phase !== 'LIVE') void saveRun(run, desk());
+  }, 400);
+}
+
+void Promise.all([loadRun(), loadDesk()]).then(([r, d]) => {
   saved = r ? normalizeRun(r, scenario) : null;
+  savedDesk = d;
+  storageReady = true;
   sendView();
 });
 
@@ -172,6 +195,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
   switch (m.type) {
     case 'NEW_RUN':
       whatIf = null;
+      pendingPolicy = null;
+      basket = [];
+      post({ type: 'BASKET', basket });
+      postPolicy();
       run = newRun(scenario, content, m.seed);
       history = [];
       historyDirty = true;
@@ -184,7 +211,15 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         history = [];
         historyDirty = true;
         saved = null;
+        pendingPolicy = savedDesk?.pendingPolicy ? normalizeDefinition(savedDesk.pendingPolicy) : null;
+        basket = savedDesk?.basket ?? [];
+        savedDesk = null;
+        postPolicy();
+        post({ type: 'BASKET', basket });
       }
+      break;
+    case 'SET_BASKET':
+      basket = m.basket;
       break;
     case 'DEV_INSIGHT':
       if (import.meta.env.DEV) run = { ...run, insight: run.insight + m.amount };
@@ -422,6 +457,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
   }
+  if (!m.type.startsWith('GET_')) persistSoon();
   sendView();
 };
 

@@ -75,6 +75,7 @@ export function useGame(): GameHandle {
           samples: [...(m.fromSample === 0 ? [] : c.samples.slice(0, m.fromSample)), ...m.samples],
           markers: [...(m.fromMarker === 0 ? [] : c.markers.slice(0, m.fromMarker)), ...m.markers],
         }));
+      else if (m.type === 'BASKET') setBasket(m.basket);
       else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds, advice: m.advice });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
@@ -88,6 +89,8 @@ export function useGame(): GameHandle {
   }, []);
 
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
+  // Mirror the basket to the worker so it is saved with the run.
+  useEffect(() => send({ type: 'SET_BASKET', basket }), [basket, send]);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
   return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, charts, rules, toast, results, basket, setBasket, send };

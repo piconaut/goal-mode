@@ -58,6 +58,8 @@ export type ToWorker =
   | { type: 'DISCARD_PENDING' }
   | { type: 'CLASSIFY'; work: WorkAttributes }
   | { type: 'CONTINUE_SAVED' }
+  /** The UI's change basket, mirrored so it is saved with the run. */
+  | { type: 'SET_BASKET'; basket: Command[] }
   | { type: 'GET_RULES' }
   /** Stage the advisor's suggestion for one workload (or all) into the pending policy. */
   | { type: 'RC_ADVICE_APPLY'; workloadId: string | null }
@@ -94,4 +96,6 @@ export type FromWorker =
   | { type: 'RULES'; active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null }
   | { type: 'REPORT'; text: string }
   | { type: 'POLICY'; json: string }
+  /** Restore the change basket (continuing a saved run, new run). */
+  | { type: 'BASKET'; basket: Command[] }
   | { type: 'RESULT'; ok: boolean; message: string };

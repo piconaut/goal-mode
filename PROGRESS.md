@@ -133,6 +133,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
   (Briefing / Day N review / Day N report card) opens and closes the overlay in any phase, including mid-day
   for the last report card; ✕ and Escape close it; the overlay stays mounted while hidden so half-filled RCA
   forms survive. Chromium: review → close → Reports → reopen → Esc → draft → live → report card
+- [x] **Saves keep Change Desk work** (requested 2026-10-20): the run is saved ~0.4 s after any action outside
+  the live day (planned changes, purchases, project hours…), not only on phase changes; the change basket
+  (mirrored to the worker) and the pending WLM policy are saved alongside (`DeskState` in worker/storage.ts) and
+  restored by Continue saved run. Nothing is saved before the old save has been read, and an unclaimed save is
+  only replaced at the fresh run's first phase change. Continue is offered for day-1 saves too. Chromium: plan a
+  change + basket item + pending WLM edit → reload → continue → all three back
 - [x] **Stakeholder mood in Ask around** (requested 2026-10-20): app owners answer according to their
   workload's stakeholder trust, business planning by Finance trust, the relationship manager by overall trust;
   IT colleagues ignore trust. < 25: rude, no information; 25–45: rude with rising probability, else curt and
@@ -567,6 +573,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (user requests):** WLMGL header alignment fix; saves keep planned changes, basket and pending policy. 214 tests.
 - **2026-10-20 (user request):** stakeholder mood in Ask around. 213 tests.
 - **2026-10-20 (loop 34):** MPL/swap delay; Change Desk crash on old saves fixed (missing durationSu). 210 tests.
 - **2026-10-20 (user requests):** arrival-rate chart, charts on top + collapsible, service class editor; M9 on hold until the user says start. 207 tests.
