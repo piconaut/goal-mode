@@ -7,6 +7,7 @@ import type { GameHandle } from './useGame';
 
 const color = (i: number) => (i < 8 ? `var(--series-${i + 1})` : 'var(--muted)');
 const MAX_PICKED = 8;
+const OPEN_KEY = 'goalmode.mon3charts.open';
 
 const RC = 'RC ';
 const DELAYS: { key: keyof Mon3Sample['delay'][string]; label: string }[] = [
@@ -29,9 +30,17 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
   }, [meta?.samples, meta?.markers, meta?.firstTick, all, allMarkers.length, game, meta]);
 
   const [zoom, setZoom] = useState<[number, number] | null>(null);
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(OPEN_KEY) !== '0';
+    } catch {
+      return true;
+    }
+  });
   const [allPeriods, setAllPeriods] = useState(false);
   // Response-time picker: each picked class keeps its colour slot until it is unpicked.
   const [picked, setPicked] = useState<Record<string, number> | null>(null);
+  const [pickedArr, setPickedArr] = useState<Record<string, number> | null>(null);
   const [delayKey, setDelayKey] = useState('');
 
   const importance = useMemo(() => Object.fromEntries((v.mon3?.rows ?? []).filter((r) => r.system === '*PLEX').map((r) => [r.scKey, r.importance])), [v.mon3]);
@@ -77,17 +86,16 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
   // Default: the DDF first periods (later DDF periods hold long queries that would flatten them).
   const slots: Record<string, number> = picked ?? Object.fromEntries(ddfKeys.filter((k) => k.endsWith('#1')).map((k, i) => [k, i]));
   const pickedKeys = Object.keys(slots).sort((a, b) => slots[a]! - slots[b]!);
-  const toggle = (k: string) => {
-    const next = { ...slots };
-    if (k in next) delete next[k];
-    else {
-      const used = new Set(Object.values(next));
-      let slot = 0;
-      while (used.has(slot)) slot++;
-      next[k] = slot;
-    }
-    setPicked(next);
-  };
+  const toggle = (k: string) => setPicked(toggleSlot(slots, k));
+  const arrClasses = firstSeen(all, (s) => s.arr);
+  const arrReports = firstSeen(all, (s) => s.rcArr).map((k) => RC + k);
+  const arrSlots: Record<string, number> = pickedArr ?? Object.fromEntries(arrClasses.slice(0, MAX_PICKED).map((k, i) => [k, i]));
+  const arrKeys = Object.keys(arrSlots).sort((a, b) => arrSlots[a]! - arrSlots[b]!);
+  const arrSeries: Series[] = arrKeys.map((k) => ({
+    id: k,
+    color: color(arrSlots[k]!),
+    values: samples.map((s) => (k.startsWith(RC) ? (s.rcArr?.[k.slice(RC.length)] ?? null) : (s.arr?.[k] ?? null))),
+  }));
   const rtSeries: Series[] = pickedKeys.map((k) => ({
     id: k,
     color: color(slots[k]!),
@@ -99,8 +107,23 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
   ];
 
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
-      <h3>Charts: today, one sample per minute</h3>
+    <details
+      className="panel section"
+      style={{ marginBottom: 12 }}
+      open={open}
+      onToggle={(e) => {
+        const o = (e.currentTarget as HTMLDetailsElement).open;
+        setOpen(o);
+        try {
+          localStorage.setItem(OPEN_KEY, o ? '1' : '0');
+        } catch {
+          // Storage blocked: the choice just isn't remembered.
+        }
+      }}
+    >
+      <summary>
+        <h3>Charts: today, one sample per minute</h3>
+      </summary>
       <div className="form">
         <span className="muted" style={{ fontSize: 12 }}>
           ▴ WLM decision · ┆ change · ⁝ event or incident (hover for details). Drag across any chart to zoom all of them.{zoom ? ` Showing ${xLabels[0]}–${xLabels.at(-1)}.` : ''}
@@ -149,31 +172,32 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
         <div>
           <div className="form">
             <b style={{ fontSize: 13 }}>Response time</b>
-            <details className="picker">
-              <summary>
-                Classes ({pickedKeys.length}/{MAX_PICKED}) ▾
-              </summary>
-              <div className="picker-menu" role="group" aria-label="Classes to chart">
-                <div className="muted" style={{ fontSize: 11 }}>Service class periods</div>
-                {rtPeriods.map((k) => (
-                  <label key={k}>
-                    <input type="checkbox" checked={k in slots} disabled={!(k in slots) && pickedKeys.length >= MAX_PICKED} onChange={() => toggle(k)} /> {k}
-                  </label>
-                ))}
-                <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>Report classes</div>
-                {rtReports.length === 0 && (
-                  <div className="muted" style={{ fontSize: 11, maxWidth: 220 }}>None yet. Give a classification rule a report class (Change Desk › WLM › Classification rules).</div>
-                )}
-                {rtReports.map((k) => (
-                  <label key={k}>
-                    <input type="checkbox" checked={k in slots} disabled={!(k in slots) && pickedKeys.length >= MAX_PICKED} onChange={() => toggle(k)} /> {k.slice(RC.length)}{' '}
-                    <span className="muted">(report)</span>
-                  </label>
-                ))}
-              </div>
-            </details>
+            <ClassPicker
+              label="Classes to chart"
+              slots={slots}
+              toggle={toggle}
+              groups={[
+                { title: 'Service class periods', keys: rtPeriods },
+                { title: 'Report classes', keys: rtReports, empty: 'None yet. Give a classification rule a report class (Change Desk › WLM › Classification rules).' },
+              ]}
+            />
           </div>
           {rtSeries.length ? <LineChart title="Response time" unit="ms" series={rtSeries} {...common} /> : <div className="muted">Pick classes to chart.</div>}
+        </div>
+        <div>
+          <div className="form">
+            <b style={{ fontSize: 13 }}>Transaction arrival rate</b>
+            <ClassPicker
+              label="Classes to chart arrivals for"
+              slots={arrSlots}
+              toggle={(k) => setPickedArr(toggleSlot(arrSlots, k))}
+              groups={[
+                { title: 'Service classes', keys: arrClasses },
+                { title: 'Report classes', keys: arrReports, empty: 'None yet. Give a classification rule a report class (Change Desk › WLM › Classification rules).' },
+              ]}
+            />
+          </div>
+          {arrSeries.length ? <LineChart title="Arrivals per second" unit="/s" series={arrSeries} {...common} /> : <div className="muted">Pick classes to chart.</div>}
         </div>
         {ddfKeys.length > 0 && (
           <>
@@ -186,6 +210,51 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
           </>
         )}
       </div>
-    </div>
+    </details>
+  );
+}
+
+/** Toggle a key in a colour-slot map; a new key takes the lowest free slot. */
+function toggleSlot(slots: Record<string, number>, k: string): Record<string, number> {
+  const next = { ...slots };
+  if (k in next) delete next[k];
+  else {
+    const used = new Set(Object.values(next));
+    let slot = 0;
+    while (used.has(slot)) slot++;
+    next[k] = slot;
+  }
+  return next;
+}
+
+/** Drop-down checklist of service/report classes (at most MAX_PICKED at once). */
+function ClassPicker({ label, slots, toggle, groups }: { label: string; slots: Record<string, number>; toggle: (k: string) => void; groups: { title: string; keys: string[]; empty?: string }[] }) {
+  const n = Object.keys(slots).length;
+  return (
+    <details className="picker">
+      <summary>
+        Classes ({n}/{MAX_PICKED}) ▾
+      </summary>
+      <div className="picker-menu" role="group" aria-label={label}>
+        {groups.map((g, gi) => (
+          <div key={g.title}>
+            <div className="muted" style={{ fontSize: 11, marginTop: gi ? 6 : 0 }}>
+              {g.title}
+            </div>
+            {g.keys.length === 0 && g.empty && (
+              <div className="muted" style={{ fontSize: 11, maxWidth: 220 }}>
+                {g.empty}
+              </div>
+            )}
+            {g.keys.map((k) => (
+              <label key={k}>
+                <input type="checkbox" checked={k in slots} disabled={!(k in slots) && n >= MAX_PICKED} onChange={() => toggle(k)} /> {k.startsWith(RC) ? k.slice(RC.length) : k}
+                {k.startsWith(RC) && <span className="muted"> (report)</span>}
+              </label>
+            ))}
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }

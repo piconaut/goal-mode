@@ -47,6 +47,8 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
   const systems = ['*PLEX', ...m.systems.map((s) => s.system)];
   return (
     <>
+    {/* Charts (when unlocked) sit above the live views; the locked teaser stays below. */}
+    {v.mon3Charts && <Mon3Charts v={v} game={game} />}
     <div className="panel">
       <h3>
         RMF Monitor III · {v.clock} · range ≈ {m.rangeSec} s
@@ -78,7 +80,7 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
         {view === 'WLM' && <WlmLog lines={v.wlmLog} />}
       </div>
     </div>
-    <Mon3Charts v={v} game={game} />
+    {!v.mon3Charts && <Mon3Charts v={v} game={game} />}
     <Alerts v={v} game={game} />
     <Automation v={v} game={game} />
     <EvidenceBoard v={v} game={game} />

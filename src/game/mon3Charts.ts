@@ -21,6 +21,10 @@ export interface Mon3Sample {
   rt: Record<string, number | null>;
   /** Average response time, ms, per report class, over the minute since the last sample. */
   rcRt: Record<string, number | null>;
+  /** Transaction arrivals per second over the minute, per service class (they enter period 1). */
+  arr?: Record<string, number>;
+  /** Transaction arrivals per second over the minute, per report class. */
+  rcArr?: Record<string, number>;
   /** DDF periods (enclaves). */
   ddf: Record<string, { endedPerSec: number; rtMs: number | null; ziipEngines: number; iipcpEngines: number }>;
 }
@@ -41,7 +45,9 @@ export interface Mon3ChartState {
   /** run.log length already scanned. */
   logSeen: number;
   /** Per-workload completions and response time since the last sample (for report classes). */
-  acc: Record<string, { completions: number; rtSumSec: number }>;
+  acc: Record<string, { completions: number; rtSumSec: number; arrivals?: number }>;
+  /** Ticks accumulated into `acc` since the last sample. */
+  accTicks?: number;
 }
 
 export const emptyCharts = (run: RunState): Mon3ChartState => ({ samples: [], markers: [], lastWlmLine: run.sim.wlm.log.at(-1) ?? null, logSeen: run.log.length, acc: {} });
@@ -53,26 +59,38 @@ export function accumulateMon3(run: RunState): RunState {
   const st = run.mon3Charts ?? emptyCharts(run);
   const acc = { ...st.acc };
   for (const w of run.sim.last.workloads) {
-    if (w.completions <= 0) continue;
-    const a = acc[w.id] ?? { completions: 0, rtSumSec: 0 };
-    acc[w.id] = { completions: a.completions + w.completions, rtSumSec: a.rtSumSec + w.rtSumSec };
+    if (w.completions <= 0 && w.arrivalRate <= 0) continue;
+    const a = acc[w.id] ?? { completions: 0, rtSumSec: 0, arrivals: 0 };
+    acc[w.id] = { completions: a.completions + w.completions, rtSumSec: a.rtSumSec + w.rtSumSec, arrivals: (a.arrivals ?? 0) + w.arrivalRate };
   }
-  return { ...run, mon3Charts: { ...st, acc } };
+  return { ...run, mon3Charts: { ...st, acc, accTicks: (st.accTicks ?? 0) + 1 } };
 }
 
-export function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'] = {}): Mon3Sample {
+export function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'] = {}, accTicks = 0): Mon3Sample {
   const m = buildMon3(run, scenario);
   const def = run.sim.wlm.definition;
   const byRc: Record<string, { completions: number; rtSumSec: number }> = {};
+  const arrSc: Record<string, number> = {};
+  const arrRc: Record<string, number> = {};
   for (const w of allWorkloads(scenario, run)) {
-    const rc = classify(def, w.work).reportClass;
+    const cls = classify(def, w.work);
     const a = acc[w.id];
-    if (!rc || !a) continue;
+    if (!a) continue;
+    if (accTicks > 0 && (a.arrivals ?? 0) > 0) {
+      const perSec = (a.arrivals ?? 0) / accTicks;
+      arrSc[cls.serviceClass] = (arrSc[cls.serviceClass] ?? 0) + perSec;
+      if (cls.reportClass) arrRc[cls.reportClass] = (arrRc[cls.reportClass] ?? 0) + perSec;
+    }
+    const rc = cls.reportClass;
+    if (!rc || a.completions <= 0) continue;
     const b = byRc[rc] ?? { completions: 0, rtSumSec: 0 };
     byRc[rc] = { completions: b.completions + a.completions, rtSumSec: b.rtSumSec + a.rtSumSec };
   }
   const rcRt: Mon3Sample['rcRt'] = {};
   for (const rc of Object.keys(byRc).sort()) rcRt[rc] = Math.round((1000 * byRc[rc]!.rtSumSec) / byRc[rc]!.completions);
+  const sorted = (o: Record<string, number>) => Object.fromEntries(Object.keys(o).sort().map((k) => [k, r1(o[k]!)]));
+  const arr = sorted(arrSc);
+  const rcArr = sorted(arrRc);
   const sys: Mon3Sample['sys'] = {};
   for (const s of m.systems) {
     const c = m.cpc.find((x) => x.lparId === s.system);
@@ -97,7 +115,7 @@ export function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartStat
   }
   const cpcEngines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
   const delivered = run.sim.lpars.reduce((a, l) => a + (l.pools.find((p) => p.pool === 'CP')?.deliveredEngines ?? 0), 0);
-  return { tick: run.sim.tick, cpcBusyPct: r1(cpcEngines > 0 ? (100 * delivered) / cpcEngines : 0), sys, pi, rt, rcRt, delay, ddf };
+  return { tick: run.sim.tick, cpcBusyPct: r1(cpcEngines > 0 ? (100 * delivered) / cpcEngines : 0), sys, pi, rt, rcRt, arr, rcArr, delay, ddf };
 }
 
 function newMarkers(run: RunState, st: Mon3ChartState): { markers: ChartMarker[]; lastWlmLine: string | null; logSeen: number } {
@@ -121,8 +139,9 @@ export function recordMon3(run: RunState, scenario: Scenario): RunState {
   return {
     ...run,
     mon3Charts: {
-      samples: [...st.samples, sampleMon3(run, scenario, st.acc)],
+      samples: [...st.samples, sampleMon3(run, scenario, st.acc, st.accTicks ?? 0)],
       acc: {},
+      accTicks: 0,
       // Keep changes and events; drop the oldest WLM decisions first when over the cap.
       markers: markers.length > MON3_CHARTS.maxMarkers ? trimMarkers(markers) : markers,
       lastWlmLine: nm.lastWlmLine,
