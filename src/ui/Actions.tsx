@@ -26,7 +26,7 @@ interface Desk {
 const ACTIVATE_PREVIEW = [{ kind: 'ACTIVATE_POLICY' } as Command];
 
 export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
-  const [basket, setBasket] = useState<Command[]>([]);
+  const { basket, setBasket } = game;
   const [rulesOpen, setRulesOpen] = useState(false);
   const desk: Desk = {
     v,

@@ -1,5 +1,6 @@
+import type { Command } from '../sim/core/commands';
 import type { RcAdvice } from '../game/rcAdvisor';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
@@ -26,6 +27,9 @@ export interface GameHandle {
   toast: { ok: boolean; message: string } | null;
   /** Every change-board result this session, newest last (toasts vanish; this doesn't). */
   results: { ok: boolean; message: string; clock: string }[];
+  /** Change Desk basket: kept here so it survives leaving the tab. */
+  basket: Command[];
+  setBasket: Dispatch<SetStateAction<Command[]>>;
   send: (m: ToWorker) => void;
 }
 
@@ -42,6 +46,7 @@ export function useGame(): GameHandle {
   const [finance, setFinance] = useState<FinanceView | null>(null);
   const [whatIf, setWhatIf] = useState<GameHandle['whatIf']>({ progress: null, result: null });
   const [speed, setSpeed] = useState(1);
+  const [basket, setBasket] = useState<Command[]>([]);
   const [charts, setCharts] = useState<GameHandle['charts']>({ samples: [], markers: [] });
   const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
@@ -85,5 +90,5 @@ export function useGame(): GameHandle {
   const send = useCallback((m: ToWorker) => worker.current?.postMessage(m), []);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
-  return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, charts, rules, toast, results, send };
+  return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, charts, rules, toast, results, basket, setBasket, send };
 }
