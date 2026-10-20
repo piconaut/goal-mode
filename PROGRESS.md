@@ -415,6 +415,25 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
 - [ ] Deploy target (static hosting) and a README
 
+### M9 — Simplified mode (after M8; user request 2026-10-20)
+Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
+changes; simplified mode is a game/UI layer over the same commands, reports and scoring.
+**Process: start M9 only when M7–M8 are done, and do all M9 work on a separate feature branch
+(e.g. `feature/simplified-mode`), not on `main`.**
+- [ ] Mode switch at run start (Expert / Simplified); same seed gives the same world in both modes
+- [ ] Keep the full WLM policy definition visible and editable, but offer **goal-level actions** that bundle
+  the discrete changes an expert would make, e.g. "Protect mobile banking from ad-hoc queries" = new service
+  class + classification rule + report class; "Protect the critical batch path" = BATCHHI rule for critical jobs
+  + initiator change; "Stop dev from stealing production CPU" = DEVT weight/logicals + soft cap. Each bundle
+  shows the exact changes it makes (expandable), its cost and trade-off, and can be undone as a unit
+- [ ] Bundles are data in `src/content/` (preconditions, the change list, explanation, Codex links), built
+  from the existing Change Desk requests so cost, change risk and the change freeze still apply
+- [ ] Plain-language summaries of reports and incidents ("mobile is slow because it waits for CPU behind
+  batch") with the raw RMF view one click away; fewer, friendlier Monitor III views
+- [ ] Diagnosis stays the gameplay: symptoms → suggested bundles (more than one valid fix), not auto-fixes
+- [ ] Balance: bots in simplified mode (bundles only) reach roughly the textbook bot's results
+- [ ] Tutorial for simplified mode; Codex entries linked from each bundle
+
 ## Decisions log
 
 | Date | Decision | Rationale |
