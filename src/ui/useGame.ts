@@ -8,7 +8,7 @@ import type { ClassificationResult } from '../sim/wlm/classify';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { WhatIfSummary } from '../game/whatif';
 import type { FinanceView } from '../game/finance';
-import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from '../worker/protocol';
+import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type ToWorker } from '../worker/protocol';
 
 export interface GameHandle {
   view: ViewModel | null;
@@ -92,7 +92,7 @@ export function useGame(): GameHandle {
   }, []);
 
   const send = useCallback((m: ToWorker) => {
-    if (m.type === 'SET_SPEED' && m.speed > 0) writePref(SPEED_KEY, String(m.speed));
+    if (m.type === 'SET_SPEED' && m.speed > 0 && m.speed !== AUTO_SPEED) writePref(SPEED_KEY, String(m.speed));
     worker.current?.postMessage(m);
   }, []);
   // Mirror the basket to the worker so it is saved with the run.

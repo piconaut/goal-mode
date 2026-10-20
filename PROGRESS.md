@@ -549,7 +549,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   tight (<30 min slack) batch window; texts in `src/content/hints.ts`; Story up to 2 hints naming workload,
   report and question, Normal 1 hint naming only the report; sent from "Senior sysprog" at day end.
   Run goldens regenerated (inbox content on Normal), sim bench hash unchanged)
-- [ ] Weekend auto-simulation at high speed with a summary card (maintenance batch, REORGs); optional "play the weekend"
+- [x] Weekend auto-simulation at high speed with a summary card (maintenance batch, REORGs); optional "play the weekend"
+  (loop 76: worker `AUTO_SPEED`, briefing and speed-bar buttons on Saturday/Sunday, weekday in top bar and
+  briefing; the report card is the summary. Checked in headless Chromium: day 6 auto-run in ~10 s)
 - [x] Endless mode after victory; daily seed challenge with shareable seed + score
   - [x] Daily seed challenge done (`src/game/daily.ts`, NEW_RUN `daily`, end-screen share line)
   - [x] Loop 72: endless mode: "Keep going (endless)" on the victory screen (`continueEndless` in `src/game/run.ts`,
@@ -732,6 +734,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 76):** weekend auto-run (full sim at worker speed, report card as summary); weekday shown. 265 tests.
 - **2026-10-20 (loop 75):** day-1 guided tutorial (corner card, state-driven steps, F1 fix detection); ticked finished M7 items. 264 tests.
 - **2026-10-20 (loop 74):** three new draft options (Weekend push, Friend at the Vendor, Well Connected). 262 tests.
 - **2026-10-20 (loop 73):** hourly autosave during the live day (resume mid-day after a crash or reload; no more replaying a day from its briefing).

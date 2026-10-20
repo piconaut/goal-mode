@@ -29,7 +29,7 @@ import { explainClassification, workItems } from '../game/classifyExplain';
 import { clockAt } from '../sim/core/clock';
 import { TICKS_PER_DAY } from '../sim/core/units';
 import { goalText } from '../sim/wlm/goals';
-import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from './protocol';
+import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type ToWorker } from './protocol';
 import { loadDesk, loadRun, saveRun, type DeskState } from './storage';
 
 const BASE_SCENARIO = MIDWEST;
@@ -46,6 +46,10 @@ const IRONMAN_MIN_SPEED = 0.5;
 const canPause = () => run.phase !== 'LIVE' || difficultyOf(run.difficulty).pauseAllowed;
 let pendingPolicy: ServiceDefinition | null = null;
 let carry = 0;
+/** Speed to return to when an auto-run day ends. */
+let speedBeforeAuto = 1;
+// Wall-clock budget per frame for auto-run; the sim itself never reads the clock.
+const AUTO_FRAME_BUDGET_MS = 60;
 
 let history: HistoryPoint[] = [];
 let historyDirty = true;
@@ -173,11 +177,17 @@ void Promise.all([loadRun(), loadDesk()]).then(([r, d]) => {
 
 setInterval(() => {
   if (run.phase !== 'LIVE' || speed <= 0) return;
-  carry += (TICKS_PER_SEC_1X * speed * FRAME_MS) / 1000;
-  const n = Math.floor(carry);
-  if (n <= 0) return;
-  carry -= n;
-  advanceSampled(n);
+  if (speed === AUTO_SPEED) {
+    const t0 = performance.now();
+    while (run.phase === 'LIVE' && !run.alerts?.pauseRequested && performance.now() - t0 < AUTO_FRAME_BUDGET_MS) advanceSampled(HISTORY_EVERY_TICKS);
+    if (run.phase !== 'LIVE') speed = speedBeforeAuto;
+  } else {
+    carry += (TICKS_PER_SEC_1X * speed * FRAME_MS) / 1000;
+    const n = Math.floor(carry);
+    if (n <= 0) return;
+    carry -= n;
+    advanceSampled(n);
+  }
   if (run.alerts?.pauseRequested) {
     // A pausing alert rule fired: stop the clock (Ironman: drop to the slowest speed) and tell the player why.
     speed = canPause() ? 0 : IRONMAN_MIN_SPEED;
@@ -374,12 +384,19 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'START_DAY':
       run = startDay(run, content);
+      if (m.auto && run.phase === 'LIVE') {
+        if (speed !== AUTO_SPEED) speedBeforeAuto = speed > 0 ? speed : 1;
+        speed = AUTO_SPEED;
+      } else if (!m.auto && speed === AUTO_SPEED) speed = speedBeforeAuto;
       break;
     case 'SET_SPEED':
       if (m.speed <= 0 && !canPause()) {
         speed = IRONMAN_MIN_SPEED;
         post({ type: 'RESULT', ok: false, message: 'Ironman: the clock cannot be paused during the live day.' });
-      } else speed = m.speed;
+      } else {
+        if (m.speed === AUTO_SPEED && speed !== AUTO_SPEED) speedBeforeAuto = speed > 0 ? speed : 1;
+        speed = m.speed;
+      }
       break;
     case 'CHANGE': {
       const out = requestChange(run, content, m.req);

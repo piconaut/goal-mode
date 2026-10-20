@@ -133,7 +133,9 @@ what-if forecasting, fast-forwarding weekends).
 
 **Calendar.** A run starts on a Monday. Weekends are *auto-simulated* by default at high speed
 with a summary (weekend maintenance and REORG batch, low online); the player can choose to play
-them. The calendar includes month-end (day 1 and the last business day), a quarter-end close
+them. *(Implemented: on a Saturday or Sunday the briefing offers "Auto-run the weekend day" next to "Play it", and
+the speed bar has an Auto button; the worker then advances the day as fast as it can (~10 s in a browser) and the
+end-of-day report card is the summary. The day is simulated in full, so seeds and goldens are unaffected.)* The calendar includes month-end (day 1 and the last business day), a quarter-end close
 (the run's final week), paydays (1st/15th), and a seasonal peak if the scenario has one.
 
 **Growth compression.** Real organic growth is ~10–30%/year. In-game it is compressed so a

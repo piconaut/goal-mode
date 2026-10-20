@@ -33,6 +33,8 @@ import { allWorkloads, overallTrust, previewContext } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
 
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
+
 export interface LparView {
   id: string;
   kind: 'ZOS' | 'CF';
@@ -171,6 +173,9 @@ export interface ViewModel {
   reportsOpenedToday: number;
   /** Day-1 tutorial: the installed policy puts Db2 at or above the CICS regions (F1 fixed). */
   tutorialDb2Fixed: boolean;
+  /** The current played day falls on a Saturday or Sunday (offered as an auto-run). */
+  weekendDay: boolean;
+  weekday: string;
   smfHours: SmfHourRef[];
   pins: EvidencePin[];
   projects: ReturnType<typeof projectsView>;
@@ -321,6 +326,8 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
     tutorialDb2Fixed: db2AboveItsClients(installedPolicy(run)),
+    weekendDay: clockAt(run.day * TICKS_PER_DAY).isWeekend,
+    weekday: WEEKDAYS[clockAt(run.day * TICKS_PER_DAY).dayOfWeek],
     smfHours: smfHourRefs(run),
     pins: run.pins ?? [],
     projects: projectsView(run),

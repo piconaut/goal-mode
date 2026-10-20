@@ -45,9 +45,10 @@ export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DA
 
 export type ToWorker =
   | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId; daily?: string }
-  | { type: 'START_DAY' }
+  | { type: 'START_DAY'; auto?: boolean }
   /** After VICTORY: keep playing past the quarter (endless mode). */
   | { type: 'CONTINUE_ENDLESS' }
+  /** speed AUTO_SPEED runs the day as fast as the worker can (weekend auto-run); 0 pauses. */
   | { type: 'SET_SPEED'; speed: number }
   | { type: 'CHANGE'; req: ChangeRequest }
   | { type: 'DRAFT'; optionId: string | null }
@@ -103,3 +104,6 @@ export type FromWorker =
   /** Restore the change basket (continuing a saved run, new run). */
   | { type: 'BASKET'; basket: Command[] }
   | { type: 'RESULT'; ok: boolean; message: string };
+
+/** Sentinel speed: run the rest of the day as fast as the worker can, then drop back to the last speed. */
+export const AUTO_SPEED = 1000;

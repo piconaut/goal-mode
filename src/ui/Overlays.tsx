@@ -35,8 +35,15 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
       )}
       {!open && v.phase === 'BRIEFING' && (
         <div className="toast">
-          <button className="primary" onClick={() => game.send({ type: 'START_DAY' })}>
-            Start day {v.day + 1} (06:00)
+          {v.weekendDay && (
+            <>
+              <button className="primary" title="Run the weekend day at full speed; the report card is the summary" onClick={() => game.send({ type: 'START_DAY', auto: true })}>
+                Auto-run the weekend day
+              </button>{' '}
+            </>
+          )}
+          <button className={v.weekendDay ? '' : 'primary'} onClick={() => game.send({ type: 'START_DAY' })}>
+            {v.weekendDay ? 'Play it' : `Start day ${v.day + 1} (06:00)`}
           </button>{' '}
           <button onClick={() => setOpen(true)}>Briefing</button>
         </div>
@@ -255,7 +262,7 @@ function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () 
   const planned = v.changes.filter((c) => c.status === 'PLANNED' && c.activateDay === v.day);
   return (
     <>
-      <h2>Morning briefing: day {v.day + 1}</h2>
+      <h2>Morning briefing: day {v.day + 1}, {v.weekday}</h2>
       {v.day === 0 && <FirstDayDifficulty v={v} game={game} />}
       {today.length === 0 && <p className="muted">Quiet inbox this morning.</p>}
       {today.map((m, i) => (
@@ -274,8 +281,13 @@ function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () 
           <button onClick={() => game.send({ type: 'CONTINUE_SAVED' })}>Continue saved run (day {game.savedRunDay + 1})</button>
         )}
         <button onClick={hide}>Plan changes / read reports</button>
-        <button className="primary" onClick={() => game.send({ type: 'START_DAY' })}>
-          Start day (06:00)
+        {v.weekendDay && (
+          <button className="primary" title="Weekend maintenance and REORG batch, light online: run it at full speed and read the report card" onClick={() => game.send({ type: 'START_DAY', auto: true })}>
+            Auto-run the weekend day
+          </button>
+        )}
+        <button className={v.weekendDay ? '' : 'primary'} onClick={() => game.send({ type: 'START_DAY' })}>
+          {v.weekendDay ? 'Play the weekend day (06:00)' : 'Start day (06:00)'}
         </button>
       </div>
     </>

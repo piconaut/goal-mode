@@ -18,6 +18,7 @@ import { EvidenceBoard } from './Evidence';
 import { useGame, type GameHandle } from './useGame';
 import { useStored } from './useStored';
 import { Tutorial } from './Tutorial';
+import { AUTO_SPEED } from '../worker/protocol';
 import { hourTick, pagerChime } from './sound';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
@@ -81,7 +82,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="brand">GOAL MODE</span>
       <span className="clock">{v.clock}</span>
       <span className="stat">
-        Day <b>{v.endlessFromDay !== null ? <>{v.day + 1} (endless)</> : <>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</>}</b> <span className="muted">· {v.difficulty.name}</span>{v.daily && <span className="muted"> · Daily {v.daily}</span>}
+        Day <b>{v.endlessFromDay !== null ? <>{v.day + 1} (endless)</> : <>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</>}</b> <span className="muted">· {v.weekday.slice(0, 3)} · {v.difficulty.name}</span>{v.daily && <span className="muted"> · Daily {v.daily}</span>}
       </span>
       <span className="stat" style={{ minWidth: 120 }}>
         {v.phase}
@@ -102,6 +103,11 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
               {s === 0 ? '❚❚' : `${s}×`}
             </button>
           ))}
+          {(v.weekendDay || speed === AUTO_SPEED) && (
+            <button className={speed === AUTO_SPEED ? 'active' : ''} title="Run the rest of the weekend day at full speed" onClick={() => set(AUTO_SPEED)}>
+              Auto ⏩
+            </button>
+          )}
         </span>
       )}
       <span className="stat">
