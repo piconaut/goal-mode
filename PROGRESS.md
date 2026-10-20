@@ -517,6 +517,8 @@ to `main` (this is the last push there; M9 goes on its feature branch).
   charts, RMF reports, inbox, Change Desk, report card) read-only, with the agent's latest command and
   reasoning line in a banner. Optional "follow along" pacing in `play.ts` (`--pace 2s`) so a human can watch;
   a finished run can be imported as an ordinary save and replayed
+  - Same for the strategy bots (user request 2026-10-20): `tools/bot.ts --spectate <run> [--pace 2s]` writes
+    the same run file after every simulated hour, with the bot's latest change labels as the banner text
 
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
