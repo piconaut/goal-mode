@@ -516,7 +516,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Keyboard-first controls, focus states, forced-colors support, every chart with a table view, contrast check in both themes
 - [ ] Sound/feedback: pager chime on incidents, subtle tick at hour boundaries (mutable)
 - [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
-- [ ] Deploy target (static hosting) and a README
+- [x] Deploy target (static hosting) and a README (loop 40: `base: './'` so `dist/` runs from any sub-path; `README.md` with play, build, dev commands and layout)
 
 ### M8.9 — Game-playing agents (last work on `main`; user request 2026-10-20)
 After M7–M8 are done and **before** starting M9, add AI agents that can play the game, then stop pushing
