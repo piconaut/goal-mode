@@ -85,7 +85,7 @@ const secAfterStart = (hour: number) => ((hour - 6 + 48) % 24) * 3600;
 export { allWorkloads } from './workloads';
 import { allWorkloads } from './workloads';
 
-export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL'): RunState {
+export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL', daily?: string): RunState {
   const diff = difficultyOf(difficulty);
   const scenario = scenarioFor(baseScenario, difficulty);
   const trust = Object.fromEntries(FACETS.map((f) => [f, diff.startTrust])) as Record<Facet, number>;
@@ -94,6 +94,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     scenarioId: scenario.id,
     difficulty,
     seed,
+    ...(daily ? { daily } : {}),
     rng: seedRng(seed ^ 0x5bd1e995),
     sim: applyCommands(initState(seed, scenario), (content.startingFixes?.[difficulty] ?? []).flatMap((f) => f.commands)),
     phase: 'BRIEFING',

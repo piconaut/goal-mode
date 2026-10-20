@@ -551,6 +551,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   Run goldens regenerated (inbox content on Normal), sim bench hash unchanged)
 - [ ] Weekend auto-simulation at high speed with a summary card (maintenance batch, REORGs); optional "play the weekend"
 - [ ] Endless mode after victory; daily seed challenge with shareable seed + score
+  - [x] Daily seed challenge done (`src/game/daily.ts`, NEW_RUN `daily`, end-screen share line); endless mode still open
 - [x] End-of-run report: R4HA over time, PI heat-map history, decisions timeline, biggest incident, best RCA, grade S–D
   - [x] Loop 54: `src/game/endReport.ts` (per-day score, worst SLA, peak R4HA sum, batch; applied-change timeline;
     biggest incident; best RCA; grade S–D from survival, mean SLA and final trust, weights and bands in
@@ -722,6 +723,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 69):** daily seed challenge (implementer subagent, reviewed): UTC-date seed, share line with Copy on the end screen. 257 tests.
 - **2026-10-20 (loop 68):** 20-seed Normal sweep with 19 cards: expert 20/20, textbook median 26 (booking go-live drives early Retail collapses). Asked the user.
 - **2026-10-20 (loop 67):** fixer bots (expert, spend-to-win) end cards on sight with their fix (REORG, monitor creep, shadow IT, teller release, HSM storm); expert seed 6 Normal now wins (was trust loss day 32).
 - **2026-10-20 (loop 66):** AUDIT_UNCLASSIFIED card (implementer subagent; reviewed: tunables moved to content). 19 cards, 253 tests.

@@ -170,6 +170,8 @@ export interface RunState {
   /** Absent in saves from before difficulty presets (= Normal). */
   difficulty?: DifficultyId;
   seed: number;
+  /** ISO date (UTC) when this is a daily-challenge run. */
+  daily?: string;
   rng: RngState;
   sim: SimState;
   phase: Phase;

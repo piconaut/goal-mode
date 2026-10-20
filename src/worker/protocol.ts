@@ -44,7 +44,7 @@ export type SmfData =
 export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DASD';
 
 export type ToWorker =
-  | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId }
+  | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId; daily?: string }
   | { type: 'START_DAY' }
   | { type: 'SET_SPEED'; speed: number }
   | { type: 'CHANGE'; req: ChangeRequest }

@@ -205,7 +205,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       basket = [];
       post({ type: 'BASKET', basket });
       postPolicy();
-      run = newRun(BASE_SCENARIO, content, m.seed, m.difficulty);
+      run = newRun(BASE_SCENARIO, content, m.seed, m.difficulty, m.daily);
       history = [];
       historyDirty = true;
       saved = null;

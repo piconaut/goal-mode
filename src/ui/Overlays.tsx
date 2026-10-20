@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { DIFFICULTIES, type DifficultyId } from '../content/difficulty';
 import { EVIDENCE } from '../content/evidence';
 import type { Hypothesis } from '../game/aiops';
+import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
@@ -59,12 +60,35 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
                 Final score <b>{v.score}</b> after {v.day + 1} days.
               </p>
               {v.endReport && <EndReportView r={v.endReport} />}
+              {v.endReport && <ShareBox v={v} r={v.endReport} />}
               <NewRun game={game} />
             </>
           )}
         </div>
       </div>
     </>
+  );
+}
+
+function ShareBox({ v, r }: { v: ViewModel; r: EndReport }) {
+  const [copied, setCopied] = useState(false);
+  const text = shareText({ seed: v.seed, difficulty: v.difficulty.name, daysPlayed: r.daysPlayed, maxDays: v.maxDays, grade: r.grade, points: r.points, score: v.score, daily: v.daily });
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable: the text stays selectable */
+    }
+  };
+  return (
+    <div className="panel" style={{ marginBottom: 8 }}>
+      <div className="form">
+        <input readOnly aria-label="Shareable result" value={text} style={{ fontFamily: 'monospace', flex: 1, minWidth: 0 }} onFocus={(e) => e.target.select()} />
+        <button onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
+      </div>
+    </div>
   );
 }
 
@@ -177,6 +201,15 @@ function NewRun({ game }: { game: GameHandle }) {
       </div>
       <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty })}>
         New run
+      </button>{' '}
+      <button
+        title="Same seed for everyone today (UTC)"
+        onClick={() => {
+          const today = new Date().toISOString().slice(0, 10);
+          game.send({ type: 'NEW_RUN', seed: dailySeed(today), difficulty, daily: today });
+        }}
+      >
+        Daily challenge
       </button>
     </>
   );

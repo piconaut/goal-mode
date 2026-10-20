@@ -118,6 +118,9 @@ export interface ViewModel {
   phase: Phase;
   day: number;
   maxDays: number;
+  seed: number;
+  /** ISO date when this is a daily-challenge run. */
+  daily: string | null;
   difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
   clock: string;
   hourOfDay: number;
@@ -269,6 +272,8 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     phase: run.phase,
     day: run.day,
     maxDays: run.maxDays,
+    seed: run.seed,
+    daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,

@@ -965,7 +965,8 @@ window (<30 min slack) comes after incident hints.
   *Global Airline Reservations* (24×7, two CPCs across sites, GDPS-style constraints).
 - Unlock **starting perks** (choose 1–2 per run) and **starting tool**.
 - **Codex** persists: every real concept you encounter, explained with links to IBM docs.
-- **Daily seed challenge**: everyone plays the same seed; compare scores.
+- **Daily seed challenge**: everyone plays the same seed; compare scores. Implemented: the seed is an FNV-1a hash of the UTC date
+  (`dailySeed`), the run records `daily`, and the end screen offers a copyable one-line result (`shareText`).
 
 ---
 
