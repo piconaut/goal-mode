@@ -95,6 +95,17 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'report-classes',
+    title: 'Report classes',
+    category: 'WLM',
+    body: 'A report class is a reporting-only label assigned by the same classification rules as the service class. WLM never manages to it, so it costs nothing, but it lets RMF show one workload on its own row even when it shares a service class with others. A report class is homogeneous when all its work runs in one service class; a heterogeneous one mixes service classes, and its response times and velocities then mean little because the goals differ.',
+    sources: [
+      { label: 'IBM, z/OS Workload Manager: Service classes and report classes', url: 'https://www.ibm.com/docs/en/SSGMCP_5.4.0/fundamentals/workload/workload_lp_classes.html' },
+      { label: 'Colin Paice, One Minute MVS performance: looking at WLM reports', url: 'https://colinpaice.blog/2021/06/27/one-minute-mvs-performance-work-load-manager-looking-at-wlm-reports/' },
+    ],
+    discover: { tools: ['RC_ADVISOR'] },
+  },
+  {
     id: 'service-policies',
     title: 'Service policies',
     category: 'WLM',

@@ -38,6 +38,7 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
     );
   }
   const scKeys = v.piHeat.map((c) => c.scKey);
+  const rcKeys = v.reports.find((r) => r.index === sel)?.reportClasses ?? [];
   return (
     <div className="panel">
       <h3>
@@ -75,10 +76,19 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
             {scKeys.map((k) => (
               <option key={k}>{k}</option>
             ))}
+            {rcKeys.length > 0 && (
+              <optgroup label="Report classes">
+                {rcKeys.map((k) => (
+                  <option key={`rc:${k}`}>{k}</option>
+                ))}
+              </optgroup>
+            )}
           </select>
         )}
       </div>
-      {(kind === 'WLM_SUMMARY' || kind === 'WLM_DETAIL') && sel !== null && <PinFromReport index={sel} system={system} scKeys={scKeys} initial={kind === 'WLM_DETAIL' ? scKey : undefined} game={game} />}
+      {(kind === 'WLM_SUMMARY' || (kind === 'WLM_DETAIL' && scKeys.includes(scKey))) && sel !== null && (
+        <PinFromReport index={sel} system={system} scKeys={scKeys} initial={kind === 'WLM_DETAIL' ? scKey : undefined} game={game} />
+      )}
       <div className="green">{game.report}</div>
     </div>
   );

@@ -14,6 +14,7 @@ import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
 import { financeView } from '../game/finance';
 import { decideTfp, offerTfp } from '../game/tfp';
+import { adviseReportClasses } from '../game/rcAdvisor';
 import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
 import { applyWlmEdit } from '../game/wlmEdit';
@@ -56,18 +57,22 @@ function pendingView(): PendingPolicyView | null {
   };
 }
 
-function postRules() {
-  const items = workItems(
+const currentItems = () =>
+  workItems(
     [...scenario.workloads, ...run.sim.extraWorkloads],
     [...scenario.addressSpaces, ...run.sim.extraAddressSpaces],
     scenario.batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth),
   );
+
+function postRules() {
+  const items = currentItems();
   const def = pendingPolicy ?? run.sim.wlm.definition;
   post({
     type: 'RULES',
     active: explainClassification(run.sim.wlm.definition, items),
     pending: pendingPolicy ? explainClassification(pendingPolicy, items) : null,
     classIds: ['SYSTEM', 'SYSSTC', 'SYSOTHER', ...def.classes.map((c) => c.id)],
+    advice: hasFeature(run, 'REPORT_CLASS_ADVISOR') ? adviseReportClasses(def, items) : null,
   });
 }
 
@@ -338,6 +343,30 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         pendingPolicy = res;
         postPolicy();
         post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.` });
+      }
+      break;
+    }
+    case 'RC_ADVICE_APPLY': {
+      if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) break;
+      // Re-advise after each edit: an added rule shifts the paths of the ones below it.
+      let def = pendingPolicy ?? { ...run.sim.wlm.definition, policyName: nextPolicyName(run.sim.wlm.definition.policyName) };
+      let applied = 0;
+      for (let guard = 0; guard < 32; guard++) {
+        const a = adviseReportClasses(def, currentItems()).find((x) => m.workloadId === null || x.workloadId === m.workloadId);
+        if (!a) break;
+        const res = applyWlmEdit(def, a.edit);
+        if (typeof res === 'string') {
+          post({ type: 'RESULT', ok: false, message: res });
+          break;
+        }
+        def = res;
+        applied++;
+        if (m.workloadId !== null) break;
+      }
+      if (applied > 0) {
+        pendingPolicy = def;
+        postPolicy();
+        post({ type: 'RESULT', ok: true, message: `${applied} report class${applied > 1 ? 'es' : ''} staged in ${def.policyName}. Activate it to take effect.` });
       }
       break;
     }

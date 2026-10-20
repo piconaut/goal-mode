@@ -77,6 +77,8 @@ export interface ReportRef {
   index: number;
   label: string;
   endTick: number;
+  /** Report classes with data in this interval. */
+  reportClasses: string[];
 }
 
 /** Current configuration the Change Desk forms start from. */
@@ -242,7 +244,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
   const feats = features(run);
   const visibleUntil = run.phase === 'LIVE' && !feats.has('MON3') ? run.day * TICKS_PER_DAY : sim.tick;
   const reports: ReportRef[] = sim.rmf.intervals
-    .map((iv, index) => ({ index, endTick: iv.endTick, label: `D${clockAt(iv.startTick).day + 1} ${formatClock(iv.startTick).slice(-8, -3)}–${formatClock(iv.endTick).slice(-8, -3)}` }))
+    .map((iv, index) => ({ index, endTick: iv.endTick, reportClasses: (iv.wlmRc ?? []).filter((r) => r.lparId === '*PLEX').map((r) => r.scKey).sort(), label: `D${clockAt(iv.startTick).day + 1} ${formatClock(iv.startTick).slice(-8, -3)}–${formatClock(iv.endTick).slice(-8, -3)}` }))
     .filter((r) => r.endTick <= visibleUntil);
 
   return {

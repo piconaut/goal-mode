@@ -1,3 +1,4 @@
+import type { RcAdvice } from '../game/rcAdvisor';
 import { useEffect, useState } from 'react';
 import { CodexHints } from './CodexHint';
 import { diffRows, type RowChange, type RuleRow, type SubsystemExplain } from '../game/classifyExplain';
@@ -52,6 +53,7 @@ export function RulesView({ v, game, onClose }: { v: ViewModel; game: GameHandle
             <span className="tag">Always SYSTEM (z/OS forces these)</span>
             <span className="muted" style={{ fontSize: 12 }}>{shown.forcedSystem.join(', ')}</span>
           </div>
+          {r.advice && <RcAdvisor advice={r.advice} game={game} />}
           <div className="rules-grid">
             {shown.subsystems.map((ss) => (
               <Subsystem
@@ -261,5 +263,61 @@ function AddRule({ sub, count, classIds, edit }: { sub: SubsystemType; count: nu
         Add
       </button>
     </form>
+  );
+}
+
+/** Report class advisor tool: one report class per business workload so WLMGL can tell them apart. */
+function RcAdvisor({ advice, game }: { advice: RcAdvice[]; game: GameHandle }) {
+  return (
+    <details className="rc-advisor" open={advice.length > 0}>
+      <summary>
+        Report class advisor{' '}
+        {advice.length > 0 ? <span className="tag warn">{advice.length} suggestion{advice.length > 1 ? 's' : ''}</span> : <span className="tag good">every business workload has its own row</span>}
+        <CodexHints ids={['report-classes']} />
+      </summary>
+      {advice.length > 0 && (
+        <>
+          <div className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
+            Report classes only change reporting (WLMGL and Monitor III rows); WLM still manages the service class. Suggestions go to the pending policy.
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Workload</th>
+                  <th>service class</th>
+                  <th>shares it with</th>
+                  <th>report class</th>
+                  <th>change</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {advice.map((a) => (
+                  <tr key={a.workloadId}>
+                    <td>{a.workloadId}</td>
+                    <td>{a.serviceClass}</td>
+                    <td className="muted" style={{ fontSize: 12 }}>
+                      {a.sharedWith.slice(0, 4).join(', ')}
+                      {a.sharedWith.length > 4 ? ` +${a.sharedWith.length - 4}` : ''}
+                    </td>
+                    <td>
+                      {a.currentReportClass ?? '-'} → <b>{a.suggested}</b>
+                    </td>
+                    <td className="muted" style={{ fontSize: 12 }}>
+                      {a.how}
+                    </td>
+                    <td>
+                      <button onClick={() => game.send({ type: 'RC_ADVICE_APPLY', workloadId: a.workloadId })}>Stage</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={() => game.send({ type: 'RC_ADVICE_APPLY', workloadId: null })}>Stage all</button>
+        </>
+      )}
+    </details>
   );
 }

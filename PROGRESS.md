@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7.5 remainder (report class advisor tool, F6); M7 sim leftovers; M8.1 structural perf in parallel.
+- **Next up:** M7 sim leftovers (resource group minimum, discretionary goal management, I/O priority, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (193 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (196 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -192,7 +192,7 @@ end-of-day reports to live diagnosis and what-if planning, and the bots show too
 - [x] WLM activity log live with Monitor III (otherwise readable after the day); click/hover explains each decision (`explainWlmLog`)
 - [x] Live CPC view: weights, logicals, polarity, busy, PR/SM delay, overhead, capped %, L:P warning above 2:1
 - [ ] PROCU is per service-class period, not per address space (slices are not kept per tick). Add top address spaces if a diagnosis needs it
-- [ ] Report classes start to matter (per-workload WLMGL rows, F6): moved to M7.5 with the report class advisor tool
+- [x] Report classes start to matter (per-workload WLMGL rows, F6): done in loop 29 with the report class advisor tool (see M7.5)
 - Tests (6): visibility gating, PROCU ≈ delivered CPU, ENCLAVE zIIP use, a CPU regression raises delay + WFEX, log explanations, velocity scale
 - Dev aid: in `npm run dev` builds `globalThis.__goalMode.send(msg)` reaches the worker, and `DEV_INSIGHT` grants Insight (used by headless UI checks)
 
@@ -296,6 +296,19 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   whole policies are swapped (APPROX, same effect for the game). 2 tests; Chromium: 07:00 NIGHTPOL, 08:00 DAYPOL
 
 **M7.5 Tier 4 & strategic options**
+- [x] Report classes in RMF + report class advisor (loop 29, tool RC_ADVISOR now buyable). Sim: slices carry
+  their report class; `evaluateLpar` rolls them up per report class with the service-class periods they ran
+  in; RMF interval gets `wlmRc` rows (only when the policy assigns report classes, so the bench hash is
+  unchanged). WLMGL summary has a REPORT CLASSES section and the detail view takes a report class. Goal and
+  PI only when all the work ran in one service-class period; one service class over several periods shows
+  "DDFPRD 2 PERIODS"; mixed service classes show HETEROGENEOUS (IBM's homogeneous/heterogeneous definition;
+  APPROX: RMF would break a homogeneous class into report class periods). Batch jobs in different report
+  classes get separate slices (behaviour-neutral). Advisor (`game/rcAdvisor.ts`): for each workload sharing a
+  service class, a unique R-name and the edit (retarget the rule that catches only it, or add a specific rule
+  at the top with the same service class); "Stage"/"Stage all" in the classification rules view put them in
+  the pending policy. Codex entry `report-classes`. Tests: realism (identical LPAR state with/without report
+  classes; MOBILE < ADHOC response time), advisor (all applied → no advice, no service class changes).
+  Chromium: stage all → activate → day 1 WLMGL shows RMOBILE 0.119 s vs RADHOC 36.4 s (the F3 clue)
 - [x] AIOps (loop 24, tool AIOPS now buyable): when an incident opens, 3 ranked hypotheses (`game/aiops.ts`)
   built from the same evidence (`rankedMechanismGroups` of RT parts vs baseline): top mechanism right 70%,
   else the evidence runner-up with the truth second; trigger right 75%; confidence 55–88%, deliberately
@@ -461,6 +474,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 29, hourly task):** report classes in RMF + report class advisor (F6). 196 tests.
 - **2026-10-19 (loop 28, hourly task):** contextual Codex "?" hints. 193 tests.
 - **2026-10-19 (loop 27, /loop dynamic):** Tailored Fit Pricing offer. 192 tests.
 - **2026-10-19 (loop 26, hourly task):** multi-day projects with new project modifiers. 189 tests.

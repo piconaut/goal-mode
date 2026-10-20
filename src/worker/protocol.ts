@@ -1,3 +1,4 @@
+import type { RcAdvice } from '../game/rcAdvisor';
 // Messages between the UI thread and the game worker.
 
 import type { AlertRule } from '../game/alerts';
@@ -53,6 +54,8 @@ export type ToWorker =
   | { type: 'CLASSIFY'; work: WorkAttributes }
   | { type: 'CONTINUE_SAVED' }
   | { type: 'GET_RULES' }
+  /** Stage the advisor's suggestion for one workload (or all) into the pending policy. */
+  | { type: 'RC_ADVICE_APPLY'; workloadId: string | null }
   | { type: 'CANCEL_CHANGE'; changeId: number }
   | { type: 'GET_SMF'; kind: SmfKind; hour: string }
   | { type: 'GET_FINANCE' }
@@ -82,7 +85,7 @@ export type FromWorker =
   | { type: 'WHATIF_PROGRESS'; frac: number }
   | { type: 'WHATIF_RESULT'; label: string; base: WhatIfSummary; proposal: WhatIfSummary }
   | { type: 'MON3_CHARTS'; fromSample: number; fromMarker: number; samples: Mon3Sample[]; markers: ChartMarker[] }
-  | { type: 'RULES'; active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] }
+  | { type: 'RULES'; active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null }
   | { type: 'REPORT'; text: string }
   | { type: 'POLICY'; json: string }
   | { type: 'RESULT'; ok: boolean; message: string };

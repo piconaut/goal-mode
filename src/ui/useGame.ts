@@ -1,3 +1,4 @@
+import type { RcAdvice } from '../game/rcAdvisor';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
@@ -21,7 +22,7 @@ export interface GameHandle {
   whatIf: { progress: number | null; result: { label: string; base: WhatIfSummary; proposal: WhatIfSummary } | null };
   speed: number;
   charts: { samples: Mon3Sample[]; markers: ChartMarker[] };
-  rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[] } | null;
+  rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null } | null;
   toast: { ok: boolean; message: string } | null;
   /** Every change-board result this session, newest last (toasts vanish; this doesn't). */
   results: { ok: boolean; message: string; clock: string }[];
@@ -69,7 +70,7 @@ export function useGame(): GameHandle {
           samples: [...(m.fromSample === 0 ? [] : c.samples.slice(0, m.fromSample)), ...m.samples],
           markers: [...(m.fromMarker === 0 ? [] : c.markers.slice(0, m.fromMarker)), ...m.markers],
         }));
-      else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds });
+      else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds, advice: m.advice });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
       else if (m.type === 'RESULT') {

@@ -81,8 +81,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: [],
     unlocks: ['REPORT_CLASS_ADVISOR'],
     overhead: null,
-    reveals: 'Suggests report classes so WLMGL shows one row per business workload.',
-    comingSoon: true,
+    reveals: 'Suggests one report class per business workload (and the rule change to get it), so WLMGL shows each on its own row even when it shares a service class.',
   },
   {
     id: 'MON3_CHARTS',
