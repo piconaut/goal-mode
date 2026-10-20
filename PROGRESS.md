@@ -481,6 +481,18 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     05:21–05:57 on days 23/26/27 because no bot reacted to it. Textbook/expert now -TERM UTILITY on sight;
     expert seed 20 → VICTORY, score 2716. Next: re-sweep textbook, expert and spendtowin over seeds 1–20
     (a sweep started in loop 39 was stopped at a session switch) and record the results here
+  - Third sweep (loop 45, seeds 1–20, Normal, after the -TERM UTILITY reaction; 60 runs in 74 min, `--jobs 4`):
+    **textbook** day p10/median/p90 = 39 / 40 / 40, median score 2707 (1775–2724), ends victory 16 · batch 2
+    (seeds 2/3, day 28) · trust 2 (seeds 13/18, day 39); median 47 incidents. **Expert** 40 / 40 / 40, median
+    2715 (2704–2731), **victory 20/20**, median 33 incidents. **Spend-to-win** 28 / 28 / 28, median 1820, ends
+    opex 19 · batch 1 (seed 4, day 25), median 9.5 incidents. Month-1 bill (textbook/expert/spendtowin medians)
+    $832k / $862k / $837k against $780k. Reading against the targets: expert ✓ (wins every seed); spend-to-win
+    ✓ on cause (opex) but with zero spread, since the opex wall is the month-1 close on day 28 for every seed;
+    **textbook is now too strong** (target: loses ≈ day 28–32, actual: wins 16/20), because its reactions
+    (batch capacity, -TERM UTILITY, CF moves) have grown into near-expert play. Open question for the user:
+    trim the textbook bot back to a "reads the manual, no diagnosis" floor, or keep it and treat the
+    target as met by do-nothing + spend-to-win and move the "loses ≈ day 30" role to a new naive bot.
+    No tuning done (balance decision)
 - [x] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
   (loop 38: seed 42, 2 days with planned day-1 changes and an emergency change on day 2, ~20 s; hashes in
   `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
