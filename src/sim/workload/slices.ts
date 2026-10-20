@@ -6,7 +6,7 @@ import type { CpcConfig, LparConfig } from '../core/types';
 import { classify } from '../wlm/classify';
 import type { ServiceDefinition } from '../wlm/types';
 import { SYSOTHER, SYSSTC, SYSTEM } from '../wlm/types';
-import type { SliceSpec } from '../wlm/evaluate';
+import { sliceSpec, type SliceSpec } from '../wlm/evaluate';
 import { splitPeriods } from './periods';
 import type { AddressSpaceDef, WorkloadDef } from './types';
 
@@ -100,9 +100,9 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
         cpBase: 0,
         ziBase: 0,
         roleTerms: [],
-        spec: {
+        spec: sliceSpec({
           key: `${w.id}@${lpar.id}${scKeyOf(cls.serviceClass, k)}`,
-          ...(cls.reportClass ? { reportClass: cls.reportClass } : {}),
+          reportClass: cls.reportClass,
           scKey: scKeyOf(cls.serviceClass, k),
           kind: 'TXN',
           workloadId: w.id,
@@ -127,7 +127,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
           extraOtherSec: 0,
           failFrac: 0,
           outsideWaitSec: 0,
-        },
+        }),
       });
     });
   }
@@ -149,9 +149,9 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
       cpBase: (a.baseEnginesRef * mp * (1 - a.ziipFrac)) / cpSp,
       ziBase: (a.baseEnginesRef * mp * a.ziipFrac) / zSp,
       roleTerms: terms,
-      spec: {
+      spec: sliceSpec({
         key: `${a.jobname}@${lpar.id}`,
-        ...(cls.reportClass ? { reportClass: cls.reportClass } : {}),
+        reportClass: cls.reportClass,
         scKey: scKeyOf(cls.serviceClass, 0),
         kind: 'AS',
         workloadId: null,
@@ -175,7 +175,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
         extraOtherSec: 0,
         failFrac: 0,
         outsideWaitSec: 0,
-      },
+      }),
     });
   }
   return out;

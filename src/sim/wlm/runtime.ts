@@ -54,8 +54,19 @@ export function parseScKey(scKey: string): { serviceClass: string; period: numbe
   return { serviceClass: scKey.slice(0, i), period: Number(scKey.slice(i + 1)) - 1 };
 }
 
+// Memoised per definition object (edits produce a new one); results are shared, never mutated.
+const goalInfoCache = new WeakMap<ServiceDefinition, Map<string, ScpGoalInfo | null>>();
+
 /** Goal info for a period; null for SYSTEM/SYSSTC (no goal, fixed DP). */
 export function goalInfo(def: ServiceDefinition, scKey: string): ScpGoalInfo | null {
+  let cache = goalInfoCache.get(def);
+  if (!cache) goalInfoCache.set(def, (cache = new Map()));
+  let g = cache.get(scKey);
+  if (g === undefined) cache.set(scKey, (g = goalInfoUncached(def, scKey)));
+  return g;
+}
+
+function goalInfoUncached(def: ServiceDefinition, scKey: string): ScpGoalInfo | null {
   const { serviceClass, period } = parseScKey(scKey);
   if (serviceClass === SYSTEM || serviceClass === SYSSTC) return null;
   if (serviceClass === SYSOTHER) {

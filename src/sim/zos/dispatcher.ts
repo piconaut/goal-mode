@@ -53,88 +53,91 @@ export interface DispatchResult {
   ziipUnmet: number;
 }
 
-interface Level {
-  dp: number;
-  items: { id: string; want: number }[];
+/** Demand indices by DP descending, then id: the dispatch order (ids are unique). */
+function dispatchOrder(demands: readonly DispatchDemand[]): number[] {
+  const idx = demands.map((_, i) => i);
+  return idx.sort((a, b) => {
+    const da = demands[a]!;
+    const db = demands[b]!;
+    return db.dp - da.dp || (da.id < db.id ? -1 : da.id > db.id ? 1 : 0);
+  });
 }
 
-function groupByDp(items: { id: string; dp: number; want: number }[]): Level[] {
-  const levels: Level[] = [];
-  const sorted = [...items].sort((a, b) => b.dp - a.dp || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-  for (const it of sorted) {
-    const last = levels[levels.length - 1];
-    if (last && last.dp === it.dp) last.items.push({ id: it.id, want: it.want });
-    else levels.push({ dp: it.dp, items: [{ id: it.id, want: it.want }] });
-  }
-  return levels;
-}
-
-interface PoolOutcome {
-  granted: Record<string, number>;
-  queueRatio: Record<string, number>;
-}
-
+/** Fills granted/queueRatio (indexed like the demands) level by level in dispatch order. */
 function allocateByPriority(
   capacity: number,
   servers: number,
-  items: { id: string; dp: number; want: number }[],
-): PoolOutcome {
-  const granted: Record<string, number> = {};
-  const queueRatio: Record<string, number> = {};
+  demands: readonly DispatchDemand[],
+  order: readonly number[],
+  want: readonly number[],
+  granted: number[],
+  queueRatio: number[],
+): void {
   let remaining = Math.max(0, capacity);
   let usedAbove = 0;
-  for (const level of groupByDp(items)) {
-    const levelWant = level.items.reduce((a, i) => a + i.want, 0);
+  for (let start = 0; start < order.length; ) {
+    const dp = demands[order[start]!]!.dp;
+    let end = start;
+    let levelWant = 0;
+    while (end < order.length && demands[order[end]!]!.dp === dp) levelWant += want[order[end++]!]!;
     const levelGet = Math.min(levelWant, remaining);
     remaining -= levelGet;
     usedAbove += levelGet;
     const rho = capacity > 0 ? usedAbove / capacity : 1;
     const q = queueDelayRatio(servers, rho);
-    for (const it of level.items) {
-      granted[it.id] = levelWant > 0 ? (levelGet * it.want) / levelWant : 0;
-      queueRatio[it.id] = q;
+    for (let k = start; k < end; k++) {
+      const i = order[k]!;
+      granted[i] = levelWant > 0 ? (levelGet * want[i]!) / levelWant : 0;
+      queueRatio[i] = q;
     }
+    start = end;
   }
-  return { granted, queueRatio };
 }
 
 export function dispatch(input: DispatchInput): DispatchResult[] {
-  const z = allocateByPriority(
-    input.ziipCapacityEngines,
-    input.ziipServers,
-    input.demands.map((d) => ({ id: d.id, dp: d.dp, want: d.ziipEngines })),
-  );
+  const { demands } = input;
+  const n = demands.length;
+  const order = dispatchOrder(demands);
+  const zWant = new Array<number>(n);
+  for (let i = 0; i < n; i++) zWant[i] = demands[i]!.ziipEngines;
+  const zGranted = new Array<number>(n).fill(0);
+  const zQueue = new Array<number>(n).fill(0);
+  allocateByPriority(input.ziipCapacityEngines, input.ziipServers, demands, order, zWant, zGranted, zQueue);
 
   // zIIP-eligible work that could not get a zIIP overflows to CPs at the same DP.
-  const overflow: Record<string, number> = {};
-  for (const d of input.demands) {
-    const unmet = d.ziipEngines - (z.granted[d.id] ?? 0);
-    overflow[d.id] = d.ziipMayOverflow || input.ziipServers === 0 ? Math.max(0, unmet) : 0;
+  const overflow = new Array<number>(n);
+  const cWant = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    const d = demands[i]!;
+    const unmet = d.ziipEngines - zGranted[i]!;
+    overflow[i] = d.ziipMayOverflow || input.ziipServers === 0 ? Math.max(0, unmet) : 0;
+    cWant[i] = d.cpEngines + overflow[i]!;
   }
+  const cGranted = new Array<number>(n).fill(0);
+  const cQueue = new Array<number>(n).fill(0);
+  allocateByPriority(input.cpCapacityEngines, input.cpServers, demands, order, cWant, cGranted, cQueue);
 
-  const c = allocateByPriority(
-    input.cpCapacityEngines,
-    input.cpServers,
-    input.demands.map((d) => ({ id: d.id, dp: d.dp, want: d.cpEngines + (overflow[d.id] ?? 0) })),
-  );
-
-  return input.demands.map((d) => {
-    const cpWant = d.cpEngines + (overflow[d.id] ?? 0);
-    const cpGot = c.granted[d.id] ?? 0;
-    const ov = overflow[d.id] ?? 0;
+  const prsmDelayRatio = input.cpPrsmDelayFrac / Math.max(1e-6, 1 - input.cpPrsmDelayFrac);
+  const out = new Array<DispatchResult>(n);
+  for (let i = 0; i < n; i++) {
+    const d = demands[i]!;
+    const cpWant = cWant[i]!;
+    const cpGot = cGranted[i]!;
+    const ov = overflow[i]!;
     // Native CP work and overflowed zIIP work share the grant pro rata.
     const iipcp = cpWant > 0 ? (cpGot * ov) / cpWant : 0;
-    const ziipGot = z.granted[d.id] ?? 0;
-    return {
+    const ziipGot = zGranted[i]!;
+    out[i] = {
       id: d.id,
       cpGranted: cpGot - iipcp,
       ziipGranted: ziipGot,
       iipcpGranted: iipcp,
-      cpQueueRatio: c.queueRatio[d.id] ?? 0,
-      ziipQueueRatio: z.queueRatio[d.id] ?? 0,
-      prsmDelayRatio: input.cpPrsmDelayFrac / Math.max(1e-6, 1 - input.cpPrsmDelayFrac),
+      cpQueueRatio: cQueue[i]!,
+      ziipQueueRatio: zQueue[i]!,
+      prsmDelayRatio,
       cpUnmet: Math.max(0, d.cpEngines - (cpGot - iipcp)),
       ziipUnmet: Math.max(0, d.ziipEngines - ziipGot - iipcp),
     };
-  });
+  }
+  return out;
 }

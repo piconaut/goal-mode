@@ -255,9 +255,9 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
     delayCap: 0,
     failed: 0,
   } as T;
-  scps[k] = {
-    ...a,
-    dp: t.dp,
+  const members = (a as Partial<RcIntervalAcc>).members;
+  // Explicit literal in the accumulator's key order (no spread: hot path, once per period per tick).
+  const out: ScpIntervalAcc = {
     completions: a.completions + t.completions,
     rtSumSec: a.rtSumSec + t.rtSumSec,
     buckets: addBuckets(a.buckets, t.buckets),
@@ -267,16 +267,20 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
     delayZiip: a.delayZiip + t.delayZiip,
     delayIo: a.delayIo + t.delayIo,
     delayOther: a.delayOther + t.delayOther,
+    delayCap: a.delayCap + t.delayCap,
     cpuEngines: a.cpuEngines + t.cpEngines,
+    lparId: a.lparId,
+    scKey: a.scKey,
+    dp: t.dp,
     ziipEngines: a.ziipEngines + t.ziipEngines,
     iipcpEngines: a.iipcpEngines + t.iipcpEngines,
     usingCpu: a.usingCpu + t.usingCpu,
     usingZiip: a.usingZiip + t.usingZiip,
     usingIo: a.usingIo + t.usingIo,
     delayStorage: a.delayStorage + t.delayStorage,
-    delayCap: a.delayCap + t.delayCap,
     failed: a.failed + t.failed,
-  } as T;
+  };
+  scps[k] = (members !== undefined ? { ...out, members } : out) as T;
 }
 
 function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {

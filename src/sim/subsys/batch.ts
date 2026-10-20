@@ -82,16 +82,16 @@ export function releaseNetwork(state: BatchState, day: number, defs: readonly Jo
 
 const secSinceInstance = (tick: number, day: number) => tick * TICK_SEC - day * DAY_SEC;
 
-/** HELD → QUEUED when predecessors are done and the earliest start has passed. */
+/** HELD → QUEUED when predecessors are done and the earliest start has passed. Promoted jobs are
+ * replaced by updated copies (held jobs may be shared with the previous state). */
 export function promoteEligible(jobs: JobRuntime[], tick: number): void {
-  const done = new Set(jobs.filter((j) => j.status === 'DONE').map(jobKey));
-  for (const j of jobs) {
+  let done: Set<string> | null = null;
+  for (let i = 0; i < jobs.length; i++) {
+    const j = jobs[i]!;
     if (j.status !== 'HELD') continue;
     if (secSinceInstance(tick, j.day) < j.def.earliestSec) continue;
-    if (j.def.preds.every((p) => done.has(`${j.day}:${p}`))) {
-      j.status = 'QUEUED';
-      j.queuedTick = tick;
-    }
+    const doneKeys = (done ??= new Set(jobs.filter((x) => x.status === 'DONE').map(jobKey)));
+    if (j.def.preds.every((p) => doneKeys.has(`${j.day}:${p}`))) jobs[i] = { ...j, status: 'QUEUED', queuedTick: tick };
   }
 }
 
