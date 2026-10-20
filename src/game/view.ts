@@ -11,6 +11,7 @@ import { autoRuleText } from './automation';
 import { codexDiscovered } from './codex';
 import type { EvidencePin } from './evidence';
 import { projectsView } from './projects';
+import { endReport, type EndReport } from './endReport';
 import type { ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
@@ -151,6 +152,8 @@ export interface ViewModel {
   lastReport: DayReport | null;
   draft: DraftOption[] | null;
   endReason: string | null;
+  /** Only once the run has ended. */
+  endReport: EndReport | null;
   policyName: string;
   previewCtx: PreviewContext;
   config: ConfigView;
@@ -299,6 +302,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     lastReport: run.reports[run.reports.length - 1] ?? null,
     draft: run.draft,
     endReason: run.endReason,
+    endReport: run.phase === 'GAMEOVER' || run.phase === 'VICTORY' ? endReport(run, overallTrust(run)) : null,
     policyName: def.policyName,
     previewCtx: previewContext(run),
     features: [...feats].sort(),

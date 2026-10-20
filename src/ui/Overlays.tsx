@@ -6,6 +6,7 @@ import { formatClock } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { Mechanism, Trigger } from '../game/types';
+import type { EndReport } from '../game/endReport';
 import type { ViewModel } from '../game/view';
 import type { GameHandle } from './useGame';
 
@@ -55,12 +56,81 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
               <p>
                 Final score <b>{v.score}</b> after {v.day + 1} days.
               </p>
+              {v.endReport && <EndReportView r={v.endReport} />}
               <NewRun game={game} />
             </>
           )}
         </div>
       </div>
     </>
+  );
+}
+
+function EndReportView({ r }: { r: EndReport }) {
+  const maxR4ha = Math.max(1, ...r.days.map((d) => d.peakR4haSum ?? 0));
+  return (
+    <div className="panel" style={{ marginBottom: 8 }}>
+      <h3>
+        Grade <span style={{ fontSize: '1.6em' }}>{r.grade}</span> <span className="muted">({r.points}/100)</span>
+      </h3>
+      <p className="muted">
+        {r.daysPlayed} of the quarter's days played · mean SLA attainment {r.meanSlaPct.toFixed(1)}% · final trust {Math.round(r.overallTrust)}
+        {!r.victory && ' · runs that end early grade B at best'}
+      </p>
+      {r.biggestIncident && (
+        <p>
+          Biggest incident: <b>{r.biggestIncident.workloadId}</b> on day {r.biggestIncident.day + 1}, {r.biggestIncident.hours} h ({r.biggestIncident.cause}).
+        </p>
+      )}
+      <p>{r.bestRca ? <>Best RCA: <b>{r.bestRca.workloadId}</b> on day {r.bestRca.day + 1}, {r.bestRca.points} points ({r.bestRca.cause}).</> : 'No root cause analysis scored points.'}</p>
+      <details>
+        <summary>Day by day</summary>
+        <table>
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Score</th>
+              <th>Worst SLA</th>
+              <th>Peak R4HA sum (MSU)</th>
+              <th>Batch</th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.days.map((d) => (
+              <tr key={d.day}>
+                <td>{d.day + 1}</td>
+                <td>{d.score}</td>
+                <td>{d.worstSlaPct.toFixed(1)}%</td>
+                <td>
+                  {d.peakR4haSum === null ? (
+                    <span className="muted">-</span>
+                  ) : (
+                    <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <span style={{ minWidth: 40 }}>{Math.round(d.peakR4haSum)}</span>
+                      <span className="bar" aria-hidden="true">
+                        <span style={{ width: `${(100 * d.peakR4haSum) / maxR4ha}%`, background: 'var(--accent)' }} />
+                      </span>
+                    </span>
+                  )}
+                </td>
+                <td>{d.batchMissed ? <span className="tag bad">missed</span> : 'on time'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+      <details>
+        <summary>Decisions ({r.decisions.length} changes applied)</summary>
+        <ul>
+          {r.decisions.map((d, i) => (
+            <li key={i}>
+              Day {d.day + 1}: {d.label}
+              {d.emergency && <span className="tag bad"> emergency</span>}
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
   );
 }
 
