@@ -206,8 +206,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
         failFrac = qr.failFrac;
       }
       if (w.subsystem === 'DDF') outside += dbatWait;
+      const mqMax = w.mq && s.mqQueueFrac !== undefined ? { maxQueueMsgs: (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac } : {};
       return {
         ...s,
+        ...mqMax,
         ioPerTxn,
         extraParts: parts,
         extraOtherSec: extra,
@@ -281,7 +283,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       (scenario.memory.osBaseGb[l.id] ?? 20) +
       (db2?.bufferPoolGb ?? 0) +
       cicsRegions * scenario.memory.cicsRegionGb +
-      runningJobs * scenario.memory.batchJobGb;
+      runningJobs * scenario.memory.batchJobGb +
+      queuedMsgGb(prev, workloadById, l.id);
     pagingFrac[l.id] = pagingDelayFrac(memDemand, l.memoryGb);
 
     let cp = 0;
@@ -430,6 +433,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
         wt.rtSumSec += r.completions * r.userRtSec;
         if (r.parts) addParts(wt.parts, r.parts, r.completions);
         failedBy[s.workloadId] = (failedBy[s.workloadId] ?? 0) + r.failed;
+        if (s.maxQueueMsgs !== undefined) {
+          const per = s.cpuSecPerTxn + s.ziipSecPerTxn;
+          const qd = (wt.queueDepth ??= {});
+          qd[l.id] = (qd[l.id] ?? 0) + (per > 0 ? r.newBacklog / per : 0);
+        }
         const k = `${s.workloadId}@${l.id}`;
         rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
         compBy[k] = (compBy[k] ?? 0) + r.completions;
@@ -634,6 +642,17 @@ function cicsRegionCount(addressSpaces: readonly AddressSpaceDef[], lparId: stri
     regionCountCache.set(addressSpaces, m);
   }
   return m[lparId] ?? 0;
+}
+
+/** Deep MQ queues spill from buffer pools into page sets and real memory (SPEC §5.10.3). */
+function queuedMsgGb(prev: SimState, byId: Record<string, WorkloadDef>, lparId: string): number {
+  let gb = 0;
+  for (const w of prev.last.workloads) {
+    const d = w.queueDepth?.[lparId];
+    const def = byId[w.id];
+    if (d && def?.mq) gb += (d * def.mq.msgBytes) / 2 ** 30;
+  }
+  return gb;
 }
 
 // Effective content = scenario + run additions + routing overrides. Memoised on object

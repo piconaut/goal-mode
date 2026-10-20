@@ -59,6 +59,10 @@ export interface SliceSpec {
   extraParts?: Record<string, number>;
   /** Report class from classification (reporting only: WLM never manages to it). */
   reportClass?: string | null;
+  /** Share of its MQ queue this slice's messages may fill (message-driven work only). */
+  mqQueueFrac?: number;
+  /** Messages this slice may keep queued before puts fail (MAXDEPTH share); no timeout applies. */
+  maxQueueMsgs?: number;
 }
 
 /** Where a transaction's response time went, seconds per transaction. */
@@ -420,7 +424,15 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     let waitSec = newBacklog / gotRate;
     const workPerTxn = s.cpuSecPerTxn + s.ziipSecPerTxn;
     let failed = 0;
-    if (waitSec > s.timeoutSec) {
+    if (s.maxQueueMsgs !== undefined) {
+      // MQ: messages wait on the queue; only puts beyond MAXDEPTH fail (MQRC_Q_FULL).
+      const cap = s.maxQueueMsgs * workPerTxn;
+      if (workPerTxn > 0 && newBacklog > cap) {
+        failed = (newBacklog - cap) / workPerTxn;
+        newBacklog = cap;
+        waitSec = newBacklog / gotRate;
+      }
+    } else if (waitSec > s.timeoutSec) {
       const keep = gotRate * s.timeoutSec;
       const excess = newBacklog - keep;
       newBacklog = keep;

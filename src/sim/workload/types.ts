@@ -52,6 +52,8 @@ export interface WorkloadDef {
   thinkTimeSec?: number;
   /** Fraction of timed-out requests that are retried. */
   retryFrac: number;
+  /** Message-driven work: requests wait on an MQ queue (no timeout) and puts fail only past MAXDEPTH. */
+  mq?: { queue: string; maxDepthMsgs: number; msgBytes: number };
   /** Server roles this work depends on, with CPU charged to the server per transaction. */
   servers: { role: string; cpuMsRef: number; latencySec: number }[];
   /** SLA used by the game layer (not the WLM goal). */

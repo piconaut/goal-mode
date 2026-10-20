@@ -128,6 +128,8 @@ export const MIDWEST_WORKLOADS: WorkloadDef[] = [
     rtSigma: 0.5,
     timeoutSec: 60,
     retryFrac: 1.0,
+    // FICTIONAL: queue sized for ~10 minutes of peak traffic per queue manager.
+    mq: { queue: 'PAY.REQUEST', maxDepthMsgs: 40_000, msgBytes: 6_000 },
     servers: [{ role: 'MQ.CHIN', cpuMsRef: 0.3, latencySec: 0.01 }, { role: 'MQ.MSTR', cpuMsRef: 0.2, latencySec: 0.01 }, ...cicsServers(0.15)],
     sla: { kind: 'AVG', rtSec: 1 },
   },

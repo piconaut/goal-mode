@@ -258,3 +258,17 @@ describe('WLM I/O priority management', () => {
     expect(r[0]!.usingIo + r[0]!.delayIo).toBe(0);
   });
 });
+
+describe('MQ queue depth (PAYMQ)', () => {
+  const base = { cpCapacityEngines: 1, cpServers: 1, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, backlog: { M: 500, T: 500 }, io: IO, pagingFrac: 0, dpOf: () => 200 };
+  it('starved messages queue instead of timing out; puts fail only past MAXDEPTH', () => {
+    const online = evaluateLpar({ ...base, slices: [txn({ key: 'T', cpEngines: 2, timeoutSec: 30 })] }).slices[0]!;
+    const mq = evaluateLpar({ ...base, slices: [txn({ key: 'M', cpEngines: 2, timeoutSec: Infinity, maxQueueMsgs: 1e6 })] }).slices[0]!;
+    const full = evaluateLpar({ ...base, slices: [txn({ key: 'M', cpEngines: 2, timeoutSec: Infinity, maxQueueMsgs: 1000 })] }).slices[0]!;
+    expect(online.failed).toBeGreaterThan(0);
+    expect(mq.failed).toBe(0);
+    expect(mq.newBacklog).toBeGreaterThan(online.newBacklog);
+    expect(full.failed).toBeGreaterThan(0);
+    expect(full.newBacklog).toBeCloseTo(1000 * 0.01, 6);
+  });
+});

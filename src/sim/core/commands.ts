@@ -36,6 +36,7 @@ export type Command =
   | { kind: 'ABEND_JOB'; critical: boolean }
   | { kind: 'RESTART_JOB'; day: number; name: string }
   | { kind: 'SET_PRICING'; tfp: TfpTerms }
+  | { kind: 'SET_MQ'; workloadId: string; maxDepthMsgs: number }
   | { kind: 'NOTE'; text: string };
 
 export interface CommandResult {
@@ -278,6 +279,10 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       j.queuedTick = s.tick;
       return ok({ ...s, batch: { ...s.batch, jobs } }, `${cmd.name} restarted from checkpoint`);
     }
+
+    case 'SET_MQ':
+      if (!Number.isInteger(cmd.maxDepthMsgs) || cmd.maxDepthMsgs < 1 || cmd.maxDepthMsgs > 999_999_999) return fail(s, 'MAXDEPTH must be 1–999999999');
+      return ok({ ...s, mqMaxDepth: { ...(s.mqMaxDepth ?? {}), [cmd.workloadId]: cmd.maxDepthMsgs } }, `ALTER QLOCAL MAXDEPTH(${cmd.maxDepthMsgs}) for ${cmd.workloadId}`);
 
     case 'SET_PRICING':
       if (s.cost.tfp) return fail(s, 'Tailored Fit Pricing is already in force');
