@@ -570,6 +570,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     Seed 7 replay: day 13 CF01 failure, textbook never moves the structures home, retry storm, Retail 0 on day 15;
     the same with the HSM storm at 60k or 75k (identical score), so the new cards mostly reshuffle the draws.
     HSM storm magnitude lowered 75k → 60k anyway (75k is past the LCU 30 cliff: ≈ 15× response; 60k ≈ 2×)
+  - Loop 68 sweep (Normal, seeds 1–20, all 19 cards, fixer bots end cards on sight; 83 min): **expert** 40 / 40 / 40,
+    median 2824, **victory 20/20**. **Spend-to-win** 28 / 28 / 28, median 1871, opex 20. **Textbook** 17 / 26 / 28,
+    median 1626, ends trust 14 · batch 6; ten Retail-trust collapses, eight of them on days 16–24, and **all eight
+    drew NEW_APP_GOLIVE**: the booking app is Retail-judged with an SLA and the textbook bot never classifies it, so
+    it breaches until the run ends (the merger wall, nine to seventeen days early). Below the 28–32 target; asked
+    the user (keep / booking without an SLA or Internal stakeholder / forewarning that names the work / later minDay)
   - [x] RCA ground truth (loop 64): cards may declare `mechanisms`; `triggerOf` blames an active card only for
     incidents with one of them (DASD_DEGRADED and HSM_RECALL_STORM: IO; CF_LINK: CF_SERVICE, LOCK_CONTENTION;
     LOCK_ESCALATION: LOCK_CONTENTION; QR_RELEASE: QR_TCB, THREAD_LIMIT; others any). HSM storm affects restored.
@@ -716,6 +722,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 68):** 20-seed Normal sweep with 19 cards: expert 20/20, textbook median 26 (booking go-live drives early Retail collapses). Asked the user.
 - **2026-10-20 (loop 67):** fixer bots (expert, spend-to-win) end cards on sight with their fix (REORG, monitor creep, shadow IT, teller release, HSM storm); expert seed 6 Normal now wins (was trust loss day 32).
 - **2026-10-20 (loop 66):** AUDIT_UNCLASSIFIED card (implementer subagent; reviewed: tunables moved to content). 19 cards, 253 tests.
 - **2026-10-20 (loop 65):** HIRING_FREEZE card (implementer subagent; reviewed: reason moved into the briefing). VENDOR_PRICE needs a product price lever in the sim or a run-aware scenario: asked the user. 250 tests.
