@@ -4,4 +4,3 @@ dist/
 out/
 .claude/*
 !.claude/agents/
-!.claude/skills/
