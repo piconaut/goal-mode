@@ -106,37 +106,56 @@ function moveStructuresHome(run: RunState, c: GameContent): RunState {
   return requestChange(run, c, { label: 'Move structures back to their preferred CF', commands: moves }).run;
 }
 
+/** Day 0: the known-good fixes for the planted flaws F1–F11 (SPEC §13.3). */
+function textbookDay0(r: RunState, c: GameContent): RunState {
+  let run = r;
+  const plan = (label: string, commands: import('../src/sim/core/commands').Command[]) => {
+    const out = requestChange(run, c, { label, commands });
+    run = out.run;
+  };
+  plan('Textbook WLM policy (F1–F5)', [{ kind: 'ACTIVATE_POLICY', definition: textbookPolicy() }]);
+  plan('zIIP online on PROD2 (F7)', [{ kind: 'SET_LOGICAL', lparId: 'PROD2', pool: 'ZIIP', logical: 1 }]);
+  plan('CF02 thin interrupts (F8)', [{ kind: 'SET_CF', lparId: 'CF02', thinInterrupts: true }]);
+  plan('Weights 565/335/65/35 (F10)', [
+    { kind: 'SET_WEIGHT', lparId: 'PROD1', pool: 'CP', weight: 565 },
+    { kind: 'SET_WEIGHT', lparId: 'PROD2', pool: 'CP', weight: 335 },
+    { kind: 'SET_WEIGHT', lparId: 'DEVT', pool: 'CP', weight: 65 },
+    { kind: 'SET_WEIGHT', lparId: 'SYSP', pool: 'CP', weight: 35 },
+  ]);
+  plan('DEVT soft cap 60 MSU (F9)', [{ kind: 'SET_DEFINED_CAPACITY', lparId: 'DEVT', msu: 60 }]);
+  plan('RMF 15-minute interval (F11)', [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }]);
+  return run;
+}
+
+/** The obvious reactions: restart abended critical jobs and apply an open incident's listed fix. */
+function obviousHourly(r: RunState, c: GameContent): RunState {
+  let run = r;
+  for (const j of run.sim.batch.jobs.filter((x) => x.status === 'ABENDED' && x.def.critical)) {
+    run = requestChange(run, c, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
+  }
+  for (const inc of run.incidents.filter((i) => i.endTick === null)) {
+    const fixId = FIX_BY_TRIGGER[inc.truth.trigger];
+    const active = run.events.some((e) => e.started && !e.ended && e.trigger === inc.truth.trigger);
+    if (fixId && active) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
+  }
+  return run;
+}
+
+// Textbook: fixes the planted flaws on day 0 and reacts only to what pages it (abends, SLA incidents).
+// It never diagnoses trends (batch growth, merger work, CF placement, REORG stretch), so it is the
+// "reads the manual" floor that should lose around day 28–32 (SPEC §16).
 const textbook: Strategy = {
-  briefing: (r, _s, c) => {
-    if (r.day !== 0) return reactBriefing(r, c);
-    let run = r;
-    const plan = (label: string, commands: import('../src/sim/core/commands').Command[]) => {
-      const out = requestChange(run, c, { label, commands });
-      run = out.run;
-    };
-    plan('Textbook WLM policy (F1–F5)', [{ kind: 'ACTIVATE_POLICY', definition: textbookPolicy() }]);
-    plan('zIIP online on PROD2 (F7)', [{ kind: 'SET_LOGICAL', lparId: 'PROD2', pool: 'ZIIP', logical: 1 }]);
-    plan('CF02 thin interrupts (F8)', [{ kind: 'SET_CF', lparId: 'CF02', thinInterrupts: true }]);
-    plan('Weights 565/335/65/35 (F10)', [
-      { kind: 'SET_WEIGHT', lparId: 'PROD1', pool: 'CP', weight: 565 },
-      { kind: 'SET_WEIGHT', lparId: 'PROD2', pool: 'CP', weight: 335 },
-      { kind: 'SET_WEIGHT', lparId: 'DEVT', pool: 'CP', weight: 65 },
-      { kind: 'SET_WEIGHT', lparId: 'SYSP', pool: 'CP', weight: 35 },
-    ]);
-    plan('DEVT soft cap 60 MSU (F9)', [{ kind: 'SET_DEFINED_CAPACITY', lparId: 'DEVT', msu: 60 }]);
-    plan('RMF 15-minute interval (F11)', [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }]);
-    return run;
-  },
+  briefing: (r, _s, c) => (r.day === 0 ? textbookDay0(r, c) : r),
+  hourly: (r, _s, c) => obviousHourly(r, c),
+  review: passive.review,
+};
+
+// Fixer: textbook plus the diagnosing reactions (batch capacity on the trend, merger classification,
+// CF structures back home, terminate the overrunning REORG). The base for expert and spend-to-win.
+const fixer: Strategy = {
+  briefing: (r, _s, c) => (r.day === 0 ? textbookDay0(r, c) : reactBriefing(r, c)),
   hourly: (r, _s, c) => {
-    let run = moveStructuresHome(r, c);
-    for (const j of run.sim.batch.jobs.filter((x) => x.status === 'ABENDED' && x.def.critical)) {
-      run = requestChange(run, c, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
-    }
-    for (const inc of run.incidents.filter((i) => i.endTick === null)) {
-      const fixId = FIX_BY_TRIGGER[inc.truth.trigger];
-      const active = run.events.some((e) => e.started && !e.ended && e.trigger === inc.truth.trigger);
-      if (fixId && active) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
-    }
+    let run = obviousHourly(moveStructuresHome(r, c), c);
     // The REORG overrun raises no SLA incident, only batch stretch (IOSQ on LCU 21): terminate it on sight.
     if (run.events.some((e) => e.defId === 'REORG_OVERRUN' && e.started && !e.ended)) {
       run = requestChange(run, c, { label: 'Fix TERM_UTILITY', fixId: 'TERM_UTILITY' }).run;
@@ -150,26 +169,26 @@ STRATEGIES.textbook = textbook;
 
 
 // ---------------------------------------------------------------------------
-// Expert: textbook plus capacity planning ahead of need. Buys the faster capacity setting on day 1
+// Expert: fixer plus capacity planning ahead of need. Buys the faster capacity setting on day 1
 // (critical batch is a serial chain and batch volumes grow every night) instead of waiting for the
 // deadline to bite.
 const expert: Strategy = {
   briefing: (r, s, c) => {
-    let run = textbook.briefing(r, s, c);
+    let run = fixer.briefing(r, s, c);
     if (run.day === 0) run = requestChange(run, c, { label: 'Capacity setting +1', hardwareId: 'CAP_SETTING_UP' }).run;
     return run;
   },
-  hourly: textbook.hourly,
+  hourly: fixer.hourly,
   review: passive.review,
 };
 STRATEGIES.expert = expert;
 
 // ---------------------------------------------------------------------------
-// Spend-to-win: textbook plus a fresh On/Off CoD CP every morning (each lasts three days). SLAs should hold,
+// Spend-to-win: fixer plus a fresh On/Off CoD CP every morning (each lasts three days). SLAs should hold,
 // but the temporary-capacity opex and the higher MLC peak should trip the budget (SPEC §16).
 const spendToWin: Strategy = {
-  briefing: (r, s, c) => requestChange(textbook.briefing(r, s, c), c, { label: 'On/Off CoD +1 CP', hardwareId: 'COD_CP' }).run,
-  hourly: textbook.hourly,
+  briefing: (r, s, c) => requestChange(fixer.briefing(r, s, c), c, { label: 'On/Off CoD +1 CP', hardwareId: 'COD_CP' }).run,
+  hourly: fixer.hourly,
   review: passive.review,
 };
 STRATEGIES.spendtowin = spendToWin;
