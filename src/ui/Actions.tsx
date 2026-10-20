@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { CodexHints } from './CodexHint';
 import { cfUsedGb, duplexSecondary, type CfConfig, type CfStructureConfig } from '../sim/cf/cf';
 import { ServiceClasses } from './ServiceClassEditor';
+import { useStored } from './useStored';
 import { DASD_REBALANCE, HARDWARE } from '../content/hardware-catalog';
 import { LCU_MAX_DEVICES } from '../sim/io/dasd';
 import { FIXES, previewChange, type ChangePreview } from '../game/catalog';
@@ -146,25 +147,6 @@ const AREAS: { id: Area; label: string; hint: string }[] = [
   { id: 'projects', label: 'Projects', hint: 'Multi-day improvements booked during the briefing.' },
 ];
 
-/** A per-viewer UI preference kept in localStorage (falls back to the default if storage is blocked). */
-function useStored<T extends string>(key: string, initial: T): [T, (v: T) => void] {
-  const [val, setVal] = useState<T>(() => {
-    try {
-      return (localStorage.getItem(key) as T | null) ?? initial;
-    } catch {
-      return initial;
-    }
-  });
-  const set = (v: T) => {
-    setVal(v);
-    try {
-      localStorage.setItem(key, v);
-    } catch {
-      // Storage blocked: the choice just isn't remembered.
-    }
-  };
-  return [val, set];
-}
 
 const CLOSED_KEY = 'goalmode.desk.closed';
 const loadClosed = (): string[] => {

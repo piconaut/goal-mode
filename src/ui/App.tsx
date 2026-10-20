@@ -16,6 +16,7 @@ import { Reports } from './Reports';
 import { Smf } from './Smf';
 import { EvidenceBoard } from './Evidence';
 import { useGame, type GameHandle } from './useGame';
+import { useStored } from './useStored';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
@@ -128,7 +129,26 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="stat">
         Score <b>{v.score}</b>
       </span>
+      <ThemeToggle />
     </div>
+  );
+}
+
+type Theme = 'system' | 'dark' | 'light';
+const NEXT_THEME: Record<Theme, Theme> = { system: 'dark', dark: 'light', light: 'system' };
+
+/** System → dark → light; styles.css keys the palette off `data-theme` on <html>. */
+function ThemeToggle() {
+  const [theme, setTheme] = useStored<Theme>('goalmode.theme', 'system');
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'system') delete root.dataset.theme;
+    else root.dataset.theme = theme;
+  }, [theme]);
+  return (
+    <button style={{ marginLeft: 'auto' }} title="Colour theme (click to change)" aria-label={`Theme: ${theme}`} onClick={() => setTheme(NEXT_THEME[theme])}>
+      {theme === 'system' ? '◐ auto' : theme === 'dark' ? '● dark' : '○ light'}
+    </button>
   );
 }
 

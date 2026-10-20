@@ -518,6 +518,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     selected rows, active subtab, primary button and status tags stay distinguishable in system colours)
 - [ ] Sound/feedback: pager chime on incidents, subtle tick at hour boundaries (mutable)
 - [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave
+  - [x] Loop 43: theme toggle in the top bar (auto → dark → light, remembered in localStorage, sets
+    `data-theme` on <html>); `useStored` hook moved to `src/ui/useStored.ts`. Error boundaries per tab already exist
 - [x] Deploy target (static hosting) and a README (loop 40: `base: './'` so `dist/` runs from any sub-path; `README.md` with play, build, dev commands and layout)
 
 ### M8.9 — Game-playing agents (last work on `main`; user request 2026-10-20)
