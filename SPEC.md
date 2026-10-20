@@ -34,7 +34,7 @@ whichever is wrong and record the decision in `PROGRESS.md`.
 8. Analytics: fog of war & the tool tree
 9. Events, incidents, constraints (the roguelike deck)
 10. Root-cause analysis mini-game
-11. Progression: difficulty curve, run structure, meta-progression
+11. Progression: difficulty curve, run structure, meta-progression, game modes
 12. Scoring, win & loss
 13. Starting scenario: "Midwest Mutual" (the flawed starting topology)
 14. UI / screens
@@ -934,6 +934,25 @@ starting flaws count, budget generosity, Ironman (no pause during live, no undo)
 
 ---
 
+### 11.4 Game modes: Expert and Simplified (planned, PROGRESS M9)
+
+The default is **Expert**, the game as specified in the rest of this document. **Simplified** mode keeps
+the *same simulation* (same sim code, same seed gives the same world, same reports and scoring), but
+abstracts the gritty z/OS details for players who aren't already experts:
+
+- **Goal-level actions ("bundles"):** one action makes all the discrete changes an expert would make for a
+  goal. For example, *Protect mobile banking from ad-hoc queries* = a new service class + a classification
+  rule + a report class; *Protect the critical batch path* = a BATCHHI rule for critical jobs + an
+  initiator change; *Stop dev from stealing production CPU* = DEVT weight and logical CPs + a soft cap.
+  Each bundle lists the exact changes it makes (expandable), its cost and trade-off, and can be undone as a
+  unit. Bundles are content data built from ordinary Change Desk requests, so engineer-hours, change risk
+  and the change freeze still apply.
+- **The full WLM policy definition stays visible and editable**; bundles are a shortcut, not a wall.
+- **Plain-language summaries** of reports and incidents, with the raw RMF view one click away.
+- **Diagnosis is still the game:** symptoms suggest several bundles (more than one valid fix); nothing is
+  fixed automatically.
+- Balance target: a bot using only bundles does about as well as the textbook bot (§16).
+
 ## 12. Scoring, win & loss
 
 **Daily score** = Σ_services weight_s × attainment_s
@@ -1067,6 +1086,9 @@ src/
 tools/
   headless.ts          # run N days with a scripted/autopilot policy → CSV/JSON
   balance/             # strategy bots, sweeps
+  play.ts              # text play interface for AI agents (planned, PROGRESS M8.9)
+.claude/agents/        # game-playing agent definitions (planned, PROGRESS M8.9)
+docs/agents.md         # how to run the agents
 tests/
   sim/…                # unit + "realism" property tests
   golden/              # golden-run snapshots (seeded) to detect unintended model drift
@@ -1097,6 +1119,12 @@ never touches the DOM.
     ~day 28–32.
   - *Spend-to-win*: buys CoD every day → wins on SLA but trips the opex loss condition.
   - *Expert*: scripted good play → wins with grade A on Normal.
+- **Agent players** (planned, PROGRESS M8.9): AI agents play full runs through a headless text interface
+  (`tools/play.ts`): it prints the briefing, inbox, incidents and requested reports as text and accepts the
+  same actions the UI offers (Change Desk requests, WLM edits, RCAs, tool purchases, advance N hours).
+  Agents see only what a player sees; no hidden ground truth. Runs are deterministic (seed + command log),
+  so agent results can be compared with the strategy bots. Agent definitions live in `.claude/agents/`;
+  `docs/agents.md` explains how to run them.
 - **Performance budget:** ≤ 2 s per headless day on a mid laptop; ≤ 4 ms per tick in the
   worker at 8×.
 
