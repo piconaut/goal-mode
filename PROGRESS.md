@@ -470,7 +470,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     never touches batch capacity, so it is a floor. Tuning options: soften/randomise the deadline beat or
     growth; give the textbook bot the obvious batch fixes (BATCHHI for the critical path, initiators) so it
     measures something else; add the expert bot (capacity orders) to show the wall is beatable
-- [ ] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
+- [x] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
+  (loop 38: seed 42, 2 days with planned day-1 changes and an emergency change on day 2, ~20 s; hashes in
+  `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
 
 **M8.3 Difficulty & run structure**
 - [ ] Difficulty presets (Story / Normal / Hard / Ironman): growth multipliers, event λ and severity tiers, budget generosity, starting flaws, pause disabled in Ironman

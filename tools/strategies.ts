@@ -159,3 +159,13 @@ const expert: Strategy = {
   review: passive.review,
 };
 STRATEGIES.expert = expert;
+
+// ---------------------------------------------------------------------------
+// Spend-to-win: textbook plus a fresh On/Off CoD CP every morning (each lasts three days). SLAs should hold,
+// but the temporary-capacity opex and the higher MLC peak should trip the budget (SPEC §16).
+const spendToWin: Strategy = {
+  briefing: (r, s, c) => requestChange(textbook.briefing(r, s, c), c, { label: 'On/Off CoD +1 CP', hardwareId: 'COD_CP' }).run,
+  hourly: textbook.hourly,
+  review: passive.review,
+};
+STRATEGIES.spendtowin = spendToWin;
