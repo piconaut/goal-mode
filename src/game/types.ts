@@ -70,6 +70,8 @@ export interface ActiveEvent {
   endTick: number | null;
   trigger: Trigger;
   affects: string[];
+  /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
+  mechanisms?: Mechanism[];
   endCommands: Command[];
   started: boolean;
   ended: boolean;

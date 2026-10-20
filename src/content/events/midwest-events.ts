@@ -1,7 +1,7 @@
 // FICTIONAL event deck for Midwest Mutual (SPEC §9). Every event has symptoms, clues and fixes.
 
 import type { Command } from '../../sim/core/commands';
-import type { Trigger } from '../../game/types';
+import type { Mechanism, Trigger } from '../../game/types';
 import type { WorkloadDef } from '../../sim/workload/types';
 
 export interface EventDef {
@@ -13,6 +13,8 @@ export interface EventDef {
   weight: number;
   trigger: Trigger;
   affects: string[];
+  /** Mechanisms the card causes; RCA ground truth blames it only for incidents with one of these (absent = any). */
+  mechanisms?: Mechanism[];
   /** Wall-clock start hour range and duration in hours (null = until fixed). Events with a
    * fix still end on their own eventually; fixing them early limits the damage. */
   startHour: [number, number];
@@ -171,6 +173,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.5,
     trigger: 'HARDWARE_FAULT',
     affects: ['RBANK', 'CARDAUTH', 'MOBILE', 'TELLER', 'PAYMQ'],
+    mechanisms: ['CF_SERVICE', 'LOCK_CONTENTION'],
     startHour: [7, 20],
     durationHours: 4,
     begin: [{ kind: 'SET_CF', lparId: 'CF01', degrade: 6 }],
@@ -205,6 +208,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'HARDWARE_FAULT',
     affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
+    mechanisms: ['IO'],
     startHour: [8, 22],
     durationHours: 3,
     begin: [{ kind: 'SET_DASD', changes: { backendDegrade: 5 } }],
@@ -274,6 +278,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'BATCH_OVERLAP',
     affects: ['RBANK', 'CARDAUTH'],
+    mechanisms: ['LOCK_CONTENTION'],
     startHour: [20.5, 23],
     durationHours: 3,
     begin: [{ kind: 'SET_LOCK_BOOST', value: 6 }],
@@ -311,6 +316,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'POLICY',
     affects: ['TELLER', 'RBANK'],
+    mechanisms: ['QR_TCB', 'THREAD_LIMIT'],
     startHour: [6.5, 7.5],
     durationHours: 36,
     begin: [
@@ -373,9 +379,9 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1,
     // Closest existing trigger: a surge of user-driven demand (no dedicated policy-side trigger fits a month-old change).
     trigger: 'DEMAND_SURGE',
-    // No affects list: triggerOf blames any active card that lists the workload whatever the mechanism, so listing
-    // the online apps here stole the blame for unrelated CPU incidents (textbook seed 7, day 15 after a CF failure).
-    affects: [],
+    // I/O only: without the mechanism filter this card stole the blame for an unrelated CPU meltdown (textbook seed 7).
+    affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
+    mechanisms: ['IO'],
     startHour: [7, 10],
     durationHours: 2.5,
     // FICTIONAL magnitude: 60_000 random I/Os per second on LCU 30 roughly doubles its response at day-0 load. The

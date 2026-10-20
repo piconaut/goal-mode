@@ -570,9 +570,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     Seed 7 replay: day 13 CF01 failure, textbook never moves the structures home, retry storm, Retail 0 on day 15;
     the same with the HSM storm at 60k or 75k (identical score), so the new cards mostly reshuffle the draws.
     HSM storm magnitude lowered 75k → 60k anyway (75k is past the LCU 30 cliff: ≈ 15× response; 60k ≈ 2×)
-  - [ ] RCA ground truth: `triggerOf` blames any active card listing the workload regardless of mechanism (an
-    I/O card can take the blame for a CPU meltdown). Give cards the mechanisms they cause and match on them;
-    changes RCA truth for every card, so regenerate goldens and re-check the RCA bot
+  - [x] RCA ground truth (loop 64): cards may declare `mechanisms`; `triggerOf` blames an active card only for
+    incidents with one of them (DASD_DEGRADED and HSM_RECALL_STORM: IO; CF_LINK: CF_SERVICE, LOCK_CONTENTION;
+    LOCK_ESCALATION: LOCK_CONTENTION; QR_RELEASE: QR_TCB, THREAD_LIMIT; others any). HSM storm affects restored.
+    Goldens unchanged (oracle RCA reads the same truth)
 - [ ] More draft options and perks; constraint cards with persistent modifiers
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
@@ -715,6 +716,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 64):** RCA trigger truth respects card mechanisms. 249 tests.
 - **2026-10-20 (loop 63):** expert bot classifies the booking app; Normal sweep with 17 cards; HSM storm 60k; open item on RCA attribution.
 - **2026-10-20 (loop 62, user request):** merger advance hint on Normal as well.
 - **2026-10-20 (loop 61):** HSM_RECALL_STORM and CP_SPARING events (implementer subagent, reviewed; gave the storm an affects list so RCA can credit it). 246 tests.

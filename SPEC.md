@@ -855,7 +855,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 | Event | Hidden mechanic | Clues |
 |---|---|---|
 | CP failure, sparing (`CP_SPARING`) | Transparent: a spare PU takes over; only a log note and an announcement (day ≥ 3, any hour, ~6 min; `affects` empty so it is never blamed for an incident) | HMC message only; a red herring |
-| DFSMShsm recall storm (`HSM_RECALL_STORM`) | Month-old migration policy change: 75k random I/O/s of recalls on LCU 30 (system + catalogs) for 2.5 h, exhausting its aliases; rumoured, trigger `DEMAND_SURGE` | DASD Activity: LCU 30 IOSQ/RESP up, Db2 LCUs normal; anything opening data sets slows. Fixes: hold HSM recalls (Retail trust −1), or move aliases to LCU 30 |
+| DFSMShsm recall storm (`HSM_RECALL_STORM`) | Month-old migration policy change: 60k random I/O/s of recalls on LCU 30 (system + catalogs) for 2.5 h, exhausting its aliases; rumoured, trigger `DEMAND_SURGE` | DASD Activity: LCU 30 IOSQ/RESP up, Db2 LCUs normal; anything opening data sets slows. Fixes: hold HSM recalls (Retail trust −1), or move aliases to LCU 30 |
 | Power cap (`POWER_CAP`) | Cooling fault: CPC one capacity setting below its current one for ~6 h, then back to that setting, not rumoured | SYSINFO / Partition Data: same engines, less MSU per LPAR; CPU delay ↑ everywhere. Fixes: cap/quiesce DEVT, defer discretionary batch, protect imp-1 work |
 | CF link degraded | CF sync time ↑, async conversion | CF Activity |
 | CF02 failure | Structures rebuild to CF01; it must have white space | CF util before/after |
@@ -898,6 +898,10 @@ At end of day, each **incident** (an SLA breach episode) can be investigated wit
 3. Attach **evidence**: pin 1–3 data points from reports (e.g. *WLMGL 10:30 DB2STC
    CPU delay 38%*). Evidence is scored for relevance against the event's hidden "clue set".
 4. Propose a **remediation** (it links to a change on the calendar).
+
+Ground truth for the trigger: an active event card that lists the hurt workload, provided the card's declared
+`mechanisms` (if any) include the incident's mechanism; otherwise new work, batch overlap (lock index), policy or
+growth. Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
 
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident window (± 1 h), concerns the

@@ -173,6 +173,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       endTick,
       trigger: def.trigger,
       affects: def.affects,
+      ...(def.mechanisms ? { mechanisms: def.mechanisms } : {}),
       endCommands: def.end,
       started: false,
       ended: false,
