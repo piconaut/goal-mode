@@ -837,7 +837,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 | Looping batch job in a high class | Misclassified job at imp 2 eats CPU | WLMGL: BATCHHI service ↑; SMF 30 |
 | Retry storm | Timeout → retries → λ ↑ | END/S ↑ while successes ↓; console banner |
 | Bot attack on mobile login | λ ×5 on one transaction, CPU-cheap but RACF-heavy | DDF period 1 END/S; TCPIP CPU |
-| New app go-live | New workload with no classification rule → SYSOTHER | WLMGL SYSOTHER service ≠ 0 (!) |
+| New app go-live (`NEW_APP_GOLIVE`) | Branch booking app (BOOKING, OMVS, PROD1) starts with no classification rule → SYSOTHER; stays (once per run) | WLMGL SYSOTHER service ≠ 0 on PROD1. Fixes: add a rule into a goal class, or a report class first to measure it |
 | Shadow IT on TSO (`SHADOW_IT`) | Unapproved model training: TSO CPU/txn ×8, mostly on uncapped DEVT (F9) and at imp 2 on PROD (F5) | Partition Data: DEVT MSU ↑, PROD share ↓; WLMGL TSO APPL% ↑ with END/S flat. Fixes: stop it, cap DEVT, lower TSO importance |
 
 ### 9.2 Software & config events
@@ -855,6 +855,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 | Event | Hidden mechanic | Clues |
 |---|---|---|
 | CP failure (sparing) | Transparent; a note in the log | HMC message |
+| Power cap (`POWER_CAP`) | Cooling fault: CPC one capacity setting below its current one for ~6 h, then back to that setting, not rumoured | SYSINFO / Partition Data: same engines, less MSU per LPAR; CPU delay ↑ everywhere. Fixes: cap/quiesce DEVT, defer discretionary batch, protect imp-1 work |
 | CF link degraded | CF sync time ↑, async conversion | CF Activity |
 | CF02 failure | Structures rebuild to CF01; it must have white space | CF util before/after |
 | DASD back-end degraded | DISC ↑ on a subset of volumes | DASD Activity |

@@ -562,7 +562,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Meta-progression (career XP → unlock scenarios, starting perks, starting tool; Codex persists) in IndexedDB
 
 **M8.4 Content**
-- [~] Events to ~25 (SPEC §9) (13 now; loop 58 added SHADOW_IT and QR_RELEASE with fixes, rumours and realism tests; re-sweep the bots once the deck is complete): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT
+- [~] Events to ~25 (SPEC §9) (15 now; loop 60 added NEW_APP_GOLIVE (BOOKING lands in SYSOTHER and stays, once per run, rumoured) and POWER_CAP (one capacity setting down for 6 h, resolved at start so upgrades are not undone; new `oncePerRun`/`capacityDrop` card fields) with realism tests; earlier: 13; loop 58 added SHADOW_IT and QR_RELEASE with fixes, rumours and realism tests; re-sweep the bots once the deck is complete): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT
 - [ ] More draft options and perks; constraint cards with persistent modifiers
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
@@ -705,6 +705,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 60):** NEW_APP_GOLIVE and POWER_CAP events (drafted by the implementer subagent, reviewed; fixed a 72 h vanishing app, possible double draw, and a cap that could undo an upgrade). 245 tests.
 - **2026-10-20 (loop 59, user decision):** Story gets a clear merger hint two days ahead. 241 tests.
 - **2026-10-20 (loop 58):** two new events (shadow IT on TSO, non-threadsafe teller release). 240 tests.
 - **2026-10-20 (loop 57):** R4HA chart on the end screen; end-of-run report done. 238 tests.

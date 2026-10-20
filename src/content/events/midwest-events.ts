@@ -23,6 +23,11 @@ export interface EventDef {
   fix: string | null;
   /** Inbox hint the day before (null = surprise). */
   forewarning: string | null;
+  /** Draw at most once per run (cards that add a workload). */
+  oncePerRun?: boolean;
+  /** Drop the CPC this many capacity settings at start and restore the setting it had then at the end
+   * (resolved when the card begins, so a player's upgrade is neither skipped nor undone). */
+  capacityDrop?: number;
   /** Message when it starts (null = silent; players must notice symptoms). */
   announcement: string | null;
   clue: string;
@@ -46,6 +51,36 @@ export const ACQUIRED_APP: WorkloadDef = {
   cpuSigma: 0.6,
   ziipFrac: 0.5,
   ioPerTxn: 6,
+  baseLatencySec: 0.05,
+  rtSigma: 0.6,
+  timeoutSec: 10,
+  retryFrac: 0.5,
+  servers: [
+    { role: 'TCPIP', cpuMsRef: 0.02, latencySec: 0.0005 },
+    { role: 'DB2.DBM1', cpuMsRef: 0.15, latencySec: 0.012 },
+    { role: 'DB2.MSTR', cpuMsRef: 0.03, latencySec: 0.006 },
+    { role: 'DB2.IRLM', cpuMsRef: 0.02, latencySec: 0.004 },
+  ],
+  sla: { kind: 'PCT', pct: 90, rtSec: 0.5 },
+};
+
+// FICTIONAL: a small internal Java service on USS; modest rate, no zIIP offload, no BASEPOL rule matches OMVS.
+export const BOOKING_APP: WorkloadDef = {
+  id: 'BOOKING',
+  name: 'Branch appointment booking',
+  stakeholder: 'Retail',
+  subsystem: 'OMVS',
+  work: { subsystem: 'OMVS', UI: 'BOOKSVC' },
+  peakRatePerSec: 60,
+  shape: { floor: 0.05, peaks: [{ hour: 10, height: 1, widthHours: 2.5 }, { hour: 14, height: 0.8, widthHours: 2 }], weekly: [1, 1, 1, 1, 1, 0.4, 0.3], payday: 1, monthEnd: 1 },
+  growthPerDay: 0,
+  noiseSigma: 0.1,
+  noisePhi: 0.95,
+  routing: { PROD1: 1 },
+  cpuMsRef: 3,
+  cpuSigma: 0.6,
+  ziipFrac: 0,
+  ioPerTxn: 4,
   baseLatencySec: 0.05,
   rtSigma: 0.6,
   timeoutSec: 10,
@@ -290,6 +325,44 @@ export const MIDWEST_EVENTS: EventDef[] = [
     forewarning: 'Change board: "Teller front-end release 4.2 goes into the PROD1 regions overnight."',
     announcement: null,
     clue: 'CICS report: QR wait per transaction up in CICSAOR1/3 (PROD1) only, CPU delay low; PROD2 regions fine. Routing more work to PROD2 or adding a region also helps.',
+  },
+  {
+    // A new internal app goes live with no classification rule, so its work lands in SYSOTHER (discretionary).
+    id: 'NEW_APP_GOLIVE',
+    name: 'New branch booking app goes live',
+    category: 'WORKLOAD',
+    minDay: 9,
+    weight: 1.2,
+    trigger: 'NEW_WORKLOAD',
+    affects: ['BOOKING'],
+    startHour: [8, 10],
+    durationHours: null, // the app stays; the fix is a classification rule
+    oncePerRun: true,
+    begin: [{ kind: 'ADD_WORKLOAD', workload: BOOKING_APP }],
+    end: [],
+    fix: null,
+    forewarning: 'Retail: "Branch booking goes live tomorrow, it\'s a small Java service, nothing to worry about."',
+    announcement: null,
+    clue: 'WLMGL: SYSOTHER service ≠ 0 on PROD1; the new work has no classification rule. Fixes: add a rule into a goal class, or a report class first to measure it.',
+  },
+  {
+    // FICTIONAL: a cooling fault drops the CPC one capacity setting for the afternoon.
+    id: 'POWER_CAP',
+    name: 'Data centre power cap',
+    category: 'HARDWARE',
+    minDay: 10,
+    weight: 0.8,
+    trigger: 'HARDWARE_FAULT',
+    affects: ['MOBILE', 'RBANK'],
+    startHour: [12, 16],
+    durationHours: 6,
+    capacityDrop: 1,
+    begin: [],
+    end: [],
+    fix: null,
+    forewarning: null,
+    announcement: 'Facilities: "Cooling fault on the raised floor; the CPC is running at reduced capacity until the chiller is fixed."',
+    clue: 'SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEVT, defer discretionary batch, protect importance-1 work.',
   },
 ];
 

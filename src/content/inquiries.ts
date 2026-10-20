@@ -96,6 +96,7 @@ export const EVENT_RUMOURS: Record<string, string> = {
   LOCK_ESCALATION: 'settlement volumes are unusually high this week',
   SHADOW_IT: 'the data-science team found free CPU on the test system',
   QR_RELEASE: 'the teller app team has a front-end release lined up',
+  NEW_APP_GOLIVE: 'retail is about to launch a small new booking app',
 };
 
 /** Rumours about upcoming story beats (heard up to a few days ahead). */

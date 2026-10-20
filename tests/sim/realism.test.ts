@@ -6,6 +6,7 @@ import { initState } from '../../src/sim/core/init';
 import { discretionaryCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { emptyAcc } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
+import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 
@@ -384,6 +385,7 @@ describe('event cards (SPEC §9)', () => {
     let devtMsu = 0;
     let mobRt = 0;
     let mobN = 0;
+    let bookingDone = 0;
     for (let i = 0; i < 180; i++) {
       s = step(s, [], MIDWEST);
       const m = s.last.workloads.find((x) => x.id === 'MOBILE')!;
@@ -392,9 +394,10 @@ describe('event cards (SPEC §9)', () => {
       const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
       qr += w.parts.qr ?? 0;
       n += w.completions;
+      bookingDone += s.last.workloads.find((x) => x.id === 'BOOKING')?.completions ?? 0;
       devtMsu += s.lpars.find((l) => l.id === 'DEVT')!.msuRate / 180;
     }
-    return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN) };
+    return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN), bookingDone };
   };
   const card = (id: string) => MIDWEST_EVENTS.find((e) => e.id === id)!.begin;
 
@@ -407,5 +410,17 @@ describe('event cards (SPEC §9)', () => {
 
   it('a non-threadsafe release raises QR wait for teller transactions', () => {
     expect(run(card('QR_RELEASE')).qrMsPerTxn).toBeGreaterThan(2 * run([]).qrMsPerTxn);
+  }, 60_000);
+
+  it('a power cap (lower capacity setting, same engines) slows mobile on PROD', () => {
+    // POWER_CAP drops one setting from wherever the CPC is (resolved in the game layer; see run tests).
+    expect(run([{ kind: 'SET_CPC_CAPACITY', cpcId: 'CPCA', capacitySetting: 5 }]).mobileRtMs).toBeGreaterThan(run([]).mobileRtMs);
+  }, 60_000);
+
+  it('a new booking app has no rule so it lands in SYSOTHER, yet it runs', () => {
+    const begin = card('NEW_APP_GOLIVE');
+    const wl = begin[0]!.kind === 'ADD_WORKLOAD' ? begin[0]!.workload : null;
+    expect(wl && classify(BASEPOL, wl.work).serviceClass).toBe('SYSOTHER');
+    expect(run(begin).bookingDone).toBeGreaterThan(0);
   }, 60_000);
 });

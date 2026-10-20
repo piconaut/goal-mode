@@ -1,6 +1,7 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
-import { MIDWEST } from '../../src/content/scenarios';
-import { advance, chooseDraft, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
+import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
+import { advance, chooseDraft, drawEvents, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
+import { applyCommands } from '../../src/sim/core/commands';
 import { scoreRca } from '../../src/game/sla';
 import type { RunState } from '../../src/game/types';
 
@@ -112,5 +113,27 @@ describe('events', () => {
     r = advance(r, MIDWEST, withEvents, 2);
     expect(r.sim.mods.cpu.ADHOC).toBeUndefined();
     expect(r.events[0]!.ended).toBe(true);
+  });
+});
+
+describe('event cards resolved at start', () => {
+  const sc = SCENARIOS.midwest!;
+  const withCard = (defId: string, setting: 4 | 5 | 6 | 7) => {
+    let r = startDay(newRun(sc, MIDWEST_GAME, 3), MIDWEST_GAME);
+    r = { ...r, events: [], sim: applyCommands(r.sim, [{ kind: 'SET_CPC_CAPACITY', cpcId: 'CPCA', capacitySetting: setting }]) };
+    const ev = { uid: `${defId}@0`, defId, name: defId, startTick: r.sim.tick, endTick: r.sim.tick + 2, trigger: 'HARDWARE_FAULT' as const, affects: [], endCommands: [], started: false, ended: false };
+    return { ...r, events: [ev] };
+  };
+
+  it('a power cap drops one setting from the current one and restores that setting, not a fixed one', () => {
+    let r = advance(withCard('POWER_CAP', 7), sc, MIDWEST_GAME, 1);
+    expect(r.sim.config.cpcs[0]!.capacitySetting).toBe(6);
+    r = advance(r, sc, MIDWEST_GAME, 3);
+    expect(r.sim.config.cpcs[0]!.capacitySetting).toBe(7);
+  }, 60_000);
+
+  it('a once-per-run card is not drawn again', () => {
+    const r = { ...newRun(sc, MIDWEST_GAME, 3), events: [{ defId: 'NEW_APP_GOLIVE' }] } as unknown as RunState;
+    for (let day = 9; day < 40; day++) expect(drawEvents(r, MIDWEST_GAME, day).events.filter((e) => e.defId === 'NEW_APP_GOLIVE')).toHaveLength(1);
   });
 });

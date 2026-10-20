@@ -151,7 +151,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
   const [picked, r1] = withRng(run, (rng) => {
     const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
     const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
-    const pool = content.events.filter((e) => day >= e.minDay);
+    const pool = content.events.filter((e) => day >= e.minDay && !(e.oncePerRun && run.events.some((x) => x.defId === e.id)));
     const out: { def: EventDef; hour: number }[] = [];
     for (let i = 0; i < n && pool.length > 0; i++) {
       const def = rng.pickWeighted(pool, (e) => e.weight * (e.category === 'WORKLOAD' ? 1 : 1 + day / 20));
@@ -384,10 +384,17 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       r = logLine(r, `V WLM,POLICY=${switchTo.kind === 'ACTIVATE_POLICY' ? switchTo.definition.policyName : ''} (scheduled)`);
     }
     let events = r.events;
+    const resolvedEnd = new Map<string, Command[]>();
     for (const e of events) {
       const def = content.events.find((d) => d.id === e.defId);
       if (!e.started && e.startTick <= tick) {
         cmds.push(...scaleEventCommands(def?.begin ?? [], difficultyOf(r.difficulty).eventSeverityMult));
+        if (def?.capacityDrop) {
+          const cpc = r.sim.config.cpcs[0]!;
+          const to = Math.max(4, cpc.capacitySetting - def.capacityDrop) as 4 | 5 | 6 | 7;
+          cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to });
+          resolvedEnd.set(e.uid, [{ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting }]);
+        }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
         r = logLine(r, `EVENT start: ${e.name}`);
       }
@@ -398,6 +405,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     }
     events = events.map((e) => ({
       ...e,
+      endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || e.startTick <= tick,
       ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
     }));
