@@ -28,32 +28,74 @@ function header(title: string, iv: RmfInterval): string[] {
   ];
 }
 
-const rtText = (r: WlmRecord) => (r.avgRtSec === null ? '      -' : pad(r.avgRtSec < 10 ? r.avgRtSec.toFixed(3) : r.avgRtSec.toFixed(1), 7));
+
+/** WLMGL columns: header labels are right-aligned to the same widths as the values, so they line up. */
+interface Col {
+  w: number;
+  h1: string;
+  h2: string;
+  v: (r: WlmRecord) => string;
+  left?: boolean;
+}
+const WLM_COLS: Col[] = [
+  { w: 9, h1: 'SERVICE', h2: 'CLASS', left: true, v: (r) => r.serviceClass },
+  { w: 3, h1: 'PER', h2: '', v: (r) => String(r.reportClass ? '-' : r.period) },
+  { w: 3, h1: 'IMP', h2: '', v: (r) => String(r.importance ?? '-') },
+  { w: 25, h1: ' GOAL', h2: '', left: true, v: (r) => ` ${r.goalText}` },
+  { w: 7, h1: 'ACTUAL', h2: 'RESP', v: (r) => (r.avgRtSec === null ? '-' : r.avgRtSec < 10 ? r.avgRtSec.toFixed(3) : r.avgRtSec.toFixed(1)) },
+  { w: 6, h1: 'EX', h2: 'VEL%', v: (r) => fmt(r.execVelocity, 1) },
+  { w: 6, h1: 'PERF', h2: 'INDX', v: (r) => fmt(r.pi, 2) },
+  { w: 9, h1: 'ENDED', h2: '', v: (r) => String(Math.round(r.ended)) },
+  { w: 8, h1: 'END/S', h2: '', v: (r) => fmt(r.endPerSec, 1) },
+  { w: 6, h1: '', h2: 'CP', v: (r) => fmt(r.applCpPct, 1) },
+  { w: 6, h1: '', h2: 'IIPCP', v: (r) => fmt(r.applIipcpPct, 1) },
+  { w: 6, h1: '', h2: 'IIP', v: (r) => fmt(r.applIipPct, 1) },
+  { w: 4, h1: '', h2: 'CPU', v: (r) => fmt(r.usingPct.cpu, 0) },
+  { w: 4, h1: '', h2: 'IIP', v: (r) => fmt(r.usingPct.ziip, 0) },
+  { w: 4, h1: '', h2: 'I/O', v: (r) => fmt(r.usingPct.io, 0) },
+  { w: 4, h1: '', h2: 'CPU', v: (r) => fmt(r.delayPct.cpu, 0) },
+  { w: 4, h1: '', h2: 'IIP', v: (r) => fmt(r.delayPct.ziip, 0) },
+  { w: 4, h1: '', h2: 'I/O', v: (r) => fmt(r.delayPct.io, 0) },
+  { w: 4, h1: '', h2: 'STO', v: (r) => fmt(r.delayPct.storage, 0) },
+  { w: 4, h1: '', h2: 'CAP', v: (r) => fmt(r.delayPct.cap, 0) },
+  { w: 4, h1: '', h2: 'OTH', v: (r) => fmt(r.delayPct.other, 0) },
+];
+/** Group headings over runs of columns (by index, inclusive). */
+const WLM_GROUPS: { from: number; to: number; label: string }[] = [
+  { from: 9, to: 11, label: 'APPL %' },
+  { from: 12, to: 14, label: 'USING %' },
+  { from: 15, to: 20, label: 'DELAY %' },
+];
+const fmt = (x: number | null | undefined, d: number) => (x === null || x === undefined ? '-' : x.toFixed(d));
+const cell = (c: Col, s: string) => (c.left ? padR(s, c.w) : pad(s, c.w)).slice(0, Math.max(c.w, s.length));
 
 function wlmRow(r: WlmRecord): string {
-  return [
-    padR(r.serviceClass, 9),
-    `${pad(r.reportClass ? '-' : r.period, 3)} ${pad(r.importance ?? '-', 3)}`,
-    ' ',
-    padR(r.goalText, 24),
-    rtText(r),
-    f(r.execVelocity, 1, 7),
-    f(r.pi, 2, 6),
-    pad(Math.round(r.ended), 9),
-    f(r.endPerSec, 1, 9),
-    f(r.applCpPct, 1, 6),
-    f(r.applIipcpPct, 1, 6),
-    f(r.applIipPct, 1, 6),
-    f(r.usingPct.cpu, 0, 5),
-    f(r.usingPct.ziip, 0, 4),
-    f(r.usingPct.io, 0, 4),
-    f(r.delayPct.cpu, 0, 5),
-    f(r.delayPct.ziip, 0, 4),
-    f(r.delayPct.io, 0, 4),
-    f(r.delayPct.storage, 0, 4),
-    f(r.delayPct.cap, 0, 4),
-    f(r.delayPct.other, 0, 4),
-  ].join(' ');
+  return WLM_COLS.map((c) => cell(c, c.v(r))).join(' ');
+}
+
+/** Two header lines whose labels sit over their columns; group labels are centred in dashes. */
+export function wlmHeader(first: 'SERVICE' | 'REPORT'): string[] {
+  const starts: number[] = [];
+  let x = 0;
+  for (const c of WLM_COLS) {
+    starts.push(x);
+    x += c.w + 1;
+  }
+  const line1 = Array.from({ length: x }, () => ' ');
+  const put = (line: string[], at: number, text: string) => text.split('').forEach((ch, i) => (line[at + i] = ch));
+  WLM_COLS.forEach((c, i) => {
+    const h = i === 0 ? first : c.h1;
+    if (h) put(line1, c.left ? starts[i]! : starts[i]! + c.w - h.length, h);
+  });
+  for (const g of WLM_GROUPS) {
+    const a = starts[g.from]!;
+    const b = starts[g.to]! + WLM_COLS[g.to]!.w;
+    const text = ` ${g.label} `;
+    const dashes = b - a - text.length;
+    put(line1, a, '-'.repeat(Math.floor(dashes / 2)) + text + '-'.repeat(Math.ceil(dashes / 2)));
+  }
+  const line2 = WLM_COLS.map((c) => cell(c, c.h2)).join(' ');
+  return [line1.join('').trimEnd(), line2.trimEnd()];
 }
 
 export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
@@ -63,14 +105,12 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
   const out = header('WORKLOAD ACTIVITY', iv);
   out.push(`REPORT BY: SYSTEM=${system}   (SERVICE CLASS PERIODS)`);
   out.push('');
-  out.push('SERVICE   PER IMP  GOAL                      ACTUAL   EX    PERF   ENDED     END/S  --APPL %--------  ---USING %---  --------DELAY %---------');
-  out.push('CLASS                                        RESP    VEL%   INDX                    CP  IIPCP   IIP  CPU  IIP  I/O  CPU  IIP  I/O  STO  CAP  OTH');
+  out.push(...wlmHeader('SERVICE'));
   for (const r of rows) out.push(wlmRow(r));
   const rcRows = (iv.wlmRc ?? []).filter((r) => r.lparId === system).sort((a, b) => a.scKey.localeCompare(b.scKey));
   if (rcRows.length > 0) {
     out.push('', `REPORT BY: SYSTEM=${system}   (REPORT CLASSES; GOAL AND PI ONLY FOR HOMOGENEOUS CLASSES)`, '');
-    out.push('REPORT    PER IMP  GOAL                      ACTUAL   EX    PERF   ENDED     END/S  --APPL %--------  ---USING %---  --------DELAY %---------');
-    out.push('CLASS                                        RESP    VEL%   INDX                    CP  IIPCP   IIP  CPU  IIP  I/O  CPU  IIP  I/O  STO  CAP  OTH');
+    out.push(...wlmHeader('REPORT'));
     for (const r of rcRows) out.push(wlmRow(r));
     out.push('', 'SERVICE CLASS PERIODS PER REPORT CLASS');
     for (const r of rcRows) out.push(`${padR(r.serviceClass, 9)} ${(r.members ?? []).join(', ')}`);
