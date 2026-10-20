@@ -470,6 +470,13 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     never touches batch capacity, so it is a floor. Tuning options: soften/randomise the deadline beat or
     growth; give the textbook bot the obvious batch fixes (BATCHHI for the critical path, initiators) so it
     measures something else; add the expert bot (capacity orders) to show the wall is beatable
+  - Second sweep (loop 39, seeds 1–20, Normal, after the batch-capacity, merger-classification and
+    CF-structure-move reactions): **textbook** day p10/median/p90 = 28 / 40 / 40, median score 2651, ends
+    victory 13 · batch 4 (days 27–28, seeds 2/13/18/19) · trust 3 (days 36–40, seeds 1/7/12; Retail lowest on
+    1 and 7). **Expert** (capacity setting +1 on day 0) 38 / 40 / 40, median 2688, ends victory 16 · batch 4
+    (seeds 2 and 20 on days 29/27, 12 and 19 on days 38/39). Month-1 bill $736k–898k against a $780k budget.
+    The wall is beatable now, but expert still hits it early on seeds 2 and 20: next, read those two runs
+    (which chain or event pushes the critical path even at speed 1.0) before tuning growth or the deadline
 - [x] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
   (loop 38: seed 42, 2 days with planned day-1 changes and an emergency change on day 2, ~20 s; hashes in
   `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
