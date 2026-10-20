@@ -83,12 +83,39 @@ function NewRun({ game }: { game: GameHandle }) {
   );
 }
 
+// A fresh page load starts on Normal; until day 1 starts the player can restart on another preset.
+function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const plannedAny = v.changes.length > 0;
+  return (
+    <p>
+      <label>
+        Difficulty{' '}
+        <select
+          value={v.difficulty.id}
+          onChange={(e) => {
+            if (plannedAny && !confirm('Restart on this difficulty? Planned changes are discarded.')) return;
+            game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty: e.target.value as DifficultyId });
+          }}
+        >
+          {Object.values(DIFFICULTIES).map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
+        </select>
+      </label>{' '}
+      <span className="muted">{DIFFICULTIES[v.difficulty.id].description}</span>
+    </p>
+  );
+}
+
 function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () => void }) {
   const today = v.inbox.filter((m) => m.day === v.day);
   const planned = v.changes.filter((c) => c.status === 'PLANNED' && c.activateDay === v.day);
   return (
     <>
       <h2>Morning briefing: day {v.day + 1}</h2>
+      {v.day === 0 && <FirstDayDifficulty v={v} game={game} />}
       {today.length === 0 && <p className="muted">Quiet inbox this morning.</p>}
       {today.map((m, i) => (
         <div key={i} className="panel" style={{ marginBottom: 8 }}>
