@@ -2,7 +2,7 @@
 // Pure functions over plain data; the game RNG is separate from the sim's.
 
 import { DRAFT_OPTIONS } from '../content/draft';
-import type { EventDef, ScriptedBeat } from '../content/events/midwest-events';
+import { AUDIT, type EventDef, type ScriptedBeat } from '../content/events/midwest-events';
 import { applyCommands, type Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
@@ -573,6 +573,19 @@ export function worstPiOfDay(intervals: readonly RmfInterval[], day: number): Re
   return out;
 }
 
+/** Peak SYSOTHER APPL CP% per LPAR (periods summed within an interval) across the day's closed RMF intervals. */
+export function sysotherByLpar(intervals: readonly RmfInterval[], day: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const iv of intervals) {
+    if (iv.endTick <= day * TICKS_PER_DAY || iv.endTick > (day + 1) * TICKS_PER_DAY) continue;
+    const here: Record<string, number> = {};
+    for (const w of iv.wlm) if (w.serviceClass === 'SYSOTHER' && w.lparId !== '*PLEX') here[w.lparId] = (here[w.lparId] ?? 0) + w.applCpPct;
+    for (const [id, v] of Object.entries(here)) if (v > (out[id] ?? 0)) out[id] = v;
+  }
+  return out;
+}
+
+
 function endDay(run: RunState, scenario: Scenario, content: GameContent): RunState {
   let r = run;
   const day = r.day;
@@ -605,6 +618,19 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     trust.Retail = clampTrust(trust.Retail - 4);
     r = msg(r, 'Regulator', 'Batch deadline missed', 'Critical batch did not complete on time. A second consecutive miss will trigger a formal review.');
   } else if (night) trust.Regulator = clampTrust(trust.Regulator + 1);
+  // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
+  const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
+  if (auditing) {
+    const seen = Object.entries(sysotherByLpar(r.sim.rmf.intervals, day)).filter(([, v]) => v > AUDIT.minApplPct);
+    if (seen.length > 0) {
+      trust.Regulator = clampTrust(trust.Regulator - AUDIT.findingTrust);
+      const [lpar, pct] = seen.reduce((a, b) => (b[1] > a[1] ? b : a));
+      r = msg(r, 'Regulator', 'Audit finding: unclassified work', `Audit finding: unclassified work in SYSOTHER on ${lpar} (${pct.toFixed(1)}% APPL).`);
+    } else {
+      trust.Regulator = clampTrust(trust.Regulator + AUDIT.cleanDayTrust);
+      r = msg(r, 'Regulator', 'Audit: no findings today', 'Audit: no findings today.');
+    }
+  }
   const consecutive = missed ? r.consecutiveBatchMisses + 1 : 0;
   if (r.capacityToday) r = { ...r, capacityDays: [...(r.capacityDays ?? []), { ...r.capacityToday, day, criticalEndSec: night?.criticalEndSec ?? null }], capacityToday: null };
 

@@ -32,10 +32,16 @@ export interface EventDef {
   capacityDrop?: number;
   /** Engineer-hours added (negative = lost) per day while the card runs; applied from the briefing of its first day. */
   hoursDelta?: number;
+  /** While the card runs, each endDay audits SYSOTHER service: Regulator trust −5 if any ran, +1 if none. */
+  auditUnclassified?: true;
   /** Message when it starts (null = silent; players must notice symptoms). */
   announcement: string | null;
   clue: string;
 }
+
+// FICTIONAL: audit cards (auditUnclassified): Regulator trust per finding day / clean day; below minApplPct the
+// SYSOTHER trickle is rounding noise, not a finding.
+export const AUDIT = { findingTrust: 5, cleanDayTrust: 1, minApplPct: 0.1 };
 
 const mod = (m: 'rate' | 'cpu' | 'asCpu', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
 
@@ -431,6 +437,26 @@ export const MIDWEST_EVENTS: EventDef[] = [
     forewarning: 'HR: "Contractor budgets are frozen for five days starting today; expect two fewer engineer-hours a day."',
     announcement: null,
     clue: 'Engineer-hours shown in the briefing drop by 2 for five days. Responses: automate routine reactions, prioritise changes, draft the contractor perk.',
+  },
+  {
+    // FICTIONAL: a five-day regulator audit of workload classification; the lever is classification rules.
+    id: 'AUDIT_UNCLASSIFIED',
+    name: 'Regulator audit: unclassified work',
+    category: 'ORG',
+    minDay: 12,
+    weight: 0.7,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: 5 * 24,
+    auditUnclassified: true,
+    oncePerRun: true,
+    begin: [],
+    end: [],
+    fix: null,
+    forewarning: 'Regulator: "We will audit your workload classification for the next five days. Unclassified work is a finding."',
+    announcement: null,
+    clue: 'WLMGL: any SYSOTHER service is a finding. Responses: add classification rules (or a catch-all default service class per subsystem) before it starts, report classes to find what is unclassified.',
   },
 ];
 

@@ -1,6 +1,8 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
-import { advance, chooseDraft, drawEvents, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
+import { advance, chooseDraft, drawEvents, newRun, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
+import { TICKS_PER_DAY } from '../../src/sim/core/units';
+import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
 import { applyCommands } from '../../src/sim/core/commands';
 import { scoreRca } from '../../src/game/sla';
 import type { RunState } from '../../src/game/types';
@@ -150,4 +152,45 @@ describe('event cards resolved at start', () => {
     r = { ...drawn, baseHours: 1 };
     expect(Math.max(0, r.baseHours + r.bonusHours.reduce((a, b) => a + b.hours, 0))).toBe(0);
   });
+});
+
+describe('regulator audit of unclassified work', () => {
+  const sc = SCENARIOS.midwest!;
+  const row = (lparId: string, serviceClass: string, applCpPct: number) => ({ lparId, serviceClass, scKey: `${serviceClass}.1`, applCpPct }) as WlmRecord;
+  const iv = (endTick: number, wlm: WlmRecord[]) => ({ endTick, wlm }) as unknown as RmfInterval;
+
+  it('sysotherByLpar peaks per LPAR, sums periods, and ignores *PLEX, other classes and other days', () => {
+    const out = sysotherByLpar(
+      [
+        iv(100, [row('PROD1', 'SYSOTHER', 0.4), row('PROD1', 'SYSOTHER', 0.2), row('*PLEX', 'SYSOTHER', 9), row('PROD1', 'ONLHI', 30)]),
+        iv(200, [row('PROD1', 'SYSOTHER', 0.3), row('PROD2', 'SYSOTHER', 0.05)]),
+        iv(TICKS_PER_DAY + 5, [row('PROD1', 'SYSOTHER', 7)]),
+      ],
+      0,
+    );
+    expect(out.PROD1).toBeCloseTo(0.6);
+    expect(out.PROD2).toBeCloseTo(0.05);
+    expect(out['*PLEX']).toBeUndefined();
+  });
+
+  // Start one tick before the day boundary so advance runs endDay on its next tick.
+  const atBoundary = (sysother: number, audit = true) => {
+    let r = startDay(newRun(sc, MIDWEST_GAME, 3), MIDWEST_GAME);
+    const ev = { uid: 'AUDIT_UNCLASSIFIED@0', defId: 'AUDIT_UNCLASSIFIED', name: 'Audit', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [], endCommands: [], started: true, ended: false };
+    const rmf = { ...r.sim.rmf, intervals: [iv(TICKS_PER_DAY - 6, sysother > 0 ? [row('PROD1', 'SYSOTHER', sysother)] : [row('PROD1', 'ONLHI', 20)])] };
+    r = { ...r, events: audit ? [ev] : [], trust: { ...r.trust, Regulator: 50 }, sim: { ...r.sim, tick: TICKS_PER_DAY - 1, rmf } };
+    return advance(r, sc, MIDWEST_GAME, 1);
+  };
+
+  it('costs 5 Regulator trust with a finding when SYSOTHER ran', () => {
+    const r = atBoundary(2.5);
+    expect(r.trust.Regulator).toBeCloseTo(atBoundary(2.5, false).trust.Regulator - 5);
+    expect(r.inbox.some((m) => m.from === 'Regulator' && m.body.includes('SYSOTHER on PROD1'))).toBe(true);
+  }, 60_000);
+
+  it('gives +1 Regulator trust when nothing ran in SYSOTHER', () => {
+    const r = atBoundary(0);
+    expect(r.trust.Regulator).toBeCloseTo(atBoundary(0, false).trust.Regulator + 1);
+    expect(r.inbox.some((m) => m.from === 'Regulator' && m.body.includes('no findings'))).toBe(true);
+  }, 60_000);
 });

@@ -866,6 +866,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 - **CFO cost mandate:** MLC −10% vs last month or lose Finance trust.
 - **Change freeze** (peak season / audit week): emergency changes only.
 - **Hiring freeze (`HIRING_FREEZE`):** −2 engineer-hours/day for 5 days (`hoursDelta`), announced by HR in that morning's briefing; does not stack. Responses: automation, prioritising changes, the contractor perk.
+- **Regulator audit (`AUDIT_UNCLASSIFIED`):** for 5 days (once per run, day ≥ 12) each end of day scans the RMF intervals for SYSOTHER service on any LPAR (> 0.1% APPL): Regulator trust −5 with a finding in the inbox, or +1 if none. Forewarned that morning by the regulator. Responses: classification rules, a catch-all default service class per subsystem, report classes to find the unclassified work.
 - **Pervasive encryption mandate:** +x% CPU on I/O-heavy work (CPACF), plus a new audit SLA.
 - **Regulatory deadline moved:** batch must finish by 05:00.
 - **Vendor price increase:** MLC per-MSU +8%.
