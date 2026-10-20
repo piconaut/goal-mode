@@ -486,6 +486,7 @@ function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHand
       {game.pending && <div className="tag warn">editing pending {game.pending.policyName} (not active)</div>}
       <ServiceClasses v={v} game={game} />
       <IoPriorityToggle v={v} game={game} />
+      <CicsModeToggle v={v} game={game} />
       <div className="form">
         <button aria-expanded={rulesOpen} aria-controls="classification-rules" className={rulesOpen ? 'active' : ''} onClick={toggleRules}>
           {rulesOpen ? '▾ Hide classification rules' : '▸ Classification rules'}
@@ -1129,6 +1130,28 @@ function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
         );
       })}
     </>
+  );
+}
+
+/** "Manage regions using goals of": how WLM manages the CICS regions that run the transactions. */
+function CicsModeToggle({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const mode = game.pending ? game.pending.cicsRegionMode : v.cicsRegionMode;
+  return (
+    <div className="form">
+      <span>
+        Manage CICS regions using goals of
+        <CodexHints ids={['cics-region-mode']} />
+      </span>
+      <select aria-label="CICS region management" value={mode} onChange={(e) => game.send({ type: 'WLM_EDIT', edit: { op: 'SET_CICS_MODE', mode: e.target.value as 'TRANSACTION' | 'REGION' } })}>
+        <option value="TRANSACTION">TRANSACTION</option>
+        <option value="REGION">REGION</option>
+      </select>
+      <span className="muted" style={{ fontSize: 12 }}>
+        {mode === 'TRANSACTION'
+          ? 'Regions run at the priority the most demanding transaction class they serve needs; less important transactions in the same regions get a free ride.'
+          : 'Regions run at their own started-task class priority; transaction goals are only reported, not used to manage the regions.'}
+      </span>
+    </div>
   );
 }
 

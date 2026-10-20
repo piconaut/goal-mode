@@ -28,6 +28,7 @@ export type WlmEdit =
   /** Put a class in a resource group (created or updated with these limits), or take it out (group null). */
   | { op: 'SET_RESOURCE_GROUP'; classId: string; group: ResourceGroupDef | null }
   | { op: 'SET_IO_PRIORITY'; on: boolean }
+  | { op: 'SET_CICS_MODE'; mode: 'TRANSACTION' | 'REGION' }
   /** Append a period; the previous last period needs a duration (service units) to hand work on. */
   | { op: 'ADD_PERIOD'; classId: string; goal: Goal; importance: Importance; previousDurationSu: number }
   | { op: 'REMOVE_PERIOD'; classId: string }
@@ -90,6 +91,9 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
       if (rg && !d.classes.some((x) => x.resourceGroup === rg)) d.resourceGroups = d.resourceGroups.filter((g) => g.id !== rg);
       return d;
     }
+    case 'SET_CICS_MODE':
+      d.cicsRegionMode = e.mode;
+      return d;
     case 'SET_IO_PRIORITY':
       d.ioPriorityManagement = e.on;
       return d;

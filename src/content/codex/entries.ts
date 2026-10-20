@@ -95,6 +95,14 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'cics-region-mode',
+    title: 'CICS region management (TRANSACTION vs REGION)',
+    category: 'Subsystems',
+    body: 'CICS transactions are classified into service classes, but they run inside region address spaces, and WLM can only set a region’s dispatching priority. With TRANSACTION goals, WLM manages each region to the most demanding transaction class it serves, so less important transactions in the same region get a “free ride”. With REGION goals, the regions are managed to their own started-task class and transaction goals are only reported. Separating important and less important work into different regions is the usual fix for the free ride.',
+    sources: [ABCS_WLM],
+    discover: { start: true },
+  },
+  {
     id: 'cf-failure',
     title: 'CF failure, structure rebuild and duplexing',
     category: 'I/O & CF',

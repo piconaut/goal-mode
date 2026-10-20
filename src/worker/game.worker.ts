@@ -62,6 +62,7 @@ function pendingView(): PendingPolicyView | null {
     resourceGroups: pendingPolicy.resourceGroups,
     classDefs: pendingPolicy.classes,
     ioPriorityManagement: pendingPolicy.ioPriorityManagement !== false,
+    cicsRegionMode: pendingPolicy.cicsRegionMode ?? 'TRANSACTION',
     rules: pendingPolicy.subsystems.flatMap((ss) =>
       ss.rules.map((r) => ({ subsystem: ss.subsystem, text: `${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(default)'}` })),
     ),

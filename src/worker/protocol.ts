@@ -28,6 +28,7 @@ export interface PendingPolicyView {
   resourceGroups: ResourceGroupDef[];
   classDefs: ServiceClassDef[];
   ioPriorityManagement: boolean;
+  cicsRegionMode: 'TRANSACTION' | 'REGION';
   rules: { subsystem: string; text: string }[];
 }
 

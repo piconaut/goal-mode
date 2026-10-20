@@ -1177,7 +1177,7 @@ never touches the DOM.
 | WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts |
 | I/O using/delay split | **APPROX** | Connect+disconnect = using, IOSQ+pend = delay |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
-| CICS region management | **Simplified** | Transaction CPU charged to the transaction's class (TRANSACTION mode); REGION mode/free ride later |
+| CICS region management | **Simplified** | CICS work on an image shares the AOR regions' DP: most important served period (TRANSACTION, free ride) or the region STC class (REGION); no per-region split of work |
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
