@@ -536,6 +536,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       deadline like the CFO mandate; (b) Story pre-classifies the merger workload or warns about it in a
       clear hint; (c) a softer per-facet trust floor on Story (game over only on overall trust); (d) accept it,
       since a Story player reading the hints is expected to beat the textbook bot
+    - User decision (2026-10-20): give a clear hint a couple of days ahead. Loop 59: on Story (hint level CLEAR) a
+      "Before the acquired bank moves in" message arrives two days before the merger, naming the OMVS/ACQSVC work
+      and asking whether a classification rule catches it (`STORY_BEAT_HINTS` in `src/content/hints.ts`). The
+      textbook bot does not read hints, so its sweep numbers do not move; the hint is for human Story players
 - [x] Morning hints on lower difficulties (user request 2026-10-20, SPEC §11.2): the briefing inbox nudges
   the player based on yesterday's problems (missed SLAs, late batch, capping, paging), pointing at the report
   and the question to ask, never the answer or the fix; built from the same ground truth as RCA scoring;
@@ -661,9 +665,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 
 ## Open questions
 
-- **Story difficulty vs the textbook bot (2026-10-20, loop 52):** Story does not move the textbook bot off the
-  day-28 wall (batch deadline + merger Retail collapse). Soften those walls on Story (options a–c under M8.3), or
-  accept it (d)? Waiting on the user.
+- ~~Story difficulty vs the textbook bot (loop 52)~~ resolved: user chose a clear advance hint for the merger (loop 59).
 
 - Resource group minimum for discretionary members: what exactly counts as "missing goals"? Modelled as delay > using.
 
@@ -703,6 +705,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 59, user decision):** Story gets a clear merger hint two days ahead. 241 tests.
 - **2026-10-20 (loop 58):** two new events (shadow IT on TSO, non-threadsafe teller release). 240 tests.
 - **2026-10-20 (loop 57):** R4HA chart on the end screen; end-of-run report done. 238 tests.
 - **2026-10-20 (loop 56):** end screen checked in the browser; small text fix.

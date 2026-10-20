@@ -109,3 +109,18 @@ describe('starting flaws per difficulty', () => {
     expect(normal.inbox.some((m) => m.subject === 'Handover notes')).toBe(false);
   });
 });
+
+describe('Story advance hint for the merger', () => {
+  it('arrives two days before the merger on Story only', async () => {
+    const { chooseDraft } = await import('../../src/game/run');
+    const at = (d: 'STORY' | 'NORMAL', day: number) => {
+      // Walk the story to `day` without simulating: REVIEW → BRIEFING runs the day's story beats.
+      let r = newRun(base, MIDWEST_GAME, 7, d);
+      for (let i = 0; i < day; i++) r = chooseDraft({ ...r, phase: 'REVIEW' }, MIDWEST_GAME, null);
+      return r.inbox.filter((m) => m.subject === 'Before the acquired bank moves in');
+    };
+    expect(at('STORY', 23)).toHaveLength(0);
+    expect(at('STORY', 24).map((m) => m.day)).toEqual([24]);
+    expect(at('NORMAL', 24)).toHaveLength(0);
+  });
+});

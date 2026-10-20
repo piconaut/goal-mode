@@ -21,7 +21,7 @@ import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
 import { morningHints } from './hints';
-import { HINT_SENDER } from '../content/hints';
+import { HINT_SENDER, STORY_BEAT_HINTS } from '../content/hints';
 import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
@@ -192,6 +192,11 @@ function storyFor(run: RunState, content: GameContent, day: number): RunState {
       if (b.constraint === 'DEADLINE_0500') r = { ...r, batchDeadlineSec: 23 * 3600 };
     }
     if (b.commands) r = { ...r, pendingCommands: [...r.pendingCommands, ...b.commands] };
+  }
+  if (difficultyOf(run.difficulty).hints === 'CLEAR') {
+    for (const [id, h] of Object.entries(STORY_BEAT_HINTS)) {
+      if (storyBeatsFor(content.story, run.difficulty, day + h.daysBefore).some((b) => b.id === id)) r = msg(r, h.from, h.subject, h.body);
+    }
   }
   return r;
 }

@@ -71,3 +71,16 @@ export const BATCH_TIGHT_SLACK_SEC = 30 * 60;
 export const MAX_HINTS = { CLEAR: 2, VAGUE: 1, NONE: 0 } as const;
 
 export const HINT_SENDER = 'Senior sysprog';
+
+/** Story-only advance warnings for story beats (SPEC §11.2): a question that points at the risk, days ahead. */
+export const STORY_BEAT_HINTS: Record<string, { daysBefore: number; from: string; subject: string; body: string }> = {
+  MERGER: {
+    daysBefore: 2,
+    from: HINT_SENDER,
+    subject: 'Before the acquired bank moves in',
+    body:
+      "The acquired bank's account API lands on PROD2 in two days. It runs under USS (subsystem OMVS) as userid ACQSVC, " +
+      'and Retail will judge us on its response times from day one. Do any of our classification rules catch that work, ' +
+      'or will it end up in SYSOTHER? Change Desk › WLM › Classification rules shows where it would go today.',
+  },
+};
