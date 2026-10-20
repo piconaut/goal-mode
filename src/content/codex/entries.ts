@@ -95,6 +95,14 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'resource-groups',
+    title: 'Resource groups (minimum and maximum)',
+    category: 'WLM',
+    body: 'A resource group limits or protects the CPU of the service classes in it. The maximum is always enforced, so work above it waits (capping delay) even when the CPC is idle. The minimum is honoured only while the group’s work misses its goals, and then even at the expense of more important work. Type 1 is service units per second across the sysplex, type 2 a percentage of the LPAR’s share, type 3 a number of CPs × 100.',
+    sources: [ABCS_WLM],
+    discover: { start: true },
+  },
+  {
     id: 'report-classes',
     title: 'Report classes',
     category: 'WLM',

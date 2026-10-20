@@ -1,3 +1,4 @@
+import type { ResourceGroupDef } from '../sim/wlm/types';
 import type { RcAdvice } from '../game/rcAdvisor';
 // Messages between the UI thread and the game worker.
 
@@ -22,7 +23,8 @@ import type { WorkAttributes } from '../sim/wlm/types';
 /** Summary of the edited-but-not-yet-activated WLM policy. */
 export interface PendingPolicyView {
   policyName: string;
-  classes: { id: string; periods: string[]; cpuCritical: boolean }[];
+  classes: { id: string; periods: string[]; cpuCritical: boolean; resourceGroup: string | null }[];
+  resourceGroups: ResourceGroupDef[];
   rules: { subsystem: string; text: string }[];
 }
 

@@ -591,6 +591,7 @@ function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: GameHand
           CPU critical on {cls}
         </button>
       </form>
+      <ResourceGroupForm v={v} game={game} cls={cls} />
       <div className="form">
         <button aria-expanded={rulesOpen} aria-controls="classification-rules" className={rulesOpen ? 'active' : ''} onClick={toggleRules}>
           {rulesOpen ? '▾ Hide classification rules' : '▸ Classification rules'}
@@ -1176,5 +1177,68 @@ function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
         );
       })}
     </>
+  );
+}
+
+const RG_TYPES: { type: 1 | 2 | 3; label: string; unit: string }[] = [
+  { type: 3, label: 'type 3: CPs × 100', unit: 'CPs×100' },
+  { type: 2, label: 'type 2: % of LPAR share', unit: '%' },
+  { type: 1, label: 'type 1: SU/s, sysplex', unit: 'SU/s' },
+];
+
+/** Resource group for the selected class: a maximum caps it, a minimum protects it while it misses goals. */
+function ResourceGroupForm({ v, game, cls }: { v: ViewModel; game: GameHandle; cls: string }) {
+  const groups = game.pending?.resourceGroups ?? v.resourceGroups;
+  const current = (game.pending?.classes ?? v.serviceClasses).find((c) => c.id === cls)?.resourceGroup ?? null;
+  const g = groups.find((x) => x.id === current);
+  const [id, setId] = useState('');
+  const [type, setType] = useState<1 | 2 | 3>(3);
+  const [min, setMin] = useState('');
+  const [max, setMax] = useState('');
+  useEffect(() => {
+    setId(g?.id ?? `RG${cls}`.slice(0, 8));
+    setType(g?.type ?? 3);
+    setMin(g?.min != null ? String(g.min) : '');
+    setMax(g?.max != null ? String(g.max) : '');
+  }, [cls, g?.id, g?.type, g?.min, g?.max]);
+  const num = (x: string) => (x.trim() === '' ? null : Number(x));
+  const unit = RG_TYPES.find((t) => t.type === type)!.unit;
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        game.send({ type: 'WLM_EDIT', edit: { op: 'SET_RESOURCE_GROUP', classId: cls, group: { id: id.trim().toUpperCase(), type, min: num(min), max: num(max) } } });
+      }}
+    >
+      <span>
+        Resource group for <b>{cls}</b>
+        <CodexHints ids={['resource-groups']} />
+      </span>
+      <input aria-label="Resource group name" value={id} onChange={(e) => setId(e.target.value.toUpperCase())} size={8} />
+      <select aria-label="Resource group type" value={type} onChange={(e) => setType(Number(e.target.value) as 1 | 2 | 3)}>
+        {RG_TYPES.map((t) => (
+          <option key={t.type} value={t.type}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+      <label>
+        min <input aria-label="Resource group minimum" value={min} onChange={(e) => setMin(e.target.value)} size={6} placeholder="none" />
+      </label>
+      <label>
+        max <input aria-label="Resource group maximum" value={max} onChange={(e) => setMax(e.target.value)} size={6} placeholder="none" />
+      </label>
+      <span className="muted">{unit}</span>
+      <button type="submit">Set</button>
+      {current && (
+        <button type="button" onClick={() => game.send({ type: 'WLM_EDIT', edit: { op: 'SET_RESOURCE_GROUP', classId: cls, group: null } })}>
+          Remove from {current}
+        </button>
+      )}
+      <span className="muted" style={{ fontSize: 12 }}>
+        Max is always enforced (CAP delay). Min is guaranteed only while the class misses its goals, even ahead of more important work.
+      </span>
+    </form>
   );
 }

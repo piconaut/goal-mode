@@ -1,7 +1,7 @@
 // Small structured edits to a WLM service definition (the UI's policy editor builds
 // ACTIVATE_POLICY commands from these). Pure: returns a new definition.
 
-import type { ClassificationRule, Goal, Importance, ServiceDefinition, SubsystemRules, SubsystemType, Qualifier } from '../sim/wlm/types';
+import type { ResourceGroupDef, ClassificationRule, Goal, Importance, ServiceDefinition, SubsystemRules, SubsystemType, Qualifier } from '../sim/wlm/types';
 
 /** Address of a rule: indices from the top-level list down through `children`. */
 export type RulePath = number[];
@@ -24,7 +24,9 @@ export type WlmEdit =
   | { op: 'DELETE_RULE'; subsystem: SubsystemType; path: RulePath }
   | { op: 'MOVE_RULE'; subsystem: SubsystemType; path: RulePath; delta: -1 | 1 }
   | { op: 'SET_RULE_TARGET'; subsystem: SubsystemType; path: RulePath; serviceClass: string | null; reportClass?: string | null }
-  | { op: 'SET_DEFAULT'; subsystem: SubsystemType; serviceClass: string | null };
+  | { op: 'SET_DEFAULT'; subsystem: SubsystemType; serviceClass: string | null }
+  /** Put a class in a resource group (created or updated with these limits), or take it out (group null). */
+  | { op: 'SET_RESOURCE_GROUP'; classId: string; group: ResourceGroupDef | null };
 
 /** Validate a report class name and register it in the definition (report classes are just names). */
 function useReportClass(d: ServiceDefinition, rc: string | null | undefined): string | null {
@@ -53,6 +55,28 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
       if (!/^[A-Z][A-Z0-9]{0,7}$/.test(e.classId)) return 'Service class names are 1–8 characters, A–Z/0–9';
       d.classes.push({ id: e.classId, description: e.description, periods: [{ goal: e.goal, importance: e.importance, durationSu: null }], cpuCritical: e.cpuCritical, storageCritical: false, resourceGroup: null, honorPriority: true });
       return d;
+    case 'SET_RESOURCE_GROUP': {
+      const c = d.classes.find((x) => x.id === e.classId);
+      if (!c) return `No class ${e.classId}`;
+      const old = c.resourceGroup;
+      if (e.group) {
+        const g = e.group;
+        if (!/^[A-Z][A-Z0-9#@$]{0,7}$/.test(g.id)) return 'Resource group names are 1–8 characters, starting with a letter';
+        const bad = (x: number | null) => x !== null && !(Number.isFinite(x) && x >= 0);
+        if (bad(g.min) || bad(g.max)) return 'Minimum and maximum must be numbers ≥ 0 (or blank)';
+        if (g.min === null && g.max === null) return 'Set a minimum, a maximum or both';
+        if (g.min !== null && g.max !== null && g.min > g.max) return 'Minimum is above maximum';
+        if (g.type === 2 && (g.max ?? 0) > 100) return 'Type 2 is a percentage of the LPAR share (≤ 100)';
+        const i = d.resourceGroups.findIndex((x) => x.id === g.id);
+        if (i < 0 && d.resourceGroups.length >= 32) return 'At most 32 resource groups';
+        if (i < 0) d.resourceGroups.push({ ...g });
+        else d.resourceGroups[i] = { ...g };
+        c.resourceGroup = g.id;
+      } else c.resourceGroup = null;
+      // A group nobody uses any more is dropped.
+      if (old && !d.classes.some((x) => x.resourceGroup === old)) d.resourceGroups = d.resourceGroups.filter((x) => x.id !== old);
+      return d;
+    }
     case 'SET_FLAGS': {
       const c = d.classes.find((x) => x.id === e.classId);
       if (!c) return `No class ${e.classId}`;

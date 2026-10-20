@@ -6,9 +6,9 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 
 - **Phase:** M0–M6 done. Playable in the browser (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-19
-- **Next up:** M7 sim leftovers (resource group minimum, discretionary goal management, I/O priority, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
+- **Next up:** M7 sim leftovers (discretionary goal management, I/O priority, CF rebuild, CICS REGION mode); M8 balance; M8.1 structural perf in parallel.
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (196 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (199 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -349,7 +349,14 @@ charting today's Monitor III data over time; only the diagnosis-driving metrics 
   if undiscovered, since the panel already shows the concept. Test checks every hint id is a real entry
 
 **M7 sim leftovers that the tools expose**
-- [ ] Resource group *minimum*; discretionary goal management (SG24-7621 §4.22 conditions)
+- [x] Resource group *minimum* (loop 30): while any member period misses its goal (PI > 1; discretionary
+  members when delay > using, APPROX), each member's share of the minimum is dispatched at DP 252, above all
+  goal work (`rgMin` in step.ts, `minOf` in evaluateLpar, same mechanism as blocked-workload promotion). Not in
+  force while goals are met, so it costs nothing until it bites; when it bites, more important work pays.
+  Change Desk WLM: resource group form per class (type 1/2/3, min, max; unused groups dropped) via
+  `SET_RESOURCE_GROUP`. Codex `resource-groups`. Tests: minimum served ahead of higher DP; honoured only while
+  missing goals; edit validation. Bench hash unchanged
+- [ ] Discretionary goal management (SG24-7621 §4.22 conditions)
 - [ ] I/O priority management, MPL/swap delay; MQ queue-depth model for PAYMQ
 - [ ] CF structure rebuild on CF failure (needs white space), duplexing cost
 - [ ] CICS REGION-mode management and the "free ride"
@@ -438,6 +445,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 
 ## Open questions
 
+- Resource group minimum for discretionary members: what exactly counts as "missing goals"? Modelled as delay > using.
+
 - WLM I/O using vs delay: is disconnect time counted as using? Currently connect+disconnect = using.
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
@@ -474,6 +483,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 30, /loop):** resource group minimum + resource group editor. 199 tests.
 - **2026-10-20 (loop 29, hourly task):** report classes in RMF + report class advisor (F6). 196 tests.
 - **2026-10-19 (loop 28, hourly task):** contextual Codex "?" hints. 193 tests.
 - **2026-10-19 (loop 27, /loop dynamic):** Tailored Fit Pricing offer. 192 tests.
