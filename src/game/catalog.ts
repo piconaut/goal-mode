@@ -2,6 +2,7 @@
 // hardware orders.
 
 import { DASD_REBALANCE, HARDWARE, type HardwareItem } from '../content/hardware-catalog';
+import { DRAFT_TUNING } from '../content/draft';
 import type { Command } from '../sim/core/commands';
 
 const HOURS: Partial<Record<Command['kind'], number>> = {
@@ -88,6 +89,10 @@ export interface ChangePreview {
   reason: string | null;
 }
 
+export function leadDaysFor(leadDays: number, perks: readonly string[]): number {
+  return perks.includes('VENDOR_FRIEND') && leadDays >= 2 ? leadDays - DRAFT_TUNING.vendorFriendDays : leadDays;
+}
+
 export function failRiskFor(fatigue: number, perks: readonly string[]): number {
   return CHANGE_FAIL_BASE * (1 + fatigue / 50) * (perks.includes('BELT_AND_BRACES') ? 0.5 : 1);
 }
@@ -103,7 +108,7 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
     hours,
     capex,
     opexPerDay: hw?.opexPerDay ?? 0,
-    leadDays: hw?.leadDays ?? 0,
+    leadDays: leadDaysFor(hw?.leadDays ?? 0, ctx.perks),
     emergency: live,
     trustCostEach: live ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
     failRisk: fix ? 0 : failRiskFor(ctx.fatigue, ctx.perks),

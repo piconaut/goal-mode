@@ -1,7 +1,7 @@
 // Run lifecycle (SPEC §2): BRIEFING → LIVE (06:00→06:00) → REVIEW (draft) → next day.
 // Pure functions over plain data; the game RNG is separate from the sim's.
 
-import { DRAFT_OPTIONS } from '../content/draft';
+import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
 import { AUDIT, type EventDef, type ScriptedBeat } from '../content/events/midwest-events';
 import { applyCommands, type Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
@@ -267,11 +267,11 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     hours,
     capex,
     opexPerDay: hw?.opexPerDay ?? 0,
-    activateDay: run.day + (hw?.leadDays ?? 0),
+    activateDay: run.day + preview.leadDays,
     plannedDay: run.day,
     emergency: live,
     status: 'PLANNED',
-    revertDay: hw?.durationDays ? run.day + (hw.leadDays ?? 0) + hw.durationDays : null,
+    revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
     revertCommands: hw?.durationDays ? hw.revert(run.sim) : [],
     endsEvent: fix?.id ?? null,
   };
@@ -748,8 +748,18 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
     case 'VENDOR_TRIAL':
       r = { ...r, insight: r.insight + 15 };
       break;
+    case 'OVERTIME_PUSH':
+      r = {
+        ...r,
+        bonusHours: [...r.bonusHours, { hours: DRAFT_TUNING.overtimeHours, untilDay: r.day + 2 }],
+        hoursLeft: r.hoursLeft + DRAFT_TUNING.overtimeHours,
+        fatigue: r.fatigue + DRAFT_TUNING.overtimeFatigue,
+      };
+      break;
     case 'HMC_NINJA':
     case 'BELT_AND_BRACES':
+    case 'VENDOR_FRIEND':
+    case 'WELL_CONNECTED':
     case 'FRIENDS_IN_FINANCE':
     case 'NIGHT_OWL':
       r = { ...r, perks: [...r.perks, optionId] };

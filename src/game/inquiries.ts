@@ -39,12 +39,13 @@ export function askAround(run: RunState, topicId: InquiryKind, workloadId: strin
   if (t.perWorkload && !allWorkloads(scenario, run).some((w) => w.id === workloadId)) return { run, ok: false, message: 'Pick an application' };
   const wid = t.perWorkload ? workloadId : null;
   if (st.pending.some((p) => p.topic === topicId && p.workloadId === wid)) return { run, ok: false, message: 'Already asked; the answer is on its way' };
-  if (run.hoursLeft < t.hours) return { run, ok: false, message: `Asking takes ${t.hours}h` };
+  const hours = inquiryHours(t.hours, run.perks);
+  if (run.hoursLeft < hours) return { run, ok: false, message: `Asking takes ${hours}h` };
   const rng = new Rng(run.rng);
   const delayH = rng.range(t.replyHours[0], t.replyHours[1]);
   const p: PendingInquiry = { id: run.nextId, topic: topicId, workloadId: wid, askedTick: run.sim.tick, replyTick: run.sim.tick + Math.round((delayH * 3600) / TICK_SEC) };
   return {
-    run: { ...run, rng: rng.snapshot(), nextId: run.nextId + 1, hoursLeft: run.hoursLeft - t.hours, inquiries: { ...st, pending: [...st.pending, p] } },
+    run: { ...run, rng: rng.snapshot(), nextId: run.nextId + 1, hoursLeft: run.hoursLeft - hours, inquiries: { ...st, pending: [...st.pending, p] } },
     ok: true,
     message: `Asked ${who(topicId, wid)}; expect an answer in a few hours`,
   };
@@ -192,11 +193,13 @@ function answer(run: RunState, scenario: Scenario, content: GameContent, p: Pend
   }
 }
 
+const inquiryHours = (hours: number, perks: readonly string[]) => (perks.includes('WELL_CONNECTED') ? 0 : hours);
+
 export function inquiriesView(run: RunState, scenario: Scenario) {
   const st = run.inquiries ?? empty();
   return {
     apps: allWorkloads(scenario, run).map((w) => ({ id: w.id, name: w.name })),
-    topics: INQUIRY_TOPICS.map((t) => ({ id: t.id, contact: t.contact, question: t.question, hours: t.hours, perWorkload: !!t.perWorkload })),
+    topics: INQUIRY_TOPICS.map((t) => ({ id: t.id, contact: t.contact, question: t.question, hours: inquiryHours(t.hours, run.perks), perWorkload: !!t.perWorkload })),
     pending: st.pending.map((p) => ({ id: p.id, topic: p.topic, workloadId: p.workloadId, who: who(p.topic, p.workloadId), question: INQUIRY_TOPICS.find((t) => t.id === p.topic)!.question })),
     maxOpen: INQUIRY.maxOpen,
   };

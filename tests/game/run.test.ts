@@ -1,3 +1,4 @@
+import { askAround, inquiriesView } from '../../src/game/inquiries';
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
@@ -219,4 +220,29 @@ describe('endless mode', () => {
     expect(rep.victory).toBe(true);
     expect(rep.endlessDays).toBe(1);
   }, 120_000);
+});
+
+describe('draft perks', () => {
+  const review = (r: RunState): RunState => ({ ...r, phase: 'REVIEW' });
+
+  it('weekend push adds hours for one day and fatigue', () => {
+    const r = chooseDraft(review(fresh()), content, 'OVERTIME_PUSH');
+    expect(r.hoursLeft).toBe(fresh().hoursLeft + 3);
+    expect(r.fatigue).toBe(15);
+    expect(r.bonusHours).toEqual([{ hours: 3, untilDay: 2 }]);
+  });
+
+  it('friend at the vendor brings long-lead hardware a day sooner', () => {
+    const r = chooseDraft(review(fresh()), content, 'VENDOR_FRIEND');
+    const out = requestChange(r, content, { label: 'zIIP', hardwareId: 'ADD_ZIIP' });
+    expect(out.run.changes[0]!.activateDay).toBe(r.day + 3);
+  });
+
+  it('well connected makes asking around free', () => {
+    const r = chooseDraft(review(fresh()), content, 'WELL_CONNECTED');
+    const out = askAround(r, 'CALENDAR', null, MIDWEST);
+    expect(out.ok).toBe(true);
+    expect(out.run.hoursLeft).toBe(r.hoursLeft);
+    expect(inquiriesView(r, MIDWEST).topics.every((t) => t.hours === 0)).toBe(true);
+  });
 });

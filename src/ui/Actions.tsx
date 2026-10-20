@@ -1137,7 +1137,7 @@ function Hardware({ v, game }: { v: ViewModel; game: GameHandle }) {
             <span>
               {h.name}
               <div className="muted" style={{ fontSize: 12 }}>
-                {h.description} {h.leadDays > 0 ? `Lead time ${h.leadDays} days.` : 'Immediate.'}
+                {h.description} {p.leadDays > 0 ? `Lead time ${p.leadDays} days.` : 'Immediate.'}
                 {h.opexPerDay > 0 ? ` $${Math.round(h.opexPerDay / 1000)}k/day while active.` : ''}
               </div>
               {p.reason && <div className="err">{p.reason}</div>}
