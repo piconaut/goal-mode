@@ -590,6 +590,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [x] Loop 74: Weekend push (one-off: +3 h tomorrow, fatigue +15), perks Friend at the Vendor (lead ≥ 2 days → −1;
     hardware list shows the effective lead) and Well Connected (asking around is free); sizes in `DRAFT_TUNING`.
     Run goldens regenerated (the drafted options are part of run state; sim bench hash unchanged)
+  - [x] Loop 77: pacts (perks with a lasting downside): Offshore night desk (+2 h/day all run, fail risk ×1.3) and
+    Capex for opex (+$500k now, opex budget ×0.9 all run); `opexBudgetFor` now shared by run, finance and view (the
+    view showed the budget without Friends in Finance). Run goldens regenerated (draft pool), sim hash unchanged
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
 
@@ -734,6 +737,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 77):** two pact draft cards (persistent perk + persistent downside). 267 tests.
 - **2026-10-20 (loop 76):** weekend auto-run (full sim at worker speed, report card as summary); weekday shown. 265 tests.
 - **2026-10-20 (loop 75):** day-1 guided tutorial (corner card, state-driven steps, F1 fix detection); ticked finished M7 items. 264 tests.
 - **2026-10-20 (loop 74):** three new draft options (Weekend push, Friend at the Vendor, Well Connected). 262 tests.

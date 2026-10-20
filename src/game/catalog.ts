@@ -93,8 +93,13 @@ export function leadDaysFor(leadDays: number, perks: readonly string[]): number 
   return perks.includes('VENDOR_FRIEND') && leadDays >= 2 ? leadDays - DRAFT_TUNING.vendorFriendDays : leadDays;
 }
 
+/** Monthly opex budget after perks (Friends in Finance, the capex-for-opex pact). */
+export function opexBudgetFor(baseMonthly: number, perks: readonly string[]): number {
+  return baseMonthly * (perks.includes('FRIENDS_IN_FINANCE') ? 1.1 : 1) * (perks.includes('BUDGET_SWAP') ? DRAFT_TUNING.budgetSwapOpexMult : 1);
+}
+
 export function failRiskFor(fatigue: number, perks: readonly string[]): number {
-  return CHANGE_FAIL_BASE * (1 + fatigue / 50) * (perks.includes('BELT_AND_BRACES') ? 0.5 : 1);
+  return CHANGE_FAIL_BASE * (1 + fatigue / 50) * (perks.includes('BELT_AND_BRACES') ? 0.5 : 1) * (perks.includes('NIGHT_DESK') ? DRAFT_TUNING.nightDeskFailMult : 1);
 }
 
 /** What a change would cost and whether it is allowed, without making it (UI and requestChange share this). */

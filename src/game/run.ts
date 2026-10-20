@@ -29,7 +29,7 @@ import type { RmfInterval } from '../sim/measure/rmf';
 import { tfpAtDayEnd } from './tfp';
 import { deliverInquiries } from './inquiries';
 import type { WorkloadDef } from '../sim/workload/types';
-import { failRiskFor, FIXES, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
+import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
 import { hourAttainment, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
@@ -639,7 +639,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   const codToday = r.changes.filter((c) => c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > day).reduce((a, c) => a + c.opexPerDay, 0);
   let opexSpent = r.opexSpentThisMonth + codToday;
   let endReason: string | null = null;
-  const budget = r.opexBudgetMonthly * (r.perks.includes('FRIENDS_IN_FINANCE') ? 1.1 : 1);
+  const budget = opexBudgetFor(r.opexBudgetMonthly, r.perks);
   const bills = r.sim.cost.bills;
   for (let b = r.billsSeen; b < bills.length; b++) {
     const total = bills[b]!.total + opexSpent;
@@ -755,6 +755,13 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
         hoursLeft: r.hoursLeft + DRAFT_TUNING.overtimeHours,
         fatigue: r.fatigue + DRAFT_TUNING.overtimeFatigue,
       };
+      break;
+    case 'NIGHT_DESK':
+      // Lasts the run: a bonus that never expires (finite so the save stays plain JSON).
+      r = { ...r, perks: [...r.perks, optionId], bonusHours: [...r.bonusHours, { hours: DRAFT_TUNING.nightDeskHours, untilDay: Number.MAX_SAFE_INTEGER }], hoursLeft: r.hoursLeft + DRAFT_TUNING.nightDeskHours };
+      break;
+    case 'BUDGET_SWAP':
+      r = { ...r, perks: [...r.perks, optionId], capexRemaining: r.capexRemaining + DRAFT_TUNING.budgetSwapCapex };
       break;
     case 'HMC_NINJA':
     case 'BELT_AND_BRACES':

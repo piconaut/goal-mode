@@ -889,6 +889,9 @@ cost 0 hours), *Friends in Finance* (+10% opex), *Night Owl* (no fatigue from ni
 *Belt and Braces* (−50% change-failure risk), *Report Class Hoarder* (granular WLMGL from day 1),
 *Friend at the Vendor* (the "friendly IBM CE": hardware with 2+ days' lead arrives a day sooner), *Well Connected*
 (asking around costs no hours). One-off: *Weekend push* (+3 hours tomorrow for +15 fatigue, so more change risk).
+**Pacts** (constraint cards with persistent modifiers, offered in the same draft): *Offshore night desk* (+2
+hours every day for the rest of the run, change-failure risk ×1.3) and *Capex for opex* (+$500k capex now, monthly
+opex budget −10% for the rest of the run). Sizes in `DRAFT_TUNING`.
 
 ---
 

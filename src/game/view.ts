@@ -25,7 +25,7 @@ import { TICKS_PER_DAY } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import { accPi, goalInfo, sumAcc } from '../sim/wlm/runtime';
 import { goalText } from '../sim/wlm/goals';
-import type { PreviewContext } from './catalog';
+import { opexBudgetFor, type PreviewContext } from './catalog';
 import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import type { LcuConfig } from '../sim/io/dasd';
@@ -297,7 +297,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     fatigue: run.fatigue,
     insight: run.insight,
     capexRemaining: run.capexRemaining,
-    opexBudget: run.opexBudgetMonthly,
+    opexBudget: opexBudgetFor(run.opexBudgetMonthly, run.perks),
     mlcEstimate: estimateMonth(sim.cost, scenario.products),
     score: run.score,
     perks: run.perks,

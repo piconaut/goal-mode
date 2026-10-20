@@ -1,5 +1,6 @@
 // Finance view: the month's software bill as SCRT would compute it, what drives it, and the targets.
 
+import { opexBudgetFor } from './catalog';
 import { formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { billLines, estimateMonth } from '../sim/cost/mlc';
@@ -33,7 +34,7 @@ const clock = (tick: number) => formatClock(tick).replace(/^D(\d+) /, 'day $1 ')
 export function financeView(run: RunState, scenario: Scenario): FinanceView {
   const cost = run.sim.cost;
   const last = cost.bills.at(-1);
-  const budget = run.opexBudgetMonthly * (run.perks.includes('FRIENDS_IN_FINANCE') ? 1.1 : 1);
+  const budget = opexBudgetFor(run.opexBudgetMonthly, run.perks);
   const lines = billLines(cost, scenario.products);
   const offer = run.tfpOffer ?? null;
   const n = Math.max(0, ...Object.values(cost.hourly).map((h) => h.length));

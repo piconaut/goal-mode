@@ -1,4 +1,5 @@
 import { askAround, inquiriesView } from '../../src/game/inquiries';
+import { failRiskFor, opexBudgetFor } from '../../src/game/catalog';
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
@@ -244,5 +245,20 @@ describe('draft perks', () => {
     expect(out.ok).toBe(true);
     expect(out.run.hoursLeft).toBe(r.hoursLeft);
     expect(inquiriesView(r, MIDWEST).topics.every((t) => t.hours === 0)).toBe(true);
+  });
+
+  it('night desk pact: two more hours every day, riskier changes', () => {
+    const base = fresh();
+    const r = chooseDraft(review(base), content, 'NIGHT_DESK');
+    expect(r.hoursLeft).toBe(base.hoursLeft + 2);
+    expect(failRiskFor(0, r.perks)).toBeCloseTo(failRiskFor(0, []) * 1.3);
+    expect(r.bonusHours.every((b) => b.untilDay > 1000)).toBe(true);
+  });
+
+  it('capex-for-opex pact: capex now, smaller opex budget', () => {
+    const base = fresh();
+    const r = chooseDraft(review(base), content, 'BUDGET_SWAP');
+    expect(r.capexRemaining).toBe(base.capexRemaining + 500_000);
+    expect(opexBudgetFor(r.opexBudgetMonthly, r.perks)).toBeCloseTo(base.opexBudgetMonthly * 0.9);
   });
 });
