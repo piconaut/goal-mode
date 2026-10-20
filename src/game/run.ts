@@ -151,7 +151,14 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
   const [picked, r1] = withRng(run, (rng) => {
     const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
     const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
-    const pool = content.events.filter((e) => day >= e.minDay && !(e.oncePerRun && run.events.some((x) => x.defId === e.id)));
+    const dayStartTick = day * TICKS_PER_DAY;
+    const pool = content.events.filter(
+      (e) =>
+        day >= e.minDay &&
+        !(e.oncePerRun && run.events.some((x) => x.defId === e.id)) &&
+        // an hours card must not stack on itself while still running
+        !(e.hoursDelta && run.events.some((x) => x.defId === e.id && (x.endTick === null || x.endTick > dayStartTick))),
+    );
     const out: { def: EventDef; hour: number }[] = [];
     for (let i = 0; i < n && pool.length > 0; i++) {
       const def = rng.pickWeighted(pool, (e) => e.weight * (e.category === 'WORKLOAD' ? 1 : 1 + day / 20));
@@ -179,6 +186,11 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       ended: false,
     };
     r = { ...r, events: [...r.events, ev] };
+    if (def.hoursDelta) {
+      // Same bookkeeping as the CONTRACTOR perk: endDay recomputes hoursLeft from baseHours + live entries each morning.
+      const days = Math.max(1, Math.ceil((def.durationHours ?? 24) / 24));
+      r = { ...r, bonusHours: [...r.bonusHours, { hours: def.hoursDelta, untilDay: day + days }], hoursLeft: Math.max(0, r.hoursLeft + def.hoursDelta) };
+    }
     if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning, day);
   }
   return r;
@@ -643,7 +655,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     score: r.score + dayScore,
     fatigue: Math.max(0, r.fatigue - 8),
     bonusHours: bonus,
-    hoursLeft: r.baseHours + bonus.reduce((a, b) => a + b.hours, 0),
+    hoursLeft: Math.max(0, r.baseHours + bonus.reduce((a, b) => a + b.hours, 0)),
   };
 
   r = tfpAtDayEnd(r, scenario);

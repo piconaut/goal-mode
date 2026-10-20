@@ -136,4 +136,18 @@ describe('event cards resolved at start', () => {
     const r = { ...newRun(sc, MIDWEST_GAME, 3), events: [{ defId: 'NEW_APP_GOLIVE' }] } as unknown as RunState;
     for (let day = 9; day < 40; day++) expect(drawEvents(r, MIDWEST_GAME, day).events.filter((e) => e.defId === 'NEW_APP_GOLIVE')).toHaveLength(1);
   });
+
+  it('a hiring freeze lowers engineer-hours for exactly five days and never below zero', () => {
+    let r = { ...newRun(sc, MIDWEST_GAME, 3), events: [] as RunState['events'] };
+    const def = MIDWEST_GAME.events.find((e) => e.id === 'HIRING_FREEZE')!;
+    const drawn = drawEvents(r, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 4);
+    expect(drawn.events.some((e) => e.defId === 'HIRING_FREEZE')).toBe(true);
+    expect(drawn.hoursLeft).toBe(r.baseHours - 2);
+    expect(drawn.bonusHours).toEqual([{ hours: -2, untilDay: 9 }]);
+    // an active freeze is not drawn again on top of itself
+    const again = drawEvents(drawn, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 5);
+    expect(again.bonusHours).toHaveLength(1);
+    r = { ...drawn, baseHours: 1 };
+    expect(Math.max(0, r.baseHours + r.bonusHours.reduce((a, b) => a + b.hours, 0))).toBe(0);
+  });
 });

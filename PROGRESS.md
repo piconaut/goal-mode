@@ -563,7 +563,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Meta-progression (career XP → unlock scenarios, starting perks, starting tool; Codex persists) in IndexedDB
 
 **M8.4 Content**
-- [~] Events to ~25 (SPEC §9) (17 now; HSM_RECALL_STORM (LCU 30 recall I/O, fix HOLD_HSM_RECALLS, rumoured) and CP_SPARING (red-herring note, never attributed) added; 15 before; loop 60 added NEW_APP_GOLIVE (BOOKING lands in SYSOTHER and stays, once per run, rumoured) and POWER_CAP (one capacity setting down for 6 h, resolved at start so upgrades are not undone; new `oncePerRun`/`capacityDrop` card fields) with realism tests; earlier: 13; loop 58 added SHADOW_IT and QR_RELEASE with fixes, rumours and realism tests; re-sweep the bots once the deck is complete): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT
+- [~] Events to ~25 (SPEC §9) (18 now; HIRING_FREEZE (-2 engineer-hours/day for 5 days, optional `hoursDelta`/`announcementFrom` card fields, rumoured; VENDOR_PRICE still pending: needs a run-level product price multiplier); 17 before; HSM_RECALL_STORM (LCU 30 recall I/O, fix HOLD_HSM_RECALLS, rumoured) and CP_SPARING (red-herring note, never attributed) added; 15 before; loop 60 added NEW_APP_GOLIVE (BOOKING lands in SYSOTHER and stays, once per run, rumoured) and POWER_CAP (one capacity setting down for 6 h, resolved at start so upgrades are not undone; new `oncePerRun`/`capacityDrop` card fields) with realism tests; earlier: 13; loop 58 added SHADOW_IT and QR_RELEASE with fixes, rumours and realism tests; re-sweep the bots once the deck is complete): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT
   - Loop 63 sweep (Normal, seeds 1–10, all 17 cards; expert now classifies the booking app too): **expert**
     40 / 40 / 40, median 2754, victory 9 · trust 1 (seed 6, day 32, Retail). **Textbook** 15 / 28 / 28, median
     1716, ends batch 4 · trust 6; four Retail trust collapses on days 15–24 (was ≥ 22 before the new cards).
@@ -716,6 +716,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 65):** HIRING_FREEZE card (implementer subagent; reviewed: reason moved into the briefing). VENDOR_PRICE needs a product price lever in the sim or a run-aware scenario: asked the user. 250 tests.
 - **2026-10-20 (loop 64):** RCA trigger truth respects card mechanisms. 249 tests.
 - **2026-10-20 (loop 63):** expert bot classifies the booking app; Normal sweep with 17 cards; HSM storm 60k; open item on RCA attribution.
 - **2026-10-20 (loop 62, user request):** merger advance hint on Normal as well.

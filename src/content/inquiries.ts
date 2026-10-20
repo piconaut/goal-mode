@@ -98,6 +98,7 @@ export const EVENT_RUMOURS: Record<string, string> = {
   QR_RELEASE: 'the teller app team has a front-end release lined up',
   HSM_RECALL_STORM: 'the storage team changed the HSM migration rules last month',
   NEW_APP_GOLIVE: 'retail is about to launch a small new booking app',
+  HIRING_FREEZE: 'HR is reviewing contractor budgets for next week',
 };
 
 /** Rumours about upcoming story beats (heard up to a few days ahead). */

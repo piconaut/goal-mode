@@ -865,7 +865,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 ### 9.4 Organisational constraints ("curses"; persistent modifiers)
 - **CFO cost mandate:** MLC −10% vs last month or lose Finance trust.
 - **Change freeze** (peak season / audit week): emergency changes only.
-- **Hiring freeze / attrition:** −1 Engineer-Hour/day.
+- **Hiring freeze (`HIRING_FREEZE`):** −2 engineer-hours/day for 5 days (`hoursDelta`), announced by HR in that morning's briefing; does not stack. Responses: automation, prioritising changes, the contractor perk.
 - **Pervasive encryption mandate:** +x% CPU on I/O-heavy work (CPACF), plus a new audit SLA.
 - **Regulatory deadline moved:** batch must finish by 05:00.
 - **Vendor price increase:** MLC per-MSU +8%.

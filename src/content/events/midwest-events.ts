@@ -30,6 +30,8 @@ export interface EventDef {
   /** Drop the CPC this many capacity settings at start and restore the setting it had then at the end
    * (resolved when the card begins, so a player's upgrade is neither skipped nor undone). */
   capacityDrop?: number;
+  /** Engineer-hours added (negative = lost) per day while the card runs; applied from the briefing of its first day. */
+  hoursDelta?: number;
   /** Message when it starts (null = silent; players must notice symptoms). */
   announcement: string | null;
   clue: string;
@@ -409,6 +411,26 @@ export const MIDWEST_EVENTS: EventDef[] = [
     forewarning: null,
     announcement: 'Hardware: "HMC reported a CP failure; the spare took over. IBM will replace the part at the next service window."',
     clue: 'HMC message only: no performance impact. A red herring if you are chasing another problem.',
+  },
+  {
+    // FICTIONAL: a week of reduced engineer-hours; the levers are how the team spends fewer hours.
+    id: 'HIRING_FREEZE',
+    name: 'Hiring freeze / contractor cut',
+    category: 'ORG',
+    minDay: 8,
+    weight: 0.8,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: 5 * 24,
+    hoursDelta: -2,
+    begin: [],
+    end: [],
+    fix: null,
+    // A forewarning, not an announcement: hours drop in that morning's briefing, so the reason must be there too.
+    forewarning: 'HR: "Contractor budgets are frozen for five days starting today; expect two fewer engineer-hours a day."',
+    announcement: null,
+    clue: 'Engineer-hours shown in the briefing drop by 2 for five days. Responses: automate routine reactions, prioritise changes, draft the contractor perk.',
   },
 ];
 
