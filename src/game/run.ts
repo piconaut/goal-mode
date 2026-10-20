@@ -25,6 +25,7 @@ import { HINT_SENDER } from '../content/hints';
 import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
+import type { RmfInterval } from '../sim/measure/rmf';
 import { tfpAtDayEnd } from './tfp';
 import { deliverInquiries } from './inquiries';
 import type { WorkloadDef } from '../sim/workload/types';
@@ -536,6 +537,16 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }
 
+/** Worst sysplex PI per service-class period across the RMF intervals that closed within the day. */
+export function worstPiOfDay(intervals: readonly RmfInterval[], day: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const iv of intervals) {
+    if (iv.endTick <= day * TICKS_PER_DAY || iv.endTick > (day + 1) * TICKS_PER_DAY) continue;
+    for (const w of iv.wlm) if (w.lparId === '*PLEX' && w.pi !== null && w.pi > (out[w.scKey] ?? -Infinity)) out[w.scKey] = w.pi;
+  }
+  return out;
+}
+
 function endDay(run: RunState, scenario: Scenario, content: GameContent): RunState {
   let r = run;
   const day = r.day;
@@ -604,6 +615,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     score: dayScore,
     mlcEstimate: estimateMonth(r.sim.cost, scenario.products),
     events: r.events.filter((e) => e.started && e.startTick < r.sim.tick && e.startTick >= day * TICKS_PER_DAY).map((e) => e.name),
+    piWorst: worstPiOfDay(r.sim.rmf.intervals, day),
   };
 
   const bonus = r.bonusHours.filter((b) => b.untilDay > day + 1);

@@ -145,6 +145,8 @@ export interface DayReport {
   score: number;
   mlcEstimate: number;
   events: string[];
+  /** Worst sysplex PI per service-class period over the day's RMF intervals (absent in old saves). */
+  piWorst?: Record<string, number>;
 }
 
 export interface Message {

@@ -14,6 +14,8 @@ export interface EndReport {
   decisions: { day: number; label: string; emergency: boolean }[];
   biggestIncident: { workloadId: string; day: number; hours: number; cause: string } | null;
   bestRca: { workloadId: string; day: number; points: number; cause: string } | null;
+  /** Worst PI per service-class period (rows, sorted) per played day (columns); null where not recorded. */
+  piHeat: { scKeys: string[]; byDay: (number | null)[][] };
 }
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -57,6 +59,8 @@ export function endReport(run: RunState, overallTrust: number): EndReport {
     const pts = (i.rca?.points ?? 0) + (i.rca?.evidencePoints ?? 0);
     if (i.rca && pts > 0 && (!bestRca || pts > bestRca.points)) bestRca = { workloadId: i.workloadId, day: i.day, points: pts, cause: causeOf(i.truth.mechanism, i.truth.trigger) };
   }
+  const scKeys = [...new Set(reports.flatMap((r) => Object.keys(r.piWorst ?? {})))].sort();
+  const piHeat = { scKeys, byDay: scKeys.map((k) => reports.map((r) => r.piWorst?.[k] ?? null)) };
   const { points, grade } = gradeFor(daysPlayed / run.maxDays, victory, meanSlaPct, overallTrust);
-  return { daysPlayed, victory, grade, points, meanSlaPct, overallTrust, days, decisions, biggestIncident, bestRca };
+  return { daysPlayed, victory, grade, points, meanSlaPct, overallTrust, days, decisions, biggestIncident, bestRca, piHeat };
 }

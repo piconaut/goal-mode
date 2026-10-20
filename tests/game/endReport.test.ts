@@ -24,8 +24,8 @@ describe('endReport', () => {
       phase: 'GAMEOVER',
       maxDays: 40,
       reports: [
-        { day: 0, sla: [{ attainmentPct: 100 }, { attainmentPct: 90 }], score: 50, batchMissed: false },
-        { day: 1, sla: [{ attainmentPct: 98 }], score: 40, batchMissed: true },
+        { day: 0, sla: [{ attainmentPct: 100 }, { attainmentPct: 90 }], score: 50, batchMissed: false, piWorst: { 'ONLHI#1': 1.4 } },
+        { day: 1, sla: [{ attainmentPct: 98 }], score: 40, batchMissed: true, piWorst: { 'BATCHPRD#1': 2, 'ONLHI#1': 0.8 } },
       ],
       capacityDays: [{ day: 1, peakR4haSum: 812 }],
       changes: [
@@ -42,6 +42,7 @@ describe('endReport', () => {
     expect(r.days[1]!.peakR4haSum).toBe(812);
     expect(r.decisions.map((d) => d.label)).toEqual(['first', 'later']);
     expect(r.biggestIncident).toMatchObject({ workloadId: 'TELLER', hours: 6, cause: 'capping (policy)' });
+    expect(r.piHeat).toEqual({ scKeys: ['BATCHPRD#1', 'ONLHI#1'], byDay: [[null, 2], [1.4, 0.8]] });
     expect(r.bestRca).toMatchObject({ workloadId: 'MOBILE', points: 5 });
   });
 });
