@@ -27,7 +27,7 @@ describe('endReport', () => {
         { day: 0, sla: [{ attainmentPct: 100 }, { attainmentPct: 90 }], score: 50, batchMissed: false, piWorst: { 'ONLHI#1': 1.4 } },
         { day: 1, sla: [{ attainmentPct: 98 }], score: 40, batchMissed: true, piWorst: { 'BATCHPRD#1': 2, 'ONLHI#1': 0.8 } },
       ],
-      capacityDays: [{ day: 1, peakR4haSum: 812 }],
+      capacityDays: [{ day: 1, peakR4haSum: 812, peakR4ha: { PROD1: 500, PROD2: 300 } }],
       changes: [
         { label: 'later', activateDay: 1, emergency: true, status: 'APPLIED' },
         { label: 'first', activateDay: 0, emergency: false, status: 'APPLIED' },
@@ -43,6 +43,7 @@ describe('endReport', () => {
     expect(r.decisions.map((d) => d.label)).toEqual(['first', 'later']);
     expect(r.biggestIncident).toMatchObject({ workloadId: 'TELLER', hours: 6, cause: 'capping (policy)' });
     expect(r.piHeat).toEqual({ scKeys: ['BATCHPRD#1', 'ONLHI#1'], byDay: [[null, 2], [1.4, 0.8]] });
+    expect(r.r4haByLpar).toEqual({ lparIds: ['PROD1', 'PROD2'], byDay: [[null, 500], [null, 300]] });
     expect(r.bestRca).toMatchObject({ workloadId: 'MOBILE', points: 5 });
   });
 });

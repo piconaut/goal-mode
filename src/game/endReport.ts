@@ -16,6 +16,8 @@ export interface EndReport {
   bestRca: { workloadId: string; day: number; points: number; cause: string } | null;
   /** Worst PI per service-class period (rows, sorted) per played day (columns); null where not recorded. */
   piHeat: { scKeys: string[]; byDay: (number | null)[][] };
+  /** Peak R4HA per LPAR (rows, sorted) per played day (columns), MSU. */
+  r4haByLpar: { lparIds: string[]; byDay: (number | null)[][] };
 }
 
 const clamp01 = (x: number) => Math.max(0, Math.min(1, x));
@@ -61,6 +63,9 @@ export function endReport(run: RunState, overallTrust: number): EndReport {
   }
   const scKeys = [...new Set(reports.flatMap((r) => Object.keys(r.piWorst ?? {})))].sort();
   const piHeat = { scKeys, byDay: scKeys.map((k) => reports.map((r) => r.piWorst?.[k] ?? null)) };
+  const capDays = new Map((run.capacityDays ?? []).map((c) => [c.day, c.peakR4ha]));
+  const lparIds = [...new Set([...capDays.values()].flatMap((p) => Object.keys(p)))].sort();
+  const r4haByLpar = { lparIds, byDay: lparIds.map((id) => reports.map((r) => capDays.get(r.day)?.[id] ?? null)) };
   const { points, grade } = gradeFor(daysPlayed / run.maxDays, victory, meanSlaPct, overallTrust);
-  return { daysPlayed, victory, grade, points, meanSlaPct, overallTrust, days, decisions, biggestIncident, bestRca, piHeat };
+  return { daysPlayed, victory, grade, points, meanSlaPct, overallTrust, days, decisions, biggestIncident, bestRca, piHeat, r4haByLpar };
 }
