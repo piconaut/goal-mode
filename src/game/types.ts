@@ -172,6 +172,8 @@ export interface RunState {
   seed: number;
   /** ISO date (UTC) when this is a daily-challenge run. */
   daily?: string;
+  /** Day the quarter closed when the player kept going (endless mode). */
+  endlessFromDay?: number;
   rng: RngState;
   sim: SimState;
   phase: Phase;

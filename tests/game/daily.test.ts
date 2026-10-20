@@ -21,4 +21,7 @@ describe('shareText', () => {
   it('omits the daily segment for ordinary runs', () => {
     expect(shareText({ ...base, daily: null })).toBe('GOAL MODE · Normal · seed 123456 · day 40/40 · grade A (84) · score 2716');
   });
+  it('reports endless days instead of the day count', () => {
+    expect(shareText({ ...base, daily: null, daysPlayed: 47, endlessDays: 7 })).toBe('GOAL MODE · Normal · seed 123456 · quarter closed + 7 endless days · grade A (84) · score 2716');
+  });
 });

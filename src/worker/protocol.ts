@@ -46,6 +46,8 @@ export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DA
 export type ToWorker =
   | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId; daily?: string }
   | { type: 'START_DAY' }
+  /** After VICTORY: keep playing past the quarter (endless mode). */
+  | { type: 'CONTINUE_ENDLESS' }
   | { type: 'SET_SPEED'; speed: number }
   | { type: 'CHANGE'; req: ChangeRequest }
   | { type: 'DRAFT'; optionId: string | null }

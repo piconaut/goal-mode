@@ -14,6 +14,8 @@ export interface ShareInput {
   daysPlayed: number;
   /** Quarter length; omit to print only the days played. */
   maxDays?: number;
+  /** Days survived after the quarter closed (endless mode). */
+  endlessDays?: number | null;
   grade: string;
   points: number;
   score: number;
@@ -26,7 +28,7 @@ export function shareText(r: ShareInput): string {
     ...(r.daily ? [`daily ${r.daily}`] : []),
     r.difficulty,
     `seed ${r.seed}`,
-    `day ${r.daysPlayed}${r.maxDays !== undefined ? `/${r.maxDays}` : ''}`,
+    r.endlessDays != null ? `quarter closed + ${r.endlessDays} endless days` : `day ${r.daysPlayed}${r.maxDays !== undefined ? `/${r.maxDays}` : ''}`,
     `grade ${r.grade} (${r.points})`,
     `score ${r.score}`,
   ];

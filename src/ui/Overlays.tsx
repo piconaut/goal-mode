@@ -54,13 +54,21 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
           {v.phase === 'REVIEW' && <Review v={v} game={game} investigate={() => setOpen(false)} />}
           {ended && (
             <>
-              <h2>{v.phase === 'VICTORY' ? 'Quarter closed' : 'Run over'}</h2>
+              <h2>{v.phase === 'VICTORY' ? 'Quarter closed' : v.endlessFromDay !== null ? 'Endless run over' : 'Run over'}</h2>
               <p>{v.endReason}</p>
               <p>
                 Final score <b>{v.score}</b> after {v.day + 1} days.
               </p>
               {v.endReport && <EndReportView r={v.endReport} />}
               {v.endReport && <ShareBox v={v} r={v.endReport} />}
+              {v.phase === 'VICTORY' && v.endlessFromDay === null && (
+                <p>
+                  <button className="primary" onClick={() => game.send({ type: 'CONTINUE_ENDLESS' })}>
+                    Keep going (endless)
+                  </button>{' '}
+                  <span className="muted">Growth keeps compounding and a new capex budget arrives. The run counts as a win whenever it ends.</span>
+                </p>
+              )}
               <NewRun game={game} />
             </>
           )}
@@ -72,7 +80,7 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
 
 function ShareBox({ v, r }: { v: ViewModel; r: EndReport }) {
   const [copied, setCopied] = useState(false);
-  const text = shareText({ seed: v.seed, difficulty: v.difficulty.name, daysPlayed: r.daysPlayed, maxDays: v.maxDays, grade: r.grade, points: r.points, score: v.score, daily: v.daily });
+  const text = shareText({ seed: v.seed, difficulty: v.difficulty.name, daysPlayed: r.daysPlayed, maxDays: v.maxDays, endlessDays: r.endlessDays, grade: r.grade, points: r.points, score: v.score, daily: v.daily });
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(text);
@@ -100,6 +108,7 @@ function EndReportView({ r }: { r: EndReport }) {
       </h3>
       <p className="muted">
         {r.daysPlayed} of the quarter's days played · mean SLA attainment {r.meanSlaPct.toFixed(1)}% · final trust {Math.round(r.overallTrust)}
+        {r.endlessDays !== null && ` · ${r.endlessDays} endless days after the quarter closed`}
         {!r.victory && ' · runs that end early grade B at best'}
       </p>
       {r.biggestIncident && (

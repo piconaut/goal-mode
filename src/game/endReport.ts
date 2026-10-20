@@ -4,6 +4,8 @@ import type { RunState } from './types';
 export interface EndReport {
   daysPlayed: number;
   victory: boolean;
+  /** Days played after the quarter closed (endless mode); null if the player did not continue. */
+  endlessDays: number | null;
   grade: 'S' | 'A' | 'B' | 'C' | 'D';
   points: number;
   meanSlaPct: number;
@@ -39,7 +41,7 @@ export function endReport(run: RunState, overallTrust: number): EndReport {
   const reports = run.reports;
   const allSla = reports.flatMap((r) => r.sla.map((s) => s.attainmentPct));
   const meanSlaPct = allSla.length > 0 ? allSla.reduce((a, b) => a + b, 0) / allSla.length : 100;
-  const victory = run.phase === 'VICTORY';
+  const victory = run.phase === 'VICTORY' || run.endlessFromDay !== undefined;
   const daysPlayed = reports.length;
   const cap = new Map((run.capacityDays ?? []).map((c) => [c.day, c.peakR4haSum]));
   const days = reports.map((r) => ({
@@ -67,5 +69,6 @@ export function endReport(run: RunState, overallTrust: number): EndReport {
   const lparIds = [...new Set([...capDays.values()].flatMap((p) => Object.keys(p)))].sort();
   const r4haByLpar = { lparIds, byDay: lparIds.map((id) => reports.map((r) => capDays.get(r.day)?.[id] ?? null)) };
   const { points, grade } = gradeFor(daysPlayed / run.maxDays, victory, meanSlaPct, overallTrust);
-  return { daysPlayed, victory, grade, points, meanSlaPct, overallTrust, days, decisions, biggestIncident, bestRca, piHeat, r4haByLpar };
+  const endlessDays = run.endlessFromDay !== undefined ? daysPlayed - run.maxDays : null;
+  return { daysPlayed, victory, endlessDays, grade, points, meanSlaPct, overallTrust, days, decisions, biggestIncident, bestRca, piHeat, r4haByLpar };
 }

@@ -118,6 +118,8 @@ export interface ViewModel {
   phase: Phase;
   day: number;
   maxDays: number;
+  /** Day the quarter closed if the player continued in endless mode. */
+  endlessFromDay: number | null;
   seed: number;
   /** ISO date when this is a daily-challenge run. */
   daily: string | null;
@@ -272,6 +274,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     phase: run.phase,
     day: run.day,
     maxDays: run.maxDays,
+    endlessFromDay: run.endlessFromDay ?? null,
     seed: run.seed,
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),

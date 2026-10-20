@@ -4,7 +4,7 @@ import { difficultyOf, scenarioFor } from '../game/difficulty';
 import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { MIDWEST } from '../content/scenarios';
-import { advance, cancelChange, chooseDraft, newRun, requestChange, startDay, submitRca } from '../game/run';
+import { advance, cancelChange, chooseDraft, continueEndless, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeDefinition, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
@@ -223,6 +223,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         postPolicy();
         post({ type: 'BASKET', basket });
       }
+      break;
+    case 'CONTINUE_ENDLESS':
+      run = continueEndless(run, content);
       break;
     case 'SET_BASKET':
       basket = m.basket;

@@ -79,7 +79,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="brand">GOAL MODE</span>
       <span className="clock">{v.clock}</span>
       <span className="stat">
-        Day <b>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</b> <span className="muted">· {v.difficulty.name}</span>{v.daily && <span className="muted"> · Daily {v.daily}</span>}
+        Day <b>{v.endlessFromDay !== null ? <>{v.day + 1} (endless)</> : <>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</>}</b> <span className="muted">· {v.difficulty.name}</span>{v.daily && <span className="muted"> · Daily {v.daily}</span>}
       </span>
       <span className="stat" style={{ minWidth: 120 }}>
         {v.phase}

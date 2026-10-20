@@ -927,7 +927,10 @@ lost reward).
   decisions with lead times; 1–2 constraint cards.
 - **Act III (26–40) "Squeeze":** merger/new workload, regulatory deadline, quarter-end,
   overlapping events, freeze.
-- After a win, **Endless mode**: keep going with escalating growth until Trust breaks.
+- After a win, **Endless mode**: keep going with escalating growth until Trust breaks. The escalation is the
+  scenario's own compound growth carrying on past the quarter (no extra multiplier); the event deck keeps drawing,
+  a fresh quarter's capex arrives when the player continues, and the run counts as a victory whenever it ends
+  (grade uncapped; the end report and share line show the endless days).
 
 ### 11.2 Difficulty knobs
 Growth multipliers, event-deck intensity (cards/day, severity tiers), constraint frequency,

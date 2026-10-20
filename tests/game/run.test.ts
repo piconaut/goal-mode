@@ -1,6 +1,7 @@
+import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
-import { advance, chooseDraft, drawEvents, newRun, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
+import { advance, chooseDraft, continueEndless, drawEvents, newRun, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
 import { applyCommands } from '../../src/sim/core/commands';
@@ -193,4 +194,29 @@ describe('regulator audit of unclassified work', () => {
     expect(r.trust.Regulator).toBeCloseTo(atBoundary(0, false).trust.Regulator + 1);
     expect(r.inbox.some((m) => m.from === 'Regulator' && m.body.includes('no findings'))).toBe(true);
   }, 60_000);
+});
+
+describe('endless mode', () => {
+  // One-day quarter, started one tick before the boundary so the next tick ends the day.
+  const atEnd = (r: RunState) => advance({ ...r, sim: { ...r.sim, tick: (r.day + 1) * TICKS_PER_DAY - 1 } }, MIDWEST, content, 1);
+
+  it('continues past VICTORY with fresh capex, and the run still counts as a win', () => {
+    let r = atEnd(startDay({ ...fresh(), maxDays: 1 }, content));
+    expect(r.phase).toBe('VICTORY');
+    const capex = r.capexRemaining;
+    r = continueEndless(r, content);
+    expect(r.phase).toBe('REVIEW');
+    expect(r.endlessFromDay).toBe(0);
+    expect(r.endReason).toBeNull();
+    expect(r.capexRemaining).toBe(capex + content.capexQuarter);
+    expect(continueEndless(r, content)).toBe(r);
+    r = chooseDraft(r, content, null);
+    expect(r.day).toBe(1);
+    // Skipped ticks mean no batch ran, so clear yesterday's miss to stay clear of the two-miss rule.
+    r = atEnd(startDay({ ...r, consecutiveBatchMisses: 0 }, content));
+    expect(r.phase).toBe('REVIEW');
+    const rep = endReport(r, 50);
+    expect(rep.victory).toBe(true);
+    expect(rep.endlessDays).toBe(1);
+  }, 120_000);
 });

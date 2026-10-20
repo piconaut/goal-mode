@@ -690,11 +690,30 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (!endReason && (overall <= 0 || FACETS.some((f) => r.trust[f] <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
   if (!endReason && consecutive >= 2) endReason = 'Two consecutive batch deadline misses: the regulator has opened a formal review.';
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
-  if (day >= r.maxDays - 1) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
+  if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
   for (const h of morningHints(difficultyOf(r.difficulty).hints, dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null))
     r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);
+  return openReview(r, content, day);
+}
 
+/**
+ * VICTORY → REVIEW: keep playing past the quarter (endless mode). Growth keeps compounding and the deck keeps
+ * drawing; a fresh quarter's capex arrives. The run ends only on a loss, and still counts as a victory.
+ */
+export function continueEndless(run: RunState, content: GameContent): RunState {
+  if (run.phase !== 'VICTORY' || run.endlessFromDay !== undefined) return run;
+  let r: RunState = {
+    ...run,
+    endlessFromDay: run.day,
+    endReason: null,
+    capexRemaining: run.capexRemaining + content.capexQuarter * difficultyOf(run.difficulty).capexMult,
+  };
+  r = msg(r, 'CIO', 'Another quarter', 'The board liked the last one. Same systems, more volume, and a new capital budget. Keep it running.', run.day + 1);
+  return openReview(r, content, run.day);
+}
+
+function openReview(r: RunState, content: GameContent, day: number): RunState {
   const [draft, r2] = withRng(r, (rng) => {
     const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id));
     const out = [];
