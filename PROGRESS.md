@@ -535,6 +535,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Keyboard-first controls, focus states, forced-colors support, every chart with a table view, contrast check in both themes
   - [x] Loop 42: forced-colors support (`@media (forced-colors: active)` in `styles.css`: data bars, Gantt runs,
     selected rows, active subtab, primary button and status tags stay distinguishable in system colours)
+  - [x] Loop 47: keyboard shortcuts: Space pause/resume, 1–5 speed ½×…8×, Alt+1–8 tabs (hints in button titles;
+    ignored while typing in a field)
 - [x] Sound/feedback: pager chime on incidents, subtle tick at hour boundaries (mutable) (loop 46: Web Audio
   tones in `src/ui/sound.ts`, top-bar toggle, off by default, remembered in localStorage)
 - [ ] Settings: theme toggle, classic 3270 colours, speed defaults; error boundary + crash-safe autosave

@@ -29,13 +29,14 @@ export function App() {
   const phase = v?.phase;
   // A new briefing, review or end of run opens the overlay; the live day starts with it closed.
   useEffect(() => setOverlayOpen(phase !== 'LIVE'), [phase, v?.day]);
+  useShortcuts(game, setTab);
   if (!v) return <div className="app">Starting the sysplex…</div>;
   return (
     <div className="app">
       <TopBar v={v} game={game} />
       <div className="tabs">
-        {(['console', 'monitor', 'reports', 'changes', 'finance', 'analytics', 'codex', 'inbox'] as Tab[]).map((t) => (
-          <button key={t} className={tab === t ? 'active' : ''} onClick={() => setTab(t)}>
+        {TABS.map((t, i) => (
+          <button key={t} className={tab === t ? 'active' : ''} title={`Alt+${i + 1}`} onClick={() => setTab(t)}>
             {t === 'console' ? 'Ops Console' : t === 'monitor' ? (v.mon3 ? `Monitor III${v.mon3.exceptions.length ? ` (${v.mon3.exceptions.length}!)` : ''}` : 'Monitor III 🔒') : t === 'reports' ? 'RMF Reports' : t === 'changes' ? 'Change Desk' : t === 'finance' ? 'Finance' : t === 'analytics' ? `Analytics (${v.insight}◆)` : t === 'codex' ? 'Codex' : `Inbox (${v.inbox.length})`}
           </button>
         ))}
@@ -93,7 +94,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
               key={s}
               className={speed === s ? 'active' : ''}
               disabled={s === 0 && !v.difficulty.pauseAllowed}
-              title={s === 0 && !v.difficulty.pauseAllowed ? 'Ironman: no pause during the live day' : undefined}
+              title={s === 0 && !v.difficulty.pauseAllowed ? 'Ironman: no pause during the live day' : s === 0 ? 'Space' : `key ${[0.5, 1, 2, 4, 8].indexOf(s) + 1}`}
               onClick={() => set(s)}
             >
               {s === 0 ? '❚❚' : `${s}×`}
@@ -174,6 +175,34 @@ function SoundToggle({ v }: { v: ViewModel }) {
       {sound === 'on' ? '🔔 sound' : '🔕 muted'}
     </button>
   );
+}
+
+const TABS: Tab[] = ['console', 'monitor', 'reports', 'changes', 'finance', 'analytics', 'codex', 'inbox'];
+const SPEEDS = [0.5, 1, 2, 4, 8];
+
+/** Space: pause/resume · 1–5: speed ½×…8× · Alt+1–8: tabs. Ignored while typing in a field. */
+function useShortcuts(game: GameHandle, setTab: (t: Tab) => void) {
+  const resume = useRef(1);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return;
+      if (e.ctrlKey || e.metaKey) return;
+      const n = Number(e.key);
+      if (e.altKey && n >= 1 && n <= TABS.length) {
+        setTab(TABS[n - 1]!);
+        e.preventDefault();
+      } else if (!e.altKey && n >= 1 && n <= SPEEDS.length) {
+        game.send({ type: 'SET_SPEED', speed: SPEEDS[n - 1]! });
+      } else if (e.key === ' ' && game.view?.phase === 'LIVE' && el?.tagName !== 'BUTTON') {
+        if (game.speed > 0) resume.current = game.speed;
+        game.send({ type: 'SET_SPEED', speed: game.speed > 0 ? 0 : resume.current });
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [game, setTab]);
 }
 
 const trustColor = (t: number) => (t >= 60 ? 'var(--good)' : t >= 35 ? 'var(--warn)' : 'var(--crit)');
