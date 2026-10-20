@@ -838,6 +838,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 | Retry storm | Timeout → retries → λ ↑ | END/S ↑ while successes ↓; console banner |
 | Bot attack on mobile login | λ ×5 on one transaction, CPU-cheap but RACF-heavy | DDF period 1 END/S; TCPIP CPU |
 | New app go-live | New workload with no classification rule → SYSOTHER | WLMGL SYSOTHER service ≠ 0 (!) |
+| Shadow IT on TSO (`SHADOW_IT`) | Unapproved model training: TSO CPU/txn ×8, mostly on uncapped DEVT (F9) and at imp 2 on PROD (F5) | Partition Data: DEVT MSU ↑, PROD share ↓; WLMGL TSO APPL% ↑ with END/S flat. Fixes: stop it, cap DEVT, lower TSO importance |
 
 ### 9.2 Software & config events
 | Event | Hidden mechanic | Clues |
@@ -846,6 +847,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 | Lock escalation in batch | Lock waits for online | Db2 class 3 lock suspensions; CF lock contention |
 | CICS SOS | Region stalls | Mon III DELAY: CICS "other"; CICS 110 |
 | QR TCB saturation | Region at ~1 engine | CICS 110 dispatch/QR; region CPU ≈ 100% of 1 CP |
+| Non-threadsafe release (`QR_RELEASE`) | Teller release forces QR on the PROD1 AORs (QR fraction 0.6 → 0.95) for ~36 h | CICS report: QR wait per txn ↑ in CICSAOR1/3 only, low CPU delay. Fixes: roll back, route to PROD2, add an AOR |
 | z/OS/Db2 maintenance level gift | −3% CPU/txn after you apply it (an IPL) | Release notes in inbox |
 | Monitor overhead creep | A vendor monitor doubles its CPU after an upgrade | WLMGL STC class service ↑ |
 

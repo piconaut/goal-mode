@@ -248,6 +248,49 @@ export const MIDWEST_EVENTS: EventDef[] = [
     announcement: null,
     clue: 'Card auth response time up with little CPU delay; UNK delay up; IRLM healthy; batch running.',
   },
+  {
+    // A data-science team runs model training from TSO. On DEVT (uncapped, F9) it steals CPC capacity from PROD
+    // through PR/SM; on PROD the developers' importance-2 class (F5) competes directly.
+    id: 'SHADOW_IT',
+    name: 'Unapproved model training on TSO',
+    category: 'WORKLOAD',
+    minDay: 5,
+    weight: 1.5,
+    trigger: 'NEW_WORKLOAD',
+    affects: ['MOBILE', 'RBANK'],
+    startHour: [8, 11],
+    durationHours: 8,
+    begin: [mod('cpu', 'TSO', 8)],
+    end: [mod('cpu', 'TSO', 1)],
+    fix: 'STOP_SHADOW_IT',
+    forewarning: null,
+    announcement: null,
+    clue: 'Partition Data: DEVT MSU jumps while PROD LPARs lose share; TSO APPL% ×8 with END/S flat. Capping DEVT or lowering TSO importance also contains it.',
+  },
+  {
+    // A teller program release that is not threadsafe runs on the QR TCB (CICS serialises it there).
+    id: 'QR_RELEASE',
+    name: 'Non-threadsafe teller release',
+    category: 'SOFTWARE',
+    minDay: 7,
+    weight: 1.2,
+    trigger: 'POLICY',
+    affects: ['TELLER', 'RBANK'],
+    startHour: [6.5, 7.5],
+    durationHours: 36,
+    begin: [
+      { kind: 'SET_CICS', name: 'CICSAOR1', qrFrac: 0.95 },
+      { kind: 'SET_CICS', name: 'CICSAOR3', qrFrac: 0.95 },
+    ],
+    end: [
+      { kind: 'SET_CICS', name: 'CICSAOR1', qrFrac: 0.6 },
+      { kind: 'SET_CICS', name: 'CICSAOR3', qrFrac: 0.6 },
+    ],
+    fix: 'ROLLBACK_TELLER_RELEASE',
+    forewarning: 'Change board: "Teller front-end release 4.2 goes into the PROD1 regions overnight."',
+    announcement: null,
+    clue: 'CICS report: QR wait per transaction up in CICSAOR1/3 (PROD1) only, CPU delay low; PROD2 regions fine. Routing more work to PROD2 or adding a region also helps.',
+  },
 ];
 
 /** Scripted story beats: constraints and big events on fixed days (SPEC §11.1). */

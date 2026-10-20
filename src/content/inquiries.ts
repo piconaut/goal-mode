@@ -94,6 +94,8 @@ export const EVENT_RUMOURS: Record<string, string> = {
   REORG_OVERRUN: 'the DBAs are planning an online REORG of the settlement table spaces',
   MONITOR_CREEP: 'a new monitoring agent release is being rolled out',
   LOCK_ESCALATION: 'settlement volumes are unusually high this week',
+  SHADOW_IT: 'the data-science team found free CPU on the test system',
+  QR_RELEASE: 'the teller app team has a front-end release lined up',
 };
 
 /** Rumours about upcoming story beats (heard up to a few days ahead). */

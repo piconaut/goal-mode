@@ -1,6 +1,7 @@
 // Behavioural "realism" tests from SPEC §16.
 
 import { MIDWEST } from '../../src/content/scenarios';
+import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
 import { discretionaryCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { emptyAcc } from '../../src/sim/wlm/runtime';
@@ -368,4 +369,43 @@ describe('CICS region management', () => {
     // Region class below batch: even ONLHI waits behind batch.
     expect(region.slices[0]!.cpGranted).toBeLessThan(evaluateLpar(base).slices[0]!.cpGranted);
   });
+});
+
+describe('event cards (SPEC §9)', () => {
+  // 10:00 on day 0, then 30 minutes with and without the card's begin commands.
+  let base = initState(42, MIDWEST);
+  beforeAll(() => {
+    for (let i = 0; i < 4 * 360; i++) base = step(base, [], MIDWEST);
+  });
+  const run = (cmds: Parameters<typeof step>[1]) => {
+    let s = step(base, cmds, MIDWEST);
+    let qr = 0;
+    let n = 0;
+    let devtMsu = 0;
+    let mobRt = 0;
+    let mobN = 0;
+    for (let i = 0; i < 180; i++) {
+      s = step(s, [], MIDWEST);
+      const m = s.last.workloads.find((x) => x.id === 'MOBILE')!;
+      mobRt += m.rtSumSec;
+      mobN += m.completions;
+      const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
+      qr += w.parts.qr ?? 0;
+      n += w.completions;
+      devtMsu += s.lpars.find((l) => l.id === 'DEVT')!.msuRate / 180;
+    }
+    return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN) };
+  };
+  const card = (id: string) => MIDWEST_EVENTS.find((e) => e.id === id)!.begin;
+
+  it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD', () => {
+    const asIs = run([]);
+    const shadow = run(card('SHADOW_IT'));
+    expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
+    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+  }, 60_000);
+
+  it('a non-threadsafe release raises QR wait for teller transactions', () => {
+    expect(run(card('QR_RELEASE')).qrMsPerTxn).toBeGreaterThan(2 * run([]).qrMsPerTxn);
+  }, 60_000);
 });
