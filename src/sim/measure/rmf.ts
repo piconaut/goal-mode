@@ -40,6 +40,10 @@ export interface LparIntervalAcc {
   unparkedVl: number;
 }
 
+export interface RcIntervalAcc extends ScpIntervalAcc {
+  members: string[];
+}
+
 export interface RmfAcc {
   startTick: number;
   ticks: number;
@@ -51,6 +55,8 @@ export interface RmfAcc {
   cf: Record<string, { busy: number; rate: number; sync: number; async: number; service: number; ticks: number }>;
   /** Per structure: request-weighted sums (rate × value) so interval averages weight busy ticks. */
   cfStructures: Record<string, { type: string; cfLparId: string; rate: number; syncReq: number; syncSecW: number; serviceSecW: number; ticks: number }>;
+  /** Report classes, keyed lpar|name (only once the policy assigns any). */
+  rcs?: Record<string, RcIntervalAcc>;
 }
 
 export interface WlmRecord {
@@ -73,6 +79,10 @@ export interface WlmRecord {
   usingPct: { cpu: number; ziip: number; io: number };
   delayPct: { cpu: number; ziip: number; io: number; storage: number; cap: number; other: number };
   buckets: number[];
+  /** Report class row: `serviceClass` holds the report class name. */
+  reportClass?: boolean;
+  /** Service-class periods the report class's work ran in. */
+  members?: string[];
 }
 
 export interface CpuRecord {
@@ -112,6 +122,8 @@ export interface RmfInterval {
   cpu: CpuRecord[];
   cpcBusy: { cpcId: string; pool: string; physicalBusyPct: number }[];
   wlm: WlmRecord[];
+  /** Report class rows (only when the policy assigns report classes). */
+  wlmRc?: WlmRecord[];
   dasd: { iops: number; rtRandomMs: number; rtSeqMs: number; iosqMs: number; pendMs: number; discMs: number; connMs: number };
   lcus: { id: string; label: string; volumes: number; aliases: number; iops: number; iosqMs: number; rtMs: number; aliasesPerHotVol: number }[];
   cf: { lparId: string; busyPct: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
@@ -144,8 +156,19 @@ export function accumulateTick(
   cf: readonly CfResult[],
 ): RmfAcc {
   const scps = { ...acc.scps };
+  let rcs = acc.rcs;
   for (const lt of lparTicks) {
     for (const t of lt.scps) addScp(scps, lt.lparId, t);
+    if (lt.rcs) {
+      rcs = rcs ? { ...rcs } : {};
+      for (const t of lt.rcs) {
+        const k = `${lt.lparId}|${t.scKey}`;
+        const prevMembers = rcs[k]?.members ?? [];
+        addScp(rcs, lt.lparId, t);
+        const members = t.members.every((m) => prevMembers.includes(m)) ? prevMembers : [...new Set([...prevMembers, ...t.members])].sort();
+        rcs[k] = { ...rcs[k]!, members };
+      }
+    }
   }
   const la = { ...acc.lpars };
   for (const l of lpars) {
@@ -213,10 +236,10 @@ export function accumulateTick(
       };
     }
   }
-  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs };
+  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(rcs ? { rcs } : {}) };
 }
 
-function addScp(scps: Record<string, ScpIntervalAcc>, lparId: string, t: ScpTick) {
+function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: string, t: ScpTick) {
   const k = `${lparId}|${t.scKey}`;
   const a: ScpIntervalAcc = scps[k] ?? {
     ...emptyAcc(),
@@ -231,7 +254,7 @@ function addScp(scps: Record<string, ScpIntervalAcc>, lparId: string, t: ScpTick
     delayStorage: 0,
     delayCap: 0,
     failed: 0,
-  };
+  } as T;
   scps[k] = {
     ...a,
     dp: t.dp,
@@ -253,6 +276,51 @@ function addScp(scps: Record<string, ScpIntervalAcc>, lparId: string, t: ScpTick
     delayStorage: a.delayStorage + t.delayStorage,
     delayCap: a.delayCap + t.delayCap,
     failed: a.failed + t.failed,
+  } as T;
+}
+
+function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
+  return {
+    ...p,
+    completions: p.completions + a.completions,
+    rtSumSec: p.rtSumSec + a.rtSumSec,
+    buckets: addBuckets(p.buckets, a.buckets),
+    using: p.using + a.using,
+    delay: p.delay + a.delay,
+    delayCpu: p.delayCpu + a.delayCpu,
+    delayZiip: p.delayZiip + a.delayZiip,
+    delayIo: p.delayIo + a.delayIo,
+    delayOther: p.delayOther + a.delayOther,
+    cpuEngines: p.cpuEngines + a.cpuEngines,
+    ziipEngines: p.ziipEngines + a.ziipEngines,
+    iipcpEngines: p.iipcpEngines + a.iipcpEngines,
+    usingCpu: p.usingCpu + a.usingCpu,
+    usingZiip: p.usingZiip + a.usingZiip,
+    usingIo: p.usingIo + a.usingIo,
+    delayStorage: p.delayStorage + a.delayStorage,
+    delayCap: p.delayCap + a.delayCap,
+    failed: p.failed + a.failed,
+  };
+}
+
+/** A report class is homogeneous when all its work runs in one service class, heterogeneous when it
+ * mixes service classes (whose goals then don't apply). APPROX: RMF reports a homogeneous class per
+ * report class period; the game shows one row, with goal and PI only when that is a single period
+ * (IBM CICS docs, "Service classes and report classes"). */
+function rcRecord(def: ServiceDefinition, lparId: string, a: RcIntervalAcc, ticks: number): WlmRecord {
+  const classes = [...new Set(a.members.map((m) => m.split('#')[0]!))];
+  const single = a.members.length === 1;
+  const base = wlmRecord(def, lparId, single ? { ...a, scKey: a.members[0]! } : a, ticks, null);
+  const goalText = single ? base.goalText : classes.length === 1 ? `${classes[0]} ${a.members.length} PERIODS` : `HETEROGENEOUS (${classes.length})`;
+  return {
+    ...base,
+    scKey: a.scKey,
+    serviceClass: a.scKey,
+    period: 0,
+    reportClass: true,
+    members: a.members,
+    goalText,
+    ...(single ? {} : { importance: null, pi: null, buckets: emptyBuckets() }),
   };
 }
 
@@ -301,32 +369,21 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
   for (const a of Object.values(acc.scps)) {
     wlm.push(wlmRecord(ctx.def, a.lparId, a, n, a.dp));
     const p = plex[a.scKey];
-    if (!p) plex[a.scKey] = { ...a, lparId: '*PLEX', buckets: [...a.buckets] };
-    else {
-      plex[a.scKey] = {
-        ...p,
-        completions: p.completions + a.completions,
-        rtSumSec: p.rtSumSec + a.rtSumSec,
-        buckets: addBuckets(p.buckets, a.buckets),
-        using: p.using + a.using,
-        delay: p.delay + a.delay,
-        delayCpu: p.delayCpu + a.delayCpu,
-        delayZiip: p.delayZiip + a.delayZiip,
-        delayIo: p.delayIo + a.delayIo,
-        delayOther: p.delayOther + a.delayOther,
-        cpuEngines: p.cpuEngines + a.cpuEngines,
-        ziipEngines: p.ziipEngines + a.ziipEngines,
-        iipcpEngines: p.iipcpEngines + a.iipcpEngines,
-        usingCpu: p.usingCpu + a.usingCpu,
-        usingZiip: p.usingZiip + a.usingZiip,
-        usingIo: p.usingIo + a.usingIo,
-        delayStorage: p.delayStorage + a.delayStorage,
-        delayCap: p.delayCap + a.delayCap,
-        failed: p.failed + a.failed,
-      };
-    }
+    plex[a.scKey] = p ? mergeAcc(p, a) : { ...a, lparId: '*PLEX', buckets: [...a.buckets] };
   }
   for (const a of Object.values(plex)) wlm.push(wlmRecord(ctx.def, '*PLEX', a, n, null));
+
+  let wlmRc: WlmRecord[] | undefined;
+  if (acc.rcs) {
+    wlmRc = [];
+    const plexRc: Record<string, RcIntervalAcc> = {};
+    for (const a of Object.values(acc.rcs)) {
+      wlmRc.push(rcRecord(ctx.def, a.lparId, a, n));
+      const p = plexRc[a.scKey];
+      plexRc[a.scKey] = p ? { ...mergeAcc(p, a), members: [...new Set([...p.members, ...a.members])].sort() } : { ...a, lparId: '*PLEX', buckets: [...a.buckets] };
+    }
+    for (const a of Object.values(plexRc)) wlmRc.push(rcRecord(ctx.def, '*PLEX', a, n));
+  }
 
   const cpu: CpuRecord[] = Object.values(acc.lpars).map((a) => {
     const cfg = ctx.config.lpars.find((l) => l.id === a.lparId);
@@ -370,6 +427,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
     cpu,
     cpcBusy,
     wlm,
+    ...(wlmRc ? { wlmRc } : {}),
     dasd: { iops: acc.dasd.iops / dt, rtRandomMs: ms(acc.dasd.rtRandom), rtSeqMs: ms(acc.dasd.rtSeq), iosqMs: ms(acc.dasd.iosq), pendMs: ms(acc.dasd.pend), discMs: ms(acc.dasd.disc), connMs: ms(acc.dasd.conn) },
     cf: Object.entries(acc.cf).map(([lparId, a]) => ({
       lparId,

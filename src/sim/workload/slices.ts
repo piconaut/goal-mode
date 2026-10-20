@@ -102,6 +102,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
         roleTerms: [],
         spec: {
           key: `${w.id}@${lpar.id}${scKeyOf(cls.serviceClass, k)}`,
+          ...(cls.reportClass ? { reportClass: cls.reportClass } : {}),
           scKey: scKeyOf(cls.serviceClass, k),
           kind: 'TXN',
           workloadId: w.id,
@@ -149,6 +150,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
       roleTerms: terms,
       spec: {
         key: `${a.jobname}@${lpar.id}`,
+        ...(cls.reportClass ? { reportClass: cls.reportClass } : {}),
         scKey: scKeyOf(cls.serviceClass, 0),
         kind: 'AS',
         workloadId: null,

@@ -9,7 +9,7 @@ import type { R4haState } from '../cost/r4ha';
 import type { JobEndRecord, RmfAcc, RmfInterval } from '../measure/rmf';
 import type { RngState } from './rng';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
-import type { ScpTick } from '../wlm/evaluate';
+import type { ReportClassTick, ScpTick } from '../wlm/evaluate';
 import type { WlmState } from '../wlm/runtime';
 
 export type PoolType = 'CP' | 'ZIIP' | 'ICF';
@@ -159,6 +159,7 @@ export interface WorkloadTick {
 export interface LparTick {
   lparId: string;
   scps: ScpTick[];
+  rcs?: ReportClassTick[];
   roleHealth: Record<string, { health: number; queueRatio: number }>;
 }
 

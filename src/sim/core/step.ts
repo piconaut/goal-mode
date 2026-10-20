@@ -226,12 +226,15 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       const scKey = scKeyOf(cls.serviceClass, 0);
       const shape = jobShape(j.def, cpSp, zSp, seqRt);
       const cfCpu = j.def.usesDb2 ? shape.ioRate * DB2.cfRequestsPerBatchIo * cfZosCpuSec : 0;
-      let ref = refs[scKey];
+      // Jobs in different report classes need their own slice so RMF can report them apart.
+      const refKey = cls.reportClass ? `${scKey}/${cls.reportClass}` : scKey;
+      let ref = refs[refKey];
       if (!ref) {
         ref = {
           slice: {
-            key: `BATCH:${scKey}@${l.id}`,
+            key: `BATCH:${refKey}@${l.id}`,
             scKey,
+            ...(cls.reportClass ? { reportClass: cls.reportClass } : {}),
             kind: 'AS',
             workloadId: null,
             jobname: null,
@@ -257,7 +260,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
           },
           jobs: [],
         };
-        refs[scKey] = ref;
+        refs[refKey] = ref;
       }
       ref.slice.cpEngines += shape.cpRate + cfCpu;
       ref.slice.ziipEngines += shape.zRate;
@@ -491,7 +494,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)) });
     }
     systems.push({ lparId: l.id, scps });
-    lparTicks.push({ lparId: l.id, scps: res.scps, roleHealth: res.roleHealth });
+    lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth });
   }
 
   // I/O subsystem and CF for next tick.

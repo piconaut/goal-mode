@@ -55,6 +55,8 @@ export interface SliceSpec {
   outsideWaitSec: number;
   /** Diagnostic split of extraOtherSec (e.g. cf, lock, qr). */
   extraParts?: Record<string, number>;
+  /** Report class from classification (reporting only: WLM never manages to it). */
+  reportClass?: string | null;
 }
 
 /** Where a transaction's response time went, seconds per transaction. */
@@ -147,9 +149,37 @@ export interface ScpTick {
   buckets: number[];
 }
 
+/** A report class's tick on one image, and the service-class periods its work ran in. */
+export interface ReportClassTick extends ScpTick {
+  members: string[];
+}
+
+export const emptyScpTick = (scKey: string, dp: number): ScpTick => ({
+  scKey,
+  dp,
+  cpEngines: 0,
+  ziipEngines: 0,
+  iipcpEngines: 0,
+  usingCpu: 0,
+  usingZiip: 0,
+  usingIo: 0,
+  delayCpu: 0,
+  delayZiip: 0,
+  delayIo: 0,
+  delayOther: 0,
+  delayStorage: 0,
+  delayCap: 0,
+  completions: 0,
+  failed: 0,
+  rtSumSec: 0,
+  buckets: emptyBuckets(),
+});
+
 export interface LparEvalResult {
   slices: SliceResult[];
   scps: ScpTick[];
+  /** Report classes (only when the policy assigns any). */
+  rcs?: ReportClassTick[];
   roleHealth: Record<string, { health: number; queueRatio: number }>;
 }
 
@@ -384,8 +414,38 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
 
   const scpMap: Record<string, ScpTick> = {};
   const scps: ScpTick[] = [];
+  const rcMap: Record<string, ReportClassTick> = {};
+  const rcs: ReportClassTick[] = [];
+  const add = (t: ScpTick, s: SliceSpec, r: SliceResult) => {
+    t.cpEngines += r.cpGranted;
+    t.ziipEngines += r.ziipGranted;
+    t.iipcpEngines += r.iipcpGranted;
+    t.usingCpu += r.usingCpu;
+    t.usingZiip += r.usingZiip;
+    t.usingIo += r.usingIo;
+    t.delayCpu += r.delayCpu;
+    t.delayZiip += r.delayZiip;
+    t.delayIo += r.delayIo;
+    t.delayOther += r.delayOther;
+    t.delayStorage += r.delayStorage;
+    t.delayCap += r.delayCap;
+    t.completions += r.completions;
+    t.failed += r.failed;
+    t.rtSumSec += r.completions * r.rtMeanSec;
+    if (s.goalRtSec !== null) addToBuckets(t.buckets, s.goalRtSec, r.completions, r.rtMeanSec, s.rtSigma);
+  };
   slices.forEach((s, i) => {
     const r = results[i]!;
+    if (s.reportClass) {
+      let rt = rcMap[s.reportClass];
+      if (!rt) {
+        rt = { ...emptyScpTick(s.reportClass, 0), members: [] };
+        rcMap[s.reportClass] = rt;
+        rcs.push(rt);
+      }
+      if (!rt.members.includes(s.scKey)) rt.members.push(s.scKey);
+      add(rt, s, r);
+    }
     let t = scpMap[s.scKey];
     if (!t) {
       t = {
@@ -411,23 +471,8 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       scpMap[s.scKey] = t;
       scps.push(t);
     }
-    t.cpEngines += r.cpGranted;
-    t.ziipEngines += r.ziipGranted;
-    t.iipcpEngines += r.iipcpGranted;
-    t.usingCpu += r.usingCpu;
-    t.usingZiip += r.usingZiip;
-    t.usingIo += r.usingIo;
-    t.delayCpu += r.delayCpu;
-    t.delayZiip += r.delayZiip;
-    t.delayIo += r.delayIo;
-    t.delayOther += r.delayOther;
-    t.delayStorage += r.delayStorage;
-    t.delayCap += r.delayCap;
-    t.completions += r.completions;
-    t.failed += r.failed;
-    t.rtSumSec += r.completions * r.rtMeanSec;
-    if (s.goalRtSec !== null) addToBuckets(t.buckets, s.goalRtSec, r.completions, r.rtMeanSec, s.rtSigma);
+    add(t, s, r);
   });
 
-  return { slices: results, scps, roleHealth };
+  return rcs.length > 0 ? { slices: results, scps, roleHealth, rcs } : { slices: results, scps, roleHealth };
 }

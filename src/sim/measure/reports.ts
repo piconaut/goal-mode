@@ -30,6 +30,32 @@ function header(title: string, iv: RmfInterval): string[] {
 
 const rtText = (r: WlmRecord) => (r.avgRtSec === null ? '      -' : pad(r.avgRtSec < 10 ? r.avgRtSec.toFixed(3) : r.avgRtSec.toFixed(1), 7));
 
+function wlmRow(r: WlmRecord): string {
+  return [
+    padR(r.serviceClass, 9),
+    `${pad(r.reportClass ? '-' : r.period, 3)} ${pad(r.importance ?? '-', 3)}`,
+    ' ',
+    padR(r.goalText, 24),
+    rtText(r),
+    f(r.execVelocity, 1, 7),
+    f(r.pi, 2, 6),
+    pad(Math.round(r.ended), 9),
+    f(r.endPerSec, 1, 9),
+    f(r.applCpPct, 1, 6),
+    f(r.applIipcpPct, 1, 6),
+    f(r.applIipPct, 1, 6),
+    f(r.usingPct.cpu, 0, 5),
+    f(r.usingPct.ziip, 0, 4),
+    f(r.usingPct.io, 0, 4),
+    f(r.delayPct.cpu, 0, 5),
+    f(r.delayPct.ziip, 0, 4),
+    f(r.delayPct.io, 0, 4),
+    f(r.delayPct.storage, 0, 4),
+    f(r.delayPct.cap, 0, 4),
+    f(r.delayPct.other, 0, 4),
+  ].join(' ');
+}
+
 export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
   const rows = iv.wlm
     .filter((r) => r.lparId === system)
@@ -39,42 +65,28 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
   out.push('');
   out.push('SERVICE   PER IMP  GOAL                      ACTUAL   EX    PERF   ENDED     END/S  --APPL %--------  ---USING %---  --------DELAY %---------');
   out.push('CLASS                                        RESP    VEL%   INDX                    CP  IIPCP   IIP  CPU  IIP  I/O  CPU  IIP  I/O  STO  CAP  OTH');
-  for (const r of rows) {
-    out.push(
-      [
-        padR(r.serviceClass, 9),
-        pad(r.period, 3),
-        pad(r.importance ?? '-', 3),
-        ' ',
-        padR(r.goalText, 24),
-        rtText(r),
-        f(r.execVelocity, 1, 7),
-        f(r.pi, 2, 6),
-        pad(Math.round(r.ended), 9),
-        f(r.endPerSec, 1, 9),
-        f(r.applCpPct, 1, 6),
-        f(r.applIipcpPct, 1, 6),
-        f(r.applIipPct, 1, 6),
-        f(r.usingPct.cpu, 0, 5),
-        f(r.usingPct.ziip, 0, 4),
-        f(r.usingPct.io, 0, 4),
-        f(r.delayPct.cpu, 0, 5),
-        f(r.delayPct.ziip, 0, 4),
-        f(r.delayPct.io, 0, 4),
-        f(r.delayPct.storage, 0, 4),
-        f(r.delayPct.cap, 0, 4),
-        f(r.delayPct.other, 0, 4),
-      ].join(' '),
-    );
+  for (const r of rows) out.push(wlmRow(r));
+  const rcRows = (iv.wlmRc ?? []).filter((r) => r.lparId === system).sort((a, b) => a.scKey.localeCompare(b.scKey));
+  if (rcRows.length > 0) {
+    out.push('', `REPORT BY: SYSTEM=${system}   (REPORT CLASSES; GOAL AND PI ONLY FOR HOMOGENEOUS CLASSES)`, '');
+    out.push('REPORT    PER IMP  GOAL                      ACTUAL   EX    PERF   ENDED     END/S  --APPL %--------  ---USING %---  --------DELAY %---------');
+    out.push('CLASS                                        RESP    VEL%   INDX                    CP  IIPCP   IIP  CPU  IIP  I/O  CPU  IIP  I/O  STO  CAP  OTH');
+    for (const r of rcRows) out.push(wlmRow(r));
+    out.push('', 'SERVICE CLASS PERIODS PER REPORT CLASS');
+    for (const r of rcRows) out.push(`${padR(r.serviceClass, 9)} ${(r.members ?? []).join(', ')}`);
   }
   return out.join('\n');
 }
 
 export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'): string {
-  const r = iv.wlm.find((x) => x.lparId === system && x.scKey === scKey);
+  const r = iv.wlm.find((x) => x.lparId === system && x.scKey === scKey) ?? iv.wlmRc?.find((x) => x.lparId === system && x.scKey === scKey);
   const out = header('WORKLOAD ACTIVITY', iv);
   if (!r) return [...out, `NO DATA FOR ${scKey} ON ${system}`].join('\n');
-  out.push(`REPORT BY: SERVICE CLASS=${r.serviceClass}  PERIOD=${r.period}  IMPORTANCE=${r.importance ?? '-'}  SYSTEM=${system}`);
+  out.push(
+    r.reportClass
+      ? `REPORT BY: REPORT CLASS=${r.serviceClass}  SERVICE CLASS PERIODS=${(r.members ?? []).join(',')}  SYSTEM=${system}`
+      : `REPORT BY: SERVICE CLASS=${r.serviceClass}  PERIOD=${r.period}  IMPORTANCE=${r.importance ?? '-'}  SYSTEM=${system}`,
+  );
   out.push(`GOAL: ${r.goalText}`);
   out.push('');
   out.push(`-TRANSACTIONS-   ENDED ${Math.round(r.ended)}   END/S ${r.endPerSec.toFixed(2)}   FAILED ${Math.round(r.failed)}`);

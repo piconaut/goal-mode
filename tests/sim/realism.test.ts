@@ -3,6 +3,8 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
+import { BASEPOL } from '../../src/content/wlm/basepol';
+import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
@@ -147,5 +149,45 @@ describe('project modifiers', () => {
     const shifted = run([{ kind: 'SET_MODIFIER', mod: 'ziipShift', key: 'MOBILE', value: 0.5 }]);
     expect(tuned.cp).toBeLessThan(asIs.cp);
     expect(shifted.ziip).toBeGreaterThan(asIs.ziip);
+  }, 60_000);
+});
+
+describe('report classes (F6)', () => {
+  it('split mixed work for reporting without changing how WLM manages it', () => {
+    let base = initState(42, MIDWEST);
+    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    const policy = (withRc: boolean) => {
+      const d = structuredClone(BASEPOL);
+      d.policyName = 'RCPOL';
+      const ddf = d.subsystems.find((x) => x.subsystem === 'DDF')!;
+      ddf.rules = [
+        { qualifier: 'UI', pattern: 'MOBAPI', serviceClass: 'DDFPRD', reportClass: withRc ? 'RMOBILE' : null, children: [] },
+        { qualifier: 'UI', pattern: 'BIUSER', serviceClass: 'DDFPRD', reportClass: withRc ? 'RADHOC' : null, children: [] },
+      ];
+      if (withRc) d.reportClasses = ['RADHOC', 'RMOBILE'];
+      return d;
+    };
+    const run = (withRc: boolean) => {
+      let s = step(base, [{ kind: 'ACTIVATE_POLICY', definition: policy(withRc) }], MIDWEST);
+      const n = s.rmf.intervals.length;
+      while (s.rmf.intervals.length === n) s = step(s, [], MIDWEST);
+      return s;
+    };
+    const plain = run(false);
+    const rc = run(true);
+    expect(rc.lpars).toEqual(plain.lpars);
+    expect(plain.rmf.intervals.at(-1)!.wlmRc).toBeUndefined();
+    const rows = rc.rmf.intervals.at(-1)!.wlmRc!.filter((r) => r.lparId === '*PLEX');
+    const mob = rows.find((r) => r.serviceClass === 'RMOBILE')!;
+    const adhoc = rows.find((r) => r.serviceClass === 'RADHOC')!;
+    expect(mob.members).toContain('DDFPRD#1');
+    expect(mob.avgRtSec!).toBeLessThan(adhoc.avgRtSec!);
+    const ddf1 = rc.rmf.intervals.at(-1)!.wlm.find((r) => r.lparId === '*PLEX' && r.scKey === 'DDFPRD#1')!;
+    // Every DDF transaction is in one of the two report classes.
+    expect(mob.ended + adhoc.ended).toBeGreaterThanOrEqual(ddf1.ended - 1e-6);
+    // Long ad-hoc queries cross into period 2: one service class, two periods, so no single goal or PI.
+    if (adhoc.members!.length > 1) expect([adhoc.pi, adhoc.goalText]).toEqual([null, 'DDFPRD 2 PERIODS']);
+    else expect(adhoc.pi).not.toBeNull();
+    expect(renderWlmSummary(rc.rmf.intervals.at(-1)!)).toMatch(/REPORT CLASSES[\s\S]*RMOBILE/);
   }, 60_000);
 });
