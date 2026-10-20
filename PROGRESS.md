@@ -646,7 +646,17 @@ to `main` (this is the last push there; M9 goes on its feature branch).
   compare agents with the strategy bots
   - Loop 82: `.claude/agents/goal-mode-player.md`, `-cautious-operator`, `-cost-cutter` (Sonnet; may read only the
     command/WLM-edit type files and the Codex, never scenario/event content); `docs/agents.md`; `runs/` git-ignored
-- [ ] Smoke test: an agent completes at least day 1 headlessly; record its outcome in PROGRESS.md
+- [x] Smoke test: an agent completes at least day 1 headlessly; record its outcome in PROGRESS.md
+  - Loop 83: `goal-mode-player` (Sonnet, ~47k tokens, 23 calls, 2.7 min) played seed 42 day 1 through REVIEW and
+    planned day 2: no day-1 changes, RCA for the 20:00 MOBILE incident guessed CPU_PRIORITY/BATCH_OVERLAP (3 pts;
+    truth CPU_PRIORITY/POLICY), drafted VENDOR_TRIAL, bought RMF_MON3 + RC_ADVISOR, spotted CF02 ~75% busy with
+    PR/SM delay from `mon3` and planned CF weight rebalancing. Friction it reported, fixed in the same loop:
+    `report WLMGL` silently printed DASD (now aliases + validation); refusals named internal features instead of
+    tool ids; MOBILE was invisible (shares a service class) with no hint that report classes are needed (reports
+    now list the interval's report classes or explain how to add them; new `rcadvice` verb); incidents now show
+    start clock and RMF interval; `mon3` has a legend; "hours left" → "engineer-hours left"
+  - Open: agent saw 45–70% OTH delay on ONLHI/DDFPRD at PI 0.5 and found it unexplained. Check what OTH
+    collects in the WLMGL render and whether the Codex explains it
 - [ ] Spectator mode (user request 2026-10-20: watch agents play through the real UI): `play.ts` writes the run
   (same serialised RunState the browser saves) to a run file after every command; a small Vite dev-server
   plugin serves it, and the UI opened with `?spectate=<run>` polls it and renders the normal tabs (Monitor III

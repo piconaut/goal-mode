@@ -4,7 +4,7 @@
 //   npm run play -- runs/a.json status | catalog | mon3 | smf DB2|CICS|BATCH|SMF113 [hour]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [index] | report WLM_DETAIL 5 ONLHI#1
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
-//   npm run play -- runs/a.json activate | discard | tfp yes|no
+//   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json json '{"cmd":"change","req":{...}}'   (any PlayCommand, e.g. wlm edits)
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -34,6 +34,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'rca': return { cmd: 'rca', incidentId: Number(rest[0]), mechanism: rest[1] as Mechanism, trigger: rest[2] as Trigger };
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
     case 'activate': return { cmd: 'activate' };
+    case 'rcadvice': return { cmd: 'rcadvice', workloadId: rest[0] ?? null };
     case 'discard': return { cmd: 'discard' };
     case 'tfp': return { cmd: 'tfp', accept: rest[0] === 'yes' };
     case 'report': return { cmd: 'report', kind: (rest[0] ?? 'WLM_SUMMARY') as ReportKind, index: rest[1] !== undefined ? Number(rest[1]) : undefined, scKey: rest[2], system: rest[3] };

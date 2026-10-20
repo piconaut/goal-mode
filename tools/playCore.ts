@@ -13,6 +13,10 @@ import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } fr
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
 import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
+import { TOOLS, type ToolFeature } from '../src/content/tools';
+import { adviseReportClasses } from '../src/game/rcAdvisor';
+import { workItems } from '../src/game/classifyExplain';
+import { clockAt, formatClock } from '../src/sim/core/clock';
 import { decideTfp } from '../src/game/tfp';
 import { applyWlmEdit, type WlmEdit } from '../src/game/wlmEdit';
 import { buildView } from '../src/game/view';
@@ -37,7 +41,8 @@ export type PlayCommand =
   | { cmd: 'buy'; toolId: string }
   | { cmd: 'tfp'; accept: boolean }
   | { cmd: 'report'; kind: ReportKind; index?: number; scKey?: string; system?: string }
-  | { cmd: 'smf'; kind: SmfKind; hour?: string };
+  | { cmd: 'smf'; kind: SmfKind; hour?: string }
+  | { cmd: 'rcadvice'; workloadId?: string | null };
 
 export interface PlayFile {
   version: 1;
@@ -53,6 +58,16 @@ export interface PlayResult {
 }
 
 const sc = (run: RunState) => scenarioFor(MIDWEST, run.difficulty);
+
+const REPORT_KINDS: ReportKind[] = ['WLM_SUMMARY', 'WLM_DETAIL', 'PARTITION', 'CF', 'DASD'];
+/** Real RMF report names an agent may reach for. */
+const REPORT_ALIASES: Record<string, ReportKind> = { WLMGL: 'WLM_SUMMARY', WORKLOAD: 'WLM_SUMMARY', CPU: 'PARTITION', CFACT: 'CF', CF_ACTIVITY: 'CF', DEVICE: 'DASD' };
+
+/** Name the tool to buy, not the internal feature it unlocks. */
+function needs(feature: ToolFeature, what: string): string {
+  const tools = TOOLS.filter((t) => t.unlocks.includes(feature)).map((t) => t.id);
+  return `${what} needs the ${tools.join(' or ') || feature} tool (buy ${tools[0] ?? feature}; see catalog).`;
+}
 
 // JSON has no Infinity/NaN; the sim uses Infinity for "uncapped", so tag them to keep the state bit-identical.
 export function encodePlayFile(f: PlayFile): string {
@@ -142,24 +157,49 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(o.run, o.message, o.ok);
     }
     case 'report': {
+      const kind = REPORT_ALIASES[c.kind.toUpperCase()] ?? (c.kind.toUpperCase() as ReportKind);
+      if (!REPORT_KINDS.includes(kind)) return fail(`Report kinds: ${REPORT_KINDS.join(' ')} (WLMGL = WLM_SUMMARY)`);
       const ivs = run.sim.rmf.intervals;
       const index = c.index ?? ivs.length - 1;
       const iv = ivs[index];
       if (!iv) return fail(ivs.length ? `RMF intervals 0..${ivs.length - 1}` : 'No RMF intervals yet (they cover intervals that ended before the day started).');
-      const need = REPORT_FEATURE[c.kind];
-      if (need && !hasFeature(run, need)) return fail(`This report needs an analytics tool (${need}).`);
+      const need = REPORT_FEATURE[kind];
+      if (need && !hasFeature(run, need)) return fail(needs(need, 'This report'));
+      const rcs = [...new Set((iv.wlmRc ?? []).map((r) => r.scKey))].sort();
+      const rcLine = rcs.length
+        ? `\nReport classes in this interval: ${rcs.join(' ')} (report WLM_DETAIL ${index} <name>)`
+        : '\nNo report classes defined: workloads that share a service class are not shown separately. Add report classes with rcadvice (RC_ADVISOR tool) or a wlm SET_RULE_TARGET edit.';
       const text =
-        c.kind === 'WLM_SUMMARY' ? renderWlmSummary(iv, c.system ?? '*PLEX')
-        : c.kind === 'WLM_DETAIL' ? renderWlmDetail(iv, c.scKey ?? 'ONLHI#1', c.system ?? '*PLEX')
-        : c.kind === 'PARTITION' ? renderPartitionData(iv)
-        : c.kind === 'CF' ? renderCfActivity(iv)
+        kind === 'WLM_SUMMARY' ? renderWlmSummary(iv, c.system ?? '*PLEX') + rcLine
+        : kind === 'WLM_DETAIL' ? renderWlmDetail(iv, c.scKey ?? 'ONLHI#1', c.system ?? '*PLEX') + rcLine
+        : kind === 'PARTITION' ? renderPartitionData(iv)
+        : kind === 'CF' ? renderCfActivity(iv)
         : renderDasdSummary(iv);
-      return done(noteReportOpened(run, `${c.kind}:${index}`), text);
+      return done(noteReportOpened(run, `${kind}:${index}`), text);
+    }
+    case 'rcadvice': {
+      if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) return fail(needs('REPORT_CLASS_ADVISOR', 'Report class advice'));
+      const s = sc(run);
+      const items = workItems([...s.workloads, ...run.sim.extraWorkloads], [...s.addressSpaces, ...run.sim.extraAddressSpaces], s.batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth));
+      let def = file.pendingPolicy ?? { ...run.sim.wlm.definition, policyName: nextPolicyName(run.sim.wlm.definition.policyName) };
+      const added: string[] = [];
+      // Re-advise after each edit: an added rule shifts the paths of the ones below it (as the browser does).
+      for (let guard = 0; guard < 32; guard++) {
+        const a = adviseReportClasses(def, items).find((x) => !c.workloadId || x.workloadId === c.workloadId);
+        if (!a) break;
+        const res = applyWlmEdit(def, a.edit);
+        if (typeof res === 'string') return fail(res);
+        def = res;
+        added.push(a.workloadId);
+        if (c.workloadId) break;
+      }
+      if (!added.length) return fail('No report class advice left.');
+      return done(run, `Report classes for ${added.join(' ')} staged in ${def.policyName}. activate to install (takes effect next day).`, true, def);
     }
     case 'smf': {
       const need = SMF_FEATURE[c.kind];
       if (!need) return fail(`SMF kinds: ${Object.keys(SMF_FEATURE).join(' ')}`);
-      if (!hasFeature(run, need)) return fail(`This SMF view needs an analytics tool (${need}).`);
+      if (!hasFeature(run, need)) return fail(needs(need, 'This SMF view'));
       const hours = smfHourRefs(run);
       const hour = c.hour ?? hours[0]?.key;
       const rows =
@@ -182,7 +222,7 @@ export function statusText(file: PlayFile): string {
   const out: string[] = [];
   out.push(`${v.phase}  day ${v.day + 1}/${v.maxDays} ${v.weekday}  ${v.clock}  difficulty ${v.difficulty.name}  seed ${v.seed}`);
   out.push(`trust ${v.trustOverall.toFixed(1)} (${FACETS.map((f) => `${f} ${v.trust[f].toFixed(0)}`).join(', ')})  score ${v.score}`);
-  out.push(`hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}  MLC month est $${Math.round(v.mlcEstimate).toLocaleString()} / opex budget $${Math.round(v.opexBudget).toLocaleString()}`);
+  out.push(`engineer-hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}  MLC month est $${Math.round(v.mlcEstimate).toLocaleString()} / opex budget $${Math.round(v.opexBudget).toLocaleString()}`);
   out.push(`policy ${v.policyName}${file.pendingPolicy ? `  (pending edits: ${file.pendingPolicy.policyName})` : ''}  tools ${v.tools.filter((t) => t.owned).map((t) => t.id).join(' ') || 'none'}`);
   out.push(`CPC busy ${v.cpcBusyPct.toFixed(0)}%  ` + v.lpars.map((l) => `${l.id} ${l.cpBusyPct.toFixed(0)}%`).join('  '));
   if (v.phase === 'LIVE') {
@@ -201,7 +241,7 @@ export function statusText(file: PlayFile): string {
     for (const m of today) out.push(`  [day ${m.day + 1}] ${m.from}: ${m.subject}\n    ${m.body.replace(/\n/g, '\n    ')}`);
   }
   const open = v.incidents.filter((i) => !i.rca);
-  if (open.length) out.push('incidents without RCA: ' + open.map((i) => `#${i.id} ${i.workloadId} day ${i.day + 1} ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%`).join('; '));
+  if (open.length) out.push('incidents without RCA: ' + open.map((i) => `#${i.id} ${i.workloadId} day ${i.day + 1} from ${formatClock(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%`).join('; '));
   const planned = v.changes.filter((c) => c.status === 'PLANNED');
   if (planned.length) out.push('planned changes: ' + planned.map((c) => `#${c.id} ${c.label} (day ${c.activateDay + 1})`).join('; '));
   if (v.draft) out.push('draft options: ' + v.draft.map((d) => `${d.id}: ${d.title}. ${d.description}`).join('\n  '));
@@ -215,7 +255,7 @@ export function statusText(file: PlayFile): string {
 export function mon3Text(file: PlayFile): string {
   const m = buildView(file.run, sc(file.run)).mon3;
   if (!m) return 'Monitor III needs the MON3 tool.';
-  return [`range ${m.rangeSec}s  L:P ${m.logicalToPhysical.toFixed(2)}`, ...m.systems.map((x) => JSON.stringify(x)), ...m.cpc.map((x) => JSON.stringify(x)),
+  return [`Monitor III, last ${m.rangeSec}s. CPC logical:physical CP ratio ${m.logicalToPhysical.toFixed(2)}. Lines: systems (SYSINFO), CPC (per LPAR), delay rows per service class period (DELAY/PROCU, % of samples), enclaves, exceptions (WFEX).`, ...m.systems.map((x) => JSON.stringify(x)), ...m.cpc.map((x) => JSON.stringify(x)),
     ...m.rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
 }
 
@@ -231,4 +271,10 @@ export function catalogText(file: PlayFile): string {
   out.push(`RCA mechanisms: ${MECHANISMS.join(' ')}`, `RCA triggers: ${TRIGGERS.join(' ')}`);
   out.push('Config/WLM commands for change {"label":..,"commands":[...]}: see the Command type in src/sim/core/commands.ts; WLM edits: WlmEdit in src/game/wlmEdit.ts');
   return out.join('\n');
+}
+
+/** The RMF interval (index) whose span contains this tick; intervals end on the half hour. */
+function intervalAt(run: RunState, tick: number): number | string {
+  const i = run.sim.rmf.intervals.findIndex((iv) => iv.endTick > tick);
+  return i >= 0 ? i : 'not yet closed';
 }
