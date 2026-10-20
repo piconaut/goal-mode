@@ -373,12 +373,14 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1,
     // Closest existing trigger: a surge of user-driven demand (no dedicated policy-side trigger fits a month-old change).
     trigger: 'DEMAND_SURGE',
-    // Every workload does some catalog/system I/O on LCU 30, so RCA credits the card for the I/O-heavy online apps.
-    affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
+    // No affects list: triggerOf blames any active card that lists the workload whatever the mechanism, so listing
+    // the online apps here stole the blame for unrelated CPU incidents (textbook seed 7, day 15 after a CF failure).
+    affects: [],
     startHour: [7, 10],
     durationHours: 2.5,
-    // FICTIONAL magnitude: 75_000 random I/Os per second on LCU 30's hot volumes: exhausts its 21 aliases, response ≈ 0.2 ms → ≈ 3 ms.
-    begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 75_000 } }],
+    // FICTIONAL magnitude: 60_000 random I/Os per second on LCU 30 roughly doubles its response at day-0 load. The
+    // curve is a cliff just above (75k ≈ 15×), and nightly growth moves the cliff closer, so stay below it.
+    begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 60_000 } }],
     end: [{ kind: 'SET_LCU', lcuId: '30', extraIops: {} }],
     fix: 'HOLD_HSM_RECALLS',
     forewarning: null,

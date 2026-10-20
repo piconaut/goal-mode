@@ -564,6 +564,15 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 
 **M8.4 Content**
 - [~] Events to ~25 (SPEC §9) (17 now; HSM_RECALL_STORM (LCU 30 recall I/O, fix HOLD_HSM_RECALLS, rumoured) and CP_SPARING (red-herring note, never attributed) added; 15 before; loop 60 added NEW_APP_GOLIVE (BOOKING lands in SYSOTHER and stays, once per run, rumoured) and POWER_CAP (one capacity setting down for 6 h, resolved at start so upgrades are not undone; new `oncePerRun`/`capacityDrop` card fields) with realism tests; earlier: 13; loop 58 added SHADOW_IT and QR_RELEASE with fixes, rumours and realism tests; re-sweep the bots once the deck is complete): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT
+  - Loop 63 sweep (Normal, seeds 1–10, all 17 cards; expert now classifies the booking app too): **expert**
+    40 / 40 / 40, median 2754, victory 9 · trust 1 (seed 6, day 32, Retail). **Textbook** 15 / 28 / 28, median
+    1716, ends batch 4 · trust 6; four Retail trust collapses on days 15–24 (was ≥ 22 before the new cards).
+    Seed 7 replay: day 13 CF01 failure, textbook never moves the structures home, retry storm, Retail 0 on day 15;
+    the same with the HSM storm at 60k or 75k (identical score), so the new cards mostly reshuffle the draws.
+    HSM storm magnitude lowered 75k → 60k anyway (75k is past the LCU 30 cliff: ≈ 15× response; 60k ≈ 2×)
+  - [ ] RCA ground truth: `triggerOf` blames any active card listing the workload regardless of mechanism (an
+    I/O card can take the blame for a CPU meltdown). Give cards the mechanisms they cause and match on them;
+    changes RCA truth for every card, so regenerate goldens and re-check the RCA bot
 - [ ] More draft options and perks; constraint cards with persistent modifiers
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
@@ -706,6 +715,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 63):** expert bot classifies the booking app; Normal sweep with 17 cards; HSM storm 60k; open item on RCA attribution.
 - **2026-10-20 (loop 62, user request):** merger advance hint on Normal as well.
 - **2026-10-20 (loop 61):** HSM_RECALL_STORM and CP_SPARING events (implementer subagent, reviewed; gave the storm an affects list so RCA can credit it). 246 tests.
 - **2026-10-20 (loop 60):** NEW_APP_GOLIVE and POWER_CAP events (drafted by the implementer subagent, reviewed; fixed a 72 h vanishing app, possible double draw, and a cap that could undo an upgrade). 245 tests.

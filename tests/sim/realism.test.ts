@@ -439,6 +439,7 @@ describe('event cards (SPEC §9)', () => {
     };
     const asIs = lcu30([]);
     const storm = lcu30(card('HSM_RECALL_STORM'));
-    expect(storm.rt).toBeGreaterThan(3 * asIs.rt);
+    expect(storm.rt).toBeGreaterThan(1.8 * asIs.rt);
+    expect(storm.iosq).toBeGreaterThan(100 * asIs.iosq);
   }, 60_000);
 });
