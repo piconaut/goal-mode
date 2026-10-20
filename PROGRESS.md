@@ -638,12 +638,14 @@ to `main` (this is the last push there; M9 goes on its feature branch).
   - [x] Loop 81: `catalog` (hardware, fixes, tool tree with insight costs, RCA vocabulary), `smf DB2|CICS|BATCH|SMF113
     [hour]` (tool-gated, counts as an opened report like the browser) and `mon3` (Monitor III rows as JSON lines)
   - [ ] Still to add: ask-around, projects, pins/evidence for RCAs, a short reference of Command/WlmEdit shapes
-- [ ] Agent definition files (e.g. `.claude/agents/goal-mode-player.md`, plus variants such as a cautious
+- [x] Agent definition files (e.g. `.claude/agents/goal-mode-player.md`, plus variants such as a cautious
   operator and a cost-cutter) that play a full run through that CLI: diagnose from reports, make changes,
   submit RCAs, keep a run log
-- [ ] Documentation (`docs/agents.md`, linked from the README and CLAUDE.md): how to start a run, how to launch
+- [x] Documentation (`docs/agents.md`, linked from the README and CLAUDE.md): how to start a run, how to launch
   each agent, what it can see and do (no access to hidden ground truth), where logs and scores go, and how to
   compare agents with the strategy bots
+  - Loop 82: `.claude/agents/goal-mode-player.md`, `-cautious-operator`, `-cost-cutter` (Sonnet; may read only the
+    command/WLM-edit type files and the Codex, never scenario/event content); `docs/agents.md`; `runs/` git-ignored
 - [ ] Smoke test: an agent completes at least day 1 headlessly; record its outcome in PROGRESS.md
 - [ ] Spectator mode (user request 2026-10-20: watch agents play through the real UI): `play.ts` writes the run
   (same serialised RunState the browser saves) to a run file after every command; a small Vite dev-server
