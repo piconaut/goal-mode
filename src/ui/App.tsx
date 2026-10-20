@@ -7,6 +7,7 @@ import { Actions } from './Actions';
 import { Analytics } from './Analytics';
 import { AskAround } from './AskAround';
 import { Codex } from './Codex';
+import { ErrorBoundary } from './ErrorBoundary';
 import { Finance } from './Finance';
 import { LineChart } from './LineChart';
 import { Monitor } from './Monitor';
@@ -42,6 +43,7 @@ export function App() {
           </button>
         )}
       </div>
+      <ErrorBoundary key={tab} where={`${tab} tab`} onReset={() => setTab('console')}>
       {tab === 'console' && <Console v={v} history={game.history} />}
       {tab === 'monitor' && <Monitor v={v} game={game} />}
       {tab === 'reports' && (
@@ -56,7 +58,10 @@ export function App() {
       {tab === 'finance' && <Finance v={v} game={game} />}
       {tab === 'codex' && <Codex v={v} />}
       {tab === 'inbox' && <Inbox v={v} game={game} />}
+      </ErrorBoundary>
+      <ErrorBoundary where="briefing / review" onReset={() => setOverlayOpen(false)}>
       <Overlays v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
+      </ErrorBoundary>
       {game.toast && <div className={`toast ${game.toast.ok ? '' : 'bad'}`}>{game.toast.message}</div>}
     </div>
   );
