@@ -479,7 +479,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     (which chain or event pushes the critical path even at speed 1.0) before tuning growth or the deadline.
     Seed 20: the REORG overrun (no SLA incident, only batch stretch via IOSQ on LCU 21) took batch to
     05:21–05:57 on days 23/26/27 because no bot reacted to it. Textbook/expert now -TERM UTILITY on sight;
-    expert seed 20 → VICTORY, score 2716
+    expert seed 20 → VICTORY, score 2716. Next: re-sweep textbook, expert and spendtowin over seeds 1–20
+    (a sweep started in loop 39 was stopped at a session switch) and record the results here
 - [x] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
   (loop 38: seed 42, 2 days with planned day-1 changes and an emergency change on day 2, ~20 s; hashes in
   `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
