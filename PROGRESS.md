@@ -8,7 +8,7 @@ Status tracker for **GOAL MODE**. Update at the end of every working session.
 - **Last updated:** 2026-10-19
 - **Next up:** M8 (balance harness M8.2 first: sweeps across seeds; M8.1 structural perf in parallel).
 - **Repo:** https://github.com/piconaut/goal-mode (branch `main`).
-- **Health:** `npm run check` green (213 tests). Headless: ~8 s/day (~0.9 ms/tick). Fine for the UI; slow for bots (see Risks).
+- **Health:** `npm run check` green (225 tests). Headless: ~2.2–2.7 s per steady-state day, ~4 s for day 1 (JIT warm-up) on the cloud box (was ~4–5 s / ~6–7 s there; ~8 s on the earlier measurement). Bots ~4 s/day (see M8.1).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** Day 1–3 CPC peak ≈ 85% at 12:00; all SLAs met
@@ -443,13 +443,23 @@ Goal: a run that is fair, readable and replayable. Done when bots hit their targ
 three scenarios ship, a new player can finish day 1 with the tutorial, and an accessibility pass is clean.
 
 **M8.1 Performance (prerequisite for bots and what-if)**
-- [ ] Target ≤ 2 s per headless day (now ~7–8 s): incremental dispatch in policy-adjust projections, skip receivers that failed recently, precomputed log-normal bucket tables, avoid per-tick object churn in batch/RMF accumulators (profile first; keep determinism)
+- [ ] Target ≤ 2 s per headless day (now ~2.2–2.7 s steady, ~4 s day 1 on the cloud box): incremental dispatch in policy-adjust projections, skip receivers that failed recently, precomputed log-normal bucket tables, avoid per-tick object churn in batch/RMF accumulators (profile first; keep determinism)
 - [x] Benchmark script `npm run bench [-- --days N --seed S --hash]` (`tools/bench.ts`); `--hash` prints a
   SHA-256 of the end state so optimisations can prove they are behaviour-neutral (seed 42, 1 day: `25f061d42778588a` since loop 36)
 - Loop 21 profile (esbuild bundle + `--cpu-prof`, 1 day ≈ 8.5 s, 1.0 ms/tick): flat. Inclusive: evaluateLpar 27%
   (of which policy-adjust projections 7%), step's own loops ~20%, dispatch 7%, RMF accumulateTick 5%, GC 7%,
   log-normal buckets 5%. Safe wins applied (hoisted log-normal invariants + early exit, bucket `map`→loops,
   promo lookups only when promoted): hash unchanged, ~5–10% (noise ±10% on this box)
+- 2026-10-20 (perf thread): behaviour-neutral pass, ~1.7–1.9× (bench hash unchanged at 1, 3 and 8 days; goldens
+  pass; textbook bot seed 42 output identical over 10 days). Same box, `--days 4`: main day 1 6.1–6.7 s, days 2–4
+  3.9–5.1 s → day 1 4.1–4.5 s, days 2–4 2.3–3.2 s; textbook bot 6.3 → 4.1 s/day (6-day run). Changes: index-based
+  dispatcher/evaluator (one dispatch-order sort shared by zIIP and CP, arrays instead of id-keyed records, DP looked
+  up once per period), projections share the DP-independent demand stage and skip RT parts / SLA / report classes /
+  non-percentile buckets, one-shape slice factory (`sliceSpec`), memoised `goalInfo`, transaction slices completed in
+  place, copy-on-write batch jobs (only queued/running copied; promotion copies what it changes), cached composite
+  keys (workload@lpar, lpar|period, lpar:pool), RMF/WLM accumulators without spreads. Profile is now flat (no
+  function > 13% self); what is left is allocation (results/accumulators, GC ~5%), log-normal buckets (~5%) and
+  JIT warm-up: `step` is deoptimised ~10× on day 1 (and through day 3–4 in bot runs) as state objects change shape
 - [ ] Structural options for 4×, in expected-value order: (1) cache per-LPAR slice specs and only rebuild on
   config/policy/event changes; (2) evaluate projections on a reduced slice set (only the receiver's and donors'
   periods); (3) struct-of-arrays for scps/buckets to cut allocation (GC 7%); (4) evaluate DEVT/SYSP every 3rd
@@ -655,8 +665,8 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Risks
 
 - **Model complexity vs performance:** policy-adjustment projections re-run the evaluator
-  (≤2 receivers × ≤6 trials per system per tick). Now ~0.4 ms/tick (~3.7 s/day headless) against a
-  2 s/day target. Fine for the UI (4 ms/tick budget) but slow for bots/what-if. Ideas: skip
+  (≤2 receivers × ≤6 trials per system per tick). Now ~0.26–0.3 ms/tick (~2.2–2.7 s/day headless, steady
+  state) against a 2 s/day target. Fine for the UI (4 ms/tick budget) but slow for bots/what-if. Ideas: skip
   projections for receivers that failed in the last N intervals, incremental dispatch (only
   re-allocate levels at/below the moved DP), cheaper bucket math (precomputed z-tables).
   After M3: ~0.75 ms/tick; profile spread over step bookkeeping (~25%), evaluator (~30%), adjust (~15%).
@@ -665,6 +675,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (perf thread):** M8.1 behaviour-neutral optimisation pass, ~1.7–1.9× (details under M8.1). 225 tests.
 - **2026-10-20 (loop 37):** balance sweep tool + first 20-seed sweep (findings under M8.2).
 - **2026-10-20 (user request):** Change Desk polish (sub-tabs, summaries, collapsible sections).
 - **2026-10-20 (loop 36, restarted by the watchdog):** CICS region management; M7 sim leftovers done. 219 tests.
