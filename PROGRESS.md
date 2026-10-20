@@ -493,6 +493,14 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     trim the textbook bot back to a "reads the manual, no diagnosis" floor, or keep it and treat the
     target as met by do-nothing + spend-to-win and move the "loses ≈ day 30" role to a new naive bot.
     No tuning done (balance decision)
+  - Fourth sweep (seeds 1–20, Normal, textbook only, after the textbook trim in 48003fc; 20 runs in 28 min,
+    `--jobs 4`): **textbook** day p10/median/p90 = 27 / 28 / 28 (range 22–29), median score 1758, ends batch 18
+    · trust 2 (seeds 1/6, days 25/28); 0/20 wins. Median on target (28–32) but at its low edge with almost no
+    spread: the same deterministic batch wall as the first sweep (day-20 05:00 deadline beat + 0.4%/day batch
+    growth with no batch reaction). Outlier: seed 17 batch on day 22. Expert/spend-to-win not re-run (trim
+    left their behaviour unchanged). Suggested tweaks: per-seed spread on batch growth or the deadline-beat day
+    (content tunables) to widen p10–p90, and/or one obvious batch reaction for textbook (e.g. initiators on a
+    late critical path) to move the median toward 30
 - [x] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
   (loop 38: seed 42, 2 days with planned day-1 changes and an emergency change on day 2, ~20 s; hashes in
   `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
