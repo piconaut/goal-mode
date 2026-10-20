@@ -38,6 +38,6 @@ describe('headless play interface', () => {
     expect(mon3Text(f)).toContain('needs the MON3 tool');
     f = { ...f, run: { ...f.run, insight: 50 } };
     f = run(f, [{ cmd: 'buy', toolId: 'RMF_MON3' }, { cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
-    expect(mon3Text(f)).toMatch(/^range \d+s/);
+    expect(mon3Text(f)).toMatch(/^Monitor III, last \d+s/);
   });
 });
