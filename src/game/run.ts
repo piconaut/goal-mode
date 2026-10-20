@@ -193,7 +193,7 @@ function storyFor(run: RunState, content: GameContent, day: number): RunState {
     }
     if (b.commands) r = { ...r, pendingCommands: [...r.pendingCommands, ...b.commands] };
   }
-  if (difficultyOf(run.difficulty).hints === 'CLEAR') {
+  if (difficultyOf(run.difficulty).hints !== 'NONE') {
     for (const [id, h] of Object.entries(STORY_BEAT_HINTS)) {
       if (storyBeatsFor(content.story, run.difficulty, day + h.daysBefore).some((b) => b.id === id)) r = msg(r, h.from, h.subject, h.body);
     }

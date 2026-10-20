@@ -540,6 +540,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       "Before the acquired bank moves in" message arrives two days before the merger, naming the OMVS/ACQSVC work
       and asking whether a classification rule catches it (`STORY_BEAT_HINTS` in `src/content/hints.ts`). The
       textbook bot does not read hints, so its sweep numbers do not move; the hint is for human Story players
+    - User (2026-10-20, later): give the same hint on Normal too. Loop 62: shown whenever hints are not NONE (Story, Normal)
 - [x] Morning hints on lower difficulties (user request 2026-10-20, SPEC §11.2): the briefing inbox nudges
   the player based on yesterday's problems (missed SLAs, late batch, capping, paging), pointing at the report
   and the question to ask, never the answer or the fix; built from the same ground truth as RCA scoring;
@@ -705,6 +706,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-20 (loop 62, user request):** merger advance hint on Normal as well.
 - **2026-10-20 (loop 61):** HSM_RECALL_STORM and CP_SPARING events (implementer subagent, reviewed; gave the storm an affects list so RCA can credit it). 246 tests.
 - **2026-10-20 (loop 60):** NEW_APP_GOLIVE and POWER_CAP events (drafted by the implementer subagent, reviewed; fixed a 72 h vanishing app, possible double draw, and a cap that could undo an upgrade). 245 tests.
 - **2026-10-20 (loop 59, user decision):** Story gets a clear merger hint two days ahead. 241 tests.

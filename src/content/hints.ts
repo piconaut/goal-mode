@@ -72,7 +72,7 @@ export const MAX_HINTS = { CLEAR: 2, VAGUE: 1, NONE: 0 } as const;
 
 export const HINT_SENDER = 'Senior sysprog';
 
-/** Story-only advance warnings for story beats (SPEC §11.2): a question that points at the risk, days ahead. */
+/** Advance warnings for story beats on Story and Normal (SPEC §11.2): a question that points at the risk, days ahead. */
 export const STORY_BEAT_HINTS: Record<string, { daysBefore: number; from: string; subject: string; body: string }> = {
   MERGER: {
     daysBefore: 2,

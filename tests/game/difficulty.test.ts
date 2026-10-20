@@ -110,10 +110,10 @@ describe('starting flaws per difficulty', () => {
   });
 });
 
-describe('Story advance hint for the merger', () => {
-  it('arrives two days before the merger on Story only', async () => {
+describe('advance hint for the merger', () => {
+  it('arrives two days before the merger on Story and Normal, not Hard', async () => {
     const { chooseDraft } = await import('../../src/game/run');
-    const at = (d: 'STORY' | 'NORMAL', day: number) => {
+    const at = (d: 'STORY' | 'NORMAL' | 'HARD', day: number) => {
       // Walk the story to `day` without simulating: REVIEW → BRIEFING runs the day's story beats.
       let r = newRun(base, MIDWEST_GAME, 7, d);
       for (let i = 0; i < day; i++) r = chooseDraft({ ...r, phase: 'REVIEW' }, MIDWEST_GAME, null);
@@ -121,6 +121,7 @@ describe('Story advance hint for the merger', () => {
     };
     expect(at('STORY', 23)).toHaveLength(0);
     expect(at('STORY', 24).map((m) => m.day)).toEqual([24]);
-    expect(at('NORMAL', 24)).toHaveLength(0);
+    expect(at('NORMAL', 24).map((m) => m.day)).toEqual([24]);
+    expect(at('HARD', 24)).toHaveLength(0);
   });
 });
