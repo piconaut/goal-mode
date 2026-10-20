@@ -81,3 +81,13 @@ describe('save migration', () => {
     expect(n.sim.wlm.definition.classes[0]!.periods[0]!.durationSu).toBeNull();
   });
 });
+
+describe('save migration: CF structures', () => {
+  it('fills size, preference list and loss impact on structures saved before they existed', () => {
+    const r = newRun(MIDWEST, content, 3);
+    const old = r.sim.config.cfStructures.map(({ sizeGb: _s, prefList: _p, lostImpact: _l, ...rest }) => rest);
+    const n = normalizeRun({ ...r, sim: { ...r.sim, config: { ...r.sim.config, cfStructures: old } } }, MIDWEST);
+    const lock = n.sim.config.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!;
+    expect(lock).toMatchObject({ sizeGb: 2, prefList: ['CF01', 'CF02'], lostImpact: 'DB2_DOWN' });
+  });
+});

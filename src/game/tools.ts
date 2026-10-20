@@ -12,6 +12,19 @@ import type { RunState } from './types';
 /** Fill fields added after a run was saved (IndexedDB autosaves outlive releases). */
 export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
   let config = run.sim.config.cfStructures || !scenario ? run.sim.config : { ...run.sim.config, cfStructures: structuredClone(scenario.world.cfStructures) };
+  // Saves from before CF failure/duplexing: structures lack size, preference list and loss impact.
+  if (scenario && config.cfStructures.some((x) => x.sizeGb === undefined || x.prefList === undefined || x.lostImpact === undefined)) {
+    const def = (name: string) => scenario.world.cfStructures.find((x) => x.name === name);
+    config = {
+      ...config,
+      cfStructures: config.cfStructures.map((x) => ({
+        ...x,
+        sizeGb: x.sizeGb ?? def(x.name)?.sizeGb,
+        prefList: x.prefList ?? (def(x.name)?.prefList ? [...def(x.name)!.prefList!] : undefined),
+        lostImpact: x.lostImpact ?? def(x.name)?.lostImpact,
+      })),
+    };
+  }
   // Saves from before per-LCU DASD: take the scenario's LCU layout.
   if (scenario && !config.dasd.lcus) config = { ...config, dasd: { ...structuredClone(scenario.world.dasd), backendDegrade: config.dasd.backendDegrade ?? 1 } };
   return {
