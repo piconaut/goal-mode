@@ -25,6 +25,10 @@ export interface PoolDemand {
   softCapEngines: number;
 }
 
+// `${lparId}:${pool}` without building a new string every tick.
+const poolKeys: Record<string, Partial<Record<PoolType, string>>> = {};
+export const poolKey = (lparId: string, pool: PoolType): string => ((poolKeys[lparId] ??= {})[pool] ??= `${lparId}:${pool}`);
+
 /** Resolve PR/SM for every LPAR on one CPC. Returns runtime keyed by `${lparId}:${pool}`. */
 export function resolveCpc(
   cpc: CpcConfig,
@@ -33,8 +37,8 @@ export function resolveCpc(
 ): Record<string, LparPoolRuntime> {
   const out: Record<string, LparPoolRuntime> = {};
   const demandIdx: Record<string, PoolDemand> = {};
-  for (const d of demands) demandIdx[`${d.lparId}:${d.pool}`] = d;
-  const demandOf = (lparId: string, pool: PoolType) => demandIdx[`${lparId}:${pool}`];
+  for (const d of demands) demandIdx[poolKey(d.lparId, d.pool)] = d;
+  const demandOf = (lparId: string, pool: PoolType) => demandIdx[poolKey(lparId, pool)];
 
   for (const pool of POOLS) {
     const members = lpars
@@ -53,7 +57,7 @@ export function resolveCpc(
     for (const m of dedicated) {
       const d = demandOf(m.lpar.id, pool);
       const demand = Math.min(d?.demandEngines ?? 0, m.pc.logical);
-      out[`${m.lpar.id}:${pool}`] = {
+      out[poolKey(m.lpar.id, pool)] = {
         pool,
         entitlementEngines: m.pc.logical,
         demandEngines: demand,
@@ -108,7 +112,7 @@ export function resolveCpc(
         uncappedWant > 1e-9 && claim.capEngines < uncappedWant
           ? clamp((uncappedWant - Math.max(del, 0)) / uncappedWant, 0, 1)
           : 0;
-      out[`${m.lpar.id}:${pool}`] = {
+      out[poolKey(m.lpar.id, pool)] = {
         pool,
         entitlementEngines: e,
         demandEngines: claim.demandEngines,

@@ -162,7 +162,7 @@ export function accumulateTick(
     if (lt.rcs) {
       rcs = rcs ? { ...rcs } : {};
       for (const t of lt.rcs) {
-        const k = `${lt.lparId}|${t.scKey}`;
+        const k = accKey(lt.lparId, t.scKey);
         const prevMembers = rcs[k]?.members ?? [];
         addScp(rcs, lt.lparId, t);
         const members = t.members.every((m) => prevMembers.includes(m)) ? prevMembers : [...new Set([...prevMembers, ...t.members])].sort();
@@ -239,8 +239,12 @@ export function accumulateTick(
   return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(rcs ? { rcs } : {}) };
 }
 
+// `${lparId}|${scKey}` without building a new string every tick.
+const accKeys: Record<string, Record<string, string>> = {};
+const accKey = (lparId: string, scKey: string) => ((accKeys[lparId] ??= {})[scKey] ??= `${lparId}|${scKey}`);
+
 function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: string, t: ScpTick) {
-  const k = `${lparId}|${t.scKey}`;
+  const k = accKey(lparId, t.scKey);
   const a: ScpIntervalAcc = scps[k] ?? {
     ...emptyAcc(),
     lparId,

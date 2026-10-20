@@ -126,20 +126,22 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
 
 export function sumAcc(accs: readonly ScpAcc[]): ScpAcc {
   const out = emptyAcc();
-  for (const a of accs) {
-    out.completions += a.completions;
-    out.rtSumSec += a.rtSumSec;
-    for (let i = 0; i < a.buckets.length; i++) out.buckets[i] = (out.buckets[i] ?? 0) + a.buckets[i]!;
-    out.using += a.using;
-    out.delay += a.delay;
-    out.delayCpu += a.delayCpu;
-    out.delayZiip += a.delayZiip;
-    out.delayIo += a.delayIo;
-    out.delayOther += a.delayOther;
-    out.delayCap += a.delayCap;
-    out.cpuEngines += a.cpuEngines;
-  }
+  for (const a of accs) addAccInto(out, a);
   return out;
+}
+
+function addAccInto(out: ScpAcc, a: ScpAcc): void {
+  out.completions += a.completions;
+  out.rtSumSec += a.rtSumSec;
+  for (let i = 0; i < a.buckets.length; i++) out.buckets[i] = (out.buckets[i] ?? 0) + a.buckets[i]!;
+  out.using += a.using;
+  out.delay += a.delay;
+  out.delayCpu += a.delayCpu;
+  out.delayZiip += a.delayZiip;
+  out.delayIo += a.delayIo;
+  out.delayOther += a.delayOther;
+  out.delayCap += a.delayCap;
+  out.cpuEngines += a.cpuEngines;
 }
 
 export function accPi(goal: Goal, a: ScpAcc): number | null {
@@ -164,12 +166,13 @@ export function tickPi(goal: Goal, t: ScpTick): number | null {
 
 /** Sysplex PI per scKey: merge every system's accumulators, then compute. */
 export function sysplexPis(def: ServiceDefinition, systems: readonly WlmSystemState[]): Record<string, number | null> {
-  const groups: Record<string, ScpAcc[]> = {};
-  for (const s of systems) for (const p of s.scps) (groups[p.scKey] ??= []).push(p.acc);
+  // Summed in system order, as sumAcc would (hot path: no per-period arrays).
+  const sums: Record<string, ScpAcc> = {};
+  for (const s of systems) for (const p of s.scps) addAccInto((sums[p.scKey] ??= emptyAcc()), p.acc);
   const out: Record<string, number | null> = {};
-  for (const [k, accs] of Object.entries(groups)) {
+  for (const k in sums) {
     const g = goalInfo(def, k);
-    out[k] = g ? accPi(g.goal, sumAcc(accs)) : null;
+    out[k] = g ? accPi(g.goal, sums[k]!) : null;
   }
   return out;
 }

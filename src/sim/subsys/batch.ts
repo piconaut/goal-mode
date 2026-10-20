@@ -85,13 +85,22 @@ const secSinceInstance = (tick: number, day: number) => tick * TICK_SEC - day * 
 /** HELD → QUEUED when predecessors are done and the earliest start has passed. Promoted jobs are
  * replaced by updated copies (held jobs may be shared with the previous state). */
 export function promoteEligible(jobs: JobRuntime[], tick: number): void {
-  let done: Set<string> | null = null;
+  let doneByDay: Map<number, Set<string>> | null = null;
   for (let i = 0; i < jobs.length; i++) {
     const j = jobs[i]!;
     if (j.status !== 'HELD') continue;
     if (secSinceInstance(tick, j.day) < j.def.earliestSec) continue;
-    const doneKeys = (done ??= new Set(jobs.filter((x) => x.status === 'DONE').map(jobKey)));
-    if (j.def.preds.every((p) => doneKeys.has(`${j.day}:${p}`))) jobs[i] = { ...j, status: 'QUEUED', queuedTick: tick };
+    if (!doneByDay) {
+      doneByDay = new Map();
+      for (const x of jobs) {
+        if (x.status !== 'DONE') continue;
+        let names = doneByDay.get(x.day);
+        if (!names) doneByDay.set(x.day, (names = new Set()));
+        names.add(x.def.name);
+      }
+    }
+    const done = doneByDay.get(j.day);
+    if (j.def.preds.every((p) => done?.has(p) ?? false)) jobs[i] = { ...j, status: 'QUEUED', queuedTick: tick };
   }
 }
 
