@@ -1,5 +1,5 @@
 import { askAround, inquiriesView } from '../../src/game/inquiries';
-import { failRiskFor, opexBudgetFor } from '../../src/game/catalog';
+import { failRiskFor, hardwareItem, opexBudgetFor } from '../../src/game/catalog';
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
@@ -248,6 +248,14 @@ describe('draft perks', () => {
     const r = chooseDraft(review(fresh()), content, 'VENDOR_FRIEND');
     const out = requestChange(r, content, { label: 'zIIP', hardwareId: 'ADD_ZIIP' });
     expect(out.run.changes[0]!.activateDay).toBe(r.day + 3);
+  });
+
+  it('zIIP promotion discounts zIIP capex only', () => {
+    const r = chooseDraft(review(fresh()), content, 'ZIIP_PROMO');
+    const zi = requestChange(r, content, { label: 'zIIP', hardwareId: 'ADD_ZIIP' });
+    expect(r.capexRemaining - zi.run.capexRemaining).toBe(Math.round(hardwareItem('ADD_ZIIP')!.capex * 0.75));
+    const cp = requestChange(r, content, { label: 'CP', hardwareId: 'PERM_CP' });
+    expect(r.capexRemaining - cp.run.capexRemaining).toBe(hardwareItem('PERM_CP')!.capex);
   });
 
   it('well connected makes asking around free', () => {

@@ -15,6 +15,8 @@ export const DRAFT_TUNING = {
   // FICTIONAL: a vendor's consultants for a day put this many hours into the SQL tuning project (half of it).
   sqlSprintHours: 6,
   vendorFriendDays: 1,
+  // FICTIONAL: a vendor promotion on specialty engines; cheap enough to tempt offload, not enough to make it free.
+  ziipPromoCapexMult: 0.75,
   nightDeskHours: 2,
   nightDeskFailMult: 1.3,
   budgetSwapCapex: 500_000,
@@ -33,6 +35,7 @@ export const DRAFT_OPTIONS: DraftDef[] = [
   { id: 'NIGHT_OWL', title: 'Perk: Night Owl', description: 'Emergency changes cost half the trust.', weight: 1 },
   { id: 'OVERTIME_PUSH', title: 'Weekend push', description: '+3 engineer-hours tomorrow, but fatigue +15.', weight: 2 },
   { id: 'VENDOR_FRIEND', title: 'Perk: Friend at the Vendor', description: 'Hardware with a lead time of 2+ days arrives a day sooner.', weight: 1 },
+  { id: 'ZIIP_PROMO', title: 'Perk: zIIP promotion', description: 'The vendor is pushing specialty engines: zIIPs cost 25% less capex for the rest of the run.', weight: 1 },
   { id: 'WELL_CONNECTED', title: 'Perk: Well Connected', description: 'Asking around costs no engineer-hours.', weight: 1 },
   { id: 'DB2_WHISPERER', title: 'Perk: Db2 Whisperer', description: 'The DBAs tell you when a REBIND changes an access path.', weight: 1 },
   { id: 'SQL_SPRINT', title: 'SQL tuning consultants', description: 'A vendor lends two Db2 consultants for a day: 6 free hours on the SQL tuning sprint project.', weight: 2 },

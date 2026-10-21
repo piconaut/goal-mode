@@ -610,6 +610,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     message naming RB01 when the perk is owned. Test; run goldens regenerated (draft pool), sim hash unchanged
   - [x] Loop 95: one-off SQL tuning consultants (6 free hours on the SQL_TUNING project, no daily ceiling; finishing it
     applies the effect; not offered once the project is done; `grantProjectHours`). Test; run goldens regenerated
+  - [x] Loop 96: perk zIIP promotion (ADD_ZIIP capex ×0.75 all run via `capexFor` in previewChange; the hardware
+    list shows the discounted price). Test; run goldens regenerated (draft pool), sim hash unchanged
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
 

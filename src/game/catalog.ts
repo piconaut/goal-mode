@@ -89,6 +89,11 @@ export interface ChangePreview {
   reason: string | null;
 }
 
+/** Hardware capex after perks (the zIIP promotion discounts specialty engines). */
+export function capexFor(hardwareId: string, capex: number, perks: readonly string[]): number {
+  return perks.includes('ZIIP_PROMO') && hardwareId === 'ADD_ZIIP' ? Math.round(capex * DRAFT_TUNING.ziipPromoCapexMult) : capex;
+}
+
 export function leadDaysFor(leadDays: number, perks: readonly string[]): number {
   return perks.includes('VENDOR_FRIEND') && leadDays >= 2 ? leadDays - DRAFT_TUNING.vendorFriendDays : leadDays;
 }
@@ -108,7 +113,7 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
   const live = ctx.phase === 'LIVE';
   const hours = fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks);
-  const capex = hw?.capex ?? 0;
+  const capex = hw ? capexFor(hw.id, hw.capex, ctx.perks) : 0;
   const base: ChangePreview = {
     hours,
     capex,

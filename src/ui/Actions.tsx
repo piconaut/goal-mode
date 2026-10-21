@@ -1143,7 +1143,7 @@ function Hardware({ v, game }: { v: ViewModel; game: GameHandle }) {
               {p.reason && <div className="err">{p.reason}</div>}
             </span>
             <button disabled={!p.ok} title={p.reason ?? costText(p)} onClick={() => game.send({ type: 'CHANGE', req: { label: h.name, hardwareId: h.id } })}>
-              {h.capex > 0 ? `$${Math.round(h.capex / 1000)}k` : `$${Math.round(h.opexPerDay / 1000)}k/day`} · {p.hours}h
+              {p.capex > 0 ? `$${Math.round(p.capex / 1000)}k` : `$${Math.round(h.opexPerDay / 1000)}k/day`} · {p.hours}h
             </button>
           </div>
         );
