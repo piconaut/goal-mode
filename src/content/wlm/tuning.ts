@@ -24,4 +24,7 @@ export const DISC_GOAL_MGMT = {
 export const STORAGE_SWAP = {
   swapAboveFrac: 1.0,
   swapToFrac: 0.97,
+  // Never swap the last job(s) out: SRM keeps a minimum MPL and the rest pages instead. Without it, fixed demand
+  // above swapToFrac (e.g. oversized buffer pools) froze every batch job for the whole night.
+  minSwappedIn: 1,
 };

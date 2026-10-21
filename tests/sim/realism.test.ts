@@ -299,6 +299,12 @@ describe('MPL / swap (storage overcommit)', () => {
     const out = [...swapOut(BASEPOL, jobs, 'DEVT', 20, 2, 24)].map((j) => j.def.name);
     expect(out).toEqual(['DEV002', 'DEV001', 'PRD002']);
   });
+  it('keeps a minimum MPL in when fixed demand alone overcommits memory', () => {
+    // 30 GB fixed on a 24 GB LPAR: swapping every job could never fit, and would freeze batch for the night.
+    const out = swapOut(BASEPOL, jobs, 'DEVT', 30, 2, 24);
+    expect(out.size).toBe(jobs.length - 1);
+    expect(jobs.filter((j) => !out.has(j)).map((j) => j.def.name)).toEqual(['PRD001']);
+  });
 });
 
 describe('CF failure, rebuild and duplexing', () => {

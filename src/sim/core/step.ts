@@ -698,7 +698,7 @@ function cicsRegionCount(addressSpaces: readonly AddressSpaceDef[], lparId: stri
 
 /** Which running batch jobs SRM swaps out to fit real memory: least important first (discretionary
  * before importance 5…1), latest started first within an importance (z/OS storage management,
- * SG24-7621 MPL/swap; APPROX: swap-in is immediate once storage frees). */
+ * SG24-7621 MPL/swap; APPROX: swap-in is immediate once storage frees, and a minimum MPL always stays in). */
 export function swapOut(def: SimState['wlm']['definition'], running: readonly JobRuntime[], lparId: string, fixedGb: number, jobGb: number, memoryGb: number): Set<JobRuntime> {
   const out = new Set<JobRuntime>();
   let demand = fixedGb + running.length * jobGb;
@@ -710,7 +710,7 @@ export function swapOut(def: SimState['wlm']['definition'], running: readonly Jo
   };
   const order = [...running].sort((a, b) => rank(b) - rank(a) || (b.startTick ?? 0) - (a.startTick ?? 0) || (a.def.name < b.def.name ? -1 : 1));
   for (const j of order) {
-    if (demand <= limit) break;
+    if (demand <= limit || out.size >= running.length - STORAGE_SWAP.minSwappedIn) break;
     out.add(j);
     demand -= jobGb;
   }
