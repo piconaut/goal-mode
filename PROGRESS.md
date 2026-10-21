@@ -458,6 +458,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - Loop 91 profile (1 day ≈ 5.7–6.3 s, 0.66 ms/tick): still flat; step's own body 19%, GC 7%, evaluateLpar 6%.
   `iosqByPriority` 3.5% → 1.8% self (parallel DP arrays instead of a numeric-keyed object, DP looked up once
   per slice); hash unchanged, wall-clock gain inside noise
+- Loop 92: inclusive profile — step 84% (evaluateLpar 26%, policyAdjust 10% of which projections 7%, dispatch 5%,
+  RMF accumulateTick 4%, resolveCpc 4%), GC 7%. Tried memoising identical projections across receivers (same
+  donor trial): 7.3% → 6.4%, inside noise, reverted. Remaining wins need option (1)/(2) above; micro-opts are
+  exhausted at ≤ 1% each
 - Decision: the what-if simulator no longer waits on M8.1: it runs during the briefing (clock stopped), chunked
   with a progress bar, so ~8 s per simulated day is acceptable
 
