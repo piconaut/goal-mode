@@ -1,10 +1,10 @@
 // Balance sweep (SPEC §16, PROGRESS M8.2): run strategy bots over many seeds in parallel processes
 // and summarise when and why runs end. Each run is a separate `tools/bot.ts --json` process.
 //
-//   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--scenario midwest|revenue] [--out sweep.csv]
+//   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--scenario midwest|revenue] [--out sweep.csv] [--resume]
 
 import { spawn } from 'node:child_process';
-import { writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
 
 function arg(name: string, dflt: string): string {
@@ -20,6 +20,9 @@ const days = arg('days', '');
 const difficulty = arg('difficulty', '');
 const scenarioId = arg('scenario', '');
 const out = arg('out', 'sweep.csv');
+// Each finished run is appended here at once, so a killed sweep keeps its results; --resume skips them.
+const partial = `${out}.partial.jsonl`;
+const resume = process.argv.includes('--resume');
 
 interface Result {
   bot: string;
@@ -51,19 +54,37 @@ function runOne(bot: string, seed: number): Promise<Result> {
   });
 }
 
-const queue = bots.flatMap((b) => seeds.map((s) => ({ b, s })));
-const results: Result[] = [];
+const results: Result[] =
+  resume && existsSync(partial)
+    ? readFileSync(partial, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => JSON.parse(l) as Result)
+        .filter((r) => bots.includes(r.bot) && seeds.includes(r.seed))
+    : [];
+if (!resume) writeFileSync(partial, '');
+const have = new Set(results.map((r) => `${r.bot}:${r.seed}`));
+const queue = bots.flatMap((b) => seeds.map((s) => ({ b, s }))).filter((j) => !have.has(`${j.b}:${j.s}`));
+if (results.length) process.stderr.write(`resuming: ${results.length} runs already in ${partial}\n`);
+const failed: string[] = [];
 const t0 = Date.now();
-let done = 0;
+let done = results.length;
 async function worker() {
   for (let job = queue.shift(); job; job = queue.shift()) {
-    results.push(await runOne(job.b, job.s));
+    try {
+      const r = await runOne(job.b, job.s);
+      results.push(r);
+      appendFileSync(partial, JSON.stringify(r) + '\n');
+    } catch (e) {
+      failed.push((e as Error).message);
+    }
     done++;
     process.stderr.write(`\r${done}/${bots.length * seeds.length} runs (${Math.round((Date.now() - t0) / 1000)} s)`);
   }
 }
 await Promise.all(Array.from({ length: jobs }, worker));
 process.stderr.write('\n');
+for (const f of failed) process.stderr.write(`FAILED: ${f}\n`);
 results.sort((a, b) => (a.bot < b.bot ? -1 : a.bot > b.bot ? 1 : a.seed - b.seed));
 
 const mechs = [...new Set(results.flatMap((r) => Object.keys(r.byMechanism)))].sort();
