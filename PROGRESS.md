@@ -354,7 +354,9 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   growth ×0.6. **Re-sweep hb40e (seeds 1–8, Normal, 40 days): donothing 11 / 12 / 12 (target 12–18), textbook
   30 / 33 / 37 (target 28–32, a little long), expert 33 / 40 / 40, victory 5 · trust 2 · opex 1** (Midwest expert
   17/20 wins). Month-1 bills $1.52–1.78M vs $1.5M budget (Midwest +7–10 %). Harbourline balance is now in the target
-  band; next: 20-seed confirmation sweep, Harbourline perf (~4.6 s/day), dev→main milestone PR.
+  band. Milestone PR #17 dev→main reviewed by pr-reviewer: MERGE (360 tests, hash unchanged, expert seed 1 VICTORY
+  day 40 confirmed) → merged (10f2bfa). Opex comment corrected (bills 5–15 % over). Next: 20-seed confirmation sweep,
+  Harbourline perf (~4.4–4.6 s/day vs 2 s budget).
 - **2026-10-21 (loop 136):** Harbourline collapse root-caused (sonnet replay of textbook seed 1, day 18): peak-hour
   CP exhaustion on both CPCs (CPC1 85–98 %, CPC2 to 100 % from 09:00) under REGRESSION (RETAIL ×1.5 for 30 h, two
   peaks) + MARKET_OPEN_SURGE + ENCRYPTION_MANDATE; no cap or model blow-up. Counterfactual with REGRESSION off:

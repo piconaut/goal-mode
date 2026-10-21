@@ -1,8 +1,8 @@
 import type { GameContent } from '../game/run';
 import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from './events/harbourline-events';
 
-/** FICTIONAL budgets for the Harbourline Bank run: a larger estate with two CPCs, so roughly double Midwest's. Opex is set so a
- * textbook month-1 bill lands ~7 % over it, like Midwest's (40-day sweep: bills $1.6–1.7M). */
+/** FICTIONAL budgets for the Harbourline Bank run: a larger estate with two CPCs, so roughly double Midwest's. Opex is set so
+ * month-1 bills land ~5–15 % over it (hb40e sweep: textbook $1.52–1.67M, expert $1.55–1.78M; Midwest's run 7–10 % over). */
 export const HARBOURLINE_GAME: GameContent = {
   events: HARBOURLINE_EVENTS,
   story: HARBOURLINE_STORY,
