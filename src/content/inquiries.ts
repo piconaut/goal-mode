@@ -99,6 +99,7 @@ export const EVENT_RUMOURS: Record<string, string> = {
   HSM_RECALL_STORM: 'the storage team changed the HSM migration rules last month',
   ZIIP_LOSS: 'the mobile API team is rewriting its stored procedures in COBOL',
   CICS_SOS: 'the PROD2 CICS regions have been logging storage warnings',
+  SMF_AUDIT: 'the regulator has asked how long we keep detailed SMF data',
   NEW_APP_GOLIVE: 'retail is about to launch a small new booking app',
   HIRING_FREEZE: 'HR is reviewing contractor budgets for next week',
   AUDIT_UNCLASSIFIED: 'the regulator is planning an audit of system management',

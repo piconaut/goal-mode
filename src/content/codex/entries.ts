@@ -296,6 +296,14 @@ export const CODEX: CodexEntry[] = [
     discover: { start: true },
   },
   {
+    id: 'smf-volume',
+    title: 'SMF record volume and its CPU cost',
+    category: 'Measurement',
+    body: 'Every SMF record is built by the component that cuts it and written by the SMF address space to log streams or MANx data sets. Interval records (types 30, 70-79) are cheap; per-transaction records such as Db2 accounting (101) and CICS performance class (110) scale with the transaction rate, so keeping them all costs CPU in SMF and storage behind it. Sites usually sample or summarise them outside an investigation.',
+    sources: [{ label: 'IBM z/OS MVS System Management Facilities (SMF)', url: 'https://www.ibm.com/docs/en/zos/3.1.0?topic=mvs-zos-system-management-facilities-smf' }],
+    discover: { events: ['SMF_AUDIT'] },
+  },
+  {
     id: 'smf113',
     title: 'CPU MF counters (SMF 113), RNI and LSPR categories',
     category: 'Measurement',

@@ -4,6 +4,7 @@
 import { DASD_REBALANCE, HARDWARE, type HardwareItem } from '../content/hardware-catalog';
 import { DRAFT_TUNING } from '../content/draft';
 import type { Command } from '../sim/core/commands';
+import type { Facet } from './types';
 
 const HOURS: Partial<Record<Command['kind'], number>> = {
   ACTIVATE_POLICY: 1.5,
@@ -47,7 +48,7 @@ export interface FixDef {
   name: string;
   hours: number;
   /** Trust cost to the facet that owns the affected work (e.g. cancelling a user's query). */
-  trustCost: { facet: 'Digital' | 'Retail' | 'Finance'; amount: number } | null;
+  trustCost: { facet: Facet; amount: number } | null;
   description: string;
 }
 
@@ -61,6 +62,7 @@ export const FIXES: FixDef[] = [
   { id: 'ROLLBACK_TELLER_RELEASE', name: 'Roll back the teller release', hours: 1.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'Back out release 4.2 from the PROD1 CICS regions until it is made threadsafe.' },
   { id: 'NATIVE_SQL_PROCS', name: 'Redeploy as native SQL procedures', hours: 2, trustCost: { facet: 'Digital', amount: 1 }, description: 'Back out the external stored procedures; native SQL procedures under DDF are zIIP-eligible again.' },
   { id: 'RECYCLE_PROD2_AORS', name: 'Recycle the PROD2 CICS AORs', hours: 1, trustCost: { facet: 'Retail', amount: 1 }, description: 'Restart CICSAOR2 and CICSAOR4 one at a time to clear the storage leak; in-flight teller work on them fails over.' },
+  { id: 'SCOPE_SMF_AUDIT', name: 'Negotiate the SMF audit scope', hours: 1, trustCost: { facet: 'Regulator', amount: 2 }, description: 'Agree with the regulator to keep sampled SMF 101/110 records only; the SMF address space drops back to normal.' },
   { id: 'HOLD_HSM_RECALLS', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'HOLD RECALL until the storm drains; users wait for their data sets.' },
 ];
 

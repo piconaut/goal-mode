@@ -489,6 +489,29 @@ export const MIDWEST_EVENTS: EventDef[] = [
     clue: 'Engineer-hours shown in the briefing drop by 2 for five days. Responses: automate routine reactions, prioritise changes, draft the contractor perk.',
   },
   {
+    // Regulator wants interval SMF 30/72 plus Db2 accounting (SMF 101) and CICS performance (SMF 110) records kept
+    // for a 3-day review window. The SMF address space and its log streams do the extra writing (IBM z/OS MVS
+    // System Management Facilities); APPROX: the overhead is charged to the SMF address space only.
+    id: 'SMF_AUDIT',
+    name: 'Regulator audit: detailed SMF retention',
+    category: 'ORG',
+    minDay: 10,
+    weight: 0.7,
+    trigger: 'POLICY',
+    affects: [],
+    mechanisms: ['CPU_CAPACITY'],
+    startHour: [6, 6.5],
+    durationHours: 3 * 24,
+    oncePerRun: true,
+    // FICTIONAL magnitude: the SMF address space writes ~10x its usual volume on every system.
+    begin: [mod('asCpu', 'SMF', 10)],
+    end: [mod('asCpu', 'SMF', 1)],
+    fix: 'SCOPE_SMF_AUDIT',
+    forewarning: 'Regulator: "For the next three days keep full SMF 101 and 110 detail on every system. We will sample it."',
+    announcement: null,
+    clue: 'WLMGL: SYSSTC APPL% up on every system with the SMF address space as its top consumer; MSU and R4HA up a little with no workload slower. Fixes: negotiate the scope down to sampled records (Regulator trust), or absorb the MSU for three days.',
+  },
+  {
     // FICTIONAL: a five-day regulator audit of workload classification; the lever is classification rules.
     id: 'AUDIT_UNCLASSIFIED',
     name: 'Regulator audit: unclassified work',

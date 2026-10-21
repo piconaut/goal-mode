@@ -454,6 +454,22 @@ describe('event cards (SPEC §9)', () => {
     expect(lost.cp).toBeGreaterThan(asIs.cp);
   }, 60_000);
 
+  it('an SMF retention audit raises SMF address space CPU and total MSU but no workload response', () => {
+    const asIs = run([]);
+    const audit = run(card('SMF_AUDIT'));
+    const msu = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let m = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        m += s.lpars.reduce((a, l) => a + l.msuRate, 0) / 30;
+      }
+      return m;
+    };
+    expect(msu(card('SMF_AUDIT'))).toBeGreaterThan(1.03 * msu([]));
+    expect(audit.mobileRtMs).toBeLessThan(1.05 * asIs.mobileRtMs);
+  }, 60_000);
+
   it('an HSM recall storm raises LCU 30 IOSQ and response time', () => {
     const lcu30 = (cmds: Parameters<typeof step>[1]) => {
       let s = step(base, cmds, MIDWEST);
