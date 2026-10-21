@@ -10,8 +10,10 @@ import {
 
 describe('HiperDispatch polarity (Watson & Walker rules)', () => {
   const cases: [number, number, [number, number, number]][] = [
-    [0.4, 2, [0, 2, 0]],
-    [0.8, 4, [0, 2, 2]],
+    [0.4, 2, [0, 1, 1]],
+    [0.8, 4, [0, 1, 3]],
+    [1.0, 4, [0, 2, 2]],
+    [1.2, 4, [0, 2, 2]],
     [1.6, 4, [1, 1, 2]],
     [2.3, 6, [1, 2, 3]],
     [2.8, 6, [2, 1, 3]],
@@ -103,8 +105,8 @@ describe('Midwest Mutual starting topology (flaw F10)', () => {
   it('has the documented polarity', () => {
     expect(pol('PROD1')).toEqual([3, 2, 1]);
     expect(pol('PROD2')).toEqual([2, 1, 3]);
-    expect(pol('DEVT')).toEqual([0, 2, 2]);
-    expect(pol('SYSP')).toEqual([0, 2, 0]);
+    expect(pol('DEVT')).toEqual([0, 1, 3]);
+    expect(pol('SYSP')).toEqual([0, 1, 1]);
   });
   it('dedicated CF gets its engine; shared CF02 has a tiny weight share next to CFTEST (flaw F8)', () => {
     expect(res['CF01:ICF']!.entitlementEngines).toBe(1);

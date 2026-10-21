@@ -88,6 +88,11 @@ export function polarity(entitlement: number, logical: number): PolarityCounts {
   if (e <= 1e-9) {
     vh = 0;
     vm = 0;
+  } else if (e < 1) {
+    // APPROX: the whole share fits on one VM. The second VM in the 1 ≤ E < 1.5 band exists
+    // to keep each VM's share ≥ 0.5 CP; splitting E < 1 would push both below that.
+    vh = 0;
+    vm = 1;
   } else if (e < 1.5) {
     vh = 0;
     vm = 2;

@@ -10,8 +10,9 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Last updated:** 2026-10-21
 - **Next up:** M8.4 events (22 of ~25), M8.2 balance (textbook below target; waiting on the user), M8.1 structural perf.
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `ccr-2af28431-vidfb0`; see M8.9 for `main`).
-- **Health:** `npm run check` green (299 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) `8a82ad7db2b258ae`.
+- **Health:** `npm run check` green (301 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+  bots ~4 s/day. Seed 42 hashes: 1 day `5470f9f0b293fcb7`, 3 days `fedb810152f6a73b`, 8 days `86fea9a517062163`
+  (since the E < 1 polarity change).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
@@ -214,11 +215,14 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-20 | Sonnet subagents `implementer` and `log-reader` in `.claude/agents/` | Save usage on well-scoped coding and log digestion; sim models and balance stay on the main agent (user request) |
 | 2026-10-21 | Realism pass: batch jobs age through periods by consumed SU; address spaces sit in their class's last period; type 1 resource groups split their sysplex SU/s budget by demand (was applied in full on every system); MLC bills a capacity group at most its limit | All were divergences from real WLM/SCRT; behaviour-neutral for BASEPOL (no multi-period batch/STC classes, resource groups or capacity groups), so day-1 hash and goldens are unchanged |
 | 2026-10-21 | Browser worker and headless `play` share game-layer helpers (`pendingBase`/`nextPolicyName`, `applyReportClassAdvice`, `runWorkItems`, `renderReport`); `noUnusedLocals` on | The two front ends had drifted copies of the same logic; one copy means one place to fix and test |
+| 2026-10-21 | HiperDispatch: E < 1 gets 1 × VM (was 2) | A second VM only exists to keep each VM ≥ 0.5 CP; below 1 CP splitting would break that. DEVT 2VM+2VL → 1VM+3VL, SYSP 2VM → 1VM+1VL; goldens regenerated |
 
 ## Open questions
 
-- HiperDispatch polarity for E < 1: SPEC/tests give 2 × VM for any E < 1.5 (Watson & Walker table as read). Under the
-  "each VM ≥ 50% of an engine" rule an LPAR with E < 1 would get a single VM. Check the source before changing.
+- HiperDispatch polarity for E < 1: changed to a single VM (2026-10-21, `// APPROX:`), reasoning from the
+  "each VM ≥ 50% of an engine" rule. The Tuning Letter reprint, IBM's z13 MCL note and Chapman's "High, Medium, Low"
+  couldn't be fetched from the cloud box, so this still needs a check against a primary source or real RMF Partition
+  Data for a sub-1-CP LPAR.
 - CICS/IMS transaction service classes must be single-period with response-time goals in real WLM; the editor lets a
   player put CICS work in a multi-period or velocity class and the sim splits it like DDF. Add a validation or model the
   real fallback.
