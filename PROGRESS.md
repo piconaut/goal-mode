@@ -349,6 +349,15 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 139):** perf pass (sonnet subagent in a worktree, reviewed and cherry-picked): six bit-identical
+  optimisations (addToBuckets bound logs cached per goal, packed emptyBuckets + length guard, resolveCpc config plan
+  cached per CPC/LPAR list, iosq service objects shared per DP, WLM log copied only on change, batch job classification
+  memoised). Hashes unchanged (Midwest `eddf17fc7c615524`, Harbourline `be97b3e401164fc5`, new `bench --scenario`).
+  Gain small: Midwest 4.36 → 3.89 s, Harbourline 7.27 → 7.03 s (agent's back-to-back medians). Profile is flat (no
+  function > 10 % self); remaining: ~1.3 s warm-up deopts (~140 'wrong map'), slice/accumulator spreads (~3–4 % each).
+  Reaching 2 s needs structural work (fewer per-tick allocations in buildSlices/accumulateTick, or coarser ticks for
+  quiet LPARs), not micro-tuning → open question for the user whether the 2 s budget should be revisited for 6-LPAR
+  estates.
 - **2026-10-21 (loop 138):** Harbourline 20-seed confirmation (hb40f, Normal, 40 days): **donothing 9 / 12 / 14
   (trust 20), textbook 29 / 32 / 37 (trust 20), expert 28 / 40 / 40 (victory 12 · opex 4 · trust 4)**. In band
   (Midwest loop 113: donothing 11 / 17 / 21, textbook 17 / 28 / 28, expert 17/20 wins). Expert's 4 opex ends are all
