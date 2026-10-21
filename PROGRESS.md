@@ -349,6 +349,10 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 133):** milestone PR #16 dev→main (Harbourline playable) reviewed by pr-reviewer: MERGE (358
+  tests, hash `eddf17fc7c615524` on both, goldens unchanged, layering/determinism clean); merged. Reviewer note: Midwest
+  bench day 4.7 s on dev vs 4.2 s on main (one run each, maybe noise) → re-measure next and profile if real. Next:
+  that perf check, 40-day Harbourline sweep, startTools for the pack.
 - **2026-10-21 (loop 132):** decision (user, 2026-10-21): QR TCB overload failures count as *slow*, not as abends,
   for CPSM goal routing; real CICS queues on a saturated QR rather than abending fast, so an overloaded region
   repels work and only a genuinely abending region (SICK_AOR) storm-drains. Sim: slices carry `abendFrac`
