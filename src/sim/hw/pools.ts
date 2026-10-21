@@ -29,17 +29,24 @@ export interface PoolDemand {
 const poolKeys: Record<string, Partial<Record<PoolType, string>>> = {};
 export const poolKey = (lparId: string, pool: PoolType): string => ((poolKeys[lparId] ??= {})[pool] ??= `${lparId}:${pool}`);
 
-/** Resolve PR/SM for every LPAR on one CPC. Returns runtime keyed by `${lparId}:${pool}`. */
-export function resolveCpc(
-  cpc: CpcConfig,
-  lpars: readonly LparConfig[],
-  demands: readonly PoolDemand[],
-): Record<string, LparPoolRuntime> {
-  const out: Record<string, LparPoolRuntime> = {};
-  const demandIdx: Record<string, PoolDemand> = {};
-  for (const d of demands) demandIdx[poolKey(d.lparId, d.pool)] = d;
-  const demandOf = (lparId: string, pool: PoolType) => demandIdx[poolKey(lparId, pool)];
+interface PoolPlan {
+  pool: PoolType;
+  dedicated: { lpar: LparConfig; pc: LparConfig['pools'][number] }[];
+  shared: { lpar: LparConfig; pc: LparConfig['pools'][number] }[];
+  physicalShared: number;
+  ltoP: number;
+  usablePhysical: number;
+  baseClaims: PoolClaim[];
+  ent: number[];
+}
 
+// Everything in resolveCpc that depends only on configuration, reused while the CPC and LPAR list are the
+// same objects (config edits clone the config, so any change is a new array).
+const planCache = new WeakMap<readonly LparConfig[], { cpc: CpcConfig; plans: PoolPlan[] }>();
+function poolPlans(cpc: CpcConfig, lpars: readonly LparConfig[]): PoolPlan[] {
+  const hit = planCache.get(lpars);
+  if (hit && hit.cpc === cpc) return hit.plans;
+  const plans: PoolPlan[] = [];
   for (const pool of POOLS) {
     const members = lpars
       .filter((l) => l.cpcId === cpc.id)
@@ -53,6 +60,41 @@ export function resolveCpc(
     const shared = members.filter((m) => !m.pc.dedicated);
     const dedicatedEngines = dedicated.reduce((a, m) => a + m.pc.logical, 0);
     const physicalShared = Math.max(0, cpc.engines[pool] - dedicatedEngines);
+    let ltoP = 0;
+    let usablePhysical = 0;
+    let baseClaims: PoolClaim[] = [];
+    let ent: number[] = [];
+    if (shared.length > 0) {
+      const totalLogical = shared.reduce((a, m) => a + m.pc.logical, 0);
+      ltoP = logicalToPhysical(totalLogical, physicalShared);
+      usablePhysical = Math.max(0, physicalShared - physicalOverheadEngines(ltoP, physicalShared));
+      baseClaims = shared.map((m) => ({
+        weight: m.pc.weight,
+        logical: m.pc.logical,
+        demandEngines: 0,
+        capEngines: Infinity,
+      }));
+      ent = entitlements(baseClaims, physicalShared);
+    }
+    plans.push({ pool, dedicated, shared, physicalShared, ltoP, usablePhysical, baseClaims, ent });
+  }
+  planCache.set(lpars, { cpc, plans });
+  return plans;
+}
+
+/** Resolve PR/SM for every LPAR on one CPC. Returns runtime keyed by `${lparId}:${pool}`. */
+export function resolveCpc(
+  cpc: CpcConfig,
+  lpars: readonly LparConfig[],
+  demands: readonly PoolDemand[],
+): Record<string, LparPoolRuntime> {
+  const out: Record<string, LparPoolRuntime> = {};
+  const demandIdx: Record<string, PoolDemand> = {};
+  for (const d of demands) demandIdx[poolKey(d.lparId, d.pool)] = d;
+  const demandOf = (lparId: string, pool: PoolType) => demandIdx[poolKey(lparId, pool)];
+
+  for (const plan of poolPlans(cpc, lpars)) {
+    const { pool, dedicated, shared, physicalShared, ltoP, usablePhysical, baseClaims, ent } = plan;
 
     for (const m of dedicated) {
       const d = demandOf(m.lpar.id, pool);
@@ -76,17 +118,6 @@ export function resolveCpc(
     }
 
     if (shared.length === 0) continue;
-    const totalLogical = shared.reduce((a, m) => a + m.pc.logical, 0);
-    const ltoP = logicalToPhysical(totalLogical, physicalShared);
-    const usablePhysical = Math.max(0, physicalShared - physicalOverheadEngines(ltoP, physicalShared));
-
-    const baseClaims: PoolClaim[] = shared.map((m) => ({
-      weight: m.pc.weight,
-      logical: m.pc.logical,
-      demandEngines: 0,
-      capEngines: Infinity,
-    }));
-    const ent = entitlements(baseClaims, physicalShared);
     const claims: PoolClaim[] = shared.map((m, i) => {
       const d = demandOf(m.lpar.id, pool);
       let cap = d?.softCapEngines ?? Infinity;
