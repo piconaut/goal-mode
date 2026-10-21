@@ -48,7 +48,7 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
     vague: 'Yesterday was rough for {w}. The DASD report might tell you more.',
   },
   STORAGE: {
-    clear: '{w} missed its SLA yesterday. Storage delay in WLMGL and the paging rates in SYSINFO might show what it was waiting for.',
+    clear: '{w} missed its SLA yesterday. Storage delay in WLMGL, or the STOR delayed users in Monitor III SYSINFO, might show what it was waiting for.',
     vague: 'Yesterday was rough for {w}. SYSINFO might tell you more.',
   },
 };

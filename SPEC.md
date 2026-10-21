@@ -782,7 +782,10 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 - Business complaints in the inbox (late, vague, sometimes wrong).
 
 **Tier 1 (Insight cost: low):**
-- **RMF Monitor III** (live): SYSINFO, DELAY, PROCU, ENCLAVE, WFEX (exceptions), CPC capacity.
+- **RMF Monitor III** (live): SYSSUM (goals vs actuals, PI), SYSINFO, DELAY, PROCU, ENCLAVE, WFEX (exceptions), CPC capacity.
+  Columns and formulas follow RMF Report Analysis ch. 2 (§18): DELAY splits active samples into USG/DLY/UKN
+  (server and subsystem waits are UKN, not delay); SYSINFO shows the LPAR and MVS views of CPU (MVS above LPAR
+  is the short-engine clue); PROCU's Time on CP % IIP is zIIP-eligible work run on CPs.
   Enables the WLM Activity log.
 - **Partition Data report** (PR/SM view, polarity, overhead).
 - **Report class design tool**: suggests report classes for granularity.
@@ -839,7 +842,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 |---|---|---|
 | Marketing campaign | MOBILE λ ×2–4 for 1–3 h | Calendar (fogged until the Digital stakeholder mentions it); DDF END/S |
 | Payday / month-end | RBANK, PAYMQ ↑, batch +30% | Calendar (known) |
-| Runaway ad-hoc query | One DDF enclave burns zIIP and CP for hours | Mon III ENCLAVE; DDF period 3 consuming; IIPCP ↑ |
+| Runaway ad-hoc query | One DDF enclave burns zIIP and CP for hours | Mon III ENCLAVE; DDF period 3 consuming; IIPCP ↑ (PROCU Time on CP % IIP) |
 | Looping job in a high class (`XLOG_LOOP`) | A log-archiver STC named CICSXLOG matches the `CICS*` region rule, lands in STCHI (imp 1) and loops on one TCB: ~1 engine on PROD1 for 6 h (APPROX); rumoured. Built as an STC, not batch: address spaces classify by jobname only, so the misclassification story is a rule written too broadly | WLMGL: STCHI service ↑ with CICS rates flat; CICSXLOG top STCHI consumer; imp ≥ 2 work on PROD1 CPU-delayed. Fixes: cancel it (Regulator trust −1), or a classification rule sending CICSXLOG to STCLO |
 | Retry storm (`RETRY_STORM`) | Slow card-network authorisations: mobile clients time out and retry, MOBILE λ ×2.5 at unchanged CPU/txn for 3 h around midday (APPROX: fixed multiplier, no feedback loop); rumoured | DDF END/S ×2.5 with CPU/txn flat (bots are cheaper per txn); DDFPRD APPL% ↑. Fixes: client backoff in the API gateway (Digital trust −1), or protect mobile and ride it out |
 | Bot attack on mobile login | λ ×5 on one transaction, CPU-cheap but RACF-heavy | DDF period 1 END/S; TCPIP CPU |
@@ -1216,7 +1219,7 @@ never touches the DOM.
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
-| Monitor III views (SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s range; PROCU by service-class period, not job |
+| Monitor III views (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | RMF field names and formulas (Report Analysis ch. 2). Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s MINTIME; rows are service-class periods, not jobs or individual enclaves; no IDL state, workload groups or report classes; PRC/DEV using split and zIIP/IIPCP split follow the last tick's mix (APPROX); MVS Util% derived from the PR/SM short-engine wait (APPROX); PR/SM delay % shown directly though RMF has no such field; WFEX criteria are RT/WFL% thresholds at 1.5× the goal (FICTIONAL) |
 | Multi-day projects (threadsafe, zIIP-enable, compression, SQL tuning, archive) | **Plausible model** | Flat per-transaction multipliers on CPU, I/O and zIIP eligibility; sizes FICTIONAL. Events can also cut eligibility (`ziipEligMult`, moves zIIP time back to CP) |
 | Report classes in WLMGL (homogeneous / heterogeneous) | **Faithful simplification** | One row per report class; goal and PI only for a single service-class period (RMF would show report class periods) |
 | WLM service policies and scheduled V WLM,POLICY= switches | **Faithful simplification** | Whole policies are swapped; policy overrides within one policy are not modelled separately |
@@ -1282,7 +1285,9 @@ Primary IBM sources:
   https://public.dhe.ibm.com/software/uk/itsolutions/leveragingmiddleware/new-face-of-cics/cics-threadsafe-whitepaper.pdf
 - IBM: *z/OS Capacity Provisioning*.
   https://www-03.ibm.com/systems/z/os/zos/features/cpm
-- IBM: *RMF Monitor III reports* (SYSINFO, DELAY, WFEX, ENCLAVE…).
+- IBM: *z/OS RMF Report Analysis* (SC34-2665-50, z/OS 2.5), ch. 2: common Monitor III measurements (using, delay,
+  workflow, execution velocity), MINTIME and range, and the CPC, DELAY, ENCLAVE, PROCU, SYSINFO, SYSSUM and WFEX
+  report field tables. https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/erbb500_v2r5.pdf
   https://www.ibm.com/docs/SSLTBW_2.2.0/com.ibm.zos.v2r2.erbb500/toc.htm
 - IBM: *What is Tailored Fit Pricing for IBM Z?* (consumption baseline, discounted growth, no capping).
   https://www.ibm.com/support/knowledgecenter/SSLTBW_2.3.0/com.ibm.zos.v2r3.izsc100/containerPricingOverview.htm

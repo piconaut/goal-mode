@@ -35,7 +35,7 @@ describe('Monitor III views', () => {
 
   it('ENCLAVE shows DDF work using zIIPs', () => {
     const m = buildMon3(noon, MIDWEST);
-    const mobile = m.enclaves.filter((e) => e.workloadId === 'MOBILE');
+    const mobile = m.enclaves.filter((e) => e.workloadIds.includes('MOBILE'));
     expect(mobile.length).toBeGreaterThan(0);
     expect(mobile.reduce((a, e) => a + e.ziipEngines, 0)).toBeGreaterThan(0);
     expect(m.rows.some((r) => r.system === '*PLEX')).toBe(true);
@@ -62,5 +62,51 @@ describe('WLM log explanations', () => {
 describe('SYSINFO velocity', () => {
   it('is a percentage', () => {
     for (const r of buildMon3(noon, MIDWEST).rows) if (r.velocity !== null) expect(r.velocity).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('Monitor III field formulas (RMF Report Analysis)', () => {
+  it('WFL %, USG %, DLY % and UKN % partition the active samples', () => {
+    for (const r of buildMon3(noon, MIDWEST).rows) {
+      if (r.avgUsers.active <= 0) continue;
+      expect(r.usingFrac + r.delayFrac + r.unknownFrac).toBeCloseTo(1, 6);
+      // % Delayed for adds up to DLY % (no overlap modelled).
+      const d = r.delay;
+      expect(d.cpu + d.ziip + d.io + d.stor + d.cap).toBeCloseTo(r.delayFrac, 6);
+    }
+  });
+
+  it('percentile goals report % within goal, and CICS transaction classes show N/A velocity in SYSSUM', () => {
+    const rows = buildMon3(noon, MIDWEST).rows.filter((r) => r.system === '*PLEX');
+    for (const r of rows.filter((x) => x.goalPct !== null && x.endedPerSec > 0)) {
+      expect(r.withinGoalPct).not.toBeNull();
+      // PI ≤ 1 exactly when at least the goal percentile ended within the goal time.
+      if (r.pi !== null && r.pi <= 1) expect(r.withinGoalPct!).toBeGreaterThanOrEqual(r.goalPct! - 1e-6);
+    }
+    expect(rows.some((r) => r.velocity !== null && r.velocityAct === null)).toBe(true);
+  });
+
+  it('SYSINFO MVS view is at least the LPAR view, and EAppl% ≥ Appl%', () => {
+    for (const s of buildMon3(noon, MIDWEST).systems) {
+      expect(s.mvsBusyPct).toBeGreaterThanOrEqual(s.cpBusyPct - 1e-9);
+      expect(s.eapplPct).toBeGreaterThanOrEqual(s.applPct - 1e-9);
+    }
+  });
+
+  it('CPC capacity: physical total = effect + LPAR management, Act MSU ≤ capacity', () => {
+    const m = buildMon3(noon, MIDWEST);
+    for (const c of m.cpc) expect(c.physTotalPct).toBeCloseTo(c.physEffectPct + c.physLparPct, 6);
+    for (const h of m.cpcHeaders) {
+      expect(h.imageCapacityMsu).toBeLessThanOrEqual(h.cpcCapacityMsu + 1e-6);
+      expect(h.max4hMsu).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('WFEX exceptions carry an RMF-style reason and critical value', () => {
+    const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
+    const m = buildMon3(hot, MIDWEST);
+    expect(m.exceptions.length).toBeGreaterThan(0);
+    for (const e of m.exceptions) expect(e.reason.length).toBeGreaterThan(0);
+    expect(m.speed.some((s) => s.name === '*PROC')).toBe(true);
   });
 });
