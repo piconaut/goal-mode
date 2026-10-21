@@ -131,6 +131,8 @@ export interface ViewModel {
   daily: string | null;
   difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
   scenario: { id: string; name: string };
+  /** Event fixes this scenario's deck can call for (the Ops list shows only these). */
+  fixIds: string[];
   clock: string;
   hourOfDay: number;
   tickOfDay: number;
@@ -293,6 +295,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
     scenario: { id: packOf(run.scenarioId).id, name: packOf(run.scenarioId).name },
+    fixIds: [...new Set(packOf(run.scenarioId).game.events.flatMap((e) => (e.fix ? [e.fix] : [])))].sort(),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,

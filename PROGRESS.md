@@ -349,6 +349,11 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 127):** UI: Change Desk → Batch & operations → Routing gets a routing-policy form (static / WLM
+  weights with zIIP-aware / CPSM goal with ABENDTHRESH, ABENDCRIT, quiesce per region); the static share editor shows
+  only under static weights. The Ops fix list now shows only fixes the scenario's deck can call for (`view.fixIds`;
+  before, Midwest listed revenue fixes too). Screenshot checked, 357 tests. Next: startTools, Codex entries (SD
+  weights, CPSM routing, storm drain, absolute capping, bursts), bot day-0 fixes, retune, sweeps.
 - **2026-10-21 (loop 126):** 4b part 2 (game layer): `SET_ROUTING_POLICY` costs 1 engineer-hour (SD VIPADISTRIBUTE / CPSM
   WLMSPEC change), basket target and now → new text (`routingPolicyLabel`), config view exposes each workload's live
   routing policy; new fix RECYCLE_SICK_AOR (1 h, −1 Markets) ends SICK_AOR. Quiescing a region costs its capacity, and
