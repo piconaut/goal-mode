@@ -44,3 +44,17 @@ export function splitPeriods(
   }
   return out;
 }
+
+/** Period a unit of work is in after consuming `serviceSu`: each DUR is the service spent in
+ * that period before moving on (SG24-7621 §3.6). Long-running address spaces never end a
+ * transaction, so they accumulate service and age into the last period. */
+export function periodAtService(durationsSu: readonly (number | null)[], serviceSu: number): number {
+  let lo = 0;
+  for (let i = 0; i < durationsSu.length - 1; i++) {
+    const d = durationsSu[i];
+    if (d == null) return i;
+    lo += d;
+    if (serviceSu < lo) return i;
+  }
+  return Math.max(0, durationsSu.length - 1);
+}

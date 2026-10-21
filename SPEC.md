@@ -1204,10 +1204,11 @@ never touches the DOM.
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH, depth adds memory; no MQ SMF 115/116 |
 | WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved); NO excludes I/O from velocity |
 | Discretionary goal management | **Simplified** | SG24-7621 §4.22 conditions except the recent receiver/donor test; cap level fictional |
-| Resource group types 1/2/3 semantics | **Real** | Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members) |
+| Resource group types 1/2/3 semantics | **Real** | Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX) |
+| Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
 | HiperDispatch polarity rules | **Real (published rule of thumb)** | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
-| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | Prices fictional |
+| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
