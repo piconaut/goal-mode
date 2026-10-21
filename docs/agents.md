@@ -72,7 +72,8 @@ open http://localhost:5173/?spectate=a        # watches runs/a.json
 The page polls `runs/<name>.json` every 1.5 s through a dev/preview-server route (`/__spectate/<name>`) and shows it
 in the normal UI, read-only: speed buttons and actions are ignored, and nothing is saved over your own
 browser save. A banner shows the agent's latest command and its latest `note "…"` (agents should note their
-reasoning before acting). `advance N --pace 2s` steps one hour at a time so a viewer can follow along. Charts start when you open the page and grow with each
+reasoning before acting). `advance N --pace 2s` steps one hour at a time so a viewer can follow along. The strategy bots can be watched the
+same way: `npm run bot -- --bot expert --seed 42 --spectate runs/bot.json --pace 2`, then open `?spectate=bot`. Charts start when you open the page and grow with each
 new state the CLI writes.
 
 ## What an agent can see

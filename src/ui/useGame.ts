@@ -118,12 +118,12 @@ export function useGame(): GameHandle {
         if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
         const text = await res.text();
         if (text === lastText) return;
+        const log = (JSON.parse(text) as { log?: { cmd: string; text?: string }[] }).log ?? [];
         lastText = text;
         worker.current?.postMessage({ type: 'SPECTATE', text } satisfies ToWorker);
-        const log = (JSON.parse(text) as { log?: { cmd: string; text?: string }[] }).log ?? [];
         const note = [...log].reverse().find((c) => c.cmd === 'note')?.text ?? '';
         const last = [...log].reverse().find((c) => c.cmd !== 'note');
-        setSpectate({ name: spectateName, last: last ? JSON.stringify(last) : '', note, error: null });
+        setSpectate({ name: spectateName, last: last ? (last.cmd === 'advance' && last.text ? last.text : JSON.stringify(last)) : '', note, error: null });
       } catch (e) {
         setSpectate((s) => ({ name: spectateName, last: s?.last ?? '', note: s?.note ?? '', error: String(e) }));
       }

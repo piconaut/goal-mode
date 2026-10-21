@@ -13,15 +13,15 @@
 //   npm run play -- runs/a.json advance 3 --pace 2s   (one hour at a time, saving and pausing between, for spectators)
 //   npm run play -- runs/a.json json '{"cmd":"change","req":{...}}'   (any PlayCommand, e.g. wlm edits)
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { existsSync, readFileSync } from 'node:fs';
 import type { DifficultyId } from '../src/content/difficulty';
 import type { Mechanism, Trigger } from '../src/game/types';
 import type { PinRequest } from '../src/game/evidence';
 import type { EvidenceMetric } from '../src/content/evidence';
 import type { InquiryKind } from '../src/content/inquiries';
 import type { ReportKind, SmfKind } from '../src/worker/protocol';
-import { applyPlayCommand, catalogText, decodePlayFile, encodePlayFile, mon3Text, statusText, type PlayCommand } from './playCore';
+import { writeSpectateFile } from './spectateFile';
+import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, statusText, type PlayCommand } from './playCore';
 
 const argv = process.argv.slice(2);
 const paceAt = argv.indexOf('--pace');
@@ -86,10 +86,7 @@ if (typeof c === 'string') {
     if (i > 0 && (res.file.run.phase !== 'LIVE' || !res.ok)) break;
     if (i > 0) await new Promise((r) => setTimeout(r, paceMs));
     res = applyPlayCommand(res.file, step);
-    if (res.ok) {
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, encodePlayFile(res.file));
-    }
+    if (res.ok) writeSpectateFile(path, res.file);
     if (steps.length > 1) console.log(res.ok ? res.text : `REFUSED: ${res.text}`);
   }
   file = res.file;

@@ -675,7 +675,10 @@ to `main` (this is the last push there; M9 goes on its feature branch).
   - [x] Loop 87: `note <text>` verb (logged, run unchanged; banner shows the latest note as the agent's reasoning),
     `advance N --pace 2s` (one hour at a time, saved after each; same end state, tested), tutorial hidden while
     spectating
-  - [ ] Still to do: importing a finished run as a save, the bot `--spectate` writer
+  - [x] Loop 88: `npm run bot -- --bot textbook --spectate runs/bot.json [--pace 2]` writes the run after every
+    simulated hour, with the bot's new change labels as the banner note; run files are now written atomically
+    (temp + rename, `tools/spectateFile.ts`) and the UI parses before handing a file to the worker
+  - [ ] Still to do: importing a finished run as an ordinary save
   - Same for the strategy bots (user request 2026-10-20): `tools/bot.ts --spectate <run> [--pace 2s]` writes
     the same run file after every simulated hour, with the bot's latest change labels as the banner text
 

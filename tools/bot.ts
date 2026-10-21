@@ -1,5 +1,5 @@
 // Headless strategy bots for balancing (SPEC §16).
-// Usage: npm run bot -- --bot donothing --days 40 --seed 42
+// Usage: npm run bot -- --bot donothing --days 40 --seed 42 [--spectate runs/bot.json --pace 2]
 
 import { MIDWEST_GAME } from '../src/content/game-midwest';
 import { SCENARIOS } from '../src/content/scenarios';
@@ -10,6 +10,7 @@ import { TICKS_PER_DAY } from '../src/sim/core/units';
 import { instanceClock } from '../src/sim/core/step';
 import { STRATEGIES } from './strategies';
 import { decideTfp } from '../src/game/tfp';
+import { writeSpectateFile } from './spectateFile';
 
 function arg(name: string, dflt: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -26,6 +27,22 @@ const tfp = arg('tfp', 'ignore');
 const bot = STRATEGIES[botName];
 if (!bot) throw new Error(`Unknown bot ${botName}; have ${Object.keys(STRATEGIES).join(', ')}`);
 
+/** `--spectate runs/<name>.json [--pace 2]`: write the run after every simulated hour for `?spectate=<name>`. */
+const spectatePath = process.argv.includes('--spectate') ? arg('spectate', 'runs/bot.json') : null;
+const paceSec = Number(arg('pace', '0'));
+const spectateLog: { cmd: string; text?: string }[] = [];
+let seenChanges = 0;
+function spectate(r: RunState) {
+  if (!spectatePath) return;
+  // Banner text: the change labels the bot made since the last write.
+  const fresh = r.changes.slice(seenChanges).map((c) => c.label);
+  seenChanges = r.changes.length;
+  if (fresh.length) spectateLog.push({ cmd: 'note', text: `${botName}: ${fresh.join('; ')}` });
+  spectateLog.push({ cmd: 'advance', text: `${botName} day ${r.day + 1} ${r.phase}` });
+  writeSpectateFile(spectatePath, { version: 1, run: r, pendingPolicy: null, log: spectateLog.slice(-50) });
+  if (paceSec > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, paceSec * 1000);
+}
+
 const difficulty = arg('difficulty', 'NORMAL').toUpperCase() as import('../src/content/difficulty').DifficultyId;
 let run: RunState = newRun(scenario, content, seed, difficulty);
 const t0 = performance.now();
@@ -36,9 +53,11 @@ while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
     run = bot.briefing(run, scenario, content);
     if (tfp === 'sign' && run.tfpOffer?.status === 'OFFERED') run = decideTfp(run, true).run;
     run = startDay(run, content);
+    spectate(run);
     while (run.phase === 'LIVE') {
       run = advance(run, scenario, content, 360);
       if (run.phase === 'LIVE') run = bot.hourly(run, scenario, content);
+      spectate(run);
     }
   }
   const rep = run.reports[run.reports.length - 1];
@@ -52,6 +71,7 @@ while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
     for (const i of inc) console.log(`        ${i.workloadId} ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}% → ${i.truth.mechanism}/${i.truth.trigger}`);
   }
   if (run.phase === 'REVIEW') run = bot.review(run, scenario, content);
+  spectate(run);
   if (run.phase === 'GAMEOVER' || run.phase === 'VICTORY') break;
   void TICKS_PER_DAY;
 }
