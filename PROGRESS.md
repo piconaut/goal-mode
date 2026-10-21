@@ -620,8 +620,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     prereqs are owned (`trialTool`) for 3 days (`toolTrials`, `expireToolTrials` at day end); buying keeps it; trial
     tools don't count as prereqs. Analytics card shows "Keep it" + the last day. Test; run goldens regenerated.
     All SPEC §9.5 opportunity types now exist
-  - Loop 100: box ticked (every SPEC §9.5 opportunity, 11 perks, 2 pacts). Smoke sweep (expert + textbook, Normal,
-    seeds 1–6) with the bigger pool running; results recorded next loop
+  - Loop 100: box ticked (every SPEC §9.5 opportunity, 11 perks, 2 pacts). Loop 102 smoke sweep with the bigger
+    pool (Normal, seeds 1–4, 411 s; bots take the first draft option): **expert** 40/40/40, 4 victories, score median
+    2867; **textbook** 17/28/28, batch 3 / trust 1. In line with loop 68 (expert 20/20, textbook median 26): no
+    regression from the new options
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
 
