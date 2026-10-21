@@ -169,7 +169,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       recommendations send work to the wrong images, through skewed weights, a sick-but-alive region (storm
       drain) or uneven zIIP capacity. Fixes trade affinity against even load.
   - **Needs:** a multi-CPC world (the hardware catalog and HMC assume one CPC), finer-than-hourly arrival bursts in
-    the workload model, and routing that reacts to image health. Design it in SPEC §13 before building
+    the workload model, and routing that reacts to image health.
+  - [x] Design: SPEC §13.5 "Harbourline Bank" (2 CPCs, 6 LPARs, starting tools; Problem 1 spiky markets work with
+    four fix families; Problem 2 flaws B1–B4: static SD weights, storm drain, CP-only WLM weights, CF locality; build
+    order multi-CPC → burst arrivals → routing policies → content)
 
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
@@ -250,6 +253,9 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 
 ## Open questions
 
+- Large-bank design (SPEC §13.5), to settle before building: how sysplex distributor `SERVERWLM` weights count zIIP
+  capacity by default; how CICSPlex SM abend-related health checks are configured and how fast a recovered region gets work
+  again; whether an LPAR absolute cap or a group absolute limit is the usual "clips bursts" lever.
 - HiperDispatch polarity for E < 1: SPEC/tests give 2 × VM for any E < 1.5 (Watson & Walker table as read). Under the
   "each VM ≥ 50% of an engine" rule an LPAR with E < 1 would get a single VM. Check the source before changing.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
@@ -305,6 +311,9 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-21 (loop 115):** PR #13 (Monitor III screens per RMF Report Analysis) reviewed by the new `pr-reviewer`
+  subagent and merged (325 tests, hash unchanged). Sweep now saves each run to `<out>.partial.jsonl` and has `--resume`
+  (a sweep killed at 59/60 had lost everything). SPEC §13.5 large-bank design written. Midwest 20-seed re-sweep running.
 - **2026-10-21 (loop 114):** second scenario *State Revenue Agency* (scenario packs, per-scenario facets, shared batch generator, REVPOL flaws G1–G3, H1–H2, SPEC §13.4, bot day-0 fixes, UI picker). Midwest unchanged: bench hash `eddf17fc7c615524`, goldens unchanged, 320 tests. Revenue sweep seeds 1–6 on target (above). The loop-113 Midwest re-sweep died mid-run (a bot.ts edit during the sweep); re-run pending. Planned a large-bank scenario (user request).
 - **2026-10-21 (loop 110):** PR #10 (CICS goal checks) merged after check + hashes; RETRY_STORM card (mobile λ ×2.5, CPU/txn flat; fix MOBILE_BACKOFF) with realism test. 308 tests, bench hash unchanged.
 - **2026-10-21 (IBM-docs realism thread):** audited WLM, capping, IEAOPTxx, CF heuristic against MVS Planning: WLM V2R5,

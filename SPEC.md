@@ -1108,6 +1108,110 @@ The event deck so far is the seven Midwest cards that name no Midwest workload (
 JOB_ABEND, CP_SPARING, HIRING_FREEZE, GREEN_IT_COD, SMF_AUDIT, AUDIT_UNCLASSIFIED); agency-specific
 cards come next.
 
+### 13.5 Third scenario — "Harbourline Bank" (large estate; design, not built)
+
+A harder run for players who have finished Midwest Mutual. The estate is big enough that the player
+can't watch everything, but analytics are already partly bought, so the skill tested is **diagnosis
+and trade-offs across images**, not visibility. Target: textbook bot median day ~22–26 on Normal (the
+Midwest target is 28–32), expert bot still wins most seeds.
+
+**Estate.** Two CPCs at two sites ~15 km apart, one production sysplex `HBPLEX`:
+
+| CPC | LPARs | Notes |
+|---|---|---|
+| CPC1 (newer generation, more CPs) | PRDA, PRDB, DEV1 | ICF for CF01 |
+| CPC2 (one generation older, sub-capacity CPs, more zIIPs) | PRDC, PRDD, TST1 | ICF for CF02 |
+
+Six LPARs (Midwest has four), so the performance budget still needs checking (§15: ≤ 2 s per day).
+Db2 data sharing across all four PRD members; CICSPlex SM with TORs on every PRD member and AORs on
+PRDA–PRDD; MQ queue-sharing group; DDF behind the sysplex distributor. CF requests from CPC2 to CF01
+(and CPC1 to CF02) travel the 15 km link, so the existing sync/async heuristic (§5.9) converts more of
+them to async: lock-heavy work runs slower on the "far" side of its structure.
+
+**Analytics at the start.** RMF Monitor III, Partition Data, CF/DASD activity, CICS monitoring and Db2
+accounting are installed on day 1 (`GameContent.startTools`, new). SMF 113, the capacity planner,
+What-if, alerts and automation are still bought with Insight. Starting Insight is lower than
+Midwest's, so the tree still matters.
+
+**Stakeholders:** *Markets* (trading-day online, heaviest weight), *Retail*, *Cards*, *Payments*,
+*Finance*, *Regulator*.
+
+#### Problem 1: strongly spiky online workload
+
+The markets workload (`MKTORD`, CICS order capture, and `MKTQRY`, DDF price queries) has bursts far
+above its hourly mean: at market open (09:30) and close (16:00), on news events (random), and on
+index-rebalance days (story). A burst lifts λ ×3–6 for 30 s – 5 min.
+
+Why it is hard (and real):
+- **Interval reports hide it.** A 15-min RMF interval averages a 2-minute ×5 burst into a +25 % blip.
+  WLMGL looks fine while the SLA counts misses. The clue path is Mon III (100 s range: SYSSUM PI and
+  DELAY spike), CICS monitoring (per-minute response times) and SMF 113 / the incident timeline.
+- **WLM is not instant.** One receiver gets help per 10 s policy interval, and the PI is built from a
+  smoothed history, so a burst shorter than ~a minute is over before WLM has reacted (§5.5).
+- **Capping cuts both ways.** A defined capacity / soft cap barely notices a burst: the R4HA moves
+  slowly. An **absolute cap** (or an LPAR group absolute limit) clips the burst itself. Neither is free:
+  removing caps raises the MLC peak, which is the R4HA, and spiky work moves the R4HA only a little.
+- **Retries amplify.** Order clients time out at 2 s and retry (§5.2 retry storms), so a burst that
+  overloads becomes a longer burst.
+
+Valid fixes, each with a cost:
+- **Headroom:** more CPs or On/Off CoD on CPC1 (capex/opex, MLC if the R4HA rises).
+- **Goals that tolerate bursts:** percentile goals instead of average goals for MKTORD (an average goal
+  is wrecked by one burst); importance 1 plus CPU-critical so lower work is displaced at once (costs
+  everyone else during the burst).
+- **Admission control:** CICS MAXTASKS / transaction classes, Db2 MAXDBAT, to shed or queue the
+  excess (some orders are rejected: Markets trust cost per rejected % instead of per slow %).
+- **Move the burst:** route MKTQRY price queries to CPC2's zIIPs (but see Problem 2).
+- **Caps:** swap the absolute cap for a defined capacity (MLC risk), or raise it.
+
+#### Problem 2: workload-balancing issues across the sysplex
+
+Routing becomes a model, not a fixed table. Each routed workload has a `routingPolicy`:
+- `STATIC`: fixed weights (today's `routing` table; still the default).
+- `WLM`: sysplex distributor `SERVERWLM`-style weights, proportional to each member's displaceable
+  capacity at the workload's importance, refreshed every minute (APPROX: real SD asks WLM every 60 s).
+- `CPSM_GOAL`: CICSPlex SM goal routing, which prefers the AOR with the best recent response time and
+  queue, optionally with abend-aware health checks.
+
+Planted flaws:
+
+| Flaw | Where | Symptom (clue) | Fixes (trade-offs) |
+|---|---|---|---|
+| **B1** DDF sysplex distributor on static weights 40/30/20/10 from before CPC2 was rebalanced | SD config | PRDA hot, PRDD idle; MKTQRY slow only on PRDA (Partition Data per LPAR; Mon III SYSINFO per system) | `WLM` weights (reacts to load, but chases bursts and can oscillate); recompute static weights (stale again as work grows) |
+| **B2** storm drain: one AOR (CICSAOR3 on PRDC) fails transactions fast after a storage shortage; goal routing sees "fast" responses and sends it more | CPSM | Cards errors rise while average response looks *better*; abends concentrated on one region (CICS monitoring, incident log) | abend-aware routing (health threshold: slower to use a recovered region); quiesce the AOR (less capacity); fix the storage cause (RCA) |
+| **B3** WLM weights count CPs only: DDF work, 60 % zIIP-eligible, is sent away from CPC2 where the zIIPs are | SD config | zIIP white space on PRDC/PRDD while PRDA/PRDB run DDF on CPs (Partition Data zIIP busy; PROCU IIP on CP) | zIIP-aware weights (SD `PROCTYPE`-style; more cross-site CF traffic); add zIIPs on CPC1 (capex); IIPHONORPRIORITY tuning |
+| **B4** CF locality: the Payments Db2 lock structure is on CF01, so balancing payments evenly sends half to the far side | CFRM | payments CPU/txn and lock wait higher on PRDC/PRDD (CF Activity: async % by system; Db2 accounting) | rebalance structures (move LOCK1 or duplex it: more CF CPU); keep payments affinity to CPC1 (uneven load); accept it |
+
+Balancing trade-off in one line: **even load vs. locality and affinity**. No setting is best in every
+hour; spikes (Problem 1) make reactive routing worse, which ties the two problems together.
+
+Story beats (sketch): day 0 welcome (estate tour, tools on), day 6 index-rebalance day (scheduled
+burst ×6 at close), day 12 CFO asks for one MLC number for both CPCs, day 18 new mobile trading app
+(DDF, lands under static weights), day 25 site-failover test (CPC2 drained for 2 h; all routing
+policies are tested at once), regulator stress-test week near the end.
+
+#### What has to be built (in order, each runnable on its own)
+
+1. **Multi-CPC world.** `config.cpcs` already allows more than one; the single-CPC assumptions are
+   five `cpcs[0]` call sites (critical-path projection in `step.ts`, `run.ts`, `view.ts` ×2, hardware
+   catalog). Hardware purchases, HMC and Partition Data need a CPC selector. MLC: each CPC's
+   sub-capacity report is separate, so a soft-capping group never spans CPCs (real: a capacity group
+   is defined per CPC), and the bill sums them.
+2. **Burst arrivals.** `ArrivalShape.bursts?: { ratePerHour, heightMult: [lo, hi], durationSec:
+   [lo, hi] }` (seeded, per tick) plus scheduled bursts at fixed times. Default undefined, so Midwest
+   and Revenue are bit-identical.
+3. **Routing policies.** `routingPolicy` per workload (`STATIC | WLM | CPSM_GOAL`) and per-region
+   health (fast-fail fraction) feeding `CPSM_GOAL`. New verbs: set routing policy, health threshold,
+   zIIP-aware weights, quiesce region. Default `STATIC`, so existing scenarios don't change.
+4. **Content:** world, workloads, policy with B1–B4 and the Problem-1 traps, events, story, hints,
+   Codex (sysplex distributor, CICSPlex SM routing, storm drain, absolute capping), bot day-0 fixes,
+   sweeps.
+
+Open questions (also in PROGRESS): how SD `SERVERWLM` weights treat zIIP capacity by default; how
+CPSM's abend-related health checks are configured and how quickly a recovered region gets work again;
+whether an LPAR absolute cap is the right "clips bursts" lever or a group absolute limit is more
+common in practice.
+
 ---
 
 ## 14. UI / screens
