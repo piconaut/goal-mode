@@ -386,7 +386,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     ziipMayOverflow: aggOverflow[a]!,
   }));
 
-  // Blocked workload support: a small promoted share for starved work (IEAOPT BLWLTRPCT).
+  // Blocked workload support: ready work that got no CPU for BLWLINTHD (default 20 s) is promoted; BLWLTRPCT
+  // (default 0.5%) bounds the promoted capacity (MVS Init & Tuning Ref, IEAOPTxx). APPROX: real promotion gives
+  // each promoted unit a fixed slice and BLWLTRPCT limits how many; here the share is split among them.
   const anyPromo = input.promoted !== undefined && input.promoted.size > 0;
   if (anyPromo) {
     const share = (input.promotionShareFrac ?? 0.005) * input.cpCapacityEngines;
@@ -402,7 +404,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   }
 
   // Resource group minimum: while the group misses goals, WLM guarantees it up to the minimum
-  // even at the expense of more important work (SG24-7621 §4.17).
+  // even at the expense of more important work (SG24-7621 §4.17; MVS Planning: WLM, ch. 7 "Minimum").
   const minOf = input.minOf;
   if (minOf) {
     for (const d of [...demands]) {

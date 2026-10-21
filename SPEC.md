@@ -1200,19 +1200,19 @@ never touches the DOM.
 | Area | Fidelity | Notes |
 |---|---|---|
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
-| DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | |
+| DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
-| Discretionary capping conditions | **Real** | |
+| Discretionary capping conditions | **Real** | SG24-7621 §4.22 |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
 | Swap / MPL delay | **Simplified** | Only batch jobs are swappable; swap out least important first when storage overcommits; swap-in immediate when it frees |
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH, depth adds memory; no MQ SMF 115/116 |
 | WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved); NO excludes I/O from velocity |
 | Discretionary goal management | **Simplified** | SG24-7621 §4.22 conditions except the recent receiver/donor test; cap level fictional |
-| Resource group types 1/2/3 semantics | **Real** | Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX) |
+| Resource group types 1/2/3 semantics | **Real** | MVS Planning: WLM ch. 7. CP only (specialty consumption excluded, the default). Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX) |
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
 | HiperDispatch polarity rules | **Real (published rule of thumb)** | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
-| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
+| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
@@ -1254,15 +1254,23 @@ Primary IBM sources:
   https://www.ibm.com/docs/en/SSEPEK_12.0.0/perf/src/tpc/db2z_determinevelocitygoals.html
 - IBM Db2 12: *Configuring zIIPs for Db2*.
   https://www.ibm.com/docs/SSEPEK_12.0.0/perf/src/tpc/db2z_ibmziip.html
-- IBM docs: *Group capacity* (defined capacity, phantom weight, capping patterns).
-  https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieaw100/grcap.htm
-- IBM docs: *IEAOPTxx parameters* (BLWLTRPCT, BLWLINTHD, IIPHONORPRIORITY, ERV).
-  https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieae200/spi.htm
+- IBM, *z/OS MVS Planning: Workload Management* (V2R5, "MVS Planning: WLM" in code comments): velocity
+  formula (connect = I/O using; IOSQ, pending, CU queue = I/O delay; storage delays incl. paging, swap, MPL),
+  service units for period switching (CPU + SRB only since V2R5), resource group types 1–4 and minimum/maximum
+  semantics, "Include Specialty Processor Consumption", defined capacity (R4HA starts at zero after IPL; cap,
+  cap pattern and phantom weight), group capacity shares, long-term CPU protection, Honor Priority (no CP help
+  for discretionary work), CICS/IMS region management.
+  https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieaw100_v2r5.pdf
+- IBM, *z/OS MVS Initialization and Tuning Reference* (V2R5), IEAOPTxx: BLWLINTHD (default 20 s), BLWLTRPCT
+  (default 0.5%, bounds how many units are promoted), IIPHONORPRIORITY (default YES; no zIIPs online → CPs),
+  ABSMSUCAPPING (cap while R4HA ≥ limit, or always), ERV.
+  https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieae200_v2r5.pdf
 - IBM WSC: *Blocked workload support*.
   https://www.ibm.com/support/pages/system/files/inline-files/blocked_v3.pdf
 - IBM docs: *How z/OS performs sync→async conversion of CF requests*.
   https://www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.ieaf100/huer.htm
-- IBM: *Sync/Async heuristic*.
+- IBM WSC, *Heuristic Conversion of CF Operations* (2007): since z/OS 1.2 lock, list and cache requests are all
+  heuristic-eligible, with per-type thresholds normalised to the sender's CP speed; every Nth request stays sync.
   https://www.ibm.com/support/pages/system/files/inline-files/Sync_Async_Heuristic.pdf
 - IBM: *Relating production workloads to LSPR workloads* (RNI/L1MP table).
   https://www.ibm.com/support/pages/relating-production-workloads-lspr-workloads

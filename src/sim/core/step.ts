@@ -926,8 +926,11 @@ function idleScpTick(scKey: string, dp: number): ScpTick {
   };
 }
 
-/** Resource group limits in CP engines on one system. Types 2 and 3 are system scope; type 1 is a
- * sysplex-wide SU/s budget, of which this system gets `plexShareFrac` (its share of the group's demand). */
+/** Resource group limits in CP engines on one system (MVS Planning: WLM, ch. 7). Type 1 is a sysplex-wide
+ * unweighted SU/s budget, of which this system gets `plexShareFrac` (its share of the group's demand); type 2
+ * a percentage of the LPAR share, min(weight share, logical CPs); type 3 CPs × 100. Specialty engine use is
+ * excluded (the "Include Specialty Processor Consumption" default). APPROX: type 2 ignores a soft cap
+ * below the share; type 4 (MSU) and memory pools are not modelled. */
 function resolveRgCapEngines(
   type: 1 | 2 | 3,
   max: number,

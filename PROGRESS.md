@@ -228,6 +228,11 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
+- Soft capping by positive phantom weight lowers the LPAR's effective priority and can cut its VH/VM count (MVS Planning:
+  WLM). The sim caps with a flat MSU limit and leaves polarity alone. Worth modelling once PR #9's polarity rework lands?
+- SG24-7621 §4.22 lists "must be the last uncapped non-discretionary period" and "has not been a significant receiver
+  candidate" among the discretionary-capping conditions; neither is modelled and the first is ambiguous as written.
+- Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
 - Resource group minimum for discretionary members: what exactly counts as "missing goals"? Modelled as delay > using.
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
@@ -267,6 +272,10 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-21 (IBM-docs realism thread):** audited WLM, capping, IEAOPTxx, CF heuristic against MVS Planning: WLM V2R5,
+  Init & Tuning Ref and the WSC sync/async paper. Fixed I/O using (connect only), discretionary batch zIIP overflow and
+  CF lock conversion (goldens/hashes regenerated); citations added to correct-but-uncited models. Seed 42 bots: do-nothing
+  day 15 → 16, textbook day 25 → 26 (small easing).
 - **2026-10-21 (loop 109):** no-repeat 20-seed re-sweep recorded: do-nothing median 16, textbook 26; ends now mostly trust. No code change.
 - **2026-10-21 (loop 108):** do-nothing day-4 loss traced to back-to-back JOB_ABEND draws; no card repeats on consecutive days. Bench hash unchanged, 299 tests.
 - **2026-10-21 (code-quality thread):** worker/play duplication folded into game helpers; policy names past 9 keep 8 chars (BASEPOL9 → BASEPO10, was BASEPOL1); `noUnusedLocals`. 8-day hash unchanged.

@@ -81,6 +81,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     return instPi(evaluateLpar({ ...projectBase, dpOf: (k) => trial[k] ?? dps[k] ?? 196 }).scps);
   };
 
+  // Long-term CPU protection: less important work never gets an equal or higher DP than a CPU-critical
+  // class (MVS Planning: WLM, ch. 14; enqueue promotion is the documented exception, not modelled).
   const violatesCpuCritical = (trial: Record<string, number>) => {
     for (const [k, g] of Object.entries(info)) {
       if (!g.cpuCritical) continue;
