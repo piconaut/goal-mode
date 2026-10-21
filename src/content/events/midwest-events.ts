@@ -426,6 +426,32 @@ export const MIDWEST_EVENTS: EventDef[] = [
     clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures, or absorb it (cap, more CP).',
   },
   {
+    // A program storage leak drives both PROD2 AORs short on storage: CICS stops attaching new tasks until it recovers.
+    // APPROX: SOS modelled as an effective MXT cut (5 per region), so queued tasks show as MXT wait.
+    id: 'CICS_SOS',
+    name: 'CICS short on storage (PROD2 AORs)',
+    category: 'SOFTWARE',
+    minDay: 5,
+    weight: 1,
+    trigger: 'POLICY',
+    affects: ['TELLER', 'RBANK'],
+    mechanisms: ['THREAD_LIMIT'],
+    startHour: [9, 14],
+    durationHours: 4,
+    begin: [
+      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 5 },
+      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 5 },
+    ],
+    end: [
+      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 200 },
+      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 200 },
+    ],
+    fix: 'RECYCLE_PROD2_AORS',
+    forewarning: null,
+    announcement: null,
+    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs, or route teller work to PROD1.',
+  },
+  {
     id: 'CP_SPARING',
     name: 'CP failure, transparent sparing',
     category: 'HARDWARE',

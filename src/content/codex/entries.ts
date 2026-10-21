@@ -237,6 +237,14 @@ export const CODEX: CodexEntry[] = [
     discover: { events: ['ZIIP_LOSS'] },
   },
   {
+    id: 'cics-sos',
+    title: 'CICS MXT and short-on-storage (SOS)',
+    category: 'Subsystems',
+    body: 'MXT caps how many user tasks a CICS region runs at once; work beyond it waits to be attached, which shows as queue time rather than CPU. When a dynamic storage area runs short (SOS), CICS stops attaching new tasks and may purge waiting ones until storage frees up, so it looks like an MXT wall. The real cure is storage: find the leak, recycle the region, or move work elsewhere.',
+    sources: [{ label: 'IBM CICS TS: Short-on-storage conditions in dynamic storage areas', url: 'https://www.ibm.com/docs/en/cics-ts/6.x?topic=storage-short-conditions-in-dynamic-areas' }],
+    discover: { events: ['CICS_SOS'] },
+  },
+  {
     id: 'cod',
     title: 'On/Off Capacity on Demand and Capacity Provisioning',
     category: 'Capacity & cost',

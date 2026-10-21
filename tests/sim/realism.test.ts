@@ -424,6 +424,23 @@ describe('event cards (SPEC §9)', () => {
     expect(run(begin).bookingDone).toBeGreaterThan(0);
   }, 60_000);
 
+  it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
+    const outside = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let out = 0;
+      let n = 0;
+      for (let i = 0; i < 180; i++) {
+        s = step(s, [], MIDWEST);
+        const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
+        out += w.parts.outside ?? 0;
+        n += w.completions;
+      }
+      return (1000 * out) / Math.max(1, n);
+    };
+    expect(outside([])).toBe(0);
+    expect(outside(card('CICS_SOS'))).toBeGreaterThan(5);
+  }, 60_000);
+
   it('stored procedures losing zIIP eligibility move mobile CPU from zIIPs to general CPs', () => {
     const pools = (cmds: Parameters<typeof step>[1]) => {
       let s = step(base, cmds, MIDWEST);

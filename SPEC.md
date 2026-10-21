@@ -847,7 +847,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 |---|---|---|
 | Access-path regression (REBIND) | One package CPU/txn ×4 | Service/txn jump; Db2 accounting PK |
 | Lock escalation in batch | Lock waits for online | Db2 class 3 lock suspensions; CF lock contention |
-| CICS SOS | Region stalls | Mon III DELAY: CICS "other"; CICS 110 |
+| CICS SOS (`CICS_SOS`) | Storage leak in both PROD2 AORs: effective MXT 5 per region for ~4 h (APPROX: SOS as an MXT cut); silent, rumoured | CICS report / Mon III: MXT wait ↑ on PROD2 only, CPU and QR normal; WFEX "queued for a task slot". Fixes: recycle the PROD2 AORs (Retail trust −1), route teller work to PROD1 |
 | QR TCB saturation | Region at ~1 engine | CICS 110 dispatch/QR; region CPU ≈ 100% of 1 CP |
 | Non-threadsafe release (`QR_RELEASE`) | Teller release forces QR on the PROD1 AORs (QR fraction 0.6 → 0.95) for ~36 h | CICS report: QR wait per txn ↑ in CICSAOR1/3 only, low CPU delay. Fixes: roll back, route to PROD2, add an AOR |
 | z/OS/Db2 maintenance level gift | −3% CPU/txn after you apply it (an IPL) | Release notes in inbox |
