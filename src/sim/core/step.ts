@@ -192,6 +192,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     rtByWorkloadLpar: {},
     systems: [],
     lparTicks: [],
+    onlineDb2Rate: 0,
   };
   for (const l of zosLpars) lparDemand(t, l);
   // Coupling facilities: request work from last tick; a shared CF without thin
@@ -252,7 +253,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   }
   for (const c of def.classes) if (c.storageCritical) c.periods.forEach((_, i) => storageCritical.add(scKeyOf(c.id, i)));
 
-  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0, onlineDb2Rate: 0 };
+  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0 };
   for (const l of zosLpars) dispatchLpar(t, l, sums);
   const { randomIops, seqIops, cfRequests } = sums;
 
@@ -408,6 +409,8 @@ interface TickCtx {
   rtByWorkloadLpar: Record<string, number>;
   systems: WlmSystemState[];
   lparTicks: LparTick[];
+  /** Sysplex online Db2 transaction rate (global lock contention for batch). */
+  onlineDb2Rate: number;
 }
 
 /** Sums over all images, accumulated in image order. */
@@ -415,7 +418,6 @@ interface TickSums {
   randomIops: number;
   seqIops: number;
   cfRequests: number;
-  onlineDb2Rate: number;
 }
 
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
@@ -482,6 +484,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       failFrac = qr.failFrac;
     }
     if (w.subsystem === 'DDF') outside += dbatWait;
+    if (usesRole(w.servers, 'DB2.')) t.onlineDb2Rate += s.rate;
     if (db2FailFrac > 0 && usesRole(w.servers, 'DB2.')) failFrac = Math.max(failFrac, db2FailFrac);
     if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
@@ -670,7 +673,6 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       sums.randomIops += s.rate * s.ioPerTxn;
       if (usesRole(w.servers, 'DB2.')) {
         sums.cfRequests += s.rate * DB2.cfRequestsPerTxn;
-        sums.onlineDb2Rate += s.rate;
       }
     }
   });
@@ -698,7 +700,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     for (const jr of ref.jobs) {
       const fc = cpWant > 0 ? jr.cp / cpWant : 0;
       const fz = ziWant > 0 ? jr.zi / ziWant : 0;
-      const lockStretch = jr.job.def.usesDb2 ? 1 + 0.4 * Math.min(2, env.lockIndex / 4) * Math.min(1, sums.onlineDb2Rate / 2000) : 1;
+      const lockStretch = jr.job.def.usesDb2 ? 1 + 0.4 * Math.min(2, env.lockIndex / 4) * Math.min(1, t.onlineDb2Rate / 2000) : 1;
       advanceJob(
         jr.job,
         jr.shape,

@@ -75,6 +75,22 @@ describe('incidents and RCA', () => {
     expect(scored.insight).toBe(r.insight + 5);
   });
 
+  it('a breach still running at 06:00 counts towards the new day, not the day it started', () => {
+    let r = startDay(fresh(), content);
+    r = { ...r, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 12 }] };
+    r = advance(r, MIDWEST, content, 360 * 2);
+    const first = r.incidents.find((i) => i.workloadId === 'RBANK' && i.endTick === null)!;
+    expect(first).toBeDefined();
+    // Pretend the incident opened yesterday and is still open as the new played day begins.
+    r = { ...r, incidents: r.incidents.map((i) => (i.id === first.id ? { ...i, day: r.day - 1 } : i)) };
+    const hourEnd = r.sim.tick + 360;
+    r = advance(r, MIDWEST, content, 360);
+    expect(r.incidents.find((i) => i.id === first.id)!.endTick).toBe(hourEnd - 360);
+    const today = r.incidents.find((i) => i.workloadId === 'RBANK' && i.endTick === null)!;
+    expect(today.day).toBe(r.day);
+    expect(today.hours).toBe(1);
+  });
+
   it('RCA scoring gives partial credit', () => {
     expect(scoreRca({ mechanism: 'CF_SERVICE', trigger: 'HARDWARE_FAULT' }, { mechanism: 'CF_SERVICE', trigger: 'GROWTH' })).toBe(3);
     expect(scoreRca({ mechanism: 'CF_SERVICE', trigger: 'HARDWARE_FAULT' }, { mechanism: 'IO', trigger: 'HARDWARE_FAULT' })).toBe(2);

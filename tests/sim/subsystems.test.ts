@@ -167,6 +167,21 @@ describe('batch', () => {
     expect(closed.nights[0]!.criticalEndSec).toBeNull();
   });
 
+  it("a night that overruns its deadline keeps its finished jobs until its stragglers' successors can run", () => {
+    const b = releaseNetwork(emptyBatch(), 0, [job('A'), job('B'), job('C', ['A', 'B'])]);
+    b.jobs[0]!.status = 'DONE';
+    b.jobs[0]!.endTick = 100;
+    b.jobs[1]!.status = 'RUNNING';
+    const closed = closeNight(b, 0);
+    expect(closed.nights[0]!.missedDeadline).toBe(true);
+    closed.jobs.find((j) => j.def.name === 'B')!.status = 'DONE';
+    promoteEligible(closed.jobs, 9000);
+    expect(closed.jobs.find((j) => j.def.name === 'C')!.status).toBe('QUEUED');
+    // Once the instance has nothing left, a later close drops it.
+    for (const j of closed.jobs) j.status = 'DONE';
+    expect(closeNight(closed, 1).jobs).toEqual([]);
+  });
+
   it('the generated network is deterministic and acyclic, with month-end extras', () => {
     const a = generateMidwestNetwork(42, 3, 10);
     const b = generateMidwestNetwork(42, 3, 10);
