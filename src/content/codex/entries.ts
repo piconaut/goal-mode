@@ -111,6 +111,17 @@ export const CODEX: CodexEntry[] = [
     discover: { start: true },
   },
   {
+    id: 'cics-transaction-goals',
+    title: 'Goals for CICS transaction classes',
+    category: 'WLM',
+    body: 'A service class that CICS (or IMS) transactions are classified into should have one period with a response-time goal, average or percentile. Velocity is not supported because using and delay samples are accounted to the regions, not the transactions, and multiple periods are not supported because service units go to the region address spaces, so WLM cannot tell when a transaction has used up a period. A resource group on such a class is refused outright when you install the definition. Velocity goals still belong on the regions themselves, in their started-task class, which WLM uses when there are no transaction goals or region management is set to REGION.',
+    sources: [
+      { label: 'IBM z/OS MVS Planning: Workload Management (CICS and IMS goals)', url: 'https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieaw100_v2r5.pdf' },
+      { label: 'IBM Redbook SG24-6472, System Programmer’s Guide to: Workload Manager', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf' },
+    ],
+    discover: { start: true },
+  },
+  {
     id: 'cf-failure',
     title: 'CF failure, structure rebuild and duplexing',
     category: 'I/O & CF',

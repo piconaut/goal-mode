@@ -381,6 +381,10 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   Anything unmatched in a non-STC subsystem goes to **SYSOTHER** (discretionary).
 - **Report classes** (pure reporting, cost nothing) — required for granular RMF views.
 - CICS/IMS region management: "Manage regions using goals of TRANSACTION | REGION".
+- CICS transaction classes (any class a CICS rule or the CICS default points at) take one period with a
+  response-time goal. The editor warns on velocity, discretionary or multi-period goals ("not supported",
+  WLM Planning ch. 9–10) and refuses a resource group on such a class, the one case IBM documents the ISPF
+  application rejecting. The sim does not change how it manages such work.
 
 Built-ins (cannot be edited): **SYSTEM** (DP 255), **SYSSTC** (DP 254), **SYSOTHER**.
 System-critical address spaces (*MASTER*, WLM, XCFAS, GRS, CONSOLE, SMF, CATALOG, …) are forced

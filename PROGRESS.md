@@ -213,15 +213,15 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-19 | CF load comes from named structures placed on CFs; lock requests never convert to async | Gives CF placement a real diagnosis path (lock vs GBP) and a trap; per-CF request shares were opaque |
 | 2026-10-20 | Sonnet subagents `implementer` and `log-reader` in `.claude/agents/` | Save usage on well-scoped coding and log digestion; sim models and balance stay on the main agent (user request) |
 | 2026-10-21 | Realism pass: batch jobs age through periods by consumed SU; address spaces sit in their class's last period; type 1 resource groups split their sysplex SU/s budget by demand (was applied in full on every system); MLC bills a capacity group at most its limit | All were divergences from real WLM/SCRT; behaviour-neutral for BASEPOL (no multi-period batch/STC classes, resource groups or capacity groups), so day-1 hash and goldens are unchanged |
+| 2026-10-21 | CICS transaction classes: velocity, discretionary or multi-period goals are a warning in the editor, a resource group is a hard error (edit and install refused) | WLM Planning ch. 9–10 / SG24-6472 call the goals "not supported" but document an ISPF error only for the resource group; velocity stays valid on the region STC class |
 | 2026-10-21 | Browser worker and headless `play` share game-layer helpers (`pendingBase`/`nextPolicyName`, `applyReportClassAdvice`, `runWorkItems`, `renderReport`); `noUnusedLocals` on | The two front ends had drifted copies of the same logic; one copy means one place to fix and test |
 
 ## Open questions
 
 - HiperDispatch polarity for E < 1: SPEC/tests give 2 × VM for any E < 1.5 (Watson & Walker table as read). Under the
   "each VM ≥ 50% of an engine" rule an LPAR with E < 1 would get a single VM. Check the source before changing.
-- CICS/IMS transaction service classes must be single-period with response-time goals in real WLM; the editor lets a
-  player put CICS work in a multi-period or velocity class and the sim splits it like DDF. Add a validation or model the
-  real fallback.
+- CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
+  but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
 - Resource group minimum for discretionary members: what exactly counts as "missing goals"? Modelled as delay > using.

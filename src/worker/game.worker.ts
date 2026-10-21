@@ -20,7 +20,7 @@ import { askAround } from '../game/inquiries';
 import { adviseReportClasses, applyReportClassAdvice } from '../game/rcAdvisor';
 import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
-import { applyWlmEdit, pendingBase } from '../game/wlmEdit';
+import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
 import { decodeRunJson } from '../game/runFile';
@@ -83,6 +83,8 @@ function pendingView(): PendingPolicyView | null {
     rules: pendingPolicy.subsystems.flatMap((ss) =>
       ss.rules.map((r) => ({ subsystem: ss.subsystem, text: `${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(default)'}` })),
     ),
+    cicsClasses: cicsTransactionClasses(pendingPolicy),
+    cicsIssues: cicsGoalIssues(pendingPolicy),
   };
 }
 
@@ -113,6 +115,11 @@ const postPolicy = () => {
 };
 
 function activate(def: ServiceDefinition) {
+  const err = cicsGoalIssues(def).find((i) => i.severity === 'error');
+  if (err) {
+    post({ type: 'RESULT', ok: false, message: `Policy not installed: ${err.message}` });
+    return;
+  }
   const out = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
   if (out.ok) {
     pendingPolicy = null;
@@ -465,12 +472,15 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'WLM_EDIT': {
       // Edits accumulate on a pending copy of the active policy until it is activated.
-      const res = applyWlmEdit(pendingBase(pendingPolicy, run.sim.wlm.definition), m.edit);
+      const base = pendingBase(pendingPolicy, run.sim.wlm.definition);
+      const res = applyWlmEdit(base, m.edit);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else {
+        const had = new Set(cicsGoalIssues(base).map((i) => i.message));
+        const warn = cicsGoalIssues(res).find((i) => !had.has(i.message));
         pendingPolicy = res;
         postPolicy();
-        post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.` });
+        post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.${warn ? ` Warning: ${warn.message}` : ''}` });
       }
       break;
     }

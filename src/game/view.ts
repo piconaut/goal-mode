@@ -1,6 +1,7 @@
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
+import { cicsGoalIssues, cicsTransactionClasses, type CicsGoalIssue } from './wlmEdit';
 import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 // View model: a compact, serialisable projection of RunState for the UI (posted from the
 // worker every frame). Applies the fog of war: what the player is allowed to see.
@@ -198,6 +199,8 @@ export interface ViewModel {
   inquiries: ReturnType<typeof inquiriesView>;
   ioPriorityManagement: boolean;
   cicsRegionMode: 'TRANSACTION' | 'REGION';
+  cicsClasses: string[];
+  cicsIssues: CicsGoalIssue[];
 }
 
 export function buildView(run: RunState, scenario: Scenario): ViewModel {
@@ -364,6 +367,8 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     inquiries: inquiriesView(run, scenario),
     ioPriorityManagement: def.ioPriorityManagement !== false,
     cicsRegionMode: def.cicsRegionMode ?? 'TRANSACTION',
+    cicsClasses: cicsTransactionClasses(def),
+    cicsIssues: cicsGoalIssues(def),
   };
 }
 
