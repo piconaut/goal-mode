@@ -22,7 +22,7 @@ import {
 import { mxtQueueWaitSec, qrTcb } from '../subsys/cics';
 import { bpIoMultiplier, dbatQueueWaitSec, DB2 } from '../subsys/db2';
 import { baseRate, stepNoise } from '../workload/arrivals';
-import { buildSlices, scKeyAtService, scKeyOf } from '../workload/slices';
+import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
@@ -129,8 +129,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
 
   const io: Record<IoClass, IoService> = env.dasd
     ? {
-        RANDOM: { rtSec: env.dasd.classes.RANDOM.rtSec, delaySec: env.dasd.classes.RANDOM.iosqSec + env.dasd.classes.RANDOM.pendSec, iosqSec: env.dasd.classes.RANDOM.iosqSec },
-        SEQ: { rtSec: env.dasd.classes.SEQ.rtSec, delaySec: env.dasd.classes.SEQ.iosqSec + env.dasd.classes.SEQ.pendSec, iosqSec: env.dasd.classes.SEQ.iosqSec },
+        RANDOM: { rtSec: env.dasd.classes.RANDOM.rtSec, delaySec: env.dasd.classes.RANDOM.iosqSec + env.dasd.classes.RANDOM.pendSec, iosqSec: env.dasd.classes.RANDOM.iosqSec, connSec: env.dasd.classes.RANDOM.connSec },
+        SEQ: { rtSec: env.dasd.classes.SEQ.rtSec, delaySec: env.dasd.classes.SEQ.iosqSec + env.dasd.classes.SEQ.pendSec, iosqSec: env.dasd.classes.SEQ.iosqSec, connSec: env.dasd.classes.SEQ.connSec },
       }
     : DEFAULT_IO;
 
@@ -533,7 +533,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
           rate: 0,
           cpEngines: 0,
           ziipEngines: 0,
-          mayOverflow: true,
+          mayOverflow: honorsPriority(def, cls.serviceClass, scKey),
           cpuSecPerTxn: 0,
           ziipSecPerTxn: 0,
           ioPerTxn: 0,

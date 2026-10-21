@@ -11,14 +11,19 @@ import type { IoClass } from '../io/dasd';
 
 const MAX_QUEUE_RATIO = 50;
 
-/** Per-class I/O service seen by this image. APPROX: connect + disconnect count as
- * I/O using; IOSQ + pend count as I/O delay. */
+/** Per-class I/O service seen by this image. WLM counts device connect as I/O using and IOSQ +
+ * pending as I/O delay; disconnect is neither (z/OS MVS Planning: WLM, "Velocity formula").
+ * APPROX: control unit queue time is folded into pending. */
 export interface IoService {
   rtSec: number;
   delaySec: number;
   /** IOSQ part of delaySec (z/OS UCB queue: the only part WLM I/O priority can reorder). */
   iosqSec?: number;
+  /** Device connect time per I/O (WLM I/O using); absent means everything outside delaySec. */
+  connSec?: number;
 }
+
+const ioUsingSec = (io: IoService) => io.connSec ?? io.rtSec - io.delaySec;
 
 export interface SliceSpec {
   key: string;
@@ -292,7 +297,7 @@ function iosqByPriority(slices: readonly SliceSpec[], sliceDp: readonly number[]
       }
       const j = dps.indexOf(sliceDp[i]!);
       const w = j < 0 ? NaN : waitByDp[j]! * scale;
-      list[i] = Number.isFinite(w) ? { rtSec: svcIo.rtSec - iosq + w, delaySec: svcIo.delaySec - iosq + w, iosqSec: w } : svcIo;
+      list[i] = Number.isFinite(w) ? { rtSec: svcIo.rtSec - iosq + w, delaySec: svcIo.delaySec - iosq + w, iosqSec: w, connSec: svcIo.connSec } : svcIo;
     }
     (out ??= {})[cls] = list;
   }
@@ -496,7 +501,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         iipcpGranted,
         usingCpu: cpUsing,
         usingZiip: ziipGranted,
-        usingIo: ioSamples * s.ioRate * (io.rtSec - io.delaySec),
+        usingIo: ioSamples * s.ioRate * ioUsingSec(io),
         delayCpu: cpUsing * qr + unmetCp,
         delayZiip: ziipGranted * zq + unmetZiip,
         delayIo: ioSamples * s.ioRate * io.delaySec,
@@ -573,7 +578,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       iipcpGranted,
       usingCpu: cpUsing,
       usingZiip: ziipGranted,
-      usingIo: ioSamples * ioRate * (io.rtSec - io.delaySec),
+      usingIo: ioSamples * ioRate * ioUsingSec(io),
       delayCpu: cpUsing * qr + unmetCp,
       delayZiip: ziipGranted * zq + unmetZiip,
       delayIo: ioSamples * ioRate * io.delaySec,

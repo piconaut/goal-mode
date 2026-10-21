@@ -18,6 +18,13 @@ export function scKeyAtService(def: ServiceDefinition, serviceClass: string, ser
   return scKeyOf(serviceClass, periodAtService(periodsOf(def, serviceClass).map((p) => p.durationSu), serviceSu));
 }
 
+/** Whether zIIP-eligible work in this period may overflow to CPs: never for discretionary goals, nor
+ * with Honor Priority NO (z/OS MVS Planning: WLM, "Honor Priority"). */
+export function honorsPriority(def: ServiceDefinition, serviceClass: string, scKey: string): boolean {
+  const period = Number(scKey.slice(scKey.lastIndexOf('#') + 1)) - 1;
+  return periodsOf(def, serviceClass)[period]?.honor ?? true;
+}
+
 
 export interface SliceBuildInput {
   def: ServiceDefinition;

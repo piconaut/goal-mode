@@ -1221,7 +1221,7 @@ never touches the DOM.
 | Report classes in WLMGL (homogeneous / heterogeneous) | **Faithful simplification** | One row per report class; goal and PI only for a single service-class period (RMF would show report class periods) |
 | WLM service policies and scheduled V WLM,POLICY= switches | **Faithful simplification** | Whole policies are swapped; policy overrides within one policy are not modelled separately |
 | DASD per LCU, HyperPAV alias pools, 256 devices per LCU | **Faithful simplification** | Aliases pooled per LCU (real HyperPAV); hot volumes = top 10% with a skew; utility I/O lands on hot volumes; batch sees class-level SEQ response (APPROX) |
-| CF structures (LOCK/CACHE/LIST), placement, sync→async by type | **Faithful simplification** | Heuristic conversion for cache/list; lock requests never converted (APPROX); no duplexing or rebuild disruption yet |
+| CF structures (LOCK/CACHE/LIST), placement, sync→async by type | **Faithful simplification** | z/OS 1.2+ heuristic: every structure type converts once its sync time passes a per-type threshold (lock threshold FICTIONAL ×1.5); thresholds not scaled by sender CP speed (APPROX) |
 | SMF 101/110 views | **Faithful simplification** | From the sim's per-transaction response-time parts; all transaction CPU shown as class 1 CPU; CF time stands in for GBP/lock-structure suspensions |
 | SMF 113 counters, LSPR category | **Plausible model / real table** | L1MP/RNI/CPI are FICTIONAL functions of polarity mix and CPC busy; the LOW/AVERAGE/HIGH table is IBM's |
 | Response-time distributions | **Log-normal assumption** | Tunable σ per workload |
@@ -1230,7 +1230,7 @@ never touches the DOM.
 | Db2 address space placement guidance | **Real (IBM)** | |
 | Machine capacity, MSU/CP, price tables | **Fictional** | Proportions plausible; no real LSPR numbers |
 | WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts |
-| I/O using/delay split | **APPROX** | Connect+disconnect = using, IOSQ+pend = delay |
+| I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
 | CICS region management | **Simplified** | CICS work on an image shares the AOR regions' DP: most important served period (TRANSACTION, free ride) or the region STC class (REGION); no per-region split of work |
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time |

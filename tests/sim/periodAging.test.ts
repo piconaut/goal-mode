@@ -4,7 +4,7 @@ import { billableMsu } from '../../src/sim/cost/mlc';
 import { rgSysplexShares, swapOut } from '../../src/sim/core/step';
 import type { CpcConfig } from '../../src/sim/core/types';
 import { periodAtService } from '../../src/sim/workload/periods';
-import { scKeyAtService } from '../../src/sim/workload/slices';
+import { honorsPriority, scKeyAtService } from '../../src/sim/workload/slices';
 import type { SliceSpec } from '../../src/sim/wlm/evaluate';
 import { sliceSpec } from '../../src/sim/wlm/evaluate';
 
@@ -74,5 +74,13 @@ describe('SCRT billing of capacity groups', () => {
     expect(b.A! / b.B!).toBeCloseTo(110 / 80);
     expect(b.C).toBe(50);
     expect(billableMsu({ A: 60, B: 40 }, {}, [{ limitMsu: 150, members: ['A', 'B'] }])).toEqual({ A: 60, B: 40 });
+  });
+});
+
+describe('zIIP overflow to CPs (Honor Priority)', () => {
+  it('discretionary periods never get help from CPs; goal periods do by default', () => {
+    expect(honorsPriority(BASEPOL, 'DEVBAT', 'DEVBAT#1')).toBe(false);
+    expect(honorsPriority(BASEPOL, 'BATCHPRD', 'BATCHPRD#1')).toBe(true);
+    expect(honorsPriority(BASEPOL, 'SYSOTHER', 'SYSOTHER#1')).toBe(false);
   });
 });

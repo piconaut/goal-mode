@@ -267,7 +267,7 @@ export const CODEX: CodexEntry[] = [
     id: 'cf-sync-async',
     title: 'CF requests: sync, async and lock structures',
     category: 'I/O & CF',
-    body: 'A synchronous coupling-facility request spins the z/OS CP until the answer returns; when the CF is slow, z/OS converts suitable requests to asynchronous to stop the spin, at the price of longer elapsed time. Lock requests are not converted, so a lock structure on a slow or shared-engine CF burns CPU on every Db2 transaction. Thin interrupts help shared CF engines respond quickly.',
+    body: 'A synchronous coupling-facility request spins the z/OS CP until the answer returns; when the CF is slow, z/OS converts suitable requests to asynchronous to stop the spin, at the price of longer elapsed time. Since z/OS 1.2 the heuristic covers lock requests too, so a lock structure on a slow or shared-engine CF either burns CPU on every Db2 transaction or, once converted, makes every lock request wait much longer. Thin interrupts help shared CF engines respond quickly.',
     sources: [
       { label: 'IBM docs: sync to async conversion of CF requests', url: 'https://www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.ieaf100/huer.htm' },
       { label: 'IBM: Sync/Async heuristic', url: 'https://www.ibm.com/support/pages/system/files/inline-files/Sync_Async_Heuristic.pdf' },
