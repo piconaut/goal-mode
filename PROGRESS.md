@@ -17,7 +17,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
   comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
-- **Health:** `npm run check` green (346 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+- **Health:** `npm run check` green (350 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -338,6 +338,12 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
 - **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
   (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
+- **2026-10-21 (loop 122):** large-bank step 4a: Harbourline sim content (2 CPCs, 6 z/OS LPARs, HBPOL, 8 workloads with
+  bursts and B1–B4 planted, batch, products; `SCENARIOS.harbourline`, not yet a pack), built by the implementer subagent
+  and reviewed. It found a CPSM bug (timeouts read as fast abends → day-long storm drain into a saturated region), fixed
+  in sim. Day 1 seed 42: CPC1 55–66 %, CPC2 60–88 %, SLAs ~97–100 % per day, market-open window 72–97 %. Headless
+  day ~2× Midwest (6 LPARs + dynamic routing): perf follow-up before balancing. Next: 4b game pack (startTools, facets,
+  story, events incl. B2 sick AOR, routing verbs), then volume retune and sweeps.
 - **2026-10-21 (loop 121):** large-bank step 3 part 2: `CPSM_GOAL` routing with abend compensation and quiesce,
   `mods.regionFailFrac` for a sick region. Midwest RBANK trial: a PROD2 region failing 40 % draws 96 % of RBANK
   (overall failures 38 %); with ABENDCRIT 20 % it drops to the 2 % trickle. 346 tests, hash `eddf17fc7c615524`, no

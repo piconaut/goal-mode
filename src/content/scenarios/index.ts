@@ -1,13 +1,17 @@
 import type { Scenario } from '../../sim/core/scenario';
 import { BASEPOL } from '../wlm/basepol';
 import { MIDWEST_BATCH_GROWTH_PER_DAY, generateMidwestNetwork } from '../batch/midwest-batch';
-import { MIDWEST_PRODUCTS } from '../pricing';
+import { HARBOURLINE_PRODUCTS, MIDWEST_PRODUCTS } from '../pricing';
 import { MIDWEST_CF_BASE_ENGINES, MIDWEST_MEMORY, MIDWEST_WORLD } from './midwest';
 import { MIDWEST_ADDRESS_SPACES, MIDWEST_WORKLOADS } from './midwest-workloads';
 import { REVPOL } from '../wlm/revpol';
 import { REVENUE_BATCH_GROWTH_PER_DAY, generateRevenueNetwork } from '../batch/revenue-batch';
 import { REVENUE_CF_BASE_ENGINES, REVENUE_MEMORY, REVENUE_WORLD } from './revenue';
 import { REVENUE_ADDRESS_SPACES, REVENUE_WORKLOADS } from './revenue-workloads';
+import { HBPOL } from '../wlm/hbpol';
+import { HARBOURLINE_BATCH_GROWTH_PER_DAY, generateHarbourlineNetwork } from '../batch/harbourline-batch';
+import { HARBOURLINE_CF_BASE_ENGINES, HARBOURLINE_MEMORY, HARBOURLINE_WORLD } from './harbourline';
+import { HARBOURLINE_ADDRESS_SPACES, HARBOURLINE_WORKLOADS } from './harbourline-workloads';
 
 export const MIDWEST: Scenario = {
   id: 'midwest',
@@ -46,4 +50,19 @@ export const REVENUE: Scenario = {
   batchGrowthPerDay: REVENUE_BATCH_GROWTH_PER_DAY,
 };
 
-export const SCENARIOS: Record<string, Scenario> = { midwest: MIDWEST, revenue: REVENUE };
+/** Harbourline Bank: two CPCs, six LPARs, spiky markets and dynamic routing (SPEC §13.5). */
+export const HARBOURLINE: Scenario = {
+  ...MIDWEST,
+  id: 'harbourline',
+  world: HARBOURLINE_WORLD,
+  definition: HBPOL,
+  workloads: HARBOURLINE_WORKLOADS,
+  addressSpaces: HARBOURLINE_ADDRESS_SPACES,
+  cfBaseEngines: HARBOURLINE_CF_BASE_ENGINES,
+  memory: HARBOURLINE_MEMORY,
+  products: HARBOURLINE_PRODUCTS,
+  batchNetwork: generateHarbourlineNetwork,
+  batchGrowthPerDay: HARBOURLINE_BATCH_GROWTH_PER_DAY,
+};
+
+export const SCENARIOS: Record<string, Scenario> = { midwest: MIDWEST, revenue: REVENUE, harbourline: HARBOURLINE };
