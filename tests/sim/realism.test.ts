@@ -424,6 +424,19 @@ describe('event cards (SPEC §9)', () => {
     expect(run(begin).bookingDone).toBeGreaterThan(0);
   }, 60_000);
 
+  it('stored procedures losing zIIP eligibility move mobile CPU from zIIPs to general CPs', () => {
+    const pools = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      for (let i = 0; i < 30; i++) s = step(s, [], MIDWEST);
+      const sc = s.last.lpars.find((l) => l.lparId === 'PROD1')!.scps.find((x) => x.scKey === 'DDFPRD#1')!;
+      return { cp: sc.cpEngines, ziip: sc.ziipEngines };
+    };
+    const asIs = pools([]);
+    const lost = pools(card('ZIIP_LOSS'));
+    expect(lost.ziip).toBeLessThan(0.5 * asIs.ziip);
+    expect(lost.cp).toBeGreaterThan(asIs.cp);
+  }, 60_000);
+
   it('an HSM recall storm raises LCU 30 IOSQ and response time', () => {
     const lcu30 = (cmds: Parameters<typeof step>[1]) => {
       let s = step(base, cmds, MIDWEST);

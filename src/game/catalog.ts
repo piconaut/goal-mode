@@ -59,6 +59,7 @@ export const FIXES: FixDef[] = [
   { id: 'ROLLBACK_MONITOR', name: 'Roll back the monitoring agent', hours: 1, trustCost: null, description: 'Revert to the previous agent release.' },
   { id: 'STOP_SHADOW_IT', name: 'Stop the unapproved TSO workload', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Find the users behind the TSO CPU and have the model training moved off the mainframe.' },
   { id: 'ROLLBACK_TELLER_RELEASE', name: 'Roll back the teller release', hours: 1.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'Back out release 4.2 from the PROD1 CICS regions until it is made threadsafe.' },
+  { id: 'NATIVE_SQL_PROCS', name: 'Redeploy as native SQL procedures', hours: 2, trustCost: { facet: 'Digital', amount: 1 }, description: 'Back out the external stored procedures; native SQL procedures under DDF are zIIP-eligible again.' },
   { id: 'HOLD_HSM_RECALLS', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'HOLD RECALL until the storm drains; users wait for their data sets.' },
 ];
 

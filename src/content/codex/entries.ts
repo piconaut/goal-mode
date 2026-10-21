@@ -229,6 +229,14 @@ export const CODEX: CodexEntry[] = [
     discover: { start: true },
   },
   {
+    id: 'ziip-eligibility',
+    title: 'What makes DDF work zIIP-eligible',
+    category: 'Capacity & cost',
+    body: 'Db2 work arriving through DDF runs under enclave SRBs, and a share of that time is zIIP-eligible. Native SQL procedures run in the DDF enclave and keep that eligibility; external stored procedures run on TCBs in WLM-managed stored procedure address spaces and are not zIIP-eligible. Moving work between the two moves CPU between zIIPs and general CPs without changing the total.',
+    sources: [{ label: 'IBM Db2 12: Configuring zIIPs for Db2', url: 'https://www.ibm.com/docs/SSEPEK_12.0.0/perf/src/tpc/db2z_ibmziip.html' }],
+    discover: { events: ['ZIIP_LOSS'] },
+  },
+  {
     id: 'cod',
     title: 'On/Off Capacity on Demand and Capacity Provisioning',
     category: 'Capacity & cost',

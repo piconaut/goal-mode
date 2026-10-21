@@ -752,9 +752,10 @@ function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): SliceSp
   const eff = mods.efficiency ?? {};
   const io = mods.ioPerTxn ?? {};
   const shift = mods.ziipShift ?? {};
+  const elig = mods.ziipEligMult ?? {};
   const hasCpu = Object.keys(mods.cpu).length > 0;
   const hasAs = Object.keys(mods.asCpu).length > 0;
-  const hasProj = Object.keys(eff).length + Object.keys(io).length + Object.keys(shift).length > 0;
+  const hasProj = Object.keys(eff).length + Object.keys(io).length + Object.keys(shift).length + Object.keys(elig).length > 0;
   if (!hasCpu && !hasAs && !hasProj && Object.keys(measure).length === 0) return slices;
   return slices.map((s) => {
     const m = s.workloadId
@@ -764,7 +765,8 @@ function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): SliceSp
         : 1;
     const ioM = s.workloadId ? (io[s.workloadId] ?? 1) : 1;
     const z = s.workloadId ? (shift[s.workloadId] ?? 0) : 0;
-    if (m === 1 && ioM === 1 && z === 0) return s;
+    const e = s.workloadId ? (elig[s.workloadId] ?? 1) : 1;
+    if (m === 1 && ioM === 1 && z === 0 && e === 1) return s;
     let out = m === 1 ? s : { ...s, cpEngines: s.cpEngines * m, ziipEngines: s.ziipEngines * m, cpuSecPerTxn: s.cpuSecPerTxn * m, ziipSecPerTxn: s.ziipSecPerTxn * m };
     if (ioM !== 1) out = { ...out, ioPerTxn: out.ioPerTxn * ioM, ioRate: out.ioRate * ioM };
     if (z > 0) {
@@ -772,6 +774,12 @@ function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): SliceSp
       const moveEng = out.cpEngines * z;
       const moveSec = out.cpuSecPerTxn * z;
       out = { ...out, cpEngines: out.cpEngines - moveEng, ziipEngines: out.ziipEngines + moveEng, cpuSecPerTxn: out.cpuSecPerTxn - moveSec, ziipSecPerTxn: out.ziipSecPerTxn + moveSec };
+    }
+    if (e < 1) {
+      // Work that lost zIIP eligibility (e.g. external stored procedures on WLM-managed TCBs) runs on general CPs.
+      const backEng = out.ziipEngines * (1 - e);
+      const backSec = out.ziipSecPerTxn * (1 - e);
+      out = { ...out, cpEngines: out.cpEngines + backEng, ziipEngines: out.ziipEngines - backEng, cpuSecPerTxn: out.cpuSecPerTxn + backSec, ziipSecPerTxn: out.ziipSecPerTxn - backSec };
     }
     return out;
   });

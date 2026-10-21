@@ -97,6 +97,7 @@ export const EVENT_RUMOURS: Record<string, string> = {
   SHADOW_IT: 'the data-science team found free CPU on the test system',
   QR_RELEASE: 'the teller app team has a front-end release lined up',
   HSM_RECALL_STORM: 'the storage team changed the HSM migration rules last month',
+  ZIIP_LOSS: 'the mobile API team is rewriting its stored procedures in COBOL',
   NEW_APP_GOLIVE: 'retail is about to launch a small new booking app',
   HIRING_FREEZE: 'HR is reviewing contractor budgets for next week',
   AUDIT_UNCLASSIFIED: 'the regulator is planning an audit of system management',

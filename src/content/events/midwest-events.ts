@@ -405,6 +405,27 @@ export const MIDWEST_EVENTS: EventDef[] = [
     clue: 'DASD Activity: LCU 30 (system + catalogs) IOSQ and RESP up with random I/O ×n while Db2 LCUs are normal; everything that opens data sets slows. Fixes: hold HSM recalls, or move aliases to LCU 30.',
   },
   {
+    // Mobile API team redeploys its native SQL procedures as external (COBOL) stored procedures: those run on
+    // WLM-managed SPAS TCBs, not DDF enclave SRBs, so the CALLs lose zIIP eligibility (IBM Db2 12 docs, zIIP use).
+    id: 'ZIIP_LOSS',
+    name: 'Stored procedures lose zIIP offload',
+    category: 'SOFTWARE',
+    minDay: 6,
+    weight: 1,
+    trigger: 'POLICY',
+    affects: ['MOBILE'],
+    mechanisms: ['CPU_CAPACITY'],
+    startHour: [6.5, 8],
+    durationHours: 48,
+    // FICTIONAL magnitude: 70% of the mobile API's zIIP time moves back to general CPs.
+    begin: [{ kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 0.3 }],
+    end: [{ kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 1 }],
+    fix: 'NATIVE_SQL_PROCS',
+    forewarning: 'Change board: "Mobile API stored procedures are being redeployed overnight (new COBOL versions)."',
+    announcement: null,
+    clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures, or absorb it (cap, more CP).',
+  },
+  {
     id: 'CP_SPARING',
     name: 'CP failure, transparent sparing',
     category: 'HARDWARE',

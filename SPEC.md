@@ -851,6 +851,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 | QR TCB saturation | Region at ~1 engine | CICS 110 dispatch/QR; region CPU ≈ 100% of 1 CP |
 | Non-threadsafe release (`QR_RELEASE`) | Teller release forces QR on the PROD1 AORs (QR fraction 0.6 → 0.95) for ~36 h | CICS report: QR wait per txn ↑ in CICSAOR1/3 only, low CPU delay. Fixes: roll back, route to PROD2, add an AOR |
 | z/OS/Db2 maintenance level gift | −3% CPU/txn after you apply it (an IPL) | Release notes in inbox |
+| Stored procedures lose zIIP offload (`ZIIP_LOSS`) | Mobile API procs redeployed as external stored procedures (TCBs in WLM SPAS): 70% of MOBILE zIIP time moves to general CPs for ~48 h (`ziipEligMult` 0.3); forewarned, rumoured | WLMGL: DDFPRD CP APPL% ↑, IIP% ↓, END/S and total CPU/txn flat; MSU/R4HA ↑. Fixes: redeploy as native SQL procedures (Digital trust −1), or absorb it (cap, more CP) |
 | Monitor overhead creep | A vendor monitor doubles its CPU after an upgrade | WLMGL STC class service ↑ |
 
 ### 9.3 Hardware events
@@ -1210,7 +1211,7 @@ never touches the DOM.
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
 | Monitor III views (SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s range; PROCU by service-class period, not job |
-| Multi-day projects (threadsafe, zIIP-enable, compression, SQL tuning, archive) | **Plausible model** | Flat per-transaction multipliers on CPU, I/O and zIIP eligibility; sizes FICTIONAL |
+| Multi-day projects (threadsafe, zIIP-enable, compression, SQL tuning, archive) | **Plausible model** | Flat per-transaction multipliers on CPU, I/O and zIIP eligibility; sizes FICTIONAL. Events can also cut eligibility (`ziipEligMult`, moves zIIP time back to CP) |
 | Report classes in WLMGL (homogeneous / heterogeneous) | **Faithful simplification** | One row per report class; goal and PI only for a single service-class period (RMF would show report class periods) |
 | WLM service policies and scheduled V WLM,POLICY= switches | **Faithful simplification** | Whole policies are swapped; policy overrides within one policy are not modelled separately |
 | DASD per LCU, HyperPAV alias pools, 256 devices per LCU | **Faithful simplification** | Aliases pooled per LCU (real HyperPAV); hot volumes = top 10% with a skew; utility I/O lands on hot volumes; batch sees class-level SEQ response (APPROX) |
