@@ -275,6 +275,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-21 | NEW_APP_GOLIVE stays as is (booking app Retail-judged with an SLA, no forewarning, same minDay); textbook's median below 30 on runs that draw it is accepted | User decision (option a): spotting and classifying new work is part of the game, and textbook by design never diagnoses |
 | 2026-10-21 | Browser worker and headless `play` share game-layer helpers (`pendingBase`/`nextPolicyName`, `applyReportClassAdvice`, `runWorkItems`, `renderReport`); `noUnusedLocals` on | The two front ends had drifted copies of the same logic; one copy means one place to fix and test |
 | 2026-10-21 | Monitor III audit against *RMF Report Analysis* (SC34-2665, z/OS 2.5) ch. 2: new SYSSUM view holds goals vs actuals and PI (real SYSINFO has no PI); SYSINFO gets its real header (CPs/IIPs online, Avg CPU vs MVS Util%, Appl%/EAppl%/Appl% IIP) and per-period WFL%, Users ACT, AVG USG and avg delayed users; DELAY uses RMF columns (WFL/USG/DLY/UKN, PRC/DEV/STR/CAP) and server waits move from DLY % to UKN %; PROCU shows Time on CP % Total/IIP and EAppl % CP/IIP; ENCLAVE shows class, period, goal, EAppl% and USG/DLY/UNK; CPC shows the real header and Logical/Physical Util % columns (weight, polarity, PR/SM delay kept in a separate table); WFEX gets a Speed section and Name/Reason/Critical val. columns; ENCLAVE shows one line per DDF period (two DDF workloads in one class used to repeat the period's figures, and the DDF chart double-counted them) | Field names and formulas were invented or borrowed from other reports; UKN vs DLY changes how much "delay" a Db2-bound DDF period shows, which is the realistic reading. View-model only: no sim state change, hashes and goldens unchanged |
+| 2026-10-21 | Performance budget: ≤ 2 s per headless day applies to Midwest-size estates; larger estates (Harbourline, 6 LPARs, ~7 s/day) are accepted as they are, no structural perf work for now. ≤ 4 ms/tick is a Midwest target too | User decision. The profile is flat and reaching 2 s on 6 LPARs would need structural changes (fewer per-tick allocations, coarser ticks for quiet LPARs); not worth it yet |
 
 ## Open questions
 
@@ -358,6 +359,12 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   Reaching 2 s needs structural work (fewer per-tick allocations in buildSlices/accumulateTick, or coarser ticks for
   quiet LPARs), not micro-tuning → open question for the user whether the 2 s budget should be revisited for 6-LPAR
   estates.
+- **2026-10-21 (loop 140):** User accepted a larger perf budget for 6-LPAR estates (decisions log); CLAUDE.md rule 5
+  updated. Harbourline expert opex losses (seeds 5, 12, 13, 19, all day 28): month-1 bills $1.73–1.76M are below the
+  25 % trip ($1.875M), and winners have bills up to $1.80M, so the trip comes from bill + `opexSpentThisMonth`
+  (temporary-capacity charges) rather than MLC alone. Expert buys no COD, so the next step is to find which change
+  carries `opexPerDay` with a `revertDay` in those runs (seed-5 replay reproduces the day-28 end). Cost loop stopped
+  at the user's request.
 - **2026-10-21 (loop 138):** Harbourline 20-seed confirmation (hb40f, Normal, 40 days): **donothing 9 / 12 / 14
   (trust 20), textbook 29 / 32 / 37 (trust 20), expert 28 / 40 / 40 (victory 12 · opex 4 · trust 4)**. In band
   (Midwest loop 113: donothing 11 / 17 / 21, textbook 17 / 28 / 28, expert 17/20 wins). Expert's 4 opex ends are all

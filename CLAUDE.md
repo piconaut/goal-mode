@@ -50,7 +50,8 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
    live in `src/content/`. Don't hard-code tunables in sim logic.
 4. **One tick = 10 sim-seconds** (the WLM policy adjustment interval). The pipeline order in
    SPEC §5.1 is the contract; new subsystems slot into it, they don't reorder it.
-5. **Performance budget:** ≤ 2 s per headless sim day, ≤ 4 ms per tick. Analytic/fluid models
+5. **Performance budget:** ≤ 2 s per headless sim day, ≤ 4 ms per tick for Midwest-size estates (larger
+   estates such as Harbourline's 6 LPARs may take longer; user decision 2026-10-21). Analytic/fluid models
    per tick; only batch jobs are discrete entities. Benchmark if you touch hot paths.
 
 ## Conventions
