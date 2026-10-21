@@ -114,3 +114,6 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
+- Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
+  `nohup … &` inside another command: tracked tasks show up for the user and notify on exit,
+  so there's no need to poll or guess with timed wakeups.
