@@ -18,6 +18,27 @@ export interface ArrivalShape {
   /** Calendar multipliers: payday (1st/15th) and month-end (last 2 days). */
   payday: number;
   monthEnd: number;
+  /** Optional traffic bursts on top of the smooth curve (trading floors, news, bots). */
+  bursts?: BurstShape;
+}
+
+export interface ScheduledBurst {
+  /** Wall-clock start hour (fractional). */
+  hour: number;
+  /** Rate multiplier at the start; decays linearly to 1 over durationSec. */
+  heightMult: number;
+  durationSec: number;
+  weekdaysOnly: boolean;
+}
+
+export interface BurstShape {
+  /** Expected random bursts per hour (seeded per tick). */
+  ratePerHour: number;
+  /** A random burst's flat multiplier and length are drawn uniformly from these ranges. */
+  heightMult: [number, number];
+  durationSec: [number, number];
+  /** Fixed-time bursts, e.g. a market open. */
+  scheduled: ScheduledBurst[];
 }
 
 export interface WorkloadDef {

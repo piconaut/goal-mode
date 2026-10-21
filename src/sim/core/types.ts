@@ -9,6 +9,7 @@ import type { R4haState } from '../cost/r4ha';
 import type { JobEndRecord, RmfAcc, RmfInterval } from '../measure/rmf';
 import type { RngState } from './rng';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
+import type { BurstState } from '../workload/arrivals';
 import type { ReportClassTick, ScpTick } from '../wlm/evaluate';
 import type { WlmState } from '../wlm/runtime';
 
@@ -143,6 +144,8 @@ export interface WorkloadRuntime {
   retryRate: number;
   /** Last tick's mean response time (closed-loop arrivals). */
   lastRtSec: number;
+  /** Random burst in progress; present only for workloads whose shape has bursts. */
+  burst?: BurstState;
 }
 
 export interface WorkloadTick {

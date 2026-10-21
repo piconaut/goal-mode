@@ -21,7 +21,7 @@ import {
 } from '../subsys/batch';
 import { mxtQueueWaitSec, qrTcb } from '../subsys/cics';
 import { bpIoMultiplier, dbatQueueWaitSec, DB2 } from '../subsys/db2';
-import { baseRate, stepNoise } from '../workload/arrivals';
+import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/arrivals';
 import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
@@ -114,8 +114,12 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const noise = stepNoise(p.noise, w, rng.normal());
     // Interactive users (closed loop): slow responses throttle their own arrival rate.
     const closedLoop = w.thinkTimeSec ? w.thinkTimeSec / (w.thinkTimeSec + p.lastRtSec) : 1;
-    rates[w.id] = baseRate(w, clock) * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
-    return { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
+    // Bursts draw from the RNG only when the shape has them, so burst-free scenarios keep their streams.
+    const b = w.shape.bursts;
+    const burst = b ? stepBurst(p.burst ?? { mult: 1, leftSec: 0 }, b, TICK_SEC, rng) : undefined;
+    const burstMult = b && burst ? burst.mult * scheduledBurstMult(b, clock) : 1;
+    rates[w.id] = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
+    return burst ? { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec, burst } : { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
   });
 
   // Batch scheduling: release tonight's network at the start of the played day.
