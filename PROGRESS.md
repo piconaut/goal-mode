@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 on hold until the user says start. Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-21
-- **Next up:** Midwest balance recheck after PR #9 (20-seed donothing/textbook/expert sweep, compare with the loop-113 re-sweep), Harbourline expert opex losses, VENDOR_PRICE card, M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
+- **Next up:** VENDOR_PRICE card, M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -105,6 +105,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       04:00–04:50 on days 20–26, then crosses 05:00 on day 27; two misses end the run on day 28. The batch-capacity
       reaction lives in `fixer` (expert, spend-to-win), not textbook, by design; the morning hint and batch projection are
       the clue path, and expert buys the capacity setting on day 1. No change: intended pressure, median on target.
+    - **Post-PR #9 re-sweep (2026-10-21, loop 141, seeds 1–20, HiperDispatch E<1 → 1 VM):** do-nothing 12 / 16 / 21,
+      ends batch 7 · trust 13; textbook 17 / 28 / 28, ends batch 11 · trust 9; expert 28 / 40 / 40, victory 16 · opex 3 ·
+      trust 1. Same as loop 113 within one seed: the polarity change doesn't move balance. Expert's 3 opex ends (seeds 2,
+      3, 11, day 28, bill ~$891k) and Harbourline's (seeds 5, 12, 13) all took the BUDGET_SWAP pact first (bots take
+      draft card 0), so the budget is 10% lower and an ordinary bill is >25% over. Expert now declines that pact.
     - **Post-PR #8 re-sweep (2026-10-21, seeds 1–20, 22 cards):** do-nothing 12 / 15 / 21, ends batch 10 · trust 10
       (median 15 is now on target, p90 a bit late); textbook 22 / 27 / 28, ends batch 12 · trust 8 (median 27 is still
       below the 28–32 target, p10 up from 17). Early textbook ends: seeds 13 (day 17) and 20 (day 24) are Retail trust

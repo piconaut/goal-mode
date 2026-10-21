@@ -271,7 +271,9 @@ const expert: Strategy = {
     return run;
   },
   hourly: fixer.hourly,
-  review: passive.review,
+  // Turns down the capex-for-opex pact: its 10% lower opex budget turns an ordinary month-1 bill into a
+  // >25% overrun (the expert's opex game overs were all that pick).
+  review: (r, _s, c) => chooseDraft(r, c, r.draft?.find((d) => d.id !== 'BUDGET_SWAP')?.id ?? null),
 };
 STRATEGIES.expert = expert;
 
