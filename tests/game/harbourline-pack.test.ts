@@ -73,8 +73,8 @@ describe('Harbourline Bank pack', () => {
     const card = HARBOURLINE_EVENTS.find((e) => e.id === 'SICK_AOR')!;
     const s0 = initState(7, pack.scenario);
     const on = applyCommands(s0, card.begin);
-    expect(on.mods.regionFailFrac?.['MKTORD@PRDB']).toBeGreaterThan(0);
-    expect(Object.keys(on.mods.regionFailFrac ?? {}).every((k) => k.endsWith('@PRDB'))).toBe(true);
+    expect(on.mods.regionFailFrac?.['MKTORD@PRDC']).toBeGreaterThan(0);
+    expect(Object.keys(on.mods.regionFailFrac ?? {}).every((k) => k.endsWith('@PRDC'))).toBe(true);
     const off = applyCommands(on, card.end);
     expect(off.mods.regionFailFrac ?? {}).toEqual({});
   });

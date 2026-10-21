@@ -36,6 +36,7 @@ export const STRATEGIES: Record<string, Strategy> = { donothing: passive, oracle
 
 import { BASEPOL } from '../src/content/wlm/basepol';
 import { REVPOL } from '../src/content/wlm/revpol';
+import { HBPOL } from '../src/content/wlm/hbpol';
 import { requestChange } from '../src/game/run';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
 
@@ -149,9 +150,37 @@ function revenueDay0(r: RunState, c: GameContent): RunState {
   return run;
 }
 
+/** Harbourline: MKTORD's average goal (a mean hides the burst tail) becomes a percentile goal. */
+export function harbourlineTextbookPolicy(): ServiceDefinition {
+  const def = structuredClone(HBPOL);
+  def.policyName = 'TEXTBOOK';
+  def.classes.find((x) => x.id === 'MKTORD')!.periods = [{ goal: { kind: 'PCT', pct: 90, rtSec: 0.2 }, importance: 1, durationSu: null }];
+  return def;
+}
+
+/** Day 0: the known-good fixes for Harbourline's planted flaws B1–B4 and the PRDA absolute cap (SPEC §13.5). */
+function harbourlineDay0(r: RunState, c: GameContent): RunState {
+  let run = r;
+  const plan = (label: string, commands: import('../src/sim/core/commands').Command[]) => {
+    run = requestChange(run, c, { label, commands }).run;
+  };
+  const cpsm = { method: 'CPSM_GOAL' as const, abendThreshFrac: 0.1, abendCritFrac: 0.2, quiesced: [] };
+  plan('Textbook WLM policy (MKTORD percentile goal)', [{ kind: 'ACTIVATE_POLICY', definition: harbourlineTextbookPolicy() }]);
+  plan('MKTQRY on zIIP-aware WLM weights (B1, B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MKTQRY', policy: { method: 'WLM', ziipAware: true } }]);
+  plan('MOBILE zIIP-aware weights (B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'WLM', ziipAware: true } }]);
+  plan('CPSM ABENDTHRESH/ABENDCRIT (B2)', [
+    { kind: 'SET_ROUTING_POLICY', workloadId: 'MKTORD', policy: cpsm },
+    { kind: 'SET_ROUTING_POLICY', workloadId: 'CARDS', policy: cpsm },
+  ]);
+  plan('Payments affinity to CPC1 (B4)', [{ kind: 'SET_ROUTING', workloadId: 'PAYMENTS', routing: { PRDA: 0.35, PRDB: 0.35, PRDC: 0.15, PRDD: 0.15 } }]);
+  plan('Remove the PRDA absolute cap', [{ kind: 'SET_ABSOLUTE_CAP', lparId: 'PRDA', engines: null }]);
+  return run;
+}
+
 /** Day 0: the known-good fixes for the planted flaws F1–F11 (SPEC §13.3). */
 function textbookDay0(r: RunState, c: GameContent): RunState {
   if (r.scenarioId === 'revenue') return revenueDay0(r, c);
+  if (r.scenarioId === 'harbourline') return harbourlineDay0(r, c);
   let run = r;
   const plan = (label: string, commands: import('../src/sim/core/commands').Command[]) => {
     const out = requestChange(run, c, { label, commands });

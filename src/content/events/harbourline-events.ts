@@ -31,7 +31,7 @@ const BANK_CARDS: EventDef[] = [
   {
     // B2: with abendThreshFrac/abendCritFrac unset, CPSM goal routing reads fast failures as fast responses.
     id: 'SICK_AOR',
-    name: 'Sick CICS AOR on PRDB: the storm drain',
+    name: 'Sick CICS AOR (CICSAOR3 on PRDC): the storm drain',
     category: 'SOFTWARE',
     minDay: 4,
     weight: 2,
@@ -40,12 +40,12 @@ const BANK_CARDS: EventDef[] = [
     startHour: [9, 15],
     durationHours: 5,
     // FICTIONAL: a third of the transactions routed to the sick region abend almost at once.
-    begin: [failFrac('MKTORD', 'PRDB', 0.35), failFrac('CARDS', 'PRDB', 0.35)],
-    end: [failFrac('MKTORD', 'PRDB', 0), failFrac('CARDS', 'PRDB', 0)],
+    begin: [failFrac('MKTORD', 'PRDC', 0.35), failFrac('CARDS', 'PRDC', 0.35)],
+    end: [failFrac('MKTORD', 'PRDC', 0), failFrac('CARDS', 'PRDC', 0)],
     fix: 'RECYCLE_SICK_AOR',
     forewarning: null,
     announcement: null,
-    clue: 'CPSM / CICS monitoring: MKTORD and CARDS abends (and the error-rate SLA misses) concentrate on the PRDB region while its response time looks excellent, and PRDB attracts a growing share of the routed work. Without abend compensation the CPSM goal router reads a fast failure as a fast response and sends it more work (the storm drain). Fixes: set ABENDTHRESH/ABENDCRIT on the CPSM routing policy, quiesce the PRDB region, or restart it.',
+    clue: 'CPSM / CICS monitoring: MKTORD and CARDS abends (and the error-rate SLA misses) concentrate on the PRDC region while its response time looks excellent, and PRDC attracts a growing share of the routed work. Without abend compensation the CPSM goal router reads a fast failure as a fast response and sends it more work (the storm drain). Fixes: set ABENDTHRESH/ABENDCRIT on the CPSM routing policy, quiesce the PRDC region, or restart it.',
   },
   {
     // The card volume modifier stands in for the burst arrivals, which no command can retune.
