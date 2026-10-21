@@ -865,8 +865,8 @@ function Structures({ desk }: { desk: Desk }) {
         </table>
       </div>
       <div className="help">
-        Rebuilding a structure moves its requests to the other CF. Cache and list requests that get slow are converted to asynchronous; lock requests are not, so a lock structure on a slow
-        or shared CF makes every Db2 transaction spin. The CF Activity report shows each structure. If a CF fails, its structures are rebuilt into the other CF only if it has white space
+        Rebuilding a structure moves its requests to the other CF. Requests that get slow are converted to asynchronous (lock requests a little later than cache and list), so a lock
+        structure on a slow or shared CF makes every Db2 transaction spin or wait. The CF Activity report shows each structure. If a CF fails, its structures are rebuilt into the other CF only if it has white space
         for them; a structure that doesn&apos;t fit is lost (lock or SCA: Db2 is down; GBP: pages in recovery; MQ admin: shared queues stop). Duplexing keeps a copy in the other CF, so a
         failure costs nothing, but every request then waits for both CFs.
       </div>

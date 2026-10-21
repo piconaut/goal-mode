@@ -3,7 +3,7 @@
 import { lognormCdf, normCdf } from '../core/math';
 import type { Goal, PeriodDef } from './types';
 
-/** Upper bounds of the 14 RMF/WLM buckets as multiples of the goal; the last is open. */
+/** Upper bounds of the 14 RMF/WLM buckets as multiples of the goal; the last is open (SG24-7621 §3.10). */
 export const BUCKET_BOUNDS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.0, 4.0, Infinity] as const;
 export const BUCKETS = BUCKET_BOUNDS.length;
 export const DISCRETIONARY_PI = 0.81;
@@ -67,7 +67,9 @@ export interface PiInputs {
   delaySamples: number;
 }
 
-/** Velocity = using / (using + delay) × 100. */
+/** Velocity = using / (using + delay) × 100. Using: CPU (CP and zIIP) and, with I/O priority management,
+ * DASD connect; delay: CPU, storage (paging, swap, MPL), capping and IOSQ/pending I/O. Server and queue
+ * waits are not in it (MVS Planning: WLM, "Velocity formula"; SG24-7621 §1). */
 export function velocityOf(usingSamples: number, delaySamples: number): number | null {
   const tot = usingSamples + delaySamples;
   return tot > 1e-12 ? (100 * usingSamples) / tot : null;

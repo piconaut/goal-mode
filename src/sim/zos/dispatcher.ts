@@ -104,7 +104,8 @@ export function dispatch(input: DispatchInput): DispatchResult[] {
   const zQueue = new Array<number>(n).fill(0);
   allocateByPriority(input.ziipCapacityEngines, input.ziipServers, demands, order, zWant, zGranted, zQueue);
 
-  // zIIP-eligible work that could not get a zIIP overflows to CPs at the same DP.
+  // zIIP-eligible work that could not get a zIIP overflows to CPs at the same DP (IIPHONORPRIORITY=YES,
+  // the default); with no zIIPs online it simply runs on CPs (MVS Init & Tuning Ref, IEAOPTxx).
   const overflow = new Array<number>(n);
   const cWant = new Array<number>(n);
   for (let i = 0; i < n; i++) {

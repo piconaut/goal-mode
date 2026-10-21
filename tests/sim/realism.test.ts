@@ -259,6 +259,12 @@ describe('WLM I/O priority management', () => {
     expect(r[0]!.parts!.io).toBeCloseTo(r[1]!.parts!.io, 9);
     expect(r[0]!.usingIo + r[0]!.delayIo).toBe(0);
   });
+  it('counts only device connect as I/O using: disconnect is neither using nor delay', () => {
+    const withConn = { ...io, RANDOM: { ...io.RANDOM, connSec: 0.0005 } };
+    const r = evaluateLpar({ ...base, io: withConn }).slices[0]!;
+    expect(r.usingIo).toBeCloseTo(100 * 5 * 0.0005, 9);
+    expect(r.usingIo + r.delayIo).toBeLessThan(100 * 5 * io.RANDOM.rtSec);
+  });
 });
 
 describe('MQ queue depth (PAYMQ)', () => {

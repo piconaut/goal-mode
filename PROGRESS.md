@@ -206,7 +206,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-19 | Dispatcher returns delay-to-using *ratios* (queue, PR/SM) rather than samples | WLM sampling (M2) multiplies by using samples; keeps the dispatcher model independent of goal logic |
 | 2026-10-19 | Dispatch per service-class period, then split grants to slices by demand | Equivalent (equal-DP work shares by demand) and ~3× cheaper; policy-adjust projections re-run the evaluator many times |
 | 2026-10-19 | "Samples" are time-average concurrencies per state (engines using, units delayed) rather than discrete 250 ms counts | Same ratios as sampling, computed analytically |
-| 2026-10-19 | I/O: connect+disconnect count as *using*, IOSQ+pend as *delay* | APPROX; makes velocity goals for I/O-heavy work achievable. Needs confirming against MVS Planning: WLM (open question) |
+| 2026-10-19 | I/O: connect+disconnect count as *using*, IOSQ+pend as *delay* | APPROX; makes velocity goals for I/O-heavy work achievable. Superseded 2026-10-21: connect only (see below) |
 | 2026-10-19 | Dependency (server) waits are "other" delay: visible in RT, excluded from velocity, not WLM-fixable | Recreates the classic Db2-below-its-callers priority inversion diagnostic pattern |
 | 2026-10-19 | Unmet CPU demand becomes backlog (engine-seconds); wait = backlog / service rate; timeouts drop work and feed retries | Gives realistic saturation collapse and retry storms |
 | 2026-10-19 | Run calendar starts on the 3rd of a 30-day month | First payday (15th) lands on day 13, not day 1 |
@@ -221,10 +221,11 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-19 | Short-engine PR/SM delay coefficient lowered 0.35 → 0.15 | 10–25% PR/SM delay in the Partition Data report was implausibly high |
 | 2026-10-19 | Classification rules live inside the Change Desk WLM section, expandable, not a separate tab | User feedback: rules are part of the policy you're editing; keeps the change board and pending banner in view |
 | 2026-10-19 | TFP baseline is a committed monthly minimum, not a multi-year pool with rollover | A 40-day run is too short for annual true-ups; keeps the trade-off (lose capping savings, gain cheap growth) visible within the run |
-| 2026-10-19 | CF load comes from named structures placed on CFs; lock requests never convert to async | Gives CF placement a real diagnosis path (lock vs GBP) and a trap; per-CF request shares were opaque |
+| 2026-10-19 | CF load comes from named structures placed on CFs; lock requests never convert to async | Gives CF placement a real diagnosis path (lock vs GBP) and a trap; per-CF request shares were opaque. Lock part superseded 2026-10-21 (see below) |
 | 2026-10-20 | Sonnet subagents `implementer` and `log-reader` in `.claude/agents/` | Save usage on well-scoped coding and log digestion; sim models and balance stay on the main agent (user request) |
 | 2026-10-21 | Realism pass: batch jobs age through periods by consumed SU; address spaces sit in their class's last period; type 1 resource groups split their sysplex SU/s budget by demand (was applied in full on every system); MLC bills a capacity group at most its limit | All were divergences from real WLM/SCRT; behaviour-neutral for BASEPOL (no multi-period batch/STC classes, resource groups or capacity groups), so day-1 hash and goldens are unchanged |
 | 2026-10-21 | CICS transaction classes: velocity, discretionary or multi-period goals are a warning in the editor, a resource group is a hard error (edit and install refused) | WLM Planning ch. 9–10 / SG24-6472 call the goals "not supported" but document an ISPF error only for the resource group; velocity stays valid on the region STC class |
+| 2026-10-21 | IBM-docs realism audit: (1) WLM I/O using is device connect only, disconnect is neither using nor delay; (2) zIIP-eligible batch work in a discretionary period (or Honor Priority NO) never overflows to CPs (batch slices always could); (3) CF lock requests convert to async like cache/list ones, at a higher FICTIONAL threshold | (1) *MVS Planning: WLM* (V2R5) "Velocity formula"; (2) same, "Honor Priority" ("discretionary … never gets help from general purpose processors"); (3) IBM WSC *Heuristic Conversion of CF Operations*: since z/OS 1.2 lock requests are heuristic-eligible. The CF02 lock trap stays: converted lock requests take far longer. Goldens and bench hashes regenerated |
 | 2026-10-21 | Browser worker and headless `play` share game-layer helpers (`pendingBase`/`nextPolicyName`, `applyReportClassAdvice`, `runWorkItems`, `renderReport`); `noUnusedLocals` on | The two front ends had drifted copies of the same logic; one copy means one place to fix and test |
 
 ## Open questions
@@ -235,8 +236,12 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
+- Soft capping by positive phantom weight lowers the LPAR's effective priority and can cut its VH/VM count (MVS Planning:
+  WLM). The sim caps with a flat MSU limit and leaves polarity alone. Worth modelling once PR #9's polarity rework lands?
+- SG24-7621 §4.22 lists "must be the last uncapped non-discretionary period" and "has not been a significant receiver
+  candidate" among the discretionary-capping conditions; neither is modelled and the first is ambiguous as written.
+- Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
 - Resource group minimum for discretionary members: what exactly counts as "missing goals"? Modelled as delay > using.
-- WLM I/O using vs delay: is disconnect time counted as using? Currently connect+disconnect = using.
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
 - Policy-adjust projections don't model backlog/DBAT feedback, so WLM sometimes places batch above
@@ -245,7 +250,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
   (minimum-sample rules)? Currently an EWMA with a variable horizon. Check *MVS Planning: WLM*.
 - WLM-managed initiator start/stop heuristics: the JES2 Init & Tuning Guide "queue delay
   measurements" section wasn't reviewed yet.
-- R4HA after IPL: model the initial-window behaviour, or ignore it in v1? (Currently 48 zero slots from IPL.)
+- ~~R4HA after IPL~~ settled: *MVS Planning: WLM* says WLM starts with a four-hour window containing no usage, i.e. 48 zero slots, as modelled.
 - TFP details (baseline commitment, overage pricing) are left deliberately abstract; is
   that enough for the strategic choice to feel real?
 - Should two-CPC topologies (cross-site sysplex) be in the base scenario or saved for the
@@ -276,6 +281,10 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
 - **2026-10-21 (loop 110):** PR #10 (CICS goal checks) merged after check + hashes; RETRY_STORM card (mobile λ ×2.5, CPU/txn flat; fix MOBILE_BACKOFF) with realism test. 308 tests, bench hash unchanged.
+- **2026-10-21 (IBM-docs realism thread):** audited WLM, capping, IEAOPTxx, CF heuristic against MVS Planning: WLM V2R5,
+  Init & Tuning Ref and the WSC sync/async paper. Fixed I/O using (connect only), discretionary batch zIIP overflow and
+  CF lock conversion (goldens/hashes regenerated); citations added to correct-but-uncited models. Seed 42 bots: do-nothing
+  day 15 → 16, textbook day 25 → 26 (small easing).
 - **2026-10-21 (loop 109):** no-repeat 20-seed re-sweep recorded: do-nothing median 16, textbook 26; ends now mostly trust. No code change.
 - **2026-10-21 (loop 108):** do-nothing day-4 loss traced to back-to-back JOB_ABEND draws; no card repeats on consecutive days. Bench hash unchanged, 299 tests.
 - **2026-10-21 (code-quality thread):** worker/play duplication folded into game helpers; policy names past 9 keep 8 chars (BASEPOL9 → BASEPO10, was BASEPOL1); `noUnusedLocals`. 8-day hash unchanged.

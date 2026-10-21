@@ -22,7 +22,7 @@ import {
 import { mxtQueueWaitSec, qrTcb } from '../subsys/cics';
 import { bpIoMultiplier, dbatQueueWaitSec, DB2 } from '../subsys/db2';
 import { baseRate, stepNoise } from '../workload/arrivals';
-import { buildSlices, scKeyAtService, scKeyOf } from '../workload/slices';
+import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
@@ -135,8 +135,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
 
   const io: Record<IoClass, IoService> = env.dasd
     ? {
-        RANDOM: { rtSec: env.dasd.classes.RANDOM.rtSec, delaySec: env.dasd.classes.RANDOM.iosqSec + env.dasd.classes.RANDOM.pendSec, iosqSec: env.dasd.classes.RANDOM.iosqSec },
-        SEQ: { rtSec: env.dasd.classes.SEQ.rtSec, delaySec: env.dasd.classes.SEQ.iosqSec + env.dasd.classes.SEQ.pendSec, iosqSec: env.dasd.classes.SEQ.iosqSec },
+        RANDOM: { rtSec: env.dasd.classes.RANDOM.rtSec, delaySec: env.dasd.classes.RANDOM.iosqSec + env.dasd.classes.RANDOM.pendSec, iosqSec: env.dasd.classes.RANDOM.iosqSec, connSec: env.dasd.classes.RANDOM.connSec },
+        SEQ: { rtSec: env.dasd.classes.SEQ.rtSec, delaySec: env.dasd.classes.SEQ.iosqSec + env.dasd.classes.SEQ.pendSec, iosqSec: env.dasd.classes.SEQ.iosqSec, connSec: env.dasd.classes.SEQ.connSec },
       }
     : DEFAULT_IO;
 
@@ -583,7 +583,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
           rate: 0,
           cpEngines: 0,
           ziipEngines: 0,
-          mayOverflow: true,
+          mayOverflow: honorsPriority(def, cls.serviceClass, scKey),
           cpuSecPerTxn: 0,
           ziipSecPerTxn: 0,
           ioPerTxn: 0,
@@ -976,8 +976,11 @@ function idleScpTick(scKey: string, dp: number): ScpTick {
   };
 }
 
-/** Resource group limits in CP engines on one system. Types 2 and 3 are system scope; type 1 is a
- * sysplex-wide SU/s budget, of which this system gets `plexShareFrac` (its share of the group's demand). */
+/** Resource group limits in CP engines on one system (MVS Planning: WLM, ch. 7). Type 1 is a sysplex-wide
+ * unweighted SU/s budget, of which this system gets `plexShareFrac` (its share of the group's demand); type 2
+ * a percentage of the LPAR share, min(weight share, logical CPs); type 3 CPs × 100. Specialty engine use is
+ * excluded (the "Include Specialty Processor Consumption" default). APPROX: type 2 ignores a soft cap
+ * below the share; type 4 (MSU) and memory pools are not modelled. */
 function resolveRgCapEngines(
   type: 1 | 2 | 3,
   max: number,
