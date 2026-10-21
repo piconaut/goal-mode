@@ -94,7 +94,12 @@ const HB_CARDS: EventDef[] = [
   adapt('RUNAWAY', {
     clue: 'DDFPRD period 2 APPL% and zIIP busy soar on PRDC/PRDD with the analytics end rate flat; with the zIIPs busy the work queues for them (Mon III DELAY, Partition Data). Fixes: cancel the thread, or give analytics a goal class of its own.',
   }),
+  // FICTIONAL: RETAIL is ~half of Harbourline's online CPU (Midwest's RBANK ~a third of a much smaller estate), so one
+  // regressed package of many costs ×1.5 per transaction, not Midwest's ×3 (×3 alone saturated both CPCs in sweeps).
   adapt('REGRESSION', {
+    begin: [mod('cpu', 'RETAIL', 1.5)],
+    end: [mod('cpu', 'RETAIL', 1)],
+    clue: 'RETAIL service per transaction ×1.5 (APPL% up, END/S flat) on all four PRD images. Db2 accounting by package would point at RB01.',
     perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: "EXPLAIN diff after last night's REBIND: package RB01 changed access path (index probe → tablespace scan). Expect more CPU per retail transaction." },
   }, { RBANK: 'RETAIL' }),
   adapt('BOT_ATTACK', {

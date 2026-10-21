@@ -1,11 +1,12 @@
 import type { GameContent } from '../game/run';
 import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from './events/harbourline-events';
 
-/** FICTIONAL budgets for the Harbourline Bank run: a larger estate with two CPCs, so roughly double Midwest's. */
+/** FICTIONAL budgets for the Harbourline Bank run: a larger estate with two CPCs, so roughly double Midwest's. Opex is set so a
+ * textbook month-1 bill lands ~7 % over it, like Midwest's (40-day sweep: bills $1.6–1.7M). */
 export const HARBOURLINE_GAME: GameContent = {
   events: HARBOURLINE_EVENTS,
   story: HARBOURLINE_STORY,
-  opexBudgetMonthly: 1_400_000,
+  opexBudgetMonthly: 1_500_000,
   capexQuarter: 2_400_000,
   maxDays: 40,
   facets: [
