@@ -14,7 +14,7 @@ import { emptyAlerts, evaluateAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { MON3_CHARTS } from '../content/tools';
-import { expireToolTrials, trialTool } from './tools';
+import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
@@ -60,6 +60,8 @@ export interface GameContent {
   batchMissFacet?: Facet;
   /** Planted flaws already fixed at the start on a difficulty (SPEC §11.2, §13.3). */
   startingFixes?: Partial<Record<DifficultyId, { flaw: string; label: string; commands: Command[] }[]>>;
+  /** Analytics tools already installed on day 1 (SPEC §13.5); their measurement overhead applies from the start. */
+  startTools?: string[];
 }
 
 const BASE_HOURS = 8;
@@ -125,7 +127,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     capexRemaining: content.capexQuarter * diff.capexMult,
     opexSpentThisMonth: 0,
     insight: 0,
-    tools: [],
+    tools: [...(content.startTools ?? [])],
     toolsOff: [],
     reportsOpenedToday: [],
     codexReports: [],
@@ -157,6 +159,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     log: [],
     endReason: null,
   };
+  if (content.startTools?.length) run = { ...run, sim: applyCommands(run.sim, measurementCommands(run, scenario)) };
   const fixed = content.startingFixes?.[difficulty] ?? [];
   if (fixed.length > 0) run = msg(run, 'Previous team', 'Handover notes', `Before leaving we sorted out a few things: ${fixed.map((f) => f.label).join('; ')}. The rest is yours.`);
   run = drawEvents(run, content, 0);

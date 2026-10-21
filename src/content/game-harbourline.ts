@@ -17,4 +17,6 @@ export const HARBOURLINE_GAME: GameContent = {
     { id: 'Regulator', weight: 1 },
   ],
   batchMissFacet: 'Payments',
+  // SPEC §13.5: a large shop already runs the tier-1 data collectors; SMF 113, planners and automation are still bought.
+  startTools: ['RMF_MON3', 'PARTITION_DATA', 'CF_DASD', 'CICS_MON', 'DB2_ACCT'],
 };

@@ -80,6 +80,19 @@ describe('Harbourline Bank pack', () => {
   });
 });
 
+describe('Harbourline starting tools', () => {
+  it('installs the tier-1/2 collectors on day 1 with their measurement overhead; Midwest starts with none', () => {
+    const r = newRun(pack.scenario, { ...pack.game, events: [] }, 3);
+    expect(r.tools).toEqual(pack.game.startTools);
+    expect(r.sim.mods.measureCpu?.RMFGAT).toBeGreaterThan(1);
+    expect(Object.values(r.sim.mods.measureCpu ?? {}).filter((v) => v > 1).length).toBeGreaterThan(1);
+    const m = packOf('midwest');
+    const rm = newRun(m.scenario, { ...m.game, events: [] }, 3);
+    expect(rm.tools).toEqual([]);
+    expect(rm.sim.mods.measureCpu ?? {}).toEqual({});
+  });
+});
+
 describe('Harbourline routing-policy changes', () => {
   const content = { ...pack.game, events: [] };
   it('shows the live policy, describes and plans the change', () => {
