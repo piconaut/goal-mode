@@ -84,6 +84,13 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: SLA fine, loses on opex), expert (scripted good play incl. capacity orders and caps: wins with grade A on Normal)
 - [ ] Targets hold across ≥ 20 seeds (median and spread), not just seed 42; event-deck intensity, growth rates and trust weights tuned from sweeps
   - Latest results, Normal (day p10 / median / p90):
+    - **Post-PR #8 re-sweep (2026-10-21, seeds 1–20, 22 cards):** do-nothing 12 / 15 / 21, ends batch 10 · trust 10
+      (median 15 is now on target, p90 a bit late); textbook 22 / 27 / 28, ends batch 12 · trust 8 (median 27 is still
+      below the 28–32 target, p10 up from 17). Early textbook ends: seeds 13 (day 17) and 20 (day 24) are Retail trust
+      collapses, and both drew NEW_APP_GOLIVE, so the booking decision still matters. Seeds 15, 17 and 5 (days 19–23)
+      are batch ends, and all three drew REORG_OVERRUN + JOB_ABEND. Outlier: do-nothing seed 17 ends on batch on
+      day 4 (JOB_ABEND only) and seed 9 on day 5. These are probably too early for a lose-by-neglect run; look at them
+      before any tuning
     - **do-nothing** 9 / 13 / 18, ends trust 14 · batch 6 (loop 37; median ok, p10 a bit early; not re-swept since)
     - **expert** 40 / 40 / 40, victory 20/20 (loop 68, 19 cards); 4/4 victories in the loop 102 smoke sweep
     - **spend-to-win** 28 / 28 / 28, ends opex 20/20 (loop 68): right cause, zero spread (opex wall is the month-1 close)
@@ -272,6 +279,7 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
 - **2026-10-21 (loop 105):** CICS_SOS card (21 cards), modelled as an MXT cut. Open question logged: raising MXT also clears it in the sim, unlike real SOS.
 - **2026-10-21 (loop 104):** ZIIP_LOSS card (20 cards): new sim modifier `ziipEligMult` (neutral 1, so SET_MODIFIER's reset-at-1 works and project `ziipShift` is untouched). Bench hash unchanged; goldens unaffected. 286 tests.
 - **2026-10-21 (loop 103):** career level 7 unlocks a starting tool (Report Class Hoarder).
+- **2026-10-21:** post-PR #8 20-seed re-sweep: do-nothing median 15, textbook median 27 (still short of target; booking go-live + reorg/abend batch walls).
 - **2026-10-21 (loops 93–102):** draft perks and the vendor tool trial; all SPEC §9.5 opportunities exist; smoke sweep, no regression.
 - **2026-10-20 (loops 80–92):** play CLI, player agents, spectator mode (M8.9); perf profiling.
 - **2026-10-20 (loop 79):** contrast audit fixed the light theme's status colours; contrast test for all themes. 273 tests.
