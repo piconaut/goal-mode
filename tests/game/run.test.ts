@@ -1,5 +1,5 @@
 import { askAround, inquiriesView } from '../../src/game/inquiries';
-import { failRiskFor, hardwareItem, opexBudgetFor } from '../../src/game/catalog';
+import { failRiskFor, hardwareItem, hoursFor, opexBudgetFor } from '../../src/game/catalog';
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
@@ -256,6 +256,13 @@ describe('draft perks', () => {
     expect(r.capexRemaining - zi.run.capexRemaining).toBe(Math.round(hardwareItem('ADD_ZIIP')!.capex * 0.75));
     const cp = requestChange(r, content, { label: 'CP', hardwareId: 'PERM_CP' });
     expect(r.capexRemaining - cp.run.capexRemaining).toBe(hardwareItem('PERM_CP')!.capex);
+  });
+
+  it('WLM course halves policy activation hours only', () => {
+    const r = chooseDraft(review(fresh()), content, 'WLM_COURSE');
+    expect(r.perks).toContain('WLM_COURSE');
+    const cmds = [{ kind: 'ACTIVATE_POLICY' }, { kind: 'SET_WEIGHT' }] as unknown as Parameters<typeof hoursFor>[0];
+    expect(hoursFor(cmds, r.perks)).toBe(hoursFor(cmds, []) - 0.75);
   });
 
   it('well connected makes asking around free', () => {

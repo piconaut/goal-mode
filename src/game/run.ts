@@ -777,6 +777,7 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
     case 'BELT_AND_BRACES':
     case 'VENDOR_FRIEND':
     case 'ZIIP_PROMO':
+    case 'WLM_COURSE':
     case 'WELL_CONNECTED':
     case 'FRIENDS_IN_FINANCE':
     case 'NIGHT_OWL':

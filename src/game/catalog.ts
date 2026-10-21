@@ -36,7 +36,8 @@ export function hoursFor(commands: readonly Command[], perks: readonly string[])
   let h = 0;
   for (const c of commands) {
     if (perks.includes('HMC_NINJA') && PRSM_KINDS.has(c.kind)) continue;
-    h += c.kind === 'SET_LCU' && c.hotSkew !== undefined ? DASD_REBALANCE.hours : (HOURS[c.kind] ?? 0.5);
+    const base = c.kind === 'SET_LCU' && c.hotSkew !== undefined ? DASD_REBALANCE.hours : (HOURS[c.kind] ?? 0.5);
+    h += perks.includes('WLM_COURSE') && c.kind === 'ACTIVATE_POLICY' ? base * DRAFT_TUNING.wlmCourseHoursMult : base;
   }
   return h;
 }
