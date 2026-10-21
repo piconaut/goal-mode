@@ -17,7 +17,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
   comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
-- **Health:** `npm run check` green (356 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+- **Health:** `npm run check` green (357 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -349,6 +349,11 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 126):** 4b part 2 (game layer): `SET_ROUTING_POLICY` costs 1 engineer-hour (SD VIPADISTRIBUTE / CPSM
+  WLMSPEC change), basket target and now → new text (`routingPolicyLabel`), config view exposes each workload's live
+  routing policy; new fix RECYCLE_SICK_AOR (1 h, −1 Markets) ends SICK_AOR. Quiescing a region costs its capacity, and
+  ABENDCRIT a trickle of failures, so the levers keep trade-offs. 357 tests, hash unchanged. Next: UI routing-policy
+  controls (Actions routing form), startTools, then 4c Codex/bots/retune/sweeps.
 - **2026-10-21 (loop 125):** large-bank step 4b part 1: Harbourline game pack (`PACKS.harbourline`, 'Harbourline Bank'):
   FICTIONAL budgets ~2× Midwest, facets Markets/Cards/Retail/Payments/Finance/Regulator, 6 story beats, deck of neutral
   and adapted Midwest cards plus SICK_AOR (B2: `regionFailFrac` 0.35 on MKTORD/CARDS@PRDB, storm-drain clue),

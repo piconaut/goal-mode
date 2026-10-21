@@ -2,8 +2,11 @@ import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from '../../src/content/events/
 import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { PACKS, packOf } from '../../src/content/packs';
-import { FIXES } from '../../src/game/catalog';
-import { advance, newRun, startDay } from '../../src/game/run';
+import { FIXES, previewChange } from '../../src/game/catalog';
+import { describeCommand } from '../../src/game/changeDesk';
+import { buildView } from '../../src/game/view';
+import type { Command } from '../../src/sim/core/commands';
+import { advance, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
 import { facetsOf } from '../../src/game/types';
 import { applyCommands } from '../../src/sim/core/commands';
 import { initState } from '../../src/sim/core/init';
@@ -74,5 +77,22 @@ describe('Harbourline Bank pack', () => {
     expect(Object.keys(on.mods.regionFailFrac ?? {}).every((k) => k.endsWith('@PRDB'))).toBe(true);
     const off = applyCommands(on, card.end);
     expect(off.mods.regionFailFrac ?? {}).toEqual({});
+  });
+});
+
+describe('Harbourline routing-policy changes', () => {
+  const content = { ...pack.game, events: [] };
+  it('shows the live policy, describes and plans the change', () => {
+    const r = newRun(pack.scenario, content, 3);
+    const cfg = buildView(r, pack.scenario).config;
+    const mktord = cfg.routing.find((x) => x.workloadId === 'MKTORD')!;
+    expect(mktord.policy.method).toBe('CPSM_GOAL');
+    const cmd: Command = { kind: 'SET_ROUTING_POLICY', workloadId: 'MKTORD', policy: { method: 'CPSM_GOAL', abendThreshFrac: 0.1, abendCritFrac: 0.2, quiesced: ['PRDB'] } };
+    expect(describeCommand(cmd, cfg)).toBe('MKTORD routing CPSM goal → CPSM goal, ABENDTHRESH 10%, ABENDCRIT 20%, quiesced PRDB');
+    expect(previewChange(previewContext(r), { commands: [cmd] }).hours).toBeGreaterThan(0);
+    const out = requestChange(r, content, { label: 'x', commands: [cmd] });
+    expect(out.run.hoursLeft).toBeLessThan(r.hoursLeft);
+    expect(out.ok).toBe(true);
+    expect(applyCommands(r.sim, [cmd]).routingPolicies?.MKTORD).toEqual(cmd.policy);
   });
 });

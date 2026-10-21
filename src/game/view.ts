@@ -4,6 +4,7 @@ import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
 import { cicsGoalIssues, cicsTransactionClasses, type CicsGoalIssue } from './wlmEdit';
 import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
+import type { RoutingPolicy } from '../sim/workload/routing';
 // View model: a compact, serialisable projection of RunState for the UI (posted from the
 // worker every frame). Applies the fog of war: what the player is allowed to see.
 
@@ -114,7 +115,7 @@ export interface ConfigView {
   cfs: CfConfig[];
   cfStructures: CfStructureConfig[];
   systems: ZosSystemConfig[];
-  routing: { workloadId: string; name: string; shares: Record<string, number> }[];
+  routing: { workloadId: string; name: string; shares: Record<string, number>; policy: RoutingPolicy }[];
   rmfIntervalMin: number;
   dasd: { lcus: LcuConfig[]; spareAliases: number };
 }
@@ -413,7 +414,7 @@ function configView(run: RunState, scenario: Scenario): ConfigView {
     cfs: c.cfs,
     cfStructures: c.cfStructures ?? [],
     systems: c.systems,
-    routing: allWorkloads(scenario, run).map((w) => ({ workloadId: w.id, name: w.name, shares: run.sim.routing[w.id] ?? w.routing })),
+    routing: allWorkloads(scenario, run).map((w) => ({ workloadId: w.id, name: w.name, shares: run.sim.routing[w.id] ?? w.routing, policy: run.sim.routingPolicies?.[w.id] ?? { method: 'STATIC' } })),
     rmfIntervalMin: c.rmfIntervalMin,
     dasd: { lcus: c.dasd.lcus, spareAliases: c.dasd.spareAliases },
   };

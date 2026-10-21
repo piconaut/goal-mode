@@ -27,6 +27,8 @@ const HOURS: Partial<Record<Command['kind'], number>> = {
   // HCD change + dynamic activate to move HyperPAV aliases between LCUs.
   SET_LCU: 1,
   SET_ROUTING: 0.5,
+  // Sysplex distributor VIPADISTRIBUTE change or a CPSM workload definition (WLMSPEC) update.
+  SET_ROUTING_POLICY: 1,
   SET_MQ: 0.25,
   RESTART_JOB: 0.5,
 };
@@ -70,6 +72,7 @@ export const FIXES: FixDef[] = [
   { id: 'NATIVE_SQL_PROCS_REV', name: 'Redeploy as native SQL procedures', hours: 2, trustCost: { facet: 'Taxpayers', amount: 1 }, description: 'Back out the external stored procedures; native SQL procedures under DDF are zIIP-eligible again.' },
   { id: 'RECYCLE_PROD2_AORS', name: 'Recycle the PROD2 CICS AORs', hours: 1, trustCost: { facet: 'Retail', amount: 1 }, description: 'Restart CICSAOR2 and CICSAOR4 one at a time to clear the storage leak; in-flight teller work on them fails over.' },
   { id: 'RECYCLE_PROD2_AORS_REV', name: 'Recycle the PROD2 CICS AORs', hours: 1, trustCost: { facet: 'Agents', amount: 1 }, description: 'Restart CICSAOR2 and CICSAOR4 one at a time to clear the storage leak; in-flight call-centre work on them fails over.' },
+  { id: 'RECYCLE_SICK_AOR', name: 'Recycle the failing PRDB AOR', hours: 1, trustCost: { facet: 'Markets', amount: 1 }, description: 'Restart the abending CICS region on PRDB; in-flight orders on it fail and the traders notice.' },
   { id: 'SCOPE_SMF_AUDIT', name: 'Negotiate the SMF audit scope', hours: 1, trustCost: { facet: 'Regulator', amount: 2 }, description: 'Agree with the regulator to keep sampled SMF 101/110 records only; the SMF address space drops back to normal.' },
   { id: 'HOLD_HSM_RECALLS', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'HOLD RECALL until the storm drains; users wait for their data sets.' },
   { id: 'HOLD_HSM_RECALLS_REV', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Agents', amount: 1 }, description: 'HOLD RECALL until the storm drains; case workers wait for their data sets.' },

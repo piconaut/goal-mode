@@ -42,7 +42,7 @@ const BANK_CARDS: EventDef[] = [
     // FICTIONAL: a third of the transactions routed to the sick region abend almost at once.
     begin: [failFrac('MKTORD', 'PRDB', 0.35), failFrac('CARDS', 'PRDB', 0.35)],
     end: [failFrac('MKTORD', 'PRDB', 0), failFrac('CARDS', 'PRDB', 0)],
-    fix: null,
+    fix: 'RECYCLE_SICK_AOR',
     forewarning: null,
     announcement: null,
     clue: 'CPSM / CICS monitoring: MKTORD and CARDS abends (and the error-rate SLA misses) concentrate on the PRDB region while its response time looks excellent, and PRDB attracts a growing share of the routed work. Without abend compensation the CPSM goal router reads a fast failure as a fast response and sends it more work (the storm drain). Fixes: set ABENDTHRESH/ABENDCRIT on the CPSM routing policy, quiesce the PRDB region, or restart it.',
