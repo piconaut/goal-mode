@@ -1216,6 +1216,12 @@ policies are tested at once), regulator stress-test week near the end.
 3. **Routing policies.** `routingPolicy` per workload (`STATIC | WLM | CPSM_GOAL`) and per-region
    health (fast-fail fraction) feeding `CPSM_GOAL`. New verbs: set routing policy, health threshold,
    zIIP-aware weights, quiesce region. Default `STATIC`, so existing scenarios don't change.
+   *Done (sim, part 1):* `RoutingPolicy` `STATIC | WLM{ziipAware}` per workload (`WorkloadDef.routingPolicy`,
+   state `routingPolicies`, verb `SET_ROUTING_POLICY`). WLM recomputes shares every 60 s from last
+   tick's displaceable capacity at the work's dispatch priority on each candidate LPAR (the keys of
+   the scenario's routing), CP-only unless zIIP-aware, with a 2 % floor and 1 % steps (`content/routing.ts`).
+   `SET_ROUTING` is refused while a dynamic policy is on. Still to do: `CPSM_GOAL` with region health
+   (storm drain, B2), quiesce region, and the game-layer verbs and costs.
 4. **Content:** world, workloads, policy with B1–B4 and the Problem-1 traps, events, story, hints,
    Codex (sysplex distributor, CICSPlex SM routing, storm drain, absolute capping), bot day-0 fixes,
    sweeps.
@@ -1349,6 +1355,7 @@ never touches the DOM.
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
 | Discretionary capping conditions | **Real** | SG24-7621 §4.22 |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
+| Sysplex distributor WLM weights | **Simplified** | Shares ∝ displaceable capacity at the work's DP (prev tick), recomputed each minute; CP-only by default, zIIP-aware weights blend by zIIP fraction (APPROX of SD PROCTYPE). No server health term yet |
 | Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
 | Swap / MPL delay | **Simplified** | Only batch jobs are swappable; swap out least important first when storage overcommits; swap-in immediate when it frees |
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH, depth adds memory; no MQ SMF 115/116 |

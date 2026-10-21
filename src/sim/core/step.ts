@@ -25,6 +25,8 @@ import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/
 import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
+import { sameShares, wlmShares, type RouteCandidate } from '../workload/routing';
+import { ROUTING } from '../../content/routing';
 import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../content/wlm/tuning';
@@ -51,6 +53,7 @@ import type {
   LparConfig,
   EnvState,
   LparPoolRuntime,
+  PoolType,
   LparRuntime,
   LparTick,
   SimState,
@@ -91,7 +94,7 @@ interface BatchSliceRef {
 }
 
 export function step(before: SimState, commands: readonly Command[], scenario: Scenario): SimState {
-  const prev = applyCommands(before, commands);
+  const prev = updateRouting(applyCommands(before, commands), scenario);
   const rng = new Rng(prev.rng);
   const workloads = effectiveWorkloads(scenario, prev);
   const addressSpaces = effectiveAddressSpaces(scenario, prev);
@@ -876,6 +879,38 @@ function queuedMsgGb(prev: SimState, byId: Record<string, WorkloadDef>, lparId: 
     if (d && def?.mq) gb += (d * def.mq.msgBytes) / 2 ** 30;
   }
   return gb;
+}
+
+// 3. Routing: dynamic policies recompute shares from last tick's measurements once per interval.
+function updateRouting(s: SimState, scenario: Scenario): SimState {
+  const policies = s.routingPolicies;
+  if (!policies || s.tick % ROUTING.wlmIntervalTicks !== 0 || s.last.lpars.length === 0) return s;
+  let routing = s.routing;
+  for (const id of Object.keys(policies).sort()) {
+    const policy = policies[id]!;
+    const w = scenario.workloads.find((x) => x.id === id) ?? s.extraWorkloads.find((x) => x.id === id);
+    if (!w || policy.method !== 'WLM') continue;
+    const cands = Object.keys(w.routing).sort().map((lparId) => routeCandidate(s, w, lparId));
+    const shares = wlmShares(cands, w.ziipFrac, policy.ziipAware, ROUTING.minShareFrac, ROUTING.shareQuantum);
+    if (!sameShares(routing[id], shares)) routing = { ...routing, [id]: shares };
+  }
+  return routing === s.routing ? s : { ...s, routing };
+}
+
+function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandidate {
+  const lt = s.last.lpars.find((l) => l.lparId === lparId);
+  const pools = s.lpars.find((l) => l.id === lparId)?.pools ?? [];
+  const avail = (p: PoolType) => pools.find((x) => x.pool === p)?.availableEffectiveEngines ?? 0;
+  const key = scKeyOf(classify(s.wlm.definition, { ...w.work, SY: lparId }).serviceClass, 0);
+  const myDp = lt?.scps.find((x) => x.scKey === key)?.dp ?? 0;
+  let cpUsed = 0;
+  let ziipUsed = 0;
+  for (const x of lt?.scps ?? []) {
+    if (x.scKey === key || x.dp < myDp) continue;
+    cpUsed += x.cpEngines;
+    ziipUsed += x.ziipEngines;
+  }
+  return { lparId, cpFreeEngines: Math.max(0, avail('CP') - cpUsed), ziipFreeEngines: Math.max(0, avail('ZIIP') - ziipUsed) };
 }
 
 // Effective content = scenario + run additions + routing overrides. Memoised on object

@@ -15,7 +15,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   docs-only or in-progress work. Before opening: `npm run check` green, bench hash recorded, PROGRESS updated. Body:
   what changed since the last merge to `main`, test count, hashes, sweep results, anything waiting on the user. At most
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
-- **Health:** `npm run check` green (335 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+- **Health:** `npm run check` green (342 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -334,6 +334,10 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
 - **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
   (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
+- **2026-10-21 (loop 120):** large-bank step 3 part 1: routing policies `STATIC | WLM{ziipAware}` (SD SERVERWLM-style
+  shares from displaceable capacity each minute; B3's CP-only default). Midwest MOBILE trial: WLM shifts 57–69 % to
+  PROD1, zIIP-aware 65–78 %; no day-time cost. 342 tests, hash `eddf17fc7c615524`. Next: `CPSM_GOAL` + region health
+  (B2 storm drain), quiesce, game-layer verbs.
 - **2026-10-21 (loop 119):** large-bank step 2: burst arrivals (`ArrivalShape.bursts`, random + scheduled, RNG drawn
   only for bursty workloads). 335 tests, hash `eddf17fc7c615524`. Next: step 3 routing policies.
 - **2026-10-21 (loop 118):** large-bank step 1 (multi-CPC, SPEC §13.5): per-job-CPC critical projection, power cap hits

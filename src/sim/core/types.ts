@@ -10,6 +10,7 @@ import type { JobEndRecord, RmfAcc, RmfInterval } from '../measure/rmf';
 import type { RngState } from './rng';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
 import type { BurstState } from '../workload/arrivals';
+import type { RoutingPolicy } from '../workload/routing';
 import type { ReportClassTick, ScpTick } from '../wlm/evaluate';
 import type { WlmState } from '../wlm/runtime';
 
@@ -222,6 +223,8 @@ export interface SimState {
   extraWorkloads: WorkloadDef[];
   /** Routing overrides per workload (sysplex distributor / CICSPlex SM weights). */
   routing: Record<string, Record<string, number>>;
+  /** Non-STATIC routing policies per workload (absent when every workload routes statically). */
+  routingPolicies?: Record<string, RoutingPolicy>;
   /** ALTER QLOCAL MAXDEPTH overrides per message-driven workload. */
   mqMaxDepth?: Record<string, number>;
   /** Extra address spaces added during the run (e.g. new CICS AORs). */

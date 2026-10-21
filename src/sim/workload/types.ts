@@ -1,6 +1,7 @@
 // Workload and address-space content types (SPEC §5.2, §5.6).
 
 import type { SubsystemType, WorkAttributes } from '../wlm/types';
+import type { RoutingPolicy } from './routing';
 
 export interface Peak {
   hour: number;
@@ -56,8 +57,10 @@ export interface WorkloadDef {
   /** AR(1) log-noise: stationary σ and per-tick autocorrelation. */
   noiseSigma: number;
   noisePhi: number;
-  /** Share of arrivals per LPAR (sysplex distributor / CICSPlex SM routing). */
+  /** Share of arrivals per LPAR (sysplex distributor / CICSPlex SM routing); its keys are the candidate systems. */
   routing: Record<string, number>;
+  /** How shares are set; default STATIC (the routing above, changed only by the player). */
+  routingPolicy?: RoutingPolicy;
   /** CPU per transaction in reference-engine milliseconds. */
   cpuMsRef: number;
   /** Log-σ of CPU per transaction (drives multi-period ageing). */
