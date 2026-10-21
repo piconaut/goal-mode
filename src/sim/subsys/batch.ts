@@ -220,7 +220,8 @@ export function projectCriticalEnd(
   return end;
 }
 
-/** Summarise a night at its deadline and drop finished jobs of older instances. */
+/** Summarise a night at its deadline and drop finished jobs of older instances. An instance that
+ * still has unfinished jobs keeps its finished ones: they are its stragglers' predecessors. */
 export function closeNight(state: BatchState, day: number): BatchState {
   const inst = state.jobs.filter((j) => j.day === day);
   const crit = inst.filter((j) => j.def.critical);
@@ -229,6 +230,8 @@ export function closeNight(state: BatchState, day: number): BatchState {
     critDone.length === crit.length && crit.length > 0
       ? Math.max(...crit.map((j) => secSinceInstance(j.endTick ?? 0, day)))
       : null;
+  const pending = new Set<number>();
+  for (const j of state.jobs) if (j.status !== 'DONE') pending.add(j.day);
   const summary: NightSummary = {
     day,
     jobs: inst.length,
@@ -240,7 +243,7 @@ export function closeNight(state: BatchState, day: number): BatchState {
   };
   return {
     ...state,
-    jobs: state.jobs.filter((j) => !(j.day <= day && j.status === 'DONE')),
+    jobs: state.jobs.filter((j) => !(j.day <= day && j.status === 'DONE' && !pending.has(j.day))),
     nights: [...state.nights, summary],
   };
 }
