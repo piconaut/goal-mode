@@ -12,6 +12,17 @@ export const PI_MAX_PERCENTILE = 4.0;
 
 export const emptyBuckets = (): number[] => new Array<number>(BUCKETS).fill(0);
 
+// Math.log(bound * goal) per goal value: goals are few and fixed, so the logs are reused across ticks.
+const BOUND_LOGS = new Map<number, number[]>();
+function boundLogs(goalRtSec: number): number[] {
+  let l = BOUND_LOGS.get(goalRtSec);
+  if (!l) {
+    l = BUCKET_BOUNDS.map((bound) => (bound === Infinity ? 0 : Math.log(bound * goalRtSec)));
+    BOUND_LOGS.set(goalRtSec, l);
+  }
+  return l;
+}
+
 /** Add `count` completions with log-normal response times into goal-relative buckets. */
 export function addToBuckets(
   buckets: number[],
@@ -24,6 +35,7 @@ export function addToBuckets(
   // Same arithmetic as lognormCdf per bound, with the loop invariants hoisted (hot path).
   const degenerate = !(meanRtSec > 0) || sigma <= 1e-9;
   const mu = Math.log(meanRtSec) - (sigma * sigma) / 2;
+  const logs = degenerate ? null : boundLogs(goalRtSec);
   let prev = 0;
   for (let i = 0; i < BUCKETS; i++) {
     const bound = BUCKET_BOUNDS[i]!;
@@ -32,7 +44,7 @@ export function addToBuckets(
     else if (degenerate) cdf = lognormCdf(bound * goalRtSec, meanRtSec, sigma);
     else {
       const b = bound * goalRtSec;
-      cdf = b <= 0 ? 0 : normCdf((Math.log(b) - mu) / sigma);
+      cdf = b <= 0 ? 0 : normCdf((logs![i]! - mu) / sigma);
     }
     buckets[i] = (buckets[i] ?? 0) + count * Math.max(0, cdf - prev);
     prev = cdf;
