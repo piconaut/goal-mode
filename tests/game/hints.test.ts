@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { morningHints } from '../../src/game/hints';
+import { hintLevelFor, morningHints } from '../../src/game/hints';
 import type { Incident, Mechanism } from '../../src/game/types';
 
 const inc = (workloadId: string, mechanism: Mechanism, hours: number, worstAttainmentPct = 90): Incident => ({
@@ -51,4 +51,13 @@ describe('morning hints in a run', () => {
     const forewarnings = run.inbox.filter((m) => m.subject === 'For day 2');
     expect(forewarnings.every((m) => m.day === 1)).toBe(true);
   }, 120_000);
+});
+
+describe('mentor perk', () => {
+  it('raises the hint level one step', () => {
+    expect(hintLevelFor('NONE', ['MENTOR'])).toBe('VAGUE');
+    expect(hintLevelFor('VAGUE', ['MENTOR'])).toBe('CLEAR');
+    expect(hintLevelFor('CLEAR', ['MENTOR'])).toBe('CLEAR');
+    expect(hintLevelFor('NONE', [])).toBe('NONE');
+  });
 });

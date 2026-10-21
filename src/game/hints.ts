@@ -12,6 +12,12 @@ export interface BatchOutcome {
 
 const fmtSlack = (sec: number) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min` : `${Math.max(1, Math.round(sec / 60))} min`);
 
+/** The Mentor perk raises the hint level one step (NONE → VAGUE → CLEAR). */
+export function hintLevelFor(level: HintLevel, perks: readonly string[]): HintLevel {
+  if (!perks.includes('MENTOR')) return level;
+  return level === 'NONE' ? 'VAGUE' : 'CLEAR';
+}
+
 /**
  * Morning hints from yesterday's ground truth (SPEC §11.2): the same incident truth RCA scoring uses picks
  * the report to point at, but the text never names the mechanism, trigger or fix.

@@ -21,7 +21,7 @@ import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
-import { morningHints } from './hints';
+import { hintLevelFor, morningHints } from './hints';
 import { HINT_SENDER, STORY_BEAT_HINTS } from '../content/hints';
 import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
@@ -694,7 +694,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
   if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
-  for (const h of morningHints(difficultyOf(r.difficulty).hints, dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null))
+  for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null))
     r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);
   return openReview(r, content, day);
 }
@@ -718,7 +718,7 @@ export function continueEndless(run: RunState, content: GameContent): RunState {
 function openReview(r: RunState, content: GameContent, day: number): RunState {
   const [draft, r2] = withRng(r, (rng) => {
     // The hoarder perk is the advisor tool for free: pointless once it is owned.
-    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id) && !(d.id === 'RC_HOARDER' && r.tools.includes('RC_ADVISOR')) && !(d.id === 'SQL_SPRINT' && r.projects?.some((p) => p.id === 'SQL_TUNING' && p.done)));
+    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id) && !(d.id === 'RC_HOARDER' && r.tools.includes('RC_ADVISOR')) && !(d.id === 'SQL_SPRINT' && r.projects?.some((p) => p.id === 'SQL_TUNING' && p.done)) && !(d.id === 'MENTOR' && difficultyOf(r.difficulty).hints === 'CLEAR'));
     const out = [];
     for (let i = 0; i < 3 && pool.length > 0; i++) {
       const p = rng.pickWeighted(pool, (d) => d.weight)!;
@@ -778,6 +778,7 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
     case 'VENDOR_FRIEND':
     case 'ZIIP_PROMO':
     case 'WLM_COURSE':
+    case 'MENTOR':
     case 'WELL_CONNECTED':
     case 'FRIENDS_IN_FINANCE':
     case 'NIGHT_OWL':
