@@ -9,7 +9,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-21
 - **Next up:** M8.4 events (23 of ~25), M8.2 balance (textbook below target; waiting on the user), M8.1 structural perf.
-- **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `ccr-2af28431-vidfb0`; see M8.9 for `main`).
+- **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **Health:** `npm run check` green (299 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) `8a82ad7db2b258ae`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
