@@ -12,6 +12,7 @@ export const PI_MAX_PERCENTILE = 4.0;
 
 // Literal (packed) rather than new Array(n).fill(0), which is holey and slower to build and sum.
 export const emptyBuckets = (): number[] => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+if (emptyBuckets().length !== BUCKETS) throw new Error('emptyBuckets literal out of step with BUCKET_BOUNDS');
 
 // Math.log(bound * goal) per goal value: goals are few and fixed, so the logs are reused across ticks.
 const BOUND_LOGS = new Map<number, number[]>();
