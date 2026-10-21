@@ -89,6 +89,10 @@ describe('draft', () => {
     expect(n.capexRemaining).toBe(r.capexRemaining + 300_000);
     expect(chooseDraft(r, content, 'HMC_NINJA').perks).toContain('HMC_NINJA');
     expect(chooseDraft(r, content, 'RC_HOARDER').tools).toEqual(['RC_ADVISOR']);
+    const twice = chooseDraft({ ...chooseDraft(r, content, 'SQL_SPRINT'), phase: 'REVIEW' }, content, 'SQL_SPRINT');
+    expect(twice.projects?.find((p) => p.id === 'SQL_TUNING')).toMatchObject({ hoursDone: 12, done: true });
+    expect(twice.hoursLeft).toBeGreaterThan(0);
+    expect(twice.pendingCommands.some((c) => c.kind === 'SET_MODIFIER' && c.mod === 'efficiency' && c.key === 'RBANK')).toBe(true);
   });
 });
 

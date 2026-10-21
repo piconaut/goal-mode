@@ -12,6 +12,8 @@ export interface DraftDef extends DraftOption {
 export const DRAFT_TUNING = {
   overtimeHours: 3,
   overtimeFatigue: 15,
+  // FICTIONAL: a vendor's consultants for a day put this many hours into the SQL tuning project (half of it).
+  sqlSprintHours: 6,
   vendorFriendDays: 1,
   nightDeskHours: 2,
   nightDeskFailMult: 1.3,
@@ -33,6 +35,7 @@ export const DRAFT_OPTIONS: DraftDef[] = [
   { id: 'VENDOR_FRIEND', title: 'Perk: Friend at the Vendor', description: 'Hardware with a lead time of 2+ days arrives a day sooner.', weight: 1 },
   { id: 'WELL_CONNECTED', title: 'Perk: Well Connected', description: 'Asking around costs no engineer-hours.', weight: 1 },
   { id: 'DB2_WHISPERER', title: 'Perk: Db2 Whisperer', description: 'The DBAs tell you when a REBIND changes an access path.', weight: 1 },
+  { id: 'SQL_SPRINT', title: 'SQL tuning consultants', description: 'A vendor lends two Db2 consultants for a day: 6 free hours on the SQL tuning sprint project.', weight: 2 },
   { id: 'RC_HOARDER', title: 'Perk: Report Class Hoarder', description: 'The report class advisor, free: WLMGL can show every business workload on its own row.', weight: 1 },
   { id: 'NIGHT_DESK', title: 'Pact: Offshore night desk', description: '+2 engineer-hours every day for the rest of the run, but change failure risk ×1.3 (hand-offs).', weight: 1 },
   { id: 'BUDGET_SWAP', title: 'Pact: Capex for opex', description: '+$500k hardware budget now, but the monthly opex budget is 10% lower for the rest of the run.', weight: 1 },

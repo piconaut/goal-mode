@@ -881,7 +881,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 
 ### 9.5 Opportunities (draft rewards, pick 1 of 3 at end of day)
 Vendor tool trial (temporary unlock), training course (permanent perk), CFO capex bonus,
-contractor (temporary +hours), SQL tuning sprint, "friendly IBM CE" (shorter hardware
+contractor (temporary +hours), SQL tuning consultants (6 free hours on the SQL tuning sprint project, `SQL_SPRINT`), "friendly IBM CE" (shorter hardware
 lead times), TFP contract offer, zIIP promotion pricing, codex insight.
 
 **Perks** (sample): *Db2 Whisperer* (the DBA team tips you off when a REBIND regresses an access path; the card is otherwise silent), *HMC Ninja* (PR/SM changes

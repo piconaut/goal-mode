@@ -50,6 +50,18 @@ export function workOnProject(run: RunState, id: string, hours: number): Out {
   return { run: r, ok: true, message: `${def.name}: ${next.hoursDone}/${def.hours}h` };
 }
 
+/** Hours someone else puts in (draft rewards): no engineer-hours spent, no daily ceiling. */
+export function grantProjectHours(run: RunState, id: string, hours: number): RunState {
+  const def = projectDef(id);
+  const list = run.projects ?? [];
+  const cur = list.find((p) => p.id === id) ?? { id, hoursDone: 0, hoursToday: 0, day: run.day, done: false };
+  if (!def || cur.done) return run;
+  const done = cur.hoursDone + hours >= def.hours - 1e-9;
+  const next: ProjectState = { ...cur, hoursDone: Math.min(def.hours, cur.hoursDone + hours), done };
+  const r: RunState = { ...run, projects: [...list.filter((p) => p.id !== id), next].sort((a, b) => (a.id < b.id ? -1 : 1)) };
+  return done ? { ...r, pendingCommands: [...r.pendingCommands, ...effectCommands(def.effects, r.sim)], log: [...r.log, `Project complete: ${def.name}`] } : r;
+}
+
 export function projectsView(run: RunState) {
   return PROJECTS.map((d) => {
     const s = (run.projects ?? []).find((p) => p.id === d.id);
