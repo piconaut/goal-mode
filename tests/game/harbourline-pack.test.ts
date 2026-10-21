@@ -80,6 +80,33 @@ describe('Harbourline Bank pack', () => {
   });
 });
 
+describe('Harbourline starting tools', () => {
+  it('installs the tier-1/2 collectors on day 1 with their measurement overhead; Midwest starts with none', () => {
+    const r = newRun(pack.scenario, { ...pack.game, events: [] }, 3);
+    expect(r.tools).toEqual(pack.game.startTools);
+    expect(r.sim.mods.measureCpu?.RMFGAT).toBeGreaterThan(1);
+    expect(Object.values(r.sim.mods.measureCpu ?? {}).filter((v) => v > 1).length).toBeGreaterThan(1);
+    const m = packOf('midwest');
+    const rm = newRun(m.scenario, { ...m.game, events: [] }, 3);
+    expect(rm.tools).toEqual([]);
+    expect(rm.sim.mods.measureCpu ?? {}).toEqual({});
+  });
+});
+
+describe('Harbourline per-CPC hardware', () => {
+  it('refuses a capacity step on CPC1 (already setting 7) and buys it for CPC2', () => {
+    const r = newRun(pack.scenario, { ...pack.game, events: [] }, 3);
+    const ctx = previewContext(r);
+    expect(previewChange(ctx, { hardwareId: 'CAP_SETTING_UP' }).reason).toBe('CPC1: Already at the top capacity setting');
+    expect(previewChange(ctx, { hardwareId: 'CAP_SETTING_UP', cpcId: 'CPC9' }).ok).toBe(false);
+    const out = requestChange(r, pack.game, { label: 'Capacity setting +1 on CPC2', hardwareId: 'CAP_SETTING_UP', cpcId: 'CPC2' });
+    expect(out.ok).toBe(true);
+    expect(out.run.changes.at(-1)!.commands).toEqual([{ kind: 'SET_CPC_CAPACITY', cpcId: 'CPC2', capacitySetting: 6 }]);
+    const cod = requestChange(r, pack.game, { label: 'CoD on CPC2', hardwareId: 'COD_CP', cpcId: 'CPC2' });
+    expect(cod.run.changes.at(-1)!.commands).toEqual([{ kind: 'SET_CPC_ENGINES', cpcId: 'CPC2', pool: 'CP', engines: 11 }]);
+  });
+});
+
 describe('Harbourline routing-policy changes', () => {
   const content = { ...pack.game, events: [] };
   it('shows the live policy, describes and plans the change', () => {

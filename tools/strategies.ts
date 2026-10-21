@@ -98,7 +98,13 @@ function batchCapacity(run: RunState, c: GameContent): RunState {
   const end = run.reports.at(-1)?.batch?.criticalEndSec;
   if (end == null || end < run.batchDeadlineSec - BATCH_MARGIN_SEC) return run;
   if (run.changes.some((x) => x.label === 'Capacity setting +1' && x.status !== 'FAILED')) return run;
-  return requestChange(run, c, { label: 'Capacity setting +1', hardwareId: 'CAP_SETTING_UP' }).run;
+  return capSettingUp(run, c);
+}
+
+/** Capacity setting +1 on the first CPC that is not already at the top setting. */
+function capSettingUp(run: RunState, c: GameContent): RunState {
+  const cpc = run.sim.config.cpcs.find((x) => x.capacitySetting < 7);
+  return cpc ? requestChange(run, c, { label: 'Capacity setting +1', hardwareId: 'CAP_SETTING_UP', cpcId: cpc.id }).run : run;
 }
 
 function reactBriefing(r: RunState, c: GameContent): RunState {
@@ -260,7 +266,8 @@ STRATEGIES.textbook = textbook;
 const expert: Strategy = {
   briefing: (r, s, c) => {
     let run = fixer.briefing(r, s, c);
-    if (run.day === 0) run = requestChange(run, c, { label: 'Capacity setting +1', hardwareId: 'CAP_SETTING_UP' }).run;
+    // At the first briefing with the hours for it (Harbourline's day-0 flaw fixes use the whole day).
+    if (run.day <= 2 && !run.changes.some((x) => x.label === 'Capacity setting +1' && x.status !== 'FAILED')) run = capSettingUp(run, c);
     return run;
   },
   hourly: fixer.hourly,

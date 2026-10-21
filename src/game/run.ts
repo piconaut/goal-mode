@@ -14,7 +14,7 @@ import { emptyAlerts, evaluateAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { MON3_CHARTS } from '../content/tools';
-import { expireToolTrials, trialTool } from './tools';
+import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
@@ -60,6 +60,8 @@ export interface GameContent {
   batchMissFacet?: Facet;
   /** Planted flaws already fixed at the start on a difficulty (SPEC §11.2, §13.3). */
   startingFixes?: Partial<Record<DifficultyId, { flaw: string; label: string; commands: Command[] }[]>>;
+  /** Analytics tools already installed on day 1 (SPEC §13.5); their measurement overhead applies from the start. */
+  startTools?: string[];
 }
 
 const BASE_HOURS = 8;
@@ -125,7 +127,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     capexRemaining: content.capexQuarter * diff.capexMult,
     opexSpentThisMonth: 0,
     insight: 0,
-    tools: [],
+    tools: [...(content.startTools ?? [])],
     toolsOff: [],
     reportsOpenedToday: [],
     codexReports: [],
@@ -157,6 +159,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     log: [],
     endReason: null,
   };
+  if (content.startTools?.length) run = { ...run, sim: applyCommands(run.sim, measurementCommands(run, scenario)) };
   const fixed = content.startingFixes?.[difficulty] ?? [];
   if (fixed.length > 0) run = msg(run, 'Previous team', 'Handover notes', `Before leaving we sorted out a few things: ${fixed.map((f) => f.label).join('; ')}. The rest is yours.`);
   run = drawEvents(run, content, 0);
@@ -238,6 +241,8 @@ export interface ChangeRequest {
   label: string;
   commands?: Command[];
   hardwareId?: string;
+  /** Target CPC of a per-CPC hardware item (default the first). */
+  cpcId?: string;
   fixId?: string;
   /** Pre-approved automation: no engineer-hours, no emergency trust cost, a misfire chance instead. */
   automated?: { misfireFrac: number };
@@ -264,6 +269,7 @@ export function previewContext(run: RunState) {
     incidentOpen: run.incidents.some((i) => i.endTick === null),
     constraints: run.constraints,
     blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
+    cpcs: run.sim.config.cpcs.map((c) => ({ id: c.id, capacitySetting: c.capacitySetting, generation: c.generation })),
   };
 }
 
@@ -274,7 +280,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
-  const commands = hw ? hw.commands(run.sim) : (req.commands ?? []);
+  const commands = hw ? hw.commands(run.sim, req.cpcId) : (req.commands ?? []);
   const hours = req.automated ? 0 : preview.hours;
   const { capex } = preview;
 
@@ -292,7 +298,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     emergency: live,
     status: 'PLANNED',
     revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
-    revertCommands: hw?.durationDays ? hw.revert(run.sim) : [],
+    revertCommands: hw?.durationDays ? hw.revert(run.sim, req.cpcId) : [],
     endsEvent: fix?.id ?? null,
   };
   r = { ...r, nextId: r.nextId + 1 };

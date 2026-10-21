@@ -1,6 +1,7 @@
 // FICTIONAL: Harbourline Bank workloads and address spaces (SPEC §13.5). Day 1 puts CPC1 at roughly
 // 55–65% and CPC2 at 60–70% busy at the daytime peaks (CPC2's sub-capacity CPs are the small side);
-// markets and mobile grow ~1%/day. A market-open burst hurts; volumes get retuned toward CPC1 65–75%
+// markets and mobile grow ~0.6%/day, the rest 0.35–0.5% (CPU-weighted ~0.45%/day, like Midwest's; at ~0.7% the
+// 40-day sweeps ran out of CPU on both CPCs whatever the bots bought). A market-open burst hurts; volumes get retuned toward CPC1 65–75%
 // with the game pack and sweeps (an early day-long collapse here was CPSM reading timeouts as fast abends).
 
 import type { RoutingPolicy } from '../../sim/workload/routing';
@@ -42,7 +43,7 @@ export const HARBOURLINE_WORKLOADS: WorkloadDef[] = [
     work: { subsystem: 'CICS', TN: 'MORD' },
     peakRatePerSec: 300,
     shape: { floor: 0.03, peaks: TRADING_PEAKS, weekly: TRADING, payday: 1, monthEnd: 1.05, bursts: burstsAt(0.6) },
-    growthPerDay: 0.009,
+    growthPerDay: 0.0055,
     noiseSigma: 0.06,
     noisePhi: 0.97,
     routing: { PRDA: 0.3, PRDB: 0.3, PRDC: 0.2, PRDD: 0.2 },
@@ -67,7 +68,7 @@ export const HARBOURLINE_WORKLOADS: WorkloadDef[] = [
     work: { subsystem: 'DDF', UI: 'MKTPRC', CI: 'ZCONNECT', PK: 'PRCPKG' },
     peakRatePerSec: 300,
     shape: { floor: 0.03, peaks: TRADING_PEAKS, weekly: TRADING, payday: 1, monthEnd: 1.05, bursts: burstsAt(1.0) },
-    growthPerDay: 0.01,
+    growthPerDay: 0.006,
     noiseSigma: 0.08,
     noisePhi: 0.96,
     // B1: sysplex distributor weights set before CPC2 was rebalanced; PRDA takes 40% and PRDD 10%.
@@ -91,7 +92,7 @@ export const HARBOURLINE_WORKLOADS: WorkloadDef[] = [
     work: { subsystem: 'CICS', TN: 'RB01' },
     peakRatePerSec: 3800,
     shape: { floor: 0.06, peaks: [{ hour: 10.5, height: 1, widthHours: 1.6 }, { hour: 14, height: 0.9, widthHours: 1.8 }, { hour: 19.5, height: 0.5, widthHours: 1.5 }], weekly: BANKING, payday: 1.25, monthEnd: 1.1 },
-    growthPerDay: 0.006,
+    growthPerDay: 0.0035,
     noiseSigma: 0.06,
     noisePhi: 0.97,
     routing: { PRDA: 0.5, PRDB: 0.4, PRDC: 0.05, PRDD: 0.05 },
@@ -114,7 +115,7 @@ export const HARBOURLINE_WORKLOADS: WorkloadDef[] = [
     work: { subsystem: 'CICS', TN: 'AUTH' },
     peakRatePerSec: 1800,
     shape: { floor: 0.12, peaks: [{ hour: 12.5, height: 0.75, widthHours: 2.2 }, { hour: 18.5, height: 1, widthHours: 2 }], weekly: ALLWEEK, payday: 1.15, monthEnd: 1.05 },
-    growthPerDay: 0.007,
+    growthPerDay: 0.004,
     noiseSigma: 0.07,
     noisePhi: 0.97,
     routing: { PRDA: 0.3, PRDB: 0.3, PRDC: 0.2, PRDD: 0.2 },
@@ -138,7 +139,7 @@ export const HARBOURLINE_WORKLOADS: WorkloadDef[] = [
     work: { subsystem: 'CICS', TN: 'PMQ1' },
     peakRatePerSec: 200,
     shape: { floor: 0.08, peaks: [{ hour: 9, height: 0.8, widthHours: 1 }, { hour: 13, height: 1, widthHours: 1.5 }, { hour: 17, height: 0.9, widthHours: 1 }], weekly: TRADING, payday: 1.6, monthEnd: 1.3 },
-    growthPerDay: 0.008,
+    growthPerDay: 0.005,
     noiseSigma: 0.15,
     noisePhi: 0.9,
     // B4: balanced evenly although the Db2 lock structure is on CF01, near PRDA/PRDB.
@@ -164,7 +165,7 @@ export const HARBOURLINE_WORKLOADS: WorkloadDef[] = [
     work: { subsystem: 'DDF', UI: 'MOBAPI', CI: 'ZCONNECT', PK: 'MOBPKG' },
     peakRatePerSec: 420,
     shape: { floor: 0.05, peaks: [{ hour: 12.5, height: 1, widthHours: 1.4 }, { hour: 20.5, height: 0.95, widthHours: 1.8 }, { hour: 8, height: 0.55, widthHours: 1.2 }], weekly: ALLWEEK, payday: 1.3, monthEnd: 1.05 },
-    growthPerDay: 0.01,
+    growthPerDay: 0.006,
     noiseSigma: 0.1,
     noisePhi: 0.96,
     routing: { PRDA: 0.25, PRDB: 0.25, PRDC: 0.25, PRDD: 0.25 },
@@ -189,7 +190,7 @@ export const HARBOURLINE_WORKLOADS: WorkloadDef[] = [
     work: { subsystem: 'DDF', UI: 'FINUSER', CI: 'SASBI' },
     peakRatePerSec: 0.4,
     shape: { floor: 0.02, peaks: [{ hour: 10.5, height: 1, widthHours: 2 }, { hour: 15, height: 1, widthHours: 2 }], weekly: [1, 1, 1, 1, 0.9, 0.1, 0.05], payday: 1, monthEnd: 1.5 },
-    growthPerDay: 0.006,
+    growthPerDay: 0.0035,
     noiseSigma: 0.25,
     noisePhi: 0.9,
     routing: { PRDC: 0.5, PRDD: 0.5 },
