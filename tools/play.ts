@@ -1,6 +1,6 @@
 // Headless play CLI for agents (PROGRESS M8.9). Each call loads the run file, applies one command, saves it.
 // Usage:
-//   npm run play -- runs/a.json new 42 [normal|story|hard|ironman]
+//   npm run play -- runs/a.json new 42 [normal|story|hard|ironman] [midwest|revenue]
 //   npm run play -- runs/a.json status | catalog | mon3 | smf DB2|CICS|BATCH|SMF113 [hour]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [index] | report WLM_DETAIL 5 ONLHI#1
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
@@ -48,7 +48,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'catalog': return 'catalog';
     case 'mon3': return 'mon3';
     case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, hour: rest[1] };
-    case 'new': return { cmd: 'new', seed: Number(rest[0] ?? 42), difficulty: (rest[1] ?? 'normal').toUpperCase() as DifficultyId };
+    case 'new': return { cmd: 'new', seed: Number(rest[0] ?? 42), difficulty: (rest[1] ?? 'normal').toUpperCase() as DifficultyId, ...(rest[2] ? { scenario: rest[2] } : {}) };
     case 'start': return { cmd: 'start' };
     case 'advance': return { cmd: 'advance', hours: Number(rest[0] ?? 1) };
     case 'note': return { cmd: 'note', text: rest.join(' ') };

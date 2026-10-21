@@ -259,6 +259,12 @@ describe('WLM I/O priority management', () => {
     expect(r[0]!.parts!.io).toBeCloseTo(r[1]!.parts!.io, 9);
     expect(r[0]!.usingIo + r[0]!.delayIo).toBe(0);
   });
+  it('counts only device connect as I/O using: disconnect is neither using nor delay', () => {
+    const withConn = { ...io, RANDOM: { ...io.RANDOM, connSec: 0.0005 } };
+    const r = evaluateLpar({ ...base, io: withConn }).slices[0]!;
+    expect(r.usingIo).toBeCloseTo(100 * 5 * 0.0005, 9);
+    expect(r.usingIo + r.delayIo).toBeLessThan(100 * 5 * io.RANDOM.rtSec);
+  });
 });
 
 describe('MQ queue depth (PAYMQ)', () => {
@@ -458,6 +464,70 @@ describe('event cards (SPEC §9)', () => {
     const lost = pools(card('ZIIP_LOSS'));
     expect(lost.ziip).toBeLessThan(0.5 * asIs.ziip);
     expect(lost.cp).toBeGreaterThan(asIs.cp);
+  }, 60_000);
+
+  it('a retry storm multiplies mobile arrivals at unchanged CPU per transaction, unlike bot traffic', () => {
+    const perTxn = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let rate = 0;
+      let eng = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        rate += s.last.workloads.find((x) => x.id === 'MOBILE')!.arrivalRate;
+        for (const l of s.last.lpars) for (const sc of l.scps) if (sc.scKey === 'DDFPRD#1') eng += sc.cpEngines + sc.ziipEngines;
+      }
+      return { rate, engPerTxn: eng / rate };
+    };
+    const asIs = perTxn([]);
+    const retry = perTxn(card('RETRY_STORM'));
+    const bots = perTxn(card('BOT_ATTACK'));
+    expect(retry.rate).toBeGreaterThan(2 * asIs.rate);
+    expect(retry.engPerTxn).toBeGreaterThan(0.8 * asIs.engPerTxn);
+    expect(bots.engPerTxn).toBeLessThan(0.7 * asIs.engPerTxn);
+  }, 60_000);
+
+  it('an encryption mandate raises CPU per transaction on the I/O-heavy online work only', () => {
+    // ONLMED holds teller and payments (both encrypted); DDFPRD holds mobile and BI (neither).
+    const perTxn = (cmds: Parameters<typeof step>[1], scKey: string) => {
+      let s = step(base, cmds, MIDWEST);
+      let eng = 0;
+      let n = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        for (const l of s.last.lpars) for (const sc of l.scps) if (sc.scKey === scKey) { eng += sc.cpEngines + sc.ziipEngines; n += sc.completions; }
+      }
+      return eng / n;
+    };
+    const enc = card('ENCRYPTION_MANDATE');
+    const med = perTxn(enc, 'ONLMED#1') / perTxn([], 'ONLMED#1');
+    const ddf = perTxn(enc, 'DDFPRD#1') / perTxn([], 'DDFPRD#1');
+    expect(med).toBeGreaterThan(1.03);
+    expect(med).toBeLessThan(1.09);
+    expect(Math.abs(ddf - 1)).toBeLessThan(0.01);
+  }, 60_000);
+
+  it('a looping STC caught by the CICS* rule takes an engine at importance 1 until reclassified', () => {
+    const prod1 = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let stchi = 0;
+      let lowerDelay = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        for (const sc of s.last.lpars.find((l) => l.lparId === 'PROD1')!.scps) {
+          if (sc.scKey === 'STCHI#1') stchi += sc.cpEngines / 30;
+          else if (!sc.scKey.startsWith('SYS')) lowerDelay += sc.delayCpu;
+        }
+      }
+      return { stchi, lowerDelay };
+    };
+    const reclassified = structuredClone(BASEPOL);
+    reclassified.subsystems.find((x) => x.subsystem === 'STC')!.rules.unshift({ qualifier: 'TN', pattern: 'CICSXLOG', serviceClass: 'STCLO', reportClass: null, children: [] });
+    const asIs = prod1([]);
+    const loop = prod1(card('XLOG_LOOP'));
+    const fixed = prod1([...card('XLOG_LOOP'), { kind: 'ACTIVATE_POLICY', definition: reclassified }]);
+    expect(loop.stchi).toBeGreaterThan(asIs.stchi + 0.6);
+    expect(loop.lowerDelay).toBeGreaterThan(asIs.lowerDelay);
+    expect(fixed.stchi).toBeLessThan(asIs.stchi + 0.1);
   }, 60_000);
 
   it('an SMF retention audit raises SMF address space CPU and total MSU but no workload response', () => {

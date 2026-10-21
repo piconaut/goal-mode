@@ -83,8 +83,9 @@ export const MIDWEST_WORLD: WorldConfig = {
   // other's structures in a failure, but everything then lands on whichever CF survives (CF02 is the
   // weak shared one). CFTEST is not on the production preference list.
   // Placement reproduces the original 70/30 CF01/CF02 split; GBP0 and the
-  // list structures on the weak shared CF02 are the F8 flaw. Lock requests are never converted to
-  // async, so moving DB1G_LOCK1 to CF02 would hurt every Db2 transaction (a trap with a clue).
+  // list structures on the weak shared CF02 are the F8 flaw. Moving DB1G_LOCK1 to CF02 would hurt
+  // every Db2 transaction: its lock requests either spin on the slow CF or get converted to async and
+  // take far longer (a trap with a clue in CF Activity).
   cfStructures: [
     { name: 'DB1G_LOCK1', type: 'LOCK', requestShare: 0.4, cfLparId: 'CF01', costMult: 1, sizeGb: 2, prefList: PROD_CFS, lostImpact: 'DB2_DOWN' },
     { name: 'DB1G_GBP1', type: 'CACHE', requestShare: 0.3, cfLparId: 'CF01', costMult: 1, sizeGb: 14, prefList: PROD_CFS, lostImpact: 'DB2_GRECP' },

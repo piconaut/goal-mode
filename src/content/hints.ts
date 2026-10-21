@@ -48,7 +48,7 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
     vague: 'Yesterday was rough for {w}. The DASD report might tell you more.',
   },
   STORAGE: {
-    clear: '{w} missed its SLA yesterday. Storage delay in WLMGL and the paging rates in SYSINFO might show what it was waiting for.',
+    clear: '{w} missed its SLA yesterday. Storage delay in WLMGL, or the STOR delayed users in Monitor III SYSINFO, might show what it was waiting for.',
     vague: 'Yesterday was rough for {w}. SYSINFO might tell you more.',
   },
 };
@@ -81,6 +81,15 @@ export const STORY_BEAT_HINTS: Record<string, { daysBefore: number; from: string
     body:
       "The acquired bank's account API lands on PROD2 in two days. It runs under USS (subsystem OMVS) as userid ACQSVC, " +
       'and Retail will judge us on its response times from day one. Do any of our classification rules catch that work, ' +
+      'or will it end up in SYSOTHER? Change Desk › WLM › Classification rules shows where it would go today.',
+  },
+  PREFILL: {
+    daysBefore: 2,
+    from: HINT_SENDER,
+    subject: 'Before pre-filled returns go live',
+    body:
+      'The pre-filled returns API launches on both production images in two days. It runs under USS (subsystem OMVS) as userid PFILSVC, ' +
+      'and taxpayers will judge us on it in the middle of the season. Does any REVPOL rule catch that work, ' +
       'or will it end up in SYSOTHER? Change Desk › WLM › Classification rules shows where it would go today.',
   },
 };

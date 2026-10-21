@@ -51,7 +51,7 @@ describe('changes', () => {
     let r = startDay(fresh(), content);
     const before = r.trust.Retail;
     r = requestChange(r, content, { label: 'RMF 15', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }).run;
-    expect(r.trust.Retail).toBeLessThan(before);
+    expect(r.trust.Retail).toBeLessThan(before!);
   });
 
   it('a change freeze blocks planned changes', () => {
@@ -215,13 +215,13 @@ describe('regulator audit of unclassified work', () => {
 
   it('costs 5 Regulator trust with a finding when SYSOTHER ran', () => {
     const r = atBoundary(2.5);
-    expect(r.trust.Regulator).toBeCloseTo(atBoundary(2.5, false).trust.Regulator - 5);
+    expect(r.trust.Regulator).toBeCloseTo(atBoundary(2.5, false).trust.Regulator! - 5);
     expect(r.inbox.some((m) => m.from === 'Regulator' && m.body.includes('SYSOTHER on PROD1'))).toBe(true);
   }, 60_000);
 
   it('gives +1 Regulator trust when nothing ran in SYSOTHER', () => {
     const r = atBoundary(0);
-    expect(r.trust.Regulator).toBeCloseTo(atBoundary(0, false).trust.Regulator + 1);
+    expect(r.trust.Regulator).toBeCloseTo(atBoundary(0, false).trust.Regulator! + 1);
     expect(r.inbox.some((m) => m.from === 'Regulator' && m.body.includes('no findings'))).toBe(true);
   }, 60_000);
 });

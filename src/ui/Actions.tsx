@@ -6,10 +6,11 @@ import { useStored } from './useStored';
 import { DASD_REBALANCE, HARDWARE } from '../content/hardware-catalog';
 import { LCU_MAX_DEVICES } from '../sim/io/dasd';
 import { FIXES, previewChange, type ChangePreview } from '../game/catalog';
-import { addToBasket, basketLabel, describeCommand, orderBasket, spareAfterBasket, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../game/changeDesk';
+import { addToBasket, basketLabel, describeCommand, orderBasket, spareAfterBasket, nextAorName, routingPolicyLabel, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../game/changeDesk';
 import type { PlannedChange } from '../game/types';
 import type { ConfigView, ViewModel } from '../game/view';
 import type { Command } from '../sim/core/commands';
+import type { RoutingPolicy } from '../sim/workload/routing';
 import { entitlements, polarity } from '../sim/hw/prsm';
 import type { Qualifier, SubsystemType, WorkAttributes } from '../sim/wlm/types';
 import { RulesView } from './RulesView';
@@ -93,7 +94,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         )}
         {area === 'lpars' && (
           <>
-            <Section id="hmc" title="HMC: LPAR image profile" summary={summary.hmc} codex={['lpar-weights', 'logical-physical', 'hiperdispatch']}>
+            <Section id="hmc" title="HMC: LPAR image profile" summary={summary.hmc} codex={['lpar-weights', 'logical-physical', 'hiperdispatch', 'absolute-capping']}>
               <Prsm desk={desk} />
             </Section>
             <Section id="hardware" title="Hardware orders" summary={summary.hardware} codex={['ziip', 'cod']}>
@@ -122,7 +123,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
             <Section id="ops" title="Operations" summary={summary.ops}>
               <Ops desk={desk} game={game} />
             </Section>
-            <Section id="routing" title="Routing and batch initiators" summary={summary.routing}>
+            <Section id="routing" title="Routing and batch initiators" summary={summary.routing} codex={['sd-wlm-weights', 'cpsm-routing', 'storm-drain', 'arrival-bursts']}>
               <Routing desk={desk} />
               <JobClasses desk={desk} />
             </Section>
@@ -865,8 +866,8 @@ function Structures({ desk }: { desk: Desk }) {
         </table>
       </div>
       <div className="help">
-        Rebuilding a structure moves its requests to the other CF. Cache and list requests that get slow are converted to asynchronous; lock requests are not, so a lock structure on a slow
-        or shared CF makes every Db2 transaction spin. The CF Activity report shows each structure. If a CF fails, its structures are rebuilt into the other CF only if it has white space
+        Rebuilding a structure moves its requests to the other CF. Requests that get slow are converted to asynchronous (lock requests a little later than cache and list), so a lock
+        structure on a slow or shared CF makes every Db2 transaction spin or wait. The CF Activity report shows each structure. If a CF fails, its structures are rebuilt into the other CF only if it has white space
         for them; a structure that doesn&apos;t fit is lost (lock or SCA: Db2 is down; GBP: pages in recovery; MQ admin: shared queues stop). Duplexing keeps a copy in the other CF, so a
         failure costs nothing, but every request then waits for both CFs.
       </div>
@@ -1050,9 +1051,69 @@ function Routing({ desk }: { desk: Desk }) {
           </select>
         </label>
       </div>
-      {r && <RoutingEditor key={`${wid}:${JSON.stringify(r.shares)}`} desk={desk} workloadId={wid} current={r.shares} />}
-      <div className="help">Share of arriving work sent to each LPAR (Sysplex Distributor / workload balancing weights). Must add up to 100%.</div>
+      {r && <RoutingPolicyEditor key={`${wid}:p:${JSON.stringify(r.policy)}`} desk={desk} workloadId={wid} lpars={Object.keys(r.shares).sort()} current={r.policy} />}
+      {r && r.policy.method === 'STATIC' && <RoutingEditor key={`${wid}:${JSON.stringify(r.shares)}`} desk={desk} workloadId={wid} current={r.shares} />}
+      <div className="help">
+        Static: fixed share of arriving work per LPAR (must add up to 100%). WLM weights: Sysplex Distributor follows each system's spare capacity for
+        the work's importance (CPs only unless zIIP-aware). CPSM goal: CICSPlex SM routes by each region's response time; set ABENDTHRESH/ABENDCRIT so a
+        region that fails fast is not mistaken for a fast one, and quiesce a region to drain it.
+      </div>
     </>
+  );
+}
+
+function RoutingPolicyEditor({ desk, workloadId, lpars, current }: { desk: Desk; workloadId: string; lpars: string[]; current: RoutingPolicy }) {
+  const cpsm = current.method === 'CPSM_GOAL' ? current : null;
+  const [method, setMethod] = useState<RoutingPolicy['method']>(current.method);
+  const [ziipAware, setZiipAware] = useState(current.method === 'WLM' && current.ziipAware);
+  const [thresh, setThresh] = useState(cpsm?.abendThreshFrac != null ? String(Math.round(cpsm.abendThreshFrac * 100)) : '');
+  const [crit, setCrit] = useState(cpsm?.abendCritFrac != null ? String(Math.round(cpsm.abendCritFrac * 100)) : '');
+  const [quiesced, setQuiesced] = useState<string[]>(cpsm?.quiesced ?? []);
+  const frac = (v: string) => (v.trim() === '' ? null : num(v) / 100);
+  const policy: RoutingPolicy =
+    method === 'STATIC'
+      ? { method }
+      : method === 'WLM'
+        ? { method, ziipAware }
+        : { method, abendThreshFrac: frac(thresh), abendCritFrac: frac(crit), quiesced: [...quiesced].sort() };
+  const bad = (v: string) => v.trim() !== '' && !(num(v) > 0 && num(v) <= 100);
+  const error =
+    method === 'CPSM_GOAL' && (bad(thresh) || bad(crit))
+      ? 'Abend limits are 1–100%'
+      : method === 'CPSM_GOAL' && quiesced.length >= lpars.length
+        ? 'Leave at least one region open'
+        : JSON.stringify(policy) === JSON.stringify(current)
+          ? 'No change'
+          : null;
+  return (
+    <ChangeForm desk={desk} label={`${workloadId} routing policy`} commands={[{ kind: 'SET_ROUTING_POLICY', workloadId, policy }]} error={error}>
+      <select aria-label="Routing method" value={method} onChange={(e) => setMethod(e.target.value as RoutingPolicy['method'])}>
+        <option value="STATIC">Static weights</option>
+        <option value="WLM">WLM weights (Sysplex Distributor)</option>
+        <option value="CPSM_GOAL">CPSM goal routing</option>
+      </select>
+      {method === 'WLM' && (
+        <label>
+          <input type="checkbox" checked={ziipAware} onChange={(e) => setZiipAware(e.target.checked)} /> zIIP-aware
+        </label>
+      )}
+      {method === 'CPSM_GOAL' && (
+        <>
+          <label>
+            ABENDTHRESH <input value={thresh} onChange={(e) => setThresh(e.target.value)} size={3} inputMode="numeric" placeholder="off" />%
+          </label>
+          <label>
+            ABENDCRIT <input value={crit} onChange={(e) => setCrit(e.target.value)} size={3} inputMode="numeric" placeholder="off" />%
+          </label>
+          {lpars.map((l) => (
+            <label key={l}>
+              <input type="checkbox" checked={quiesced.includes(l)} onChange={(e) => setQuiesced(e.target.checked ? [...quiesced, l] : quiesced.filter((x) => x !== l))} /> quiesce {l}
+            </label>
+          ))}
+        </>
+      )}
+      <Now>{routingPolicyLabel(current)}</Now>
+    </ChangeForm>
   );
 }
 
@@ -1128,21 +1189,37 @@ function JobClassEditor({ desk, jobClass }: { desk: Desk; jobClass: string }) {
 }
 
 function Hardware({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const cpcs = v.previewCtx.cpcs ?? [];
+  const [cpcId, setCpcId] = useState(cpcs[0]?.id ?? '');
   return (
     <>
+      {cpcs.length > 1 && (
+        <div className="row">
+          <span>Engines, memory and capacity go on</span>
+          <select value={cpcId} onChange={(e) => setCpcId(e.target.value)}>
+            {cpcs.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.id} ({c.generation}, setting {c.capacitySetting})
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {HARDWARE.map((h) => {
-        const p = preview(v, { hardwareId: h.id });
+        const target = h.perCpc && cpcs.length > 1 ? cpcId : undefined;
+        const p = preview(v, { hardwareId: h.id, ...(target ? { cpcId: target } : {}) });
+        const label = target ? `${h.name} on ${target}` : h.name;
         return (
           <div className="row" key={h.id}>
             <span>
-              {h.name}
+              {label}
               <div className="muted" style={{ fontSize: 12 }}>
                 {h.description} {p.leadDays > 0 ? `Lead time ${p.leadDays} days.` : 'Immediate.'}
                 {h.opexPerDay > 0 ? ` $${Math.round(h.opexPerDay / 1000)}k/day while active.` : ''}
               </div>
               {p.reason && <div className="err">{p.reason}</div>}
             </span>
-            <button disabled={!p.ok} title={p.reason ?? costText(p)} onClick={() => game.send({ type: 'CHANGE', req: { label: h.name, hardwareId: h.id } })}>
+            <button disabled={!p.ok} title={p.reason ?? costText(p)} onClick={() => game.send({ type: 'CHANGE', req: { label, hardwareId: h.id, ...(target ? { cpcId: target } : {}) } })}>
               {p.capex > 0 ? `$${Math.round(p.capex / 1000)}k` : `$${Math.round(h.opexPerDay / 1000)}k/day`} · {p.hours}h
             </button>
           </div>
@@ -1215,7 +1292,7 @@ function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
           </div>
         );
       })}
-      {FIXES.map((f) => {
+      {FIXES.filter((f) => v.fixIds.includes(f.id)).map((f) => {
         const p = preview(v, { fixId: f.id });
         return (
           <div className="row" key={f.id}>

@@ -26,10 +26,10 @@ npm run dev          # Vite dev server
 npm test             # Vitest (unit + realism + golden)
 npm run typecheck    # tsc --noEmit
 npm run check        # typecheck + tests (no lint script yet)
-npm run bench -- --hash   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
+npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
 npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
-npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard]  # bots over many seeds in parallel → CSV + summary
+npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
@@ -50,7 +50,8 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
    live in `src/content/`. Don't hard-code tunables in sim logic.
 4. **One tick = 10 sim-seconds** (the WLM policy adjustment interval). The pipeline order in
    SPEC §5.1 is the contract; new subsystems slot into it, they don't reorder it.
-5. **Performance budget:** ≤ 2 s per headless sim day, ≤ 4 ms per tick. Analytic/fluid models
+5. **Performance budget:** ≤ 2 s per headless sim day, ≤ 4 ms per tick for Midwest-size estates (larger
+   estates such as Harbourline's 6 LPARs may take longer; user decision 2026-10-21). Analytic/fluid models
    per tick; only batch jobs are discrete entities. Benchmark if you touch hot paths.
 
 ## Conventions
@@ -110,7 +111,11 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
 - Delegation (to save usage): hand well-scoped tasks to the Sonnet subagents in `.claude/agents/` —
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
-  brief) and `log-reader` (digest bot/sweep logs, test failures, long reports). Keep sim model changes,
+  brief) `log-reader` (digest bot/sweep logs, test failures, long reports) and `pr-reviewer` (check out a PR in a worktree,
+  run check + bench hashes, verify its claims, return a merge verdict; the main agent merges or comments). Keep sim model changes,
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
+- Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
+  `nohup … &` inside another command: tracked tasks show up for the user and notify on exit,
+  so there's no need to poll or guess with timed wakeups.

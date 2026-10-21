@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { PACKS } from '../content/packs';
 import { DIFFICULTIES, type DifficultyId } from '../content/difficulty';
 import { EVIDENCE } from '../content/evidence';
 import type { Hypothesis } from '../game/aiops';
@@ -209,8 +210,16 @@ function EndReportView({ r }: { r: EndReport }) {
 
 function NewRun({ game }: { game: GameHandle }) {
   const [difficulty, setDifficulty] = useState<DifficultyId>('NORMAL');
+  const [scenario, setScenario] = useState('midwest');
   return (
     <>
+      <div role="radiogroup" aria-label="Scenario">
+        {Object.values(PACKS).map((p) => (
+          <label key={p.id} style={{ display: 'block', margin: '4px 0' }}>
+            <input type="radio" name="scenario" checked={scenario === p.id} onChange={() => setScenario(p.id)} /> <b>{p.name}</b> <span className="muted">{p.blurb}</span>
+          </label>
+        ))}
+      </div>
       <div role="radiogroup" aria-label="Difficulty">
         {Object.values(DIFFICULTIES).map((d) => (
           <label key={d.id} style={{ display: 'block', margin: '4px 0' }}>
@@ -219,14 +228,14 @@ function NewRun({ game }: { game: GameHandle }) {
           </label>
         ))}
       </div>
-      <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty })}>
+      <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario })}>
         New run
       </button>{' '}
       <button
         title="Same seed for everyone today (UTC)"
         onClick={() => {
           const today = new Date().toISOString().slice(0, 10);
-          game.send({ type: 'NEW_RUN', seed: dailySeed(today), difficulty, daily: today });
+          game.send({ type: 'NEW_RUN', seed: dailySeed(today), difficulty, daily: today, scenario });
         }}
       >
         Daily challenge
@@ -281,19 +290,31 @@ function StartingPerk({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
-// A fresh page load starts on Normal; until day 1 starts the player can restart on another preset.
+// A fresh page load starts on Midwest Mutual, Normal; until day 1 starts the player can restart on another
+// scenario or preset.
 function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
   const plannedAny = v.changes.length > 0;
+  const restart = (scenario: string, difficulty: DifficultyId) => {
+    if (plannedAny && !confirm('Restart? Planned changes are discarded.')) return;
+    game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario });
+  };
   return (
     <p>
+      <label>
+        Scenario{' '}
+        <select value={v.scenario.id} onChange={(e) => restart(e.target.value, v.difficulty.id)}>
+          {Object.values(PACKS).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>{' '}
       <label>
         Difficulty{' '}
         <select
           value={v.difficulty.id}
-          onChange={(e) => {
-            if (plannedAny && !confirm('Restart on this difficulty? Planned changes are discarded.')) return;
-            game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty: e.target.value as DifficultyId });
-          }}
+          onChange={(e) => restart(v.scenario.id, e.target.value as DifficultyId)}
         >
           {Object.values(DIFFICULTIES).map((d) => (
             <option key={d.id} value={d.id}>

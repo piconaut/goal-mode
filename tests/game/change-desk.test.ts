@@ -31,6 +31,15 @@ describe('change preview', () => {
     expect(broke.reason).toMatch(/Capex/);
     expect(previewChange(previewContext(live), { commands: [] }).reason).toBe('Nothing to change');
   });
+
+  it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {
+    const r = fresh();
+    const card = { uid: 'e1', defId: 'GREEN_IT_COD', name: 'Data centre power budget', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [] as string[], blocksHardware: ['COD_CP'], endCommands: [] as Command[] };
+    const running = { ...r, events: [{ ...card, started: true, ended: false }] };
+    expect(previewChange(previewContext(running), { hardwareId: 'COD_CP' }).reason).toMatch(/power budget/);
+    expect(previewChange(previewContext(running), { hardwareId: 'ADD_ZIIP' }).ok).toBe(true);
+    expect(previewChange(previewContext({ ...r, events: [{ ...card, started: true, ended: true }] }), { hardwareId: 'COD_CP' }).ok).toBe(true);
+  });
 });
 
 describe('cancel', () => {

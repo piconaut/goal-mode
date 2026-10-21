@@ -32,6 +32,8 @@ export interface EventDef {
   capacityDrop?: number;
   /** Engineer-hours added (negative = lost) per day while the card runs; applied from the briefing of its first day. */
   hoursDelta?: number;
+  /** Hardware items the change desk refuses while the card runs (e.g. On/Off CoD under a power budget). */
+  blocksHardware?: string[];
   /** While the card runs, each endDay audits SYSOTHER service: Regulator trust −5 if any ran, +1 if none. */
   auditUnclassified?: true;
   /** Message when it starts (null = silent; players must notice symptoms). */
@@ -139,7 +141,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'CANCEL_RUNAWAY',
     forewarning: null,
     announcement: null,
-    clue: 'DDFPRD period 2 APPL% soars on PROD2; IIPCP up (no zIIPs there); BI end rate flat.',
+    clue: 'DDFPRD period 2 APPL% soars on PROD2; IIPCP up (Mon III PROCU Time on CP % IIP; no zIIPs there); BI end rate flat.',
   },
   {
     id: 'REGRESSION',
@@ -175,6 +177,88 @@ export const MIDWEST_EVENTS: EventDef[] = [
     forewarning: null,
     announcement: null,
     clue: 'Mobile END/S ×4 with lower CPU per transaction; TCP/IP busier; DBAT usage spikes.',
+  },
+  {
+    // A slow downstream (card network authorisations) makes the mobile app time out and retry; each retry is a
+    // full transaction, so arrivals climb at unchanged CPU per transaction. APPROX: a fixed multiplier for the
+    // window rather than a feedback loop on response time.
+    id: 'RETRY_STORM',
+    name: 'Mobile retry storm',
+    category: 'WORKLOAD',
+    minDay: 5,
+    weight: 1.5,
+    trigger: 'DEMAND_SURGE',
+    affects: ['MOBILE'],
+    startHour: [11, 14],
+    durationHours: 3, // the card network recovers
+    // FICTIONAL magnitude: up to three retries on a 2 s client timeout, ~2.5x the offered mobile load.
+    begin: [mod('rate', 'MOBILE', 2.5)],
+    end: [mod('rate', 'MOBILE', 1)],
+    fix: 'MOBILE_BACKOFF',
+    forewarning: null,
+    announcement: null,
+    clue: 'Mobile END/S x2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); DDFPRD APPL% up in step. Fixes: switch on client backoff in the API gateway (Digital trust), or protect mobile and ride it out.',
+  },
+  {
+    // An operations utility named CICSXLOG (a CICS log archiver, not a region) matches the CICS* STC rule meant
+    // for regions and lands in STCHI at importance 1. A bad end-of-file test makes it loop on one TCB.
+    id: 'XLOG_LOOP',
+    name: 'Looping log archiver in a high class',
+    category: 'SOFTWARE',
+    minDay: 3,
+    weight: 1.2,
+    trigger: 'RUNAWAY_WORK',
+    affects: ['TELLER', 'PAYMQ'],
+    startHour: [8, 16],
+    durationHours: 6, // the on-call eventually notices and cancels it
+    // A loop in a single-TCB program burns at most one engine (APPROX: exactly ~0.9 reference engines).
+    begin: [{ kind: 'ADD_ADDRESS_SPACE', addressSpace: { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC', baseEnginesRef: 0.9, ziipFrac: 0 } }],
+    end: [mod('asCpu', 'CICSXLOG', 0)],
+    fix: 'CANCEL_XLOG',
+    forewarning: null,
+    announcement: null,
+    clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay. Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
+  },
+  {
+    // Data set encryption (DFSMS + ICSF): every read and write of an encrypted data set goes through CPACF, so the
+    // cost scales with I/O, not with business logic (IBM Redbook SG24-8410, Getting Started with z/OS Data Set Encryption).
+    id: 'ENCRYPTION_MANDATE',
+    name: 'Pervasive encryption mandate',
+    category: 'ORG',
+    minDay: 15,
+    weight: 0.8,
+    trigger: 'POLICY',
+    affects: ['CARDAUTH', 'TELLER', 'PAYMQ'],
+    startHour: [6, 6.5],
+    durationHours: null, // a mandate stays; the fix narrows its scope
+    oncePerRun: true,
+    // FICTIONAL: +6% CPU per transaction on the I/O-heavy online workloads. APPROX: batch and the audit SLA are not modelled.
+    begin: [mod('cpu', 'CARDAUTH', 1.06), mod('cpu', 'TELLER', 1.06), mod('cpu', 'PAYMQ', 1.06)],
+    end: [mod('cpu', 'CARDAUTH', 1), mod('cpu', 'TELLER', 1), mod('cpu', 'PAYMQ', 1)],
+    fix: 'SCOPE_ENCRYPTION',
+    forewarning: 'Regulator: "All customer data sets must be encrypted at rest from tomorrow. We will check the key labels."',
+    announcement: null,
+    clue: 'WLMGL: CPU per transaction up ~6% on card auth, teller and payments from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
+  },
+  {
+    // Facilities caps the data centre power budget: no temporary engines until the next budget period.
+    id: 'GREEN_IT_COD',
+    name: 'Data centre power budget',
+    category: 'ORG',
+    minDay: 8,
+    weight: 0.8,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: 7 * 24,
+    oncePerRun: true,
+    blocksHardware: ['COD_CP'],
+    begin: [],
+    end: [],
+    fix: null,
+    forewarning: 'Facilities: "Green IT target: no On/Off Capacity on Demand for the next seven days. Permanent upgrades are unaffected."',
+    announcement: null,
+    clue: 'The change desk refuses On/Off CoD (and so does CPM automation). Responses: cap or quiesce DEVT, defer discretionary batch, tune policy, or buy permanent capacity.',
   },
   {
     id: 'CF_LINK',

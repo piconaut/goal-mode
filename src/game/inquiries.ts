@@ -9,7 +9,7 @@ import { Rng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import type { GameContent } from './run';
-import { FACETS, type Facet, type RunState } from './types';
+import { facetsOf, type RunState } from './types';
 import { allWorkloads } from './workloads';
 
 export interface PendingInquiry {
@@ -89,10 +89,10 @@ type Mood = 'RUDE' | 'CURT' | 'NEUTRAL' | 'FRIENDLY';
 function trustOf(run: RunState, scenario: Scenario, p: PendingInquiry): number | null {
   if (p.topic === 'APP_ENTRY') {
     const w = allWorkloads(scenario, run).find((x) => x.id === p.workloadId);
-    return w && w.stakeholder !== 'Internal' ? run.trust[w.stakeholder as Facet] : null;
+    return w && w.stakeholder !== 'Internal' ? run.trust[w.stakeholder] ?? null : null;
   }
-  if (p.topic === 'GROWTH') return run.trust.Finance;
-  if (p.topic === 'CALENDAR') return FACETS.reduce((a, f) => a + run.trust[f], 0) / FACETS.length;
+  if (p.topic === 'GROWTH') return run.trust.Finance ?? null;
+  if (p.topic === 'CALENDAR') return facetsOf(run).reduce((a, f) => a + run.trust[f]!, 0) / facetsOf(run).length;
   return null;
 }
 

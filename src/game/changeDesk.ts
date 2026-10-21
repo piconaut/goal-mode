@@ -1,4 +1,5 @@
 import type { Command } from '../sim/core/commands';
+import type { RoutingPolicy } from '../sim/workload/routing';
 import type { ConfigView } from './view';
 
 /** Pure helpers behind the Change Desk: validation, "now → new" descriptions and the change basket. */
@@ -126,6 +127,8 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
       const r = cfg.routing.find((x) => x.workloadId === cmd.workloadId);
       return `${cmd.workloadId} routing ${r ? shares(r.shares) : '?'} → ${shares(cmd.routing)}`;
     }
+    case 'SET_ROUTING_POLICY':
+      return `${cmd.workloadId} routing ${routingPolicyLabel(cfg.routing.find((x) => x.workloadId === cmd.workloadId)?.policy ?? { method: 'STATIC' })} → ${routingPolicyLabel(cmd.policy)}`;
     case 'RESTART_JOB':
       return `Restart ${cmd.name}`;
     case 'ACTIVATE_POLICY':
@@ -133,6 +136,16 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
     default:
       return cmd.kind;
   }
+}
+
+export function routingPolicyLabel(p: RoutingPolicy): string {
+  if (p.method === 'STATIC') return 'static weights';
+  if (p.method === 'WLM') return `WLM weights${p.ziipAware ? ' (zIIP-aware)' : ''}`;
+  const parts = ['CPSM goal'];
+  if (p.abendThreshFrac !== null) parts.push(`ABENDTHRESH ${pct(p.abendThreshFrac)}`);
+  if (p.abendCritFrac !== null) parts.push(`ABENDCRIT ${pct(p.abendCritFrac)}`);
+  if (p.quiesced.length) parts.push(`quiesced ${p.quiesced.join(' ')}`);
+  return parts.join(', ');
 }
 
 function shares1(r: Record<string, number>): string {
@@ -167,6 +180,7 @@ export function commandTarget(cmd: Command): string {
     case 'SET_JOB_CLASS':
       return `${cmd.kind}:${cmd.jobClass}`;
     case 'SET_ROUTING':
+    case 'SET_ROUTING_POLICY':
     case 'SET_MQ':
       return `${cmd.kind}:${cmd.workloadId}`;
     case 'SET_RMF_INTERVAL':

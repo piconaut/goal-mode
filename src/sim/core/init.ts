@@ -5,6 +5,7 @@ import { emptyBatch } from '../subsys/batch';
 import { seedRng } from './rng';
 import type { Scenario } from './scenario';
 import type { SimState } from './types';
+import type { RoutingPolicy } from '../workload/routing';
 
 export function initState(seed: number, scenario: Scenario): SimState {
   return {
@@ -31,5 +32,11 @@ export function initState(seed: number, scenario: Scenario): SimState {
     routing: {},
     extraAddressSpaces: [],
     commandLog: [],
+    ...routingPoliciesOf(scenario),
   };
+}
+
+function routingPoliciesOf(scenario: Scenario): { routingPolicies?: Record<string, RoutingPolicy> } {
+  const dyn = scenario.workloads.filter((w) => w.routingPolicy && w.routingPolicy.method !== 'STATIC');
+  return dyn.length ? { routingPolicies: Object.fromEntries(dyn.map((w) => [w.id, w.routingPolicy!])) } : {};
 }

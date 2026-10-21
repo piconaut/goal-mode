@@ -18,6 +18,13 @@ export function scKeyAtService(def: ServiceDefinition, serviceClass: string, ser
   return scKeyOf(serviceClass, periodAtService(periodsOf(def, serviceClass).map((p) => p.durationSu), serviceSu));
 }
 
+/** Whether zIIP-eligible work in this period may overflow to CPs: never for discretionary goals, nor
+ * with Honor Priority NO (z/OS MVS Planning: WLM, "Honor Priority"). */
+export function honorsPriority(def: ServiceDefinition, serviceClass: string, scKey: string): boolean {
+  const period = Number(scKey.slice(scKey.lastIndexOf('#') + 1)) - 1;
+  return periodsOf(def, serviceClass)[period]?.honor ?? true;
+}
+
 
 export interface SliceBuildInput {
   def: ServiceDefinition;
@@ -29,6 +36,11 @@ export interface SliceBuildInput {
   addressSpaces: readonly AddressSpaceDef[];
   /** Global CPU-per-transaction multipliers per workload (events, regressions). */
   cpuMultiplier?: Readonly<Record<string, number>>;
+  /**
+   * Routing-free identity of `workloads` (same content per id, only shares differ). With it, templates
+   * are cached per LPAR by that LPAR's shares, so a share change elsewhere doesn't rebuild them.
+   */
+  scope?: object;
 }
 
 function periodsOf(def: ServiceDefinition, sc: string) {
@@ -56,7 +68,9 @@ interface SliceTemplate {
 
 // Templates depend only on (definition, lpar config, cpc config, content); memoise on the
 // definition object and a config key. Pure memoisation: same inputs, same templates.
-const templateCache = new WeakMap<ServiceDefinition, WeakMap<readonly WorkloadDef[], WeakMap<readonly AddressSpaceDef[], Map<string, SliceTemplate[]>>>>();
+const templateCache = new WeakMap<ServiceDefinition, WeakMap<object, WeakMap<readonly AddressSpaceDef[], Map<string, SliceTemplate[]>>>>();
+// Cache bound: dynamic routing produces many share signatures over a long run.
+const MAX_TEMPLATE_SETS = 512;
 
 function templateKey(input: SliceBuildInput): string {
   const { cpc, lpar } = input;
@@ -188,32 +202,72 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
   return out;
 }
 
-export function buildSlices(input: SliceBuildInput): SliceSpec[] {
+function shareSignature(input: SliceBuildInput): string {
+  let sig = '';
+  for (const w of input.workloads) sig += `${w.routing[input.lpar.id] ?? 0},`;
+  return sig;
+}
+
+function templatesFor(input: SliceBuildInput): SliceTemplate[] {
   let byWl = templateCache.get(input.def);
   if (!byWl) {
     byWl = new WeakMap();
     templateCache.set(input.def, byWl);
   }
-  let byAs = byWl.get(input.workloads);
+  const scope = input.scope ?? input.workloads;
+  let byAs = byWl.get(scope);
   if (!byAs) {
     byAs = new WeakMap();
-    byWl.set(input.workloads, byAs);
+    byWl.set(scope, byAs);
   }
   let byKey = byAs.get(input.addressSpaces);
   if (!byKey) {
     byKey = new Map();
     byAs.set(input.addressSpaces, byKey);
   }
-  const key = templateKey(input);
+  const key = input.scope ? `${templateKey(input)}|${shareSignature(input)}` : templateKey(input);
   let templates = byKey.get(key);
   if (!templates) {
+    if (byKey.size >= MAX_TEMPLATE_SETS) byKey.clear();
     templates = buildTemplates(input);
     byKey.set(key, templates);
   }
-  return templates.map((t) => {
+  return templates;
+}
+
+interface LastTemplates {
+  def: ServiceDefinition;
+  cpc: CpcConfig;
+  workloads: readonly WorkloadDef[];
+  addressSpaces: readonly AddressSpaceDef[];
+  templates: SliceTemplate[];
+}
+
+// Per-LPAR shortcut past the key string and nested lookups while every input object is the same
+// one as last tick (config edits clone the whole config, so any change is a new LparConfig).
+const lastByLpar = new WeakMap<LparConfig, LastTemplates>();
+
+function cachedTemplates(input: SliceBuildInput): SliceTemplate[] {
+  if (input.cpuMultiplier) return templatesFor(input);
+  const last = lastByLpar.get(input.lpar);
+  if (last && last.def === input.def && last.cpc === input.cpc && last.workloads === input.workloads && last.addressSpaces === input.addressSpaces) {
+    return last.templates;
+  }
+  const templates = templatesFor(input);
+  lastByLpar.set(input.lpar, { def: input.def, cpc: input.cpc, workloads: input.workloads, addressSpaces: input.addressSpaces, templates });
+  return templates;
+}
+
+export function buildSlices(input: SliceBuildInput): SliceSpec[] {
+  const templates = cachedTemplates(input);
+  // Spread copies keep the template's hidden class, shared with the other slice copies (CPU
+  // modifiers, evaluator); a field-by-field literal measured ~40% slower overall.
+  const out: SliceSpec[] = [];
+  for (const t of templates) {
     if (t.workloadId) {
       const r = input.rates[t.workloadId] ?? 0;
-      return { ...t.spec, rate: r * t.rateCoef, cpEngines: r * t.cpCoef, ziipEngines: r * t.ziCoef };
+      out.push({ ...t.spec, rate: r * t.rateCoef, cpEngines: r * t.cpCoef, ziipEngines: r * t.ziCoef });
+      continue;
     }
     let cp = t.cpBase;
     let zi = t.ziBase;
@@ -222,6 +276,7 @@ export function buildSlices(input: SliceBuildInput): SliceSpec[] {
       cp += r * term.cpCoef;
       zi += r * term.ziCoef;
     }
-    return { ...t.spec, cpEngines: cp, ziipEngines: zi };
-  });
+    out.push({ ...t.spec, cpEngines: cp, ziipEngines: zi });
+  }
+  return out;
 }

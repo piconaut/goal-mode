@@ -21,10 +21,12 @@ import {
 } from '../subsys/batch';
 import { mxtQueueWaitSec, qrTcb } from '../subsys/cics';
 import { bpIoMultiplier, dbatQueueWaitSec, DB2 } from '../subsys/db2';
-import { baseRate, stepNoise } from '../workload/arrivals';
-import { buildSlices, scKeyAtService, scKeyOf } from '../workload/slices';
+import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/arrivals';
+import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
+import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
+import { ROUTING } from '../../content/routing';
 import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../content/wlm/tuning';
@@ -51,6 +53,7 @@ import type {
   LparConfig,
   EnvState,
   LparPoolRuntime,
+  PoolType,
   LparRuntime,
   LparTick,
   SimState,
@@ -77,7 +80,13 @@ function servers(rt: LparPoolRuntime | undefined, logical: number, hiperDispatch
   return Math.max(1, Math.round(rt.vh + rt.vm + rt.unparkedVl));
 }
 
-const usesRole = (servers: readonly { role: string }[], prefix: string) => servers.some((s) => s.role.startsWith(prefix));
+// Whether a workload calls Db2, memoised per definition object (asked per slice per tick).
+const usesDb2Cache = new WeakMap<WorkloadDef, boolean>();
+function usesDb2(w: WorkloadDef): boolean {
+  let v = usesDb2Cache.get(w);
+  if (v === undefined) usesDb2Cache.set(w, (v = w.servers.some((s) => s.role.startsWith('DB2.'))));
+  return v;
+}
 
 interface BatchSliceRef {
   slice: SliceSpec;
@@ -85,7 +94,7 @@ interface BatchSliceRef {
 }
 
 export function step(before: SimState, commands: readonly Command[], scenario: Scenario): SimState {
-  const prev = applyCommands(before, commands);
+  const prev = updateRouting(applyCommands(before, commands), scenario);
   const rng = new Rng(prev.rng);
   const workloads = effectiveWorkloads(scenario, prev);
   const addressSpaces = effectiveAddressSpaces(scenario, prev);
@@ -108,8 +117,12 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const noise = stepNoise(p.noise, w, rng.normal());
     // Interactive users (closed loop): slow responses throttle their own arrival rate.
     const closedLoop = w.thinkTimeSec ? w.thinkTimeSec / (w.thinkTimeSec + p.lastRtSec) : 1;
-    rates[w.id] = baseRate(w, clock) * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
-    return { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
+    // Bursts draw from the RNG only when the shape has them, so burst-free scenarios keep their streams.
+    const b = w.shape.bursts;
+    const burst = b ? stepBurst(p.burst ?? { mult: 1, leftSec: 0 }, b, TICK_SEC, rng) : undefined;
+    const burstMult = b && burst ? burst.mult * scheduledBurstMult(b, clock) : 1;
+    rates[w.id] = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
+    return burst ? { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec, burst } : { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
   });
 
   // Batch scheduling: release tonight's network at the start of the played day.
@@ -129,8 +142,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
 
   const io: Record<IoClass, IoService> = env.dasd
     ? {
-        RANDOM: { rtSec: env.dasd.classes.RANDOM.rtSec, delaySec: env.dasd.classes.RANDOM.iosqSec + env.dasd.classes.RANDOM.pendSec, iosqSec: env.dasd.classes.RANDOM.iosqSec },
-        SEQ: { rtSec: env.dasd.classes.SEQ.rtSec, delaySec: env.dasd.classes.SEQ.iosqSec + env.dasd.classes.SEQ.pendSec, iosqSec: env.dasd.classes.SEQ.iosqSec },
+        RANDOM: { rtSec: env.dasd.classes.RANDOM.rtSec, delaySec: env.dasd.classes.RANDOM.iosqSec + env.dasd.classes.RANDOM.pendSec, iosqSec: env.dasd.classes.RANDOM.iosqSec, connSec: env.dasd.classes.RANDOM.connSec },
+        SEQ: { rtSec: env.dasd.classes.SEQ.rtSec, delaySec: env.dasd.classes.SEQ.iosqSec + env.dasd.classes.SEQ.pendSec, iosqSec: env.dasd.classes.SEQ.iosqSec, connSec: env.dasd.classes.SEQ.connSec },
       }
     : DEFAULT_IO;
 
@@ -190,6 +203,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     failedBy: {},
     wlTick: {},
     rtByWorkloadLpar: {},
+    failByWorkloadLpar: prev.routingPolicies ? {} : null,
     systems: [],
     lparTicks: [],
     onlineDb2Rate: 0,
@@ -205,49 +219,13 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     demands.push({ lparId: l.id, pool: 'ICF', demandEngines: polling ? (icf?.logical ?? 1) : work, softCapEngines: Infinity });
   }
 
-  // 6. Soft capping: LPARs whose R4HA exceeds their defined capacity, and members of
-  // capacity groups over their limit, are held to their MSU share.
-  for (const d of demands) {
-    if (d.pool !== 'CP') continue;
-    const l = config.lpars.find((x) => x.id === d.lparId)!;
-    const msuCp = msuPerCp(cpcOf[l.cpcId]!);
-    const r = prev.capping.lpars.find((x) => x.id === l.id);
-    let capMsu = Infinity;
-    if (r?.capped && l.definedCapacityMsu !== null) capMsu = l.definedCapacityMsu;
-    const g = l.capacityGroup ? config.capacityGroups.find((x) => x.id === l.capacityGroup) : undefined;
-    const gs = g ? prev.capping.groups.find((x) => x.id === g.id) : undefined;
-    if (g && gs?.capped) {
-      const members = config.lpars.filter((x) => x.capacityGroup === g.id);
-      const shares = groupShares(
-        g.limitMsu,
-        members.map((m) => ({
-          id: m.id,
-          weight: m.pools.find((p) => p.pool === 'CP')?.weight ?? 0,
-          demandMsu: (demands.find((x) => x.lparId === m.id && x.pool === 'CP')?.demandEngines ?? 0) * msuPerCp(cpcOf[m.cpcId]!),
-        })),
-      );
-      capMsu = Math.min(capMsu, shares[l.id] ?? capMsu);
-    }
-    if (capMsu < Infinity) d.softCapEngines = capMsu / msuCp;
-  }
-
-  // 5. PR/SM.
+  // 6. Soft capping, then 5. PR/SM.
+  softCap(t);
+  prsm(t);
   const lpars = t.lpars;
-  for (const cpc of config.cpcs) {
-    const res = resolveCpc(cpc, config.lpars, demands);
-    const msuCp = msuPerCp(cpc);
-    for (const l of config.lpars.filter((x) => x.cpcId === cpc.id)) {
-      const pools = l.pools.flatMap((p) => {
-        const r = res[poolKey(l.id, p.pool)];
-        return r ? [r] : [];
-      });
-      const cpRt = pools.find((p) => p.pool === 'CP');
-      lpars.push({ id: l.id, pools, msuRate: l.kind === 'ZOS' ? (cpRt?.deliveredEngines ?? 0) * msuCp : 0 });
-    }
-  }
 
   // 7–10. Dispatch and response per image.
-  const { backlog, failedBy, wlTick, lparTicks, systems, evalInputs, rtByWorkloadLpar, storageCritical } = t;
+  const { backlog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, storageCritical } = t;
   for (const w of workloads) {
     wlTick[w.id] = { id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
   }
@@ -272,32 +250,17 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
 
   // Batch critical-path projection and end-of-night summary.
   if (prev.tick % CRITICAL_PROJECTION_EVERY === 0) {
-    const cpc0 = config.cpcs[0]!;
-    const cpSp0 = cpSpeed(cpc0);
-    const zSp0 = ziipSpeed(cpc0);
-    batch.projectedCriticalEndSec = projectCriticalEnd(batch.jobs, clock.day, prev.tick, (j) => jobShape(j.def, cpSp0, zSp0, io.SEQ.rtSec).elapsed);
+    // A job runs at its sysaff LPAR's CPC speed; unpinned jobs project on the first CPC.
+    const cpcOfJob = (lparId: string | null): CpcConfig => cpcOf[config.lpars.find((l) => l.id === lparId)?.cpcId ?? ''] ?? config.cpcs[0]!;
+    batch.projectedCriticalEndSec = projectCriticalEnd(batch.jobs, clock.day, prev.tick, (j) => {
+      const cpc = cpcOfJob(j.def.sysaff);
+      return jobShape(j.def, cpSpeed(cpc), ziipSpeed(cpc), io.SEQ.rtSec).elapsed;
+    });
   }
   if (tickOfDay === TICKS_PER_DAY - 1) batch = closeNight(batch, clock.day);
 
   // 12b. Policy adjustment, one receiver per system.
-  const spPi = sysplexPis(def, systems);
-  const log = [...prev.wlm.log];
-  const adjusted = systems.map((sys) => {
-    const lt = lparTicks.find((x) => x.lparId === sys.lparId)!;
-    const out = policyAdjust({
-      def,
-      system: sys,
-      evalInput: evalInputs[sys.lparId]!,
-      current: lt.scps,
-      sysplexPi: spPi,
-      clockText,
-    });
-    if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) log.push(out.log);
-    // This tick's period states are fresh objects: apply the new DPs in place.
-    for (const s of sys.scps) s.dp = out.dps[s.scKey] ?? s.dp;
-    return sys;
-  });
-  while (log.length > WLM_LOG_MAX) log.shift();
+  const { adjusted, log } = adjustPolicies(t, clockText);
 
   // Retry storms: timed-out requests come back next tick.
   for (const wr of workloadRt) {
@@ -310,55 +273,14 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     if (wt.completions > 1e-9) wr.lastRtSec = wt.rtSumSec / wt.completions;
   }
 
-  const nextEnv: EnvState = { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
+  const nextEnv: EnvState = t.failByWorkloadLpar
+    ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
+    : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
 
-  // R4HA bookkeeping and soft-cap decisions for the next tick.
-  const msuBy: Record<string, number> = {};
-  for (const l of lpars) msuBy[l.id] = l.msuRate;
-  const cappingLpars = zosLpars.map((l) =>
-    stepR4ha(prev.capping.lpars.find((x) => x.id === l.id) ?? newR4ha(l.id), msuBy[l.id] ?? 0, l.definedCapacityMsu),
-  );
-  const cappingGroups = config.capacityGroups.map((g) => {
-    const msu = config.lpars.filter((l) => l.capacityGroup === g.id).reduce((a, l) => a + (msuBy[l.id] ?? 0), 0);
-    return stepR4ha(prev.capping.groups.find((x) => x.id === g.id) ?? newR4ha(g.id), msu, g.limitMsu);
-  });
-  const r4haBy: Record<string, number> = {};
-  for (const r of cappingLpars) r4haBy[r.id] = r.r4ha;
-
-  // MLC: hourly SCRT-style sample, monthly bill.
-  let cost = prev.cost.tfp ? accrueTfp(prev.cost, scenario.products, msuBy, TICK_SEC) : prev.cost;
   const nextTick = prev.tick + 1;
-  if (nextTick % 360 === 0) {
-    const dcBy: Record<string, number | null> = {};
-    for (const l of zosLpars) dcBy[l.id] = l.definedCapacityMsu;
-    const groupLimits = config.capacityGroups.map((g) => ({ limitMsu: g.limitMsu, members: config.lpars.filter((l) => l.capacityGroup === g.id).map((l) => l.id) }));
-    cost = recordHour(cost, scenario.products, r4haBy, dcBy, nextTick, groupLimits);
-  }
-  if (clockAt(nextTick).dayOfMonth === 1 && clock.dayOfMonth !== 1) cost = closeMonth(cost, scenario.products);
-
-  // RMF interval data.
-  const jobsEnded: JobEndRecord[] = batch.jobs
-    .filter((j) => j.endTick === nextTick && j.startTick !== null)
-    .map((j) => ({
-      name: j.def.name,
-      stream: j.def.stream,
-      lparId: j.lparId ?? '',
-      critical: j.def.critical,
-      queuedSec: ((j.startTick ?? 0) - (j.queuedTick ?? j.startTick ?? 0)) * TICK_SEC,
-      elapsedSec: (nextTick - (j.startTick ?? nextTick)) * TICK_SEC,
-      endTick: nextTick,
-      stretch: j.stretch,
-    }));
-  let rmfAcc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf);
-  let jobsThisInterval = [...prev.rmf.jobsThisInterval, ...jobsEnded];
-  let intervals = prev.rmf.intervals;
-  const intervalTicks = Math.max(1, Math.round((config.rmfIntervalMin * 60) / TICK_SEC));
-  if (nextTick % intervalTicks === 0) {
-    intervals = [...intervals, closeInterval(rmfAcc, { def, config, r4haByLpar: r4haBy, jobs: jobsThisInterval, endTick: nextTick })];
-    if (intervals.length > RMF_KEEP) intervals = intervals.slice(intervals.length - RMF_KEEP);
-    rmfAcc = newRmfAcc(nextTick);
-    jobsThisInterval = [];
-  }
+  const { cappingLpars, cappingGroups, msuBy, r4haBy } = stepCapping(t, zosLpars);
+  const cost = stepCost(t, zosLpars, msuBy, r4haBy, nextTick);
+  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, nextTick);
   return {
     ...prev,
     tick: prev.tick + 1,
@@ -372,7 +294,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     batch,
     capping: { lpars: cappingLpars, groups: cappingGroups },
     cost,
-    rmf: { acc: rmfAcc, intervals, jobsThisInterval },
+    rmf,
   };
 }
 
@@ -407,6 +329,8 @@ interface TickCtx {
   failedBy: Record<string, number>;
   wlTick: Record<string, WorkloadTick>;
   rtByWorkloadLpar: Record<string, number>;
+  /** Failed fraction per workload@lpar, kept only when a dynamic routing policy needs it. */
+  failByWorkloadLpar: Record<string, number> | null;
   systems: WlmSystemState[];
   lparTicks: LparTick[];
   /** Sysplex online Db2 transaction rate (global lock contention for batch). */
@@ -420,6 +344,152 @@ interface TickSums {
   cfRequests: number;
 }
 
+/** 6. Soft capping: LPARs whose R4HA exceeds their defined capacity, and members of capacity
+ * groups over their limit, are held to their MSU share. */
+function softCap(t: TickCtx): void {
+  const { prev, config, cpcOf, demands } = t;
+  for (const d of demands) {
+    if (d.pool !== 'CP') continue;
+    const l = config.lpars.find((x) => x.id === d.lparId)!;
+    const msuCp = msuPerCp(cpcOf[l.cpcId]!);
+    const r = prev.capping.lpars.find((x) => x.id === l.id);
+    let capMsu = Infinity;
+    if (r?.capped && l.definedCapacityMsu !== null) capMsu = l.definedCapacityMsu;
+    const g = l.capacityGroup ? config.capacityGroups.find((x) => x.id === l.capacityGroup) : undefined;
+    const gs = g ? prev.capping.groups.find((x) => x.id === g.id) : undefined;
+    if (g && gs?.capped) {
+      const members = config.lpars.filter((x) => x.capacityGroup === g.id);
+      const shares = groupShares(
+        g.limitMsu,
+        members.map((m) => ({
+          id: m.id,
+          weight: m.pools.find((p) => p.pool === 'CP')?.weight ?? 0,
+          demandMsu: (demands.find((x) => x.lparId === m.id && x.pool === 'CP')?.demandEngines ?? 0) * msuPerCp(cpcOf[m.cpcId]!),
+        })),
+      );
+      capMsu = Math.min(capMsu, shares[l.id] ?? capMsu);
+    }
+    if (capMsu < Infinity) d.softCapEngines = capMsu / msuCp;
+  }
+}
+
+/** 5. PR/SM: resolve each CPC's pools against this tick's demand into `t.lpars`. */
+function prsm(t: TickCtx): void {
+  const { config, demands, lpars } = t;
+  for (const cpc of config.cpcs) {
+    const res = resolveCpc(cpc, config.lpars, demands);
+    const msuCp = msuPerCp(cpc);
+    for (const l of config.lpars) {
+      if (l.cpcId !== cpc.id) continue;
+      const pools = l.pools.flatMap((p) => {
+        const r = res[poolKey(l.id, p.pool)];
+        return r ? [r] : [];
+      });
+      const cpRt = pools.find((p) => p.pool === 'CP');
+      lpars.push({ id: l.id, pools, msuRate: l.kind === 'ZOS' ? (cpRt?.deliveredEngines ?? 0) * msuCp : 0 });
+    }
+  }
+}
+
+/** 12b. Policy adjustment, one receiver per system. */
+function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemState[]; log: string[] } {
+  const { prev, def, systems, lparTicks, evalInputs } = t;
+  const spPi = sysplexPis(def, systems);
+  // The previous log is only copied once a line is added (states are never mutated in place).
+  let log = prev.wlm.log;
+  const adjusted = systems.map((sys) => {
+    const lt = lparTicks.find((x) => x.lparId === sys.lparId)!;
+    const out = policyAdjust({
+      def,
+      system: sys,
+      evalInput: evalInputs[sys.lparId]!,
+      current: lt.scps,
+      sysplexPi: spPi,
+      clockText,
+    });
+    if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
+      if (log === prev.wlm.log) log = [...log];
+      log.push(out.log);
+    }
+    // This tick's period states are fresh objects: apply the new DPs in place.
+    for (const s of sys.scps) s.dp = out.dps[s.scKey] ?? s.dp;
+    return sys;
+  });
+  if (log.length > WLM_LOG_MAX) {
+    if (log === prev.wlm.log) log = [...log];
+    while (log.length > WLM_LOG_MAX) log.shift();
+  }
+  return { adjusted, log };
+}
+
+/** R4HA bookkeeping and soft-cap decisions for the next tick. */
+function stepCapping(t: TickCtx, zosLpars: readonly LparConfig[]) {
+  const { prev, config, lpars } = t;
+  const msuBy: Record<string, number> = {};
+  for (const l of lpars) msuBy[l.id] = l.msuRate;
+  const cappingLpars = zosLpars.map((l) =>
+    stepR4ha(prev.capping.lpars.find((x) => x.id === l.id) ?? newR4ha(l.id), msuBy[l.id] ?? 0, l.definedCapacityMsu),
+  );
+  const cappingGroups = config.capacityGroups.map((g) => {
+    const msu = config.lpars.filter((l) => l.capacityGroup === g.id).reduce((a, l) => a + (msuBy[l.id] ?? 0), 0);
+    return stepR4ha(prev.capping.groups.find((x) => x.id === g.id) ?? newR4ha(g.id), msu, g.limitMsu);
+  });
+  const r4haBy: Record<string, number> = {};
+  for (const r of cappingLpars) r4haBy[r.id] = r.r4ha;
+  return { cappingLpars, cappingGroups, msuBy, r4haBy };
+}
+
+/** MLC: hourly SCRT-style sample, monthly bill. */
+function stepCost(t: TickCtx, zosLpars: readonly LparConfig[], msuBy: Record<string, number>, r4haBy: Record<string, number>, nextTick: number): SimState['cost'] {
+  const { prev, scenario, config, clock } = t;
+  let cost = prev.cost.tfp ? accrueTfp(prev.cost, scenario.products, msuBy, TICK_SEC) : prev.cost;
+  if (nextTick % 360 === 0) {
+    const dcBy: Record<string, number | null> = {};
+    for (const l of zosLpars) dcBy[l.id] = l.definedCapacityMsu;
+    const groupLimits = config.capacityGroups.map((g) => ({ limitMsu: g.limitMsu, members: config.lpars.filter((l) => l.capacityGroup === g.id).map((l) => l.id) }));
+    cost = recordHour(cost, scenario.products, r4haBy, dcBy, nextTick, groupLimits);
+  }
+  if (clockAt(nextTick).dayOfMonth === 1 && clock.dayOfMonth !== 1) cost = closeMonth(cost, scenario.products);
+  return cost;
+}
+
+/** RMF interval data. */
+function stepRmf(
+  t: TickCtx,
+  batch: SimState['batch'],
+  dasd: EnvState['dasd'],
+  cf: EnvState['cf'],
+  r4haBy: Record<string, number>,
+  nextTick: number,
+): SimState['rmf'] {
+  const { prev, def, config, lparTicks, lpars } = t;
+  const jobsEnded: JobEndRecord[] = [];
+  for (const j of batch.jobs) {
+    if (j.endTick !== nextTick || j.startTick === null) continue;
+    jobsEnded.push({
+      name: j.def.name,
+      stream: j.def.stream,
+      lparId: j.lparId ?? '',
+      critical: j.def.critical,
+      queuedSec: ((j.startTick ?? 0) - (j.queuedTick ?? j.startTick ?? 0)) * TICK_SEC,
+      elapsedSec: (nextTick - (j.startTick ?? nextTick)) * TICK_SEC,
+      endTick: nextTick,
+      stretch: j.stretch,
+    });
+  }
+  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf);
+  let jobsThisInterval = jobsEnded.length ? [...prev.rmf.jobsThisInterval, ...jobsEnded] : prev.rmf.jobsThisInterval;
+  let intervals = prev.rmf.intervals;
+  const intervalTicks = Math.max(1, Math.round((config.rmfIntervalMin * 60) / TICK_SEC));
+  if (nextTick % intervalTicks === 0) {
+    intervals = [...intervals, closeInterval(acc, { def, config, r4haByLpar: r4haBy, jobs: jobsThisInterval, endTick: nextTick })];
+    if (intervals.length > RMF_KEEP) intervals = intervals.slice(intervals.length - RMF_KEEP);
+    acc = newRmfAcc(nextTick);
+    jobsThisInterval = [];
+  }
+  return { acc, intervals, jobsThisInterval };
+}
+
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
 function lparDemand(t: TickCtx, l: LparConfig): void {
   const { prev, scenario, def, env, config, clock, cpcOf, workloads, workloadById, addressSpaces, rates, io } = t;
@@ -427,7 +497,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   const cpc = cpcOf[l.cpcId]!;
   const cpSp = cpSpeed(cpc);
   const zSp = ziipSpeed(cpc);
-  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces }), prev.mods);
+  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads) }), prev.mods);
 
   const db2 = config.db2.find((d) => d.lparId === l.id);
   const ioMult = db2
@@ -469,7 +539,8 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     let cpuAdd = 0;
     let ioPerTxn = s.ioPerTxn;
     const parts: Record<string, number> = {};
-    if (usesRole(w.servers, 'DB2.')) {
+    const db2Work = usesDb2(w);
+    if (db2Work) {
       ioPerTxn *= ioMult;
       parts.cf = DB2.cfRequestsPerTxn * cfServiceSec;
       parts.lock = DB2.lockWaitSecPerIndex * env.lockIndex;
@@ -484,9 +555,15 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       failFrac = qr.failFrac;
     }
     if (w.subsystem === 'DDF') outside += dbatWait;
-    if (usesRole(w.servers, 'DB2.')) t.onlineDb2Rate += s.rate;
-    if (db2FailFrac > 0 && usesRole(w.servers, 'DB2.')) failFrac = Math.max(failFrac, db2FailFrac);
-    if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
+    if (db2Work) t.onlineDb2Rate += s.rate;
+    // A saturated QR TCB makes a region slow, not fast-failing, so it doesn't count as an abend for routing.
+    let abendFrac = 0;
+    if (db2FailFrac > 0 && db2Work) abendFrac = Math.max(abendFrac, db2FailFrac);
+    if (mqFailFrac > 0 && w.mq) abendFrac = Math.max(abendFrac, mqFailFrac);
+    const regionFail = prev.mods.regionFailFrac?.[wlLparKey(w.id, l.id)];
+    if (regionFail) abendFrac = Math.max(abendFrac, regionFail);
+    failFrac = Math.max(failFrac, abendFrac);
+    if (t.failByWorkloadLpar) s.abendFrac = abendFrac;
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
     s.ioPerTxn = ioPerTxn;
     s.extraParts = parts;
@@ -513,7 +590,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   for (const j of running) {
     if (swapped.has(j)) continue;
     runningJobs++;
-    const cls = classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id });
+    const cls = classifyJob(def, j.def, l.id);
     const shape = jobShape(j.def, cpSp, zSp, seqRt);
     const scKey = scKeyAtService(def, cls.serviceClass, jobServiceSu(j, shape, cpc));
     const cfCpu = j.def.usesDb2 ? shape.ioRate * DB2.cfRequestsPerBatchIo * cfZosCpuSec : 0;
@@ -533,7 +610,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
           rate: 0,
           cpEngines: 0,
           ziipEngines: 0,
-          mayOverflow: true,
+          mayOverflow: honorsPriority(def, cls.serviceClass, scKey),
           cpuSecPerTxn: 0,
           ziipSecPerTxn: 0,
           ioPerTxn: 0,
@@ -593,7 +670,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
-  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, systems, lparTicks } = t;
+  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
   const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
@@ -650,6 +727,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   }
 
   const compBy: Record<string, number> = {};
+  const tries: Record<string, number> = {};
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
     if (r.newBacklog > 1e-9) backlog[s.key] = r.newBacklog;
@@ -669,9 +747,14 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       const k = wlLparKey(s.workloadId, l.id);
       rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
       compBy[k] = (compBy[k] ?? 0) + r.completions;
+      if (failByWorkloadLpar) {
+        // Only fast failures (abends, subsystem rejections) count; timeouts and QR overload are slow and show in the response.
+        failByWorkloadLpar[k] = (failByWorkloadLpar[k] ?? 0) + Math.min(r.failed, s.rate * TICK_SEC * (s.abendFrac ?? s.failFrac));
+        tries[k] = (tries[k] ?? 0) + r.completions + r.failed;
+      }
       const w = workloadById[s.workloadId]!;
       sums.randomIops += s.rate * s.ioPerTxn;
-      if (usesRole(w.servers, 'DB2.')) {
+      if (usesDb2(w)) {
         sums.cfRequests += s.rate * DB2.cfRequestsPerTxn;
       }
     }
@@ -679,6 +762,10 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   for (const k in compBy) {
     const c = compBy[k]!;
     rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
+    if (failByWorkloadLpar) {
+      const n = tries[k] ?? 0;
+      failByWorkloadLpar[k] = n > 0 ? (failByWorkloadLpar[k] ?? 0) / n : 0;
+    }
   }
 
   // Batch progression: share each batch slice's grant across its jobs by demand.
@@ -749,6 +836,17 @@ export function instanceClock(secAfterStart: number): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   const dayOffset = secAfterStart >= DAY_SEC - 6 * 3600 ? '+1' : '';
   return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}${dayOffset}`;
+}
+
+// A running job is classified every tick; remember the last answer per job definition (the service
+// definition is replaced, never edited, so identity is a safe key; classify itself is pure).
+const jobClassCache = new WeakMap<object, { def: object; lparId: string; res: ReturnType<typeof classify> }>();
+function classifyJob(def: SimState['wlm']['definition'], jobDef: JobRuntime['def'], lparId: string): ReturnType<typeof classify> {
+  const hit = jobClassCache.get(jobDef);
+  if (hit && hit.def === def && hit.lparId === lparId) return hit.res;
+  const res = classify(def, { subsystem: 'JES', TN: jobDef.name, TC: jobDef.jobClass, SY: lparId });
+  jobClassCache.set(jobDef, { def, lparId, res });
+  return res;
 }
 
 const byIdCache = new WeakMap<readonly WorkloadDef[], Record<string, WorkloadDef>>();
@@ -822,8 +920,56 @@ function queuedMsgGb(prev: SimState, byId: Record<string, WorkloadDef>, lparId: 
   return gb;
 }
 
+// 3. Routing: dynamic policies recompute shares from last tick's measurements once per interval.
+function updateRouting(s: SimState, scenario: Scenario): SimState {
+  const policies = s.routingPolicies;
+  if (!policies || s.last.lpars.length === 0) return s;
+  let routing = s.routing;
+  for (const id of Object.keys(policies).sort()) {
+    const policy = policies[id]!;
+    const w = scenario.workloads.find((x) => x.id === id) ?? s.extraWorkloads.find((x) => x.id === id);
+    if (!w) continue;
+    const lparIds = Object.keys(w.routing).sort();
+    let shares: Record<string, number> | null = null;
+    if (policy.method === 'WLM' && s.tick % ROUTING.wlmIntervalTicks === 0) {
+      shares = wlmShares(lparIds.map((lparId) => routeCandidate(s, w, lparId)), w.ziipFrac, policy.ziipAware, ROUTING.minShareFrac, ROUTING.shareQuantum);
+    } else if (policy.method === 'CPSM_GOAL' && s.tick % ROUTING.cpsmIntervalTicks === 0) {
+      const regions = lparIds.map((lparId) => regionStat(s, w, lparId));
+      shares = cpsmGoalShares(routing[id] ?? w.routing, regions, policy, ROUTING.abendRtSec, ROUTING.cpsmStepFrac, ROUTING.minShareFrac, ROUTING.shareQuantum);
+    }
+    if (shares && !sameShares(routing[id], shares)) routing = { ...routing, [id]: shares };
+  }
+  return routing === s.routing ? s : { ...s, routing };
+}
+
+// What CICSPlex SM sees of a region: last tick's normal response and abend rate for this work there.
+function regionStat(s: SimState, w: WorkloadDef, lparId: string): RegionStat {
+  const k = wlLparKey(w.id, lparId);
+  // No normal completions (all timed out, or no traffic yet) reads as the timeout, never as instant.
+  const rt = s.env.rtByWorkloadLpar[k] ?? 0;
+  return { lparId, rtSec: rt > 0 ? rt : w.timeoutSec, failFrac: s.env.failByWorkloadLpar?.[k] ?? 0 };
+}
+
+function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandidate {
+  const lt = s.last.lpars.find((l) => l.lparId === lparId);
+  const pools = s.lpars.find((l) => l.id === lparId)?.pools ?? [];
+  const avail = (p: PoolType) => pools.find((x) => x.pool === p)?.availableEffectiveEngines ?? 0;
+  const key = scKeyOf(classify(s.wlm.definition, { ...w.work, SY: lparId }).serviceClass, 0);
+  const myDp = lt?.scps.find((x) => x.scKey === key)?.dp ?? 0;
+  let cpUsed = 0;
+  let ziipUsed = 0;
+  for (const x of lt?.scps ?? []) {
+    if (x.scKey === key || x.dp < myDp) continue;
+    cpUsed += x.cpEngines;
+    ziipUsed += x.ziipEngines;
+  }
+  return { lparId, cpFreeEngines: Math.max(0, avail('CP') - cpUsed), ziipFreeEngines: Math.max(0, avail('ZIIP') - ziipUsed) };
+}
+
 // Effective content = scenario + run additions + routing overrides. Memoised on object
 // identity so slice-template caches stay warm until something actually changes.
+// Same scenario + run additions ⇒ same workload content per id; only routing differs (slice-template scope).
+const workloadScope = new WeakMap<readonly WorkloadDef[], object>();
 const wlCache = new WeakMap<Scenario, WeakMap<readonly WorkloadDef[], WeakMap<object, WorkloadDef[]>>>();
 function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef[] {
   let a = wlCache.get(scenario);
@@ -834,6 +980,7 @@ function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef[] {
   if (!out) {
     out = [...scenario.workloads, ...s.extraWorkloads].map((w) => (s.routing[w.id] ? { ...w, routing: s.routing[w.id]! } : w));
     b.set(s.routing, out);
+    workloadScope.set(out, b);
   }
   return out;
 }
@@ -926,8 +1073,11 @@ function idleScpTick(scKey: string, dp: number): ScpTick {
   };
 }
 
-/** Resource group limits in CP engines on one system. Types 2 and 3 are system scope; type 1 is a
- * sysplex-wide SU/s budget, of which this system gets `plexShareFrac` (its share of the group's demand). */
+/** Resource group limits in CP engines on one system (MVS Planning: WLM, ch. 7). Type 1 is a sysplex-wide
+ * unweighted SU/s budget, of which this system gets `plexShareFrac` (its share of the group's demand); type 2
+ * a percentage of the LPAR share, min(weight share, logical CPs); type 3 CPs × 100. Specialty engine use is
+ * excluded (the "Include Specialty Processor Consumption" default). APPROX: type 2 ignores a soft cap
+ * below the share; type 4 (MSU) and memory pools are not modelled. */
 function resolveRgCapEngines(
   type: 1 | 2 | 3,
   max: number,
@@ -1015,9 +1165,14 @@ function cicsRegions(
   addressSpaces: readonly AddressSpaceDef[],
   lparId: string,
 ): { regions?: LparEvalInput['regions'] } {
-  const keys = [...new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.scKey))].sort();
   const aor = addressSpaces.find((a) => a.lparId === lparId && a.role === 'CICS.AOR');
-  if (keys.length === 0 || !aor) return {};
+  if (!aor) return {};
+  const keys: string[] = [];
+  for (const s of slices) {
+    if (s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS' && !keys.includes(s.scKey)) keys.push(s.scKey);
+  }
+  if (keys.length === 0) return {};
+  keys.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   return { regions: { keys, mode: def.cicsRegionMode ?? 'TRANSACTION', regionKey } };
 }

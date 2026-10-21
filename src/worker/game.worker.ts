@@ -3,6 +3,7 @@
 import { difficultyOf, scenarioFor } from '../game/difficulty';
 import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
+import { packOf } from '../content/packs';
 import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, continueEndless, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
@@ -20,7 +21,7 @@ import { askAround } from '../game/inquiries';
 import { adviseReportClasses, applyReportClassAdvice } from '../game/rcAdvisor';
 import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
-import { applyWlmEdit, pendingBase } from '../game/wlmEdit';
+import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
 import { decodeRunJson } from '../game/runFile';
@@ -34,15 +35,15 @@ import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type
 import { loadCareer, loadDesk, loadRun, saveCareer, saveRun, type DeskState } from './storage';
 import { EMPTY_CAREER, recordRun, runXp, setStartingPerk, type CareerState } from '../game/career';
 
-const BASE_SCENARIO = MIDWEST;
+/** The run's scenario pack (sim scenario + game content). */
+const pack = () => packOf(run.scenarioId);
 /** The scenario as this run's difficulty shapes it (memoised). */
-const sc = () => scenarioFor(BASE_SCENARIO, run?.difficulty);
-const content = MIDWEST_GAME;
+const sc = () => scenarioFor(pack().scenario, run.difficulty);
 /** Ticks per real second at 1×: 8640 ticks / 600 s. */
 const TICKS_PER_SEC_1X = 14.4;
 const FRAME_MS = 100;
 
-let run: RunState = newRun(BASE_SCENARIO, content, Date.now() % 100000);
+let run: RunState = newRun(MIDWEST, MIDWEST_GAME, Date.now() % 100000);
 let speed = 1;
 const IRONMAN_MIN_SPEED = 0.5;
 const canPause = () => run.phase !== 'LIVE' || difficultyOf(run.difficulty).pauseAllowed;
@@ -83,6 +84,8 @@ function pendingView(): PendingPolicyView | null {
     rules: pendingPolicy.subsystems.flatMap((ss) =>
       ss.rules.map((r) => ({ subsystem: ss.subsystem, text: `${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(default)'}` })),
     ),
+    cicsClasses: cicsTransactionClasses(pendingPolicy),
+    cicsIssues: cicsGoalIssues(pendingPolicy),
   };
 }
 
@@ -113,7 +116,12 @@ const postPolicy = () => {
 };
 
 function activate(def: ServiceDefinition) {
-  const out = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
+  const err = cicsGoalIssues(def).find((i) => i.severity === 'error');
+  if (err) {
+    post({ type: 'RESULT', ok: false, message: `Policy not installed: ${err.message}` });
+    return;
+  }
+  const out = requestChange(run, pack().game, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
   if (out.ok) {
     pendingPolicy = null;
     postPolicy();
@@ -132,7 +140,7 @@ function advanceSampled(n: number) {
   while (left > 0 && run.phase === 'LIVE') {
     const toSample = HISTORY_EVERY_TICKS - (run.sim.tick % HISTORY_EVERY_TICKS);
     const k = Math.min(left, toSample);
-    run = advance(run, sc(), content, k);
+    run = advance(run, sc(), pack().game, k);
     left -= k;
     if (run.sim.tick % HISTORY_EVERY_TICKS === 0) {
       history = [...history, samplePoint(run)].slice(-HISTORY_MAX);
@@ -193,7 +201,7 @@ function persistSoon() {
 void Promise.all([loadRun(), loadDesk(), loadCareer()]).then(([r, d, c]) => {
   career = c ?? EMPTY_CAREER;
   postCareer();
-  saved = r ? normalizeRun(r, BASE_SCENARIO) : null;
+  saved = r ? normalizeRun(r, packOf(r.scenarioId).scenario) : null;
   savedDesk = d;
   storageReady = true;
   sendView();
@@ -226,10 +234,10 @@ setInterval(() => {
 // What-if forks run in chunks between messages so the worker stays responsive.
 let whatIf: { token: number; label: string; base: RunState; prop: RunState; ticks: number } | null = null;
 let whatIfToken = 0;
-const forkContent = whatIfContent(content);
 function whatIfChunk(token: number) {
   const w = whatIf;
   if (!w || w.token !== token) return;
+  const forkContent = whatIfContent(pack().game);
   w.base = advance(w.base, sc(), forkContent, INSIGHT.whatIfChunkTicks);
   w.prop = advance(w.prop, sc(), forkContent, INSIGHT.whatIfChunkTicks);
   w.ticks += INSIGHT.whatIfChunkTicks;
@@ -248,7 +256,7 @@ const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'SPECTATE_ADOPT', 'G
 
 function spectate(text: string) {
   const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null }>(text);
-  const next = normalizeRun(f.run, BASE_SCENARIO);
+  const next = normalizeRun(f.run, packOf(f.run.scenarioId).scenario);
   // Same run moving forward: extend the charts; otherwise (new run, earlier file) start them over.
   const sameRun = spectating && next.seed === run.seed && next.sim.tick >= run.sim.tick;
   spectating = true;
@@ -283,7 +291,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       basket = [];
       post({ type: 'BASKET', basket });
       postPolicy();
-      run = newRun(BASE_SCENARIO, content, m.seed, m.difficulty, m.daily);
+      run = newRun(packOf(m.scenario).scenario, packOf(m.scenario).game, m.seed, m.difficulty, m.daily);
       lastRunXp = null;
       postCareer();
       history = [];
@@ -305,7 +313,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       }
       break;
     case 'CONTINUE_ENDLESS':
-      run = continueEndless(run, content);
+      run = continueEndless(run, pack().game);
       break;
     case 'SET_BASKET':
       basket = m.basket;
@@ -320,11 +328,11 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       // Play whole days headlessly (skipping drafts) to reach later-game states quickly.
       if (import.meta.env.DEV) {
         for (let d = 0; d < m.days && run.phase !== 'GAMEOVER' && run.phase !== 'VICTORY'; d++) {
-          if (run.phase === 'REVIEW') run = chooseDraft(run, content, null);
-          if (run.phase === 'BRIEFING') run = startDay(run, content);
-          run = advance(run, sc(), content, TICKS_PER_DAY);
+          if (run.phase === 'REVIEW') run = chooseDraft(run, pack().game, null);
+          if (run.phase === 'BRIEFING') run = startDay(run, pack().game);
+          run = advance(run, sc(), pack().game, TICKS_PER_DAY);
         }
-        if (run.phase === 'REVIEW') run = chooseDraft(run, content, null);
+        if (run.phase === 'REVIEW') run = chooseDraft(run, pack().game, null);
         lastPhase = run.phase;
         recordCareer();
         history = [];
@@ -349,7 +357,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       }
       run = { ...run, hoursLeft: run.hoursLeft - INSIGHT.whatIfHours, insight: run.insight + INSIGHT.perWhatIf };
       whatIfToken++;
-      whatIf = { token: whatIfToken, label: m.label, base: forkForWhatIf(run, content, []), prop: forkForWhatIf(run, content, m.commands), ticks: 0 };
+      whatIf = { token: whatIfToken, label: m.label, base: forkForWhatIf(run, pack().game, []), prop: forkForWhatIf(run, pack().game, m.commands), ticks: 0 };
       post({ type: 'WHATIF_PROGRESS', frac: 0 });
       const token = whatIfToken;
       setTimeout(() => whatIfChunk(token), 0);
@@ -430,7 +438,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = setStartingPerk(run, m.perkId, career.xp);
       break;
     case 'START_DAY':
-      run = startDay(run, content);
+      run = startDay(run, pack().game);
       if (m.auto && run.phase === 'LIVE') {
         if (speed !== AUTO_SPEED) speedBeforeAuto = speed > 0 ? speed : 1;
         speed = AUTO_SPEED;
@@ -446,11 +454,11 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       }
       break;
     case 'CHANGE': {
-      settle(requestChange(run, content, m.req));
+      settle(requestChange(run, pack().game, m.req));
       break;
     }
     case 'DRAFT':
-      run = chooseDraft(run, content, m.optionId);
+      run = chooseDraft(run, pack().game, m.optionId);
       autosave();
       break;
     case 'RCA':
@@ -465,12 +473,15 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'WLM_EDIT': {
       // Edits accumulate on a pending copy of the active policy until it is activated.
-      const res = applyWlmEdit(pendingBase(pendingPolicy, run.sim.wlm.definition), m.edit);
+      const base = pendingBase(pendingPolicy, run.sim.wlm.definition);
+      const res = applyWlmEdit(base, m.edit);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else {
+        const had = new Set(cicsGoalIssues(base).map((i) => i.message));
+        const warn = cicsGoalIssues(res).find((i) => !had.has(i.message));
         pendingPolicy = res;
         postPolicy();
-        post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.` });
+        post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.${warn ? ` Warning: ${warn.message}` : ''}` });
       }
       break;
     }

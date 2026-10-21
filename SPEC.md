@@ -387,6 +387,10 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   Anything unmatched in a non-STC subsystem goes to **SYSOTHER** (discretionary).
 - **Report classes** (pure reporting, cost nothing) — required for granular RMF views.
 - CICS/IMS region management: "Manage regions using goals of TRANSACTION | REGION".
+- CICS transaction classes (any class a CICS rule or the CICS default points at) take one period with a
+  response-time goal. The editor warns on velocity, discretionary or multi-period goals ("not supported",
+  WLM Planning ch. 9–10) and refuses a resource group on such a class, the one case IBM documents the ISPF
+  application rejecting. The sim does not change how it manages such work.
 
 Built-ins (cannot be edited): **SYSTEM** (DP 255), **SYSSTC** (DP 254), **SYSOTHER**.
 System-critical address spaces (*MASTER*, WLM, XCFAS, GRS, CONSOLE, SMF, CATALOG, …) are forced
@@ -686,6 +690,9 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 | New-generation CPC | 15–25 days + a migration-weekend event | big capex; +10–15% per-engine capacity, new caches |
 | DASD alias / cache upgrade | 2 days | capex |
 
+Engine, memory, capacity-setting and generation items are bought for one CPC (picker when the estate has more
+than one; default the first). A capacity step at setting 7 or a new generation on an M2 is refused, not sold.
+
 Rule from IBM: capacity provisioning should not be used with hard-capped LPARs
 ([IBM z/OS Capacity Provisioning](https://www-03.ibm.com/systems/z/os/zos/features/cpm)).
 
@@ -784,7 +791,10 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 - Business complaints in the inbox (late, vague, sometimes wrong).
 
 **Tier 1 (Insight cost: low):**
-- **RMF Monitor III** (live): SYSINFO, DELAY, PROCU, ENCLAVE, WFEX (exceptions), CPC capacity.
+- **RMF Monitor III** (live): SYSSUM (goals vs actuals, PI), SYSINFO, DELAY, PROCU, ENCLAVE, WFEX (exceptions), CPC capacity.
+  Columns and formulas follow RMF Report Analysis ch. 2 (§18): DELAY splits active samples into USG/DLY/UKN
+  (server and subsystem waits are UKN, not delay); SYSINFO shows the LPAR and MVS views of CPU (MVS above LPAR
+  is the short-engine clue); PROCU's Time on CP % IIP is zIIP-eligible work run on CPs.
   Enables the WLM Activity log.
 - **Partition Data report** (PR/SM view, polarity, overhead).
 - **Report class design tool**: suggests report classes for granularity.
@@ -841,9 +851,9 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 |---|---|---|
 | Marketing campaign | MOBILE λ ×2–4 for 1–3 h | Calendar (fogged until the Digital stakeholder mentions it); DDF END/S |
 | Payday / month-end | RBANK, PAYMQ ↑, batch +30% | Calendar (known) |
-| Runaway ad-hoc query | One DDF enclave burns zIIP and CP for hours | Mon III ENCLAVE; DDF period 3 consuming; IIPCP ↑ |
-| Looping batch job in a high class | Misclassified job at imp 2 eats CPU | WLMGL: BATCHHI service ↑; SMF 30 |
-| Retry storm | Timeout → retries → λ ↑ | END/S ↑ while successes ↓; console banner |
+| Runaway ad-hoc query | One DDF enclave burns zIIP and CP for hours | Mon III ENCLAVE; DDF period 3 consuming; IIPCP ↑ (PROCU Time on CP % IIP) |
+| Looping job in a high class (`XLOG_LOOP`) | A log-archiver STC named CICSXLOG matches the `CICS*` region rule, lands in STCHI (imp 1) and loops on one TCB: ~1 engine on PROD1 for 6 h (APPROX); rumoured. Built as an STC, not batch: address spaces classify by jobname only, so the misclassification story is a rule written too broadly | WLMGL: STCHI service ↑ with CICS rates flat; CICSXLOG top STCHI consumer; imp ≥ 2 work on PROD1 CPU-delayed. Fixes: cancel it (Regulator trust −1), or a classification rule sending CICSXLOG to STCLO |
+| Retry storm (`RETRY_STORM`) | Slow card-network authorisations: mobile clients time out and retry, MOBILE λ ×2.5 at unchanged CPU/txn for 3 h around midday (APPROX: fixed multiplier, no feedback loop); rumoured | DDF END/S ×2.5 with CPU/txn flat (bots are cheaper per txn); DDFPRD APPL% ↑. Fixes: client backoff in the API gateway (Digital trust −1), or protect mobile and ride it out |
 | Bot attack on mobile login | λ ×5 on one transaction, CPU-cheap but RACF-heavy | DDF period 1 END/S; TCPIP CPU |
 | New app go-live (`NEW_APP_GOLIVE`) | Branch booking app (BOOKING, OMVS, PROD1) starts with no classification rule → SYSOTHER; stays (once per run) | WLMGL SYSOTHER service ≠ 0 on PROD1. Fixes: add a rule into a goal class, or a report class first to measure it |
 | Shadow IT on TSO (`SHADOW_IT`) | Unapproved model training: TSO CPU/txn ×8, mostly on uncapped DEVT (F9) and at imp 2 on PROD (F5) | Partition Data: DEVT MSU ↑, PROD share ↓; WLMGL TSO APPL% ↑ with END/S flat. Fixes: stop it, cap DEVT, lower TSO importance |
@@ -877,10 +887,10 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 - **Change freeze** (peak season / audit week): emergency changes only.
 - **Hiring freeze (`HIRING_FREEZE`):** −2 engineer-hours/day for 5 days (`hoursDelta`), announced by HR in that morning's briefing; does not stack. Responses: automation, prioritising changes, the contractor perk.
 - **Regulator audit (`AUDIT_UNCLASSIFIED`):** for 5 days (once per run, day ≥ 12) each end of day scans the RMF intervals for SYSOTHER service on any LPAR (> 0.1% APPL): Regulator trust −5 with a finding in the inbox, or +1 if none. Forewarned that morning by the regulator. Responses: classification rules, a catch-all default service class per subsystem, report classes to find the unclassified work.
-- **Pervasive encryption mandate:** +x% CPU on I/O-heavy work (CPACF), plus a new audit SLA.
+- **Pervasive encryption mandate (`ENCRYPTION_MANDATE`):** data set encryption through CPACF: CPU/txn +6% on the I/O-heavy online work (CARDAUTH, TELLER, PAYMQ) from day ≥ 15, permanent, once per run, forewarned by the regulator. Fix: agree a narrower scope (Regulator trust −2); or absorb it. APPROX: batch overhead and the audit SLA are not modelled.
 - **Regulatory deadline moved:** batch must finish by 05:00.
 - **Vendor price increase:** MLC per-MSU +8%.
-- **Data centre power cap (Green IT):** On/Off CoD limited to N engine-days/month.
+- **Data centre power budget (`GREEN_IT_COD`):** On/Off CoD refused by the change desk (and CPM automation) for 7 days, day ≥ 8, once per run, forewarned by Facilities (`blocksHardware`). Responses: cap DEVT, defer discretionary batch, tune policy, permanent capacity. Simplified from "N engine-days/month" to a ban.
 - **Merger:** a new LPAR with an unfamiliar workload and a bad policy lands on your CPC in 5 days.
 - **Audit:** SMF retention requirements; unclassified work becomes an audit finding (Regulator
   trust).
@@ -1082,6 +1092,161 @@ Every flaw must (a) be *harmless-ish on day 1*, (b) become *visibly harmful* und
 event by Act II, (c) have *one or more diagnosable symptoms* with Tier 0–1 tools, and (d) have
 *multiple valid fixes* with different trade-offs.
 
+### 13.4 Second scenario — "State Revenue Agency" (tax season)
+
+Pick it at run start (scenario picker beside the difficulty). Same building blocks as Midwest Mutual
+(one CPC, PROD1/PROD2/DEVT/SYSP, two CFs, Db2 data sharing, CICS, MQ), but the pressure is a **season**:
+e-filing and refund enquiries grow ~2%/day toward a filing deadline, deadline week (day 34–37) adds a
+surge on top (`DEADLINE_SURGE`), and nightly batch volumes grow 0.8%/day. The critical path is the
+**refund run** (REF chain on PROD1, then NTC notices; EMP employer posting on PROD2); the Treasury takes
+the refund file at 06:00, from day 15 at 05:00. Stakeholders are *Taxpayers, Refunds, Agents, Employers*
+plus *Finance* and *Regulator*; a missed batch deadline costs Refunds trust. The regulator is strict:
+the audit cards are drawn 1.5× as often. Story: appropriations cut (day 17, like CFO_MANDATE),
+pre-filled returns go live on USS and land in SYSOTHER (day 23, hinted two days ahead), change freeze
+in deadline week.
+
+| Flaw | Where | Symptom (clue) | Fixes (trade-offs) |
+|---|---|---|---|
+| **G1** e-filing on a velocity goal (WEBDDF, Vel 40, Imp 4), sharing the class with compliance-analytics queries | REVPOL | EFILE SLA misses while WEBDDF's velocity looks met (WLMGL, DELAY: CPU delay behind ONLINE/AGENTS) | own class with a response-time goal (Imp 2); split analytics off (low velocity + discretionary period); or more zIIP |
+| **G2** compliance-analytics batch (CMP*) is the only BATCHHI work; the refund run sits in BATCHPRD | REVPOL | refund chain stretches on busy nights while CMP jobs run fine (job end records, batch Gantt) | swap the rules; or JES initiators/SYSAFF for CMP; or a resource group cap on BATCHHI |
+| **G3** no STC rule for the queue managers: MQ MSTR/CHIN default to STCLO (Vel 20, Imp 5) | REVPOL | EMPLOYER response and queue depth jump on payroll-day peaks; MQ address spaces show CPU delay | rule `MQ*` → STCHI; or route payroll traffic; or bigger MAXDEPTH (buys time only) |
+| **H1** PROD1 soft-capped at 480 MSU (set in the quiet months) | HMC | R4HA reaches the cap as the season grows; capping delay on PROD1 (Partition Data, R4HA gauge) | raise or remove the defined capacity (MLC up); group capacity with PROD2; move work to PROD2 |
+| **H2** IIPHONORPRIORITY=NO on PROD2 (left over from a cost study) | IEAOPT | zIIP delay for EFILE/ANALYTICS on PROD2 while its CPs have white space (DELAY, Partition Data zIIP busy) | YES (zIIP-eligible work may overflow to CPs: more MSU); add a zIIP; route DDF to PROD1 |
+
+The event deck is the seven Midwest cards that name no Midwest workload (REORG_OVERRUN, JOB_ABEND,
+CP_SPARING, HIRING_FREEZE, GREEN_IT_COD, SMF_AUDIT, AUDIT_UNCLASSIFIED; audit cards ×1.5) plus 16
+agency adaptations with the same mechanics retargeted at agency workloads and agency clue text:
+"File early" campaign, runaway compliance query, e-filing access-path regression, credential stuffing on
+taxpayer login, refund-status retry storm, taxpayer-data encryption, zIIP loss, and the infrastructure
+cards (looping log archiver, CF link/failure, DASD, lock escalation, monitor creep, power cap, HSM
+recall storm, CICS SOS). Fixes that charge a bank stakeholder have agency twins charging Taxpayers,
+Refunds or Agents, so no fix is free. Bank-only stories (shadow IT, teller release, booking go-live) are
+left out.
+
+### 13.5 Third scenario — "Harbourline Bank" (large estate; design, not built)
+
+A harder run for players who have finished Midwest Mutual. The estate is big enough that the player
+can't watch everything, but analytics are already partly bought, so the skill tested is **diagnosis
+and trade-offs across images**, not visibility. Target: textbook bot median day ~22–26 on Normal (the
+Midwest target is 28–32), expert bot still wins most seeds.
+
+**Estate.** Two CPCs at two sites ~15 km apart, one production sysplex `HBPLEX`:
+
+| CPC | LPARs | Notes |
+|---|---|---|
+| CPC1 (newer generation, more CPs) | PRDA, PRDB, DEV1 | ICF for CF01 |
+| CPC2 (one generation older, sub-capacity CPs, more zIIPs) | PRDC, PRDD, TST1 | ICF for CF02 |
+
+Six LPARs (Midwest has four), so the performance budget still needs checking (§15: ≤ 2 s per day).
+Db2 data sharing across all four PRD members; CICSPlex SM with TORs on every PRD member and AORs on
+PRDA–PRDD; MQ queue-sharing group; DDF behind the sysplex distributor. CF requests from CPC2 to CF01
+(and CPC1 to CF02) travel the 15 km link, so the existing sync/async heuristic (§5.9) converts more of
+them to async: lock-heavy work runs slower on the "far" side of its structure.
+
+**Analytics at the start.** RMF Monitor III, Partition Data, CF/DASD activity, CICS monitoring and Db2
+accounting are installed on day 1 (`GameContent.startTools`, new). SMF 113, the capacity planner,
+What-if, alerts and automation are still bought with Insight. Starting Insight is lower than
+Midwest's, so the tree still matters.
+
+**Stakeholders:** *Markets* (trading-day online, heaviest weight), *Retail*, *Cards*, *Payments*,
+*Finance*, *Regulator*.
+
+#### Problem 1: strongly spiky online workload
+
+The markets workload (`MKTORD`, CICS order capture, and `MKTQRY`, DDF price queries) has bursts far
+above its hourly mean: at market open (09:30) and close (16:00), on news events (random), and on
+index-rebalance days (story). A burst lifts λ ×3–6 for 30 s – 5 min.
+
+Why it is hard (and real):
+- **Interval reports hide it.** A 15-min RMF interval averages a 2-minute ×5 burst into a +25 % blip.
+  WLMGL looks fine while the SLA counts misses. The clue path is Mon III (100 s range: SYSSUM PI and
+  DELAY spike), CICS monitoring (per-minute response times) and SMF 113 / the incident timeline.
+- **WLM is not instant.** One receiver gets help per 10 s policy interval, and the PI is built from a
+  smoothed history, so a burst shorter than ~a minute is over before WLM has reacted (§5.5).
+- **Capping cuts both ways.** A defined capacity / soft cap barely notices a burst: the R4HA moves
+  slowly. An **absolute cap** (or an LPAR group absolute limit) clips the burst itself. Neither is free:
+  removing caps raises the MLC peak, which is the R4HA, and spiky work moves the R4HA only a little.
+- **Retries amplify.** Order clients time out at 2 s and retry (§5.2 retry storms), so a burst that
+  overloads becomes a longer burst.
+
+Valid fixes, each with a cost:
+- **Headroom:** more CPs or On/Off CoD on CPC1 (capex/opex, MLC if the R4HA rises).
+- **Goals that tolerate bursts:** percentile goals instead of average goals for MKTORD (an average goal
+  is wrecked by one burst); importance 1 plus CPU-critical so lower work is displaced at once (costs
+  everyone else during the burst).
+- **Admission control:** CICS MAXTASKS / transaction classes, Db2 MAXDBAT, to shed or queue the
+  excess (some orders are rejected: Markets trust cost per rejected % instead of per slow %).
+- **Move the burst:** route MKTQRY price queries to CPC2's zIIPs (but see Problem 2).
+- **Caps:** swap the absolute cap for a defined capacity (MLC risk), or raise it.
+
+#### Problem 2: workload-balancing issues across the sysplex
+
+Routing becomes a model, not a fixed table. Each routed workload has a `routingPolicy`:
+- `STATIC`: fixed weights (today's `routing` table; still the default).
+- `WLM`: sysplex distributor `SERVERWLM`-style weights, proportional to each member's displaceable
+  capacity at the workload's importance, refreshed every minute (APPROX: real SD asks WLM every 60 s).
+- `CPSM_GOAL`: CICSPlex SM goal routing, which prefers the AOR with the best recent response time and
+  queue, optionally with abend-aware health checks.
+
+Planted flaws:
+
+| Flaw | Where | Symptom (clue) | Fixes (trade-offs) |
+|---|---|---|---|
+| **B1** DDF sysplex distributor on static weights 40/30/20/10 from before CPC2 was rebalanced | SD config | PRDA hot, PRDD idle; MKTQRY slow only on PRDA (Partition Data per LPAR; Mon III SYSINFO per system) | `WLM` weights (reacts to load, but chases bursts and can oscillate); recompute static weights (stale again as work grows) |
+| **B2** storm drain: one AOR (CICSAOR3 on PRDC) fails transactions fast after a storage shortage; goal routing sees "fast" responses and sends it more | CPSM | Cards errors rise while average response looks *better*; abends concentrated on one region (CICS monitoring, incident log) | abend-aware routing (health threshold: slower to use a recovered region); quiesce the AOR (less capacity); fix the storage cause (RCA) |
+| **B3** WLM weights count CPs only: DDF work, 60 % zIIP-eligible, is sent away from CPC2 where the zIIPs are | SD config | zIIP white space on PRDC/PRDD while PRDA/PRDB run DDF on CPs (Partition Data zIIP busy; PROCU IIP on CP) | zIIP-aware weights (SD `PROCTYPE`-style; more cross-site CF traffic); add zIIPs on CPC1 (capex); IIPHONORPRIORITY tuning |
+| **B4** CF locality: the Payments Db2 lock structure is on CF01, so balancing payments evenly sends half to the far side | CFRM | payments CPU/txn and lock wait higher on PRDC/PRDD (CF Activity: async % by system; Db2 accounting) | rebalance structures (move LOCK1 or duplex it: more CF CPU); keep payments affinity to CPC1 (uneven load); accept it |
+
+Balancing trade-off in one line: **even load vs. locality and affinity**. No setting is best in every
+hour; spikes (Problem 1) make reactive routing worse, which ties the two problems together.
+
+Story beats (sketch): day 0 welcome (estate tour, tools on), day 6 index-rebalance day (scheduled
+burst ×6 at close), day 12 CFO asks for one MLC number for both CPCs, day 18 new mobile trading app
+(DDF, lands under static weights), day 25 site-failover test (CPC2 drained for 2 h; all routing
+policies are tested at once), regulator stress-test week near the end.
+
+#### What has to be built (in order, each runnable on its own)
+
+1. **Multi-CPC world.** `config.cpcs` already allows more than one; the single-CPC assumptions are
+   five `cpcs[0]` call sites (critical-path projection in `step.ts`, `run.ts`, `view.ts` ×2, hardware
+   catalog). Hardware purchases, HMC and Partition Data need a CPC selector. MLC: each CPC's
+   sub-capacity report is separate, so a soft-capping group never spans CPCs (real: a capacity group
+   is defined per CPC), and the bill sums them.
+   *Done (sim/game):* the critical-path projection uses each job's sysaff CPC (unpinned jobs project
+   on the first CPC), a power-cap event throttles every CPC and restores each, and
+   `SET_CAPACITY_GROUP` refuses members on different CPCs. Still on the first CPC: `view.ts` ×2 and
+   the hardware catalog (they wait for the UI CPC selector).
+2. **Burst arrivals.** `ArrivalShape.bursts?: { ratePerHour, heightMult: [lo, hi], durationSec:
+   [lo, hi] }` (seeded, per tick) plus scheduled bursts at fixed times. Default undefined, so Midwest
+   and Revenue are bit-identical.
+   *Done (sim):* `ArrivalShape.bursts` (`BurstShape`: random flat-topped bursts drawn per tick, plus
+   `scheduled` bursts that decay linearly from their height to 1, optionally weekdays only). The RNG is
+   drawn only for workloads that have bursts; `WorkloadRuntime.burst` exists only for them.
+3. **Routing policies.** `routingPolicy` per workload (`STATIC | WLM | CPSM_GOAL`) and per-region
+   health (fast-fail fraction) feeding `CPSM_GOAL`. New verbs: set routing policy, health threshold,
+   zIIP-aware weights, quiesce region. Default `STATIC`, so existing scenarios don't change.
+   *Done (sim, part 1):* `RoutingPolicy` `STATIC | WLM{ziipAware}` per workload (`WorkloadDef.routingPolicy`,
+   state `routingPolicies`, verb `SET_ROUTING_POLICY`). WLM recomputes shares every 60 s from last
+   tick's displaceable capacity at the work's dispatch priority on each candidate LPAR (the keys of
+   the scenario's routing), CP-only unless zIIP-aware, with a 2 % floor and 1 % steps (`content/routing.ts`).
+   `SET_ROUTING` is refused while a dynamic policy is on.
+   *Done (sim, part 2):* `CPSM_GOAL{abendThreshFrac, abendCritFrac, quiesced}`. Every 30 s shares move
+   half-way toward a split weighted by `prevShare × meanRt / seenRt`, where a region's seen response
+   blends normal response with the fast abend time (`abendRtSec`), so a sick region draws work (B2
+   storm drain). Abend compensation as in CICSPlex SM WLM: at ABENDTHRESH a region's weight halves, at
+   ABENDCRIT it is avoided (keeps the 2 % trickle so its recovery is seen); quiesced regions get none.
+   Region failures: `mods.regionFailFrac['WL@LPAR']`; abend rates per workload@lpar sit in
+   `env.failByWorkloadLpar`, present only while a dynamic policy is on. Still to do: game-layer verbs
+   and costs (step 4 content).
+4. **Content:** world, workloads, policy with B1–B4 and the Problem-1 traps, events, story, hints,
+   Codex (sysplex distributor, CICSPlex SM routing, storm drain, absolute capping), bot day-0 fixes,
+   sweeps.
+
+Open questions (also in PROGRESS): how SD `SERVERWLM` weights treat zIIP capacity by default; how
+CPSM's abend-related health checks are configured and how quickly a recovered region gets work again;
+whether an LPAR absolute cap is the right "clips bursts" lever or a group absolute limit is more
+common in practice.
+
 ---
 
 ## 14. UI / screens
@@ -1202,28 +1367,31 @@ never touches the DOM.
 | Area | Fidelity | Notes |
 |---|---|---|
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
-| DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | |
+| DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
-| Discretionary capping conditions | **Real** | |
+| Discretionary capping conditions | **Real** | SG24-7621 §4.22 |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
+| Sysplex distributor WLM weights | **Simplified** | Shares ∝ displaceable capacity at the work's DP (prev tick), recomputed each minute; CP-only by default, zIIP-aware weights blend by zIIP fraction (APPROX of SD PROCTYPE). No server health term yet |
+| CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast; QR TCB overload and timeouts count as slow, so only a genuinely abending region storm-drains), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
+| Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
 | Swap / MPL delay | **Simplified** | Only batch jobs are swappable; swap out least important first when storage overcommits; swap-in immediate when it frees |
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH, depth adds memory; no MQ SMF 115/116 |
 | WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved); NO excludes I/O from velocity |
 | Discretionary goal management | **Simplified** | SG24-7621 §4.22 conditions except the recent receiver/donor test; cap level fictional |
-| Resource group types 1/2/3 semantics | **Real** | Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX) |
+| Resource group types 1/2/3 semantics | **Real** | MVS Planning: WLM ch. 7. CP only (specialty consumption excluded, the default). Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX) |
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
 | HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM is APPROX | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
-| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
+| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
-| Monitor III views (SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s range; PROCU by service-class period, not job |
+| Monitor III views (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | RMF field names and formulas (Report Analysis ch. 2). Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s MINTIME; rows are service-class periods, not jobs or individual enclaves; no IDL state, workload groups or report classes; PRC/DEV using split and zIIP/IIPCP split follow the last tick's mix (APPROX); MVS Util% derived from the PR/SM short-engine wait (APPROX); PR/SM delay % shown directly though RMF has no such field; WFEX criteria are RT/WFL% thresholds at 1.5× the goal (FICTIONAL) |
 | Multi-day projects (threadsafe, zIIP-enable, compression, SQL tuning, archive) | **Plausible model** | Flat per-transaction multipliers on CPU, I/O and zIIP eligibility; sizes FICTIONAL. Events can also cut eligibility (`ziipEligMult`, moves zIIP time back to CP) |
 | Report classes in WLMGL (homogeneous / heterogeneous) | **Faithful simplification** | One row per report class; goal and PI only for a single service-class period (RMF would show report class periods) |
 | WLM service policies and scheduled V WLM,POLICY= switches | **Faithful simplification** | Whole policies are swapped; policy overrides within one policy are not modelled separately |
 | DASD per LCU, HyperPAV alias pools, 256 devices per LCU | **Faithful simplification** | Aliases pooled per LCU (real HyperPAV); hot volumes = top 10% with a skew; utility I/O lands on hot volumes; batch sees class-level SEQ response (APPROX) |
-| CF structures (LOCK/CACHE/LIST), placement, sync→async by type | **Faithful simplification** | Heuristic conversion for cache/list; lock requests never converted (APPROX); no duplexing or rebuild disruption yet |
+| CF structures (LOCK/CACHE/LIST), placement, sync→async by type | **Faithful simplification** | z/OS 1.2+ heuristic: every structure type converts once its sync time passes a per-type threshold (lock threshold FICTIONAL ×1.5); thresholds not scaled by sender CP speed (APPROX) |
 | SMF 101/110 views | **Faithful simplification** | From the sim's per-transaction response-time parts; all transaction CPU shown as class 1 CPU; CF time stands in for GBP/lock-structure suspensions |
 | SMF 113 counters, LSPR category | **Plausible model / real table** | L1MP/RNI/CPI are FICTIONAL functions of polarity mix and CPC busy; the LOW/AVERAGE/HIGH table is IBM's |
 | Response-time distributions | **Log-normal assumption** | Tunable σ per workload |
@@ -1232,7 +1400,7 @@ never touches the DOM.
 | Db2 address space placement guidance | **Real (IBM)** | |
 | Machine capacity, MSU/CP, price tables | **Fictional** | Proportions plausible; no real LSPR numbers |
 | WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts |
-| I/O using/delay split | **APPROX** | Connect+disconnect = using, IOSQ+pend = delay |
+| I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
 | CICS region management | **Simplified** | CICS work on an image shares the AOR regions' DP: most important served period (TRANSACTION, free ride) or the region STC class (REGION); no per-region split of work |
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time |
@@ -1256,15 +1424,23 @@ Primary IBM sources:
   https://www.ibm.com/docs/en/SSEPEK_12.0.0/perf/src/tpc/db2z_determinevelocitygoals.html
 - IBM Db2 12: *Configuring zIIPs for Db2*.
   https://www.ibm.com/docs/SSEPEK_12.0.0/perf/src/tpc/db2z_ibmziip.html
-- IBM docs: *Group capacity* (defined capacity, phantom weight, capping patterns).
-  https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieaw100/grcap.htm
-- IBM docs: *IEAOPTxx parameters* (BLWLTRPCT, BLWLINTHD, IIPHONORPRIORITY, ERV).
-  https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieae200/spi.htm
+- IBM, *z/OS MVS Planning: Workload Management* (V2R5, "MVS Planning: WLM" in code comments): velocity
+  formula (connect = I/O using; IOSQ, pending, CU queue = I/O delay; storage delays incl. paging, swap, MPL),
+  service units for period switching (CPU + SRB only since V2R5), resource group types 1–4 and minimum/maximum
+  semantics, "Include Specialty Processor Consumption", defined capacity (R4HA starts at zero after IPL; cap,
+  cap pattern and phantom weight), group capacity shares, long-term CPU protection, Honor Priority (no CP help
+  for discretionary work), CICS/IMS region management.
+  https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieaw100_v2r5.pdf
+- IBM, *z/OS MVS Initialization and Tuning Reference* (V2R5), IEAOPTxx: BLWLINTHD (default 20 s), BLWLTRPCT
+  (default 0.5%, bounds how many units are promoted), IIPHONORPRIORITY (default YES; no zIIPs online → CPs),
+  ABSMSUCAPPING (cap while R4HA ≥ limit, or always), ERV.
+  https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieae200_v2r5.pdf
 - IBM WSC: *Blocked workload support*.
   https://www.ibm.com/support/pages/system/files/inline-files/blocked_v3.pdf
 - IBM docs: *How z/OS performs sync→async conversion of CF requests*.
   https://www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.ieaf100/huer.htm
-- IBM: *Sync/Async heuristic*.
+- IBM WSC, *Heuristic Conversion of CF Operations* (2007): since z/OS 1.2 lock, list and cache requests are all
+  heuristic-eligible, with per-type thresholds normalised to the sender's CP speed; every Nth request stays sync.
   https://www.ibm.com/support/pages/system/files/inline-files/Sync_Async_Heuristic.pdf
 - IBM: *Relating production workloads to LSPR workloads* (RNI/L1MP table).
   https://www.ibm.com/support/pages/relating-production-workloads-lspr-workloads
@@ -1276,7 +1452,9 @@ Primary IBM sources:
   https://public.dhe.ibm.com/software/uk/itsolutions/leveragingmiddleware/new-face-of-cics/cics-threadsafe-whitepaper.pdf
 - IBM: *z/OS Capacity Provisioning*.
   https://www-03.ibm.com/systems/z/os/zos/features/cpm
-- IBM: *RMF Monitor III reports* (SYSINFO, DELAY, WFEX, ENCLAVE…).
+- IBM: *z/OS RMF Report Analysis* (SC34-2665-50, z/OS 2.5), ch. 2: common Monitor III measurements (using, delay,
+  workflow, execution velocity), MINTIME and range, and the CPC, DELAY, ENCLAVE, PROCU, SYSINFO, SYSSUM and WFEX
+  report field tables. https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/erbb500_v2r5.pdf
   https://www.ibm.com/docs/SSLTBW_2.2.0/com.ibm.zos.v2r2.erbb500/toc.htm
 - IBM: *What is Tailored Fit Pricing for IBM Z?* (consumption baseline, discounted growth, no capping).
   https://www.ibm.com/support/knowledgecenter/SSLTBW_2.3.0/com.ibm.zos.v2r3.izsc100/containerPricingOverview.htm
