@@ -460,6 +460,26 @@ describe('event cards (SPEC §9)', () => {
     expect(lost.cp).toBeGreaterThan(asIs.cp);
   }, 60_000);
 
+  it('a retry storm multiplies mobile arrivals at unchanged CPU per transaction, unlike bot traffic', () => {
+    const perTxn = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let rate = 0;
+      let eng = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        rate += s.last.workloads.find((x) => x.id === 'MOBILE')!.arrivalRate;
+        for (const l of s.last.lpars) for (const sc of l.scps) if (sc.scKey === 'DDFPRD#1') eng += sc.cpEngines + sc.ziipEngines;
+      }
+      return { rate, engPerTxn: eng / rate };
+    };
+    const asIs = perTxn([]);
+    const retry = perTxn(card('RETRY_STORM'));
+    const bots = perTxn(card('BOT_ATTACK'));
+    expect(retry.rate).toBeGreaterThan(2 * asIs.rate);
+    expect(retry.engPerTxn).toBeGreaterThan(0.8 * asIs.engPerTxn);
+    expect(bots.engPerTxn).toBeLessThan(0.7 * asIs.engPerTxn);
+  }, 60_000);
+
   it('an SMF retention audit raises SMF address space CPU and total MSU but no workload response', () => {
     const asIs = run([]);
     const audit = run(card('SMF_AUDIT'));

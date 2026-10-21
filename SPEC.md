@@ -841,7 +841,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 | Payday / month-end | RBANK, PAYMQ ↑, batch +30% | Calendar (known) |
 | Runaway ad-hoc query | One DDF enclave burns zIIP and CP for hours | Mon III ENCLAVE; DDF period 3 consuming; IIPCP ↑ |
 | Looping batch job in a high class | Misclassified job at imp 2 eats CPU | WLMGL: BATCHHI service ↑; SMF 30 |
-| Retry storm | Timeout → retries → λ ↑ | END/S ↑ while successes ↓; console banner |
+| Retry storm (`RETRY_STORM`) | Slow card-network authorisations: mobile clients time out and retry, MOBILE λ ×2.5 at unchanged CPU/txn for 3 h around midday (APPROX: fixed multiplier, no feedback loop); rumoured | DDF END/S ×2.5 with CPU/txn flat (bots are cheaper per txn); DDFPRD APPL% ↑. Fixes: client backoff in the API gateway (Digital trust −1), or protect mobile and ride it out |
 | Bot attack on mobile login | λ ×5 on one transaction, CPU-cheap but RACF-heavy | DDF period 1 END/S; TCPIP CPU |
 | New app go-live (`NEW_APP_GOLIVE`) | Branch booking app (BOOKING, OMVS, PROD1) starts with no classification rule → SYSOTHER; stays (once per run) | WLMGL SYSOTHER service ≠ 0 on PROD1. Fixes: add a rule into a goal class, or a report class first to measure it |
 | Shadow IT on TSO (`SHADOW_IT`) | Unapproved model training: TSO CPU/txn ×8, mostly on uncapped DEVT (F9) and at imp 2 on PROD (F5) | Partition Data: DEVT MSU ↑, PROD share ↓; WLMGL TSO APPL% ↑ with END/S flat. Fixes: stop it, cap DEVT, lower TSO importance |

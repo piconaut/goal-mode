@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 on hold until the user says start. Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-21
-- **Next up:** M8.4 events (22 of ~25), M8.2 balance (textbook below target; waiting on the user), M8.1 structural perf.
+- **Next up:** M8.4 events (23 of ~25), M8.2 balance (textbook below target; waiting on the user), M8.1 structural perf.
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `ccr-2af28431-vidfb0`; see M8.9 for `main`).
 - **Health:** `npm run check` green (299 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) `8a82ad7db2b258ae`.
@@ -129,9 +129,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   tool (Report Class Hoarder); Codex persists (localStorage). Still open: scenario unlocks (one scenario so far)
 
 **M8.4 Content**
-- [~] Events to ~25 (SPEC §9); 22 now. Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
+- [~] Events to ~25 (SPEC §9); 23 now. Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
   NEW_APP_GOLIVE, POWER_CAP, HSM_RECALL_STORM, CP_SPARING (red herring), HIRING_FREEZE, AUDIT_UNCLASSIFIED,
-  ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106). Re-sweep the bots once the deck is complete
+  ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106), RETRY_STORM (loop 110). Re-sweep the bots once the deck is complete
   - VENDOR_PRICE pending: needs a run-level product price multiplier in the sim or a run-aware scenario; asked the user
   - HyperPAV exhaustion dropped: organic LCU I/O is ~2k/s, so even zero aliases moves IOSQ < 0.3 ms (no symptom)
   - STORAGE card (DBA grows DB1B buffer pools on PROD2) not added (loop 107): it exposed a swap deadlock, fixed
@@ -267,6 +267,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-21 (loop 110):** PR #10 (CICS goal checks) merged after check + hashes; RETRY_STORM card (mobile λ ×2.5, CPU/txn flat; fix MOBILE_BACKOFF) with realism test. 308 tests, bench hash unchanged.
 - **2026-10-21 (loop 109):** no-repeat 20-seed re-sweep recorded: do-nothing median 16, textbook 26; ends now mostly trust. No code change.
 - **2026-10-21 (loop 108):** do-nothing day-4 loss traced to back-to-back JOB_ABEND draws; no card repeats on consecutive days. Bench hash unchanged, 299 tests.
 - **2026-10-21 (code-quality thread):** worker/play duplication folded into game helpers; policy names past 9 keep 8 chars (BASEPOL9 → BASEPO10, was BASEPOL1); `noUnusedLocals`. 8-day hash unchanged.

@@ -177,6 +177,27 @@ export const MIDWEST_EVENTS: EventDef[] = [
     clue: 'Mobile END/S ×4 with lower CPU per transaction; TCP/IP busier; DBAT usage spikes.',
   },
   {
+    // A slow downstream (card network authorisations) makes the mobile app time out and retry; each retry is a
+    // full transaction, so arrivals climb at unchanged CPU per transaction. APPROX: a fixed multiplier for the
+    // window rather than a feedback loop on response time.
+    id: 'RETRY_STORM',
+    name: 'Mobile retry storm',
+    category: 'WORKLOAD',
+    minDay: 5,
+    weight: 1.5,
+    trigger: 'DEMAND_SURGE',
+    affects: ['MOBILE'],
+    startHour: [11, 14],
+    durationHours: 3, // the card network recovers
+    // FICTIONAL magnitude: up to three retries on a 2 s client timeout, ~2.5x the offered mobile load.
+    begin: [mod('rate', 'MOBILE', 2.5)],
+    end: [mod('rate', 'MOBILE', 1)],
+    fix: 'MOBILE_BACKOFF',
+    forewarning: null,
+    announcement: null,
+    clue: 'Mobile END/S x2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); DDFPRD APPL% up in step. Fixes: switch on client backoff in the API gateway (Digital trust), or protect mobile and ride it out.',
+  },
+  {
     id: 'CF_LINK',
     name: 'Degraded CF link to CF01',
     category: 'HARDWARE',

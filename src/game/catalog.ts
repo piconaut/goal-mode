@@ -56,6 +56,7 @@ export const FIXES: FixDef[] = [
   { id: 'CANCEL_RUNAWAY', name: 'Cancel the runaway DDF thread', hours: 0.5, trustCost: null, description: '-CANCEL THREAD on the looping BI query.' },
   { id: 'REBIND_REVERT', name: 'REBIND with APREUSE / switch back', hours: 1.5, trustCost: null, description: 'Restore the previous access path for the retail package.' },
   { id: 'BLOCK_BOTS', name: 'Block bot traffic at the edge', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Rate-limit the credential-stuffing source addresses.' },
+  { id: 'MOBILE_BACKOFF', name: 'Turn on retry backoff in the API gateway', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Exponential backoff and a circuit breaker for the mobile app; customers see "try again later" instead of retrying.' },
   { id: 'TERM_UTILITY', name: 'Terminate the overrunning REORG', hours: 0.5, trustCost: { facet: 'Finance', amount: 1 }, description: '-TERM UTILITY: stops the I/O storm; the REORG has to be rescheduled.' },
   { id: 'ROLLBACK_MONITOR', name: 'Roll back the monitoring agent', hours: 1, trustCost: null, description: 'Revert to the previous agent release.' },
   { id: 'STOP_SHADOW_IT', name: 'Stop the unapproved TSO workload', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Find the users behind the TSO CPU and have the model training moved off the mainframe.' },
