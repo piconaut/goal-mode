@@ -109,7 +109,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       ends batch 7 · trust 13; textbook 17 / 28 / 28, ends batch 11 · trust 9; expert 28 / 40 / 40, victory 16 · opex 3 ·
       trust 1. Same as loop 113 within one seed: the polarity change doesn't move balance. Expert's 3 opex ends (seeds 2,
       3, 11, day 28, bill ~$891k) and Harbourline's (seeds 5, 12, 13) all took the BUDGET_SWAP pact first (bots take
-      draft card 0), so the budget is 10% lower and an ordinary bill is >25% over. Expert now declines that pact.
+      draft card 0), so the budget is 10% lower and an ordinary bill is >25% over. Expert now declines that pact; all six
+      seeds re-run to day-40 victories with unchanged bills (Midwest expert ≈ 19/20 wins).
     - **Post-PR #8 re-sweep (2026-10-21, seeds 1–20, 22 cards):** do-nothing 12 / 15 / 21, ends batch 10 · trust 10
       (median 15 is now on target, p90 a bit late); textbook 22 / 27 / 28, ends batch 12 · trust 8 (median 27 is still
       below the 28–32 target, p10 up from 17). Early textbook ends: seeds 13 (day 17) and 20 (day 24) are Retail trust
@@ -365,6 +366,7 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   Reaching 2 s needs structural work (fewer per-tick allocations in buildSlices/accumulateTick, or coarser ticks for
   quiet LPARs), not micro-tuning → open question for the user whether the 2 s budget should be revisited for 6-LPAR
   estates.
+- **2026-10-21 (loop 141):** Post-PR #9 Midwest re-sweep matches loop 113 (balance unchanged by the polarity fix). Expert opex game overs (Midwest 2/3/11, Harbourline 5/12/13) traced to the bots taking the BUDGET_SWAP pact; expert now declines it and those seeds win. Loop stopped at the user's request; game artifact rebuilt.
 - **2026-10-21 (loop 140):** User accepted a larger perf budget for 6-LPAR estates (decisions log); CLAUDE.md rule 5
   updated. Harbourline expert opex losses (seeds 5, 12, 13, 19, all day 28): month-1 bills $1.73–1.76M are below the
   25 % trip ($1.875M), and winners have bills up to $1.80M, so the trip comes from bill + `opexSpentThisMonth`
