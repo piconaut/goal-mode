@@ -10,7 +10,8 @@ export const DISCRETIONARY_PI = 0.81;
 export const PI_MIN_PERCENTILE = 0.5;
 export const PI_MAX_PERCENTILE = 4.0;
 
-export const emptyBuckets = (): number[] => new Array<number>(BUCKETS).fill(0);
+// Literal (packed) rather than new Array(n).fill(0), which is holey and slower to build and sum.
+export const emptyBuckets = (): number[] => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
 // Math.log(bound * goal) per goal value: goals are few and fixed, so the logs are reused across ticks.
 const BOUND_LOGS = new Map<number, number[]>();
