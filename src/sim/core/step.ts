@@ -395,7 +395,8 @@ function prsm(t: TickCtx): void {
 function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemState[]; log: string[] } {
   const { prev, def, systems, lparTicks, evalInputs } = t;
   const spPi = sysplexPis(def, systems);
-  const log = [...prev.wlm.log];
+  // The previous log is only copied once a line is added (states are never mutated in place).
+  let log = prev.wlm.log;
   const adjusted = systems.map((sys) => {
     const lt = lparTicks.find((x) => x.lparId === sys.lparId)!;
     const out = policyAdjust({
@@ -406,12 +407,18 @@ function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemSta
       sysplexPi: spPi,
       clockText,
     });
-    if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) log.push(out.log);
+    if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
+      if (log === prev.wlm.log) log = [...log];
+      log.push(out.log);
+    }
     // This tick's period states are fresh objects: apply the new DPs in place.
     for (const s of sys.scps) s.dp = out.dps[s.scKey] ?? s.dp;
     return sys;
   });
-  while (log.length > WLM_LOG_MAX) log.shift();
+  if (log.length > WLM_LOG_MAX) {
+    if (log === prev.wlm.log) log = [...log];
+    while (log.length > WLM_LOG_MAX) log.shift();
+  }
   return { adjusted, log };
 }
 
@@ -1147,9 +1154,14 @@ function cicsRegions(
   addressSpaces: readonly AddressSpaceDef[],
   lparId: string,
 ): { regions?: LparEvalInput['regions'] } {
-  const keys = [...new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.scKey))].sort();
   const aor = addressSpaces.find((a) => a.lparId === lparId && a.role === 'CICS.AOR');
-  if (keys.length === 0 || !aor) return {};
+  if (!aor) return {};
+  const keys: string[] = [];
+  for (const s of slices) {
+    if (s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS' && !keys.includes(s.scKey)) keys.push(s.scKey);
+  }
+  if (keys.length === 0) return {};
+  keys.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   return { regions: { keys, mode: def.cicsRegionMode ?? 'TRANSACTION', regionKey } };
 }
