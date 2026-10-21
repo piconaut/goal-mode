@@ -1098,15 +1098,21 @@ in deadline week.
 
 | Flaw | Where | Symptom (clue) | Fixes (trade-offs) |
 |---|---|---|---|
-| **G1** e-filing on a velocity goal (WEBDDF, Vel 40, Imp 3), sharing the class with compliance-analytics queries | REVPOL | EFILE SLA misses while WEBDDF's velocity looks met (WLMGL, DELAY: CPU delay behind ONLINE/AGENTS) | own class with a response-time goal (Imp 2); split analytics off (low velocity + discretionary period); or more zIIP |
+| **G1** e-filing on a velocity goal (WEBDDF, Vel 40, Imp 4), sharing the class with compliance-analytics queries | REVPOL | EFILE SLA misses while WEBDDF's velocity looks met (WLMGL, DELAY: CPU delay behind ONLINE/AGENTS) | own class with a response-time goal (Imp 2); split analytics off (low velocity + discretionary period); or more zIIP |
 | **G2** compliance-analytics batch (CMP*) is the only BATCHHI work; the refund run sits in BATCHPRD | REVPOL | refund chain stretches on busy nights while CMP jobs run fine (job end records, batch Gantt) | swap the rules; or JES initiators/SYSAFF for CMP; or a resource group cap on BATCHHI |
 | **G3** no STC rule for the queue managers: MQ MSTR/CHIN default to STCLO (Vel 20, Imp 5) | REVPOL | EMPLOYER response and queue depth jump on payroll-day peaks; MQ address spaces show CPU delay | rule `MQ*` → STCHI; or route payroll traffic; or bigger MAXDEPTH (buys time only) |
 | **H1** PROD1 soft-capped at 480 MSU (set in the quiet months) | HMC | R4HA reaches the cap as the season grows; capping delay on PROD1 (Partition Data, R4HA gauge) | raise or remove the defined capacity (MLC up); group capacity with PROD2; move work to PROD2 |
 | **H2** IIPHONORPRIORITY=NO on PROD2 (left over from a cost study) | IEAOPT | zIIP delay for EFILE/ANALYTICS on PROD2 while its CPs have white space (DELAY, Partition Data zIIP busy) | YES (zIIP-eligible work may overflow to CPs: more MSU); add a zIIP; route DDF to PROD1 |
 
-The event deck so far is the seven Midwest cards that name no Midwest workload (REORG_OVERRUN,
-JOB_ABEND, CP_SPARING, HIRING_FREEZE, GREEN_IT_COD, SMF_AUDIT, AUDIT_UNCLASSIFIED); agency-specific
-cards come next.
+The event deck is the seven Midwest cards that name no Midwest workload (REORG_OVERRUN, JOB_ABEND,
+CP_SPARING, HIRING_FREEZE, GREEN_IT_COD, SMF_AUDIT, AUDIT_UNCLASSIFIED; audit cards ×1.5) plus 16
+agency adaptations with the same mechanics retargeted at agency workloads and agency clue text:
+"File early" campaign, runaway compliance query, e-filing access-path regression, credential stuffing on
+taxpayer login, refund-status retry storm, taxpayer-data encryption, zIIP loss, and the infrastructure
+cards (looping log archiver, CF link/failure, DASD, lock escalation, monitor creep, power cap, HSM
+recall storm, CICS SOS). Fixes that charge a bank stakeholder have agency twins charging Taxpayers,
+Refunds or Agents, so no fix is free. Bank-only stories (shadow IT, teller release, booking go-live) are
+left out.
 
 ### 13.5 Third scenario — "Harbourline Bank" (large estate; design, not built)
 
@@ -1197,6 +1203,10 @@ policies are tested at once), regulator stress-test week near the end.
    catalog). Hardware purchases, HMC and Partition Data need a CPC selector. MLC: each CPC's
    sub-capacity report is separate, so a soft-capping group never spans CPCs (real: a capacity group
    is defined per CPC), and the bill sums them.
+   *Done (sim/game):* the critical-path projection uses each job's sysaff CPC (unpinned jobs project
+   on the first CPC), a power-cap event throttles every CPC and restores each, and
+   `SET_CAPACITY_GROUP` refuses members on different CPCs. Still on the first CPC: `view.ts` ×2 and
+   the hardware catalog (they wait for the UI CPC selector).
 2. **Burst arrivals.** `ArrivalShape.bursts?: { ratePerHour, heightMult: [lo, hi], durationSec:
    [lo, hi] }` (seeded, per tick) plus scheduled bursts at fixed times. Default undefined, so Midwest
    and Revenue are bit-identical.

@@ -424,10 +424,14 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       if (!e.started && e.startTick <= tick) {
         cmds.push(...scaleEventCommands(def?.begin ?? [], difficultyOf(r.difficulty).eventSeverityMult));
         if (def?.capacityDrop) {
-          const cpc = r.sim.config.cpcs[0]!;
-          const to = Math.max(4, cpc.capacitySetting - def.capacityDrop) as 4 | 5 | 6 | 7;
-          cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to });
-          resolvedEnd.set(e.uid, [{ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting }]);
+          // A site power cap throttles every CPC on the floor; the end restores each one's setting.
+          const restore: Command[] = [];
+          for (const cpc of r.sim.config.cpcs) {
+            const to = Math.max(4, cpc.capacitySetting - def.capacityDrop) as 4 | 5 | 6 | 7;
+            cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to });
+            restore.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting });
+          }
+          resolvedEnd.set(e.uid, restore);
         }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
         if (def?.perkTip && r.perks.includes(def.perkTip.perk)) r = msg(r, def.perkTip.from, def.name, def.perkTip.text);

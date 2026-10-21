@@ -101,7 +101,10 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       if (cmd.msu !== null && cmd.msu < 1) return fail(s, 'Defined capacity must be ≥ 1 MSU');
       return ok(withConfig(s, (c) => (c.lpars.find((x) => x.id === cmd.lparId)!.definedCapacityMsu = cmd.msu)), `${cmd.lparId} defined capacity ${cmd.msu ?? 'none'}`);
 
-    case 'SET_CAPACITY_GROUP':
+    case 'SET_CAPACITY_GROUP': {
+      // Capacity groups are defined per CPC on the HMC; members on two CPCs can't share one.
+      const memberCpcs = new Set(s.config.lpars.filter((l) => cmd.members.includes(l.id)).map((l) => l.cpcId));
+      if (cmd.limitMsu !== null && memberCpcs.size > 1) return fail(s, `Capacity group ${cmd.groupId} spans CPCs; a group must stay on one CPC`);
       return ok(
         withConfig(s, (c) => {
           c.capacityGroups = c.capacityGroups.filter((g) => g.id !== cmd.groupId);
@@ -114,6 +117,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
         }),
         `Capacity group ${cmd.groupId} ${cmd.limitMsu ?? 'removed'}`,
       );
+    }
 
     case 'SET_ABSOLUTE_CAP':
       return ok(withConfig(s, (c) => (c.lpars.find((x) => x.id === cmd.lparId)!.pools.find((p) => p.pool === 'CP')!.absoluteCapEngines = cmd.engines)), `${cmd.lparId} absolute cap ${cmd.engines ?? 'none'}`);

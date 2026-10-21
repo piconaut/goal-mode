@@ -1,5 +1,8 @@
 import { PACKS, packOf } from '../../src/content/packs';
-import { PREFILL_APP, REVENUE_STORY } from '../../src/content/events/revenue-events';
+import { EVENT_RUMOURS } from '../../src/content/inquiries';
+import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
+import { FIXES } from '../../src/game/catalog';
+import { PREFILL_APP, REVENUE_EVENTS, REVENUE_STORY } from '../../src/content/events/revenue-events';
 import { REVPOL } from '../../src/content/wlm/revpol';
 import { advance, newRun, overallTrust, startDay } from '../../src/game/run';
 import { FACETS, facetsOf } from '../../src/game/types';
@@ -76,5 +79,48 @@ describe('State Revenue Agency flaws (SPEC §13.4)', () => {
     const on = REVENUE_STORY.find((b) => b.id === 'DEADLINE_WEEK')!.commands!;
     const off = REVENUE_STORY.find((b) => b.id === 'DEADLINE_PASSED')!.commands!;
     expect(off.map((c) => (c.kind === 'SET_MODIFIER' ? [c.key, c.value] : null))).toEqual(on.map((c) => (c.kind === 'SET_MODIFIER' ? [c.key, 1] : null)));
+  });
+});
+
+describe('State Revenue Agency event deck', () => {
+  const workloadIds = new Set([...revenue.scenario.workloads.map((w) => w.id), 'PREFILL']);
+  const lparIds = new Set(revenue.scenario.world.lpars.map((l) => l.id));
+  const facets = revenue.game.facets!.map((f) => f.id);
+
+  it('card ids are unique', () => {
+    const ids = REVENUE_EVENTS.map((e) => e.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('commands only touch workloads, LPARs and CFs of the revenue world', () => {
+    for (const e of REVENUE_EVENTS) {
+      for (const w of e.affects) expect(workloadIds, `${e.id} affects ${w}`).toContain(w);
+      for (const c of [...e.begin, ...e.end]) {
+        if (c.kind === 'SET_MODIFIER' && c.mod !== 'asCpu') expect(workloadIds, `${e.id} ${c.key}`).toContain(c.key);
+        if ('lparId' in c && typeof c.lparId === 'string') expect(lparIds, `${e.id} ${c.kind}`).toContain(c.lparId);
+        if (c.kind === 'ADD_ADDRESS_SPACE') expect(lparIds, e.id).toContain(c.addressSpace.lparId);
+      }
+    }
+  });
+
+  it('every fix exists and charges a facet of the run', () => {
+    for (const e of REVENUE_EVENTS) {
+      if (!e.fix) continue;
+      const fix = FIXES.find((f) => f.id === e.fix);
+      expect(fix, `${e.id} fix ${e.fix}`).toBeDefined();
+      if (fix!.trustCost) expect(facets, `${e.fix}`).toContain(fix!.trustCost.facet);
+    }
+  });
+
+  it('no card text names a Midwest workload, stakeholder or product', () => {
+    const banned = /RBANK|CARDAUTH|MOBILE|TELLER|PAYMQ|ADHOC|Retail|Digital|Cards/;
+    for (const e of REVENUE_EVENTS) {
+      for (const t of [e.name, e.clue, e.announcement, e.forewarning, e.perkTip?.text]) expect(t ?? '', e.id).not.toMatch(banned);
+    }
+  });
+
+  it('every agency card with a new id has a rumour', () => {
+    const midwest = new Set(MIDWEST_EVENTS.map((e) => e.id));
+    for (const e of REVENUE_EVENTS.filter((x) => !midwest.has(x.id))) expect(EVENT_RUMOURS[e.id], e.id).toBeTruthy();
   });
 });

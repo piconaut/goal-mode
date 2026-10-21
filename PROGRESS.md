@@ -10,8 +10,13 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Last updated:** 2026-10-21
 - **Next up:** M8.4 events (23 of ~25), M8.2 balance (textbook below target; waiting on the user), M8.1 structural perf.
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
-- **Health:** `npm run check` green (299 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) `8a82ad7db2b258ae`.
+- **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
+  milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
+  docs-only or in-progress work. Before opening: `npm run check` green, bench hash recorded, PROGRESS updated. Body:
+  what changed since the last merge to `main`, test count, hashes, sweep results, anything waiting on the user. At most
+  one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
+- **Health:** `npm run check` green (332 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+  bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
@@ -90,6 +95,14 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: SLA fine, loses on opex), expert (scripted good play incl. capacity orders and caps: wins with grade A on Normal)
 - [ ] Targets hold across ≥ 20 seeds (median and spread), not just seed 42; event-deck intensity, growth rates and trust weights tuned from sweeps
   - Latest results, Normal (day p10 / median / p90):
+    - **Loop-113 re-sweep (2026-10-21, seeds 1–20, after RETRY_STORM, per-scenario facets and PR #13):** do-nothing
+      11 / 17 / 21, ends trust 14 · batch 6; textbook 17 / 28 / 28, ends batch 11 · trust 9 (median 28 reaches the 28–32
+      target, but 10 of 20 runs end on a batch miss on exactly day 28: a fixed wall where nightly growth outruns the
+      window and textbook buys no capacity; early ends are trust on days 17–22); expert 28 / 40 / 40, victory 17 · opex 3.
+      Traced (loop 116): the wall is REG_DEADLINE (05:00 from day 20) plus 0.4%/day nightly growth. Textbook batch ends
+      04:00–04:50 on days 20–26, then crosses 05:00 on day 27; two misses end the run on day 28. The batch-capacity
+      reaction lives in `fixer` (expert, spend-to-win), not textbook, by design; the morning hint and batch projection are
+      the clue path, and expert buys the capacity setting on day 1. No change: intended pressure, median on target.
     - **Post-PR #8 re-sweep (2026-10-21, seeds 1–20, 22 cards):** do-nothing 12 / 15 / 21, ends batch 10 · trust 10
       (median 15 is now on target, p90 a bit late); textbook 22 / 27 / 28, ends batch 12 · trust 8 (median 27 is still
       below the 28–32 target, p10 up from 17). Early textbook ends: seeds 13 (day 17) and 20 (day 24) are Retail trust
@@ -151,13 +164,21 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   Loop 102 smoke sweep (seeds 1–4): no regression
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
-- [~] *State Revenue Agency* playable (loop 114, SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`,
+- [x] *State Revenue Agency* playable (loop 114, SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`,
   picker in the new-run dialog and day-1 briefing), per-scenario facets, flaws G1–G3/H1–H2, story beats with a
   two-day hint for pre-filled returns. First sweep (seeds 1–6, Normal): do-nothing 10 / 14 / 20 (trust 5 · batch 1,
   mostly Regulator after batch misses), textbook 26 / 29 / 30 (trust 6: Taxpayers or Regulator), expert victory 6/6.
-  Already on target; re-sweep 20 seeds. Next: agency-specific event cards (adapt the Midwest ones with their own
-  text: e-filing campaign, refund-status retry storm, looping refund STC…), Codex entries for IIPHONORPRIORITY and
-  soft capping if missing, Story/Hard sweeps
+  Agency deck done (loop 116: 16 adapted cards, see SPEC §13.4). 20-seed sweep with it (seeds 1–20, Normal):
+  do-nothing 15 / 22 / 23 (trust 20, 19 Taxpayers; too late, target ~12–18: the 7-card deck's frequent audit cards are
+  now diluted), textbook 27 / 29 / 29 (trust 20, all Taxpayers; on target), expert 40 / 40 / 40 (victory 19, trust 1).
+  Tried G1 heavier analytics (0.3 → 0.45 qps, seeds 1–10): no effect (do-nothing 18 / 22 / 24, textbook unchanged), reverted.
+  Both bots' incidents are mostly CPU_PRIORITY (do-nothing 298, textbook 217 over 20 seeds), so the planted fixes barely
+  relieve the main pressure. Seed 5: do-nothing's hits are EFILE CPU_PRIORITY (G1); textbook's are the day-22 PREFILL
+  app. Lowered WEBDDF to importance 4 (G1 bites harder; textbook gives e-filing its own class, so it is unaffected).
+  Seeds 1–10: do-nothing 11 / 14 / 15 (on target), textbook 28 / 29 / 29 (unchanged). Codex already covers
+  IIPHONORPRIORITY (`ziip`) and soft capping (`r4ha`). **20-seed confirmation (loop 117, Normal):** do-nothing
+  10 / 13 / 15, textbook 27 / 29 / 29, expert 40 / 40 / 40 (victory 19, trust 1); all ends trust. Done; follow-ups:
+  Story/Hard sweeps, textbook's day-22 PREFILL losses (its PFILAPI class still misses).
 - [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
   - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
@@ -311,9 +332,18 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
+  (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
+- **2026-10-21 (loop 118):** large-bank step 1 (multi-CPC, SPEC §13.5): per-job-CPC critical projection, power cap hits
+  every CPC, capacity groups must stay on one CPC; two-CPC Midwest test (deterministic, group check). 332 tests, hash
+  `eddf17fc7c615524`. Next: view/hardware CPC selector, then step 2 burst arrivals.
+- **2026-10-21 (loop 116):** textbook day-28 wall traced (intended; above). Revenue deck: 16 agency cards adapted from
+  Midwest (retargeted mechanics, agency clues, facet-correct fix twins), bot fix lookup per scenario. 330 tests, Midwest
+  hash unchanged, Midwest expert table identical.
 - **2026-10-21 (loop 115):** PR #13 (Monitor III screens per RMF Report Analysis) reviewed by the new `pr-reviewer`
   subagent and merged (325 tests, hash unchanged). Sweep now saves each run to `<out>.partial.jsonl` and has `--resume`
-  (a sweep killed at 59/60 had lost everything). SPEC §13.5 large-bank design written. Midwest 20-seed re-sweep running.
+  (a sweep killed at 59/60 had lost everything). SPEC §13.5 large-bank design written. Midwest 20-seed re-sweep: textbook
+  median 28 (on target) with a day-28 batch wall, do-nothing 17, expert 17/20 victories. Branch renamed to `dev`.
 - **2026-10-21 (loop 114):** second scenario *State Revenue Agency* (scenario packs, per-scenario facets, shared batch generator, REVPOL flaws G1–G3, H1–H2, SPEC §13.4, bot day-0 fixes, UI picker). Midwest unchanged: bench hash `eddf17fc7c615524`, goldens unchanged, 320 tests. Revenue sweep seeds 1–6 on target (above). The loop-113 Midwest re-sweep died mid-run (a bot.ts edit during the sweep); re-run pending. Planned a large-bank scenario (user request).
 - **2026-10-21 (loop 110):** PR #10 (CICS goal checks) merged after check + hashes; RETRY_STORM card (mobile λ ×2.5, CPU/txn flat; fix MOBILE_BACKOFF) with realism test. 308 tests, bench hash unchanged.
 - **2026-10-21 (IBM-docs realism thread):** audited WLM, capping, IEAOPTxx, CF heuristic against MVS Planning: WLM V2R5,

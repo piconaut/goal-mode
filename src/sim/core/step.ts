@@ -242,10 +242,12 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
 
   // Batch critical-path projection and end-of-night summary.
   if (prev.tick % CRITICAL_PROJECTION_EVERY === 0) {
-    const cpc0 = config.cpcs[0]!;
-    const cpSp0 = cpSpeed(cpc0);
-    const zSp0 = ziipSpeed(cpc0);
-    batch.projectedCriticalEndSec = projectCriticalEnd(batch.jobs, clock.day, prev.tick, (j) => jobShape(j.def, cpSp0, zSp0, io.SEQ.rtSec).elapsed);
+    // A job runs at its sysaff LPAR's CPC speed; unpinned jobs project on the first CPC.
+    const cpcOfJob = (lparId: string | null): CpcConfig => cpcOf[config.lpars.find((l) => l.id === lparId)?.cpcId ?? ''] ?? config.cpcs[0]!;
+    batch.projectedCriticalEndSec = projectCriticalEnd(batch.jobs, clock.day, prev.tick, (j) => {
+      const cpc = cpcOfJob(j.def.sysaff);
+      return jobShape(j.def, cpSpeed(cpc), ziipSpeed(cpc), io.SEQ.rtSec).elapsed;
+    });
   }
   if (tickOfDay === TICKS_PER_DAY - 1) batch = closeNight(batch, clock.day);
 

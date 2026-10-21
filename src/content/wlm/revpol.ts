@@ -19,8 +19,8 @@ export const REVPOL: ServiceDefinition = {
     sc('STCLO', 'Low STCs', [vel(20, 5)]),
     sc('ONLINE', 'Taxpayer online: account, refund status', [pct(95, 0.3, 1)]),
     sc('AGENTS', 'Call centre and employer services', [pct(90, 0.5, 2)]),
-    // G1: e-filing has a velocity goal, at importance 3, in one class with the compliance analysts' queries.
-    sc('WEBDDF', 'All DDF: web filing and analytics', [vel(40, 3)]),
+    // G1: e-filing has a velocity goal, at importance 4, in one class with the compliance analysts' queries.
+    sc('WEBDDF', 'All DDF: web filing and analytics', [vel(40, 4)]),
     // G2: the compliance analytics batch is "high" because an auditor once asked for it by 07:00.
     sc('BATCHHI', 'High batch', [vel(50, 3)]),
     sc('BATCHPRD', 'Production batch', [vel(30, 4)]),
