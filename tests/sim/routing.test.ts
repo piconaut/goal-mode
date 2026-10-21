@@ -108,4 +108,29 @@ describe('CICSPlex SM goal routing', () => {
     expect(run(null)).toBeGreaterThan(0.8);
     expect(run(0.2)).toBeLessThan(0.05);
   });
+
+  it('a QR-saturated region is slow, not an abend: it does not storm-drain', () => {
+    const workloads = structuredClone(MIDWEST.workloads);
+    workloads.find((w) => w.id === 'RBANK')!.routingPolicy = goal({});
+    const scenario = { ...MIDWEST, workloads, batchNetwork: MIDWEST.batchNetwork };
+    let s = initState(42, scenario);
+    const start = s.routing.RBANK?.PROD2 ?? scenario.workloads.find((w) => w.id === 'RBANK')!.routing.PROD2!;
+    let qrFailedTicks = 0;
+    for (let i = 0; i < 1.5 * TICKS_PER_HOUR; i++) {
+      const cmds =
+        i === TICKS_PER_HOUR
+          ? [
+              { kind: 'SET_CICS' as const, name: 'CICSAOR2', qrFrac: 1 },
+              { kind: 'SET_CICS' as const, name: 'CICSAOR4', qrFrac: 1 },
+              { kind: 'SET_MODIFIER' as const, mod: 'rate' as const, key: 'RBANK', value: 4 },
+              { kind: 'SET_MODIFIER' as const, mod: 'cpu' as const, key: 'RBANK', value: 4 },
+            ]
+          : [];
+      s = step(s, cmds, scenario);
+      if (i > TICKS_PER_HOUR && (s.last.workloads.find((w) => w.id === 'RBANK')?.failed ?? 0) > 0) qrFailedTicks++;
+      expect(s.env.failByWorkloadLpar?.['RBANK@PROD2'] ?? 0).toBe(0);
+    }
+    expect(qrFailedTicks).toBeGreaterThan(0);
+    expect(s.routing.RBANK!.PROD2!).toBeLessThanOrEqual(start + 0.05);
+  });
 });

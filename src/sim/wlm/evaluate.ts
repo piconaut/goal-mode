@@ -57,6 +57,9 @@ export interface SliceSpec {
   extraOtherSec: number;
   /** Fraction of transactions failing due to subsystem limits (e.g. QR TCB overload). */
   failFrac: number;
+  /** The part of failFrac that fails fast (abends, rejections) rather than by QR overload; what
+   * CPSM's abend probability sees. Absent = all of failFrac. */
+  abendFrac?: number;
   /** Queueing before the work manager sees the request (MXT, DBAT): end users feel it,
    * WLM and RMF response times do not include it. */
   outsideWaitSec: number;

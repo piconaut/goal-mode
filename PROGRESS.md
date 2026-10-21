@@ -17,7 +17,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
   comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
-- **Health:** `npm run check` green (357 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+- **Health:** `npm run check` green (358 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -349,6 +349,12 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 132):** decision (user, 2026-10-21): QR TCB overload failures count as *slow*, not as abends,
+  for CPSM goal routing; real CICS queues on a saturated QR rather than abending fast, so an overloaded region
+  repels work and only a genuinely abending region (SICK_AOR) storm-drains. Sim: slices carry `abendFrac`
+  (Db2/MQ rejections, `regionFailFrac`) and `failByWorkloadLpar` counts only that. New test: a QR-saturated PROD2
+  never registers abends and doesn't draw RBANK (fails without the fix). SPEC §17 updated. 358 tests, hash
+  unchanged. Harbourline 3 days seed 1: donothing MKTORD worst hours 87–92 % (was 82–91), textbook unchanged.
 - **2026-10-21 (loop 131):** diagnosed the Harbourline dips (sonnet subagent): the scheduled 09:30 ×5 / 16:00 ×4
   market bursts overloaded the AOR QR TCBs (qrFrac 0.6) on any config, and a starved MQ slice (PAYMENTS) reported
   backlog / 1e-9 s as response time (~1e10 s → 0 % hour, and a bogus MXT wait labelled THREAD_LIMIT). Fixes: sim

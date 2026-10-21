@@ -549,10 +549,14 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     }
     if (w.subsystem === 'DDF') outside += dbatWait;
     if (db2Work) t.onlineDb2Rate += s.rate;
-    if (db2FailFrac > 0 && db2Work) failFrac = Math.max(failFrac, db2FailFrac);
-    if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
+    // A saturated QR TCB makes a region slow, not fast-failing, so it doesn't count as an abend for routing.
+    let abendFrac = 0;
+    if (db2FailFrac > 0 && db2Work) abendFrac = Math.max(abendFrac, db2FailFrac);
+    if (mqFailFrac > 0 && w.mq) abendFrac = Math.max(abendFrac, mqFailFrac);
     const regionFail = prev.mods.regionFailFrac?.[wlLparKey(w.id, l.id)];
-    if (regionFail) failFrac = Math.max(failFrac, regionFail);
+    if (regionFail) abendFrac = Math.max(abendFrac, regionFail);
+    failFrac = Math.max(failFrac, abendFrac);
+    if (t.failByWorkloadLpar) s.abendFrac = abendFrac;
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
     s.ioPerTxn = ioPerTxn;
     s.extraParts = parts;
@@ -737,8 +741,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
       compBy[k] = (compBy[k] ?? 0) + r.completions;
       if (failByWorkloadLpar) {
-        // Only fast failures (abends, subsystem rejections) count; a timeout is slow and shows in the response.
-        failByWorkloadLpar[k] = (failByWorkloadLpar[k] ?? 0) + Math.min(r.failed, s.rate * TICK_SEC * s.failFrac);
+        // Only fast failures (abends, subsystem rejections) count; timeouts and QR overload are slow and show in the response.
+        failByWorkloadLpar[k] = (failByWorkloadLpar[k] ?? 0) + Math.min(r.failed, s.rate * TICK_SEC * (s.abendFrac ?? s.failFrac));
         tries[k] = (tries[k] ?? 0) + r.completions + r.failed;
       }
       const w = workloadById[s.workloadId]!;
