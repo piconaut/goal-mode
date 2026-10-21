@@ -42,10 +42,11 @@ interface PoolPlan {
 
 // Everything in resolveCpc that depends only on configuration, reused while the CPC and LPAR list are the
 // same objects (config edits clone the config, so any change is a new array).
-const planCache = new WeakMap<readonly LparConfig[], { cpc: CpcConfig; plans: PoolPlan[] }>();
+const planCache = new WeakMap<readonly LparConfig[], { cpc: CpcConfig; plans: PoolPlan[] }[]>();
 function poolPlans(cpc: CpcConfig, lpars: readonly LparConfig[]): PoolPlan[] {
-  const hit = planCache.get(lpars);
-  if (hit && hit.cpc === cpc) return hit.plans;
+  let entries = planCache.get(lpars);
+  if (!entries) planCache.set(lpars, (entries = []));
+  for (const e of entries) if (e.cpc === cpc) return e.plans;
   const plans: PoolPlan[] = [];
   for (const pool of POOLS) {
     const members = lpars
@@ -78,7 +79,7 @@ function poolPlans(cpc: CpcConfig, lpars: readonly LparConfig[]): PoolPlan[] {
     }
     plans.push({ pool, dedicated, shared, physicalShared, ltoP, usablePhysical, baseClaims, ent });
   }
-  planCache.set(lpars, { cpc, plans });
+  entries.push({ cpc, plans });
   return plans;
 }
 
