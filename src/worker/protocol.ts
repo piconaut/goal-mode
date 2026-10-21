@@ -16,7 +16,7 @@ import type { Command } from '../sim/core/commands';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { BatchNight, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
-import type { WlmEdit } from '../game/wlmEdit';
+import type { CicsGoalIssue, WlmEdit } from '../game/wlmEdit';
 import type { Mechanism, Trigger } from '../game/types';
 import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
@@ -33,6 +33,9 @@ export interface PendingPolicyView {
   ioPriorityManagement: boolean;
   cicsRegionMode: 'TRANSACTION' | 'REGION';
   rules: { subsystem: string; text: string }[];
+  /** CICS transaction classes and what's wrong with their goals. */
+  cicsClasses: string[];
+  cicsIssues: CicsGoalIssue[];
 }
 
 export type SmfKind = 'DB2' | 'CICS' | 'BATCH' | 'SMF113';

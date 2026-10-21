@@ -175,6 +175,7 @@ details.section > summary h3::before { content: '▾ '; }
 details.section:not([open]) > summary h3::before { content: '▸ '; }
 .now { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 .err { font-size: 12px; color: var(--crit); }
+.warn-text { font-size: 12px; color: var(--warn); }
 .help { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
 .diff { margin: 0; padding-left: 18px; font-family: var(--mono); font-size: 12px; }
 .diff li { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 2px 0; }

@@ -57,6 +57,60 @@ function useReportClass(d: ServiceDefinition, rc: string | null | undefined): st
 }
 
 export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | string {
+  const res = applyEdit(def, e);
+  if (typeof res === 'string') return res;
+  // Only refuse errors this edit introduces, so an older policy that already has one stays editable.
+  const before = new Set(cicsGoalIssues(def).filter((i) => i.severity === 'error').map((i) => i.message));
+  const added = cicsGoalIssues(res).find((i) => i.severity === 'error' && !before.has(i.message));
+  return added ? added.message : res;
+}
+
+/** Service classes that CICS transactions are classified into (CICS rules and default), built-ins excluded. */
+export function cicsTransactionClasses(def: ServiceDefinition): string[] {
+  const ids = new Set<string>();
+  const walk = (rules: readonly ClassificationRule[]) => {
+    for (const r of rules) {
+      if (r.serviceClass) ids.add(r.serviceClass);
+      walk(r.children);
+    }
+  };
+  for (const ss of def.subsystems) {
+    if (ss.subsystem !== 'CICS') continue;
+    if (ss.defaultServiceClass) ids.add(ss.defaultServiceClass);
+    walk(ss.rules);
+  }
+  return def.classes.map((c) => c.id).filter((id) => ids.has(id));
+}
+
+export interface CicsGoalIssue {
+  classId: string;
+  severity: 'error' | 'warning';
+  message: string;
+}
+
+/** CICS transaction classes take only single-period response-time goals and no resource group
+ * (WLM Planning ch. 9–10, SG24-6472). IBM documents an ISPF error only for the resource group;
+ * velocity and multi-period are just "not supported", so those stay warnings. */
+export function cicsGoalIssues(def: ServiceDefinition): CicsGoalIssue[] {
+  const out: CicsGoalIssue[] = [];
+  for (const id of cicsTransactionClasses(def)) {
+    const c = def.classes.find((x) => x.id === id)!;
+    if (c.resourceGroup)
+      out.push({ classId: id, severity: 'error', message: `${id} serves CICS transactions, which can't be in a resource group (WLM Planning). Take it out of ${c.resourceGroup} or classify the CICS work into another class.` });
+    if (c.periods.length > 1)
+      out.push({ classId: id, severity: 'warning', message: `${id} serves CICS transactions but has ${c.periods.length} periods: not supported (WLM Planning ch. 9–10). Service is accounted to the regions, so WLM can't track a period duration for a transaction.` });
+    const kinds = [...new Set(c.periods.map((p) => p.goal.kind).filter((k) => k === 'VEL' || k === 'DISC'))];
+    for (const k of kinds)
+      out.push({
+        classId: id,
+        severity: 'warning',
+        message: `${id} serves CICS transactions but has a ${k === 'VEL' ? 'velocity' : 'discretionary'} goal: not supported (WLM Planning ch. 9–10). ${k === 'VEL' ? 'Velocity data is accounted to the regions; ' : ''}CICS transactions take only response-time goals (average or percentile).`,
+      });
+  }
+  return out;
+}
+
+function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | string {
   const d = structuredClone(def);
   switch (e.op) {
     case 'SET_PERIOD': {
