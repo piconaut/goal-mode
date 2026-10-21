@@ -16,8 +16,12 @@ import type { SimState } from '../sim/core/types';
 import type { NightSummary } from '../sim/subsys/batch';
 
 export type Phase = 'BRIEFING' | 'LIVE' | 'REVIEW' | 'GAMEOVER' | 'VICTORY';
-export type Facet = 'Retail' | 'Cards' | 'Digital' | 'Payments' | 'Finance' | 'Regulator';
+/** A stakeholder whose trust is tracked. Scenarios name their own; every scenario has Finance and Regulator. */
+export type Facet = string;
+/** Midwest Mutual's facets (the default when a scenario names none). */
 export const FACETS: readonly Facet[] = ['Retail', 'Cards', 'Digital', 'Payments', 'Finance', 'Regulator'];
+/** The facets this run tracks, in display order. */
+export const facetsOf = (run: { trust: Record<Facet, number> }): Facet[] => Object.keys(run.trust);
 
 export type Mechanism =
   | 'CPU_CAPACITY'
@@ -184,6 +188,10 @@ export interface RunState {
   day: number;
   maxDays: number;
   trust: Record<Facet, number>;
+  /** Trust loss multiplier per facet for SLA breaches; absent = Midwest weights. */
+  facetWeights?: Record<Facet, number>;
+  /** Facet that also loses trust when critical batch misses its deadline; absent = Retail. */
+  batchMissFacet?: Facet;
   hoursLeft: number;
   baseHours: number;
   bonusHours: { hours: number; untilDay: number }[];

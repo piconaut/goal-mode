@@ -36,6 +36,7 @@ import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, previewChange } from '
 import { hourAttainment, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
+  facetsOf,
   type ActiveEvent,
   type DayReport,
   type Facet,
@@ -53,17 +54,28 @@ export interface GameContent {
   opexBudgetMonthly: number;
   capexQuarter: number;
   maxDays: number;
+  /** Stakeholder facets with their SLA-breach trust weights; absent = Midwest's (FACET_WEIGHT). */
+  facets?: { id: Facet; weight: number }[];
+  /** Facet that also loses trust on a missed batch deadline (default Retail). */
+  batchMissFacet?: Facet;
   /** Planted flaws already fixed at the start on a difficulty (SPEC §11.2, §13.3). */
   startingFixes?: Partial<Record<DifficultyId, { flaw: string; label: string; commands: Command[] }[]>>;
 }
 
 const BASE_HOURS = 8;
 const FATIGUE_PER_OVERTIME_HOUR = 6;
-const FACET_WEIGHT: Record<Facet, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
+const FACET_WEIGHT: Record<string, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
 
 const facetOf = (w: WorkloadDef): Facet | null => (w.stakeholder === 'Internal' ? null : w.stakeholder);
 
-export const overallTrust = (run: RunState) => FACETS.reduce((a, f) => a + run.trust[f], 0) / FACETS.length;
+export const overallTrust = (run: RunState) => {
+  const fs = facetsOf(run);
+  return fs.reduce((a, f) => a + run.trust[f]!, 0) / fs.length;
+};
+
+/** Applies f to every facet's trust and clamps. */
+const mapTrust = (run: RunState, f: (t: number) => number): Record<Facet, number> =>
+  Object.fromEntries(facetsOf(run).map((k) => [k, clampTrust(f(run.trust[k]!))]));
 
 const clampTrust = (x: number) => Math.max(0, Math.min(100, x));
 
@@ -90,7 +102,7 @@ export { allWorkloads } from './workloads';
 export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL', daily?: string): RunState {
   const diff = difficultyOf(difficulty);
   const scenario = scenarioFor(baseScenario, difficulty);
-  const trust = Object.fromEntries(FACETS.map((f) => [f, diff.startTrust])) as Record<Facet, number>;
+  const trust = Object.fromEntries((content.facets?.map((f) => f.id) ?? FACETS).map((f) => [f, diff.startTrust])) as Record<Facet, number>;
   let run: RunState = {
     version: 1,
     scenarioId: scenario.id,
@@ -103,6 +115,8 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     day: 0,
     maxDays: content.maxDays,
     trust,
+    ...(content.facets ? { facetWeights: Object.fromEntries(content.facets.map((f) => [f.id, f.weight])) } : {}),
+    ...(content.batchMissFacet ? { batchMissFacet: content.batchMissFacet } : {}),
     hoursLeft: BASE_HOURS,
     baseHours: BASE_HOURS,
     bonusHours: [],
@@ -286,8 +300,8 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   if (live) {
     // Emergency change board: costs trust, more when no incident justifies it.
     const trustCost = req.automated ? 0 : preview.trustCostEach;
-    r = { ...r, trust: Object.fromEntries(FACETS.map((f) => [f, clampTrust(r.trust[f] - trustCost)])) as Record<Facet, number> };
-    if (fix?.trustCost) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet] - fix.trustCost.amount) } };
+    r = { ...r, trust: mapTrust(r, (t) => t - trustCost) };
+    if (fix?.trustCost && fix.trustCost.facet in r.trust) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet]! - fix.trustCost.amount) } };
     const risk = req.automated ? req.automated.misfireFrac : failRisk(r);
     const [failed, r2] = withRng(r, (rng) => rng.chance(risk));
     r = r2;
@@ -535,8 +549,8 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
       continue;
     }
     const facet = facetOf(w);
-    const loss = facet ? att.severity * 0.9 * FACET_WEIGHT[facet] : 0;
-    if (facet) trust[facet] = clampTrust(trust[facet] - loss);
+    const loss = facet ? att.severity * 0.9 * ((r.facetWeights ?? FACET_WEIGHT)[facet] ?? 1) : 0;
+    if (facet && facet in trust) trust[facet] = clampTrust(trust[facet]! - loss);
     if (openIdx >= 0) {
       const inc = incidents[openIdx]!;
       incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
@@ -617,29 +631,30 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
         breachHours: breach,
       };
     });
-  for (const f of FACETS) {
+  for (const f of facetsOf(r)) {
     const owned = allWorkloads(scenario, r).filter((w) => facetOf(w) === f);
-    if (owned.length > 0 && owned.every((w) => !dayIncidents.some((i) => i.workloadId === w.id))) trust[f] = clampTrust(trust[f] + 1.5);
+    if (owned.length > 0 && owned.every((w) => !dayIncidents.some((i) => i.workloadId === w.id))) trust[f] = clampTrust(trust[f]! + 1.5);
   }
 
   // Batch deadline (the night that ended at this 06:00).
   const night = r.sim.batch.nights.find((n) => n.day === day) ?? null;
   const missed = night ? night.missedDeadline || night.criticalEndSec === null || night.criticalEndSec > r.batchDeadlineSec : false;
   if (night && missed) {
-    trust.Regulator = clampTrust(trust.Regulator - 20);
-    trust.Retail = clampTrust(trust.Retail - 4);
+    trust.Regulator = clampTrust(trust.Regulator! - 20);
+    const hurt = r.batchMissFacet ?? 'Retail';
+    if (hurt in trust) trust[hurt] = clampTrust(trust[hurt]! - 4);
     r = msg(r, 'Regulator', 'Batch deadline missed', 'Critical batch did not complete on time. A second consecutive miss will trigger a formal review.');
-  } else if (night) trust.Regulator = clampTrust(trust.Regulator + 1);
+  } else if (night) trust.Regulator = clampTrust(trust.Regulator! + 1);
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
   const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
   if (auditing) {
     const seen = Object.entries(sysotherByLpar(r.sim.rmf.intervals, day)).filter(([, v]) => v > AUDIT.minApplPct);
     if (seen.length > 0) {
-      trust.Regulator = clampTrust(trust.Regulator - AUDIT.findingTrust);
+      trust.Regulator = clampTrust(trust.Regulator! - AUDIT.findingTrust);
       const [lpar, pct] = seen.reduce((a, b) => (b[1] > a[1] ? b : a));
       r = msg(r, 'Regulator', 'Audit finding: unclassified work', `Audit finding: unclassified work in SYSOTHER on ${lpar} (${pct.toFixed(1)}% APPL).`);
     } else {
-      trust.Regulator = clampTrust(trust.Regulator + AUDIT.cleanDayTrust);
+      trust.Regulator = clampTrust(trust.Regulator! + AUDIT.cleanDayTrust);
       r = msg(r, 'Regulator', 'Audit: no findings today', 'Audit: no findings today.');
     }
   }
@@ -655,10 +670,10 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   for (let b = r.billsSeen; b < bills.length; b++) {
     const total = bills[b]!.total + opexSpent;
     const over = total / budget - 1;
-    if (over > 0) trust.Finance = clampTrust(trust.Finance - Math.min(40, over * 100));
-    else trust.Finance = clampTrust(trust.Finance + 5);
+    if (over > 0) trust.Finance = clampTrust(trust.Finance! - Math.min(40, over * 100));
+    else trust.Finance = clampTrust(trust.Finance! + 5);
     if (r.constraints.includes('CFO_MANDATE') && b > 0 && bills[b]!.total > 0.9 * bills[b - 1]!.total) {
-      trust.Finance = clampTrust(trust.Finance - 15);
+      trust.Finance = clampTrust(trust.Finance! - 15);
       r = msg(r, 'CFO', 'Cost target missed', `MLC $${Math.round(bills[b]!.total).toLocaleString()} vs target $${Math.round(0.9 * bills[b - 1]!.total).toLocaleString()}.`);
     }
     r = msg(r, 'Finance', `Month ${b + 1} bill`, `MLC $${Math.round(bills[b]!.total).toLocaleString()} + temporary capacity $${Math.round(opexSpent).toLocaleString()} vs budget $${Math.round(budget).toLocaleString()}.`);
@@ -666,7 +681,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     opexSpent = 0;
   }
 
-  const trustDelta = Object.fromEntries(FACETS.map((f) => [f, trust[f] - trustBefore[f]])) as Record<Facet, number>;
+  const trustDelta = Object.fromEntries(facetsOf(r).map((f) => [f, trust[f]! - trustBefore[f]!])) as Record<Facet, number>;
   const slaScore = sla.reduce((a, s) => a + 10 * (s.attainmentPct / 100), 0);
   const rcaPoints = dayIncidents.reduce((a, i) => a + (i.rca?.points ?? 0), 0);
   const dayScore = Math.round(slaScore + (night && !missed ? 15 : 0) + rcaPoints);
@@ -699,7 +714,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
 
   r = tfpAtDayEnd(r, scenario);
   const overall = overallTrust(r);
-  if (!endReason && (overall <= 0 || FACETS.some((f) => r.trust[f] <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
+  if (!endReason && (overall <= 0 || facetsOf(r).some((f) => r.trust[f]! <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
   if (!endReason && consecutive >= 2) endReason = 'Two consecutive batch deadline misses: the regulator has opened a formal review.';
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
   if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
@@ -756,7 +771,7 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
       r = { ...r, fatigue: Math.max(0, r.fatigue - 30) };
       break;
     case 'GOODWILL':
-      r = { ...r, trust: Object.fromEntries(FACETS.map((f) => [f, clampTrust(r.trust[f] + 4)])) as Record<Facet, number> };
+      r = { ...r, trust: mapTrust(r, (t) => t + 4) };
       break;
     case 'VENDOR_TRIAL':
       r = { ...r, insight: r.insight + 15 };
@@ -824,7 +839,7 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const evidencePoints = mechanism === inc.truth.mechanism ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
   const strong = evidencePoints > 0 && relevance >= EVIDENCE.strongAt;
   const facetTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
-  const trust = Object.fromEntries(FACETS.map((f) => [f, clampTrust(run.trust[f] + facetTrust / 2)])) as Record<Facet, number>;
+  const trust = mapTrust(run, (t) => t + facetTrust / 2);
   const total = points + evidencePoints;
   return {
     ...run,

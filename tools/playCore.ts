@@ -2,13 +2,11 @@
 // The run file holds the serialised RunState (as the browser saves it), the pending WLM policy and the
 // command log, so seed + log replays the same run.
 
-import { MIDWEST_GAME } from '../src/content/game-midwest';
-import { MIDWEST } from '../src/content/scenarios';
+import { packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
 import { advance, chooseDraft, newRun, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
-import { FACETS } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
 import { FIXES } from '../src/game/catalog';
@@ -32,10 +30,9 @@ import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/
 import { TICKS_PER_HOUR } from '../src/sim/core/units';
 import type { SmfKind } from '../src/worker/protocol';
 
-const content = MIDWEST_GAME;
 
 export type PlayCommand =
-  | { cmd: 'new'; seed: number; difficulty?: DifficultyId }
+  | { cmd: 'new'; seed: number; difficulty?: DifficultyId; scenario?: string }
   | { cmd: 'start' }
   | { cmd: 'advance'; hours: number }
   | { cmd: 'change'; req: ChangeRequest }
@@ -69,7 +66,7 @@ export interface PlayResult {
   text: string;
 }
 
-const sc = (run: RunState) => scenarioFor(MIDWEST, run.difficulty);
+const sc = (run: RunState) => scenarioFor(packOf(run.scenarioId).scenario, run.difficulty);
 
 /** Real RMF report names an agent may reach for. */
 const REPORT_ALIASES: Record<string, ReportKind> = { WLMGL: 'WLM_SUMMARY', WORKLOAD: 'WLM_SUMMARY', CPU: 'PARTITION', CFACT: 'CF', CF_ACTIVITY: 'CF', DEVICE: 'DASD' };
@@ -83,8 +80,9 @@ function needs(feature: ToolFeature, what: string): string {
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
 export const decodePlayFile = (text: string): PlayFile => decodeRunJson<PlayFile>(text);
 
-export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL'): PlayFile {
-  return { version: 1, run: newRun(MIDWEST, content, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty }] };
+export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', scenario = 'midwest'): PlayFile {
+  const pack = packOf(scenario);
+  return { version: 1, run: newRun(pack.scenario, pack.game, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty, ...(scenario !== 'midwest' ? { scenario } : {}) }] };
 }
 
 export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
@@ -94,11 +92,12 @@ export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
 
 function apply(file: PlayFile, c: PlayCommand): PlayResult {
   const run = file.run;
+  const content = packOf(run.scenarioId).game;
   const done = (r: RunState, text: string, ok = true, pendingPolicy = file.pendingPolicy): PlayResult => ({ file: { ...file, run: r, pendingPolicy }, ok, text });
   const fail = (text: string): PlayResult => ({ file, ok: false, text });
   switch (c.cmd) {
     case 'new':
-      return { file: newPlayFile(c.seed, c.difficulty), ok: true, text: `New run, seed ${c.seed}` };
+      return { file: newPlayFile(c.seed, c.difficulty, c.scenario), ok: true, text: `New run, seed ${c.seed}${c.scenario ? `, ${packOf(c.scenario).name}` : ''}` };
     case 'start': {
       if (run.phase !== 'BRIEFING') return fail(`Cannot start a day in phase ${run.phase}`);
       return done(startDay(run, content), 'Day started (06:00).');
@@ -216,7 +215,7 @@ export function statusText(file: PlayFile): string {
   const v = buildView(run, sc(run));
   const out: string[] = [];
   out.push(`${v.phase}  day ${v.day + 1}/${v.maxDays} ${v.weekday}  ${v.clock}  difficulty ${v.difficulty.name}  seed ${v.seed}`);
-  out.push(`trust ${v.trustOverall.toFixed(1)} (${FACETS.map((f) => `${f} ${v.trust[f].toFixed(0)}`).join(', ')})  score ${v.score}`);
+  out.push(`trust ${v.trustOverall.toFixed(1)} (${Object.keys(v.trust).map((f) => `${f} ${v.trust[f]!.toFixed(0)}`).join(', ')})  score ${v.score}`);
   out.push(`engineer-hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}  MLC month est $${Math.round(v.mlcEstimate).toLocaleString()} / opex budget $${Math.round(v.opexBudget).toLocaleString()}`);
   out.push(`policy ${v.policyName}${file.pendingPolicy ? `  (pending edits: ${file.pendingPolicy.policyName})` : ''}  tools ${v.tools.filter((t) => t.owned).map((t) => (t.trialLastDay !== null ? `${t.id}(trial to day ${t.trialLastDay + 1})` : t.id)).join(' ') || 'none'}`);
   out.push(`CPC busy ${v.cpcBusyPct.toFixed(0)}%  ` + v.lpars.map((l) => `${l.id} ${l.cpBusyPct.toFixed(0)}%`).join('  '));

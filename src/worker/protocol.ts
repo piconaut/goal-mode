@@ -49,7 +49,7 @@ export type SmfData =
 export type { ReportKind };
 
 export type ToWorker =
-  | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId; daily?: string }
+  | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId; daily?: string; scenario?: string }
   | { type: 'START_DAY'; auto?: boolean }
   | { type: 'SET_STARTING_PERK'; perkId: string | null }
   /** After VICTORY: keep playing past the quarter (endless mode). */

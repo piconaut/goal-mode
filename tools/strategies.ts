@@ -35,6 +35,7 @@ export const STRATEGIES: Record<string, Strategy> = { donothing: passive, oracle
 // apply the fix for an event once an incident points at it.
 
 import { BASEPOL } from '../src/content/wlm/basepol';
+import { REVPOL } from '../src/content/wlm/revpol';
 import { requestChange } from '../src/game/run';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
 
@@ -72,6 +73,7 @@ const FIX_BY_TRIGGER: Partial<Record<string, string>> = {
 const NEW_ARRIVALS = [
   { workloadId: 'ACQBANK', classId: 'ACQAPI', description: 'Acquired bank API', userid: 'ACQSVC' },
   { workloadId: 'BOOKING', classId: 'BOOKAPI', description: 'Branch booking', userid: 'BOOKSVC' },
+  { workloadId: 'PREFILL', classId: 'PFILAPI', description: 'Pre-filled returns', userid: 'PFILSVC' },
 ];
 function classifyNewArrivals(run: RunState, c: GameContent): RunState {
   const def = structuredClone(run.sim.wlm.definition);
@@ -113,8 +115,40 @@ function moveStructuresHome(run: RunState, c: GameContent): RunState {
   return requestChange(run, c, { label: 'Move structures back to their preferred CF', commands: moves }).run;
 }
 
+/** State Revenue Agency: G1 e-filing gets a response-time goal and analytics its own low class; G2 the refund
+ * run, not compliance analytics, is high batch; G3 the queue managers get a rule. */
+export function revenueTextbookPolicy(): ServiceDefinition {
+  const def = structuredClone(REVPOL);
+  def.policyName = 'TEXTBOOK';
+  def.classes.push({ id: 'EFILE', description: 'Online tax filing', periods: [{ goal: { kind: 'PCT', pct: 95, rtSec: 0.5 }, importance: 2, durationSu: null }], cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
+  def.classes.push({ id: 'DDFBI', description: 'Compliance analytics DDF', periods: [{ goal: { kind: 'VEL', velocity: 20 }, importance: 5, durationSu: 20000 }, { goal: { kind: 'DISC' }, importance: 5, durationSu: null }], cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
+  const stc = def.subsystems.find((x) => x.subsystem === 'STC')!;
+  stc.rules = [...stc.rules, { qualifier: 'TN', pattern: 'MQ*', serviceClass: 'STCHI', reportClass: null, children: [] }];
+  const ddf = def.subsystems.find((x) => x.subsystem === 'DDF')!;
+  ddf.rules = [
+    { qualifier: 'UI', pattern: 'EFILAPI', serviceClass: 'EFILE', reportClass: null, children: [] },
+    { qualifier: 'UI', pattern: 'CMPUSER', serviceClass: 'DDFBI', reportClass: null, children: [] },
+  ];
+  const jes = def.subsystems.find((x) => x.subsystem === 'JES')!;
+  jes.rules = [...jes.rules.filter((x) => x.pattern !== 'CMP*'), ...['REF*', 'EMP*', 'NTC*'].map((p) => ({ qualifier: 'TN' as const, pattern: p, serviceClass: 'BATCHHI', reportClass: null, children: [] }))];
+  return def;
+}
+
+/** Day 0: the known-good fixes for the State Revenue Agency's planted flaws (SPEC §13.4). */
+function revenueDay0(r: RunState, c: GameContent): RunState {
+  let run = r;
+  const plan = (label: string, commands: import('../src/sim/core/commands').Command[]) => {
+    run = requestChange(run, c, { label, commands }).run;
+  };
+  plan('Textbook WLM policy (G1–G3)', [{ kind: 'ACTIVATE_POLICY', definition: revenueTextbookPolicy() }]);
+  plan('PROD1 soft cap 560 MSU (H1)', [{ kind: 'SET_DEFINED_CAPACITY', lparId: 'PROD1', msu: 560 }]);
+  plan('IIPHONORPRIORITY=YES on PROD2 (H2)', [{ kind: 'SET_IEAOPT', lparId: 'PROD2', changes: { iipHonorPriority: true } }]);
+  return run;
+}
+
 /** Day 0: the known-good fixes for the planted flaws F1–F11 (SPEC §13.3). */
 function textbookDay0(r: RunState, c: GameContent): RunState {
+  if (r.scenarioId === 'revenue') return revenueDay0(r, c);
   let run = r;
   const plan = (label: string, commands: import('../src/sim/core/commands').Command[]) => {
     const out = requestChange(run, c, { label, commands });

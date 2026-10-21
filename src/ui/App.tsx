@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { CodexHints } from './CodexHint';
-import { FACETS } from '../game/types';
 import type { ViewModel } from '../game/view';
 import type { HistoryPoint } from '../game/history';
 import { Actions } from './Actions';
@@ -124,9 +123,9 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="stat">
         Trust <b style={{ color: trustColor(v.trustOverall) }}>{v.trustOverall.toFixed(0)}</b>
       </span>
-      {FACETS.map((f) => (
+      {Object.keys(v.trust).map((f) => (
         <span className="stat" key={f}>
-          {f} <b style={{ color: trustColor(v.trust[f]) }}>{v.trust[f].toFixed(0)}</b>
+          {f} <b style={{ color: trustColor(v.trust[f]!) }}>{v.trust[f]!.toFixed(0)}</b>
         </span>
       ))}
       <span className="stat">

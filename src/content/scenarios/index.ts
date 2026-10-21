@@ -4,6 +4,10 @@ import { MIDWEST_BATCH_GROWTH_PER_DAY, generateMidwestNetwork } from '../batch/m
 import { MIDWEST_PRODUCTS } from '../pricing';
 import { MIDWEST_CF_BASE_ENGINES, MIDWEST_MEMORY, MIDWEST_WORLD } from './midwest';
 import { MIDWEST_ADDRESS_SPACES, MIDWEST_WORKLOADS } from './midwest-workloads';
+import { REVPOL } from '../wlm/revpol';
+import { REVENUE_BATCH_GROWTH_PER_DAY, generateRevenueNetwork } from '../batch/revenue-batch';
+import { REVENUE_CF_BASE_ENGINES, REVENUE_MEMORY, REVENUE_WORLD } from './revenue';
+import { REVENUE_ADDRESS_SPACES, REVENUE_WORKLOADS } from './revenue-workloads';
 
 export const MIDWEST: Scenario = {
   id: 'midwest',
@@ -28,4 +32,18 @@ export const MIDWEST: Scenario = {
   batchGrowthPerDay: MIDWEST_BATCH_GROWTH_PER_DAY,
 };
 
-export const SCENARIOS: Record<string, Scenario> = { midwest: MIDWEST };
+/** State Revenue Agency: tax season. Same CF costs and product list as Midwest (one software stack). */
+export const REVENUE: Scenario = {
+  ...MIDWEST,
+  id: 'revenue',
+  world: REVENUE_WORLD,
+  definition: REVPOL,
+  workloads: REVENUE_WORKLOADS,
+  addressSpaces: REVENUE_ADDRESS_SPACES,
+  cfBaseEngines: REVENUE_CF_BASE_ENGINES,
+  memory: REVENUE_MEMORY,
+  batchNetwork: generateRevenueNetwork,
+  batchGrowthPerDay: REVENUE_BATCH_GROWTH_PER_DAY,
+};
+
+export const SCENARIOS: Record<string, Scenario> = { midwest: MIDWEST, revenue: REVENUE };

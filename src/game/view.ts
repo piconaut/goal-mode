@@ -1,4 +1,5 @@
 import type { DifficultyId } from '../content/difficulty';
+import { packOf } from '../content/packs';
 import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
 import { cicsGoalIssues, cicsTransactionClasses, type CicsGoalIssue } from './wlmEdit';
@@ -128,6 +129,7 @@ export interface ViewModel {
   /** ISO date when this is a daily-challenge run. */
   daily: string | null;
   difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
+  scenario: { id: string; name: string };
   clock: string;
   hourOfDay: number;
   tickOfDay: number;
@@ -289,6 +291,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     seed: run.seed,
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
+    scenario: { id: packOf(run.scenarioId).id, name: packOf(run.scenarioId).name },
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,

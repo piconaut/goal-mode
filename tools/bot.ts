@@ -1,11 +1,10 @@
 // Headless strategy bots for balancing (SPEC §16).
 // Usage: npm run bot -- --bot donothing --days 40 --seed 42 [--spectate runs/bot.json --pace 2]
 
-import { MIDWEST_GAME } from '../src/content/game-midwest';
-import { SCENARIOS } from '../src/content/scenarios';
+import { packOf } from '../src/content/packs';
 import { advance, chooseDraft, newRun, overallTrust, startDay } from '../src/game/run';
 import type { RunState } from '../src/game/types';
-import { FACETS } from '../src/game/types';
+import { FACETS, facetsOf } from '../src/game/types';
 import { TICKS_PER_DAY } from '../src/sim/core/units';
 import { instanceClock } from '../src/sim/core/step';
 import { STRATEGIES } from './strategies';
@@ -17,8 +16,9 @@ function arg(name: string, dflt: string): string {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : dflt;
 }
 
-const scenario = SCENARIOS[arg('scenario', 'midwest')]!;
-const content = MIDWEST_GAME;
+const pack = packOf(arg('scenario', 'midwest'));
+const scenario = pack.scenario;
+const content = pack.game;
 const seed = Number(arg('seed', '42'));
 const days = Number(arg('days', String(content.maxDays)));
 const botName = arg('bot', 'donothing');
@@ -47,7 +47,7 @@ const difficulty = arg('difficulty', 'NORMAL').toUpperCase() as import('../src/c
 let run: RunState = newRun(scenario, content, seed, difficulty);
 const t0 = performance.now();
 console.log(`bot=${botName} seed=${seed} difficulty=${difficulty}`);
-console.log('day  overall  ' + FACETS.map((f) => f.slice(0, 6).padStart(7)).join('') + '  incid  batchEnd  score  MLCest     events');
+console.log('day  overall  ' + (content.facets?.map((x) => x.id) ?? FACETS).map((f) => f.slice(0, 6).padStart(7)).join('') + '  incid  batchEnd  score  MLCest     events');
 while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
   if (run.phase === 'BRIEFING') {
     run = bot.briefing(run, scenario, content);
@@ -65,7 +65,7 @@ while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
     const inc = run.incidents.filter((i) => i.day === rep.day);
     console.log(
       `${String(rep.day + 1).padStart(3)}  ${overallTrust(run).toFixed(1).padStart(7)}  ` +
-        FACETS.map((f) => run.trust[f].toFixed(0).padStart(7)).join('') +
+        facetsOf(run).map((f) => run.trust[f]!.toFixed(0).padStart(7)).join('') +
         `  ${String(inc.length).padStart(5)}  ${(rep.batch?.criticalEndSec != null ? instanceClock(rep.batch.criticalEndSec) : 'unfin').padStart(8)}${rep.batchMissed ? '!' : ' '} ${String(rep.score).padStart(5)}  $${Math.round(rep.mlcEstimate / 1000)}k  ${rep.events.join(', ')}`,
     );
     for (const i of inc) console.log(`        ${i.workloadId} ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}% → ${i.truth.mechanism}/${i.truth.trigger}`);
@@ -86,7 +86,7 @@ if (process.argv.includes('--json')) {
   const cause = run.phase === 'VICTORY' ? 'victory' : /trust/i.test(reason) ? 'trust' : /batch/i.test(reason) ? 'batch' : /opex|outsourc/i.test(reason) ? 'opex' : run.phase === 'GAMEOVER' ? 'other' : 'unfinished';
   const byMech: Record<string, number> = {};
   for (const i of run.incidents) byMech[i.truth.mechanism] = (byMech[i.truth.mechanism] ?? 0) + 1;
-  const lowest = FACETS.reduce((a, f) => (run.trust[f] < run.trust[a] ? f : a), FACETS[0]!);
+  const lowest = facetsOf(run).reduce((a, f) => (run.trust[f]! < run.trust[a]! ? f : a));
   console.log(
     'JSON:' +
       JSON.stringify({

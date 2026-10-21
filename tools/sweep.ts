@@ -1,7 +1,7 @@
 // Balance sweep (SPEC §16, PROGRESS M8.2): run strategy bots over many seeds in parallel processes
 // and summarise when and why runs end. Each run is a separate `tools/bot.ts --json` process.
 //
-//   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--out sweep.csv]
+//   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--scenario midwest|revenue] [--out sweep.csv]
 
 import { spawn } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
@@ -18,6 +18,7 @@ const seeds = Array.from({ length: (hi ?? lo) - lo + 1 }, (_, i) => lo + i);
 const jobs = Number(arg('jobs', String(Math.max(1, cpus().length))));
 const days = arg('days', '');
 const difficulty = arg('difficulty', '');
+const scenarioId = arg('scenario', '');
 const out = arg('out', 'sweep.csv');
 
 interface Result {
@@ -38,7 +39,7 @@ interface Result {
 
 function runOne(bot: string, seed: number): Promise<Result> {
   return new Promise((resolve, reject) => {
-    const args = ['--import', 'tsx', 'tools/bot.ts', '--bot', bot, '--seed', String(seed), '--json', ...(days ? ['--days', days] : []), ...(difficulty ? ['--difficulty', difficulty] : [])];
+    const args = ['--import', 'tsx', 'tools/bot.ts', '--bot', bot, '--seed', String(seed), '--json', ...(days ? ['--days', days] : []), ...(difficulty ? ['--difficulty', difficulty] : []), ...(scenarioId ? ['--scenario', scenarioId] : [])];
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'inherit'] });
     let text = '';
     p.stdout.on('data', (d: Buffer) => (text += d.toString()));

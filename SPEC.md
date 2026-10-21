@@ -1080,6 +1080,31 @@ Every flaw must (a) be *harmless-ish on day 1*, (b) become *visibly harmful* und
 event by Act II, (c) have *one or more diagnosable symptoms* with Tier 0–1 tools, and (d) have
 *multiple valid fixes* with different trade-offs.
 
+### 13.4 Second scenario — "State Revenue Agency" (tax season)
+
+Pick it at run start (scenario picker beside the difficulty). Same building blocks as Midwest Mutual
+(one CPC, PROD1/PROD2/DEVT/SYSP, two CFs, Db2 data sharing, CICS, MQ), but the pressure is a **season**:
+e-filing and refund enquiries grow ~2%/day toward a filing deadline, deadline week (day 34–37) adds a
+surge on top (`DEADLINE_SURGE`), and nightly batch volumes grow 0.8%/day. The critical path is the
+**refund run** (REF chain on PROD1, then NTC notices; EMP employer posting on PROD2); the Treasury takes
+the refund file at 06:00, from day 15 at 05:00. Stakeholders are *Taxpayers, Refunds, Agents, Employers*
+plus *Finance* and *Regulator*; a missed batch deadline costs Refunds trust. The regulator is strict:
+the audit cards are drawn 1.5× as often. Story: appropriations cut (day 17, like CFO_MANDATE),
+pre-filled returns go live on USS and land in SYSOTHER (day 23, hinted two days ahead), change freeze
+in deadline week.
+
+| Flaw | Where | Symptom (clue) | Fixes (trade-offs) |
+|---|---|---|---|
+| **G1** e-filing on a velocity goal (WEBDDF, Vel 40, Imp 3), sharing the class with compliance-analytics queries | REVPOL | EFILE SLA misses while WEBDDF's velocity looks met (WLMGL, DELAY: CPU delay behind ONLINE/AGENTS) | own class with a response-time goal (Imp 2); split analytics off (low velocity + discretionary period); or more zIIP |
+| **G2** compliance-analytics batch (CMP*) is the only BATCHHI work; the refund run sits in BATCHPRD | REVPOL | refund chain stretches on busy nights while CMP jobs run fine (job end records, batch Gantt) | swap the rules; or JES initiators/SYSAFF for CMP; or a resource group cap on BATCHHI |
+| **G3** no STC rule for the queue managers: MQ MSTR/CHIN default to STCLO (Vel 20, Imp 5) | REVPOL | EMPLOYER response and queue depth jump on payroll-day peaks; MQ address spaces show CPU delay | rule `MQ*` → STCHI; or route payroll traffic; or bigger MAXDEPTH (buys time only) |
+| **H1** PROD1 soft-capped at 480 MSU (set in the quiet months) | HMC | R4HA reaches the cap as the season grows; capping delay on PROD1 (Partition Data, R4HA gauge) | raise or remove the defined capacity (MLC up); group capacity with PROD2; move work to PROD2 |
+| **H2** IIPHONORPRIORITY=NO on PROD2 (left over from a cost study) | IEAOPT | zIIP delay for EFILE/ANALYTICS on PROD2 while its CPs have white space (DELAY, Partition Data zIIP busy) | YES (zIIP-eligible work may overflow to CPs: more MSU); add a zIIP; route DDF to PROD1 |
+
+The event deck so far is the seven Midwest cards that name no Midwest workload (REORG_OVERRUN,
+JOB_ABEND, CP_SPARING, HIRING_FREEZE, GREEN_IT_COD, SMF_AUDIT, AUDIT_UNCLASSIFIED); agency-specific
+cards come next.
+
 ---
 
 ## 14. UI / screens
