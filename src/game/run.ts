@@ -159,6 +159,8 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       (e) =>
         day >= e.minDay &&
         !(e.oncePerRun && run.events.some((x) => x.defId === e.id)) &&
+        // no card two days running: back-to-back repeats (e.g. two abends) read as noise, not a new problem
+        !run.events.some((x) => x.defId === e.id && x.startTick >= dayStartTick - TICKS_PER_DAY) &&
         // an hours card must not stack on itself while still running
         !(e.hoursDelta && run.events.some((x) => x.defId === e.id && (x.endTick === null || x.endTick > dayStartTick))),
     );
