@@ -57,6 +57,9 @@ export interface SliceSpec {
   extraOtherSec: number;
   /** Fraction of transactions failing due to subsystem limits (e.g. QR TCB overload). */
   failFrac: number;
+  /** The part of failFrac that fails fast (abends, rejections) rather than by QR overload; what
+   * CPSM's abend probability sees. Absent = all of failFrac. */
+  abendFrac?: number;
   /** Queueing before the work manager sees the request (MXT, DBAT): end users feel it,
    * WLM and RMF response times do not include it. */
   outsideWaitSec: number;
@@ -539,6 +542,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         newBacklog = cap;
         waitSec = newBacklog / gotRate;
       }
+      // A starved queue: messages completing now waited about as long as the backlog took to build
+      // (Little's law on arrivals), not backlog / a near-zero service rate.
+      if (got[i]! < 1e-3 * (want[i]! + cut)) waitSec = Math.min(waitSec, newBacklog / Math.max(want[i]! + cut, 1e-9));
     } else if (waitSec > s.timeoutSec) {
       const keep = gotRate * s.timeoutSec;
       const excess = newBacklog - keep;

@@ -1210,9 +1210,25 @@ policies are tested at once), regulator stress-test week near the end.
 2. **Burst arrivals.** `ArrivalShape.bursts?: { ratePerHour, heightMult: [lo, hi], durationSec:
    [lo, hi] }` (seeded, per tick) plus scheduled bursts at fixed times. Default undefined, so Midwest
    and Revenue are bit-identical.
+   *Done (sim):* `ArrivalShape.bursts` (`BurstShape`: random flat-topped bursts drawn per tick, plus
+   `scheduled` bursts that decay linearly from their height to 1, optionally weekdays only). The RNG is
+   drawn only for workloads that have bursts; `WorkloadRuntime.burst` exists only for them.
 3. **Routing policies.** `routingPolicy` per workload (`STATIC | WLM | CPSM_GOAL`) and per-region
    health (fast-fail fraction) feeding `CPSM_GOAL`. New verbs: set routing policy, health threshold,
    zIIP-aware weights, quiesce region. Default `STATIC`, so existing scenarios don't change.
+   *Done (sim, part 1):* `RoutingPolicy` `STATIC | WLM{ziipAware}` per workload (`WorkloadDef.routingPolicy`,
+   state `routingPolicies`, verb `SET_ROUTING_POLICY`). WLM recomputes shares every 60 s from last
+   tick's displaceable capacity at the work's dispatch priority on each candidate LPAR (the keys of
+   the scenario's routing), CP-only unless zIIP-aware, with a 2 % floor and 1 % steps (`content/routing.ts`).
+   `SET_ROUTING` is refused while a dynamic policy is on.
+   *Done (sim, part 2):* `CPSM_GOAL{abendThreshFrac, abendCritFrac, quiesced}`. Every 30 s shares move
+   half-way toward a split weighted by `prevShare × meanRt / seenRt`, where a region's seen response
+   blends normal response with the fast abend time (`abendRtSec`), so a sick region draws work (B2
+   storm drain). Abend compensation as in CICSPlex SM WLM: at ABENDTHRESH a region's weight halves, at
+   ABENDCRIT it is avoided (keeps the 2 % trickle so its recovery is seen); quiesced regions get none.
+   Region failures: `mods.regionFailFrac['WL@LPAR']`; abend rates per workload@lpar sit in
+   `env.failByWorkloadLpar`, present only while a dynamic policy is on. Still to do: game-layer verbs
+   and costs (step 4 content).
 4. **Content:** world, workloads, policy with B1–B4 and the Problem-1 traps, events, story, hints,
    Codex (sysplex distributor, CICSPlex SM routing, storm drain, absolute capping), bot day-0 fixes,
    sweeps.
@@ -1346,6 +1362,9 @@ never touches the DOM.
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
 | Discretionary capping conditions | **Real** | SG24-7621 §4.22 |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
+| Sysplex distributor WLM weights | **Simplified** | Shares ∝ displaceable capacity at the work's DP (prev tick), recomputed each minute; CP-only by default, zIIP-aware weights blend by zIIP fraction (APPROX of SD PROCTYPE). No server health term yet |
+| CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast; QR TCB overload and timeouts count as slow, so only a genuinely abending region storm-drains), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
+| Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
 | Swap / MPL delay | **Simplified** | Only batch jobs are swappable; swap out least important first when storage overcommits; swap-in immediate when it frees |
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH, depth adds memory; no MQ SMF 115/116 |
 | WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved); NO excludes I/O from velocity |

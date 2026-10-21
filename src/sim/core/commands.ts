@@ -8,6 +8,7 @@ import { TICK_SEC } from './units';
 import { LCU_MAX_DEVICES } from '../io/dasd';
 import type { ServiceDefinition } from '../wlm/types';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
+import type { RoutingPolicy } from '../workload/routing';
 import type { PoolType, SimModifiers, SimState, ZosSystemConfig } from './types';
 
 export type Command =
@@ -34,6 +35,7 @@ export type Command =
   | { kind: 'SET_DASD'; changes: Partial<SimState['config']['dasd']> }
   | { kind: 'SET_LCU'; lcuId: string; aliases?: number; hotSkew?: number; extraIops?: Partial<Record<'RANDOM' | 'SEQ', number>> }
   | { kind: 'SET_ROUTING'; workloadId: string; routing: Record<string, number> }
+  | { kind: 'SET_ROUTING_POLICY'; workloadId: string; policy: RoutingPolicy }
   | { kind: 'SET_MODIFIER'; mod: keyof Omit<SimModifiers, 'lockBoost'>; key: string; value: number }
   | { kind: 'SET_LOCK_BOOST'; value: number }
   | { kind: 'ADD_WORKLOAD'; workload: WorkloadDef }
@@ -303,7 +305,23 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
     case 'SET_DASD':
       return ok(withConfig(s, (c) => Object.assign(c.dasd, cmd.changes)), 'DASD configuration updated');
 
+    case 'SET_ROUTING_POLICY': {
+      const { [cmd.workloadId]: _old, ...rest } = s.routingPolicies ?? {};
+      const policies = cmd.policy.method === 'STATIC' ? rest : { ...rest, [cmd.workloadId]: cmd.policy };
+      const p = cmd.policy;
+      const label =
+        p.method === 'WLM'
+          ? `WLM weights${p.ziipAware ? ' (zIIP-aware)' : ''}`
+          : p.method === 'CPSM_GOAL'
+            ? `CPSM goal${p.abendCritFrac !== null ? ` ABENDCRIT ${Math.round(p.abendCritFrac * 100)}%` : ''}${p.quiesced.length ? `, quiesced ${p.quiesced.join(' ')}` : ''}`
+            : 'static weights';
+      const { routingPolicies: _drop, ...base } = s;
+      return ok(Object.keys(policies).length ? { ...base, routingPolicies: policies } : base, `${cmd.workloadId} routing: ${label}`);
+    }
+
     case 'SET_ROUTING': {
+      // Explicit weights mean static routing: a dynamic policy would overwrite them within a minute.
+      if (s.routingPolicies?.[cmd.workloadId]) return fail(s, `${cmd.workloadId} routes by ${s.routingPolicies[cmd.workloadId]!.method}; switch it to static weights first`);
       const total = Object.values(cmd.routing).reduce((a, b) => a + b, 0);
       if (total <= 0) return fail(s, 'Routing weights must sum to > 0');
       const norm = Object.fromEntries(Object.entries(cmd.routing).map(([k, v]) => [k, v / total]));
@@ -312,7 +330,8 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
 
     case 'SET_MODIFIER': {
       const table = { ...s.mods[cmd.mod] };
-      if (cmd.value === 1) delete table[cmd.key];
+      // Fractions are neutral at 0, multipliers at 1.
+      if (cmd.value === (cmd.mod === 'regionFailFrac' ? 0 : 1)) delete table[cmd.key];
       else table[cmd.key] = cmd.value;
       return ok({ ...s, mods: { ...s.mods, [cmd.mod]: table } }, `${cmd.mod}[${cmd.key}] = ${cmd.value}`);
     }

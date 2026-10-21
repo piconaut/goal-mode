@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { CODEX } from '../../src/content/codex/entries';
+import { HARBOURLINE_EVENTS } from '../../src/content/events/harbourline-events';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
@@ -12,7 +13,7 @@ import { noteReportOpened, REPORT_FEATURE } from '../../src/game/tools';
 describe('Codex', () => {
   it('every entry has a source and its discovery hooks exist', () => {
     const tools = new Set(TOOLS.map((t) => t.id));
-    const events = new Set(MIDWEST_EVENTS.map((e) => e.id));
+    const events = new Set([...MIDWEST_EVENTS, ...HARBOURLINE_EVENTS].map((e) => e.id));
     const reports = new Set(Object.keys(REPORT_FEATURE));
     expect(new Set(CODEX.map((e) => e.id)).size).toBe(CODEX.length);
     for (const e of CODEX) {

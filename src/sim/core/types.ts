@@ -9,6 +9,8 @@ import type { R4haState } from '../cost/r4ha';
 import type { JobEndRecord, RmfAcc, RmfInterval } from '../measure/rmf';
 import type { RngState } from './rng';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
+import type { BurstState } from '../workload/arrivals';
+import type { RoutingPolicy } from '../workload/routing';
 import type { ReportClassTick, ScpTick } from '../wlm/evaluate';
 import type { WlmState } from '../wlm/runtime';
 
@@ -143,6 +145,8 @@ export interface WorkloadRuntime {
   retryRate: number;
   /** Last tick's mean response time (closed-loop arrivals). */
   lastRtSec: number;
+  /** Random burst in progress; present only for workloads whose shape has bursts. */
+  burst?: BurstState;
 }
 
 export interface WorkloadTick {
@@ -175,6 +179,8 @@ export interface EnvState {
   rtByWorkloadLpar: Record<string, number>;
   /** Paging delay fraction per LPAR. */
   pagingFrac: Record<string, number>;
+  /** Failed fraction per workload@lpar; present only while a dynamic routing policy is on. */
+  failByWorkloadLpar?: Record<string, number>;
 }
 
 /** Runtime modifiers set by events and fixes (all multiplicative, default 1). */
@@ -197,6 +203,8 @@ export interface SimModifiers {
   ziipEligMult?: Record<string, number>;
   /** Extra lock contention index (lock escalation). */
   lockBoost: number;
+  /** Fraction of a workload's transactions failing fast in one image's regions, keyed `workload@lpar` (sick AOR). */
+  regionFailFrac?: Record<string, number>;
 }
 
 export interface SimState {
@@ -219,6 +227,8 @@ export interface SimState {
   extraWorkloads: WorkloadDef[];
   /** Routing overrides per workload (sysplex distributor / CICSPlex SM weights). */
   routing: Record<string, Record<string, number>>;
+  /** Non-STATIC routing policies per workload (absent when every workload routes statically). */
+  routingPolicies?: Record<string, RoutingPolicy>;
   /** ALTER QLOCAL MAXDEPTH overrides per message-driven workload. */
   mqMaxDepth?: Record<string, number>;
   /** Extra address spaces added during the run (e.g. new CICS AORs). */

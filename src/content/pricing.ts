@@ -26,6 +26,13 @@ export const MIDWEST_PRODUCTS: ProductDef[] = [
   { id: 'MQ', name: 'MQ for z/OS', lpars: ['PROD1', 'PROD2'], priceFactor: 0.5 },
 ];
 
+export const HARBOURLINE_PRODUCTS: ProductDef[] = [
+  { id: 'ZOS', name: 'z/OS', lpars: ['PRDA', 'PRDB', 'PRDC', 'PRDD', 'DEV1', 'TST1'], priceFactor: 1 },
+  { id: 'DB2', name: 'Db2 for z/OS', lpars: ['PRDA', 'PRDB', 'PRDC', 'PRDD', 'DEV1'], priceFactor: 1.1 },
+  { id: 'CICS', name: 'CICS TS', lpars: ['PRDA', 'PRDB', 'PRDC', 'PRDD'], priceFactor: 0.8 },
+  { id: 'MQ', name: 'MQ for z/OS', lpars: ['PRDA', 'PRDB', 'PRDC', 'PRDD'], priceFactor: 0.5 },
+];
+
 export function tieredMonthlyCost(msu: number, factor: number, tiers: [number, number][] = BASE_TIERS): number {
   let cost = 0;
   let lo = 0;

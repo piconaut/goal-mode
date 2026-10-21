@@ -101,6 +101,8 @@ export const EVENT_RUMOURS: Record<string, string> = {
   CICS_SOS: 'the PROD2 CICS regions have been logging storage warnings',
   RETRY_STORM: 'the card network has had slow authorisations at lunchtime',
   ENCRYPTION_MANDATE: 'the regulator has been asking about encryption at rest',
+  MARKET_OPEN_SURGE: 'the trading desk expects an index rebalance and a central bank announcement around the open',
+  HOLIDAY_CARD_SPIKE: 'the card team is expecting a big shopping-holiday afternoon',
   FILE_EARLY_CAMPAIGN: 'communications is about to push a "file early, get your refund sooner" campaign',
   RUNAWAY_COMPLIANCE: 'the compliance analytics team is building a very big ad-hoc report',
   EFILE_REGRESSION: 'the e-filing app team has Db2 REBINDs scheduled',

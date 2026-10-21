@@ -21,10 +21,12 @@ import {
 } from '../subsys/batch';
 import { mxtQueueWaitSec, qrTcb } from '../subsys/cics';
 import { bpIoMultiplier, dbatQueueWaitSec, DB2 } from '../subsys/db2';
-import { baseRate, stepNoise } from '../workload/arrivals';
+import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/arrivals';
 import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
+import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
+import { ROUTING } from '../../content/routing';
 import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../content/wlm/tuning';
@@ -51,6 +53,7 @@ import type {
   LparConfig,
   EnvState,
   LparPoolRuntime,
+  PoolType,
   LparRuntime,
   LparTick,
   SimState,
@@ -91,7 +94,7 @@ interface BatchSliceRef {
 }
 
 export function step(before: SimState, commands: readonly Command[], scenario: Scenario): SimState {
-  const prev = applyCommands(before, commands);
+  const prev = updateRouting(applyCommands(before, commands), scenario);
   const rng = new Rng(prev.rng);
   const workloads = effectiveWorkloads(scenario, prev);
   const addressSpaces = effectiveAddressSpaces(scenario, prev);
@@ -114,8 +117,12 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const noise = stepNoise(p.noise, w, rng.normal());
     // Interactive users (closed loop): slow responses throttle their own arrival rate.
     const closedLoop = w.thinkTimeSec ? w.thinkTimeSec / (w.thinkTimeSec + p.lastRtSec) : 1;
-    rates[w.id] = baseRate(w, clock) * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
-    return { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
+    // Bursts draw from the RNG only when the shape has them, so burst-free scenarios keep their streams.
+    const b = w.shape.bursts;
+    const burst = b ? stepBurst(p.burst ?? { mult: 1, leftSec: 0 }, b, TICK_SEC, rng) : undefined;
+    const burstMult = b && burst ? burst.mult * scheduledBurstMult(b, clock) : 1;
+    rates[w.id] = baseRate(w, clock) * burstMult * (prev.mods.rate[w.id] ?? 1) * Math.exp(noise - (w.noiseSigma * w.noiseSigma) / 2) * closedLoop + p.retryRate;
+    return burst ? { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec, burst } : { id: w.id, noise, retryRate: 0, lastRtSec: p.lastRtSec };
   });
 
   // Batch scheduling: release tonight's network at the start of the played day.
@@ -196,6 +203,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     failedBy: {},
     wlTick: {},
     rtByWorkloadLpar: {},
+    failByWorkloadLpar: prev.routingPolicies ? {} : null,
     systems: [],
     lparTicks: [],
     onlineDb2Rate: 0,
@@ -265,7 +273,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     if (wt.completions > 1e-9) wr.lastRtSec = wt.rtSumSec / wt.completions;
   }
 
-  const nextEnv: EnvState = { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
+  const nextEnv: EnvState = t.failByWorkloadLpar
+    ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
+    : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
 
   const nextTick = prev.tick + 1;
   const { cappingLpars, cappingGroups, msuBy, r4haBy } = stepCapping(t, zosLpars);
@@ -319,6 +329,8 @@ interface TickCtx {
   failedBy: Record<string, number>;
   wlTick: Record<string, WorkloadTick>;
   rtByWorkloadLpar: Record<string, number>;
+  /** Failed fraction per workload@lpar, kept only when a dynamic routing policy needs it. */
+  failByWorkloadLpar: Record<string, number> | null;
   systems: WlmSystemState[];
   lparTicks: LparTick[];
   /** Sysplex online Db2 transaction rate (global lock contention for batch). */
@@ -478,7 +490,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   const cpc = cpcOf[l.cpcId]!;
   const cpSp = cpSpeed(cpc);
   const zSp = ziipSpeed(cpc);
-  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces }), prev.mods);
+  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads) }), prev.mods);
 
   const db2 = config.db2.find((d) => d.lparId === l.id);
   const ioMult = db2
@@ -537,8 +549,14 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     }
     if (w.subsystem === 'DDF') outside += dbatWait;
     if (db2Work) t.onlineDb2Rate += s.rate;
-    if (db2FailFrac > 0 && db2Work) failFrac = Math.max(failFrac, db2FailFrac);
-    if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
+    // A saturated QR TCB makes a region slow, not fast-failing, so it doesn't count as an abend for routing.
+    let abendFrac = 0;
+    if (db2FailFrac > 0 && db2Work) abendFrac = Math.max(abendFrac, db2FailFrac);
+    if (mqFailFrac > 0 && w.mq) abendFrac = Math.max(abendFrac, mqFailFrac);
+    const regionFail = prev.mods.regionFailFrac?.[wlLparKey(w.id, l.id)];
+    if (regionFail) abendFrac = Math.max(abendFrac, regionFail);
+    failFrac = Math.max(failFrac, abendFrac);
+    if (t.failByWorkloadLpar) s.abendFrac = abendFrac;
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
     s.ioPerTxn = ioPerTxn;
     s.extraParts = parts;
@@ -645,7 +663,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
-  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, systems, lparTicks } = t;
+  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
   const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
@@ -702,6 +720,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   }
 
   const compBy: Record<string, number> = {};
+  const tries: Record<string, number> = {};
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
     if (r.newBacklog > 1e-9) backlog[s.key] = r.newBacklog;
@@ -721,6 +740,11 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       const k = wlLparKey(s.workloadId, l.id);
       rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
       compBy[k] = (compBy[k] ?? 0) + r.completions;
+      if (failByWorkloadLpar) {
+        // Only fast failures (abends, subsystem rejections) count; timeouts and QR overload are slow and show in the response.
+        failByWorkloadLpar[k] = (failByWorkloadLpar[k] ?? 0) + Math.min(r.failed, s.rate * TICK_SEC * (s.abendFrac ?? s.failFrac));
+        tries[k] = (tries[k] ?? 0) + r.completions + r.failed;
+      }
       const w = workloadById[s.workloadId]!;
       sums.randomIops += s.rate * s.ioPerTxn;
       if (usesDb2(w)) {
@@ -731,6 +755,10 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   for (const k in compBy) {
     const c = compBy[k]!;
     rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
+    if (failByWorkloadLpar) {
+      const n = tries[k] ?? 0;
+      failByWorkloadLpar[k] = n > 0 ? (failByWorkloadLpar[k] ?? 0) / n : 0;
+    }
   }
 
   // Batch progression: share each batch slice's grant across its jobs by demand.
@@ -874,8 +902,56 @@ function queuedMsgGb(prev: SimState, byId: Record<string, WorkloadDef>, lparId: 
   return gb;
 }
 
+// 3. Routing: dynamic policies recompute shares from last tick's measurements once per interval.
+function updateRouting(s: SimState, scenario: Scenario): SimState {
+  const policies = s.routingPolicies;
+  if (!policies || s.last.lpars.length === 0) return s;
+  let routing = s.routing;
+  for (const id of Object.keys(policies).sort()) {
+    const policy = policies[id]!;
+    const w = scenario.workloads.find((x) => x.id === id) ?? s.extraWorkloads.find((x) => x.id === id);
+    if (!w) continue;
+    const lparIds = Object.keys(w.routing).sort();
+    let shares: Record<string, number> | null = null;
+    if (policy.method === 'WLM' && s.tick % ROUTING.wlmIntervalTicks === 0) {
+      shares = wlmShares(lparIds.map((lparId) => routeCandidate(s, w, lparId)), w.ziipFrac, policy.ziipAware, ROUTING.minShareFrac, ROUTING.shareQuantum);
+    } else if (policy.method === 'CPSM_GOAL' && s.tick % ROUTING.cpsmIntervalTicks === 0) {
+      const regions = lparIds.map((lparId) => regionStat(s, w, lparId));
+      shares = cpsmGoalShares(routing[id] ?? w.routing, regions, policy, ROUTING.abendRtSec, ROUTING.cpsmStepFrac, ROUTING.minShareFrac, ROUTING.shareQuantum);
+    }
+    if (shares && !sameShares(routing[id], shares)) routing = { ...routing, [id]: shares };
+  }
+  return routing === s.routing ? s : { ...s, routing };
+}
+
+// What CICSPlex SM sees of a region: last tick's normal response and abend rate for this work there.
+function regionStat(s: SimState, w: WorkloadDef, lparId: string): RegionStat {
+  const k = wlLparKey(w.id, lparId);
+  // No normal completions (all timed out, or no traffic yet) reads as the timeout, never as instant.
+  const rt = s.env.rtByWorkloadLpar[k] ?? 0;
+  return { lparId, rtSec: rt > 0 ? rt : w.timeoutSec, failFrac: s.env.failByWorkloadLpar?.[k] ?? 0 };
+}
+
+function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandidate {
+  const lt = s.last.lpars.find((l) => l.lparId === lparId);
+  const pools = s.lpars.find((l) => l.id === lparId)?.pools ?? [];
+  const avail = (p: PoolType) => pools.find((x) => x.pool === p)?.availableEffectiveEngines ?? 0;
+  const key = scKeyOf(classify(s.wlm.definition, { ...w.work, SY: lparId }).serviceClass, 0);
+  const myDp = lt?.scps.find((x) => x.scKey === key)?.dp ?? 0;
+  let cpUsed = 0;
+  let ziipUsed = 0;
+  for (const x of lt?.scps ?? []) {
+    if (x.scKey === key || x.dp < myDp) continue;
+    cpUsed += x.cpEngines;
+    ziipUsed += x.ziipEngines;
+  }
+  return { lparId, cpFreeEngines: Math.max(0, avail('CP') - cpUsed), ziipFreeEngines: Math.max(0, avail('ZIIP') - ziipUsed) };
+}
+
 // Effective content = scenario + run additions + routing overrides. Memoised on object
 // identity so slice-template caches stay warm until something actually changes.
+// Same scenario + run additions ⇒ same workload content per id; only routing differs (slice-template scope).
+const workloadScope = new WeakMap<readonly WorkloadDef[], object>();
 const wlCache = new WeakMap<Scenario, WeakMap<readonly WorkloadDef[], WeakMap<object, WorkloadDef[]>>>();
 function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef[] {
   let a = wlCache.get(scenario);
@@ -886,6 +962,7 @@ function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef[] {
   if (!out) {
     out = [...scenario.workloads, ...s.extraWorkloads].map((w) => (s.routing[w.id] ? { ...w, routing: s.routing[w.id]! } : w));
     b.set(s.routing, out);
+    workloadScope.set(out, b);
   }
   return out;
 }
