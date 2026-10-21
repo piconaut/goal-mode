@@ -10,8 +10,13 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Last updated:** 2026-10-21
 - **Next up:** M8.4 events (23 of ~25), M8.2 balance (textbook below target; waiting on the user), M8.1 structural perf.
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
-- **Health:** `npm run check` green (299 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) `8a82ad7db2b258ae`.
+- **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
+  milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
+  docs-only or in-progress work. Before opening: `npm run check` green, bench hash recorded, PROGRESS updated. Body:
+  what changed since the last merge to `main`, test count, hashes, sweep results, anything waiting on the user. At most
+  one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
+- **Health:** `npm run check` green (325 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+  bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
