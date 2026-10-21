@@ -349,6 +349,12 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 137):** Harbourline expert re-sweep with the day-1 capacity step (hb40d, seeds 1–8): expert
+  28 / 33 / 36, 0 wins (trust 6, opex 2). Harbourline growth was ~0.72 %/day CPU-weighted vs Midwest ~0.45 % → all
+  growth ×0.6. **Re-sweep hb40e (seeds 1–8, Normal, 40 days): donothing 11 / 12 / 12 (target 12–18), textbook
+  30 / 33 / 37 (target 28–32, a little long), expert 33 / 40 / 40, victory 5 · trust 2 · opex 1** (Midwest expert
+  17/20 wins). Month-1 bills $1.52–1.78M vs $1.5M budget (Midwest +7–10 %). Harbourline balance is now in the target
+  band; next: 20-seed confirmation sweep, Harbourline perf (~4.6 s/day), dev→main milestone PR.
 - **2026-10-21 (loop 136):** Harbourline collapse root-caused (sonnet replay of textbook seed 1, day 18): peak-hour
   CP exhaustion on both CPCs (CPC1 85–98 %, CPC2 to 100 % from 09:00) under REGRESSION (RETAIL ×1.5 for 30 h, two
   peaks) + MARKET_OPEN_SURGE + ENCRYPTION_MANDATE; no cap or model blow-up. Counterfactual with REGRESSION off:
