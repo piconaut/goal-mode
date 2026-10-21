@@ -174,6 +174,7 @@ function harbourlineDay0(r: RunState, c: GameContent): RunState {
   ]);
   plan('Payments affinity to CPC1 (B4)', [{ kind: 'SET_ROUTING', workloadId: 'PAYMENTS', routing: { PRDA: 0.35, PRDB: 0.35, PRDC: 0.15, PRDD: 0.15 } }]);
   plan('Remove the PRDA absolute cap', [{ kind: 'SET_ABSOLUTE_CAP', lparId: 'PRDA', engines: null }]);
+  plan('Threadsafe AORs (QR 30 %) for the market-open bursts', [1, 2, 3, 4, 5, 6, 7, 8].map((n) => ({ kind: 'SET_CICS' as const, name: `CICSAOR${n}`, qrFrac: 0.3 })));
   return run;
 }
 

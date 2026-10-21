@@ -25,8 +25,8 @@ const burstsAt = (ratePerHour: number): BurstShape => ({
   heightMult: [3, 5],
   durationSec: [30, 180],
   scheduled: [
-    { hour: 9.5, heightMult: 5, durationSec: 300, weekdaysOnly: true },
-    { hour: 16, heightMult: 4, durationSec: 240, weekdaysOnly: true },
+    { hour: 9.5, heightMult: 3, durationSec: 300, weekdaysOnly: true },
+    { hour: 16, heightMult: 2.5, durationSec: 240, weekdaysOnly: true },
   ],
 });
 
