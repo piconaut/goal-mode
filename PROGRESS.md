@@ -349,6 +349,12 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 129):** first Harbourline bot sweep (seeds 1–2, 10 days, normal): donothing 695 median, one
+  trust game-over on day 10 (lowest facet Markets), trust ~42; textbook 733 / trust 60–71; expert 727–733 / trust
+  58–65; no batch misses for the active bots. CAPPING dominates incidents (13–27 per run: the PRDA absolute cap, B?),
+  then QR_TCB. Expert ≈ textbook, so the bots don't use Harbourline's levers yet. Next: bot day-0 fixes for the
+  planted flaws (PRDA absolute cap, MKTORD avg goal in HBPOL, MKTQRY static weights → WLM, ABENDCRIT on CPSM
+  workloads), then retune volumes (CPC1 under target) and a 40-day sweep.
 - **2026-10-21 (loop 128):** Codex: `sd-wlm-weights`, `cpsm-routing`, `storm-drain` (found on SICK_AOR),
   `absolute-capping`, `arrival-bursts` (found on MARKET_OPEN_SURGE), wired into the Routing and HMC sections; sources
   checked against IBM pages (implementer drafted, URLs replaced with verified ones). Next: startTools for Harbourline,
