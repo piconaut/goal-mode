@@ -48,6 +48,7 @@ import type { Scenario } from './scenario';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
 import type {
   CpcConfig,
+  LparConfig,
   EnvState,
   LparPoolRuntime,
   LparRuntime,
@@ -154,178 +155,45 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     else if (x.lostImpact === 'MQ_DOWN') mqFailFrac = Math.max(mqFailFrac, CF_FAILURE.mqDownFailFrac);
   }
 
-  // 3–4. Slices and demand per z/OS image.
+  // 3–4. Slices and demand per z/OS image. The per-image stages are separate functions so a
+  // deoptimisation in one (state shapes settle over the first simulated days) stays cheap.
   const zosLpars = config.lpars.filter((l) => l.kind === 'ZOS');
-  const slicesBy: Record<string, SliceSpec[]> = {};
-  const batchRefsBy: Record<string, BatchSliceRef[]> = {};
-  const swappedBy: Record<string, Set<JobRuntime>> = {};
   const pagingFrac: Record<string, number> = {};
   const demands: PoolDemand[] = [];
-  for (const l of zosLpars) {
-    const cpc = cpcOf[l.cpcId]!;
-    const cpSp = cpSpeed(cpc);
-    const zSp = ziipSpeed(cpc);
-    const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces }), prev.mods);
-
-    const db2 = config.db2.find((d) => d.lparId === l.id);
-    const ioMult = db2
-      ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
-      : 1;
-    const aors = config.cics.filter((c) => c.lparId === l.id);
-    // CICS QR TCB load per AOR (CICS work is spread evenly over the image's AORs).
-    let cicsQrCpu = 0;
-    let cicsRate = 0;
-    let ddfRate = 0;
-    let ddfRtWeighted = 0;
-    let cicsRtWeighted = 0;
-    for (const s of base) {
-      if (s.kind !== 'TXN' || !s.workloadId) continue;
-      const w = workloadById[s.workloadId]!;
-      const prevRt = env.rtByWorkloadLpar[wlLparKey(w.id, l.id)] ?? 0.05;
-      if (w.subsystem === 'CICS') {
-        cicsQrCpu += s.rate * s.cpuSecPerTxn;
-        cicsRate += s.rate;
-        cicsRtWeighted += s.rate * prevRt;
-      }
-      if (w.subsystem === 'DDF') {
-        ddfRate += s.rate;
-        ddfRtWeighted += s.rate * prevRt;
-      }
-    }
-    const meanQrFrac = aors.length ? aors.reduce((a, c) => a + c.qrFrac, 0) / aors.length : 0;
-    const qr = qrTcb(aors.length ? (cicsQrCpu * meanQrFrac) / aors.length : 0);
-    const maxTasks = aors.reduce((a, c) => a + c.maxTasks, 0);
-    const mxtWait = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRtWeighted / cicsRate : 0, maxTasks) : 0;
-    const dbatWait = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRtWeighted / ddfRate : 0, db2.maxDbat) : 0;
-
-    // `base` holds fresh objects built for this tick, so transactions are completed in place.
-    for (const s of base) {
-      if (s.kind !== 'TXN' || !s.workloadId) continue;
-      const w = workloadById[s.workloadId]!;
-      let extra = 0;
-      let failFrac = 0;
-      let cpuAdd = 0;
-      let ioPerTxn = s.ioPerTxn;
-      const parts: Record<string, number> = {};
-      if (usesRole(w.servers, 'DB2.')) {
-        ioPerTxn *= ioMult;
-        parts.cf = DB2.cfRequestsPerTxn * cfServiceSec;
-        parts.lock = DB2.lockWaitSecPerIndex * env.lockIndex;
-        extra += parts.cf + parts.lock;
-        cpuAdd += DB2.cfRequestsPerTxn * cfZosCpuSec;
-      }
-      let outside = 0;
-      if (w.subsystem === 'CICS' && aors.length) {
-        parts.qr = s.cpuSecPerTxn * meanQrFrac * qr.qrWaitRatio;
-        extra += parts.qr;
-        outside += mxtWait;
-        failFrac = qr.failFrac;
-      }
-      if (w.subsystem === 'DDF') outside += dbatWait;
-      if (db2FailFrac > 0 && usesRole(w.servers, 'DB2.')) failFrac = Math.max(failFrac, db2FailFrac);
-      if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
-      if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
-      s.ioPerTxn = ioPerTxn;
-      s.extraParts = parts;
-      s.extraOtherSec = extra;
-      s.outsideWaitSec = outside;
-      s.failFrac = failFrac;
-      s.cpEngines = s.cpEngines + s.rate * cpuAdd;
-      s.cpuSecPerTxn = s.cpuSecPerTxn + cpuAdd;
-    }
-    const slices = base;
-
-    // Batch: one slice per service-class period of running jobs on this image.
-    const refs: Record<string, BatchSliceRef> = {};
-    const seqRt = io.SEQ.rtSec;
-    // Storage: base + Db2 buffer pools + CICS regions + queued MQ messages + running jobs. When it
-    // overcommits real memory, SRM swaps out the least important batch jobs (MPL/swap delay).
-    const cicsRegions = cicsRegionCount(addressSpaces, l.id);
-    const fixedGb =
-      (scenario.memory.osBaseGb[l.id] ?? 20) + (db2?.bufferPoolGb ?? 0) + cicsRegions * scenario.memory.cicsRegionGb + queuedMsgGb(prev, workloadById, l.id);
-    const running = runningBy[l.id] ?? [];
-    const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb);
-    if (swapped.size > 0) swappedBy[l.id] = swapped;
-    let runningJobs = 0;
-    for (const j of running) {
-      if (swapped.has(j)) continue;
-      runningJobs++;
-      const cls = classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id });
-      const scKey = scKeyOf(cls.serviceClass, 0);
-      const shape = jobShape(j.def, cpSp, zSp, seqRt);
-      const cfCpu = j.def.usesDb2 ? shape.ioRate * DB2.cfRequestsPerBatchIo * cfZosCpuSec : 0;
-      // Jobs in different report classes need their own slice so RMF can report them apart.
-      const refKey = cls.reportClass ? `${scKey}/${cls.reportClass}` : scKey;
-      let ref = refs[refKey];
-      if (!ref) {
-        ref = {
-          slice: sliceSpec({
-            key: `BATCH:${refKey}@${l.id}`,
-            scKey,
-            reportClass: cls.reportClass,
-            kind: 'AS',
-            workloadId: null,
-            jobname: null,
-            role: null,
-            rate: 0,
-            cpEngines: 0,
-            ziipEngines: 0,
-            mayOverflow: true,
-            cpuSecPerTxn: 0,
-            ziipSecPerTxn: 0,
-            ioPerTxn: 0,
-            baseLatencySec: 0,
-            rtSigma: 0,
-            timeoutSec: Infinity,
-            servers: [],
-            goalRtSec: null,
-            slaRtSec: null,
-            ioClass: 'SEQ',
-            ioRate: 0,
-            extraOtherSec: 0,
-            failFrac: 0,
-            outsideWaitSec: 0,
-          }),
-          jobs: [],
-        };
-        refs[refKey] = ref;
-      }
-      ref.slice.cpEngines += shape.cpRate + cfCpu;
-      ref.slice.ziipEngines += shape.zRate;
-      ref.slice.ioRate += shape.ioRate / Math.max(1, j.stretch);
-      ref.jobs.push({ job: j, cp: shape.cpRate + cfCpu, zi: shape.zRate, shape });
-    }
-    const batchRefs = Object.values(refs);
-    batchRefsBy[l.id] = batchRefs;
-    const all = [...slices, ...batchRefs.map((r) => r.slice)];
-    slicesBy[l.id] = all;
-
-    const memDemand = fixedGb + runningJobs * scenario.memory.batchJobGb;
-    pagingFrac[l.id] = pagingDelayFrac(memDemand, l.memoryGb);
-
-    let cp = 0;
-    let zi = 0;
-    for (const s of all) {
-      const bl = (prev.backlog[s.key] ?? 0) / TICK_SEC;
-      const tot = s.cpEngines + s.ziipEngines;
-      const cpShare = tot > 0 ? s.cpEngines / tot : 1;
-      cp += s.cpEngines + bl * cpShare;
-      zi += s.ziipEngines + bl * (1 - cpShare);
-    }
-    const prevRt = prev.lpars.find((x) => x.id === l.id);
-    const ratio = (pool: 'CP' | 'ZIIP') => {
-      const r = prevRt?.pools.find((p) => p.pool === pool);
-      return r && r.deliveredEngines > 1e-6 ? Math.max(0.5, r.effectiveEngines / r.deliveredEngines) : DEFAULT_EFF_RATIO;
-    };
-    const hasZiip = l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
-    // Without zIIPs every eligible cycle runs on CPs.
-    if (!hasZiip) {
-      cp += zi;
-      zi = 0;
-    }
-    demands.push({ lparId: l.id, pool: 'CP', demandEngines: cp / ratio('CP'), softCapEngines: Infinity });
-    if (hasZiip) demands.push({ lparId: l.id, pool: 'ZIIP', demandEngines: zi / ratio('ZIIP'), softCapEngines: Infinity });
-  }
+  const t: TickCtx = {
+    prev,
+    scenario,
+    def,
+    env,
+    config,
+    clock,
+    cpcOf,
+    workloads,
+    workloadById,
+    addressSpaces,
+    rates,
+    io,
+    cfServiceSec,
+    cfZosCpuSec,
+    db2FailFrac,
+    mqFailFrac,
+    runningBy,
+    slicesBy: {},
+    batchRefsBy: {},
+    swappedBy: {},
+    pagingFrac,
+    demands,
+    lpars: [],
+    storageCritical: new Set<string>(),
+    evalInputs: {},
+    backlog: {},
+    failedBy: {},
+    wlTick: {},
+    rtByWorkloadLpar: {},
+    systems: [],
+    lparTicks: [],
+  };
+  for (const l of zosLpars) lparDemand(t, l);
   // Coupling facilities: request work from last tick; a shared CF without thin
   // interrupts polls, consuming its whole logical engine share.
   for (const l of config.lpars.filter((x) => x.kind === 'CF')) {
@@ -363,7 +231,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   }
 
   // 5. PR/SM.
-  const lpars: LparRuntime[] = [];
+  const lpars = t.lpars;
   for (const cpc of config.cpcs) {
     const res = resolveCpc(cpc, config.lpars, demands);
     const msuCp = msuPerCp(cpc);
@@ -378,172 +246,15 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   }
 
   // 7–10. Dispatch and response per image.
-  const backlog: Record<string, number> = {};
-  const failedBy: Record<string, number> = {};
-  const wlTick: Record<string, WorkloadTick> = {};
+  const { backlog, failedBy, wlTick, lparTicks, systems, evalInputs, rtByWorkloadLpar, storageCritical } = t;
   for (const w of workloads) {
     wlTick[w.id] = { id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
   }
-  const lparTicks: LparTick[] = [];
-  const systems: WlmSystemState[] = [];
-  const evalInputs: Record<string, LparEvalInput> = {};
-  const rtByWorkloadLpar: Record<string, number> = {};
-  let randomIops = 0;
-  let seqIops = 0;
-  let cfRequests = 0;
-  let onlineDb2Rate = 0;
-  const storageCritical = new Set<string>();
   for (const c of def.classes) if (c.storageCritical) c.periods.forEach((_, i) => storageCritical.add(scKeyOf(c.id, i)));
 
-  for (const l of zosLpars) {
-    const rt = lpars.find((x) => x.id === l.id)!;
-    const cpRt = rt.pools.find((p) => p.pool === 'CP');
-    const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
-    const cpCfg = l.pools.find((p) => p.pool === 'CP');
-    const ziCfg = l.pools.find((p) => p.pool === 'ZIIP');
-    const sysCfg = config.systems.find((s) => s.lparId === l.id);
-    const prevSys = prev.wlm.systems.find((s) => s.lparId === l.id);
-    const slices = slicesBy[l.id] ?? [];
-
-    const promoted = new Set<string>();
-    if (prevSys && sysCfg) {
-      for (const s of prevSys.scps) if (s.starvedSec >= sysCfg.blwlinthdSec) promoted.add(s.scKey);
-    }
-
-    const cpc = cpcOf[l.cpcId]!;
-    const dpMap: Record<string, number> = {};
-    for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
-    const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
-    // Every optional field is always present so all evaluator inputs share one shape.
-    const evalInput: LparEvalInput = {
-      cpCapacityEngines: cpRt?.availableEffectiveEngines ?? 0,
-      cpServers: servers(cpRt, cpCfg?.logical ?? 0, l.hiperDispatch),
-      ziipCapacityEngines: ziRt?.availableEffectiveEngines ?? 0,
-      ziipServers: servers(ziRt, ziCfg?.logical ?? 0, l.hiperDispatch),
-      cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
-      slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
-      backlog: prev.backlog,
-      dpOf,
-      capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
-      minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)).minOf,
-      regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
-      io,
-      ioPriority: def.ioPriorityManagement === false ? false : undefined,
-      pagingFrac: pagingFrac[l.id] ?? 0,
-      cappedFrac: cpRt?.cappedFrac ?? 0,
-      storageCritical,
-      promoted,
-      promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
-      scpsOnly: false,
-    };
-    evalInputs[l.id] = evalInput;
-    const res = evaluateLpar(evalInput);
-    // Swapped-out jobs are ready but not in storage: swap/MPL delay for their class (RMF reports it
-    // with the storage delays; APPROX: one delayed sample per swapped job).
-    for (const j of swappedBy[l.id] ?? []) {
-      const k = scKeyOf(classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id }).serviceClass, 0);
-      let t = res.scps.find((x) => x.scKey === k);
-      if (!t) {
-        t = emptyScpTick(k, dpOf(k));
-        res.scps.push(t);
-      }
-      t.delayStorage += 1;
-    }
-
-    const compBy: Record<string, number> = {};
-    slices.forEach((s, i) => {
-      const r = res.slices[i]!;
-      if (r.newBacklog > 1e-9) backlog[s.key] = r.newBacklog;
-      if (s.workloadId) {
-        const wt = wlTick[s.workloadId]!;
-        wt.completions += r.completions;
-        wt.withinSla += r.withinSla;
-        wt.failed += r.failed;
-        wt.rtSumSec += r.completions * r.userRtSec;
-        if (r.parts) addParts(wt.parts, r.parts, r.completions);
-        failedBy[s.workloadId] = (failedBy[s.workloadId] ?? 0) + r.failed;
-        if (s.maxQueueMsgs !== undefined) {
-          const per = s.cpuSecPerTxn + s.ziipSecPerTxn;
-          const qd = (wt.queueDepth ??= {});
-          qd[l.id] = (qd[l.id] ?? 0) + (per > 0 ? r.newBacklog / per : 0);
-        }
-        const k = wlLparKey(s.workloadId, l.id);
-        rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
-        compBy[k] = (compBy[k] ?? 0) + r.completions;
-        const w = workloadById[s.workloadId]!;
-        randomIops += s.rate * s.ioPerTxn;
-        if (usesRole(w.servers, 'DB2.')) {
-          cfRequests += s.rate * DB2.cfRequestsPerTxn;
-          onlineDb2Rate += s.rate;
-        }
-      }
-    });
-    for (const k in compBy) {
-      const c = compBy[k]!;
-      rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
-    }
-
-    // Batch progression: share each batch slice's grant across its jobs by demand.
-    const depStretch =
-      1 +
-      ['DB2.DBM1', 'DB2.MSTR', 'DB2.IRLM'].reduce((a, role) => {
-        const x = res.roleHealth[role];
-        return x ? a + 0.5 * (1 / Math.max(x.health, 0.02) - 1) + 0.02 * x.queueRatio : a;
-      }, 0);
-    // Batch slices are the last ones on the image, in batchRefs order.
-    const batchRefs = batchRefsBy[l.id] ?? [];
-    const firstBatch = slices.length - batchRefs.length;
-    for (const [bi, ref] of batchRefs.entries()) {
-      const r = res.slices[firstBatch + bi]!;
-      const cpWant = ref.slice.cpEngines;
-      const ziWant = ref.slice.ziipEngines;
-      const cpGot = r.cpGranted;
-      const ziGot = r.ziipGranted + r.iipcpGranted;
-      for (const jr of ref.jobs) {
-        const fc = cpWant > 0 ? jr.cp / cpWant : 0;
-        const fz = ziWant > 0 ? jr.zi / ziWant : 0;
-        const lockStretch = jr.job.def.usesDb2 ? 1 + 0.4 * Math.min(2, env.lockIndex / 4) * Math.min(1, onlineDb2Rate / 2000) : 1;
-        advanceJob(
-          jr.job,
-          jr.shape,
-          {
-            cpWanted: jr.cp,
-            cpGot: cpGot * fc,
-            ziipWanted: jr.zi,
-            ziipGot: ziGot * fz,
-            extraStretch: (jr.job.def.usesDb2 ? depStretch : 1) * lockStretch,
-          },
-          prev.tick,
-        );
-        const ioNow = jr.shape.ioRate / Math.max(1, jr.job.stretch);
-        seqIops += ioNow;
-        if (jr.job.def.usesDb2) cfRequests += ioNow * DB2.cfRequestsPerBatchIo;
-      }
-    }
-
-    // 12a. Measurement into WLM accumulators.
-    const scps: ScpState[] = [];
-    const seen = new Set<string>();
-    const prevScp: Record<string, ScpState> = {};
-    for (const p of prevSys?.scps ?? []) prevScp[p.scKey] = p;
-    for (const t of res.scps) {
-      seen.add(t.scKey);
-      const p = prevScp[t.scKey];
-      const starved = t.delayCpu > 1e-6 && t.usingCpu < 0.01 * (t.usingCpu + t.delayCpu);
-      scps.push({
-        scKey: t.scKey,
-        dp: dpOf(t.scKey),
-        starvedSec: starved ? (p?.starvedSec ?? 0) + TICK_SEC : 0,
-        acc: decayInto(p?.acc ?? emptyAcc(), t),
-      });
-    }
-    for (const p of prevSys?.scps ?? []) {
-      if (seen.has(p.scKey)) continue;
-      scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)) });
-    }
-    systems.push({ lparId: l.id, scps });
-    lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth });
-  }
+  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0, onlineDb2Rate: 0 };
+  for (const l of zosLpars) dispatchLpar(t, l, sums);
+  const { randomIops, seqIops, cfRequests } = sums;
 
   // I/O subsystem and CF for next tick.
   const dasd = evaluateDasd(config.dasd, { RANDOM: randomIops, SEQ: seqIops });
@@ -661,6 +372,371 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     cost,
     rmf: { acc: rmfAcc, intervals, jobsThisInterval },
   };
+}
+
+/** Everything the per-image stages of one tick read or fill in. */
+interface TickCtx {
+  prev: SimState;
+  scenario: Scenario;
+  def: SimState['wlm']['definition'];
+  env: EnvState;
+  config: SimState['config'];
+  clock: ReturnType<typeof clockAt>;
+  cpcOf: Record<string, CpcConfig>;
+  workloads: readonly WorkloadDef[];
+  workloadById: Record<string, WorkloadDef>;
+  addressSpaces: readonly AddressSpaceDef[];
+  rates: Record<string, number>;
+  io: Record<IoClass, IoService>;
+  cfServiceSec: number;
+  cfZosCpuSec: number;
+  db2FailFrac: number;
+  mqFailFrac: number;
+  runningBy: Record<string, JobRuntime[]>;
+  slicesBy: Record<string, SliceSpec[]>;
+  batchRefsBy: Record<string, BatchSliceRef[]>;
+  swappedBy: Record<string, Set<JobRuntime>>;
+  pagingFrac: Record<string, number>;
+  demands: PoolDemand[];
+  lpars: LparRuntime[];
+  storageCritical: Set<string>;
+  evalInputs: Record<string, LparEvalInput>;
+  backlog: Record<string, number>;
+  failedBy: Record<string, number>;
+  wlTick: Record<string, WorkloadTick>;
+  rtByWorkloadLpar: Record<string, number>;
+  systems: WlmSystemState[];
+  lparTicks: LparTick[];
+}
+
+/** Sums over all images, accumulated in image order. */
+interface TickSums {
+  randomIops: number;
+  seqIops: number;
+  cfRequests: number;
+  onlineDb2Rate: number;
+}
+
+/** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
+function lparDemand(t: TickCtx, l: LparConfig): void {
+  const { prev, scenario, def, env, config, clock, cpcOf, workloads, workloadById, addressSpaces, rates, io } = t;
+  const { cfServiceSec, cfZosCpuSec, db2FailFrac, mqFailFrac, runningBy, slicesBy, batchRefsBy, swappedBy, pagingFrac, demands } = t;
+  const cpc = cpcOf[l.cpcId]!;
+  const cpSp = cpSpeed(cpc);
+  const zSp = ziipSpeed(cpc);
+  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces }), prev.mods);
+
+  const db2 = config.db2.find((d) => d.lparId === l.id);
+  const ioMult = db2
+    ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
+    : 1;
+  const aors = config.cics.filter((c) => c.lparId === l.id);
+  // CICS QR TCB load per AOR (CICS work is spread evenly over the image's AORs).
+  let cicsQrCpu = 0;
+  let cicsRate = 0;
+  let ddfRate = 0;
+  let ddfRtWeighted = 0;
+  let cicsRtWeighted = 0;
+  for (const s of base) {
+    if (s.kind !== 'TXN' || !s.workloadId) continue;
+    const w = workloadById[s.workloadId]!;
+    const prevRt = env.rtByWorkloadLpar[wlLparKey(w.id, l.id)] ?? 0.05;
+    if (w.subsystem === 'CICS') {
+      cicsQrCpu += s.rate * s.cpuSecPerTxn;
+      cicsRate += s.rate;
+      cicsRtWeighted += s.rate * prevRt;
+    }
+    if (w.subsystem === 'DDF') {
+      ddfRate += s.rate;
+      ddfRtWeighted += s.rate * prevRt;
+    }
+  }
+  const meanQrFrac = aors.length ? aors.reduce((a, c) => a + c.qrFrac, 0) / aors.length : 0;
+  const qr = qrTcb(aors.length ? (cicsQrCpu * meanQrFrac) / aors.length : 0);
+  const maxTasks = aors.reduce((a, c) => a + c.maxTasks, 0);
+  const mxtWait = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRtWeighted / cicsRate : 0, maxTasks) : 0;
+  const dbatWait = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRtWeighted / ddfRate : 0, db2.maxDbat) : 0;
+
+  // `base` holds fresh objects built for this tick, so transactions are completed in place.
+  for (const s of base) {
+    if (s.kind !== 'TXN' || !s.workloadId) continue;
+    const w = workloadById[s.workloadId]!;
+    let extra = 0;
+    let failFrac = 0;
+    let cpuAdd = 0;
+    let ioPerTxn = s.ioPerTxn;
+    const parts: Record<string, number> = {};
+    if (usesRole(w.servers, 'DB2.')) {
+      ioPerTxn *= ioMult;
+      parts.cf = DB2.cfRequestsPerTxn * cfServiceSec;
+      parts.lock = DB2.lockWaitSecPerIndex * env.lockIndex;
+      extra += parts.cf + parts.lock;
+      cpuAdd += DB2.cfRequestsPerTxn * cfZosCpuSec;
+    }
+    let outside = 0;
+    if (w.subsystem === 'CICS' && aors.length) {
+      parts.qr = s.cpuSecPerTxn * meanQrFrac * qr.qrWaitRatio;
+      extra += parts.qr;
+      outside += mxtWait;
+      failFrac = qr.failFrac;
+    }
+    if (w.subsystem === 'DDF') outside += dbatWait;
+    if (db2FailFrac > 0 && usesRole(w.servers, 'DB2.')) failFrac = Math.max(failFrac, db2FailFrac);
+    if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
+    if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
+    s.ioPerTxn = ioPerTxn;
+    s.extraParts = parts;
+    s.extraOtherSec = extra;
+    s.outsideWaitSec = outside;
+    s.failFrac = failFrac;
+    s.cpEngines = s.cpEngines + s.rate * cpuAdd;
+    s.cpuSecPerTxn = s.cpuSecPerTxn + cpuAdd;
+  }
+  const slices = base;
+
+  // Batch: one slice per service-class period of running jobs on this image.
+  const refs: Record<string, BatchSliceRef> = {};
+  const seqRt = io.SEQ.rtSec;
+  // Storage: base + Db2 buffer pools + CICS regions + queued MQ messages + running jobs. When it
+  // overcommits real memory, SRM swaps out the least important batch jobs (MPL/swap delay).
+  const cicsRegions = cicsRegionCount(addressSpaces, l.id);
+  const fixedGb =
+    (scenario.memory.osBaseGb[l.id] ?? 20) + (db2?.bufferPoolGb ?? 0) + cicsRegions * scenario.memory.cicsRegionGb + queuedMsgGb(prev, workloadById, l.id);
+  const running = runningBy[l.id] ?? [];
+  const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb);
+  if (swapped.size > 0) swappedBy[l.id] = swapped;
+  let runningJobs = 0;
+  for (const j of running) {
+    if (swapped.has(j)) continue;
+    runningJobs++;
+    const cls = classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id });
+    const scKey = scKeyOf(cls.serviceClass, 0);
+    const shape = jobShape(j.def, cpSp, zSp, seqRt);
+    const cfCpu = j.def.usesDb2 ? shape.ioRate * DB2.cfRequestsPerBatchIo * cfZosCpuSec : 0;
+    // Jobs in different report classes need their own slice so RMF can report them apart.
+    const refKey = cls.reportClass ? `${scKey}/${cls.reportClass}` : scKey;
+    let ref = refs[refKey];
+    if (!ref) {
+      ref = {
+        slice: sliceSpec({
+          key: `BATCH:${refKey}@${l.id}`,
+          scKey,
+          reportClass: cls.reportClass,
+          kind: 'AS',
+          workloadId: null,
+          jobname: null,
+          role: null,
+          rate: 0,
+          cpEngines: 0,
+          ziipEngines: 0,
+          mayOverflow: true,
+          cpuSecPerTxn: 0,
+          ziipSecPerTxn: 0,
+          ioPerTxn: 0,
+          baseLatencySec: 0,
+          rtSigma: 0,
+          timeoutSec: Infinity,
+          servers: [],
+          goalRtSec: null,
+          slaRtSec: null,
+          ioClass: 'SEQ',
+          ioRate: 0,
+          extraOtherSec: 0,
+          failFrac: 0,
+          outsideWaitSec: 0,
+        }),
+        jobs: [],
+      };
+      refs[refKey] = ref;
+    }
+    ref.slice.cpEngines += shape.cpRate + cfCpu;
+    ref.slice.ziipEngines += shape.zRate;
+    ref.slice.ioRate += shape.ioRate / Math.max(1, j.stretch);
+    ref.jobs.push({ job: j, cp: shape.cpRate + cfCpu, zi: shape.zRate, shape });
+  }
+  const batchRefs = Object.values(refs);
+  batchRefsBy[l.id] = batchRefs;
+  const all = [...slices, ...batchRefs.map((r) => r.slice)];
+  slicesBy[l.id] = all;
+
+  const memDemand = fixedGb + runningJobs * scenario.memory.batchJobGb;
+  pagingFrac[l.id] = pagingDelayFrac(memDemand, l.memoryGb);
+
+  let cp = 0;
+  let zi = 0;
+  for (const s of all) {
+    const bl = (prev.backlog[s.key] ?? 0) / TICK_SEC;
+    const tot = s.cpEngines + s.ziipEngines;
+    const cpShare = tot > 0 ? s.cpEngines / tot : 1;
+    cp += s.cpEngines + bl * cpShare;
+    zi += s.ziipEngines + bl * (1 - cpShare);
+  }
+  const prevRt = prev.lpars.find((x) => x.id === l.id);
+  const ratio = (pool: 'CP' | 'ZIIP') => {
+    const r = prevRt?.pools.find((p) => p.pool === pool);
+    return r && r.deliveredEngines > 1e-6 ? Math.max(0.5, r.effectiveEngines / r.deliveredEngines) : DEFAULT_EFF_RATIO;
+  };
+  const hasZiip = l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
+  // Without zIIPs every eligible cycle runs on CPs.
+  if (!hasZiip) {
+    cp += zi;
+    zi = 0;
+  }
+  demands.push({ lparId: l.id, pool: 'CP', demandEngines: cp / ratio('CP'), softCapEngines: Infinity });
+  if (hasZiip) demands.push({ lparId: l.id, pool: 'ZIIP', demandEngines: zi / ratio('ZIIP'), softCapEngines: Infinity });
+}
+
+/** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
+function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
+  const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
+  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, systems, lparTicks } = t;
+  const rt = lpars.find((x) => x.id === l.id)!;
+  const cpRt = rt.pools.find((p) => p.pool === 'CP');
+  const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
+  const cpCfg = l.pools.find((p) => p.pool === 'CP');
+  const ziCfg = l.pools.find((p) => p.pool === 'ZIIP');
+  const sysCfg = config.systems.find((s) => s.lparId === l.id);
+  const prevSys = prev.wlm.systems.find((s) => s.lparId === l.id);
+  const slices = slicesBy[l.id] ?? [];
+
+  const promoted = new Set<string>();
+  if (prevSys && sysCfg) {
+    for (const s of prevSys.scps) if (s.starvedSec >= sysCfg.blwlinthdSec) promoted.add(s.scKey);
+  }
+
+  const cpc = cpcOf[l.cpcId]!;
+  const dpMap: Record<string, number> = {};
+  for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
+  const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
+  // Every optional field is always present so all evaluator inputs share one shape.
+  const evalInput: LparEvalInput = {
+    cpCapacityEngines: cpRt?.availableEffectiveEngines ?? 0,
+    cpServers: servers(cpRt, cpCfg?.logical ?? 0, l.hiperDispatch),
+    ziipCapacityEngines: ziRt?.availableEffectiveEngines ?? 0,
+    ziipServers: servers(ziRt, ziCfg?.logical ?? 0, l.hiperDispatch),
+    cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
+    slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
+    backlog: prev.backlog,
+    dpOf,
+    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
+    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)).minOf,
+    regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
+    io,
+    ioPriority: def.ioPriorityManagement === false ? false : undefined,
+    pagingFrac: pagingFrac[l.id] ?? 0,
+    cappedFrac: cpRt?.cappedFrac ?? 0,
+    storageCritical,
+    promoted,
+    promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
+    scpsOnly: false,
+  };
+  evalInputs[l.id] = evalInput;
+  const res = evaluateLpar(evalInput);
+  // Swapped-out jobs are ready but not in storage: swap/MPL delay for their class (RMF reports it
+  // with the storage delays; APPROX: one delayed sample per swapped job).
+  for (const j of swappedBy[l.id] ?? []) {
+    const k = scKeyOf(classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id }).serviceClass, 0);
+    let t = res.scps.find((x) => x.scKey === k);
+    if (!t) {
+      t = emptyScpTick(k, dpOf(k));
+      res.scps.push(t);
+    }
+    t.delayStorage += 1;
+  }
+
+  const compBy: Record<string, number> = {};
+  slices.forEach((s, i) => {
+    const r = res.slices[i]!;
+    if (r.newBacklog > 1e-9) backlog[s.key] = r.newBacklog;
+    if (s.workloadId) {
+      const wt = wlTick[s.workloadId]!;
+      wt.completions += r.completions;
+      wt.withinSla += r.withinSla;
+      wt.failed += r.failed;
+      wt.rtSumSec += r.completions * r.userRtSec;
+      if (r.parts) addParts(wt.parts, r.parts, r.completions);
+      failedBy[s.workloadId] = (failedBy[s.workloadId] ?? 0) + r.failed;
+      if (s.maxQueueMsgs !== undefined) {
+        const per = s.cpuSecPerTxn + s.ziipSecPerTxn;
+        const qd = (wt.queueDepth ??= {});
+        qd[l.id] = (qd[l.id] ?? 0) + (per > 0 ? r.newBacklog / per : 0);
+      }
+      const k = wlLparKey(s.workloadId, l.id);
+      rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
+      compBy[k] = (compBy[k] ?? 0) + r.completions;
+      const w = workloadById[s.workloadId]!;
+      sums.randomIops += s.rate * s.ioPerTxn;
+      if (usesRole(w.servers, 'DB2.')) {
+        sums.cfRequests += s.rate * DB2.cfRequestsPerTxn;
+        sums.onlineDb2Rate += s.rate;
+      }
+    }
+  });
+  for (const k in compBy) {
+    const c = compBy[k]!;
+    rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
+  }
+
+  // Batch progression: share each batch slice's grant across its jobs by demand.
+  const depStretch =
+    1 +
+    ['DB2.DBM1', 'DB2.MSTR', 'DB2.IRLM'].reduce((a, role) => {
+      const x = res.roleHealth[role];
+      return x ? a + 0.5 * (1 / Math.max(x.health, 0.02) - 1) + 0.02 * x.queueRatio : a;
+    }, 0);
+  // Batch slices are the last ones on the image, in batchRefs order.
+  const batchRefs = batchRefsBy[l.id] ?? [];
+  const firstBatch = slices.length - batchRefs.length;
+  for (const [bi, ref] of batchRefs.entries()) {
+    const r = res.slices[firstBatch + bi]!;
+    const cpWant = ref.slice.cpEngines;
+    const ziWant = ref.slice.ziipEngines;
+    const cpGot = r.cpGranted;
+    const ziGot = r.ziipGranted + r.iipcpGranted;
+    for (const jr of ref.jobs) {
+      const fc = cpWant > 0 ? jr.cp / cpWant : 0;
+      const fz = ziWant > 0 ? jr.zi / ziWant : 0;
+      const lockStretch = jr.job.def.usesDb2 ? 1 + 0.4 * Math.min(2, env.lockIndex / 4) * Math.min(1, sums.onlineDb2Rate / 2000) : 1;
+      advanceJob(
+        jr.job,
+        jr.shape,
+        {
+          cpWanted: jr.cp,
+          cpGot: cpGot * fc,
+          ziipWanted: jr.zi,
+          ziipGot: ziGot * fz,
+          extraStretch: (jr.job.def.usesDb2 ? depStretch : 1) * lockStretch,
+        },
+        prev.tick,
+      );
+      const ioNow = jr.shape.ioRate / Math.max(1, jr.job.stretch);
+      sums.seqIops += ioNow;
+      if (jr.job.def.usesDb2) sums.cfRequests += ioNow * DB2.cfRequestsPerBatchIo;
+    }
+  }
+
+  // 12a. Measurement into WLM accumulators.
+  const scps: ScpState[] = [];
+  const seen = new Set<string>();
+  const prevScp: Record<string, ScpState> = {};
+  for (const p of prevSys?.scps ?? []) prevScp[p.scKey] = p;
+  for (const t of res.scps) {
+    seen.add(t.scKey);
+    const p = prevScp[t.scKey];
+    const starved = t.delayCpu > 1e-6 && t.usingCpu < 0.01 * (t.usingCpu + t.delayCpu);
+    scps.push({
+      scKey: t.scKey,
+      dp: dpOf(t.scKey),
+      starvedSec: starved ? (p?.starvedSec ?? 0) + TICK_SEC : 0,
+      acc: decayInto(p?.acc ?? emptyAcc(), t),
+    });
+  }
+  for (const p of prevSys?.scps ?? []) {
+    if (seen.has(p.scKey)) continue;
+    scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)) });
+  }
+  systems.push({ lparId: l.id, scps });
+  lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth });
 }
 
 /** Seconds after a played day's 06:00 start → wall-clock text. */
