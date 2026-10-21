@@ -266,7 +266,8 @@ STRATEGIES.textbook = textbook;
 const expert: Strategy = {
   briefing: (r, s, c) => {
     let run = fixer.briefing(r, s, c);
-    if (run.day === 0) run = capSettingUp(run, c);
+    // At the first briefing with the hours for it (Harbourline's day-0 flaw fixes use the whole day).
+    if (run.day <= 2 && !run.changes.some((x) => x.label === 'Capacity setting +1' && x.status !== 'FAILED')) run = capSettingUp(run, c);
     return run;
   },
   hourly: fixer.hourly,
