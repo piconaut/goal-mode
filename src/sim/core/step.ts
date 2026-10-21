@@ -7,7 +7,7 @@ import { accrueTfp, closeMonth, recordHour } from '../cost/mlc';
 import { groupShares, newR4ha, stepR4ha } from '../cost/r4ha';
 import { accumulateTick, closeInterval, newRmfAcc, type JobEndRecord } from '../measure/rmf';
 import { cpSpeed, msuPerCp, suPerCpuSecOf, ziipSpeed } from '../hw/cpc';
-import { resolveCpc, type PoolDemand } from '../hw/pools';
+import { poolKey, resolveCpc, type PoolDemand } from '../hw/pools';
 import { evaluateDasd, type IoClass } from '../io/dasd';
 import {
   advanceJob,
@@ -25,7 +25,7 @@ import { baseRate, stepNoise } from '../workload/arrivals';
 import { buildSlices, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
-import { emptyScpTick, evaluateLpar, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
+import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../content/wlm/tuning';
 import { CF_FAILURE } from '../../content/cf';
@@ -96,7 +96,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const tickOfDay = prev.tick % TICKS_PER_DAY;
   const cpcOf: Record<string, CpcConfig> = {};
   for (const c of config.cpcs) cpcOf[c.id] = c;
-  const workloadById = Object.fromEntries(workloads.map((w) => [w.id, w]));
+  const workloadById = byIdOf(workloads);
 
   // 1–2. Arrivals (noise is mean-corrected so it doesn't inflate average λ).
   const rates: Record<string, number> = {};
@@ -112,8 +112,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   });
 
   // Batch scheduling: release tonight's network at the start of the played day.
-  // Finished jobs are never mutated again, so they can be shared with the previous state.
-  let batch = { ...prev.batch, jobs: prev.batch.jobs.map((j) => (j.status === 'DONE' ? j : { ...j })) };
+  // Only queued and running jobs are mutated in place below (promotion copies the held jobs it
+  // changes), so every other job can be shared with the previous state.
+  let batch = { ...prev.batch, jobs: prev.batch.jobs.map((j) => (j.status === 'QUEUED' || j.status === 'RUNNING' ? { ...j } : j)) };
   if (tickOfDay === 0) batch = releaseNetwork(batch, clock.day, scenario.batchNetwork(prev.seed, clock.day, clock.dayOfMonth));
   promoteEligible(batch.jobs, prev.tick);
   const lparBusy: Record<string, number> = {};
@@ -122,6 +123,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     if (cp && cp.availableEngines > 0) lparBusy[l.id] = cp.deliveredEngines / cp.availableEngines;
   }
   startJobs(batch.jobs, prev.tick, { jobClasses: config.jobClasses, lparBusy });
+  const runningBy: Record<string, JobRuntime[]> = {};
+  for (const j of batch.jobs) if (j.status === 'RUNNING' && j.lparId !== null) (runningBy[j.lparId] ??= []).push(j);
 
   const io: Record<IoClass, IoService> = env.dasd
     ? {
@@ -178,7 +181,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     for (const s of base) {
       if (s.kind !== 'TXN' || !s.workloadId) continue;
       const w = workloadById[s.workloadId]!;
-      const prevRt = env.rtByWorkloadLpar[`${w.id}@${l.id}`] ?? 0.05;
+      const prevRt = env.rtByWorkloadLpar[wlLparKey(w.id, l.id)] ?? 0.05;
       if (w.subsystem === 'CICS') {
         cicsQrCpu += s.rate * s.cpuSecPerTxn;
         cicsRate += s.rate;
@@ -195,8 +198,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const mxtWait = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRtWeighted / cicsRate : 0, maxTasks) : 0;
     const dbatWait = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRtWeighted / ddfRate : 0, db2.maxDbat) : 0;
 
-    const slices: SliceSpec[] = base.map((s) => {
-      if (s.kind !== 'TXN' || !s.workloadId) return s;
+    // `base` holds fresh objects built for this tick, so transactions are completed in place.
+    for (const s of base) {
+      if (s.kind !== 'TXN' || !s.workloadId) continue;
       const w = workloadById[s.workloadId]!;
       let extra = 0;
       let failFrac = 0;
@@ -220,19 +224,16 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       if (w.subsystem === 'DDF') outside += dbatWait;
       if (db2FailFrac > 0 && usesRole(w.servers, 'DB2.')) failFrac = Math.max(failFrac, db2FailFrac);
       if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
-      const mqMax = w.mq && s.mqQueueFrac !== undefined ? { maxQueueMsgs: (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac } : {};
-      return {
-        ...s,
-        ...mqMax,
-        ioPerTxn,
-        extraParts: parts,
-        extraOtherSec: extra,
-        outsideWaitSec: outside,
-        failFrac,
-        cpuSecPerTxn: s.cpuSecPerTxn + cpuAdd,
-        cpEngines: s.cpEngines + s.rate * cpuAdd,
-      };
-    });
+      if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
+      s.ioPerTxn = ioPerTxn;
+      s.extraParts = parts;
+      s.extraOtherSec = extra;
+      s.outsideWaitSec = outside;
+      s.failFrac = failFrac;
+      s.cpEngines = s.cpEngines + s.rate * cpuAdd;
+      s.cpuSecPerTxn = s.cpuSecPerTxn + cpuAdd;
+    }
+    const slices = base;
 
     // Batch: one slice per service-class period of running jobs on this image.
     const refs: Record<string, BatchSliceRef> = {};
@@ -242,7 +243,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const cicsRegions = cicsRegionCount(addressSpaces, l.id);
     const fixedGb =
       (scenario.memory.osBaseGb[l.id] ?? 20) + (db2?.bufferPoolGb ?? 0) + cicsRegions * scenario.memory.cicsRegionGb + queuedMsgGb(prev, workloadById, l.id);
-    const running = batch.jobs.filter((j) => j.status === 'RUNNING' && j.lparId === l.id);
+    const running = runningBy[l.id] ?? [];
     const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb);
     if (swapped.size > 0) swappedBy[l.id] = swapped;
     let runningJobs = 0;
@@ -258,10 +259,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       let ref = refs[refKey];
       if (!ref) {
         ref = {
-          slice: {
+          slice: sliceSpec({
             key: `BATCH:${refKey}@${l.id}`,
             scKey,
-            ...(cls.reportClass ? { reportClass: cls.reportClass } : {}),
+            reportClass: cls.reportClass,
             kind: 'AS',
             workloadId: null,
             jobname: null,
@@ -284,7 +285,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
             extraOtherSec: 0,
             failFrac: 0,
             outsideWaitSec: 0,
-          },
+          }),
           jobs: [],
         };
         refs[refKey] = ref;
@@ -368,7 +369,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const msuCp = msuPerCp(cpc);
     for (const l of config.lpars.filter((x) => x.cpcId === cpc.id)) {
       const pools = l.pools.flatMap((p) => {
-        const r = res[`${l.id}:${p.pool}`];
+        const r = res[poolKey(l.id, p.pool)];
         return r ? [r] : [];
       });
       const cpRt = pools.find((p) => p.pool === 'CP');
@@ -385,7 +386,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   }
   const lparTicks: LparTick[] = [];
   const systems: WlmSystemState[] = [];
-  const evalInputs: Record<string, Omit<LparEvalInput, 'dpOf'>> = {};
+  const evalInputs: Record<string, LparEvalInput> = {};
   const rtByWorkloadLpar: Record<string, number> = {};
   let randomIops = 0;
   let seqIops = 0;
@@ -410,30 +411,33 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     }
 
     const cpc = cpcOf[l.cpcId]!;
-    const evalInput: Omit<LparEvalInput, 'dpOf'> = {
+    const dpMap: Record<string, number> = {};
+    for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
+    const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
+    // Every optional field is always present so all evaluator inputs share one shape.
+    const evalInput: LparEvalInput = {
       cpCapacityEngines: cpRt?.availableEffectiveEngines ?? 0,
       cpServers: servers(cpRt, cpCfg?.logical ?? 0, l.hiperDispatch),
       ziipCapacityEngines: ziRt?.availableEffectiveEngines ?? 0,
       ziipServers: servers(ziRt, ziCfg?.logical ?? 0, l.hiperDispatch),
       cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
-      cappedFrac: cpRt?.cappedFrac ?? 0,
-      slices: slices.map((s) => (sysCfg && !sysCfg.iipHonorPriority ? { ...s, mayOverflow: false } : s)),
+      slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
       backlog: prev.backlog,
-      io,
-      ...(def.ioPriorityManagement === false ? { ioPriority: false } : {}),
-      pagingFrac: pagingFrac[l.id] ?? 0,
-      storageCritical,
+      dpOf,
       capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
-      ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)),
-      ...cicsRegions(def, slices, workloadById, addressSpaces, l.id),
+      minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)).minOf,
+      regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
+      io,
+      ioPriority: def.ioPriorityManagement === false ? false : undefined,
+      pagingFrac: pagingFrac[l.id] ?? 0,
+      cappedFrac: cpRt?.cappedFrac ?? 0,
+      storageCritical,
       promoted,
       promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
+      scpsOnly: false,
     };
     evalInputs[l.id] = evalInput;
-    const dpMap: Record<string, number> = {};
-    for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
-    const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
-    const res = evaluateLpar({ ...evalInput, dpOf });
+    const res = evaluateLpar(evalInput);
     // Swapped-out jobs are ready but not in storage: swap/MPL delay for their class (RMF reports it
     // with the storage delays; APPROX: one delayed sample per swapped job).
     for (const j of swappedBy[l.id] ?? []) {
@@ -446,10 +450,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       t.delayStorage += 1;
     }
 
-    const sliceIdx: Record<string, number> = {};
     const compBy: Record<string, number> = {};
     slices.forEach((s, i) => {
-      sliceIdx[s.key] = i;
       const r = res.slices[i]!;
       if (r.newBacklog > 1e-9) backlog[s.key] = r.newBacklog;
       if (s.workloadId) {
@@ -465,7 +467,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
           const qd = (wt.queueDepth ??= {});
           qd[l.id] = (qd[l.id] ?? 0) + (per > 0 ? r.newBacklog / per : 0);
         }
-        const k = `${s.workloadId}@${l.id}`;
+        const k = wlLparKey(s.workloadId, l.id);
         rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
         compBy[k] = (compBy[k] ?? 0) + r.completions;
         const w = workloadById[s.workloadId]!;
@@ -476,7 +478,10 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
         }
       }
     });
-    for (const [k, c] of Object.entries(compBy)) rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
+    for (const k in compBy) {
+      const c = compBy[k]!;
+      rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
+    }
 
     // Batch progression: share each batch slice's grant across its jobs by demand.
     const depStretch =
@@ -485,8 +490,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
         const x = res.roleHealth[role];
         return x ? a + 0.5 * (1 / Math.max(x.health, 0.02) - 1) + 0.02 * x.queueRatio : a;
       }, 0);
-    for (const ref of batchRefsBy[l.id] ?? []) {
-      const r = res.slices[sliceIdx[ref.slice.key]!]!;
+    // Batch slices are the last ones on the image, in batchRefs order.
+    const batchRefs = batchRefsBy[l.id] ?? [];
+    const firstBatch = slices.length - batchRefs.length;
+    for (const [bi, ref] of batchRefs.entries()) {
+      const r = res.slices[firstBatch + bi]!;
       const cpWant = ref.slice.cpEngines;
       const ziWant = ref.slice.ziipEngines;
       const cpGot = r.cpGranted;
@@ -573,7 +581,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       clockText,
     });
     if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) log.push(out.log);
-    return { ...sys, scps: sys.scps.map((s) => ({ ...s, dp: out.dps[s.scKey] ?? s.dp })) };
+    // This tick's period states are fresh objects: apply the new DPs in place.
+    for (const s of sys.scps) s.dp = out.dps[s.scKey] ?? s.dp;
+    return sys;
   });
   while (log.length > WLM_LOG_MAX) log.shift();
 
@@ -661,6 +671,20 @@ export function instanceClock(secAfterStart: number): string {
   return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}${dayOffset}`;
 }
 
+const byIdCache = new WeakMap<readonly WorkloadDef[], Record<string, WorkloadDef>>();
+function byIdOf(workloads: readonly WorkloadDef[]): Record<string, WorkloadDef> {
+  let m = byIdCache.get(workloads);
+  if (!m) byIdCache.set(workloads, (m = Object.fromEntries(workloads.map((w) => [w.id, w]))));
+  return m;
+}
+
+// `${workloadId}@${lparId}` without building a new string every tick.
+const wlLparKeys: Record<string, Record<string, string>> = {};
+function wlLparKey(workloadId: string, lparId: string): string {
+  const m = (wlLparKeys[workloadId] ??= {});
+  return (m[lparId] ??= `${workloadId}@${lparId}`);
+}
+
 const regionCountCache = new WeakMap<readonly AddressSpaceDef[], Record<string, number>>();
 function cicsRegionCount(addressSpaces: readonly AddressSpaceDef[], lparId: string): number {
   let m = regionCountCache.get(addressSpaces);
@@ -734,17 +758,17 @@ function effectiveAddressSpaces(scenario: Scenario, s: SimState): AddressSpaceDe
 
 function addParts(into: Record<string, number>, p: NonNullable<import('../wlm/evaluate').SliceResult['parts']>, n: number): void {
   if (n <= 0) return;
-  const add = (k: string, v: number) => (into[k] = (into[k] ?? 0) + v * n);
-  add('base', p.base);
-  add('cpu', p.cpu);
-  add('cpuQueue', p.cpuQueue);
-  add('ziipQueue', p.ziip);
-  add('io', p.io);
-  add('paging', p.paging);
-  add('dependency', p.dependency);
-  add('backlogWait', p.backlogWait);
-  add('outside', p.outside);
-  for (const [k, v] of Object.entries(p.extra)) add(k, v);
+  into.base = (into.base ?? 0) + p.base * n;
+  into.cpu = (into.cpu ?? 0) + p.cpu * n;
+  into.cpuQueue = (into.cpuQueue ?? 0) + p.cpuQueue * n;
+  into.ziipQueue = (into.ziipQueue ?? 0) + p.ziip * n;
+  into.io = (into.io ?? 0) + p.io * n;
+  into.paging = (into.paging ?? 0) + p.paging * n;
+  into.dependency = (into.dependency ?? 0) + p.dependency * n;
+  into.backlogWait = (into.backlogWait ?? 0) + p.backlogWait * n;
+  into.outside = (into.outside ?? 0) + p.outside * n;
+  const extra = p.extra;
+  for (const k in extra) into[k] = (into[k] ?? 0) + extra[k]! * n;
 }
 
 function applyCpuModifiers(slices: SliceSpec[], mods: SimState['mods']): SliceSpec[] {

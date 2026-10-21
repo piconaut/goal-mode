@@ -162,7 +162,7 @@ export function accumulateTick(
     if (lt.rcs) {
       rcs = rcs ? { ...rcs } : {};
       for (const t of lt.rcs) {
-        const k = `${lt.lparId}|${t.scKey}`;
+        const k = accKey(lt.lparId, t.scKey);
         const prevMembers = rcs[k]?.members ?? [];
         addScp(rcs, lt.lparId, t);
         const members = t.members.every((m) => prevMembers.includes(m)) ? prevMembers : [...new Set([...prevMembers, ...t.members])].sort();
@@ -239,8 +239,12 @@ export function accumulateTick(
   return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(rcs ? { rcs } : {}) };
 }
 
+// `${lparId}|${scKey}` without building a new string every tick.
+const accKeys: Record<string, Record<string, string>> = {};
+const accKey = (lparId: string, scKey: string) => ((accKeys[lparId] ??= {})[scKey] ??= `${lparId}|${scKey}`);
+
 function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: string, t: ScpTick) {
-  const k = `${lparId}|${t.scKey}`;
+  const k = accKey(lparId, t.scKey);
   const a: ScpIntervalAcc = scps[k] ?? {
     ...emptyAcc(),
     lparId,
@@ -255,9 +259,9 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
     delayCap: 0,
     failed: 0,
   } as T;
-  scps[k] = {
-    ...a,
-    dp: t.dp,
+  const members = (a as Partial<RcIntervalAcc>).members;
+  // Explicit literal in the accumulator's key order (no spread: hot path, once per period per tick).
+  const out: ScpIntervalAcc = {
     completions: a.completions + t.completions,
     rtSumSec: a.rtSumSec + t.rtSumSec,
     buckets: addBuckets(a.buckets, t.buckets),
@@ -267,16 +271,20 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
     delayZiip: a.delayZiip + t.delayZiip,
     delayIo: a.delayIo + t.delayIo,
     delayOther: a.delayOther + t.delayOther,
+    delayCap: a.delayCap + t.delayCap,
     cpuEngines: a.cpuEngines + t.cpEngines,
+    lparId: a.lparId,
+    scKey: a.scKey,
+    dp: t.dp,
     ziipEngines: a.ziipEngines + t.ziipEngines,
     iipcpEngines: a.iipcpEngines + t.iipcpEngines,
     usingCpu: a.usingCpu + t.usingCpu,
     usingZiip: a.usingZiip + t.usingZiip,
     usingIo: a.usingIo + t.usingIo,
     delayStorage: a.delayStorage + t.delayStorage,
-    delayCap: a.delayCap + t.delayCap,
     failed: a.failed + t.failed,
-  } as T;
+  };
+  scps[k] = (members !== undefined ? { ...out, members } : out) as T;
 }
 
 function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
