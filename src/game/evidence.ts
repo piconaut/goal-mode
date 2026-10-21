@@ -65,12 +65,14 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest): Located | s
         DELAY_CPU: 100 * r.delay.cpu,
         DELAY_ZIIP: 100 * r.delay.ziip,
         DELAY_IO: 100 * r.delay.io,
+        DELAY_STO: 100 * r.delay.stor,
         DELAY_CAP: 100 * r.delay.cap,
         DELAY_OTHER: 100 * r.delay.other,
       };
       const value = v[req.metric];
       if (value === undefined || value === null) return 'That metric is not in this view';
-      return { source: req.metric.startsWith('DELAY') ? 'DELAY' : 'SYSINFO', metric: req.metric, subject: req.scKey, system: req.system, tick: sim.tick, value };
+      const view = req.metric.startsWith('DELAY') ? 'DELAY' : req.metric === 'APPL' ? 'PROCU' : req.system === '*PLEX' ? 'SYSSUM' : 'SYSINFO';
+      return { source: view, metric: req.metric, subject: req.scKey, system: req.system, tick: sim.tick, value };
     }
     case 'CPC': {
       const c = buildMon3(run, scenario).cpc.find((x) => x.lparId === req.lparId);

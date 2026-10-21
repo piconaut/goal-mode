@@ -141,7 +141,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'CANCEL_RUNAWAY',
     forewarning: null,
     announcement: null,
-    clue: 'DDFPRD period 2 APPL% soars on PROD2; IIPCP up (no zIIPs there); BI end rate flat.',
+    clue: 'DDFPRD period 2 APPL% soars on PROD2; IIPCP up (Mon III PROCU Time on CP % IIP; no zIIPs there); BI end rate flat.',
   },
   {
     id: 'REGRESSION',

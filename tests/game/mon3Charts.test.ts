@@ -30,12 +30,12 @@ describe('Monitor III charting', () => {
     expect(off.mon3Charts).toBeNull();
   });
 
-  it('delay stack adds up to the DELAY report total', () => {
+  it('delay stack adds up to the DELAY report delays (less STR) plus UKN', () => {
     const r = advance(startDay(withCharts(), content), MIDWEST, content, 6 * 360);
     const last = r.mon3Charts!.samples.at(-1)!;
     for (const row of buildMon3(r, MIDWEST).rows.filter((x) => x.system === '*PLEX' && x.goal !== 'system')) {
       const d = last.delay[row.scKey]!;
-      expect(d.cpu + d.ziip + d.io + d.cap + d.other).toBeCloseTo(100 * row.delayFrac, 0);
+      expect(d.cpu + d.ziip + d.io + d.cap + d.other).toBeCloseTo(100 * (row.delayFrac - row.delay.stor + row.unknownFrac), 0);
     }
   });
 

@@ -107,11 +107,7 @@ export function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartStat
   }
   const ddf: Mon3Sample['ddf'] = {};
   for (const e of m.enclaves) {
-    const prev = ddf[e.scKey];
-    // Several DDF workloads can share a period: add rates and engines, keep the busier one's RT.
-    ddf[e.scKey] = prev
-      ? { endedPerSec: r1(prev.endedPerSec + e.endedPerSec), rtMs: prev.rtMs, ziipEngines: r1(prev.ziipEngines + e.ziipEngines), iipcpEngines: r1(prev.iipcpEngines + e.iipcpEngines) }
-      : { endedPerSec: r1(e.endedPerSec), rtMs: e.avgRtMs === null ? null : Math.round(e.avgRtMs), ziipEngines: Math.round(e.ziipEngines * 100) / 100, iipcpEngines: Math.round(e.iipcpEngines * 100) / 100 };
+    ddf[e.scKey] = { endedPerSec: r1(e.endedPerSec), rtMs: e.avgRtMs === null ? null : Math.round(e.avgRtMs), ziipEngines: Math.round(e.ziipEngines * 100) / 100, iipcpEngines: Math.round(e.iipcpEngines * 100) / 100 };
   }
   const cpcEngines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
   const delivered = run.sim.lpars.reduce((a, l) => a + (l.pools.find((p) => p.pool === 'CP')?.deliveredEngines ?? 0), 0);
