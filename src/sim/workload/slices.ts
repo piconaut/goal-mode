@@ -7,10 +7,16 @@ import { classify } from '../wlm/classify';
 import type { ServiceDefinition } from '../wlm/types';
 import { SYSOTHER, SYSSTC, SYSTEM } from '../wlm/types';
 import { sliceSpec, type SliceSpec } from '../wlm/evaluate';
-import { splitPeriods } from './periods';
+import { periodAtService, splitPeriods } from './periods';
 import type { AddressSpaceDef, WorkloadDef } from './types';
 
 export const scKeyOf = (serviceClass: string, period: number) => `${serviceClass}#${period + 1}`;
+
+/** Service-class period of work that has consumed `serviceSu` so far (Infinity: a long-running
+ * address space, which has aged into the last period). */
+export function scKeyAtService(def: ServiceDefinition, serviceClass: string, serviceSu: number): string {
+  return scKeyOf(serviceClass, periodAtService(periodsOf(def, serviceClass).map((p) => p.durationSu), serviceSu));
+}
 
 
 export interface SliceBuildInput {
@@ -136,6 +142,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
     if (a.lparId !== lpar.id) continue;
     const cls = classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: lpar.id });
     const periods = periodsOf(def, cls.serviceClass);
+    const last = periods.length - 1;
     const terms = (a.role ? (roleTerms[a.role] ?? []) : []).map((t) => ({
       workloadId: t.workloadId,
       cpCoef: (t.cpuSecRef * mp * (1 - a.ziipFrac)) / cpSp,
@@ -152,7 +159,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
       spec: sliceSpec({
         key: `${a.jobname}@${lpar.id}`,
         reportClass: cls.reportClass,
-        scKey: scKeyOf(cls.serviceClass, 0),
+        scKey: scKeyOf(cls.serviceClass, last),
         kind: 'AS',
         workloadId: null,
         jobname: a.jobname,
@@ -160,7 +167,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
         rate: 0,
         cpEngines: 0,
         ziipEngines: 0,
-        mayOverflow: periods[0]?.honor ?? true,
+        mayOverflow: periods[last]?.honor ?? true,
         cpuSecPerTxn: 0,
         ziipSecPerTxn: 0,
         ioPerTxn: 0,

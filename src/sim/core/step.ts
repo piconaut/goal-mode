@@ -22,7 +22,7 @@ import {
 import { mxtQueueWaitSec, qrTcb } from '../subsys/cics';
 import { bpIoMultiplier, dbatQueueWaitSec, DB2 } from '../subsys/db2';
 import { baseRate, stepNoise } from '../workload/arrivals';
-import { buildSlices, scKeyOf } from '../workload/slices';
+import { buildSlices, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
@@ -330,7 +330,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   if (nextTick % 360 === 0) {
     const dcBy: Record<string, number | null> = {};
     for (const l of zosLpars) dcBy[l.id] = l.definedCapacityMsu;
-    cost = recordHour(cost, scenario.products, r4haBy, dcBy, nextTick);
+    const groupLimits = config.capacityGroups.map((g) => ({ limitMsu: g.limitMsu, members: config.lpars.filter((l) => l.capacityGroup === g.id).map((l) => l.id) }));
+    cost = recordHour(cost, scenario.products, r4haBy, dcBy, nextTick, groupLimits);
   }
   if (clockAt(nextTick).dayOfMonth === 1 && clock.dayOfMonth !== 1) cost = closeMonth(cost, scenario.products);
 
@@ -496,22 +497,22 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 
   // Batch: one slice per service-class period of running jobs on this image.
   const refs: Record<string, BatchSliceRef> = {};
-  const seqRt = io.SEQ.rtSec;
   // Storage: base + Db2 buffer pools + CICS regions + queued MQ messages + running jobs. When it
   // overcommits real memory, SRM swaps out the least important batch jobs (MPL/swap delay).
   const cicsRegions = cicsRegionCount(addressSpaces, l.id);
   const fixedGb =
     (scenario.memory.osBaseGb[l.id] ?? 20) + (db2?.bufferPoolGb ?? 0) + cicsRegions * scenario.memory.cicsRegionGb + queuedMsgGb(prev, workloadById, l.id);
   const running = runningBy[l.id] ?? [];
-  const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb);
+  const seqRt = io.SEQ.rtSec;
+  const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb, (j) => jobServiceSu(j, jobShape(j.def, cpSp, zSp, seqRt), cpc));
   if (swapped.size > 0) swappedBy[l.id] = swapped;
   let runningJobs = 0;
   for (const j of running) {
     if (swapped.has(j)) continue;
     runningJobs++;
     const cls = classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id });
-    const scKey = scKeyOf(cls.serviceClass, 0);
     const shape = jobShape(j.def, cpSp, zSp, seqRt);
+    const scKey = scKeyAtService(def, cls.serviceClass, jobServiceSu(j, shape, cpc));
     const cfCpu = j.def.usesDb2 ? shape.ioRate * DB2.cfRequestsPerBatchIo * cfZosCpuSec : 0;
     // Jobs in different report classes need their own slice so RMF can report them apart.
     const refKey = cls.reportClass ? `${scKey}/${cls.reportClass}` : scKey;
@@ -608,6 +609,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const dpMap: Record<string, number> = {};
   for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
   const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
+  const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id);
   // Every optional field is always present so all evaluator inputs share one shape.
   const evalInput: LparEvalInput = {
     cpCapacityEngines: cpRt?.availableEffectiveEngines ?? 0,
@@ -618,8 +620,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
     backlog: prev.backlog,
     dpOf,
-    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
-    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)).minOf,
+    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
+    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare).minOf,
     regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
     io,
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
@@ -635,7 +637,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   // Swapped-out jobs are ready but not in storage: swap/MPL delay for their class (RMF reports it
   // with the storage delays; APPROX: one delayed sample per swapped job).
   for (const j of swappedBy[l.id] ?? []) {
-    const k = scKeyOf(classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id }).serviceClass, 0);
+    const k = scKeyAtService(def, classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id }).serviceClass, jobServiceSu(j, jobShape(j.def, cpSpeed(cpc), ziipSpeed(cpc), io.SEQ.rtSec), cpc));
     let t = res.scps.find((x) => x.scKey === k);
     if (!t) {
       t = emptyScpTick(k, dpOf(k));
@@ -772,16 +774,30 @@ function cicsRegionCount(addressSpaces: readonly AddressSpaceDef[], lparId: stri
   return m[lparId] ?? 0;
 }
 
+/** Service a running job has consumed so far: CPU (incl. zIIP) seconds × SU per second, as the
+ * period split of transactions counts it. Drives period aging of multi-period batch classes. */
+function jobServiceSu(j: JobRuntime, shape: ReturnType<typeof jobShape>, cpc: CpcConfig): number {
+  return j.progress * (shape.cpSec + shape.zSec) * suPerCpuSecOf(cpc);
+}
+
 /** Which running batch jobs SRM swaps out to fit real memory: least important first (discretionary
  * before importance 5…1), latest started first within an importance (z/OS storage management,
  * SG24-7621 MPL/swap; APPROX: swap-in is immediate once storage frees, and a minimum MPL always stays in). */
-export function swapOut(def: SimState['wlm']['definition'], running: readonly JobRuntime[], lparId: string, fixedGb: number, jobGb: number, memoryGb: number): Set<JobRuntime> {
+export function swapOut(
+  def: SimState['wlm']['definition'],
+  running: readonly JobRuntime[],
+  lparId: string,
+  fixedGb: number,
+  jobGb: number,
+  memoryGb: number,
+  serviceSuOf: (j: JobRuntime) => number = () => 0,
+): Set<JobRuntime> {
   const out = new Set<JobRuntime>();
   let demand = fixedGb + running.length * jobGb;
   const limit = memoryGb * STORAGE_SWAP.swapToFrac;
   if (fixedGb + running.length * jobGb <= memoryGb * STORAGE_SWAP.swapAboveFrac) return out;
   const rank = (j: JobRuntime) => {
-    const g = goalInfo(def, scKeyOf(classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: lparId }).serviceClass, 0));
+    const g = goalInfo(def, scKeyAtService(def, classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: lparId }).serviceClass, serviceSuOf(j)));
     return !g || g.goal.kind === 'DISC' ? 6 : g.importance;
   };
   const order = [...running].sort((a, b) => rank(b) - rank(a) || (b.startTick ?? 0) - (a.startTick ?? 0) || (a.def.name < b.def.name ? -1 : 1));
@@ -908,18 +924,52 @@ function idleScpTick(scKey: string, dp: number): ScpTick {
   };
 }
 
-/** Resource group maximums as per-slice CP caps (types 2 and 3 are system scope; type 1 is
- * sysplex scope, APPROX: split evenly across the systems where its members run). */
+/** Resource group limits in CP engines on one system. Types 2 and 3 are system scope; type 1 is a
+ * sysplex-wide SU/s budget, of which this system gets `plexShareFrac` (its share of the group's demand). */
 function resolveRgCapEngines(
   type: 1 | 2 | 3,
   max: number,
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
-  systemsWithMembers: number,
+  plexShareFrac: number,
 ): number {
   if (type === 3) return max / 100;
   if (type === 2) return ((cpRt?.entitlementEngines ?? 0) * max) / 100;
-  return max / suPerSec / Math.max(1, systemsWithMembers);
+  return (max * plexShareFrac) / suPerSec;
+}
+
+/** Each type 1 resource group's share of its sysplex CP demand (in SU/s) that runs on `lparId`.
+ * APPROX: WLM balances a type 1 group's service across systems by demand; we split its SU/s
+ * budget in proportion to this tick's demand. */
+export function rgSysplexShares(
+  def: SimState['wlm']['definition'],
+  slicesBy: Readonly<Record<string, readonly SliceSpec[]>>,
+  lpars: readonly LparConfig[],
+  cpcOf: Readonly<Record<string, CpcConfig>>,
+  lparId: string,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!def.resourceGroups.some((g) => g.type === 1)) return out;
+  const total: Record<string, number> = {};
+  const here: Record<string, number> = {};
+  for (const l of lpars) {
+    const slices = slicesBy[l.id];
+    if (!slices) continue;
+    const suPerSec = suPerCpuSecOf(cpcOf[l.cpcId]!);
+    for (const s of slices) {
+      const rg = goalInfo(def, s.scKey)?.resourceGroup;
+      if (!rg) continue;
+      const su = s.cpEngines * suPerSec;
+      total[rg] = (total[rg] ?? 0) + su;
+      if (l.id === lparId) here[rg] = (here[rg] ?? 0) + su;
+    }
+  }
+  for (const g of def.resourceGroups) {
+    if (g.type !== 1) continue;
+    const t = total[g.id] ?? 0;
+    out[g.id] = t > 0 ? (here[g.id] ?? 0) / t : 1;
+  }
+  return out;
 }
 
 const combineCaps = (a: ((s: SliceSpec) => number) | undefined, b: ((s: SliceSpec) => number) | undefined) =>
@@ -966,7 +1016,7 @@ function cicsRegions(
   const keys = [...new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.scKey))].sort();
   const aor = addressSpaces.find((a) => a.lparId === lparId && a.role === 'CICS.AOR');
   if (keys.length === 0 || !aor) return {};
-  const regionKey = scKeyOf(classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, 0);
+  const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   return { regions: { keys, mode: def.cicsRegionMode ?? 'TRANSACTION', regionKey } };
 }
 
@@ -988,6 +1038,7 @@ export function rgMin(
   scps: readonly ScpState[],
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
+  plexShare: Readonly<Record<string, number>> = {},
 ): { minOf?: Record<string, number> } {
   const groups = def.resourceGroups.filter((g) => g.min !== null && g.min > 0);
   if (groups.length === 0) return {};
@@ -998,7 +1049,7 @@ export function rgMin(
     const keys = Object.keys(demand).sort();
     const total = keys.reduce((a, k) => a + demand[k]!, 0);
     if (total <= 0 || !keys.some((k) => missingGoal(def, scps.find((x) => x.scKey === k), k))) continue;
-    const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, 1);
+    const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, plexShare[g.id] ?? 1);
     for (const k of keys) minOf[k] = (min * demand[k]!) / total;
   }
   return Object.keys(minOf).length > 0 ? { minOf } : {};
@@ -1009,6 +1060,7 @@ function resourceGroupCaps(
   slices: readonly SliceSpec[],
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
+  plexShare: Readonly<Record<string, number>>,
 ): ((s: SliceSpec) => number) | undefined {
   const groups = def.resourceGroups.filter((g) => g.max !== null);
   if (groups.length === 0) return undefined;
@@ -1017,7 +1069,7 @@ function resourceGroupCaps(
     const members = slices.filter((s) => goalInfo(def, s.scKey)?.resourceGroup === g.id);
     const demand = members.reduce((a, s) => a + s.cpEngines, 0);
     if (demand <= 0) continue;
-    const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, 1);
+    const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, plexShare[g.id] ?? 1);
     for (const s of members) capBySlice[s.key] = (cap * s.cpEngines) / demand;
   }
   return (s) => capBySlice[s.key] ?? Infinity;

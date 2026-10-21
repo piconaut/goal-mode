@@ -57,22 +57,52 @@ export const newCost = (products: readonly ProductDef[]): CostState => ({
   bills: [],
 });
 
+/** Capacity group terms for billing: SCRT never counts a group above its group capacity limit. */
+export interface GroupLimit {
+  limitMsu: number;
+  members: readonly string[];
+}
+
+/** Each LPAR's billable MSU for the hour: R4HA limited by its defined capacity, then a capacity
+ * group's members scaled down together so the group's sum does not exceed its limit.
+ * APPROX: SCRT applies the group limit to the group's combined R4HA; splitting it pro rata
+ * only matters when a product runs on part of a group. */
+export function billableMsu(
+  r4haByLpar: Readonly<Record<string, number>>,
+  limitByLpar: Readonly<Record<string, number | null>>,
+  groups: readonly GroupLimit[] = [],
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const id of Object.keys(r4haByLpar).sort()) {
+    const v = r4haByLpar[id] ?? 0;
+    const lim = limitByLpar[id];
+    out[id] = lim != null ? Math.min(v, lim) : v;
+  }
+  for (const g of groups) {
+    const sum = g.members.reduce((a, id) => a + (out[id] ?? 0), 0);
+    if (sum <= g.limitMsu || sum <= 0) continue;
+    const f = g.limitMsu / sum;
+    for (const id of g.members) if (out[id] !== undefined) out[id] *= f;
+  }
+  return out;
+}
+
 export function recordHour(
   cost: CostState,
   products: readonly ProductDef[],
   r4haByLpar: Readonly<Record<string, number>>,
   limitByLpar: Readonly<Record<string, number | null>>,
   tick: number,
+  groups: readonly GroupLimit[] = [],
 ): CostState {
+  const billable = billableMsu(r4haByLpar, limitByLpar, groups);
   const hourly: Record<string, number[]> = {};
   const peaks = cost.peaks.map((pk) => {
     const p = products.find((x) => x.id === pk.product)!;
     let msu = 0;
     const byLpar: Record<string, number> = {};
     for (const l of p.lpars) {
-      const v = r4haByLpar[l] ?? 0;
-      const lim = limitByLpar[l];
-      byLpar[l] = lim != null ? Math.min(v, lim) : v;
+      byLpar[l] = billable[l] ?? 0;
       msu += byLpar[l]!;
     }
     hourly[pk.product] = [...(cost.hourly[pk.product] ?? []), msu];
