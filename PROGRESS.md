@@ -51,9 +51,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] PI (avg, percentile with 14 buckets, velocity, discretionary 0.81); local and sysplex (merged accumulators)
 - [x] Policy adjustment loop (receiver, bottleneck, donors, receiver value, net value; one receiver per interval) + WLM activity log
 - [x] CPU Critical constraint; blocked workload promotion (BLWLINTHD/BLWLTRPCT); IIPHONORPRIORITY; resource group *maximum* (types 1–3)
-- [ ] Resource group *minimum*
-- [ ] Discretionary goal management (capping of overachievers, SG24-7621 §4.22 conditions)
-- [ ] I/O priority management, MPL/swap, storage delays (need M3 models)
+- [x] Resource group *minimum* (loop 30, see M6)
+- [x] Discretionary goal management (capping of overachievers, SG24-7621 §4.22 conditions) (loop 31)
+- [x] I/O priority management (loop 32), MPL/swap (loop 34), storage delays (M3 paging)
 - [x] Realism tests: importance ordering, SG24-7621 percentile PI example, priority inversion via Db2, zIIP flaw F7, determinism
 - [x] Starting policy BASEPOL (flaws F1–F6) and Midwest workloads/address spaces content
 
@@ -66,9 +66,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done
 - [x] CF model: utilisation, sync time, shared-engine dispatch wait (thin interrupts vs polling), sync→async heuristic, z/OS CPU spin cost (`sim/cf/cf.ts`); polling shared CFs burn their ICF share
 - [x] Real storage / paging delay (storage-critical classes exempt) (`sim/zos/storage.ts`)
 - [x] Batch: nightly DAG generator (9 streams, ~165 jobs, critical STL/CRD/GLF/STM), JES and APPROX WLM-managed initiators, discrete progress with CPU/zIIP/I-O stretch, Db2-health and lock stretch, critical-path projection, night summaries/deadline (`sim/subsys/batch.ts`, `content/batch/`)
-- [ ] MQ queue depth model (PAYMQ currently plain CICS-style)
-- [ ] CF structure rebuild / duplexing, CF link events (come with the event deck in M5)
-- [ ] CICS REGION-mode management and "free ride"
+- [x] MQ queue depth model for PAYMQ (loop 33)
+- [x] CF structure rebuild / duplexing (loop 35), CF link event (`CF_LINK`)
+- [x] CICS REGION-mode management and "free ride" (loop 36)
 - [x] Tests: DASD composition + alias effect, CF async conversion + thin interrupts, BP curve, DBAT/MXT, QR, paging, batch scheduling/stretch/projection/generator determinism
 
 ### M4 — Capping, cost, measurement
@@ -754,7 +754,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
   DDF while DDF is happy and then can't undo it quickly. Realistic in spirit, but watch in balancing.
 - Real WLM learns server topology for CICS/IMS regions (and enclaves inherit DP). We charge
   transaction CPU directly to the transaction's service class ("manage regions by
-  TRANSACTION goals"). REGION mode and the "free ride" are not modelled yet.
+  TRANSACTION goals"). Resolved (loop 36): REGION mode and the "free ride" are modelled.
 
 - Percentile PI edge cases: how exactly does WLM handle periods with very few completions
   (minimum-sample rules)? Currently an EWMA with a variable horizon. Check *MVS Planning: WLM*.
