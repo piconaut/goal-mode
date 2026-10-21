@@ -17,7 +17,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
   comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
-- **Health:** `npm run check` green (359 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+- **Health:** `npm run check` green (360 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -349,6 +349,14 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 136):** Harbourline collapse root-caused (sonnet replay of textbook seed 1, day 18): peak-hour
+  CP exhaustion on both CPCs (CPC1 85–98 %, CPC2 to 100 % from 09:00) under REGRESSION (RETAIL ×1.5 for 30 h, two
+  peaks) + MARKET_OPEN_SURGE + ENCRYPTION_MANDATE; no cap or model blow-up. Counterfactual with REGRESSION off:
+  Markets 80 vs 45, day recovers. Fixes: REGRESSION 12 h on Harbourline. Structural bug found: every hardware item
+  went to `cpcs[0]` (CPC1, already setting 7 / M2), so expert's day-1 capacity step was a no-op and CPC2 could never be
+  upgraded → `ChangeRequest.cpcId`, `HardwareItem.perCpc/unavailable`, refused pointless buys, UI CPC picker, bots
+  step the first CPC below 7 (SPEC §5.11.3). 360 tests, Midwest hash unchanged. Re-sweep running → runs/hb40c.csv
+  (before: hb40b textbook median day 28, expert 26, all trust/opex ends).
 - **2026-10-21 (loop 135):** Harbourline balance from the 40-day digest: REGRESSION adapted to RETAIL ×1.5 (was
   Midwest's ×3; RETAIL ≈ half of online CPU, so ×3 added ~10 CPs of demand to a 24-CP sysplex), opex budget 1.4M → 1.5M
   (textbook bills $1.6–1.7M, ~7 % over like Midwest's). Midwest hash unchanged. Re-sweep running → runs/hb40b.csv.

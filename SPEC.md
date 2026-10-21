@@ -684,6 +684,9 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 | New-generation CPC | 15–25 days + a migration-weekend event | big capex; +10–15% per-engine capacity, new caches |
 | DASD alias / cache upgrade | 2 days | capex |
 
+Engine, memory, capacity-setting and generation items are bought for one CPC (picker when the estate has more
+than one; default the first). A capacity step at setting 7 or a new generation on an M2 is refused, not sold.
+
 Rule from IBM: capacity provisioning should not be used with hard-capped LPARs
 ([IBM z/OS Capacity Provisioning](https://www-03.ibm.com/systems/z/os/zos/features/cpm)).
 
