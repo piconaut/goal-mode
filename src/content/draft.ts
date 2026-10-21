@@ -32,6 +32,7 @@ export const DRAFT_OPTIONS: DraftDef[] = [
   { id: 'OVERTIME_PUSH', title: 'Weekend push', description: '+3 engineer-hours tomorrow, but fatigue +15.', weight: 2 },
   { id: 'VENDOR_FRIEND', title: 'Perk: Friend at the Vendor', description: 'Hardware with a lead time of 2+ days arrives a day sooner.', weight: 1 },
   { id: 'WELL_CONNECTED', title: 'Perk: Well Connected', description: 'Asking around costs no engineer-hours.', weight: 1 },
+  { id: 'RC_HOARDER', title: 'Perk: Report Class Hoarder', description: 'The report class advisor, free: WLMGL can show every business workload on its own row.', weight: 1 },
   { id: 'NIGHT_DESK', title: 'Pact: Offshore night desk', description: '+2 engineer-hours every day for the rest of the run, but change failure risk ×1.3 (hand-offs).', weight: 1 },
   { id: 'BUDGET_SWAP', title: 'Pact: Capex for opex', description: '+$500k hardware budget now, but the monthly opex budget is 10% lower for the rest of the run.', weight: 1 },
 ];

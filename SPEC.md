@@ -886,7 +886,7 @@ lead times), TFP contract offer, zIIP promotion pricing, codex insight.
 
 **Perks** (sample): *Db2 Whisperer* (regressions flagged at REBIND), *HMC Ninja* (PR/SM changes
 cost 0 hours), *Friends in Finance* (+10% opex), *Night Owl* (no fatigue from night pages),
-*Belt and Braces* (−50% change-failure risk), *Report Class Hoarder* (granular WLMGL from day 1),
+*Belt and Braces* (−50% change-failure risk), *Report Class Hoarder* (the report class advisor tool for free, so WLMGL can show each business workload on its own row; not offered once the tool is owned),
 *Friend at the Vendor* (the "friendly IBM CE": hardware with 2+ days' lead arrives a day sooner), *Well Connected*
 (asking around costs no hours). One-off: *Weekend push* (+3 hours tomorrow for +15 fatigue, so more change risk).
 **Pacts** (constraint cards with persistent modifiers, offered in the same draft): *Offshore night desk* (+2

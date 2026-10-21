@@ -715,7 +715,8 @@ export function continueEndless(run: RunState, content: GameContent): RunState {
 
 function openReview(r: RunState, content: GameContent, day: number): RunState {
   const [draft, r2] = withRng(r, (rng) => {
-    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id));
+    // The hoarder perk is the advisor tool for free: pointless once it is owned.
+    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id) && !(d.id === 'RC_HOARDER' && r.tools.includes('RC_ADVISOR')));
     const out = [];
     for (let i = 0; i < 3 && pool.length > 0; i++) {
       const p = rng.pickWeighted(pool, (d) => d.weight)!;
@@ -762,6 +763,9 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
       break;
     case 'BUDGET_SWAP':
       r = { ...r, perks: [...r.perks, optionId], capexRemaining: r.capexRemaining + DRAFT_TUNING.budgetSwapCapex };
+      break;
+    case 'RC_HOARDER':
+      r = { ...r, perks: [...r.perks, optionId], tools: r.tools.includes('RC_ADVISOR') ? r.tools : [...r.tools, 'RC_ADVISOR'], log: [...r.log, 'Analytics: Report class advisor installed (Report Class Hoarder)'] };
       break;
     case 'HMC_NINJA':
     case 'BELT_AND_BRACES':

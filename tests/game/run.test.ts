@@ -88,6 +88,7 @@ describe('draft', () => {
     expect(n.day).toBe(1);
     expect(n.capexRemaining).toBe(r.capexRemaining + 300_000);
     expect(chooseDraft(r, content, 'HMC_NINJA').perks).toContain('HMC_NINJA');
+    expect(chooseDraft(r, content, 'RC_HOARDER').tools).toEqual(['RC_ADVISOR']);
   });
 });
 

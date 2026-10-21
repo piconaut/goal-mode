@@ -604,6 +604,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [x] Loop 77: pacts (perks with a lasting downside): Offshore night desk (+2 h/day all run, fail risk ×1.3) and
     Capex for opex (+$500k now, opex budget ×0.9 all run); `opexBudgetFor` now shared by run, finance and view (the
     view showed the budget without Friends in Finance). Run goldens regenerated (draft pool), sim hash unchanged
+  - [x] Loop 93: perk Report Class Hoarder (the report class advisor for free; left out of the draft once the tool
+    is owned). Run goldens regenerated (draft pool), sim bench hash unchanged
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
 
