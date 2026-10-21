@@ -539,6 +539,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         newBacklog = cap;
         waitSec = newBacklog / gotRate;
       }
+      // A starved queue: messages completing now waited about as long as the backlog took to build
+      // (Little's law on arrivals), not backlog / a near-zero service rate.
+      if (got[i]! < 1e-3 * (want[i]! + cut)) waitSec = Math.min(waitSec, newBacklog / Math.max(want[i]! + cut, 1e-9));
     } else if (waitSec > s.timeoutSec) {
       const keep = gotRate * s.timeoutSec;
       const excess = newBacklog - keep;
