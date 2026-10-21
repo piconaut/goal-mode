@@ -512,7 +512,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
 
 **M8.3 Difficulty & run structure**
-- [ ] Difficulty presets (Story / Normal / Hard / Ironman): growth multipliers, event λ and severity tiers, budget generosity, starting flaws, pause disabled in Ironman
+- [x] Difficulty presets (Story / Normal / Hard / Ironman): growth multipliers, event λ and severity tiers, budget generosity, starting flaws, pause disabled in Ironman
   - [x] Loop 38: presets in `src/content/difficulty.ts` (growth, event rate, opex/capex, start trust, pause, hint level),
     applied in the game layer (`scenarioFor` scales workload and batch growth; the sim is untouched, bench hash
     unchanged); Ironman blocks pause during the live day and alert pauses slow to ½×; `--difficulty` on bot/sweep.
@@ -576,8 +576,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [~] Meta-progression (career XP → unlock scenarios, starting perks, starting tool; Codex persists) in IndexedDB
   (loop 78: career XP, six levels unlocking starting perks, picked in the day-1 briefing; stored in IndexedDB,
   end screen shows XP earned and new unlocks. Checked in headless Chromium: a do-nothing run earned 140 XP.
-  Codex already persists across runs (localStorage, `goalmode.codex.v1`). Still open: scenario unlocks (one
-  scenario so far), starting tool)
+  Codex already persists across runs (localStorage, `goalmode.codex.v1`). Loop 103: starting tool = level 7
+  "Distinguished engineer" (2700 XP) unlocks Report Class Hoarder as a starting perk, which installs the report
+  class advisor (uninstalled if the pick changes; refused if the tool is already bought). Still open: scenario
+  unlocks (one scenario so far))
 
 **M8.4 Content**
 - [~] Events to ~25 (SPEC §9) (19 now; AUDIT_UNCLASSIFIED (5-day regulator audit of SYSOTHER, `auditUnclassified`); HIRING_FREEZE (-2 engineer-hours/day for 5 days, optional `hoursDelta`/`announcementFrom` card fields, rumoured; VENDOR_PRICE still pending: needs a run-level product price multiplier); 17 before; HSM_RECALL_STORM (LCU 30 recall I/O, fix HOLD_HSM_RECALLS, rumoured) and CP_SPARING (red-herring note, never attributed) added; 15 before; loop 60 added NEW_APP_GOLIVE (BOOKING lands in SYSOTHER and stays, once per run, rumoured) and POWER_CAP (one capacity setting down for 6 h, resolved at start so upgrades are not undone; new `oncePerRun`/`capacityDrop` card fields) with realism tests; earlier: 13; loop 58 added SHADOW_IT and QR_RELEASE with fixes, rumours and realism tests; re-sweep the bots once the deck is complete): new-app go-live in SYSOTHER, CICS SOS, QR saturation, HyperPAV exhaustion, CF02 failure + rebuild, CP sparing, vendor price increase, power cap, hiring freeze, audit (SMF retention, unclassified work), shadow IT on DEVT

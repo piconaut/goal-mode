@@ -41,5 +41,10 @@ export function unlockedPerks(xp: number): string[] {
 export function setStartingPerk(run: RunState, perkId: string | null, careerXp: number): RunState {
   if (run.day !== 0 || run.phase !== 'BRIEFING' || run.daily) return run;
   if (perkId !== null && !unlockedPerks(careerXp).includes(perkId)) return run;
-  return { ...run, perks: perkId ? [perkId] : [] };
+  // A perk that grants a tool (Report Class Hoarder) installs it, and switching away uninstalls it; it can't be
+  // picked over a tool already bought, so the uninstall never takes a purchase back.
+  const hadTool = run.perks.includes('RC_HOARDER');
+  if (perkId === 'RC_HOARDER' && !hadTool && run.tools.includes('RC_ADVISOR')) return run;
+  const tools = run.tools.filter((t) => !(hadTool && t === 'RC_ADVISOR'));
+  return { ...run, perks: perkId ? [perkId] : [], tools: perkId === 'RC_HOARDER' ? [...tools, 'RC_ADVISOR'] : tools };
 }

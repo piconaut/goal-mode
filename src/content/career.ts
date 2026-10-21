@@ -11,7 +11,7 @@ export const CAREER_XP = {
   difficultyMult: { STORY: 0.5, NORMAL: 1, HARD: 1.5, IRONMAN: 2 } satisfies Record<DifficultyId, number>,
 } as const;
 
-/** Cumulative XP thresholds; each level unlocks one starting perk (draft perk ids; pick one per run). */
+/** Cumulative XP thresholds; each level unlocks one starting perk (draft perk ids; pick one per run); the last is a starting tool. */
 export const CAREER_LEVELS: { xp: number; title: string; unlock: string | null }[] = [
   { xp: 0, title: 'Junior sysprog', unlock: null },
   { xp: 200, title: 'Sysprog', unlock: 'BELT_AND_BRACES' },
@@ -19,4 +19,6 @@ export const CAREER_LEVELS: { xp: number; title: string; unlock: string | null }
   { xp: 900, title: 'Performance analyst', unlock: 'HMC_NINJA' },
   { xp: 1400, title: 'Capacity planner', unlock: 'FRIENDS_IN_FINANCE' },
   { xp: 2000, title: 'Mainframe architect', unlock: 'VENDOR_FRIEND' },
+  // The starting-tool unlock: Report Class Hoarder installs the report class advisor.
+  { xp: 2700, title: 'Distinguished engineer', unlock: 'RC_HOARDER' },
 ];

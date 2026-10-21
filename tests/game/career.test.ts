@@ -33,4 +33,15 @@ describe('career', () => {
     expect(setStartingPerk({ ...r, phase: 'LIVE' }, 'BELT_AND_BRACES', 250).perks).toEqual([]);
     expect(setStartingPerk({ ...r, daily: '2026-10-20' }, 'BELT_AND_BRACES', 250).perks).toEqual([]);
   });
+
+  it('the top level unlocks a starting tool, removed again if the pick changes', () => {
+    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
+    expect(unlockedPerks(2699)).not.toContain('RC_HOARDER');
+    const withTool = setStartingPerk(r, 'RC_HOARDER', 2700);
+    expect(withTool.tools).toContain('RC_ADVISOR');
+    const switched = setStartingPerk(withTool, 'BELT_AND_BRACES', 2700);
+    expect(switched.tools).not.toContain('RC_ADVISOR');
+    expect(switched.perks).toEqual(['BELT_AND_BRACES']);
+    expect(setStartingPerk({ ...r, tools: ['RC_ADVISOR'] }, 'RC_HOARDER', 2700).perks).toEqual([]);
+  });
 });

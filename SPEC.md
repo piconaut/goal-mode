@@ -979,8 +979,9 @@ window (<30 min slack) comes after incident hints.
 - Unlock **starting perks** (choose 1–2 per run) and **starting tool**.
 - **Codex** persists: every real concept you encounter, explained with links to IBM docs.
 - *Implemented (career v1):* XP per finished run = 10 per day played + 150 for a win + a grade bonus (S 120 … D 0),
-  × difficulty (Story 0.5, Normal 1, Hard 1.5, Ironman 2); six levels (`src/content/career.ts`) each unlock one
-  draft perk as an optional **starting perk**, picked in the day-1 briefing (not on the daily challenge). The career
+  × difficulty (Story 0.5, Normal 1, Hard 1.5, Ironman 2); seven levels (`src/content/career.ts`) each unlock one
+  draft perk as an optional **starting perk**, picked in the day-1 briefing (not on the daily challenge); the top
+  one (Report Class Hoarder) is the starting tool: it installs the report class advisor. The career
   lives in IndexedDB next to the save; a run counts once (`careerRecorded`), so endless days add nothing. Scenario
   unlocks wait for a second scenario.
 - **Daily seed challenge**: everyone plays the same seed; compare scores. Implemented: the seed is an FNV-1a hash of the UTC date
