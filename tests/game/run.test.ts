@@ -131,6 +131,12 @@ describe('event cards resolved at start', () => {
     return { ...r, events: [ev] };
   };
 
+  it('Db2 Whisperer turns the silent REBIND regression into a DBA tip', () => {
+    const tip = (perks: string[]) => advance({ ...withCard('REGRESSION', 7), perks }, sc, MIDWEST_GAME, 1).inbox.some((m) => m.from === 'DBA team');
+    expect(tip([])).toBe(false);
+    expect(tip(['DB2_WHISPERER'])).toBe(true);
+  });
+
   it('a power cap drops one setting from the current one and restores that setting, not a fixed one', () => {
     let r = advance(withCard('POWER_CAP', 7), sc, MIDWEST_GAME, 1);
     expect(r.sim.config.cpcs[0]!.capacitySetting).toBe(6);

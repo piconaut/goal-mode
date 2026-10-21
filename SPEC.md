@@ -884,7 +884,7 @@ Vendor tool trial (temporary unlock), training course (permanent perk), CFO cape
 contractor (temporary +hours), SQL tuning sprint, "friendly IBM CE" (shorter hardware
 lead times), TFP contract offer, zIIP promotion pricing, codex insight.
 
-**Perks** (sample): *Db2 Whisperer* (regressions flagged at REBIND), *HMC Ninja* (PR/SM changes
+**Perks** (sample): *Db2 Whisperer* (the DBA team tips you off when a REBIND regresses an access path; the card is otherwise silent), *HMC Ninja* (PR/SM changes
 cost 0 hours), *Friends in Finance* (+10% opex), *Night Owl* (no fatigue from night pages),
 *Belt and Braces* (−50% change-failure risk), *Report Class Hoarder* (the report class advisor tool for free, so WLMGL can show each business workload on its own row; not offered once the tool is owned),
 *Friend at the Vendor* (the "friendly IBM CE": hardware with 2+ days' lead arrives a day sooner), *Well Connected*

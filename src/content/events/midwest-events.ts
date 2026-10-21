@@ -36,6 +36,8 @@ export interface EventDef {
   auditUnclassified?: true;
   /** Message when it starts (null = silent; players must notice symptoms). */
   announcement: string | null;
+  /** A perk that turns a silent start into a tip-off (e.g. Db2 Whisperer: EXPLAIN diffs after REBIND). */
+  perkTip?: { perk: string; from: string; text: string };
   clue: string;
 }
 
@@ -154,6 +156,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'REBIND_REVERT',
     forewarning: 'Change board: "Db2 package REBINDs for the retail app are scheduled overnight."',
     announcement: null,
+    perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: 'EXPLAIN diff after last night\'s REBIND: package RB01 changed access path (index probe → tablespace scan). Expect more CPU per retail transaction.' },
     clue: 'ONLHI service per transaction ×3 (APPL% up, END/S flat). Db2 accounting by package would point at RB01.',
   },
   {

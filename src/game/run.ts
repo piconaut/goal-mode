@@ -410,6 +410,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
           resolvedEnd.set(e.uid, [{ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting }]);
         }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
+        if (def?.perkTip && r.perks.includes(def.perkTip.perk)) r = msg(r, def.perkTip.from, def.name, def.perkTip.text);
         r = logLine(r, `EVENT start: ${e.name}`);
       }
       if (e.started && !e.ended && e.endTick !== null && e.endTick <= tick) {
@@ -768,6 +769,7 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
       r = { ...r, perks: [...r.perks, optionId], tools: r.tools.includes('RC_ADVISOR') ? r.tools : [...r.tools, 'RC_ADVISOR'], log: [...r.log, 'Analytics: Report class advisor installed (Report Class Hoarder)'] };
       break;
     case 'HMC_NINJA':
+    case 'DB2_WHISPERER':
     case 'BELT_AND_BRACES':
     case 'VENDOR_FRIEND':
     case 'WELL_CONNECTED':
