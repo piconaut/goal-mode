@@ -17,8 +17,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
   comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
-- **Health:** `npm run check` green (360 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
+- **Health:** `npm run check` green (362 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+  bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `be43ff16de564882` (since PR #9), Harbourline `be97b3e401164fc5`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
@@ -278,14 +278,13 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-21 | Monitor III audit against *RMF Report Analysis* (SC34-2665, z/OS 2.5) ch. 2: new SYSSUM view holds goals vs actuals and PI (real SYSINFO has no PI); SYSINFO gets its real header (CPs/IIPs online, Avg CPU vs MVS Util%, Appl%/EAppl%/Appl% IIP) and per-period WFL%, Users ACT, AVG USG and avg delayed users; DELAY uses RMF columns (WFL/USG/DLY/UKN, PRC/DEV/STR/CAP) and server waits move from DLY % to UKN %; PROCU shows Time on CP % Total/IIP and EAppl % CP/IIP; ENCLAVE shows class, period, goal, EAppl% and USG/DLY/UNK; CPC shows the real header and Logical/Physical Util % columns (weight, polarity, PR/SM delay kept in a separate table); WFEX gets a Speed section and Name/Reason/Critical val. columns; ENCLAVE shows one line per DDF period (two DDF workloads in one class used to repeat the period's figures, and the DDF chart double-counted them) | Field names and formulas were invented or borrowed from other reports; UKN vs DLY changes how much "delay" a Db2-bound DDF period shows, which is the realistic reading. View-model only: no sim state change, hashes and goldens unchanged |
 | 2026-10-21 | VENDOR_PRICE card built on a run-level MLC price multiplier in sim cost state (default 1), changed by card commands | User decision (option 1 of 3): smallest sim change, keeps goldens, reusable by later perks or pacts |
 | 2026-10-21 | Performance budget: ≤ 2 s per headless day applies to Midwest-size estates; larger estates (Harbourline, 6 LPARs, ~7 s/day) are accepted as they are, no structural perf work for now. ≤ 4 ms/tick is a Midwest target too | User decision. The profile is flat and reaching 2 s on 6 LPARs would need structural changes (fewer per-tick allocations, coarser ticks for quiet LPARs); not worth it yet |
+| 2026-10-21 | HiperDispatch: 0 < E < 1 CP gets 1 × VM and the rest VL (was 2 × VM); 1 ≤ E < 1.5 keeps 2 × VM | Claim confirmed by the user (PR #9). DEVT 2VM+2VL → 1VM+3VL, SYSP 2VM → 1VM+1VL on Midwest; goldens and bench hashes regenerated |
 
 ## Open questions
 
 - Large-bank design (SPEC §13.5), to settle before building: how sysplex distributor `SERVERWLM` weights count zIIP
   capacity by default; how CICSPlex SM abend-related health checks are configured and how fast a recovered region gets work
   again; whether an LPAR absolute cap or a group absolute limit is the usual "clips bursts" lever.
-- HiperDispatch polarity for E < 1: SPEC/tests give 2 × VM for any E < 1.5 (Watson & Walker table as read). Under the
-  "each VM ≥ 50% of an engine" rule an LPAR with E < 1 would get a single VM. Check the source before changing.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 

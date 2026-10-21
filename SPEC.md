@@ -288,11 +288,16 @@ published rule set (Watson & Walker, *Tuning Letter* 2022 No. 1, reprint on LPAR
 
 | Entitlement E | Polarity |
 |---|---|
-| E < 1.5 | 2 × VM (remaining logicals VL) |
+| 0 < E < 1 | 1 × VM (remaining logicals VL) |
+| 1 ≤ E < 1.5 | 2 × VM (remaining logicals VL) |
 | 1.5 ≤ E < 2 | 1 × VH + 1 × VM |
 | E ≥ 2, frac(E) < 0.5 | (⌊E⌋−1) × VH + 2 × VM |
 | E ≥ 2, frac(E) ≥ 0.5 | ⌊E⌋ × VH + 1 × VM |
 | Remaining logicals | VL (parked unless white space exists) |
+
+The published table starts at "E < 1.5 → 2 VM"; the second VM there keeps each VM at least half an
+engine of share. Below one engine the whole share sits on a single VM, the rest VL (confirmed by
+the user, 2026-10-21, PR #9).
 
 Effects:
 - **VH** engines get near-dedicated cache affinity: efficiency 1.00.
@@ -1071,8 +1076,8 @@ No report classes beyond service classes (**F6: poor granularity**).
 - **F9:** DEVT has **4 logical CPs at weight 100** (entitlement ≈ 0.8 CP): VL-heavy, raises the
   LtoP ratio, and it's **uncapped**, so its peaks add to z/OS/Db2/CICS MLC.
 - **F10:** Weights sum to 1000 on 8 CPs. PROD1 (500) → E=4.0 → 3VH+2VM+1VL. PROD2 (350) →
-  E=2.8 → 2VH+1VM+**3VL**. DEVT (100) → E=0.8 → 2VM+2VL. SYSP (50) → E=0.4 → 2VM. That's 6 VLs
-  plus too many VMs. Rebalancing to 565/335/65/35 (still summing to 1000) gives PROD1
+  E=2.8 → 2VH+1VM+**3VL**. DEVT (100) → E=0.8 → 1VM+3VL. SYSP (50) → E=0.4 → 1VM+1VL. That's
+  8 VLs across the CPC. Rebalancing to 565/335/65/35 (still summing to 1000) gives PROD1
   E=4.52 → **4VH+1VM**, while PROD2 keeps 2VH+1VM at E=2.68. Trimming PROD2/DEVT logicals
   then cuts VLs, which improves cache efficiency and LPAR overhead. The trade-off: DEVT's
   guaranteed share shrinks. The HMC screen previews this live.
@@ -1374,7 +1379,7 @@ never touches the DOM.
 | Discretionary goal management | **Simplified** | SG24-7621 §4.22 conditions except the recent receiver/donor test; cap level fictional |
 | Resource group types 1/2/3 semantics | **Real** | MVS Planning: WLM ch. 7. CP only (specialty consumption excluded, the default). Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX) |
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
-| HiperDispatch polarity rules | **Real (published rule of thumb)** | Watson & Walker 2022 |
+| HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM confirmed (PR #9) | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
