@@ -338,6 +338,12 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
 - **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
   (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
+- **2026-10-21 (loop 123):** Harbourline perf measured (one headless day, seed 42, this box): Midwest 5.2 s, Harbourline
+  9.3–9.9 s, Harbourline with every policy static 7.1–7.7 s (same at the dynamic run's final shares, so it's overhead,
+  not load). Dynamic routing changes shares ~700×/day (MOBILE WLM every minute plus CPSM every 30 s); template rebuilds
+  ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
+  shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
+  six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
 - **2026-10-21 (loop 122):** large-bank step 4a: Harbourline sim content (2 CPCs, 6 z/OS LPARs, HBPOL, 8 workloads with
   bursts and B1–B4 planted, batch, products; `SCENARIOS.harbourline`, not yet a pack), built by the implementer subagent
   and reviewed. It found a CPSM bug (timeouts read as fast abends → day-long storm drain into a saturated region), fixed
