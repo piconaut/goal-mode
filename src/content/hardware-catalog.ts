@@ -1,7 +1,7 @@
 // FICTIONAL hardware price list and lead times (SPEC §5.11.3).
 
 import type { Command } from '../sim/core/commands';
-import type { SimState } from '../sim/core/types';
+import type { CpcConfig, SimState } from '../sim/core/types';
 
 export interface HardwareItem {
   id: string;
@@ -12,11 +12,17 @@ export interface HardwareItem {
   leadDays: number;
   /** Temporary capacity reverts after this many days (On/Off CoD). */
   durationDays: number | null;
-  commands: (s: SimState) => Command[];
-  revert: (s: SimState) => Command[];
+  /** Bought for one CPC (the player picks which; default the first). */
+  perCpc?: true;
+  /** Why it can't be bought for this CPC (e.g. already at the top setting), or null. */
+  unavailable?: (c: Pick<CpcConfig, 'capacitySetting' | 'generation'>) => string | null;
+  commands: (s: SimState, cpcId?: string) => Command[];
+  revert: (s: SimState, cpcId?: string) => Command[];
 }
 
-const cpc = (s: SimState) => s.config.cpcs[0]!;
+/** The target CPC of a per-CPC item: the named one, else the first. */
+export const cpcFor = (s: SimState, cpcId?: string): CpcConfig => s.config.cpcs.find((c) => c.id === cpcId) ?? s.config.cpcs[0]!;
+const cpc = cpcFor;
 
 export const HARDWARE: HardwareItem[] = [
   {
@@ -26,9 +32,10 @@ export const HARDWARE: HardwareItem[] = [
     capex: 0,
     opexPerDay: 9_000,
     leadDays: 0,
+    perCpc: true,
     durationDays: 3,
-    commands: (s) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s).id, pool: 'CP', engines: cpc(s).engines.CP + 1 }],
-    revert: (s) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s).id, pool: 'CP', engines: cpc(s).engines.CP - 1 }],
+    commands: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', engines: cpc(s, id).engines.CP + 1 }],
+    revert: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', engines: cpc(s, id).engines.CP - 1 }],
   },
   {
     id: 'PERM_CP',
@@ -37,8 +44,9 @@ export const HARDWARE: HardwareItem[] = [
     capex: 380_000,
     opexPerDay: 0,
     leadDays: 4,
+    perCpc: true,
     durationDays: null,
-    commands: (s) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s).id, pool: 'CP', engines: cpc(s).engines.CP + 1 }],
+    commands: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', engines: cpc(s, id).engines.CP + 1 }],
     revert: () => [],
   },
   {
@@ -48,8 +56,9 @@ export const HARDWARE: HardwareItem[] = [
     capex: 95_000,
     opexPerDay: 0,
     leadDays: 4,
+    perCpc: true,
     durationDays: null,
-    commands: (s) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s).id, pool: 'ZIIP', engines: cpc(s).engines.ZIIP + 1 }],
+    commands: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'ZIIP', engines: cpc(s, id).engines.ZIIP + 1 }],
     revert: () => [],
   },
   {
@@ -59,8 +68,9 @@ export const HARDWARE: HardwareItem[] = [
     capex: 160_000,
     opexPerDay: 0,
     leadDays: 4,
+    perCpc: true,
     durationDays: null,
-    commands: (s) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s).id, pool: 'ICF', engines: cpc(s).engines.ICF + 1 }],
+    commands: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'ICF', engines: cpc(s, id).engines.ICF + 1 }],
     revert: () => [],
   },
   {
@@ -70,8 +80,9 @@ export const HARDWARE: HardwareItem[] = [
     capex: 70_000,
     opexPerDay: 0,
     leadDays: 3,
+    perCpc: true,
     durationDays: null,
-    commands: (s) => [{ kind: 'SET_CPC_MEMORY', cpcId: cpc(s).id, memoryGb: cpc(s).memoryGb + 128 }],
+    commands: (s, id) => [{ kind: 'SET_CPC_MEMORY', cpcId: cpc(s, id).id, memoryGb: cpc(s, id).memoryGb + 128 }],
     revert: () => [],
   },
   {
@@ -81,8 +92,10 @@ export const HARDWARE: HardwareItem[] = [
     capex: 650_000,
     opexPerDay: 0,
     leadDays: 3,
+    perCpc: true,
+    unavailable: (c) => (c.capacitySetting >= 7 ? 'Already at the top capacity setting' : null),
     durationDays: null,
-    commands: (s) => [{ kind: 'SET_CPC_CAPACITY', cpcId: cpc(s).id, capacitySetting: Math.min(7, cpc(s).capacitySetting + 1) as 4 | 5 | 6 | 7 }],
+    commands: (s, id) => [{ kind: 'SET_CPC_CAPACITY', cpcId: cpc(s, id).id, capacitySetting: Math.min(7, cpc(s, id).capacitySetting + 1) as 4 | 5 | 6 | 7 }],
     revert: () => [],
   },
   {
@@ -92,8 +105,10 @@ export const HARDWARE: HardwareItem[] = [
     capex: 2_600_000,
     opexPerDay: 0,
     leadDays: 18,
+    perCpc: true,
+    unavailable: (c) => (c.generation === 'M2' ? 'Already the newest generation' : null),
     durationDays: null,
-    commands: (s) => [{ kind: 'SET_CPC_CAPACITY', cpcId: cpc(s).id, capacitySetting: cpc(s).capacitySetting, generation: 'M2' }],
+    commands: (s, id) => [{ kind: 'SET_CPC_CAPACITY', cpcId: cpc(s, id).id, capacitySetting: cpc(s, id).capacitySetting, generation: 'M2' }],
     revert: () => [],
   },
   {

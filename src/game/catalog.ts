@@ -93,6 +93,8 @@ export interface PreviewContext {
   constraints: readonly string[];
   /** Hardware items refused by a running event card. */
   blockedHardware?: readonly string[];
+  /** The CPCs, for per-CPC hardware (target exists, item not pointless on it). */
+  cpcs?: readonly { id: string; capacitySetting: 4 | 5 | 6 | 7; generation: string }[];
 }
 
 export interface ChangePreview {
@@ -127,7 +129,7 @@ export function failRiskFor(fatigue: number, perks: readonly string[]): number {
 }
 
 /** What a change would cost and whether it is allowed, without making it (UI and requestChange share this). */
-export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; hardwareId?: string; fixId?: string }): ChangePreview {
+export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; hardwareId?: string; cpcId?: string; fixId?: string }): ChangePreview {
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
   const live = ctx.phase === 'LIVE';
@@ -149,6 +151,10 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   if (!live && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
   if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
   if (req.fixId && !fix) return no(`Unknown fix ${req.fixId}`);
+  const target = hw?.perCpc && ctx.cpcs ? (req.cpcId ? ctx.cpcs.find((c) => c.id === req.cpcId) : ctx.cpcs[0]) : undefined;
+  if (hw?.perCpc && ctx.cpcs && !target) return no(`Unknown CPC ${req.cpcId}`);
+  const pointless = target && hw?.unavailable?.(target);
+  if (pointless) return no(`${target.id}: ${pointless}`);
   if (hw && ctx.blockedHardware?.includes(hw.id)) return no(`${hw.name} is refused: the data centre power budget forbids it for now`);
   if (!hw && !fix && (req.commands ?? []).length === 0) return no('Nothing to change');
   if (hours > ctx.hoursLeft + MAX_OVERTIME) return no(`Needs ${hours}h; only ${ctx.hoursLeft.toFixed(1)}h left (+${MAX_OVERTIME}h overtime)`);

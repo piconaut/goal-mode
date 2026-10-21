@@ -93,6 +93,20 @@ describe('Harbourline starting tools', () => {
   });
 });
 
+describe('Harbourline per-CPC hardware', () => {
+  it('refuses a capacity step on CPC1 (already setting 7) and buys it for CPC2', () => {
+    const r = newRun(pack.scenario, { ...pack.game, events: [] }, 3);
+    const ctx = previewContext(r);
+    expect(previewChange(ctx, { hardwareId: 'CAP_SETTING_UP' }).reason).toBe('CPC1: Already at the top capacity setting');
+    expect(previewChange(ctx, { hardwareId: 'CAP_SETTING_UP', cpcId: 'CPC9' }).ok).toBe(false);
+    const out = requestChange(r, pack.game, { label: 'Capacity setting +1 on CPC2', hardwareId: 'CAP_SETTING_UP', cpcId: 'CPC2' });
+    expect(out.ok).toBe(true);
+    expect(out.run.changes.at(-1)!.commands).toEqual([{ kind: 'SET_CPC_CAPACITY', cpcId: 'CPC2', capacitySetting: 6 }]);
+    const cod = requestChange(r, pack.game, { label: 'CoD on CPC2', hardwareId: 'COD_CP', cpcId: 'CPC2' });
+    expect(cod.run.changes.at(-1)!.commands).toEqual([{ kind: 'SET_CPC_ENGINES', cpcId: 'CPC2', pool: 'CP', engines: 11 }]);
+  });
+});
+
 describe('Harbourline routing-policy changes', () => {
   const content = { ...pack.game, events: [] };
   it('shows the live policy, describes and plans the change', () => {

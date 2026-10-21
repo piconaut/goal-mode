@@ -241,6 +241,8 @@ export interface ChangeRequest {
   label: string;
   commands?: Command[];
   hardwareId?: string;
+  /** Target CPC of a per-CPC hardware item (default the first). */
+  cpcId?: string;
   fixId?: string;
   /** Pre-approved automation: no engineer-hours, no emergency trust cost, a misfire chance instead. */
   automated?: { misfireFrac: number };
@@ -267,6 +269,7 @@ export function previewContext(run: RunState) {
     incidentOpen: run.incidents.some((i) => i.endTick === null),
     constraints: run.constraints,
     blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
+    cpcs: run.sim.config.cpcs.map((c) => ({ id: c.id, capacitySetting: c.capacitySetting, generation: c.generation })),
   };
 }
 
@@ -277,7 +280,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
-  const commands = hw ? hw.commands(run.sim) : (req.commands ?? []);
+  const commands = hw ? hw.commands(run.sim, req.cpcId) : (req.commands ?? []);
   const hours = req.automated ? 0 : preview.hours;
   const { capex } = preview;
 
@@ -295,7 +298,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     emergency: live,
     status: 'PLANNED',
     revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
-    revertCommands: hw?.durationDays ? hw.revert(run.sim) : [],
+    revertCommands: hw?.durationDays ? hw.revert(run.sim, req.cpcId) : [],
     endsEvent: fix?.id ?? null,
   };
   r = { ...r, nextId: r.nextId + 1 };
