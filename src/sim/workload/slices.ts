@@ -36,6 +36,11 @@ export interface SliceBuildInput {
   addressSpaces: readonly AddressSpaceDef[];
   /** Global CPU-per-transaction multipliers per workload (events, regressions). */
   cpuMultiplier?: Readonly<Record<string, number>>;
+  /**
+   * Routing-free identity of `workloads` (same content per id, only shares differ). With it, templates
+   * are cached per LPAR by that LPAR's shares, so a share change elsewhere doesn't rebuild them.
+   */
+  scope?: object;
 }
 
 function periodsOf(def: ServiceDefinition, sc: string) {
@@ -63,7 +68,9 @@ interface SliceTemplate {
 
 // Templates depend only on (definition, lpar config, cpc config, content); memoise on the
 // definition object and a config key. Pure memoisation: same inputs, same templates.
-const templateCache = new WeakMap<ServiceDefinition, WeakMap<readonly WorkloadDef[], WeakMap<readonly AddressSpaceDef[], Map<string, SliceTemplate[]>>>>();
+const templateCache = new WeakMap<ServiceDefinition, WeakMap<object, WeakMap<readonly AddressSpaceDef[], Map<string, SliceTemplate[]>>>>();
+// Cache bound: dynamic routing produces many share signatures over a long run.
+const MAX_TEMPLATE_SETS = 512;
 
 function templateKey(input: SliceBuildInput): string {
   const { cpc, lpar } = input;
@@ -195,25 +202,33 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
   return out;
 }
 
+function shareSignature(input: SliceBuildInput): string {
+  let sig = '';
+  for (const w of input.workloads) sig += `${w.routing[input.lpar.id] ?? 0},`;
+  return sig;
+}
+
 function templatesFor(input: SliceBuildInput): SliceTemplate[] {
   let byWl = templateCache.get(input.def);
   if (!byWl) {
     byWl = new WeakMap();
     templateCache.set(input.def, byWl);
   }
-  let byAs = byWl.get(input.workloads);
+  const scope = input.scope ?? input.workloads;
+  let byAs = byWl.get(scope);
   if (!byAs) {
     byAs = new WeakMap();
-    byWl.set(input.workloads, byAs);
+    byWl.set(scope, byAs);
   }
   let byKey = byAs.get(input.addressSpaces);
   if (!byKey) {
     byKey = new Map();
     byAs.set(input.addressSpaces, byKey);
   }
-  const key = templateKey(input);
+  const key = input.scope ? `${templateKey(input)}|${shareSignature(input)}` : templateKey(input);
   let templates = byKey.get(key);
   if (!templates) {
+    if (byKey.size >= MAX_TEMPLATE_SETS) byKey.clear();
     templates = buildTemplates(input);
     byKey.set(key, templates);
   }

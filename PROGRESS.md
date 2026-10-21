@@ -338,6 +338,11 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
 - **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
   (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
+- **2026-10-21 (loop 124):** slice templates cached per LPAR by that LPAR's shares within a routing-free scope (bounded
+  at 512 sets); bit-identical (hash `eddf17fc7c615524`). Harbourline day 8.7 s vs 9.3–9.9 s before; frozen dynamic
+  policies 7.7 s, all-static 6.9 s, so share changes still cost ~1.4 ms each (1 % steps rarely repeat, so misses stay
+  common). Next perf idea: share-independent templates (multiply shares at build time) so a change costs nothing; then
+  the structural M8.1 items.
 - **2026-10-21 (loop 123):** Harbourline perf measured (one headless day, seed 42, this box): Midwest 5.2 s, Harbourline
   9.3–9.9 s, Harbourline with every policy static 7.1–7.7 s (same at the dynamic run's final shares, so it's overhead,
   not load). Dynamic routing changes shares ~700×/day (MOBILE WLM every minute plus CPSM every 30 s); template rebuilds

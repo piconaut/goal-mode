@@ -490,7 +490,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   const cpc = cpcOf[l.cpcId]!;
   const cpSp = cpSpeed(cpc);
   const zSp = ziipSpeed(cpc);
-  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces }), prev.mods);
+  const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads) }), prev.mods);
 
   const db2 = config.db2.find((d) => d.lparId === l.id);
   const ioMult = db2
@@ -946,6 +946,8 @@ function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandi
 
 // Effective content = scenario + run additions + routing overrides. Memoised on object
 // identity so slice-template caches stay warm until something actually changes.
+// Same scenario + run additions ⇒ same workload content per id; only routing differs (slice-template scope).
+const workloadScope = new WeakMap<readonly WorkloadDef[], object>();
 const wlCache = new WeakMap<Scenario, WeakMap<readonly WorkloadDef[], WeakMap<object, WorkloadDef[]>>>();
 function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef[] {
   let a = wlCache.get(scenario);
@@ -956,6 +958,7 @@ function effectiveWorkloads(scenario: Scenario, s: SimState): WorkloadDef[] {
   if (!out) {
     out = [...scenario.workloads, ...s.extraWorkloads].map((w) => (s.routing[w.id] ? { ...w, routing: s.routing[w.id]! } : w));
     b.set(s.routing, out);
+    workloadScope.set(out, b);
   }
   return out;
 }
