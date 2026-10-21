@@ -164,7 +164,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   Loop 102 smoke sweep (seeds 1–4): no regression
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
-- [~] *State Revenue Agency* playable (loop 114, SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`,
+- [x] *State Revenue Agency* playable (loop 114, SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`,
   picker in the new-run dialog and day-1 briefing), per-scenario facets, flaws G1–G3/H1–H2, story beats with a
   two-day hint for pre-filled returns. First sweep (seeds 1–6, Normal): do-nothing 10 / 14 / 20 (trust 5 · batch 1,
   mostly Regulator after batch misses), textbook 26 / 29 / 30 (trust 6: Taxpayers or Regulator), expert victory 6/6.
@@ -176,8 +176,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   relieve the main pressure. Seed 5: do-nothing's hits are EFILE CPU_PRIORITY (G1); textbook's are the day-22 PREFILL
   app. Lowered WEBDDF to importance 4 (G1 bites harder; textbook gives e-filing its own class, so it is unaffected).
   Seeds 1–10: do-nothing 11 / 14 / 15 (on target), textbook 28 / 29 / 29 (unchanged). Codex already covers
-  IIPHONORPRIORITY (`ziip`) and soft capping (`r4ha`). Next: 20-seed confirmation incl. expert, Story/Hard sweeps,
-  then a `dev` → `main` PR.
+  IIPHONORPRIORITY (`ziip`) and soft capping (`r4ha`). **20-seed confirmation (loop 117, Normal):** do-nothing
+  10 / 13 / 15, textbook 27 / 29 / 29, expert 40 / 40 / 40 (victory 19, trust 1); all ends trust. Done; follow-ups:
+  Story/Hard sweeps, textbook's day-22 PREFILL losses (its PFILAPI class still misses).
 - [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
   - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
