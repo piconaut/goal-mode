@@ -156,7 +156,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [~] Events to ~25 (SPEC §9); 26 now (deck complete for this pass). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
   NEW_APP_GOLIVE, POWER_CAP, HSM_RECALL_STORM, CP_SPARING (red herring), HIRING_FREEZE, AUDIT_UNCLASSIFIED,
   ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106), RETRY_STORM (loop 110), XLOG_LOOP (loop 112: looping STC misclassified by the CICS* rule), ENCRYPTION_MANDATE and GREEN_IT_COD (loop 113). Re-sweep the bots once the deck is complete
-  - VENDOR_PRICE pending: needs a run-level product price multiplier in the sim or a run-aware scenario; asked the user
+  - VENDOR_PRICE: user chose option 1 (2026-10-21): a price multiplier in the sim's cost state (default 1, so goldens
+    unchanged) set by the card's begin/end commands; MLC per-MSU +8%. To build next
   - HyperPAV exhaustion dropped: organic LCU I/O is ~2k/s, so even zero aliases moves IOSQ < 0.3 ms (no symptom)
   - STORAGE card (DBA grows DB1B buffer pools on PROD2) not added (loop 107): it exposed a swap deadlock, fixed
     with `STORAGE_SWAP.minSwappedIn: 1`, but with the fix even +60 GB BP costs < 0.2 h of critical path. Needs a
@@ -275,6 +276,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-21 | NEW_APP_GOLIVE stays as is (booking app Retail-judged with an SLA, no forewarning, same minDay); textbook's median below 30 on runs that draw it is accepted | User decision (option a): spotting and classifying new work is part of the game, and textbook by design never diagnoses |
 | 2026-10-21 | Browser worker and headless `play` share game-layer helpers (`pendingBase`/`nextPolicyName`, `applyReportClassAdvice`, `runWorkItems`, `renderReport`); `noUnusedLocals` on | The two front ends had drifted copies of the same logic; one copy means one place to fix and test |
 | 2026-10-21 | Monitor III audit against *RMF Report Analysis* (SC34-2665, z/OS 2.5) ch. 2: new SYSSUM view holds goals vs actuals and PI (real SYSINFO has no PI); SYSINFO gets its real header (CPs/IIPs online, Avg CPU vs MVS Util%, Appl%/EAppl%/Appl% IIP) and per-period WFL%, Users ACT, AVG USG and avg delayed users; DELAY uses RMF columns (WFL/USG/DLY/UKN, PRC/DEV/STR/CAP) and server waits move from DLY % to UKN %; PROCU shows Time on CP % Total/IIP and EAppl % CP/IIP; ENCLAVE shows class, period, goal, EAppl% and USG/DLY/UNK; CPC shows the real header and Logical/Physical Util % columns (weight, polarity, PR/SM delay kept in a separate table); WFEX gets a Speed section and Name/Reason/Critical val. columns; ENCLAVE shows one line per DDF period (two DDF workloads in one class used to repeat the period's figures, and the DDF chart double-counted them) | Field names and formulas were invented or borrowed from other reports; UKN vs DLY changes how much "delay" a Db2-bound DDF period shows, which is the realistic reading. View-model only: no sim state change, hashes and goldens unchanged |
+| 2026-10-21 | VENDOR_PRICE card built on a run-level MLC price multiplier in sim cost state (default 1), changed by card commands | User decision (option 1 of 3): smallest sim change, keeps goldens, reusable by later perks or pacts |
 | 2026-10-21 | Performance budget: ≤ 2 s per headless day applies to Midwest-size estates; larger estates (Harbourline, 6 LPARs, ~7 s/day) are accepted as they are, no structural perf work for now. ≤ 4 ms/tick is a Midwest target too | User decision. The profile is flat and reaching 2 s on 6 LPARs would need structural changes (fewer per-tick allocations, coarser ticks for quiet LPARs); not worth it yet |
 
 ## Open questions
@@ -314,7 +316,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
   airline scenario?
 - Tuning target for "fun density": how many meaningful decisions per live day? (Target: 3–6
   alerts that matter, 1–2 incidents in Act II+.)
-- Waiting on the user: VENDOR_PRICE price lever (M8.4); M9 start. (Booking go-live: decided (a) keep, 2026-10-21.)
+- Waiting on the user: M9 start. (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
 
 ## Risks
 
