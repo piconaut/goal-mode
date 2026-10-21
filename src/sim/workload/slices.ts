@@ -188,7 +188,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
   return out;
 }
 
-export function buildSlices(input: SliceBuildInput): SliceSpec[] {
+function templatesFor(input: SliceBuildInput): SliceTemplate[] {
   let byWl = templateCache.get(input.def);
   if (!byWl) {
     byWl = new WeakMap();
@@ -210,10 +210,42 @@ export function buildSlices(input: SliceBuildInput): SliceSpec[] {
     templates = buildTemplates(input);
     byKey.set(key, templates);
   }
-  return templates.map((t) => {
+  return templates;
+}
+
+interface LastTemplates {
+  def: ServiceDefinition;
+  cpc: CpcConfig;
+  workloads: readonly WorkloadDef[];
+  addressSpaces: readonly AddressSpaceDef[];
+  templates: SliceTemplate[];
+}
+
+// Per-LPAR shortcut past the key string and nested lookups while every input object is the same
+// one as last tick (config edits clone the whole config, so any change is a new LparConfig).
+const lastByLpar = new WeakMap<LparConfig, LastTemplates>();
+
+function cachedTemplates(input: SliceBuildInput): SliceTemplate[] {
+  if (input.cpuMultiplier) return templatesFor(input);
+  const last = lastByLpar.get(input.lpar);
+  if (last && last.def === input.def && last.cpc === input.cpc && last.workloads === input.workloads && last.addressSpaces === input.addressSpaces) {
+    return last.templates;
+  }
+  const templates = templatesFor(input);
+  lastByLpar.set(input.lpar, { def: input.def, cpc: input.cpc, workloads: input.workloads, addressSpaces: input.addressSpaces, templates });
+  return templates;
+}
+
+export function buildSlices(input: SliceBuildInput): SliceSpec[] {
+  const templates = cachedTemplates(input);
+  // Spread copies keep the template's hidden class, shared with the other slice copies (CPU
+  // modifiers, evaluator); a field-by-field literal measured ~40% slower overall.
+  const out: SliceSpec[] = [];
+  for (const t of templates) {
     if (t.workloadId) {
       const r = input.rates[t.workloadId] ?? 0;
-      return { ...t.spec, rate: r * t.rateCoef, cpEngines: r * t.cpCoef, ziipEngines: r * t.ziCoef };
+      out.push({ ...t.spec, rate: r * t.rateCoef, cpEngines: r * t.cpCoef, ziipEngines: r * t.ziCoef });
+      continue;
     }
     let cp = t.cpBase;
     let zi = t.ziBase;
@@ -222,6 +254,7 @@ export function buildSlices(input: SliceBuildInput): SliceSpec[] {
       cp += r * term.cpCoef;
       zi += r * term.ziCoef;
     }
-    return { ...t.spec, cpEngines: cp, ziipEngines: zi };
-  });
+    out.push({ ...t.spec, cpEngines: cp, ziipEngines: zi });
+  }
+  return out;
 }

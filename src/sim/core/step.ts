@@ -77,7 +77,13 @@ function servers(rt: LparPoolRuntime | undefined, logical: number, hiperDispatch
   return Math.max(1, Math.round(rt.vh + rt.vm + rt.unparkedVl));
 }
 
-const usesRole = (servers: readonly { role: string }[], prefix: string) => servers.some((s) => s.role.startsWith(prefix));
+// Whether a workload calls Db2, memoised per definition object (asked per slice per tick).
+const usesDb2Cache = new WeakMap<WorkloadDef, boolean>();
+function usesDb2(w: WorkloadDef): boolean {
+  let v = usesDb2Cache.get(w);
+  if (v === undefined) usesDb2Cache.set(w, (v = w.servers.some((s) => s.role.startsWith('DB2.'))));
+  return v;
+}
 
 interface BatchSliceRef {
   slice: SliceSpec;
@@ -512,7 +518,8 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     let cpuAdd = 0;
     let ioPerTxn = s.ioPerTxn;
     const parts: Record<string, number> = {};
-    if (usesRole(w.servers, 'DB2.')) {
+    const db2Work = usesDb2(w);
+    if (db2Work) {
       ioPerTxn *= ioMult;
       parts.cf = DB2.cfRequestsPerTxn * cfServiceSec;
       parts.lock = DB2.lockWaitSecPerIndex * env.lockIndex;
@@ -527,8 +534,8 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       failFrac = qr.failFrac;
     }
     if (w.subsystem === 'DDF') outside += dbatWait;
-    if (usesRole(w.servers, 'DB2.')) t.onlineDb2Rate += s.rate;
-    if (db2FailFrac > 0 && usesRole(w.servers, 'DB2.')) failFrac = Math.max(failFrac, db2FailFrac);
+    if (db2Work) t.onlineDb2Rate += s.rate;
+    if (db2FailFrac > 0 && db2Work) failFrac = Math.max(failFrac, db2FailFrac);
     if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
     s.ioPerTxn = ioPerTxn;
@@ -714,7 +721,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       compBy[k] = (compBy[k] ?? 0) + r.completions;
       const w = workloadById[s.workloadId]!;
       sums.randomIops += s.rate * s.ioPerTxn;
-      if (usesRole(w.servers, 'DB2.')) {
+      if (usesDb2(w)) {
         sums.cfRequests += s.rate * DB2.cfRequestsPerTxn;
       }
     }
