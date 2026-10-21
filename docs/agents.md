@@ -76,6 +76,9 @@ reasoning before acting). `advance N --pace 2s` steps one hour at a time so a vi
 same way: `npm run bot -- --bot expert --seed 42 --spectate runs/bot.json --pace 2`, then open `?spectate=bot`. Charts start when you open the page and grow with each
 new state the CLI writes.
 
+The banner's **Take over this run** button stops watching and keeps the run as the browser's own save
+(replacing any saved run), so a human can carry on from where the agent stopped.
+
 ## What an agent can see
 
 Only what a player sees in the browser: the briefing and inbox, the status line, RMF reports, SMF and Monitor

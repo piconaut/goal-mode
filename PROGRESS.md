@@ -662,7 +662,7 @@ to `main` (this is the last push there; M9 goes on its feature branch).
     is lock waits + sync CF time + QR waits + server-dependency latency (`step.ts` extraOtherSec, `evaluate.ts`
     depDelay); WLM can't manage it, so it doesn't lower velocity and is normal for Db2/CICS work. Model is
     fine; the gap was the explanation, so there's a new start-known Codex entry `delay-other`
-- [ ] Spectator mode (user request 2026-10-20: watch agents play through the real UI): `play.ts` writes the run
+- [x] Spectator mode (user request 2026-10-20: watch agents play through the real UI): `play.ts` writes the run
   (same serialised RunState the browser saves) to a run file after every command; a small Vite dev-server
   plugin serves it, and the UI opened with `?spectate=<run>` polls it and renders the normal tabs (Monitor III
   charts, RMF reports, inbox, Change Desk, report card) read-only, with the agent's latest command and
@@ -678,7 +678,10 @@ to `main` (this is the last push there; M9 goes on its feature branch).
   - [x] Loop 88: `npm run bot -- --bot textbook --spectate runs/bot.json [--pace 2]` writes the run after every
     simulated hour, with the bot's new change labels as the banner note; run files are now written atomically
     (temp + rename, `tools/spectateFile.ts`) and the UI parses before handing a file to the worker
-  - [ ] Still to do: importing a finished run as an ordinary save
+  - [x] Loop 89: "Take over this run" in the spectator banner stops polling, saves the watched run as this
+    browser's ordinary save (replacing any other) and hands control back. Verified in preview: adopted at D1 08:00,
+    reload offered "Continue saved run", which resumed. Not career-recorded if adopted already finished (bot runs
+    shouldn't count)
   - Same for the strategy bots (user request 2026-10-20): `tools/bot.ts --spectate <run> [--pace 2s]` writes
     the same run file after every simulated hour, with the bot's latest change labels as the banner text
 

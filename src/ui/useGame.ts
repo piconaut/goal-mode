@@ -1,6 +1,6 @@
 import type { Command } from '../sim/core/commands';
 import type { RcAdvice } from '../game/rcAdvisor';
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
@@ -15,6 +15,8 @@ export interface GameHandle {
   view: ViewModel | null;
   /** Spectator mode (`?spectate=<run>`): the watched run file and its latest command, or the fetch error. */
   spectate: { name: string; last: string; note: string; error: string | null } | null;
+  /** Leave spectator mode, keeping the watched run as this browser's save. */
+  adoptSpectated: () => void;
   report: string;
   policy: string;
   history: HistoryPoint[];
@@ -58,7 +60,7 @@ export function useGame(): GameHandle {
   const [toast, setToast] = useState<GameHandle['toast']>(null);
   const [results, setResults] = useState<GameHandle['results']>([]);
   const clockRef = useRef('');
-  const spectateName = useMemo(() => new URLSearchParams(window.location.search).get('spectate'), []);
+  const [spectateName, setSpectateName] = useState(() => new URLSearchParams(window.location.search).get('spectate'));
   const [spectate, setSpectate] = useState<GameHandle['spectate']>(spectateName ? { name: spectateName, last: '', note: '', error: null } : null);
 
   useEffect(() => {
@@ -133,7 +135,17 @@ export function useGame(): GameHandle {
     return () => window.clearInterval(id);
   }, [spectateName]);
 
-  return { spectate, view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, rules, toast, results, basket, setBasket, send };
+  // Keep the watched run: the worker saves it as an ordinary run and the page stops polling.
+  const adoptSpectated = useCallback(() => {
+    worker.current?.postMessage({ type: 'SPECTATE_ADOPT' } satisfies ToWorker);
+    setSpectateName(null);
+    setSpectate(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('spectate');
+    window.history.replaceState(null, '', url);
+  }, []);
+
+  return { spectate, adoptSpectated, view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, rules, toast, results, basket, setBasket, send };
 }
 
 const SPEED_KEY = 'goalmode.speed';

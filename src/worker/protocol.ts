@@ -67,6 +67,8 @@ export type ToWorker =
   | { type: 'CONTINUE_SAVED' }
   /** Spectator mode: show this run file (written by tools/play.ts) read-only; replaces the shown run. */
   | { type: 'SPECTATE'; text: string }
+  /** Stop spectating and keep the watched run as this browser's own save. */
+  | { type: 'SPECTATE_ADOPT' }
   /** The UI's change basket, mirrored so it is saved with the run. */
   | { type: 'SET_BASKET'; basket: Command[] }
   | { type: 'GET_RULES' }

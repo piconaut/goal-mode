@@ -244,7 +244,7 @@ function whatIfChunk(token: number) {
 
 /** Spectator mode shows a run file another process plays; only reading messages get through. */
 let spectating = false;
-const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'CLASSIFY', 'SET_BASKET']);
+const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'SPECTATE_ADOPT', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'CLASSIFY', 'SET_BASKET']);
 
 function spectate(text: string) {
   const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null }>(text);
@@ -270,6 +270,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
   switch (m.type) {
     case 'SPECTATE':
       spectate(m.text);
+      break;
+    case 'SPECTATE_ADOPT':
+      if (!spectating) break;
+      spectating = false;
+      lastLiveSaveHour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
+      if (storageReady) void saveRun(run, desk());
       break;
     case 'NEW_RUN':
       whatIf = null;

@@ -40,6 +40,11 @@ export function App() {
         <div className="spectate-banner" role="status">
           Spectating <b>{game.spectate.name}</b> (read-only){game.spectate.error ? ` · cannot read the run file: ${game.spectate.error}` : game.spectate.last ? ` · last command ${game.spectate.last}` : ''}
           {game.spectate.note && <div className="spectate-note">“{game.spectate.note}”</div>}
+          {!game.spectate.error && (
+            <button type="button" className="spectate-adopt" onClick={game.adoptSpectated} title="Stop watching and keep this run as your own save (replaces any saved run)">
+              Take over this run
+            </button>
+          )}
         </div>
       )}
       <div className="tabs">

@@ -269,3 +269,6 @@ details.section[open] > summary { margin-bottom: 8px; }
   color: var(--muted);
   font-style: italic;
 }
+.spectate-adopt {
+  margin-left: 0.75em;
+}
