@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 on hold until the user says start. Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-21
-- **Next up:** VENDOR_PRICE card, M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
+- **Next up:** VENDOR_PRICE card, Monitor III history (user request 2026-10-21: the tabular reports (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX…) can step back through past MINTIME intervals over a retention window, like real RMF III's VSAM data sets, not just the current interval; needs an interval ring buffer in sim state sized to the window, a time picker in the UI, and a perf/memory check), M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
