@@ -173,9 +173,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   now diluted), textbook 27 / 29 / 29 (trust 20, all Taxpayers; on target), expert 40 / 40 / 40 (victory 19, trust 1).
   Tried G1 heavier analytics (0.3 → 0.45 qps, seeds 1–10): no effect (do-nothing 18 / 22 / 24, textbook unchanged), reverted.
   Both bots' incidents are mostly CPU_PRIORITY (do-nothing 298, textbook 217 over 20 seeds), so the planted fixes barely
-  relieve the main pressure; next look at which workloads take the CPU_PRIORITY hits for do-nothing and strengthen
-  the flaw behind them (likely G1 e-filing at Imp 3 under the evening peak). Next: Codex entries for
-  IIPHONORPRIORITY and soft capping if missing, Story/Hard sweeps, then a `dev` → `main` PR.
+  relieve the main pressure. Seed 5: do-nothing's hits are EFILE CPU_PRIORITY (G1); textbook's are the day-22 PREFILL
+  app. Lowered WEBDDF to importance 4 (G1 bites harder; textbook gives e-filing its own class, so it is unaffected).
+  Seeds 1–10: do-nothing 11 / 14 / 15 (on target), textbook 28 / 29 / 29 (unchanged). Codex already covers
+  IIPHONORPRIORITY (`ziip`) and soft capping (`r4ha`). Next: 20-seed confirmation incl. expert, Story/Hard sweeps,
+  then a `dev` → `main` PR.
 - [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
   - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
@@ -329,6 +331,8 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
+  (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
 - **2026-10-21 (loop 116):** textbook day-28 wall traced (intended; above). Revenue deck: 16 agency cards adapted from
   Midwest (retargeted mechanics, agency clues, facet-correct fix twins), bot fix lookup per scenario. 330 tests, Midwest
   hash unchanged, Midwest expert table identical.

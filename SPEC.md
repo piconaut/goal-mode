@@ -1098,7 +1098,7 @@ in deadline week.
 
 | Flaw | Where | Symptom (clue) | Fixes (trade-offs) |
 |---|---|---|---|
-| **G1** e-filing on a velocity goal (WEBDDF, Vel 40, Imp 3), sharing the class with compliance-analytics queries | REVPOL | EFILE SLA misses while WEBDDF's velocity looks met (WLMGL, DELAY: CPU delay behind ONLINE/AGENTS) | own class with a response-time goal (Imp 2); split analytics off (low velocity + discretionary period); or more zIIP |
+| **G1** e-filing on a velocity goal (WEBDDF, Vel 40, Imp 4), sharing the class with compliance-analytics queries | REVPOL | EFILE SLA misses while WEBDDF's velocity looks met (WLMGL, DELAY: CPU delay behind ONLINE/AGENTS) | own class with a response-time goal (Imp 2); split analytics off (low velocity + discretionary period); or more zIIP |
 | **G2** compliance-analytics batch (CMP*) is the only BATCHHI work; the refund run sits in BATCHPRD | REVPOL | refund chain stretches on busy nights while CMP jobs run fine (job end records, batch Gantt) | swap the rules; or JES initiators/SYSAFF for CMP; or a resource group cap on BATCHHI |
 | **G3** no STC rule for the queue managers: MQ MSTR/CHIN default to STCLO (Vel 20, Imp 5) | REVPOL | EMPLOYER response and queue depth jump on payroll-day peaks; MQ address spaces show CPU delay | rule `MQ*` → STCHI; or route payroll traffic; or bigger MAXDEPTH (buys time only) |
 | **H1** PROD1 soft-capped at 480 MSU (set in the quiet months) | HMC | R4HA reaches the cap as the season grows; capping delay on PROD1 (Partition Data, R4HA gauge) | raise or remove the defined capacity (MLC up); group capacity with PROD2; move work to PROD2 |
