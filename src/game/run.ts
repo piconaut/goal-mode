@@ -520,6 +520,10 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
     const att = hourAttainment(w, wh);
     if (!att) continue;
     const parts = perTxnParts(wh);
+    // Incidents are per played day (the day's SLA report and RCA count them): one still open at
+    // 06:00 is closed there, and a breach that carries on opens a new incident for the new day.
+    const hourStart = r.sim.tick - TICKS_PER_HOUR;
+    incidents = incidents.map((i) => (i.workloadId === w.id && i.endTick === null && i.day !== r.day ? { ...i, endTick: hourStart } : i));
     const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
     if (att.met) {
       baselines[w.id] = updateBaseline(baselines[w.id], parts);
