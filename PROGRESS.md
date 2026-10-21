@@ -597,7 +597,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     incidents with one of them (DASD_DEGRADED and HSM_RECALL_STORM: IO; CF_LINK: CF_SERVICE, LOCK_CONTENTION;
     LOCK_ESCALATION: LOCK_CONTENTION; QR_RELEASE: QR_TCB, THREAD_LIMIT; others any). HSM storm affects restored.
     Goldens unchanged (oracle RCA reads the same truth)
-- [ ] More draft options and perks; constraint cards with persistent modifiers
+- [x] More draft options and perks; constraint cards with persistent modifiers
   - [x] Loop 74: Weekend push (one-off: +3 h tomorrow, fatigue +15), perks Friend at the Vendor (lead ≥ 2 days → −1;
     hardware list shows the effective lead) and Well Connected (asking around is free); sizes in `DRAFT_TUNING`.
     Run goldens regenerated (the drafted options are part of run state; sim bench hash unchanged)
@@ -620,6 +620,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     prereqs are owned (`trialTool`) for 3 days (`toolTrials`, `expireToolTrials` at day end); buying keeps it; trial
     tools don't count as prereqs. Analytics card shows "Keep it" + the last day. Test; run goldens regenerated.
     All SPEC §9.5 opportunity types now exist
+  - Loop 100: box ticked (every SPEC §9.5 opportunity, 11 perks, 2 pacts). Smoke sweep (expert + textbook, Normal,
+    seeds 1–6) with the bigger pool running; results recorded next loop
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
 
