@@ -192,8 +192,17 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     rtByWorkloadLpar: {},
     systems: [],
     lparTicks: [],
+    onlineDb2Rate: 0,
+    rgSystems: {},
   };
   for (const l of zosLpars) lparDemand(t, l);
+  // Type 1 resource groups are sysplex-wide: count the systems their members run on.
+  for (const g of def.resourceGroups) {
+    if (g.type !== 1) continue;
+    let n = 0;
+    for (const l of zosLpars) if ((t.slicesBy[l.id] ?? []).some((s) => s.cpEngines > 0 && goalInfo(def, s.scKey)?.resourceGroup === g.id)) n++;
+    t.rgSystems[g.id] = n;
+  }
   // Coupling facilities: request work from last tick; a shared CF without thin
   // interrupts polls, consuming its whole logical engine share.
   for (const l of config.lpars.filter((x) => x.kind === 'CF')) {
@@ -252,7 +261,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   }
   for (const c of def.classes) if (c.storageCritical) c.periods.forEach((_, i) => storageCritical.add(scKeyOf(c.id, i)));
 
-  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0, onlineDb2Rate: 0 };
+  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0 };
   for (const l of zosLpars) dispatchLpar(t, l, sums);
   const { randomIops, seqIops, cfRequests } = sums;
 
@@ -407,6 +416,10 @@ interface TickCtx {
   rtByWorkloadLpar: Record<string, number>;
   systems: WlmSystemState[];
   lparTicks: LparTick[];
+  /** Sysplex online Db2 transaction rate (global lock contention for batch). */
+  onlineDb2Rate: number;
+  /** Systems on which each type 1 resource group's members run this tick. */
+  rgSystems: Record<string, number>;
 }
 
 /** Sums over all images, accumulated in image order. */
@@ -414,7 +427,6 @@ interface TickSums {
   randomIops: number;
   seqIops: number;
   cfRequests: number;
-  onlineDb2Rate: number;
 }
 
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
@@ -481,6 +493,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       failFrac = qr.failFrac;
     }
     if (w.subsystem === 'DDF') outside += dbatWait;
+    if (usesRole(w.servers, 'DB2.')) t.onlineDb2Rate += s.rate;
     if (db2FailFrac > 0 && usesRole(w.servers, 'DB2.')) failFrac = Math.max(failFrac, db2FailFrac);
     if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
@@ -618,8 +631,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
     backlog: prev.backlog,
     dpOf,
-    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
-    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)).minOf,
+    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), t.rgSystems), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
+    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), t.rgSystems).minOf,
     regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
     io,
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
@@ -668,7 +681,6 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       sums.randomIops += s.rate * s.ioPerTxn;
       if (usesRole(w.servers, 'DB2.')) {
         sums.cfRequests += s.rate * DB2.cfRequestsPerTxn;
-        sums.onlineDb2Rate += s.rate;
       }
     }
   });
@@ -696,7 +708,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     for (const jr of ref.jobs) {
       const fc = cpWant > 0 ? jr.cp / cpWant : 0;
       const fz = ziWant > 0 ? jr.zi / ziWant : 0;
-      const lockStretch = jr.job.def.usesDb2 ? 1 + 0.4 * Math.min(2, env.lockIndex / 4) * Math.min(1, sums.onlineDb2Rate / 2000) : 1;
+      const lockStretch = jr.job.def.usesDb2 ? 1 + 0.4 * Math.min(2, env.lockIndex / 4) * Math.min(1, t.onlineDb2Rate / 2000) : 1;
       advanceJob(
         jr.job,
         jr.shape,
@@ -988,6 +1000,7 @@ export function rgMin(
   scps: readonly ScpState[],
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
+  rgSystems: Readonly<Record<string, number>> = {},
 ): { minOf?: Record<string, number> } {
   const groups = def.resourceGroups.filter((g) => g.min !== null && g.min > 0);
   if (groups.length === 0) return {};
@@ -998,17 +1011,18 @@ export function rgMin(
     const keys = Object.keys(demand).sort();
     const total = keys.reduce((a, k) => a + demand[k]!, 0);
     if (total <= 0 || !keys.some((k) => missingGoal(def, scps.find((x) => x.scKey === k), k))) continue;
-    const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, 1);
+    const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, rgSystems[g.id] ?? 1);
     for (const k of keys) minOf[k] = (min * demand[k]!) / total;
   }
   return Object.keys(minOf).length > 0 ? { minOf } : {};
 }
 
-function resourceGroupCaps(
+export function resourceGroupCaps(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
+  rgSystems: Readonly<Record<string, number>> = {},
 ): ((s: SliceSpec) => number) | undefined {
   const groups = def.resourceGroups.filter((g) => g.max !== null);
   if (groups.length === 0) return undefined;
@@ -1017,7 +1031,7 @@ function resourceGroupCaps(
     const members = slices.filter((s) => goalInfo(def, s.scKey)?.resourceGroup === g.id);
     const demand = members.reduce((a, s) => a + s.cpEngines, 0);
     if (demand <= 0) continue;
-    const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, 1);
+    const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, rgSystems[g.id] ?? 1);
     for (const s of members) capBySlice[s.key] = (cap * s.cpEngines) / demand;
   }
   return (s) => capBySlice[s.key] ?? Infinity;

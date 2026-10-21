@@ -468,6 +468,8 @@ receiver candidate.
 - **Type 1:** service units/second, sysplex scope. **Type 2:** % of LPAR share, system scope
   (LPAR share = min(weight share, LP cap, defined capacity)). **Type 3:** CPs × 100, system
   scope.
+  APPROX: a type 1 limit is split evenly across the systems where the group's members have work
+  that tick (real WLM balances it by demand).
 - **Maximum** is always enforced (cap). **Minimum** is honoured only while the group's work
   misses goals, even if that hurts more important work (SG24-7621 §4.16–4.19).
 - Max 32 per definition; one per service class.
