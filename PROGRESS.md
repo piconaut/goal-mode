@@ -349,6 +349,10 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 128):** Codex: `sd-wlm-weights`, `cpsm-routing`, `storm-drain` (found on SICK_AOR),
+  `absolute-capping`, `arrival-bursts` (found on MARKET_OPEN_SURGE), wired into the Routing and HMC sections; sources
+  checked against IBM pages (implementer drafted, URLs replaced with verified ones). Next: startTools for Harbourline,
+  bot day-0 fixes, volume retune + sweeps, Harbourline perf.
 - **2026-10-21 (loop 127):** UI: Change Desk → Batch & operations → Routing gets a routing-policy form (static / WLM
   weights with zIIP-aware / CPSM goal with ABENDTHRESH, ABENDCRIT, quiesce per region); the static share editor shows
   only under static weights. The Ops fix list now shows only fixes the scenario's deck can call for (`view.fixIds`;

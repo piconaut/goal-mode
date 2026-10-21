@@ -325,6 +325,46 @@ export const CODEX: CodexEntry[] = [
     ],
     discover: { tools: ['SMF113'] },
   },
+  {
+    id: 'sd-wlm-weights',
+    title: 'Sysplex Distributor: SERVERWLM and BASEWLM weights',
+    category: 'Subsystems',
+    body: 'Sysplex Distributor spreads incoming TCP connections across the stacks of a sysplex. With DISTMETHOD BASEWLM the weight comes from WLM’s view of each system’s displaceable capacity, which counts only general-purpose CPs. SERVERWLM also asks WLM how well each target server is doing and weights by the capacity that could be given to work of that server’s importance, and with zIIP-aware weights it counts zIIP capacity for the zIIP-eligible part of the work, so a system with idle zIIPs is not penalised for busy CPs. The game models this as per-system shares that are refreshed every minute, with a small floor so no system drops to zero.',
+    sources: [{ label: 'IBM support: distribution methods available to the distributing TCP/IP stack (VIPADISTRIBUTE DISTMETHOD)', url: 'https://www.ibm.com/support/pages/what-are-different-distribution-methods-available-distributing-tcpip-stack' }],
+    discover: { start: true },
+  },
+  {
+    id: 'cpsm-routing',
+    title: 'CICSPlex SM dynamic routing: goal and queue algorithms',
+    category: 'Subsystems',
+    body: 'CICSPlex SM workload management routes each eligible transaction to a target region (AOR) when it arrives. With the goal algorithm it picks the AOR expected to best meet the transaction’s WLM response-time goal, using WLM and CPSM data on region health and load. With the queue algorithm it picks the AOR with the lowest load, based on the number of tasks queued against its MAXTASKS limit, and ignores the goal. Either way it can only route to regions it believes are healthy, so what it measures decides where work goes.',
+    sources: [{ label: 'IBM CICS TS 6: CICSPlex SM Managing Workloads (routing algorithms)', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/cpsm-managing-workloads_pdf.pdf' }],
+    discover: { start: true },
+  },
+  {
+    id: 'storm-drain',
+    title: 'The storm drain: abends look fast',
+    category: 'Subsystems',
+    body: 'A CICS region that abends transactions almost at once shows excellent response times, so goal or queue routing reads it as the best target and sends it even more work. CICSPlex SM counters this with abend thresholds in the workload specification or transaction group: ABENDTHRESH is the abend probability at which a region is treated as unhealthy and its routing weight is penalised, and ABENDCRIT is the probability at which it is avoided in favour of other regions. Fixes: set the thresholds, quiesce the region, or recycle it.',
+    sources: [{ label: 'IBM CICS TS: Abend probabilities and workload management', url: 'https://www.ibm.com/docs/en/cics-ts/5.5.0?topic=workload-abend-probabilities-management' }],
+    discover: { events: ['SICK_AOR'] },
+  },
+  {
+    id: 'absolute-capping',
+    title: 'PR/SM absolute capping',
+    category: 'PR/SM',
+    body: 'Absolute capping (ABSCAPP in the image profile, set in the HMC) limits an LPAR to a fixed amount of processing power expressed in physical CPs, for example 4.5. Unlike weight capping, which only bites when the CPC is contended, and defined capacity, which limits the four-hour average, it is enforced all the time, even when the CPC has spare capacity. It is a hard ceiling: a spike that could have used idle engines still waits, so it protects software cost but can starve a busy LPAR.',
+    sources: [{ label: 'IBM Z and LinuxONE PR/SM Planning Guide (SB10-7184): absolute capping', url: 'https://www.ibm.com/docs/en/module_1721331501652/pdf/SB10-7184-00.pdf' }, { label: 'IBM: Topics in LPAR Performance (absolute capping behaviour)', url: 'http://www.vm.ibm.com/perf/tips/lparwt.pdf' }],
+    discover: { start: true },
+  },
+  {
+    id: 'arrival-bursts',
+    title: 'Bursty arrivals and averaged intervals',
+    category: 'Measurement',
+    body: 'Real online work is not smooth: market open, a flash sale or a payday batch of requests can send arrivals many times above the hourly mean for a few minutes. Queues and CPU delay build inside the peak and WLM must react within its policy interval, but a 15 or 30 minute RMF Postprocessor interval averages the peak into the quiet minutes around it and looks mild. Monitor III, with its short range, shows the spike. Headroom, percentile goals and MAXTASKS tuning matter for the peak, not the average.',
+    sources: [{ label: 'IBM z/OS RMF Report Analysis (SC34-2665): Monitor III', url: 'https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/erbb500_v2r5.pdf' }],
+    discover: { events: ['MARKET_OPEN_SURGE'] },
+  },
 ];
 
 export const codexEntry = (id: string): CodexEntry | undefined => CODEX.find((e) => e.id === id);

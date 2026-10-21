@@ -94,7 +94,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         )}
         {area === 'lpars' && (
           <>
-            <Section id="hmc" title="HMC: LPAR image profile" summary={summary.hmc} codex={['lpar-weights', 'logical-physical', 'hiperdispatch']}>
+            <Section id="hmc" title="HMC: LPAR image profile" summary={summary.hmc} codex={['lpar-weights', 'logical-physical', 'hiperdispatch', 'absolute-capping']}>
               <Prsm desk={desk} />
             </Section>
             <Section id="hardware" title="Hardware orders" summary={summary.hardware} codex={['ziip', 'cod']}>
@@ -123,7 +123,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
             <Section id="ops" title="Operations" summary={summary.ops}>
               <Ops desk={desk} game={game} />
             </Section>
-            <Section id="routing" title="Routing and batch initiators" summary={summary.routing}>
+            <Section id="routing" title="Routing and batch initiators" summary={summary.routing} codex={['sd-wlm-weights', 'cpsm-routing', 'storm-drain', 'arrival-bursts']}>
               <Routing desk={desk} />
               <JobClasses desk={desk} />
             </Section>
