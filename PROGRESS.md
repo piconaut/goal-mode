@@ -95,7 +95,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       day 5 on trust; next earliest seeds 12 day 8, 17 day 10); textbook 20 / 26 / 28, ends trust 12 · batch 8 (short: seeds
       1 day 15, 17 day 18, 3 day 20, all trust). Rule moved ends from batch to trust; textbook median 26 still below target.
     - **do-nothing** 9 / 13 / 18, ends trust 14 · batch 6 (loop 37; median ok, p10 a bit early; not re-swept since)
-    - **expert** 40 / 40 / 40, victory 20/20 (loop 68, 19 cards); 4/4 victories in the loop 102 smoke sweep
+    - **expert** 40 / 40 / 40, victory 20/20 (loop 68, 19 cards); 4/4 victories in the loop 102 smoke sweep; loop 110 smoke after RETRY_STORM: 3/4 (seed 3 opex end day 28,
+      bill month 1 898k vs 860k; it never drew RETRY_STORM and wins on the commit before, so it's the reshuffled deck,
+      not the card). Watch in the full re-sweep
     - **spend-to-win** 28 / 28 / 28, ends opex 20/20 (loop 68): right cause, zero spread (opex wall is the month-1 close)
     - **textbook** 17 / 26 / 28, ends trust 14 · batch 6 (loop 68): **below target**. All eight Retail-trust
       collapses on days 16–24 drew NEW_APP_GOLIVE: the booking app is Retail-judged with an SLA and textbook never
