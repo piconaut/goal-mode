@@ -590,7 +590,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   for (const j of running) {
     if (swapped.has(j)) continue;
     runningJobs++;
-    const cls = classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id });
+    const cls = classifyJob(def, j.def, l.id);
     const shape = jobShape(j.def, cpSp, zSp, seqRt);
     const scKey = scKeyAtService(def, cls.serviceClass, jobServiceSu(j, shape, cpc));
     const cfCpu = j.def.usesDb2 ? shape.ioRate * DB2.cfRequestsPerBatchIo * cfZosCpuSec : 0;
@@ -836,6 +836,17 @@ export function instanceClock(secAfterStart: number): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   const dayOffset = secAfterStart >= DAY_SEC - 6 * 3600 ? '+1' : '';
   return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}${dayOffset}`;
+}
+
+// A running job is classified every tick; remember the last answer per job definition (the service
+// definition is replaced, never edited, so identity is a safe key; classify itself is pure).
+const jobClassCache = new WeakMap<object, { def: object; lparId: string; res: ReturnType<typeof classify> }>();
+function classifyJob(def: SimState['wlm']['definition'], jobDef: JobRuntime['def'], lparId: string): ReturnType<typeof classify> {
+  const hit = jobClassCache.get(jobDef);
+  if (hit && hit.def === def && hit.lparId === lparId) return hit.res;
+  const res = classify(def, { subsystem: 'JES', TN: jobDef.name, TC: jobDef.jobClass, SY: lparId });
+  jobClassCache.set(jobDef, { def, lparId, res });
+  return res;
 }
 
 const byIdCache = new WeakMap<readonly WorkloadDef[], Record<string, WorkloadDef>>();
