@@ -11,7 +11,7 @@ const arg = (name: string, dflt: string) => {
   return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : dflt;
 };
 const days = Number(arg('days', '1'));
-const scenario = SCENARIOS.midwest!;
+const scenario = SCENARIOS[arg('scenario', 'midwest')]!;
 let s = initState(Number(arg('seed', '42')), scenario);
 const t0 = performance.now();
 for (let d = 0; d < days; d++) {

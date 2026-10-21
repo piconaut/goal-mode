@@ -26,7 +26,7 @@ npm run dev          # Vite dev server
 npm test             # Vitest (unit + realism + golden)
 npm run typecheck    # tsc --noEmit
 npm run check        # typecheck + tests (no lint script yet)
-npm run bench -- --hash   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
+npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
 npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
 npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl
