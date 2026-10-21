@@ -201,6 +201,7 @@ export interface LparEvalResult {
  * IOSQ is unchanged (work is reordered, not removed). APPROX: one queue per I/O class per image. */
 function iosqByPriority(slices: readonly SliceSpec[], input: LparEvalInput): Partial<Record<IoClass, IoService[]>> | null {
   let out: Partial<Record<IoClass, IoService[]>> | null = null;
+  let dpOfSlice: number[] | null = null;
   for (const cls of ['RANDOM', 'SEQ'] as const) {
     const io = input.io[cls];
     const iosq = io.iosqSec ?? 0;
@@ -208,31 +209,38 @@ function iosqByPriority(slices: readonly SliceSpec[], input: LparEvalInput): Par
     const rate = slices.map((s) => (s.ioClass === cls ? s.rate * s.ioPerTxn + s.ioRate : 0));
     const total = rate.reduce((a, x) => a + x, 0);
     if (total <= 0) continue;
-    const byDp: Record<number, number> = {};
-    slices.forEach((s, i) => {
-      if (rate[i]! > 0) {
-        const dp = input.dpOf(s.scKey);
-        byDp[dp] = (byDp[dp] ?? 0) + rate[i]!;
-      }
-    });
-    const dps = Object.keys(byDp).map(Number).sort((a, b) => b - a);
+    const dpSl = (dpOfSlice ??= slices.map((s) => input.dpOf(s.scKey)));
+    // Few distinct DPs per image: parallel arrays beat a numeric-keyed object (hot path).
+    const dps: number[] = [];
+    const dpRate: number[] = [];
+    for (let i = 0; i < slices.length; i++) {
+      if (!(rate[i]! > 0)) continue;
+      const j = dps.indexOf(dpSl[i]!);
+      if (j < 0) {
+        dps.push(dpSl[i]!);
+        dpRate.push(rate[i]!);
+      } else dpRate[j]! += rate[i]!;
+    }
     if (dps.length < 2) continue;
+    const order = dps.map((_, j) => j).sort((a, b) => dps[b]! - dps[a]!);
     const svc = Math.max(1e-6, io.rtSec - iosq);
     const rho = Math.min(0.95, iosq / (iosq + svc));
     const w0 = rho * svc;
-    const waitByDp: Record<number, number> = {};
+    const waitAt: number[] = new Array<number>(dps.length);
     let sigma = 0;
     let mean = 0;
-    for (const dp of dps) {
+    for (const j of order) {
       const prev = sigma;
-      sigma += (rho * byDp[dp]!) / total;
-      waitByDp[dp] = w0 / ((1 - prev) * (1 - sigma));
-      mean += (byDp[dp]! / total) * waitByDp[dp]!;
+      sigma += (rho * dpRate[j]!) / total;
+      waitAt[j] = w0 / ((1 - prev) * (1 - sigma));
+      mean += (dpRate[j]! / total) * waitAt[j]!;
     }
     const scale = mean > 0 ? iosq / mean : 1;
-    const list = slices.map((s) => {
+    const list = slices.map((s, i) => {
       if (s.ioClass !== cls) return io;
-      const w = waitByDp[input.dpOf(s.scKey)]! * scale;
+      const j = dps.indexOf(dpSl[i]!);
+      // A slice of this class with no I/O has a DP outside the list: undefined × scale → NaN → io, as before.
+      const w = (j < 0 ? NaN : waitAt[j]!) * scale;
       return Number.isFinite(w) ? { rtSec: io.rtSec - iosq + w, delaySec: io.delaySec - iosq + w, iosqSec: w } : io;
     });
     (out ??= {})[cls] = list;

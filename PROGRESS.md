@@ -455,6 +455,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   periods); (3) struct-of-arrays for scps/buckets to cut allocation (GC 7%); (4) evaluate DEVT/SYSP every 3rd
   tick (low-importance images, APPROX); (5) RMF accumulation every tick → running sums without object spreads.
   Each must keep the golden hash or regenerate it with a reason
+- Loop 91 profile (1 day ≈ 5.7–6.3 s, 0.66 ms/tick): still flat; step's own body 19%, GC 7%, evaluateLpar 6%.
+  `iosqByPriority` 3.5% → 1.8% self (parallel DP arrays instead of a numeric-keyed object, DP looked up once
+  per slice); hash unchanged, wall-clock gain inside noise
 - Decision: the what-if simulator no longer waits on M8.1: it runs during the briefing (clock stopped), chunked
   with a progress bar, so ~8 s per simulated day is acceptable
 
