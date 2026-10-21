@@ -517,6 +517,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     28–32 target, but the spread is still near zero: the batch-deadline wall (day-20 05:00 deadline + nightly
     growth) decides almost every run on day 27–28. Widening it (randomised growth or deadline beat) is a
     balance call for later
+    Idea (from closed PR #3): give textbook one obvious batch reaction (e.g. more initiators when the critical
+    path runs late) to lift its median toward 30 and widen the spread
 - [x] Golden runs (`tests/golden/`): seeded scripted runs hashed per day; changes to them must be intentional
   (loop 38: seed 42, 2 days with planned day-1 changes and an emergency change on day 2, ~20 s; hashes in
   `tests/golden/hashes.json`, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
