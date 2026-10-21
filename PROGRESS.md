@@ -829,12 +829,12 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
-- **2026-10-21 (bug-hunt thread):** fixed four bugs. Successors of a batch job that overran 06:00 stayed HELD forever
+- **2026-10-21 (bug-hunt thread):** fixed three bugs. Successors of a batch job that overran 06:00 stayed HELD forever
   (`closeNight` dropped the night's finished jobs while it still had stragglers). An SLA incident open at 06:00 kept
   counting into the day it started, so the new day reported 100% attainment and paid the clean-day trust bonus; incidents
-  now split at the day boundary. Type 1 (sysplex) resource group limits applied in full on every system (3× on Midwest).
-  Batch lock stretch used the online Db2 rate of the images dispatched so far, not the sysplex rate (PROD1 batch saw
-  only PROD1 traffic). Goldens and the bench hash change with the last two.
+  now split at the day boundary. Batch lock stretch used the online Db2 rate of the images dispatched so far, not the
+  sysplex rate (PROD1 batch saw only PROD1 traffic); goldens and the bench hash change with it. (Type 1 resource groups
+  were also applied in full on every system; left to the realism thread's PR #7.)
 - **2026-10-21 (perf thread):** `step` split into per-LPAR stages; day 1 ~20% faster, hash unchanged. 288 tests.
 - **2026-10-20 (loop 79):** contrast audit fixed the light theme's status colours; contrast test for all themes. 273 tests.
 - **2026-10-20 (loop 78):** career v1 (XP across runs → starting-perk unlocks, IndexedDB). 270 tests.

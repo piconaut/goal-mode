@@ -193,16 +193,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     systems: [],
     lparTicks: [],
     onlineDb2Rate: 0,
-    rgSystems: {},
   };
   for (const l of zosLpars) lparDemand(t, l);
-  // Type 1 resource groups are sysplex-wide: count the systems their members run on.
-  for (const g of def.resourceGroups) {
-    if (g.type !== 1) continue;
-    let n = 0;
-    for (const l of zosLpars) if ((t.slicesBy[l.id] ?? []).some((s) => s.cpEngines > 0 && goalInfo(def, s.scKey)?.resourceGroup === g.id)) n++;
-    t.rgSystems[g.id] = n;
-  }
   // Coupling facilities: request work from last tick; a shared CF without thin
   // interrupts polls, consuming its whole logical engine share.
   for (const l of config.lpars.filter((x) => x.kind === 'CF')) {
@@ -418,8 +410,6 @@ interface TickCtx {
   lparTicks: LparTick[];
   /** Sysplex online Db2 transaction rate (global lock contention for batch). */
   onlineDb2Rate: number;
-  /** Systems on which each type 1 resource group's members run this tick. */
-  rgSystems: Record<string, number>;
 }
 
 /** Sums over all images, accumulated in image order. */
@@ -631,8 +621,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
     backlog: prev.backlog,
     dpOf,
-    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), t.rgSystems), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
-    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), t.rgSystems).minOf,
+    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc)), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
+    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc)).minOf,
     regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
     io,
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
@@ -1000,7 +990,6 @@ export function rgMin(
   scps: readonly ScpState[],
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
-  rgSystems: Readonly<Record<string, number>> = {},
 ): { minOf?: Record<string, number> } {
   const groups = def.resourceGroups.filter((g) => g.min !== null && g.min > 0);
   if (groups.length === 0) return {};
@@ -1011,18 +1000,17 @@ export function rgMin(
     const keys = Object.keys(demand).sort();
     const total = keys.reduce((a, k) => a + demand[k]!, 0);
     if (total <= 0 || !keys.some((k) => missingGoal(def, scps.find((x) => x.scKey === k), k))) continue;
-    const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, rgSystems[g.id] ?? 1);
+    const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, 1);
     for (const k of keys) minOf[k] = (min * demand[k]!) / total;
   }
   return Object.keys(minOf).length > 0 ? { minOf } : {};
 }
 
-export function resourceGroupCaps(
+function resourceGroupCaps(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
-  rgSystems: Readonly<Record<string, number>> = {},
 ): ((s: SliceSpec) => number) | undefined {
   const groups = def.resourceGroups.filter((g) => g.max !== null);
   if (groups.length === 0) return undefined;
@@ -1031,7 +1019,7 @@ export function resourceGroupCaps(
     const members = slices.filter((s) => goalInfo(def, s.scKey)?.resourceGroup === g.id);
     const demand = members.reduce((a, s) => a + s.cpEngines, 0);
     if (demand <= 0) continue;
-    const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, rgSystems[g.id] ?? 1);
+    const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, 1);
     for (const s of members) capBySlice[s.key] = (cap * s.cpEngines) / demand;
   }
   return (s) => capBySlice[s.key] ?? Infinity;

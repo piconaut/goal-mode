@@ -3,7 +3,7 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
-import { discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
+import { discretionaryCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { emptyAcc } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
@@ -228,19 +228,6 @@ describe('WLM caps (resource group maximum, discretionary goal management)', () 
     expect(capped.cpGranted).toBeCloseTo(0.6, 2);
     expect(capped.delayCap).toBeCloseTo(0.4, 2);
     expect(capped.newBacklog).toBeGreaterThan(free.newBacklog + 3);
-  });
-
-  it('a type 1 (sysplex) resource group maximum is shared by the systems its members run on', () => {
-    const d = structuredClone(BASEPOL);
-    d.resourceGroups = [{ id: 'RGPLEX', type: 1, min: null, max: 2000 }];
-    d.classes.find((c) => c.id === 'STCMED')!.resourceGroup = 'RGPLEX';
-    const sl = [server({ key: 'DBM1', scKey: 'STCMED#1', cpEngines: 3 })];
-    // 2000 SU/s at 1000 SU per CPU second is 2 engines across the sysplex.
-    expect(resourceGroupCaps(d, sl, undefined, 1000)!(sl[0]!)).toBeCloseTo(2);
-    expect(resourceGroupCaps(d, sl, undefined, 1000, { RGPLEX: 2 })!(sl[0]!)).toBeCloseTo(1);
-    d.resourceGroups[0]!.type = 3;
-    d.resourceGroups[0]!.max = 150;
-    expect(resourceGroupCaps(d, sl, undefined, 1000, { RGPLEX: 2 })!(sl[0]!)).toBeCloseTo(1.5);
   });
 
   it('caps over-achieving loose-goal work only while discretionary work waits', () => {
