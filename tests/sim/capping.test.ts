@@ -5,7 +5,7 @@ import { groupShares, newR4ha, stepR4ha } from '../../src/sim/cost/r4ha';
 import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
 import { TICKS_PER_R4HA_SLOT } from '../../src/sim/core/units';
-import { renderPartitionData, renderWlmDetail, renderWlmSummary, renderCfActivity, renderDasdSummary } from '../../src/sim/measure/reports';
+import { renderPartitionData, renderReport, renderWlmDetail, renderWlmSummary, renderCfActivity, renderDasdSummary } from '../../src/sim/measure/reports';
 
 describe('R4HA and soft capping', () => {
   it('averages 48 five-minute slots and caps above defined capacity', () => {
@@ -113,5 +113,8 @@ describe('RMF intervals and reports', () => {
     }
     expect(renderWlmSummary(iv)).toContain('ONLHI');
     expect(renderWlmDetail(iv, 'ONLHI#1')).toContain('RESPONSE TIME DISTRIBUTION');
+    expect(renderReport(iv, 'WLM_DETAIL')).toBe(renderWlmDetail(iv, 'ONLHI#1'));
+    expect(renderReport(iv, 'WLM_SUMMARY', undefined, 'PROD1')).toBe(renderWlmSummary(iv, 'PROD1'));
+    expect(renderReport(iv, 'DASD')).toBe(renderDasdSummary(iv));
   });
 });

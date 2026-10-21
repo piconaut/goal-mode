@@ -14,9 +14,9 @@ import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '
 import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
 import { TOOLS, type ToolFeature } from '../src/content/tools';
-import { adviseReportClasses } from '../src/game/rcAdvisor';
-import { workItems } from '../src/game/classifyExplain';
-import { clockAt, formatClock } from '../src/sim/core/clock';
+import { applyReportClassAdvice } from '../src/game/rcAdvisor';
+import { runWorkItems } from '../src/game/workloads';
+import { formatClock } from '../src/sim/core/clock';
 import { decideTfp } from '../src/game/tfp';
 import { decodeRunJson, encodeRunJson } from '../src/game/runFile';
 import { askAround, inquiriesView } from '../src/game/inquiries';
@@ -24,15 +24,15 @@ import { projectsView, workOnProject } from '../src/game/projects';
 import { addPin, removePin, type PinRequest } from '../src/game/evidence';
 import { EVIDENCE_METRICS } from '../src/content/evidence';
 import type { InquiryKind } from '../src/content/inquiries';
-import { applyWlmEdit, type WlmEdit } from '../src/game/wlmEdit';
+import { applyWlmEdit, pendingBase, type WlmEdit } from '../src/game/wlmEdit';
 import { buildView } from '../src/game/view';
 import { MECHANISMS, TRIGGERS } from '../src/game/sla';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
-import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../src/sim/measure/reports';
-import type { ReportKind, SmfKind } from '../src/worker/protocol';
+import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
+import { TICKS_PER_HOUR } from '../src/sim/core/units';
+import type { SmfKind } from '../src/worker/protocol';
 
 const content = MIDWEST_GAME;
-const TICKS_PER_HOUR = 360;
 
 export type PlayCommand =
   | { cmd: 'new'; seed: number; difficulty?: DifficultyId }
@@ -71,7 +71,6 @@ export interface PlayResult {
 
 const sc = (run: RunState) => scenarioFor(MIDWEST, run.difficulty);
 
-const REPORT_KINDS: ReportKind[] = ['WLM_SUMMARY', 'WLM_DETAIL', 'PARTITION', 'CF', 'DASD'];
 /** Real RMF report names an agent may reach for. */
 const REPORT_ALIASES: Record<string, ReportKind> = { WLMGL: 'WLM_SUMMARY', WORKLOAD: 'WLM_SUMMARY', CPU: 'PARTITION', CFACT: 'CF', CF_ACTIVITY: 'CF', DEVICE: 'DASD' };
 
@@ -86,14 +85,6 @@ export const decodePlayFile = (text: string): PlayFile => decodeRunJson<PlayFile
 
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL'): PlayFile {
   return { version: 1, run: newRun(MIDWEST, content, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty }] };
-}
-
-/** BASEPOL → BASEPOL2 → BASEPOL3 … (same as the browser's Change Desk). */
-function nextPolicyName(name: string): string {
-  const m = /^(.*?)(\d+)$/.exec(name);
-  const stem = (m ? m[1]! : name).slice(0, 7);
-  const n = m ? Number(m[2]) + 1 : 2;
-  return `${stem}${n}`.slice(0, 8);
 }
 
 export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
@@ -157,8 +148,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(removePin(run, c.id), `Unpinned ${c.id}.`);
     }
     case 'wlm': {
-      const base = file.pendingPolicy ?? { ...run.sim.wlm.definition, policyName: nextPolicyName(run.sim.wlm.definition.policyName) };
-      const res = applyWlmEdit(base, c.edit);
+      const res = applyWlmEdit(pendingBase(file.pendingPolicy, run.sim.wlm.definition), c.edit);
       if (typeof res === 'string') return fail(res);
       return done(run, `Pending policy ${res.policyName} updated. activate to install it.`, true, res);
     }
@@ -191,32 +181,15 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const rcLine = rcs.length
         ? `\nReport classes in this interval: ${rcs.join(' ')} (report WLM_DETAIL ${index} <name>)`
         : '\nNo report classes defined: workloads that share a service class are not shown separately. Add report classes with rcadvice (RC_ADVISOR tool) or a wlm SET_RULE_TARGET edit.';
-      const text =
-        kind === 'WLM_SUMMARY' ? renderWlmSummary(iv, c.system ?? '*PLEX') + rcLine
-        : kind === 'WLM_DETAIL' ? renderWlmDetail(iv, c.scKey ?? 'ONLHI#1', c.system ?? '*PLEX') + rcLine
-        : kind === 'PARTITION' ? renderPartitionData(iv)
-        : kind === 'CF' ? renderCfActivity(iv)
-        : renderDasdSummary(iv);
+      const text = renderReport(iv, kind, c.scKey, c.system) + (kind === 'WLM_SUMMARY' || kind === 'WLM_DETAIL' ? rcLine : '');
       return done(noteReportOpened(run, `${kind}:${index}`), text);
     }
     case 'rcadvice': {
       if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) return fail(needs('REPORT_CLASS_ADVISOR', 'Report class advice'));
-      const s = sc(run);
-      const items = workItems([...s.workloads, ...run.sim.extraWorkloads], [...s.addressSpaces, ...run.sim.extraAddressSpaces], s.batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth));
-      let def = file.pendingPolicy ?? { ...run.sim.wlm.definition, policyName: nextPolicyName(run.sim.wlm.definition.policyName) };
-      const added: string[] = [];
-      // Re-advise after each edit: an added rule shifts the paths of the ones below it (as the browser does).
-      for (let guard = 0; guard < 32; guard++) {
-        const a = adviseReportClasses(def, items).find((x) => !c.workloadId || x.workloadId === c.workloadId);
-        if (!a) break;
-        const res = applyWlmEdit(def, a.edit);
-        if (typeof res === 'string') return fail(res);
-        def = res;
-        added.push(a.workloadId);
-        if (c.workloadId) break;
-      }
-      if (!added.length) return fail('No report class advice left.');
-      return done(run, `Report classes for ${added.join(' ')} staged in ${def.policyName}. activate to install (takes effect next day).`, true, def);
+      const res = applyReportClassAdvice(pendingBase(file.pendingPolicy, run.sim.wlm.definition), runWorkItems(sc(run), run), c.workloadId || null);
+      if (typeof res === 'string') return fail(res);
+      if (!res.added.length) return fail('No report class advice left.');
+      return done(run, `Report classes for ${res.added.join(' ')} staged in ${res.def.policyName}. activate to install (takes effect next day).`, true, res.def);
     }
     case 'smf': {
       const need = SMF_FEATURE[c.kind];

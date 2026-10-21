@@ -34,6 +34,19 @@ export type WlmEdit =
   | { op: 'REMOVE_PERIOD'; classId: string }
   | { op: 'DELETE_CLASS'; classId: string };
 
+/** BASEPOL → BASEPOL2 → BASEPOL3 …, so RMF reports show which policy was active. The stem gives way to keep
+ * the name within 8 characters (BASEPOL9 → BASEPO10). */
+export function nextPolicyName(name: string): string {
+  const m = /^(.*?)(\d+)$/.exec(name);
+  const n = String(m ? Number(m[2]) + 1 : 2);
+  return `${(m ? m[1]! : name).slice(0, 8 - n.length)}${n}`;
+}
+
+/** Where WLM edits accumulate: the pending policy, or else a renamed copy of the active one. */
+export function pendingBase(pending: ServiceDefinition | null, active: ServiceDefinition): ServiceDefinition {
+  return pending ?? { ...active, policyName: nextPolicyName(active.policyName) };
+}
+
 /** Validate a report class name and register it in the definition (report classes are just names). */
 function useReportClass(d: ServiceDefinition, rc: string | null | undefined): string | null {
   if (rc === undefined || rc === null) return null;

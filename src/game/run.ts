@@ -30,8 +30,9 @@ import { estimateMonth } from '../sim/cost/mlc';
 import type { RmfInterval } from '../sim/measure/rmf';
 import { tfpAtDayEnd } from './tfp';
 import { deliverInquiries } from './inquiries';
+import { allWorkloads } from './workloads';
 import type { WorkloadDef } from '../sim/workload/types';
-import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
+import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, previewChange } from './catalog';
 import { hourAttainment, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
@@ -85,7 +86,6 @@ function logLine(run: RunState, text: string): RunState {
 const secAfterStart = (hour: number) => ((hour - 6 + 48) % 24) * 3600;
 
 export { allWorkloads } from './workloads';
-import { allWorkloads } from './workloads';
 
 export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL', daily?: string): RunState {
   const diff = difficultyOf(difficulty);

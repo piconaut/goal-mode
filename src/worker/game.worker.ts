@@ -17,17 +17,17 @@ import { INSIGHT } from '../content/tools';
 import { financeView } from '../game/finance';
 import { decideTfp, offerTfp } from '../game/tfp';
 import { askAround } from '../game/inquiries';
-import { adviseReportClasses } from '../game/rcAdvisor';
+import { adviseReportClasses, applyReportClassAdvice } from '../game/rcAdvisor';
 import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
-import { applyWlmEdit } from '../game/wlmEdit';
+import { applyWlmEdit, pendingBase } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
-import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../sim/measure/reports';
+import { renderReport } from '../sim/measure/reports';
 import { decodeRunJson } from '../game/runFile';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { classify } from '../sim/wlm/classify';
-import { explainClassification, workItems } from '../game/classifyExplain';
-import { clockAt } from '../sim/core/clock';
+import { explainClassification } from '../game/classifyExplain';
+import { runWorkItems } from '../game/workloads';
 import { TICKS_PER_DAY } from '../sim/core/units';
 import { goalText } from '../sim/wlm/goals';
 import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type ToWorker } from './protocol';
@@ -86,12 +86,13 @@ function pendingView(): PendingPolicyView | null {
   };
 }
 
-const currentItems = () =>
-  workItems(
-    [...sc().workloads, ...run.sim.extraWorkloads],
-    [...sc().addressSpaces, ...run.sim.extraAddressSpaces],
-    sc().batchNetwork(run.seed, run.day, clockAt(run.sim.tick).dayOfMonth),
-  );
+const currentItems = () => runWorkItems(sc(), run);
+
+/** Adopt an action's outcome and tell the player how it went. */
+function settle(out: { run: RunState; ok: boolean; message: string }) {
+  run = out.run;
+  post({ type: 'RESULT', ok: out.ok, message: out.message });
+}
 
 function postRules() {
   const items = currentItems();
@@ -113,12 +114,11 @@ const postPolicy = () => {
 
 function activate(def: ServiceDefinition) {
   const out = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
-  run = out.run;
   if (out.ok) {
     pendingPolicy = null;
     postPolicy();
   }
-  post({ type: 'RESULT', ok: out.ok, message: out.message });
+  settle(out);
 }
 
 const sendView = () => {
@@ -142,8 +142,6 @@ function advanceSampled(n: number) {
   autosave();
 }
 
-/** Save whenever the phase changes (end of day, game over) so a reload resumes there, and every sim hour of the
- * live day so a crash or reload costs at most an hour (and cannot replay the day from its briefing). */
 const postCareer = () => post({ type: 'CAREER', career, lastRunXp });
 
 /** Add a finished run to the career once (endless continuation and reloads never count it again). */
@@ -158,6 +156,8 @@ function recordCareer() {
   postCareer();
 }
 
+/** Save whenever the phase changes (end of day, game over) so a reload resumes there, and every sim hour of the
+ * live day so a crash or reload costs at most an hour (and cannot replay the day from its briefing). */
 function autosave() {
   if (spectating) return;
   if (run.phase !== lastPhase) {
@@ -356,21 +356,15 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'PROJECT_WORK': {
-      const out = workOnProject(run, m.id, m.hours);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(workOnProject(run, m.id, m.hours));
       break;
     }
     case 'ASK_AROUND': {
-      const out = askAround(run, m.topic, m.workloadId, sc());
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(askAround(run, m.topic, m.workloadId, sc()));
       break;
     }
     case 'TFP_DECIDE': {
-      const out = decideTfp(run, m.accept);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(decideTfp(run, m.accept));
       post({ type: 'FINANCE', finance: financeView(run, sc()) });
       break;
     }
@@ -390,9 +384,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'ALERT_ADD': {
-      const out = addAlertRule(run, m.rule);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(addAlertRule(run, m.rule));
       break;
     }
     case 'SAVE_POLICY':
@@ -406,14 +398,11 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
           : { run, ok: false, message: 'Policy names are 1–8 characters, starting with a letter' };
       } else if (m.type === 'DELETE_POLICY') out = deletePolicy(run, m.name);
       else out = setSchedule(run, m.schedule);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(out);
       break;
     }
     case 'AUTO_ADD': {
-      const out = addAutoRule(run, m.rule);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(addAutoRule(run, m.rule));
       break;
     }
     case 'AUTO_REMOVE':
@@ -424,15 +413,11 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'BUY_TOOL':
     case 'SET_TOOL_ACTIVE': {
-      const out = m.type === 'BUY_TOOL' ? buyTool(run, sc(), m.toolId) : setToolActive(run, sc(), m.toolId, m.active);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(m.type === 'BUY_TOOL' ? buyTool(run, sc(), m.toolId) : setToolActive(run, sc(), m.toolId, m.active));
       break;
     }
     case 'CANCEL_CHANGE': {
-      const out = cancelChange(run, m.changeId);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(cancelChange(run, m.changeId));
       break;
     }
     case 'GET_RULES':
@@ -461,9 +446,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       }
       break;
     case 'CHANGE': {
-      const out = requestChange(run, content, m.req);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(requestChange(run, content, m.req));
       break;
     }
     case 'DRAFT':
@@ -474,9 +457,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = submitRca(run, m.incidentId, m.mechanism, m.trigger, sc(), m.evidenceIds ?? []);
       break;
     case 'PIN': {
-      const out = addPin(run, sc(), m.req);
-      run = out.run;
-      post({ type: 'RESULT', ok: out.ok, message: out.message });
+      settle(addPin(run, sc(), m.req));
       break;
     }
     case 'UNPIN':
@@ -484,8 +465,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'WLM_EDIT': {
       // Edits accumulate on a pending copy of the active policy until it is activated.
-      const base = pendingPolicy ?? { ...run.sim.wlm.definition, policyName: nextPolicyName(run.sim.wlm.definition.policyName) };
-      const res = applyWlmEdit(base, m.edit);
+      const res = applyWlmEdit(pendingBase(pendingPolicy, run.sim.wlm.definition), m.edit);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else {
         pendingPolicy = res;
@@ -496,25 +476,13 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'RC_ADVICE_APPLY': {
       if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) break;
-      // Re-advise after each edit: an added rule shifts the paths of the ones below it.
-      let def = pendingPolicy ?? { ...run.sim.wlm.definition, policyName: nextPolicyName(run.sim.wlm.definition.policyName) };
-      let applied = 0;
-      for (let guard = 0; guard < 32; guard++) {
-        const a = adviseReportClasses(def, currentItems()).find((x) => m.workloadId === null || x.workloadId === m.workloadId);
-        if (!a) break;
-        const res = applyWlmEdit(def, a.edit);
-        if (typeof res === 'string') {
-          post({ type: 'RESULT', ok: false, message: res });
-          break;
-        }
-        def = res;
-        applied++;
-        if (m.workloadId !== null) break;
-      }
-      if (applied > 0) {
-        pendingPolicy = def;
+      const res = applyReportClassAdvice(pendingBase(pendingPolicy, run.sim.wlm.definition), currentItems(), m.workloadId);
+      if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
+      else if (res.added.length > 0) {
+        const n = res.added.length;
+        pendingPolicy = res.def;
         postPolicy();
-        post({ type: 'RESULT', ok: true, message: `${applied} report class${applied > 1 ? 'es' : ''} staged in ${def.policyName}. Activate it to take effect.` });
+        post({ type: 'RESULT', ok: true, message: `${n} report class${n > 1 ? 'es' : ''} staged in ${res.def.policyName}. Activate it to take effect.` });
       }
       break;
     }
@@ -550,13 +518,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         break;
       }
       run = noteReportOpened(run, `${m.kind}:${m.index}`);
-      const text =
-        m.kind === 'WLM_SUMMARY' ? renderWlmSummary(iv, m.system ?? '*PLEX')
-        : m.kind === 'WLM_DETAIL' ? renderWlmDetail(iv, m.scKey ?? 'ONLHI#1', m.system ?? '*PLEX')
-        : m.kind === 'PARTITION' ? renderPartitionData(iv)
-        : m.kind === 'CF' ? renderCfActivity(iv)
-        : renderDasdSummary(iv);
-      post({ type: 'REPORT', text });
+      post({ type: 'REPORT', text: renderReport(iv, m.kind, m.scKey, m.system) });
       break;
     }
   }
@@ -566,10 +528,3 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
 
 sendView();
 
-/** BASEPOL → BASEPOL2 → BASEPOL3 … so RMF reports show which policy was active. */
-function nextPolicyName(name: string): string {
-  const m = /^(.*?)(\d+)$/.exec(name);
-  const stem = (m ? m[1]! : name).slice(0, 7);
-  const n = m ? Number(m[2]) + 1 : 2;
-  return `${stem}${n}`.slice(0, 8);
-}
