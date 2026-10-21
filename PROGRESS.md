@@ -171,7 +171,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   Agency deck done (loop 116: 16 adapted cards, see SPEC §13.4). 20-seed sweep with it (seeds 1–20, Normal):
   do-nothing 15 / 22 / 23 (trust 20, 19 Taxpayers; too late, target ~12–18: the 7-card deck's frequent audit cards are
   now diluted), textbook 27 / 29 / 29 (trust 20, all Taxpayers; on target), expert 40 / 40 / 40 (victory 19, trust 1).
-  Tuning do-nothing with a lever textbook fixes (G1: heavier compliance analytics in WEBDDF). Next: Codex entries for
+  Tried G1 heavier analytics (0.3 → 0.45 qps, seeds 1–10): no effect (do-nothing 18 / 22 / 24, textbook unchanged), reverted.
+  Both bots' incidents are mostly CPU_PRIORITY (do-nothing 298, textbook 217 over 20 seeds), so the planted fixes barely
+  relieve the main pressure; next look at which workloads take the CPU_PRIORITY hits for do-nothing and strengthen
+  the flaw behind them (likely G1 e-filing at Imp 3 under the evening peak). Next: Codex entries for
   IIPHONORPRIORITY and soft capping if missing, Story/Hard sweeps, then a `dev` → `main` PR.
 - [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
