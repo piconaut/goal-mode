@@ -1,10 +1,12 @@
 // Behavioural "realism" tests from SPEC §16.
 
 import { MIDWEST } from '../../src/content/scenarios';
+import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
 import { discretionaryCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { emptyAcc } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
+import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 
@@ -257,6 +259,12 @@ describe('WLM I/O priority management', () => {
     expect(r[0]!.parts!.io).toBeCloseTo(r[1]!.parts!.io, 9);
     expect(r[0]!.usingIo + r[0]!.delayIo).toBe(0);
   });
+  it('counts only device connect as I/O using: disconnect is neither using nor delay', () => {
+    const withConn = { ...io, RANDOM: { ...io.RANDOM, connSec: 0.0005 } };
+    const r = evaluateLpar({ ...base, io: withConn }).slices[0]!;
+    expect(r.usingIo).toBeCloseTo(100 * 5 * 0.0005, 9);
+    expect(r.usingIo + r.delayIo).toBeLessThan(100 * 5 * io.RANDOM.rtSec);
+  });
 });
 
 describe('MQ queue depth (PAYMQ)', () => {
@@ -296,6 +304,12 @@ describe('MPL / swap (storage overcommit)', () => {
     // discretionary first, then the latest-started importance-4 job.
     const out = [...swapOut(BASEPOL, jobs, 'DEVT', 20, 2, 24)].map((j) => j.def.name);
     expect(out).toEqual(['DEV002', 'DEV001', 'PRD002']);
+  });
+  it('keeps a minimum MPL in when fixed demand alone overcommits memory', () => {
+    // 30 GB fixed on a 24 GB LPAR: swapping every job could never fit, and would freeze batch for the night.
+    const out = swapOut(BASEPOL, jobs, 'DEVT', 30, 2, 24);
+    expect(out.size).toBe(jobs.length - 1);
+    expect(jobs.filter((j) => !out.has(j)).map((j) => j.def.name)).toEqual(['PRD001']);
   });
 });
 
@@ -368,4 +382,186 @@ describe('CICS region management', () => {
     // Region class below batch: even ONLHI waits behind batch.
     expect(region.slices[0]!.cpGranted).toBeLessThan(evaluateLpar(base).slices[0]!.cpGranted);
   });
+});
+
+describe('event cards (SPEC §9)', () => {
+  // 10:00 on day 0, then 30 minutes with and without the card's begin commands.
+  let base = initState(42, MIDWEST);
+  beforeAll(() => {
+    for (let i = 0; i < 4 * 360; i++) base = step(base, [], MIDWEST);
+  });
+  const run = (cmds: Parameters<typeof step>[1]) => {
+    let s = step(base, cmds, MIDWEST);
+    let qr = 0;
+    let n = 0;
+    let devtMsu = 0;
+    let mobRt = 0;
+    let mobN = 0;
+    let bookingDone = 0;
+    for (let i = 0; i < 180; i++) {
+      s = step(s, [], MIDWEST);
+      const m = s.last.workloads.find((x) => x.id === 'MOBILE')!;
+      mobRt += m.rtSumSec;
+      mobN += m.completions;
+      const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
+      qr += w.parts.qr ?? 0;
+      n += w.completions;
+      bookingDone += s.last.workloads.find((x) => x.id === 'BOOKING')?.completions ?? 0;
+      devtMsu += s.lpars.find((l) => l.id === 'DEVT')!.msuRate / 180;
+    }
+    return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN), bookingDone };
+  };
+  const card = (id: string) => MIDWEST_EVENTS.find((e) => e.id === id)!.begin;
+
+  it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD', () => {
+    const asIs = run([]);
+    const shadow = run(card('SHADOW_IT'));
+    expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
+    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+  }, 60_000);
+
+  it('a non-threadsafe release raises QR wait for teller transactions', () => {
+    expect(run(card('QR_RELEASE')).qrMsPerTxn).toBeGreaterThan(2 * run([]).qrMsPerTxn);
+  }, 60_000);
+
+  it('a power cap (lower capacity setting, same engines) slows mobile on PROD', () => {
+    // POWER_CAP drops one setting from wherever the CPC is (resolved in the game layer; see run tests).
+    expect(run([{ kind: 'SET_CPC_CAPACITY', cpcId: 'CPCA', capacitySetting: 5 }]).mobileRtMs).toBeGreaterThan(run([]).mobileRtMs);
+  }, 60_000);
+
+  it('a new booking app has no rule so it lands in SYSOTHER, yet it runs', () => {
+    const begin = card('NEW_APP_GOLIVE');
+    const wl = begin[0]!.kind === 'ADD_WORKLOAD' ? begin[0]!.workload : null;
+    expect(wl && classify(BASEPOL, wl.work).serviceClass).toBe('SYSOTHER');
+    expect(run(begin).bookingDone).toBeGreaterThan(0);
+  }, 60_000);
+
+  it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
+    const outside = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let out = 0;
+      let n = 0;
+      for (let i = 0; i < 180; i++) {
+        s = step(s, [], MIDWEST);
+        const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
+        out += w.parts.outside ?? 0;
+        n += w.completions;
+      }
+      return (1000 * out) / Math.max(1, n);
+    };
+    expect(outside([])).toBe(0);
+    expect(outside(card('CICS_SOS'))).toBeGreaterThan(5);
+  }, 60_000);
+
+  it('stored procedures losing zIIP eligibility move mobile CPU from zIIPs to general CPs', () => {
+    const pools = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      for (let i = 0; i < 30; i++) s = step(s, [], MIDWEST);
+      const sc = s.last.lpars.find((l) => l.lparId === 'PROD1')!.scps.find((x) => x.scKey === 'DDFPRD#1')!;
+      return { cp: sc.cpEngines, ziip: sc.ziipEngines };
+    };
+    const asIs = pools([]);
+    const lost = pools(card('ZIIP_LOSS'));
+    expect(lost.ziip).toBeLessThan(0.5 * asIs.ziip);
+    expect(lost.cp).toBeGreaterThan(asIs.cp);
+  }, 60_000);
+
+  it('a retry storm multiplies mobile arrivals at unchanged CPU per transaction, unlike bot traffic', () => {
+    const perTxn = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let rate = 0;
+      let eng = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        rate += s.last.workloads.find((x) => x.id === 'MOBILE')!.arrivalRate;
+        for (const l of s.last.lpars) for (const sc of l.scps) if (sc.scKey === 'DDFPRD#1') eng += sc.cpEngines + sc.ziipEngines;
+      }
+      return { rate, engPerTxn: eng / rate };
+    };
+    const asIs = perTxn([]);
+    const retry = perTxn(card('RETRY_STORM'));
+    const bots = perTxn(card('BOT_ATTACK'));
+    expect(retry.rate).toBeGreaterThan(2 * asIs.rate);
+    expect(retry.engPerTxn).toBeGreaterThan(0.8 * asIs.engPerTxn);
+    expect(bots.engPerTxn).toBeLessThan(0.7 * asIs.engPerTxn);
+  }, 60_000);
+
+  it('an encryption mandate raises CPU per transaction on the I/O-heavy online work only', () => {
+    // ONLMED holds teller and payments (both encrypted); DDFPRD holds mobile and BI (neither).
+    const perTxn = (cmds: Parameters<typeof step>[1], scKey: string) => {
+      let s = step(base, cmds, MIDWEST);
+      let eng = 0;
+      let n = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        for (const l of s.last.lpars) for (const sc of l.scps) if (sc.scKey === scKey) { eng += sc.cpEngines + sc.ziipEngines; n += sc.completions; }
+      }
+      return eng / n;
+    };
+    const enc = card('ENCRYPTION_MANDATE');
+    const med = perTxn(enc, 'ONLMED#1') / perTxn([], 'ONLMED#1');
+    const ddf = perTxn(enc, 'DDFPRD#1') / perTxn([], 'DDFPRD#1');
+    expect(med).toBeGreaterThan(1.03);
+    expect(med).toBeLessThan(1.09);
+    expect(Math.abs(ddf - 1)).toBeLessThan(0.01);
+  }, 60_000);
+
+  it('a looping STC caught by the CICS* rule takes an engine at importance 1 until reclassified', () => {
+    const prod1 = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let stchi = 0;
+      let lowerDelay = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        for (const sc of s.last.lpars.find((l) => l.lparId === 'PROD1')!.scps) {
+          if (sc.scKey === 'STCHI#1') stchi += sc.cpEngines / 30;
+          else if (!sc.scKey.startsWith('SYS')) lowerDelay += sc.delayCpu;
+        }
+      }
+      return { stchi, lowerDelay };
+    };
+    const reclassified = structuredClone(BASEPOL);
+    reclassified.subsystems.find((x) => x.subsystem === 'STC')!.rules.unshift({ qualifier: 'TN', pattern: 'CICSXLOG', serviceClass: 'STCLO', reportClass: null, children: [] });
+    const asIs = prod1([]);
+    const loop = prod1(card('XLOG_LOOP'));
+    const fixed = prod1([...card('XLOG_LOOP'), { kind: 'ACTIVATE_POLICY', definition: reclassified }]);
+    expect(loop.stchi).toBeGreaterThan(asIs.stchi + 0.6);
+    expect(loop.lowerDelay).toBeGreaterThan(asIs.lowerDelay);
+    expect(fixed.stchi).toBeLessThan(asIs.stchi + 0.1);
+  }, 60_000);
+
+  it('an SMF retention audit raises SMF address space CPU and total MSU but no workload response', () => {
+    const asIs = run([]);
+    const audit = run(card('SMF_AUDIT'));
+    const msu = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let m = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        m += s.lpars.reduce((a, l) => a + l.msuRate, 0) / 30;
+      }
+      return m;
+    };
+    expect(msu(card('SMF_AUDIT'))).toBeGreaterThan(1.03 * msu([]));
+    expect(audit.mobileRtMs).toBeLessThan(1.05 * asIs.mobileRtMs);
+  }, 60_000);
+
+  it('an HSM recall storm raises LCU 30 IOSQ and response time', () => {
+    const lcu30 = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let iosq = 0;
+      let rt = 0;
+      for (let i = 0; i < 180; i++) {
+        s = step(s, [], MIDWEST);
+        const l = s.env.dasd?.lcus.find((x) => x.id === '30');
+        iosq += (l?.iosqSec ?? 0) / 180;
+        rt += (l?.rtSec ?? 0) / 180;
+      }
+      return { iosq, rt };
+    };
+    const asIs = lcu30([]);
+    const storm = lcu30(card('HSM_RECALL_STORM'));
+    expect(storm.rt).toBeGreaterThan(1.8 * asIs.rt);
+    expect(storm.iosq).toBeGreaterThan(100 * asIs.iosq);
+  }, 60_000);
 });

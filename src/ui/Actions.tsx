@@ -865,8 +865,8 @@ function Structures({ desk }: { desk: Desk }) {
         </table>
       </div>
       <div className="help">
-        Rebuilding a structure moves its requests to the other CF. Cache and list requests that get slow are converted to asynchronous; lock requests are not, so a lock structure on a slow
-        or shared CF makes every Db2 transaction spin. The CF Activity report shows each structure. If a CF fails, its structures are rebuilt into the other CF only if it has white space
+        Rebuilding a structure moves its requests to the other CF. Requests that get slow are converted to asynchronous (lock requests a little later than cache and list), so a lock
+        structure on a slow or shared CF makes every Db2 transaction spin or wait. The CF Activity report shows each structure. If a CF fails, its structures are rebuilt into the other CF only if it has white space
         for them; a structure that doesn&apos;t fit is lost (lock or SCA: Db2 is down; GBP: pages in recovery; MQ admin: shared queues stop). Duplexing keeps a copy in the other CF, so a
         failure costs nothing, but every request then waits for both CFs.
       </div>
@@ -1137,13 +1137,13 @@ function Hardware({ v, game }: { v: ViewModel; game: GameHandle }) {
             <span>
               {h.name}
               <div className="muted" style={{ fontSize: 12 }}>
-                {h.description} {h.leadDays > 0 ? `Lead time ${h.leadDays} days.` : 'Immediate.'}
+                {h.description} {p.leadDays > 0 ? `Lead time ${p.leadDays} days.` : 'Immediate.'}
                 {h.opexPerDay > 0 ? ` $${Math.round(h.opexPerDay / 1000)}k/day while active.` : ''}
               </div>
               {p.reason && <div className="err">{p.reason}</div>}
             </span>
             <button disabled={!p.ok} title={p.reason ?? costText(p)} onClick={() => game.send({ type: 'CHANGE', req: { label: h.name, hardwareId: h.id } })}>
-              {h.capex > 0 ? `$${Math.round(h.capex / 1000)}k` : `$${Math.round(h.opexPerDay / 1000)}k/day`} · {p.hours}h
+              {p.capex > 0 ? `$${Math.round(p.capex / 1000)}k` : `$${Math.round(h.opexPerDay / 1000)}k/day`} · {p.hours}h
             </button>
           </div>
         );

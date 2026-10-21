@@ -8,10 +8,15 @@ import type { ClassificationResult } from '../sim/wlm/classify';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { WhatIfSummary } from '../game/whatif';
 import type { FinanceView } from '../game/finance';
-import type { FromWorker, PendingPolicyView, SmfData, ToWorker } from '../worker/protocol';
+import type { CareerState } from '../game/career';
+import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type ToWorker } from '../worker/protocol';
 
 export interface GameHandle {
   view: ViewModel | null;
+  /** Spectator mode (`?spectate=<run>`): the watched run file and its latest command, or the fetch error. */
+  spectate: { name: string; last: string; note: string; error: string | null } | null;
+  /** Leave spectator mode, keeping the watched run as this browser's save. */
+  adoptSpectated: () => void;
   report: string;
   policy: string;
   history: HistoryPoint[];
@@ -22,6 +27,8 @@ export interface GameHandle {
   finance: FinanceView | null;
   whatIf: { progress: number | null; result: { label: string; base: WhatIfSummary; proposal: WhatIfSummary } | null };
   speed: number;
+  /** Career carried across runs, and the XP the run that just ended added. */
+  career: { career: CareerState; lastRunXp: number | null } | null;
   charts: { samples: Mon3Sample[]; markers: ChartMarker[] };
   rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null } | null;
   toast: { ok: boolean; message: string } | null;
@@ -46,12 +53,15 @@ export function useGame(): GameHandle {
   const [finance, setFinance] = useState<FinanceView | null>(null);
   const [whatIf, setWhatIf] = useState<GameHandle['whatIf']>({ progress: null, result: null });
   const [speed, setSpeed] = useState(1);
+  const [career, setCareer] = useState<GameHandle['career']>(null);
   const [basket, setBasket] = useState<Command[]>([]);
   const [charts, setCharts] = useState<GameHandle['charts']>({ samples: [], markers: [] });
   const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
   const [results, setResults] = useState<GameHandle['results']>([]);
   const clockRef = useRef('');
+  const [spectateName, setSpectateName] = useState(() => new URLSearchParams(window.location.search).get('spectate'));
+  const [spectate, setSpectate] = useState<GameHandle['spectate']>(spectateName ? { name: spectateName, last: '', note: '', error: null } : null);
 
   useEffect(() => {
     const w = new Worker(new URL('../worker/game.worker.ts', import.meta.url), { type: 'module' });
@@ -65,7 +75,8 @@ export function useGame(): GameHandle {
         setSavedRunDay(m.savedRunDay);
         setPending(m.pending);
         setSpeed(m.speed);
-      } else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
+      } else if (m.type === 'CAREER') setCareer({ career: m.career, lastRunXp: m.lastRunXp });
+      else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
       else if (m.type === 'SMF') setSmf(m.data);
       else if (m.type === 'FINANCE') setFinance(m.finance);
       else if (m.type === 'WHATIF_PROGRESS') setWhatIf((w) => ({ ...w, progress: m.frac }));
@@ -92,17 +103,53 @@ export function useGame(): GameHandle {
   }, []);
 
   const send = useCallback((m: ToWorker) => {
-    if (m.type === 'SET_SPEED' && m.speed > 0) writePref(SPEED_KEY, String(m.speed));
+    if (m.type === 'SET_SPEED' && m.speed > 0 && m.speed !== AUTO_SPEED) writePref(SPEED_KEY, String(m.speed));
     worker.current?.postMessage(m);
   }, []);
   // Mirror the basket to the worker so it is saved with the run.
   useEffect(() => send({ type: 'SET_BASKET', basket }), [basket, send]);
   // Dev aid for headless UI checks (tools/screenshot.mjs against `npm run dev`).
   if (import.meta.env.DEV) (globalThis as { __goalMode?: { send: typeof send } }).__goalMode = { send };
-  return { view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, charts, rules, toast, results, basket, setBasket, send };
+  // Spectator mode: poll the run file the dev server exposes and hand every new version to the worker.
+  useEffect(() => {
+    if (!spectateName) return;
+    let lastText = '';
+    const poll = async () => {
+      try {
+        const res = await fetch(`./__spectate/${encodeURIComponent(spectateName)}`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+        const text = await res.text();
+        if (text === lastText) return;
+        const log = (JSON.parse(text) as { log?: { cmd: string; text?: string }[] }).log ?? [];
+        lastText = text;
+        worker.current?.postMessage({ type: 'SPECTATE', text } satisfies ToWorker);
+        const note = [...log].reverse().find((c) => c.cmd === 'note')?.text ?? '';
+        const last = [...log].reverse().find((c) => c.cmd !== 'note');
+        setSpectate({ name: spectateName, last: last ? (last.cmd === 'advance' && last.text ? last.text : JSON.stringify(last)) : '', note, error: null });
+      } catch (e) {
+        setSpectate((s) => ({ name: spectateName, last: s?.last ?? '', note: s?.note ?? '', error: String(e) }));
+      }
+    };
+    void poll();
+    const id = window.setInterval(() => void poll(), SPECTATE_POLL_MS);
+    return () => window.clearInterval(id);
+  }, [spectateName]);
+
+  // Keep the watched run: the worker saves it as an ordinary run and the page stops polling.
+  const adoptSpectated = useCallback(() => {
+    worker.current?.postMessage({ type: 'SPECTATE_ADOPT' } satisfies ToWorker);
+    setSpectateName(null);
+    setSpectate(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('spectate');
+    window.history.replaceState(null, '', url);
+  }, []);
+
+  return { spectate, adoptSpectated, view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, rules, toast, results, basket, setBasket, send };
 }
 
 const SPEED_KEY = 'goalmode.speed';
+const SPECTATE_POLL_MS = 1500;
 const readPref = (key: string): string | null => {
   try {
     return localStorage.getItem(key);

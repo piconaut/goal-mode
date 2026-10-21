@@ -20,3 +20,10 @@ export const CF_DUPLEX = {
   syncMult: 1.6,
   cacheWriteFrac: 0.3,
 };
+
+// Since z/OS 1.2 the sync→async heuristic covers lock, list and cache requests alike, with a separate
+// threshold per request type (IBM WSC, "Heuristic Conversion of CF Operations", 2007).
+// FICTIONAL: the per-type multipliers on the scenario's base threshold. Shape: lock requests stay
+// synchronous a little longer than cache/list ones, but a slow or shared-engine CF still converts them,
+// which trades z/OS CPU spin for longer lock-request elapsed time.
+export const CF_ASYNC_THRESHOLD_MULT: Record<'LOCK' | 'LIST' | 'CACHE', number> = { LOCK: 1.5, LIST: 1, CACHE: 1 };

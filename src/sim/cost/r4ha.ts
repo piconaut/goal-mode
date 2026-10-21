@@ -1,6 +1,9 @@
 // Rolling 4-hour average and soft capping (SPEC §5.11.1). WLM samples MSU consumption
 // and keeps 48 five-minute values; the R4HA is their mean. When the R4HA exceeds the
 // defined capacity (or a group's capacity limit), the LPAR is capped until it drops back.
+// At IPL the window holds no usage, so the R4HA starts at zero and early spikes go uncapped
+// (MVS Planning: WLM, "Workload management and Workload License Charges"). APPROX: the cap is a
+// flat MSU limit; real WLM caps via phantom weight, which can also cut VH/VM processors while capped.
 
 import { R4HA_SLOTS, TICKS_PER_R4HA_SLOT } from '../core/units';
 
@@ -46,7 +49,8 @@ export function stepR4ha(st: R4haState, msuRate: number, limitMsu: number | null
 
 /**
  * Group capacity: under capping each member is entitled to limit × weight share; members
- * using less than their share donate the surplus to the others (SG24-7621 §4.21).
+ * using less than their share donate the surplus to the others (SG24-7621 §4.21; MVS Planning: WLM,
+ * "Defining group capacity"). A member's own defined capacity still applies.
  */
 export function groupShares(limitMsu: number, members: { id: string; weight: number; demandMsu: number }[]): Record<string, number> {
   const out: Record<string, number> = {};

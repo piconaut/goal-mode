@@ -61,7 +61,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: [],
     unlocks: ['MON3', 'WLM_ACTIVITY_LOG'],
     overhead: { addressSpaces: { jobnames: ['RMFGAT'], cpuFrac: 1 } },
-    reveals: 'Live SYSINFO, DELAY, PROCU, ENCLAVE, CPC and WFEX views (last ~100 s), today’s reports as each interval closes, and the live WLM activity log.',
+    reveals: 'Live SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC and WFEX views (last ~100 s), today’s reports as each interval closes, and the live WLM activity log.',
   },
   {
     id: 'PARTITION_DATA',

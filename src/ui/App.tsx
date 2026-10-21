@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { CodexHints } from './CodexHint';
-import { FACETS } from '../game/types';
 import type { ViewModel } from '../game/view';
 import type { HistoryPoint } from '../game/history';
 import { Actions } from './Actions';
@@ -17,6 +16,8 @@ import { Smf } from './Smf';
 import { EvidenceBoard } from './Evidence';
 import { useGame, type GameHandle } from './useGame';
 import { useStored } from './useStored';
+import { Tutorial } from './Tutorial';
+import { AUTO_SPEED } from '../worker/protocol';
 import { hourTick, pagerChime } from './sound';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
@@ -34,6 +35,17 @@ export function App() {
   return (
     <div className="app">
       <TopBar v={v} game={game} />
+      {game.spectate && (
+        <div className="spectate-banner" role="status">
+          Spectating <b>{game.spectate.name}</b> (read-only){game.spectate.error ? ` · cannot read the run file: ${game.spectate.error}` : game.spectate.last ? ` · last command ${game.spectate.last}` : ''}
+          {game.spectate.note && <div className="spectate-note">“{game.spectate.note}”</div>}
+          {!game.spectate.error && (
+            <button type="button" className="spectate-adopt" onClick={game.adoptSpectated} title="Stop watching and keep this run as your own save (replaces any saved run)">
+              Take over this run
+            </button>
+          )}
+        </div>
+      )}
       <div className="tabs">
         {TABS.map((t, i) => (
           <button key={t} className={tab === t ? 'active' : ''} title={`Alt+${i + 1}`} onClick={() => setTab(t)}>
@@ -62,6 +74,7 @@ export function App() {
       {tab === 'codex' && <Codex v={v} />}
       {tab === 'inbox' && <Inbox v={v} game={game} />}
       </ErrorBoundary>
+      {!game.spectate && <Tutorial v={v} />}
       <ErrorBoundary where="briefing / review" onReset={() => setOverlayOpen(false)}>
       <Overlays v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
       </ErrorBoundary>
@@ -79,7 +92,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="brand">GOAL MODE</span>
       <span className="clock">{v.clock}</span>
       <span className="stat">
-        Day <b>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</b> <span className="muted">· {v.difficulty.name}</span>
+        Day <b>{v.endlessFromDay !== null ? <>{v.day + 1} (endless)</> : <>{Math.min(v.day + 1, v.maxDays)} / {v.maxDays}</>}</b> <span className="muted">· {v.weekday.slice(0, 3)} · {v.difficulty.name}</span>{v.daily && <span className="muted"> · Daily {v.daily}</span>}
       </span>
       <span className="stat" style={{ minWidth: 120 }}>
         {v.phase}
@@ -100,14 +113,19 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
               {s === 0 ? '❚❚' : `${s}×`}
             </button>
           ))}
+          {(v.weekendDay || speed === AUTO_SPEED) && (
+            <button className={speed === AUTO_SPEED ? 'active' : ''} title="Run the rest of the weekend day at full speed" onClick={() => set(AUTO_SPEED)}>
+              Auto ⏩
+            </button>
+          )}
         </span>
       )}
       <span className="stat">
         Trust <b style={{ color: trustColor(v.trustOverall) }}>{v.trustOverall.toFixed(0)}</b>
       </span>
-      {FACETS.map((f) => (
+      {Object.keys(v.trust).map((f) => (
         <span className="stat" key={f}>
-          {f} <b style={{ color: trustColor(v.trust[f]) }}>{v.trust[f].toFixed(0)}</b>
+          {f} <b style={{ color: trustColor(v.trust[f]!) }}>{v.trust[f]!.toFixed(0)}</b>
         </span>
       ))}
       <span className="stat">
@@ -216,8 +234,8 @@ export function piColor(pi: number | null): string {
   return 'rgba(255,107,107,0.55)';
 }
 
-const SERIES_LPARS = ['PROD1', 'PROD2', 'DEVT', 'SYSP'];
-const seriesColor = (i: number) => `var(--series-${i + 1})`;
+export const SERIES_LPARS = ['PROD1', 'PROD2', 'DEVT', 'SYSP'];
+export const seriesColor = (i: number) => `var(--series-${i + 1})`;
 
 function hhmm(h: number): string {
   const hh = Math.floor(h);

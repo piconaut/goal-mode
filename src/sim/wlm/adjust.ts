@@ -4,7 +4,7 @@
 // At most one receiver is helped per interval.
 
 import { DP } from '../zos/dispatcher';
-import { evaluateLpar, type LparEvalInput, type ScpTick } from './evaluate';
+import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
 import { accPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
@@ -68,9 +68,21 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   };
   const before = instPi(input.current);
 
-  const project = (trial: Record<string, number>) =>
-    instPi(evaluateLpar({ ...input.evalInput, dpOf: (k) => trial[k] ?? dps[k] ?? 196 }).scps);
+  // Trials only move DPs: the demand stage is shared, and only percentile goals need buckets.
+  let projectBase: LparEvalInput | null = null;
+  const project = (trial: Record<string, number>) => {
+    projectBase ??= {
+      ...input.evalInput,
+      dpOf: (k) => dps[k] ?? 196,
+      scpsOnly: true,
+      bucketsFor: new Set(Object.keys(info).filter((k) => info[k]!.goal.kind === 'PCT')),
+      prepared: prepareLpar(input.evalInput),
+    };
+    return instPi(evaluateLpar({ ...projectBase, dpOf: (k) => trial[k] ?? dps[k] ?? 196 }).scps);
+  };
 
+  // Long-term CPU protection: less important work never gets an equal or higher DP than a CPU-critical
+  // class (MVS Planning: WLM, ch. 14; enqueue promotion is the documented exception, not modelled).
   const violatesCpuCritical = (trial: Record<string, number>) => {
     for (const [k, g] of Object.entries(info)) {
       if (!g.cpuCritical) continue;

@@ -13,7 +13,8 @@
     "bot": "tsx tools/bot.ts",
     "check": "tsc --noEmit && vitest run",
     "bench": "tsx tools/bench.ts",
-    "sweep": "tsx tools/sweep.ts"
+    "sweep": "tsx tools/sweep.ts",
+    "play": "tsx tools/play.ts"
   },
   "dependencies": {
     "react": "19.3.1",

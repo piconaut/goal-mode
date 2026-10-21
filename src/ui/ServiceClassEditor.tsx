@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ViewModel } from '../game/view';
 import { goalText } from '../sim/wlm/goals';
 import type { Goal, Importance, PeriodDef, ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
+import type { CicsGoalIssue } from '../game/wlmEdit';
 import { CodexHints } from './CodexHint';
 import type { GameHandle } from './useGame';
 
@@ -20,6 +21,8 @@ type Edit = Parameters<GameHandle['send']>[0];
 export function ServiceClasses({ v, game }: { v: ViewModel; game: GameHandle }) {
   const defs = game.pending?.classDefs ?? v.classDefs;
   const groups = game.pending?.resourceGroups ?? v.resourceGroups;
+  const cicsClasses = game.pending?.cicsClasses ?? v.cicsClasses;
+  const cicsIssues = game.pending?.cicsIssues ?? v.cicsIssues;
   const [sel, setSel] = useState<string | null>(null);
   const selected = defs.find((c) => c.id === sel) ?? null;
   const send = (e: Edit) => game.send(e);
@@ -44,6 +47,12 @@ export function ServiceClasses({ v, game }: { v: ViewModel; game: GameHandle }) 
                   <td>
                     <b>{c.id}</b>
                     {changed && <span className="tag warn"> edited</span>}
+                    {cicsClasses.includes(c.id) && (
+                      <span className={`tag${cicsIssues.some((i) => i.classId === c.id) ? ' bad' : ''}`} title="CICS transactions are classified into this class">
+                        {' '}
+                        CICS txn
+                      </span>
+                    )}
                     <div className="muted" style={{ fontSize: 11 }}>
                       {c.description}
                     </div>
@@ -67,7 +76,8 @@ export function ServiceClasses({ v, game }: { v: ViewModel; game: GameHandle }) 
       <div className="muted" style={{ fontSize: 12, margin: '4px 0' }}>
         {selected ? 'Edits go to the pending policy.' : 'Click a class to edit its periods, flags and resource group.'}
       </div>
-      {selected && <ClassEditor key={`${selected.id}:${JSON.stringify(selected)}`} c={selected} groups={groups} send={send} />}
+      <CicsIssues issues={cicsIssues} />
+      {selected && <ClassEditor key={`${selected.id}:${JSON.stringify(selected)}`} c={selected} groups={groups} cics={cicsClasses.includes(selected.id)} send={send} />}
       <NewClass taken={defs.map((c) => c.id)} send={send} />
       <ResourceGroups groups={groups} defs={defs} send={send} />
     </>
@@ -158,7 +168,21 @@ function PeriodRow({ c, i, send }: { c: ServiceClassDef; i: number; send: (e: Ed
   );
 }
 
-function ClassEditor({ c, groups, send }: { c: ServiceClassDef; groups: ResourceGroupDef[]; send: (e: Edit) => void }) {
+function CicsIssues({ issues }: { issues: CicsGoalIssue[] }) {
+  if (issues.length === 0) return null;
+  return (
+    <div style={{ margin: '4px 0' }}>
+      {issues.map((i) => (
+        <div key={i.message} className={i.severity === 'error' ? 'err' : 'warn-text'}>
+          {i.severity === 'error' ? '✖ ' : '⚠ '}
+          {i.message}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ClassEditor({ c, groups, cics, send }: { c: ServiceClassDef; groups: ResourceGroupDef[]; cics: boolean; send: (e: Edit) => void }) {
   const add = useGoalState();
   const last = c.periods[c.periods.length - 1]!;
   const [prevDur, setPrevDur] = useState('2000');
@@ -185,7 +209,11 @@ function ClassEditor({ c, groups, send }: { c: ServiceClassDef; groups: Resource
           Delete class
         </button>
       </div>
-      <h4>Periods</h4>
+      <h4>
+        Periods
+        {cics && <CodexHints ids={['cics-transaction-goals']} />}
+      </h4>
+      {cics && <div className="muted" style={{ fontSize: 12 }}>CICS transactions are classified here: use one period with a response-time goal and no resource group.</div>}
       {c.periods.map((_, i) => (
         <PeriodRow key={i} c={c} i={i} send={send} />
       ))}

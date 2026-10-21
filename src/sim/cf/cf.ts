@@ -3,7 +3,7 @@
 // latency. z/OS converts slow sync requests to async (heuristic); sync requests spin
 // on the z/OS CP for their whole service time, async ones cost a fixed CPU overhead.
 
-import { CF_DUPLEX, CF_FAILURE } from '../../content/cf';
+import { CF_ASYNC_THRESHOLD_MULT, CF_DUPLEX, CF_FAILURE } from '../../content/cf';
 
 export interface CfConfig {
   lparId: string;
@@ -124,9 +124,10 @@ export function evaluateCf(images: readonly CfImageInput[], structures: readonly
       const sec = duplexSecondary(x, up);
       // Duplexed: the request completes when both copies have it.
       const sync = sec ? Math.max(syncAt(id, x.costMult), syncAt(sec, x.costMult)) * CF_DUPLEX.syncMult : syncAt(id, x.costMult);
-      // Heuristic conversion: the slower sync gets relative to the threshold, the more converts.
-      // APPROX: lock requests are not converted (they spin however slow the CF is).
-      const asyncFrac = x.type === 'LOCK' || sync <= t.syncThresholdSec ? 0 : Math.min(0.98, 1 - t.syncThresholdSec / sync);
+      // Heuristic conversion (z/OS 1.2+, all structure types): the slower sync gets relative to the
+      // type's threshold, the more converts; every Nth request stays sync to resample (IBM WSC).
+      const threshold = t.syncThresholdSec * CF_ASYNC_THRESHOLD_MULT[x.type];
+      const asyncFrac = sync <= threshold ? 0 : Math.min(0.98, 1 - threshold / sync);
       const asyncSec = t.asyncBaseSec + (sync - t.linkSyncSec);
       return {
         name: x.name,

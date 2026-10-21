@@ -23,8 +23,8 @@ export interface ArrivalShape {
 export interface WorkloadDef {
   id: string;
   name: string;
-  /** Which business stakeholder owns the SLA. */
-  stakeholder: 'Retail' | 'Cards' | 'Digital' | 'Payments' | 'Internal';
+  /** Which business stakeholder owns the SLA ('Internal' = none; scenarios name the rest). */
+  stakeholder: string;
   work: WorkAttributes;
   subsystem: SubsystemType;
   /** Peak arrival rate on day 1, transactions per second. */

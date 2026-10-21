@@ -193,6 +193,8 @@ export interface SimModifiers {
   ioPerTxn?: Record<string, number>;
   /** Share of a workload's general-CP time made zIIP-eligible (zIIP-enabling projects). */
   ziipShift?: Record<string, number>;
+  /** Multiplier on a workload's zIIP-eligible time (1 = normal; below 1 the rest runs on general CPs). */
+  ziipEligMult?: Record<string, number>;
   /** Extra lock contention index (lock escalation). */
   lockBoost: number;
 }

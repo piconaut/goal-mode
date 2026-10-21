@@ -44,3 +44,19 @@ export function splitPeriods(
   }
   return out;
 }
+
+/** Period a unit of work is in after consuming `serviceSu`: each DUR is the service spent in
+ * that period before moving on (SG24-7621 §3.6). Service is CPU time only: since z/OS V2R5 the
+ * coefficients and I/O/MSO service no longer count (MVS Planning: WLM, "Calculating the amount of
+ * service consumed"). Long-running address spaces never end a transaction, so they accumulate
+ * service and age into the last period. */
+export function periodAtService(durationsSu: readonly (number | null)[], serviceSu: number): number {
+  let lo = 0;
+  for (let i = 0; i < durationsSu.length - 1; i++) {
+    const d = durationsSu[i];
+    if (d == null) return i;
+    lo += d;
+    if (serviceSu < lo) return i;
+  }
+  return Math.max(0, durationsSu.length - 1);
+}

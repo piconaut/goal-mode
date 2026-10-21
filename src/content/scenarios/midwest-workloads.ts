@@ -6,13 +6,13 @@ import type { AddressSpaceDef, ArrivalShape, WorkloadDef } from '../../sim/workl
 const WEEKDAY: ArrivalShape['weekly'] = [1, 1, 1, 1, 1.05, 0.45, 0.35];
 const ALLWEEK: ArrivalShape['weekly'] = [1, 1, 1, 1, 1.05, 0.9, 0.85];
 
-const db2Servers = (dbm1Ms: number) => [
+export const db2Servers = (dbm1Ms: number) => [
   { role: 'TCPIP', cpuMsRef: 0.02, latencySec: 0.0005 },
   { role: 'DB2.DBM1', cpuMsRef: dbm1Ms, latencySec: 0.012 },
   { role: 'DB2.MSTR', cpuMsRef: 0.03, latencySec: 0.006 },
   { role: 'DB2.IRLM', cpuMsRef: 0.02, latencySec: 0.004 },
 ];
-const cicsServers = (dbm1Ms: number) => [{ role: 'CICS.TOR', cpuMsRef: 0.05, latencySec: 0.002 }, ...db2Servers(dbm1Ms)];
+export const cicsServers = (dbm1Ms: number) => [{ role: 'CICS.TOR', cpuMsRef: 0.05, latencySec: 0.002 }, ...db2Servers(dbm1Ms)];
 
 export const MIDWEST_WORKLOADS: WorkloadDef[] = [
   {
@@ -182,7 +182,7 @@ export const MIDWEST_WORKLOADS: WorkloadDef[] = [
   },
 ];
 
-const as = (lparId: string, jobname: string, role: string | null, baseEnginesRef: number, ziipFrac = 0): AddressSpaceDef => ({
+export const as = (lparId: string, jobname: string, role: string | null, baseEnginesRef: number, ziipFrac = 0): AddressSpaceDef => ({
   jobname,
   lparId,
   role,
@@ -191,7 +191,7 @@ const as = (lparId: string, jobname: string, role: string | null, baseEnginesRef
   ziipFrac,
 });
 
-function zosBase(lparId: string, scale: number): AddressSpaceDef[] {
+export function zosBase(lparId: string, scale: number): AddressSpaceDef[] {
   return [
     as(lparId, '*MASTER*', null, 0.01 * scale),
     as(lparId, 'XCFAS', null, 0.02 * scale),
@@ -207,7 +207,7 @@ function zosBase(lparId: string, scale: number): AddressSpaceDef[] {
   ];
 }
 
-function db2(lparId: string, ssid: string): AddressSpaceDef[] {
+export function db2(lparId: string, ssid: string): AddressSpaceDef[] {
   return [
     as(lparId, `${ssid}MSTR`, 'DB2.MSTR', 0.012),
     as(lparId, `${ssid}DBM1`, 'DB2.DBM1', 0.03, 0.3),
@@ -216,11 +216,11 @@ function db2(lparId: string, ssid: string): AddressSpaceDef[] {
   ];
 }
 
-function cics(lparId: string, tor: string, aors: string[]): AddressSpaceDef[] {
+export function cics(lparId: string, tor: string, aors: string[]): AddressSpaceDef[] {
   return [as(lparId, `CICSTOR${tor}`, 'CICS.TOR', 0.01), ...aors.map((n) => as(lparId, `CICSAOR${n}`, 'CICS.AOR', 0.012))];
 }
 
-function mq(lparId: string, qm: string): AddressSpaceDef[] {
+export function mq(lparId: string, qm: string): AddressSpaceDef[] {
   return [as(lparId, `${qm}MSTR`, 'MQ.MSTR', 0.006), as(lparId, `${qm}CHIN`, 'MQ.CHIN', 0.008)];
 }
 

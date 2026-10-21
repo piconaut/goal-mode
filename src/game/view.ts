@@ -1,6 +1,8 @@
 import type { DifficultyId } from '../content/difficulty';
+import { packOf } from '../content/packs';
 import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
+import { cicsGoalIssues, cicsTransactionClasses, type CicsGoalIssue } from './wlmEdit';
 import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 // View model: a compact, serialisable projection of RunState for the UI (posted from the
 // worker every frame). Applies the fog of war: what the player is allowed to see.
@@ -11,11 +13,13 @@ import { autoRuleText } from './automation';
 import { codexDiscovered } from './codex';
 import type { EvidencePin } from './evidence';
 import { projectsView } from './projects';
+import { endReport, type EndReport } from './endReport';
 import type { ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
+import { db2AboveItsClients, installedPolicy } from './tutorial';
 import { formatClock, clockAt } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { instanceClock } from '../sim/core/step';
@@ -23,13 +27,15 @@ import { TICKS_PER_DAY } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import { accPi, goalInfo, sumAcc } from '../sim/wlm/runtime';
 import { goalText } from '../sim/wlm/goals';
-import type { PreviewContext } from './catalog';
+import { opexBudgetFor, type PreviewContext } from './catalog';
 import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import type { LcuConfig } from '../sim/io/dasd';
 import { allWorkloads, overallTrust, previewContext } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
+
+const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
 export interface LparView {
   id: string;
@@ -117,7 +123,13 @@ export interface ViewModel {
   phase: Phase;
   day: number;
   maxDays: number;
+  /** Day the quarter closed if the player continued in endless mode. */
+  endlessFromDay: number | null;
+  seed: number;
+  /** ISO date when this is a daily-challenge run. */
+  daily: string | null;
   difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
+  scenario: { id: string; name: string };
   clock: string;
   hourOfDay: number;
   tickOfDay: number;
@@ -151,6 +163,8 @@ export interface ViewModel {
   lastReport: DayReport | null;
   draft: DraftOption[] | null;
   endReason: string | null;
+  /** Only once the run has ended. */
+  endReport: EndReport | null;
   policyName: string;
   previewCtx: PreviewContext;
   config: ConfigView;
@@ -160,6 +174,11 @@ export interface ViewModel {
   mon3: Mon3View | null;
   tools: ToolView[];
   reportsOpenedToday: number;
+  /** Day-1 tutorial: the installed policy puts Db2 at or above the CICS regions (F1 fixed). */
+  tutorialDb2Fixed: boolean;
+  /** The current played day falls on a Saturday or Sunday (offered as an auto-run). */
+  weekendDay: boolean;
+  weekday: string;
   smfHours: SmfHourRef[];
   pins: EvidencePin[];
   projects: ReturnType<typeof projectsView>;
@@ -182,6 +201,8 @@ export interface ViewModel {
   inquiries: ReturnType<typeof inquiriesView>;
   ioPriorityManagement: boolean;
   cicsRegionMode: 'TRANSACTION' | 'REGION';
+  cicsClasses: string[];
+  cicsIssues: CicsGoalIssue[];
 }
 
 export function buildView(run: RunState, scenario: Scenario): ViewModel {
@@ -266,7 +287,11 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     phase: run.phase,
     day: run.day,
     maxDays: run.maxDays,
+    endlessFromDay: run.endlessFromDay ?? null,
+    seed: run.seed,
+    daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
+    scenario: { id: packOf(run.scenarioId).id, name: packOf(run.scenarioId).name },
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,
@@ -278,7 +303,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     fatigue: run.fatigue,
     insight: run.insight,
     capexRemaining: run.capexRemaining,
-    opexBudget: run.opexBudgetMonthly,
+    opexBudget: opexBudgetFor(run.opexBudgetMonthly, run.perks),
     mlcEstimate: estimateMonth(sim.cost, scenario.products),
     score: run.score,
     perks: run.perks,
@@ -299,12 +324,16 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     lastReport: run.reports[run.reports.length - 1] ?? null,
     draft: run.draft,
     endReason: run.endReason,
+    endReport: run.phase === 'GAMEOVER' || run.phase === 'VICTORY' ? endReport(run, overallTrust(run)) : null,
     policyName: def.policyName,
     previewCtx: previewContext(run),
     features: [...feats].sort(),
     mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,
     tools: toolsView(run),
     reportsOpenedToday: run.reportsOpenedToday.length,
+    tutorialDb2Fixed: db2AboveItsClients(installedPolicy(run)),
+    weekendDay: clockAt(run.day * TICKS_PER_DAY).isWeekend,
+    weekday: WEEKDAYS[clockAt(run.day * TICKS_PER_DAY).dayOfWeek],
     smfHours: smfHourRefs(run),
     pins: run.pins ?? [],
     projects: projectsView(run),
@@ -341,6 +370,8 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     inquiries: inquiriesView(run, scenario),
     ioPriorityManagement: def.ioPriorityManagement !== false,
     cicsRegionMode: def.cicsRegionMode ?? 'TRANSACTION',
+    cicsClasses: cicsTransactionClasses(def),
+    cicsIssues: cicsGoalIssues(def),
   };
 }
 

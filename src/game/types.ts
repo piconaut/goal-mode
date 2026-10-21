@@ -16,8 +16,12 @@ import type { SimState } from '../sim/core/types';
 import type { NightSummary } from '../sim/subsys/batch';
 
 export type Phase = 'BRIEFING' | 'LIVE' | 'REVIEW' | 'GAMEOVER' | 'VICTORY';
-export type Facet = 'Retail' | 'Cards' | 'Digital' | 'Payments' | 'Finance' | 'Regulator';
+/** A stakeholder whose trust is tracked. Scenarios name their own; every scenario has Finance and Regulator. */
+export type Facet = string;
+/** Midwest Mutual's facets (the default when a scenario names none). */
 export const FACETS: readonly Facet[] = ['Retail', 'Cards', 'Digital', 'Payments', 'Finance', 'Regulator'];
+/** The facets this run tracks, in display order. */
+export const facetsOf = (run: { trust: Record<Facet, number> }): Facet[] => Object.keys(run.trust);
 
 export type Mechanism =
   | 'CPU_CAPACITY'
@@ -70,6 +74,10 @@ export interface ActiveEvent {
   endTick: number | null;
   trigger: Trigger;
   affects: string[];
+  /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
+  mechanisms?: Mechanism[];
+  /** Hardware items refused while the card runs (copied from the card). */
+  blocksHardware?: string[];
   endCommands: Command[];
   started: boolean;
   ended: boolean;
@@ -145,6 +153,8 @@ export interface DayReport {
   score: number;
   mlcEstimate: number;
   events: string[];
+  /** Worst sysplex PI per service-class period over the day's RMF intervals (absent in old saves). */
+  piWorst?: Record<string, number>;
 }
 
 export interface Message {
@@ -166,12 +176,22 @@ export interface RunState {
   /** Absent in saves from before difficulty presets (= Normal). */
   difficulty?: DifficultyId;
   seed: number;
+  /** ISO date (UTC) when this is a daily-challenge run. */
+  daily?: string;
+  /** Set once the run's end has been added to the career (so endless or reloads don't count it twice). */
+  careerRecorded?: boolean;
+  /** Day the quarter closed when the player kept going (endless mode). */
+  endlessFromDay?: number;
   rng: RngState;
   sim: SimState;
   phase: Phase;
   day: number;
   maxDays: number;
   trust: Record<Facet, number>;
+  /** Trust loss multiplier per facet for SLA breaches; absent = Midwest weights. */
+  facetWeights?: Record<Facet, number>;
+  /** Facet that also loses trust when critical batch misses its deadline; absent = Retail. */
+  batchMissFacet?: Facet;
   hoursLeft: number;
   baseHours: number;
   bonusHours: { hours: number; untilDay: number }[];
@@ -183,6 +203,8 @@ export interface RunState {
   /** Analytics tools bought (content/tools.ts) and the ones switched off to save their CPU. */
   tools: string[];
   toolsOff: string[];
+  /** Tools on a free vendor trial (draft reward): in `tools` until the end of day untilDay − 1 unless bought. */
+  toolTrials?: { id: string; untilDay: number }[];
   /** Closed hours of per-workload measurements (SMF 101/110-style detail), newest last, ~2 days. */
   smfHours: SmfHour[];
   /** Daily capacity peaks so far (all days), and today's running peaks. */

@@ -1,20 +1,22 @@
+// Messages between the UI thread and the game worker.
+
 import type { DifficultyId } from '../content/difficulty';
 import type { InquiryKind } from '../content/inquiries';
 import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 import type { RcAdvice } from '../game/rcAdvisor';
-// Messages between the UI thread and the game worker.
-
+import type { ReportKind } from '../sim/measure/reports';
 import type { AlertRule } from '../game/alerts';
 import type { AutoRule } from '../game/automation';
 import type { ScheduleEntry } from '../game/policies';
 import type { PinRequest } from '../game/evidence';
 import type { FinanceView } from '../game/finance';
+import type { CareerState } from '../game/career';
 import type { WhatIfSummary } from '../game/whatif';
 import type { Command } from '../sim/core/commands';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
 import type { BatchNight, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
-import type { WlmEdit } from '../game/wlmEdit';
+import type { CicsGoalIssue, WlmEdit } from '../game/wlmEdit';
 import type { Mechanism, Trigger } from '../game/types';
 import type { ClassificationExplain } from '../game/classifyExplain';
 import type { HistoryPoint } from '../game/history';
@@ -31,6 +33,9 @@ export interface PendingPolicyView {
   ioPriorityManagement: boolean;
   cicsRegionMode: 'TRANSACTION' | 'REGION';
   rules: { subsystem: string; text: string }[];
+  /** CICS transaction classes and what's wrong with their goals. */
+  cicsClasses: string[];
+  cicsIssues: CicsGoalIssue[];
 }
 
 export type SmfKind = 'DB2' | 'CICS' | 'BATCH' | 'SMF113';
@@ -41,11 +46,15 @@ export type SmfData =
   | { kind: 'BATCH'; night: BatchNight | null }
   | { kind: 'SMF113'; rows: Smf113Row[] };
 
-export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DASD';
+export type { ReportKind };
 
 export type ToWorker =
-  | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId }
-  | { type: 'START_DAY' }
+  | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId; daily?: string; scenario?: string }
+  | { type: 'START_DAY'; auto?: boolean }
+  | { type: 'SET_STARTING_PERK'; perkId: string | null }
+  /** After VICTORY: keep playing past the quarter (endless mode). */
+  | { type: 'CONTINUE_ENDLESS' }
+  /** speed AUTO_SPEED runs the day as fast as the worker can (weekend auto-run); 0 pauses. */
   | { type: 'SET_SPEED'; speed: number }
   | { type: 'CHANGE'; req: ChangeRequest }
   | { type: 'DRAFT'; optionId: string | null }
@@ -60,6 +69,10 @@ export type ToWorker =
   | { type: 'DISCARD_PENDING' }
   | { type: 'CLASSIFY'; work: WorkAttributes }
   | { type: 'CONTINUE_SAVED' }
+  /** Spectator mode: show this run file (written by tools/play.ts) read-only; replaces the shown run. */
+  | { type: 'SPECTATE'; text: string }
+  /** Stop spectating and keep the watched run as this browser's own save. */
+  | { type: 'SPECTATE_ADOPT' }
   /** The UI's change basket, mirrored so it is saved with the run. */
   | { type: 'SET_BASKET'; basket: Command[] }
   | { type: 'GET_RULES' }
@@ -88,6 +101,7 @@ export type ToWorker =
   | { type: 'SET_TOOL_ACTIVE'; toolId: string; active: boolean };
 
 export type FromWorker =
+  | { type: 'CAREER'; career: CareerState; lastRunXp: number | null }
   | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null; speed: number }
   | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
   | { type: 'SMF'; data: SmfData }
@@ -101,3 +115,6 @@ export type FromWorker =
   /** Restore the change basket (continuing a saved run, new run). */
   | { type: 'BASKET'; basket: Command[] }
   | { type: 'RESULT'; ok: boolean; message: string };
+
+/** Sentinel speed: run the rest of the day as fast as the worker can, then drop back to the last speed. */
+export const AUTO_SPEED = 1000;

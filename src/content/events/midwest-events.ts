@@ -1,7 +1,7 @@
 // FICTIONAL event deck for Midwest Mutual (SPEC §9). Every event has symptoms, clues and fixes.
 
 import type { Command } from '../../sim/core/commands';
-import type { Trigger } from '../../game/types';
+import type { Mechanism, Trigger } from '../../game/types';
 import type { WorkloadDef } from '../../sim/workload/types';
 
 export interface EventDef {
@@ -13,6 +13,8 @@ export interface EventDef {
   weight: number;
   trigger: Trigger;
   affects: string[];
+  /** Mechanisms the card causes; RCA ground truth blames it only for incidents with one of these (absent = any). */
+  mechanisms?: Mechanism[];
   /** Wall-clock start hour range and duration in hours (null = until fixed). Events with a
    * fix still end on their own eventually; fixing them early limits the damage. */
   startHour: [number, number];
@@ -23,10 +25,27 @@ export interface EventDef {
   fix: string | null;
   /** Inbox hint the day before (null = surprise). */
   forewarning: string | null;
+  /** Draw at most once per run (cards that add a workload). */
+  oncePerRun?: boolean;
+  /** Drop the CPC this many capacity settings at start and restore the setting it had then at the end
+   * (resolved when the card begins, so a player's upgrade is neither skipped nor undone). */
+  capacityDrop?: number;
+  /** Engineer-hours added (negative = lost) per day while the card runs; applied from the briefing of its first day. */
+  hoursDelta?: number;
+  /** Hardware items the change desk refuses while the card runs (e.g. On/Off CoD under a power budget). */
+  blocksHardware?: string[];
+  /** While the card runs, each endDay audits SYSOTHER service: Regulator trust −5 if any ran, +1 if none. */
+  auditUnclassified?: true;
   /** Message when it starts (null = silent; players must notice symptoms). */
   announcement: string | null;
+  /** A perk that turns a silent start into a tip-off (e.g. Db2 Whisperer: EXPLAIN diffs after REBIND). */
+  perkTip?: { perk: string; from: string; text: string };
   clue: string;
 }
+
+// FICTIONAL: audit cards (auditUnclassified): Regulator trust per finding day / clean day; below minApplPct the
+// SYSOTHER trickle is rounding noise, not a finding.
+export const AUDIT = { findingTrust: 5, cleanDayTrust: 1, minApplPct: 0.1 };
 
 const mod = (m: 'rate' | 'cpu' | 'asCpu', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
 
@@ -46,6 +65,36 @@ export const ACQUIRED_APP: WorkloadDef = {
   cpuSigma: 0.6,
   ziipFrac: 0.5,
   ioPerTxn: 6,
+  baseLatencySec: 0.05,
+  rtSigma: 0.6,
+  timeoutSec: 10,
+  retryFrac: 0.5,
+  servers: [
+    { role: 'TCPIP', cpuMsRef: 0.02, latencySec: 0.0005 },
+    { role: 'DB2.DBM1', cpuMsRef: 0.15, latencySec: 0.012 },
+    { role: 'DB2.MSTR', cpuMsRef: 0.03, latencySec: 0.006 },
+    { role: 'DB2.IRLM', cpuMsRef: 0.02, latencySec: 0.004 },
+  ],
+  sla: { kind: 'PCT', pct: 90, rtSec: 0.5 },
+};
+
+// FICTIONAL: a small internal Java service on USS; modest rate, no zIIP offload, no BASEPOL rule matches OMVS.
+export const BOOKING_APP: WorkloadDef = {
+  id: 'BOOKING',
+  name: 'Branch appointment booking',
+  stakeholder: 'Retail',
+  subsystem: 'OMVS',
+  work: { subsystem: 'OMVS', UI: 'BOOKSVC' },
+  peakRatePerSec: 60,
+  shape: { floor: 0.05, peaks: [{ hour: 10, height: 1, widthHours: 2.5 }, { hour: 14, height: 0.8, widthHours: 2 }], weekly: [1, 1, 1, 1, 1, 0.4, 0.3], payday: 1, monthEnd: 1 },
+  growthPerDay: 0,
+  noiseSigma: 0.1,
+  noisePhi: 0.95,
+  routing: { PROD1: 1 },
+  cpuMsRef: 3,
+  cpuSigma: 0.6,
+  ziipFrac: 0,
+  ioPerTxn: 4,
   baseLatencySec: 0.05,
   rtSigma: 0.6,
   timeoutSec: 10,
@@ -92,7 +141,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'CANCEL_RUNAWAY',
     forewarning: null,
     announcement: null,
-    clue: 'DDFPRD period 2 APPL% soars on PROD2; IIPCP up (no zIIPs there); BI end rate flat.',
+    clue: 'DDFPRD period 2 APPL% soars on PROD2; IIPCP up (Mon III PROCU Time on CP % IIP; no zIIPs there); BI end rate flat.',
   },
   {
     id: 'REGRESSION',
@@ -109,6 +158,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'REBIND_REVERT',
     forewarning: 'Change board: "Db2 package REBINDs for the retail app are scheduled overnight."',
     announcement: null,
+    perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: 'EXPLAIN diff after last night\'s REBIND: package RB01 changed access path (index probe → tablespace scan). Expect more CPU per retail transaction.' },
     clue: 'ONLHI service per transaction ×3 (APPL% up, END/S flat). Db2 accounting by package would point at RB01.',
   },
   {
@@ -129,6 +179,88 @@ export const MIDWEST_EVENTS: EventDef[] = [
     clue: 'Mobile END/S ×4 with lower CPU per transaction; TCP/IP busier; DBAT usage spikes.',
   },
   {
+    // A slow downstream (card network authorisations) makes the mobile app time out and retry; each retry is a
+    // full transaction, so arrivals climb at unchanged CPU per transaction. APPROX: a fixed multiplier for the
+    // window rather than a feedback loop on response time.
+    id: 'RETRY_STORM',
+    name: 'Mobile retry storm',
+    category: 'WORKLOAD',
+    minDay: 5,
+    weight: 1.5,
+    trigger: 'DEMAND_SURGE',
+    affects: ['MOBILE'],
+    startHour: [11, 14],
+    durationHours: 3, // the card network recovers
+    // FICTIONAL magnitude: up to three retries on a 2 s client timeout, ~2.5x the offered mobile load.
+    begin: [mod('rate', 'MOBILE', 2.5)],
+    end: [mod('rate', 'MOBILE', 1)],
+    fix: 'MOBILE_BACKOFF',
+    forewarning: null,
+    announcement: null,
+    clue: 'Mobile END/S x2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); DDFPRD APPL% up in step. Fixes: switch on client backoff in the API gateway (Digital trust), or protect mobile and ride it out.',
+  },
+  {
+    // An operations utility named CICSXLOG (a CICS log archiver, not a region) matches the CICS* STC rule meant
+    // for regions and lands in STCHI at importance 1. A bad end-of-file test makes it loop on one TCB.
+    id: 'XLOG_LOOP',
+    name: 'Looping log archiver in a high class',
+    category: 'SOFTWARE',
+    minDay: 3,
+    weight: 1.2,
+    trigger: 'RUNAWAY_WORK',
+    affects: ['TELLER', 'PAYMQ'],
+    startHour: [8, 16],
+    durationHours: 6, // the on-call eventually notices and cancels it
+    // A loop in a single-TCB program burns at most one engine (APPROX: exactly ~0.9 reference engines).
+    begin: [{ kind: 'ADD_ADDRESS_SPACE', addressSpace: { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC', baseEnginesRef: 0.9, ziipFrac: 0 } }],
+    end: [mod('asCpu', 'CICSXLOG', 0)],
+    fix: 'CANCEL_XLOG',
+    forewarning: null,
+    announcement: null,
+    clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay. Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
+  },
+  {
+    // Data set encryption (DFSMS + ICSF): every read and write of an encrypted data set goes through CPACF, so the
+    // cost scales with I/O, not with business logic (IBM Redbook SG24-8410, Getting Started with z/OS Data Set Encryption).
+    id: 'ENCRYPTION_MANDATE',
+    name: 'Pervasive encryption mandate',
+    category: 'ORG',
+    minDay: 15,
+    weight: 0.8,
+    trigger: 'POLICY',
+    affects: ['CARDAUTH', 'TELLER', 'PAYMQ'],
+    startHour: [6, 6.5],
+    durationHours: null, // a mandate stays; the fix narrows its scope
+    oncePerRun: true,
+    // FICTIONAL: +6% CPU per transaction on the I/O-heavy online workloads. APPROX: batch and the audit SLA are not modelled.
+    begin: [mod('cpu', 'CARDAUTH', 1.06), mod('cpu', 'TELLER', 1.06), mod('cpu', 'PAYMQ', 1.06)],
+    end: [mod('cpu', 'CARDAUTH', 1), mod('cpu', 'TELLER', 1), mod('cpu', 'PAYMQ', 1)],
+    fix: 'SCOPE_ENCRYPTION',
+    forewarning: 'Regulator: "All customer data sets must be encrypted at rest from tomorrow. We will check the key labels."',
+    announcement: null,
+    clue: 'WLMGL: CPU per transaction up ~6% on card auth, teller and payments from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
+  },
+  {
+    // Facilities caps the data centre power budget: no temporary engines until the next budget period.
+    id: 'GREEN_IT_COD',
+    name: 'Data centre power budget',
+    category: 'ORG',
+    minDay: 8,
+    weight: 0.8,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: 7 * 24,
+    oncePerRun: true,
+    blocksHardware: ['COD_CP'],
+    begin: [],
+    end: [],
+    fix: null,
+    forewarning: 'Facilities: "Green IT target: no On/Off Capacity on Demand for the next seven days. Permanent upgrades are unaffected."',
+    announcement: null,
+    clue: 'The change desk refuses On/Off CoD (and so does CPM automation). Responses: cap or quiesce DEVT, defer discretionary batch, tune policy, or buy permanent capacity.',
+  },
+  {
     id: 'CF_LINK',
     name: 'Degraded CF link to CF01',
     category: 'HARDWARE',
@@ -136,6 +268,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.5,
     trigger: 'HARDWARE_FAULT',
     affects: ['RBANK', 'CARDAUTH', 'MOBILE', 'TELLER', 'PAYMQ'],
+    mechanisms: ['CF_SERVICE', 'LOCK_CONTENTION'],
     startHour: [7, 20],
     durationHours: 4,
     begin: [{ kind: 'SET_CF', lparId: 'CF01', degrade: 6 }],
@@ -170,6 +303,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'HARDWARE_FAULT',
     affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
+    mechanisms: ['IO'],
     startHour: [8, 22],
     durationHours: 3,
     begin: [{ kind: 'SET_DASD', changes: { backendDegrade: 5 } }],
@@ -239,6 +373,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'BATCH_OVERLAP',
     affects: ['RBANK', 'CARDAUTH'],
+    mechanisms: ['LOCK_CONTENTION'],
     startHour: [20.5, 23],
     durationHours: 3,
     begin: [{ kind: 'SET_LOCK_BOOST', value: 6 }],
@@ -247,6 +382,238 @@ export const MIDWEST_EVENTS: EventDef[] = [
     forewarning: null,
     announcement: null,
     clue: 'Card auth response time up with little CPU delay; UNK delay up; IRLM healthy; batch running.',
+  },
+  {
+    // A data-science team runs model training from TSO. On DEVT (uncapped, F9) it steals CPC capacity from PROD
+    // through PR/SM; on PROD the developers' importance-2 class (F5) competes directly.
+    id: 'SHADOW_IT',
+    name: 'Unapproved model training on TSO',
+    category: 'WORKLOAD',
+    minDay: 5,
+    weight: 1.5,
+    trigger: 'NEW_WORKLOAD',
+    affects: ['MOBILE', 'RBANK'],
+    startHour: [8, 11],
+    durationHours: 8,
+    begin: [mod('cpu', 'TSO', 8)],
+    end: [mod('cpu', 'TSO', 1)],
+    fix: 'STOP_SHADOW_IT',
+    forewarning: null,
+    announcement: null,
+    clue: 'Partition Data: DEVT MSU jumps while PROD LPARs lose share; TSO APPL% ×8 with END/S flat. Capping DEVT or lowering TSO importance also contains it.',
+  },
+  {
+    // A teller program release that is not threadsafe runs on the QR TCB (CICS serialises it there).
+    id: 'QR_RELEASE',
+    name: 'Non-threadsafe teller release',
+    category: 'SOFTWARE',
+    minDay: 7,
+    weight: 1.2,
+    trigger: 'POLICY',
+    affects: ['TELLER', 'RBANK'],
+    mechanisms: ['QR_TCB', 'THREAD_LIMIT'],
+    startHour: [6.5, 7.5],
+    durationHours: 36,
+    begin: [
+      { kind: 'SET_CICS', name: 'CICSAOR1', qrFrac: 0.95 },
+      { kind: 'SET_CICS', name: 'CICSAOR3', qrFrac: 0.95 },
+    ],
+    end: [
+      { kind: 'SET_CICS', name: 'CICSAOR1', qrFrac: 0.6 },
+      { kind: 'SET_CICS', name: 'CICSAOR3', qrFrac: 0.6 },
+    ],
+    fix: 'ROLLBACK_TELLER_RELEASE',
+    forewarning: 'Change board: "Teller front-end release 4.2 goes into the PROD1 regions overnight."',
+    announcement: null,
+    clue: 'CICS report: QR wait per transaction up in CICSAOR1/3 (PROD1) only, CPU delay low; PROD2 regions fine. Routing more work to PROD2 or adding a region also helps.',
+  },
+  {
+    // A new internal app goes live with no classification rule, so its work lands in SYSOTHER (discretionary).
+    id: 'NEW_APP_GOLIVE',
+    name: 'New branch booking app goes live',
+    category: 'WORKLOAD',
+    minDay: 9,
+    weight: 1.2,
+    trigger: 'NEW_WORKLOAD',
+    affects: ['BOOKING'],
+    startHour: [8, 10],
+    durationHours: null, // the app stays; the fix is a classification rule
+    oncePerRun: true,
+    begin: [{ kind: 'ADD_WORKLOAD', workload: BOOKING_APP }],
+    end: [],
+    fix: null,
+    forewarning: 'Retail: "Branch booking goes live tomorrow, it\'s a small Java service, nothing to worry about."',
+    announcement: null,
+    clue: 'WLMGL: SYSOTHER service ≠ 0 on PROD1; the new work has no classification rule. Fixes: add a rule into a goal class, or a report class first to measure it.',
+  },
+  {
+    // FICTIONAL: a cooling fault drops the CPC one capacity setting for the afternoon.
+    id: 'POWER_CAP',
+    name: 'Data centre power cap',
+    category: 'HARDWARE',
+    minDay: 10,
+    weight: 0.8,
+    trigger: 'HARDWARE_FAULT',
+    affects: ['MOBILE', 'RBANK'],
+    startHour: [12, 16],
+    durationHours: 6,
+    capacityDrop: 1,
+    begin: [],
+    end: [],
+    fix: null,
+    forewarning: null,
+    announcement: 'Facilities: "Cooling fault on the raised floor; the CPC is running at reduced capacity until the chiller is fixed."',
+    clue: 'SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEVT, defer discretionary batch, protect importance-1 work.',
+  },
+  {
+    // A month-old HSM migration policy change makes hundreds of users' data sets recall from ML2 at once.
+    id: 'HSM_RECALL_STORM',
+    name: 'DFSMShsm recall storm',
+    category: 'SOFTWARE',
+    minDay: 4,
+    weight: 1,
+    // Closest existing trigger: a surge of user-driven demand (no dedicated policy-side trigger fits a month-old change).
+    trigger: 'DEMAND_SURGE',
+    // I/O only: without the mechanism filter this card stole the blame for an unrelated CPU meltdown (textbook seed 7).
+    affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
+    mechanisms: ['IO'],
+    startHour: [7, 10],
+    durationHours: 2.5,
+    // FICTIONAL magnitude: 60_000 random I/Os per second on LCU 30 roughly doubles its response at day-0 load. The
+    // curve is a cliff just above (75k ≈ 15×), and nightly growth moves the cliff closer, so stay below it.
+    begin: [{ kind: 'SET_LCU', lcuId: '30', extraIops: { RANDOM: 60_000 } }],
+    end: [{ kind: 'SET_LCU', lcuId: '30', extraIops: {} }],
+    fix: 'HOLD_HSM_RECALLS',
+    forewarning: null,
+    announcement: null,
+    clue: 'DASD Activity: LCU 30 (system + catalogs) IOSQ and RESP up with random I/O ×n while Db2 LCUs are normal; everything that opens data sets slows. Fixes: hold HSM recalls, or move aliases to LCU 30.',
+  },
+  {
+    // Mobile API team redeploys its native SQL procedures as external (COBOL) stored procedures: those run on
+    // WLM-managed SPAS TCBs, not DDF enclave SRBs, so the CALLs lose zIIP eligibility (IBM Db2 12 docs, zIIP use).
+    id: 'ZIIP_LOSS',
+    name: 'Stored procedures lose zIIP offload',
+    category: 'SOFTWARE',
+    minDay: 6,
+    weight: 1,
+    trigger: 'POLICY',
+    affects: ['MOBILE'],
+    mechanisms: ['CPU_CAPACITY'],
+    startHour: [6.5, 8],
+    durationHours: 48,
+    // FICTIONAL magnitude: 70% of the mobile API's zIIP time moves back to general CPs.
+    begin: [{ kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 0.3 }],
+    end: [{ kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 1 }],
+    fix: 'NATIVE_SQL_PROCS',
+    forewarning: 'Change board: "Mobile API stored procedures are being redeployed overnight (new COBOL versions)."',
+    announcement: null,
+    clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures, or absorb it (cap, more CP).',
+  },
+  {
+    // A program storage leak drives both PROD2 AORs short on storage: CICS stops attaching new tasks until it recovers.
+    // APPROX: SOS modelled as an effective MXT cut (5 per region), so queued tasks show as MXT wait.
+    id: 'CICS_SOS',
+    name: 'CICS short on storage (PROD2 AORs)',
+    category: 'SOFTWARE',
+    minDay: 5,
+    weight: 1,
+    trigger: 'POLICY',
+    affects: ['TELLER', 'RBANK'],
+    mechanisms: ['THREAD_LIMIT'],
+    startHour: [9, 14],
+    durationHours: 4,
+    begin: [
+      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 5 },
+      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 5 },
+    ],
+    end: [
+      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 200 },
+      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 200 },
+    ],
+    fix: 'RECYCLE_PROD2_AORS',
+    forewarning: null,
+    announcement: null,
+    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs, or route teller work to PROD1.',
+  },
+  {
+    id: 'CP_SPARING',
+    name: 'CP failure, transparent sparing',
+    category: 'HARDWARE',
+    minDay: 3,
+    weight: 0.6,
+    trigger: 'HARDWARE_FAULT',
+    affects: [],
+    startHour: [0, 23],
+    durationHours: 0.1,
+    begin: [{ kind: 'NOTE', text: 'HMC: CP 05 failed; spare PU assigned transparently. No action needed.' }],
+    end: [],
+    fix: null,
+    forewarning: null,
+    announcement: 'Hardware: "HMC reported a CP failure; the spare took over. IBM will replace the part at the next service window."',
+    clue: 'HMC message only: no performance impact. A red herring if you are chasing another problem.',
+  },
+  {
+    // FICTIONAL: a week of reduced engineer-hours; the levers are how the team spends fewer hours.
+    id: 'HIRING_FREEZE',
+    name: 'Hiring freeze / contractor cut',
+    category: 'ORG',
+    minDay: 8,
+    weight: 0.8,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: 5 * 24,
+    hoursDelta: -2,
+    begin: [],
+    end: [],
+    fix: null,
+    // A forewarning, not an announcement: hours drop in that morning's briefing, so the reason must be there too.
+    forewarning: 'HR: "Contractor budgets are frozen for five days starting today; expect two fewer engineer-hours a day."',
+    announcement: null,
+    clue: 'Engineer-hours shown in the briefing drop by 2 for five days. Responses: automate routine reactions, prioritise changes, draft the contractor perk.',
+  },
+  {
+    // Regulator wants interval SMF 30/72 plus Db2 accounting (SMF 101) and CICS performance (SMF 110) records kept
+    // for a 3-day review window. The SMF address space and its log streams do the extra writing (IBM z/OS MVS
+    // System Management Facilities); APPROX: the overhead is charged to the SMF address space only.
+    id: 'SMF_AUDIT',
+    name: 'Regulator audit: detailed SMF retention',
+    category: 'ORG',
+    minDay: 10,
+    weight: 0.7,
+    trigger: 'POLICY',
+    affects: [],
+    mechanisms: ['CPU_CAPACITY'],
+    startHour: [6, 6.5],
+    durationHours: 3 * 24,
+    oncePerRun: true,
+    // FICTIONAL magnitude: the SMF address space writes ~10x its usual volume on every system.
+    begin: [mod('asCpu', 'SMF', 10)],
+    end: [mod('asCpu', 'SMF', 1)],
+    fix: 'SCOPE_SMF_AUDIT',
+    forewarning: 'Regulator: "For the next three days keep full SMF 101 and 110 detail on every system. We will sample it."',
+    announcement: null,
+    clue: 'WLMGL: SYSSTC APPL% up on every system with the SMF address space as its top consumer; MSU and R4HA up a little with no workload slower. Fixes: negotiate the scope down to sampled records (Regulator trust), or absorb the MSU for three days.',
+  },
+  {
+    // FICTIONAL: a five-day regulator audit of workload classification; the lever is classification rules.
+    id: 'AUDIT_UNCLASSIFIED',
+    name: 'Regulator audit: unclassified work',
+    category: 'ORG',
+    minDay: 12,
+    weight: 0.7,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: 5 * 24,
+    auditUnclassified: true,
+    oncePerRun: true,
+    begin: [],
+    end: [],
+    fix: null,
+    forewarning: 'Regulator: "We will audit your workload classification for the next five days. Unclassified work is a finding."',
+    announcement: null,
+    clue: 'WLMGL: any SYSOTHER service is a finding. Responses: add classification rules (or a catch-all default service class per subsystem) before it starts, report classes to find what is unclassified.',
   },
 ];
 

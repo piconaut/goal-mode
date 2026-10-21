@@ -6,11 +6,24 @@ import type { CpcConfig, LparConfig } from '../core/types';
 import { classify } from '../wlm/classify';
 import type { ServiceDefinition } from '../wlm/types';
 import { SYSOTHER, SYSSTC, SYSTEM } from '../wlm/types';
-import type { SliceSpec } from '../wlm/evaluate';
-import { splitPeriods } from './periods';
+import { sliceSpec, type SliceSpec } from '../wlm/evaluate';
+import { periodAtService, splitPeriods } from './periods';
 import type { AddressSpaceDef, WorkloadDef } from './types';
 
 export const scKeyOf = (serviceClass: string, period: number) => `${serviceClass}#${period + 1}`;
+
+/** Service-class period of work that has consumed `serviceSu` so far (Infinity: a long-running
+ * address space, which has aged into the last period). */
+export function scKeyAtService(def: ServiceDefinition, serviceClass: string, serviceSu: number): string {
+  return scKeyOf(serviceClass, periodAtService(periodsOf(def, serviceClass).map((p) => p.durationSu), serviceSu));
+}
+
+/** Whether zIIP-eligible work in this period may overflow to CPs: never for discretionary goals, nor
+ * with Honor Priority NO (z/OS MVS Planning: WLM, "Honor Priority"). */
+export function honorsPriority(def: ServiceDefinition, serviceClass: string, scKey: string): boolean {
+  const period = Number(scKey.slice(scKey.lastIndexOf('#') + 1)) - 1;
+  return periodsOf(def, serviceClass)[period]?.honor ?? true;
+}
 
 
 export interface SliceBuildInput {
@@ -100,9 +113,9 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
         cpBase: 0,
         ziBase: 0,
         roleTerms: [],
-        spec: {
+        spec: sliceSpec({
           key: `${w.id}@${lpar.id}${scKeyOf(cls.serviceClass, k)}`,
-          ...(cls.reportClass ? { reportClass: cls.reportClass } : {}),
+          reportClass: cls.reportClass,
           scKey: scKeyOf(cls.serviceClass, k),
           kind: 'TXN',
           workloadId: w.id,
@@ -127,7 +140,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
           extraOtherSec: 0,
           failFrac: 0,
           outsideWaitSec: 0,
-        },
+        }),
       });
     });
   }
@@ -136,6 +149,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
     if (a.lparId !== lpar.id) continue;
     const cls = classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: lpar.id });
     const periods = periodsOf(def, cls.serviceClass);
+    const last = periods.length - 1;
     const terms = (a.role ? (roleTerms[a.role] ?? []) : []).map((t) => ({
       workloadId: t.workloadId,
       cpCoef: (t.cpuSecRef * mp * (1 - a.ziipFrac)) / cpSp,
@@ -149,10 +163,10 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
       cpBase: (a.baseEnginesRef * mp * (1 - a.ziipFrac)) / cpSp,
       ziBase: (a.baseEnginesRef * mp * a.ziipFrac) / zSp,
       roleTerms: terms,
-      spec: {
+      spec: sliceSpec({
         key: `${a.jobname}@${lpar.id}`,
-        ...(cls.reportClass ? { reportClass: cls.reportClass } : {}),
-        scKey: scKeyOf(cls.serviceClass, 0),
+        reportClass: cls.reportClass,
+        scKey: scKeyOf(cls.serviceClass, last),
         kind: 'AS',
         workloadId: null,
         jobname: a.jobname,
@@ -160,7 +174,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
         rate: 0,
         cpEngines: 0,
         ziipEngines: 0,
-        mayOverflow: periods[0]?.honor ?? true,
+        mayOverflow: periods[last]?.honor ?? true,
         cpuSecPerTxn: 0,
         ziipSecPerTxn: 0,
         ioPerTxn: 0,
@@ -175,13 +189,13 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
         extraOtherSec: 0,
         failFrac: 0,
         outsideWaitSec: 0,
-      },
+      }),
     });
   }
   return out;
 }
 
-export function buildSlices(input: SliceBuildInput): SliceSpec[] {
+function templatesFor(input: SliceBuildInput): SliceTemplate[] {
   let byWl = templateCache.get(input.def);
   if (!byWl) {
     byWl = new WeakMap();
@@ -203,10 +217,42 @@ export function buildSlices(input: SliceBuildInput): SliceSpec[] {
     templates = buildTemplates(input);
     byKey.set(key, templates);
   }
-  return templates.map((t) => {
+  return templates;
+}
+
+interface LastTemplates {
+  def: ServiceDefinition;
+  cpc: CpcConfig;
+  workloads: readonly WorkloadDef[];
+  addressSpaces: readonly AddressSpaceDef[];
+  templates: SliceTemplate[];
+}
+
+// Per-LPAR shortcut past the key string and nested lookups while every input object is the same
+// one as last tick (config edits clone the whole config, so any change is a new LparConfig).
+const lastByLpar = new WeakMap<LparConfig, LastTemplates>();
+
+function cachedTemplates(input: SliceBuildInput): SliceTemplate[] {
+  if (input.cpuMultiplier) return templatesFor(input);
+  const last = lastByLpar.get(input.lpar);
+  if (last && last.def === input.def && last.cpc === input.cpc && last.workloads === input.workloads && last.addressSpaces === input.addressSpaces) {
+    return last.templates;
+  }
+  const templates = templatesFor(input);
+  lastByLpar.set(input.lpar, { def: input.def, cpc: input.cpc, workloads: input.workloads, addressSpaces: input.addressSpaces, templates });
+  return templates;
+}
+
+export function buildSlices(input: SliceBuildInput): SliceSpec[] {
+  const templates = cachedTemplates(input);
+  // Spread copies keep the template's hidden class, shared with the other slice copies (CPU
+  // modifiers, evaluator); a field-by-field literal measured ~40% slower overall.
+  const out: SliceSpec[] = [];
+  for (const t of templates) {
     if (t.workloadId) {
       const r = input.rates[t.workloadId] ?? 0;
-      return { ...t.spec, rate: r * t.rateCoef, cpEngines: r * t.cpCoef, ziipEngines: r * t.ziCoef };
+      out.push({ ...t.spec, rate: r * t.rateCoef, cpEngines: r * t.cpCoef, ziipEngines: r * t.ziCoef });
+      continue;
     }
     let cp = t.cpBase;
     let zi = t.ziBase;
@@ -215,6 +261,7 @@ export function buildSlices(input: SliceBuildInput): SliceSpec[] {
       cp += r * term.cpCoef;
       zi += r * term.ziCoef;
     }
-    return { ...t.spec, cpEngines: cp, ziipEngines: zi };
-  });
+    out.push({ ...t.spec, cpEngines: cp, ziipEngines: zi });
+  }
+  return out;
 }

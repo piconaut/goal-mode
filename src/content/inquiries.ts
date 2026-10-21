@@ -94,6 +94,19 @@ export const EVENT_RUMOURS: Record<string, string> = {
   REORG_OVERRUN: 'the DBAs are planning an online REORG of the settlement table spaces',
   MONITOR_CREEP: 'a new monitoring agent release is being rolled out',
   LOCK_ESCALATION: 'settlement volumes are unusually high this week',
+  SHADOW_IT: 'the data-science team found free CPU on the test system',
+  QR_RELEASE: 'the teller app team has a front-end release lined up',
+  HSM_RECALL_STORM: 'the storage team changed the HSM migration rules last month',
+  ZIIP_LOSS: 'the mobile API team is rewriting its stored procedures in COBOL',
+  CICS_SOS: 'the PROD2 CICS regions have been logging storage warnings',
+  RETRY_STORM: 'the card network has had slow authorisations at lunchtime',
+  ENCRYPTION_MANDATE: 'the regulator has been asking about encryption at rest',
+  GREEN_IT_COD: 'facilities say the data centre is over its power budget',
+  XLOG_LOOP: 'operations put a new CICS journal archiver into production this week',
+  SMF_AUDIT: 'the regulator has asked how long we keep detailed SMF data',
+  NEW_APP_GOLIVE: 'retail is about to launch a small new booking app',
+  HIRING_FREEZE: 'HR is reviewing contractor budgets for next week',
+  AUDIT_UNCLASSIFIED: 'the regulator is planning an audit of system management',
 };
 
 /** Rumours about upcoming story beats (heard up to a few days ahead). */

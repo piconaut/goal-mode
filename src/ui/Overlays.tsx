@@ -1,13 +1,21 @@
 import { useEffect, useState } from 'react';
+import { PACKS } from '../content/packs';
 import { DIFFICULTIES, type DifficultyId } from '../content/difficulty';
 import { EVIDENCE } from '../content/evidence';
 import type { Hypothesis } from '../game/aiops';
+import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { Mechanism, Trigger } from '../game/types';
+import type { EndReport } from '../game/endReport';
 import type { ViewModel } from '../game/view';
+import { piColor, SERIES_LPARS, seriesColor } from './App';
+import { LineChart } from './LineChart';
 import type { GameHandle } from './useGame';
+import { CAREER_LEVELS } from '../content/career';
+import { DRAFT_OPTIONS } from '../content/draft';
+import { careerLevel, unlockedPerks } from '../game/career';
 
 export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
   useEffect(() => {
@@ -31,8 +39,15 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
       )}
       {!open && v.phase === 'BRIEFING' && (
         <div className="toast">
-          <button className="primary" onClick={() => game.send({ type: 'START_DAY' })}>
-            Start day {v.day + 1} (06:00)
+          {v.weekendDay && (
+            <>
+              <button className="primary" title="Run the weekend day at full speed; the report card is the summary" onClick={() => game.send({ type: 'START_DAY', auto: true })}>
+                Auto-run the weekend day
+              </button>{' '}
+            </>
+          )}
+          <button className={v.weekendDay ? '' : 'primary'} onClick={() => game.send({ type: 'START_DAY' })}>
+            {v.weekendDay ? 'Play it' : `Start day ${v.day + 1} (06:00)`}
           </button>{' '}
           <button onClick={() => setOpen(true)}>Briefing</button>
         </div>
@@ -50,11 +65,22 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
           {v.phase === 'REVIEW' && <Review v={v} game={game} investigate={() => setOpen(false)} />}
           {ended && (
             <>
-              <h2>{v.phase === 'VICTORY' ? 'Quarter closed' : 'Run over'}</h2>
+              <h2>{v.phase === 'VICTORY' ? 'Quarter closed' : v.endlessFromDay !== null ? 'Endless run over' : 'Run over'}</h2>
               <p>{v.endReason}</p>
               <p>
                 Final score <b>{v.score}</b> after {v.day + 1} days.
               </p>
+              <CareerLine game={game} />
+              {v.endReport && <EndReportView r={v.endReport} />}
+              {v.endReport && <ShareBox v={v} r={v.endReport} />}
+              {v.phase === 'VICTORY' && v.endlessFromDay === null && (
+                <p>
+                  <button className="primary" onClick={() => game.send({ type: 'CONTINUE_ENDLESS' })}>
+                    Keep going (endless)
+                  </button>{' '}
+                  <span className="muted">Growth keeps compounding and a new capex budget arrives. The run counts as a win whenever it ends.</span>
+                </p>
+              )}
               <NewRun game={game} />
             </>
           )}
@@ -64,10 +90,136 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
   );
 }
 
+function ShareBox({ v, r }: { v: ViewModel; r: EndReport }) {
+  const [copied, setCopied] = useState(false);
+  const text = shareText({ seed: v.seed, difficulty: v.difficulty.name, daysPlayed: r.daysPlayed, maxDays: v.maxDays, endlessDays: r.endlessDays, grade: r.grade, points: r.points, score: v.score, daily: v.daily });
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable: the text stays selectable */
+    }
+  };
+  return (
+    <div className="panel" style={{ marginBottom: 8 }}>
+      <div className="form">
+        <input readOnly aria-label="Shareable result" value={text} style={{ fontFamily: 'monospace', flex: 1, minWidth: 0 }} onFocus={(e) => e.target.select()} />
+        <button onClick={copy}>{copied ? 'Copied' : 'Copy'}</button>
+      </div>
+    </div>
+  );
+}
+
+function EndReportView({ r }: { r: EndReport }) {
+  return (
+    <div className="panel" style={{ marginBottom: 8 }}>
+      <h3>
+        Grade <span style={{ fontSize: '1.6em' }}>{r.grade}</span> <span className="muted">({r.points}/100)</span>
+      </h3>
+      <p className="muted">
+        {r.daysPlayed} of the quarter's days played · mean SLA attainment {r.meanSlaPct.toFixed(1)}% · final trust {Math.round(r.overallTrust)}
+        {r.endlessDays !== null && ` · ${r.endlessDays} endless days after the quarter closed`}
+        {!r.victory && ' · runs that end early grade B at best'}
+      </p>
+      {r.biggestIncident && (
+        <p>
+          Biggest incident: <b>{r.biggestIncident.workloadId}</b> on day {r.biggestIncident.day + 1}, {r.biggestIncident.hours} h: {r.biggestIncident.cause}.
+        </p>
+      )}
+      <p>{r.bestRca ? <>Best RCA: <b>{r.bestRca.workloadId}</b> on day {r.bestRca.day + 1}, {r.bestRca.points} points: {r.bestRca.cause}.</> : 'No root cause analysis scored points.'}</p>
+      {r.r4haByLpar.lparIds.length > 0 && r.days.length >= 2 && (
+        <LineChart
+          title="Daily peak R4HA per LPAR"
+          unit="MSU"
+          xLabels={r.days.map((d) => `day ${d.day + 1}`)}
+          series={r.r4haByLpar.lparIds.map((id, i) => ({ id, color: seriesColor(SERIES_LPARS.includes(id) ? SERIES_LPARS.indexOf(id) : SERIES_LPARS.length + i), values: r.r4haByLpar.byDay[i]! }))}
+        />
+      )}
+      <details>
+        <summary>Day by day</summary>
+        <table>
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Score</th>
+              <th>Worst SLA</th>
+              <th>Peak R4HA sum (MSU)</th>
+              <th>Batch</th>
+            </tr>
+          </thead>
+          <tbody>
+            {r.days.map((d) => (
+              <tr key={d.day}>
+                <td>{d.day + 1}</td>
+                <td>{d.score}</td>
+                <td>{d.worstSlaPct.toFixed(1)}%</td>
+                <td>{d.peakR4haSum === null ? <span className="muted">-</span> : Math.round(d.peakR4haSum)}</td>
+                <td>{d.batchMissed ? <span className="tag bad">missed</span> : 'on time'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </details>
+      {r.piHeat.scKeys.length > 0 && (
+        <details>
+          <summary>PI heat map (worst interval per day)</summary>
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Class</th>
+                  {r.days.map((d) => (
+                    <th key={d.day} className="num">
+                      {d.day + 1}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {r.piHeat.scKeys.map((k, i) => (
+                  <tr key={k}>
+                    <td>{k}</td>
+                    {r.piHeat.byDay[i]!.map((pi, d) => (
+                      <td key={d} className="num" style={{ background: piColor(pi), padding: '2px 4px' }} title={`${k} day ${d + 1}: PI ${pi === null ? '-' : pi.toFixed(2)}`}>
+                        {pi === null ? '' : pi.toFixed(1)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+      <details>
+        <summary>Decisions ({r.decisions.length} changes applied)</summary>
+        <ul>
+          {r.decisions.map((d, i) => (
+            <li key={i}>
+              Day {d.day + 1}: {d.label}
+              {d.emergency && <span className="tag bad"> emergency</span>}
+            </li>
+          ))}
+        </ul>
+      </details>
+    </div>
+  );
+}
+
 function NewRun({ game }: { game: GameHandle }) {
   const [difficulty, setDifficulty] = useState<DifficultyId>('NORMAL');
+  const [scenario, setScenario] = useState('midwest');
   return (
     <>
+      <div role="radiogroup" aria-label="Scenario">
+        {Object.values(PACKS).map((p) => (
+          <label key={p.id} style={{ display: 'block', margin: '4px 0' }}>
+            <input type="radio" name="scenario" checked={scenario === p.id} onChange={() => setScenario(p.id)} /> <b>{p.name}</b> <span className="muted">{p.blurb}</span>
+          </label>
+        ))}
+      </div>
       <div role="radiogroup" aria-label="Difficulty">
         {Object.values(DIFFICULTIES).map((d) => (
           <label key={d.id} style={{ display: 'block', margin: '4px 0' }}>
@@ -76,26 +228,93 @@ function NewRun({ game }: { game: GameHandle }) {
           </label>
         ))}
       </div>
-      <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty })}>
+      <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario })}>
         New run
+      </button>{' '}
+      <button
+        title="Same seed for everyone today (UTC)"
+        onClick={() => {
+          const today = new Date().toISOString().slice(0, 10);
+          game.send({ type: 'NEW_RUN', seed: dailySeed(today), difficulty, daily: today, scenario });
+        }}
+      >
+        Daily challenge
       </button>
     </>
   );
 }
 
-// A fresh page load starts on Normal; until day 1 starts the player can restart on another preset.
-function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
-  const plannedAny = v.changes.length > 0;
+const perkTitle = (id: string) => DRAFT_OPTIONS.find((d) => d.id === id)?.title.replace(/^Perk: /, '') ?? id;
+
+function careerTitle(xp: number): string {
+  const lvl = careerLevel(xp);
+  const next = CAREER_LEVELS[lvl + 1];
+  return `${CAREER_LEVELS[lvl]!.title} (level ${lvl + 1}, ${xp} XP${next ? `; ${next.xp} for ${perkTitle(next.unlock ?? '')}` : ''})`;
+}
+
+/** Career XP from the run that just ended, and any perk it unlocked. */
+function CareerLine({ game }: { game: GameHandle }) {
+  const c = game.career;
+  if (!c || c.lastRunXp === null) return null;
+  const before = c.career.xp - c.lastRunXp;
+  const fresh = unlockedPerks(c.career.xp).filter((p) => !unlockedPerks(before).includes(p));
   return (
     <p>
+      Career: <b>+{c.lastRunXp} XP</b> · {careerTitle(c.career.xp)}
+      {fresh.length > 0 && <> · unlocked starting perk <b>{fresh.map(perkTitle).join(', ')}</b></>}
+    </p>
+  );
+}
+
+// Unlocked career perks: pick one before day 1 starts (not on the daily challenge, where everyone starts alike).
+function StartingPerk({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const xp = game.career?.career.xp ?? 0;
+  const perks = unlockedPerks(xp);
+  return (
+    <p>
+      <span className="muted">Career: {careerTitle(xp)}.</span>{' '}
+      {perks.length > 0 && !v.daily && (
+        <label>
+          Starting perk{' '}
+          <select value={v.perks[0] ?? ''} onChange={(e) => game.send({ type: 'SET_STARTING_PERK', perkId: e.target.value || null })}>
+            <option value="">None</option>
+            {perks.map((p) => (
+              <option key={p} value={p}>
+                {perkTitle(p)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+    </p>
+  );
+}
+
+// A fresh page load starts on Midwest Mutual, Normal; until day 1 starts the player can restart on another
+// scenario or preset.
+function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const plannedAny = v.changes.length > 0;
+  const restart = (scenario: string, difficulty: DifficultyId) => {
+    if (plannedAny && !confirm('Restart? Planned changes are discarded.')) return;
+    game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario });
+  };
+  return (
+    <p>
+      <label>
+        Scenario{' '}
+        <select value={v.scenario.id} onChange={(e) => restart(e.target.value, v.difficulty.id)}>
+          {Object.values(PACKS).map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </label>{' '}
       <label>
         Difficulty{' '}
         <select
           value={v.difficulty.id}
-          onChange={(e) => {
-            if (plannedAny && !confirm('Restart on this difficulty? Planned changes are discarded.')) return;
-            game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty: e.target.value as DifficultyId });
-          }}
+          onChange={(e) => restart(v.scenario.id, e.target.value as DifficultyId)}
         >
           {Object.values(DIFFICULTIES).map((d) => (
             <option key={d.id} value={d.id}>
@@ -114,8 +333,9 @@ function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () 
   const planned = v.changes.filter((c) => c.status === 'PLANNED' && c.activateDay === v.day);
   return (
     <>
-      <h2>Morning briefing: day {v.day + 1}</h2>
+      <h2>Morning briefing: day {v.day + 1}, {v.weekday}</h2>
       {v.day === 0 && <FirstDayDifficulty v={v} game={game} />}
+      {v.day === 0 && <StartingPerk v={v} game={game} />}
       {today.length === 0 && <p className="muted">Quiet inbox this morning.</p>}
       {today.map((m, i) => (
         <div key={i} className="panel" style={{ marginBottom: 8 }}>
@@ -133,8 +353,13 @@ function Briefing({ v, game, hide }: { v: ViewModel; game: GameHandle; hide: () 
           <button onClick={() => game.send({ type: 'CONTINUE_SAVED' })}>Continue saved run (day {game.savedRunDay + 1})</button>
         )}
         <button onClick={hide}>Plan changes / read reports</button>
-        <button className="primary" onClick={() => game.send({ type: 'START_DAY' })}>
-          Start day (06:00)
+        {v.weekendDay && (
+          <button className="primary" title="Weekend maintenance and REORG batch, light online: run it at full speed and read the report card" onClick={() => game.send({ type: 'START_DAY', auto: true })}>
+            Auto-run the weekend day
+          </button>
+        )}
+        <button className={v.weekendDay ? '' : 'primary'} onClick={() => game.send({ type: 'START_DAY' })}>
+          {v.weekendDay ? 'Play the weekend day (06:00)' : 'Start day (06:00)'}
         </button>
       </div>
     </>

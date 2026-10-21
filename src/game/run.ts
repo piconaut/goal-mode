@@ -1,9 +1,10 @@
 // Run lifecycle (SPEC §2): BRIEFING → LIVE (06:00→06:00) → REVIEW (draft) → next day.
 // Pure functions over plain data; the game RNG is separate from the sim's.
 
-import { DRAFT_OPTIONS } from '../content/draft';
-import type { EventDef, ScriptedBeat } from '../content/events/midwest-events';
-import type { Command } from '../sim/core/commands';
+import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
+import { grantProjectHours } from './projects';
+import { AUDIT, type EventDef, type ScriptedBeat } from '../content/events/midwest-events';
+import { applyCommands, type Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
 import { ALERTS } from '../content/alerts';
@@ -13,23 +14,29 @@ import { emptyAlerts, evaluateAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { MON3_CHARTS } from '../content/tools';
+import { expireToolTrials, trialTool } from './tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, seedRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
-import { difficultyOf, scenarioFor } from './difficulty';
+import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
+import { hintLevelFor, morningHints } from './hints';
+import { HINT_SENDER, STORY_BEAT_HINTS } from '../content/hints';
 import { step } from '../sim/core/step';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
+import type { RmfInterval } from '../sim/measure/rmf';
 import { tfpAtDayEnd } from './tfp';
 import { deliverInquiries } from './inquiries';
+import { allWorkloads } from './workloads';
 import type { WorkloadDef } from '../sim/workload/types';
-import { failRiskFor, FIXES, hardwareItem, MAX_OVERTIME, previewChange } from './catalog';
+import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, previewChange } from './catalog';
 import { hourAttainment, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
+  facetsOf,
   type ActiveEvent,
   type DayReport,
   type Facet,
@@ -47,15 +54,28 @@ export interface GameContent {
   opexBudgetMonthly: number;
   capexQuarter: number;
   maxDays: number;
+  /** Stakeholder facets with their SLA-breach trust weights; absent = Midwest's (FACET_WEIGHT). */
+  facets?: { id: Facet; weight: number }[];
+  /** Facet that also loses trust on a missed batch deadline (default Retail). */
+  batchMissFacet?: Facet;
+  /** Planted flaws already fixed at the start on a difficulty (SPEC §11.2, §13.3). */
+  startingFixes?: Partial<Record<DifficultyId, { flaw: string; label: string; commands: Command[] }[]>>;
 }
 
 const BASE_HOURS = 8;
 const FATIGUE_PER_OVERTIME_HOUR = 6;
-const FACET_WEIGHT: Record<Facet, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
+const FACET_WEIGHT: Record<string, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
 
 const facetOf = (w: WorkloadDef): Facet | null => (w.stakeholder === 'Internal' ? null : w.stakeholder);
 
-export const overallTrust = (run: RunState) => FACETS.reduce((a, f) => a + run.trust[f], 0) / FACETS.length;
+export const overallTrust = (run: RunState) => {
+  const fs = facetsOf(run);
+  return fs.reduce((a, f) => a + run.trust[f]!, 0) / fs.length;
+};
+
+/** Applies f to every facet's trust and clamps. */
+const mapTrust = (run: RunState, f: (t: number) => number): Record<Facet, number> =>
+  Object.fromEntries(facetsOf(run).map((k) => [k, clampTrust(f(run.trust[k]!))]));
 
 const clampTrust = (x: number) => Math.max(0, Math.min(100, x));
 
@@ -65,8 +85,9 @@ function withRng<T>(run: RunState, f: (rng: Rng) => T): [T, RunState] {
   return [out, { ...run, rng: rng.snapshot() }];
 }
 
-function msg(run: RunState, from: string, subject: string, body: string): RunState {
-  return { ...run, inbox: [...run.inbox, { day: run.day, from, subject, body }] };
+/** `day` dates the message for a later morning's briefing (default: today). */
+function msg(run: RunState, from: string, subject: string, body: string, day = run.day): RunState {
+  return { ...run, inbox: [...run.inbox, { day, from, subject, body }] };
 }
 
 function logLine(run: RunState, text: string): RunState {
@@ -77,23 +98,25 @@ function logLine(run: RunState, text: string): RunState {
 const secAfterStart = (hour: number) => ((hour - 6 + 48) % 24) * 3600;
 
 export { allWorkloads } from './workloads';
-import { allWorkloads } from './workloads';
 
-export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL'): RunState {
+export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL', daily?: string): RunState {
   const diff = difficultyOf(difficulty);
   const scenario = scenarioFor(baseScenario, difficulty);
-  const trust = Object.fromEntries(FACETS.map((f) => [f, diff.startTrust])) as Record<Facet, number>;
+  const trust = Object.fromEntries((content.facets?.map((f) => f.id) ?? FACETS).map((f) => [f, diff.startTrust])) as Record<Facet, number>;
   let run: RunState = {
     version: 1,
     scenarioId: scenario.id,
     difficulty,
     seed,
+    ...(daily ? { daily } : {}),
     rng: seedRng(seed ^ 0x5bd1e995),
-    sim: initState(seed, scenario),
+    sim: applyCommands(initState(seed, scenario), (content.startingFixes?.[difficulty] ?? []).flatMap((f) => f.commands)),
     phase: 'BRIEFING',
     day: 0,
     maxDays: content.maxDays,
     trust,
+    ...(content.facets ? { facetWeights: Object.fromEntries(content.facets.map((f) => [f.id, f.weight])) } : {}),
+    ...(content.batchMissFacet ? { batchMissFacet: content.batchMissFacet } : {}),
     hoursLeft: BASE_HOURS,
     baseHours: BASE_HOURS,
     bonusHours: [],
@@ -134,6 +157,8 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     log: [],
     endReason: null,
   };
+  const fixed = content.startingFixes?.[difficulty] ?? [];
+  if (fixed.length > 0) run = msg(run, 'Previous team', 'Handover notes', `Before leaving we sorted out a few things: ${fixed.map((f) => f.label).join('; ')}. The rest is yours.`);
   run = drawEvents(run, content, 0);
   return storyFor(run, content, 0);
 }
@@ -143,7 +168,16 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
   const [picked, r1] = withRng(run, (rng) => {
     const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
     const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
-    const pool = content.events.filter((e) => day >= e.minDay);
+    const dayStartTick = day * TICKS_PER_DAY;
+    const pool = content.events.filter(
+      (e) =>
+        day >= e.minDay &&
+        !(e.oncePerRun && run.events.some((x) => x.defId === e.id)) &&
+        // no card two days running: back-to-back repeats (e.g. two abends) read as noise, not a new problem
+        !run.events.some((x) => x.defId === e.id && x.startTick >= dayStartTick - TICKS_PER_DAY) &&
+        // an hours card must not stack on itself while still running
+        !(e.hoursDelta && run.events.some((x) => x.defId === e.id && (x.endTick === null || x.endTick > dayStartTick))),
+    );
     const out: { def: EventDef; hour: number }[] = [];
     for (let i = 0; i < n && pool.length > 0; i++) {
       const def = rng.pickWeighted(pool, (e) => e.weight * (e.category === 'WORKLOAD' ? 1 : 1 + day / 20));
@@ -165,25 +199,37 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       endTick,
       trigger: def.trigger,
       affects: def.affects,
+      ...(def.mechanisms ? { mechanisms: def.mechanisms } : {}),
+      ...(def.blocksHardware ? { blocksHardware: def.blocksHardware } : {}),
       endCommands: def.end,
       started: false,
       ended: false,
     };
     r = { ...r, events: [...r.events, ev] };
-    if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning);
+    if (def.hoursDelta) {
+      // Same bookkeeping as the CONTRACTOR perk: endDay recomputes hoursLeft from baseHours + live entries each morning.
+      const days = Math.max(1, Math.ceil((def.durationHours ?? 24) / 24));
+      r = { ...r, bonusHours: [...r.bonusHours, { hours: def.hoursDelta, untilDay: day + days }], hoursLeft: Math.max(0, r.hoursLeft + def.hoursDelta) };
+    }
+    if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning, day);
   }
   return r;
 }
 
 function storyFor(run: RunState, content: GameContent, day: number): RunState {
   let r = run;
-  for (const b of content.story.filter((x) => x.day === day)) {
+  for (const b of storyBeatsFor(content.story, run.difficulty, day)) {
     r = msg(r, b.from, b.title, b.body);
     if (b.constraint) {
       r = { ...r, constraints: [...r.constraints, b.constraint] };
       if (b.constraint === 'DEADLINE_0500') r = { ...r, batchDeadlineSec: 23 * 3600 };
     }
     if (b.commands) r = { ...r, pendingCommands: [...r.pendingCommands, ...b.commands] };
+  }
+  if (difficultyOf(run.difficulty).hints !== 'NONE') {
+    for (const [id, h] of Object.entries(STORY_BEAT_HINTS)) {
+      if (storyBeatsFor(content.story, run.difficulty, day + h.daysBefore).some((b) => b.id === id)) r = msg(r, h.from, h.subject, h.body);
+    }
   }
   return r;
 }
@@ -217,6 +263,7 @@ export function previewContext(run: RunState) {
     capexRemaining: run.capexRemaining,
     incidentOpen: run.incidents.some((i) => i.endTick === null),
     constraints: run.constraints,
+    blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
   };
 }
 
@@ -240,11 +287,11 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     hours,
     capex,
     opexPerDay: hw?.opexPerDay ?? 0,
-    activateDay: run.day + (hw?.leadDays ?? 0),
+    activateDay: run.day + preview.leadDays,
     plannedDay: run.day,
     emergency: live,
     status: 'PLANNED',
-    revertDay: hw?.durationDays ? run.day + (hw.leadDays ?? 0) + hw.durationDays : null,
+    revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
     revertCommands: hw?.durationDays ? hw.revert(run.sim) : [],
     endsEvent: fix?.id ?? null,
   };
@@ -253,8 +300,8 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   if (live) {
     // Emergency change board: costs trust, more when no incident justifies it.
     const trustCost = req.automated ? 0 : preview.trustCostEach;
-    r = { ...r, trust: Object.fromEntries(FACETS.map((f) => [f, clampTrust(r.trust[f] - trustCost)])) as Record<Facet, number> };
-    if (fix?.trustCost) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet] - fix.trustCost.amount) } };
+    r = { ...r, trust: mapTrust(r, (t) => t - trustCost) };
+    if (fix?.trustCost && fix.trustCost.facet in r.trust) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet]! - fix.trustCost.amount) } };
     const risk = req.automated ? req.automated.misfireFrac : failRisk(r);
     const [failed, r2] = withRng(r, (rng) => rng.chance(risk));
     r = r2;
@@ -371,11 +418,19 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       r = logLine(r, `V WLM,POLICY=${switchTo.kind === 'ACTIVATE_POLICY' ? switchTo.definition.policyName : ''} (scheduled)`);
     }
     let events = r.events;
+    const resolvedEnd = new Map<string, Command[]>();
     for (const e of events) {
       const def = content.events.find((d) => d.id === e.defId);
       if (!e.started && e.startTick <= tick) {
-        cmds.push(...(def?.begin ?? []));
+        cmds.push(...scaleEventCommands(def?.begin ?? [], difficultyOf(r.difficulty).eventSeverityMult));
+        if (def?.capacityDrop) {
+          const cpc = r.sim.config.cpcs[0]!;
+          const to = Math.max(4, cpc.capacitySetting - def.capacityDrop) as 4 | 5 | 6 | 7;
+          cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to });
+          resolvedEnd.set(e.uid, [{ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting }]);
+        }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
+        if (def?.perkTip && r.perks.includes(def.perkTip.perk)) r = msg(r, def.perkTip.from, def.name, def.perkTip.text);
         r = logLine(r, `EVENT start: ${e.name}`);
       }
       if (e.started && !e.ended && e.endTick !== null && e.endTick <= tick) {
@@ -385,6 +440,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     }
     events = events.map((e) => ({
       ...e,
+      endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || e.startTick <= tick,
       ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
     }));
@@ -482,6 +538,10 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
     const att = hourAttainment(w, wh);
     if (!att) continue;
     const parts = perTxnParts(wh);
+    // Incidents are per played day (the day's SLA report and RCA count them): one still open at
+    // 06:00 is closed there, and a breach that carries on opens a new incident for the new day.
+    const hourStart = r.sim.tick - TICKS_PER_HOUR;
+    incidents = incidents.map((i) => (i.workloadId === w.id && i.endTick === null && i.day !== r.day ? { ...i, endTick: hourStart } : i));
     const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
     if (att.met) {
       baselines[w.id] = updateBaseline(baselines[w.id], parts);
@@ -489,8 +549,8 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
       continue;
     }
     const facet = facetOf(w);
-    const loss = facet ? att.severity * 0.9 * FACET_WEIGHT[facet] : 0;
-    if (facet) trust[facet] = clampTrust(trust[facet] - loss);
+    const loss = facet ? att.severity * 0.9 * ((r.facetWeights ?? FACET_WEIGHT)[facet] ?? 1) : 0;
+    if (facet && facet in trust) trust[facet] = clampTrust(trust[facet]! - loss);
     if (openIdx >= 0) {
       const inc = incidents[openIdx]!;
       incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
@@ -529,6 +589,29 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }
 
+/** Worst sysplex PI per service-class period across the RMF intervals that closed within the day. */
+export function worstPiOfDay(intervals: readonly RmfInterval[], day: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const iv of intervals) {
+    if (iv.endTick <= day * TICKS_PER_DAY || iv.endTick > (day + 1) * TICKS_PER_DAY) continue;
+    for (const w of iv.wlm) if (w.lparId === '*PLEX' && w.pi !== null && w.pi > (out[w.scKey] ?? -Infinity)) out[w.scKey] = w.pi;
+  }
+  return out;
+}
+
+/** Peak SYSOTHER APPL CP% per LPAR (periods summed within an interval) across the day's closed RMF intervals. */
+export function sysotherByLpar(intervals: readonly RmfInterval[], day: number): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const iv of intervals) {
+    if (iv.endTick <= day * TICKS_PER_DAY || iv.endTick > (day + 1) * TICKS_PER_DAY) continue;
+    const here: Record<string, number> = {};
+    for (const w of iv.wlm) if (w.serviceClass === 'SYSOTHER' && w.lparId !== '*PLEX') here[w.lparId] = (here[w.lparId] ?? 0) + w.applCpPct;
+    for (const [id, v] of Object.entries(here)) if (v > (out[id] ?? 0)) out[id] = v;
+  }
+  return out;
+}
+
+
 function endDay(run: RunState, scenario: Scenario, content: GameContent): RunState {
   let r = run;
   const day = r.day;
@@ -548,19 +631,33 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
         breachHours: breach,
       };
     });
-  for (const f of FACETS) {
+  for (const f of facetsOf(r)) {
     const owned = allWorkloads(scenario, r).filter((w) => facetOf(w) === f);
-    if (owned.length > 0 && owned.every((w) => !dayIncidents.some((i) => i.workloadId === w.id))) trust[f] = clampTrust(trust[f] + 1.5);
+    if (owned.length > 0 && owned.every((w) => !dayIncidents.some((i) => i.workloadId === w.id))) trust[f] = clampTrust(trust[f]! + 1.5);
   }
 
   // Batch deadline (the night that ended at this 06:00).
   const night = r.sim.batch.nights.find((n) => n.day === day) ?? null;
   const missed = night ? night.missedDeadline || night.criticalEndSec === null || night.criticalEndSec > r.batchDeadlineSec : false;
   if (night && missed) {
-    trust.Regulator = clampTrust(trust.Regulator - 20);
-    trust.Retail = clampTrust(trust.Retail - 4);
+    trust.Regulator = clampTrust(trust.Regulator! - 20);
+    const hurt = r.batchMissFacet ?? 'Retail';
+    if (hurt in trust) trust[hurt] = clampTrust(trust[hurt]! - 4);
     r = msg(r, 'Regulator', 'Batch deadline missed', 'Critical batch did not complete on time. A second consecutive miss will trigger a formal review.');
-  } else if (night) trust.Regulator = clampTrust(trust.Regulator + 1);
+  } else if (night) trust.Regulator = clampTrust(trust.Regulator! + 1);
+  // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
+  const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
+  if (auditing) {
+    const seen = Object.entries(sysotherByLpar(r.sim.rmf.intervals, day)).filter(([, v]) => v > AUDIT.minApplPct);
+    if (seen.length > 0) {
+      trust.Regulator = clampTrust(trust.Regulator! - AUDIT.findingTrust);
+      const [lpar, pct] = seen.reduce((a, b) => (b[1] > a[1] ? b : a));
+      r = msg(r, 'Regulator', 'Audit finding: unclassified work', `Audit finding: unclassified work in SYSOTHER on ${lpar} (${pct.toFixed(1)}% APPL).`);
+    } else {
+      trust.Regulator = clampTrust(trust.Regulator! + AUDIT.cleanDayTrust);
+      r = msg(r, 'Regulator', 'Audit: no findings today', 'Audit: no findings today.');
+    }
+  }
   const consecutive = missed ? r.consecutiveBatchMisses + 1 : 0;
   if (r.capacityToday) r = { ...r, capacityDays: [...(r.capacityDays ?? []), { ...r.capacityToday, day, criticalEndSec: night?.criticalEndSec ?? null }], capacityToday: null };
 
@@ -568,15 +665,15 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   const codToday = r.changes.filter((c) => c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > day).reduce((a, c) => a + c.opexPerDay, 0);
   let opexSpent = r.opexSpentThisMonth + codToday;
   let endReason: string | null = null;
-  const budget = r.opexBudgetMonthly * (r.perks.includes('FRIENDS_IN_FINANCE') ? 1.1 : 1);
+  const budget = opexBudgetFor(r.opexBudgetMonthly, r.perks);
   const bills = r.sim.cost.bills;
   for (let b = r.billsSeen; b < bills.length; b++) {
     const total = bills[b]!.total + opexSpent;
     const over = total / budget - 1;
-    if (over > 0) trust.Finance = clampTrust(trust.Finance - Math.min(40, over * 100));
-    else trust.Finance = clampTrust(trust.Finance + 5);
+    if (over > 0) trust.Finance = clampTrust(trust.Finance! - Math.min(40, over * 100));
+    else trust.Finance = clampTrust(trust.Finance! + 5);
     if (r.constraints.includes('CFO_MANDATE') && b > 0 && bills[b]!.total > 0.9 * bills[b - 1]!.total) {
-      trust.Finance = clampTrust(trust.Finance - 15);
+      trust.Finance = clampTrust(trust.Finance! - 15);
       r = msg(r, 'CFO', 'Cost target missed', `MLC $${Math.round(bills[b]!.total).toLocaleString()} vs target $${Math.round(0.9 * bills[b - 1]!.total).toLocaleString()}.`);
     }
     r = msg(r, 'Finance', `Month ${b + 1} bill`, `MLC $${Math.round(bills[b]!.total).toLocaleString()} + temporary capacity $${Math.round(opexSpent).toLocaleString()} vs budget $${Math.round(budget).toLocaleString()}.`);
@@ -584,7 +681,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     opexSpent = 0;
   }
 
-  const trustDelta = Object.fromEntries(FACETS.map((f) => [f, trust[f] - trustBefore[f]])) as Record<Facet, number>;
+  const trustDelta = Object.fromEntries(facetsOf(r).map((f) => [f, trust[f]! - trustBefore[f]!])) as Record<Facet, number>;
   const slaScore = sla.reduce((a, s) => a + 10 * (s.attainmentPct / 100), 0);
   const rcaPoints = dayIncidents.reduce((a, i) => a + (i.rca?.points ?? 0), 0);
   const dayScore = Math.round(slaScore + (night && !missed ? 15 : 0) + rcaPoints);
@@ -597,9 +694,11 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     score: dayScore,
     mlcEstimate: estimateMonth(r.sim.cost, scenario.products),
     events: r.events.filter((e) => e.started && e.startTick < r.sim.tick && e.startTick >= day * TICKS_PER_DAY).map((e) => e.name),
+    piWorst: worstPiOfDay(r.sim.rmf.intervals, day),
   };
 
   const bonus = r.bonusHours.filter((b) => b.untilDay > day + 1);
+  r = expireToolTrials(r, day);
   r = {
     ...r,
     trust,
@@ -610,18 +709,41 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     score: r.score + dayScore,
     fatigue: Math.max(0, r.fatigue - 8),
     bonusHours: bonus,
-    hoursLeft: r.baseHours + bonus.reduce((a, b) => a + b.hours, 0),
+    hoursLeft: Math.max(0, r.baseHours + bonus.reduce((a, b) => a + b.hours, 0)),
   };
 
   r = tfpAtDayEnd(r, scenario);
   const overall = overallTrust(r);
-  if (!endReason && (overall <= 0 || FACETS.some((f) => r.trust[f] <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
+  if (!endReason && (overall <= 0 || facetsOf(r).some((f) => r.trust[f]! <= 0))) endReason = 'Trust collapsed: you have been reassigned to the printer fleet.';
   if (!endReason && consecutive >= 2) endReason = 'Two consecutive batch deadline misses: the regulator has opened a formal review.';
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
-  if (day >= r.maxDays - 1) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
+  if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
+  for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null))
+    r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);
+  return openReview(r, content, day);
+}
+
+/**
+ * VICTORY → REVIEW: keep playing past the quarter (endless mode). Growth keeps compounding and the deck keeps
+ * drawing; a fresh quarter's capex arrives. The run ends only on a loss, and still counts as a victory.
+ */
+export function continueEndless(run: RunState, content: GameContent): RunState {
+  if (run.phase !== 'VICTORY' || run.endlessFromDay !== undefined) return run;
+  let r: RunState = {
+    ...run,
+    endlessFromDay: run.day,
+    endReason: null,
+    capexRemaining: run.capexRemaining + content.capexQuarter * difficultyOf(run.difficulty).capexMult,
+  };
+  r = msg(r, 'CIO', 'Another quarter', 'The board liked the last one. Same systems, more volume, and a new capital budget. Keep it running.', run.day + 1);
+  return openReview(r, content, run.day);
+}
+
+function openReview(r: RunState, content: GameContent, day: number): RunState {
   const [draft, r2] = withRng(r, (rng) => {
-    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id));
+    // The hoarder perk is the advisor tool for free: pointless once it is owned.
+    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id) && !(d.id === 'RC_HOARDER' && r.tools.includes('RC_ADVISOR')) && !(d.id === 'SQL_SPRINT' && r.projects?.some((p) => p.id === 'SQL_TUNING' && p.done)) && !(d.id === 'MENTOR' && difficultyOf(r.difficulty).hints === 'CLEAR') && !(d.id === 'TOOL_TRIAL' && !trialTool(r)));
     const out = [];
     for (let i = 0; i < 3 && pool.length > 0; i++) {
       const p = rng.pickWeighted(pool, (d) => d.weight)!;
@@ -649,13 +771,51 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
       r = { ...r, fatigue: Math.max(0, r.fatigue - 30) };
       break;
     case 'GOODWILL':
-      r = { ...r, trust: Object.fromEntries(FACETS.map((f) => [f, clampTrust(r.trust[f] + 4)])) as Record<Facet, number> };
+      r = { ...r, trust: mapTrust(r, (t) => t + 4) };
       break;
     case 'VENDOR_TRIAL':
       r = { ...r, insight: r.insight + 15 };
       break;
+    case 'OVERTIME_PUSH':
+      r = {
+        ...r,
+        bonusHours: [...r.bonusHours, { hours: DRAFT_TUNING.overtimeHours, untilDay: r.day + 2 }],
+        hoursLeft: r.hoursLeft + DRAFT_TUNING.overtimeHours,
+        fatigue: r.fatigue + DRAFT_TUNING.overtimeFatigue,
+      };
+      break;
+    case 'NIGHT_DESK':
+      // Lasts the run: a bonus that never expires (finite so the save stays plain JSON).
+      r = { ...r, perks: [...r.perks, optionId], bonusHours: [...r.bonusHours, { hours: DRAFT_TUNING.nightDeskHours, untilDay: Number.MAX_SAFE_INTEGER }], hoursLeft: r.hoursLeft + DRAFT_TUNING.nightDeskHours };
+      break;
+    case 'BUDGET_SWAP':
+      r = { ...r, perks: [...r.perks, optionId], capexRemaining: r.capexRemaining + DRAFT_TUNING.budgetSwapCapex };
+      break;
+    case 'TOOL_TRIAL': {
+      const t = trialTool(r);
+      if (t)
+        r = {
+          ...r,
+          tools: [...r.tools, t.id],
+          toolTrials: [...(r.toolTrials ?? []), { id: t.id, untilDay: r.day + 1 + DRAFT_TUNING.toolTrialDays }],
+          log: [...r.log, `Analytics: ${t.name} on a free ${DRAFT_TUNING.toolTrialDays}-day trial`],
+        };
+      break;
+    }
+    case 'SQL_SPRINT':
+      r = grantProjectHours(r, 'SQL_TUNING', DRAFT_TUNING.sqlSprintHours);
+      break;
+    case 'RC_HOARDER':
+      r = { ...r, perks: [...r.perks, optionId], tools: r.tools.includes('RC_ADVISOR') ? r.tools : [...r.tools, 'RC_ADVISOR'], log: [...r.log, 'Analytics: Report class advisor installed (Report Class Hoarder)'] };
+      break;
     case 'HMC_NINJA':
+    case 'DB2_WHISPERER':
     case 'BELT_AND_BRACES':
+    case 'VENDOR_FRIEND':
+    case 'ZIIP_PROMO':
+    case 'WLM_COURSE':
+    case 'MENTOR':
+    case 'WELL_CONNECTED':
     case 'FRIENDS_IN_FINANCE':
     case 'NIGHT_OWL':
       r = { ...r, perks: [...r.perks, optionId] };
@@ -679,7 +839,7 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const evidencePoints = mechanism === inc.truth.mechanism ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
   const strong = evidencePoints > 0 && relevance >= EVIDENCE.strongAt;
   const facetTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
-  const trust = Object.fromEntries(FACETS.map((f) => [f, clampTrust(run.trust[f] + facetTrust / 2)])) as Record<Facet, number>;
+  const trust = mapTrust(run, (t) => t + facetTrust / 2);
   const total = points + evidencePoints;
   return {
     ...run,

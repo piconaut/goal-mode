@@ -35,6 +35,7 @@ export const STRATEGIES: Record<string, Strategy> = { donothing: passive, oracle
 // apply the fix for an event once an incident points at it.
 
 import { BASEPOL } from '../src/content/wlm/basepol';
+import { REVPOL } from '../src/content/wlm/revpol';
 import { requestChange } from '../src/game/run';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
 
@@ -67,16 +68,24 @@ const FIX_BY_TRIGGER: Partial<Record<string, string>> = {
   ACCESS_PATH_REGRESSION: 'REBIND_REVERT',
 };
 
-/** The acquired bank's API (SPEC story beat MERGER) arrives unclassified in SYSOTHER; give it a goal. */
-function classifyMerger(run: RunState, c: GameContent): RunState {
-  if (!run.sim.workloads.some((w) => w.id === 'ACQBANK')) return run;
+/** Work that arrives with no classification rule and lands in SYSOTHER (the MERGER story beat, the
+ * NEW_APP_GOLIVE card): give each its own goal class, all in one policy change so neither overwrites the other. */
+const NEW_ARRIVALS = [
+  { workloadId: 'ACQBANK', classId: 'ACQAPI', description: 'Acquired bank API', userid: 'ACQSVC' },
+  { workloadId: 'BOOKING', classId: 'BOOKAPI', description: 'Branch booking', userid: 'BOOKSVC' },
+  { workloadId: 'PREFILL', classId: 'PFILAPI', description: 'Pre-filled returns', userid: 'PFILSVC' },
+];
+function classifyNewArrivals(run: RunState, c: GameContent): RunState {
   const def = structuredClone(run.sim.wlm.definition);
-  if (def.classes.some((x) => x.id === 'ACQAPI')) return run;
-  def.classes.push({ id: 'ACQAPI', description: 'Acquired bank API', periods: [{ goal: { kind: 'PCT', pct: 90, rtSec: 0.5 }, importance: 2, durationSu: null }], cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
+  const due = NEW_ARRIVALS.filter((a) => run.sim.workloads.some((w) => w.id === a.workloadId) && !def.classes.some((x) => x.id === a.classId));
+  if (due.length === 0) return run;
   let omvs = def.subsystems.find((x) => x.subsystem === 'OMVS');
   if (!omvs) def.subsystems.push((omvs = { subsystem: 'OMVS', defaultServiceClass: null, defaultReportClass: null, rules: [] }));
-  omvs.rules = [{ qualifier: 'UI', pattern: 'ACQSVC', serviceClass: 'ACQAPI', reportClass: null, children: [] }, ...omvs.rules];
-  return requestChange(run, c, { label: 'Classify acquired bank API', commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] }).run;
+  for (const a of due) {
+    def.classes.push({ id: a.classId, description: a.description, periods: [{ goal: { kind: 'PCT', pct: 90, rtSec: 0.5 }, importance: 2, durationSu: null }], cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
+    omvs.rules = [{ qualifier: 'UI', pattern: a.userid, serviceClass: a.classId, reportClass: null, children: [] }, ...omvs.rules];
+  }
+  return requestChange(run, c, { label: `Classify ${due.map((a) => a.description).join(', ')}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] }).run;
 }
 
 /** Critical batch is a single-threaded chain: once it trends toward the deadline only faster engines help. */
@@ -89,7 +98,7 @@ function batchCapacity(run: RunState, c: GameContent): RunState {
 }
 
 function reactBriefing(r: RunState, c: GameContent): RunState {
-  return batchCapacity(classifyMerger(r, c), c);
+  return batchCapacity(classifyNewArrivals(r, c), c);
 }
 
 /** After a CF failure XES leaves rebuilt structures where they landed; put them back on their preferred CF. */
@@ -106,8 +115,40 @@ function moveStructuresHome(run: RunState, c: GameContent): RunState {
   return requestChange(run, c, { label: 'Move structures back to their preferred CF', commands: moves }).run;
 }
 
+/** State Revenue Agency: G1 e-filing gets a response-time goal and analytics its own low class; G2 the refund
+ * run, not compliance analytics, is high batch; G3 the queue managers get a rule. */
+export function revenueTextbookPolicy(): ServiceDefinition {
+  const def = structuredClone(REVPOL);
+  def.policyName = 'TEXTBOOK';
+  def.classes.push({ id: 'EFILE', description: 'Online tax filing', periods: [{ goal: { kind: 'PCT', pct: 95, rtSec: 0.5 }, importance: 2, durationSu: null }], cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
+  def.classes.push({ id: 'DDFBI', description: 'Compliance analytics DDF', periods: [{ goal: { kind: 'VEL', velocity: 20 }, importance: 5, durationSu: 20000 }, { goal: { kind: 'DISC' }, importance: 5, durationSu: null }], cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
+  const stc = def.subsystems.find((x) => x.subsystem === 'STC')!;
+  stc.rules = [...stc.rules, { qualifier: 'TN', pattern: 'MQ*', serviceClass: 'STCHI', reportClass: null, children: [] }];
+  const ddf = def.subsystems.find((x) => x.subsystem === 'DDF')!;
+  ddf.rules = [
+    { qualifier: 'UI', pattern: 'EFILAPI', serviceClass: 'EFILE', reportClass: null, children: [] },
+    { qualifier: 'UI', pattern: 'CMPUSER', serviceClass: 'DDFBI', reportClass: null, children: [] },
+  ];
+  const jes = def.subsystems.find((x) => x.subsystem === 'JES')!;
+  jes.rules = [...jes.rules.filter((x) => x.pattern !== 'CMP*'), ...['REF*', 'EMP*', 'NTC*'].map((p) => ({ qualifier: 'TN' as const, pattern: p, serviceClass: 'BATCHHI', reportClass: null, children: [] }))];
+  return def;
+}
+
+/** Day 0: the known-good fixes for the State Revenue Agency's planted flaws (SPEC §13.4). */
+function revenueDay0(r: RunState, c: GameContent): RunState {
+  let run = r;
+  const plan = (label: string, commands: import('../src/sim/core/commands').Command[]) => {
+    run = requestChange(run, c, { label, commands }).run;
+  };
+  plan('Textbook WLM policy (G1–G3)', [{ kind: 'ACTIVATE_POLICY', definition: revenueTextbookPolicy() }]);
+  plan('PROD1 soft cap 560 MSU (H1)', [{ kind: 'SET_DEFINED_CAPACITY', lparId: 'PROD1', msu: 560 }]);
+  plan('IIPHONORPRIORITY=YES on PROD2 (H2)', [{ kind: 'SET_IEAOPT', lparId: 'PROD2', changes: { iipHonorPriority: true } }]);
+  return run;
+}
+
 /** Day 0: the known-good fixes for the planted flaws F1–F11 (SPEC §13.3). */
 function textbookDay0(r: RunState, c: GameContent): RunState {
+  if (r.scenarioId === 'revenue') return revenueDay0(r, c);
   let run = r;
   const plan = (label: string, commands: import('../src/sim/core/commands').Command[]) => {
     const out = requestChange(run, c, { label, commands });
@@ -150,15 +191,24 @@ const textbook: Strategy = {
   review: passive.review,
 };
 
-// Fixer: textbook plus the diagnosing reactions (batch capacity on the trend, merger classification,
-// CF structures back home, terminate the overrunning REORG). The base for expert and spend-to-win.
+const ON_SIGHT_FIXES: Record<string, string> = {
+  REORG_OVERRUN: 'TERM_UTILITY',
+  MONITOR_CREEP: 'ROLLBACK_MONITOR',
+  SHADOW_IT: 'STOP_SHADOW_IT',
+  QR_RELEASE: 'ROLLBACK_TELLER_RELEASE',
+  HSM_RECALL_STORM: 'HOLD_HSM_RECALLS',
+};
+
+// Fixer: textbook plus the diagnosing reactions (batch capacity on the trend, classifying new work,
+// CF structures back home, ending cards on sight with their fix). The base for expert and spend-to-win.
 const fixer: Strategy = {
   briefing: (r, _s, c) => (r.day === 0 ? textbookDay0(r, c) : reactBriefing(r, c)),
   hourly: (r, _s, c) => {
     let run = obviousHourly(moveStructuresHome(r, c), c);
-    // The REORG overrun raises no SLA incident, only batch stretch (IOSQ on LCU 21): terminate it on sight.
-    if (run.events.some((e) => e.defId === 'REORG_OVERRUN' && e.started && !e.ended)) {
-      run = requestChange(run, c, { label: 'Fix TERM_UTILITY', fixId: 'TERM_UTILITY' }).run;
+    // Cards an analyst spots from their clue and ends with the card's own fix, incident or not (the REORG
+    // overrun raises no SLA incident at all, only batch stretch).
+    for (const [defId, fixId] of Object.entries(ON_SIGHT_FIXES)) {
+      if (run.events.some((e) => e.defId === defId && e.started && !e.ended)) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
     }
     return run;
   },

@@ -4,21 +4,26 @@
 
 import { lognormCdf } from '../core/math';
 import { TICK_SEC } from '../core/units';
-import { dispatch, type DispatchDemand } from '../zos/dispatcher';
+import { dispatch, type DispatchDemand, type DispatchResult } from '../zos/dispatcher';
 import { addToBuckets, emptyBuckets } from './goals';
 
 import type { IoClass } from '../io/dasd';
 
 const MAX_QUEUE_RATIO = 50;
 
-/** Per-class I/O service seen by this image. APPROX: connect + disconnect count as
- * I/O using; IOSQ + pend count as I/O delay. */
+/** Per-class I/O service seen by this image. WLM counts device connect as I/O using and IOSQ +
+ * pending as I/O delay; disconnect is neither (z/OS MVS Planning: WLM, "Velocity formula").
+ * APPROX: control unit queue time is folded into pending. */
 export interface IoService {
   rtSec: number;
   delaySec: number;
   /** IOSQ part of delaySec (z/OS UCB queue: the only part WLM I/O priority can reorder). */
   iosqSec?: number;
+  /** Device connect time per I/O (WLM I/O using); absent means everything outside delaySec. */
+  connSec?: number;
 }
+
+const ioUsingSec = (io: IoService) => io.connSec ?? io.rtSec - io.delaySec;
 
 export interface SliceSpec {
   key: string;
@@ -65,6 +70,41 @@ export interface SliceSpec {
   maxQueueMsgs?: number;
 }
 
+/** Builds a slice with every field present in one fixed order, so all slices share one hidden
+ * class and the per-tick evaluator's property loads stay monomorphic (hot path). */
+export function sliceSpec(p: Pick<SliceSpec, 'key' | 'scKey' | 'kind'> & Partial<SliceSpec>): SliceSpec {
+  return {
+    key: p.key,
+    scKey: p.scKey,
+    kind: p.kind,
+    workloadId: p.workloadId ?? null,
+    jobname: p.jobname ?? null,
+    role: p.role ?? null,
+    rate: p.rate ?? 0,
+    cpEngines: p.cpEngines ?? 0,
+    ziipEngines: p.ziipEngines ?? 0,
+    mayOverflow: p.mayOverflow ?? true,
+    cpuSecPerTxn: p.cpuSecPerTxn ?? 0,
+    ziipSecPerTxn: p.ziipSecPerTxn ?? 0,
+    ioPerTxn: p.ioPerTxn ?? 0,
+    baseLatencySec: p.baseLatencySec ?? 0,
+    rtSigma: p.rtSigma ?? 0,
+    timeoutSec: p.timeoutSec ?? Infinity,
+    servers: p.servers ?? [],
+    goalRtSec: p.goalRtSec ?? null,
+    slaRtSec: p.slaRtSec ?? null,
+    ioClass: p.ioClass ?? 'RANDOM',
+    ioRate: p.ioRate ?? 0,
+    extraOtherSec: p.extraOtherSec ?? 0,
+    failFrac: p.failFrac ?? 0,
+    outsideWaitSec: p.outsideWaitSec ?? 0,
+    extraParts: p.extraParts,
+    reportClass: p.reportClass ?? null,
+    mqQueueFrac: p.mqQueueFrac,
+    maxQueueMsgs: p.maxQueueMsgs,
+  };
+}
+
 /** Where a transaction's response time went, seconds per transaction. */
 export interface RtParts {
   base: number;
@@ -107,6 +147,13 @@ export interface LparEvalInput {
   /** Service-class periods starved past BLWLINTHD, eligible for promotion. */
   promoted?: ReadonlySet<string>;
   promotionShareFrac?: number;
+  /** Only the per-period ticks are needed (policy-adjust projections): skips response-time parts,
+   * SLA attainment and report classes, none of which feed the period ticks. */
+  scpsOnly?: boolean;
+  /** With scpsOnly: the periods whose response-time buckets are needed (percentile goals). */
+  bucketsFor?: ReadonlySet<string>;
+  /** The DP-independent first stage, when the caller evaluates the same input under several DP sets. */
+  prepared?: PreparedLpar;
 }
 
 export interface SliceResult {
@@ -198,43 +245,60 @@ export interface LparEvalResult {
 
 /** WLM I/O priority on the z/OS IOSQ: requests are queued by dispatching priority. Non-preemptive
  * priority M/M/1 split, W_k = W0 / ((1 − σ_{k−1})(1 − σ_k)), renormalised so the I/O-weighted mean
- * IOSQ is unchanged (work is reordered, not removed). APPROX: one queue per I/O class per image. */
-function iosqByPriority(slices: readonly SliceSpec[], input: LparEvalInput): Partial<Record<IoClass, IoService[]>> | null {
+ * IOSQ is unchanged (work is reordered, not removed). APPROX: one queue per I/O class per image.
+ * `sliceDp` is each slice's period DP. */
+function iosqByPriority(slices: readonly SliceSpec[], sliceDp: readonly number[], io: Record<IoClass, IoService>): Partial<Record<IoClass, IoService[]>> | null {
   let out: Partial<Record<IoClass, IoService[]>> | null = null;
+  const n = slices.length;
   for (const cls of ['RANDOM', 'SEQ'] as const) {
-    const io = input.io[cls];
-    const iosq = io.iosqSec ?? 0;
+    const svcIo = io[cls];
+    const iosq = svcIo.iosqSec ?? 0;
     if (iosq <= 1e-9) continue;
-    const rate = slices.map((s) => (s.ioClass === cls ? s.rate * s.ioPerTxn + s.ioRate : 0));
-    const total = rate.reduce((a, x) => a + x, 0);
+    const rate = new Array<number>(n);
+    let total = 0;
+    for (let i = 0; i < n; i++) {
+      const s = slices[i]!;
+      rate[i] = s.ioClass === cls ? s.rate * s.ioPerTxn + s.ioRate : 0;
+      total += rate[i]!;
+    }
     if (total <= 0) continue;
-    const byDp: Record<number, number> = {};
-    slices.forEach((s, i) => {
-      if (rate[i]! > 0) {
-        const dp = input.dpOf(s.scKey);
-        byDp[dp] = (byDp[dp] ?? 0) + rate[i]!;
-      }
-    });
-    const dps = Object.keys(byDp).map(Number).sort((a, b) => b - a);
+    // Distinct DPs with I/O, rate summed in slice order.
+    const dps: number[] = [];
+    const byDp: number[] = [];
+    for (let i = 0; i < n; i++) {
+      if (!(rate[i]! > 0)) continue;
+      const dp = sliceDp[i]!;
+      const j = dps.indexOf(dp);
+      if (j < 0) {
+        dps.push(dp);
+        byDp.push(rate[i]!);
+      } else byDp[j] = byDp[j]! + rate[i]!;
+    }
     if (dps.length < 2) continue;
-    const svc = Math.max(1e-6, io.rtSec - iosq);
+    const levels = dps.map((_, j) => j).sort((a, b) => dps[b]! - dps[a]!);
+    const svc = Math.max(1e-6, svcIo.rtSec - iosq);
     const rho = Math.min(0.95, iosq / (iosq + svc));
     const w0 = rho * svc;
-    const waitByDp: Record<number, number> = {};
+    const waitByDp = new Array<number>(dps.length);
     let sigma = 0;
     let mean = 0;
-    for (const dp of dps) {
+    for (const j of levels) {
       const prev = sigma;
-      sigma += (rho * byDp[dp]!) / total;
-      waitByDp[dp] = w0 / ((1 - prev) * (1 - sigma));
-      mean += (byDp[dp]! / total) * waitByDp[dp]!;
+      sigma += (rho * byDp[j]!) / total;
+      waitByDp[j] = w0 / ((1 - prev) * (1 - sigma));
+      mean += (byDp[j]! / total) * waitByDp[j]!;
     }
     const scale = mean > 0 ? iosq / mean : 1;
-    const list = slices.map((s) => {
-      if (s.ioClass !== cls) return io;
-      const w = waitByDp[input.dpOf(s.scKey)]! * scale;
-      return Number.isFinite(w) ? { rtSec: io.rtSec - iosq + w, delaySec: io.delaySec - iosq + w, iosqSec: w } : io;
-    });
+    const list = new Array<IoService>(n);
+    for (let i = 0; i < n; i++) {
+      if (slices[i]!.ioClass !== cls) {
+        list[i] = svcIo;
+        continue;
+      }
+      const j = dps.indexOf(sliceDp[i]!);
+      const w = j < 0 ? NaN : waitByDp[j]! * scale;
+      list[i] = Number.isFinite(w) ? { rtSec: svcIo.rtSec - iosq + w, delaySec: svcIo.delaySec - iosq + w, iosqSec: w, connSec: svcIo.connSec } : svcIo;
+    }
     (out ??= {})[cls] = list;
   }
   return out;
@@ -243,51 +307,90 @@ function iosqByPriority(slices: readonly SliceSpec[], input: LparEvalInput): Par
 /** Above every goal-managed period, below SYSTEM/SYSSTC and blocked-workload promotion. */
 const RG_MIN_DP = 252;
 
-export function evaluateLpar(input: LparEvalInput): LparEvalResult {
-  const { slices, backlog } = input;
+/** Per-slice demand and its per-period totals: everything in an evaluation that does not depend on DPs. */
+export interface PreparedLpar {
+  sliceCp: number[];
+  sliceZi: number[];
+  /** CP demand withheld by a resource group maximum or discretionary goal management cap. */
+  sliceCut: number[];
+  /** Index of each slice's service-class period in `order`. */
+  sliceAgg: number[];
+  order: string[];
+  aggCp: number[];
+  aggZi: number[];
+  aggOverflow: boolean[];
+}
 
+export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
+  const { slices, backlog } = input;
+  const n = slices.length;
   // Per-slice demand (new arrivals + backlog drain), then aggregate per service-class
   // period: equal-DP work shares in proportion to demand, so dispatching per period is
   // equivalent to dispatching per slice and much cheaper.
-  const sliceCp: number[] = [];
-  const sliceZi: number[] = [];
-  /** CP demand withheld by a resource group maximum or discretionary goal management cap. */
-  const sliceCut: number[] = [];
-  const agg: Record<string, { cp: number; zi: number; overflow: boolean }> = {};
+  const sliceCp = new Array<number>(n);
+  const sliceZi = new Array<number>(n);
+  const sliceCut = new Array<number>(n);
+  const sliceAgg = new Array<number>(n);
+  const aggIdx: Record<string, number> = {};
   const order: string[] = [];
-  slices.forEach((s) => {
+  const aggCp: number[] = [];
+  const aggZi: number[] = [];
+  const aggOverflow: boolean[] = [];
+  const capOf = input.capOf;
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
     const bl = backlog[s.key] ?? 0;
     const tot = s.cpEngines + s.ziipEngines;
     const blRate = bl / TICK_SEC;
     const cpShare = tot > 0 ? s.cpEngines / tot : 1;
     const uncapped = s.cpEngines + blRate * cpShare;
-    const cp = input.capOf ? Math.min(uncapped, input.capOf(s)) : uncapped;
-    sliceCut.push(uncapped - cp);
+    const cp = capOf ? Math.min(uncapped, capOf(s)) : uncapped;
+    sliceCut[i] = uncapped - cp;
     const zi = s.ziipEngines + blRate * (1 - cpShare);
-    sliceCp.push(cp);
-    sliceZi.push(zi);
-    let a = agg[s.scKey];
-    if (!a) {
-      a = { cp: 0, zi: 0, overflow: s.mayOverflow };
-      agg[s.scKey] = a;
+    sliceCp[i] = cp;
+    sliceZi[i] = zi;
+    let a = aggIdx[s.scKey];
+    if (a === undefined) {
+      a = order.length;
+      aggIdx[s.scKey] = a;
       order.push(s.scKey);
+      aggCp.push(0);
+      aggZi.push(0);
+      aggOverflow.push(s.mayOverflow);
     }
-    a.cp += cp;
-    a.zi += zi;
-  });
+    sliceAgg[i] = a;
+    aggCp[a] = aggCp[a]! + cp;
+    aggZi[a] = aggZi[a]! + zi;
+  }
+  return { sliceCp, sliceZi, sliceCut, sliceAgg, order, aggCp, aggZi, aggOverflow };
+}
+
+export function evaluateLpar(input: LparEvalInput): LparEvalResult {
+  const { slices } = input;
+  const n = slices.length;
+  const scpsOnly = input.scpsOnly === true;
+  const bucketsFor = scpsOnly ? input.bucketsFor : undefined;
+  const { sliceCp, sliceZi, sliceCut, sliceAgg, order, aggCp, aggZi, aggOverflow } = input.prepared ?? prepareLpar(input);
+  // dpOf is pure: look each period up once.
+  const aggDp = order.map((k) => input.dpOf(k));
+  const sliceDp = new Array<number>(n);
+  for (let i = 0; i < n; i++) sliceDp[i] = aggDp[sliceAgg[i]!]!;
 
   const reg = input.regions;
   const regionDp = reg ? (reg.mode === 'REGION' ? input.dpOf(reg.regionKey) : Math.max(...reg.keys.map((k) => input.dpOf(k)))) : 0;
-  const demands: DispatchDemand[] = order.map((k) => ({
+  const demands: DispatchDemand[] = order.map((k, a) => ({
     id: k,
-    dp: reg && reg.keys.includes(k) ? regionDp : input.dpOf(k),
-    cpEngines: agg[k]!.cp,
-    ziipEngines: agg[k]!.zi,
-    ziipMayOverflow: agg[k]!.overflow,
+    dp: reg && reg.keys.includes(k) ? regionDp : aggDp[a]!,
+    cpEngines: aggCp[a]!,
+    ziipEngines: aggZi[a]!,
+    ziipMayOverflow: aggOverflow[a]!,
   }));
 
-  // Blocked workload support: a small promoted share for starved work (IEAOPT BLWLTRPCT).
-  if (input.promoted && input.promoted.size > 0) {
+  // Blocked workload support: ready work that got no CPU for BLWLINTHD (default 20 s) is promoted; BLWLTRPCT
+  // (default 0.5%) bounds the promoted capacity (MVS Init & Tuning Ref, IEAOPTxx). APPROX: real promotion gives
+  // each promoted unit a fixed slice and BLWLTRPCT limits how many; here the share is split among them.
+  const anyPromo = input.promoted !== undefined && input.promoted.size > 0;
+  if (anyPromo) {
     const share = (input.promotionShareFrac ?? 0.005) * input.cpCapacityEngines;
     const promotedDemands = demands.filter((d) => input.promoted!.has(d.id));
     const per = promotedDemands.length > 0 ? share / promotedDemands.length : 0;
@@ -301,7 +404,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   }
 
   // Resource group minimum: while the group misses goals, WLM guarantees it up to the minimum
-  // even at the expense of more important work (SG24-7621 §4.17).
+  // even at the expense of more important work (SG24-7621 §4.17; MVS Planning: WLM, ch. 7 "Minimum").
   const minOf = input.minOf;
   if (minOf) {
     for (const d of [...demands]) {
@@ -323,91 +426,89 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     cpPrsmDelayFrac: input.cpPrsmDelayFrac,
     demands,
   });
-  const byId: Record<string, (typeof dres)[number]> = {};
-  for (const r of dres) byId[r.id] = r;
+  // Results for the periods themselves line up with `order`; promoted/minimum shares follow.
+  const extraById: Record<string, DispatchResult> = {};
+  for (let j = order.length; j < dres.length; j++) extraById[dres[j]!.id] = dres[j]!;
 
-  interface Share {
-    cpGranted: number;
-    ziipGranted: number;
-    iipcpGranted: number;
-    cpUnmet: number;
-    ziipUnmet: number;
-    cpQueueRatio: number;
-    ziipQueueRatio: number;
-    prsmDelayRatio: number;
-  }
-  const anyPromo = input.promoted !== undefined && input.promoted.size > 0;
-  const shareOf = (i: number): Share => {
-    const s = slices[i]!;
-    const a = agg[s.scKey]!;
-    const r = byId[s.scKey]!;
-    const promo = anyPromo ? byId[`${s.scKey}~promo`] : undefined;
-    const rgmin = minOf ? byId[`${s.scKey}~rgmin`] : undefined;
-    const totCp = a.cp;
-    const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
-    const fz = a.zi > 0 ? sliceZi[i]! / a.zi : 0;
-    return {
-      cpGranted: (r.cpGranted + (promo?.cpGranted ?? 0) + (rgmin?.cpGranted ?? 0)) * fc,
-      ziipGranted: r.ziipGranted * fz,
-      iipcpGranted: r.iipcpGranted * fz,
-      cpUnmet: (r.cpUnmet + (promo?.cpUnmet ?? 0) + (rgmin?.cpUnmet ?? 0)) * fc,
-      ziipUnmet: r.ziipUnmet * fz,
-      cpQueueRatio: r.cpQueueRatio,
-      ziipQueueRatio: r.ziipQueueRatio,
-      prsmDelayRatio: r.prsmDelayRatio,
-    };
-  };
+  // Each slice's share of its period's grant.
+  const cpG = new Array<number>(n);
+  const ziG = new Array<number>(n);
+  const iipcpG = new Array<number>(n);
+  const cpUnmetS = new Array<number>(n);
+  const ziUnmetS = new Array<number>(n);
+  const want = new Array<number>(n);
+  const got = new Array<number>(n);
+  const health = new Array<number>(n);
+  const queueRatio = new Array<number>(n);
 
   // First pass: address spaces → server health by role.
   const roleHealth: Record<string, { health: number; queueRatio: number }> = {};
-  const prelim = slices.map((s, i) => {
-    const r = shareOf(i);
-    const want = sliceCp[i]! + sliceZi[i]!;
-    const got = r.cpGranted + r.ziipGranted + r.iipcpGranted;
-    const health = want > 1e-12 ? Math.min(1, got / want) : 1;
-    const queueRatio = Math.min(MAX_QUEUE_RATIO, r.cpQueueRatio + r.prsmDelayRatio);
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
+    const a = sliceAgg[i]!;
+    const r = dres[a]!;
+    const promo = anyPromo ? extraById[`${s.scKey}~promo`] : undefined;
+    const rgmin = minOf ? extraById[`${s.scKey}~rgmin`] : undefined;
+    const totCp = aggCp[a]!;
+    const totZi = aggZi[a]!;
+    const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
+    const fz = totZi > 0 ? sliceZi[i]! / totZi : 0;
+    cpG[i] = (r.cpGranted + (promo?.cpGranted ?? 0) + (rgmin?.cpGranted ?? 0)) * fc;
+    ziG[i] = r.ziipGranted * fz;
+    iipcpG[i] = r.iipcpGranted * fz;
+    cpUnmetS[i] = (r.cpUnmet + (promo?.cpUnmet ?? 0) + (rgmin?.cpUnmet ?? 0)) * fc;
+    ziUnmetS[i] = r.ziipUnmet * fz;
+    want[i] = sliceCp[i]! + sliceZi[i]!;
+    got[i] = cpG[i]! + ziG[i]! + iipcpG[i]!;
+    health[i] = want[i]! > 1e-12 ? Math.min(1, got[i]! / want[i]!) : 1;
+    queueRatio[i] = Math.min(MAX_QUEUE_RATIO, r.cpQueueRatio + r.prsmDelayRatio);
     if (s.kind === 'AS' && s.role) {
       const prev = roleHealth[s.role];
-      if (!prev || health < prev.health) roleHealth[s.role] = { health, queueRatio };
+      if (!prev || health[i]! < prev.health) roleHealth[s.role] = { health: health[i]!, queueRatio: queueRatio[i]! };
     }
-    return { r, cpGranted: r.cpGranted, want, got, health, queueRatio };
-  });
+  }
 
-  const prio = input.ioPriority === false ? null : iosqByPriority(slices, input);
-  const ioOf = (i: number, s: SliceSpec): IoService => prio?.[s.ioClass]?.[i] ?? input.io[s.ioClass];
+  const prio = input.ioPriority === false ? null : iosqByPriority(slices, sliceDp, input.io);
   // Without I/O priority management, I/O samples don't count towards velocity.
   const ioSamples = input.ioPriority === false ? 0 : 1;
+  // APPROX: while an image is capped, most of its undispatched ready work is waiting
+  // on the cap rather than on priority.
+  const capFrac = Math.min(1, 4 * (input.cappedFrac ?? 0));
+  const storageCritical = input.storageCritical;
 
-  const results: SliceResult[] = slices.map((s, i) => {
-    const { r, cpGranted, want, got, health, queueRatio } = prelim[i]!;
+  const results = new Array<SliceResult>(n);
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
+    const r = dres[sliceAgg[i]!]!;
+    const cpGranted = cpG[i]!;
+    const ziipGranted = ziG[i]!;
+    const iipcpGranted = iipcpG[i]!;
+    const qr = queueRatio[i]!;
     const zq = Math.min(MAX_QUEUE_RATIO, r.ziipQueueRatio);
-    const cpUsing = cpGranted + r.iipcpGranted;
-    // APPROX: while an image is capped, most of its undispatched ready work is waiting
-    // on the cap rather than on priority.
-    const capFrac = Math.min(1, 4 * (input.cappedFrac ?? 0));
-    const unmetCp = r.cpUnmet * (1 - capFrac);
+    const cpUsing = cpGranted + iipcpGranted;
+    const unmetCp = cpUnmetS[i]! * (1 - capFrac);
     // Work held back by a WLM cap waits on the cap and stays queued.
     const cut = sliceCut[i]!;
-    const capDelay = r.cpUnmet * capFrac + cut;
-    const unmetZiip = r.ziipUnmet;
+    const capDelay = cpUnmetS[i]! * capFrac + cut;
+    const unmetZiip = ziUnmetS[i]!;
 
-    const io = ioOf(i, s);
-    const pg = input.storageCritical?.has(s.scKey) ? 0 : input.pagingFrac;
+    const io = prio?.[s.ioClass]?.[i] ?? input.io[s.ioClass];
+    const pg = storageCritical?.has(s.scKey) ? 0 : input.pagingFrac;
     if (s.kind === 'AS') {
-      return {
+      results[i] = {
         key: s.key,
         scKey: s.scKey,
         cpGranted,
-        ziipGranted: r.ziipGranted,
-        iipcpGranted: r.iipcpGranted,
+        ziipGranted,
+        iipcpGranted,
         usingCpu: cpUsing,
-        usingZiip: r.ziipGranted,
-        usingIo: ioSamples * s.ioRate * (io.rtSec - io.delaySec),
-        delayCpu: cpUsing * queueRatio + unmetCp,
-        delayZiip: r.ziipGranted * zq + unmetZiip,
+        usingZiip: ziipGranted,
+        usingIo: ioSamples * s.ioRate * ioUsingSec(io),
+        delayCpu: cpUsing * qr + unmetCp,
+        delayZiip: ziipGranted * zq + unmetZiip,
         delayIo: ioSamples * s.ioRate * io.delaySec,
         delayOther: 0,
-        delayStorage: (cpUsing + r.ziipGranted) * pg,
+        delayStorage: (cpUsing + ziipGranted) * pg,
         delayCap: capDelay,
         completions: 0,
         failed: 0,
@@ -415,17 +516,18 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         userRtSec: 0,
         parts: null,
         newBacklog: 0,
-        health,
-        queueRatio,
+        health: health[i]!,
+        queueRatio: qr,
         withinSla: 0,
       };
+      continue;
     }
 
     // Transactions: backlog of unserved work and Little's-law wait.
-    const wantSec = (want + cut) * TICK_SEC;
-    const gotSec = got * TICK_SEC;
+    const wantSec = (want[i]! + cut) * TICK_SEC;
+    const gotSec = got[i]! * TICK_SEC;
     let newBacklog = Math.max(0, wantSec - gotSec);
-    const gotRate = Math.max(got, 1e-9);
+    const gotRate = Math.max(got[i]!, 1e-9);
     let waitSec = newBacklog / gotRate;
     const workPerTxn = s.cpuSecPerTxn + s.ziipSecPerTxn;
     let failed = 0;
@@ -457,7 +559,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const otherSec = depDelay + s.extraOtherSec;
     const rt =
       s.baseLatencySec +
-      s.cpuSecPerTxn * (1 + queueRatio) +
+      s.cpuSecPerTxn * (1 + qr) +
       s.ziipSecPerTxn * (1 + zq) +
       ioSec +
       pagingSec +
@@ -470,17 +572,17 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     failed = Math.min(arrivals, failed + subsysFailed);
     const completions = arrivals - failed;
     const ioRate = s.rate * s.ioPerTxn;
-    return {
+    results[i] = {
       key: s.key,
       scKey: s.scKey,
       cpGranted,
-      ziipGranted: r.ziipGranted,
-      iipcpGranted: r.iipcpGranted,
+      ziipGranted,
+      iipcpGranted,
       usingCpu: cpUsing,
-      usingZiip: r.ziipGranted,
-      usingIo: ioSamples * ioRate * (io.rtSec - io.delaySec),
-      delayCpu: cpUsing * queueRatio + unmetCp,
-      delayZiip: r.ziipGranted * zq + unmetZiip,
+      usingZiip: ziipGranted,
+      usingIo: ioSamples * ioRate * ioUsingSec(io),
+      delayCpu: cpUsing * qr + unmetCp,
+      delayZiip: ziipGranted * zq + unmetZiip,
       delayIo: ioSamples * ioRate * io.delaySec,
       delayOther: s.rate * otherSec,
       delayStorage: s.rate * pagingSec,
@@ -489,50 +591,35 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       failed,
       rtMeanSec: rt,
       userRtSec: rt + s.outsideWaitSec,
-      parts: {
-        base: s.baseLatencySec,
-        cpu: s.cpuSecPerTxn + s.ziipSecPerTxn,
-        cpuQueue: s.cpuSecPerTxn * queueRatio,
-        ziip: s.ziipSecPerTxn * zq,
-        io: ioSec,
-        paging: pagingSec,
-        dependency: depDelay,
-        extra: s.extraParts ?? { other: s.extraOtherSec },
-        backlogWait: waitSec,
-        outside: s.outsideWaitSec,
-      },
+      parts: scpsOnly
+        ? null
+        : {
+            base: s.baseLatencySec,
+            cpu: s.cpuSecPerTxn + s.ziipSecPerTxn,
+            cpuQueue: s.cpuSecPerTxn * qr,
+            ziip: s.ziipSecPerTxn * zq,
+            io: ioSec,
+            paging: pagingSec,
+            dependency: depDelay,
+            extra: s.extraParts ?? { other: s.extraOtherSec },
+            backlogWait: waitSec,
+            outside: s.outsideWaitSec,
+          },
       newBacklog,
       health: 1,
-      queueRatio,
-      withinSla: s.slaRtSec !== null ? completions * lognormCdf(s.slaRtSec, rt + s.outsideWaitSec, s.rtSigma) : 0,
+      queueRatio: qr,
+      withinSla: !scpsOnly && s.slaRtSec !== null ? completions * lognormCdf(s.slaRtSec, rt + s.outsideWaitSec, s.rtSigma) : 0,
     };
-  });
+  }
 
-  const scpMap: Record<string, ScpTick> = {};
-  const scps: ScpTick[] = [];
+  const scps: ScpTick[] = new Array<ScpTick>(order.length);
+  for (let a = 0; a < order.length; a++) scps[a] = emptyScpTick(order[a]!, aggDp[a]!);
   const rcMap: Record<string, ReportClassTick> = {};
   const rcs: ReportClassTick[] = [];
-  const add = (t: ScpTick, s: SliceSpec, r: SliceResult) => {
-    t.cpEngines += r.cpGranted;
-    t.ziipEngines += r.ziipGranted;
-    t.iipcpEngines += r.iipcpGranted;
-    t.usingCpu += r.usingCpu;
-    t.usingZiip += r.usingZiip;
-    t.usingIo += r.usingIo;
-    t.delayCpu += r.delayCpu;
-    t.delayZiip += r.delayZiip;
-    t.delayIo += r.delayIo;
-    t.delayOther += r.delayOther;
-    t.delayStorage += r.delayStorage;
-    t.delayCap += r.delayCap;
-    t.completions += r.completions;
-    t.failed += r.failed;
-    t.rtSumSec += r.completions * r.rtMeanSec;
-    if (s.goalRtSec !== null) addToBuckets(t.buckets, s.goalRtSec, r.completions, r.rtMeanSec, s.rtSigma);
-  };
-  slices.forEach((s, i) => {
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
     const r = results[i]!;
-    if (s.reportClass) {
+    if (s.reportClass && !scpsOnly) {
       let rt = rcMap[s.reportClass];
       if (!rt) {
         rt = { ...emptyScpTick(s.reportClass, 0), members: [] };
@@ -540,35 +627,29 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         rcs.push(rt);
       }
       if (!rt.members.includes(s.scKey)) rt.members.push(s.scKey);
-      add(rt, s, r);
+      addSliceTo(rt, s, r, true);
     }
-    let t = scpMap[s.scKey];
-    if (!t) {
-      t = {
-        scKey: s.scKey,
-        dp: input.dpOf(s.scKey),
-        cpEngines: 0,
-        ziipEngines: 0,
-        iipcpEngines: 0,
-        usingCpu: 0,
-        usingZiip: 0,
-        usingIo: 0,
-        delayCpu: 0,
-        delayZiip: 0,
-        delayIo: 0,
-        delayOther: 0,
-        delayStorage: 0,
-        delayCap: 0,
-        completions: 0,
-        failed: 0,
-        rtSumSec: 0,
-        buckets: emptyBuckets(),
-      };
-      scpMap[s.scKey] = t;
-      scps.push(t);
-    }
-    add(t, s, r);
-  });
+    addSliceTo(scps[sliceAgg[i]!]!, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey));
+  }
 
   return rcs.length > 0 ? { slices: results, scps, roleHealth, rcs } : { slices: results, scps, roleHealth };
+}
+
+function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean): void {
+  t.cpEngines += r.cpGranted;
+  t.ziipEngines += r.ziipGranted;
+  t.iipcpEngines += r.iipcpGranted;
+  t.usingCpu += r.usingCpu;
+  t.usingZiip += r.usingZiip;
+  t.usingIo += r.usingIo;
+  t.delayCpu += r.delayCpu;
+  t.delayZiip += r.delayZiip;
+  t.delayIo += r.delayIo;
+  t.delayOther += r.delayOther;
+  t.delayStorage += r.delayStorage;
+  t.delayCap += r.delayCap;
+  t.completions += r.completions;
+  t.failed += r.failed;
+  t.rtSumSec += r.completions * r.rtMeanSec;
+  if (buckets && s.goalRtSec !== null) addToBuckets(t.buckets, s.goalRtSec, r.completions, r.rtMeanSec, s.rtSigma);
 }

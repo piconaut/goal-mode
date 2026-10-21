@@ -69,7 +69,7 @@ describe('coupling facility', () => {
     const [poll] = evaluateCf([{ ...base, cfg: { ...ded.cfg, thinInterrupts: false } }], one, 10_000, t);
     expect(thin!.serviceSec).toBeLessThan(poll!.serviceSec);
   });
-  it('lock requests stay synchronous on a slow CF; cache requests convert', () => {
+  it('lock requests convert too on a slow CF, after cache requests (z/OS 1.2+ heuristic)', () => {
     const shared = { ...ded, dedicated: false, entitlementEngines: 0.1, cfg: { ...ded.cfg, thinInterrupts: false } };
     const mix = [
       { name: 'LOCK1', type: 'LOCK' as const, requestShare: 0.5, cfLparId: 'A', costMult: 1 },
@@ -78,10 +78,11 @@ describe('coupling facility', () => {
     const [r] = evaluateCf([shared], mix, 10_000, t);
     const lock = r!.structures.find((x) => x.type === 'LOCK')!;
     const gbp = r!.structures.find((x) => x.type === 'CACHE')!;
-    expect(lock.asyncFrac).toBe(0);
-    expect(gbp.asyncFrac).toBeGreaterThan(0.9);
-    // Sync requests spin the z/OS CP for the whole service time.
-    expect(lock.zosCpuSec).toBeGreaterThan(5 * gbp.zosCpuSec);
+    expect(lock.asyncFrac).toBeGreaterThan(0.8);
+    expect(gbp.asyncFrac).toBeGreaterThan(lock.asyncFrac);
+    // Converted requests stop spinning the z/OS CP but take longer end to end.
+    expect(lock.zosCpuSec).toBeLessThan(lock.syncSec);
+    expect(lock.serviceSec).toBeGreaterThan(lock.syncSec);
     expect(r!.requestRate).toBeCloseTo(10_000);
   });
   it('a CF with no structures carries no requests', () => {
@@ -165,6 +166,21 @@ describe('batch', () => {
     const closed = closeNight(b, 0);
     expect(closed.nights[0]!.missedDeadline).toBe(true);
     expect(closed.nights[0]!.criticalEndSec).toBeNull();
+  });
+
+  it("a night that overruns its deadline keeps its finished jobs until its stragglers' successors can run", () => {
+    const b = releaseNetwork(emptyBatch(), 0, [job('A'), job('B'), job('C', ['A', 'B'])]);
+    b.jobs[0]!.status = 'DONE';
+    b.jobs[0]!.endTick = 100;
+    b.jobs[1]!.status = 'RUNNING';
+    const closed = closeNight(b, 0);
+    expect(closed.nights[0]!.missedDeadline).toBe(true);
+    closed.jobs.find((j) => j.def.name === 'B')!.status = 'DONE';
+    promoteEligible(closed.jobs, 9000);
+    expect(closed.jobs.find((j) => j.def.name === 'C')!.status).toBe('QUEUED');
+    // Once the instance has nothing left, a later close drops it.
+    for (const j of closed.jobs) j.status = 'DONE';
+    expect(closeNight(closed, 1).jobs).toEqual([]);
   });
 
   it('the generated network is deterministic and acyclic, with month-end extras', () => {

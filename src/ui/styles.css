@@ -35,6 +35,12 @@
     --border: #d0d7de;
     --text: #1f2328;
     --muted: #59636e;
+    /* Status and accent darkened for text on light panels (≥ 4.5:1 on --panel-2; tests/ui/contrast.test.ts). */
+    --accent: #0a5cc2;
+    --good: #1a7f37;
+    --warn: #8a5d00;
+    --bad: #b04a00;
+    --crit: #c4202b;
     --green-bg: #050d06;
     /* Light steps (validated vs #ffffff; slots 3–4 below 3:1, so charts carry direct labels + a table). */
     --series-1: #2a78d6;
@@ -55,6 +61,12 @@
     --border: #d0d7de;
     --text: #1f2328;
     --muted: #59636e;
+    /* Status and accent darkened for text on light panels (≥ 4.5:1 on --panel-2; tests/ui/contrast.test.ts). */
+    --accent: #0a5cc2;
+    --good: #1a7f37;
+    --warn: #8a5d00;
+    --bad: #b04a00;
+    --crit: #c4202b;
     --green-bg: #050d06;
     /* Light steps (validated vs #ffffff; slots 3–4 below 3:1, so charts carry direct labels + a table). */
     --series-1: #2a78d6;
@@ -97,7 +109,7 @@
 html, body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
 button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
-button.primary { background: var(--accent); color: #0d1117; border-color: var(--accent); font-weight: 600; }
+button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
 button.active { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: 0.45; cursor: default; }
 select, input, textarea { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
@@ -135,6 +147,9 @@ textarea { font-family: var(--mono); font-size: 12px; width: 100%; }
 .card:hover { border-color: var(--accent); }
 .toast { position: fixed; bottom: 16px; right: 16px; padding: 10px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--border); z-index: 20; max-width: 420px; }
 .toast.bad { border-color: var(--crit); }
+.tutorial { position: fixed; bottom: 16px; left: 16px; padding: 10px 14px; border-radius: 8px; background: var(--panel); border: 1px solid var(--accent, var(--border)); z-index: 19; max-width: 340px; font-size: 13px; }
+.tutorial p { margin: 6px 0; }
+.tutorial-buttons { display: flex; gap: 6px; justify-content: flex-end; }
 table { border-collapse: collapse; width: 100%; font-size: 13px; }
 td, th { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; }
 th { color: var(--muted); font-weight: 500; }
@@ -160,6 +175,7 @@ details.section > summary h3::before { content: '▾ '; }
 details.section:not([open]) > summary h3::before { content: '▸ '; }
 .now { font-size: 12px; color: var(--muted); font-family: var(--mono); }
 .err { font-size: 12px; color: var(--crit); }
+.warn-text { font-size: 12px; color: var(--warn); }
 .help { font-size: 12px; color: var(--muted); margin: 2px 0 8px; }
 .diff { margin: 0; padding-left: 18px; font-family: var(--mono); font-size: 12px; }
 .diff li { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 2px 0; }
@@ -241,4 +257,19 @@ details.section[open] > summary { margin-bottom: 8px; }
   .tag.bad, .tag.good, .tag.warn { border-style: double; border-width: 3px; }
   .pin { opacity: 1; }
   button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline-color: Highlight; }
+}
+
+.spectate-banner {
+  padding: 4px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--accent);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.spectate-note {
+  color: var(--muted);
+  font-style: italic;
+}
+.spectate-adopt {
+  margin-left: 0.75em;
 }
