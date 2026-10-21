@@ -96,7 +96,9 @@ const HB_CARDS: EventDef[] = [
   }),
   // FICTIONAL: RETAIL is ~half of Harbourline's online CPU (Midwest's RBANK ~a third of a much smaller estate), so one
   // regressed package of many costs ×1.5 per transaction, not Midwest's ×3 (×3 alone saturated both CPCs in sweeps).
+  // A big shop's DBA monitoring spots it within the day: 12 h, one morning peak, not Midwest's 30 h across two.
   adapt('REGRESSION', {
+    durationHours: 12,
     begin: [mod('cpu', 'RETAIL', 1.5)],
     end: [mod('cpu', 'RETAIL', 1)],
     clue: 'RETAIL service per transaction ×1.5 (APPL% up, END/S flat) on all four PRD images. Db2 accounting by package would point at RB01.',
