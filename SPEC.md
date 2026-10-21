@@ -1220,8 +1220,15 @@ policies are tested at once), regulator stress-test week near the end.
    state `routingPolicies`, verb `SET_ROUTING_POLICY`). WLM recomputes shares every 60 s from last
    tick's displaceable capacity at the work's dispatch priority on each candidate LPAR (the keys of
    the scenario's routing), CP-only unless zIIP-aware, with a 2 % floor and 1 % steps (`content/routing.ts`).
-   `SET_ROUTING` is refused while a dynamic policy is on. Still to do: `CPSM_GOAL` with region health
-   (storm drain, B2), quiesce region, and the game-layer verbs and costs.
+   `SET_ROUTING` is refused while a dynamic policy is on.
+   *Done (sim, part 2):* `CPSM_GOAL{abendThreshFrac, abendCritFrac, quiesced}`. Every 30 s shares move
+   half-way toward a split weighted by `prevShare × meanRt / seenRt`, where a region's seen response
+   blends normal response with the fast abend time (`abendRtSec`), so a sick region draws work (B2
+   storm drain). Abend compensation as in CICSPlex SM WLM: at ABENDTHRESH a region's weight halves, at
+   ABENDCRIT it is avoided (keeps the 2 % trickle so its recovery is seen); quiesced regions get none.
+   Region failures: `mods.regionFailFrac['WL@LPAR']`; abend rates per workload@lpar sit in
+   `env.failByWorkloadLpar`, present only while a dynamic policy is on. Still to do: game-layer verbs
+   and costs (step 4 content).
 4. **Content:** world, workloads, policy with B1–B4 and the Problem-1 traps, events, story, hints,
    Codex (sysplex distributor, CICSPlex SM routing, storm drain, absolute capping), bot day-0 fixes,
    sweeps.
@@ -1356,6 +1363,7 @@ never touches the DOM.
 | Discretionary capping conditions | **Real** | SG24-7621 §4.22 |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
 | Sysplex distributor WLM weights | **Simplified** | Shares ∝ displaceable capacity at the work's DP (prev tick), recomputed each minute; CP-only by default, zIIP-aware weights blend by zIIP fraction (APPROX of SD PROCTYPE). No server health term yet |
+| CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
 | Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
 | Swap / MPL delay | **Simplified** | Only batch jobs are swappable; swap out least important first when storage overcommits; swap-in immediate when it frees |
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH, depth adds memory; no MQ SMF 115/116 |

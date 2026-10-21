@@ -25,7 +25,7 @@ import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/
 import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
-import { sameShares, wlmShares, type RouteCandidate } from '../workload/routing';
+import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
 import { ROUTING } from '../../content/routing';
 import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
@@ -203,6 +203,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     failedBy: {},
     wlTick: {},
     rtByWorkloadLpar: {},
+    failByWorkloadLpar: prev.routingPolicies ? {} : null,
     systems: [],
     lparTicks: [],
     onlineDb2Rate: 0,
@@ -272,7 +273,9 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     if (wt.completions > 1e-9) wr.lastRtSec = wt.rtSumSec / wt.completions;
   }
 
-  const nextEnv: EnvState = { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
+  const nextEnv: EnvState = t.failByWorkloadLpar
+    ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
+    : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
 
   const nextTick = prev.tick + 1;
   const { cappingLpars, cappingGroups, msuBy, r4haBy } = stepCapping(t, zosLpars);
@@ -326,6 +329,8 @@ interface TickCtx {
   failedBy: Record<string, number>;
   wlTick: Record<string, WorkloadTick>;
   rtByWorkloadLpar: Record<string, number>;
+  /** Failed fraction per workload@lpar, kept only when a dynamic routing policy needs it. */
+  failByWorkloadLpar: Record<string, number> | null;
   systems: WlmSystemState[];
   lparTicks: LparTick[];
   /** Sysplex online Db2 transaction rate (global lock contention for batch). */
@@ -546,6 +551,8 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     if (db2Work) t.onlineDb2Rate += s.rate;
     if (db2FailFrac > 0 && db2Work) failFrac = Math.max(failFrac, db2FailFrac);
     if (mqFailFrac > 0 && w.mq) failFrac = Math.max(failFrac, mqFailFrac);
+    const regionFail = prev.mods.regionFailFrac?.[wlLparKey(w.id, l.id)];
+    if (regionFail) failFrac = Math.max(failFrac, regionFail);
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
     s.ioPerTxn = ioPerTxn;
     s.extraParts = parts;
@@ -652,7 +659,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
-  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, systems, lparTicks } = t;
+  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
   const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
@@ -728,6 +735,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       const k = wlLparKey(s.workloadId, l.id);
       rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
       compBy[k] = (compBy[k] ?? 0) + r.completions;
+      if (failByWorkloadLpar) failByWorkloadLpar[k] = (failByWorkloadLpar[k] ?? 0) + r.failed;
       const w = workloadById[s.workloadId]!;
       sums.randomIops += s.rate * s.ioPerTxn;
       if (usesDb2(w)) {
@@ -738,6 +746,10 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   for (const k in compBy) {
     const c = compBy[k]!;
     rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
+    if (failByWorkloadLpar) {
+      const f = failByWorkloadLpar[k] ?? 0;
+      failByWorkloadLpar[k] = c + f > 0 ? f / (c + f) : 0;
+    }
   }
 
   // Batch progression: share each batch slice's grant across its jobs by demand.
@@ -884,17 +896,29 @@ function queuedMsgGb(prev: SimState, byId: Record<string, WorkloadDef>, lparId: 
 // 3. Routing: dynamic policies recompute shares from last tick's measurements once per interval.
 function updateRouting(s: SimState, scenario: Scenario): SimState {
   const policies = s.routingPolicies;
-  if (!policies || s.tick % ROUTING.wlmIntervalTicks !== 0 || s.last.lpars.length === 0) return s;
+  if (!policies || s.last.lpars.length === 0) return s;
   let routing = s.routing;
   for (const id of Object.keys(policies).sort()) {
     const policy = policies[id]!;
     const w = scenario.workloads.find((x) => x.id === id) ?? s.extraWorkloads.find((x) => x.id === id);
-    if (!w || policy.method !== 'WLM') continue;
-    const cands = Object.keys(w.routing).sort().map((lparId) => routeCandidate(s, w, lparId));
-    const shares = wlmShares(cands, w.ziipFrac, policy.ziipAware, ROUTING.minShareFrac, ROUTING.shareQuantum);
-    if (!sameShares(routing[id], shares)) routing = { ...routing, [id]: shares };
+    if (!w) continue;
+    const lparIds = Object.keys(w.routing).sort();
+    let shares: Record<string, number> | null = null;
+    if (policy.method === 'WLM' && s.tick % ROUTING.wlmIntervalTicks === 0) {
+      shares = wlmShares(lparIds.map((lparId) => routeCandidate(s, w, lparId)), w.ziipFrac, policy.ziipAware, ROUTING.minShareFrac, ROUTING.shareQuantum);
+    } else if (policy.method === 'CPSM_GOAL' && s.tick % ROUTING.cpsmIntervalTicks === 0) {
+      const regions = lparIds.map((lparId) => regionStat(s, w, lparId));
+      shares = cpsmGoalShares(routing[id] ?? w.routing, regions, policy, ROUTING.abendRtSec, ROUTING.cpsmStepFrac, ROUTING.minShareFrac, ROUTING.shareQuantum);
+    }
+    if (shares && !sameShares(routing[id], shares)) routing = { ...routing, [id]: shares };
   }
   return routing === s.routing ? s : { ...s, routing };
+}
+
+// What CICSPlex SM sees of a region: last tick's normal response and abend rate for this work there.
+function regionStat(s: SimState, w: WorkloadDef, lparId: string): RegionStat {
+  const k = wlLparKey(w.id, lparId);
+  return { lparId, rtSec: s.env.rtByWorkloadLpar[k] ?? 0, failFrac: s.env.failByWorkloadLpar?.[k] ?? 0 };
 }
 
 function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandidate {

@@ -179,6 +179,8 @@ export interface EnvState {
   rtByWorkloadLpar: Record<string, number>;
   /** Paging delay fraction per LPAR. */
   pagingFrac: Record<string, number>;
+  /** Failed fraction per workload@lpar; present only while a dynamic routing policy is on. */
+  failByWorkloadLpar?: Record<string, number>;
 }
 
 /** Runtime modifiers set by events and fixes (all multiplicative, default 1). */
@@ -201,6 +203,8 @@ export interface SimModifiers {
   ziipEligMult?: Record<string, number>;
   /** Extra lock contention index (lock escalation). */
   lockBoost: number;
+  /** Fraction of a workload's transactions failing fast in one image's regions, keyed `workload@lpar` (sick AOR). */
+  regionFailFrac?: Record<string, number>;
 }
 
 export interface SimState {

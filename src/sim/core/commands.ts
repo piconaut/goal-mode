@@ -308,7 +308,13 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
     case 'SET_ROUTING_POLICY': {
       const { [cmd.workloadId]: _old, ...rest } = s.routingPolicies ?? {};
       const policies = cmd.policy.method === 'STATIC' ? rest : { ...rest, [cmd.workloadId]: cmd.policy };
-      const label = cmd.policy.method === 'WLM' ? `WLM weights${cmd.policy.ziipAware ? ' (zIIP-aware)' : ''}` : 'static weights';
+      const p = cmd.policy;
+      const label =
+        p.method === 'WLM'
+          ? `WLM weights${p.ziipAware ? ' (zIIP-aware)' : ''}`
+          : p.method === 'CPSM_GOAL'
+            ? `CPSM goal${p.abendCritFrac !== null ? ` ABENDCRIT ${Math.round(p.abendCritFrac * 100)}%` : ''}${p.quiesced.length ? `, quiesced ${p.quiesced.join(' ')}` : ''}`
+            : 'static weights';
       const { routingPolicies: _drop, ...base } = s;
       return ok(Object.keys(policies).length ? { ...base, routingPolicies: policies } : base, `${cmd.workloadId} routing: ${label}`);
     }
@@ -324,7 +330,8 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
 
     case 'SET_MODIFIER': {
       const table = { ...s.mods[cmd.mod] };
-      if (cmd.value === 1) delete table[cmd.key];
+      // Fractions are neutral at 0, multipliers at 1.
+      if (cmd.value === (cmd.mod === 'regionFailFrac' ? 0 : 1)) delete table[cmd.key];
       else table[cmd.key] = cmd.value;
       return ok({ ...s, mods: { ...s.mods, [cmd.mod]: table } }, `${cmd.mod}[${cmd.key}] = ${cmd.value}`);
     }

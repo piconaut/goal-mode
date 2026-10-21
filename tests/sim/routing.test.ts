@@ -3,7 +3,7 @@ import { applyCommand } from '../../src/sim/core/commands';
 import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
-import { wlmShares } from '../../src/sim/workload/routing';
+import { cpsmGoalShares, wlmShares, type RoutingPolicy } from '../../src/sim/workload/routing';
 
 const cand = (lparId: string, cpFreeEngines: number, ziipFreeEngines: number) => ({ lparId, cpFreeEngines, ziipFreeEngines });
 
@@ -63,5 +63,49 @@ describe('routing policies in the sim', () => {
     const st = applyCommand(s, { kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'STATIC' } });
     expect('routingPolicies' in st.state).toBe(false);
     expect(applyCommand(st.state, { kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PROD1: 1, PROD2: 1 } }).ok).toBe(true);
+  });
+});
+
+describe('CICSPlex SM goal routing', () => {
+  type Goal = Extract<RoutingPolicy, { method: 'CPSM_GOAL' }>;
+  const goal = (over: Partial<Goal> = {}): Goal => ({ method: 'CPSM_GOAL', abendThreshFrac: null, abendCritFrac: null, quiesced: [], ...over });
+  const reg = (lparId: string, rtSec: number, failFrac = 0) => ({ lparId, rtSec, failFrac });
+  const next = (prev: Record<string, number>, regions: ReturnType<typeof reg>[], p = goal()) => cpsmGoalShares(prev, regions, p, 0.004, 0.5, 0.02, 0.01);
+
+  it('holds steady when responses are even and moves toward the faster region', () => {
+    expect(next({ A: 0.5, B: 0.5 }, [reg('A', 0.2), reg('B', 0.2)]).A).toBeCloseTo(0.5);
+    expect(next({ A: 0.5, B: 0.5 }, [reg('A', 0.1), reg('B', 0.3)]).A!).toBeGreaterThan(0.6);
+  });
+
+  it('a fast-failing region looks fast and draws work (storm drain, B2)', () => {
+    let s = { A: 0.5, B: 0.5 };
+    for (let i = 0; i < 12; i++) s = next(s, [reg('A', 0.2), reg('B', 0.2, 0.4)]) as typeof s;
+    expect(s.B).toBeGreaterThan(0.8);
+  });
+
+  it('abend compensation halves at ABENDTHRESH and avoids at ABENDCRIT; quiesce removes a region', () => {
+    const r = [reg('A', 0.2), reg('B', 0.2, 0.4)];
+    const thresh = next({ A: 0.5, B: 0.5 }, r, goal({ abendThreshFrac: 0.3 }));
+    expect(thresh.B!).toBeLessThan(next({ A: 0.5, B: 0.5 }, r).B!);
+    let s: Record<string, number> = { A: 0.5, B: 0.5 };
+    for (let i = 0; i < 8; i++) s = next(s, r, goal({ abendCritFrac: 0.2 }));
+    expect(s.B).toBeCloseTo(0.02);
+    expect(next({ A: 0.5, B: 0.5 }, [reg('A', 0.2), reg('B', 0.1)], goal({ quiesced: ['B'] })).B).toBe(0);
+  });
+
+  it('drains RBANK into a sick PROD2 region in the sim unless ABENDCRIT is set', () => {
+    const run = (abendCritFrac: number | null) => {
+      const workloads = structuredClone(MIDWEST.workloads);
+      workloads.find((w) => w.id === 'RBANK')!.routingPolicy = goal({ abendCritFrac });
+      const scenario = { ...MIDWEST, workloads, batchNetwork: MIDWEST.batchNetwork };
+      let s = initState(42, scenario);
+      for (let i = 0; i < 1.5 * TICKS_PER_HOUR; i++) {
+        const cmds = i === TICKS_PER_HOUR ? [{ kind: 'SET_MODIFIER' as const, mod: 'regionFailFrac' as const, key: 'RBANK@PROD2', value: 0.4 }] : [];
+        s = step(s, cmds, scenario);
+      }
+      return s.routing.RBANK!.PROD2!;
+    };
+    expect(run(null)).toBeGreaterThan(0.8);
+    expect(run(0.2)).toBeLessThan(0.05);
   });
 });
