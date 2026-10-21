@@ -32,6 +32,8 @@ export interface EventDef {
   capacityDrop?: number;
   /** Engineer-hours added (negative = lost) per day while the card runs; applied from the briefing of its first day. */
   hoursDelta?: number;
+  /** Hardware items the change desk refuses while the card runs (e.g. On/Off CoD under a power budget). */
+  blocksHardware?: string[];
   /** While the card runs, each endDay audits SYSOTHER service: Regulator trust −5 if any ran, +1 if none. */
   auditUnclassified?: true;
   /** Message when it starts (null = silent; players must notice symptoms). */
@@ -216,6 +218,47 @@ export const MIDWEST_EVENTS: EventDef[] = [
     forewarning: null,
     announcement: null,
     clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay. Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
+  },
+  {
+    // Data set encryption (DFSMS + ICSF): every read and write of an encrypted data set goes through CPACF, so the
+    // cost scales with I/O, not with business logic (IBM Redbook SG24-8410, Getting Started with z/OS Data Set Encryption).
+    id: 'ENCRYPTION_MANDATE',
+    name: 'Pervasive encryption mandate',
+    category: 'ORG',
+    minDay: 15,
+    weight: 0.8,
+    trigger: 'POLICY',
+    affects: ['CARDAUTH', 'TELLER', 'PAYMQ'],
+    startHour: [6, 6.5],
+    durationHours: null, // a mandate stays; the fix narrows its scope
+    oncePerRun: true,
+    // FICTIONAL: +6% CPU per transaction on the I/O-heavy online workloads. APPROX: batch and the audit SLA are not modelled.
+    begin: [mod('cpu', 'CARDAUTH', 1.06), mod('cpu', 'TELLER', 1.06), mod('cpu', 'PAYMQ', 1.06)],
+    end: [mod('cpu', 'CARDAUTH', 1), mod('cpu', 'TELLER', 1), mod('cpu', 'PAYMQ', 1)],
+    fix: 'SCOPE_ENCRYPTION',
+    forewarning: 'Regulator: "All customer data sets must be encrypted at rest from tomorrow. We will check the key labels."',
+    announcement: null,
+    clue: 'WLMGL: CPU per transaction up ~6% on card auth, teller and payments from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
+  },
+  {
+    // Facilities caps the data centre power budget: no temporary engines until the next budget period.
+    id: 'GREEN_IT_COD',
+    name: 'Data centre power budget',
+    category: 'ORG',
+    minDay: 8,
+    weight: 0.8,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: 7 * 24,
+    oncePerRun: true,
+    blocksHardware: ['COD_CP'],
+    begin: [],
+    end: [],
+    fix: null,
+    forewarning: 'Facilities: "Green IT target: no On/Off Capacity on Demand for the next seven days. Permanent upgrades are unaffected."',
+    announcement: null,
+    clue: 'The change desk refuses On/Off CoD (and so does CPM automation). Responses: cap or quiesce DEVT, defer discretionary batch, tune policy, or buy permanent capacity.',
   },
   {
     id: 'CF_LINK',

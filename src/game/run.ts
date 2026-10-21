@@ -186,6 +186,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       trigger: def.trigger,
       affects: def.affects,
       ...(def.mechanisms ? { mechanisms: def.mechanisms } : {}),
+      ...(def.blocksHardware ? { blocksHardware: def.blocksHardware } : {}),
       endCommands: def.end,
       started: false,
       ended: false,
@@ -248,6 +249,7 @@ export function previewContext(run: RunState) {
     capexRemaining: run.capexRemaining,
     incidentOpen: run.incidents.some((i) => i.endTick === null),
     constraints: run.constraints,
+    blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
   };
 }
 

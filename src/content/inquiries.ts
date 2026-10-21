@@ -100,6 +100,8 @@ export const EVENT_RUMOURS: Record<string, string> = {
   ZIIP_LOSS: 'the mobile API team is rewriting its stored procedures in COBOL',
   CICS_SOS: 'the PROD2 CICS regions have been logging storage warnings',
   RETRY_STORM: 'the card network has had slow authorisations at lunchtime',
+  ENCRYPTION_MANDATE: 'the regulator has been asking about encryption at rest',
+  GREEN_IT_COD: 'facilities say the data centre is over its power budget',
   XLOG_LOOP: 'operations put a new CICS journal archiver into production this week',
   SMF_AUDIT: 'the regulator has asked how long we keep detailed SMF data',
   NEW_APP_GOLIVE: 'retail is about to launch a small new booking app',

@@ -72,6 +72,8 @@ export interface ActiveEvent {
   affects: string[];
   /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
   mechanisms?: Mechanism[];
+  /** Hardware items refused while the card runs (copied from the card). */
+  blocksHardware?: string[];
   endCommands: Command[];
   started: boolean;
   ended: boolean;

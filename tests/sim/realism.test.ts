@@ -486,6 +486,26 @@ describe('event cards (SPEC §9)', () => {
     expect(bots.engPerTxn).toBeLessThan(0.7 * asIs.engPerTxn);
   }, 60_000);
 
+  it('an encryption mandate raises CPU per transaction on the I/O-heavy online work only', () => {
+    // ONLMED holds teller and payments (both encrypted); DDFPRD holds mobile and BI (neither).
+    const perTxn = (cmds: Parameters<typeof step>[1], scKey: string) => {
+      let s = step(base, cmds, MIDWEST);
+      let eng = 0;
+      let n = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        for (const l of s.last.lpars) for (const sc of l.scps) if (sc.scKey === scKey) { eng += sc.cpEngines + sc.ziipEngines; n += sc.completions; }
+      }
+      return eng / n;
+    };
+    const enc = card('ENCRYPTION_MANDATE');
+    const med = perTxn(enc, 'ONLMED#1') / perTxn([], 'ONLMED#1');
+    const ddf = perTxn(enc, 'DDFPRD#1') / perTxn([], 'DDFPRD#1');
+    expect(med).toBeGreaterThan(1.03);
+    expect(med).toBeLessThan(1.09);
+    expect(Math.abs(ddf - 1)).toBeLessThan(0.01);
+  }, 60_000);
+
   it('a looping STC caught by the CICS* rule takes an engine at importance 1 until reclassified', () => {
     const prod1 = (cmds: Parameters<typeof step>[1]) => {
       let s = step(base, cmds, MIDWEST);

@@ -59,6 +59,7 @@ export const FIXES: FixDef[] = [
   { id: 'MOBILE_BACKOFF', name: 'Turn on retry backoff in the API gateway', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Exponential backoff and a circuit breaker for the mobile app; customers see "try again later" instead of retrying.' },
   { id: 'TERM_UTILITY', name: 'Terminate the overrunning REORG', hours: 0.5, trustCost: { facet: 'Finance', amount: 1 }, description: '-TERM UTILITY: stops the I/O storm; the REORG has to be rescheduled.' },
   { id: 'CANCEL_XLOG', name: 'Cancel the looping CICSXLOG job', hours: 0.5, trustCost: { facet: 'Regulator', amount: 1 }, description: 'C CICSXLOG: the loop stops; the CICS journals are archived late and audit asks why.' },
+  { id: 'SCOPE_ENCRYPTION', name: 'Agree a narrower encryption scope', hours: 2, trustCost: { facet: 'Regulator', amount: 2 }, description: 'Encrypt only the regulated customer data sets; the online CPU overhead goes away, the regulator notes the exception.' },
   { id: 'ROLLBACK_MONITOR', name: 'Roll back the monitoring agent', hours: 1, trustCost: null, description: 'Revert to the previous agent release.' },
   { id: 'STOP_SHADOW_IT', name: 'Stop the unapproved TSO workload', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Find the users behind the TSO CPU and have the model training moved off the mainframe.' },
   { id: 'ROLLBACK_TELLER_RELEASE', name: 'Roll back the teller release', hours: 1.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'Back out release 4.2 from the PROD1 CICS regions until it is made threadsafe.' },
@@ -81,6 +82,8 @@ export interface PreviewContext {
   capexRemaining: number;
   incidentOpen: boolean;
   constraints: readonly string[];
+  /** Hardware items refused by a running event card. */
+  blockedHardware?: readonly string[];
 }
 
 export interface ChangePreview {
@@ -137,6 +140,7 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   if (!live && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
   if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
   if (req.fixId && !fix) return no(`Unknown fix ${req.fixId}`);
+  if (hw && ctx.blockedHardware?.includes(hw.id)) return no(`${hw.name} is refused: the data centre power budget forbids it for now`);
   if (!hw && !fix && (req.commands ?? []).length === 0) return no('Nothing to change');
   if (hours > ctx.hoursLeft + MAX_OVERTIME) return no(`Needs ${hours}h; only ${ctx.hoursLeft.toFixed(1)}h left (+${MAX_OVERTIME}h overtime)`);
   if (capex > ctx.capexRemaining) return no(`Capex $${capex.toLocaleString()} exceeds the $${ctx.capexRemaining.toLocaleString()} left`);
