@@ -69,9 +69,15 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   `step` split into `lparDemand` / `dispatchLpar` stages sharing a `TickCtx` (day 1 4.05–4.18 → 3.25–3.7 s).
   Profile is flat (no function > 13% self); left: allocation (GC ~5–7%), log-normal buckets (~5%), and JIT
   deopts of `step` on days 1–4 as state objects change shape. Micro-opts are exhausted at ≤ 1% each (loops 91–92)
-- Next: split soft capping/PR/SM and the cost/RMF tail out of `step` the same way
-- [ ] Structural options for 4×, in expected-value order: (1) cache per-LPAR slice specs and only rebuild on
-  config/policy/event changes; (2) evaluate projections on a reduced slice set (only the receiver's and donors'
+- 2026-10-21 (2nd thread): soft capping, PR/SM, policy adjustment and the R4HA/MLC/RMF tail are their own
+  stages too (`softCap`, `prsm`, `adjustPolicies`, `stepCapping`, `stepCost`, `stepRmf`); `step` self time
+  11% → 8%. Slice templates were already memoised; `buildSlices` now skips the key string and nested lookups
+  per LPAR while inputs are unchanged, and Db2 use per workload is memoised. Hash-neutral; wall-clock gain is
+  within this VM's noise (it measured ~2× slower than the day before: base 3-day run 14–17 s). Lesson: building
+  slices with a field-by-field literal instead of a spread was ~40% slower overall (hidden-class split with
+  the other slice copies), so keep slice copies as spreads
+- [ ] Structural options for 4×, in expected-value order: (1) ~~cache per-LPAR slice specs~~ (templates
+  cached; the per-tick spread copy and demand fill remain, ~3%); (2) evaluate projections on a reduced slice set (only the receiver's and donors'
   periods); (3) struct-of-arrays for scps/buckets to cut allocation; (4) evaluate DEVT/SYSP every 3rd
   tick (low-importance images, APPROX); (5) RMF accumulation every tick → running sums without object spreads.
   Each must keep the golden hash or regenerate it with a reason
