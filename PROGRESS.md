@@ -17,7 +17,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
   comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
-- **Health:** `npm run check` green (358 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+- **Health:** `npm run check` green (359 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -349,6 +349,11 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
   shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
   six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
+- **2026-10-21 (loop 134):** Midwest perf re-measured (3 runs each, bench seed 42): dev 4.78/4.07/4.28 s vs pre-merge
+  main 4.49/3.98/4.39 s, same hash: noise, no regression. Harbourline `GameContent.startTools` (SPEC §13.5): Mon III,
+  Partition Data, CF/DASD, CICS monitoring, Db2 accounting installed on day 1 with their measurement overhead applied
+  at newRun (test added; Midwest hash unchanged, 359 tests). 40-day Harbourline sweep (3 bots × seeds 1–4) running →
+  runs/hb40.csv. Next: digest the sweep, then Harbourline perf (still ~4.6 s/day, budget 2 s).
 - **2026-10-21 (loop 133):** milestone PR #16 dev→main (Harbourline playable) reviewed by pr-reviewer: MERGE (358
   tests, hash `eddf17fc7c615524` on both, goldens unchanged, layering/determinism clean); merged. Reviewer note: Midwest
   bench day 4.7 s on dev vs 4.2 s on main (one run each, maybe noise) → re-measure next and profile if real. Next:
