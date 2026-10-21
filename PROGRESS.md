@@ -99,6 +99,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       11 / 17 / 21, ends trust 14 · batch 6; textbook 17 / 28 / 28, ends batch 11 · trust 9 (median 28 reaches the 28–32
       target, but 10 of 20 runs end on a batch miss on exactly day 28: a fixed wall where nightly growth outruns the
       window and textbook buys no capacity; early ends are trust on days 17–22); expert 28 / 40 / 40, victory 17 · opex 3.
+      Traced (loop 116): the wall is REG_DEADLINE (05:00 from day 20) plus 0.4%/day nightly growth. Textbook batch ends
+      04:00–04:50 on days 20–26, then crosses 05:00 on day 27; two misses end the run on day 28. The batch-capacity
+      reaction lives in `fixer` (expert, spend-to-win), not textbook, by design; the morning hint and batch projection are
+      the clue path, and expert buys the capacity setting on day 1. No change: intended pressure, median on target.
     - **Post-PR #8 re-sweep (2026-10-21, seeds 1–20, 22 cards):** do-nothing 12 / 15 / 21, ends batch 10 · trust 10
       (median 15 is now on target, p90 a bit late); textbook 22 / 27 / 28, ends batch 12 · trust 8 (median 27 is still
       below the 28–32 target, p10 up from 17). Early textbook ends: seeds 13 (day 17) and 20 (day 24) are Retail trust
