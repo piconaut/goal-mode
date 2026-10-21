@@ -168,9 +168,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   picker in the new-run dialog and day-1 briefing), per-scenario facets, flaws G1–G3/H1–H2, story beats with a
   two-day hint for pre-filled returns. First sweep (seeds 1–6, Normal): do-nothing 10 / 14 / 20 (trust 5 · batch 1,
   mostly Regulator after batch misses), textbook 26 / 29 / 30 (trust 6: Taxpayers or Regulator), expert victory 6/6.
-  Already on target; re-sweep 20 seeds. Next: agency-specific event cards (adapt the Midwest ones with their own
-  text: e-filing campaign, refund-status retry storm, looping refund STC…), Codex entries for IIPHONORPRIORITY and
-  soft capping if missing, Story/Hard sweeps
+  Agency deck done (loop 116: 16 adapted cards, see SPEC §13.4). 20-seed sweep with it (seeds 1–20, Normal):
+  do-nothing 15 / 22 / 23 (trust 20, 19 Taxpayers; too late, target ~12–18: the 7-card deck's frequent audit cards are
+  now diluted), textbook 27 / 29 / 29 (trust 20, all Taxpayers; on target), expert 40 / 40 / 40 (victory 19, trust 1).
+  Tuning do-nothing with a lever textbook fixes (G1: heavier compliance analytics in WEBDDF). Next: Codex entries for
+  IIPHONORPRIORITY and soft capping if missing, Story/Hard sweeps, then a `dev` → `main` PR.
 - [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
   - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
