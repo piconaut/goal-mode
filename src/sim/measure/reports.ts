@@ -226,6 +226,25 @@ export function renderDasdSummary(iv: RmfInterval): string {
   return out.join('\n');
 }
 
+export const REPORT_KINDS = ['WLM_SUMMARY', 'WLM_DETAIL', 'PARTITION', 'CF', 'DASD'] as const;
+export type ReportKind = (typeof REPORT_KINDS)[number];
+
+/** One interval report by kind; WLM_DETAIL defaults to ONLHI#1 and the WLM reports to the sysplex view. */
+export function renderReport(iv: RmfInterval, kind: ReportKind, scKey = 'ONLHI#1', system = '*PLEX'): string {
+  switch (kind) {
+    case 'WLM_SUMMARY':
+      return renderWlmSummary(iv, system);
+    case 'WLM_DETAIL':
+      return renderWlmDetail(iv, scKey, system);
+    case 'PARTITION':
+      return renderPartitionData(iv);
+    case 'CF':
+      return renderCfActivity(iv);
+    case 'DASD':
+      return renderDasdSummary(iv);
+  }
+}
+
 /** SCRT-style sub-capacity report for a month (prices are the game's fictional ones). */
 export function renderScrt(
   cost: CostState,

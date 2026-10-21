@@ -1,9 +1,10 @@
+// Messages between the UI thread and the game worker.
+
 import type { DifficultyId } from '../content/difficulty';
 import type { InquiryKind } from '../content/inquiries';
 import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 import type { RcAdvice } from '../game/rcAdvisor';
-// Messages between the UI thread and the game worker.
-
+import type { ReportKind } from '../sim/measure/reports';
 import type { AlertRule } from '../game/alerts';
 import type { AutoRule } from '../game/automation';
 import type { ScheduleEntry } from '../game/policies';
@@ -42,7 +43,7 @@ export type SmfData =
   | { kind: 'BATCH'; night: BatchNight | null }
   | { kind: 'SMF113'; rows: Smf113Row[] };
 
-export type ReportKind = 'WLM_SUMMARY' | 'WLM_DETAIL' | 'PARTITION' | 'CF' | 'DASD';
+export type { ReportKind };
 
 export type ToWorker =
   | { type: 'NEW_RUN'; seed: number; difficulty?: DifficultyId; daily?: string }

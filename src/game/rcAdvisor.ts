@@ -5,7 +5,7 @@
 import { classify } from '../sim/wlm/classify';
 import type { Qualifier, ServiceDefinition } from '../sim/wlm/types';
 import { explainClassification, type WorkItem } from './classifyExplain';
-import type { WlmEdit } from './wlmEdit';
+import { applyWlmEdit, type WlmEdit } from './wlmEdit';
 
 export interface RcAdvice {
   workloadId: string;
@@ -51,4 +51,24 @@ export function adviseReportClasses(def: ServiceDefinition, items: readonly Work
     out.push({ workloadId: it.label, serviceClass: res.serviceClass, sharedWith: peers, currentReportClass: res.reportClass, suggested: name, how, edit });
   }
   return out;
+}
+
+/** Stage advice for one workload, or for every workload when `workloadId` is null. Re-advises after each
+ * edit: an added rule shifts the paths of the ones below it. Returns the edit's error if one is refused. */
+export function applyReportClassAdvice(
+  def: ServiceDefinition,
+  items: readonly WorkItem[],
+  workloadId: string | null,
+): { def: ServiceDefinition; added: string[] } | string {
+  const added: string[] = [];
+  for (let guard = 0; guard < 32; guard++) {
+    const a = adviseReportClasses(def, items).find((x) => workloadId === null || x.workloadId === workloadId);
+    if (!a) break;
+    const res = applyWlmEdit(def, a.edit);
+    if (typeof res === 'string') return res;
+    def = res;
+    added.push(a.workloadId);
+    if (workloadId !== null) break;
+  }
+  return { def, added };
 }
