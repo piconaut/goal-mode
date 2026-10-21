@@ -151,6 +151,18 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   Loop 102 smoke sweep (seeds 1–4): no regression
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
+- [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
+  - **Estate:** several CPCs and many LPARs and sysplex members.
+  - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
+  - **Harder problems.** Two the user named:
+    - **Strongly spiky online workload:** bursty arrivals well above the hourly mean (e.g. flash events, open-of-market).
+      WLM's 10 s adjustment and R4HA/capping lag behind it, so the player has to choose between headroom, goals that
+      tolerate bursts, and capping (e.g. defined capacity vs. absolute cap).
+    - **Workload-balancing issues across the sysplex:** sysplex distributor / CICSPlex SM routing and WLM routing
+      recommendations send work to the wrong images, through skewed weights, a sick-but-alive region (storm
+      drain) or uneven zIIP capacity. Fixes trade affinity against even load.
+  - **Needs:** a multi-CPC world (the hardware catalog and HMC assume one CPC), finer-than-hourly arrival bursts in
+    the workload model, and routing that reacts to image health. Design it in SPEC §13 before building
 
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
