@@ -1203,6 +1203,10 @@ policies are tested at once), regulator stress-test week near the end.
    catalog). Hardware purchases, HMC and Partition Data need a CPC selector. MLC: each CPC's
    sub-capacity report is separate, so a soft-capping group never spans CPCs (real: a capacity group
    is defined per CPC), and the bill sums them.
+   *Done (sim/game):* the critical-path projection uses each job's sysaff CPC (unpinned jobs project
+   on the first CPC), a power-cap event throttles every CPC and restores each, and
+   `SET_CAPACITY_GROUP` refuses members on different CPCs. Still on the first CPC: `view.ts` ×2 and
+   the hardware catalog (they wait for the UI CPC selector).
 2. **Burst arrivals.** `ArrivalShape.bursts?: { ratePerHour, heightMult: [lo, hi], durationSec:
    [lo, hi] }` (seeded, per tick) plus scheduled bursts at fixed times. Default undefined, so Midwest
    and Revenue are bit-identical.
