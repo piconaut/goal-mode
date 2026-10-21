@@ -55,8 +55,11 @@ export interface FixDef {
 export const FIXES: FixDef[] = [
   { id: 'CANCEL_RUNAWAY', name: 'Cancel the runaway DDF thread', hours: 0.5, trustCost: null, description: '-CANCEL THREAD on the looping BI query.' },
   { id: 'REBIND_REVERT', name: 'REBIND with APREUSE / switch back', hours: 1.5, trustCost: null, description: 'Restore the previous access path for the retail package.' },
+  { id: 'EFILE_REBIND_REVERT', name: 'REBIND with APREUSE / switch back', hours: 1.5, trustCost: null, description: 'Restore the previous access path for the e-filing package.' },
   { id: 'BLOCK_BOTS', name: 'Block bot traffic at the edge', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Rate-limit the credential-stuffing source addresses.' },
+  { id: 'BLOCK_FILING_BOTS', name: 'Block bot traffic at the edge', hours: 1, trustCost: { facet: 'Taxpayers', amount: 1 }, description: 'Rate-limit the credential-stuffing source addresses on the taxpayer login.' },
   { id: 'MOBILE_BACKOFF', name: 'Turn on retry backoff in the API gateway', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Exponential backoff and a circuit breaker for the mobile app; customers see "try again later" instead of retrying.' },
+  { id: 'REFSTAT_BACKOFF', name: 'Back off refund-status retries', hours: 1, trustCost: { facet: 'Refunds', amount: 1 }, description: 'The status page says "check back tomorrow" and the client backs off; taxpayers see a delay message instead of retrying.' },
   { id: 'TERM_UTILITY', name: 'Terminate the overrunning REORG', hours: 0.5, trustCost: { facet: 'Finance', amount: 1 }, description: '-TERM UTILITY: stops the I/O storm; the REORG has to be rescheduled.' },
   { id: 'CANCEL_XLOG', name: 'Cancel the looping CICSXLOG job', hours: 0.5, trustCost: { facet: 'Regulator', amount: 1 }, description: 'C CICSXLOG: the loop stops; the CICS journals are archived late and audit asks why.' },
   { id: 'SCOPE_ENCRYPTION', name: 'Agree a narrower encryption scope', hours: 2, trustCost: { facet: 'Regulator', amount: 2 }, description: 'Encrypt only the regulated customer data sets; the online CPU overhead goes away, the regulator notes the exception.' },
@@ -64,9 +67,12 @@ export const FIXES: FixDef[] = [
   { id: 'STOP_SHADOW_IT', name: 'Stop the unapproved TSO workload', hours: 1, trustCost: { facet: 'Digital', amount: 1 }, description: 'Find the users behind the TSO CPU and have the model training moved off the mainframe.' },
   { id: 'ROLLBACK_TELLER_RELEASE', name: 'Roll back the teller release', hours: 1.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'Back out release 4.2 from the PROD1 CICS regions until it is made threadsafe.' },
   { id: 'NATIVE_SQL_PROCS', name: 'Redeploy as native SQL procedures', hours: 2, trustCost: { facet: 'Digital', amount: 1 }, description: 'Back out the external stored procedures; native SQL procedures under DDF are zIIP-eligible again.' },
+  { id: 'NATIVE_SQL_PROCS_REV', name: 'Redeploy as native SQL procedures', hours: 2, trustCost: { facet: 'Taxpayers', amount: 1 }, description: 'Back out the external stored procedures; native SQL procedures under DDF are zIIP-eligible again.' },
   { id: 'RECYCLE_PROD2_AORS', name: 'Recycle the PROD2 CICS AORs', hours: 1, trustCost: { facet: 'Retail', amount: 1 }, description: 'Restart CICSAOR2 and CICSAOR4 one at a time to clear the storage leak; in-flight teller work on them fails over.' },
+  { id: 'RECYCLE_PROD2_AORS_REV', name: 'Recycle the PROD2 CICS AORs', hours: 1, trustCost: { facet: 'Agents', amount: 1 }, description: 'Restart CICSAOR2 and CICSAOR4 one at a time to clear the storage leak; in-flight call-centre work on them fails over.' },
   { id: 'SCOPE_SMF_AUDIT', name: 'Negotiate the SMF audit scope', hours: 1, trustCost: { facet: 'Regulator', amount: 2 }, description: 'Agree with the regulator to keep sampled SMF 101/110 records only; the SMF address space drops back to normal.' },
   { id: 'HOLD_HSM_RECALLS', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Retail', amount: 1 }, description: 'HOLD RECALL until the storm drains; users wait for their data sets.' },
+  { id: 'HOLD_HSM_RECALLS_REV', name: 'Hold DFSMShsm recalls', hours: 0.5, trustCost: { facet: 'Agents', amount: 1 }, description: 'HOLD RECALL until the storm drains; case workers wait for their data sets.' },
 ];
 
 export const hardwareItem = (id: string): HardwareItem | undefined => HARDWARE.find((h) => h.id === id);

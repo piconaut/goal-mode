@@ -68,6 +68,9 @@ const FIX_BY_TRIGGER: Partial<Record<string, string>> = {
   ACCESS_PATH_REGRESSION: 'REBIND_REVERT',
 };
 
+/** Agency cards whose fix differs from the one their trigger implies (the trigger map stays Midwest's). */
+const FIX_BY_AGENCY_CARD: Partial<Record<string, string>> = { EFILE_REGRESSION: 'EFILE_REBIND_REVERT' };
+
 /** Work that arrives with no classification rule and lands in SYSOTHER (the MERGER story beat, the
  * NEW_APP_GOLIVE card): give each its own goal class, all in one policy change so neither overwrites the other. */
 const NEW_ARRIVALS = [
@@ -175,9 +178,9 @@ function obviousHourly(r: RunState, c: GameContent): RunState {
     run = requestChange(run, c, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
   }
   for (const inc of run.incidents.filter((i) => i.endTick === null)) {
-    const fixId = FIX_BY_TRIGGER[inc.truth.trigger];
-    const active = run.events.some((e) => e.started && !e.ended && e.trigger === inc.truth.trigger);
-    if (fixId && active) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
+    const active = run.events.filter((e) => e.started && !e.ended && e.trigger === inc.truth.trigger);
+    const fixId = active.map((e) => FIX_BY_AGENCY_CARD[e.defId]).find((f) => f) ?? FIX_BY_TRIGGER[inc.truth.trigger];
+    if (fixId && active.length > 0) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
   }
   return run;
 }
@@ -207,7 +210,9 @@ const fixer: Strategy = {
     let run = obviousHourly(moveStructuresHome(r, c), c);
     // Cards an analyst spots from their clue and ends with the card's own fix, incident or not (the REORG
     // overrun raises no SLA incident at all, only batch stretch).
-    for (const [defId, fixId] of Object.entries(ON_SIGHT_FIXES)) {
+    for (const [defId, midwestFixId] of Object.entries(ON_SIGHT_FIXES)) {
+      // The agency twin of a card keeps its id but may carry its own fix (charging an agency facet).
+      const fixId = c.events.find((d) => d.id === defId)?.fix ?? midwestFixId;
       if (run.events.some((e) => e.defId === defId && e.started && !e.ended)) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
     }
     return run;

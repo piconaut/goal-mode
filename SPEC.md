@@ -1104,9 +1104,15 @@ in deadline week.
 | **H1** PROD1 soft-capped at 480 MSU (set in the quiet months) | HMC | R4HA reaches the cap as the season grows; capping delay on PROD1 (Partition Data, R4HA gauge) | raise or remove the defined capacity (MLC up); group capacity with PROD2; move work to PROD2 |
 | **H2** IIPHONORPRIORITY=NO on PROD2 (left over from a cost study) | IEAOPT | zIIP delay for EFILE/ANALYTICS on PROD2 while its CPs have white space (DELAY, Partition Data zIIP busy) | YES (zIIP-eligible work may overflow to CPs: more MSU); add a zIIP; route DDF to PROD1 |
 
-The event deck so far is the seven Midwest cards that name no Midwest workload (REORG_OVERRUN,
-JOB_ABEND, CP_SPARING, HIRING_FREEZE, GREEN_IT_COD, SMF_AUDIT, AUDIT_UNCLASSIFIED); agency-specific
-cards come next.
+The event deck is the seven Midwest cards that name no Midwest workload (REORG_OVERRUN, JOB_ABEND,
+CP_SPARING, HIRING_FREEZE, GREEN_IT_COD, SMF_AUDIT, AUDIT_UNCLASSIFIED; audit cards ×1.5) plus 16
+agency adaptations with the same mechanics retargeted at agency workloads and agency clue text:
+"File early" campaign, runaway compliance query, e-filing access-path regression, credential stuffing on
+taxpayer login, refund-status retry storm, taxpayer-data encryption, zIIP loss, and the infrastructure
+cards (looping log archiver, CF link/failure, DASD, lock escalation, monitor creep, power cap, HSM
+recall storm, CICS SOS). Fixes that charge a bank stakeholder have agency twins charging Taxpayers,
+Refunds or Agents, so no fix is free. Bank-only stories (shadow IT, teller release, booking go-live) are
+left out.
 
 ### 13.5 Third scenario — "Harbourline Bank" (large estate; design, not built)
 
