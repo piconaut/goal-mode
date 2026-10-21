@@ -53,6 +53,12 @@ function Tool({ t, name, game }: { t: ToolView; name: (id: string) => string; ga
             {t.comingSoon ? 'Coming soon' : `Install · ${t.insightCost} Insight`}
           </button>
         )}
+        {t.trialLastDay !== null && (
+          <button className="primary" disabled={t.blocker !== null} title={t.blocker ?? undefined} onClick={() => game.send({ type: 'BUY_TOOL', toolId: t.id })}>
+            Keep it · {t.insightCost} Insight
+          </button>
+        )}
+        {t.trialLastDay !== null && <span className="muted" style={{ fontSize: 12 }}>Free trial until the end of day {t.trialLastDay + 1}</span>}
         {t.owned && (
           <button onClick={() => game.send({ type: 'SET_TOOL_ACTIVE', toolId: t.id, active: !t.active })}>{t.active ? 'Switch off' : 'Switch on'}</button>
         )}

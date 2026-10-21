@@ -14,6 +14,7 @@ import { emptyAlerts, evaluateAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { MON3_CHARTS } from '../content/tools';
+import { expireToolTrials, trialTool } from './tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
@@ -674,6 +675,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   };
 
   const bonus = r.bonusHours.filter((b) => b.untilDay > day + 1);
+  r = expireToolTrials(r, day);
   r = {
     ...r,
     trust,
@@ -718,7 +720,7 @@ export function continueEndless(run: RunState, content: GameContent): RunState {
 function openReview(r: RunState, content: GameContent, day: number): RunState {
   const [draft, r2] = withRng(r, (rng) => {
     // The hoarder perk is the advisor tool for free: pointless once it is owned.
-    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id) && !(d.id === 'RC_HOARDER' && r.tools.includes('RC_ADVISOR')) && !(d.id === 'SQL_SPRINT' && r.projects?.some((p) => p.id === 'SQL_TUNING' && p.done)) && !(d.id === 'MENTOR' && difficultyOf(r.difficulty).hints === 'CLEAR'));
+    const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id) && !(d.id === 'RC_HOARDER' && r.tools.includes('RC_ADVISOR')) && !(d.id === 'SQL_SPRINT' && r.projects?.some((p) => p.id === 'SQL_TUNING' && p.done)) && !(d.id === 'MENTOR' && difficultyOf(r.difficulty).hints === 'CLEAR') && !(d.id === 'TOOL_TRIAL' && !trialTool(r)));
     const out = [];
     for (let i = 0; i < 3 && pool.length > 0; i++) {
       const p = rng.pickWeighted(pool, (d) => d.weight)!;
@@ -766,6 +768,17 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
     case 'BUDGET_SWAP':
       r = { ...r, perks: [...r.perks, optionId], capexRemaining: r.capexRemaining + DRAFT_TUNING.budgetSwapCapex };
       break;
+    case 'TOOL_TRIAL': {
+      const t = trialTool(r);
+      if (t)
+        r = {
+          ...r,
+          tools: [...r.tools, t.id],
+          toolTrials: [...(r.toolTrials ?? []), { id: t.id, untilDay: r.day + 1 + DRAFT_TUNING.toolTrialDays }],
+          log: [...r.log, `Analytics: ${t.name} on a free ${DRAFT_TUNING.toolTrialDays}-day trial`],
+        };
+      break;
+    }
     case 'SQL_SPRINT':
       r = grantProjectHours(r, 'SQL_TUNING', DRAFT_TUNING.sqlSprintHours);
       break;

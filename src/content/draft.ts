@@ -15,6 +15,8 @@ export const DRAFT_TUNING = {
   // FICTIONAL: a vendor's consultants for a day put this many hours into the SQL tuning project (half of it).
   sqlSprintHours: 6,
   vendorFriendDays: 1,
+  // FICTIONAL: a vendor lends an analytics tool for a few days, hoping you'll buy it.
+  toolTrialDays: 3,
   // FICTIONAL: after a WLM course the team writes and activates policy changes in half the time.
   wlmCourseHoursMult: 0.5,
   // FICTIONAL: a vendor promotion on specialty engines; cheap enough to tempt offload, not enough to make it free.
@@ -30,6 +32,7 @@ export const DRAFT_OPTIONS: DraftDef[] = [
   { id: 'CFO_BONUS', title: 'Capex top-up', description: '+$300k hardware budget this quarter.', weight: 2 },
   { id: 'QUIET_DAY', title: 'Team offsite', description: 'Fatigue −30.', weight: 2 },
   { id: 'GOODWILL', title: 'Good news story', description: 'Trust +4 with every stakeholder.', weight: 2 },
+  { id: 'TOOL_TRIAL', title: 'Vendor tool trial', description: 'A vendor lends you the best analytics tool you could buy next (one without collection overhead), free for 3 days. Buy it before then to keep it.', weight: 2 },
   { id: 'VENDOR_TRIAL', title: 'Analytics vendor trial', description: '+15 Insight.', weight: 2 },
   { id: 'HMC_NINJA', title: 'Perk: HMC Ninja', description: 'PR/SM changes (weights, logicals, caps) cost no engineer-hours.', weight: 1 },
   { id: 'BELT_AND_BRACES', title: 'Perk: Belt and Braces', description: 'Change failure risk halved.', weight: 1 },

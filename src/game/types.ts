@@ -193,6 +193,8 @@ export interface RunState {
   /** Analytics tools bought (content/tools.ts) and the ones switched off to save their CPU. */
   tools: string[];
   toolsOff: string[];
+  /** Tools on a free vendor trial (draft reward): in `tools` until the end of day untilDay − 1 unless bought. */
+  toolTrials?: { id: string; untilDay: number }[];
   /** Closed hours of per-workload measurements (SMF 101/110-style detail), newest last, ~2 days. */
   smfHours: SmfHour[];
   /** Daily capacity peaks so far (all days), and today's running peaks. */

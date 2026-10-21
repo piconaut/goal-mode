@@ -616,6 +616,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     `hoursFor`). Test; run goldens regenerated (draft pool), sim hash unchanged
   - [x] Loop 98: perk A mentor (SPEC's "codex insight": morning hints one level clearer, NONE→VAGUE→CLEAR via
     `hintLevelFor`; not offered on Story where hints are already clear). Test; run goldens regenerated
+  - [x] Loop 99: Vendor tool trial (SPEC's "temporary unlock"): lends the costliest overhead-free tool whose
+    prereqs are owned (`trialTool`) for 3 days (`toolTrials`, `expireToolTrials` at day end); buying keeps it; trial
+    tools don't count as prereqs. Analytics card shows "Keep it" + the last day. Test; run goldens regenerated.
+    All SPEC §9.5 opportunity types now exist
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
 

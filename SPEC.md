@@ -880,7 +880,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
   without Digital's approval.
 
 ### 9.5 Opportunities (draft rewards, pick 1 of 3 at end of day)
-Vendor tool trial (temporary unlock), training course (permanent perk), CFO capex bonus,
+Vendor tool trial (temporary unlock: the costliest overhead-free tool whose prerequisites you own, free for 3 days; buy it to keep it, `TOOL_TRIAL`), training course (permanent perk), CFO capex bonus,
 contractor (temporary +hours), SQL tuning consultants (6 free hours on the SQL tuning sprint project, `SQL_SPRINT`), "friendly IBM CE" (shorter hardware
 lead times), TFP contract offer, zIIP promotion pricing, codex insight.
 

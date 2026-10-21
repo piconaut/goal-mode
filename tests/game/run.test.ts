@@ -1,4 +1,5 @@
 import { askAround, inquiriesView } from '../../src/game/inquiries';
+import { buyTool, expireToolTrials, trialTool } from '../../src/game/tools';
 import { failRiskFor, hardwareItem, hoursFor, opexBudgetFor } from '../../src/game/catalog';
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
@@ -248,6 +249,23 @@ describe('draft perks', () => {
     const r = chooseDraft(review(fresh()), content, 'VENDOR_FRIEND');
     const out = requestChange(r, content, { label: 'zIIP', hardwareId: 'ADD_ZIIP' });
     expect(out.run.changes[0]!.activateDay).toBe(r.day + 3);
+  });
+
+  it('vendor tool trial lends a tool for 3 days unless bought', () => {
+    const base = fresh();
+    const t = trialTool(base)!;
+    expect(t.overhead).toBeNull();
+    const r = chooseDraft(review(base), content, 'TOOL_TRIAL');
+    expect(r.tools).toContain(t.id);
+    expect(r.toolTrials).toEqual([{ id: t.id, untilDay: base.day + 4 }]);
+    expect(expireToolTrials(r, base.day + 2).tools).toContain(t.id);
+    const gone = expireToolTrials(r, base.day + 3);
+    expect(gone.tools).not.toContain(t.id);
+    expect(gone.toolTrials).toEqual([]);
+    const bought = buyTool({ ...r, insight: 100 }, MIDWEST, t.id);
+    expect(bought.ok).toBe(true);
+    expect(bought.run.tools.filter((x) => x === t.id)).toHaveLength(1);
+    expect(expireToolTrials(bought.run, base.day + 3).tools).toContain(t.id);
   });
 
   it('zIIP promotion discounts zIIP capex only', () => {

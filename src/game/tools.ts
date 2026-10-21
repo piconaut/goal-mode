@@ -62,12 +62,38 @@ export function features(run: RunState): Set<ToolFeature> {
 
 export const hasFeature = (run: RunState, f: ToolFeature): boolean => features(run).has(f);
 
+export const onTrial = (run: RunState, id: string): boolean => (run.toolTrials ?? []).some((t) => t.id === id);
+
+/**
+ * The tool a vendor trial would lend: the costliest buyable-by-prereqs tool with no measurement overhead (a
+ * lent reporting tool needs no data gatherer), so the trial never changes the sim's CPU.
+ */
+export function trialTool(run: RunState): ToolDef | null {
+  const owned = (id: string) => run.tools.includes(id) && !onTrial(run, id);
+  const c = TOOLS.filter((t) => !run.tools.includes(t.id) && !t.comingSoon && t.overhead === null && t.prereqs.every(owned));
+  c.sort((a, b) => b.insightCost - a.insightCost || (a.id < b.id ? -1 : 1));
+  return c[0] ?? null;
+}
+
+/** End of `day`: trials that run out are uninstalled (no overhead to reset: trial tools have none). */
+export function expireToolTrials(run: RunState, day: number): RunState {
+  const expired = (run.toolTrials ?? []).filter((t) => t.untilDay <= day + 1).map((t) => t.id);
+  if (!expired.length) return run;
+  return {
+    ...run,
+    tools: run.tools.filter((t) => !expired.includes(t)),
+    toolsOff: run.toolsOff.filter((t) => !expired.includes(t)),
+    toolTrials: (run.toolTrials ?? []).filter((t) => !expired.includes(t.id)),
+    log: [...run.log, ...expired.map((id) => `Analytics: ${toolDef(id)?.name ?? id} trial ended`)],
+  };
+}
+
 /** Why a tool can't be bought right now, or null. */
 export function buyBlocker(run: RunState, tool: ToolDef): string | null {
-  if (run.tools.includes(tool.id)) return 'Owned';
+  if (run.tools.includes(tool.id) && !onTrial(run, tool.id)) return 'Owned';
   if (tool.comingSoon) return 'Not available yet';
   if (run.phase === 'GAMEOVER') return 'The run is over';
-  const missing = tool.prereqs.filter((p) => !run.tools.includes(p));
+  const missing = tool.prereqs.filter((p) => !run.tools.includes(p) || onTrial(run, p));
   if (missing.length) return `Needs ${missing.map((m) => toolDef(m)?.name ?? m).join(', ')}`;
   if (run.insight < tool.insightCost) return `Needs ${tool.insightCost} Insight (have ${run.insight})`;
   return null;
@@ -108,7 +134,8 @@ export function buyTool(run: RunState, scenario: Scenario, toolId: string): Chan
   if (!tool) return { run, ok: false, message: `Unknown tool ${toolId}` };
   const blocker = buyBlocker(run, tool);
   if (blocker) return { run, ok: false, message: `${tool.name}: ${blocker}` };
-  const r = withMeasurement({ ...run, insight: run.insight - tool.insightCost, tools: [...run.tools, tool.id], log: [...run.log, `Analytics: ${tool.name} installed (−${tool.insightCost} Insight)`] }, scenario);
+  const trial = onTrial(run, tool.id);
+  const r = withMeasurement({ ...run, insight: run.insight - tool.insightCost, tools: trial ? run.tools : [...run.tools, tool.id], toolTrials: (run.toolTrials ?? []).filter((t) => t.id !== tool.id), log: [...run.log, `Analytics: ${tool.name} installed (−${tool.insightCost} Insight)`] }, scenario);
   return { run: r, ok: true, message: `${tool.name} installed. ${tool.reveals}` };
 }
 
@@ -142,6 +169,8 @@ export interface ToolView {
   active: boolean;
   comingSoon: boolean;
   blocker: string | null;
+  /** Last day of a free trial, or null if not on trial. */
+  trialLastDay: number | null;
 }
 
 export function overheadText(t: ToolDef): string | null {
@@ -166,6 +195,7 @@ export function toolsView(run: RunState): ToolView[] {
     active: run.tools.includes(t.id) && !run.toolsOff.includes(t.id),
     comingSoon: t.comingSoon ?? false,
     blocker: buyBlocker(run, t),
+    trialLastDay: (() => { const tr = (run.toolTrials ?? []).find((x) => x.id === t.id); return tr ? tr.untilDay - 1 : null; })(),
   }));
 }
 
