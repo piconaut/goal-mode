@@ -716,6 +716,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   }
 
   const compBy: Record<string, number> = {};
+  const tries: Record<string, number> = {};
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
     if (r.newBacklog > 1e-9) backlog[s.key] = r.newBacklog;
@@ -735,7 +736,11 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       const k = wlLparKey(s.workloadId, l.id);
       rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
       compBy[k] = (compBy[k] ?? 0) + r.completions;
-      if (failByWorkloadLpar) failByWorkloadLpar[k] = (failByWorkloadLpar[k] ?? 0) + r.failed;
+      if (failByWorkloadLpar) {
+        // Only fast failures (abends, subsystem rejections) count; a timeout is slow and shows in the response.
+        failByWorkloadLpar[k] = (failByWorkloadLpar[k] ?? 0) + Math.min(r.failed, s.rate * TICK_SEC * s.failFrac);
+        tries[k] = (tries[k] ?? 0) + r.completions + r.failed;
+      }
       const w = workloadById[s.workloadId]!;
       sums.randomIops += s.rate * s.ioPerTxn;
       if (usesDb2(w)) {
@@ -747,8 +752,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     const c = compBy[k]!;
     rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
     if (failByWorkloadLpar) {
-      const f = failByWorkloadLpar[k] ?? 0;
-      failByWorkloadLpar[k] = c + f > 0 ? f / (c + f) : 0;
+      const n = tries[k] ?? 0;
+      failByWorkloadLpar[k] = n > 0 ? (failByWorkloadLpar[k] ?? 0) / n : 0;
     }
   }
 
@@ -918,7 +923,9 @@ function updateRouting(s: SimState, scenario: Scenario): SimState {
 // What CICSPlex SM sees of a region: last tick's normal response and abend rate for this work there.
 function regionStat(s: SimState, w: WorkloadDef, lparId: string): RegionStat {
   const k = wlLparKey(w.id, lparId);
-  return { lparId, rtSec: s.env.rtByWorkloadLpar[k] ?? 0, failFrac: s.env.failByWorkloadLpar?.[k] ?? 0 };
+  // No normal completions (all timed out, or no traffic yet) reads as the timeout, never as instant.
+  const rt = s.env.rtByWorkloadLpar[k] ?? 0;
+  return { lparId, rtSec: rt > 0 ? rt : w.timeoutSec, failFrac: s.env.failByWorkloadLpar?.[k] ?? 0 };
 }
 
 function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandidate {
