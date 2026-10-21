@@ -357,6 +357,11 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   upgraded → `ChangeRequest.cpcId`, `HardwareItem.perCpc/unavailable`, refused pointless buys, UI CPC picker, bots
   step the first CPC below 7 (SPEC §5.11.3). 360 tests, Midwest hash unchanged. Re-sweep running → runs/hb40c.csv
   (before: hb40b textbook median day 28, expert 26, all trust/opex ends).
+  hb40c (12 h regression + per-CPC hardware): donothing 10 / 11 / 11, textbook 26 / 29 / 32 (in the 28–32 target),
+  expert 24 / 26 / 29 (target: wins). Seed-2 digest: expert's day-0 capacity step was refused for hours (Harbourline
+  day-0 fixes 10.5 h + 2 h > 12 h incl. overtime), so it played as plain fixer and its emergency changes cost trust and
+  shifted the event draw. Expert now retries the capacity step on days 1–2 (CPC2 5 → 6 from day 3). Expert re-sweep
+  seeds 1–8 running → runs/hb40d.csv. Open: donothing ends day 10–11 (target 12–18).
 - **2026-10-21 (loop 135):** Harbourline balance from the 40-day digest: REGRESSION adapted to RETAIL ×1.5 (was
   Midwest's ×3; RETAIL ≈ half of online CPU, so ×3 added ~10 CPs of demand to a 24-CP sysplex), opex budget 1.4M → 1.5M
   (textbook bills $1.6–1.7M, ~7 % over like Midwest's). Midwest hash unchanged. Re-sweep running → runs/hb40b.csv.
