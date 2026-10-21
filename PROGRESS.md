@@ -151,6 +151,13 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   Loop 102 smoke sweep (seeds 1–4): no regression
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
+- [~] *State Revenue Agency* playable (loop 114, SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`,
+  picker in the new-run dialog and day-1 briefing), per-scenario facets, flaws G1–G3/H1–H2, story beats with a
+  two-day hint for pre-filled returns. First sweep (seeds 1–6, Normal): do-nothing 10 / 14 / 20 (trust 5 · batch 1,
+  mostly Regulator after batch misses), textbook 26 / 29 / 30 (trust 6: Taxpayers or Regulator), expert victory 6/6.
+  Already on target; re-sweep 20 seeds. Next: agency-specific event cards (adapt the Midwest ones with their own
+  text: e-filing campaign, refund-status retry storm, looping refund STC…), Codex entries for IIPHONORPRIORITY and
+  soft capping if missing, Story/Hard sweeps
 - [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
   - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
@@ -292,6 +299,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-21 (loop 114):** second scenario *State Revenue Agency* (scenario packs, per-scenario facets, shared batch generator, REVPOL flaws G1–G3, H1–H2, SPEC §13.4, bot day-0 fixes, UI picker). Midwest unchanged: bench hash `eddf17fc7c615524`, goldens unchanged, 320 tests. Revenue sweep seeds 1–6 on target (above). The loop-113 Midwest re-sweep died mid-run (a bot.ts edit during the sweep); re-run pending. Planned a large-bank scenario (user request).
 - **2026-10-21 (loop 110):** PR #10 (CICS goal checks) merged after check + hashes; RETRY_STORM card (mobile λ ×2.5, CPU/txn flat; fix MOBILE_BACKOFF) with realism test. 308 tests, bench hash unchanged.
 - **2026-10-21 (IBM-docs realism thread):** audited WLM, capping, IEAOPTxx, CF heuristic against MVS Planning: WLM V2R5,
   Init & Tuning Ref and the WSC sync/async paper. Fixed I/O using (connect only), discretionary batch zIIP overflow and

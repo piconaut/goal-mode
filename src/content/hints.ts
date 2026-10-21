@@ -83,4 +83,13 @@ export const STORY_BEAT_HINTS: Record<string, { daysBefore: number; from: string
       'and Retail will judge us on its response times from day one. Do any of our classification rules catch that work, ' +
       'or will it end up in SYSOTHER? Change Desk › WLM › Classification rules shows where it would go today.',
   },
+  PREFILL: {
+    daysBefore: 2,
+    from: HINT_SENDER,
+    subject: 'Before pre-filled returns go live',
+    body:
+      'The pre-filled returns API launches on both production images in two days. It runs under USS (subsystem OMVS) as userid PFILSVC, ' +
+      'and taxpayers will judge us on it in the middle of the season. Does any REVPOL rule catch that work, ' +
+      'or will it end up in SYSOTHER? Change Desk › WLM › Classification rules shows where it would go today.',
+  },
 };
