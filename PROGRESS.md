@@ -460,6 +460,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   keys (workload@lpar, lpar|period, lpar:pool), RMF/WLM accumulators without spreads. Profile is now flat (no
   function > 13% self); what is left is allocation (results/accumulators, GC ~5%), log-normal buckets (~5%) and
   JIT warm-up: `step` is deoptimised ~10× on day 1 (and through day 3–4 in bot runs) as state objects change shape
+- 2026-10-21 (perf thread): `step` split into `lparDemand` and `dispatchLpar` stages sharing a `TickCtx`, so each
+  deopt recompiles a small function, not all of `step` (hash unchanged at 8 days). Day 1 4.05–4.18 s → 3.25–3.7 s;
+  steady days ~2.0–2.4 s. Next: split soft capping/PR/SM and the cost/RMF tail the same way.
 - [ ] Structural options for 4×, in expected-value order: (1) cache per-LPAR slice specs and only rebuild on
   config/policy/event changes; (2) evaluate projections on a reduced slice set (only the receiver's and donors'
   periods); (3) struct-of-arrays for scps/buckets to cut allocation (GC 7%); (4) evaluate DEVT/SYSP every 3rd
@@ -826,6 +829,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 - **Balance whack-a-mole:** keep bots and golden runs from M2 onward.
 
 ## Session log
+- **2026-10-21 (perf thread):** `step` split into per-LPAR stages; day 1 ~20% faster, hash unchanged. 288 tests.
 - **2026-10-20 (loop 79):** contrast audit fixed the light theme's status colours; contrast test for all themes. 273 tests.
 - **2026-10-20 (loop 78):** career v1 (XP across runs → starting-perk unlocks, IndexedDB). 270 tests.
 - **2026-10-20 (loop 77):** two pact draft cards (persistent perk + persistent downside). 267 tests.
