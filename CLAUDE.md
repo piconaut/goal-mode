@@ -110,7 +110,8 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
 - Delegation (to save usage): hand well-scoped tasks to the Sonnet subagents in `.claude/agents/` —
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
-  brief) and `log-reader` (digest bot/sweep logs, test failures, long reports). Keep sim model changes,
+  brief) `log-reader` (digest bot/sweep logs, test failures, long reports) and `pr-reviewer` (check out a PR in a worktree,
+  run check + bench hashes, verify its claims, return a merge verdict; the main agent merges or comments). Keep sim model changes,
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
