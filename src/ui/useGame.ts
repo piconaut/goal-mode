@@ -14,7 +14,7 @@ import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type
 export interface GameHandle {
   view: ViewModel | null;
   /** Spectator mode (`?spectate=<run>`): the watched run file and its latest command, or the fetch error. */
-  spectate: { name: string; last: string; error: string | null } | null;
+  spectate: { name: string; last: string; note: string; error: string | null } | null;
   report: string;
   policy: string;
   history: HistoryPoint[];
@@ -59,7 +59,7 @@ export function useGame(): GameHandle {
   const [results, setResults] = useState<GameHandle['results']>([]);
   const clockRef = useRef('');
   const spectateName = useMemo(() => new URLSearchParams(window.location.search).get('spectate'), []);
-  const [spectate, setSpectate] = useState<GameHandle['spectate']>(spectateName ? { name: spectateName, last: '', error: null } : null);
+  const [spectate, setSpectate] = useState<GameHandle['spectate']>(spectateName ? { name: spectateName, last: '', note: '', error: null } : null);
 
   useEffect(() => {
     const w = new Worker(new URL('../worker/game.worker.ts', import.meta.url), { type: 'module' });
@@ -120,10 +120,12 @@ export function useGame(): GameHandle {
         if (text === lastText) return;
         lastText = text;
         worker.current?.postMessage({ type: 'SPECTATE', text } satisfies ToWorker);
-        const log = (JSON.parse(text) as { log?: unknown[] }).log ?? [];
-        setSpectate({ name: spectateName, last: JSON.stringify(log.at(-1) ?? null), error: null });
+        const log = (JSON.parse(text) as { log?: { cmd: string; text?: string }[] }).log ?? [];
+        const note = [...log].reverse().find((c) => c.cmd === 'note')?.text ?? '';
+        const last = [...log].reverse().find((c) => c.cmd !== 'note');
+        setSpectate({ name: spectateName, last: last ? JSON.stringify(last) : '', note, error: null });
       } catch (e) {
-        setSpectate((s) => ({ name: spectateName, last: s?.last ?? '', error: String(e) }));
+        setSpectate((s) => ({ name: spectateName, last: s?.last ?? '', note: s?.note ?? '', error: String(e) }));
       }
     };
     void poll();

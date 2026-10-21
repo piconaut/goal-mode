@@ -52,7 +52,9 @@ export type PlayCommand =
   | { cmd: 'tfp'; accept: boolean }
   | { cmd: 'report'; kind: ReportKind; index?: number; scKey?: string; system?: string }
   | { cmd: 'smf'; kind: SmfKind; hour?: string }
-  | { cmd: 'rcadvice'; workloadId?: string | null };
+  | { cmd: 'rcadvice'; workloadId?: string | null }
+  /** The agent's reasoning, logged in the run file (spectator banner); changes nothing in the run. */
+  | { cmd: 'note'; text: string };
 
 export interface PlayFile {
   version: 1;
@@ -110,6 +112,8 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (run.phase !== 'BRIEFING') return fail(`Cannot start a day in phase ${run.phase}`);
       return done(startDay(run, content), 'Day started (06:00).');
     }
+    case 'note':
+      return c.text.trim() ? done(run, 'Noted.') : fail('Empty note');
     case 'advance': {
       if (run.phase !== 'LIVE') return fail(`Nothing to advance in phase ${run.phase}; use start.`);
       const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));

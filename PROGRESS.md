@@ -672,8 +672,10 @@ to `main` (this is the last push there; M9 goes on its feature branch).
     limited to `[\w.-]`), the worker loads it read-only (only GET_*/CLASSIFY messages pass; no autosave, career
     or speed), the codec moved to `src/game/runFile.ts`; banner shows the latest logged command. Verified in
     preview: the page followed `play advance` from 11:00 to 13:00
-  - [ ] Still to do: agent reasoning line in the banner (e.g. a `note` verb logged in the run file), `--pace`,
-    importing a finished run as a save, the bot `--spectate` writer, and suppressing the tutorial while spectating
+  - [x] Loop 87: `note <text>` verb (logged, run unchanged; banner shows the latest note as the agent's reasoning),
+    `advance N --pace 2s` (one hour at a time, saved after each; same end state, tested), tutorial hidden while
+    spectating
+  - [ ] Still to do: importing a finished run as a save, the bot `--spectate` writer
   - Same for the strategy bots (user request 2026-10-20): `tools/bot.ts --spectate <run> [--pace 2s]` writes
     the same run file after every simulated hour, with the bot's latest change labels as the banner text
 

@@ -51,4 +51,13 @@ describe('headless play interface', () => {
     f = run(f, [{ cmd: 'unpin', id }]);
     expect(f.run.pins).toHaveLength(0);
   });
+
+  it('notes are logged without touching the run; hour-by-hour advance (--pace) ends in the same state', () => {
+    const base = run(newPlayFile(7), [{ cmd: 'start' }]);
+    const noted = run(base, [{ cmd: 'note', text: 'watching PROD2' }]);
+    expect(encodePlayFile({ ...noted, log: [] })).toBe(encodePlayFile({ ...base, log: [] }));
+    const once = run(base, [{ cmd: 'advance', hours: 2 }]);
+    const paced = run(base, [{ cmd: 'advance', hours: 1 }, { cmd: 'advance', hours: 1 }]);
+    expect(encodePlayFile({ ...paced, log: [] })).toBe(encodePlayFile({ ...once, log: [] }));
+  });
 });

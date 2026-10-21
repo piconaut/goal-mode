@@ -28,7 +28,7 @@ You are a cost-cutter: the CFO watches the monthly bill. Keep the MLC estimate u
 - Diagnose before changing: name the symptom, the report that shows it and the cause before you act.
 
 ## Run log
-Append one line per command to `<runFile>.log.md`: day, clock, command, and a one-sentence reason. At the
+Before each change, RCA or purchase, record the reason with `npm run -s play -- <runFile> note "<one sentence>"` (spectators see it). Append one line per command to `<runFile>.log.md`: day, clock, command, and a one-sentence reason. At the
 end of every day add a short paragraph: what went wrong, what you changed and why.
 
 ## Report back

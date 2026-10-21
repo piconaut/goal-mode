@@ -9,6 +9,8 @@
 //   npm run play -- runs/a.json pin WLMGL <interval> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric>
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED | pin DB2|CICS <hour> <workloadId> <metric>
 //   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
+//   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
+//   npm run play -- runs/a.json advance 3 --pace 2s   (one hour at a time, saving and pausing between, for spectators)
 //   npm run play -- runs/a.json json '{"cmd":"change","req":{...}}'   (any PlayCommand, e.g. wlm edits)
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -21,7 +23,10 @@ import type { InquiryKind } from '../src/content/inquiries';
 import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { applyPlayCommand, catalogText, decodePlayFile, encodePlayFile, mon3Text, statusText, type PlayCommand } from './playCore';
 
-const [path, verb, ...rest] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const paceAt = argv.indexOf('--pace');
+const paceMs = paceAt >= 0 ? parseFloat(argv.splice(paceAt, 2)[1] ?? '2') * 1000 : 0;
+const [path, verb, ...rest] = argv;
 if (!path || !verb) {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).join('\n'));
   process.exit(1);
@@ -46,6 +51,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'new': return { cmd: 'new', seed: Number(rest[0] ?? 42), difficulty: (rest[1] ?? 'normal').toUpperCase() as DifficultyId };
     case 'start': return { cmd: 'start' };
     case 'advance': return { cmd: 'advance', hours: Number(rest[0] ?? 1) };
+    case 'note': return { cmd: 'note', text: rest.join(' ') };
     case 'draft': return { cmd: 'draft', optionId: rest[0] && rest[0] !== 'none' ? rest[0] : null };
     case 'rca': {
       const ev = rest.indexOf('--evidence');
@@ -73,13 +79,21 @@ let file = isNew ? null : decodePlayFile(readFileSync(path, 'utf8'));
 if (typeof c === 'string') {
   console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : mon3Text(file!));
 } else {
-  const res = applyPlayCommand(file ?? ({ version: 1, log: [] } as never), c);
-  file = res.file;
-  console.log(res.ok ? res.text : `REFUSED: ${res.text}`);
-  if (res.ok) {
-    mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, encodePlayFile(file));
-    if (c.cmd !== 'report' && c.cmd !== 'smf') console.log('\n' + statusText(file));
+  // --pace: advance one hour at a time, saving after each so a spectator sees every step (same end state).
+  const steps: PlayCommand[] = paceMs > 0 && c.cmd === 'advance' ? Array.from({ length: Math.max(1, Math.min(24, Math.floor(c.hours))) }, () => ({ cmd: 'advance', hours: 1 })) : [c];
+  let res = { file: file ?? ({ version: 1, log: [] } as never), ok: true, text: '' };
+  for (const [i, step] of steps.entries()) {
+    if (i > 0 && (res.file.run.phase !== 'LIVE' || !res.ok)) break;
+    if (i > 0) await new Promise((r) => setTimeout(r, paceMs));
+    res = applyPlayCommand(res.file, step);
+    if (res.ok) {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, encodePlayFile(res.file));
+    }
+    if (steps.length > 1) console.log(res.ok ? res.text : `REFUSED: ${res.text}`);
   }
+  file = res.file;
+  if (steps.length === 1) console.log(res.ok ? res.text : `REFUSED: ${res.text}`);
+  if (res.ok && c.cmd !== 'report' && c.cmd !== 'smf' && c.cmd !== 'note') console.log('\n' + statusText(file));
   process.exitCode = res.ok ? 0 : 2;
 }

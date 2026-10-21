@@ -39,6 +39,7 @@ export function App() {
       {game.spectate && (
         <div className="spectate-banner" role="status">
           Spectating <b>{game.spectate.name}</b> (read-only){game.spectate.error ? ` · cannot read the run file: ${game.spectate.error}` : game.spectate.last ? ` · last command ${game.spectate.last}` : ''}
+          {game.spectate.note && <div className="spectate-note">“{game.spectate.note}”</div>}
         </div>
       )}
       <div className="tabs">
@@ -69,7 +70,7 @@ export function App() {
       {tab === 'codex' && <Codex v={v} />}
       {tab === 'inbox' && <Inbox v={v} game={game} />}
       </ErrorBoundary>
-      <Tutorial v={v} />
+      {!game.spectate && <Tutorial v={v} />}
       <ErrorBoundary where="briefing / review" onReset={() => setOverlayOpen(false)}>
       <Overlays v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
       </ErrorBoundary>

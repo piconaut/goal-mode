@@ -265,3 +265,7 @@ details.section[open] > summary { margin-bottom: 8px; }
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+.spectate-note {
+  color: var(--muted);
+  font-style: italic;
+}
