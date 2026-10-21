@@ -198,6 +198,26 @@ export const MIDWEST_EVENTS: EventDef[] = [
     clue: 'Mobile END/S x2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); DDFPRD APPL% up in step. Fixes: switch on client backoff in the API gateway (Digital trust), or protect mobile and ride it out.',
   },
   {
+    // An operations utility named CICSXLOG (a CICS log archiver, not a region) matches the CICS* STC rule meant
+    // for regions and lands in STCHI at importance 1. A bad end-of-file test makes it loop on one TCB.
+    id: 'XLOG_LOOP',
+    name: 'Looping log archiver in a high class',
+    category: 'SOFTWARE',
+    minDay: 3,
+    weight: 1.2,
+    trigger: 'RUNAWAY_WORK',
+    affects: ['TELLER', 'PAYMQ'],
+    startHour: [8, 16],
+    durationHours: 6, // the on-call eventually notices and cancels it
+    // A loop in a single-TCB program burns at most one engine (APPROX: exactly ~0.9 reference engines).
+    begin: [{ kind: 'ADD_ADDRESS_SPACE', addressSpace: { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC', baseEnginesRef: 0.9, ziipFrac: 0 } }],
+    end: [mod('asCpu', 'CICSXLOG', 0)],
+    fix: 'CANCEL_XLOG',
+    forewarning: null,
+    announcement: null,
+    clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay. Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
+  },
+  {
     id: 'CF_LINK',
     name: 'Degraded CF link to CF01',
     category: 'HARDWARE',

@@ -486,6 +486,30 @@ describe('event cards (SPEC §9)', () => {
     expect(bots.engPerTxn).toBeLessThan(0.7 * asIs.engPerTxn);
   }, 60_000);
 
+  it('a looping STC caught by the CICS* rule takes an engine at importance 1 until reclassified', () => {
+    const prod1 = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let stchi = 0;
+      let lowerDelay = 0;
+      for (let i = 0; i < 30; i++) {
+        s = step(s, [], MIDWEST);
+        for (const sc of s.last.lpars.find((l) => l.lparId === 'PROD1')!.scps) {
+          if (sc.scKey === 'STCHI#1') stchi += sc.cpEngines / 30;
+          else if (!sc.scKey.startsWith('SYS')) lowerDelay += sc.delayCpu;
+        }
+      }
+      return { stchi, lowerDelay };
+    };
+    const reclassified = structuredClone(BASEPOL);
+    reclassified.subsystems.find((x) => x.subsystem === 'STC')!.rules.unshift({ qualifier: 'TN', pattern: 'CICSXLOG', serviceClass: 'STCLO', reportClass: null, children: [] });
+    const asIs = prod1([]);
+    const loop = prod1(card('XLOG_LOOP'));
+    const fixed = prod1([...card('XLOG_LOOP'), { kind: 'ACTIVATE_POLICY', definition: reclassified }]);
+    expect(loop.stchi).toBeGreaterThan(asIs.stchi + 0.6);
+    expect(loop.lowerDelay).toBeGreaterThan(asIs.lowerDelay);
+    expect(fixed.stchi).toBeLessThan(asIs.stchi + 0.1);
+  }, 60_000);
+
   it('an SMF retention audit raises SMF address space CPU and total MSU but no workload response', () => {
     const asIs = run([]);
     const audit = run(card('SMF_AUDIT'));

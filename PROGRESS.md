@@ -137,9 +137,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   tool (Report Class Hoarder); Codex persists (localStorage). Still open: scenario unlocks (one scenario so far)
 
 **M8.4 Content**
-- [~] Events to ~25 (SPEC §9); 23 now. Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
+- [~] Events to ~25 (SPEC §9); 24 now. Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
   NEW_APP_GOLIVE, POWER_CAP, HSM_RECALL_STORM, CP_SPARING (red herring), HIRING_FREEZE, AUDIT_UNCLASSIFIED,
-  ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106), RETRY_STORM (loop 110). Re-sweep the bots once the deck is complete
+  ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106), RETRY_STORM (loop 110), XLOG_LOOP (loop 112: looping STC misclassified by the CICS* rule). Re-sweep the bots once the deck is complete
   - VENDOR_PRICE pending: needs a run-level product price multiplier in the sim or a run-aware scenario; asked the user
   - HyperPAV exhaustion dropped: organic LCU I/O is ~2k/s, so even zero aliases moves IOSQ < 0.3 ms (no symptom)
   - STORAGE card (DBA grows DB1B buffer pools on PROD2) not added (loop 107): it exposed a swap deadlock, fixed
@@ -320,3 +320,4 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
 - **2026-10-20 (loop 65):** HIRING_FREEZE card (implementer subagent; reviewed: reason moved into the briefing). VENDOR_PRICE needs a product price lever in the sim or a run-aware scenario: asked the user. 250 tests.
 - **2026-10-20 (loop 64):** RCA trigger truth respects card mechanisms. 249 tests.
 - **2026-10-20 (loops 48–63):** morning hints, difficulty severity/timing/starting fixes, Story/Hard sweep, end-of-run report, six new event cards, merger hint (user decision). 229 → 246 tests.
+- **2026-10-21 (loop 112):** XLOG_LOOP card: CICSXLOG log archiver matches the CICS* STC rule, lands in STCHI (imp 1) and loops on ~1 engine on PROD1. Fixes: cancel (Regulator −1) or a reclassification rule. Built as an STC rather than the SPEC's batch job because address spaces classify by jobname only; SPEC §9 row updated. Realism test; 311 tests, bench hash unchanged (eddf17fc…).
