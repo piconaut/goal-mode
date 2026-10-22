@@ -1,5 +1,7 @@
 // Messages between the UI thread and the game worker.
 
+import type { Mon3View } from '../game/mon3';
+import type { Mon3HistoryRange } from '../game/mon3History';
 import type { DifficultyId } from '../content/difficulty';
 import type { InquiryKind } from '../content/inquiries';
 import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
@@ -87,6 +89,8 @@ export type ToWorker =
   | { type: 'PROJECT_WORK'; id: string; hours: number }
   | { type: 'WHATIF_RUN'; commands: Command[]; label: string }
   | { type: 'GET_MON3_CHARTS'; fromSample: number; fromMarker: number }
+  /** A past Monitor III interval: the one ending at or before `tick`. */
+  | { type: 'GET_MON3_AT'; tick: number }
   | { type: 'ALERT_ADD'; rule: Omit<AlertRule, 'id'> }
   | { type: 'ALERT_REMOVE'; id: number }
   | { type: 'AUTO_ADD'; rule: Omit<AutoRule, 'id'> }
@@ -102,12 +106,13 @@ export type ToWorker =
 
 export type FromWorker =
   | { type: 'CAREER'; career: CareerState; lastRunXp: number | null }
-  | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null; speed: number }
+  | { type: 'VIEW'; view: ViewModel; history: HistoryPoint[] | null; savedRunDay: number | null; pending: PendingPolicyView | null; speed: number; mon3Range: Mon3HistoryRange | null }
   | { type: 'CLASSIFIED'; result: ClassificationResult; pending: boolean }
   | { type: 'SMF'; data: SmfData }
   | { type: 'FINANCE'; finance: FinanceView }
   | { type: 'WHATIF_PROGRESS'; frac: number }
   | { type: 'WHATIF_RESULT'; label: string; base: WhatIfSummary; proposal: WhatIfSummary }
+  | { type: 'MON3_AT'; tick: number; view: Mon3View | null }
   | { type: 'MON3_CHARTS'; fromSample: number; fromMarker: number; samples: Mon3Sample[]; markers: ChartMarker[] }
   | { type: 'RULES'; active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null }
   | { type: 'REPORT'; text: string }

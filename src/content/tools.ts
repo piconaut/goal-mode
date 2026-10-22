@@ -216,4 +216,12 @@ export const MON3_CHARTS = {
   maxMarkers: 400,
 };
 
+// Monitor III history: RMF III writes one set of samples per MINTIME (default 100 s) to its VSAM data
+// sets, and the reports can be redisplayed for any range still held (RMF User's Guide, SC34-2664).
+// Retention is a game choice (user decision 2026-10-21), not a real default.
+export const MON3_HISTORY = {
+  mintimeTicks: 10,
+  retentionHours: 48,
+};
+
 export const toolDef = (id: string): ToolDef | undefined => TOOLS.find((t) => t.id === id);
