@@ -2,6 +2,8 @@ import type { Command } from '../sim/core/commands';
 import type { RcAdvice } from '../game/rcAdvisor';
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { ClassificationExplain } from '../game/classifyExplain';
+import type { Mon3View } from '../game/mon3';
+import type { Mon3HistoryRange } from '../game/mon3History';
 import type { HistoryPoint } from '../game/history';
 import type { ViewModel } from '../game/view';
 import type { ClassificationResult } from '../sim/wlm/classify';
@@ -30,6 +32,9 @@ export interface GameHandle {
   /** Career carried across runs, and the XP the run that just ended added. */
   career: { career: CareerState; lastRunXp: number | null } | null;
   charts: { samples: Mon3Sample[]; markers: ChartMarker[] };
+  /** Monitor III history held by the worker, and the past interval last fetched (null view: none held). */
+  mon3Range: Mon3HistoryRange | null;
+  mon3At: { tick: number; view: Mon3View | null } | null;
   rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null } | null;
   toast: { ok: boolean; message: string } | null;
   /** Every change-board result this session, newest last (toasts vanish; this doesn't). */
@@ -56,6 +61,8 @@ export function useGame(): GameHandle {
   const [career, setCareer] = useState<GameHandle['career']>(null);
   const [basket, setBasket] = useState<Command[]>([]);
   const [charts, setCharts] = useState<GameHandle['charts']>({ samples: [], markers: [] });
+  const [mon3Range, setMon3Range] = useState<Mon3HistoryRange | null>(null);
+  const [mon3At, setMon3At] = useState<GameHandle['mon3At']>(null);
   const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
   const [results, setResults] = useState<GameHandle['results']>([]);
@@ -75,6 +82,7 @@ export function useGame(): GameHandle {
         setSavedRunDay(m.savedRunDay);
         setPending(m.pending);
         setSpeed(m.speed);
+        setMon3Range(m.mon3Range);
       } else if (m.type === 'CAREER') setCareer({ career: m.career, lastRunXp: m.lastRunXp });
       else if (m.type === 'CLASSIFIED') setClassified({ result: m.result, pending: m.pending });
       else if (m.type === 'SMF') setSmf(m.data);
@@ -86,6 +94,7 @@ export function useGame(): GameHandle {
           samples: [...(m.fromSample === 0 ? [] : c.samples.slice(0, m.fromSample)), ...m.samples],
           markers: [...(m.fromMarker === 0 ? [] : c.markers.slice(0, m.fromMarker)), ...m.markers],
         }));
+      else if (m.type === 'MON3_AT') setMon3At({ tick: m.tick, view: m.view });
       else if (m.type === 'BASKET') setBasket(m.basket);
       else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds, advice: m.advice });
       else if (m.type === 'REPORT') setReport(m.text);
@@ -145,7 +154,7 @@ export function useGame(): GameHandle {
     window.history.replaceState(null, '', url);
   }, []);
 
-  return { spectate, adoptSpectated, view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, rules, toast, results, basket, setBasket, send };
+  return { spectate, adoptSpectated, view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, mon3Range, mon3At, rules, toast, results, basket, setBasket, send };
 }
 
 const SPEED_KEY = 'goalmode.speed';

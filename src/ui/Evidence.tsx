@@ -3,7 +3,8 @@ import type { ViewModel } from '../game/view';
 import type { GameHandle } from './useGame';
 
 /** Small pin button next to a value: sends the locator; the worker reads the value itself. */
-export function PinButton({ game, req, label }: { game: GameHandle; req: PinRequest; label: string }) {
+export function PinButton({ game, req, label }: { game: GameHandle | null; req: PinRequest; label: string }) {
+  if (!game) return null;
   return (
     <button className="pin" title={`Pin as RCA evidence: ${label}`} aria-label={`Pin ${label}`} onClick={() => game.send({ type: 'PIN', req })}>
       📌
