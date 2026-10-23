@@ -33,6 +33,8 @@ npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
+npx tsx tools/ci/behaviourNote.ts origin/dev     # CI gate: goldens changed ⇒ PR body needs "## Behaviour change" (PR_BODY env)
+npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5   # CI gate: bot sweep inside balance bands (see .github/workflows/ci.yml)
 # In `npm run dev` builds, globalThis.__goalMode.send(msg) talks to the worker (DEV_INSIGHT, DEV_FAST_DAYS, DEV_TFP_OFFER).
 ```
 
@@ -108,6 +110,9 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
 
 - Work milestone by milestone (PROGRESS.md). Keep the sim runnable headless at every step.
 - Small, focused commits. Don't mix model changes with UI changes.
+- Branches and PRs: one session branch per task, cut from `dev`, PR into `dev` with auto-merge; CI is the merge gate
+  (PROGRESS.md "Branch workflow"). Fill in the PR template's "Behaviour change" section whenever goldens change; label
+  pure optimisations `perf`.
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
 - Delegation (to save usage): hand well-scoped tasks to the Sonnet subagents in `.claude/agents/` —
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise

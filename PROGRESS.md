@@ -17,6 +17,15 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
   comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
+- **Branch workflow (user request 2026-10-23):** each session works on its own branch cut from `dev`, opens a PR into
+  `dev` with auto-merge, and CI merges it when green. CI (`.github/workflows/`): `check` (typecheck + all tests,
+  goldens included); `behaviour-note` (a PR that changes `tests/golden/hashes.json` needs a filled-in
+  "## Behaviour change" section, see the PR template); `perf-hash` (a PR labelled `perf` or titled "perf…" must keep
+  the Midwest and Harbourline 1-day bench hashes of its base); `balance` (when goldens change: donothing/textbook/expert
+  over seeds 1–5 must stay inside the loose bands in `tools/ci/balanceGate.ts`). After a rebase that conflicts on
+  `hashes.json`, regenerate it with `UPDATE_GOLDEN=1`, never merge it by hand. Run one golden-changing PR at a time.
+  GitHub settings (user): default branch `dev`; protect `dev` and `main` with these four checks required; allow
+  auto-merge; delete head branches on merge; `main` also needs an approval.
 - **Health:** `npm run check` green (370 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `be43ff16de564882` (since PR #9), Harbourline `be97b3e401164fc5`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
@@ -287,6 +296,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-21 | Performance budget: ≤ 2 s per headless day applies to Midwest-size estates; larger estates (Harbourline, 6 LPARs, ~7 s/day) are accepted as they are, no structural perf work for now. ≤ 4 ms/tick is a Midwest target too | User decision. The profile is flat and reaching 2 s on 6 LPARs would need structural changes (fewer per-tick allocations, coarser ticks for quiet LPARs); not worth it yet |
 | 2026-10-21 | HiperDispatch: 0 < E < 1 CP gets 1 × VM and the rest VL (was 2 × VM); 1 ≤ E < 1.5 keeps 2 × VM | Claim confirmed by the user (PR #9). DEVT 2VM+2VL → 1VM+3VL, SYSP 2VM → 1VM+1VL on Midwest; goldens and bench hashes regenerated |
 | 2026-10-23 | Capacity chart: LPARs from the scenario; one stacked MSU chart per CPC (from the LPARs' `cpcId`, any CPC count; `overlay` series stay lines over the stack) with that CPC's dashed installed CP capacity line (rises with On/Off CoD), plus one R4HA chart for all LPARs; last played day stays on screen until the next day's first sample; `LineChart` end labels spread 12 px apart, shown for up to 8 series | User request 2026-10-22 (Harbourline chart was empty, labels overlapped). Per-CPC charts at user request 2026-10-23: one total capacity line squashed the LPAR lines on multi-CPC estates |
+| 2026-10-23 | CI is the merge gate for `dev` and `main`: tests + goldens, a required "Behaviour change" note when goldens change, bench-hash equality for `perf` PRs, and a 5-seed bot sweep inside loose bands when goldens change | Sessions merge unattended, so the gates must be enforced by CI, not by the agent's own report. A valid behaviour change passes (regenerated goldens + note); an unexplained one or a "perf" change that moves the state does not |
 
 ## Open questions
 
@@ -346,6 +356,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-23:** CI added (`.github/workflows/ci.yml`, `pr-gates.yml`, `tools/ci/`, PR template) for the per-session-branch → `dev` auto-merge workflow. Balance bands checked against current `dev` (seeds 1–5): do-nothing 12 / 16 / 22 (batch 3 · trust 2), textbook 22 / 26 / 28 (batch 3 · trust 2), expert victory 5/5; all inside the bands, 15 runs in ~7 min on 4 cores. Waiting on the user for the GitHub settings (default branch, branch protection, auto-merge).
 - **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
   (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
 - **2026-10-21 (loop 124):** slice templates cached per LPAR by that LPAR's shares within a routing-free scope (bounded
