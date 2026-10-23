@@ -356,7 +356,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
-- **2026-10-23:** CI added (`.github/workflows/ci.yml`, `pr-gates.yml`, `tools/ci/`, PR template) for the per-session-branch → `dev` auto-merge workflow. Balance bands checked against current `dev` (seeds 1–5): do-nothing days 12–22, median 16 (batch 3 · trust 2); textbook and expert pending. Waiting on the user for the GitHub settings (default branch, branch protection, auto-merge).
+- **2026-10-23:** CI added (`.github/workflows/ci.yml`, `pr-gates.yml`, `tools/ci/`, PR template) for the per-session-branch → `dev` auto-merge workflow. Balance bands checked against current `dev` (seeds 1–5): do-nothing 12 / 16 / 22 (batch 3 · trust 2), textbook 22 / 26 / 28 (batch 3 · trust 2), expert victory 5/5; all inside the bands, 15 runs in ~7 min on 4 cores. Waiting on the user for the GitHub settings (default branch, branch protection, auto-merge).
 - **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
   (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
 - **2026-10-21 (loop 124):** slice templates cached per LPAR by that LPAR's shares within a routing-free scope (bounded
