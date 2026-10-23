@@ -48,6 +48,8 @@ export interface CostState {
   tfp?: TfpState;
   /** Fraction of the current month still billed sub-capacity (absent = 1). */
   subcapFrac?: number;
+  /** Vendor list-price multiplier on sub-capacity MLC (absent = 1). TFP prices are contracted, so unaffected. */
+  priceMult?: number;
 }
 
 export const newCost = (products: readonly ProductDef[]): CostState => ({
@@ -147,7 +149,7 @@ export function accrueTfp(cost: CostState, products: readonly ProductDef[], msuB
 
 /** This month's bill lines so far (sub-capacity part prorated, TFP baseline prorated). */
 export function billLines(cost: CostState, products: readonly ProductDef[]): Bill['lines'] {
-  const subcap = cost.subcapFrac ?? 1;
+  const subcap = (cost.subcapFrac ?? 1) * (cost.priceMult ?? 1);
   const tfp = cost.tfp;
   return cost.peaks.map((pk) => {
     const p = products.find((x) => x.id === pk.product)!;
@@ -169,6 +171,7 @@ export function closeMonth(cost: CostState, products: readonly ProductDef[]): Co
     hourly: Object.fromEntries(Object.keys(cost.hourly).map((k) => [k, [] as number[]])),
     bills: [...cost.bills, bill],
   };
+  if (cost.priceMult !== undefined) next.priceMult = cost.priceMult;
   if (cost.tfp) {
     next.subcapFrac = 0;
     next.tfp = { ...cost.tfp, consumed: Object.fromEntries(Object.keys(cost.tfp.consumed).map((k) => [k, 0])), monthFrac: 1 };

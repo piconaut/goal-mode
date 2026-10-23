@@ -6,7 +6,7 @@ import type { Command } from '../../sim/core/commands';
 import type { WorkloadDef } from '../../sim/workload/types';
 import { MIDWEST_EVENTS, type EventDef, type ScriptedBeat } from './midwest-events';
 
-const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'GREEN_IT_COD', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
+const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'GREEN_IT_COD', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
 // A strict regulator: audit cards come up more often than at the bank.
 const WEIGHT_MULT: Record<string, number> = { SMF_AUDIT: 1.5, AUDIT_UNCLASSIFIED: 1.5 };
 

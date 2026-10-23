@@ -241,6 +241,27 @@ export const MIDWEST_EVENTS: EventDef[] = [
     clue: 'WLMGL: CPU per transaction up ~6% on card auth, teller and payments from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
   },
   {
+    // Software vendors raise MLC list prices with notice; the new price applies to the whole bill of the month it
+    // takes effect in. APPROX: no proration within the month; TFP prices are contracted, so a TFP run is unaffected.
+    id: 'VENDOR_PRICE',
+    name: 'Vendor price increase',
+    category: 'ORG',
+    minDay: 10,
+    weight: 0.7,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: null, // a list price stays; the fix negotiates it back
+    oncePerRun: true,
+    // FICTIONAL magnitude: MLC per-MSU +8% (SPEC §9.4).
+    begin: [{ kind: 'SET_MLC_PRICE', mult: 1.08 }],
+    end: [{ kind: 'SET_MLC_PRICE', mult: 1 }],
+    fix: 'NEGOTIATE_MLC_PRICE',
+    forewarning: 'Procurement: "The software vendor has announced an 8% rise in monthly licence charges, effective this month\'s bill."',
+    announcement: null,
+    clue: 'Finance tab / SCRT report: MLC month-to-date up ~8% with the same product peaks; no performance symptom. Fixes: negotiate a multi-year agreement (Finance trust), cut the peaks (caps, batch moves, tuning), or move to Tailored Fit Pricing (contracted prices).',
+  },
+  {
     // Facilities caps the data centre power budget: no temporary engines until the next budget period.
     id: 'GREEN_IT_COD',
     name: 'Data centre power budget',

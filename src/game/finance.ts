@@ -49,7 +49,7 @@ export function financeView(run: RunState, scenario: Scenario): FinanceView {
     cfoTarget: run.constraints.includes('CFO_MANDATE') && last ? 0.9 * last.total : null,
     products: cost.peaks.map((pk, i) => {
       const p = scenario.products.find((x) => x.id === pk.product)!;
-      return { id: p.id, name: p.name, lpars: p.lpars, peakMsu: pk.peakMsu, peakAt: pk.peakMsu > 0 ? clock(pk.peakTick) : null, charge: cost.tfp ? (cost.subcapFrac ?? 0) * tieredMonthlyCost(pk.peakMsu, p.priceFactor) : lines[i]!.cost, peakByLpar: pk.peakByLpar ?? {} };
+      return { id: p.id, name: p.name, lpars: p.lpars, peakMsu: pk.peakMsu, peakAt: pk.peakMsu > 0 ? clock(pk.peakTick) : null, charge: cost.tfp ? (cost.subcapFrac ?? 0) * (cost.priceMult ?? 1) * tieredMonthlyCost(pk.peakMsu, p.priceFactor) : lines[i]!.cost, peakByLpar: pk.peakByLpar ?? {} };
     }),
     hourly: { labels, series: cost.hourly },
     bills: cost.bills.map((b) => ({ month: b.month, total: b.total, scrt: renderScrt(cost, scenario.products, b.month, clock) })),

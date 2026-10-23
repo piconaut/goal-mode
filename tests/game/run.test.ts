@@ -170,6 +170,19 @@ describe('event cards resolved at start', () => {
     for (let day = 9; day < 40; day++) expect(drawEvents(r, MIDWEST_GAME, day).events.filter((e) => e.defId === 'NEW_APP_GOLIVE')).toHaveLength(1);
   });
 
+  it('a vendor price rise lifts MLC 8% until the price is negotiated back', () => {
+    const game = MIDWEST_GAME;
+    const def = game.events.find((e) => e.id === 'VENDOR_PRICE')!;
+    let r = startDay(newRun(sc, game, 3), game);
+    r = { ...r, events: [{ uid: 'VENDOR_PRICE@0', defId: def.id, name: def.name, startTick: 1, endTick: null, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false }] };
+    r = advance(r, sc, game, 5);
+    expect(r.sim.cost.priceMult).toBe(1.08);
+    r = requestChange(r, game, { label: 'negotiate', fixId: 'NEGOTIATE_MLC_PRICE' }).run;
+    r = advance(r, sc, game, 2);
+    expect(r.sim.cost.priceMult).toBe(1);
+    expect(r.events.find((e) => e.defId === 'VENDOR_PRICE')!.ended).toBe(true);
+  }, 60_000);
+
   it('a hiring freeze lowers engineer-hours for exactly five days and never below zero', () => {
     let r = { ...newRun(sc, MIDWEST_GAME, 3), events: [] as RunState['events'] };
     const def = MIDWEST_GAME.events.find((e) => e.id === 'HIRING_FREEZE')!;

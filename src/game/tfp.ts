@@ -34,7 +34,7 @@ export function quoteTfp(run: RunState, scenario: Scenario): TfpOffer {
     const avg =
       h.length > 0 ? h.reduce((a, x) => a + x, 0) / h.length : pk.peakMsu;
     const base = avg * 720 * (1 + TFP_OFFER.baselineGrowthFrac);
-    const subcap = tieredMonthlyCost(pk.peakMsu, p.priceFactor);
+    const subcap = tieredMonthlyCost(pk.peakMsu, p.priceFactor) * (cost.priceMult ?? 1);
     const monthly = subcap * (1 - TFP_OFFER.discountFrac);
     terms.baselineMsuHours[p.id] = base;
     terms.pricePerMsuHour[p.id] = base > 0 ? monthly / base : 0;

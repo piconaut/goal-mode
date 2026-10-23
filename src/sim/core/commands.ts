@@ -43,6 +43,7 @@ export type Command =
   | { kind: 'ABEND_JOB'; critical: boolean }
   | { kind: 'RESTART_JOB'; day: number; name: string }
   | { kind: 'SET_PRICING'; tfp: TfpTerms }
+  | { kind: 'SET_MLC_PRICE'; mult: number }
   | { kind: 'SET_MQ'; workloadId: string; maxDepthMsgs: number }
   | { kind: 'NOTE'; text: string };
 
@@ -371,6 +372,10 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
     case 'SET_PRICING':
       if (s.cost.tfp) return fail(s, 'Tailored Fit Pricing is already in force');
       return ok({ ...s, cost: startTfp(s.cost, cmd.tfp, s.tick) }, 'Billing switched to Tailored Fit Pricing');
+
+    case 'SET_MLC_PRICE':
+      if (!(cmd.mult > 0 && cmd.mult <= 3)) return fail(s, 'MLC price multiplier must be in (0, 3]');
+      return ok({ ...s, cost: { ...s.cost, priceMult: cmd.mult } }, `MLC list prices ×${cmd.mult}`);
 
     case 'NOTE':
       return ok(s, cmd.text);
