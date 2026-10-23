@@ -4,8 +4,9 @@
 //   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--scenario midwest|revenue] [--out sweep.csv] [--resume]
 
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
+import { dirname } from 'node:path';
 
 function arg(name: string, dflt: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -23,6 +24,7 @@ const out = arg('out', 'sweep.csv');
 // Each finished run is appended here at once, so a killed sweep keeps its results; --resume skips them.
 const partial = `${out}.partial.jsonl`;
 const resume = process.argv.includes('--resume');
+mkdirSync(dirname(out), { recursive: true }); // CI checks out without runs/ (gitignored)
 
 interface Result {
   bot: string;
