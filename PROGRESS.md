@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 on hold until the user says start. Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-23
-- **Next up:** VENDOR_PRICE card, Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -168,11 +168,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   tool (Report Class Hoarder); Codex persists (localStorage). Still open: scenario unlocks (one scenario so far)
 
 **M8.4 Content**
-- [~] Events to ~25 (SPEC §9); 26 now (deck complete for this pass). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
+- [~] Events to ~25 (SPEC §9); 27 now (deck complete for this pass). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
   NEW_APP_GOLIVE, POWER_CAP, HSM_RECALL_STORM, CP_SPARING (red herring), HIRING_FREEZE, AUDIT_UNCLASSIFIED,
   ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106), RETRY_STORM (loop 110), XLOG_LOOP (loop 112: looping STC misclassified by the CICS* rule), ENCRYPTION_MANDATE and GREEN_IT_COD (loop 113). Re-sweep the bots once the deck is complete
-  - VENDOR_PRICE: user chose option 1 (2026-10-21): a price multiplier in the sim's cost state (default 1, so goldens
-    unchanged) set by the card's begin/end commands; MLC per-MSU +8%. To build next
+  - VENDOR_PRICE (2026-10-23, user's option 1): `SET_MLC_PRICE` sets `cost.priceMult` (absent = 1, goldens unchanged);
+    card +8% from day 10, permanent, once per run, in all three decks; fix `NEGOTIATE_MLC_PRICE` (3 h, Finance −1);
+    TFP terms are not affected, later TFP offers are priced at the new list price
   - HyperPAV exhaustion dropped: organic LCU I/O is ~2k/s, so even zero aliases moves IOSQ < 0.3 ms (no symptom)
   - STORAGE card (DBA grows DB1B buffer pools on PROD2) not added (loop 107): it exposed a swap deadlock, fixed
     with `STORAGE_SWAP.minSwappedIn: 1`, but with the fix even +60 GB BP costs < 0.2 h of critical path. Needs a
