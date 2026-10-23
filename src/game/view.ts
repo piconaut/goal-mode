@@ -41,6 +41,7 @@ const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satur
 export interface LparView {
   id: string;
   kind: 'ZOS' | 'CF';
+  cpcId: string;
   cpBusyPct: number;
   ziipBusyPct: number | null;
   logicalCps: number;
@@ -224,6 +225,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     return {
       id: l.id,
       kind: l.kind,
+      cpcId: l.cpcId,
       cpBusyPct: cp && cfgCp && cfgCp.logical > 0 ? (100 * cp.deliveredEngines) / cfgCp.logical : 0,
       ziipBusyPct: zi && cfgZi && cfgZi.logical > 0 ? (100 * zi.deliveredEngines) / cfgZi.logical : null,
       logicalCps: cfgCp?.logical ?? 0,

@@ -251,9 +251,13 @@ function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
   const day = last && !history.some((p) => sampleDay(p.tick, v.ticksPerDay) === v.day) ? sampleDay(last.tick, v.ticksPerDay) : v.day;
   const pts = history.filter((p) => sampleDay(p.tick, v.ticksPerDay) === day);
   const xLabels = pts.map((p) => hhmm(p.hourOfDay));
-  const lpars = v.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id);
-  const mk = (key: 'msu' | 'r4ha') => lpars.map((id, i) => ({ id, color: seriesColor(i), values: pts.map((p) => p[key][id] ?? null) }));
-  const capacity = { id: 'CP capacity', color: 'var(--muted)', dashed: true, values: pts.map((p) => p.capacityMsu ?? null) };
+  const lpars = v.lpars.filter((l) => l.kind === 'ZOS');
+  // Colours follow the LPAR across the per-CPC MSU charts and the R4HA chart.
+  const series = (key: 'msu' | 'r4ha', ids: string[]) =>
+    ids.map((id) => ({ id, color: seriesColor(lpars.findIndex((l) => l.id === id)), values: pts.map((p) => p[key][id] ?? null) }));
+  // One MSU chart per CPC: each CPC's LPARs against its own installed capacity.
+  const cpcIds = [...new Set(lpars.map((l) => l.cpcId))];
+  const note = (text: string) => <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>{text}</div>;
   return (
     <div className="panel" style={{ gridColumn: '1 / -1' }}>
       <h3>
@@ -261,13 +265,23 @@ function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
         <CodexHints ids={['r4ha']} />
       </h3>
       <div className="grid">
+        {cpcIds.map((cpcId) => (
+          <div key={cpcId}>
+            {note(`${cpcIds.length > 1 ? `${cpcId}: ` : ''}MSU per LPAR (5-minute samples); dashed: installed CP capacity, higher while On/Off CoD is active`)}
+            <LineChart
+              title={`MSU per LPAR on ${cpcId}`}
+              unit="MSU"
+              xLabels={xLabels}
+              series={[
+                ...series('msu', lpars.filter((l) => l.cpcId === cpcId).map((l) => l.id)),
+                { id: 'CP capacity', color: 'var(--muted)', dashed: true, values: pts.map((p) => p.capacityMsu?.[cpcId] ?? null) },
+              ]}
+            />
+          </div>
+        ))}
         <div>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>MSU consumption per LPAR (5-minute samples); dashed: installed CP capacity, higher while On/Off CoD is active</div>
-          <LineChart title="MSU per LPAR" unit="MSU" xLabels={xLabels} series={[...mk('msu'), capacity]} />
-        </div>
-        <div>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Rolling 4-hour average per LPAR (drives soft capping and the MLC bill)</div>
-          <LineChart title="R4HA per LPAR" unit="MSU" xLabels={xLabels} series={mk('r4ha')} />
+          {note('Rolling 4-hour average per LPAR (drives soft capping and the MLC bill)')}
+          <LineChart title="R4HA per LPAR" unit="MSU" xLabels={xLabels} series={series('r4ha', lpars.map((l) => l.id))} />
         </div>
       </div>
     </div>
