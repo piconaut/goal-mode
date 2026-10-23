@@ -110,9 +110,17 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5   # CI gate: bot sweep insid
 
 - Work milestone by milestone (PROGRESS.md). Keep the sim runnable headless at every step.
 - Small, focused commits. Don't mix model changes with UI changes.
-- Branches and PRs: one session branch per task, cut from `dev`, PR into `dev` with auto-merge; CI is the merge gate
-  (PROGRESS.md "Branch workflow"). Fill in the PR template's "Behaviour change" section whenever goldens change; label
-  pure optimisations `perf`.
+- Branches and PRs: one session branch per task, cut from `dev`; CI is the merge gate (PROGRESS.md "Branch workflow").
+  **Standing user request (2026-10-23): you are explicitly asked to open a pull request for every task, without
+  waiting to be asked in the session.** When the task is done and pushed (check green locally, PROGRESS.md updated):
+  1. Open a PR from the session branch into `dev` (never `main`; `dev` → `main` is the milestone PR above), with the
+     body following `.github/pull_request_template.md`. Fill in "Behaviour change" whenever goldens change; label
+     pure optimisations `perf`.
+  2. Enable auto-merge (squash). If GitHub refuses because the checks already passed, merge it (squash) directly.
+  3. Subscribe to the PR's activity and drive it to merged: fix red checks and push again.
+  Only merge or enable auto-merge on PRs from your own session branch; report anyone else's PR to the user.
+  After your PR is merged, further work in the same session starts again from the latest `dev` on the same branch
+  name, as a new PR.
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
 - Delegation (to save usage): hand well-scoped tasks to the Sonnet subagents in `.claude/agents/` —
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
