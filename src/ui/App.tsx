@@ -267,14 +267,15 @@ function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
       <div className="grid">
         {cpcIds.map((cpcId) => (
           <div key={cpcId}>
-            {note(`${cpcIds.length > 1 ? `${cpcId}: ` : ''}MSU per LPAR (5-minute samples); dashed: installed CP capacity, higher while On/Off CoD is active`)}
+            {note(`${cpcIds.length > 1 ? `${cpcId}: ` : ''}MSU per LPAR, stacked (5-minute samples); dashed: installed CP capacity, higher while On/Off CoD is active`)}
             <LineChart
               title={`MSU per LPAR on ${cpcId}`}
               unit="MSU"
               xLabels={xLabels}
+              stacked
               series={[
                 ...series('msu', lpars.filter((l) => l.cpcId === cpcId).map((l) => l.id)),
-                { id: 'CP capacity', color: 'var(--muted)', dashed: true, values: pts.map((p) => p.capacityMsu?.[cpcId] ?? null) },
+                { id: 'CP capacity', color: 'var(--muted)', dashed: true, overlay: true, values: pts.map((p) => p.capacityMsu?.[cpcId] ?? null) },
               ]}
             />
           </div>

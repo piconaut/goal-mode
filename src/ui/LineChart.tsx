@@ -9,6 +9,8 @@ export interface Series {
   values: (number | null)[];
   /** Drawn dashed (limits and capacities rather than measurements). */
   dashed?: boolean;
+  /** On a stacked chart: drawn as a line over the stack (e.g. a capacity), not added to it. */
+  overlay?: boolean;
 }
 
 interface Props {
@@ -42,12 +44,18 @@ export function LineChart({ title, unit, xLabels, series, reference, stacked, ma
     if (!stacked) return series.map((s) => s.values);
     const acc = new Array<number>(n).fill(0);
     return series.map((s) =>
-      s.values.map((v, i) => {
+      s.overlay ? s.values : s.values.map((v, i) => {
         acc[i] = (acc[i] ?? 0) + (v ?? 0);
         return acc[i]!;
       }),
     );
   }, [series, stacked, n]);
+  // Each stacked band's lower edge is the previous stacked (non-overlay) series.
+  const below = series.map((_, k) => {
+    for (let j = k - 1; j >= 0; j--) if (!series[j]!.overlay) return j;
+    return -1;
+  });
+  const line = (s: Series) => <path key={s.id} d={path(s.values)} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={s.dashed ? '6 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />;
   const max = useMemo(() => {
     let m = reference?.value ?? 0;
     for (const vals of drawn) for (const v of vals) if (v !== null && v > m) m = v;
@@ -132,11 +140,12 @@ export function LineChart({ title, unit, xLabels, series, reference, stacked, ma
         </g>
         {reference && <line x1={PAD.l} x2={W - PAD.r} y1={y(reference.value)} y2={y(reference.value)} stroke="var(--muted)" strokeDasharray="4 4" />}
         {stacked &&
-          series.map((s, k) => (
-            <path key={`a-${s.id}`} d={area(drawn[k] as number[], k > 0 ? (drawn[k - 1] as number[]) : null)} fill={s.color} fillOpacity={0.55} stroke="var(--panel)" strokeWidth={1} />
-          ))}
-        {!stacked &&
-          series.map((s) => <path key={s.id} d={path(s.values)} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={s.dashed ? '6 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
+          series.map((s, k) =>
+            s.overlay ? null : (
+              <path key={`a-${s.id}`} d={area(drawn[k] as number[], below[k]! >= 0 ? (drawn[below[k]!] as number[]) : null)} fill={s.color} fillOpacity={0.55} stroke="var(--panel)" strokeWidth={1} />
+            ),
+          )}
+        {series.filter((s) => !stacked || s.overlay).map(line)}
         {series.length <= MAX_END_LABELS &&
           endLabels(series.map((s, k) => ({ id: s.id, i: lastIndex(drawn[k]!), vals: drawn[k]! })).filter((l) => l.i >= 0).map((l) => ({ id: l.id, x: x(l.i), y: y(l.vals[l.i]!) })), PAD.t + 4, H - PAD.b).map((l) => (
             <text key={`l-${l.id}`} x={l.x + 6} y={l.y + 4} fontSize={11} fill="var(--text)">
