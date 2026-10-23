@@ -6,7 +6,7 @@
 import type { Command } from '../../sim/core/commands';
 import { MIDWEST_EVENTS, type EventDef, type ScriptedBeat } from './midwest-events';
 
-const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
+const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
 
 const midwestCard = (id: string): EventDef => {
   const c = MIDWEST_EVENTS.find((e) => e.id === id);

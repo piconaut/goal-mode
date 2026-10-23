@@ -1,6 +1,6 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_PRODUCTS, tieredMonthlyCost } from '../../src/content/pricing';
-import { closeMonth, newCost, recordHour } from '../../src/sim/cost/mlc';
+import { closeMonth, estimateMonth, newCost, recordHour, startTfp } from '../../src/sim/cost/mlc';
 import { groupShares, newR4ha, stepR4ha } from '../../src/sim/cost/r4ha';
 import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
@@ -94,6 +94,25 @@ describe('MLC', () => {
     const closed = closeMonth(c, MIDWEST_PRODUCTS);
     expect(closed.bills[0]!.total).toBeGreaterThan(0);
     expect(closed.peaks.every((p) => p.peakMsu === 0)).toBe(true);
+  });
+
+  it('a vendor price multiplier scales sub-capacity MLC, persists across months, and spares TFP', () => {
+    let c = newCost(MIDWEST_PRODUCTS);
+    c = recordHour(c, MIDWEST_PRODUCTS, { PROD1: 400, PROD2: 200, DEVT: 50, SYSP: 0 }, {}, 360);
+    const base = estimateMonth(c, MIDWEST_PRODUCTS);
+    const raised = { ...c, priceMult: 1.08 };
+    expect(estimateMonth(raised, MIDWEST_PRODUCTS) / base).toBeCloseTo(1.08, 9);
+    expect(closeMonth(raised, MIDWEST_PRODUCTS).priceMult).toBe(1.08);
+    const terms = { baselineMsuHours: { ZOS: 1000 }, pricePerMsuHour: { ZOS: 10 }, overageFrac: 1 };
+    const tfp = closeMonth(startTfp(c, terms, 360), MIDWEST_PRODUCTS);
+    expect(estimateMonth({ ...tfp, priceMult: 1.08 }, MIDWEST_PRODUCTS)).toBe(estimateMonth(tfp, MIDWEST_PRODUCTS));
+  });
+
+  it('SET_MLC_PRICE sets the multiplier and rejects nonsense', () => {
+    const s0 = initState(1, MIDWEST);
+    const s1 = step(s0, [{ kind: 'SET_MLC_PRICE', mult: 1.08 }], MIDWEST);
+    expect(s1.cost.priceMult).toBe(1.08);
+    expect(step(s0, [{ kind: 'SET_MLC_PRICE', mult: 0 }], MIDWEST).cost.priceMult).toBeUndefined();
   });
 });
 

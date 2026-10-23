@@ -113,6 +113,7 @@ export const EVENT_RUMOURS: Record<string, string> = {
   XLOG_LOOP: 'operations put a new CICS journal archiver into production this week',
   SMF_AUDIT: 'the regulator has asked how long we keep detailed SMF data',
   NEW_APP_GOLIVE: 'retail is about to launch a small new booking app',
+  VENDOR_PRICE: 'procurement says the software vendor is reviewing its list prices',
   HIRING_FREEZE: 'HR is reviewing contractor budgets for next week',
   AUDIT_UNCLASSIFIED: 'the regulator is planning an audit of system management',
 };
