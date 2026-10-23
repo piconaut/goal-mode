@@ -234,7 +234,6 @@ export function piColor(pi: number | null): string {
   return 'rgba(255,107,107,0.55)';
 }
 
-export const SERIES_LPARS = ['PROD1', 'PROD2', 'DEVT', 'SYSP'];
 export const seriesColor = (i: number) => `var(--series-${i + 1})`;
 
 function hhmm(h: number): string {
@@ -243,22 +242,28 @@ function hhmm(h: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+/** Day (0-based) a history sample belongs to: the day's ticks run (day·T, (day+1)·T]. */
+const sampleDay = (tick: number, ticksPerDay: number) => Math.max(0, Math.ceil(tick / ticksPerDay) - 1);
+
 function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
-  // Today's samples only (since the played day's 06:00).
-  const dayStart = v.day * v.ticksPerDay;
-  const pts = history.filter((p) => p.tick > dayStart);
+  // The played day's samples; before the next day's first sample, keep the last day on screen.
+  const last = history.at(-1);
+  const day = last && !history.some((p) => sampleDay(p.tick, v.ticksPerDay) === v.day) ? sampleDay(last.tick, v.ticksPerDay) : v.day;
+  const pts = history.filter((p) => sampleDay(p.tick, v.ticksPerDay) === day);
   const xLabels = pts.map((p) => hhmm(p.hourOfDay));
-  const mk = (key: 'msu' | 'r4ha') => SERIES_LPARS.map((id, i) => ({ id, color: seriesColor(i), values: pts.map((p) => p[key][id] ?? null) }));
+  const lpars = v.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id);
+  const mk = (key: 'msu' | 'r4ha') => lpars.map((id, i) => ({ id, color: seriesColor(i), values: pts.map((p) => p[key][id] ?? null) }));
+  const capacity = { id: 'CP capacity', color: 'var(--muted)', dashed: true, values: pts.map((p) => p.capacityMsu ?? null) };
   return (
     <div className="panel" style={{ gridColumn: '1 / -1' }}>
       <h3>
-        Capacity today
+        {day === v.day ? 'Capacity today' : `Capacity, day ${day + 1}`}
         <CodexHints ids={['r4ha']} />
       </h3>
       <div className="grid">
         <div>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>MSU consumption per LPAR (5-minute samples)</div>
-          <LineChart title="MSU per LPAR" unit="MSU" xLabels={xLabels} series={mk('msu')} />
+          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>MSU consumption per LPAR (5-minute samples); dashed: installed CP capacity, higher while On/Off CoD is active</div>
+          <LineChart title="MSU per LPAR" unit="MSU" xLabels={xLabels} series={[...mk('msu'), capacity]} />
         </div>
         <div>
           <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Rolling 4-hour average per LPAR (drives soft capping and the MLC bill)</div>

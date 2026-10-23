@@ -10,7 +10,7 @@ import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
 import type { ViewModel } from '../game/view';
-import { piColor, SERIES_LPARS, seriesColor } from './App';
+import { piColor, seriesColor } from './App';
 import { LineChart } from './LineChart';
 import type { GameHandle } from './useGame';
 import { CAREER_LEVELS } from '../content/career';
@@ -134,7 +134,7 @@ function EndReportView({ r }: { r: EndReport }) {
           title="Daily peak R4HA per LPAR"
           unit="MSU"
           xLabels={r.days.map((d) => `day ${d.day + 1}`)}
-          series={r.r4haByLpar.lparIds.map((id, i) => ({ id, color: seriesColor(SERIES_LPARS.includes(id) ? SERIES_LPARS.indexOf(id) : SERIES_LPARS.length + i), values: r.r4haByLpar.byDay[i]! }))}
+          series={r.r4haByLpar.lparIds.map((id, i) => ({ id, color: seriesColor(i), values: r.r4haByLpar.byDay[i]! }))}
         />
       )}
       <details>

@@ -7,6 +7,8 @@ export interface Series {
   id: string;
   color: string;
   values: (number | null)[];
+  /** Drawn dashed (limits and capacities rather than measurements). */
+  dashed?: boolean;
 }
 
 interface Props {
@@ -28,6 +30,8 @@ interface Props {
 const W = 560;
 const H = 180;
 const PAD = { l: 44, r: 64, t: 8, b: 22 };
+const LABEL_GAP = 12;
+const MAX_END_LABELS = 8;
 
 export function LineChart({ title, unit, xLabels, series, reference, stacked, markers, onZoom, emptyText }: Props) {
   const [hoverRaw, setHover] = useState<number | null>(null);
@@ -90,7 +94,7 @@ export function LineChart({ title, unit, xLabels, series, reference, stacked, ma
       <div className="legend" aria-label={`${title} legend`}>
         {series.map((s) => (
           <span key={s.id}>
-            <i style={{ background: s.color }} />
+            <i style={s.dashed ? { background: `repeating-linear-gradient(90deg, ${s.color} 0 3px, transparent 3px 5px)` } : { background: s.color }} />
             {s.id}
           </span>
         ))}
@@ -132,17 +136,13 @@ export function LineChart({ title, unit, xLabels, series, reference, stacked, ma
             <path key={`a-${s.id}`} d={area(drawn[k] as number[], k > 0 ? (drawn[k - 1] as number[]) : null)} fill={s.color} fillOpacity={0.55} stroke="var(--panel)" strokeWidth={1} />
           ))}
         {!stacked &&
-          series.map((s) => <path key={s.id} d={path(s.values)} fill="none" stroke={s.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />)}
-        {series.length <= 4 &&
-          series.map((s, k) => {
-            const last = lastIndex(drawn[k]!);
-            if (last < 0) return null;
-            return (
-              <text key={`l-${s.id}`} x={x(last) + 6} y={y(drawn[k]![last]!) + 4} fontSize={11} fill="var(--text)">
-                {s.id}
-              </text>
-            );
-          })}
+          series.map((s) => <path key={s.id} d={path(s.values)} fill="none" stroke={s.color} strokeWidth={2} strokeDasharray={s.dashed ? '6 4' : undefined} strokeLinejoin="round" strokeLinecap="round" />)}
+        {series.length <= MAX_END_LABELS &&
+          endLabels(series.map((s, k) => ({ id: s.id, i: lastIndex(drawn[k]!), vals: drawn[k]! })).filter((l) => l.i >= 0).map((l) => ({ id: l.id, x: x(l.i), y: y(l.vals[l.i]!) })), PAD.t + 4, H - PAD.b).map((l) => (
+            <text key={`l-${l.id}`} x={l.x + 6} y={l.y + 4} fontSize={11} fill="var(--text)">
+              {l.id}
+            </text>
+          ))}
         {(markers ?? []).map((m, k) =>
           m.kind === 'WLM' ? (
             <line key={k} x1={x(m.i)} x2={x(m.i)} y1={PAD.t} y2={PAD.t + 5} stroke="var(--muted)" strokeWidth={1} />
@@ -217,6 +217,14 @@ function niceMax(m: number): number {
   return 10 * p;
 }
 const fmt = (v: number) => (v === 0 ? '0' : v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2));
+/** Spread end labels vertically so none overlap: sort by y, push down, then pull back inside the plot. */
+export function endLabels<T extends { y: number }>(labels: T[], top: number, bottom: number): T[] {
+  const out = [...labels].sort((a, b) => a.y - b.y).map((l) => ({ ...l }));
+  for (let k = 0; k < out.length; k++) out[k]!.y = Math.max(out[k]!.y, k === 0 ? top : out[k - 1]!.y + LABEL_GAP);
+  for (let k = out.length - 1; k >= 0; k--) out[k]!.y = Math.min(out[k]!.y, k === out.length - 1 ? bottom : out[k + 1]!.y - LABEL_GAP);
+  return out;
+}
+
 const lastIndex = (vals: (number | null)[]) => {
   for (let i = vals.length - 1; i >= 0; i--) if (vals[i] !== null) return i;
   return -1;

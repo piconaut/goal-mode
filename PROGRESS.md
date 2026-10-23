@@ -7,8 +7,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 on hold until the user says start. Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
-- **Last updated:** 2026-10-21
-- **Next up:** Capacity today chart (user request 2026-10-22: add a max MSU capacity line that rises while On/Off CoD is active; between days, keep showing the prior day's chart instead of an empty one; bug: the chart's LPAR list is hard-coded to Midwest (`SERIES_LPARS` in `ui/App.tsx`), so on Harbourline it is empty with a PROD1/PROD2/DEVT/SYSP legend. Also tidy the Monitor III charts' line-end labels, which overlap on Harbourline (CP busy, Response time, DDF engines)), VENDOR_PRICE card, Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
+- **Last updated:** 2026-10-23
+- **Next up:** VENDOR_PRICE card, Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -17,7 +17,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
   Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
   comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
-- **Health:** `npm run check` green (362 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+- **Health:** `npm run check` green (370 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `be43ff16de564882` (since PR #9), Harbourline `be97b3e401164fc5`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -286,6 +286,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-22 | Monitor III history: 48 h of 100 s intervals, held by the worker outside the run (not saved, not hashed); pins live-only | User request and retention choice. Keeping it out of RunState keeps saves small and goldens stable; the cost is losing history on reload |
 | 2026-10-21 | Performance budget: ≤ 2 s per headless day applies to Midwest-size estates; larger estates (Harbourline, 6 LPARs, ~7 s/day) are accepted as they are, no structural perf work for now. ≤ 4 ms/tick is a Midwest target too | User decision. The profile is flat and reaching 2 s on 6 LPARs would need structural changes (fewer per-tick allocations, coarser ticks for quiet LPARs); not worth it yet |
 | 2026-10-21 | HiperDispatch: 0 < E < 1 CP gets 1 × VM and the rest VL (was 2 × VM); 1 ≤ E < 1.5 keeps 2 × VM | Claim confirmed by the user (PR #9). DEVT 2VM+2VL → 1VM+3VL, SYSP 2VM → 1VM+1VL on Midwest; goldens and bench hashes regenerated |
+| 2026-10-23 | Capacity chart: LPARs from the scenario; dashed installed CP capacity line (sum over CPCs, rises with On/Off CoD); last played day stays on screen until the next day's first sample; `LineChart` end labels spread 12 px apart, shown for up to 8 series | User request 2026-10-22 (Harbourline chart was empty, labels overlapped). Capacity is one line for all CPCs, so on big estates the LPAR lines sit low; per-CPC lines can come later if wanted |
 
 ## Open questions
 
