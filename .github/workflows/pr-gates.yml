@@ -1,0 +1,73 @@
+# PR-only gates that depend on the PR's body, title or labels, so they re-run when those are edited without
+# re-running the full CI. Required status checks: `behaviour-note` and `perf-hash`.
+name: PR gates
+
+on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+
+concurrency:
+  group: pr-gates-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Regenerated goldens need a "## Behaviour change" section in the PR body saying what changed and why.
+  behaviour-note:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsx tools/ci/behaviourNote.ts "origin/${{ github.base_ref }}"
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+
+  # A PR labelled `perf` (or titled "perf…") claims to be an optimisation: the end-of-day state hash must match the
+  # base branch's. Passes at once for other PRs.
+  perf-hash:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - id: perf
+        run: |
+          if [ "$IS_PERF" = true ]; then echo "on=true" >> "$GITHUB_OUTPUT"; else echo "Not a perf PR: hash may change."; fi
+        env:
+          IS_PERF: ${{ contains(github.event.pull_request.labels.*.name, 'perf') || startsWith(github.event.pull_request.title, 'perf') }}
+      - if: steps.perf.outputs.on == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - if: steps.perf.outputs.on == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.perf.outputs.on == 'true'
+        name: Compare bench hashes with the base branch
+        run: |
+          git worktree add ../base "origin/${{ github.base_ref }}"
+          npm ci
+          (cd ../base && npm ci)
+          status=0
+          for scenario in midwest harbourline; do
+            head=$(npm run --silent bench -- --hash --scenario "$scenario" | tee /dev/stderr | awk '/state hash/ {print $3}')
+            base=$(cd ../base && npm run --silent bench -- --hash --scenario "$scenario" | awk '/state hash/ {print $3}')
+            echo "$scenario: base $base, head $head"
+            echo "| $scenario | \`$base\` | \`$head\` |" >> hashes.md
+            [ -n "$head" ] && [ "$head" = "$base" ] || status=1
+          done
+          { echo "### Bench hashes (1 day, seed 42)"; echo; echo "| scenario | base | head |"; echo "|---|---|---|"; cat hashes.md; } >> "$GITHUB_STEP_SUMMARY"
+          if [ $status -ne 0 ]; then
+            echo "::error::A perf PR changed the end-of-day state. Fix the optimisation, or drop the perf label/title and treat it as a behaviour change."
+          fi
+          exit $status
