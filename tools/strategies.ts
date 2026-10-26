@@ -39,6 +39,7 @@ import { REVPOL } from '../src/content/wlm/revpol';
 import { HBPOL } from '../src/content/wlm/hbpol';
 import { requestChange } from '../src/game/run';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
+import { classify } from '../src/sim/wlm/classify';
 
 export function textbookPolicy(): ServiceDefinition {
   const def = structuredClone(BASEPOL);
@@ -259,6 +260,66 @@ const fixer: Strategy = {
 STRATEGIES.textbook = textbook;
 
 
+// Limits the expert raises toward; well inside the products' ranges (MAXDBAT up to 19999, MXT up to 2000).
+const MAXDBAT_CEILING = 2000;
+const MXT_CEILING = 1000;
+const QR_FLOOR_FRAC = 0.1;
+
+/** Yesterday's incidents with no event behind them (trigger POLICY) are the analyst's to tune away, read
+ * from the report each mechanism points at: DBAT or MXT queueing (THREAD_LIMIT) raises MAXDBAT or MXT on
+ * the images the workload runs on, QR TCB saturation moves more of its AORs' work off QR, and CPU delay
+ * at moderate busy (CPU_PRIORITY) raises its service class's importance one step, once per class. */
+function tunePolicyIncidents(run: RunState, s: Scenario, c: GameContent): RunState {
+  const yday = run.incidents.filter((i) => i.day === run.day - 1 && i.truth.trigger === 'POLICY');
+  if (yday.length === 0) return run;
+  const cfg = run.sim.config;
+  const commands: import('../src/sim/core/commands').Command[] = [];
+  const done = new Set<string>();
+  const lparsOf = (w: Scenario['workloads'][number]) => Object.entries(run.sim.routing[w.id] ?? w.routing).filter(([, f]) => f > 0).map(([l]) => l);
+  const def = run.sim.wlm.definition;
+  const bumped = new Set(run.changes.filter((x) => x.label.startsWith('Importance up')).map((x) => x.label.slice('Importance up '.length)));
+  const bumpNow: string[] = [];
+  for (const inc of yday) {
+    const w = s.workloads.find((x) => x.id === inc.workloadId);
+    if (!w) continue;
+    const lpars = lparsOf(w);
+    if (inc.truth.mechanism === 'THREAD_LIMIT') {
+      if (w.subsystem === 'DDF') {
+        for (const d of cfg.db2.filter((x) => lpars.includes(x.lparId) && x.maxDbat < MAXDBAT_CEILING && !done.has(x.ssid))) {
+          done.add(d.ssid);
+          commands.push({ kind: 'SET_DB2', ssid: d.ssid, maxDbat: Math.min(MAXDBAT_CEILING, Math.round(d.maxDbat * 1.5)) });
+        }
+      } else if (w.subsystem === 'CICS') {
+        for (const a of cfg.cics.filter((x) => lpars.includes(x.lparId) && x.maxTasks < MXT_CEILING && !done.has(`${x.name}:mxt`))) {
+          done.add(`${a.name}:mxt`);
+          commands.push({ kind: 'SET_CICS', name: a.name, maxTasks: Math.min(MXT_CEILING, Math.round(a.maxTasks * 1.5)) });
+        }
+      }
+    } else if (inc.truth.mechanism === 'QR_TCB') {
+      for (const a of cfg.cics.filter((x) => lpars.includes(x.lparId) && x.qrFrac > QR_FLOOR_FRAC + 1e-9 && !done.has(`${x.name}:qr`))) {
+        done.add(`${a.name}:qr`);
+        commands.push({ kind: 'SET_CICS', name: a.name, qrFrac: Math.max(QR_FLOOR_FRAC, a.qrFrac / 2) });
+      }
+    } else if (inc.truth.mechanism === 'CPU_PRIORITY') {
+      const scId = classify(def, w.work).serviceClass;
+      const cls = def.classes.find((x) => x.id === scId);
+      const p = cls?.periods[0];
+      if (!cls || !p || p.importance <= 1 || bumped.has(scId) || bumpNow.includes(scId)) continue;
+      bumpNow.push(scId);
+    }
+  }
+  let r = run;
+  if (commands.length > 0) r = requestChange(r, c, { label: 'Raise thread limits / threadsafe AORs for yesterday’s incidents', commands }).run;
+  for (const scId of bumpNow) {
+    // One policy activation per class keeps the bump labels exact; each later bump starts from the active policy.
+    const next = structuredClone(r.sim.wlm.definition);
+    const p = next.classes.find((x) => x.id === scId)!.periods[0]!;
+    if (p.importance > 1) p.importance = (p.importance - 1) as typeof p.importance;
+    r = requestChange(r, c, { label: `Importance up ${scId}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: next }] }).run;
+  }
+  return r;
+}
+
 // ---------------------------------------------------------------------------
 // Expert: fixer plus capacity planning ahead of need. Buys the faster capacity setting on day 1
 // (critical batch is a serial chain and batch volumes grow every night) instead of waiting for the
@@ -266,6 +327,7 @@ STRATEGIES.textbook = textbook;
 const expert: Strategy = {
   briefing: (r, s, c) => {
     let run = fixer.briefing(r, s, c);
+    if (run.day > 0) run = tunePolicyIncidents(run, s, c);
     // At the first briefing with the hours for it (Harbourline's day-0 flaw fixes use the whole day).
     if (run.day <= 2 && !run.changes.some((x) => x.label === 'Capacity setting +1' && x.status !== 'FAILED')) run = capSettingUp(run, c);
     return run;
