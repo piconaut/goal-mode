@@ -119,8 +119,10 @@ export interface HourAcc {
   /** Max capped fraction per LPAR during the hour. */
   cappedByLpar: Record<string, number>;
   cpcBusySum: number;
-  /** Ticks this hour each CPC's general CPs ran above the saturation threshold (absent in pre-2026-10-26 saves). */
-  cpcHotTicks?: Record<string, number>;
+  /** Per CPC: sum over the hour's ticks of general-CP busy (absent in older saves). */
+  cpcBusyById?: Record<string, number>;
+  /** Per LPAR: sum of CP engines consumed by importance rank 0–6 (see `importanceRank`). */
+  cpByImportance?: Record<string, number[]>;
   lockIndexSum: number;
 }
 
