@@ -227,6 +227,24 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
   the career XP system (M8.3 meta-progression)
 
+**M8.7 Realism fixes (researched 2026-10-26; citations in "Open questions")**
+Each is a sim model change: regenerate the goldens with a "Behaviour change" note, re-sweep, update SPEC §5.5.5 and §17.
+- [ ] **Soft capping cuts polarity.** While an LPAR is soft-capped through a positive phantom weight (its weight-based
+  share is above its defined capacity), PR/SM effectively lowers its priority and it may get fewer VH/VM logical
+  processors (*MVS Planning: WLM* 3.1, p.46). The sim caps with a flat MSU limit and leaves polarity alone; compute
+  polarity from the capped entitlement while the cap is on.
+- [ ] **Discretionary goal management thresholds.** Eligible periods are capped from PI < 0.71 and held between PI 0.71
+  and 0.81, so little is taken (SG24-6472-03 PDF p.201, printed 183; eligibility in *MVS Planning: WLM* PDF p.118). The sim starts at
+  0.7, stays capped below 0.9 and gives a flat 80 % of demand (`DISC_GOAL_MGMT` in `src/content/wlm/tuning.ts`);
+  cap toward the 0.71–0.81 PI band instead.
+- [ ] **SERVERWLM weights are zIIP-aware by default.** Since V1R9 the server-specific weight is a composite of the
+  available and displaceable capacity of each processor type (CP, zAAP, zIIP), weighted by the server's current use
+  of each; PROCTYPE only applies to BASEWLM, and PROCXCOST (1–100, 1 = no penalty) lowers the weight of servers
+  whose zIIP-targeted work crossed over to CPs (*IP Configuration Guide* 3.1, PDF p.555–556). The sim's `WLM`
+  routing is CP-only unless `ziipAware` is set (`wlmShares` in `src/sim/workload/routing.ts`). Make the composite
+  the default, turn the `ziipAware` lever into PROCXCOST (crossover penalty), and update the `sd-wlm-weights`
+  Codex entry, which also wrongly says BASEWLM counts only CPs.
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
@@ -314,6 +332,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | M9 hold released; M8.6 added (playtesting, UI polish pass, more perks, wider career unlocks) | User request |
 | 2026-10-26 | Routing/capping open questions researched against IBM PDFs: group limits only clip bursts with `AbsMSUcapping=YES` (sim matches the NO default); soft capping by positive phantom weight can cut VH/VM (to model); discretionary goal management caps from PI < 0.71 and holds 0.71–0.81 (to model); CPSM routing factors confirmed | User request; the two model changes are listed in CLAUDE.md "Pending realism changes" so the next model session picks them up |
 | 2026-10-26 | Last two routing questions settled from books the agent now fetches itself (IP Configuration Guide, CPSM Managing Workloads, SG24-7621): SERVERWLM is zIIP-aware by default (realism change queued in CLAUDE.md); CPSM abend recovery matches the sim's shape, decay rate undocumented; `storm-drain` Codex thresholds corrected | User request |
+| 2026-10-26 | Pending realism changes moved from CLAUDE.md to PROGRESS.md "M8.7 Realism fixes"; CLAUDE.md keeps only the rule for where they go | User: CLAUDE.md was a misstatement; to-dos belong with the milestones |
 
 ## Open questions
 
@@ -331,12 +350,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     (option 3), the priority of the partition is effectively reduced and the number of logical processors with high
     or medium share might be reduced" ([MVS Planning: WLM 3.1 p.46](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=46)). Positive phantom weight is used
     when the partition's weight-based share is above its defined capacity (p.45). **Realism change needed** (see
-    CLAUDE.md "Pending realism changes").
+    "M8.7 Realism fixes").
   - *Settled, discretionary goal management:* eligible work is not in a resource group and has a velocity goal ≤ 30 or
     a response-time goal > 1 minute ([MVS Planning: WLM 3.1 p.118](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=118)); SG24-6472-03 (Redbook, Mar 2008,
     p.201, printed 183) adds "PI of the service class is less than 0.71" and says WLM keeps the capped work's PI between 0.71 and
     0.81, so very little is taken; a resource group with no minimum or maximum protects a class from it. The sim uses
-    0.7 to start, 0.9 to stay capped and a flat 80 % of demand. **Realism change needed** (CLAUDE.md). The extra
+    0.7 to start, 0.9 to stay capped and a flat 80 % of demand. **Realism change needed** ("M8.7 Realism fixes"). The extra
     conditions ("not currently a receiver or donor", "not a small consumer", "last uncapped non-discretionary
     period", "not a significant receiver candidate for CPU") come from a figure in SG24-7621-00 (Redbook, Jan 2010,
     [PDF p.177, Fig. 4-22](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=177)), which says all must hold; neither the
@@ -365,7 +384,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     pre-V1R9, and PROCTYPE sets the expected usage per processor type for BASEWLM
     ([IP Configuration Guide 3.1, PDF p.555–557](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf#page=555)). The sim is CP-only
     unless `ziipAware`, and the `sd-wlm-weights` Codex entry says BASEWLM counts only CPs. **Realism change needed**
-    (CLAUDE.md "Pending realism changes").
+    ("M8.7 Realism fixes").
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
