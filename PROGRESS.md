@@ -161,7 +161,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
           `tunePolicyIncidents`): THREAD_LIMIT raises MAXDBAT (DDF) or MXT (CICS) ×1.5 on the workload's images (caps 2000 /
           1000), QR_TCB halves the AORs' `qrFrac` (floor 0.1). A CPU_PRIORITY importance bump was tried and dropped: on 6
           seeds it moved incidents onto the next class (2/6 wins, as before). Expert re-sweep, seeds 1–20, Normal:
-          Harbourline victory 15/20 (trust 5: seeds 2, 12, 13, 15, 19, days 36–40; the seed-16 opex end is gone), QR_TCB
+          Harbourline victory 15/20 (trust 5: seeds 2, 12, 13, 15, 19, days 36–40; seed 16's opex end did not recur, but seeds were not paired then, see the 2026-10-26 RNG decision), QR_TCB
           incidents 28 → 1, THREAD_LIMIT 397 → 284, CPU_PRIORITY 621 → 828; Midwest victory 20/20, Revenue 19/20 (seed 17,
           unchanged), so no regression. The remaining Harbourline trust ends are heavy days with both CPCs at 90–100 % CP
           busy that the incident attribution labels CPU_PRIORITY/POLICY, because it pools busy across CPCs and averages it
@@ -416,6 +416,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | New `docs/research.md` ledger: one row per confirmed fact with a PDF page link and the sim status; settled research moved out of Open questions; SPEC §17 points to it, §18 stays the bibliography | User asked for one central place for researched facts. Pages re-checked against the 3.1 books; SPEC §17 "Discretionary capping conditions: Real" row dropped (the conditions are only partly modelled) |
 | 2026-10-26 | Discretionary goal management caps from PI < 0.71, stays capped below 0.81, cap = 1 − (0.81 − PI), floor 50 % (was 0.7 / 0.9 / flat 80 %) | M8.7: real WLM holds capped work's PI in 0.71–0.81 (SG24-6472-03 p.183). Proportional cap is APPROX of WLM's projection; balance check deferred to the post-sweep re-sweep |
 | 2026-10-26 | Routing `WLM{ziipAware}` → `WLM{distMethod}`: BASEWLM weighs systems by idle CP capacity, SERVERWLM by the CP/zIIP composite of displaceable capacity; Harbourline B3 recast as the distributor left on default BASEWLM | M8.7: SERVERWLM is zIIP-aware by default and BASEWLM is the default method, CP-only without PROCTYPE (IP Config Guide 3.1 p.555–556), so B3's puzzle keeps its fix with a real name. PROCXCOST not added: no crossover-penalty lever needed for B3. Harbourline hash changes; balance check deferred to the re-sweep |
+| 2026-10-26 | Event deck draws from its own RNG stream per (seed, day), not the shared run RNG | Change failures, activation failures, AIOps hypotheses and drafts rolled the same stream, so any extra bot action reshuffled every later event and seed-by-seed comparisons of bot variants were invalid (seed 18 diverged on day 21 after one CoD rental). Win rates over independent seeds before this stay unbiased but carry ~±10 pp noise at 20 seeds; per-seed claims and small variant deltas made before this are unreliable. Goldens regenerated; balance sweeps re-baselined after (user decision). |
 
 ## Open questions
 
@@ -652,7 +653,7 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
 - **2026-10-20 (loop 72):** endless mode after victory (fresh capex, counts as a win, endless days in report and share line). 259 tests.
 - **2026-10-20 (loop 69):** daily seed challenge (implementer subagent, reviewed): UTC-date seed, share line with Copy on the end screen. 257 tests.
 - **2026-10-20 (loop 68):** 20-seed Normal sweep with 19 cards: expert 20/20, textbook median 26 (booking go-live drives early Retail collapses). Asked the user.
-- **2026-10-20 (loop 67):** fixer bots (expert, spend-to-win) end cards on sight with their fix (REORG, monitor creep, shadow IT, teller release, HSM storm); expert seed 6 Normal now wins (was trust loss day 32).
+- **2026-10-20 (loop 67):** fixer bots (expert, spend-to-win) end cards on sight with their fix (REORG, monitor creep, shadow IT, teller release, HSM storm); expert seed 6 Normal now wins (was trust loss day 32; not a paired comparison, see 2026-10-26 RNG decision).
 - **2026-10-20 (loop 66):** AUDIT_UNCLASSIFIED card (implementer subagent; reviewed: tunables moved to content). 19 cards, 253 tests.
 - **2026-10-20 (loop 65):** HIRING_FREEZE card (implementer subagent; reviewed: reason moved into the briefing). VENDOR_PRICE needs a product price lever in the sim or a run-aware scenario: asked the user. 250 tests.
 - **2026-10-20 (loop 64):** RCA trigger truth respects card mechanisms. 249 tests.
