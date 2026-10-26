@@ -169,7 +169,10 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
 
 /** Pick tomorrow's (or today's) events; forewarn when the card says so. */
 export function drawEvents(run: RunState, content: GameContent, day: number): RunState {
-  const [picked, r1] = withRng(run, (rng) => {
+  // The deck has its own stream per (seed, day), so player actions that roll the run RNG
+  // (change failures, AIOps, drafts) don't reshuffle later events: bot variants stay seed-paired.
+  const deck = new Rng(seedRng(((run.seed ^ 0x2545f491) + Math.imul(day + 1, 0x9e3779b9)) >>> 0));
+  const picked = ((rng: Rng) => {
     const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
     const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
     const dayStartTick = day * TICKS_PER_DAY;
@@ -190,8 +193,8 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       out.push({ def, hour: rng.range(def.startHour[0], def.startHour[1]) });
     }
     return out;
-  });
-  let r = r1;
+  })(deck);
+  let r = run;
   for (const { def, hour } of picked) {
     const startTick = day * TICKS_PER_DAY + Math.round(secAfterStart(hour) / TICK_SEC);
     const endTick = def.durationHours === null ? null : startTick + Math.max(1, Math.round((def.durationHours * 3600) / TICK_SEC));

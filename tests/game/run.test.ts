@@ -165,6 +165,16 @@ describe('event cards resolved at start', () => {
     expect(r.sim.config.cpcs[0]!.capacitySetting).toBe(7);
   }, 60_000);
 
+  it('the event deck ignores the run RNG, so player rolls do not reshuffle later events', () => {
+    const r = { ...newRun(sc, MIDWEST_GAME, 3), events: [] as RunState['events'] };
+    const rolled = { ...r, rng: [1, 2, 3, 4] as RunState['rng'] };
+    for (let day = 1; day < 40; day += 7) {
+      const a = drawEvents(r, MIDWEST_GAME, day);
+      expect(drawEvents(rolled, MIDWEST_GAME, day).events).toEqual(a.events);
+      expect(a.rng).toEqual(r.rng);
+    }
+  });
+
   it('a once-per-run card is not drawn again', () => {
     const r = { ...newRun(sc, MIDWEST_GAME, 3), events: [{ defId: 'NEW_APP_GOLIVE' }] } as unknown as RunState;
     for (let day = 9; day < 40; day++) expect(drawEvents(r, MIDWEST_GAME, day).events.filter((e) => e.defId === 'NEW_APP_GOLIVE')).toHaveLength(1);
