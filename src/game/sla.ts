@@ -4,6 +4,10 @@ import type { WorkloadDef } from '../sim/workload/types';
 import type { ActiveEvent, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
 
 export const BASELINE_DECAY = 0.8;
+/** A CPC counts as saturated in a tick when its general CPs deliver more than this share of its engines. */
+export const CPC_HOT_BUSY_FRAC = 0.95;
+/** FICTIONAL: share of the hour the busiest host CPC must spend saturated for a CPU incident to be capacity, not priority. */
+export const CPU_CAPACITY_HOT_HOUR_FRAC = 0.25;
 
 export function hourAttainment(w: WorkloadDef, h: WorkloadHour): { met: boolean; attainmentPct: number; severity: number } | null {
   const total = h.completions + h.failed;
@@ -45,7 +49,13 @@ export function rankedMechanismGroups(parts: Record<string, number>, baseline: R
 }
 
 /** Which mechanism grew most relative to the workload's healthy baseline. */
-export function mechanismOf(parts: Record<string, number>, baseline: Record<string, number>, hour: HourAcc, lpars: readonly string[]): Mechanism {
+export function mechanismOf(
+  parts: Record<string, number>,
+  baseline: Record<string, number>,
+  hour: HourAcc,
+  lpars: readonly string[],
+  lparConfigs: readonly { id: string; cpcId: string }[],
+): Mechanism {
   let best = 'CPU';
   let bestExcess = -Infinity;
   for (const [g, keys] of Object.entries(GROUPS)) {
@@ -58,8 +68,12 @@ export function mechanismOf(parts: Record<string, number>, baseline: Record<stri
   if (best !== 'CPU') return best as Mechanism;
   // Only capping of the images this workload runs on counts.
   if (lpars.some((l) => (hour.cappedByLpar[l] ?? 0) > 0.05)) return 'CAPPING';
-  const busy = hour.ticks > 0 ? hour.cpcBusySum / hour.ticks : 0;
-  return busy > 0.95 ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
+  // Judge saturation per CPC hosting the workload: pooling busy across CPCs (or averaging it over the hour)
+  // hides one full machine behind an idle one, and PR/SM shares engines within a CPC only.
+  const hot = hour.cpcHotTicks ?? {};
+  const cpcs = new Set(lparConfigs.filter((l) => lpars.includes(l.id)).map((l) => l.cpcId));
+  const hotFrac = hour.ticks > 0 ? Math.max(0, ...[...cpcs].map((c) => (hot[c] ?? 0) / hour.ticks)) : 0;
+  return hotFrac >= CPU_CAPACITY_HOT_HOUR_FRAC ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
 }
 
 export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
