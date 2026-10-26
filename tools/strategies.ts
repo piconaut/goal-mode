@@ -39,7 +39,6 @@ import { REVPOL } from '../src/content/wlm/revpol';
 import { HBPOL } from '../src/content/wlm/hbpol';
 import { requestChange } from '../src/game/run';
 import type { ServiceDefinition } from '../src/sim/wlm/types';
-import { classify } from '../src/sim/wlm/classify';
 
 export function textbookPolicy(): ServiceDefinition {
   const def = structuredClone(BASEPOL);
@@ -267,8 +266,8 @@ const QR_FLOOR_FRAC = 0.1;
 
 /** Yesterday's incidents with no event behind them (trigger POLICY) are the analyst's to tune away, read
  * from the report each mechanism points at: DBAT or MXT queueing (THREAD_LIMIT) raises MAXDBAT or MXT on
- * the images the workload runs on, QR TCB saturation moves more of its AORs' work off QR, and CPU delay
- * at moderate busy (CPU_PRIORITY) raises its service class's importance one step, once per class. */
+ * the images the workload runs on, and QR TCB saturation moves more of its AORs' work off QR.
+ * CPU_PRIORITY is left alone: raising importance traded one workload's incidents for another's in trials. */
 function tunePolicyIncidents(run: RunState, s: Scenario, c: GameContent): RunState {
   const yday = run.incidents.filter((i) => i.day === run.day - 1 && i.truth.trigger === 'POLICY');
   if (yday.length === 0) return run;
@@ -276,9 +275,6 @@ function tunePolicyIncidents(run: RunState, s: Scenario, c: GameContent): RunSta
   const commands: import('../src/sim/core/commands').Command[] = [];
   const done = new Set<string>();
   const lparsOf = (w: Scenario['workloads'][number]) => Object.entries(run.sim.routing[w.id] ?? w.routing).filter(([, f]) => f > 0).map(([l]) => l);
-  const def = run.sim.wlm.definition;
-  const bumped = new Set(run.changes.filter((x) => x.label.startsWith('Importance up')).map((x) => x.label.slice('Importance up '.length)));
-  const bumpNow: string[] = [];
   for (const inc of yday) {
     const w = s.workloads.find((x) => x.id === inc.workloadId);
     if (!w) continue;
@@ -300,24 +296,10 @@ function tunePolicyIncidents(run: RunState, s: Scenario, c: GameContent): RunSta
         done.add(`${a.name}:qr`);
         commands.push({ kind: 'SET_CICS', name: a.name, qrFrac: Math.max(QR_FLOOR_FRAC, a.qrFrac / 2) });
       }
-    } else if (inc.truth.mechanism === 'CPU_PRIORITY' && !process.env.EXPERT_NO_BUMP) {
-      const scId = classify(def, w.work).serviceClass;
-      const cls = def.classes.find((x) => x.id === scId);
-      const p = cls?.periods[0];
-      if (!cls || !p || p.importance <= 1 || bumped.has(scId) || bumpNow.includes(scId)) continue;
-      bumpNow.push(scId);
     }
   }
-  let r = run;
-  if (commands.length > 0) r = requestChange(r, c, { label: 'Raise thread limits / threadsafe AORs for yesterday’s incidents', commands }).run;
-  for (const scId of bumpNow) {
-    // One policy activation per class keeps the bump labels exact; each later bump starts from the active policy.
-    const next = structuredClone(r.sim.wlm.definition);
-    const p = next.classes.find((x) => x.id === scId)!.periods[0]!;
-    if (p.importance > 1) p.importance = (p.importance - 1) as typeof p.importance;
-    r = requestChange(r, c, { label: `Importance up ${scId}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: next }] }).run;
-  }
-  return r;
+  if (commands.length === 0) return run;
+  return requestChange(run, c, { label: 'Raise thread limits / threadsafe AORs for yesterday’s incidents', commands }).run;
 }
 
 // ---------------------------------------------------------------------------
