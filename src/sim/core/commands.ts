@@ -21,6 +21,8 @@ export type Command =
   | { kind: 'SET_IEAOPT'; lparId: string; changes: Partial<Omit<ZosSystemConfig, 'lparId'>> }
   | { kind: 'SET_RMF_INTERVAL'; minutes: number }
   | { kind: 'SET_CPC_ENGINES'; cpcId: string; pool: PoolType; engines: number }
+  /** Relative, so overlapping temporary capacity and its reverts compose in any order. */
+  | { kind: 'ADD_CPC_ENGINES'; cpcId: string; pool: PoolType; delta: number }
   | { kind: 'SET_CPC_CAPACITY'; cpcId: string; capacitySetting: 4 | 5 | 6 | 7; generation?: string }
   | { kind: 'SET_CPC_MEMORY'; cpcId: string; memoryGb: number }
   | { kind: 'SET_LPAR_MEMORY'; lparId: string; memoryGb: number }
@@ -134,6 +136,13 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
 
     case 'SET_CPC_ENGINES':
       return ok(withConfig(s, (c) => (c.cpcs.find((x) => x.id === cmd.cpcId)!.engines[cmd.pool] = cmd.engines)), `${cmd.cpcId} ${cmd.pool} engines = ${cmd.engines}`);
+
+    case 'ADD_CPC_ENGINES': {
+      const cpc = s.config.cpcs.find((x) => x.id === cmd.cpcId);
+      if (!cpc) return fail(s, `No CPC ${cmd.cpcId}`);
+      const engines = Math.max(0, cpc.engines[cmd.pool] + cmd.delta);
+      return ok(withConfig(s, (c) => (c.cpcs.find((x) => x.id === cmd.cpcId)!.engines[cmd.pool] = engines)), `${cmd.cpcId} ${cmd.pool} engines = ${engines}`);
+    }
 
     case 'SET_CPC_CAPACITY':
       return ok(
