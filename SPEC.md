@@ -1366,25 +1366,27 @@ never touches the DOM.
 
 ## 17. Model fidelity notes
 
+The confirmed facts behind these ratings, with page links and where the sim differs, are in
+[`docs/research.md`](docs/research.md).
+
 | Area | Fidelity | Notes |
 |---|---|---|
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
-| Discretionary capping conditions | **Real** | SG24-7621 §4.22 |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
-| Sysplex distributor WLM weights | **Simplified** | Shares ∝ displaceable capacity at the work's DP (prev tick), recomputed each minute; CP-only by default, zIIP-aware weights blend by zIIP fraction (APPROX of SD PROCTYPE). No server health term yet |
+| Sysplex distributor WLM weights | **Simplified** | Shares ∝ displaceable capacity at the work's DP (prev tick), recomputed each minute; CP-only by default, zIIP-aware weights blend by zIIP fraction (APPROX of SD PROCTYPE); real SERVERWLM is zIIP-aware by default (fix queued, M8.7). No server health term yet |
 | CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast; QR TCB overload and timeouts count as slow, so only a genuinely abending region storm-drains), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
 | Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
 | Swap / MPL delay | **Simplified** | Only batch jobs are swappable; swap out least important first when storage overcommits; swap-in immediate when it frees |
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH, depth adds memory; no MQ SMF 115/116 |
 | WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved); NO excludes I/O from velocity |
-| Discretionary goal management | **Simplified** | SG24-7621 §4.22 conditions except the recent receiver/donor test; cap level fictional |
+| Discretionary goal management | **Simplified** | Eligibility per WLM Planning (velocity ≤ 30 or RT > 1 min, no resource group); small consumers skipped; other SG24-7621 Fig. 4-22 conditions not modelled. Starts at PI < 0.7 with a flat 80 % cap where real WLM holds PI in 0.71–0.81 (fix queued, M8.7) |
 | Resource group types 1/2/3 semantics | **Real** | MVS Planning: WLM ch. 7. CP only (specialty consumption excluded, the default). Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX) |
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
 | HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM confirmed (PR #9) | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
-| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
+| R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Vendor list-price changes | **Simplified** | One run-level multiplier on sub-capacity MLC (all products alike); applies to the whole month it is in force, no proration; TFP terms are fixed once signed |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
@@ -1417,6 +1419,9 @@ the shape it is meant to reproduce.
 ---
 
 ## 18. References
+
+This is the bibliography. Individual facts, with page links, are in [`docs/research.md`](docs/research.md); its
+page links point at the z/OS 3.1 editions.
 
 Primary IBM sources:
 - IBM Redbook **SG24-7621**, *ABCs of z/OS System Programming Volume 12* (WLM): PI formulas,
@@ -1464,6 +1469,19 @@ Primary IBM sources:
 
 - IBM: *z/OS Workload Manager: Service classes and report classes* (homogeneous vs heterogeneous report classes).
   https://www.ibm.com/docs/en/SSGMCP_5.4.0/fundamentals/workload/workload_lp_classes.html
+
+- IBM, *z/OS MVS Setting Up a Sysplex* (3.1): CF sync→async conversion.
+  https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaf100_v3r1.pdf
+- IBM, *z/OS Communications Server: IP Configuration Guide* (3.1): sysplex distributor BASEWLM/SERVERWLM weights.
+  https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf
+- IBM, *CICS TS 6 CICSPlex SM Managing Workloads* and *CICSPlex SM Administration*: routing algorithms, abend
+  probability, ABENDCRIT/ABENDTHRESH.
+  https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/cpsm-managing-workloads_pdf.pdf
+  https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/administering-cpsm_pdf.pdf
+- IBM Redbook **SG24-6472-03**, *System Programmer's Guide to: Workload Manager* (Mar 2008): enqueue promotion,
+  discretionary goal management PI band. https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf
+- IBM Redbook **SG24-7817-00**, *System z Parallel Sysplex Best Practices* (Jan 2011): CICSPlex SM routing.
+  https://www.redbooks.ibm.com/redbooks/pdfs/sg247817.pdf
 
 Practitioner sources:
 - Precisely, *IBM Tailored Fit Pricing: optimize mainframe* (baseline from 12 months of MSU, rollover).

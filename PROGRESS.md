@@ -227,7 +227,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
   the career XP system (M8.3 meta-progression)
 
-**M8.7 Realism fixes (researched 2026-10-26; citations in "Open questions")**
+**M8.7 Realism fixes (researched 2026-10-26; facts and citations in `docs/research.md`)**
 Each is a sim model change: regenerate the goldens with a "Behaviour change" note, re-sweep, update SPEC §5.5.5 and §17.
 - [ ] **Soft capping cuts polarity.** While an LPAR is soft-capped through a positive phantom weight (its weight-based
   share is above its defined capacity), PR/SM effectively lowers its priority and it may get fewer VH/VM logical
@@ -333,58 +333,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | Routing/capping open questions researched against IBM PDFs: group limits only clip bursts with `AbsMSUcapping=YES` (sim matches the NO default); soft capping by positive phantom weight can cut VH/VM (to model); discretionary goal management caps from PI < 0.71 and holds 0.71–0.81 (to model); CPSM routing factors confirmed | User request; the two model changes are listed in CLAUDE.md "Pending realism changes" so the next model session picks them up |
 | 2026-10-26 | Last two routing questions settled from books the agent now fetches itself (IP Configuration Guide, CPSM Managing Workloads, SG24-7621): SERVERWLM is zIIP-aware by default (realism change queued in CLAUDE.md); CPSM abend recovery matches the sim's shape, decay rate undocumented; `storm-drain` Codex thresholds corrected | User request |
 | 2026-10-26 | Pending realism changes moved from CLAUDE.md to PROGRESS.md "M8.7 Realism fixes"; CLAUDE.md keeps only the rule for where they go | User: CLAUDE.md was a misstatement; to-dos belong with the milestones |
+| 2026-10-26 | New `docs/research.md` ledger: one row per confirmed fact with a PDF page link and the sim status; settled research moved out of Open questions; SPEC §17 points to it, §18 stays the bibliography | User asked for one central place for researched facts. Pages re-checked against the 3.1 books; SPEC §17 "Discretionary capping conditions: Real" row dropped (the conditions are only partly modelled) |
 
 ## Open questions
 
-- **Sysplex routing and capping research (2026-10-26)**, checked against IBM book PDFs:
-  - *Settled, which lever clips bursts:* a capacity group (like defined capacity) only caps while the four-hour
-    rolling average is at or above the limit, unless `AbsMSUcapping=YES` in IEAOPTxx; with it WLM enforces the
-    defined-capacity or group limit all the time, independent of the 4HRA, and group members can still use unused
-    group capacity. WLM absolute MSU capping is unrelated to PR/SM LPAR and LPAR-group absolute capping. WLM forecasts
-    group members from the previous interval, so a group limit can take a couple of minutes to bite after a demand
-    change ([MVS Planning: WLM 3.1 p.44–45](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=45)). So the burst-clipping levers are PR/SM absolute capping
-    (modelled, `SET_ABSOLUTE_CAP`) or `AbsMSUcapping=YES` (not modelled); a plain group limit is not one. The sim's
-    group capping (capped only while the group 4HRA ≥ limit, shared by weight and demand) matches the
-    `AbsMSUcapping=NO` default. Possible later lever: `AbsMSUcapping` per image.
-  - *Settled, soft capping and polarity:* "While a partition is being capped according to a positive phantom weight
-    (option 3), the priority of the partition is effectively reduced and the number of logical processors with high
-    or medium share might be reduced" ([MVS Planning: WLM 3.1 p.46](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=46)). Positive phantom weight is used
-    when the partition's weight-based share is above its defined capacity (p.45). **Realism change needed** (see
-    "M8.7 Realism fixes").
-  - *Settled, discretionary goal management:* eligible work is not in a resource group and has a velocity goal ≤ 30 or
-    a response-time goal > 1 minute ([MVS Planning: WLM 3.1 p.118](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=118)); SG24-6472-03 (Redbook, Mar 2008,
-    p.201, printed 183) adds "PI of the service class is less than 0.71" and says WLM keeps the capped work's PI between 0.71 and
-    0.81, so very little is taken; a resource group with no minimum or maximum protects a class from it. The sim uses
-    0.7 to start, 0.9 to stay capped and a flat 80 % of demand. **Realism change needed** ("M8.7 Realism fixes"). The extra
-    conditions ("not currently a receiver or donor", "not a small consumer", "last uncapped non-discretionary
-    period", "not a significant receiver candidate for CPU") come from a figure in SG24-7621-00 (Redbook, Jan 2010,
-    [PDF p.177, Fig. 4-22](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=177)), which says all must hold; neither the
-    z/OS book nor SG24-6472 lists them and none is explained. The sim already skips small consumers; leave the rest
-    unmodelled.
-  - *Settled, CICSPlex SM routing:* the queue algorithm weighs task load (current tasks vs MAXTASKS), region
-    health (short on storage, taking a transaction or system dump, at MAXTASKS, stalled), link speed, outstanding RTA
-    events and affinities, and prefers the region "least likely to cause the transaction to abend"; the goal algorithm
-    routes to the region best able to meet the WLM response-time goal, and velocity or discretionary transactions are
-    assumed to meet theirs; since CICS TS 4.1 region status is posted to the CF, so routing data is current
-    ([SG24-7817-00 Parallel Sysplex Best Practices, Jan 2011, p.90–92](https://www.redbooks.ibm.com/redbooks/pdfs/sg247817.pdf#page=105)).
-    Abend recovery: an unhandled abend sets the transaction's abend probability in that region to 100 % and the region
-    is unhealthy; CICSPlex SM then "gradually reduces" it. Below ABENDCRIT but above ABENDTHRESH the region is healthy
-    again but its perceived load is doubled; below ABENDTHRESH its load is normal; a further abend restarts the cycle.
-    An unhealthy region still gets work if no healthier one exists. Abend probabilities only apply to the dynamic
-    routing exit (DTRPGM), not distributed routing (DSRTPGM), and abends caught by HANDLE ABEND are invisible
-    ([CICS TS 6 CICSPlex SM Managing Workloads, PDF p.34–35](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/cpsm-managing-workloads_pdf.pdf#page=34);
-    field definitions in [CICSPlex SM Administration, PDF p.274](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/administering-cpsm_pdf.pdf#page=274)).
-    The decay rate is not documented. The sim matches the shape (ABENDTHRESH halves the weight, ABENDCRIT zeroes it,
-    every live region keeps a trickle) but keys it on the current abend rate rather than an ageing probability:
-    APPROX, kept. The `storm-drain` Codex entry had the two thresholds swapped; fixed.
-  - *Settled, SERVERWLM and zIIP:* since V1R9 the SERVERWLM weight is a composite of the available and displaceable
-    capacity of each processor type (CP, zAAP, zIIP) and the server's current use of each type; PROCXCOST (1–100)
-    penalises servers whose zIIP-targeted work crossed over to CPs, ILWEIGHTING (default 0) biases toward displaceable
-    work at lower importance, and weights are normalised to 0–64. BASEWLM also counts zAAP/zIIP capacity when no system is
-    pre-V1R9, and PROCTYPE sets the expected usage per processor type for BASEWLM
-    ([IP Configuration Guide 3.1, PDF p.555–557](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf#page=555)). The sim is CP-only
-    unless `ziipAware`, and the `sd-wlm-weights` Codex entry says BASEWLM counts only CPs. **Realism change needed**
-    ("M8.7 Realism fixes").
+- Settled research (sysplex routing and capping, 2026-10-26, and everything earlier) is in `docs/research.md`. Only
+  open items stay here.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
