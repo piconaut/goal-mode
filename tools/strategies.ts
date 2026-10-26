@@ -302,28 +302,6 @@ function tunePolicyIncidents(run: RunState, s: Scenario, c: GameContent): RunSta
   return requestChange(run, c, { label: 'Raise thread limits / threadsafe AORs for yesterday’s incidents', commands }).run;
 }
 
-/** Yesterday's CPU_CAPACITY incidents on a CPC from which the expert rents an On/Off CoD CP for it. */
-const COD_MIN_CAPACITY_INCIDENTS = 1;
-/** Capacity incidents mean WLM had no donors left: rent a temporary CP on each host CPC (one lease at a time). */
-function rentCapacityForIncidents(run: RunState, s: Scenario, c: GameContent): RunState {
-  const yday = run.incidents.filter((i) => i.day === run.day - 1 && i.truth.mechanism === 'CPU_CAPACITY');
-  const perCpc = new Map<string, number>();
-  for (const inc of yday) {
-    const w = s.workloads.find((x) => x.id === inc.workloadId);
-    if (!w) continue;
-    const cpcs = new Set(Object.entries(run.sim.routing[w.id] ?? w.routing).filter(([, f]) => f > 0).map(([l]) => run.sim.config.lpars.find((x) => x.id === l)?.cpcId ?? ''));
-    for (const id of cpcs) if (id) perCpc.set(id, (perCpc.get(id) ?? 0) + 1);
-  }
-  let r = run;
-  for (const cpc of run.sim.config.cpcs) {
-    if ((perCpc.get(cpc.id) ?? 0) < COD_MIN_CAPACITY_INCIDENTS) continue;
-    const label = `On/Off CoD +1 CP on ${cpc.id} for capacity incidents`;
-    if (r.changes.some((x) => x.label === label && x.status !== 'FAILED' && (x.revertDay ?? 0) > r.day)) continue;
-    r = requestChange(r, c, { label, hardwareId: 'COD_CP', cpcId: cpc.id }).run;
-  }
-  return r;
-}
-
 // ---------------------------------------------------------------------------
 // Expert: fixer plus capacity planning ahead of need. Buys the faster capacity setting on day 1
 // (critical batch is a serial chain and batch volumes grow every night) instead of waiting for the
@@ -332,7 +310,6 @@ const expert: Strategy = {
   briefing: (r, s, c) => {
     let run = fixer.briefing(r, s, c);
     if (run.day > 0) run = tunePolicyIncidents(run, s, c);
-    if (run.day > 0 && process.env.EXPERT_COD === '1') run = rentCapacityForIncidents(run, s, c);
     // At the first briefing with the hours for it (Harbourline's day-0 flaw fixes use the whole day).
     if (run.day <= 2 && !run.changes.some((x) => x.label === 'Capacity setting +1' && x.status !== 'FAILED')) run = capSettingUp(run, c);
     return run;
