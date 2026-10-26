@@ -345,7 +345,7 @@ export const CODEX: CodexEntry[] = [
     id: 'storm-drain',
     title: 'The storm drain: abends look fast',
     category: 'Subsystems',
-    body: 'A CICS region that abends transactions almost at once shows excellent response times, so goal or queue routing reads it as the best target and sends it even more work. CICSPlex SM counters this with abend thresholds in the workload specification or transaction group: ABENDTHRESH is the abend probability at which a region is treated as unhealthy and its routing weight is penalised, and ABENDCRIT is the probability at which it is avoided in favour of other regions. Fixes: set the thresholds, quiesce the region, or recycle it.',
+    body: 'A CICS region that abends transactions almost at once shows excellent response times, so goal or queue routing reads it as the best target and sends it even more work. CICSPlex SM counters this with abend thresholds in the workload specification or transaction group: After an abend a region is unhealthy and avoided while its abend probability ages; once it is below ABENDCRIT it is healthy again but its load counts double, and below ABENDTHRESH it competes normally. Abends caught by HANDLE ABEND never reach CICSPlex SM. Fixes: set the thresholds, quiesce the region, or recycle it.',
     sources: [{ label: 'IBM CICS TS: Abend probabilities and workload management', url: 'https://www.ibm.com/docs/en/cics-ts/5.5.0?topic=workload-abend-probabilities-management' }],
     discover: { events: ['SICK_AOR'] },
   },
