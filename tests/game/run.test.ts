@@ -6,6 +6,7 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
 import { advance, chooseDraft, continueEndless, drawEvents, newRun, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
+import { streamRng } from '../../src/sim/core/rng';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
 import { applyCommands } from '../../src/sim/core/commands';
 import { scoreRca } from '../../src/game/sla';
@@ -165,14 +166,14 @@ describe('event cards resolved at start', () => {
     expect(r.sim.config.cpcs[0]!.capacitySetting).toBe(7);
   }, 60_000);
 
-  it('the event deck ignores the run RNG, so player rolls do not reshuffle later events', () => {
+  it('game rolls are keyed streams, so an extra player action does not reshuffle events or drafts', () => {
     const r = { ...newRun(sc, MIDWEST_GAME, 3), events: [] as RunState['events'] };
-    const rolled = { ...r, rng: [1, 2, 3, 4] as RunState['rng'] };
-    for (let day = 1; day < 40; day += 7) {
-      const a = drawEvents(r, MIDWEST_GAME, day);
-      expect(drawEvents(rolled, MIDWEST_GAME, day).events).toEqual(a.events);
-      expect(a.rng).toEqual(r.rng);
-    }
+    const busier = requestChange(startDay(r, MIDWEST_GAME), MIDWEST_GAME, { label: 'extra', hardwareId: 'COD_CP', cpcId: r.sim.config.cpcs[0]!.id }).run;
+    for (let day = 1; day < 40; day += 7) expect(drawEvents(busier, MIDWEST_GAME, day).events.slice(busier.events.length)).toEqual(drawEvents(r, MIDWEST_GAME, day).events.slice(r.events.length));
+    const a = streamRng(3, 'draft', 5).float();
+    expect(streamRng(3, 'draft', 5).float()).toBe(a);
+    expect(streamRng(3, 'draft', 6).float()).not.toBe(a);
+    expect(streamRng(4, 'draft', 5).float()).not.toBe(a);
   });
 
   it('a once-per-run card is not drawn again', () => {
@@ -196,12 +197,12 @@ describe('event cards resolved at start', () => {
   it('a hiring freeze lowers engineer-hours for exactly five days and never below zero', () => {
     let r = { ...newRun(sc, MIDWEST_GAME, 3), events: [] as RunState['events'] };
     const def = MIDWEST_GAME.events.find((e) => e.id === 'HIRING_FREEZE')!;
-    const drawn = drawEvents(r, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 4);
+    const drawn = drawEvents(r, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 13);
     expect(drawn.events.some((e) => e.defId === 'HIRING_FREEZE')).toBe(true);
     expect(drawn.hoursLeft).toBe(r.baseHours - 2);
-    expect(drawn.bonusHours).toEqual([{ hours: -2, untilDay: 9 }]);
+    expect(drawn.bonusHours).toEqual([{ hours: -2, untilDay: 18 }]);
     // an active freeze is not drawn again on top of itself
-    const again = drawEvents(drawn, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 5);
+    const again = drawEvents(drawn, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 14);
     expect(again.bonusHours).toHaveLength(1);
     r = { ...drawn, baseHours: 1 };
     expect(Math.max(0, r.baseHours + r.bonusHours.reduce((a, b) => a + b.hours, 0))).toBe(0);

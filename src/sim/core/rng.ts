@@ -21,6 +21,16 @@ export function seedRng(seed: number): RngState {
   return st;
 }
 
+/**
+ * An independent stream per purpose: FNV-1a over the seed and key parts. Game rolls key on what they are about
+ * (day, change label, workload) so one roll never shifts another, and runs that differ in one action stay paired.
+ */
+export function streamRng(seed: number, ...key: readonly (string | number)[]): Rng {
+  let h = 0x811c9dc5;
+  for (const ch of `${seed}|${key.join('|')}`) h = Math.imul(h ^ ch.charCodeAt(0), 0x01000193) >>> 0;
+  return new Rng(seedRng(h));
+}
+
 const rotl = (x: number, k: number) => ((x << k) | (x >>> (32 - k))) >>> 0;
 
 /** Mutable cursor over a copy of an RngState. Call snapshot() to persist. */

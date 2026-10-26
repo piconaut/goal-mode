@@ -18,7 +18,7 @@ import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
-import { Rng, seedRng } from '../sim/core/rng';
+import { Rng, streamRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
@@ -82,11 +82,6 @@ const mapTrust = (run: RunState, f: (t: number) => number): Record<Facet, number
 
 const clampTrust = (x: number) => Math.max(0, Math.min(100, x));
 
-function withRng<T>(run: RunState, f: (rng: Rng) => T): [T, RunState] {
-  const rng = new Rng(run.rng);
-  const out = f(rng);
-  return [out, { ...run, rng: rng.snapshot() }];
-}
 
 /** `day` dates the message for a later morning's briefing (default: today). */
 function msg(run: RunState, from: string, subject: string, body: string, day = run.day): RunState {
@@ -112,7 +107,6 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     difficulty,
     seed,
     ...(daily ? { daily } : {}),
-    rng: seedRng(seed ^ 0x5bd1e995),
     sim: applyCommands(initState(seed, scenario), (content.startingFixes?.[difficulty] ?? []).flatMap((f) => f.commands)),
     phase: 'BRIEFING',
     day: 0,
@@ -169,9 +163,6 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
 
 /** Pick tomorrow's (or today's) events; forewarn when the card says so. */
 export function drawEvents(run: RunState, content: GameContent, day: number): RunState {
-  // The deck has its own stream per (seed, day), so player actions that roll the run RNG
-  // (change failures, AIOps, drafts) don't reshuffle later events: bot variants stay seed-paired.
-  const deck = new Rng(seedRng(((run.seed ^ 0x2545f491) + Math.imul(day + 1, 0x9e3779b9)) >>> 0));
   const picked = ((rng: Rng) => {
     const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
     const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
@@ -193,7 +184,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       out.push({ def, hour: rng.range(def.startHour[0], def.startHour[1]) });
     }
     return out;
-  })(deck);
+  })(streamRng(run.seed, 'events', day));
   let r = run;
   for (const { def, hour } of picked) {
     const startTick = day * TICKS_PER_DAY + Math.round(secAfterStart(hour) / TICK_SEC);
@@ -313,8 +304,8 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     r = { ...r, trust: mapTrust(r, (t) => t - trustCost) };
     if (fix?.trustCost && fix.trustCost.facet in r.trust) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet]! - fix.trustCost.amount) } };
     const risk = req.automated ? req.automated.misfireFrac : failRisk(r);
-    const [failed, r2] = withRng(r, (rng) => rng.chance(risk));
-    r = r2;
+    const attempt = r.changes.filter((x) => x.plannedDay === r.day && x.label === req.label).length;
+    const failed = streamRng(r.seed, 'live-change', r.day, req.label, attempt).chance(risk);
     if (failed && !fix) {
       r = { ...r, changes: [...r.changes, { ...change, status: 'FAILED' }] };
       return {
@@ -380,8 +371,8 @@ export function startDay(run: RunState, content: GameContent): RunState {
   const pending: Command[] = [...r.pendingCommands];
   for (const c of r.changes) {
     if (c.status === 'PLANNED' && c.activateDay === r.day) {
-      const [failed, r2] = withRng(r, (rng) => rng.chance(failRisk(r)));
-      r = r2;
+      const attempt = changes.filter((x) => x.label === c.label).length;
+      const failed = streamRng(r.seed, 'activate', r.day, c.label, attempt).chance(failRisk(r));
       if (failed) {
         changes.push({ ...c, status: 'FAILED' });
         r = msg(r, 'Change board', `Change failed: ${c.label}`, 'Implementation backed out. Hours were spent; try again tomorrow.');
@@ -598,9 +589,7 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
       const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
       let aiops: Hypothesis[] | undefined;
       if (toolOn(r, 'AIOPS')) {
-        const [hs, r2] = withRng(r, (rng) => aiopsHypotheses(truth, rankedMechanismGroups(parts, baselines[w.id] ?? {}), rng));
-        aiops = hs;
-        r = r2;
+        aiops = aiopsHypotheses(truth, rankedMechanismGroups(parts, baselines[w.id] ?? {}), streamRng(r.seed, 'aiops', r.sim.tick, w.id));
       }
       incidents = [
         ...incidents,
@@ -779,7 +768,7 @@ export function continueEndless(run: RunState, content: GameContent): RunState {
 }
 
 function openReview(r: RunState, content: GameContent, day: number): RunState {
-  const [draft, r2] = withRng(r, (rng) => {
+  const draft = ((rng: Rng) => {
     // The hoarder perk is the advisor tool for free: pointless once it is owned.
     const pool = DRAFT_OPTIONS.filter((d) => !r.perks.includes(d.id) && !(d.id === 'RC_HOARDER' && r.tools.includes('RC_ADVISOR')) && !(d.id === 'SQL_SPRINT' && r.projects?.some((p) => p.id === 'SQL_TUNING' && p.done)) && !(d.id === 'MENTOR' && difficultyOf(r.difficulty).hints === 'CLEAR') && !(d.id === 'TOOL_TRIAL' && !trialTool(r)));
     const out = [];
@@ -789,8 +778,8 @@ function openReview(r: RunState, content: GameContent, day: number): RunState {
       out.push({ id: p.id, title: p.title, description: p.description });
     }
     return out;
-  });
-  r = drawEvents({ ...r2, phase: 'REVIEW', draft }, content, day + 1);
+  })(streamRng(r.seed, 'draft', day));
+  r = drawEvents({ ...r, phase: 'REVIEW', draft }, content, day + 1);
   return r;
 }
 
