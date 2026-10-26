@@ -43,7 +43,7 @@ describe('ask around', () => {
       r = { ...r, hoursLeft: 8 };
       r = ok(askAround(r, 'CRITICAL_PATH', null, MIDWEST));
       r = deliverInquiries(at(r, 9), MIDWEST, content);
-      r = at(r, 0);
+      r = at(r, (i + 1) / 10);
     }
     for (const k of r.inquiries!.revealed) {
       expect(seen.has(k)).toBe(false);

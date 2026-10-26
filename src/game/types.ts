@@ -11,7 +11,6 @@ import type { ProjectState } from './projects';
 import type { EvidencePin, PinVerdict } from './evidence';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
-import type { RngState } from '../sim/core/rng';
 import type { SimState } from '../sim/core/types';
 import type { NightSummary } from '../sim/subsys/batch';
 
@@ -186,7 +185,6 @@ export interface RunState {
   careerRecorded?: boolean;
   /** Day the quarter closed when the player kept going (endless mode). */
   endlessFromDay?: number;
-  rng: RngState;
   sim: SimState;
   phase: Phase;
   day: number;
