@@ -7,7 +7,7 @@ export const BASELINE_DECAY = 0.8;
 /** A CPC counts as saturated in a tick when its general CPs deliver more than this share of its engines. */
 export const CPC_HOT_BUSY_FRAC = 0.95;
 /** FICTIONAL: share of the hour the busiest host CPC must spend saturated for a CPU incident to be capacity, not priority. */
-export const CPU_CAPACITY_HOT_HOUR_FRAC = 0.25;
+export const CPU_CAPACITY_HOT_HOUR_FRAC = Number(process.env.HOT_FRAC ?? 0.25);
 
 export function hourAttainment(w: WorkloadDef, h: WorkloadHour): { met: boolean; attainmentPct: number; severity: number } | null {
   const total = h.completions + h.failed;
