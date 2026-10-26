@@ -1054,8 +1054,8 @@ function Routing({ desk }: { desk: Desk }) {
       {r && <RoutingPolicyEditor key={`${wid}:p:${JSON.stringify(r.policy)}`} desk={desk} workloadId={wid} lpars={Object.keys(r.shares).sort()} current={r.policy} />}
       {r && r.policy.method === 'STATIC' && <RoutingEditor key={`${wid}:${JSON.stringify(r.shares)}`} desk={desk} workloadId={wid} current={r.shares} />}
       <div className="help">
-        Static: fixed share of arriving work per LPAR (must add up to 100%). WLM weights: Sysplex Distributor follows each system's spare capacity for
-        the work's importance (CPs only unless zIIP-aware). CPSM goal: CICSPlex SM routes by each region's response time; set ABENDTHRESH/ABENDCRIT so a
+        Static: fixed share of arriving work per LPAR (must add up to 100%). WLM weights: Sysplex Distributor follows each system's idle CP capacity
+        (BASEWLM), or each server's capacity at the work's importance, CP and zIIP (SERVERWLM). CPSM goal: CICSPlex SM routes by each region's response time; set ABENDTHRESH/ABENDCRIT so a
         region that fails fast is not mistaken for a fast one, and quiesce a region to drain it.
       </div>
     </>
@@ -1065,7 +1065,7 @@ function Routing({ desk }: { desk: Desk }) {
 function RoutingPolicyEditor({ desk, workloadId, lpars, current }: { desk: Desk; workloadId: string; lpars: string[]; current: RoutingPolicy }) {
   const cpsm = current.method === 'CPSM_GOAL' ? current : null;
   const [method, setMethod] = useState<RoutingPolicy['method']>(current.method);
-  const [ziipAware, setZiipAware] = useState(current.method === 'WLM' && current.ziipAware);
+  const [distMethod, setDistMethod] = useState<'BASEWLM' | 'SERVERWLM'>(current.method === 'WLM' ? current.distMethod : 'SERVERWLM');
   const [thresh, setThresh] = useState(cpsm?.abendThreshFrac != null ? String(Math.round(cpsm.abendThreshFrac * 100)) : '');
   const [crit, setCrit] = useState(cpsm?.abendCritFrac != null ? String(Math.round(cpsm.abendCritFrac * 100)) : '');
   const [quiesced, setQuiesced] = useState<string[]>(cpsm?.quiesced ?? []);
@@ -1074,7 +1074,7 @@ function RoutingPolicyEditor({ desk, workloadId, lpars, current }: { desk: Desk;
     method === 'STATIC'
       ? { method }
       : method === 'WLM'
-        ? { method, ziipAware }
+        ? { method, distMethod }
         : { method, abendThreshFrac: frac(thresh), abendCritFrac: frac(crit), quiesced: [...quiesced].sort() };
   const bad = (v: string) => v.trim() !== '' && !(num(v) > 0 && num(v) <= 100);
   const error =
@@ -1093,9 +1093,10 @@ function RoutingPolicyEditor({ desk, workloadId, lpars, current }: { desk: Desk;
         <option value="CPSM_GOAL">CPSM goal routing</option>
       </select>
       {method === 'WLM' && (
-        <label>
-          <input type="checkbox" checked={ziipAware} onChange={(e) => setZiipAware(e.target.checked)} /> zIIP-aware
-        </label>
+        <select aria-label="DISTMETHOD" value={distMethod} onChange={(e) => setDistMethod(e.target.value as 'BASEWLM' | 'SERVERWLM')}>
+          <option value="BASEWLM">BASEWLM (system CP capacity)</option>
+          <option value="SERVERWLM">SERVERWLM (server, CP + zIIP)</option>
+        </select>
       )}
       {method === 'CPSM_GOAL' && (
         <>

@@ -140,7 +140,7 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
 
 export function routingPolicyLabel(p: RoutingPolicy): string {
   if (p.method === 'STATIC') return 'static weights';
-  if (p.method === 'WLM') return `WLM weights${p.ziipAware ? ' (zIIP-aware)' : ''}`;
+  if (p.method === 'WLM') return `WLM weights (${p.distMethod})`;
   const parts = ['CPSM goal'];
   if (p.abendThreshFrac !== null) parts.push(`ABENDTHRESH ${pct(p.abendThreshFrac)}`);
   if (p.abendCritFrac !== null) parts.push(`ABENDCRIT ${pct(p.abendCritFrac)}`);

@@ -169,8 +169,9 @@ export const HARBOURLINE_WORKLOADS: WorkloadDef[] = [
     noiseSigma: 0.1,
     noisePhi: 0.96,
     routing: { PRDA: 0.25, PRDB: 0.25, PRDC: 0.25, PRDD: 0.25 },
-    // B3: server weights count CPs only, so zIIP-rich CPC2 looks small and DDF work stays on CPC1's CPs.
-    routingPolicy: { method: 'WLM', ziipAware: false },
+    // B3: the distributor was left on default BASEWLM (CP capacity only), so zIIP-rich CPC2 looks small and
+    // DDF work stays on CPC1's CPs.
+    routingPolicy: { method: 'WLM', distMethod: 'BASEWLM' },
     cpuMsRef: 2.4,
     cpuSigma: 0.9,
     ziipFrac: 0.55,

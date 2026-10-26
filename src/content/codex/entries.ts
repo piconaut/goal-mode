@@ -329,8 +329,11 @@ export const CODEX: CodexEntry[] = [
     id: 'sd-wlm-weights',
     title: 'Sysplex Distributor: SERVERWLM and BASEWLM weights',
     category: 'Subsystems',
-    body: 'Sysplex Distributor spreads incoming TCP connections across the stacks of a sysplex. With DISTMETHOD BASEWLM the weight comes from WLM’s view of each system’s displaceable capacity, which counts only general-purpose CPs. SERVERWLM also asks WLM how well each target server is doing and weights by the capacity that could be given to work of that server’s importance, and with zIIP-aware weights it counts zIIP capacity for the zIIP-eligible part of the work, so a system with idle zIIPs is not penalised for busy CPs. The game models this as per-system shares that are refreshed every minute, with a small floor so no system drops to zero.',
-    sources: [{ label: 'IBM support: distribution methods available to the distributing TCP/IP stack (VIPADISTRIBUTE DISTMETHOD)', url: 'https://www.ibm.com/support/pages/what-are-different-distribution-methods-available-distributing-tcpip-stack' }],
+    body: 'Sysplex Distributor spreads incoming TCP connections across the stacks of a sysplex. BASEWLM, the default distribution method, uses WLM system weights: the most available capacity gets the highest weight, and that counts general-purpose CP capacity unless PROCTYPE is set to count zAAP and zIIP capacity too. SERVERWLM asks WLM about each target server instead: the weight comes from the capacity that work of that server’s importance could use or displace, combined across processor types in proportion to the server’s own use of each, so a system with idle zIIPs is not penalised for busy CPs when the work is zIIP-eligible. PROCXCOST can also lower the weight of servers whose zIIP work is crossing over to CPs (not modelled). The game models this as per-system shares that are refreshed every minute, with a small floor so no system drops to zero.',
+    sources: [
+      { label: 'z/OS 3.1 IP Configuration Guide, ch. 8: BASEWLM and SERVERWLM weights (PDF p.555–556)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf#page=555' },
+      { label: 'IBM support: distribution methods available to the distributing TCP/IP stack (VIPADISTRIBUTE DISTMETHOD)', url: 'https://www.ibm.com/support/pages/what-are-different-distribution-methods-available-distributing-tcpip-stack' },
+    ],
     discover: { start: true },
   },
   {

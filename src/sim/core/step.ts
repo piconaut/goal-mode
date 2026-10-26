@@ -932,7 +932,7 @@ function updateRouting(s: SimState, scenario: Scenario): SimState {
     const lparIds = Object.keys(w.routing).sort();
     let shares: Record<string, number> | null = null;
     if (policy.method === 'WLM' && s.tick % ROUTING.wlmIntervalTicks === 0) {
-      shares = wlmShares(lparIds.map((lparId) => routeCandidate(s, w, lparId)), w.ziipFrac, policy.ziipAware, ROUTING.minShareFrac, ROUTING.shareQuantum);
+      shares = wlmShares(lparIds.map((lparId) => routeCandidate(s, w, lparId)), w.ziipFrac, policy.distMethod, ROUTING.minShareFrac, ROUTING.shareQuantum);
     } else if (policy.method === 'CPSM_GOAL' && s.tick % ROUTING.cpsmIntervalTicks === 0) {
       const regions = lparIds.map((lparId) => regionStat(s, w, lparId));
       shares = cpsmGoalShares(routing[id] ?? w.routing, regions, policy, ROUTING.abendRtSec, ROUTING.cpsmStepFrac, ROUTING.minShareFrac, ROUTING.shareQuantum);
@@ -958,12 +958,14 @@ function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandi
   const myDp = lt?.scps.find((x) => x.scKey === key)?.dp ?? 0;
   let cpUsed = 0;
   let ziipUsed = 0;
+  let cpBusy = 0;
   for (const x of lt?.scps ?? []) {
+    cpBusy += x.cpEngines;
     if (x.scKey === key || x.dp < myDp) continue;
     cpUsed += x.cpEngines;
     ziipUsed += x.ziipEngines;
   }
-  return { lparId, cpFreeEngines: Math.max(0, avail('CP') - cpUsed), ziipFreeEngines: Math.max(0, avail('ZIIP') - ziipUsed) };
+  return { lparId, cpFreeEngines: Math.max(0, avail('CP') - cpUsed), ziipFreeEngines: Math.max(0, avail('ZIIP') - ziipUsed), cpIdleEngines: Math.max(0, avail('CP') - cpBusy) };
 }
 
 // Effective content = scenario + run additions + routing overrides. Memoised on object
