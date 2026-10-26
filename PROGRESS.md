@@ -157,6 +157,15 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
           - Next candidates are balance decisions, to try after the full sweep: a Harbourline opex budget nearer
             $1.6M (check that spendtowin still ends on opex), or the Vendor price increase landing less often in
             month 1.
+        - Trust losses (2026-10-26): the expert now tunes away yesterday's POLICY incidents at briefing (bot only,
+          `tunePolicyIncidents`): THREAD_LIMIT raises MAXDBAT (DDF) or MXT (CICS) ×1.5 on the workload's images (caps 2000 /
+          1000), QR_TCB halves the AORs' `qrFrac` (floor 0.1). A CPU_PRIORITY importance bump was tried and dropped: on 6
+          seeds it moved incidents onto the next class (2/6 wins, as before). Expert re-sweep, seeds 1–20, Normal:
+          Harbourline victory 15/20 (trust 5: seeds 2, 12, 13, 15, 19, days 36–40; the seed-16 opex end is gone), QR_TCB
+          incidents 28 → 1, THREAD_LIMIT 397 → 284, CPU_PRIORITY 621 → 828; Midwest victory 20/20, Revenue 19/20 (seed 17,
+          unchanged), so no regression. The remaining Harbourline trust ends are heavy days with both CPCs at 90–100 % CP
+          busy that the incident attribution labels CPU_PRIORITY/POLICY, because it pools busy across CPCs and averages it
+          over the hour; fixing that attribution is next (user decision 2026-10-26).
     - **Loop-113 re-sweep (2026-10-21, seeds 1–20, after RETRY_STORM, per-scenario facets and PR #13):** do-nothing
       11 / 17 / 21, ends trust 14 · batch 6; textbook 17 / 28 / 28, ends batch 11 · trust 9 (median 28 reaches the 28–32
       target, but 10 of 20 runs end on a batch miss on exactly day 28: a fixed wall where nightly growth outruns the

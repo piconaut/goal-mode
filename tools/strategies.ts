@@ -259,6 +259,49 @@ const fixer: Strategy = {
 STRATEGIES.textbook = textbook;
 
 
+// Limits the expert raises toward; well inside the products' ranges (MAXDBAT up to 19999, MXT up to 2000).
+const MAXDBAT_CEILING = 2000;
+const MXT_CEILING = 1000;
+const QR_FLOOR_FRAC = 0.1;
+
+/** Yesterday's incidents with no event behind them (trigger POLICY) are the analyst's to tune away, read
+ * from the report each mechanism points at: DBAT or MXT queueing (THREAD_LIMIT) raises MAXDBAT or MXT on
+ * the images the workload runs on, and QR TCB saturation moves more of its AORs' work off QR.
+ * CPU_PRIORITY is left alone: raising importance traded one workload's incidents for another's in trials. */
+function tunePolicyIncidents(run: RunState, s: Scenario, c: GameContent): RunState {
+  const yday = run.incidents.filter((i) => i.day === run.day - 1 && i.truth.trigger === 'POLICY');
+  if (yday.length === 0) return run;
+  const cfg = run.sim.config;
+  const commands: import('../src/sim/core/commands').Command[] = [];
+  const done = new Set<string>();
+  const lparsOf = (w: Scenario['workloads'][number]) => Object.entries(run.sim.routing[w.id] ?? w.routing).filter(([, f]) => f > 0).map(([l]) => l);
+  for (const inc of yday) {
+    const w = s.workloads.find((x) => x.id === inc.workloadId);
+    if (!w) continue;
+    const lpars = lparsOf(w);
+    if (inc.truth.mechanism === 'THREAD_LIMIT') {
+      if (w.subsystem === 'DDF') {
+        for (const d of cfg.db2.filter((x) => lpars.includes(x.lparId) && x.maxDbat < MAXDBAT_CEILING && !done.has(x.ssid))) {
+          done.add(d.ssid);
+          commands.push({ kind: 'SET_DB2', ssid: d.ssid, maxDbat: Math.min(MAXDBAT_CEILING, Math.round(d.maxDbat * 1.5)) });
+        }
+      } else if (w.subsystem === 'CICS') {
+        for (const a of cfg.cics.filter((x) => lpars.includes(x.lparId) && x.maxTasks < MXT_CEILING && !done.has(`${x.name}:mxt`))) {
+          done.add(`${a.name}:mxt`);
+          commands.push({ kind: 'SET_CICS', name: a.name, maxTasks: Math.min(MXT_CEILING, Math.round(a.maxTasks * 1.5)) });
+        }
+      }
+    } else if (inc.truth.mechanism === 'QR_TCB') {
+      for (const a of cfg.cics.filter((x) => lpars.includes(x.lparId) && x.qrFrac > QR_FLOOR_FRAC + 1e-9 && !done.has(`${x.name}:qr`))) {
+        done.add(`${a.name}:qr`);
+        commands.push({ kind: 'SET_CICS', name: a.name, qrFrac: Math.max(QR_FLOOR_FRAC, a.qrFrac / 2) });
+      }
+    }
+  }
+  if (commands.length === 0) return run;
+  return requestChange(run, c, { label: 'Raise thread limits / threadsafe AORs for yesterday’s incidents', commands }).run;
+}
+
 // ---------------------------------------------------------------------------
 // Expert: fixer plus capacity planning ahead of need. Buys the faster capacity setting on day 1
 // (critical batch is a serial chain and batch volumes grow every night) instead of waiting for the
@@ -266,6 +309,7 @@ STRATEGIES.textbook = textbook;
 const expert: Strategy = {
   briefing: (r, s, c) => {
     let run = fixer.briefing(r, s, c);
+    if (run.day > 0) run = tunePolicyIncidents(run, s, c);
     // At the first briefing with the hours for it (Harbourline's day-0 flaw fixes use the whole day).
     if (run.day <= 2 && !run.changes.some((x) => x.label === 'Capacity setting +1' && x.status !== 'FAILED')) run = capSettingUp(run, c);
     return run;
