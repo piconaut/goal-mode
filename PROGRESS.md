@@ -263,10 +263,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 
 **M8.7 Realism fixes (researched 2026-10-26; facts and citations in `docs/research.md`)**
 Each is a sim model change: regenerate the goldens with a "Behaviour change" note, re-sweep, update SPEC §5.5.5 and §17.
-- [ ] **Soft capping cuts polarity.** While an LPAR is soft-capped through a positive phantom weight (its weight-based
+- [x] **Soft capping cuts polarity.** While an LPAR is soft-capped through a positive phantom weight (its weight-based
   share is above its defined capacity), PR/SM effectively lowers its priority and it may get fewer VH/VM logical
   processors (*MVS Planning: WLM* 3.1, p.46). The sim caps with a flat MSU limit and leaves polarity alone; compute
-  polarity from the capped entitlement while the cap is on.
+  polarity from the capped entitlement while the cap is on. Done (loop 6): `resolveCpc` takes polarity from
+  min(entitlement, soft-cap engines); goldens and the day-1 bench hash are unchanged (no cap is active by then).
+  The balance check waits for the post-sweep re-sweep.
 - [x] **Discretionary goal management thresholds.** Eligible periods are capped from PI < 0.71 and held between PI 0.71
   and 0.81, so little is taken (SG24-6472-03 PDF p.201, printed 183; eligibility in *MVS Planning: WLM* PDF p.118). The sim starts at
   0.7, stays capped below 0.9 and gives a flat 80 % of demand (`DISC_GOAL_MGMT` in `src/content/wlm/tuning.ts`);

@@ -299,6 +299,10 @@ The published table starts at "E < 1.5 → 2 VM"; the second VM there keeps each
 engine of share. Below one engine the whole share sits on a single VM, the rest VL (confirmed by
 the user, 2026-10-21, PR #9).
 
+While a soft cap holds an LPAR (§5.11.1), polarity is computed from min(E, capped engines): the cap works
+through a phantom weight that lowers the LPAR's share, so it may get fewer VH/VM logicals (*MVS Planning:
+WLM* 3.1 p.46).
+
 Effects:
 - **VH** engines get near-dedicated cache affinity: efficiency 1.00.
 - **VM** engines share their physical engine: efficiency ~0.96.
@@ -1384,7 +1388,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Discretionary goal management | **Simplified** | Eligibility per WLM Planning (velocity ≤ 30 or RT > 1 min, no resource group); small consumers skipped; other SG24-7621 Fig. 4-22 conditions not modelled. Starts at PI < 0.71 and stays capped below 0.81 (WLM's band); the cap grows with the distance below 0.81 (gain and 50 % floor FICTIONAL) |
 | Resource group types 1/2/3 semantics | **Real** | MVS Planning: WLM ch. 7. CP only (specialty consumption excluded, the default). Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals (APPROX for discretionary members). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX) |
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
-| HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM confirmed (PR #9) | Watson & Walker 2022 |
+| HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM confirmed (PR #9); a soft cap lowers E for polarity (WLM Planning p.46) | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |

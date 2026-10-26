@@ -134,7 +134,10 @@ export function resolveCpc(
       const e = ent[i] ?? 0;
       const del = delivered[i] ?? 0;
       const claim = claims[i]!;
-      const pol = m.lpar.hiperDispatch ? polarity(e, m.pc.logical) : { vh: 0, vm: 0, vl: 0 };
+      // A soft cap works through a phantom weight that cuts the LPAR's share to its defined capacity, and
+      // polarity follows the reduced share (MVS Planning: WLM 3.1 p.46).
+      const polEnt = Math.min(e, demandOf(m.lpar.id, pool)?.softCapEngines ?? Infinity);
+      const pol = m.lpar.hiperDispatch ? polarity(polEnt, m.pc.logical) : { vh: 0, vm: 0, vl: 0 };
       const effRes = polarityEfficiency(del, pol, m.lpar.hiperDispatch);
       const ovh = lparOverheadFrac(ltoP, effRes.unparkedVl);
       const avail = alloc.available[i] ?? del;
