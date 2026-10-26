@@ -128,6 +128,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       expert victory 13/20 on the same seeds (opex day 28: 5, 12, 13, 16, month-1 bills
       $1.89–2.02M; trust: 8, 10, 19), spendtowin opex 19 · trust 1. So the three M8.7 realism fixes leave the balance
       where it was; the Harbourline expert opex wall remains → budget raised to $1.6M (below).
+    - **Harbourline opex budget $1.5M → $1.6M (2026-10-26, user decision; seeds 1–20, Normal):** expert victory
+      13/20 → 15/20, 33 / 40 / 40 (trust 4: seeds 8, 10, 13 day 39, 19; opex 1: seed 16, month-1 bill $2.02M against the
+      new $2.0M limit); spendtowin still loses on opex (18/20, trust 2), so buying capacity every day stays too
+      expensive; textbook 28 / 32 / 37 (trust 18 · opex 2) and do-nothing 8 / 12 / 15 unchanged. The M8.2 boxes stay
+      open: the Harbourline expert win rate (75 %) is still below Midwest (100 %) and Revenue (95 %), and the remaining
+      losses are trust ends.
       - [ ] Investigate Harbourline expert losses: opex ends on day 28 (seeds 5, 12, 13, 16) recur even though the
         expert now declines BUDGET_SWAP; also the trust ends on seeds 8, 10 and 19. Re-check after the post-sweep
         re-sweep that includes PRs #30/#31.
