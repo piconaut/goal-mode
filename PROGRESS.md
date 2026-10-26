@@ -112,6 +112,18 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [ ] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: SLA fine, loses on opex), expert (scripted good play incl. capacity orders and caps: wins with grade A on Normal)
 - [ ] Targets hold across ≥ 20 seeds (median and spread), not just seed 42; event-deck intensity, growth rates and trust weights tuned from sweeps
   - Latest results, Normal (day p10 / median / p90):
+    - **Full sweep (2026-10-26, seeds 1–20, code 937a2ee, before PRs #30/#31):** Midwest: do-nothing 12 / 16 / 21
+      (trust 14 · batch 6); textbook 20 / 28 / 28 (batch 10 · trust 10); expert 40 / 40 / 40, victory 20/20; spendtowin
+      28 / 28 / 28 (opex 19 · batch 1). Revenue: do-nothing 10 / 13 / 15 (trust 20); textbook 27 / 28 / 29 (trust 20);
+      expert victory 19/20 (trust: seed 17, day 19); spendtowin 28 / 28 / 28 (opex 19 · trust 1). Harbourline: do-nothing
+      9 / 12 / 13 (trust 20; seed 17 ends day 6); textbook 28 / 32 / 37 (trust 18 · opex 2); expert 28 / 40 / 40, victory
+      only 13/20 (opex on day 28: seeds 5, 12, 13, 16; trust: seeds 8 day 40, 10 day 25, 19 day 33); spendtowin
+      28 / 28 / 28 (opex 19 · trust 1). Early textbook trust ends: Midwest seeds 7 and 17 (day 17), Revenue seed 17
+      (day 13), Harbourline seed 10 (day 12). Verdict: do-nothing, textbook and spendtowin targets hold in all three
+      scenarios; expert holds on Midwest and Revenue but fails on Harbourline (65 %), so both boxes stay open.
+      - [ ] Investigate Harbourline expert losses: opex ends on day 28 (seeds 5, 12, 13, 16) recur even though the
+        expert now declines BUDGET_SWAP; also the trust ends on seeds 8, 10 and 19. Re-check after the post-sweep
+        re-sweep that includes PRs #30/#31.
     - **Loop-113 re-sweep (2026-10-21, seeds 1–20, after RETRY_STORM, per-scenario facets and PR #13):** do-nothing
       11 / 17 / 21, ends trust 14 · batch 6; textbook 17 / 28 / 28, ends batch 11 · trust 9 (median 28 reaches the 28–32
       target, but 10 of 20 runs end on a batch miss on exactly day 28: a fixed wall where nightly growth outruns the
