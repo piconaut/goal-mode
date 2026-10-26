@@ -1196,7 +1196,7 @@ Planted flaws:
 |---|---|---|---|
 | **B1** DDF sysplex distributor on static weights 40/30/20/10 from before CPC2 was rebalanced | SD config | PRDA hot, PRDD idle; MKTQRY slow only on PRDA (Partition Data per LPAR; Mon III SYSINFO per system) | `WLM` weights (reacts to load, but chases bursts and can oscillate); recompute static weights (stale again as work grows) |
 | **B2** storm drain: one AOR (CICSAOR3 on PRDC) fails transactions fast after a storage shortage; goal routing sees "fast" responses and sends it more | CPSM | Cards errors rise while average response looks *better*; abends concentrated on one region (CICS monitoring, incident log) | abend-aware routing (health threshold: slower to use a recovered region); quiesce the AOR (less capacity); fix the storage cause (RCA) |
-| **B3** WLM weights count CPs only: DDF work, 60 % zIIP-eligible, is sent away from CPC2 where the zIIPs are | SD config | zIIP white space on PRDC/PRDD while PRDA/PRDB run DDF on CPs (Partition Data zIIP busy; PROCU IIP on CP) | zIIP-aware weights (SD `PROCTYPE`-style; more cross-site CF traffic); add zIIPs on CPC1 (capex); IIPHONORPRIORITY tuning |
+| **B3** Distributor on default BASEWLM, which counts CP capacity only: DDF work, 60 % zIIP-eligible, is sent away from CPC2 where the zIIPs are | SD config | zIIP white space on PRDC/PRDD while PRDA/PRDB run DDF on CPs (Partition Data zIIP busy; PROCU IIP on CP) | SERVERWLM weights (CP + zIIP composite; more cross-site CF traffic); add zIIPs on CPC1 (capex); IIPHONORPRIORITY tuning |
 | **B4** CF locality: the Payments Db2 lock structure is on CF01, so balancing payments evenly sends half to the far side | CFRM | payments CPU/txn and lock wait higher on PRDC/PRDD (CF Activity: async % by system; Db2 accounting) | rebalance structures (move LOCK1 or duplex it: more CF CPU); keep payments affinity to CPC1 (uneven load); accept it |
 
 Balancing trade-off in one line: **even load vs. locality and affinity**. No setting is best in every
@@ -1226,11 +1226,11 @@ policies are tested at once), regulator stress-test week near the end.
    drawn only for workloads that have bursts; `WorkloadRuntime.burst` exists only for them.
 3. **Routing policies.** `routingPolicy` per workload (`STATIC | WLM | CPSM_GOAL`) and per-region
    health (fast-fail fraction) feeding `CPSM_GOAL`. New verbs: set routing policy, health threshold,
-   zIIP-aware weights, quiesce region. Default `STATIC`, so existing scenarios don't change.
-   *Done (sim, part 1):* `RoutingPolicy` `STATIC | WLM{ziipAware}` per workload (`WorkloadDef.routingPolicy`,
+   SERVERWLM weights, quiesce region. Default `STATIC`, so existing scenarios don't change.
+   *Done (sim, part 1):* `RoutingPolicy` `STATIC | WLM{distMethod: BASEWLM | SERVERWLM}` per workload (`WorkloadDef.routingPolicy`,
    state `routingPolicies`, verb `SET_ROUTING_POLICY`). WLM recomputes shares every 60 s from last
    tick's displaceable capacity at the work's dispatch priority on each candidate LPAR (the keys of
-   the scenario's routing), CP-only unless zIIP-aware, with a 2 % floor and 1 % steps (`content/routing.ts`).
+   the scenario's routing), BASEWLM on idle CP capacity, SERVERWLM on a CP/zIIP composite, with a 2 % floor and 1 % steps (`content/routing.ts`).
    `SET_ROUTING` is refused while a dynamic policy is on.
    *Done (sim, part 2):* `CPSM_GOAL{abendThreshFrac, abendCritFrac, quiesced}`. Every 30 s shares move
    half-way toward a split weighted by `prevShare × meanRt / seenRt`, where a region's seen response
@@ -1375,7 +1375,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
-| Sysplex distributor WLM weights | **Simplified** | Shares ∝ displaceable capacity at the work's DP (prev tick), recomputed each minute; CP-only by default, zIIP-aware weights blend by zIIP fraction (APPROX of SD PROCTYPE); real SERVERWLM is zIIP-aware by default (fix queued, M8.7). No server health term yet |
+| Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |
 | CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast; QR TCB overload and timeouts count as slow, so only a genuinely abending region storm-drains), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
 | Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
 | Swap / MPL delay | **Simplified** | Only batch jobs are swappable; swap out least important first when storage overcommits; swap-in immediate when it frees |

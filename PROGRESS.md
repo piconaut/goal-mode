@@ -237,13 +237,16 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   and 0.81, so little is taken (SG24-6472-03 PDF p.201, printed 183; eligibility in *MVS Planning: WLM* PDF p.118). The sim starts at
   0.7, stays capped below 0.9 and gives a flat 80 % of demand (`DISC_GOAL_MGMT` in `src/content/wlm/tuning.ts`);
   cap toward the 0.71–0.81 PI band instead. Done: cap = 1 − (0.81 − PI), floor 50 %; balance check with the post-sweep re-sweep.
-- [ ] **SERVERWLM weights are zIIP-aware by default.** Since V1R9 the server-specific weight is a composite of the
+- [x] **SERVERWLM weights are zIIP-aware by default.** Since V1R9 the server-specific weight is a composite of the
   available and displaceable capacity of each processor type (CP, zAAP, zIIP), weighted by the server's current use
   of each; PROCTYPE only applies to BASEWLM, and PROCXCOST (1–100, 1 = no penalty) lowers the weight of servers
   whose zIIP-targeted work crossed over to CPs (*IP Configuration Guide* 3.1, PDF p.555–556). The sim's `WLM`
   routing is CP-only unless `ziipAware` is set (`wlmShares` in `src/sim/workload/routing.ts`). Make the composite
   the default, turn the `ziipAware` lever into PROCXCOST (crossover penalty), and update the `sd-wlm-weights`
   Codex entry, which also wrongly says BASEWLM counts only CPs.
+  Done: `WLM{distMethod: BASEWLM | SERVERWLM}` replaces `ziipAware`; BASEWLM = idle CP capacity (Harbourline's B3 is now
+  "left on default BASEWLM"), SERVERWLM = CP/zIIP composite. PROCXCOST/PROCTYPE not modelled (no crossover penalty lever
+  yet). Balance check with the post-sweep re-sweep.
 
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
@@ -335,6 +338,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | Pending realism changes moved from CLAUDE.md to PROGRESS.md "M8.7 Realism fixes"; CLAUDE.md keeps only the rule for where they go | User: CLAUDE.md was a misstatement; to-dos belong with the milestones |
 | 2026-10-26 | New `docs/research.md` ledger: one row per confirmed fact with a PDF page link and the sim status; settled research moved out of Open questions; SPEC §17 points to it, §18 stays the bibliography | User asked for one central place for researched facts. Pages re-checked against the 3.1 books; SPEC §17 "Discretionary capping conditions: Real" row dropped (the conditions are only partly modelled) |
 | 2026-10-26 | Discretionary goal management caps from PI < 0.71, stays capped below 0.81, cap = 1 − (0.81 − PI), floor 50 % (was 0.7 / 0.9 / flat 80 %) | M8.7: real WLM holds capped work's PI in 0.71–0.81 (SG24-6472-03 p.183). Proportional cap is APPROX of WLM's projection; balance check deferred to the post-sweep re-sweep |
+| 2026-10-26 | Routing `WLM{ziipAware}` → `WLM{distMethod}`: BASEWLM weighs systems by idle CP capacity, SERVERWLM by the CP/zIIP composite of displaceable capacity; Harbourline B3 recast as the distributor left on default BASEWLM | M8.7: SERVERWLM is zIIP-aware by default and BASEWLM is the default method, CP-only without PROCTYPE (IP Config Guide 3.1 p.555–556), so B3's puzzle keeps its fix with a real name. PROCXCOST not added: no crossover-penalty lever needed for B3. Harbourline hash changes; balance check deferred to the re-sweep |
 
 ## Open questions
 

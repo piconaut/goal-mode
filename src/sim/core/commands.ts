@@ -312,7 +312,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       const p = cmd.policy;
       const label =
         p.method === 'WLM'
-          ? `WLM weights${p.ziipAware ? ' (zIIP-aware)' : ''}`
+          ? `WLM weights (${p.distMethod})`
           : p.method === 'CPSM_GOAL'
             ? `CPSM goal${p.abendCritFrac !== null ? ` ABENDCRIT ${Math.round(p.abendCritFrac * 100)}%` : ''}${p.quiesced.length ? `, quiesced ${p.quiesced.join(' ')}` : ''}`
             : 'static weights';

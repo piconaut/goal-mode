@@ -172,8 +172,8 @@ function harbourlineDay0(r: RunState, c: GameContent): RunState {
   };
   const cpsm = { method: 'CPSM_GOAL' as const, abendThreshFrac: 0.1, abendCritFrac: 0.2, quiesced: [] };
   plan('Textbook WLM policy (MKTORD percentile goal)', [{ kind: 'ACTIVATE_POLICY', definition: harbourlineTextbookPolicy() }]);
-  plan('MKTQRY on zIIP-aware WLM weights (B1, B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MKTQRY', policy: { method: 'WLM', ziipAware: true } }]);
-  plan('MOBILE zIIP-aware weights (B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'WLM', ziipAware: true } }]);
+  plan('MKTQRY on SERVERWLM weights (B1, B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MKTQRY', policy: { method: 'WLM', distMethod: 'SERVERWLM' } }]);
+  plan('MOBILE SERVERWLM weights (B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'WLM', distMethod: 'SERVERWLM' } }]);
   plan('CPSM ABENDTHRESH/ABENDCRIT (B2)', [
     { kind: 'SET_ROUTING_POLICY', workloadId: 'MKTORD', policy: cpsm },
     { kind: 'SET_ROUTING_POLICY', workloadId: 'CARDS', policy: cpsm },
