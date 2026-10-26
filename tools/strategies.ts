@@ -300,7 +300,7 @@ function tunePolicyIncidents(run: RunState, s: Scenario, c: GameContent): RunSta
         done.add(`${a.name}:qr`);
         commands.push({ kind: 'SET_CICS', name: a.name, qrFrac: Math.max(QR_FLOOR_FRAC, a.qrFrac / 2) });
       }
-    } else if (inc.truth.mechanism === 'CPU_PRIORITY') {
+    } else if (inc.truth.mechanism === 'CPU_PRIORITY' && !process.env.EXPERT_NO_BUMP) {
       const scId = classify(def, w.work).serviceClass;
       const cls = def.classes.find((x) => x.id === scId);
       const p = cls?.periods[0];
