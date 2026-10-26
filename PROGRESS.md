@@ -166,6 +166,13 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
           unchanged), so no regression. The remaining Harbourline trust ends are heavy days with both CPCs at 90–100 % CP
           busy that the incident attribution labels CPU_PRIORITY/POLICY, because it pools busy across CPCs and averages it
           over the hour; fixing that attribution is next (user decision 2026-10-26).
+        - Incident labels (2026-10-26, user chose importance-aware): `mechanismOf` calls a CPU incident CPU_CAPACITY
+          when a host CPC averaged ≥ 90 % CP busy over the hour and < 10 % of the image's CP went to work less important
+          than the hurt class (no WLM donors), else CPU_PRIORITY. A tried per-CPC "≥ 95 % busy for ¼ of the hour" rule
+          relabelled Midwest almost wholly to capacity (PRIORITY 248 → 37). Expert sweep, seeds 1–20 (outcomes
+          unchanged, labels only): Harbourline PRIORITY/CAPACITY 828/28 → 634/222, Midwest 248/232 → 349/131, Revenue
+          123/2 → 125/0. Next: trial the expert buying capacity after yesterday's CPU_CAPACITY incidents (Harbourline
+          trust-loss seeds 2, 12, 13, 15 and 19 had 9, 11, 25, 19 and 4 CAPACITY incidents).
     - **Loop-113 re-sweep (2026-10-21, seeds 1–20, after RETRY_STORM, per-scenario facets and PR #13):** do-nothing
       11 / 17 / 21, ends trust 14 · batch 6; textbook 17 / 28 / 28, ends batch 11 · trust 9 (median 28 reaches the 28–32
       target, but 10 of 20 runs end on a batch miss on exactly day 28: a fixed wall where nightly growth outruns the

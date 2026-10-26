@@ -25,6 +25,7 @@ import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './
 import { hintLevelFor, morningHints } from './hints';
 import { HINT_SENDER, STORY_BEAT_HINTS } from '../content/hints';
 import { step } from '../sim/core/step';
+import { classify } from '../sim/wlm/classify';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import type { RmfInterval } from '../sim/measure/rmf';
@@ -33,7 +34,7 @@ import { deliverInquiries } from './inquiries';
 import { allWorkloads } from './workloads';
 import type { WorkloadDef } from '../sim/workload/types';
 import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, previewChange } from './catalog';
-import { hourAttainment, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
+import { hourAttainment, importanceRank, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
   facetsOf,
@@ -405,6 +406,8 @@ const newHour = (tick: number): HourAcc => ({
   maxCappedFrac: 0,
   cappedByLpar: {},
   cpcBusySum: 0,
+  cpcBusyById: {},
+  cpByImportance: {},
   lockIndexSum: 0,
 });
 
@@ -493,14 +496,28 @@ function accumulateHour(run: RunState): RunState {
   let capped = 0;
   let delivered = 0;
   const cappedByLpar = { ...h.cappedByLpar };
+  const deliveredByCpc: Record<string, number> = {};
   for (const l of run.sim.lpars) {
     const cp = l.pools.find((p) => p.pool === 'CP');
     if (!cp) continue;
     capped = Math.max(capped, cp.cappedFrac);
     cappedByLpar[l.id] = Math.max(cappedByLpar[l.id] ?? 0, cp.cappedFrac);
     delivered += cp.deliveredEngines;
+    const cpcId = run.sim.config.lpars.find((x) => x.id === l.id)?.cpcId;
+    if (cpcId) deliveredByCpc[cpcId] = (deliveredByCpc[cpcId] ?? 0) + cp.deliveredEngines;
   }
   const engines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
+  const cpcBusyById = { ...(h.cpcBusyById ?? {}) };
+  for (const c of run.sim.config.cpcs) {
+    if (c.engines.CP > 0) cpcBusyById[c.id] = (cpcBusyById[c.id] ?? 0) + (deliveredByCpc[c.id] ?? 0) / c.engines.CP;
+  }
+  const cpByImportance = { ...(h.cpByImportance ?? {}) };
+  const def = run.sim.wlm.definition;
+  for (const lt of run.sim.last.lpars) {
+    const acc = [...(cpByImportance[lt.lparId] ?? [0, 0, 0, 0, 0, 0, 0])];
+    for (const x of lt.scps) acc[importanceRank(def, x.scKey)]! += x.cpEngines;
+    cpByImportance[lt.lparId] = acc;
+  }
   return {
     ...run,
     hour: {
@@ -510,6 +527,8 @@ function accumulateHour(run: RunState): RunState {
       maxCappedFrac: Math.max(h.maxCappedFrac, capped),
       cappedByLpar,
       cpcBusySum: h.cpcBusySum + (engines > 0 ? delivered / engines : 0),
+      cpcBusyById,
+      cpByImportance,
       lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
     },
   };
@@ -565,7 +584,13 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
       const inc = incidents[openIdx]!;
       incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
     } else {
-      const mechanism = mechanismOf(parts, baselines[w.id] ?? {}, h, Object.keys(r.sim.routing[w.id] ?? w.routing));
+      const hosts = Object.entries(r.sim.routing[w.id] ?? w.routing)
+        .filter(([, f]) => f > 0)
+        .map(([lparId]) => {
+          const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
+          return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
+        });
+      const mechanism = mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
       const isNew = r.sim.extraWorkloads.some((x) => x.id === w.id);
       const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
       let aiops: Hypothesis[] | undefined;
