@@ -97,8 +97,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   slices with a field-by-field literal instead of a spread was ~40% slower overall (hidden-class split with
   the other slice copies), so keep slice copies as spreads
 - [ ] Structural options for 4×, in expected-value order: (1) ~~cache per-LPAR slice specs~~ (templates
-  cached; the per-tick spread copy and demand fill remain, ~3%); (2) evaluate projections on a reduced slice set (only the receiver's and donors'
-  periods); (3) struct-of-arrays for scps/buckets to cut allocation; (4) evaluate DEVT/SYSP every 3rd
+  cached; the per-tick spread copy and demand fill remain, ~3%); (2) project only the periods at or below the highest DP a trial
+  touches, as WLM does (SG24-6472-03 PDF p.66; `docs/research.md`); periods above it are unaffected by the move. Not
+  receiver + donors only: WLM's net value test covers every class at or below the move. Should keep the bench hash;
+  if it doesn't, check zIIP overflow and I/O for upward effects; (3) struct-of-arrays for scps/buckets to cut allocation; (4) evaluate DEVT/SYSP every 3rd
   tick (low-importance images, APPROX); (5) RMF accumulation every tick → running sums without object spreads.
   Each must keep the golden hash or regenerate it with a reason
 - Decision: the what-if simulator doesn't wait on M8.1 (runs in the briefing with the clock stopped, chunked)
