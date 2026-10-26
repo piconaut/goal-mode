@@ -5,7 +5,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 ## Current status
 
-- **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 on hold until the user says start. Playable in the browser
+- **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-26
 - **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
@@ -219,6 +219,14 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     four fix families; Problem 2 flaws B1–B4: static SD weights, storm drain, CP-only WLM weights, CF locality; build
     order multi-CPC → burst arrivals → routing policies → content)
 
+**M8.6 Playtesting, polish & progression (user request 2026-10-26)**
+- [ ] Playtesting: human and agent playtests on all three scenarios (`goal-mode-player` and the persona agents for
+  the headless side); record friction points and fix the worst ones
+- [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
+- [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
+- [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
+  the career XP system (M8.3 meta-progression)
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
@@ -238,9 +246,8 @@ to `main` (this is the last push there; M9 goes on its feature branch).
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
 changes; simplified mode is a game/UI layer over the same commands, reports and scoring.
-**HOLD: do not start M9 until the user explicitly says to start it (user request 2026-10-20), even if
-M7–M8.9 are done; if the loop reaches this point, stop and ask instead.** When told to start: do all M9
-work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main`.
+Hold released by the user on 2026-10-26 (was: don't start until told, 2026-10-20). Do all M9 work on a separate
+feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - [ ] Mode switch at run start (Expert / Simplified); same seed gives the same world in both modes
 - [ ] Keep the full WLM policy definition visible and editable, but offer **goal-level actions** that bundle
   the discrete changes an expert would make, e.g. "Protect mobile banking from ad-hoc queries" = new service
@@ -304,20 +311,49 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-23 | CI is the merge gate for `dev` and `main`: tests + goldens, a required "Behaviour change" note when goldens change, bench-hash equality for `perf` PRs, and a 5-seed bot sweep inside loose bands when goldens change | Sessions merge unattended, so the gates must be enforced by CI, not by the agent's own report. A valid behaviour change passes (regenerated goldens + note); an unexplained one or a "perf" change that moves the state does not |
 | 2026-10-26 | `main` requires the four CI checks but no approving review; Claude merges milestone PRs (merge commit) after a `pr-reviewer` MERGE verdict, and the reviewer posts its report on the PR | Claude acts as the user's GitHub account, so a required approval could never be given (an author can't approve their own PR). The gate is CI plus a more thorough review: base-vs-head bench hashes for both scenarios, determinism re-run, a 10-seed sweep for milestones, adversarial read |
 | 2026-10-26 | Daily challenge on the day-1 briefing: a "Daily challenge" button next to Scenario/Difficulty restarts on today's UTC seed; a daily run shows a tag and "Random seed instead", and changing scenario or difficulty keeps it daily | User request: the button was only on the end screen, so a first-time player could not start a daily before finishing a run |
+| 2026-10-26 | M9 hold released; M8.6 added (playtesting, UI polish pass, more perks, wider career unlocks) | User request |
+| 2026-10-26 | Routing/capping open questions researched against IBM PDFs: group limits only clip bursts with `AbsMSUcapping=YES` (sim matches the NO default); soft capping by positive phantom weight can cut VH/VM (to model); discretionary goal management caps from PI < 0.71 and holds 0.71–0.81 (to model); CPSM routing factors confirmed, abend recovery timing and SERVERWLM zIIP weights still unverified | User request; the two model changes are listed in CLAUDE.md "Pending realism changes" so the next model session picks them up |
 
 ## Open questions
 
-- Large-bank design (SPEC §13.5), to settle before building: how sysplex distributor `SERVERWLM` weights count zIIP
-  capacity by default; how CICSPlex SM abend-related health checks are configured and how fast a recovered region gets work
-  again; whether an LPAR absolute cap or a group absolute limit is the usual "clips bursts" lever.
+- **Sysplex routing and capping research (2026-10-26)**, checked against IBM book PDFs:
+  - *Settled, which lever clips bursts:* a capacity group (like defined capacity) only caps while the four-hour
+    rolling average is at or above the limit, unless `AbsMSUcapping=YES` in IEAOPTxx; with it WLM enforces the
+    defined-capacity or group limit all the time, independent of the 4HRA, and group members can still use unused
+    group capacity. WLM absolute MSU capping is unrelated to PR/SM LPAR and LPAR-group absolute capping. WLM forecasts
+    group members from the previous interval, so a group limit can take a couple of minutes to bite after a demand
+    change ([MVS Planning: WLM 3.1 p.44–45](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=45)). So the burst-clipping levers are PR/SM absolute capping
+    (modelled, `SET_ABSOLUTE_CAP`) or `AbsMSUcapping=YES` (not modelled); a plain group limit is not one. The sim's
+    group capping (capped only while the group 4HRA ≥ limit, shared by weight and demand) matches the
+    `AbsMSUcapping=NO` default. Possible later lever: `AbsMSUcapping` per image.
+  - *Settled, soft capping and polarity:* "While a partition is being capped according to a positive phantom weight
+    (option 3), the priority of the partition is effectively reduced and the number of logical processors with high
+    or medium share might be reduced" ([MVS Planning: WLM 3.1 p.46](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=46)). Positive phantom weight is used
+    when the partition's weight-based share is above its defined capacity (p.45). **Realism change needed** (see
+    CLAUDE.md "Pending realism changes").
+  - *Settled, discretionary goal management:* eligible work is not in a resource group and has a velocity goal ≤ 30 or
+    a response-time goal > 1 minute ([MVS Planning: WLM 3.1 p.118](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=118)); SG24-6472-03 (Redbook, Mar 2008,
+    p.201, printed 183) adds "PI of the service class is less than 0.71" and says WLM keeps the capped work's PI between 0.71 and
+    0.81, so very little is taken; a resource group with no minimum or maximum protects a class from it. The sim uses
+    0.7 to start, 0.9 to stay capped and a flat 80 % of demand. **Realism change needed** (CLAUDE.md). The extra
+    SG24-7621 conditions ("last uncapped non-discretionary period", "significant receiver candidate") appear in
+    neither source; leave them unmodelled.
+  - *Partly settled, CICSPlex SM routing:* the queue algorithm weighs task load (current tasks vs MAXTASKS), region
+    health (short on storage, taking a transaction or system dump, at MAXTASKS, stalled), link speed, outstanding RTA
+    events and affinities, and prefers the region "least likely to cause the transaction to abend"; the goal algorithm
+    routes to the region best able to meet the WLM response-time goal, and velocity or discretionary transactions are
+    assumed to meet theirs; since CICS TS 4.1 region status is posted to the CF, so routing data is current
+    ([SG24-7817-00 Parallel Sysplex Best Practices, Jan 2011, p.90–92](https://www.redbooks.ibm.com/redbooks/pdfs/sg247817.pdf#page=105)).
+    Still open: how abend probability decays, i.e. how fast a recovered region gets work again. Needs the CICSPlex SM
+    Administration book (`administering-cpsm_pdf`, not in `ibm-zos-books` yet).
+  - *Open, SERVERWLM and zIIP:* not covered by the books in `ibm-zos-books`. The Codex entry
+    (`sysplex distributor`) says zIIP-aware weights count zIIP capacity; that is unverified. Needs the z/OS 3.1 IP
+    Configuration Guide (https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf) or REDP-4563 *System z
+    Dynamic Workload Balancing* added to the books repo.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
-- Soft capping by positive phantom weight lowers the LPAR's effective priority and can cut its VH/VM count (MVS Planning:
-  WLM). The sim caps with a flat MSU limit and leaves polarity alone. Worth modelling once PR #9's polarity rework lands?
-- SG24-7621 §4.22 lists "must be the last uncapped non-discretionary period" and "has not been a significant receiver
-  candidate" among the discretionary-capping conditions; neither is modelled and the first is ambiguous as written.
 - Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
   a soft-capped image. On a real system the latter probably shows as processor (PRC) delay, since PR/SM just stops
   dispatching the logical CPs. Unverified; the DELAY report keeps one CAP column.
@@ -340,7 +376,7 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
   airline scenario?
 - Tuning target for "fun density": how many meaningful decisions per live day? (Target: 3–6
   alerts that matter, 1–2 incidents in Act II+.)
-- Waiting on the user: M9 start. (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
+- Waiting on the user: nothing open (M9 released 2026-10-26). (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
 
 ## Risks
 

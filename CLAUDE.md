@@ -83,6 +83,18 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5   # CI gate: bot sweep insid
   guessing silently. Pick a reasonable model, mark it `// APPROX:` and move on.
 - Update SPEC §17 (fidelity table) when you add or change a model.
 
+### Pending realism changes (researched 2026-10-26; details and citations in PROGRESS.md "Open questions")
+
+Both are sim model changes: regenerate the goldens with a "Behaviour change" note, re-sweep, update SPEC §5.5.5/§17.
+- **Soft capping cuts polarity.** While an LPAR is soft-capped through a positive phantom weight (its weight-based
+  share is above its defined capacity), PR/SM effectively lowers its priority and it may get fewer VH/VM logical
+  processors (*MVS Planning: WLM* 3.1, p.46). The sim caps with a flat MSU limit and leaves polarity alone; compute
+  polarity from the capped entitlement while the cap is on.
+- **Discretionary goal management thresholds.** Eligible periods are capped from PI < 0.71 and held between PI 0.71
+  and 0.81, so little is taken (SG24-6472-03 p.183; eligibility in *MVS Planning: WLM* p.98). The sim starts at
+  0.7, stays capped below 0.9 and gives a flat 80 % of demand (`DISC_GOAL_MGMT` in `src/content/wlm/tuning.ts`);
+  cap toward the 0.71–0.81 PI band instead.
+
 ## Testing expectations
 
 - **Unit tests** for every pure model function (Erlang-C, polarity, PI, buckets, R4HA,
