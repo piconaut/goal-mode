@@ -291,18 +291,24 @@ function StartingPerk({ v, game }: { v: ViewModel; game: GameHandle }) {
 }
 
 // A fresh page load starts on Midwest Mutual, Normal; until day 1 starts the player can restart on another
-// scenario or preset.
+// scenario or preset, or switch to today's daily challenge (which then stays daily across those restarts).
 function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
   const plannedAny = v.changes.length > 0;
-  const restart = (scenario: string, difficulty: DifficultyId) => {
+  const restart = (scenario: string, difficulty: DifficultyId, daily: boolean) => {
     if (plannedAny && !confirm('Restart? Planned changes are discarded.')) return;
-    game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario });
+    const today = new Date().toISOString().slice(0, 10);
+    game.send(
+      daily
+        ? { type: 'NEW_RUN', seed: dailySeed(today), difficulty, daily: today, scenario }
+        : { type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario },
+    );
   };
+  const isDaily = v.daily !== null;
   return (
     <p>
       <label>
         Scenario{' '}
-        <select value={v.scenario.id} onChange={(e) => restart(e.target.value, v.difficulty.id)}>
+        <select value={v.scenario.id} onChange={(e) => restart(e.target.value, v.difficulty.id, isDaily)}>
           {Object.values(PACKS).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -314,7 +320,7 @@ function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
         Difficulty{' '}
         <select
           value={v.difficulty.id}
-          onChange={(e) => restart(v.scenario.id, e.target.value as DifficultyId)}
+          onChange={(e) => restart(v.scenario.id, e.target.value as DifficultyId, isDaily)}
         >
           {Object.values(DIFFICULTIES).map((d) => (
             <option key={d.id} value={d.id}>
@@ -323,7 +329,17 @@ function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
           ))}
         </select>
       </label>{' '}
-      <span className="muted">{DIFFICULTIES[v.difficulty.id].description}</span>
+      <span className="muted">{DIFFICULTIES[v.difficulty.id].description}</span>{' '}
+      {isDaily ? (
+        <>
+          <span className="tag" style={{ whiteSpace: 'nowrap' }}>Daily challenge {v.daily}</span>{' '}
+          <button onClick={() => restart(v.scenario.id, v.difficulty.id, false)}>Random seed instead</button>
+        </>
+      ) : (
+        <button title="Same seed for everyone today (UTC)" onClick={() => restart(v.scenario.id, v.difficulty.id, true)}>
+          Daily challenge
+        </button>
+      )}
     </p>
   );
 }
