@@ -113,3 +113,18 @@ describe('Midwest Mutual starting topology (flaw F10)', () => {
     expect(res['CF02:ICF']!.entitlementEngines).toBeCloseTo(0.1);
   });
 });
+
+describe('soft capping and polarity', () => {
+  const cpc = MIDWEST_WORLD.cpcs[0]!;
+  const demand = (softCapEngines: number) => [{ lparId: 'PROD1', pool: 'CP' as const, demandEngines: 6, softCapEngines }];
+  const highPolarity = (softCapEngines: number) => {
+    const r = resolveCpc(cpc, MIDWEST_WORLD.lpars, demand(softCapEngines))['PROD1:CP']!;
+    return r.vh + r.vm;
+  };
+  it('a soft-capped LPAR gets fewer VH/VM processors (MVS Planning: WLM 3.1 p.46)', () => {
+    expect(highPolarity(1.5)).toBeLessThan(highPolarity(Infinity));
+  });
+  it('a soft cap above the entitlement leaves polarity alone', () => {
+    expect(highPolarity(50)).toBe(highPolarity(Infinity));
+  });
+});
