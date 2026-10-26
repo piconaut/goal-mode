@@ -191,12 +191,24 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [x] Difficulty presets Story / Normal / Hard / Ironman (`src/content/difficulty.ts`, applied in the game layer):
   growth, event rate and severity, constraint timing, budgets, start trust, starting fixes (Story: F7/F8/F11),
   hint level, pause rules; picker in the day-1 briefing and on the end screen; `--difficulty` on bot/sweep
-  - [~] Bot sweeps per difficulty to check the presets land where SPEC §11.2 says (loop 52, seeds 1–10):
+  - [x] Bot sweeps per difficulty to check the presets land where SPEC §11.2 says (loop 52, seeds 1–10):
     **Story** textbook 28 / 29 / 30 (batch 5 · trust 5, Retail at 0), expert victory 10/10. **Hard** textbook
     18 / 24 / 26, expert 33 / 40 / 40 (victory 5 · trust 5). Hard separates well; Story barely helps a
     non-diagnosing player (same batch-deadline wall; merger lands in SYSOTHER). User decision: a clear merger
     hint two days ahead, on Story and Normal (`STORY_BEAT_HINTS`, loops 59/62). Bots don't read hints, so
     their numbers don't move. Re-sweep Story/Hard after the deck is complete
+    - **Full sweep (2026-10-26, seeds 1–20, code 937a2ee, before PRs #30/#31/#36; day p10 / median / p90):**
+      **Story** Midwest: do-nothing 21 / 25 / 27 (batch 14 · trust 6), textbook 19 / 28 / 30 (batch 7 · trust 13),
+      expert victory 20/20. Revenue: do-nothing 15 / 16 / 19, textbook 29 / 30 / 31 (all trust), expert victory 19/20.
+      Harbourline: do-nothing 11 / 15 / 18, textbook victory 18/20, expert victory 19/20.
+      **Hard** Midwest: do-nothing 9 / 12 / 17, textbook 16 / 24 / 27 (trust 16 · batch 4), expert 28 / 40 / 40
+      (victory 8 · trust 7 · opex 5). Revenue: do-nothing 8 / 9 / 12, textbook 26 / 27 / 28, expert victory 16/20
+      (opex 3 · trust 1). Harbourline: do-nothing 8 / 10 / 11, textbook 18 / 26 / 28 (trust 15 · opex 5), expert
+      25 / 28 / 33, no victories (trust 11 · opex 9).
+      Verdict: the presets order every scenario as intended (Story > Normal > Hard for every bot). Open balance
+      questions, for after the M8.7 re-sweep: Hard Harbourline is unwinnable for the expert bot (its Normal win rate
+      is already only 65 %, the same opex day-28 wall); Story Midwest textbook still hits the batch-deadline wall
+      (same as Normal); Story Harbourline is won by the textbook bot (18/20), so Story may be too easy there.
 - [x] Morning hints (Story clear, Normal vague, none on Hard/Ironman; `src/game/hints.ts`, texts in `src/content/hints.ts`)
 - [x] Weekend auto-simulation with the report card as summary; optional "play the weekend"
 - [x] Endless mode after victory; daily seed challenge (`src/game/daily.ts`), startable from the day-1 briefing too
