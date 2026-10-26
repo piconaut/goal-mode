@@ -312,7 +312,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | `main` requires the four CI checks but no approving review; Claude merges milestone PRs (merge commit) after a `pr-reviewer` MERGE verdict, and the reviewer posts its report on the PR | Claude acts as the user's GitHub account, so a required approval could never be given (an author can't approve their own PR). The gate is CI plus a more thorough review: base-vs-head bench hashes for both scenarios, determinism re-run, a 10-seed sweep for milestones, adversarial read |
 | 2026-10-26 | Daily challenge on the day-1 briefing: a "Daily challenge" button next to Scenario/Difficulty restarts on today's UTC seed; a daily run shows a tag and "Random seed instead", and changing scenario or difficulty keeps it daily | User request: the button was only on the end screen, so a first-time player could not start a daily before finishing a run |
 | 2026-10-26 | M9 hold released; M8.6 added (playtesting, UI polish pass, more perks, wider career unlocks) | User request |
-| 2026-10-26 | Routing/capping open questions researched against IBM PDFs: group limits only clip bursts with `AbsMSUcapping=YES` (sim matches the NO default); soft capping by positive phantom weight can cut VH/VM (to model); discretionary goal management caps from PI < 0.71 and holds 0.71–0.81 (to model); CPSM routing factors confirmed, abend recovery timing and SERVERWLM zIIP weights still unverified | User request; the two model changes are listed in CLAUDE.md "Pending realism changes" so the next model session picks them up |
+| 2026-10-26 | Routing/capping open questions researched against IBM PDFs: group limits only clip bursts with `AbsMSUcapping=YES` (sim matches the NO default); soft capping by positive phantom weight can cut VH/VM (to model); discretionary goal management caps from PI < 0.71 and holds 0.71–0.81 (to model); CPSM routing factors confirmed | User request; the two model changes are listed in CLAUDE.md "Pending realism changes" so the next model session picks them up |
+| 2026-10-26 | Last two routing questions settled from books the agent now fetches itself (IP Configuration Guide, CPSM Managing Workloads, SG24-7621): SERVERWLM is zIIP-aware by default (realism change queued in CLAUDE.md); CPSM abend recovery matches the sim's shape, decay rate undocumented; `storm-drain` Codex thresholds corrected | User request |
 
 ## Open questions
 
@@ -336,20 +337,35 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     p.201, printed 183) adds "PI of the service class is less than 0.71" and says WLM keeps the capped work's PI between 0.71 and
     0.81, so very little is taken; a resource group with no minimum or maximum protects a class from it. The sim uses
     0.7 to start, 0.9 to stay capped and a flat 80 % of demand. **Realism change needed** (CLAUDE.md). The extra
-    SG24-7621 conditions ("last uncapped non-discretionary period", "significant receiver candidate") appear in
-    neither source; leave them unmodelled.
-  - *Partly settled, CICSPlex SM routing:* the queue algorithm weighs task load (current tasks vs MAXTASKS), region
+    conditions ("not currently a receiver or donor", "not a small consumer", "last uncapped non-discretionary
+    period", "not a significant receiver candidate for CPU") come from a figure in SG24-7621-00 (Redbook, Jan 2010,
+    [PDF p.177, Fig. 4-22](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=177)), which says all must hold; neither the
+    z/OS book nor SG24-6472 lists them and none is explained. The sim already skips small consumers; leave the rest
+    unmodelled.
+  - *Settled, CICSPlex SM routing:* the queue algorithm weighs task load (current tasks vs MAXTASKS), region
     health (short on storage, taking a transaction or system dump, at MAXTASKS, stalled), link speed, outstanding RTA
     events and affinities, and prefers the region "least likely to cause the transaction to abend"; the goal algorithm
     routes to the region best able to meet the WLM response-time goal, and velocity or discretionary transactions are
     assumed to meet theirs; since CICS TS 4.1 region status is posted to the CF, so routing data is current
     ([SG24-7817-00 Parallel Sysplex Best Practices, Jan 2011, p.90–92](https://www.redbooks.ibm.com/redbooks/pdfs/sg247817.pdf#page=105)).
-    Still open: how abend probability decays, i.e. how fast a recovered region gets work again. Needs the CICSPlex SM
-    Administration book (`administering-cpsm_pdf`, not in `ibm-zos-books` yet).
-  - *Open, SERVERWLM and zIIP:* not covered by the books in `ibm-zos-books`. The Codex entry
-    (`sysplex distributor`) says zIIP-aware weights count zIIP capacity; that is unverified. Needs the z/OS 3.1 IP
-    Configuration Guide (https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf) or REDP-4563 *System z
-    Dynamic Workload Balancing* added to the books repo.
+    Abend recovery: an unhandled abend sets the transaction's abend probability in that region to 100 % and the region
+    is unhealthy; CICSPlex SM then "gradually reduces" it. Below ABENDCRIT but above ABENDTHRESH the region is healthy
+    again but its perceived load is doubled; below ABENDTHRESH its load is normal; a further abend restarts the cycle.
+    An unhealthy region still gets work if no healthier one exists. Abend probabilities only apply to the dynamic
+    routing exit (DTRPGM), not distributed routing (DSRTPGM), and abends caught by HANDLE ABEND are invisible
+    ([CICS TS 6 CICSPlex SM Managing Workloads, PDF p.34–35](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/cpsm-managing-workloads_pdf.pdf#page=34);
+    field definitions in [CICSPlex SM Administration, PDF p.274](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/administering-cpsm_pdf.pdf#page=274)).
+    The decay rate is not documented. The sim matches the shape (ABENDTHRESH halves the weight, ABENDCRIT zeroes it,
+    every live region keeps a trickle) but keys it on the current abend rate rather than an ageing probability:
+    APPROX, kept. The `storm-drain` Codex entry had the two thresholds swapped; fixed.
+  - *Settled, SERVERWLM and zIIP:* since V1R9 the SERVERWLM weight is a composite of the available and displaceable
+    capacity of each processor type (CP, zAAP, zIIP) and the server's current use of each type; PROCXCOST (1–100)
+    penalises servers whose zIIP-targeted work crossed over to CPs, ILWEIGHTING (default 0) biases toward displaceable
+    work at lower importance, and weights are normalised to 0–64. BASEWLM also counts zAAP/zIIP capacity when no system is
+    pre-V1R9, and PROCTYPE sets the expected usage per processor type for BASEWLM
+    ([IP Configuration Guide 3.1, PDF p.555–557](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf#page=555)). The sim is CP-only
+    unless `ziipAware`, and the `sd-wlm-weights` Codex entry says BASEWLM counts only CPs. **Realism change needed**
+    (CLAUDE.md "Pending realism changes").
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
