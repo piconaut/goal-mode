@@ -82,9 +82,9 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5   # CI gate: bot sweep insid
 - If you're unsure how z/OS really behaves, say so in PROGRESS.md "Open questions" rather than
   guessing silently. Pick a reasonable model, mark it `// APPROX:` and move on.
 - Update SPEC §17 (fidelity table) when you add or change a model.
-
-- When research shows the sim differs from real z/OS, add an unticked item with the citation to PROGRESS.md
-  "Realism fixes"; update SPEC §17 and §18 in the PR that changes the model.
+- Confirmed facts go in `docs/research.md` (fact, page-linked source, sim status); check it before modelling
+  something, and add a row when research settles a question. When the sim differs, also add an unticked item to
+  PROGRESS.md "Realism fixes"; update the ledger row and SPEC §17/§18 in the PR that changes the model.
 
 ## Testing expectations
 
