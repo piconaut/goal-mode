@@ -124,6 +124,13 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       - [ ] Investigate Harbourline expert losses: opex ends on day 28 (seeds 5, 12, 13, 16) recur even though the
         expert now declines BUDGET_SWAP; also the trust ends on seeds 8, 10 and 19. Re-check after the post-sweep
         re-sweep that includes PRs #30/#31.
+        - Loop 4 (seed 5 on dev 4743420, after PRs #30/#31): still opex on day 28, and only just: the month-1 bill
+          is $1,895,889 against a $1,875,000 limit (budget $1.5M + 25 %), so it is 26.4 % over. The month's MLC
+          estimate goes $1452k → $1748k on day 12 (Holiday shopping-day card spike sets the month's R4HA peak, with the
+          PRDA absolute cap removed and capacity setting +1 bought on day 1, and no defined capacity anywhere). The
+          day-27 Vendor price increase then pushes it to $1896k. Candidate expert fixes (bot only, no model change):
+          set a Harbourline defined capacity that bounds the peak R4HA, or prefer FRIENDS_IN_FINANCE (+10 % budget) in
+          the review draft over the first-offered pick.
     - **Loop-113 re-sweep (2026-10-21, seeds 1–20, after RETRY_STORM, per-scenario facets and PR #13):** do-nothing
       11 / 17 / 21, ends trust 14 · batch 6; textbook 17 / 28 / 28, ends batch 11 · trust 9 (median 28 reaches the 28–32
       target, but 10 of 20 runs end on a batch miss on exactly day 28: a fixed wall where nightly growth outruns the
