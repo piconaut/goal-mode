@@ -324,6 +324,46 @@ function rentCapacityForIncidents(run: RunState, s: Scenario, c: GameContent): R
   return r;
 }
 
+/** Distinct days with CPU_CAPACITY incidents on a CPC, within this many days, that justify a permanent CP. */
+const PERM_CP_WINDOW_DAYS = 7;
+const PERM_CP_MIN_DAYS = 2;
+/** Capacity planning with capex: repeated no-donor CPU incidents on a CPC buy it a permanent CP (4-day lead), and
+ * once installed its production images get a logical CP more so they can use it. One purchase per CPC per window. */
+function buyCapacityForIncidents(run: RunState, s: Scenario, c: GameContent): RunState {
+  const cfg = run.sim.config;
+  const cpcOf = (l: string) => cfg.lpars.find((x) => x.id === l)?.cpcId ?? '';
+  const days = new Map<string, Set<number>>();
+  for (const inc of run.incidents.filter((i) => i.day >= run.day - PERM_CP_WINDOW_DAYS && i.truth.mechanism === 'CPU_CAPACITY')) {
+    const w = s.workloads.find((x) => x.id === inc.workloadId);
+    if (!w) continue;
+    for (const [l, f] of Object.entries(run.sim.routing[w.id] ?? w.routing)) {
+      if (f <= 0) continue;
+      const id = cpcOf(l);
+      if (!days.has(id)) days.set(id, new Set());
+      days.get(id)!.add(inc.day);
+    }
+  }
+  let r = run;
+  for (const cpc of cfg.cpcs) {
+    const label = `Permanent CP on ${cpc.id} for capacity incidents`;
+    const bought = r.changes.filter((x) => x.label === label && x.status !== 'FAILED');
+    if ((days.get(cpc.id)?.size ?? 0) >= PERM_CP_MIN_DAYS && !bought.some((x) => x.plannedDay > r.day - PERM_CP_WINDOW_DAYS)) {
+      r = requestChange(r, c, { label, hardwareId: 'PERM_CP', cpcId: cpc.id }).run;
+    }
+    const prod = cfg.lpars.filter((l) => l.cpcId === cpc.id && !l.id.startsWith('CF') && !['DEV1', 'TST1', 'DEVT', 'SYSP'].includes(l.id));
+    const commands = prod.flatMap((l) => {
+      const p = l.pools.find((x) => x.pool === 'CP');
+      return p && p.logical < cpc.engines.CP ? [{ kind: 'SET_LOGICAL' as const, lparId: l.id, pool: 'CP' as const, logical: p.logical + 1 }] : [];
+    });
+    // One logical CP per installed purchase, not a climb toward the physical count.
+    const raised = r.changes.filter((x) => x.label === `Logical CPs on ${cpc.id}` && x.status !== 'FAILED').length;
+    if (commands.length > 0 && raised < bought.filter((x) => x.status === 'APPLIED').length) {
+      r = requestChange(r, c, { label: `Logical CPs on ${cpc.id}`, commands }).run;
+    }
+  }
+  return r;
+}
+
 // ---------------------------------------------------------------------------
 // Expert: fixer plus capacity planning ahead of need. Buys the faster capacity setting on day 1
 // (critical batch is a serial chain and batch volumes grow every night) instead of waiting for the
@@ -333,6 +373,7 @@ const expert: Strategy = {
     let run = fixer.briefing(r, s, c);
     if (run.day > 0) run = tunePolicyIncidents(run, s, c);
     if (run.day > 0 && process.env.EXPERT_COD === '1') run = rentCapacityForIncidents(run, s, c);
+    if (run.day > 0 && process.env.EXPERT_PERM === '1') run = buyCapacityForIncidents(run, s, c);
     // At the first briefing with the hours for it (Harbourline's day-0 flaw fixes use the whole day).
     if (run.day <= 2 && !run.changes.some((x) => x.label === 'Capacity setting +1' && x.status !== 'FAILED')) run = capSettingUp(run, c);
     return run;
