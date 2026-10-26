@@ -121,6 +121,13 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       28 / 28 / 28 (opex 19 · trust 1). Early textbook trust ends: Midwest seeds 7 and 17 (day 17), Revenue seed 17
       (day 13), Harbourline seed 10 (day 12). Verdict: do-nothing, textbook and spendtowin targets hold in all three
       scenarios; expert holds on Midwest and Revenue but fails on Harbourline (65 %), so both boxes stay open.
+    - **Post-M8.7 re-sweep (2026-10-26, seeds 1–20, dev 8984b9c = PRs #30/#31/#36):** Midwest and Revenue match the
+      full sweep run for run in outcome (Midwest: do-nothing 11 / 16 / 21, textbook 20 / 28 / 28, expert victory 20/20,
+      spendtowin opex 19 · batch 1; Revenue: do-nothing 10 / 13 / 15, textbook 27 / 28 / 29, expert victory 19/20,
+      spendtowin opex 19 · trust 1). Harbourline: do-nothing 8 / 12 / 15, textbook 28 / 32 / 37 (trust 18 · opex 2),
+      expert victory 13/20 on the same seeds (opex day 28: 5, 12, 13, 16, month-1 bills
+      $1.89–2.02M; trust: 8, 10, 19), spendtowin opex 19 · trust 1. So the three M8.7 realism fixes leave the balance
+      where it was; the Harbourline expert opex wall remains → budget raised to $1.6M (below).
       - [ ] Investigate Harbourline expert losses: opex ends on day 28 (seeds 5, 12, 13, 16) recur even though the
         expert now declines BUDGET_SWAP; also the trust ends on seeds 8, 10 and 19. Re-check after the post-sweep
         re-sweep that includes PRs #30/#31.
