@@ -66,7 +66,7 @@ Books referred to below:
 | Fact | Source | Checked | Sim status |
 |---|---|---|---|
 | Eligible work is not in a resource group and has a velocity goal ≤ 30 or a response-time goal > 1 minute | [WLM Planning p.118](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=118) | Checked | Matches (`DISC_GOAL_MGMT` in `src/content/wlm/tuning.ts`) |
-| Capping starts when the class's PI is below 0.71; WLM keeps the capped work's PI between 0.71 and 0.81, so very little is taken | [SG24-6472 p.201 (printed 183)](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=201) | Checked | **Fix queued**: sim starts at 0.7, stays capped below 0.9, gives a flat 80 % of demand |
+| Capping starts when the class's PI is below 0.71; WLM keeps the capped work's PI between 0.71 and 0.81, so very little is taken | [SG24-6472 p.201 (printed 183)](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=201) | Checked | Approx: starts below 0.71, stays capped below 0.81; the cap is proportional to the distance from 0.81 (FICTIONAL gain, floor 50 %) instead of WLM's projection |
 | Further conditions (not a recent receiver or donor, not a small consumer, last uncapped non-discretionary period, not a significant CPU receiver candidate), all of which must hold | [SG24-7621 p.177 Fig. 4-22](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=177) | Checked | Small consumers skipped; the rest Not modelled (not in the z/OS book, unexplained) |
 
 ## Resource groups, defined capacity and group capacity

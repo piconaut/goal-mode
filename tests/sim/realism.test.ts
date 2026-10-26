@@ -237,8 +237,16 @@ describe('WLM caps (resource group maximum, discretionary goal management)', () 
     const disc = (waiting: boolean) => ({ scKey: 'DEVBAT#1', dp: 150, starvedSec: 0, acc: waiting ? acc(1, 9, 1) : acc(9, 1, 1) });
     expect(discretionaryCaps(BASEPOL, sl, [tso2, disc(false)])).toBeUndefined();
     const cap = discretionaryCaps(BASEPOL, sl, [tso2, disc(true), { scKey: 'ONLHI#1', dp: 240, starvedSec: 0, acc: acc(9, 1, 6) }])!;
-    expect(cap(sl[0]!)).toBeCloseTo(0.8);
+    expect(cap(sl[0]!)).toBeCloseTo(0.5); // far below the 0.71–0.81 band: floor
     expect(cap(sl[1]!)).toBe(Infinity); // tight response-time goal: never capped
+    // Near the band the cap is gentle: velocity 4/13 ≈ 30.8 vs goal 20 is PI 0.65 → 1 − (0.81 − 0.65).
+    const near = discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: acc(4, 9, 6) }, disc(true)])!;
+    expect(near(sl[0]!)).toBeCloseTo(0.84, 2);
+    // PI 0.75 starts no cap, but a period already capped stays capped up to 0.81.
+    const pi75 = acc(4, 11, 6); // velocity 26.7, PI 0.75
+    expect(discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: pi75 }, disc(true)])).toBeUndefined();
+    const wasCapped = discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: { ...pi75, delayCap: 2 } }, disc(true)])!;
+    expect(wasCapped(sl[0]!)).toBeCloseTo(0.94, 2);
     // Small consumers are left alone.
     expect(discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: acc(9, 1, 0.1) }, disc(true)])).toBeUndefined();
   });

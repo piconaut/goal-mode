@@ -1127,17 +1127,18 @@ export function rgSysplexShares(
 const combineCaps = (a: ((s: SliceSpec) => number) | undefined, b: ((s: SliceSpec) => number) | undefined) =>
   a && b ? (s: SliceSpec) => Math.min(a(s), b(s)) : (a ?? b);
 
-/** Discretionary goal management (SG24-7621 §4.22): while discretionary work on this image is
- * waiting, over-achieving periods with loose goals are capped so it gets cycles. Only if not in a
- * resource group, not a small consumer, velocity ≤ 30 or response goal > 1 min, and PI < 0.7.
- * APPROX: the "not a recent receiver or donor" condition is not modelled. */
+/** Discretionary goal management: while discretionary work on this image is waiting, over-achieving
+ * periods with loose goals are capped so it gets cycles. Only if not in a resource group, not a small
+ * consumer, velocity ≤ 30 or response goal > 1 min (MVS Planning: WLM p.118), and PI < 0.71; WLM holds
+ * the capped PI in 0.71–0.81 (SG24-6472-03 p.183). APPROX: a proportional cap from the current PI instead
+ * of WLM's projection; the other SG24-7621 Fig. 4-22 conditions are not modelled. */
 export function discretionaryCaps(def: SimState['wlm']['definition'], slices: readonly SliceSpec[], scps: readonly ScpState[]): ((s: SliceSpec) => number) | undefined {
   const D = DISC_GOAL_MGMT;
   const byKey: Record<string, ScpState> = {};
   for (const st of scps) byKey[st.scKey] = st;
   const discWaiting = scps.some((st) => goalInfo(def, st.scKey)?.goal.kind === 'DISC' && st.acc.delay > st.acc.using);
   if (!discWaiting) return undefined;
-  const capped = new Set<string>();
+  const capped: Record<string, number> = {};
   for (const st of scps) {
     const g = goalInfo(def, st.scKey);
     if (!g || g.resourceGroup) continue;
@@ -1151,10 +1152,15 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
     const pi = accPi(goal, st.acc);
     if (pi === null) continue;
     const wasCapped = st.acc.delayCap > 0.05 * samples;
-    if (pi < D.piBelow || (wasCapped && pi < D.stayCappedPiBelow)) capped.add(st.scKey);
+    if (pi < D.piBelow || (wasCapped && pi < D.stayCappedPiBelow)) {
+      capped[st.scKey] = Math.max(D.minCapFrac, 1 - D.capGainPerPi * (D.stayCappedPiBelow - pi));
+    }
   }
-  if (capped.size === 0) return undefined;
-  return (s) => (capped.has(s.scKey) ? s.cpEngines * D.capFrac : Infinity);
+  if (Object.keys(capped).length === 0) return undefined;
+  return (s) => {
+    const f = capped[s.scKey];
+    return f === undefined ? Infinity : s.cpEngines * f;
+  };
 }
 
 /** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). */

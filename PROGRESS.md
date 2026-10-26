@@ -233,10 +233,10 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   share is above its defined capacity), PR/SM effectively lowers its priority and it may get fewer VH/VM logical
   processors (*MVS Planning: WLM* 3.1, p.46). The sim caps with a flat MSU limit and leaves polarity alone; compute
   polarity from the capped entitlement while the cap is on.
-- [ ] **Discretionary goal management thresholds.** Eligible periods are capped from PI < 0.71 and held between PI 0.71
+- [x] **Discretionary goal management thresholds.** Eligible periods are capped from PI < 0.71 and held between PI 0.71
   and 0.81, so little is taken (SG24-6472-03 PDF p.201, printed 183; eligibility in *MVS Planning: WLM* PDF p.118). The sim starts at
   0.7, stays capped below 0.9 and gives a flat 80 % of demand (`DISC_GOAL_MGMT` in `src/content/wlm/tuning.ts`);
-  cap toward the 0.71–0.81 PI band instead.
+  cap toward the 0.71–0.81 PI band instead. Done: cap = 1 − (0.81 − PI), floor 50 %; balance check with the post-sweep re-sweep.
 - [ ] **SERVERWLM weights are zIIP-aware by default.** Since V1R9 the server-specific weight is a composite of the
   available and displaceable capacity of each processor type (CP, zAAP, zIIP), weighted by the server's current use
   of each; PROCTYPE only applies to BASEWLM, and PROCXCOST (1–100, 1 = no penalty) lowers the weight of servers
@@ -334,6 +334,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | Last two routing questions settled from books the agent now fetches itself (IP Configuration Guide, CPSM Managing Workloads, SG24-7621): SERVERWLM is zIIP-aware by default (realism change queued in CLAUDE.md); CPSM abend recovery matches the sim's shape, decay rate undocumented; `storm-drain` Codex thresholds corrected | User request |
 | 2026-10-26 | Pending realism changes moved from CLAUDE.md to PROGRESS.md "M8.7 Realism fixes"; CLAUDE.md keeps only the rule for where they go | User: CLAUDE.md was a misstatement; to-dos belong with the milestones |
 | 2026-10-26 | New `docs/research.md` ledger: one row per confirmed fact with a PDF page link and the sim status; settled research moved out of Open questions; SPEC §17 points to it, §18 stays the bibliography | User asked for one central place for researched facts. Pages re-checked against the 3.1 books; SPEC §17 "Discretionary capping conditions: Real" row dropped (the conditions are only partly modelled) |
+| 2026-10-26 | Discretionary goal management caps from PI < 0.71, stays capped below 0.81, cap = 1 − (0.81 − PI), floor 50 % (was 0.7 / 0.9 / flat 80 %) | M8.7: real WLM holds capped work's PI in 0.71–0.81 (SG24-6472-03 p.183). Proportional cap is APPROX of WLM's projection; balance check deferred to the post-sweep re-sweep |
 
 ## Open questions
 
