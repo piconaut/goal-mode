@@ -131,6 +131,19 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
           day-27 Vendor price increase then pushes it to $1896k. Candidate expert fixes (bot only, no model change):
           set a Harbourline defined capacity that bounds the peak R4HA, or prefer FRIENDS_IN_FINANCE (+10 % budget) in
           the review draft over the first-offered pick.
+        - Loop 5, tried a bot-only defined-capacity rule. Each briefing it ratchets every PRD LPAR's defined
+          capacity up to its month-to-date R4HA peak × headroom (never down). Not adopted.
+          - FRIENDS_IN_FINANCE is a career unlock (xp 1400), so the bots never see it.
+          - Seeds 5/12/13/16/1/2 before the rule: 2 of 6 victories (1, 2).
+          - Headroom 1.05: every month-1 bill is inside the limit, but all 6 seeds collapse on trust (Market/Cards
+            incidents from capping). This includes seeds 1 and 2, which won before.
+          - Headroom 1.15: 3 of 6 victories (5, 1, 2). Seed 16 is still opex on day 28 (bill $1.891M); seeds 12 and 13
+            end on trust (days 36/37).
+          - In seed 5 the margin is the day-27 Vendor price increase (priceMult 1.08). Without it the bill is ~17 %
+            over. The month's R4HA peak (4133 MSU) is set on day 19.
+          - Next candidates are balance decisions, to try after the full sweep: a Harbourline opex budget nearer
+            $1.6M (check that spendtowin still ends on opex), or the Vendor price increase landing less often in
+            month 1.
     - **Loop-113 re-sweep (2026-10-21, seeds 1–20, after RETRY_STORM, per-scenario facets and PR #13):** do-nothing
       11 / 17 / 21, ends trust 14 · batch 6; textbook 17 / 28 / 28, ends batch 11 · trust 9 (median 28 reaches the 28–32
       target, but 10 of 20 runs end on a batch miss on exactly day 28: a fixed wall where nightly growth outruns the
