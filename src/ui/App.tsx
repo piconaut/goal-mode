@@ -137,7 +137,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="stat">
         Fatigue <b>{v.fatigue.toFixed(0)}</b>
       </span>
-      <span className="stat">
+      <span className="stat" title="Month's bill so far: priced on the month's peak R4HA to date, so a cap or saving lowers it only once it lowers that peak">
         MLC est <b>${Math.round(v.mlcEstimate / 1000)}k</b>
       </span>
       <span className="stat">
