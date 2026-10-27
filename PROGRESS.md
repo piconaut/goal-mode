@@ -102,6 +102,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   receiver + donors only: WLM's net value test covers every class at or below the move. Should keep the bench hash;
   if it doesn't, check zIIP overflow and I/O for upward effects; (3) struct-of-arrays for scps/buckets to cut allocation; (4) evaluate DEVT/SYSP every 3rd
   tick (low-importance images, APPROX); (5) RMF accumulation every tick → running sums without object spreads.
+  2026-10-27 profile (Harbourline day 5.27 s, Midwest 2.56 s): dispatchLpar 35 %, policyAdjust 8.4 % of which the trial
+  projections are only 2.1 %, stepRmf 6.6 % (accumulateTick 5.2 %), GC 7.6 %. User decision 2026-10-27: (2) dropped, its
+  ceiling is ~2 % and dependency health, CP queue ratio and I/O priority can carry effects upward; (5) shelved: in-place
+  sums break `step` purity (realism tests step several branches from one base state), and a packed copy-per-tick
+  accumulator would gain ~3 % for a save-format change and golden/bench hash churn; behaviour-changing skips ((4) or
+  skipping quiet LPARs) not wanted. No hash-neutral item left above ~3 %; the 2 s target stays open
   Each must keep the golden hash or regenerate it with a reason
 - Decision: the what-if simulator doesn't wait on M8.1 (runs in the briefing with the clock stopped, chunked)
 
