@@ -186,7 +186,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     case 'wlm': {
       const res = applyWlmEdit(pendingBase(file.pendingPolicy, run.sim.wlm.definition), c.edit);
       if (typeof res === 'string') return fail(res);
-      return done(run, `Pending policy ${res.policyName} updated. ${run.phase === 'REVIEW' ? "activate at tomorrow's briefing to install it." : 'activate to install it.'}`, true, res);
+      return done(run, `Pending policy ${res.policyName} updated. ${run.phase === 'REVIEW' ? "close the day (draft <id|none>), then activate at tomorrow's briefing to install it." : 'activate to install it.'}`, true, res);
     }
     case 'activate': {
       const def = file.pendingPolicy;
@@ -230,7 +230,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const res = applyReportClassAdvice(pendingBase(file.pendingPolicy, run.sim.wlm.definition), runWorkItems(sc(run), run), c.workloadId || null);
       if (typeof res === 'string') return fail(res);
       if (!res.added.length) return fail('No report class advice left.');
-      return done(run, `Report classes for ${res.added.join(' ')} staged in ${res.def.policyName}. ${run.phase === 'REVIEW' ? 'activate at tomorrow\'s briefing (takes effect next day).' : 'activate to install (takes effect next day).'}`, true, res.def);
+      return done(run, `Report classes for ${res.added.join(' ')} staged in ${res.def.policyName}. ${run.phase === 'REVIEW' ? 'close the day (draft <id|none>), then activate at tomorrow\'s briefing (takes effect next day).' : 'activate to install (takes effect next day).'}`, true, res.def);
     }
     case 'smf': {
       const need = SMF_FEATURE[c.kind];
@@ -334,6 +334,8 @@ export function statusText(file: PlayFile): string {
   const asks = inquiriesView(run, sc(run)).pending;
   if (asks.length) out.push('waiting for replies: ' + asks.map((p) => `${p.who}: ${p.question}${p.workloadId ? ` (${p.workloadId})` : ''}`).join('; '));
   const planned = v.changes.filter((c) => c.status === 'PLANNED');
+  const projs = v.projects.filter((p) => p.hoursDone > 0);
+  if (projs.length) out.push('projects: ' + projs.map((p) => (p.done ? `${p.id} done` : `${p.id} ${p.hoursDone}/${p.hours}h (${p.hoursToday}/${p.maxHoursPerDay}h today)`)).join('; '));
   if (planned.length) out.push('planned changes: ' + planned.map((c) => `#${c.id} ${c.label} (day ${c.activateDay + 1})`).join('; '));
   if (v.draft) out.push('draft options: ' + v.draft.map((d) => `${d.id}: ${d.title}. ${d.description}`).join('\n  '));
   if (v.reports.length) {
