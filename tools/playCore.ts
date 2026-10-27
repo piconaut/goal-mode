@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { advance, chooseDraft, newRun, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { advance, chooseDraft, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
@@ -131,11 +131,12 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (missing.length && !run.pins.length) return fail('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without --evidence.');
       if (missing.length) return fail(`No pinned evidence ${missing.join(' ')}; pins: ${run.pins.map((p) => p.id).join(' ')}`);
       const r = submitRca(run, c.incidentId, c.mechanism, c.trigger, sc(run), c.evidenceIds ?? []);
+      const covered = r.incidents.filter((i) => i.id !== c.incidentId && i.rca && rcaLeadId(i) === rcaLeadId(inc)).map((i) => `#${i.id} ${i.workloadId}`);
       const rca = r.incidents.find((i) => i.id === c.incidentId)?.rca;
       const t = inc.truth;
       const pts = rca?.points ?? 0;
       const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
-      return done(r, `RCA filed for incident ${c.incidentId}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${t.mechanism === c.mechanism ? 'right' : 'wrong'}, trigger ${t.trigger === c.trigger ? 'right' : 'wrong'} (was ${t.mechanism}/${t.trigger}); ${trustNote}.`);
+      return done(r, `RCA filed for incident ${c.incidentId}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${t.mechanism === c.mechanism ? 'right' : 'wrong'}, trigger ${t.trigger === c.trigger ? 'right' : 'wrong'} (was ${t.mechanism}/${t.trigger}); ${trustNote}.${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
     }
     case 'ask': {
       const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));
@@ -303,8 +304,12 @@ export function statusText(file: PlayFile): string {
     out.push('inbox:');
     for (const m of today) out.push(`  [day ${m.day + 1}] ${m.from}: ${m.subject}\n    ${m.body.replace(/\n/g, '\n    ')}`);
   }
-  const open = v.incidents.filter((i) => !i.rca);
-  if (open.length) out.push('incidents without RCA: ' + open.map((i) => `#${i.id} ${i.workloadId} day ${i.day + 1} from ${clockText(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%`).join('; '));
+  const open = v.incidents.filter((i) => !i.rca && i.rcaGroup === undefined);
+  const linked = (id: number) => {
+    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => `#${i.id} ${i.workloadId}`);
+    return ws.length ? ` (same cause, one RCA covers: ${ws.join(', ')})` : '';
+  };
+  if (open.length) out.push('incidents without RCA: ' + open.map((i) => `#${i.id} ${i.workloadId} day ${i.day + 1} from ${clockText(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%${linked(i.id)}`).join('; '));
   if (run.pins.length) out.push('pinned evidence (rca ... --evidence ids):\n' + run.pins.map((p) => `  ${p.id}: ${p.text}`).join('\n'));
   const asks = inquiriesView(run, sc(run)).pending;
   if (asks.length) out.push('waiting for replies: ' + asks.map((p) => `${p.who}: ${p.question}${p.workloadId ? ` (${p.workloadId})` : ''}`).join('; '));

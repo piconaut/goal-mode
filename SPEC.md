@@ -949,6 +949,13 @@ Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
 trigger (`content/evidence.ts`). PI is a symptom and never counts. Evidence points need the right mechanism.
 
+**One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
+trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one
+RCA covers every incident in it and is scored, rewarded and counted in the day score once. A pin counts as evidence if
+it supports any incident in the group. An incident that joins a group after its RCA was filed inherits that RCA. Real
+incident management correlates alerts the same way; one cause should not mean five near-identical write-ups (playtest
+round 1, design item C).
+
 Rewards: correct cause → Trust + Insight. Correct cause with strong evidence → bonus and a codex
 unlock. Wrong cause → small Trust loss ("the problem recurs next week"). Recurring incidents
 after a correct RCA *and* remediation never recur. Players can skip RCAs (no penalty except

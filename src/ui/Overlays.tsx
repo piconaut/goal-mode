@@ -415,7 +415,11 @@ function DaySummary({ v }: { v: ViewModel }) {
 }
 
 function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; investigate: () => void }) {
-  const open = v.incidents.filter((i) => i.day === v.day && !i.rca);
+  const open = v.incidents.filter((i) => i.day === v.day && !i.rca && i.rcaGroup === undefined);
+  const linked = (id: number) => {
+    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => i.workloadId);
+    return ws.length ? ` · same cause: ${ws.join(', ')}` : '';
+  };
   return (
     <>
       <h2>End of day {v.day + 1}</h2>
@@ -432,17 +436,18 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
             <span className="muted">{v.pins.length} pinned</span>
           </div>
           {open.map((i) => (
-            <Rca key={i.id} incidentId={i.id} label={`#${i.id} ${i.workloadId} · ${windowText(i)} · worst ${i.worstAttainmentPct.toFixed(0)}%`} hypotheses={i.aiops ?? []} v={v} game={game} />
+            <Rca key={i.id} incidentId={i.id} label={`#${i.id} ${i.workloadId} · ${windowText(i)} · worst ${i.worstAttainmentPct.toFixed(0)}%${linked(i.id)}`} hypotheses={i.aiops ?? []} v={v} game={game} />
           ))}
         </div>
       )}
       {v.incidents
-        .filter((i) => i.day === v.day && i.rca)
+        .filter((i) => i.day === v.day && i.rca && i.rcaGroup === undefined)
         .map((i) => (
           <div key={i.id} style={{ marginBottom: 6 }}>
             <div className="row">
               <span>
-                #{i.id} {i.workloadId}: you said {i.rca!.mechanism}/{i.rca!.trigger}
+                #{i.id} {i.workloadId}
+                {linked(i.id)}: you said {i.rca!.mechanism}/{i.rca!.trigger}
               </span>
               <span className={`tag ${i.rca!.points >= 3 ? 'good' : 'bad'}`}>
                 +{i.rca!.points} (was {i.truth.mechanism}/{i.truth.trigger})
