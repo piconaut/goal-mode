@@ -71,6 +71,17 @@ export const WLM_DISAGREE_HINTS: Record<string, HintText> = {
   },
 };
 
+// A class whose worst PI jumped while none of its work broke an SLA: something new is pressing on it before it
+// shows on the report card (playtest finding H). `{sc}`, `{pi}` and `{prev}` are filled in.
+export const STRAIN_HINT: HintText = {
+  clear: '{sc} peaked at PI {pi} in WLMGL yesterday, against {prev} the day before, though none of its work broke an SLA. What was new pressing on it?',
+  vague: '{sc} looked strained in WLMGL yesterday.',
+};
+
+// FICTIONAL: a strain hint needs a worst PI of at least minPi and riseFactor × the day before, so classes that
+// run hot every night (velocity goals on a busy batch window) stay quiet.
+export const STRAIN = { minPi: 3, riseFactor: 2 };
+
 export const BATCH_HINTS = {
   late: {
     clear: 'Critical batch finished late. In the Batch view, which jobs on the critical path waited longest, and for what?',
