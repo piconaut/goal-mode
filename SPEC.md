@@ -941,7 +941,9 @@ Ground truth for the trigger: an active event card that lists the hurt workload,
 growth. Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
 
 Ground truth for the mechanism: the response-time component group that grew most against the workload's healthy
-baseline. A CPU win is split three ways: CAPPING when a host LPAR was capped over 5 % of the hour, CPU_CAPACITY when an
+baseline. Queueing for MXT or DBATs (THREAD_LIMIT) grows by as much as the time inside the region grows (Little's law:
+slower tasks hold their slot longer), so THREAD_LIMIT is credited only with its growth beyond the in-region growth; the
+rest is a symptom of whatever slowed the tasks. A CPU win is split three ways: CAPPING when a host LPAR was capped over 5 % of the hour, CPU_CAPACITY when an
 image hosting the workload was full over the hour — its CPC averaged at least 90 % general-CP busy (judged per CPC,
 since PR/SM shares engines only within a machine), or the image itself used at least 95 % of the CP available to it
 (online logical CPs, entitlement plus white space), as when all its logical CPs are busy on a CPC with engines it

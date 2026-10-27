@@ -408,14 +408,27 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     names SET_CICS needs; finished projects disappear from status; a change with several commands costs the same
     1.5 h as one; `wlm` says "activate at tomorrow's briefing" but `activate` is refused until the draft closes;
     idle engineer-hours on quiet days.
-  - [ ] L (Harbourline): CICS region names and current MXT are shown nowhere, so SET_CICS is a guess; a planned
+  - [x] L (Harbourline): CICS region names and current MXT are shown nowhere, so SET_CICS is a guess; a planned
     change is not checked against the config (a bogus region was accepted and charged) and cannot be withdrawn.
-  - [ ] M (Harbourline): PRDA shows CAPPED 2–3.4% in Partition Data with no defined capacity, `pin CPC PRDA CAPPED`
+    Done 2026-10-27: requestChange dry-runs command changes on today's config plus the changes already planned and
+    refuses a bad target before charging, naming the real ones; `catalog` lists LPARs, CICS regions with MXT and Db2
+    MAXDBAT; `cancel <change id>` withdraws a planned change (cancelChange existed; the CLI lacked it).
+  - [x] M (Harbourline): PRDA shows CAPPED 2–3.4% in Partition Data with no defined capacity, `pin CPC PRDA CAPPED`
     reads 0.0%, and RCAs answer CAPPING/POLICY; the cap's source is not discoverable. Check the clue path.
-  - [ ] N (Harbourline): MXT queueing shows as OTH/UNK (73–89%) in WLMGL and Monitor III; only SMF 110 names it. The
+    Done 2026-10-27: the cap is Harbourline's deliberate absolute cap (6.0 engines). Partition Data gains an ABS CAP
+    column; the pin read 0 because a CPC pin without an interval reads Monitor III now (in the review, after the
+    peak), so `pin CPC <lpar> CAPPED <interval id>` now cites the Partition Data row.
+  - [x] N (Harbourline): MXT queueing shows as OTH/UNK (73–89%) in WLMGL and Monitor III; only SMF 110 names it. The
     sysprog hint said "Partition Data around the peak" on days 4–6 while the cause was MXT wait.
-  - [ ] O (Harbourline): one recurring MXT/QR symptom was scored QR_TCB, THREAD_LIMIT, CAPPING and CPU_PRIORITY (all
+  - [x] O (Harbourline): one recurring MXT/QR symptom was scored QR_TCB, THREAD_LIMIT, CAPPING and CPU_PRIORITY (all
     POLICY) on different incidents (same family as G); JOB_FAILURE/POLICY for an S0C7 abend reads oddly.
+    N and O done 2026-10-27: the MXT wait was mostly a symptom. CPU starvation on the capped PRDA and QR TCB wait slow
+    the tasks, so they hold MXT slots longer and queue (Little's law); the truth counted that queueing as THREAD_LIMIT
+    and flipped between THREAD_LIMIT, CAPPING and CPU_PRIORITY by the hour. THREAD_LIMIT is now credited only with
+    MXT/DBAT queueing beyond the in-region growth (SPEC §10). Harbourline seeds 11, 23 and 37 (do-nothing, 8 days):
+    THREAD_LIMIT truths fell from about a third of incidents to one; the rest are CAPPING or CPU_PRIORITY (whether
+    PRDA was capped over 5 % that hour), so the sysprog hint's "Partition Data" now points at the real cause.
+    Still open: the S0C7 abend read as JOB_FAILURE/POLICY.
   - [ ] P (Harbourline): the MLC month estimate does not say it follows the month's peak R4HA, so capping non-prod
     shows no saving; the DEV1 cap stretched dev batch ×82 with no label. The pin label for an SMF hour shows the
     hour's end (10:00–11:00 pins as 11:00).
@@ -548,6 +561,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-27 | Finding D: every run starts with 15 insight (`INSIGHT.starting`), was 0 | User decision among four swept options; bot outcomes unchanged, Monitor III affordable on day 1 |
 | 2026-10-27 | Finding I: RCA guessing may pay; no change | User decision |
 | 2026-10-27 | Finding J: GOODWILL (+4 trust with every stakeholder) stays as is | User decision; a draft reward's cost is the cards not picked |
+| 2026-10-27 | RCA truth credits THREAD_LIMIT only with MXT/DBAT queueing beyond the in-region growth | Little's law: slower tasks hold MXT slots longer, so the queueing is mostly a symptom of CPU or QR TCB delay (playtest findings N, O) |
 
 ## Open questions
 
@@ -555,6 +569,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   open items stay here.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
+- RMF Partition Data shows PR/SM absolute capping somewhere; the sim's ABS CAP column (engines, next to DEF CAP) is an
+  APPROX of its name and place. Check the real report layout (*RMF Report Analysis*, Partition Data Report).
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
 - Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
