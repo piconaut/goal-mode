@@ -164,7 +164,7 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
               </tbody>
             </table>
           ))}
-        {d?.kind === 'BATCH' && (d.night ? <Gantt n={d.night} /> : <div className="muted">No batch has run yet.</div>)}
+        {d?.kind === 'BATCH' && (d.night ? <Gantt n={d.night} game={game} /> : <div className="muted">No batch has run yet.</div>)}
         {d?.kind === 'SMF113' && (
           <table>
             <thead>
@@ -196,7 +196,10 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
-function Gantt({ n }: { n: BatchNight }) {
+const DELAY_LABEL = { cpu: 'CPU', io: 'I/O', lock: 'Lock', db2: 'Db2', swap: 'Swap', init: 'Initiator' } as const;
+const DELAY_METRIC = { cpu: 'JOB_CPU', io: 'JOB_IO', lock: 'JOB_LOCK', db2: 'JOB_DB2', swap: 'JOB_SWAP', init: 'JOB_INIT' } as const;
+
+function Gantt({ n, game }: { n: BatchNight; game: GameHandle }) {
   const [stream, setStream] = useState('');
   const streams = [...new Set(n.jobs.map((j) => j.stream))].sort();
   const jobs = n.jobs.filter((j) => !stream || j.stream === stream);
@@ -220,6 +223,24 @@ function Gantt({ n }: { n: BatchNight }) {
           {n.criticalEnd ? ` · last critical job ${n.criticalEnd}` : ''}
         </span>
       </div>
+      {n.critical && (
+        <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+          Critical jobs' lost time (SMF 30):
+          {(['cpu', 'io', 'lock', 'db2', 'swap', 'init'] as const).map((c) => {
+            const metric = DELAY_METRIC[c];
+            return (
+              <span key={c} style={{ marginLeft: 10 }}>
+                {DELAY_LABEL[c]} {n.critical!.delaySharePct ? n.critical!.delaySharePct[c].toFixed(0) : '–'}%
+                {n.critical!.delaySharePct && <PinButton game={game} req={{ source: 'BATCH', day: n.day, metric }} label={`${DELAY_LABEL[c]} share of critical jobs' lost time`} />}
+              </span>
+            );
+          })}
+          <span style={{ marginLeft: 10 }}>
+            ABENDs: {n.critical.abended.length}
+            <PinButton game={game} req={{ source: 'BATCH', day: n.day, metric: 'JOB_ABEND' }} label="critical job ABENDs" />
+          </span>
+        </div>
+      )}
       <div className="gantt">
         {jobs.map((j) => (
           <div className="gantt-row" key={`${j.name}:${j.startSec}`} title={`${j.name} (${j.stream}) on ${j.lparId}: queued ${Math.round(j.queuedSec / 60)} min, ran ${nightClock(n, j.startSec)}–${nightClock(n, j.endSec)}, stretch ×${j.stretch.toFixed(2)}`}>
