@@ -408,6 +408,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     names SET_CICS needs; finished projects disappear from status; a change with several commands costs the same
     1.5 h as one; `wlm` says "activate at tomorrow's briefing" but `activate` is refused until the draft closes;
     idle engineer-hours on quiet days.
+    Partly done 2026-10-27: `status` lists projects (finished ones too); the REVIEW-phase `wlm` message says to close
+    the day first. Several commands summing their hours is kept (each change is real work); shared pin/incident ids
+    and idle hours left as is for now.
   - [x] L (Harbourline): CICS region names and current MXT are shown nowhere, so SET_CICS is a guess; a planned
     change is not checked against the config (a bogus region was accepted and charged) and cannot be withdrawn.
     Done 2026-10-27: requestChange dry-runs command changes on today's config plus the changes already planned and
@@ -429,6 +432,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     THREAD_LIMIT truths fell from about a third of incidents to one; the rest are CAPPING or CPU_PRIORITY (whether
     PRDA was capped over 5 % that hour), so the sysprog hint's "Partition Data" now points at the real cause.
     Still open: the S0C7 abend read as JOB_FAILURE/POLICY.
+    Sweep (expert and oraclerca with `--reader`, Normal, seeds 1–10, vs dev before the change): Midwest and Revenue
+    ends unchanged; Harbourline expert 9 → 8 wins (seed 7 lost on trust on day 39, 61 → 58), mean trust 76.4 → 75.4;
+    oraclerca truths there move from THREAD_LIMIT (22.5 → 1.6 per run) to CAPPING (23.8 → 55.4), its score rises
+    1190 → 1474. The bots still read MXT queueing as THREAD_LIMIT, so they lose a little trust where the truth moved.
   - [ ] P (Harbourline): the MLC month estimate does not say it follows the month's peak R4HA, so capping non-prod
     shows no saving; the DEV1 cap stretched dev batch ×82 with no label. The pin label for an SMF hour shows the
     hour's end (10:00–11:00 pins as 11:00).
