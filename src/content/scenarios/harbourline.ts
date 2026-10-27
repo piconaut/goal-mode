@@ -41,12 +41,12 @@ export const HARBOURLINE_WORLD: WorldConfig = {
   lpars: [
     // Problem 1: an absolute cap set to fence PRDA off from DEV1 years ago. It is above the average
     // load but clips the market-open burst itself, where a soft cap would barely notice it.
-    zos('PRDA', 'CPC1', [pool('CP', 7, 450, { absoluteCapEngines: 6.0 }), pool('ZIIP', 1, 500)], 400),
-    zos('PRDB', 'CPC1', [pool('CP', 6, 400), pool('ZIIP', 1, 500)], 360),
+    zos('PRDA', 'CPC1', [pool('CP', 7, 450, { absoluteCapEngines: 6.0, reserved: 2 }), pool('ZIIP', 1, 500)], 400),
+    zos('PRDB', 'CPC1', [pool('CP', 6, 400, { reserved: 2 }), pool('ZIIP', 1, 500)], 360),
     zos('DEV1', 'CPC1', [pool('CP', 3, 100)], 96),
     cf('CF01', 'CPC1'),
-    zos('PRDC', 'CPC2', [pool('CP', 5, 450), pool('ZIIP', 3, 500)], 320),
-    zos('PRDD', 'CPC2', [pool('CP', 5, 400), pool('ZIIP', 3, 500)], 300),
+    zos('PRDC', 'CPC2', [pool('CP', 5, 450, { reserved: 2 }), pool('ZIIP', 3, 500)], 320),
+    zos('PRDD', 'CPC2', [pool('CP', 5, 400, { reserved: 2 }), pool('ZIIP', 3, 500)], 300),
     zos('TST1', 'CPC2', [pool('CP', 2, 100)], 64),
     cf('CF02', 'CPC2'),
   ],

@@ -119,7 +119,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       19 (opex 1), Revenue 20. Trial variants (not merged, user decision pending): expert + CoD after capacity
       incidents: Harbourline 15 (opex 1 · trust 4), Midwest 19, Revenue 20; expert + permanent CP after repeated
       capacity incidents: same outcomes as base everywhere. On Harbourline the permanent CP is unusable: its prod
-      LPARs define no reserved logical CPs, so the logical-CP raise fails (see Open questions)
+      LPARs defined no reserved logical CPs, so the logical-CP raise failed (fixed: 2 reserved per PRD image). After the
+      image-full label rule + reserved CPs (Harbourline, seeds 1–20): expert victory 16 (trust 4), spendtowin opex 16
+      (trust 4), both unchanged; textbook 29 / 31 / 37, trust 18 · victory 2. CoD and permanent-CP trials to re-run
     - **Full sweep (2026-10-26, seeds 1–20, code 937a2ee, before PRs #30/#31):** Midwest: do-nothing 12 / 16 / 21
       (trust 14 · batch 6); textbook 20 / 28 / 28 (batch 10 · trust 10); expert 40 / 40 / 40, victory 20/20; spendtowin
       28 / 28 / 28 (opex 19 · batch 1). Revenue: do-nothing 10 / 13 / 15 (trust 20); textbook 27 / 28 / 29 (trust 20);
@@ -427,16 +429,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | Event deck draws from its own RNG stream per (seed, day), not the shared run RNG | Change failures, activation failures, AIOps hypotheses and drafts rolled the same stream, so any extra bot action reshuffled every later event and seed-by-seed comparisons of bot variants were invalid (seed 18 diverged on day 21 after one CoD rental). Win rates over independent seeds before this stay unbiased but carry ~±10 pp noise at 20 seeds; per-seed claims and small variant deltas made before this are unreliable. Goldens regenerated; balance sweeps re-baselined after (user decision). |
 | 2026-10-26 | Every game roll gets its own keyed stream (`streamRng(seed, purpose, …key)`): events by day, draft by day, change and activation failures by day + label + attempt, AIOps by tick + workload, inquiries by ask tick + topic; `RunState.rng` removed | The event-only split (#41) still left the draft, failure, AIOps and inquiry rolls on one stream: in a paired sweep, seed 13's CoD rental shifted its day-9 draft (MENTOR instead of BELT_AND_BRACES) and the run lost ~4 trust on every facet from that alone. With keyed streams, seed 13 base and CoD draw identical events and drafts and differ only after the rental. Goldens regenerated; the paired sweep from #41 was stopped and is re-run on this. |
 | 2026-10-27 | Hardware engine adds and their reverts are relative (`ADD_CPC_ENGINES` delta, clamped ≥ 0); capacity-setting changes stay absolute | On/Off CoD reverted with "set N" computed when the lease was requested, so a lease taken over a pending or overlapping change lost or kept a CP for good (spendtowin bled CPs on Harbourline). Deltas compose in any order. Goldens unchanged |
+| 2026-10-27 | CPU_CAPACITY also when an image used ≥ 95 % of the CP available to it (online logical CPs, entitlement + white space), not only when its CPC was ≥ 90 % busy; the donor test is unchanged. Harbourline PRD images define 2 reserved logical CPs | User decision 2026-10-27. Seed 7 Harbourline: PRDA–PRDD sat at their logical CPs (13 of CPC1's 14 CPs, 10 of CPC2's 10) and the incidents read CPU_PRIORITY once a new CP lowered CPC busy to 86–89 %, the wrong clue. With no reserved CPs and no IPL lever a bought or rented CP could never reach production |
 
 ## Open questions
 
 - Settled research (sysplex routing and capping, 2026-10-26, and everything earlier) is in `docs/research.md`. Only
   open items stay here.
-- Harbourline capacity clue (2026-10-27, user decision pending): its prod LPARs have 0 reserved logical CPs, so a
-  bought or rented CP can't reach production (logical CPs on CPC1 13 of 14, CPC2 10 of 10; no IPL lever). With the
-  LPARs pinned at their logical CPs, the incident label (CPC ≥ 90% busy) says CPU_PRIORITY once a new CP lowers CPC
-  busy (seed 7 day 36: 86–89%). Proposed: label CPU_CAPACITY when the host LPAR delivers ≥ ~95% of what it can use;
-  give Harbourline prod LPARs reserved CPs; re-run the CoD/permanent-CP trials with logical-CP raises.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 

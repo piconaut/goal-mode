@@ -936,9 +936,11 @@ Ground truth for the trigger: an active event card that lists the hurt workload,
 growth. Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
 
 Ground truth for the mechanism: the response-time component group that grew most against the workload's healthy
-baseline. A CPU win is split three ways: CAPPING when a host LPAR was capped over 5 % of the hour, CPU_CAPACITY when a
-CPC hosting the workload averaged at least 90 % general-CP busy over the hour (judged per CPC, since PR/SM shares
-engines only within a machine) *and* less than 10 % of that image's CP went to work less important than the hurt
+baseline. A CPU win is split three ways: CAPPING when a host LPAR was capped over 5 % of the hour, CPU_CAPACITY when an
+image hosting the workload was full over the hour — its CPC averaged at least 90 % general-CP busy (judged per CPC,
+since PR/SM shares engines only within a machine), or the image itself used at least 95 % of the CP available to it
+(online logical CPs, entitlement plus white space), as when all its logical CPs are busy on a CPC with engines it
+can't reach — *and* less than 10 % of that image's CP went to work less important than the hurt
 workload's service class (WLM had no donors left), otherwise CPU_PRIORITY: the policy could have served it.
 Both thresholds are FICTIONAL.
 
@@ -1151,6 +1153,8 @@ Midwest target is 28–32), expert bot still wins most seeds.
 | CPC2 (one generation older, sub-capacity CPs, more zIIPs) | PRDC, PRDD, TST1 | ICF for CF02 |
 
 Six LPARs (Midwest has four), so the performance budget still needs checking (§15: ≤ 2 s per day).
+Each PRD image defines 2 reserved logical CPs (as Midwest and Revenue do), so a CP bought or rented later can
+be brought online to production without an IPL; online logicals alone cover 13 of CPC1's 14 CPs and all of CPC2's 10.
 Db2 data sharing across all four PRD members; CICSPlex SM with TORs on every PRD member and AORs on
 PRDA–PRDD; MQ queue-sharing group; DDF behind the sysplex distributor. CF requests from CPC2 to CF01
 (and CPC1 to CF02) travel the 15 km link, so the existing sync/async heuristic (§5.9) converts more of
@@ -1385,7 +1389,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
-| Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping and CPC hour-average busy ≥ 90 % and less-important CP share < 10 % on the image (both FICTIONAL; APPROX: donors are less important work) |
+| Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
 | Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |
 | CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast; QR TCB overload and timeouts count as slow, so only a genuinely abending region storm-drains), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
