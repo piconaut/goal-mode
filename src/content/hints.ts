@@ -57,6 +57,20 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
   },
 };
 
+// Appended when a workload missed its SLA while WLMGL had its service class meeting the goal all day: a class
+// average, or CICS regions managed to their own goal, can hide one workload, so the hint points at the
+// per-transaction records instead (SPEC §11.2). Keyed by the workload's subsystem.
+export const WLM_DISAGREE_HINTS: Record<string, HintText> = {
+  CICS: {
+    clear: ' Yet WLMGL showed its service class meeting its goal all day. When the two disagree, CICS monitoring (SMF 110) times each transaction rather than the class.',
+    vague: ' WLMGL may disagree; CICS SMF 110 might not.',
+  },
+  DDF: {
+    clear: ' Yet WLMGL showed its service class meeting its goal all day. When the two disagree, Db2 accounting (SMF 101) times each thread rather than the class.',
+    vague: ' WLMGL may disagree; Db2 SMF 101 might not.',
+  },
+};
+
 export const BATCH_HINTS = {
   late: {
     clear: 'Critical batch finished late. In the Batch view, which jobs on the critical path waited longest, and for what?',

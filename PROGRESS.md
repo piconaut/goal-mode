@@ -333,8 +333,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     cost-cutter on Harbourline seed 37, each to about day 9. CLI and display friction (RCA scoring with no feedback,
     clock labels, shifting RMF interval indices, bare class names, raw-JSON mon3/smf, REVIEW staging hints) fixed in
     the play CLI the same day. Design findings:
-  - [ ] A: when response time and SLA attainment disagree (Harbourline MKTORD slid while WLM showed PI < 1, because
-    the region-served class hid it), an Inquiry reply or the sysprog morning hint should point at CICS SMF 110
+  - [x] A: when response time and SLA attainment disagree (Harbourline MKTORD slid while WLM showed PI < 1, because
+    the region-served class hid it), an Inquiry reply or the sysprog morning hint should point at CICS SMF 110.
+    Done 2026-10-27 in the morning hint: a CICS or DDF incident workload whose serving classes all had a worst
+    sysplex PI ≤ 1 that day gets "WLMGL disagreed" plus a pointer to SMF 110 / SMF 101 (SPEC §11.2). Hint text
+    only: bench hash unchanged, golden hashes change because the seed 42 Midwest inbox gains the sentence. No bot
+    check: no bot reads hints, so outcomes are identical by construction.
   - [x] B: a batch-window miss becomes an incident with its own RCA (Revenue day 7 abend had no clue path). Done
     2026-10-27: critical jobs account lost elapsed time by cause (CPU, Db2 locks, Db2 health, DASD queueing, swap,
     initiator wait) and ABENDs; a missed night opens a `BATCH` incident (new mechanism JOB_FAILURE for an ABEND, else

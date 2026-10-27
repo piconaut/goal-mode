@@ -34,6 +34,34 @@ describe('morningHints', () => {
     const tight = morningHints('CLEAR', [inc('A', 'IO', 3)], { ...onTime, criticalEndSec: 6 * 3600 - 600 });
     expect(tight[1]).toContain('10 min');
   });
+
+  it('points at the per-transaction records when WLMGL had the class meeting its goal', () => {
+    const incs = [inc('MKTORD', 'QR_TCB', 3)];
+    expect(morningHints('CLEAR', incs, null)[0]).not.toContain('SMF 110');
+    const [clear] = morningHints('CLEAR', incs, null, { MKTORD: 'CICS' });
+    expect(clear).toContain('CICS report');
+    expect(clear).toContain('SMF 110');
+    expect(morningHints('VAGUE', incs, null, { MKTORD: 'CICS' })[0]).toContain('SMF 110');
+    expect(morningHints('CLEAR', incs, null, { MKTORD: 'DDF' })[0]).toContain('SMF 101');
+  });
+});
+
+describe('wlmHidSlides', () => {
+  it('flags an incident workload only when every host class met its goal all day', async () => {
+    const { MIDWEST_GAME } = await import('../../src/content/game-midwest');
+    const { SCENARIOS } = await import('../../src/content/scenarios');
+    const { newRun, wlmHidSlides } = await import('../../src/game/run');
+    const { classify } = await import('../../src/sim/wlm/classify');
+    const sc = SCENARIOS.midwest!;
+    const run = newRun(sc, MIDWEST_GAME, 42, 'NORMAL');
+    const w = sc.workloads.find((x) => x.work.subsystem === 'CICS')!;
+    const keys = Object.entries(w.routing).filter(([, f]) => f > 0).map(([l]) => `${classify(run.sim.wlm.definition, { ...w.work, SY: l }).serviceClass}#1`);
+    const fine = Object.fromEntries(keys.map((k) => [k, 0.8]));
+    expect(wlmHidSlides(run, sc, [inc(w.id, 'QR_TCB', 2)], fine)).toEqual({ [w.id]: 'CICS' });
+    expect(wlmHidSlides(run, sc, [], fine)).toEqual({});
+    expect(wlmHidSlides(run, sc, [inc(w.id, 'QR_TCB', 2)], { ...fine, [keys[0]!]: 1.4 })).toEqual({});
+    expect(wlmHidSlides(run, sc, [inc(w.id, 'QR_TCB', 2)], {})).toEqual({});
+  });
 });
 
 describe('morning hints in a run', () => {
