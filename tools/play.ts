@@ -4,8 +4,8 @@
 //   npm run play -- runs/a.json status | catalog | mon3 [system] [--json] | smf DB2|CICS|BATCH|SMF113 [hour|D8 12] [--json]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
-//   npm run play -- runs/a.json rca <incident> <MECHANISM> <TRIGGER> --evidence 1,3
-//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin <id> | cancel <change id>
+//   npm run play -- runs/a.json rca INC<n> <MECHANISM> <TRIGGER> --evidence PIN<n>,PIN<n>   (bare numbers work too)
+//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric>
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED [interval id: Partition Data; none = Monitor III now] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
@@ -14,6 +14,7 @@
 //   npm run play -- runs/a.json advance 3 --pace 2s   (one hour at a time, saving and pausing between, for spectators)
 //   npm run play -- runs/a.json json '{"cmd":"change","req":{...}}'   (any PlayCommand, e.g. wlm edits)
 
+import { parseIdText } from '../src/game/ids';
 import { existsSync, readFileSync } from 'node:fs';
 import type { DifficultyId } from '../src/content/difficulty';
 import type { Mechanism, Trigger } from '../src/game/types';
@@ -67,12 +68,12 @@ function parse(): PlayCommand | ReadOnly {
     case 'draft': return { cmd: 'draft', optionId: rest[0] && rest[0] !== 'none' ? rest[0] : null };
     case 'rca': {
       const ev = rest.indexOf('--evidence');
-      return { cmd: 'rca', incidentId: Number(rest[0]), mechanism: rest[1] as Mechanism, trigger: rest[2] as Trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map(Number) : [] };
+      return { cmd: 'rca', incidentId: parseIdText('incident', rest[0] ?? ''), mechanism: rest[1] as Mechanism, trigger: rest[2] as Trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map((x) => parseIdText('pin', x)) : [] };
     }
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
     case 'project': return { cmd: 'project', id: rest[0] ?? '', hours: Number(rest[1] ?? 1) };
-    case 'unpin': return { cmd: 'unpin', id: Number(rest[0]) };
-    case 'cancel': return { cmd: 'cancel', changeId: Number(rest[0]) };
+    case 'unpin': return { cmd: 'unpin', id: parseIdText('pin', rest[0] ?? '') };
+    case 'cancel': return { cmd: 'cancel', changeId: parseIdText('change', rest[0] ?? '') };
     case 'pin': return pinCommand(rest);
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
     case 'activate': return { cmd: 'activate' };
@@ -85,7 +86,13 @@ function parse(): PlayCommand | ReadOnly {
   }
 }
 
-const c = parse();
+let c: PlayCommand | ReadOnly;
+try {
+  c = parse();
+} catch (e) {
+  console.log((e as Error).message);
+  process.exit(2);
+}
 const isNew = typeof c === 'object' && c.cmd === 'new';
 if (!isNew && !existsSync(path)) throw new Error(`${path} does not exist; start with: new <seed>`);
 let file = isNew ? null : decodePlayFile(readFileSync(path, 'utf8'));

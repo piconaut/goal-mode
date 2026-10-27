@@ -50,6 +50,7 @@ import {
   type RunState,
   type Trigger,
 } from './types';
+import { idText } from './ids';
 
 export interface GameContent {
   events: EventDef[];
@@ -328,7 +329,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     if (fix) r = endEventByFix(r, content, fix.id);
     return { run: logLine(r, `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
   }
-  return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned for day ${change.activateDay + 1}: ${req.label}` };
+  return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned ${idText('change', change.id)} for day ${change.activateDay + 1}: ${req.label}` };
 }
 
 /** Why the config would reject these commands (unknown region, LPAR, pool...), tried on today's config with

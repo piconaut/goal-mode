@@ -17,6 +17,7 @@ import { clockAt, formatClock } from '../src/sim/core/clock';
 import { allWorkloads, runWorkItems } from '../src/game/workloads';
 import { decideTfp } from '../src/game/tfp';
 import { decodeRunJson, encodeRunJson } from '../src/game/runFile';
+import { idText } from '../src/game/ids';
 import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
 import { addPin, removePin, type PinRequest } from '../src/game/evidence';
@@ -131,18 +132,19 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     case 'rca': {
       if (!MECHANISMS.includes(c.mechanism) || !TRIGGERS.includes(c.trigger)) return fail(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
       const inc = run.incidents.find((i) => i.id === c.incidentId);
-      if (!inc) return fail(`No incident ${c.incidentId}`);
-      if (inc.rca) return fail(`Incident ${c.incidentId} already has an RCA`);
+      if (!inc) return fail(`No incident ${idText('incident', c.incidentId)}`);
+      if (inc.rca) return fail(`Incident ${idText('incident', c.incidentId)} already has an RCA`);
       const missing = (c.evidenceIds ?? []).filter((id) => !run.pins.some((p) => p.id === id));
       if (missing.length && !run.pins.length) return fail('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without --evidence.');
-      if (missing.length) return fail(`No pinned evidence ${missing.join(' ')}; pins: ${run.pins.map((p) => p.id).join(' ')}`);
+      if (missing.length) return fail(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${run.pins.map((p) => idText('pin', p.id)).join(' ')}`);
       const r = submitRca(run, c.incidentId, c.mechanism, c.trigger, sc(run), c.evidenceIds ?? []);
-      const covered = r.incidents.filter((i) => i.id !== c.incidentId && i.rca && rcaLeadId(i) === rcaLeadId(inc)).map((i) => `#${i.id} ${i.workloadId}`);
+      const covered = r.incidents.filter((i) => i.id !== c.incidentId && i.rca && rcaLeadId(i) === rcaLeadId(inc))
+        .map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
       const rca = r.incidents.find((i) => i.id === c.incidentId)?.rca;
       const t = inc.truth;
       const pts = rca?.points ?? 0;
       const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
-      return done(r, `RCA filed for incident ${c.incidentId}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${t.mechanism === c.mechanism ? 'right' : 'wrong'}, trigger ${t.trigger === c.trigger ? 'right' : 'wrong'} (was ${t.mechanism}/${t.trigger}); ${trustNote}.${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
+      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${t.mechanism === c.mechanism ? 'right' : 'wrong'}, trigger ${t.trigger === c.trigger ? 'right' : 'wrong'} (was ${t.mechanism}/${t.trigger}); ${trustNote}.${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
     }
     case 'ask': {
       const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));
@@ -180,8 +182,8 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(o.run, o.message, o.ok);
     }
     case 'unpin': {
-      if (!run.pins.some((p) => p.id === c.id)) return fail(`No pin ${c.id}`);
-      return done(removePin(run, c.id), `Unpinned ${c.id}.`);
+      if (!run.pins.some((p) => p.id === c.id)) return fail(`No pin ${idText('pin', c.id)}`);
+      return done(removePin(run, c.id), `Unpinned ${idText('pin', c.id)}.`);
     }
     case 'wlm': {
       const res = applyWlmEdit(pendingBase(file.pendingPolicy, run.sim.wlm.definition), c.edit);
@@ -327,17 +329,17 @@ export function statusText(file: PlayFile): string {
   }
   const open = v.incidents.filter((i) => !i.rca && i.rcaGroup === undefined);
   const linked = (id: number) => {
-    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => `#${i.id} ${i.workloadId}`);
+    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
     return ws.length ? ` (same cause, one RCA covers: ${ws.join(', ')})` : '';
   };
-  if (open.length) out.push('incidents without RCA: ' + open.map((i) => `#${i.id} ${i.workloadId} day ${i.day + 1} from ${clockText(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%${linked(i.id)}`).join('; '));
-  if (run.pins.length) out.push('pinned evidence (rca ... --evidence ids):\n' + run.pins.map((p) => `  ${p.id}: ${p.text}`).join('\n'));
+  if (open.length) out.push('incidents without RCA: ' + open.map((i) => `${idText('incident', i.id)} ${i.workloadId} day ${i.day + 1} from ${clockText(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%${linked(i.id)}`).join('; '));
+  if (run.pins.length) out.push('pinned evidence (rca ... --evidence ids):\n' + run.pins.map((p) => `  ${idText('pin', p.id)}: ${p.text}`).join('\n'));
   const asks = inquiriesView(run, sc(run)).pending;
   if (asks.length) out.push('waiting for replies: ' + asks.map((p) => `${p.who}: ${p.question}${p.workloadId ? ` (${p.workloadId})` : ''}`).join('; '));
   const planned = v.changes.filter((c) => c.status === 'PLANNED');
   const projs = v.projects.filter((p) => p.hoursDone > 0);
   if (projs.length) out.push('projects: ' + projs.map((p) => (p.done ? `${p.id} done` : `${p.id} ${p.hoursDone}/${p.hours}h (${p.hoursToday}/${p.maxHoursPerDay}h today)`)).join('; '));
-  if (planned.length) out.push('planned changes: ' + planned.map((c) => `#${c.id} ${c.label} (day ${c.activateDay + 1})`).join('; '));
+  if (planned.length) out.push('planned changes: ' + planned.map((c) => `${idText('change', c.id)} ${c.label} (day ${c.activateDay + 1})`).join('; '));
   if (v.draft) out.push('draft options: ' + v.draft.map((d) => `${d.id}: ${d.title}. ${d.description}`).join('\n  '));
   if (v.reports.length) {
     const ivs = run.sim.rmf.intervals;

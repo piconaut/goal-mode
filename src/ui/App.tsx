@@ -19,6 +19,7 @@ import { useStored } from './useStored';
 import { Tutorial } from './Tutorial';
 import { AUTO_SPEED } from '../worker/protocol';
 import { hourTick, pagerChime } from './sound';
+import { idText } from '../game/ids';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
@@ -429,7 +430,7 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
         {[...v.incidents].reverse().slice(0, 12).map((i) => (
           <div className="row" key={i.id}>
             <span>
-              #{i.id} {i.workloadId} <span className="muted">day {i.day + 1}</span>
+              {idText('incident', i.id)} {i.workloadId} <span className="muted">day {i.day + 1}</span>
             </span>
             <span className={`tag ${i.endTick === null ? 'bad' : 'warn'}`}>
               {i.endTick === null ? 'OPEN' : 'closed'} · {i.hours}h · worst {i.worstAttainmentPct.toFixed(0)}%
