@@ -40,6 +40,14 @@ describe('change preview', () => {
     expect(requestChange(r, MIDWEST_GAME, { label: 'x', fixId: 'RECYCLE_PROD2_AORS_REV' }).ok).toBe(false);
   });
 
+  it('an operator command during the live day skips the change-board trust cost but still takes hours', () => {
+    const live = startDay(newRun(MIDWEST, MIDWEST_GAME, 7), MIDWEST_GAME);
+    const op = previewChange(previewContext(live, MIDWEST_GAME), { fixId: 'CANCEL_RUNAWAY' });
+    expect(op.trustCostEach).toBe(0);
+    expect(op.hours).toBeGreaterThan(0);
+    expect(previewChange(previewContext(live, MIDWEST_GAME), { fixId: 'REBIND_REVERT' }).trustCostEach).toBeGreaterThan(0);
+  });
+
   it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {
     const r = fresh();
     const card = { uid: 'e1', defId: 'GREEN_IT_COD', name: 'Data centre power budget', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [] as string[], blocksHardware: ['COD_CP'], endCommands: [] as Command[] };

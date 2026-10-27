@@ -362,7 +362,15 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       Harbourline holiday did have one (day 8 "Tomorrow is the big shopping holiday", spike the same day), so both
       the holiday and the campaign finding were this wording. Reworded to the day they arrive ("today", "ran
       overnight"); a test keeps "tomorrow" out of forewarnings. Text only: bench and golden hashes unchanged.
-    - [ ] REBIND regression with no incident; runaway query cancellable only as an emergency change
+    - [x] REBIND regression with no incident; runaway query cancellable only as an emergency change. Done
+      2026-10-27. Runaway: it starts and ends inside one live day, so its fix was only ever an emergency change.
+      Fixes that are operator or DBA commands under the incident procedure (CANCEL_RUNAWAY, TERM_UTILITY,
+      CANCEL_XLOG, HOLD_HSM_RECALLS(_REV)) are now `operational`: live, they cost their hours and own facet trust
+      but no change-board trust (SPEC §8). Normal Midwest seeds 1–5 vs dev: expert ends and scores unchanged
+      (4 victories, 1 opex day 28), end trust +0.7 to +7.6; oraclerca identical (median day 16). REBIND: no
+      change. On Midwest the ×3 CPU on RBANK (a third of a small estate) is a cost event that only turns into an
+      incident when capacity is short; clue path is the overnight-REBIND forewarning, WLMGL service per
+      transaction up with END/S flat, and Db2 accounting by package. The playtester found it and rolled it back.
   - [x] F: the Change Desk catalog offers both RECYCLE_PROD2_AORS and RECYCLE_PROD2_AORS_REV and accepts both. Done
     2026-10-27: the UI already listed only the scenario's fixes; the play CLI `catalog` listed all of them and
     requestChange accepted any. Both now use the fixes the scenario's event cards call for (`fixIdsOf`). Bench and
