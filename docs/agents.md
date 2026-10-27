@@ -11,11 +11,11 @@ npm run -s play -- runs/a.json status             # phase, clock, trust, budgets
 npm run -s play -- runs/a.json catalog            # hardware, fixes, analytics tools, RCA vocabulary
 npm run -s play -- runs/a.json start              # start the day (BRIEFING → LIVE)
 npm run -s play -- runs/a.json advance 2          # advance the live day 1–24 sim hours
-npm run -s play -- runs/a.json report WLM_SUMMARY [index] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD
-npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour]
-npm run -s play -- runs/a.json mon3               # Monitor III (needs the RMF_MON3 tool)
+npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD; id from status
+npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
+npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables (needs the RMF_MON3 tool)
 npm run -s play -- runs/a.json rca 3 CPU_PRIORITY POLICY [--evidence 1,4]
-npm run -s play -- runs/a.json pin WLMGL 12 '*PLEX' ONLHI#1 DELAY_CPU   # also MON3, CPC, DB2, CICS (see catalog)
+npm run -s play -- runs/a.json pin WLMGL 312 '*PLEX' ONLHI#1 DELAY_CPU   # interval id; also MON3, CPC, DB2, CICS (see catalog)
 npm run -s play -- runs/a.json ask CALENDAR       # ask around; APP_ENTRY/GROWTH take a workload id
 npm run -s play -- runs/a.json project SQL_TUNING 4   # spend engineer-hours on a multi-day project
 npm run -s play -- runs/a.json buy RMF_MON3
@@ -25,7 +25,13 @@ npm run -s play -- runs/a.json json '{"cmd":"wlm","edit":{...}}'   # then: activ
 ```
 
 Each call loads the run file, applies one command and saves it. Refused commands print `REFUSED: …`, exit
-with code 2 and change nothing. Shapes: `PlayCommand` in `tools/playCore.ts`, Change Desk commands in
+with code 2 and change nothing.
+
+Times read `D1 Tue 00:30`: the played day runs 06:00 to 06:00, so the small hours after day 1's evening are still
+D1, on the next calendar weekday. RMF intervals have stable ids (the interval's end in 5-minute slots since the
+run began); `status` lists the latest ones, and `report`, `pin WLMGL` and incident lines all use these ids. A
+bare service class name (`ONLHI`) means its first period (`ONLHI#1`). `rca` replies with which half was right,
+the true mechanism/trigger and the trust effect (a wrong RCA costs trust; skipping one earns no points and costs no trust). Shapes: `PlayCommand` in `tools/playCore.ts`, Change Desk commands in
 `src/sim/core/commands.ts`, WLM edits in `src/game/wlmEdit.ts`.
 
 ### Command shapes (quick reference)
@@ -45,10 +51,10 @@ Change Desk (`json '{"cmd":"change","req":{"label":"…","commands":[…]}}'`), 
 
 WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy until `activate`). Goals are
 `{"kind":"AVG","rtSec":0.5}`, `{"kind":"PCT","rtSec":0.5,"pct":90}`, `{"kind":"VEL","velocity":40}` or
-`{"kind":"DISC"}`; importance 1–5; qualifiers TN UI TC PK CI SY; subsystems STC JES CICS DDF TSO MQ OMVS.
+`{"kind":"DISC"}`; importance 1–5; `period` is 0-based (0 = the first period, RMF row `ONLHI#1`); qualifiers TN UI TC PK CI SY; subsystems STC JES CICS DDF TSO MQ OMVS.
 
 ```
-{"op":"SET_PERIOD","classId":"ONLHI","period":1,"goal":{"kind":"PCT","rtSec":0.3,"pct":90},"importance":1}
+{"op":"SET_PERIOD","classId":"ONLHI","period":0,"goal":{"kind":"PCT","rtSec":0.3,"pct":90},"importance":1}
 {"op":"ADD_CLASS","classId":"MOBILE","description":"Mobile API","goal":{"kind":"AVG","rtSec":0.4},"importance":2,"cpuCritical":false}
 {"op":"ADD_RULE","subsystem":"DDF","qualifier":"UI","pattern":"MOB*","serviceClass":"MOBILE","reportClass":"RMOBILE"}
 {"op":"SET_RULE_TARGET","subsystem":"DDF","path":[0],"serviceClass":null,"reportClass":"RMOBILE"}
