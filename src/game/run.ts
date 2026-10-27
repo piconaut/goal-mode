@@ -22,8 +22,8 @@ import { Rng, streamRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
-import { hintLevelFor, morningHints } from './hints';
-import { HINT_SENDER, STORY_BEAT_HINTS, WLM_DISAGREE_HINTS } from '../content/hints';
+import { hintLevelFor, morningHints, type StrainedClass } from './hints';
+import { HINT_SENDER, STORY_BEAT_HINTS, STRAIN, WLM_DISAGREE_HINTS } from '../content/hints';
 import { step } from '../sim/core/step';
 import { classify } from '../sim/wlm/classify';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
@@ -674,6 +674,27 @@ export function wlmHidSlides(r: RunState, scenario: Scenario, incidents: readonl
   return out;
 }
 
+/**
+ * Service-class periods whose worst PI rose to STRAIN.minPi and STRAIN.riseFactor × the day before, excluding the
+ * classes of workloads that raised an incident (their own hint covers them). Worst first.
+ */
+export function strainedClasses(r: RunState, scenario: Scenario, incidents: readonly Incident[], piWorst: Readonly<Record<string, number>>, prevPiWorst: Readonly<Record<string, number>> | undefined): StrainedClass[] {
+  if (!prevPiWorst) return [];
+  const covered = new Set<string>();
+  for (const w of allWorkloads(scenario, r)) {
+    if (!incidents.some((i) => i.workloadId === w.id)) continue;
+    for (const lparId of Object.keys(r.sim.routing[w.id] ?? w.routing)) covered.add(classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass);
+  }
+  return Object.keys(piWorst)
+    .sort()
+    .flatMap((scKey) => {
+      const pi = piWorst[scKey]!;
+      const prevPi = prevPiWorst[scKey] ?? 0;
+      return pi >= STRAIN.minPi && pi >= STRAIN.riseFactor * prevPi && !covered.has(scKey.split('#')[0]!) ? [{ scKey, pi, prevPi }] : [];
+    })
+    .sort((a, b) => b.pi - a.pi);
+}
+
 /** Worst sysplex PI per service-class period across the RMF intervals that closed within the day. */
 export function worstPiOfDay(intervals: readonly RmfInterval[], day: number): Record<string, number> {
   const out: Record<string, number> = {};
@@ -834,7 +855,8 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
   const hid = wlmHidSlides(r, scenario, dayIncidents, report.piWorst ?? {});
-  for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null, hid))
+  const strained = strainedClasses(r, scenario, dayIncidents, report.piWorst ?? {}, r.reports.at(-2)?.piWorst);
+  for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null, hid, strained))
     r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);
   return openReview(r, content, day);
 }

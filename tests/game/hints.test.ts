@@ -64,6 +64,32 @@ describe('wlmHidSlides', () => {
   });
 });
 
+describe('strain hints (classes under new pressure with no incident)', () => {
+  it('follow the incident hints and name the class and PI', () => {
+    const [a, b] = morningHints('CLEAR', [inc('MOBILE', 'CAPPING', 3)], onTime, {}, [{ scKey: 'BATCHHI#1', pi: 12.6, prevPi: 1.2 }]);
+    expect(a).toContain('MOBILE');
+    expect(b).toContain('BATCHHI#1');
+    expect(b).toContain('12.6');
+    expect(morningHints('VAGUE', [], onTime, {}, [{ scKey: 'BATCHHI#1', pi: 12.6, prevPi: 1.2 }])).toEqual(['BATCHHI#1 looked strained in WLMGL yesterday.']);
+  });
+
+  it('need a jump over the day before and skip classes an incident already covers', async () => {
+    const { MIDWEST_GAME } = await import('../../src/content/game-midwest');
+    const { SCENARIOS } = await import('../../src/content/scenarios');
+    const { newRun, strainedClasses } = await import('../../src/game/run');
+    const { classify } = await import('../../src/sim/wlm/classify');
+    const sc = SCENARIOS.midwest!;
+    const run = newRun(sc, MIDWEST_GAME, 42, 'NORMAL');
+    const w = sc.workloads.find((x) => x.work.subsystem === 'CICS')!;
+    const own = `${classify(run.sim.wlm.definition, { ...w.work, SY: Object.keys(w.routing)[0]! }).serviceClass}#1`;
+    const today = { 'HOT#1': 12, 'CHRONIC#1': 8, 'MILD#1': 2.5, [own]: 9 };
+    const prev = { 'HOT#1': 1, 'CHRONIC#1': 7, 'MILD#1': 0.5, [own]: 1 };
+    expect(strainedClasses(run, sc, [], today, prev).map((c) => c.scKey)).toEqual(['HOT#1', own]);
+    expect(strainedClasses(run, sc, [inc(w.id, 'QR_TCB', 2)], today, prev).map((c) => c.scKey)).toEqual(['HOT#1']);
+    expect(strainedClasses(run, sc, [], today, undefined)).toEqual([]);
+  });
+});
+
 describe('morning hints in a run', () => {
   it('are dated for the next morning so the briefing shows them', async () => {
     const { MIDWEST_GAME } = await import('../../src/content/game-midwest');

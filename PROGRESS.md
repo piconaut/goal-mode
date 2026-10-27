@@ -396,6 +396,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [ ] G: one event can raise several incidents with different truths (Midwest D2 runaway ad-hoc query:
     THREAD_LIMIT/POLICY, THREAD_LIMIT/RUNAWAY_WORK, CPU_PRIORITY/POLICY), and nothing points a player at
     THREAD_LIMIT for RBANK. Check the clue path or let the related truth count as half-right.
+    Checked 2026-10-27 after the N/O fix: the replay still gives THREAD_LIMIT on RBANK/CARDAUTH/TELLER. Starved AORs
+    run slow tasks, and once rate × RT passes MXT the queue grows faster than the in-region time, so the linear
+    subtraction still leaves THREAD_LIMIT on top. The clue path exists (THREAD_LIMIT hint → CICS 110 MXT_WAIT).
+    Options for the user: (a) the sim also records MXT/DBAT wait at baseline RT, so attribution can tell queue growth
+    caused by slow tasks from queue growth caused by rate; (b) half credit for a mechanism that is ranked high but is not the top one.
   - [ ] H: events with no incident or a weak warning: Midwest D6 access-path regression, Revenue D7 REORG overrun
     and D6 runaway compliance query (BATCHHI PI 12.6, no miss); BATCHPRD#1 PI 5–10 every night with no miss.
     Probably fine (no SLA broken), but the morning hint could mention them.
