@@ -123,6 +123,15 @@ describe('Harbourline per-CPC hardware', () => {
     r = { ...r, sim: applyCommands(r.sim, b.revertCommands) };
     expect(cps()).toBe(start);
   });
+
+  it('production images can bring reserved logical CPs online for new engines', () => {
+    const sim = newRun(pack.scenario, { ...pack.game, events: [] }, 3).sim;
+    for (const id of ['PRDA', 'PRDB', 'PRDC', 'PRDD']) {
+      const cp = sim.config.lpars.find((l) => l.id === id)!.pools.find((p) => p.pool === 'CP')!;
+      const next = applyCommands(sim, [{ kind: 'SET_LOGICAL', lparId: id, pool: 'CP', logical: cp.logical + 2 }]);
+      expect(next.config.lpars.find((l) => l.id === id)!.pools.find((p) => p.pool === 'CP')!.logical).toBe(cp.logical + 2);
+    }
+  });
 });
 
 describe('Harbourline routing-policy changes', () => {

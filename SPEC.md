@@ -1153,6 +1153,8 @@ Midwest target is 28–32), expert bot still wins most seeds.
 | CPC2 (one generation older, sub-capacity CPs, more zIIPs) | PRDC, PRDD, TST1 | ICF for CF02 |
 
 Six LPARs (Midwest has four), so the performance budget still needs checking (§15: ≤ 2 s per day).
+Each PRD image defines 2 reserved logical CPs (as Midwest and Revenue do), so a CP bought or rented later can
+be brought online to production without an IPL; online logicals alone cover 13 of CPC1's 14 CPs and all of CPC2's 10.
 Db2 data sharing across all four PRD members; CICSPlex SM with TORs on every PRD member and AORs on
 PRDA–PRDD; MQ queue-sharing group; DDF behind the sysplex distributor. CF requests from CPC2 to CF01
 (and CPC1 to CF02) travel the 15 km link, so the existing sync/async heuristic (§5.9) converts more of
