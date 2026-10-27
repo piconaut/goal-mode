@@ -13,7 +13,7 @@ import { aiopsHypotheses, type Hypothesis } from './aiops';
 import { emptyAlerts, evaluateAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
 import { emptyPolicyBook, scheduledActivation } from './policies';
-import { MON3_CHARTS } from '../content/tools';
+import { INSIGHT, MON3_CHARTS } from '../content/tools';
 import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import { EVIDENCE } from '../content/evidence';
 import { judgeEvidence } from './evidence';
@@ -123,7 +123,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
     opexBudgetMonthly: content.opexBudgetMonthly * diff.opexBudgetMult,
     capexRemaining: content.capexQuarter * diff.capexMult,
     opexSpentThisMonth: 0,
-    insight: 0,
+    insight: INSIGHT.starting,
     tools: [...(content.startTools ?? [])],
     toolsOff: [],
     reportsOpenedToday: [],
