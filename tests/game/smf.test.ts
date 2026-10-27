@@ -85,4 +85,24 @@ describe('SMF 30 batch', () => {
     expect(n.criticalEnd).not.toBeNull();
     for (const j of n.jobs) expect(j.endSec).toBeGreaterThanOrEqual(j.startSec);
   });
+
+  it('exposes the critical jobs\' delay shares once the night has a report', () => {
+    const r = advance(noon, MIDWEST, content, TICKS_PER_DAY - 6 * HOUR - 1);
+    expect(batchNight(r)!.critical).toBeUndefined();
+    const withReport: RunState = {
+      ...r,
+      reports: [...r.reports, {
+        day: 0, sla: [], batchMissed: false, trustDelta: {} as never, score: 0, mlcEstimate: 0, events: [],
+        batch: {
+          day: 0, jobs: 40, done: 40, criticalJobs: 14, criticalDone: 14, criticalEndSec: null, missedDeadline: false,
+          criticalDelaySec: { cpu: 300, io: 200, lock: 400, db2: 100, swap: 0, init: 0 },
+          criticalAbended: ['STL009'],
+        },
+      }],
+    };
+    const c = batchNight(withReport)!.critical!;
+    expect(c.delaySharePct!.lock).toBeCloseTo(40);
+    expect(c.delaySharePct!.cpu).toBeCloseTo(30);
+    expect(c.abended).toEqual(['STL009']);
+  });
 });

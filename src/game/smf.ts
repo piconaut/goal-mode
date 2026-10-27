@@ -145,6 +145,8 @@ export interface BatchNight {
   jobs: BatchJobRow[];
   /** Critical path (longest chain of critical jobs ending last), by job name. */
   criticalEnd: string | null;
+  /** Critical jobs' lost-time breakdown; absent until the night's report exists (after its day ends). */
+  critical?: { delaySharePct?: Record<'cpu' | 'io' | 'lock' | 'db2' | 'swap' | 'init', number>; abended: string[] };
 }
 
 /** SMF 30-style job records for the most recent night with completed jobs. */
@@ -164,7 +166,17 @@ export function batchNight(run: RunState): BatchNight | null {
     })
     .sort((a, b) => a.startSec - b.startSec || (a.name < b.name ? -1 : 1));
   const crit = jobs.filter((j) => j.critical).sort((a, b) => b.endSec - a.endSec)[0];
-  return { day: nightDay, dayStartTick, jobs, criticalEnd: crit?.name ?? null };
+  const out: BatchNight = { day: nightDay, dayStartTick, jobs, criticalEnd: crit?.name ?? null };
+  const nb = run.reports.find((r) => r.day === nightDay)?.batch;
+  if (nb) {
+    const d = nb.criticalDelaySec;
+    const total = d ? d.cpu + d.io + d.lock + d.db2 + d.swap + d.init : 0;
+    out.critical = {
+      ...(d && total > 0 ? { delaySharePct: { cpu: (100 * d.cpu) / total, io: (100 * d.io) / total, lock: (100 * d.lock) / total, db2: (100 * d.db2) / total, swap: (100 * d.swap) / total, init: (100 * d.init) / total } } : {}),
+      abended: nb.criticalAbended ?? [],
+    };
+  }
+  return out;
 }
 
 export const nightClock = (n: BatchNight, sec: number) => formatClock(n.dayStartTick + Math.round(sec / TICK_SEC)).slice(-8, -3);
