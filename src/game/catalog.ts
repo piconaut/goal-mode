@@ -96,6 +96,8 @@ export interface PreviewContext {
   blockedHardware?: readonly string[];
   /** The CPCs, for per-CPC hardware (target exists, item not pointless on it). */
   cpcs?: readonly { id: string; capacitySetting: 4 | 5 | 6 | 7; generation: string }[];
+  /** Fixes this scenario's event cards call for; other scenarios' fixes are refused. */
+  fixIds?: readonly string[];
 }
 
 export interface ChangePreview {
@@ -151,7 +153,7 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   if (ctx.phase !== 'BRIEFING' && ctx.phase !== 'LIVE') return no('Changes are made during the briefing or the live day');
   if (!live && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
   if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
-  if (req.fixId && !fix) return no(`Unknown fix ${req.fixId}`);
+  if (req.fixId && (!fix || (ctx.fixIds && !ctx.fixIds.includes(fix.id)))) return no(`Unknown fix ${req.fixId}`);
   const target = hw?.perCpc && ctx.cpcs ? (req.cpcId ? ctx.cpcs.find((c) => c.id === req.cpcId) : ctx.cpcs[0]) : undefined;
   if (hw?.perCpc && ctx.cpcs && !target) return no(`Unknown CPC ${req.cpcId}`);
   const pointless = target && hw?.unavailable?.(target);

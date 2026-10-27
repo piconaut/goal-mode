@@ -256,7 +256,10 @@ function failRisk(run: RunState): number {
 }
 
 /** Context for previewChange from the current run. */
-export function previewContext(run: RunState) {
+/** Fixes the scenario's event cards call for: the Change Desk offers and accepts only these. */
+export const fixIdsOf = (content: GameContent): string[] => [...new Set(content.events.flatMap((e) => (e.fix ? [e.fix] : [])))].sort();
+
+export function previewContext(run: RunState, content?: GameContent) {
   return {
     phase: run.phase,
     perks: run.perks,
@@ -267,13 +270,14 @@ export function previewContext(run: RunState) {
     constraints: run.constraints,
     blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
     cpcs: run.sim.config.cpcs.map((c) => ({ id: c.id, capacitySetting: c.capacitySetting, generation: c.generation })),
+    ...(content ? { fixIds: fixIdsOf(content) } : {}),
   };
 }
 
 /** Plan (BRIEFING) or make an emergency change (LIVE). */
 export function requestChange(run: RunState, content: GameContent, req: ChangeRequest): ChangeOutcome {
   const live = run.phase === 'LIVE';
-  const preview = previewChange(previewContext(run), req);
+  const preview = previewChange(previewContext(run, content), req);
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
