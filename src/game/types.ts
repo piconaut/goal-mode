@@ -140,6 +140,8 @@ export interface Incident {
   aiops?: Hypothesis[];
   rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number } | null;
   trustLost: number;
+  /** Id of the first incident that day with the same root cause: one RCA covers the group, scored once (SPEC §10). */
+  rcaGroup?: number;
 }
 
 export interface SlaDay {

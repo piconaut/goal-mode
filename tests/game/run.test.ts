@@ -76,6 +76,35 @@ describe('incidents and RCA', () => {
     expect(scored.insight).toBe(r.insight + 5);
   });
 
+  it('same-day incidents with the same root cause share one RCA, scored once', () => {
+    const r0 = fresh();
+    const base = { day: r0.day, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80, rca: null, trustLost: 0 };
+    const truth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } as const;
+    const r = {
+      ...r0,
+      incidents: [
+        { ...base, id: 1, workloadId: 'RBANK', truth },
+        { ...base, id: 2, workloadId: 'MKTQRY', truth, rcaGroup: 1 },
+        { ...base, id: 3, workloadId: 'ATM', truth: { ...truth, trigger: 'GROWTH' } as const },
+      ],
+    };
+    const scored = submitRca(r, 2, 'CPU_PRIORITY', 'POLICY');
+    expect(scored.incidents.map((i) => i.rca?.points ?? null)).toEqual([5, 5, null]);
+    expect(scored.score).toBe(r.score + 5);
+    expect(submitRca(scored, 1, 'CPU_PRIORITY', 'POLICY')).toBe(scored);
+  });
+
+  it('a second workload breaching for the same cause that day joins the first incident’s RCA', () => {
+    let r = startDay(fresh(), content);
+    r = { ...r, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 12 }] };
+    r = advance(r, MIDWEST, content, 360 * 6);
+    for (const i of r.incidents.filter((x) => x.rcaGroup !== undefined)) {
+      const lead = r.incidents.find((x) => x.id === i.rcaGroup)!;
+      expect(lead.rcaGroup).toBeUndefined();
+      expect([lead.day, lead.truth.mechanism, lead.truth.trigger]).toEqual([i.day, i.truth.mechanism, i.truth.trigger]);
+    }
+  });
+
   it('a breach still running at 06:00 counts towards the new day, not the day it started', () => {
     let r = startDay(fresh(), content);
     r = { ...r, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 12 }] };
