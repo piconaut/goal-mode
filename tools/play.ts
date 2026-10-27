@@ -7,8 +7,8 @@
 //   npm run play -- runs/a.json rca <incident> <MECHANISM> <TRIGGER> --evidence 1,3
 //   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin <id>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric>
-//   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED | pin DB2|CICS <hour> <workloadId> <metric>
-//   npm run play -- runs/a.json pin BATCH <day> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (a night's critical jobs, SMF 30)
+//   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
+//   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
 //   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
 //   npm run play -- runs/a.json advance 3 --pace 2s   (one hour at a time, saving and pausing between, for spectators)
@@ -23,6 +23,9 @@ import type { InquiryKind } from '../src/content/inquiries';
 import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { writeSpectateFile } from './spectateFile';
 import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, statusText, type PlayCommand } from './playCore';
+
+// Piping into head closes stdout early; that is not an error.
+process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
 
 const argv = process.argv.slice(2);
 const paceAt = argv.indexOf('--pace');
@@ -46,7 +49,7 @@ function pinRequest(a: string[]): PinRequest {
   if (src === 'MON3') return { source: 'MON3', system: a[1] ?? '', scKey: a[2] ?? '', metric: a[3] as EvidenceMetric };
   if (src === 'CPC') return { source: 'CPC', lparId: a[1] ?? '', metric: (a[2] ?? 'PRSM_DELAY') as 'PRSM_DELAY' | 'CAPPED' };
   if (src === 'DB2' || src === 'CICS') return { source: src, hour: a[1] ?? '', workloadId: a[2] ?? '', metric: a[3] as EvidenceMetric };
-  if (src === 'BATCH') return { source: 'BATCH', day: Number(a[1]), metric: a[2] as EvidenceMetric };
+  if (src === 'BATCH') return { source: 'BATCH', day: Number(String(a[1] ?? '').replace(/^D/i, '')) - 1, metric: a[2] as EvidenceMetric };
   throw new Error('pin source: WLMGL | MON3 | CPC | DB2 | CICS | BATCH');
 }
 

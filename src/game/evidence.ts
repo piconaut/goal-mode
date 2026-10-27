@@ -142,7 +142,7 @@ const fmtValue = (m: EvidenceMetric, v: number) => {
 };
 
 export function pinText(p: Located): string {
-  return `${p.source} ${formatClock(p.tick).slice(-8, -3)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}`;
+  return `${p.source} ${formatClock(p.tick).slice(0, -3)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}`;
 }
 
 export function addPin(run: RunState, scenario: Scenario, req: PinRequest): { run: RunState; ok: boolean; message: string } {
