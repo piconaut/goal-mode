@@ -243,7 +243,7 @@ function Gantt({ n, game }: { n: BatchNight; game: GameHandle }) {
       )}
       <div className="gantt">
         {jobs.map((j) => (
-          <div className="gantt-row" key={`${j.name}:${j.startSec}`} title={`${j.name} (${j.stream}) on ${j.lparId}: queued ${Math.round(j.queuedSec / 60)} min, ran ${nightClock(n, j.startSec)}–${nightClock(n, j.endSec)}, stretch ×${j.stretch.toFixed(2)}`}>
+          <div className="gantt-row" key={`${j.name}:${j.startSec}`} title={`${j.name} (${j.stream}) on ${j.lparId}: queued ${Math.round(j.queuedSec / 60)} min, ran ${nightClock(n, j.startSec)}–${nightClock(n, j.endSec)}, ${j.stretch.toFixed(2)}× slower than running alone`}>
             <span className="gantt-name">
               {j.name}
               {j.critical && <span className="tag bad"> C</span>}

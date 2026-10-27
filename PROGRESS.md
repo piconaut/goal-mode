@@ -436,9 +436,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     ends unchanged; Harbourline expert 9 → 8 wins (seed 7 lost on trust on day 39, 61 → 58), mean trust 76.4 → 75.4;
     oraclerca truths there move from THREAD_LIMIT (22.5 → 1.6 per run) to CAPPING (23.8 → 55.4), its score rises
     1190 → 1474. The bots still read MXT queueing as THREAD_LIMIT, so they lose a little trust where the truth moved.
-  - [ ] P (Harbourline): the MLC month estimate does not say it follows the month's peak R4HA, so capping non-prod
+  - [x] P (Harbourline): the MLC month estimate does not say it follows the month's peak R4HA, so capping non-prod
     shows no saving; the DEV1 cap stretched dev batch ×82 with no label. The pin label for an SMF hour shows the
     hour's end (10:00–11:00 pins as 11:00).
+    Done 2026-10-27: `status` and the header's MLC tooltip say the estimate is priced on the month's peak R4HA to
+    date; `smf BATCH` ends with a legend for stretch (times slower than running alone) and queuedSec, and the Gantt
+    tooltip says the same; Db2 101 and CICS 110 pins read `D3 10:00–11:00`.
 - [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
 - [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
