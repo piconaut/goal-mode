@@ -168,7 +168,8 @@ export function renderPartitionData(iv: RmfInterval): string {
   const out = header('PARTITION DATA REPORT', iv);
   for (const c of iv.cpcBusy) out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
   out.push('');
-  out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG  LOG BUSY%  LPAR MGMT%  PR/SM DLY%  CAPPED%  MSU AVG   R4HA   DEF CAP  zIIP ENG');
+  // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
+  out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG  LOG BUSY%  LPAR MGMT%  PR/SM DLY%  CAPPED%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');
   for (const r of iv.cpu.filter((x) => x.logicalCps > 0)) {
     out.push(
       [
@@ -184,6 +185,7 @@ export function renderPartitionData(iv: RmfInterval): string {
         f(r.msuAvg, 0, 8),
         f(r.r4ha, 0, 7),
         pad(r.definedCapacityMsu ?? '-', 8),
+        pad(r.absoluteCapEngines != null ? r.absoluteCapEngines.toFixed(2) : '-', 8),
         f(r.ziipEngines, 2, 9),
       ].join(' '),
     );
