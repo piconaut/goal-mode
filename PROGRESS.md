@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** options for playtest finding D (user decision pending; `bot --reader` sweeps running), evidence pins on BATCH incidents, Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), a playtest round with the agent players (goal-mode-player, cautious-operator, cost-cutter) via the play CLI, M8.4 events (23 of ~25). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** options for playtest finding D (user decision pending; `bot --reader` sweeps running), SMF Batch tab pin buttons (UI half of BATCH evidence), Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), a playtest round with the agent players (goal-mode-player, cautious-operator, cost-cutter) via the play CLI, M8.4 events (23 of ~25). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -344,8 +344,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     initiator wait) and ABENDs; a missed night opens a `BATCH` incident (new mechanism JOB_FAILURE for an ABEND, else
     the largest cause mapped onto the online mechanisms; JOB_ABEND and REORG_OVERRUN now affect BATCH) (SPEC §10).
     Normal Midwest seeds 1–10: oraclerca ends unchanged except seed 8 (day 18 → 19), median score 1180 → 1188, batch
-    misses 29 (14 JOB_FAILURE incidents); textbook files no RCAs and is unaffected by design. Follow-up: evidence pins
-    can't score on a BATCH incident yet (judged against online workloads only).
+    misses 29 (14 JOB_FAILURE incidents); textbook files no RCAs and is unaffected by design. Follow-up done 2026-10-27:
+    BATCH incidents take SMF 30 evidence pins (the night's delay shares per cause and the critical ABEND count; `pin
+    BATCH <day> <metric>` in the play CLI), and WLMGL/Monitor III pins on the critical jobs' classes and images count
+    as about the night. Still to do: pin buttons on the SMF tab's Batch Gantt (UI).
   - [x] C: incidents with the same root cause on the same day group into one RCA (Midwest teller release: 5
     incidents, 5 RCAs; Harbourline holiday spike: 6). Done 2026-10-27: same-day, same-truth incidents link to the first
     (`rcaGroup`); one RCA covers the group, scored once (SPEC §10). Only oraclerca files RCAs, so only it moves:

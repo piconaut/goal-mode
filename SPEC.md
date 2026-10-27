@@ -970,8 +970,11 @@ time), swapped-out time and initiator wait (queued → started). A critical job 
 mechanism only batch incidents have); otherwise the largest cause maps onto the online mechanisms (CPU, LOCK_CONTENTION,
 DEPENDENCY, IO, STORAGE, THREAD_LIMIT for initiators), with the CPU split from the night's summed hours and the critical
 jobs' images. The trigger is a card that affects `BATCH`, causes that mechanism and ran during the night (JOB_ABEND,
-REORG_OVERRUN), else the online fallback rules. It groups for RCA like any other incident. Evidence pins don't score for
-it yet (they are judged against online workloads). Playtest round 1, design item B: two players lost 12+ Regulator
+REORG_OVERRUN), else the online fallback rules. It groups for RCA like any other incident. Evidence for it is pinned
+from the night's SMF 30 job records (SMF tab, Batch; `pin BATCH <day> <metric>`): each cause's share of the critical
+jobs' lost time (`JOB_CPU`, `JOB_IO`, `JOB_LOCK`, `JOB_DB2`, `JOB_SWAP`, `JOB_INIT`; notable at 25 %) and the count of
+critical ABENDs (`JOB_ABEND`). WLMGL and Monitor III pins on the critical jobs' service classes and images also count
+as about the night. Playtest round 1, design item B: two players lost 12+ Regulator
 trust in a day with nothing to file an RCA against.
 
 Rewards: correct cause → Trust + Insight. Correct cause with strong evidence → bonus and a codex
