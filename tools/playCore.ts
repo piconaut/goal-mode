@@ -159,6 +159,11 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         if (!iv.wlm.some((x) => x.lparId === w.system && x.scKey === w.scKey)) return fail(`No WLMGL row ${w.system} ${w.scKey} in interval ${intervalId(iv)}; ${rowKeys(iv, w.system)}`);
         req = w;
       }
+      if (req.source === 'DB2' || req.source === 'CICS') {
+        const hour = smfHourKey(run, req.hour);
+        if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
+        req = { ...req, hour };
+      }
       if (req.source === 'MON3') req = { ...req, scKey: resolveKey(req.scKey, buildView(run, sc(run)).mon3?.rows.map((x) => x.scKey) ?? []) };
       const o = addPin(run, sc(run), req);
       return done(o.run, o.message, o.ok);

@@ -385,10 +385,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     requestChange accepted any. Both now use the fixes the scenario's event cards call for (`fixIdsOf`). Bench and
     golden hashes unchanged.
   - Round 2 (2026-10-27, seed 2027 Normal, to the day-8 briefing): goal-mode-player on Midwest (trust 70.6, score
-    463), cautious-operator on Revenue (trust 83.1, score 450), cost-cutter on Harbourline (pending). Fixed in the
+    463), cautious-operator on Revenue (trust 83.1, score 450), cost-cutter on Harbourline (trust 73.6, score 529). Fixed in the
     play CLI the same day: `pin BATCH` takes the day as labelled (`D2`), and `smf BATCH` shows `D2` too (it took the
     0-based index); pin text carries the day (`SMF 30 D3 06:00`); DB2/CICS/BATCH pins need the same tool as their
-    SMF view, as in the browser; no EPIPE crash when piped into `head`. Open findings:
+    SMF view, as in the browser; `pin DB2|CICS` takes the hour as `smf` does (`10`, `D3 10`) instead of an internal
+    key; no EPIPE crash when piped into `head`. Open findings:
   - [ ] G: one event can raise several incidents with different truths (Midwest D2 runaway ad-hoc query:
     THREAD_LIMIT/POLICY, THREAD_LIMIT/RUNAWAY_WORK, CPU_PRIORITY/POLICY), and nothing points a player at
     THREAD_LIMIT for RBANK. Check the clue path or let the related truth count as half-right.
@@ -404,6 +405,17 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     names SET_CICS needs; finished projects disappear from status; a change with several commands costs the same
     1.5 h as one; `wlm` says "activate at tomorrow's briefing" but `activate` is refused until the draft closes;
     idle engineer-hours on quiet days.
+  - [ ] L (Harbourline): CICS region names and current MXT are shown nowhere, so SET_CICS is a guess; a planned
+    change is not checked against the config (a bogus region was accepted and charged) and cannot be withdrawn.
+  - [ ] M (Harbourline): PRDA shows CAPPED 2–3.4% in Partition Data with no defined capacity, `pin CPC PRDA CAPPED`
+    reads 0.0%, and RCAs answer CAPPING/POLICY; the cap's source is not discoverable. Check the clue path.
+  - [ ] N (Harbourline): MXT queueing shows as OTH/UNK (73–89%) in WLMGL and Monitor III; only SMF 110 names it. The
+    sysprog hint said "Partition Data around the peak" on days 4–6 while the cause was MXT wait.
+  - [ ] O (Harbourline): one recurring MXT/QR symptom was scored QR_TCB, THREAD_LIMIT, CAPPING and CPU_PRIORITY (all
+    POLICY) on different incidents (same family as G); JOB_FAILURE/POLICY for an S0C7 abend reads oddly.
+  - [ ] P (Harbourline): the MLC month estimate does not say it follows the month's peak R4HA, so capping non-prod
+    shows no saving; the DEV1 cap stretched dev batch ×82 with no label. The pin label for an SMF hour shows the
+    hour's end (10:00–11:00 pins as 11:00).
 - [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
 - [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
