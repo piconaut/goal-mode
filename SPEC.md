@@ -841,7 +841,8 @@ feature flags, `overhead`). Buying is instant and costs no engineer-hours; owned
 overhead can be switched off (data disappears, CPU is saved). Tier 0 reports are the Workload
 Activity summary and WLMGL detail; Partition Data needs its tool, CF and DASD reports need
 tier 2. Monitor III also lifts the "yesterday only" restriction on Postprocessor intervals.
-Insight income: +1 per distinct report opened per played day (cap 5), RCA points, vendor-trial draft.
+Insight income: +1 per distinct report opened per played day (cap 5), RCA points, vendor-trial draft. Every run
+starts with 15 (`INSIGHT.starting`; playtest finding D, user decision 2026-10-27): Monitor III on day 1.
 
 **Insight** is earned by doing analysis (opening and reading reports, running what-ifs), so
 players who investigate get stronger. Measurement has **CPU cost**. The tension between seeing
@@ -1193,8 +1194,7 @@ them to async: lock-heavy work runs slower on the "far" side of its structure.
 
 **Analytics at the start.** RMF Monitor III, Partition Data, CF/DASD activity, CICS monitoring and Db2
 accounting are installed on day 1 (`GameContent.startTools`, new). SMF 113, the capacity planner,
-What-if, alerts and automation are still bought with Insight. Starting Insight is lower than
-Midwest's, so the tree still matters.
+What-if, alerts and automation are still bought with Insight, so the tree still matters.
 
 **Stakeholders:** *Markets* (trading-day online, heaviest weight), *Retail*, *Cards*, *Payments*,
 *Finance*, *Regulator*.

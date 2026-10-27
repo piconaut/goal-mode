@@ -197,6 +197,8 @@ export const TOOLS: ToolDef[] = [
 
 // FICTIONAL: Insight income.
 export const INSIGHT = {
+  /** At the start of a run: enough for Monitor III on day 1, so diagnosis can start before income builds (finding D). */
+  starting: 15,
   /** Per distinct report opened in a played day. */
   perReport: 1,
   /** Cap on report Insight per played day. */

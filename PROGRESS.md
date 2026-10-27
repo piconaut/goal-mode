@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** options for playtest finding D (user decision pending; `bot --reader` sweeps running), Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 2 findings G–K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** finding J (GOODWILL draft strength; user decision pending), Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 2 findings G–K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -359,9 +359,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       (`EVIDENCE.groupTrustPerIncident`); score and Insight still count once. Normal Midwest oraclerca seeds 1–10 vs
       dev: seed 1 day 15 → 22 (score 968 → 1427), seed 3 day 16 → 17, the rest end on the same day; median day
       18 → 18.5, median score 1299 → 1351, ends unchanged (batch 3, trust 7). Goldens unchanged.
-  - [ ] D: insight is too scarce early: the QR TCB diagnosis needed CICS_MON (14 insight) with 13 on hand by day 8
-    - [ ] Prepare options for the user (user request 2026-10-27): e.g. cheaper CICS_MON, more starting insight,
-      faster early insight income; each with bot numbers (Normal, all three scenarios). Balance decision is the user's
+  - [x] D: insight is too scarce early: the QR TCB diagnosis needed CICS_MON (14 insight) with 13 on hand by day 8
+    - [x] Options for the user (2026-10-27), `bot --reader`, Normal, expert and oraclerca, seeds 1–10, all three
+      scenarios vs dev: o1 CICS_MON 14 → 8, o2 starting insight 15, o3 report cap 5 → 8 per day, o4 CICS_MON 10 +
+      starting insight 10. Wins, scores (±30) and median end day unchanged everywhere (expert 9/10/9 → 9/10/10 on
+      Harbourline for o2–o4, one seed); the reader buys Monitor III on day 1 instead of 2 and holds ~1 more tool by
+      day 5 with o2/o4, o1 only moves CICS_MON a day earlier. User picked o2: `INSIGHT.starting` 15.
   - [x] E: events with no warning or no visible effect (review the warnings in the M8.4 events work): the holiday
     spike arrived with no warning on Harbourline; a REBIND access-path regression raised no incident; "campaign starts
     tomorrow" mail sent after the campaign had started; the runaway query could only be cancelled as an emergency
@@ -398,7 +401,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     Probably fine (no SLA broken), but the morning hint could mention them.
   - [ ] I: RCA guessing pays: CPU_PRIORITY/POLICY was right three times on CARDAUTH blips without evidence, and a
     JOB_FAILURE trigger POLICY (the player's own activation) cannot be derived; half-right RCAs still give +1 on
-    every facet. Balance decision for the user.
+    every facet. User decision 2026-10-27: fine as it is (guessing may pay).
   - [ ] J: GOODWILL (and CFO_BONUS, RC_HOARDER) drafts show no visible cost; both agents called GOODWILL dominant.
     Balance decision for the user.
   - [ ] K: CLI and UX rough edges: pin ids share the incident counter; `smf CICS` lists workloads, not the region
@@ -542,6 +545,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-27 | The expert bot buys a permanent CP (PERM_CP) after CPU_CAPACITY incidents on 2 days within 7 on one CPC, then raises prod logical CPs by 1; On/Off CoD variant not adopted | User decision. 20-seed sweeps: same ends as the base expert in all three scenarios; the CoD variant cost Harbourline seed 11 an opex end |
 | 2026-10-27 | M8.1 closed: the performance gate is ≤ 4 ms per tick in the worker; ≤ 2 s per headless day is no longer a target | User decision. No hash-neutral optimisation above ~3 % is left, (2) and (5) were rejected, and the UI budget already holds. CLAUDE.md and SPEC §15 updated |
 | 2026-10-27 | M8.2 closed: bot balance done; sweeps become a regression check (CI 5 seeds, 20 to confirm) | User decision. Do-nothing, textbook and spendtowin hold in all three scenarios; expert wins 19/20, 20/20, 16/20 |
+| 2026-10-27 | Finding D: every run starts with 15 insight (`INSIGHT.starting`), was 0 | User decision among four swept options; bot outcomes unchanged, Monitor III affordable on day 1 |
+| 2026-10-27 | Finding I: RCA guessing may pay; no change | User decision |
 
 ## Open questions
 
