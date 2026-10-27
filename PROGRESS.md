@@ -336,8 +336,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [ ] A: when response time and SLA attainment disagree (Harbourline MKTORD slid while WLM showed PI < 1, because
     the region-served class hid it), an Inquiry reply or the sysprog morning hint should point at CICS SMF 110
   - [ ] B: a batch-window miss becomes an incident with its own RCA (Revenue day 7 abend had no clue path)
-  - [ ] C: incidents with the same root cause on the same day group into one RCA (Midwest teller release: 5
-    incidents, 5 RCAs; Harbourline holiday spike: 6)
+  - [x] C: incidents with the same root cause on the same day group into one RCA (Midwest teller release: 5
+    incidents, 5 RCAs; Harbourline holiday spike: 6). Done 2026-10-27: same-day, same-truth incidents link to the first
+    (`rcaGroup`); one RCA covers the group, scored once (SPEC §10). Only oraclerca files RCAs, so only it moves:
+    Normal Midwest seeds 1–10, median day 19 → 18, median score 1393 → 1284, ends unchanged (batch 3, trust 7). Seed 1
+    ended day 15 instead of 22: fewer RCAs means fewer +1 trust bumps. A player who RCAs everything loses the same
+    trust income; if that proves too harsh, scale the group RCA's trust by group size (open question).
   - [ ] D: insight is too scarce early: the QR TCB diagnosis needed CICS_MON (14 insight) with 13 on hand by day 8
   - [ ] E: events with no warning or no visible effect (review the warnings in the M8.4 events work): the holiday
     spike arrived with no warning on Harbourline; a REBIND access-path regression raised no incident; "campaign starts
