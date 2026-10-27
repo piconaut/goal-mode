@@ -23,7 +23,7 @@ import type { Scenario } from '../sim/core/scenario';
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
 import { hintLevelFor, morningHints } from './hints';
-import { HINT_SENDER, STORY_BEAT_HINTS } from '../content/hints';
+import { HINT_SENDER, STORY_BEAT_HINTS, WLM_DISAGREE_HINTS } from '../content/hints';
 import { step } from '../sim/core/step';
 import { classify } from '../sim/wlm/classify';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
@@ -626,6 +626,24 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }
 
+/**
+ * Incident workloads whose service class never missed its goal in WLMGL that day (every host's class had a
+ * worst sysplex PI ≤ 1): the class average or region goal hid the slide. Only subsystems with a
+ * per-transaction record to point at count. Workload id → subsystem.
+ */
+export function wlmHidSlides(r: RunState, scenario: Scenario, incidents: readonly Incident[], piWorst: Readonly<Record<string, number>>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const w of allWorkloads(scenario, r)) {
+    const sub = w.work.subsystem;
+    if (!sub || !(sub in WLM_DISAGREE_HINTS) || !incidents.some((i) => i.workloadId === w.id)) continue;
+    const pis = Object.entries(r.sim.routing[w.id] ?? w.routing)
+      .filter(([, f]) => f > 0)
+      .map(([lparId]) => piWorst[`${classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass}#1`]);
+    if (pis.length > 0 && pis.every((p) => p !== undefined && p <= 1)) out[w.id] = sub;
+  }
+  return out;
+}
+
 /** Worst sysplex PI per service-class period across the RMF intervals that closed within the day. */
 export function worstPiOfDay(intervals: readonly RmfInterval[], day: number): Record<string, number> {
   const out: Record<string, number> = {};
@@ -785,7 +803,8 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
   if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
-  for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null))
+  const hid = wlmHidSlides(r, scenario, dayIncidents, report.piWorst ?? {});
+  for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null, hid))
     r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);
   return openReview(r, content, day);
 }

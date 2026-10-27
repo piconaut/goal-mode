@@ -1022,7 +1022,10 @@ same ground truth as RCA scoring (incident mechanism and trigger, batch-window s
 storage/paging) and get vaguer as difficulty rises; none on Hard or Ironman. On Story and Normal, big story beats also get a clear
 advance hint (the merger: two days ahead, asking whether any classification rule catches the new OMVS work). Implemented: Story shows up to two
 hints (workload, report and question), Normal one (the report only); a missed batch deadline leads, a tight
-window (<30 min slack) comes after incident hints.
+window (<30 min slack) comes after incident hints. When response time and WLM disagree (a CICS or DDF
+workload missed its SLA while every service class serving it had a worst sysplex PI ≤ 1 in WLMGL all day, because
+a class average or the regions' own goal hid it), the hint adds that WLMGL disagreed and points at the
+per-transaction records: CICS monitoring (SMF 110) or Db2 accounting (SMF 101).
 
 ### 11.3 Meta-progression ("Career")
 - Career XP from runs → unlock **scenarios**: *Midwest Mutual* (bank), *Continental Insurance*
