@@ -62,7 +62,7 @@ const BANK_CARDS: EventDef[] = [
     begin: [mod('rate', 'MKTORD', 1.6), mod('rate', 'MKTQRY', 1.6)],
     end: [mod('rate', 'MKTORD', 1), mod('rate', 'MKTQRY', 1)],
     fix: null,
-    forewarning: 'Markets desk: "Index rebalance tomorrow, and the central bank speaks at nine. Expect a heavy open."',
+    forewarning: 'Markets desk: "Index rebalance today, and the central bank speaks at nine. Expect a heavy open."',
     announcement: null,
     clue: 'Mon III SYSSUM (100 s range): MKTORD PI and CPU delay spike from 09:30 while the 15-minute WLMGL interval looks mild; MKTORD END/S up ×1.6 on every PRD image and CICS monitoring shows MXT waits. Fixes: headroom (On/Off CoD on CPC1), a percentile goal for MKTORD, an importance-1 CPU-critical class, CICS MAXTASKS, or lifting the PRDA absolute cap.',
   },
@@ -80,7 +80,7 @@ const BANK_CARDS: EventDef[] = [
     begin: [mod('rate', 'CARDS', 1.7), mod('rate', 'RETAIL', 1.2)],
     end: [mod('rate', 'CARDS', 1), mod('rate', 'RETAIL', 1)],
     fix: null,
-    forewarning: 'Cards: "Tomorrow is the big shopping holiday. Last year authorisations ran well above a normal Friday."',
+    forewarning: 'Cards: "Today is the big shopping holiday. Last year authorisations ran well above a normal Friday."',
     announcement: null,
     clue: 'CARDS END/S ×1.7 from mid-morning with CPU per transaction unchanged; the 99%-in-0.15 s goal is tight, so CARDS PI creeps up on the busiest images (Mon III SYSSUM, WLMGL). Fixes: headroom, CICS MAXTASKS on the AORs, or protect CARDS at importance 1.',
   },
@@ -88,7 +88,7 @@ const BANK_CARDS: EventDef[] = [
 
 const HB_CARDS: EventDef[] = [
   adapt('CAMPAIGN', {
-    forewarning: 'Digital: "Heads up, marketing is pushing a mobile promo tomorrow. Could be big."',
+    forewarning: 'Digital: "Heads up, marketing is pushing a mobile promo today. Could be big."',
     clue: 'DDF END/S for the mobile channel jumps ×2–3 on all four PRD images; CPU per transaction unchanged.',
   }),
   adapt('RUNAWAY', {
