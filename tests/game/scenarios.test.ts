@@ -125,3 +125,10 @@ describe('State Revenue Agency event deck', () => {
     for (const e of REVENUE_EVENTS.filter((x) => !midwest.has(x.id))) expect(EVENT_RUMOURS[e.id], e.id).toBeTruthy();
   });
 });
+
+describe('forewarnings', () => {
+  it('speak of the day they arrive: the mail lands in the morning briefing of the card day', () => {
+    for (const p of Object.values(PACKS))
+      for (const e of p.game.events) if (e.forewarning) expect(e.forewarning, e.id).not.toMatch(/tomorrow/i);
+  });
+});
