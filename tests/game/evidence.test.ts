@@ -42,7 +42,8 @@ describe('evidence pins', () => {
     const r = pin(regressed, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' });
     const p = r.pins.at(-1)!;
     expect(p.value).toBeGreaterThan(2);
-    expect(p.text).toMatch(/Db2 101 .* RBANK CPU\/txn vs baseline ×/);
+    expect(p.text).toMatch(/^Db2 101 D1 \d\d:00–\d\d:00 RBANK CPU\/txn vs baseline ×/);
+    expect(p.text).toContain(`${hourKey.split(':')[1]!.padStart(2, '0')}:00–`);
     expect(addPin(r, MIDWEST, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' }).ok).toBe(false);
     const iv = regressed.sim.rmf.intervals.length - 1;
     const w = pin(r, { source: 'WLMGL', index: iv, system: '*PLEX', scKey: 'ONLHI#1', metric: 'APPL' });

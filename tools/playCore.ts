@@ -280,7 +280,8 @@ function batchText(b: object): string {
   // Days as the game labels them (D1 = first played day), matching `pin BATCH D2`.
   const scalars = Object.entries(b).filter(([, v]) => !Array.isArray(v)).map(([k, v]) => (k === 'day' && typeof v === 'number' ? [k, `D${v + 1}`] : [k, v]));
   const lists = Object.entries(b).filter(([, v]) => Array.isArray(v)) as [string, object[]][];
-  return [table([Object.fromEntries(scalars)]), ...lists.flatMap(([k, v]) => ['', k, table(v)])].join('\n');
+  const legend = 'stretch: how many times slower than running alone, at the job\'s last interval (×1 = no contention; a capped or CPU-starved LPAR raises it); queuedSec: wait for an initiator';
+  return [table([Object.fromEntries(scalars)]), ...lists.flatMap(([k, v]) => ['', k, table(v)]), '', legend].join('\n');
 }
 
 /** What the player can see: the same fields the browser shows, never the incident ground truth. */
@@ -290,7 +291,7 @@ export function statusText(file: PlayFile): string {
   const out: string[] = [];
   out.push(`${v.phase}  day ${v.day + 1}/${v.maxDays} ${v.weekday}  ${clockText(run.sim.tick)}  difficulty ${v.difficulty.name}  seed ${v.seed}`);
   out.push(`trust ${v.trustOverall.toFixed(1)} (${Object.keys(v.trust).map((f) => `${f} ${v.trust[f]!.toFixed(0)}`).join(', ')})  score ${v.score}`);
-  out.push(`engineer-hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}  MLC month est $${Math.round(v.mlcEstimate).toLocaleString()} / opex budget $${Math.round(v.opexBudget).toLocaleString()}`);
+  out.push(`engineer-hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}  MLC month est $${Math.round(v.mlcEstimate).toLocaleString()} (billed on the month's peak R4HA so far, so a cap saves only if it lowers that peak) / opex budget $${Math.round(v.opexBudget).toLocaleString()}`);
   out.push(`policy ${v.policyName}${file.pendingPolicy ? `  (pending policy edits in ${file.pendingPolicy.policyName}: activate in BRIEFING or LIVE)` : ''}  tools ${v.tools.filter((t) => t.owned).map((t) => (t.trialLastDay !== null ? `${t.id}(trial to day ${t.trialLastDay + 1})` : t.id)).join(' ') || 'none'}`);
   out.push(`CPC busy ${v.cpcBusyPct.toFixed(0)}%  ` + v.lpars.map((l) => `${l.id} ${l.cpBusyPct.toFixed(0)}%`).join('  '));
   if (v.phase === 'LIVE') {

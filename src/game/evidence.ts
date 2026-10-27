@@ -148,8 +148,14 @@ const fmtValue = (m: EvidenceMetric, v: number) => {
   return d.unit === '×' ? `×${v.toFixed(2)}` : `${v >= 100 ? v.toFixed(0) : v.toFixed(1)}${d.unit ? ` ${d.unit}` : ''}`.replace(' %', '%');
 };
 
+// Db2 101 and CICS 110 pins sit at their SMF hour's end tick; label the hour itself (10:00–11:00).
+const pinWhen = (p: Located): string =>
+  p.source === 'Db2 101' || p.source === 'CICS 110'
+    ? `${formatClock(p.tick - TICKS_PER_HOUR).slice(0, -3)}–${formatClock(p.tick).slice(-8, -3)}`
+    : formatClock(p.tick).slice(0, -3);
+
 export function pinText(p: Located): string {
-  return `${p.source} ${formatClock(p.tick).slice(0, -3)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}`;
+  return `${p.source} ${pinWhen(p)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}`;
 }
 
 export function addPin(run: RunState, scenario: Scenario, req: PinRequest): { run: RunState; ok: boolean; message: string } {
