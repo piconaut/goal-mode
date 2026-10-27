@@ -191,7 +191,7 @@ function Section({ id, title, summary, codex = [], wide = false, children }: { i
 const costText = (p: ChangePreview): string => {
   const parts = [`${p.hours}h`];
   if (p.capex) parts.push(`$${Math.round(p.capex / 1000)}k`);
-  if (p.emergency) parts.push(`EMERG −${p.trustCostEach} trust each`);
+  if (p.emergency && p.trustCostEach > 0) parts.push(`EMERG −${p.trustCostEach} trust each`);
   if (p.failRisk > 0) parts.push(`${(p.failRisk * 100).toFixed(0)}% fail risk`);
   return parts.join(' · ');
 };
@@ -1302,6 +1302,7 @@ function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
               <div className="muted" style={{ fontSize: 12 }}>
                 {f.description}
                 {f.trustCost ? ` Costs ${f.trustCost.amount} ${f.trustCost.facet} trust.` : ''}
+                {f.operational ? ' Operator command: no change-board trust cost.' : ''}
               </div>
               {!incidentOpen && <div className="muted" style={{ fontSize: 12 }}>No open incident: only worth it if you have diagnosed this cause.</div>}
             </span>
