@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { advance, chooseDraft, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { advance, cancelChange, chooseDraft, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
@@ -36,6 +36,8 @@ export type PlayCommand =
   | { cmd: 'start' }
   | { cmd: 'advance'; hours: number }
   | { cmd: 'change'; req: ChangeRequest }
+  /** Withdraw a planned change (ids in status); capex back, hours back on the day they were spent. */
+  | { cmd: 'cancel'; changeId: number }
   | { cmd: 'draft'; optionId: string | null }
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
@@ -116,6 +118,10 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'change': {
       const o = requestChange(run, content, c.req);
+      return done(o.run, o.message, o.ok);
+    }
+    case 'cancel': {
+      const o = cancelChange(run, c.changeId);
       return done(o.run, o.message, o.ok);
     }
     case 'draft': {
@@ -394,6 +400,11 @@ export function catalogText(file: PlayFile): string {
   for (const p of projectsView(file.run)) out.push(`  ${p.id}${p.done ? ' [done]' : ''}: ${p.name}, ${p.hoursDone}/${p.hours}h, max ${p.maxHoursPerDay}h/day. ${p.description}`);
   out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> | CPC <lparId> PRSM_DELAY|CAPPED | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
   out.push(`  metrics: ${Object.keys(EVIDENCE_METRICS).join(' ')}`);
+  const cfg = file.run.sim.config;
+  out.push('change targets (current config):');
+  out.push(`  LPARs: ${cfg.lpars.map((l) => l.id).join(' ')}`);
+  out.push(`  CICS regions (SET_CICS name; MXT = maxTasks): ${cfg.cics.map((r) => `${r.name}@${r.lparId} MXT ${r.maxTasks}`).join(', ') || 'none'}`);
+  out.push(`  Db2 (SET_DB2 ssid): ${cfg.db2.map((d) => `${d.ssid} MAXDBAT ${d.maxDbat}, BP ${d.bufferPoolGb} GB`).join(', ') || 'none'}`);
   out.push('Config/WLM commands for change {"label":..,"commands":[...]}: see the Command type in src/sim/core/commands.ts; WLM edits: WlmEdit in src/game/wlmEdit.ts');
   return out.join('\n');
 }

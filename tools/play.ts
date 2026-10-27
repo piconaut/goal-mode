@@ -5,7 +5,7 @@
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json rca <incident> <MECHANISM> <TRIGGER> --evidence 1,3
-//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin <id>
+//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin <id> | cancel <change id>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric>
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
@@ -72,6 +72,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
     case 'project': return { cmd: 'project', id: rest[0] ?? '', hours: Number(rest[1] ?? 1) };
     case 'unpin': return { cmd: 'unpin', id: Number(rest[0]) };
+    case 'cancel': return { cmd: 'cancel', changeId: Number(rest[0]) };
     case 'pin': return pinCommand(rest);
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
     case 'activate': return { cmd: 'activate' };
