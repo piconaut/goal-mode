@@ -941,9 +941,12 @@ Ground truth for the trigger: an active event card that lists the hurt workload,
 growth. Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
 
 Ground truth for the mechanism: the response-time component group that grew most against the workload's healthy
-baseline. Queueing for MXT or DBATs (THREAD_LIMIT) grows by as much as the time inside the region grows (Little's law:
-slower tasks hold their slot longer), so THREAD_LIMIT is credited only with its growth beyond the in-region growth; the
-rest is a symptom of whatever slowed the tasks. A CPU win is split three ways: CAPPING when a host LPAR was capped over 5 % of the hour, CPU_CAPACITY when an
+baseline. Queueing for MXT or DBATs also grows when something slowed the tasks, since slower tasks hold their slot longer
+(Little's law), and once rate × response time passes the limit it grows faster than the slowdown itself. So the sim also
+records the queue the same arrivals would build at their unqueued service time (base latency, CPU, zIIP and I/O
+connect/disconnect, no waits), and THREAD_LIMIT is credited only with that queue's growth; the rest is a symptom of
+whatever slowed the tasks (APPROX: unqueued service time is the reference, so the limit's own share is slightly
+understated when healthy work already queues a little). A CPU win is split three ways: CAPPING when a host LPAR was capped over 5 % of the hour, CPU_CAPACITY when an
 image hosting the workload was full over the hour — its CPC averaged at least 90 % general-CP busy (judged per CPC,
 since PR/SM shares engines only within a machine), or the image itself used at least 95 % of the CP available to it
 (online logical CPs, entitlement plus white space), as when all its logical CPs are busy on a CPC with engines it
@@ -1459,7 +1462,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
 | CICS region management | **Simplified** | CICS work on an image shares the AOR regions' DP: most important served period (TRANSACTION, free ride) or the region STC class (REGION); no per-region split of work |
-| Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time |
+| Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time; RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
 | Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |

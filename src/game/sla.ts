@@ -57,18 +57,17 @@ const GROUPS: Record<string, string[]> = {
   LOCK_CONTENTION: ['lock'],
   CF_SERVICE: ['cf'],
   QR_TCB: ['qr'],
-  THREAD_LIMIT: ['outside'],
+  THREAD_LIMIT: ['outsideRef'],
   IO: ['io'],
   STORAGE: ['paging'],
 };
 
-/** How much each mechanism group grew against the baseline, per transaction. Queueing for MXT or DBATs grows by
- * as much as the time inside the region grows (Little's law: slower tasks hold their slot longer), so only the
- * part beyond the in-region growth is the thread limit's own; the rest is a symptom of whatever slowed the tasks. */
+/** How much each mechanism group grew against the baseline, per transaction. Slower tasks hold their MXT or DBAT
+ * slot longer (Little's law), so the queue also grows when something else slowed them; only the queue the work
+ * would build at its unqueued service time (`outsideRef`) is the thread limit's own. */
 function groupExcess(parts: Record<string, number>, baseline: Record<string, number>): [string, number][] {
   const grew = (k: string) => (parts[k] ?? 0) - (baseline[k] ?? 0);
-  const inRegion = Object.keys(parts).reduce((a, k) => (k === 'outside' ? a : a + grew(k)), 0);
-  return Object.entries(GROUPS).map(([g, keys]) => [g, g === 'THREAD_LIMIT' ? Math.max(0, grew('outside') - Math.max(0, inRegion)) : keys.reduce((a, k) => a + grew(k), 0)]);
+  return Object.entries(GROUPS).map(([g, keys]) => [g, keys.reduce((a, k) => a + grew(k), 0)]);
 }
 
 /** Mechanism groups ordered by how much they grew against the healthy baseline (AIOps uses the runners-up). */
@@ -157,7 +156,7 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
 export function batchMissMechanism(night: NightSummary, nightHour: HourAcc, hosts: readonly IncidentHost[]): Mechanism {
   if ((night.criticalAbended ?? []).length > 0) return 'JOB_FAILURE';
   const d = night.criticalDelaySec ?? { cpu: 0, io: 0, lock: 0, db2: 0, swap: 0, init: 0 };
-  return mechanismOf({ cpuQueue: d.cpu, lock: d.lock, dependency: d.db2, io: d.io, paging: d.swap, outside: d.init }, {}, nightHour, hosts);
+  return mechanismOf({ cpuQueue: d.cpu, lock: d.lock, dependency: d.db2, io: d.io, paging: d.swap, outsideRef: d.init }, {}, nightHour, hosts);
 }
 
 /** A card blamed for a missed night: one that affects BATCH, causes this mechanism and ran during the night. */

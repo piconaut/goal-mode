@@ -63,6 +63,9 @@ export interface SliceSpec {
   /** Queueing before the work manager sees the request (MXT, DBAT): end users feel it,
    * WLM and RMF response times do not include it. */
   outsideWaitSec: number;
+  /** The same queue had the work run at its unqueued service time (no CPU, I/O or other waits): the part of
+   * outsideWaitSec that arrival rate against the limit causes, rather than slow tasks holding their slot. */
+  outsideRefSec?: number;
   /** Diagnostic split of extraOtherSec (e.g. cf, lock, qr). */
   extraParts?: Record<string, number>;
   /** Report class from classification (reporting only: WLM never manages to it). */
@@ -120,6 +123,7 @@ export interface RtParts {
   extra: Record<string, number>;
   backlogWait: number;
   outside: number;
+  outsideRef: number;
 }
 
 export interface LparEvalInput {
@@ -621,6 +625,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
             extra: s.extraParts ?? { other: s.extraOtherSec },
             backlogWait: waitSec,
             outside: s.outsideWaitSec,
+            outsideRef: s.outsideRefSec ?? 0,
           },
       newBacklog,
       health: 1,

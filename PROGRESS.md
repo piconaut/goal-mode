@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 2 finding G (user decision pending) and the rest of K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), the rest of playtest round 2 finding K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -393,7 +393,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     0-based index); pin text carries the day (`SMF 30 D3 06:00`); DB2/CICS/BATCH pins need the same tool as their
     SMF view, as in the browser; `pin DB2|CICS` takes the hour as `smf` does (`10`, `D3 10`) instead of an internal
     key; no EPIPE crash when piped into `head`. Open findings:
-  - [ ] G: one event can raise several incidents with different truths (Midwest D2 runaway ad-hoc query:
+  - [x] G: one event can raise several incidents with different truths (Midwest D2 runaway ad-hoc query:
     THREAD_LIMIT/POLICY, THREAD_LIMIT/RUNAWAY_WORK, CPU_PRIORITY/POLICY), and nothing points a player at
     THREAD_LIMIT for RBANK. Check the clue path or let the related truth count as half-right.
     Checked 2026-10-27 after the N/O fix: the replay still gives THREAD_LIMIT on RBANK/CARDAUTH/TELLER. Starved AORs
@@ -401,6 +401,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     subtraction still leaves THREAD_LIMIT on top. The clue path exists (THREAD_LIMIT hint → CICS 110 MXT_WAIT).
     Options for the user: (a) the sim also records MXT/DBAT wait at baseline RT, so attribution can tell queue growth
     caused by slow tasks from queue growth caused by rate; (b) half credit for a mechanism that is ranked high but is not the top one.
+    User decision 2026-10-27: (a). Done: the sim records the MXT/DBAT queue at each slice's unqueued service time
+    (`outsideRef`), and THREAD_LIMIT is credited with its growth only (SPEC §10). Replay: RBANK, CARDAUTH and TELLER
+    become CPU_PRIORITY/POLICY, MOBILE DEPENDENCY/RUNAWAY_WORK; CICS_SOS stays THREAD_LIMIT. Bench 0.40 vs 0.42 ms/tick
+    (noise). Sweep (expert and oraclerca with `--reader`, Normal, seeds 1–10, vs dev): THREAD_LIMIT truths fall to
+    0–1.4 per run (were 2–5), mostly to CPU_PRIORITY; Midwest and Revenue ends unchanged; Harbourline expert 9 → 8
+    wins (seed 1 lost on trust on day 40, 59.3 → 58.9), mean trust 74.9 → 74.4; oraclerca unchanged.
   - [x] H: events with no incident or a weak warning: Midwest D6 access-path regression, Revenue D7 REORG overrun
     and D6 runaway compliance query (BATCHHI PI 12.6, no miss); BATCHPRD#1 PI 5–10 every night with no miss.
     Probably fine (no SLA broken), but the morning hint could mention them.

@@ -26,11 +26,13 @@ describe('triggerOf', () => {
 });
 
 describe('mechanismOf thread limits', () => {
-  it('counts MXT queueing as THREAD_LIMIT only beyond the in-region slowdown that filled the slots', () => {
-    // Tasks slowed by 0.30 s of QR wait hold their MXT slot longer: 0.30 s of the 0.35 s queueing is that symptom.
-    expect(mechanismOf({ qr: 0.3, outside: 0.35 }, {}, hour, [])).toBe('QR_TCB');
-    // MXT too small for healthy response times: the queueing is the limit's own.
-    expect(mechanismOf({ qr: 0.01, outside: 0.35 }, {}, hour, [])).toBe('THREAD_LIMIT');
+  it('counts only the MXT queueing the work would build at its unqueued service time as THREAD_LIMIT', () => {
+    // Tasks slowed by QR wait hold their MXT slot longer: at service time they would have queued 0.05 s.
+    expect(mechanismOf({ qr: 0.3, outside: 0.35, outsideRef: 0.05 }, {}, hour, [])).toBe('QR_TCB');
+    // Starved tasks drive the queue far past the slowdown itself; it is still the starvation's symptom.
+    expect(mechanismOf({ cpuQueue: 0.2, outside: 0.9, outsideRef: 0 }, {}, hour, [])).toBe('CPU_PRIORITY');
+    // MXT too small for the arrival rate even at service time: the queueing is the limit's own.
+    expect(mechanismOf({ qr: 0.01, outside: 0.35, outsideRef: 0.3 }, {}, hour, [])).toBe('THREAD_LIMIT');
   });
 });
 

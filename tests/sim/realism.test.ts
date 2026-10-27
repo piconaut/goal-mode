@@ -445,20 +445,22 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
-    const outside = (cmds: Parameters<typeof step>[1]) => {
+    const outside = (cmds: Parameters<typeof step>[1], part = 'outside') => {
       let s = step(base, cmds, MIDWEST);
       let out = 0;
       let n = 0;
       for (let i = 0; i < 180; i++) {
         s = step(s, [], MIDWEST);
         const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
-        out += w.parts.outside ?? 0;
+        out += w.parts[part] ?? 0;
         n += w.completions;
       }
       return (1000 * out) / Math.max(1, n);
     };
     expect(outside([])).toBe(0);
     expect(outside(card('CICS_SOS'))).toBeGreaterThan(5);
+    // The slots are too few for the arrival rate even at unqueued service time, so RCA sees the limit's own queue.
+    expect(outside(card('CICS_SOS'), 'outsideRef')).toBeGreaterThan(0.5 * outside(card('CICS_SOS')));
   }, 60_000);
 
   it('stored procedures losing zIIP eligibility move mobile CPU from zIIPs to general CPs', () => {
