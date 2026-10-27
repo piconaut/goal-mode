@@ -401,6 +401,7 @@ const newHour = (tick: number): HourAcc => ({
   cappedByLpar: {},
   cpcBusySum: 0,
   cpcBusyById: {},
+  lparBusyById: {},
   cpByImportance: {},
   lockIndexSum: 0,
 });
@@ -491,12 +492,14 @@ function accumulateHour(run: RunState): RunState {
   let delivered = 0;
   const cappedByLpar = { ...h.cappedByLpar };
   const deliveredByCpc: Record<string, number> = {};
+  const lparBusyById = { ...(h.lparBusyById ?? {}) };
   for (const l of run.sim.lpars) {
     const cp = l.pools.find((p) => p.pool === 'CP');
     if (!cp) continue;
     capped = Math.max(capped, cp.cappedFrac);
     cappedByLpar[l.id] = Math.max(cappedByLpar[l.id] ?? 0, cp.cappedFrac);
     delivered += cp.deliveredEngines;
+    if (cp.availableEngines > 0) lparBusyById[l.id] = (lparBusyById[l.id] ?? 0) + Math.min(1, cp.deliveredEngines / cp.availableEngines);
     const cpcId = run.sim.config.lpars.find((x) => x.id === l.id)?.cpcId;
     if (cpcId) deliveredByCpc[cpcId] = (deliveredByCpc[cpcId] ?? 0) + cp.deliveredEngines;
   }
@@ -522,6 +525,7 @@ function accumulateHour(run: RunState): RunState {
       cappedByLpar,
       cpcBusySum: h.cpcBusySum + (engines > 0 ? delivered / engines : 0),
       cpcBusyById,
+      lparBusyById,
       cpByImportance,
       lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
     },

@@ -7,6 +7,9 @@ import type { ActiveEvent, HourAcc, Incident, Mechanism, Trigger, WorkloadHour }
 export const BASELINE_DECAY = 0.8;
 /** FICTIONAL: hour-average busy of a host CPC's general CPs from which a CPU incident can be capacity. */
 export const CPU_CAPACITY_BUSY_FRAC = 0.9;
+/** FICTIONAL: hour-average share of its available CP (online logical CPs, entitlement plus white space) an image
+ * used from which it was full on its own, whatever its CPC shows: PR/SM can't give it more. */
+export const CPU_CAPACITY_LPAR_BUSY_FRAC = 0.95;
 /** FICTIONAL: below this share of the image's CP going to less important work, WLM had nothing left to donate. */
 export const CPU_CAPACITY_DONOR_FRAC = 0.1;
 
@@ -85,15 +88,16 @@ export function mechanismOf(
   if (best !== 'CPU') return best as Mechanism;
   // Only capping of the images this workload runs on counts.
   if (hosts.some((h) => (hour.cappedByLpar[h.lparId] ?? 0) > 0.05)) return 'CAPPING';
-  // Capacity only when an image's CPC was full and WLM had little less-important work there to take CPU
-  // from; otherwise the policy (importance, goals, weights) could have served this work. Judged per CPC,
-  // as PR/SM shares engines only within one machine.
+  // Capacity only when an image was full (its CPC was, as PR/SM shares engines only within one machine, or
+  // the image used all the CP it could get, e.g. every online logical CP) and WLM had little less-important
+  // work there to take CPU from; otherwise the policy (importance, goals, weights) could have served this work.
   const full = hosts.some((h) => {
-    const busy = hour.ticks > 0 ? (hour.cpcBusyById?.[h.cpcId] ?? 0) / hour.ticks : 0;
+    const avg = (sum: number | undefined) => (hour.ticks > 0 ? (sum ?? 0) / hour.ticks : 0);
+    const busy = avg(hour.cpcBusyById?.[h.cpcId]) >= CPU_CAPACITY_BUSY_FRAC || avg(hour.lparBusyById?.[h.lparId]) >= CPU_CAPACITY_LPAR_BUSY_FRAC;
     const byImp = hour.cpByImportance?.[h.lparId] ?? [];
     const total = byImp.reduce((a, x) => a + x, 0);
     const donor = byImp.slice(h.importance + 1).reduce((a, x) => a + x, 0);
-    return busy >= CPU_CAPACITY_BUSY_FRAC && (total <= 0 || donor / total < CPU_CAPACITY_DONOR_FRAC);
+    return busy && (total <= 0 || donor / total < CPU_CAPACITY_DONOR_FRAC);
   });
   return full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
 }

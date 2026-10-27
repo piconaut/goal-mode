@@ -27,8 +27,8 @@ describe('triggerOf', () => {
 describe('mechanismOf CPU split', () => {
   const cpu = { cpuQueue: 1 };
   // LPAR A1 on CPCA; CP engines consumed this hour by importance rank 0–6.
-  const at = (busy: number, byImp: number[], capped: Record<string, number> = {}) =>
-    ({ ...hour, ticks: 360, cpcBusySum: 0.5 * 360, cpcBusyById: { CPCA: busy * 360 }, cpByImportance: { A1: byImp }, cappedByLpar: capped }) as HourAcc;
+  const at = (busy: number, byImp: number[], capped: Record<string, number> = {}, lparBusy = 0.5) =>
+    ({ ...hour, ticks: 360, cpcBusySum: 0.5 * 360, cpcBusyById: { CPCA: busy * 360 }, lparBusyById: { A1: lparBusy * 360 }, cpByImportance: { A1: byImp }, cappedByLpar: capped }) as HourAcc;
   const host = (importance: number) => [{ lparId: 'A1', cpcId: 'CPCA', importance }];
 
   it('is capacity when the host CPC is full and almost nothing less important runs there', () => {
@@ -41,6 +41,14 @@ describe('mechanismOf CPU split', () => {
 
   it('is priority when the CPC has room, however the importance mix looks', () => {
     expect(mechanismOf(cpu, {}, at(0.7, [10, 200, 300, 0, 0, 0, 0]), host(2))).toBe('CPU_PRIORITY');
+  });
+
+  it('is capacity when the image used all the CP it could get, even with room on its CPC', () => {
+    expect(mechanismOf(cpu, {}, at(0.86, [10, 200, 300, 5, 0, 0, 2], {}, 0.97), host(2))).toBe('CPU_CAPACITY');
+  });
+
+  it('is still priority on a saturated image when less important work there could donate', () => {
+    expect(mechanismOf(cpu, {}, at(0.86, [10, 200, 100, 150, 0, 0, 40], {}, 0.97), host(2))).toBe('CPU_PRIORITY');
   });
 
   it('still prefers capping of a host LPAR', () => {
