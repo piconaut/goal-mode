@@ -1,3 +1,4 @@
+import { BATCH_INCIDENT } from '../../src/game/sla';
 import { PACKS, packOf } from '../../src/content/packs';
 import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
@@ -94,7 +95,7 @@ describe('State Revenue Agency event deck', () => {
 
   it('commands only touch workloads, LPARs and CFs of the revenue world', () => {
     for (const e of REVENUE_EVENTS) {
-      for (const w of e.affects) expect(workloadIds, `${e.id} affects ${w}`).toContain(w);
+      for (const w of e.affects) expect([...workloadIds, BATCH_INCIDENT], `${e.id} affects ${w}`).toContain(w);
       for (const c of [...e.begin, ...e.end]) {
         if (c.kind === 'SET_MODIFIER' && c.mod !== 'asCpu') expect(workloadIds, `${e.id} ${c.key}`).toContain(c.key);
         if ('lparId' in c && typeof c.lparId === 'string') expect(lparIds, `${e.id} ${c.kind}`).toContain(c.lparId);

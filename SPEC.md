@@ -956,6 +956,18 @@ it supports any incident in the group. An incident that joins a group after its 
 incident management correlates alerts the same way; one cause should not mean five near-identical write-ups (playtest
 round 1, design item C).
 
+**A missed batch window is an incident:** when the critical path misses its deadline, the day end opens a `BATCH`
+incident for the night (18:00–06:00) carrying the Regulator and batch-facet trust it cost. Its ground truth comes from
+SMF 30-style delay accounting on the critical jobs: each tick a job's lost elapsed time is split into CPU wait (CP and
+zIIP starvation), Db2 lock waits, Db2 health (dependency), DASD queueing and pending (IOSQ + PEND share of its I/O
+time), swapped-out time and initiator wait (queued → started). A critical job that ABENDed makes it JOB_FAILURE (a
+mechanism only batch incidents have); otherwise the largest cause maps onto the online mechanisms (CPU, LOCK_CONTENTION,
+DEPENDENCY, IO, STORAGE, THREAD_LIMIT for initiators), with the CPU split from the night's summed hours and the critical
+jobs' images. The trigger is a card that affects `BATCH`, causes that mechanism and ran during the night (JOB_ABEND,
+REORG_OVERRUN), else the online fallback rules. It groups for RCA like any other incident. Evidence pins don't score for
+it yet (they are judged against online workloads). Playtest round 1, design item B: two players lost 12+ Regulator
+trust in a day with nothing to file an RCA against.
+
 Rewards: correct cause → Trust + Insight. Correct cause with strong evidence → bonus and a codex
 unlock. Wrong cause → small Trust loss ("the problem recurs next week"). Recurring incidents
 after a correct RCA *and* remediation never recur. Players can skip RCAs (no penalty except
@@ -1434,7 +1446,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
-| Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention |
+| Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |
 
 Whenever a coefficient is invented, it lives in `content/` with a `// FICTIONAL:` comment and
 the shape it is meant to reproduce.

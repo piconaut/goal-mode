@@ -40,6 +40,26 @@ export interface JobRuntime {
   endTick: number | null;
   /** Last tick's elapsed stretch vs unconstrained (for projections and reports). */
   stretch: number;
+  /** Elapsed seconds lost so far, by cause (SMF 30-style delay accounting; feeds a missed night's RCA truth). */
+  delaySec?: JobDelaySec;
+  /** The job ABENDed at least once this night (it keeps the flag after a restart). */
+  abended?: boolean;
+}
+
+export interface JobDelaySec {
+  cpu: number;
+  io: number;
+  lock: number;
+  db2: number;
+  swap: number;
+}
+
+export type JobDelayCause = keyof JobDelaySec;
+
+export function addJobDelay(j: JobRuntime, cause: JobDelayCause, sec: number): void {
+  if (sec <= 0) return;
+  const d = j.delaySec ?? { cpu: 0, io: 0, lock: 0, db2: 0, swap: 0 };
+  j.delaySec = { ...d, [cause]: d[cause] + sec };
 }
 
 export interface NightSummary {
@@ -51,6 +71,12 @@ export interface NightSummary {
   /** Latest critical job end, seconds after the instance day's 06:00 (null if unfinished). */
   criticalEndSec: number | null;
   missedDeadline: boolean;
+  /** Critical jobs' lost elapsed seconds by cause, initiator wait (`init`) included. */
+  criticalDelaySec?: JobDelaySec & { init: number };
+  /** Critical jobs that ABENDed this night. */
+  criticalAbended?: string[];
+  /** Images the critical jobs ran on, each with its first critical job by name (to classify it). */
+  criticalHosts?: { lparId: string; name: string; jobClass: string }[];
 }
 
 export interface BatchState {
@@ -164,6 +190,10 @@ export interface JobProgressInput {
   ziipGot: number;
   /** Multiplicative slow-down from Db2 server health and lock contention. */
   extraStretch: number;
+  /** The lock-contention factor inside `extraStretch` (the rest is Db2 server health). */
+  lockStretch?: number;
+  /** Share of this job's I/O time that is queueing and pending rather than service (IOSQ + PEND over RESP). */
+  ioDelayFrac?: number;
 }
 
 /** Advance a running job one tick; returns true if it finished. */
@@ -173,6 +203,17 @@ export function advanceJob(j: JobRuntime, shape: ReturnType<typeof jobShape>, p:
   const eff = (shape.cpSec * Math.min(cpStretch, 1e4) + shape.zSec * Math.min(zStretch, 1e4) + shape.ioSec) * p.extraStretch;
   j.stretch = eff / shape.elapsed;
   j.progress += TICK_SEC / eff;
+  // Of this tick's TICK_SEC of elapsed, the parts that were waiting rather than working.
+  const cpuWait = shape.cpSec * (Math.min(cpStretch, 1e4) - 1) + shape.zSec * (Math.min(zStretch, 1e4) - 1);
+  addJobDelay(j, 'cpu', (TICK_SEC * Math.max(0, cpuWait)) / eff);
+  addJobDelay(j, 'io', (TICK_SEC * shape.ioSec * (p.ioDelayFrac ?? 0)) / eff);
+  // APPROX: the extra stretch is lock × Db2 health; its time splits between them by their log share.
+  if (p.extraStretch > 1) {
+    const extra = TICK_SEC * (1 - 1 / p.extraStretch);
+    const lockShare = Math.log(Math.max(1, p.lockStretch ?? 1)) / Math.log(p.extraStretch);
+    addJobDelay(j, 'lock', extra * Math.min(1, lockShare));
+    addJobDelay(j, 'db2', extra * Math.max(0, 1 - lockShare));
+  }
   if (j.progress >= 1) {
     j.progress = 1;
     j.status = 'DONE';
@@ -222,7 +263,15 @@ export function projectCriticalEnd(
 
 /** Summarise a night at its deadline and drop finished jobs of older instances. An instance that
  * still has unfinished jobs keeps its finished ones: they are its stragglers' predecessors. */
-export function closeNight(state: BatchState, day: number): BatchState {
+function criticalHosts(crit: readonly JobRuntime[]): { lparId: string; name: string; jobClass: string }[] {
+  const by: Record<string, JobRuntime> = {};
+  for (const j of crit) if (j.lparId && (!by[j.lparId] || j.def.name < by[j.lparId]!.def.name)) by[j.lparId] = j;
+  return Object.keys(by)
+    .sort()
+    .map((lparId) => ({ lparId, name: by[lparId]!.def.name, jobClass: by[lparId]!.def.jobClass }));
+}
+
+export function closeNight(state: BatchState, day: number, tick: number): BatchState {
   const inst = state.jobs.filter((j) => j.day === day);
   const crit = inst.filter((j) => j.def.critical);
   const critDone = crit.filter((j) => j.status === 'DONE');
@@ -232,6 +281,11 @@ export function closeNight(state: BatchState, day: number): BatchState {
       : null;
   const pending = new Set<number>();
   for (const j of state.jobs) if (j.status !== 'DONE') pending.add(j.day);
+  const delay = { cpu: 0, io: 0, lock: 0, db2: 0, swap: 0, init: 0 };
+  for (const j of crit) {
+    for (const k of ['cpu', 'io', 'lock', 'db2', 'swap'] as const) delay[k] += j.delaySec?.[k] ?? 0;
+    if (j.queuedTick !== null) delay.init += Math.max(0, (j.startTick !== null && j.startTick >= j.queuedTick ? j.startTick : tick) - j.queuedTick) * TICK_SEC;
+  }
   const summary: NightSummary = {
     day,
     jobs: inst.length,
@@ -240,6 +294,9 @@ export function closeNight(state: BatchState, day: number): BatchState {
     criticalDone: critDone.length,
     criticalEndSec: critEnd,
     missedDeadline: crit.some((j) => j.status !== 'DONE' || secSinceInstance(j.endTick ?? 0, day) > j.def.deadlineSec),
+    criticalDelaySec: delay,
+    criticalAbended: crit.filter((j) => j.abended).map((j) => j.def.name),
+    criticalHosts: criticalHosts(crit),
   };
   return {
     ...state,

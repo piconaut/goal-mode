@@ -361,6 +361,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       const victim = jobs.find((j) => j.status === 'RUNNING' && j.def.critical === cmd.critical);
       if (!victim) return fail(s, 'No running job to abend');
       victim.status = 'ABENDED';
+      victim.abended = true;
       return ok({ ...s, batch: { ...s.batch, jobs } }, `${victim.def.name} ABEND S0C7 on ${victim.lparId}`);
     }
 

@@ -32,7 +32,8 @@ export type Mechanism =
   | 'QR_TCB'
   | 'THREAD_LIMIT'
   | 'IO'
-  | 'STORAGE';
+  | 'STORAGE'
+  | 'JOB_FAILURE';
 
 export type Trigger =
   | 'DEMAND_SURGE'
@@ -245,6 +246,8 @@ export interface RunState {
   events: ActiveEvent[];
   pendingCommands: Command[];
   hour: HourAcc | null;
+  /** The batch night's hours (18:00–06:00) summed, for a missed night's incident truth; reset at day end. */
+  nightHour?: HourAcc | null;
   /** EWMA of healthy-hour response-time parts per workload (incident baselines). */
   baselines: Record<string, Record<string, number>>;
   incidents: Incident[];

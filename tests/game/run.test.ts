@@ -94,6 +94,19 @@ describe('incidents and RCA', () => {
     expect(submitRca(scored, 1, 'CPU_PRIORITY', 'POLICY')).toBe(scored);
   });
 
+  it('a critical ABEND that misses the batch window opens a BATCH incident that takes an RCA', () => {
+    let r = startDay(fresh(), content);
+    r = advance(r, MIDWEST, content, 16 * 360); // 22:00, batch running
+    r = advance({ ...r, pendingCommands: [{ kind: 'ABEND_JOB', critical: true }] }, MIDWEST, content, TICKS_PER_DAY - 16 * 360);
+    expect(r.reports.at(-1)!.batchMissed).toBe(true);
+    const inc = r.incidents.find((i) => i.workloadId === 'BATCH')!;
+    expect(inc.truth.mechanism).toBe('JOB_FAILURE');
+    expect(inc.trustLost).toBeGreaterThanOrEqual(20);
+    expect(r.nightHour).toBeNull();
+    const after = submitRca(r, inc.id, 'JOB_FAILURE', inc.truth.trigger);
+    expect(after.score - r.score).toBe(5);
+  }, 120_000);
+
   it('a second workload breaching for the same cause that day joins the first incident’s RCA', () => {
     let r = startDay(fresh(), content);
     r = { ...r, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 12 }] };
