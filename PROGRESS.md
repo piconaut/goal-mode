@@ -119,7 +119,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       19 (opex 1), Revenue 20. Trial variants (not merged, user decision pending): expert + CoD after capacity
       incidents: Harbourline 15 (opex 1 · trust 4), Midwest 19, Revenue 20; expert + permanent CP after repeated
       capacity incidents: same outcomes as base everywhere. On Harbourline the permanent CP is unusable: its prod
-      LPARs define no reserved logical CPs, so the logical-CP raise fails (see Open questions)
+      LPARs defined no reserved logical CPs, so the logical-CP raise failed (fixed: 2 reserved per PRD image). After the
+      image-full label rule + reserved CPs (Harbourline, seeds 1–20): expert victory 16 (trust 4), spendtowin opex 16
+      (trust 4), both unchanged; textbook 29 / 31 / 37, trust 18 · victory 2. CoD and permanent-CP trials to re-run
     - **Full sweep (2026-10-26, seeds 1–20, code 937a2ee, before PRs #30/#31):** Midwest: do-nothing 12 / 16 / 21
       (trust 14 · batch 6); textbook 20 / 28 / 28 (batch 10 · trust 10); expert 40 / 40 / 40, victory 20/20; spendtowin
       28 / 28 / 28 (opex 19 · batch 1). Revenue: do-nothing 10 / 13 / 15 (trust 20); textbook 27 / 28 / 29 (trust 20);
