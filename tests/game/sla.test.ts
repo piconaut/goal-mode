@@ -25,6 +25,15 @@ describe('triggerOf', () => {
   });
 });
 
+describe('mechanismOf thread limits', () => {
+  it('counts MXT queueing as THREAD_LIMIT only beyond the in-region slowdown that filled the slots', () => {
+    // Tasks slowed by 0.30 s of QR wait hold their MXT slot longer: 0.30 s of the 0.35 s queueing is that symptom.
+    expect(mechanismOf({ qr: 0.3, outside: 0.35 }, {}, hour, [])).toBe('QR_TCB');
+    // MXT too small for healthy response times: the queueing is the limit's own.
+    expect(mechanismOf({ qr: 0.01, outside: 0.35 }, {}, hour, [])).toBe('THREAD_LIMIT');
+  });
+});
+
 describe('mechanismOf CPU split', () => {
   const cpu = { cpuQueue: 1 };
   // LPAR A1 on CPCA; CP engines consumed this hour by importance rank 0–6.
