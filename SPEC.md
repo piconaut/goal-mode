@@ -1037,7 +1037,9 @@ hints (workload, report and question), Normal one (the report only); a missed ba
 window (<30 min slack) comes after incident hints. When response time and WLM disagree (a CICS or DDF
 workload missed its SLA while every service class serving it had a worst sysplex PI ≤ 1 in WLMGL all day, because
 a class average or the regions' own goal hid it), the hint adds that WLMGL disagreed and points at the
-per-transaction records: CICS monitoring (SMF 110) or Db2 accounting (SMF 101).
+per-transaction records: CICS monitoring (SMF 110) or Db2 accounting (SMF 101). A service class under new
+pressure with no incident (worst PI ≥ 3 and at least double the day before; `STRAIN` in `content/hints.ts`) gets a
+strain hint after the incident hints, so a regression that broke no SLA still points the player at WLMGL.
 
 ### 11.3 Meta-progression ("Career")
 - Career XP from runs → unlock **scenarios**: *Midwest Mutual* (bank), *Continental Insurance*

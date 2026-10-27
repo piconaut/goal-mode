@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 2 findings G–K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 2 finding G (user decision pending) and the rest of K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -401,9 +401,12 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     subtraction still leaves THREAD_LIMIT on top. The clue path exists (THREAD_LIMIT hint → CICS 110 MXT_WAIT).
     Options for the user: (a) the sim also records MXT/DBAT wait at baseline RT, so attribution can tell queue growth
     caused by slow tasks from queue growth caused by rate; (b) half credit for a mechanism that is ranked high but is not the top one.
-  - [ ] H: events with no incident or a weak warning: Midwest D6 access-path regression, Revenue D7 REORG overrun
+  - [x] H: events with no incident or a weak warning: Midwest D6 access-path regression, Revenue D7 REORG overrun
     and D6 runaway compliance query (BATCHHI PI 12.6, no miss); BATCHPRD#1 PI 5–10 every night with no miss.
     Probably fine (no SLA broken), but the morning hint could mention them.
+    Done 2026-10-27: a strain morning hint names a class whose worst PI reached 3 and at least doubled from the day
+    before, with no incident on its work (classes hot every night stay quiet). Expert seed 3 full runs: 5 hints on
+    Midwest, 3 on Revenue, 0 on Harbourline.
   - [ ] I: RCA guessing pays: CPU_PRIORITY/POLICY was right three times on CARDAUTH blips without evidence, and a
     JOB_FAILURE trigger POLICY (the player's own activation) cannot be derived; half-right RCAs still give +1 on
     every facet. User decision 2026-10-27: fine as it is (guessing may pay).
