@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** finding J (GOODWILL draft strength; user decision pending), Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 2 findings G–K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 2 findings G–K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -402,8 +402,8 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [ ] I: RCA guessing pays: CPU_PRIORITY/POLICY was right three times on CARDAUTH blips without evidence, and a
     JOB_FAILURE trigger POLICY (the player's own activation) cannot be derived; half-right RCAs still give +1 on
     every facet. User decision 2026-10-27: fine as it is (guessing may pay).
-  - [ ] J: GOODWILL (and CFO_BONUS, RC_HOARDER) drafts show no visible cost; both agents called GOODWILL dominant.
-    Balance decision for the user.
+  - [x] J: GOODWILL (and CFO_BONUS, RC_HOARDER) drafts show no visible cost; both agents called GOODWILL dominant.
+    User decision 2026-10-27: leave it; draft rewards cost only the cards not picked.
   - [ ] K: CLI and UX rough edges: pin ids share the incident counter; `smf CICS` lists workloads, not the region
     names SET_CICS needs; finished projects disappear from status; a change with several commands costs the same
     1.5 h as one; `wlm` says "activate at tomorrow's briefing" but `activate` is refused until the draft closes;
@@ -547,6 +547,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-27 | M8.2 closed: bot balance done; sweeps become a regression check (CI 5 seeds, 20 to confirm) | User decision. Do-nothing, textbook and spendtowin hold in all three scenarios; expert wins 19/20, 20/20, 16/20 |
 | 2026-10-27 | Finding D: every run starts with 15 insight (`INSIGHT.starting`), was 0 | User decision among four swept options; bot outcomes unchanged, Monitor III affordable on day 1 |
 | 2026-10-27 | Finding I: RCA guessing may pay; no change | User decision |
+| 2026-10-27 | Finding J: GOODWILL (+4 trust with every stakeholder) stays as is | User decision; a draft reward's cost is the cards not picked |
 
 ## Open questions
 
