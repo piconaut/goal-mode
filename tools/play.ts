@@ -1,12 +1,12 @@
 // Headless play CLI for agents (PROGRESS M8.9). Each call loads the run file, applies one command, saves it.
 // Usage:
 //   npm run play -- runs/a.json new 42 [normal|story|hard|ironman] [midwest|revenue|harbourline]
-//   npm run play -- runs/a.json status | catalog | mon3 | smf DB2|CICS|BATCH|SMF113 [hour]
-//   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [index] | report WLM_DETAIL 5 ONLHI#1
+//   npm run play -- runs/a.json status | catalog | mon3 [system] [--json] | smf DB2|CICS|BATCH|SMF113 [hour|D8 12] [--json]
+//   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json rca <incident> <MECHANISM> <TRIGGER> --evidence 1,3
 //   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin <id>
-//   npm run play -- runs/a.json pin WLMGL <interval> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric>
+//   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric>
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED | pin DB2|CICS <hour> <workloadId> <metric>
 //   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
@@ -26,10 +26,17 @@ import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, statusText, ty
 const argv = process.argv.slice(2);
 const paceAt = argv.indexOf('--pace');
 const paceMs = paceAt >= 0 ? parseFloat(argv.splice(paceAt, 2)[1] ?? '2') * 1000 : 0;
+const jsonAt = argv.indexOf('--json');
+const json = jsonAt >= 2 && argv[1] !== 'json' ? argv.splice(jsonAt, 1).length > 0 : false;
 const [path, verb, ...rest] = argv;
 if (!path || !verb) {
   console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).join('\n'));
   process.exit(1);
+}
+
+function pinCommand(a: string[]): PlayCommand {
+  const req = pinRequest(a);
+  return req.source === 'WLMGL' ? { cmd: 'pin', req, intervalId: req.index } : { cmd: 'pin', req };
 }
 
 function pinRequest(a: string[]): PinRequest {
@@ -47,7 +54,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'status': return 'status';
     case 'catalog': return 'catalog';
     case 'mon3': return 'mon3';
-    case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, hour: rest[1] };
+    case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, ...(rest.length > 1 ? { hour: rest.slice(1).join(' ') } : {}), ...(json ? { json } : {}) };
     case 'new': return { cmd: 'new', seed: Number(rest[0] ?? 42), difficulty: (rest[1] ?? 'normal').toUpperCase() as DifficultyId, ...(rest[2] ? { scenario: rest[2] } : {}) };
     case 'start': return { cmd: 'start' };
     case 'advance': return { cmd: 'advance', hours: Number(rest[0] ?? 1) };
@@ -60,13 +67,13 @@ function parse(): PlayCommand | ReadOnly {
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
     case 'project': return { cmd: 'project', id: rest[0] ?? '', hours: Number(rest[1] ?? 1) };
     case 'unpin': return { cmd: 'unpin', id: Number(rest[0]) };
-    case 'pin': return { cmd: 'pin', req: pinRequest(rest) };
+    case 'pin': return pinCommand(rest);
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
     case 'activate': return { cmd: 'activate' };
     case 'rcadvice': return { cmd: 'rcadvice', workloadId: rest[0] ?? null };
     case 'discard': return { cmd: 'discard' };
     case 'tfp': return { cmd: 'tfp', accept: rest[0] === 'yes' };
-    case 'report': return { cmd: 'report', kind: (rest[0] ?? 'WLM_SUMMARY') as ReportKind, index: rest[1] !== undefined ? Number(rest[1]) : undefined, scKey: rest[2], system: rest[3] };
+    case 'report': return { cmd: 'report', kind: (rest[0] ?? 'WLM_SUMMARY') as ReportKind, id: rest[1] !== undefined ? Number(rest[1]) : undefined, scKey: rest[2], system: rest[3] };
     case 'json': return JSON.parse(rest.join(' ')) as PlayCommand;
     default: throw new Error(`Unknown verb ${verb}`);
   }
@@ -77,7 +84,7 @@ const isNew = typeof c === 'object' && c.cmd === 'new';
 if (!isNew && !existsSync(path)) throw new Error(`${path} does not exist; start with: new <seed>`);
 let file = isNew ? null : decodePlayFile(readFileSync(path, 'utf8'));
 if (typeof c === 'string') {
-  console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : mon3Text(file!));
+  console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : mon3Text(file!, { system: rest[0], json }));
 } else {
   // --pace: advance one hour at a time, saving after each so a spectator sees every step (same end state).
   const steps: PlayCommand[] = paceMs > 0 && c.cmd === 'advance' ? Array.from({ length: Math.max(1, Math.min(24, Math.floor(c.hours))) }, () => ({ cmd: 'advance', hours: 1 })) : [c];

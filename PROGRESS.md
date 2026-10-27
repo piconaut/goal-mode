@@ -329,6 +329,21 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 **M8.6 Playtesting, polish & progression (user request 2026-10-26)**
 - [ ] Playtesting: human and agent playtests on all three scenarios (`goal-mode-player` and the persona agents for
   the headless side); record friction points and fix the worst ones
+  - Round 1 (2026-10-27, play CLI): goal-mode-player on Midwest seed 11, cautious-operator on Revenue seed 23,
+    cost-cutter on Harbourline seed 37, each to about day 9. CLI and display friction (RCA scoring with no feedback,
+    clock labels, shifting RMF interval indices, bare class names, raw-JSON mon3/smf, REVIEW staging hints) fixed in
+    the play CLI the same day. Design findings:
+  - [ ] A: when response time and SLA attainment disagree (Harbourline MKTORD slid while WLM showed PI < 1, because
+    the region-served class hid it), an Inquiry reply or the sysprog morning hint should point at CICS SMF 110
+  - [ ] B: a batch-window miss becomes an incident with its own RCA (Revenue day 7 abend had no clue path)
+  - [ ] C: incidents with the same root cause on the same day group into one RCA (Midwest teller release: 5
+    incidents, 5 RCAs; Harbourline holiday spike: 6)
+  - [ ] D: insight is too scarce early: the QR TCB diagnosis needed CICS_MON (14 insight) with 13 on hand by day 8
+  - [ ] E: events with no warning or no visible effect (review the warnings in the M8.4 events work): the holiday
+    spike arrived with no warning on Harbourline; a REBIND access-path regression raised no incident; "campaign starts
+    tomorrow" mail sent after the campaign had started; the runaway query could only be cancelled as an emergency
+    change
+  - [ ] F: the Change Desk catalog offers both RECYCLE_PROD2_AORS and RECYCLE_PROD2_AORS_REV and accepts both
 - [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
 - [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
@@ -509,6 +524,15 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-27:** Play CLI fixes from playtest round 1 (M8.6). `rca` now says which half was right, the true
+  mechanism/trigger and the trust effect. Times read `D1 Tue 00:30` (played day plus calendar weekday). RMF intervals
+  have stable ids (end time in 5-minute slots) in `status`, `report`, `pin WLMGL` and incident lines, and `report`/`pin`
+  respect the fog of war (today's intervals need Monitor III), as the browser does. Bare class names mean period 1;
+  unknown rows list the valid keys. `status` shows the last completed hour's SLA when the current hour has no data
+  and the PI > 1 rows of the latest interval. `mon3 [system] [--json]` prints SYSINFO/CPC/DELAY/WFEX tables;
+  `smf` takes `12` or `D8 12`, lists hours by label and prints tables (`--json` for raw rows). REVIEW staging and
+  empty `--evidence` messages say what to do; the SET_PERIOD error names the 0-based index and `docs/agents.md` uses
+  `"period":0`. Goldens unchanged.
 - **2026-10-27:** Play CLI fix: `new` crashed on every fresh run file (`apply()` read `file.run` before the `new` case), found by the first agent playtest round, which could not start. `new` now runs first and refuses an unknown scenario instead of silently falling back to Midwest; usage and `docs/agents.md` list `harbourline`. Goldens unchanged.
 - **2026-10-23:** VENDOR_PRICE card (`SET_MLC_PRICE` → `cost.priceMult`, sub-capacity MLC ×1.08; fix `NEGOTIATE_MLC_PRICE`). Hashes unchanged (`be43ff16de564882`), 377 tests. Sweep seeds 1–5 (Normal, Midwest; card drawn in 8 of 15 runs): do-nothing 12 / 16 / 22 (batch 2 · trust 3), textbook 24 / 27 / 28 (batch 4 · trust 1), expert victory 5/5; inside the bands.
 - **2026-10-23:** CI added (`.github/workflows/ci.yml`, `pr-gates.yml`, `tools/ci/`, PR template) for the per-session-branch → `dev` auto-merge workflow. Balance bands checked against current `dev` (seeds 1–5): do-nothing 12 / 16 / 22 (batch 3 · trust 2), textbook 22 / 26 / 28 (batch 3 · trust 2), expert victory 5/5; all inside the bands, 15 runs in ~7 min on 4 cores. Waiting on the user for the GitHub settings (default branch, branch protection, auto-merge).

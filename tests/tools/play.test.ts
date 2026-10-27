@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, encodePlayFile, newPlayFile, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, catalogText, clockText, decodePlayFile, intervalId, mon3Text, encodePlayFile, newPlayFile, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   for (const c of cmds) {
@@ -48,10 +49,38 @@ describe('headless play interface', () => {
     f = { ...f, run: { ...f.run, insight: 50 } };
     f = run(f, [{ cmd: 'buy', toolId: 'RMF_MON3' }, { cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
     expect(mon3Text(f)).toMatch(/^Monitor III, last \d+s/);
+    expect(mon3Text(f)).toContain('SYSINFO');
+    expect(mon3Text(f, { json: true }).split('\n')[1]).toMatch(/^\{/);
+    expect(mon3Text(f, { system: 'NOSUCH' })).toContain('No system NOSUCH');
+  });
+
+  it('clock text names the weekday: the small hours still belong to the played day that began at 06:00', () => {
+    expect(clockText(0)).toBe('D1 Mon 06:00');
+    expect(clockText(18.5 * TICKS_PER_HOUR)).toBe('D1 Tue 00:30');
+  });
+
+  it('RMF intervals have stable ids for report and pin; a bare class name means period 1', () => {
+    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    expect(applyPlayCommand(f, { cmd: 'report', kind: 'WLM_SUMMARY' }).ok, 'today is hidden without Monitor III').toBe(false);
+    f = run(f, [{ cmd: 'advance', hours: 24 }]);
+    const iv = f.run.sim.rmf.intervals[0]!;
+    const id = intervalId(iv);
+    const r = applyPlayCommand(f, { cmd: 'report', kind: 'WLM_DETAIL', id, scKey: 'ONLHI' });
+    expect(r.ok, r.text).toBe(true);
+    expect(r.text).toContain(`RMF interval ${id}`);
+    expect(r.text).toContain('PERIOD=1');
+    const bad = applyPlayCommand(f, { cmd: 'report', kind: 'WLM_DETAIL', id, scKey: 'NOPE' });
+    expect(bad.ok).toBe(false);
+    expect(bad.text).toContain('ONLHI#1');
+    f = run(f, [{ cmd: 'pin', req: { source: 'WLMGL', index: -1, system: '*PLEX', scKey: 'ONLHI', metric: 'PI' }, intervalId: id }]);
+    expect(f.run.pins).toHaveLength(1);
+    expect(statusText(f)).toContain(`RMF intervals (report KIND <id>): ${id}..`);
   });
 
   it('asking around, pinning evidence and unpinning go through the real game functions', () => {
-    let f = run(newPlayFile(7), [{ cmd: 'ask', topic: 'CALENDAR' }, { cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    // Monitor III makes today's RMF intervals visible, so they can be pinned while the day runs.
+    const f0 = newPlayFile(7);
+    let f = run({ ...f0, run: { ...f0.run, insight: 50 } }, [{ cmd: 'buy', toolId: 'RMF_MON3' }, { cmd: 'ask', topic: 'CALENDAR' }, { cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
     expect(applyPlayCommand(f, { cmd: 'ask', topic: 'GROWTH' }).ok).toBe(false);
     f = run(f, [{ cmd: 'pin', req: { source: 'WLMGL', index: 0, system: '*PLEX', scKey: 'ONLHI#1', metric: 'PI' } }]);
     const id = f.run.pins[0]!.id;

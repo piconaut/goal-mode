@@ -116,7 +116,8 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
     case 'SET_PERIOD': {
       const c = d.classes.find((x) => x.id === e.classId);
       const p = c?.periods[e.period];
-      if (!c || !p) return `No period ${e.period + 1} in ${e.classId}`;
+      if (!c) return `No service class ${e.classId}`;
+      if (!p) return `No period index ${e.period} in ${e.classId} (period is 0-based; it has ${c.periods.length} period${c.periods.length === 1 ? '' : 's'}: index 0${c.periods.length > 1 ? `..${c.periods.length - 1}` : ''})`;
       if (e.goal.kind === 'DISC' && e.period !== c.periods.length - 1) return 'Discretionary is only allowed in the last period';
       p.goal = e.goal;
       p.importance = e.importance;
