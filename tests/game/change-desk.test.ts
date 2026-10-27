@@ -32,6 +32,14 @@ describe('change preview', () => {
     expect(previewChange(previewContext(live), { commands: [] }).reason).toBe('Nothing to change');
   });
 
+  it("offers and accepts only the fixes this scenario's event cards call for", () => {
+    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
+    expect(buildView(r, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
+    expect(buildView(r, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS_REV');
+    expect(previewChange(previewContext(r, MIDWEST_GAME), { fixId: 'RECYCLE_PROD2_AORS' }).ok).toBe(true);
+    expect(requestChange(r, MIDWEST_GAME, { label: 'x', fixId: 'RECYCLE_PROD2_AORS_REV' }).ok).toBe(false);
+  });
+
   it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {
     const r = fresh();
     const card = { uid: 'e1', defId: 'GREEN_IT_COD', name: 'Data centre power budget', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [] as string[], blocksHardware: ['COD_CP'], endCommands: [] as Command[] };

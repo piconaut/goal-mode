@@ -363,7 +363,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       the holiday and the campaign finding were this wording. Reworded to the day they arrive ("today", "ran
       overnight"); a test keeps "tomorrow" out of forewarnings. Text only: bench and golden hashes unchanged.
     - [ ] REBIND regression with no incident; runaway query cancellable only as an emergency change
-  - [ ] F: the Change Desk catalog offers both RECYCLE_PROD2_AORS and RECYCLE_PROD2_AORS_REV and accepts both
+  - [x] F: the Change Desk catalog offers both RECYCLE_PROD2_AORS and RECYCLE_PROD2_AORS_REV and accepts both. Done
+    2026-10-27: the UI already listed only the scenario's fixes; the play CLI `catalog` listed all of them and
+    requestChange accepted any. Both now use the fixes the scenario's event cards call for (`fixIdsOf`). Bench and
+    golden hashes unchanged.
 - [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
 - [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
