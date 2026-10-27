@@ -2,7 +2,7 @@
 // The run file holds the serialised RunState (as the browser saves it), the pending WLM policy and the
 // command log, so seed + log replays the same run.
 
-import { packOf } from '../src/content/packs';
+import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
 import { advance, chooseDraft, newRun, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
@@ -91,13 +91,13 @@ export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
 }
 
 function apply(file: PlayFile, c: PlayCommand): PlayResult {
+  if (c.cmd === 'new' && c.scenario && !PACKS[c.scenario]) return { file, ok: false, text: `Unknown scenario ${c.scenario}; one of ${Object.keys(PACKS).join(' ')}` };
+  if (c.cmd === 'new') return { file: newPlayFile(c.seed, c.difficulty, c.scenario), ok: true, text: `New run, seed ${c.seed}${c.scenario ? `, ${packOf(c.scenario).name}` : ''}` };
   const run = file.run;
   const content = packOf(run.scenarioId).game;
   const done = (r: RunState, text: string, ok = true, pendingPolicy = file.pendingPolicy): PlayResult => ({ file: { ...file, run: r, pendingPolicy }, ok, text });
   const fail = (text: string): PlayResult => ({ file, ok: false, text });
   switch (c.cmd) {
-    case 'new':
-      return { file: newPlayFile(c.seed, c.difficulty, c.scenario), ok: true, text: `New run, seed ${c.seed}${c.scenario ? `, ${packOf(c.scenario).name}` : ''}` };
     case 'start': {
       if (run.phase !== 'BRIEFING') return fail(`Cannot start a day in phase ${run.phase}`);
       return done(startDay(run, content), 'Day started (06:00).');

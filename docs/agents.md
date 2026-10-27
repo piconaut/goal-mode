@@ -6,7 +6,7 @@ humans who want to script a run.
 ## The play CLI
 
 ```
-npm run -s play -- runs/a.json new 42 normal      # new run: seed, difficulty (story|normal|hard|ironman)
+npm run -s play -- runs/a.json new 42 normal harbourline  # new run: seed, difficulty (story|normal|hard|ironman), scenario (midwest|revenue|harbourline; default midwest)
 npm run -s play -- runs/a.json status             # phase, clock, trust, budgets, PI > 1, SLAs, inbox, incidents, draft
 npm run -s play -- runs/a.json catalog            # hardware, fixes, analytics tools, RCA vocabulary
 npm run -s play -- runs/a.json start              # start the day (BRIEFING → LIVE)
