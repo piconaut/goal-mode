@@ -165,6 +165,11 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         if (!iv.wlm.some((x) => x.lparId === w.system && x.scKey === w.scKey)) return fail(`No WLMGL row ${w.system} ${w.scKey} in interval ${intervalId(iv)}; ${rowKeys(iv, w.system)}`);
         req = w;
       }
+      if (req.source === 'CPC' && c.intervalId !== undefined) {
+        const index = intervalIndex(run, c.intervalId);
+        if (!buildView(run, sc(run)).reports.some((x) => x.index === index)) return fail(`No RMF interval ${c.intervalId}; ${intervalList(run)}`);
+        req = { ...req, index };
+      }
       if (req.source === 'DB2' || req.source === 'CICS') {
         const hour = smfHourKey(run, req.hour);
         if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
@@ -398,7 +403,7 @@ export function catalogText(file: PlayFile): string {
   out.push(`  workloads: ${iq.apps.map((a) => a.id).join(' ')}`);
   out.push('projects (project ID hours; engineer-hours spread over days):');
   for (const p of projectsView(file.run)) out.push(`  ${p.id}${p.done ? ' [done]' : ''}: ${p.name}, ${p.hoursDone}/${p.hours}h, max ${p.maxHoursPerDay}h/day. ${p.description}`);
-  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> | CPC <lparId> PRSM_DELAY|CAPPED | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
+  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> | CPC <lparId> PRSM_DELAY|CAPPED [interval id, as in Partition Data] | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
   out.push(`  metrics: ${Object.keys(EVIDENCE_METRICS).join(' ')}`);
   const cfg = file.run.sim.config;
   out.push('change targets (current config):');

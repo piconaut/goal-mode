@@ -29,7 +29,8 @@ export interface EvidencePin {
 export type PinRequest =
   | { source: 'WLMGL'; index: number; system: string; scKey: string; metric: EvidenceMetric }
   | { source: 'MON3'; system: string; scKey: string; metric: EvidenceMetric }
-  | { source: 'CPC'; lparId: string; metric: 'PRSM_DELAY' | 'CAPPED' }
+  /** index: an RMF interval (Partition Data); without it, the Monitor III CPC view now. */
+  | { source: 'CPC'; lparId: string; metric: 'PRSM_DELAY' | 'CAPPED'; index?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
   /** SMF 30 for the batch night that followed played day `day` (critical jobs' delay accounting). */
   | { source: 'BATCH'; day: number; metric: EvidenceMetric };
@@ -78,6 +79,12 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest): Located | s
       return { source: view, metric: req.metric, subject: req.scKey, system: req.system, tick: sim.tick, value };
     }
     case 'CPC': {
+      if (req.index !== undefined) {
+        const iv = sim.rmf.intervals[req.index];
+        const r = iv?.cpu.find((x) => x.lparId === req.lparId);
+        if (!iv || !r) return 'No such Partition Data row';
+        return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: iv.endTick, value: req.metric === 'CAPPED' ? r.cappedPct : r.prsmDelayPct };
+      }
       const c = buildMon3(run, scenario).cpc.find((x) => x.lparId === req.lparId);
       if (!c) return 'No such LPAR';
       return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: sim.tick, value: req.metric === 'CAPPED' ? c.cappedPct : c.prsmDelayPct };
