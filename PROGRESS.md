@@ -7,8 +7,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
-- **Last updated:** 2026-10-26
-- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
+- **Last updated:** 2026-10-27
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), a playtest round with the agent players (goal-mode-player, cautious-operator, cost-cutter) via the play CLI, M8.4 events (23 of ~25). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -81,7 +81,9 @@ Goal: a run that is fair, readable and replayable. Done when bots hit their targ
 three scenarios ship, a new player can finish day 1 with the tutorial, and an accessibility pass is clean.
 
 **M8.1 Performance (prerequisite for bots and what-if)**
-- [ ] Target ≤ 2 s per headless day (now day 1 3.25–3.7 s, steady ~2.0–2.4 s on the cloud box)
+- [x] ~~Target ≤ 2 s per headless day~~ closed 2026-10-27 (user decision): the gate is the UI budget, ≤ 4 ms per
+  tick in the worker, which holds; 2 s per headless day was a tooling convenience for bots and sweeps, not a game
+  requirement (Midwest 2.56 s, Harbourline 5.27 s per day on the cloud box). Revisit only if sweeps become the bottleneck
 - [x] Benchmark `npm run bench [-- --days N --seed S --hash]` (`tools/bench.ts`); `--hash` proves an optimisation is
   behaviour-neutral. Seed 42 hashes: 1 day `8a82ad7db2b258ae`, 3 days `55d9e06f477c9197`, 8 days `c2ec32ace44f6b06` (since PR #8)
 - History: loop 21 ≈ 8.5 s/day → 2026-10-20 perf thread ~1.7–1.9× (index-based dispatcher/evaluator, shared
@@ -96,7 +98,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   within this VM's noise (it measured ~2× slower than the day before: base 3-day run 14–17 s). Lesson: building
   slices with a field-by-field literal instead of a spread was ~40% slower overall (hidden-class split with
   the other slice copies), so keep slice copies as spreads
-- [ ] Structural options for 4×, in expected-value order: (1) ~~cache per-LPAR slice specs~~ (templates
+- [x] Structural options for 4× (closed with the target, 2026-10-27), in expected-value order: (1) ~~cache per-LPAR slice specs~~ (templates
   cached; the per-tick spread copy and demand fill remain, ~3%); (2) project only the periods at or below the highest DP a trial
   touches, as WLM does (SG24-6472-03 PDF p.66; `docs/research.md`); periods above it are unaffected by the move. Not
   receiver + donors only: WLM's net value test covers every class at or below the move. Should keep the bench hash;
@@ -115,9 +117,18 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 - [x] `npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs N] [--days D] [--out f.csv]` (`tools/sweep.ts`)
   → CSV + per-bot summary (day p10/median/p90, median score, ends by cause)
 - [x] Golden runs (`tests/golden/`, seed 42, 2 days; regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
-- [ ] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: SLA fine, loses on opex), expert (scripted good play incl. capacity orders and caps: wins with grade A on Normal)
-- [ ] Targets hold across ≥ 20 seeds (median and spread), not just seed 42; event-deck intensity, growth rates and trust weights tuned from sweeps
+- [x] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: SLA fine, loses on opex), expert (scripted good play incl. capacity orders and caps: wins with grade A on Normal)
+- [x] Targets hold across ≥ 20 seeds (median and spread), not just seed 42; event-deck intensity, growth rates and trust weights tuned from sweeps
+  - Closed 2026-10-27 (user decision): bot balance is done; from now on sweeps are a regression check (CI
+    `balanceGate` on 5 seeds, 20 seeds to confirm a balance-affecting change), not a tuning target. The
+    Harbourline expert wins 16/20 (80 %); its four trust ends (seeds 1, 2, 15, 20, three of them on day 40) are accepted as the
+    hardest scenario's spread.
   - Latest results, Normal (day p10 / median / p90):
+    - **Expert buys a permanent CP after repeated capacity incidents (adopted, user decision 2026-10-27; seeds 1–20,
+      code 3a4acbf):** two or more CPU_CAPACITY incident days on a CPC within 7 days → order PERM_CP, then +1 logical CP
+      on each prod image once it is applied. Ends unchanged from the base expert: Midwest victory 19 · opex 1 (score
+      median 2790), Revenue victory 20 (2777), Harbourline victory 16 · trust 4 (2965, base 2960). It is kept because
+      the expert should play the capacity lever a good analyst would, not because it moves the numbers.
     - **On/Off CoD revert fix + capacity trials (2026-10-27, seeds 1–20, keyed RNG streams):** a CoD lease used to
       revert to an absolute CP count taken at request time, so a lease could permanently lose a CP; fixed with a
       relative `ADD_CPC_ENGINES` command. Spendtowin after the fix: Harbourline opex 16 · trust 4 (was 18 · 2),
@@ -155,7 +166,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
       expensive; textbook 28 / 32 / 37 (trust 18 · opex 2) and do-nothing 8 / 12 / 15 unchanged. The M8.2 boxes stay
       open: the Harbourline expert win rate (75 %) is still below Midwest (100 %) and Revenue (95 %), and the remaining
       losses are trust ends.
-      - [ ] Investigate Harbourline expert losses: opex ends on day 28 (seeds 5, 12, 13, 16) recur even though the
+      - [x] (Closed with M8.2, 2026-10-27: opex ends gone after the $1.6M budget and the CoD revert fix; trust ends accepted.) Investigate Harbourline expert losses: opex ends on day 28 (seeds 5, 12, 13, 16) recur even though the
         expert now declines BUDGET_SWAP; also the trust ends on seeds 8, 10 and 19. Re-check after the post-sweep
         re-sweep that includes PRs #30/#31.
         - Loop 4 (seed 5 on dev 4743420, after PRs #30/#31): still opex on day 28, and only just: the month-1 bill
@@ -441,6 +452,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | Every game roll gets its own keyed stream (`streamRng(seed, purpose, …key)`): events by day, draft by day, change and activation failures by day + label + attempt, AIOps by tick + workload, inquiries by ask tick + topic; `RunState.rng` removed | The event-only split (#41) still left the draft, failure, AIOps and inquiry rolls on one stream: in a paired sweep, seed 13's CoD rental shifted its day-9 draft (MENTOR instead of BELT_AND_BRACES) and the run lost ~4 trust on every facet from that alone. With keyed streams, seed 13 base and CoD draw identical events and drafts and differ only after the rental. Goldens regenerated; the paired sweep from #41 was stopped and is re-run on this. |
 | 2026-10-27 | Hardware engine adds and their reverts are relative (`ADD_CPC_ENGINES` delta, clamped ≥ 0); capacity-setting changes stay absolute | On/Off CoD reverted with "set N" computed when the lease was requested, so a lease taken over a pending or overlapping change lost or kept a CP for good (spendtowin bled CPs on Harbourline). Deltas compose in any order. Goldens unchanged |
 | 2026-10-27 | CPU_CAPACITY also when an image used ≥ 95 % of the CP available to it (online logical CPs, entitlement + white space), not only when its CPC was ≥ 90 % busy; the donor test is unchanged. Harbourline PRD images define 2 reserved logical CPs | User decision 2026-10-27. Seed 7 Harbourline: PRDA–PRDD sat at their logical CPs (13 of CPC1's 14 CPs, 10 of CPC2's 10) and the incidents read CPU_PRIORITY once a new CP lowered CPC busy to 86–89 %, the wrong clue. With no reserved CPs and no IPL lever a bought or rented CP could never reach production |
+| 2026-10-27 | The expert bot buys a permanent CP (PERM_CP) after CPU_CAPACITY incidents on 2 days within 7 on one CPC, then raises prod logical CPs by 1; On/Off CoD variant not adopted | User decision. 20-seed sweeps: same ends as the base expert in all three scenarios; the CoD variant cost Harbourline seed 11 an opex end |
+| 2026-10-27 | M8.1 closed: the performance gate is ≤ 4 ms per tick in the worker; ≤ 2 s per headless day is no longer a target | User decision. No hash-neutral optimisation above ~3 % is left, (2) and (5) were rejected, and the UI budget already holds. CLAUDE.md and SPEC §15 updated |
+| 2026-10-27 | M8.2 closed: bot balance done; sweeps become a regression check (CI 5 seeds, 20 to confirm) | User decision. Do-nothing, textbook and spendtowin hold in all three scenarios; expert wins 19/20, 20/20, 16/20 |
 
 ## Open questions
 

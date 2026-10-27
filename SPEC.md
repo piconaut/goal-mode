@@ -1152,7 +1152,7 @@ Midwest target is 28–32), expert bot still wins most seeds.
 | CPC1 (newer generation, more CPs) | PRDA, PRDB, DEV1 | ICF for CF01 |
 | CPC2 (one generation older, sub-capacity CPs, more zIIPs) | PRDC, PRDD, TST1 | ICF for CF02 |
 
-Six LPARs (Midwest has four), so the performance budget still needs checking (§15: ≤ 2 s per day).
+Six LPARs (Midwest has four), so the performance budget still needs checking (§15: ≤ 4 ms per tick).
 Each PRD image defines 2 reserved logical CPs (as Midwest and Revenue do), so a CP bought or rented later can
 be brought online to production without an IPL; online logicals alone cover 13 of CPC1's 14 CPs and all of CPC2's 10.
 Db2 data sharing across all four PRD members; CICSPlex SM with TORs on every PRD member and AORs on
@@ -1374,8 +1374,8 @@ never touches the DOM.
   so agent results can be compared with the strategy bots. Agent definitions live in `.claude/agents/`;
   `docs/agents.md` explains how to run them. A spectator mode lets a person watch an agent's run live in the normal UI
   (read-only, polling the run file `play.ts` writes after every command).
-- **Performance budget:** ≤ 2 s per headless day on a mid laptop; ≤ 4 ms per tick in the
-  worker at 8×.
+- **Performance budget:** ≤ 4 ms per tick in the worker at 8×. Headless speed (bots, sweeps) has no hard target
+  (user decision 2026-10-27; it was ≤ 2 s per day).
 
 ---
 
