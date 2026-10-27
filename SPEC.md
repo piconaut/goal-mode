@@ -938,7 +938,7 @@ At end of day, each **incident** (an SLA breach episode) can be investigated wit
 
 Ground truth for the trigger: an active event card that lists the hurt workload, provided the card's declared
 `mechanisms` (if any) include the incident's mechanism; otherwise new work, batch overlap (lock index), policy or
-growth. Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
+growth. APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
 
 Ground truth for the mechanism: the response-time component group that grew most against the workload's healthy
 baseline. Queueing for MXT or DBATs also grows when something slowed the tasks, since slower tasks hold their slot longer

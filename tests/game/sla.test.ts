@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addHour, batchMissMechanism, batchMissTrigger, importanceRank, mechanismOf, triggerOf } from '../../src/game/sla';
+import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { NightSummary } from '../../src/sim/subsys/batch';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
 import type { ActiveEvent, HourAcc } from '../../src/game/types';
@@ -88,10 +89,14 @@ describe('missed batch window truth', () => {
   });
 
   it('blames a card that affects BATCH and ran during the night, even if it has ended', () => {
-    const abend = card({ trigger: 'POLICY', affects: ['BATCH'], mechanisms: ['JOB_FAILURE'], startTick: 100, endTick: 100, ended: true });
-    expect(batchMissTrigger('JOB_FAILURE', [abend], hour, 50)).toBe('POLICY');
+    const abend = card({ trigger: 'APPLICATION_ERROR', affects: ['BATCH'], mechanisms: ['JOB_FAILURE'], startTick: 100, endTick: 100, ended: true });
+    expect(batchMissTrigger('JOB_FAILURE', [abend], hour, 50)).toBe('APPLICATION_ERROR');
     expect(batchMissTrigger('JOB_FAILURE', [abend], hour, 200)).toBe('GROWTH');
     expect(batchMissTrigger('IO', [abend], hour, 50)).toBe('GROWTH');
+  });
+
+  it('reads an S0C7 abend as an application error, not policy', () => {
+    expect(MIDWEST_EVENTS.find((e) => e.id === 'JOB_ABEND')?.trigger).toBe('APPLICATION_ERROR');
   });
 
   it('sums night hours, keeping the worst capping', () => {

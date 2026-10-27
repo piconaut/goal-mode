@@ -359,7 +359,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     category: 'SOFTWARE',
     minDay: 1,
     weight: 2.5,
-    trigger: 'POLICY',
+    trigger: 'APPLICATION_ERROR',
     affects: ['BATCH'],
     mechanisms: ['JOB_FAILURE'],
     startHour: [21, 26],
