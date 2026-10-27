@@ -82,6 +82,53 @@ describe('evidence pins', () => {
   });
 });
 
+describe('evidence pins on a missed batch night', () => {
+  const TPD = 24 * HOUR;
+  // A synthetic night: critical STL jobs on PROD1 lost most of their time to locks and one ABENDed.
+  const night = (r: RunState): RunState => ({
+    ...r,
+    reports: [...r.reports, {
+      day: 0, sla: [], batchMissed: true, trustDelta: {} as never, score: 0, mlcEstimate: 0, events: [],
+      batch: {
+        day: 0, jobs: 40, done: 38, criticalJobs: 14, criticalDone: 13, criticalEndSec: null, missedDeadline: true,
+        criticalDelaySec: { cpu: 300, io: 200, lock: 1400, db2: 100, swap: 0, init: 0 },
+        criticalAbended: ['STL009'],
+        criticalHosts: [{ lparId: 'PROD1', name: 'STL001', jobClass: 'A' }],
+      },
+    }],
+  });
+  const batchInc = (r: RunState, truth: Incident['truth']): Incident =>
+    incident(r, { workloadId: 'BATCH', startTick: 12 * HOUR, endTick: TPD, truth });
+
+  it('pins SMF 30 delay shares and ABENDs, and scores them against the night', () => {
+    let r = night(regressed);
+    r = pin(r, { source: 'BATCH', day: 0, metric: 'JOB_LOCK' });
+    r = pin(r, { source: 'BATCH', day: 0, metric: 'JOB_ABEND' });
+    r = pin(r, { source: 'BATCH', day: 0, metric: 'JOB_SWAP' });
+    const [lock, abend, swap] = r.pins.slice(-3);
+    expect(lock!.value).toBeCloseTo(70);
+    expect(lock!.source).toBe('SMF 30');
+    expect(abend!.value).toBe(1);
+    const v = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'LOCK_CONTENTION', trigger: 'BATCH_OVERLAP' }), [lock!, abend!, swap!]);
+    expect(v.map((x) => x.relevance)).toEqual([1, 0, 0]);
+    expect(v[2]!.why).toMatch(/unremarkable/);
+    const failed = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'JOB_FAILURE', trigger: 'BATCH_OVERLAP' }), [abend!]);
+    expect(failed[0]!.relevance).toBe(1);
+  });
+
+  it('counts WLMGL-style pins on the critical jobs\' service class as about BATCH', () => {
+    const r = night(regressed);
+    const p = { id: 1, source: 'WLMGL', metric: 'PI' as const, subject: 'BATCHPRD#1', system: '*PLEX', tick: 20 * HOUR, value: 3, text: '' };
+    const v = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'CPU_PRIORITY', trigger: 'BATCH_OVERLAP' }), [p]);
+    expect(v[0]!.why).not.toMatch(/not about/);
+  });
+
+  it('refuses a night without records', () => {
+    const out = addPin(regressed, MIDWEST, { source: 'BATCH', day: 0, metric: 'JOB_LOCK' });
+    expect(out.ok).toBe(false);
+  });
+});
+
 describe('SLA attainment', () => {
   it('never shows more than 100% for an average-RT SLA missed on failures', async () => {
     const { hourAttainment } = await import('../../src/game/sla');

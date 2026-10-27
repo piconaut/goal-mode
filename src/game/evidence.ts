@@ -1,19 +1,20 @@
 // RCA evidence (SPEC §10): pin data points from reports, attach up to three to an RCA, and score
 // each against the incident's hidden truth, its time window and the work it hurt.
 
-import { EVIDENCE, EVIDENCE_METRICS, type EvidenceMetric } from '../content/evidence';
+import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, type EvidenceMetric } from '../content/evidence';
 import { formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
-import { TICKS_PER_HOUR } from '../sim/core/units';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
 import { buildMon3 } from './mon3';
+import { BATCH_INCIDENT } from './sla';
 import { cicsMonitoring, db2Accounting } from './smf';
 import type { Incident, RunState } from './types';
 import { allWorkloads } from './workloads';
 
 export interface EvidencePin {
   id: number;
-  /** Where it came from, in report terms (WLMGL, DELAY, CPC, Db2 101, CICS 110). */
+  /** Where it came from, in report terms (WLMGL, DELAY, CPC, Db2 101, CICS 110, SMF 30). */
   source: string;
   metric: EvidenceMetric;
   /** Service-class period, workload or LPAR the value belongs to. */
@@ -29,7 +30,9 @@ export type PinRequest =
   | { source: 'WLMGL'; index: number; system: string; scKey: string; metric: EvidenceMetric }
   | { source: 'MON3'; system: string; scKey: string; metric: EvidenceMetric }
   | { source: 'CPC'; lparId: string; metric: 'PRSM_DELAY' | 'CAPPED' }
-  | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric };
+  | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
+  /** SMF 30 for the batch night that followed played day `day` (critical jobs' delay accounting). */
+  | { source: 'BATCH'; day: number; metric: EvidenceMetric };
 
 type Located = Omit<EvidencePin, 'id' | 'text'>;
 
@@ -98,7 +101,30 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest): Located | s
       if (value === undefined || value === null) return 'That metric is not in CICS monitoring';
       return { source: 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, value };
     }
+    case 'BATCH': {
+      const night = run.reports.find((x) => x.day === req.day)?.batch;
+      if (!night) return 'No batch night for that day';
+      let value: number;
+      if (req.metric === 'JOB_ABEND') value = (night.criticalAbended ?? []).length;
+      else if (req.metric in JOB_DELAY_METRICS) {
+        const d = night.criticalDelaySec;
+        const total = d ? Object.values(d).reduce((a, x) => a + x, 0) : 0;
+        if (!d || total <= 0) return 'The critical jobs lost no time that night';
+        value = (100 * d[JOB_DELAY_METRICS[req.metric as keyof typeof JOB_DELAY_METRICS]]) / total;
+      } else return 'That metric is not in the batch job records';
+      // Stamped at the night's 06:00 end, inside the night's incident window.
+      return { source: 'SMF 30', metric: req.metric, subject: BATCH_INCIDENT, system: '*PLEX', tick: (req.day + 1) * TICKS_PER_DAY, value };
+    }
   }
+}
+
+/** Service classes and images of a missed night's critical jobs: WLMGL or Monitor III pins on them are about BATCH. */
+function batchSubjects(run: RunState, inc: Incident): { classes: string[]; lpars: string[] } {
+  const hosts = run.reports.find((x) => x.day === inc.day)?.batch?.criticalHosts ?? [];
+  return {
+    classes: hosts.map((j) => classify(run.sim.wlm.definition, { subsystem: 'JES', TN: j.name, TC: j.jobClass, SY: j.lparId }).serviceClass).filter((x): x is string => !!x),
+    lpars: hosts.map((j) => j.lparId),
+  };
 }
 
 function hourEndTick(run: RunState, key: string): number | null {
@@ -142,8 +168,9 @@ export interface PinVerdict {
 /** Score pins against an incident's truth. Pure; used by submitRca and shown after the RCA. */
 export function judgeEvidence(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): PinVerdict[] {
   const w = allWorkloads(scenario, run).find((x) => x.id === inc.workloadId);
-  const sc = w ? classify(run.sim.wlm.definition, w.work).serviceClass : null;
-  const lpars = Object.keys(run.sim.routing[inc.workloadId] ?? w?.routing ?? {});
+  const batch = inc.workloadId === BATCH_INCIDENT ? batchSubjects(run, inc) : null;
+  const classes = batch ? batch.classes : w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
+  const lpars = batch ? batch.lpars : Object.keys(run.sim.routing[inc.workloadId] ?? w?.routing ?? {});
   const lo = inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR;
   const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
   return pins.map((p) => {
@@ -153,7 +180,7 @@ export function judgeEvidence(run: RunState, scenario: Scenario, inc: Incident, 
     const related =
       d.anySubject ||
       p.subject === inc.workloadId ||
-      (sc !== null && (p.subject === sc || p.subject.startsWith(`${sc}#`))) ||
+      classes.some((sc) => p.subject === sc || p.subject.startsWith(`${sc}#`)) ||
       lpars.includes(p.subject) ||
       p.subject === '*PLEX';
     if (!related) return { ...base, relevance: 0, why: `not about ${inc.workloadId}` };
