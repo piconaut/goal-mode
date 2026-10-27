@@ -1,6 +1,6 @@
 // Headless play CLI for agents (PROGRESS M8.9). Each call loads the run file, applies one command, saves it.
 // Usage:
-//   npm run play -- runs/a.json new 42 [normal|story|hard|ironman] [midwest|revenue]
+//   npm run play -- runs/a.json new 42 [normal|story|hard|ironman] [midwest|revenue|harbourline]
 //   npm run play -- runs/a.json status | catalog | mon3 | smf DB2|CICS|BATCH|SMF113 [hour]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [index] | report WLM_DETAIL 5 ONLHI#1
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>

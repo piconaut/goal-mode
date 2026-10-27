@@ -509,6 +509,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-27:** Play CLI fix: `new` crashed on every fresh run file (`apply()` read `file.run` before the `new` case), found by the first agent playtest round, which could not start. `new` now runs first and refuses an unknown scenario instead of silently falling back to Midwest; usage and `docs/agents.md` list `harbourline`. Goldens unchanged.
 - **2026-10-23:** VENDOR_PRICE card (`SET_MLC_PRICE` → `cost.priceMult`, sub-capacity MLC ×1.08; fix `NEGOTIATE_MLC_PRICE`). Hashes unchanged (`be43ff16de564882`), 377 tests. Sweep seeds 1–5 (Normal, Midwest; card drawn in 8 of 15 runs): do-nothing 12 / 16 / 22 (batch 2 · trust 3), textbook 24 / 27 / 28 (batch 4 · trust 1), expert victory 5/5; inside the bands.
 - **2026-10-23:** CI added (`.github/workflows/ci.yml`, `pr-gates.yml`, `tools/ci/`, PR template) for the per-session-branch → `dev` auto-merge workflow. Balance bands checked against current `dev` (seeds 1–5): do-nothing 12 / 16 / 22 (batch 3 · trust 2), textbook 22 / 26 / 28 (batch 3 · trust 2), expert victory 5/5; all inside the bands, 15 runs in ~7 min on 4 cores. Waiting on the user for the GitHub settings (default branch, branch protection, auto-merge).
 - **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14

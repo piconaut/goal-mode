@@ -19,6 +19,15 @@ describe('headless play interface', () => {
     expect(a.log.map((c) => c.cmd)).toEqual(['new', 'start', 'advance']);
   });
 
+  it('new starts a run from an empty play file, as the CLI does, and refuses an unknown scenario', () => {
+    const empty = { version: 1, log: [] } as unknown as PlayFile;
+    const r = applyPlayCommand(empty, { cmd: 'new', seed: 3, difficulty: 'NORMAL', scenario: 'harbourline' });
+    expect(r.ok).toBe(true);
+    expect(r.file.run.scenarioId).toBe('harbourline');
+    expect(r.file.log).toHaveLength(1);
+    expect(applyPlayCommand(empty, { cmd: 'new', seed: 3, difficulty: 'NORMAL', scenario: 'harbourine' }).ok).toBe(false);
+  });
+
   it('refuses commands that do not fit the phase and does not log them', () => {
     const f = newPlayFile(7);
     const r = applyPlayCommand(f, { cmd: 'advance', hours: 2 });
