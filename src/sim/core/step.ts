@@ -10,6 +10,7 @@ import { cpSpeed, msuPerCp, suPerCpuSecOf, ziipSpeed } from '../hw/cpc';
 import { poolKey, resolveCpc, type PoolDemand } from '../hw/pools';
 import { evaluateDasd, type IoClass } from '../io/dasd';
 import {
+  addJobDelay,
   advanceJob,
   closeNight,
   jobShape,
@@ -257,7 +258,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       return jobShape(j.def, cpSpeed(cpc), ziipSpeed(cpc), io.SEQ.rtSec).elapsed;
     });
   }
-  if (tickOfDay === TICKS_PER_DAY - 1) batch = closeNight(batch, clock.day);
+  if (tickOfDay === TICKS_PER_DAY - 1) batch = closeNight(batch, clock.day, prev.tick);
 
   // 12b. Policy adjustment, one receiver per system.
   const { adjusted, log } = adjustPolicies(t, clockText);
@@ -724,6 +725,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       res.scps.push(t);
     }
     t.delayStorage += 1;
+    addJobDelay(j, 'swap', TICK_SEC);
   }
 
   const compBy: Record<string, number> = {};
@@ -797,6 +799,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
           ziipWanted: jr.zi,
           ziipGot: ziGot * fz,
           extraStretch: (jr.job.def.usesDb2 ? depStretch : 1) * lockStretch,
+          lockStretch,
+          ioDelayFrac: io.SEQ.rtSec > 0 ? io.SEQ.delaySec / io.SEQ.rtSec : 0,
         },
         prev.tick,
       );

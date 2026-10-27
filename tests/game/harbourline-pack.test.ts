@@ -1,3 +1,4 @@
+import { BATCH_INCIDENT } from '../../src/game/sla';
 import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from '../../src/content/events/harbourline-events';
 import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
@@ -35,7 +36,7 @@ describe('Harbourline Bank pack', () => {
     const ids = HARBOURLINE_EVENTS.map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const e of HARBOURLINE_EVENTS) {
-      for (const w of e.affects) expect(workloadIds, `${e.id} affects ${w}`).toContain(w);
+      for (const w of e.affects) expect([...workloadIds, BATCH_INCIDENT], `${e.id} affects ${w}`).toContain(w);
       for (const c of [...e.begin, ...e.end]) {
         if (c.kind === 'SET_MODIFIER' && c.mod === 'regionFailFrac') {
           const [w, l] = c.key.split('@');

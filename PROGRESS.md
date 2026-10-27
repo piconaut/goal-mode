@@ -335,7 +335,13 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     the play CLI the same day. Design findings:
   - [ ] A: when response time and SLA attainment disagree (Harbourline MKTORD slid while WLM showed PI < 1, because
     the region-served class hid it), an Inquiry reply or the sysprog morning hint should point at CICS SMF 110
-  - [ ] B: a batch-window miss becomes an incident with its own RCA (Revenue day 7 abend had no clue path)
+  - [x] B: a batch-window miss becomes an incident with its own RCA (Revenue day 7 abend had no clue path). Done
+    2026-10-27: critical jobs account lost elapsed time by cause (CPU, Db2 locks, Db2 health, DASD queueing, swap,
+    initiator wait) and ABENDs; a missed night opens a `BATCH` incident (new mechanism JOB_FAILURE for an ABEND, else
+    the largest cause mapped onto the online mechanisms; JOB_ABEND and REORG_OVERRUN now affect BATCH) (SPEC §10).
+    Normal Midwest seeds 1–10: oraclerca ends unchanged except seed 8 (day 18 → 19), median score 1180 → 1188, batch
+    misses 29 (14 JOB_FAILURE incidents); textbook files no RCAs and is unaffected by design. Follow-up: evidence pins
+    can't score on a BATCH incident yet (judged against online workloads only).
   - [x] C: incidents with the same root cause on the same day group into one RCA (Midwest teller release: 5
     incidents, 5 RCAs; Harbourline holiday spike: 6). Done 2026-10-27: same-day, same-truth incidents link to the first
     (`rcaGroup`); one RCA covers the group, scored once (SPEC §10). Only oraclerca files RCAs, so only it moves:

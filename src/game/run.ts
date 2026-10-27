@@ -32,9 +32,10 @@ import type { RmfInterval } from '../sim/measure/rmf';
 import { tfpAtDayEnd } from './tfp';
 import { deliverInquiries } from './inquiries';
 import { allWorkloads } from './workloads';
+import type { NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, previewChange } from './catalog';
-import { hourAttainment, importanceRank, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
+import { addHour, BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, hourAttainment, importanceRank, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
   facetsOf,
@@ -619,6 +620,8 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
     }
   }
   r = { ...r, capacityToday: hourPeaks(r, h) };
+  const hourOfDay = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
+  if (hourOfDay >= 18 || hourOfDay < 6) r = { ...r, nightHour: addHour(r.nightHour, h) };
   const smfHours = [...(r.smfHours ?? []), { day: r.day, hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay), workloads: h.workloads }].slice(-SMF_HOURS_KEPT);
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }
@@ -645,6 +648,33 @@ export function sysotherByLpar(intervals: readonly RmfInterval[], day: number): 
   return out;
 }
 
+
+/** A missed batch window opens an incident for the night, so it can get an RCA like an online SLA miss. */
+function batchMissIncident(r: RunState, night: NightSummary, trustLost: number): RunState {
+  const hosts = (night.criticalHosts ?? []).map((j) => {
+    const sc = classify(r.sim.wlm.definition, { subsystem: 'JES', TN: j.name, TC: j.jobClass, SY: j.lparId }).serviceClass;
+    return { lparId: j.lparId, cpcId: r.sim.config.lpars.find((l) => l.id === j.lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
+  });
+  const nightStartTick = r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
+  const nightHour = r.nightHour ?? newHour(nightStartTick);
+  const mechanism = batchMissMechanism(night, nightHour, hosts);
+  const truth = { mechanism, trigger: batchMissTrigger(mechanism, r.events, nightHour, nightStartTick) };
+  const lead = r.incidents.find((i) => i.day === r.day && i.rcaGroup === undefined && i.truth.mechanism === truth.mechanism && i.truth.trigger === truth.trigger);
+  const inc: Incident = {
+    id: r.nextId,
+    workloadId: BATCH_INCIDENT,
+    day: r.day,
+    startTick: nightStartTick,
+    endTick: r.sim.tick,
+    hours: 12,
+    worstAttainmentPct: 0,
+    truth,
+    rca: lead?.rca ?? null,
+    trustLost,
+    ...(lead ? { rcaGroup: lead.id } : {}),
+  };
+  return logLine({ ...r, nextId: r.nextId + 1, incidents: [...r.incidents, inc] }, `INCIDENT ${BATCH_INCIDENT}: critical batch missed its window`);
+}
 
 function endDay(run: RunState, scenario: Scenario, content: GameContent): RunState {
   let r = run;
@@ -678,6 +708,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     const hurt = r.batchMissFacet ?? 'Retail';
     if (hurt in trust) trust[hurt] = clampTrust(trust[hurt]! - 4);
     r = msg(r, 'Regulator', 'Batch deadline missed', 'Critical batch did not complete on time. A second consecutive miss will trigger a formal review.');
+    r = batchMissIncident(r, night, (trustBefore.Regulator! - trust.Regulator!) + (hurt in trust ? trustBefore[hurt]! - trust[hurt]! : 0));
   } else if (night) trust.Regulator = clampTrust(trust.Regulator! + 1);
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
   const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
@@ -736,6 +767,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   r = {
     ...r,
     trust,
+    nightHour: null,
     consecutiveBatchMisses: consecutive,
     opexSpentThisMonth: opexSpent,
     billsSeen: bills.length,

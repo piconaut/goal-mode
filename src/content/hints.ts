@@ -51,6 +51,10 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
     clear: '{w} missed its SLA yesterday. Storage delay in WLMGL, or the STOR delayed users in Monitor III SYSINFO, might show what it was waiting for.',
     vague: 'Yesterday was rough for {w}. SYSINFO might tell you more.',
   },
+  JOB_FAILURE: {
+    clear: '{w} missed its window. The Batch view lists jobs that ABENDed. Did a critical one stop, and how long were its successors held?',
+    vague: 'Yesterday was rough for {w}. The Batch view might tell you more.',
+  },
 };
 
 export const BATCH_HINTS = {
