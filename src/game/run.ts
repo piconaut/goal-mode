@@ -937,7 +937,8 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   // Evidence only earns points when it supports the right mechanism (SPEC §10).
   const evidencePoints = mechanism === inc.truth.mechanism ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
   const strong = evidencePoints > 0 && relevance >= EVIDENCE.strongAt;
-  const facetTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
+  const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
+  const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
   const trust = mapTrust(run, (t) => t + facetTrust / 2);
   const total = points + evidencePoints;
   const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints };

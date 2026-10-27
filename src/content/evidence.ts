@@ -69,4 +69,7 @@ export const EVIDENCE = {
   /** Extra Insight for "strong evidence": total relevance at least this. */
   strongAt: 2,
   strongInsight: 5,
+  // FICTIONAL: a grouped RCA (one cause, several incidents) earns its trust reward once per incident it covers, so
+  // grouping removes the write-ups but not the credit (user decision 2026-10-27). Penalties are not scaled.
+  groupTrustPerIncident: 1,
 };

@@ -955,7 +955,9 @@ trigger (`content/evidence.ts`). PI is a symptom and never counts. Evidence poin
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one
-RCA covers every incident in it and is scored, rewarded and counted in the day score once. A pin counts as evidence if
+RCA covers every incident in it and is scored, rewarded and counted in the day score once, except its trust reward,
+which counts once per incident in the group at filing time (`EVIDENCE.groupTrustPerIncident`; a wrong RCA's penalty is
+not scaled; user decision 2026-10-27). A pin counts as evidence if
 it supports any incident in the group. An incident that joins a group after its RCA was filed inherits that RCA. Real
 incident management correlates alerts the same way; one cause should not mean five near-identical write-ups (playtest
 round 1, design item C).

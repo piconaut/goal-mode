@@ -4,7 +4,7 @@ import { failRiskFor, hardwareItem, hoursFor, opexBudgetFor } from '../../src/ga
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
-import { advance, chooseDraft, continueEndless, drawEvents, newRun, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
+import { advance, chooseDraft, continueEndless, drawEvents, newRun, overallTrust, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 import { streamRng } from '../../src/sim/core/rng';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
@@ -92,6 +92,25 @@ describe('incidents and RCA', () => {
     expect(scored.incidents.map((i) => i.rca?.points ?? null)).toEqual([5, 5, null]);
     expect(scored.score).toBe(r.score + 5);
     expect(submitRca(scored, 1, 'CPU_PRIORITY', 'POLICY')).toBe(scored);
+  });
+
+  it('a grouped RCA earns its trust reward once per incident; a wrong one is penalised once', () => {
+    const r0 = fresh();
+    const base = { day: r0.day, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80, rca: null, trustLost: 0 };
+    const truth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } as const;
+    const r = {
+      ...r0,
+      incidents: [
+        { ...base, id: 1, workloadId: 'RBANK', truth },
+        { ...base, id: 2, workloadId: 'MKTQRY', truth, rcaGroup: 1 },
+        { ...base, id: 3, workloadId: 'ATM', truth: { ...truth, trigger: 'GROWTH' } as const },
+      ],
+    };
+    const gain = (id: number, ...a: Parameters<typeof submitRca> extends [unknown, unknown, infer M, infer T, ...unknown[]] ? [M, T] : never) => overallTrust(submitRca(r, id, ...a)) - overallTrust(r);
+    expect(gain(1, 'CPU_PRIORITY', 'POLICY')).toBeGreaterThan(0);
+    expect(gain(1, 'CPU_PRIORITY', 'POLICY')).toBeCloseTo(2 * gain(3, 'CPU_PRIORITY', 'GROWTH'), 6);
+    expect(gain(1, 'THREAD_LIMIT', 'RUNAWAY_WORK')).toBeLessThan(0);
+    expect(gain(1, 'THREAD_LIMIT', 'RUNAWAY_WORK')).toBeCloseTo(gain(3, 'THREAD_LIMIT', 'RUNAWAY_WORK'), 6);
   });
 
   it('a critical ABEND that misses the batch window opens a BATCH incident that takes an RCA', () => {

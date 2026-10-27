@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** options for playtest finding D (user decision pending), group-RCA trust scaling, Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), a playtest round with the agent players (goal-mode-player, cautious-operator, cost-cutter) via the play CLI, M8.4 events (23 of ~25). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** options for playtest finding D (user decision pending; `bot --reader` sweeps running), evidence pins on BATCH incidents, Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), a playtest round with the agent players (goal-mode-player, cautious-operator, cost-cutter) via the play CLI, M8.4 events (23 of ~25). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -352,8 +352,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     Normal Midwest seeds 1–10, median day 19 → 18, median score 1393 → 1284, ends unchanged (batch 3, trust 7). Seed 1
     ended day 15 instead of 22: fewer RCAs means fewer +1 trust bumps. A player who RCAs everything loses the same
     trust income; if that proves too harsh, scale the group RCA's trust by group size (open question).
-    - [ ] Scale a group RCA's trust reward with the size of its group (user decision 2026-10-27); bot check with
-      oraclerca (the only bot that files RCAs)
+    - [x] Scale a group RCA's trust reward with the size of its group (user decision 2026-10-27). Done 2026-10-27:
+      the reward (not a wrong RCA's penalty) counts once per incident in the group at filing time
+      (`EVIDENCE.groupTrustPerIncident`); score and Insight still count once. Normal Midwest oraclerca seeds 1–10 vs
+      dev: seed 1 day 15 → 22 (score 968 → 1427), seed 3 day 16 → 17, the rest end on the same day; median day
+      18 → 18.5, median score 1299 → 1351, ends unchanged (batch 3, trust 7). Goldens unchanged.
   - [ ] D: insight is too scarce early: the QR TCB diagnosis needed CICS_MON (14 insight) with 13 on hand by day 8
     - [ ] Prepare options for the user (user request 2026-10-27): e.g. cheaper CICS_MON, more starting insight,
       faster early insight income; each with bot numbers (Normal, all three scenarios). Balance decision is the user's
