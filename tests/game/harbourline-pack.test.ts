@@ -103,7 +103,25 @@ describe('Harbourline per-CPC hardware', () => {
     expect(out.ok).toBe(true);
     expect(out.run.changes.at(-1)!.commands).toEqual([{ kind: 'SET_CPC_CAPACITY', cpcId: 'CPC2', capacitySetting: 6 }]);
     const cod = requestChange(r, pack.game, { label: 'CoD on CPC2', hardwareId: 'COD_CP', cpcId: 'CPC2' });
-    expect(cod.run.changes.at(-1)!.commands).toEqual([{ kind: 'SET_CPC_ENGINES', cpcId: 'CPC2', pool: 'CP', engines: 11 }]);
+    expect(cod.run.changes.at(-1)!.commands).toEqual([{ kind: 'ADD_CPC_ENGINES', cpcId: 'CPC2', pool: 'CP', delta: 1 }]);
+  });
+
+  it('a CoD lease that ends returns exactly the CP it added, even when leases overlap', () => {
+    let r = newRun(pack.scenario, { ...pack.game, events: [] }, 3);
+    const cps = () => r.sim.config.cpcs.find((x) => x.id === 'CPC1')!.engines.CP;
+    const start = cps();
+    const lease = () => r.changes.at(-1)!;
+    r = requestChange(r, pack.game, { label: 'CoD a', hardwareId: 'COD_CP', cpcId: 'CPC1' }).run;
+    const a = lease();
+    r = { ...r, sim: applyCommands(r.sim, a.commands) };
+    r = requestChange(r, pack.game, { label: 'CoD b', hardwareId: 'COD_CP', cpcId: 'CPC1' }).run;
+    const b = lease();
+    r = { ...r, sim: applyCommands(r.sim, b.commands) };
+    expect(cps()).toBe(start + 2);
+    r = { ...r, sim: applyCommands(r.sim, a.revertCommands) };
+    expect(cps()).toBe(start + 1);
+    r = { ...r, sim: applyCommands(r.sim, b.revertCommands) };
+    expect(cps()).toBe(start);
   });
 });
 
