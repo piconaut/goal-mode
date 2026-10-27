@@ -511,18 +511,24 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   let ddfRate = 0;
   let ddfRtWeighted = 0;
   let cicsRtWeighted = 0;
+  let ddfRefWeighted = 0;
+  let cicsRefWeighted = 0;
   for (const s of base) {
     if (s.kind !== 'TXN' || !s.workloadId) continue;
     const w = workloadById[s.workloadId]!;
     const prevRt = env.rtByWorkloadLpar[wlLparKey(w.id, l.id)] ?? 0.05;
+    const ioSvc = io[s.ioClass];
+    const refRt = s.baseLatencySec + s.cpuSecPerTxn + s.ziipSecPerTxn + s.ioPerTxn * (ioSvc.rtSec - ioSvc.delaySec);
     if (w.subsystem === 'CICS') {
       cicsQrCpu += s.rate * s.cpuSecPerTxn;
       cicsRate += s.rate;
       cicsRtWeighted += s.rate * prevRt;
+      cicsRefWeighted += s.rate * refRt;
     }
     if (w.subsystem === 'DDF') {
       ddfRate += s.rate;
       ddfRtWeighted += s.rate * prevRt;
+      ddfRefWeighted += s.rate * refRt;
     }
   }
   const meanQrFrac = aors.length ? aors.reduce((a, c) => a + c.qrFrac, 0) / aors.length : 0;
@@ -530,6 +536,9 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   const maxTasks = aors.reduce((a, c) => a + c.maxTasks, 0);
   const mxtWait = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRtWeighted / cicsRate : 0, maxTasks) : 0;
   const dbatWait = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRtWeighted / ddfRate : 0, db2.maxDbat) : 0;
+  // Same queues at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
+  const mxtRef = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRefWeighted / cicsRate : 0, maxTasks) : 0;
+  const dbatRef = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRefWeighted / ddfRate : 0, db2.maxDbat) : 0;
 
   // `base` holds fresh objects built for this tick, so transactions are completed in place.
   for (const s of base) {
@@ -549,13 +558,18 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       cpuAdd += DB2.cfRequestsPerTxn * cfZosCpuSec;
     }
     let outside = 0;
+    let outsideRef = 0;
     if (w.subsystem === 'CICS' && aors.length) {
       parts.qr = s.cpuSecPerTxn * meanQrFrac * qr.qrWaitRatio;
       extra += parts.qr;
       outside += mxtWait;
+      outsideRef += mxtRef;
       failFrac = qr.failFrac;
     }
-    if (w.subsystem === 'DDF') outside += dbatWait;
+    if (w.subsystem === 'DDF') {
+      outside += dbatWait;
+      outsideRef += dbatRef;
+    }
     if (db2Work) t.onlineDb2Rate += s.rate;
     // A saturated QR TCB makes a region slow, not fast-failing, so it doesn't count as an abend for routing.
     let abendFrac = 0;
@@ -570,6 +584,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     s.extraParts = parts;
     s.extraOtherSec = extra;
     s.outsideWaitSec = outside;
+    s.outsideRefSec = outsideRef;
     s.failFrac = failFrac;
     s.cpEngines = s.cpEngines + s.rate * cpuAdd;
     s.cpuSecPerTxn = s.cpuSecPerTxn + cpuAdd;
@@ -1014,6 +1029,7 @@ function addParts(into: Record<string, number>, p: NonNullable<import('../wlm/ev
   into.dependency = (into.dependency ?? 0) + p.dependency * n;
   into.backlogWait = (into.backlogWait ?? 0) + p.backlogWait * n;
   into.outside = (into.outside ?? 0) + p.outside * n;
+  into.outsideRef = (into.outsideRef ?? 0) + p.outsideRef * n;
   const extra = p.extra;
   for (const k in extra) into[k] = (into[k] ?? 0) + extra[k]! * n;
 }
