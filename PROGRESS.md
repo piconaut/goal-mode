@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** options for playtest finding D (user decision pending; `bot --reader` sweeps running), Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), a playtest round with the agent players (goal-mode-player, cautious-operator, cost-cutter) via the play CLI, M8.4 events (23 of ~25). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** options for playtest finding D (user decision pending; `bot --reader` sweeps running), Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 2 findings G–K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -384,6 +384,26 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     2026-10-27: the UI already listed only the scenario's fixes; the play CLI `catalog` listed all of them and
     requestChange accepted any. Both now use the fixes the scenario's event cards call for (`fixIdsOf`). Bench and
     golden hashes unchanged.
+  - Round 2 (2026-10-27, seed 2027 Normal, to the day-8 briefing): goal-mode-player on Midwest (trust 70.6, score
+    463), cautious-operator on Revenue (trust 83.1, score 450), cost-cutter on Harbourline (pending). Fixed in the
+    play CLI the same day: `pin BATCH` takes the day as labelled (`D2`), and `smf BATCH` shows `D2` too (it took the
+    0-based index); pin text carries the day (`SMF 30 D3 06:00`); DB2/CICS/BATCH pins need the same tool as their
+    SMF view, as in the browser; no EPIPE crash when piped into `head`. Open findings:
+  - [ ] G: one event can raise several incidents with different truths (Midwest D2 runaway ad-hoc query:
+    THREAD_LIMIT/POLICY, THREAD_LIMIT/RUNAWAY_WORK, CPU_PRIORITY/POLICY), and nothing points a player at
+    THREAD_LIMIT for RBANK. Check the clue path or let the related truth count as half-right.
+  - [ ] H: events with no incident or a weak warning: Midwest D6 access-path regression, Revenue D7 REORG overrun
+    and D6 runaway compliance query (BATCHHI PI 12.6, no miss); BATCHPRD#1 PI 5–10 every night with no miss.
+    Probably fine (no SLA broken), but the morning hint could mention them.
+  - [ ] I: RCA guessing pays: CPU_PRIORITY/POLICY was right three times on CARDAUTH blips without evidence, and a
+    JOB_FAILURE trigger POLICY (the player's own activation) cannot be derived; half-right RCAs still give +1 on
+    every facet. Balance decision for the user.
+  - [ ] J: GOODWILL (and CFO_BONUS, RC_HOARDER) drafts show no visible cost; both agents called GOODWILL dominant.
+    Balance decision for the user.
+  - [ ] K: CLI and UX rough edges: pin ids share the incident counter; `smf CICS` lists workloads, not the region
+    names SET_CICS needs; finished projects disappear from status; a change with several commands costs the same
+    1.5 h as one; `wlm` says "activate at tomorrow's briefing" but `activate` is refused until the draft closes;
+    idle engineer-hours on quiet days.
 - [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
 - [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
