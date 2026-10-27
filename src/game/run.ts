@@ -4,7 +4,7 @@
 import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
 import { grantProjectHours } from './projects';
 import { AUDIT, type EventDef, type ScriptedBeat } from '../content/events/midwest-events';
-import { applyCommands, type Command } from '../sim/core/commands';
+import { applyCommand, applyCommands, type Command } from '../sim/core/commands';
 import { clockAt } from '../sim/core/clock';
 import { initState } from '../sim/core/init';
 import { ALERTS } from '../content/alerts';
@@ -279,6 +279,8 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   const live = run.phase === 'LIVE';
   const preview = previewChange(previewContext(run, content), req);
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
+  const refused = !req.hardwareId && !req.fixId ? dryRunRefusal(run, req.commands ?? []) : null;
+  if (refused) return { run, ok: false, message: refused };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
   const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
   const commands = hw ? hw.commands(run.sim, req.cpcId) : (req.commands ?? []);
@@ -327,6 +329,30 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     return { run: logLine(r, `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
   }
   return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned for day ${change.activateDay + 1}: ${req.label}` };
+}
+
+/** Why the config would reject these commands (unknown region, LPAR, pool...), tried on today's config with
+ * the changes already planned; null when they apply. Catches a mistyped target before it costs hours. */
+export function dryRunRefusal(run: RunState, commands: readonly Command[]): string | null {
+  let s = run.sim;
+  for (const c of run.changes) if (c.status === 'PLANNED') for (const cmd of c.commands) s = applyCommand(s, cmd).state;
+  for (const cmd of commands) {
+    const res = applyCommand(s, cmd);
+    if (!res.ok) return `${res.message}${targetHint(s, cmd)}`;
+    s = res.state;
+  }
+  return null;
+}
+
+function targetHint(s: RunState['sim'], cmd: Command): string {
+  const list = (what: string, names: readonly string[]) => `; ${what}: ${names.join(' ')}`;
+  switch (cmd.kind) {
+    case 'SET_CICS': return list('CICS regions', s.config.cics.map((r) => r.name));
+    case 'SET_DB2': return list('Db2 subsystems', s.config.db2.map((d) => d.ssid));
+    case 'SET_WEIGHT': case 'SET_LOGICAL': case 'SET_DEFINED_CAPACITY': case 'SET_ABSOLUTE_CAP': case 'SET_IEAOPT': case 'SET_LPAR_MEMORY':
+      return list('LPARs', s.config.lpars.map((l) => l.id));
+    default: return '';
+  }
 }
 
 /** End every active event whose card names this fix. */

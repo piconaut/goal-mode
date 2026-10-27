@@ -76,6 +76,20 @@ describe('cancel', () => {
     r = startDay(r, content);
     expect(cancelChange(r, r.changes[0]!.id).ok).toBe(false);
   });
+
+  it('refuses a command whose target does not exist, naming the real ones, and charges nothing', () => {
+    const r0 = fresh();
+    const out = requestChange(r0, content, { label: 'mxt', commands: [{ kind: 'SET_CICS', name: 'NOSUCH', maxTasks: 200 }] });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/No CICS region NOSUCH; CICS regions: \S+/);
+    expect(out.run.hoursLeft).toBe(r0.hoursLeft);
+    expect(requestChange(r0, content, { label: 'w', commands: [{ kind: 'SET_WEIGHT', lparId: 'PROD9', pool: 'CP', weight: 500 }] }).message).toMatch(/LPARs: .*PROD1/);
+  });
+
+  it('accepts a command on a region added by a change already planned', () => {
+    const r = requestChange(fresh(), content, { label: 'aor', commands: [{ kind: 'ADD_AOR', lparId: 'PROD1', name: 'CICSNEW', maxTasks: 100, qrFrac: 0.5 }] }).run;
+    expect(requestChange(r, content, { label: 'mxt', commands: [{ kind: 'SET_CICS', name: 'CICSNEW', maxTasks: 200 }] }).ok).toBe(true);
+  });
 });
 
 describe('change desk helpers', () => {

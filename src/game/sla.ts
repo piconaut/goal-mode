@@ -62,10 +62,18 @@ const GROUPS: Record<string, string[]> = {
   STORAGE: ['paging'],
 };
 
+/** How much each mechanism group grew against the baseline, per transaction. Queueing for MXT or DBATs grows by
+ * as much as the time inside the region grows (Little's law: slower tasks hold their slot longer), so only the
+ * part beyond the in-region growth is the thread limit's own; the rest is a symptom of whatever slowed the tasks. */
+function groupExcess(parts: Record<string, number>, baseline: Record<string, number>): [string, number][] {
+  const grew = (k: string) => (parts[k] ?? 0) - (baseline[k] ?? 0);
+  const inRegion = Object.keys(parts).reduce((a, k) => (k === 'outside' ? a : a + grew(k)), 0);
+  return Object.entries(GROUPS).map(([g, keys]) => [g, g === 'THREAD_LIMIT' ? Math.max(0, grew('outside') - Math.max(0, inRegion)) : keys.reduce((a, k) => a + grew(k), 0)]);
+}
+
 /** Mechanism groups ordered by how much they grew against the healthy baseline (AIOps uses the runners-up). */
 export function rankedMechanismGroups(parts: Record<string, number>, baseline: Record<string, number>): string[] {
-  return Object.entries(GROUPS)
-    .map(([g, keys]) => [g, keys.reduce((a, k) => a + (parts[k] ?? 0) - (baseline[k] ?? 0), 0)] as const)
+  return groupExcess(parts, baseline)
     .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
     .map(([g]) => g);
 }
@@ -79,8 +87,7 @@ export function mechanismOf(
 ): Mechanism {
   let best = 'CPU';
   let bestExcess = -Infinity;
-  for (const [g, keys] of Object.entries(GROUPS)) {
-    const excess = keys.reduce((a, k) => a + (parts[k] ?? 0) - (baseline[k] ?? 0), 0);
+  for (const [g, excess] of groupExcess(parts, baseline)) {
     if (excess > bestExcess) {
       best = g;
       bestExcess = excess;

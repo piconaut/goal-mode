@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { advance, chooseDraft, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { advance, cancelChange, chooseDraft, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
@@ -36,6 +36,8 @@ export type PlayCommand =
   | { cmd: 'start' }
   | { cmd: 'advance'; hours: number }
   | { cmd: 'change'; req: ChangeRequest }
+  /** Withdraw a planned change (ids in status); capex back, hours back on the day they were spent. */
+  | { cmd: 'cancel'; changeId: number }
   | { cmd: 'draft'; optionId: string | null }
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
@@ -118,6 +120,10 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const o = requestChange(run, content, c.req);
       return done(o.run, o.message, o.ok);
     }
+    case 'cancel': {
+      const o = cancelChange(run, c.changeId);
+      return done(o.run, o.message, o.ok);
+    }
     case 'draft': {
       if (run.phase !== 'REVIEW') return fail('Drafts are chosen in the end-of-day review.');
       return done(chooseDraft(run, content, c.optionId), c.optionId ? `Drafted ${c.optionId}.` : 'Draft skipped.');
@@ -159,6 +165,11 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         if (!iv.wlm.some((x) => x.lparId === w.system && x.scKey === w.scKey)) return fail(`No WLMGL row ${w.system} ${w.scKey} in interval ${intervalId(iv)}; ${rowKeys(iv, w.system)}`);
         req = w;
       }
+      if (req.source === 'CPC' && c.intervalId !== undefined) {
+        const index = intervalIndex(run, c.intervalId);
+        if (!buildView(run, sc(run)).reports.some((x) => x.index === index)) return fail(`No RMF interval ${c.intervalId}; ${intervalList(run)}`);
+        req = { ...req, index };
+      }
       if (req.source === 'DB2' || req.source === 'CICS') {
         const hour = smfHourKey(run, req.hour);
         if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
@@ -175,7 +186,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     case 'wlm': {
       const res = applyWlmEdit(pendingBase(file.pendingPolicy, run.sim.wlm.definition), c.edit);
       if (typeof res === 'string') return fail(res);
-      return done(run, `Pending policy ${res.policyName} updated. ${run.phase === 'REVIEW' ? "activate at tomorrow's briefing to install it." : 'activate to install it.'}`, true, res);
+      return done(run, `Pending policy ${res.policyName} updated. ${run.phase === 'REVIEW' ? "close the day (draft <id|none>), then activate at tomorrow's briefing to install it." : 'activate to install it.'}`, true, res);
     }
     case 'activate': {
       const def = file.pendingPolicy;
@@ -219,7 +230,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const res = applyReportClassAdvice(pendingBase(file.pendingPolicy, run.sim.wlm.definition), runWorkItems(sc(run), run), c.workloadId || null);
       if (typeof res === 'string') return fail(res);
       if (!res.added.length) return fail('No report class advice left.');
-      return done(run, `Report classes for ${res.added.join(' ')} staged in ${res.def.policyName}. ${run.phase === 'REVIEW' ? 'activate at tomorrow\'s briefing (takes effect next day).' : 'activate to install (takes effect next day).'}`, true, res.def);
+      return done(run, `Report classes for ${res.added.join(' ')} staged in ${res.def.policyName}. ${run.phase === 'REVIEW' ? 'close the day (draft <id|none>), then activate at tomorrow\'s briefing (takes effect next day).' : 'activate to install (takes effect next day).'}`, true, res.def);
     }
     case 'smf': {
       const need = SMF_FEATURE[c.kind];
@@ -323,6 +334,8 @@ export function statusText(file: PlayFile): string {
   const asks = inquiriesView(run, sc(run)).pending;
   if (asks.length) out.push('waiting for replies: ' + asks.map((p) => `${p.who}: ${p.question}${p.workloadId ? ` (${p.workloadId})` : ''}`).join('; '));
   const planned = v.changes.filter((c) => c.status === 'PLANNED');
+  const projs = v.projects.filter((p) => p.hoursDone > 0);
+  if (projs.length) out.push('projects: ' + projs.map((p) => (p.done ? `${p.id} done` : `${p.id} ${p.hoursDone}/${p.hours}h (${p.hoursToday}/${p.maxHoursPerDay}h today)`)).join('; '));
   if (planned.length) out.push('planned changes: ' + planned.map((c) => `#${c.id} ${c.label} (day ${c.activateDay + 1})`).join('; '));
   if (v.draft) out.push('draft options: ' + v.draft.map((d) => `${d.id}: ${d.title}. ${d.description}`).join('\n  '));
   if (v.reports.length) {
@@ -392,8 +405,13 @@ export function catalogText(file: PlayFile): string {
   out.push(`  workloads: ${iq.apps.map((a) => a.id).join(' ')}`);
   out.push('projects (project ID hours; engineer-hours spread over days):');
   for (const p of projectsView(file.run)) out.push(`  ${p.id}${p.done ? ' [done]' : ''}: ${p.name}, ${p.hoursDone}/${p.hours}h, max ${p.maxHoursPerDay}h/day. ${p.description}`);
-  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> | CPC <lparId> PRSM_DELAY|CAPPED | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
+  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> | CPC <lparId> PRSM_DELAY|CAPPED [interval id, as in Partition Data] | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
   out.push(`  metrics: ${Object.keys(EVIDENCE_METRICS).join(' ')}`);
+  const cfg = file.run.sim.config;
+  out.push('change targets (current config):');
+  out.push(`  LPARs: ${cfg.lpars.map((l) => l.id).join(' ')}`);
+  out.push(`  CICS regions (SET_CICS name; MXT = maxTasks): ${cfg.cics.map((r) => `${r.name}@${r.lparId} MXT ${r.maxTasks}`).join(', ') || 'none'}`);
+  out.push(`  Db2 (SET_DB2 ssid): ${cfg.db2.map((d) => `${d.ssid} MAXDBAT ${d.maxDbat}, BP ${d.bufferPoolGb} GB`).join(', ') || 'none'}`);
   out.push('Config/WLM commands for change {"label":..,"commands":[...]}: see the Command type in src/sim/core/commands.ts; WLM edits: WlmEdit in src/game/wlmEdit.ts');
   return out.join('\n');
 }

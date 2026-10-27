@@ -47,6 +47,9 @@ describe('evidence pins', () => {
     const iv = regressed.sim.rmf.intervals.length - 1;
     const w = pin(r, { source: 'WLMGL', index: iv, system: '*PLEX', scKey: 'ONLHI#1', metric: 'APPL' });
     expect(w.pins.at(-1)!.source).toBe('WLMGL');
+    const c = pin(r, { source: 'CPC', index: iv, lparId: 'PROD1', metric: 'CAPPED' }).pins.at(-1)!;
+    expect(c.tick).toBe(regressed.sim.rmf.intervals[iv]!.endTick);
+    expect(c.value).toBe(regressed.sim.rmf.intervals[iv]!.cpu.find((x) => x.lparId === 'PROD1')!.cappedPct);
   });
 
   it('keeps at most the configured number of pins', () => {
