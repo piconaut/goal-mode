@@ -10,6 +10,8 @@ import { instanceClock } from '../src/sim/core/step';
 import { STRATEGIES } from './strategies';
 import { decideTfp } from '../src/game/tfp';
 import { writeSpectateFile } from './spectateFile';
+import { buyTool, noteReportOpened } from '../src/game/tools';
+import { INSIGHT, TOOLS } from '../src/content/tools';
 
 function arg(name: string, dflt: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -43,6 +45,27 @@ function spectate(r: RunState) {
   if (paceSec > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, paceSec * 1000);
 }
 
+/**
+ * `--reader`: a curious player's Insight habits on top of any bot, so Insight balance shows up in bot numbers.
+ * Opens the day's capped number of reports each briefing and buys tools in catalog order (cheap tier 1 first, as
+ * the playtesters did) whenever the next one is affordable; `toolDays` says when CICS_MON (playtest finding D) came.
+ */
+const reader = process.argv.includes('--reader');
+const READER_KINDS = ['WLMGL', 'PARTITION', 'CF', 'DASD', 'SYSINFO', 'DELAY', 'CPC'];
+const READER_ORDER = TOOLS.filter((t) => !t.comingSoon).map((t) => t.id);
+const toolDays: Record<string, number> = {};
+function readerBriefing(r: RunState): RunState {
+  for (const kind of READER_KINDS.slice(0, INSIGHT.reportCapPerDay)) r = noteReportOpened(r, `${kind}:${r.day}`);
+  for (const id of READER_ORDER) {
+    if (r.tools.includes(id)) continue;
+    const out = buyTool(r, scenario, id);
+    if (!out.ok) break;
+    r = out.run;
+    toolDays[id] = r.day + 1;
+  }
+  return r;
+}
+
 const difficulty = arg('difficulty', 'NORMAL').toUpperCase() as import('../src/content/difficulty').DifficultyId;
 let run: RunState = newRun(scenario, content, seed, difficulty);
 const t0 = performance.now();
@@ -51,6 +74,7 @@ console.log('day  overall  ' + (content.facets?.map((x) => x.id) ?? FACETS).map(
 while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
   if (run.phase === 'BRIEFING') {
     run = bot.briefing(run, scenario, content);
+    if (reader) run = readerBriefing(run);
     if (tfp === 'sign' && run.tfpOffer?.status === 'OFFERED') run = decideTfp(run, true).run;
     run = startDay(run, content);
     spectate(run);
@@ -103,6 +127,8 @@ if (process.argv.includes('--json')) {
         incidents: run.incidents.length,
         byMechanism: byMech,
         batchMisses: run.reports.filter((r) => r.batchMissed).length,
+        insight: run.insight,
+        ...(reader ? { toolDays } : {}),
         events: [...new Set(run.events.filter((e) => e.started).map((e) => e.defId))].sort(),
       }),
   );
