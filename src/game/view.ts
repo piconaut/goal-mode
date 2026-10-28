@@ -98,6 +98,7 @@ export interface ReportRef {
 export interface ConfigView {
   lpars: {
     id: string;
+    cpcId: string;
     kind: 'ZOS' | 'CF';
     cpLogical: number;
     cpReserved: number;
@@ -394,6 +395,7 @@ function configView(run: RunState, scenario: Scenario): ConfigView {
       const zi = l.pools.find((p) => p.pool === 'ZIIP');
       return {
         id: l.id,
+        cpcId: l.cpcId,
         kind: l.kind,
         cpLogical: cp?.logical ?? 0,
         cpReserved: cp?.reserved ?? 0,

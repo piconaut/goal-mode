@@ -396,8 +396,26 @@ function Enclave({ m, system }: { m: Mon3View; system: string }) {
 }
 
 function Cpc({ m, system, game }: { m: Mon3View; system: string; game: GameHandle | null }) {
-  const heads = m.cpcHeaders.filter((h) => system === '*PLEX' || h.lparId === system);
-  const zos = m.cpc.filter((c) => c.kind === 'ZOS');
+  const ids = [...new Set(m.cpc.map((c) => c.cpcId))];
+  if (ids.length <= 1) return <CpcTables m={m} system={system} game={game} cpcId={null} />;
+  return (
+    <>
+      {ids.map((id) => (
+        <section key={id} style={{ marginTop: 12 }}>
+          <h4 style={{ margin: '0 0 4px' }}>CPC {id}</h4>
+          <CpcTables m={m} system={system} game={game} cpcId={id} />
+        </section>
+      ))}
+    </>
+  );
+}
+
+function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; game: GameHandle | null; cpcId: string | null }) {
+  const inCpc = (x: { cpcId: string }) => cpcId === null || x.cpcId === cpcId;
+  const heads = m.cpcHeaders.filter((h) => inCpc(h) && (system === '*PLEX' || h.lparId === system));
+  const cpcRows = m.cpc.filter(inCpc);
+  const zos = cpcRows.filter((c) => c.kind === 'ZOS');
+  const ratio = cpcId === null ? m.logicalToPhysical : m.logicalToPhysicalByCpc[cpcId] ?? 0;
   return (
     <>
       <table>
@@ -444,7 +462,7 @@ function Cpc({ m, system, game }: { m: Mon3View; system: string; game: GameHandl
         </thead>
         <tbody>
           {(['ZOS', 'CF'] as const).map((kind) => {
-            const part = m.cpc.filter((c) => c.kind === kind);
+            const part = cpcRows.filter((c) => c.kind === kind);
             if (part.length === 0) return null;
             const sum = (f: (c: Mon3Cpc) => number) => part.reduce((a, c) => a + f(c), 0);
             return [
@@ -504,8 +522,8 @@ function Cpc({ m, system, game }: { m: Mon3View; system: string; game: GameHandl
           ))}
         </tbody>
       </table>
-      <div className={m.logicalToPhysical > 2 ? 'err' : 'muted'} style={{ fontSize: 12, marginTop: 4 }}>
-        Logical:physical (shared z/OS CPs) {m.logicalToPhysical.toFixed(2)}:1{m.logicalToPhysical > 2 ? ', above the 2:1 rule of thumb' : ''}. *PR/SM delay is the game's direct reading of the short-engine wait; on a real system you infer it from MVS Util% above CPU Util%.
+      <div className={ratio > 2 ? 'err' : 'muted'} style={{ fontSize: 12, marginTop: 4 }}>
+        Logical:physical (shared z/OS CPs) {ratio.toFixed(2)}:1{ratio > 2 ? ', above the 2:1 rule of thumb' : ''}. *PR/SM delay is the game's direct reading of the short-engine wait; on a real system you infer it from MVS Util% above CPU Util%.
       </div>
     </>
   );
