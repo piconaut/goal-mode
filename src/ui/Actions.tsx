@@ -796,7 +796,16 @@ function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) {
 
 const draftFor = (desk: Desk, target: string): Command | undefined => desk.basket.find((c) => commandTarget(c) === target);
 
-const Was = ({ children }: { children: ReactNode }) => <span className="was">was {children}</span>;
+/**
+ * "was <live value>" next to a drafted control. It is always rendered so table columns size for it up front and nothing
+ * shifts when a draft starts; until then it is invisible and has no height (where a column is too narrow it wraps onto a
+ * line of its own, which only takes room once the draft shows it).
+ */
+const Was = ({ shown = true, children }: { shown?: boolean; children: ReactNode }) => (
+  <span className={shown ? 'was' : 'was idle'} aria-hidden={!shown}>
+    was {children}
+  </span>
+);
 
 /**
  * One of a few values (or on/off). Picking a value drafts it into the change request; picking the live value again drops the
@@ -836,7 +845,7 @@ function DraftChoice<T>({
           {o.text}
         </button>
       ))}
-      {d && liveText && <Was>{liveText}</Was>}
+      {liveText && <Was shown={!!d}>{liveText}</Was>}
     </span>
   );
 }
@@ -886,7 +895,7 @@ function DraftNumber<T extends number | null = number>({
   return (
     <span className={d ? 'draft drafted' : 'draft'}>
       <input aria-label={label} aria-invalid={err !== null} value={text} onChange={(e) => onChange(e.target.value)} size={size} inputMode="numeric" placeholder={blank} />
-      {d && <Was>{live === null ? blank : format(live)}</Was>}
+      <Was shown={!!d}>{live === null ? blank : format(live)}</Was>
       {err && <span className="err">{err}</span>}
     </span>
   );
