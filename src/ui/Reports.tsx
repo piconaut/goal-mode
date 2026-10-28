@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import type { ViewModel } from '../game/view';
 import type { ReportKind } from '../worker/protocol';
 import type { GameHandle } from './useGame';
+import { Empty } from './Empty';
 
 const KINDS: { kind: ReportKind; label: string }[] = [
   { kind: 'WLM_SUMMARY', label: 'Workload Activity' },
@@ -30,10 +31,10 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
     return (
       <div className="panel">
         <h3>RMF Postprocessor</h3>
-        <div className="muted">
+        <Empty>
           No reports yet. SMF data is post-processed overnight: yesterday&apos;s intervals become available at the end of each day. (Live
           monitoring with RMF Monitor III is an analytics upgrade.)
-        </div>
+        </Empty>
       </div>
     );
   }

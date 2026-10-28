@@ -197,7 +197,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - 2026-10-28, PR 1: `tools/screenshot.mjs` launches the pre-installed Chromium (`<outDir> [light|dark|3270] [--all]`);
     Change Desk "Systems, CF & I/O": DASD, Db2, MQ and CICS are setting rows in a column grid (name, input, now,
     actions) and Db2, MQ and CICS are separate sections. UI only; bench hashes unchanged.
-    Still open: "?" hint labels, empty states, locked-view buttons, spacing, Ops Console column
+  - 2026-10-28, PR 2: Codex "?" hints are labelled pills ("? PI", "? velocity", ...) in one `.hints` group after each
+    title; one `Empty` style for every panel's empty state (Operations log and Inbox had none); the locked-view notes
+    ("Analytics tab") are buttons that switch tab (callback from `App.tsx`); tabs share one `.page` gap instead of
+    per-panel margins; Ops Console: Incidents, Operations log and Batch window stacked in one column. UI only.
+    Not done: phone-width pass on the new setting rows (they scroll sideways inside their panel)
 - [x] Multi-CPC views (user request 2026-10-28; done: Mon III CPC report shows a section per CPC with its own L:P, HMC LPAR picker groups by CPC; single-CPC scenarios unchanged): when the estate has more than one CPC (Harbourline), the Monitor III
   CPC report and the HMC show a separate table per CPC (its own capacity, MSU, capping and partitions), not one list
   of every LPAR

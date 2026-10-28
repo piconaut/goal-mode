@@ -4,6 +4,7 @@ import { goalText } from '../sim/wlm/goals';
 import type { Goal, Importance, PeriodDef, ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 import type { CicsGoalIssue } from '../game/wlmEdit';
 import { CodexHints } from './CodexHint';
+import { Empty } from './Empty';
 import type { GameHandle } from './useGame';
 
 const IMPS: Importance[] = [1, 2, 3, 4, 5];
@@ -321,7 +322,7 @@ function NewClass({ taken, send }: { taken: string[]; send: (e: Edit) => void })
 }
 
 function ResourceGroups({ groups, defs, send }: { groups: ResourceGroupDef[]; defs: ServiceClassDef[]; send: (e: Edit) => void }) {
-  if (groups.length === 0) return <div className="muted" style={{ fontSize: 12 }}>No resource groups. Create one from a class&apos;s editor (Resource group › new group…).</div>;
+  if (groups.length === 0) return <Empty>No resource groups. Create one from a class&apos;s editor (Resource group › new group…).</Empty>;
   return (
     <>
       <h4>Resource groups</h4>

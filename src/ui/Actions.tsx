@@ -16,6 +16,7 @@ import type { Qualifier, SubsystemType, WorkAttributes } from '../sim/wlm/types'
 import { RulesView } from './RulesView';
 import { WhatIf } from './WhatIf';
 import type { GameHandle } from './useGame';
+import { Empty } from './Empty';
 
 /** Everything a control needs to preview, stage or apply a change. */
 interface Desk {
@@ -299,7 +300,7 @@ function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
             : 'Changes can be made during the briefing or the live day.'}{' '}
         {v.constraints.includes('FREEZE') && <span className="tag bad">CHANGE FREEZE</span>} Hours left: {v.hoursLeft.toFixed(1)} · fatigue {v.fatigue.toFixed(0)}
       </div>
-      {days.length === 0 && <div className="muted" style={{ marginTop: 8 }}>Nothing planned.</div>}
+      {days.length === 0 && <Empty>Nothing planned.</Empty>}
       {days.map((d) => (
         <div key={d} style={{ marginTop: 8 }}>
           <div className="muted" style={{ fontSize: 12 }}>
@@ -1027,7 +1028,7 @@ const MQ_COLS = 'minmax(150px, 1.4fr) 100px 90px minmax(150px, 2fr)';
 
 function MqSection({ desk }: { desk: Desk }) {
   const { mq } = desk.cfg;
-  if (mq.length === 0) return <div className="muted">No MQ queues in this estate.</div>;
+  if (mq.length === 0) return <Empty>No MQ queues in this estate.</Empty>;
   return (
     <>
       <div className="stack-x">
@@ -1368,7 +1369,7 @@ function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
   const incidentOpen = v.previewCtx.incidentOpen;
   return (
     <>
-      {v.batch.abended.length === 0 && <div className="muted">No abended jobs.</div>}
+      {v.batch.abended.length === 0 && <Empty>No abended jobs.</Empty>}
       {v.batch.abended.map((a) => {
         const commands: Command[] = [{ kind: 'RESTART_JOB', day: a.day, name: a.name }];
         const p = preview(v, { commands });

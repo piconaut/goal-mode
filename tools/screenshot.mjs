@@ -14,7 +14,7 @@ page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
 await page.addInitScript((t) => {
   try {
-    localStorage.setItem('goalmode.theme', JSON.stringify(t));
+    localStorage.setItem('goalmode.theme', t);
   } catch {
     // Storage blocked: the OS colour scheme applies.
   }

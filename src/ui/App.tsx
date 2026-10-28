@@ -20,6 +20,7 @@ import { Tutorial } from './Tutorial';
 import { AUTO_SPEED } from '../worker/protocol';
 import { hourTick, pagerChime } from './sound';
 import { idText } from '../game/ids';
+import { Empty } from './Empty';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
@@ -60,20 +61,22 @@ export function App() {
         )}
       </div>
       <ErrorBoundary key={tab} where={`${tab} tab`} onReset={() => setTab('console')}>
-      {tab === 'console' && <Console v={v} history={game.history} />}
-      {tab === 'monitor' && <Monitor v={v} game={game} />}
-      {tab === 'reports' && (
-        <>
-          <Reports v={v} game={game} />
-          <Smf v={v} game={game} />
-          <EvidenceBoard v={v} game={game} />
-        </>
-      )}
-      {tab === 'changes' && <Actions v={v} game={game} />}
-      {tab === 'analytics' && <Analytics v={v} game={game} />}
-      {tab === 'finance' && <Finance v={v} game={game} />}
-      {tab === 'codex' && <Codex v={v} />}
-      {tab === 'inbox' && <Inbox v={v} game={game} />}
+      <div className="page">
+        {tab === 'console' && <Console v={v} history={game.history} />}
+        {tab === 'monitor' && <Monitor v={v} game={game} openAnalytics={() => setTab('analytics')} />}
+        {tab === 'reports' && (
+          <>
+            <Reports v={v} game={game} />
+            <Smf v={v} game={game} openAnalytics={() => setTab('analytics')} />
+            <EvidenceBoard v={v} game={game} />
+          </>
+        )}
+        {tab === 'changes' && <Actions v={v} game={game} />}
+        {tab === 'analytics' && <Analytics v={v} game={game} />}
+        {tab === 'finance' && <Finance v={v} game={game} />}
+        {tab === 'codex' && <Codex v={v} />}
+        {tab === 'inbox' && <Inbox v={v} game={game} />}
+      </div>
       </ErrorBoundary>
       {!game.spectate && <Tutorial v={v} />}
       <ErrorBoundary where="briefing / review" onReset={() => setOverlayOpen(false)}>
@@ -401,54 +404,58 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
         </div>
       </div>
 
-      <div className="panel">
-        <h3>Batch window</h3>
-        <div className="row">
-          <span>Critical path projected end</span>
-          <b className="num" style={{ color: v.batch.atRisk ? 'var(--crit)' : 'var(--text)' }}>{v.batch.projectedCriticalEnd ?? '—'}</b>
-        </div>
-        <div className="row">
-          <span>Deadline</span>
-          <b className="num">{v.batch.deadline}</b>
-        </div>
-        <div className="row muted">
-          <span>
-            running {v.batch.running} · queued {v.batch.queued} · held {v.batch.held} · done {v.batch.done}
-          </span>
-        </div>
-        {v.batch.abended.map((a) => (
-          <div className="row" key={`${a.day}:${a.name}`}>
-            <span className="tag bad">ABEND {a.name}</span>
-            <span className="muted">restart from the Change Desk</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="panel">
-        <h3>Incidents</h3>
-        {v.incidents.length === 0 && <div className="muted">No SLA breaches yet.</div>}
-        {[...v.incidents].reverse().slice(0, 12).map((i) => (
-          <div className="row" key={i.id}>
-            <span>
-              {idText('incident', i.id)} {i.workloadId} <span className="muted">day {i.day + 1}</span>
-            </span>
-            <span className={`tag ${i.endTick === null ? 'bad' : 'warn'}`}>
-              {i.endTick === null ? 'OPEN' : 'closed'} · {i.hours}h · worst {i.worstAttainmentPct.toFixed(0)}%
-            </span>
-            {i.aiops?.[0] && (
-              <span className="muted" style={{ fontSize: 11 }} title="AIOps top hypothesis (can be wrong)">
-                AIOps: {i.aiops[0].mechanism} ({Math.round(i.aiops[0].confidence * 100)}%)
+      <div className="stack">
+        <div className="panel">
+          <h3>Incidents</h3>
+          {v.incidents.length === 0 && <Empty>No SLA breaches yet.</Empty>}
+          {[...v.incidents].reverse().slice(0, 12).map((i) => (
+            <div className="row" key={i.id}>
+              <span>
+                {idText('incident', i.id)} {i.workloadId} <span className="muted">day {i.day + 1}</span>
               </span>
-            )}
+              <span className={`tag ${i.endTick === null ? 'bad' : 'warn'}`}>
+                {i.endTick === null ? 'OPEN' : 'closed'} · {i.hours}h · worst {i.worstAttainmentPct.toFixed(0)}%
+              </span>
+              {i.aiops?.[0] && (
+                <span className="muted" style={{ fontSize: 11 }} title="AIOps top hypothesis (can be wrong)">
+                  AIOps: {i.aiops[0].mechanism} ({Math.round(i.aiops[0].confidence * 100)}%)
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="panel">
+          <h3>Operations log</h3>
+          {v.log.length === 0 ? (
+            <Empty>Nothing logged yet today.</Empty>
+          ) : (
+            <div className="log">
+              {[...v.log].reverse().map((l, i) => (
+                <div key={i}>{l}</div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div className="panel">
+          <h3>Batch window</h3>
+          <div className="row">
+            <span>Critical path projected end</span>
+            <b className="num" style={{ color: v.batch.atRisk ? 'var(--crit)' : 'var(--text)' }}>{v.batch.projectedCriticalEnd ?? '—'}</b>
           </div>
-        ))}
-      </div>
-
-      <div className="panel">
-        <h3>Operations log</h3>
-        <div className="log">
-          {[...v.log].reverse().map((l, i) => (
-            <div key={i}>{l}</div>
+          <div className="row">
+            <span>Deadline</span>
+            <b className="num">{v.batch.deadline}</b>
+          </div>
+          <div className="row muted">
+            <span>
+              running {v.batch.running} · queued {v.batch.queued} · held {v.batch.held} · done {v.batch.done}
+            </span>
+          </div>
+          {v.batch.abended.map((a) => (
+            <div className="row" key={`${a.day}:${a.name}`}>
+              <span className="tag bad">ABEND {a.name}</span>
+              <span className="muted">restart from the Change Desk</span>
+            </div>
           ))}
         </div>
       </div>
@@ -461,6 +468,7 @@ function Inbox({ v, game }: { v: ViewModel; game: GameHandle }) {
     <div className="panel">
       <AskAround v={v} game={game} />
       <h3>Inbox</h3>
+      {v.inbox.length === 0 && <Empty>No messages yet.</Empty>}
       {[...v.inbox].reverse().map((m, i) => (
         <div key={i} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
           <div className="row">

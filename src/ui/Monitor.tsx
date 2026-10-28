@@ -13,6 +13,7 @@ import { TICKS_PER_HOUR } from '../sim/core/units';
 import { formatClock } from '../sim/core/clock';
 import { MON3_HISTORY } from '../content/tools';
 import type { Mon3HistoryRange } from '../game/mon3History';
+import { AnalyticsLink, Empty } from './Empty';
 
 type View3 = 'SYSSUM' | 'SYSINFO' | 'DELAY' | 'PROCU' | 'ENCLAVE' | 'CPC' | 'WFEX' | 'WLM';
 // Report contents follow z/OS RMF Report Analysis (SC34-2665), "Interactive performance analysis with Monitor III".
@@ -42,7 +43,7 @@ const ms = (x: number | null) => (x === null ? '-' : x < 100_000 ? x.toFixed(0) 
 const sameClass = (rows: Mon3Row[], i: number) => i > 0 && rows[i - 1]!.serviceClass === rows[i]!.serviceClass;
 
 /** RMF Monitor III live views (unlocked by the Monitor III tool). */
-export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
+export function Monitor({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle; openAnalytics: () => void }) {
   const [view, setView] = useState<View3>('SYSSUM');
   const [system, setSystem] = useState('*PLEX');
   /** Tick of the past interval on screen; null = live. */
@@ -59,14 +60,16 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
     return (
       <div className="panel">
         <h3>RMF Monitor III</h3>
-        <div className="muted">Live views need the RMF Monitor III tool (Analytics tab). Until then you diagnose from yesterday's Postprocessor reports.</div>
+        <Empty>
+          Live views need the RMF Monitor III tool (<AnalyticsLink open={openAnalytics} />). Until then you diagnose from yesterday's Postprocessor reports.
+        </Empty>
       </div>
     );
   const systems = ['*PLEX', ...(m ?? v.mon3).systems.map((s) => s.system)];
   return (
     <>
     {/* Charts (when unlocked) sit above the live views; the locked teaser stays below. */}
-    {v.mon3Charts && <Mon3Charts v={v} game={game} />}
+    {v.mon3Charts && <Mon3Charts v={v} game={game} openAnalytics={openAnalytics} />}
     <div className="panel">
       <h3>
         RMF Monitor III · {at === null ? v.clock : past ? `${formatClock(past.tick)} (history)` : '…'} · Range: {(m ?? v.mon3).rangeSec} Sec · Policy: {(m ?? v.mon3).policy}
@@ -101,8 +104,8 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
         {view === 'WLM' && <WlmLog lines={v.wlmLog} />}
       </div>}
     </div>
-    {!v.mon3Charts && <Mon3Charts v={v} game={game} />}
-    <Alerts v={v} game={game} />
+    {!v.mon3Charts && <Mon3Charts v={v} game={game} openAnalytics={openAnalytics} />}
+    <Alerts v={v} game={game} openAnalytics={openAnalytics} />
     <Automation v={v} game={game} />
     <EvidenceBoard v={v} game={game} />
     </>
@@ -267,7 +270,7 @@ function SysInfo({ m, system }: { m: Mon3View; system: string }) {
 
 function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null }) {
   const top = [...rows].filter((r) => r.delayFrac + r.unknownFrac > 0.005).sort((a, b) => b.delayFrac - a.delayFrac || (a.scKey < b.scKey ? -1 : 1));
-  if (top.length === 0) return <div className="muted">Nobody is waiting.</div>;
+  if (top.length === 0) return <Empty>Nobody is waiting.</Empty>;
   return (
     <table>
       <thead>
@@ -587,7 +590,7 @@ function Wfex({ m, system }: { m: Mon3View; system: string }) {
 
 function WlmLog({ lines }: { lines: string[] }) {
   const [open, setOpen] = useState<number | null>(null);
-  if (lines.length === 0) return <div className="muted">No WLM decisions yet.</div>;
+  if (lines.length === 0) return <Empty>No WLM decisions yet.</Empty>;
   const rev = [...lines].reverse();
   return (
     <div className="log">

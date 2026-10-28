@@ -6,6 +6,7 @@ import type { ViewModel } from '../game/view';
 import type { SmfKind } from '../worker/protocol';
 import { PinButton } from './Evidence';
 import type { GameHandle } from './useGame';
+import { AnalyticsLink, Empty } from './Empty';
 
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
   { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF), and DBAT queueing.' },
@@ -19,7 +20,7 @@ const ratio = (r: number | null) =>
   r === null ? <span className="muted">-</span> : <span className={r > 1.5 ? 'err' : r > 1.15 ? '' : 'muted'} style={r > 1.15 && r <= 1.5 ? { color: 'var(--warn)' } : undefined}>×{r.toFixed(2)}</span>;
 
 /** SMF-based deep data (tier 2 tools). */
-export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
+export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle; openAnalytics: () => void }) {
   const owned = KINDS.filter((k) => v.features.includes(SMF_FEATURE[k.kind]));
   const [kind, setKind] = useState<SmfKind | null>(null);
   const [hour, setHour] = useState('');
@@ -31,14 +32,16 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
   }, [k, h, refresh, game]);
   if (owned.length === 0)
     return (
-      <div className="panel" style={{ marginTop: 12 }}>
+      <div className="panel">
         <h3>SMF analytics</h3>
-        <div className="muted">Db2 accounting, CICS monitoring, batch job analytics and CPU MF counters are tier-2 tools on the Analytics tab.</div>
+        <Empty>
+          Db2 accounting, CICS monitoring, batch job analytics and CPU MF counters are tier-2 tools on the <AnalyticsLink open={openAnalytics} />.
+        </Empty>
       </div>
     );
   const d = game.smf && game.smf.kind === k ? game.smf : null;
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div className="panel">
       <h3>
         SMF analytics
         <CodexHints ids={['smf113']} />
@@ -208,7 +211,7 @@ function Gantt({ n, game }: { n: BatchNight; game: GameHandle }) {
   const [stream, setStream] = useState('');
   const streams = [...new Set(n.jobs.map((j) => j.stream))].sort();
   const jobs = n.jobs.filter((j) => !stream || j.stream === stream);
-  if (jobs.length === 0) return <div className="muted">No jobs.</div>;
+  if (jobs.length === 0) return <Empty>No jobs.</Empty>;
   const t0 = Math.min(...jobs.map((j) => j.queuedAtSec));
   const t1 = Math.max(...jobs.map((j) => j.endSec));
   const span = Math.max(60, t1 - t0);

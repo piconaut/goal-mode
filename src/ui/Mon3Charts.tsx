@@ -4,6 +4,7 @@ import type { ViewModel } from '../game/view';
 import { formatClock } from '../sim/core/clock';
 import { LineChart, type Series } from './LineChart';
 import type { GameHandle } from './useGame';
+import { AnalyticsLink, Empty } from './Empty';
 
 const color = (i: number) => (i < 8 ? `var(--series-${i + 1})` : 'var(--muted)');
 const MAX_PICKED = 8;
@@ -19,7 +20,7 @@ const DELAYS: { key: keyof Mon3Sample['delay'][string]; label: string }[] = [
 ];
 
 /** Monitor III charting tool: today's Mon III history with markers, shared zoom. */
-export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
+export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle; openAnalytics: () => void }) {
   const meta = v.mon3Charts;
   const { samples: all, markers: allMarkers } = game.charts;
   useEffect(() => {
@@ -46,9 +47,11 @@ export function Mon3Charts({ v, game }: { v: ViewModel; game: GameHandle }) {
   const importance = useMemo(() => Object.fromEntries((v.mon3?.rows ?? []).filter((r) => r.system === '*PLEX').map((r) => [r.scKey, r.importance])), [v.mon3]);
   if (!meta)
     return (
-      <div className="panel" style={{ marginTop: 12 }}>
+      <div className="panel">
         <h3>Charts</h3>
-        <div className="muted">Charting today’s Monitor III data is a tier-2 tool (Monitor III charting) on the Analytics tab.</div>
+        <Empty>
+          Charting today’s Monitor III data is a tier-2 tool (Monitor III charting) on the <AnalyticsLink open={openAnalytics} />.
+        </Empty>
       </div>
     );
 
