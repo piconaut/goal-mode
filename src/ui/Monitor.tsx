@@ -9,6 +9,7 @@ import { Automation } from './Automation';
 import { EvidenceBoard, PinButton } from './Evidence';
 import { Mon3Charts } from './Mon3Charts';
 import type { GameHandle } from './useGame';
+import { TICKS_PER_HOUR } from '../sim/core/units';
 import { formatClock } from '../sim/core/clock';
 import { MON3_HISTORY } from '../content/tools';
 import type { Mon3HistoryRange } from '../game/mon3History';
@@ -51,8 +52,9 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
   }, [at, game.send]);
   const past = at === null ? null : game.mon3At;
   const m = at === null ? v.mon3 : (past?.view ?? null);
-  // Pins read live values, so they are offered on the live views only.
-  const pins = at === null ? game : null;
+  // A pin on a past range carries its end tick; the worker reads that range from its history.
+  const pins: GameHandle | null =
+    at === null ? game : past ? { ...game, send: (msg) => game.send(msg.type === 'PIN' && (msg.req.source === 'MON3' || msg.req.source === 'CPC') ? { ...msg, req: { ...msg.req, tick: past.tick } } : msg) } : null;
   if (!v.mon3)
     return (
       <div className="panel">
@@ -115,7 +117,7 @@ function TimeBar({ range, at, setAt }: { range: Mon3HistoryRange; at: number | n
   const fwd = () => (at === null || at + step > range.lastTick ? setAt(null) : setAt(at + step));
   return (
     <div className="form" aria-label="Monitor III time">
-      <button onClick={() => back(36)} disabled={cur <= range.firstTick} title="Back one hour">
+      <button onClick={() => back(Math.round(TICKS_PER_HOUR / step))} disabled={cur <= range.firstTick} title="Back one hour">
         ◀◀
       </button>
       <button onClick={() => back(1)} disabled={cur <= range.firstTick} title="Back one interval (BREF)">

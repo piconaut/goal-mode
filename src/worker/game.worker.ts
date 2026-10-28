@@ -486,7 +486,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = submitRca(run, m.incidentId, m.mechanism, m.trigger, sc(), m.evidenceIds ?? []);
       break;
     case 'PIN': {
-      settle(addPin(run, sc(), m.req));
+      settle(addPin(run, sc(), m.req, (t) => mon3At(mon3Hist, t)));
       break;
     }
     case 'UNPIN':
