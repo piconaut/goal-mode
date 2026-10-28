@@ -1,5 +1,6 @@
 // Five-minute samples for the console charts (UI-side history; not part of the run).
 
+import { msuPerCp } from '../sim/hw/cpc';
 import type { RunState } from './types';
 
 export interface HistoryPoint {
@@ -8,6 +9,8 @@ export interface HistoryPoint {
   msu: Record<string, number>;
   r4ha: Record<string, number>;
   cpcBusyPct: number;
+  /** Installed general CP capacity per CPC (rises while On/Off CoD is active). */
+  capacityMsu: Record<string, number>;
 }
 
 export const HISTORY_EVERY_TICKS = 30;
@@ -22,5 +25,7 @@ export function samplePoint(run: RunState): HistoryPoint {
   const engines = sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
   const delivered = sim.lpars.reduce((a, l) => a + (l.pools.find((p) => p.pool === 'CP')?.deliveredEngines ?? 0), 0);
   const secOfDay = ((sim.tick * 10) / 3600 + 6) % 24;
-  return { tick: sim.tick, hourOfDay: secOfDay, msu, r4ha, cpcBusyPct: engines > 0 ? (100 * delivered) / engines : 0 };
+  const capacityMsu: Record<string, number> = {};
+  for (const c of sim.config.cpcs) capacityMsu[c.id] = c.engines.CP * msuPerCp(c);
+  return { tick: sim.tick, hourOfDay: secOfDay, msu, r4ha, cpcBusyPct: engines > 0 ? (100 * delivered) / engines : 0, capacityMsu };
 }

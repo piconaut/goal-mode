@@ -15,6 +15,9 @@ export interface EventDef {
   affects: string[];
   /** Mechanisms the card causes; RCA ground truth blames it only for incidents with one of these (absent = any). */
   mechanisms?: Mechanism[];
+  /** Ground truth for an incident its failures alone caused (the hurt workload's response time met its SLA, its
+   * error rate didn't): no delay grows, so the card names the mechanism (e.g. ROUTING for a sick region). */
+  failureMechanism?: Mechanism;
   /** Wall-clock start hour range and duration in hours (null = until fixed). Events with a
    * fix still end on their own eventually; fixing them early limits the damage. */
   startHour: [number, number];
@@ -122,7 +125,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     begin: [mod('rate', 'MOBILE', 2.5)],
     end: [mod('rate', 'MOBILE', 1)],
     fix: null,
-    forewarning: 'Digital: "Heads up, marketing is pushing a mobile promo tomorrow. Could be big."',
+    forewarning: 'Digital: "Heads up, marketing is pushing a mobile promo today. Could be big."',
     announcement: null,
     clue: 'DDF END/S jumps ×2–3 on both systems; CPU per transaction unchanged.',
   },
@@ -156,7 +159,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     begin: [mod('cpu', 'RBANK', 3)],
     end: [mod('cpu', 'RBANK', 1)],
     fix: 'REBIND_REVERT',
-    forewarning: 'Change board: "Db2 package REBINDs for the retail app are scheduled overnight."',
+    forewarning: 'Change board: "Db2 package REBINDs for the retail app ran overnight."',
     announcement: null,
     perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: 'EXPLAIN diff after last night\'s REBIND: package RB01 changed access path (index probe → tablespace scan). Expect more CPU per retail transaction.' },
     clue: 'ONLHI service per transaction ×3 (APPL% up, END/S flat). Db2 accounting by package would point at RB01.',
@@ -236,9 +239,30 @@ export const MIDWEST_EVENTS: EventDef[] = [
     begin: [mod('cpu', 'CARDAUTH', 1.06), mod('cpu', 'TELLER', 1.06), mod('cpu', 'PAYMQ', 1.06)],
     end: [mod('cpu', 'CARDAUTH', 1), mod('cpu', 'TELLER', 1), mod('cpu', 'PAYMQ', 1)],
     fix: 'SCOPE_ENCRYPTION',
-    forewarning: 'Regulator: "All customer data sets must be encrypted at rest from tomorrow. We will check the key labels."',
+    forewarning: 'Regulator: "All customer data sets must be encrypted at rest from today. We will check the key labels."',
     announcement: null,
     clue: 'WLMGL: CPU per transaction up ~6% on card auth, teller and payments from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
+  },
+  {
+    // Software vendors raise MLC list prices with notice; the new price applies to the whole bill of the month it
+    // takes effect in. APPROX: no proration within the month; TFP prices are contracted, so a TFP run is unaffected.
+    id: 'VENDOR_PRICE',
+    name: 'Vendor price increase',
+    category: 'ORG',
+    minDay: 10,
+    weight: 0.7,
+    trigger: 'POLICY',
+    affects: [],
+    startHour: [6, 6.5],
+    durationHours: null, // a list price stays; the fix negotiates it back
+    oncePerRun: true,
+    // FICTIONAL magnitude: MLC per-MSU +8% (SPEC §9.4).
+    begin: [{ kind: 'SET_MLC_PRICE', mult: 1.08 }],
+    end: [{ kind: 'SET_MLC_PRICE', mult: 1 }],
+    fix: 'NEGOTIATE_MLC_PRICE',
+    forewarning: 'Procurement: "The software vendor has announced an 8% rise in monthly licence charges, effective this month\'s bill."',
+    announcement: null,
+    clue: 'Finance tab / SCRT report: MLC month-to-date up ~8% with the same product peaks; no performance symptom. Fixes: negotiate a multi-year agreement (Finance trust), cut the peaks (caps, batch moves, tuning), or move to Tailored Fit Pricing (contracted prices).',
   },
   {
     // Facilities caps the data centre power budget: no temporary engines until the next budget period.
@@ -320,7 +344,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     minDay: 6,
     weight: 1,
     trigger: 'BATCH_OVERLAP',
-    affects: [],
+    affects: ['BATCH'],
+    mechanisms: ['IO'],
     startHour: [20.5, 22.5],
     durationHours: 3,
     // FICTIONAL magnitude: enough utility I/O on LCU 21's hot volumes to exhaust its 21 aliases.
@@ -337,8 +362,9 @@ export const MIDWEST_EVENTS: EventDef[] = [
     category: 'SOFTWARE',
     minDay: 1,
     weight: 2.5,
-    trigger: 'POLICY',
-    affects: [],
+    trigger: 'APPLICATION_ERROR',
+    affects: ['BATCH'],
+    mechanisms: ['JOB_FAILURE'],
     startHour: [21, 26],
     durationHours: 0,
     begin: [{ kind: 'ABEND_JOB', critical: true }],
@@ -423,7 +449,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
       { kind: 'SET_CICS', name: 'CICSAOR3', qrFrac: 0.6 },
     ],
     fix: 'ROLLBACK_TELLER_RELEASE',
-    forewarning: 'Change board: "Teller front-end release 4.2 goes into the PROD1 regions overnight."',
+    forewarning: 'Change board: "Teller front-end release 4.2 went into the PROD1 regions overnight."',
     announcement: null,
     clue: 'CICS report: QR wait per transaction up in CICSAOR1/3 (PROD1) only, CPU delay low; PROD2 regions fine. Routing more work to PROD2 or adding a region also helps.',
   },
@@ -442,7 +468,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     begin: [{ kind: 'ADD_WORKLOAD', workload: BOOKING_APP }],
     end: [],
     fix: null,
-    forewarning: 'Retail: "Branch booking goes live tomorrow, it\'s a small Java service, nothing to worry about."',
+    forewarning: 'Retail: "Branch booking goes live this morning, it\'s a small Java service, nothing to worry about."',
     announcement: null,
     clue: 'WLMGL: SYSOTHER service ≠ 0 on PROD1; the new work has no classification rule. Fixes: add a rule into a goal class, or a report class first to measure it.',
   },
@@ -505,7 +531,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     begin: [{ kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 0.3 }],
     end: [{ kind: 'SET_MODIFIER', mod: 'ziipEligMult', key: 'MOBILE', value: 1 }],
     fix: 'NATIVE_SQL_PROCS',
-    forewarning: 'Change board: "Mobile API stored procedures are being redeployed overnight (new COBOL versions)."',
+    forewarning: 'Change board: "Mobile API stored procedures were redeployed overnight (new COBOL versions)."',
     announcement: null,
     clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures, or absorb it (cap, more CP).',
   },

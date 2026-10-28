@@ -1,3 +1,4 @@
+import { BATCH_INCIDENT } from '../../src/game/sla';
 import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from '../../src/content/events/harbourline-events';
 import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
@@ -25,6 +26,16 @@ describe('Harbourline Bank pack', () => {
     expect(facetsOf(run)).toEqual(['Markets', 'Cards', 'Retail', 'Payments', 'Finance', 'Regulator']);
   });
 
+  it('the outgoing analyst points at the PRDA cap before the first market open, on every difficulty', () => {
+    const game = { ...pack.game, events: [] };
+    for (const d of ['STORY', 'NORMAL', 'HARD'] as const) {
+      const run = newRun(pack.scenario, game, 3, d);
+      const mail = run.inbox.find((m) => m.subject.startsWith('Handover'));
+      expect(mail?.body, d).toMatch(/PRDA.*absolute cap.*Partition Data/s);
+      expect(run.sim.config.lpars.find((l) => l.id === 'PRDA')!.pools.find((p) => p.pool === 'CP')!.absoluteCapEngines, d).not.toBeNull();
+    }
+  });
+
   it('plays a morning deterministically', () => {
     const game = { ...pack.game, events: [] };
     const play = () => advance(startDay(newRun(pack.scenario, game, 5), game), pack.scenario, game, 3 * TICKS_PER_HOUR);
@@ -35,7 +46,7 @@ describe('Harbourline Bank pack', () => {
     const ids = HARBOURLINE_EVENTS.map((e) => e.id);
     expect(new Set(ids).size).toBe(ids.length);
     for (const e of HARBOURLINE_EVENTS) {
-      for (const w of e.affects) expect(workloadIds, `${e.id} affects ${w}`).toContain(w);
+      for (const w of e.affects) expect([...workloadIds, BATCH_INCIDENT], `${e.id} affects ${w}`).toContain(w);
       for (const c of [...e.begin, ...e.end]) {
         if (c.kind === 'SET_MODIFIER' && c.mod === 'regionFailFrac') {
           const [w, l] = c.key.split('@');
@@ -103,7 +114,34 @@ describe('Harbourline per-CPC hardware', () => {
     expect(out.ok).toBe(true);
     expect(out.run.changes.at(-1)!.commands).toEqual([{ kind: 'SET_CPC_CAPACITY', cpcId: 'CPC2', capacitySetting: 6 }]);
     const cod = requestChange(r, pack.game, { label: 'CoD on CPC2', hardwareId: 'COD_CP', cpcId: 'CPC2' });
-    expect(cod.run.changes.at(-1)!.commands).toEqual([{ kind: 'SET_CPC_ENGINES', cpcId: 'CPC2', pool: 'CP', engines: 11 }]);
+    expect(cod.run.changes.at(-1)!.commands).toEqual([{ kind: 'ADD_CPC_ENGINES', cpcId: 'CPC2', pool: 'CP', delta: 1 }]);
+  });
+
+  it('a CoD lease that ends returns exactly the CP it added, even when leases overlap', () => {
+    let r = newRun(pack.scenario, { ...pack.game, events: [] }, 3);
+    const cps = () => r.sim.config.cpcs.find((x) => x.id === 'CPC1')!.engines.CP;
+    const start = cps();
+    const lease = () => r.changes.at(-1)!;
+    r = requestChange(r, pack.game, { label: 'CoD a', hardwareId: 'COD_CP', cpcId: 'CPC1' }).run;
+    const a = lease();
+    r = { ...r, sim: applyCommands(r.sim, a.commands) };
+    r = requestChange(r, pack.game, { label: 'CoD b', hardwareId: 'COD_CP', cpcId: 'CPC1' }).run;
+    const b = lease();
+    r = { ...r, sim: applyCommands(r.sim, b.commands) };
+    expect(cps()).toBe(start + 2);
+    r = { ...r, sim: applyCommands(r.sim, a.revertCommands) };
+    expect(cps()).toBe(start + 1);
+    r = { ...r, sim: applyCommands(r.sim, b.revertCommands) };
+    expect(cps()).toBe(start);
+  });
+
+  it('production images can bring reserved logical CPs online for new engines', () => {
+    const sim = newRun(pack.scenario, { ...pack.game, events: [] }, 3).sim;
+    for (const id of ['PRDA', 'PRDB', 'PRDC', 'PRDD']) {
+      const cp = sim.config.lpars.find((l) => l.id === id)!.pools.find((p) => p.pool === 'CP')!;
+      const next = applyCommands(sim, [{ kind: 'SET_LOGICAL', lparId: id, pool: 'CP', logical: cp.logical + 2 }]);
+      expect(next.config.lpars.find((l) => l.id === id)!.pools.find((p) => p.pool === 'CP')!.logical).toBe(cp.logical + 2);
+    }
   });
 });
 

@@ -159,11 +159,34 @@ describe('batch', () => {
     expect(j.progress).toBeCloseTo(TICK_SEC / (j.stretch * shape.elapsed));
   });
 
+  it('accounts lost elapsed time by cause, and a missed night sums it for its critical jobs', () => {
+    const def = job('J', [], { critical: true, deadlineSec: 100 });
+    const shape = jobShape(def, 0.6, 0.86, 0.0004);
+    const b = releaseNetwork(emptyBatch(), 0, [def]);
+    const j = b.jobs[0]!;
+    j.status = 'RUNNING';
+    j.lparId = 'SYSA';
+    j.startTick = 5;
+    j.queuedTick = 0;
+    advanceJob(j, shape, { cpWanted: shape.cpRate, cpGot: shape.cpRate / 2, ziipWanted: 0, ziipGot: 0, extraStretch: 1.5, lockStretch: 1.5, ioDelayFrac: 0.25 }, 5);
+    const lostSec = TICK_SEC * (1 - 1 / j.stretch);
+    expect(j.delaySec!.lock).toBeCloseTo(TICK_SEC / 3);
+    expect(j.delaySec!.db2).toBeCloseTo(0);
+    expect(j.delaySec!.cpu + j.delaySec!.lock).toBeCloseTo(lostSec);
+    expect(j.delaySec!.io).toBeGreaterThan(0);
+    j.abended = true;
+    const night = closeNight(b, 0, 10).nights[0]!;
+    expect(night.criticalDelaySec!.cpu).toBeCloseTo(j.delaySec!.cpu);
+    expect(night.criticalDelaySec!.init).toBeCloseTo(5 * TICK_SEC);
+    expect(night.criticalAbended).toEqual(['J']);
+    expect(night.criticalHosts).toEqual([{ lparId: 'SYSA', name: 'J', jobClass: 'A' }]);
+  });
+
   it('projects the critical path and records missed deadlines', () => {
     const b = releaseNetwork(emptyBatch(), 0, [job('A'), job('B', ['A']), job('C', ['B'], { deadlineSec: 100 })]);
     const proj = projectCriticalEnd(b.jobs, 0, 0, () => 1000);
     expect(proj).toBeCloseTo(3 * 1000 * 1.15);
-    const closed = closeNight(b, 0);
+    const closed = closeNight(b, 0, 0);
     expect(closed.nights[0]!.missedDeadline).toBe(true);
     expect(closed.nights[0]!.criticalEndSec).toBeNull();
   });
@@ -173,14 +196,14 @@ describe('batch', () => {
     b.jobs[0]!.status = 'DONE';
     b.jobs[0]!.endTick = 100;
     b.jobs[1]!.status = 'RUNNING';
-    const closed = closeNight(b, 0);
+    const closed = closeNight(b, 0, 0);
     expect(closed.nights[0]!.missedDeadline).toBe(true);
     closed.jobs.find((j) => j.def.name === 'B')!.status = 'DONE';
     promoteEligible(closed.jobs, 9000);
     expect(closed.jobs.find((j) => j.def.name === 'C')!.status).toBe('QUEUED');
     // Once the instance has nothing left, a later close drops it.
     for (const j of closed.jobs) j.status = 'DONE';
-    expect(closeNight(closed, 1).jobs).toEqual([]);
+    expect(closeNight(closed, 1, 8640).jobs).toEqual([]);
   });
 
   it('the generated network is deterministic and acyclic, with month-end extras', () => {

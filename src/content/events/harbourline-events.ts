@@ -6,7 +6,7 @@
 import type { Command } from '../../sim/core/commands';
 import { MIDWEST_EVENTS, type EventDef, type ScriptedBeat } from './midwest-events';
 
-const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
+const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
 
 const midwestCard = (id: string): EventDef => {
   const c = MIDWEST_EVENTS.find((e) => e.id === id);
@@ -37,6 +37,7 @@ const BANK_CARDS: EventDef[] = [
     weight: 2,
     trigger: 'POLICY',
     affects: ['MKTORD', 'CARDS'],
+    failureMechanism: 'ROUTING',
     startHour: [9, 15],
     durationHours: 5,
     // FICTIONAL: a third of the transactions routed to the sick region abend almost at once.
@@ -62,7 +63,7 @@ const BANK_CARDS: EventDef[] = [
     begin: [mod('rate', 'MKTORD', 1.6), mod('rate', 'MKTQRY', 1.6)],
     end: [mod('rate', 'MKTORD', 1), mod('rate', 'MKTQRY', 1)],
     fix: null,
-    forewarning: 'Markets desk: "Index rebalance tomorrow, and the central bank speaks at nine. Expect a heavy open."',
+    forewarning: 'Markets desk: "Index rebalance today, and the central bank speaks at nine. Expect a heavy open."',
     announcement: null,
     clue: 'Mon III SYSSUM (100 s range): MKTORD PI and CPU delay spike from 09:30 while the 15-minute WLMGL interval looks mild; MKTORD END/S up ×1.6 on every PRD image and CICS monitoring shows MXT waits. Fixes: headroom (On/Off CoD on CPC1), a percentile goal for MKTORD, an importance-1 CPU-critical class, CICS MAXTASKS, or lifting the PRDA absolute cap.',
   },
@@ -80,7 +81,7 @@ const BANK_CARDS: EventDef[] = [
     begin: [mod('rate', 'CARDS', 1.7), mod('rate', 'RETAIL', 1.2)],
     end: [mod('rate', 'CARDS', 1), mod('rate', 'RETAIL', 1)],
     fix: null,
-    forewarning: 'Cards: "Tomorrow is the big shopping holiday. Last year authorisations ran well above a normal Friday."',
+    forewarning: 'Cards: "Today is the big shopping holiday. Last year authorisations ran well above a normal Friday."',
     announcement: null,
     clue: 'CARDS END/S ×1.7 from mid-morning with CPU per transaction unchanged; the 99%-in-0.15 s goal is tight, so CARDS PI creeps up on the busiest images (Mon III SYSSUM, WLMGL). Fixes: headroom, CICS MAXTASKS on the AORs, or protect CARDS at importance 1.',
   },
@@ -88,7 +89,7 @@ const BANK_CARDS: EventDef[] = [
 
 const HB_CARDS: EventDef[] = [
   adapt('CAMPAIGN', {
-    forewarning: 'Digital: "Heads up, marketing is pushing a mobile promo tomorrow. Could be big."',
+    forewarning: 'Digital: "Heads up, marketing is pushing a mobile promo today. Could be big."',
     clue: 'DDF END/S for the mobile channel jumps ×2–3 on all four PRD images; CPU per transaction unchanged.',
   }),
   adapt('RUNAWAY', {
@@ -142,6 +143,8 @@ export const HARBOURLINE_EVENTS: EventDef[] = [
 
 export const HARBOURLINE_STORY: ScriptedBeat[] = [
   { day: 0, id: 'WELCOME', from: 'CIO', title: 'Welcome to Harbourline', body: 'Two CPCs, fifteen kilometres apart, one sysplex, and a trading floor that notices every missed second. Analytics are in place; reading them across images is the job.' },
+  // Day-1 clue for the PRDA absolute cap (B1): the 09:00 market open can hit it before any diagnosis is possible.
+  { day: 0, id: 'HANDOVER', from: 'Outgoing analyst', title: 'Handover. Read this before nine.', body: "They've walked me out, so this is all you get. The trading floor bleeds out at 09:00 every morning: Markets screams first, then Cards, then it goes quiet and nobody says anything. PRDA has carried an absolute cap since before anyone remembers, nailed on to keep DEV1 off its throat. I never proved the two were connected. I never got the chance. RMF Partition Data, around nine. Look at it. Don't look away like I did. The plant is dead. Sorry." },
   { day: 3, id: 'TWO_CPCS', from: 'Capacity planning', title: 'CPC2 is the older machine', body: 'CPC2 has sub-capacity CPs and more zIIPs, and the Db2 lock structure lives on CF01 at the CPC1 site. Work routed to PRDC and PRDD pays for the 15 km link on every lock request.' },
   { day: 7, id: 'ROUTING', from: 'Middleware team', title: 'Routing was set up before the second CPC', body: 'The sysplex distributor weights and the CICSPlex SM router predate CPC2 and the last rebalance. Nobody has checked how they behave when a region misbehaves.' },
   { day: 12, id: 'CFO_MANDATE', from: 'Finance', title: 'Software costs must come down', body: 'Next month the MLC bill must be 10% lower than this month. Finance trust depends on it.', constraint: 'CFO_MANDATE' },

@@ -4,8 +4,9 @@ import { failRiskFor, hardwareItem, hoursFor, opexBudgetFor } from '../../src/ga
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
-import { advance, chooseDraft, continueEndless, drawEvents, newRun, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
+import { advance, chooseDraft, continueEndless, drawEvents, failedPolicyToday, newRun, overallTrust, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
+import { streamRng } from '../../src/sim/core/rng';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
 import { applyCommands } from '../../src/sim/core/commands';
 import { scoreRca } from '../../src/game/sla';
@@ -29,6 +30,15 @@ describe('changes', () => {
     const status = r.changes[0]!.status;
     if (status === 'APPLIED') expect(r.sim.config.lpars.find((l) => l.id === 'PROD1')!.pools[0]!.weight).toBe(565);
     else expect(status).toBe('FAILED');
+  });
+
+  it('a policy activation that failed this morning hands its edits back', () => {
+    const r = fresh();
+    const definition = { ...r.sim.wlm.definition, policyName: 'NEWPOL' };
+    const change = { id: 9, label: 'Activate policy NEWPOL', commands: [{ kind: 'ACTIVATE_POLICY' as const, definition }], hours: 1, capex: 0, opexPerDay: 0, activateDay: r.day, plannedDay: r.day, emergency: false, status: 'FAILED' as const, revertDay: null, revertCommands: [], endsEvent: null };
+    expect(failedPolicyToday({ ...r, changes: [change] })?.policyName).toBe('NEWPOL');
+    expect(failedPolicyToday({ ...r, changes: [{ ...change, activateDay: r.day - 1 }] })).toBeNull();
+    expect(failedPolicyToday({ ...r, changes: [{ ...change, status: 'APPLIED' }] })).toBeNull();
   });
 
   it('hardware orders spend capex and arrive after their lead time', () => {
@@ -73,6 +83,67 @@ describe('incidents and RCA', () => {
     const scored = submitRca(r, inc!.id, inc!.truth.mechanism, inc!.truth.trigger);
     expect(scored.incidents.find((i) => i.id === inc!.id)!.rca!.points).toBe(5);
     expect(scored.insight).toBe(r.insight + 5);
+  });
+
+  it('same-day incidents with the same root cause share one RCA, scored once', () => {
+    const r0 = fresh();
+    const base = { day: r0.day, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80, rca: null, trustLost: 0 };
+    const truth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } as const;
+    const r = {
+      ...r0,
+      incidents: [
+        { ...base, id: 1, workloadId: 'RBANK', truth },
+        { ...base, id: 2, workloadId: 'MKTQRY', truth, rcaGroup: 1 },
+        { ...base, id: 3, workloadId: 'ATM', truth: { ...truth, trigger: 'GROWTH' } as const },
+      ],
+    };
+    const scored = submitRca(r, 2, 'CPU_PRIORITY', 'POLICY');
+    expect(scored.incidents.map((i) => i.rca?.points ?? null)).toEqual([5, 5, null]);
+    expect(scored.score).toBe(r.score + 5);
+    expect(submitRca(scored, 1, 'CPU_PRIORITY', 'POLICY')).toBe(scored);
+  });
+
+  it('a grouped RCA earns its trust reward once per incident; a wrong one is penalised once', () => {
+    const r0 = fresh();
+    const base = { day: r0.day, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80, rca: null, trustLost: 0 };
+    const truth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } as const;
+    const r = {
+      ...r0,
+      incidents: [
+        { ...base, id: 1, workloadId: 'RBANK', truth },
+        { ...base, id: 2, workloadId: 'MKTQRY', truth, rcaGroup: 1 },
+        { ...base, id: 3, workloadId: 'ATM', truth: { ...truth, trigger: 'GROWTH' } as const },
+      ],
+    };
+    const gain = (id: number, ...a: Parameters<typeof submitRca> extends [unknown, unknown, infer M, infer T, ...unknown[]] ? [M, T] : never) => overallTrust(submitRca(r, id, ...a)) - overallTrust(r);
+    expect(gain(1, 'CPU_PRIORITY', 'POLICY')).toBeGreaterThan(0);
+    expect(gain(1, 'CPU_PRIORITY', 'POLICY')).toBeCloseTo(2 * gain(3, 'CPU_PRIORITY', 'GROWTH'), 6);
+    expect(gain(1, 'THREAD_LIMIT', 'RUNAWAY_WORK')).toBeLessThan(0);
+    expect(gain(1, 'THREAD_LIMIT', 'RUNAWAY_WORK')).toBeCloseTo(gain(3, 'THREAD_LIMIT', 'RUNAWAY_WORK'), 6);
+  });
+
+  it('a critical ABEND that misses the batch window opens a BATCH incident that takes an RCA', () => {
+    let r = startDay(fresh(), content);
+    r = advance(r, MIDWEST, content, 16 * 360); // 22:00, batch running
+    r = advance({ ...r, pendingCommands: [{ kind: 'ABEND_JOB', critical: true }] }, MIDWEST, content, TICKS_PER_DAY - 16 * 360);
+    expect(r.reports.at(-1)!.batchMissed).toBe(true);
+    const inc = r.incidents.find((i) => i.workloadId === 'BATCH')!;
+    expect(inc.truth.mechanism).toBe('JOB_FAILURE');
+    expect(inc.trustLost).toBeGreaterThanOrEqual(20);
+    expect(r.nightHour).toBeNull();
+    const after = submitRca(r, inc.id, 'JOB_FAILURE', inc.truth.trigger);
+    expect(after.score - r.score).toBe(5);
+  }, 120_000);
+
+  it('a second workload breaching for the same cause that day joins the first incident’s RCA', () => {
+    let r = startDay(fresh(), content);
+    r = { ...r, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 12 }] };
+    r = advance(r, MIDWEST, content, 360 * 6);
+    for (const i of r.incidents.filter((x) => x.rcaGroup !== undefined)) {
+      const lead = r.incidents.find((x) => x.id === i.rcaGroup)!;
+      expect(lead.rcaGroup).toBeUndefined();
+      expect([lead.day, lead.truth.mechanism, lead.truth.trigger]).toEqual([i.day, i.truth.mechanism, i.truth.trigger]);
+    }
   });
 
   it('a breach still running at 06:00 counts towards the new day, not the day it started', () => {
@@ -165,20 +236,43 @@ describe('event cards resolved at start', () => {
     expect(r.sim.config.cpcs[0]!.capacitySetting).toBe(7);
   }, 60_000);
 
+  it('game rolls are keyed streams, so an extra player action does not reshuffle events or drafts', () => {
+    const r = { ...newRun(sc, MIDWEST_GAME, 3), events: [] as RunState['events'] };
+    const busier = requestChange(startDay(r, MIDWEST_GAME), MIDWEST_GAME, { label: 'extra', hardwareId: 'COD_CP', cpcId: r.sim.config.cpcs[0]!.id }).run;
+    for (let day = 1; day < 40; day += 7) expect(drawEvents(busier, MIDWEST_GAME, day).events.slice(busier.events.length)).toEqual(drawEvents(r, MIDWEST_GAME, day).events.slice(r.events.length));
+    const a = streamRng(3, 'draft', 5).float();
+    expect(streamRng(3, 'draft', 5).float()).toBe(a);
+    expect(streamRng(3, 'draft', 6).float()).not.toBe(a);
+    expect(streamRng(4, 'draft', 5).float()).not.toBe(a);
+  });
+
   it('a once-per-run card is not drawn again', () => {
     const r = { ...newRun(sc, MIDWEST_GAME, 3), events: [{ defId: 'NEW_APP_GOLIVE' }] } as unknown as RunState;
     for (let day = 9; day < 40; day++) expect(drawEvents(r, MIDWEST_GAME, day).events.filter((e) => e.defId === 'NEW_APP_GOLIVE')).toHaveLength(1);
   });
 
+  it('a vendor price rise lifts MLC 8% until the price is negotiated back', () => {
+    const game = MIDWEST_GAME;
+    const def = game.events.find((e) => e.id === 'VENDOR_PRICE')!;
+    let r = startDay(newRun(sc, game, 3), game);
+    r = { ...r, events: [{ uid: 'VENDOR_PRICE@0', defId: def.id, name: def.name, startTick: 1, endTick: null, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false }] };
+    r = advance(r, sc, game, 5);
+    expect(r.sim.cost.priceMult).toBe(1.08);
+    r = requestChange(r, game, { label: 'negotiate', fixId: 'NEGOTIATE_MLC_PRICE' }).run;
+    r = advance(r, sc, game, 2);
+    expect(r.sim.cost.priceMult).toBe(1);
+    expect(r.events.find((e) => e.defId === 'VENDOR_PRICE')!.ended).toBe(true);
+  }, 60_000);
+
   it('a hiring freeze lowers engineer-hours for exactly five days and never below zero', () => {
     let r = { ...newRun(sc, MIDWEST_GAME, 3), events: [] as RunState['events'] };
     const def = MIDWEST_GAME.events.find((e) => e.id === 'HIRING_FREEZE')!;
-    const drawn = drawEvents(r, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 4);
+    const drawn = drawEvents(r, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 13);
     expect(drawn.events.some((e) => e.defId === 'HIRING_FREEZE')).toBe(true);
     expect(drawn.hoursLeft).toBe(r.baseHours - 2);
-    expect(drawn.bonusHours).toEqual([{ hours: -2, untilDay: 9 }]);
+    expect(drawn.bonusHours).toEqual([{ hours: -2, untilDay: 18 }]);
     // an active freeze is not drawn again on top of itself
-    const again = drawEvents(drawn, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 5);
+    const again = drawEvents(drawn, { ...MIDWEST_GAME, events: [{ ...def, minDay: 0, weight: 1e6 }] }, 14);
     expect(again.bonusHours).toHaveLength(1);
     r = { ...drawn, baseHours: 1 };
     expect(Math.max(0, r.baseHours + r.bonusHours.reduce((a, b) => a + b.hours, 0))).toBe(0);

@@ -10,7 +10,7 @@ import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
 import type { ViewModel } from '../game/view';
-import { piColor, SERIES_LPARS, seriesColor } from './App';
+import { piColor, seriesColor } from './App';
 import { LineChart } from './LineChart';
 import type { GameHandle } from './useGame';
 import { CAREER_LEVELS } from '../content/career';
@@ -134,7 +134,7 @@ function EndReportView({ r }: { r: EndReport }) {
           title="Daily peak R4HA per LPAR"
           unit="MSU"
           xLabels={r.days.map((d) => `day ${d.day + 1}`)}
-          series={r.r4haByLpar.lparIds.map((id, i) => ({ id, color: seriesColor(SERIES_LPARS.includes(id) ? SERIES_LPARS.indexOf(id) : SERIES_LPARS.length + i), values: r.r4haByLpar.byDay[i]! }))}
+          series={r.r4haByLpar.lparIds.map((id, i) => ({ id, color: seriesColor(i), values: r.r4haByLpar.byDay[i]! }))}
         />
       )}
       <details>
@@ -291,18 +291,24 @@ function StartingPerk({ v, game }: { v: ViewModel; game: GameHandle }) {
 }
 
 // A fresh page load starts on Midwest Mutual, Normal; until day 1 starts the player can restart on another
-// scenario or preset.
+// scenario or preset, or switch to today's daily challenge (which then stays daily across those restarts).
 function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
   const plannedAny = v.changes.length > 0;
-  const restart = (scenario: string, difficulty: DifficultyId) => {
+  const restart = (scenario: string, difficulty: DifficultyId, daily: boolean) => {
     if (plannedAny && !confirm('Restart? Planned changes are discarded.')) return;
-    game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario });
+    const today = new Date().toISOString().slice(0, 10);
+    game.send(
+      daily
+        ? { type: 'NEW_RUN', seed: dailySeed(today), difficulty, daily: today, scenario }
+        : { type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario },
+    );
   };
+  const isDaily = v.daily !== null;
   return (
     <p>
       <label>
         Scenario{' '}
-        <select value={v.scenario.id} onChange={(e) => restart(e.target.value, v.difficulty.id)}>
+        <select value={v.scenario.id} onChange={(e) => restart(e.target.value, v.difficulty.id, isDaily)}>
           {Object.values(PACKS).map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
@@ -314,7 +320,7 @@ function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
         Difficulty{' '}
         <select
           value={v.difficulty.id}
-          onChange={(e) => restart(v.scenario.id, e.target.value as DifficultyId)}
+          onChange={(e) => restart(v.scenario.id, e.target.value as DifficultyId, isDaily)}
         >
           {Object.values(DIFFICULTIES).map((d) => (
             <option key={d.id} value={d.id}>
@@ -323,7 +329,17 @@ function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
           ))}
         </select>
       </label>{' '}
-      <span className="muted">{DIFFICULTIES[v.difficulty.id].description}</span>
+      <span className="muted">{DIFFICULTIES[v.difficulty.id].description}</span>{' '}
+      {isDaily ? (
+        <>
+          <span className="tag" style={{ whiteSpace: 'nowrap' }}>Daily challenge {v.daily}</span>{' '}
+          <button onClick={() => restart(v.scenario.id, v.difficulty.id, false)}>Random seed instead</button>
+        </>
+      ) : (
+        <button title="Same seed for everyone today (UTC)" onClick={() => restart(v.scenario.id, v.difficulty.id, true)}>
+          Daily challenge
+        </button>
+      )}
     </p>
   );
 }
@@ -399,7 +415,11 @@ function DaySummary({ v }: { v: ViewModel }) {
 }
 
 function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; investigate: () => void }) {
-  const open = v.incidents.filter((i) => i.day === v.day && !i.rca);
+  const open = v.incidents.filter((i) => i.day === v.day && !i.rca && i.rcaGroup === undefined);
+  const linked = (id: number) => {
+    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => i.workloadId);
+    return ws.length ? ` · same cause: ${ws.join(', ')}` : '';
+  };
   return (
     <>
       <h2>End of day {v.day + 1}</h2>
@@ -416,17 +436,18 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
             <span className="muted">{v.pins.length} pinned</span>
           </div>
           {open.map((i) => (
-            <Rca key={i.id} incidentId={i.id} label={`#${i.id} ${i.workloadId} · ${windowText(i)} · worst ${i.worstAttainmentPct.toFixed(0)}%`} hypotheses={i.aiops ?? []} v={v} game={game} />
+            <Rca key={i.id} incidentId={i.id} label={`#${i.id} ${i.workloadId} · ${windowText(i)} · worst ${i.worstAttainmentPct.toFixed(0)}%${linked(i.id)}`} hypotheses={i.aiops ?? []} v={v} game={game} />
           ))}
         </div>
       )}
       {v.incidents
-        .filter((i) => i.day === v.day && i.rca)
+        .filter((i) => i.day === v.day && i.rca && i.rcaGroup === undefined)
         .map((i) => (
           <div key={i.id} style={{ marginBottom: 6 }}>
             <div className="row">
               <span>
-                #{i.id} {i.workloadId}: you said {i.rca!.mechanism}/{i.rca!.trigger}
+                #{i.id} {i.workloadId}
+                {linked(i.id)}: you said {i.rca!.mechanism}/{i.rca!.trigger}
               </span>
               <span className={`tag ${i.rca!.points >= 3 ? 'good' : 'bad'}`}>
                 +{i.rca!.points} (was {i.truth.mechanism}/{i.truth.trigger})

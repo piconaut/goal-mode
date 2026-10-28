@@ -10,6 +10,7 @@ import { cpSpeed, msuPerCp, suPerCpuSecOf, ziipSpeed } from '../hw/cpc';
 import { poolKey, resolveCpc, type PoolDemand } from '../hw/pools';
 import { evaluateDasd, type IoClass } from '../io/dasd';
 import {
+  addJobDelay,
   advanceJob,
   closeNight,
   jobShape,
@@ -257,7 +258,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
       return jobShape(j.def, cpSpeed(cpc), ziipSpeed(cpc), io.SEQ.rtSec).elapsed;
     });
   }
-  if (tickOfDay === TICKS_PER_DAY - 1) batch = closeNight(batch, clock.day);
+  if (tickOfDay === TICKS_PER_DAY - 1) batch = closeNight(batch, clock.day, prev.tick);
 
   // 12b. Policy adjustment, one receiver per system.
   const { adjusted, log } = adjustPolicies(t, clockText);
@@ -395,7 +396,8 @@ function prsm(t: TickCtx): void {
 function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemState[]; log: string[] } {
   const { prev, def, systems, lparTicks, evalInputs } = t;
   const spPi = sysplexPis(def, systems);
-  const log = [...prev.wlm.log];
+  // The previous log is only copied once a line is added (states are never mutated in place).
+  let log = prev.wlm.log;
   const adjusted = systems.map((sys) => {
     const lt = lparTicks.find((x) => x.lparId === sys.lparId)!;
     const out = policyAdjust({
@@ -406,12 +408,18 @@ function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemSta
       sysplexPi: spPi,
       clockText,
     });
-    if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) log.push(out.log);
+    if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
+      if (log === prev.wlm.log) log = [...log];
+      log.push(out.log);
+    }
     // This tick's period states are fresh objects: apply the new DPs in place.
     for (const s of sys.scps) s.dp = out.dps[s.scKey] ?? s.dp;
     return sys;
   });
-  while (log.length > WLM_LOG_MAX) log.shift();
+  if (log.length > WLM_LOG_MAX) {
+    if (log === prev.wlm.log) log = [...log];
+    while (log.length > WLM_LOG_MAX) log.shift();
+  }
   return { adjusted, log };
 }
 
@@ -503,18 +511,24 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   let ddfRate = 0;
   let ddfRtWeighted = 0;
   let cicsRtWeighted = 0;
+  let ddfRefWeighted = 0;
+  let cicsRefWeighted = 0;
   for (const s of base) {
     if (s.kind !== 'TXN' || !s.workloadId) continue;
     const w = workloadById[s.workloadId]!;
     const prevRt = env.rtByWorkloadLpar[wlLparKey(w.id, l.id)] ?? 0.05;
+    const ioSvc = io[s.ioClass];
+    const refRt = s.baseLatencySec + s.cpuSecPerTxn + s.ziipSecPerTxn + s.ioPerTxn * (ioSvc.rtSec - ioSvc.delaySec);
     if (w.subsystem === 'CICS') {
       cicsQrCpu += s.rate * s.cpuSecPerTxn;
       cicsRate += s.rate;
       cicsRtWeighted += s.rate * prevRt;
+      cicsRefWeighted += s.rate * refRt;
     }
     if (w.subsystem === 'DDF') {
       ddfRate += s.rate;
       ddfRtWeighted += s.rate * prevRt;
+      ddfRefWeighted += s.rate * refRt;
     }
   }
   const meanQrFrac = aors.length ? aors.reduce((a, c) => a + c.qrFrac, 0) / aors.length : 0;
@@ -522,6 +536,9 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   const maxTasks = aors.reduce((a, c) => a + c.maxTasks, 0);
   const mxtWait = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRtWeighted / cicsRate : 0, maxTasks) : 0;
   const dbatWait = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRtWeighted / ddfRate : 0, db2.maxDbat) : 0;
+  // Same queues at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
+  const mxtRef = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRefWeighted / cicsRate : 0, maxTasks) : 0;
+  const dbatRef = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRefWeighted / ddfRate : 0, db2.maxDbat) : 0;
 
   // `base` holds fresh objects built for this tick, so transactions are completed in place.
   for (const s of base) {
@@ -541,13 +558,18 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       cpuAdd += DB2.cfRequestsPerTxn * cfZosCpuSec;
     }
     let outside = 0;
+    let outsideRef = 0;
     if (w.subsystem === 'CICS' && aors.length) {
       parts.qr = s.cpuSecPerTxn * meanQrFrac * qr.qrWaitRatio;
       extra += parts.qr;
       outside += mxtWait;
+      outsideRef += mxtRef;
       failFrac = qr.failFrac;
     }
-    if (w.subsystem === 'DDF') outside += dbatWait;
+    if (w.subsystem === 'DDF') {
+      outside += dbatWait;
+      outsideRef += dbatRef;
+    }
     if (db2Work) t.onlineDb2Rate += s.rate;
     // A saturated QR TCB makes a region slow, not fast-failing, so it doesn't count as an abend for routing.
     let abendFrac = 0;
@@ -562,6 +584,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     s.extraParts = parts;
     s.extraOtherSec = extra;
     s.outsideWaitSec = outside;
+    s.outsideRefSec = outsideRef;
     s.failFrac = failFrac;
     s.cpEngines = s.cpEngines + s.rate * cpuAdd;
     s.cpuSecPerTxn = s.cpuSecPerTxn + cpuAdd;
@@ -583,7 +606,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   for (const j of running) {
     if (swapped.has(j)) continue;
     runningJobs++;
-    const cls = classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id });
+    const cls = classifyJob(def, j.def, l.id);
     const shape = jobShape(j.def, cpSp, zSp, seqRt);
     const scKey = scKeyAtService(def, cls.serviceClass, jobServiceSu(j, shape, cpc));
     const cfCpu = j.def.usesDb2 ? shape.ioRate * DB2.cfRequestsPerBatchIo * cfZosCpuSec : 0;
@@ -717,6 +740,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       res.scps.push(t);
     }
     t.delayStorage += 1;
+    addJobDelay(j, 'swap', TICK_SEC);
   }
 
   const compBy: Record<string, number> = {};
@@ -790,6 +814,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
           ziipWanted: jr.zi,
           ziipGot: ziGot * fz,
           extraStretch: (jr.job.def.usesDb2 ? depStretch : 1) * lockStretch,
+          lockStretch,
+          ioDelayFrac: io.SEQ.rtSec > 0 ? io.SEQ.delaySec / io.SEQ.rtSec : 0,
         },
         prev.tick,
       );
@@ -829,6 +855,17 @@ export function instanceClock(secAfterStart: number): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   const dayOffset = secAfterStart >= DAY_SEC - 6 * 3600 ? '+1' : '';
   return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}${dayOffset}`;
+}
+
+// A running job is classified every tick; remember the last answer per job definition (the service
+// definition is replaced, never edited, so identity is a safe key; classify itself is pure).
+const jobClassCache = new WeakMap<object, { def: object; lparId: string; res: ReturnType<typeof classify> }>();
+function classifyJob(def: SimState['wlm']['definition'], jobDef: JobRuntime['def'], lparId: string): ReturnType<typeof classify> {
+  const hit = jobClassCache.get(jobDef);
+  if (hit && hit.def === def && hit.lparId === lparId) return hit.res;
+  const res = classify(def, { subsystem: 'JES', TN: jobDef.name, TC: jobDef.jobClass, SY: lparId });
+  jobClassCache.set(jobDef, { def, lparId, res });
+  return res;
 }
 
 const byIdCache = new WeakMap<readonly WorkloadDef[], Record<string, WorkloadDef>>();
@@ -914,7 +951,7 @@ function updateRouting(s: SimState, scenario: Scenario): SimState {
     const lparIds = Object.keys(w.routing).sort();
     let shares: Record<string, number> | null = null;
     if (policy.method === 'WLM' && s.tick % ROUTING.wlmIntervalTicks === 0) {
-      shares = wlmShares(lparIds.map((lparId) => routeCandidate(s, w, lparId)), w.ziipFrac, policy.ziipAware, ROUTING.minShareFrac, ROUTING.shareQuantum);
+      shares = wlmShares(lparIds.map((lparId) => routeCandidate(s, w, lparId)), w.ziipFrac, policy.distMethod, ROUTING.minShareFrac, ROUTING.shareQuantum);
     } else if (policy.method === 'CPSM_GOAL' && s.tick % ROUTING.cpsmIntervalTicks === 0) {
       const regions = lparIds.map((lparId) => regionStat(s, w, lparId));
       shares = cpsmGoalShares(routing[id] ?? w.routing, regions, policy, ROUTING.abendRtSec, ROUTING.cpsmStepFrac, ROUTING.minShareFrac, ROUTING.shareQuantum);
@@ -940,12 +977,14 @@ function routeCandidate(s: SimState, w: WorkloadDef, lparId: string): RouteCandi
   const myDp = lt?.scps.find((x) => x.scKey === key)?.dp ?? 0;
   let cpUsed = 0;
   let ziipUsed = 0;
+  let cpBusy = 0;
   for (const x of lt?.scps ?? []) {
+    cpBusy += x.cpEngines;
     if (x.scKey === key || x.dp < myDp) continue;
     cpUsed += x.cpEngines;
     ziipUsed += x.ziipEngines;
   }
-  return { lparId, cpFreeEngines: Math.max(0, avail('CP') - cpUsed), ziipFreeEngines: Math.max(0, avail('ZIIP') - ziipUsed) };
+  return { lparId, cpFreeEngines: Math.max(0, avail('CP') - cpUsed), ziipFreeEngines: Math.max(0, avail('ZIIP') - ziipUsed), cpIdleEngines: Math.max(0, avail('CP') - cpBusy) };
 }
 
 // Effective content = scenario + run additions + routing overrides. Memoised on object
@@ -990,6 +1029,7 @@ function addParts(into: Record<string, number>, p: NonNullable<import('../wlm/ev
   into.dependency = (into.dependency ?? 0) + p.dependency * n;
   into.backlogWait = (into.backlogWait ?? 0) + p.backlogWait * n;
   into.outside = (into.outside ?? 0) + p.outside * n;
+  into.outsideRef = (into.outsideRef ?? 0) + p.outsideRef * n;
   const extra = p.extra;
   for (const k in extra) into[k] = (into[k] ?? 0) + extra[k]! * n;
 }
@@ -1109,17 +1149,18 @@ export function rgSysplexShares(
 const combineCaps = (a: ((s: SliceSpec) => number) | undefined, b: ((s: SliceSpec) => number) | undefined) =>
   a && b ? (s: SliceSpec) => Math.min(a(s), b(s)) : (a ?? b);
 
-/** Discretionary goal management (SG24-7621 §4.22): while discretionary work on this image is
- * waiting, over-achieving periods with loose goals are capped so it gets cycles. Only if not in a
- * resource group, not a small consumer, velocity ≤ 30 or response goal > 1 min, and PI < 0.7.
- * APPROX: the "not a recent receiver or donor" condition is not modelled. */
+/** Discretionary goal management: while discretionary work on this image is waiting, over-achieving
+ * periods with loose goals are capped so it gets cycles. Only if not in a resource group, not a small
+ * consumer, velocity ≤ 30 or response goal > 1 min (MVS Planning: WLM p.118), and PI < 0.71; WLM holds
+ * the capped PI in 0.71–0.81 (SG24-6472-03 p.183). APPROX: a proportional cap from the current PI instead
+ * of WLM's projection; the other SG24-7621 Fig. 4-22 conditions are not modelled. */
 export function discretionaryCaps(def: SimState['wlm']['definition'], slices: readonly SliceSpec[], scps: readonly ScpState[]): ((s: SliceSpec) => number) | undefined {
   const D = DISC_GOAL_MGMT;
   const byKey: Record<string, ScpState> = {};
   for (const st of scps) byKey[st.scKey] = st;
   const discWaiting = scps.some((st) => goalInfo(def, st.scKey)?.goal.kind === 'DISC' && st.acc.delay > st.acc.using);
   if (!discWaiting) return undefined;
-  const capped = new Set<string>();
+  const capped: Record<string, number> = {};
   for (const st of scps) {
     const g = goalInfo(def, st.scKey);
     if (!g || g.resourceGroup) continue;
@@ -1133,10 +1174,15 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
     const pi = accPi(goal, st.acc);
     if (pi === null) continue;
     const wasCapped = st.acc.delayCap > 0.05 * samples;
-    if (pi < D.piBelow || (wasCapped && pi < D.stayCappedPiBelow)) capped.add(st.scKey);
+    if (pi < D.piBelow || (wasCapped && pi < D.stayCappedPiBelow)) {
+      capped[st.scKey] = Math.max(D.minCapFrac, 1 - D.capGainPerPi * (D.stayCappedPiBelow - pi));
+    }
   }
-  if (capped.size === 0) return undefined;
-  return (s) => (capped.has(s.scKey) ? s.cpEngines * D.capFrac : Infinity);
+  if (Object.keys(capped).length === 0) return undefined;
+  return (s) => {
+    const f = capped[s.scKey];
+    return f === undefined ? Infinity : s.cpEngines * f;
+  };
 }
 
 /** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). */
@@ -1147,9 +1193,14 @@ function cicsRegions(
   addressSpaces: readonly AddressSpaceDef[],
   lparId: string,
 ): { regions?: LparEvalInput['regions'] } {
-  const keys = [...new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.scKey))].sort();
   const aor = addressSpaces.find((a) => a.lparId === lparId && a.role === 'CICS.AOR');
-  if (keys.length === 0 || !aor) return {};
+  if (!aor) return {};
+  const keys: string[] = [];
+  for (const s of slices) {
+    if (s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS' && !keys.includes(s.scKey)) keys.push(s.scKey);
+  }
+  if (keys.length === 0) return {};
+  keys.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   return { regions: { keys, mode: def.cicsRegionMode ?? 'TRANSACTION', regionKey } };
 }

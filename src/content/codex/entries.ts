@@ -302,7 +302,7 @@ export const CODEX: CodexEntry[] = [
     id: 'rmf',
     title: 'RMF Postprocessor and Monitor III',
     category: 'Measurement',
-    body: 'RMF Postprocessor reports (Workload Activity/WLMGL, Partition Data, CF and DASD Activity) summarise SMF records per interval, typically 15 or 30 minutes, after the fact. Monitor III samples continuously and shows the last minutes live: SYSSUM (goals versus actuals and PI), SYSINFO, DELAY, PROCU, ENCLAVE, CPC and the WFEX exception list. Its using and delay percentages are shares of state samples: a job waiting on something RMF does not monitor (a Db2 thread, a CICS task slot) is in the unknown state (UKN), not delayed.',
+    body: 'RMF Postprocessor reports (Workload Activity/WLMGL, Partition Data, CF and DASD Activity) summarise SMF records per interval, typically 15 or 30 minutes, after the fact. Monitor III samples continuously and shows the last minutes live: SYSSUM (goals versus actuals and PI), SYSINFO, DELAY, PROCU, ENCLAVE, CPC and the WFEX exception list. Its using and delay percentages are shares of state samples: a job waiting on something RMF does not monitor (a Db2 thread, a CICS task slot) is in the unknown state (UKN), not delayed. Monitor III also keeps its samples in VSAM data sets, one set per MINTIME (100 s by default), so you can step back (BREF) to an earlier range; here it keeps 48 hours.',
     sources: [{ label: 'IBM z/OS RMF Report Analysis (SC34-2665), ch. 2: Monitor III', url: 'https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/erbb500_v2r5.pdf' }, PAICE_WLM],
     discover: { start: true },
   },
@@ -329,8 +329,11 @@ export const CODEX: CodexEntry[] = [
     id: 'sd-wlm-weights',
     title: 'Sysplex Distributor: SERVERWLM and BASEWLM weights',
     category: 'Subsystems',
-    body: 'Sysplex Distributor spreads incoming TCP connections across the stacks of a sysplex. With DISTMETHOD BASEWLM the weight comes from WLM’s view of each system’s displaceable capacity, which counts only general-purpose CPs. SERVERWLM also asks WLM how well each target server is doing and weights by the capacity that could be given to work of that server’s importance, and with zIIP-aware weights it counts zIIP capacity for the zIIP-eligible part of the work, so a system with idle zIIPs is not penalised for busy CPs. The game models this as per-system shares that are refreshed every minute, with a small floor so no system drops to zero.',
-    sources: [{ label: 'IBM support: distribution methods available to the distributing TCP/IP stack (VIPADISTRIBUTE DISTMETHOD)', url: 'https://www.ibm.com/support/pages/what-are-different-distribution-methods-available-distributing-tcpip-stack' }],
+    body: 'Sysplex Distributor spreads incoming TCP connections across the stacks of a sysplex. BASEWLM, the default distribution method, uses WLM system weights: the most available capacity gets the highest weight, and that counts general-purpose CP capacity unless PROCTYPE is set to count zAAP and zIIP capacity too. SERVERWLM asks WLM about each target server instead: the weight comes from the capacity that work of that server’s importance could use or displace, combined across processor types in proportion to the server’s own use of each, so a system with idle zIIPs is not penalised for busy CPs when the work is zIIP-eligible. PROCXCOST can also lower the weight of servers whose zIIP work is crossing over to CPs (not modelled). The game models this as per-system shares that are refreshed every minute, with a small floor so no system drops to zero.',
+    sources: [
+      { label: 'z/OS 3.1 IP Configuration Guide, ch. 8: BASEWLM and SERVERWLM weights (PDF p.555–556)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf#page=555' },
+      { label: 'IBM support: distribution methods available to the distributing TCP/IP stack (VIPADISTRIBUTE DISTMETHOD)', url: 'https://www.ibm.com/support/pages/what-are-different-distribution-methods-available-distributing-tcpip-stack' },
+    ],
     discover: { start: true },
   },
   {
@@ -345,7 +348,7 @@ export const CODEX: CodexEntry[] = [
     id: 'storm-drain',
     title: 'The storm drain: abends look fast',
     category: 'Subsystems',
-    body: 'A CICS region that abends transactions almost at once shows excellent response times, so goal or queue routing reads it as the best target and sends it even more work. CICSPlex SM counters this with abend thresholds in the workload specification or transaction group: ABENDTHRESH is the abend probability at which a region is treated as unhealthy and its routing weight is penalised, and ABENDCRIT is the probability at which it is avoided in favour of other regions. Fixes: set the thresholds, quiesce the region, or recycle it.',
+    body: 'A CICS region that abends transactions almost at once shows excellent response times, so goal or queue routing reads it as the best target and sends it even more work. CICSPlex SM counters this with abend thresholds in the workload specification or transaction group: After an abend a region is unhealthy and avoided while its abend probability ages; once it is below ABENDCRIT it is healthy again but its load counts double, and below ABENDTHRESH it competes normally. Abends caught by HANDLE ABEND never reach CICSPlex SM. Fixes: set the thresholds, quiesce the region, or recycle it.',
     sources: [{ label: 'IBM CICS TS: Abend probabilities and workload management', url: 'https://www.ibm.com/docs/en/cics-ts/5.5.0?topic=workload-abend-probabilities-management' }],
     discover: { events: ['SICK_AOR'] },
   },
@@ -364,6 +367,14 @@ export const CODEX: CodexEntry[] = [
     body: 'Real online work is not smooth: market open, a flash sale or a payday batch of requests can send arrivals many times above the hourly mean for a few minutes. Queues and CPU delay build inside the peak and WLM must react within its policy interval, but a 15 or 30 minute RMF Postprocessor interval averages the peak into the quiet minutes around it and looks mild. Monitor III, with its short range, shows the spike. Headroom, percentile goals and MAXTASKS tuning matter for the peak, not the average.',
     sources: [{ label: 'IBM z/OS RMF Report Analysis (SC34-2665): Monitor III', url: 'https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/erbb500_v2r5.pdf' }],
     discover: { events: ['MARKET_OPEN_SURGE'] },
+  },
+  {
+    id: 'ABEND_S0C7',
+    title: 'S0C7: a data exception, not a tuning problem',
+    category: 'Subsystems',
+    body: 'A system completion code 0C7 is a program check for a data exception: a decimal instruction met a field that is not valid packed decimal, usually bad input data or an uninitialised field in the program. No WLM policy, capping or capacity change prevents it. The job has to be fixed or the bad record bypassed, then restarted; while it is down its successors are held, so a critical one can miss the batch window. In an RCA the trigger is APPLICATION_ERROR and the mechanism JOB_FAILURE.',
+    sources: [{ label: 'IBM docs: z/OS MVS System Codes (0C7)', url: 'https://www.ibm.com/docs/en/zos/2.5.0?topic=codes-0c7' }],
+    discover: { events: ['JOB_ABEND'] },
   },
 ];
 

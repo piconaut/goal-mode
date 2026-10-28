@@ -43,6 +43,10 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
     clear: '{w} missed its SLA yesterday. Was work queueing before it even got to run? The Db2 and CICS reports show the queue time.',
     vague: 'Yesterday was rough for {w}. The Db2 and CICS reports might tell you more.',
   },
+  ROUTING: {
+    clear: '{w} missed its SLA yesterday on errors, not on response time. The CICS report counts failed transactions. Where was the work sent, and did one region fail it fast?',
+    vague: 'Yesterday was rough for {w}. The CICS report might tell you more.',
+  },
   IO: {
     clear: '{w} missed its SLA yesterday. The DASD report shows response time per volume. Did any of them look different from the day before?',
     vague: 'Yesterday was rough for {w}. The DASD report might tell you more.',
@@ -51,7 +55,37 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
     clear: '{w} missed its SLA yesterday. Storage delay in WLMGL, or the STOR delayed users in Monitor III SYSINFO, might show what it was waiting for.',
     vague: 'Yesterday was rough for {w}. SYSINFO might tell you more.',
   },
+  JOB_FAILURE: {
+    clear: '{w} missed its window. The Batch view lists jobs that ABENDed. Did a critical one stop, how long were its successors held, and what does its ABEND code say?',
+    vague: 'Yesterday was rough for {w}. The Batch view might tell you more.',
+  },
 };
+
+// Appended when a workload missed its SLA while WLMGL had its service class meeting the goal all day: a class
+// average, or CICS regions managed to their own goal, can hide one workload, so the hint points at the
+// per-transaction records instead (SPEC §11.2). Keyed by the workload's subsystem.
+export const WLM_DISAGREE_HINTS: Record<string, HintText> = {
+  CICS: {
+    clear: ' Yet WLMGL showed its service class meeting its goal all day. When the two disagree, CICS monitoring (SMF 110) times each transaction rather than the class.',
+    vague: ' WLMGL may disagree; CICS SMF 110 might not.',
+  },
+  DDF: {
+    clear: ' Yet WLMGL showed its service class meeting its goal all day. When the two disagree, Db2 accounting (SMF 101) times each thread rather than the class.',
+    vague: ' WLMGL may disagree; Db2 SMF 101 might not.',
+  },
+};
+
+// A class whose worst PI jumped while none of its work broke an SLA: something new is pressing on it before it
+// shows on the report card (playtest finding H). `{sc}`, `{pi}` and `{prev}` are filled in.
+export const STRAIN_HINT: HintText = {
+  clear: '{sc} peaked at PI {pi} in WLMGL yesterday, against {prev} the day before, though none of its work broke an SLA. What was new pressing on it?',
+  vague: '{sc} looked strained in WLMGL yesterday.',
+};
+
+// FICTIONAL: a strain hint needs a worst PI of at least minPi and riseFactor × the day before, so classes that
+// run hot every night (velocity goals on a busy batch window) stay quiet. A response-time PI from fewer than
+// minEnded ended transactions in an interval is too thin to count (one slow transaction at 23:45 reads PI 4).
+export const STRAIN = { minPi: 3, riseFactor: 2, minEnded: 20 };
 
 export const BATCH_HINTS = {
   late: {

@@ -34,6 +34,76 @@ describe('morningHints', () => {
     const tight = morningHints('CLEAR', [inc('A', 'IO', 3)], { ...onTime, criticalEndSec: 6 * 3600 - 600 });
     expect(tight[1]).toContain('10 min');
   });
+
+  it('points at the per-transaction records when WLMGL had the class meeting its goal', () => {
+    const incs = [inc('MKTORD', 'QR_TCB', 3)];
+    expect(morningHints('CLEAR', incs, null)[0]).not.toContain('SMF 110');
+    const [clear] = morningHints('CLEAR', incs, null, { MKTORD: 'CICS' });
+    expect(clear).toContain('CICS report');
+    expect(clear).toContain('SMF 110');
+    expect(morningHints('VAGUE', incs, null, { MKTORD: 'CICS' })[0]).toContain('SMF 110');
+    expect(morningHints('CLEAR', incs, null, { MKTORD: 'DDF' })[0]).toContain('SMF 101');
+  });
+});
+
+describe('wlmHidSlides', () => {
+  it('flags an incident workload only when every host class met its goal all day', async () => {
+    const { MIDWEST_GAME } = await import('../../src/content/game-midwest');
+    const { SCENARIOS } = await import('../../src/content/scenarios');
+    const { newRun, wlmHidSlides } = await import('../../src/game/run');
+    const { classify } = await import('../../src/sim/wlm/classify');
+    const sc = SCENARIOS.midwest!;
+    const run = newRun(sc, MIDWEST_GAME, 42, 'NORMAL');
+    const w = sc.workloads.find((x) => x.work.subsystem === 'CICS')!;
+    const keys = Object.entries(w.routing).filter(([, f]) => f > 0).map(([l]) => `${classify(run.sim.wlm.definition, { ...w.work, SY: l }).serviceClass}#1`);
+    const fine = Object.fromEntries(keys.map((k) => [k, 0.8]));
+    expect(wlmHidSlides(run, sc, [inc(w.id, 'QR_TCB', 2)], fine)).toEqual({ [w.id]: 'CICS' });
+    expect(wlmHidSlides(run, sc, [], fine)).toEqual({});
+    expect(wlmHidSlides(run, sc, [inc(w.id, 'QR_TCB', 2)], { ...fine, [keys[0]!]: 1.4 })).toEqual({});
+    expect(wlmHidSlides(run, sc, [inc(w.id, 'QR_TCB', 2)], {})).toEqual({});
+  });
+});
+
+describe('strain hints (classes under new pressure with no incident)', () => {
+  it('follow the incident hints and name the class and PI', () => {
+    const [a, b] = morningHints('CLEAR', [inc('MOBILE', 'CAPPING', 3)], onTime, {}, [{ scKey: 'BATCHHI#1', pi: 12.6, prevPi: 1.2 }]);
+    expect(a).toContain('MOBILE');
+    expect(b).toContain('BATCHHI#1');
+    expect(b).toContain('12.6');
+    expect(morningHints('VAGUE', [], onTime, {}, [{ scKey: 'BATCHHI#1', pi: 12.6, prevPi: 1.2 }])).toEqual(['BATCHHI#1 looked strained in WLMGL yesterday.']);
+  });
+
+  it('need a jump over the day before and skip classes an incident already covers', async () => {
+    const { MIDWEST_GAME } = await import('../../src/content/game-midwest');
+    const { SCENARIOS } = await import('../../src/content/scenarios');
+    const { newRun, strainedClasses } = await import('../../src/game/run');
+    const { classify } = await import('../../src/sim/wlm/classify');
+    const sc = SCENARIOS.midwest!;
+    const run = newRun(sc, MIDWEST_GAME, 42, 'NORMAL');
+    const w = sc.workloads.find((x) => x.work.subsystem === 'CICS')!;
+    const own = `${classify(run.sim.wlm.definition, { ...w.work, SY: Object.keys(w.routing)[0]! }).serviceClass}#1`;
+    const today = { 'HOT#1': 12, 'CHRONIC#1': 8, 'MILD#1': 2.5, [own]: 9 };
+    const prev = { 'HOT#1': 1, 'CHRONIC#1': 7, 'MILD#1': 0.5, [own]: 1 };
+    expect(strainedClasses(run, sc, [], today, prev).map((c) => c.scKey)).toEqual(['HOT#1', own]);
+    expect(strainedClasses(run, sc, [inc(w.id, 'QR_TCB', 2)], today, prev).map((c) => c.scKey)).toEqual(['HOT#1']);
+    expect(strainedClasses(run, sc, [], today, undefined)).toEqual([]);
+    // Batch classes (from the JES rules) are left to the batch-window hint.
+    const jes = run.sim.wlm.definition.subsystems.find((x) => x.subsystem === 'JES')!.defaultServiceClass!;
+    expect(strainedClasses(run, sc, [], { [`${jes}#1`]: 9 }, { [`${jes}#1`]: 1 })).toEqual([]);
+  });
+
+  it('ignore a response-time PI from too few ended transactions', async () => {
+    const { worstPiOfDay } = await import('../../src/game/run');
+    const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
+    const row = (scKey: string, goalText: string, pi: number, ended: number) => ({ lparId: '*PLEX', scKey, goalText, pi, ended });
+    const iv = (rows: object[]) => ({ endTick: TICKS_PER_DAY / 2, wlm: rows }) as never;
+    const intervals = [
+      iv([row('AGENTS#1', '90% < 0.500s IMP 2', 1.1, 300), row('BATCH#1', 'VELOCITY 30 IMP 4', 8, 0)]),
+      iv([row('AGENTS#1', '90% < 0.500s IMP 2', 4, 3), row('AVG#1', 'AVG 0.150s IMP 1', 4, 2)]),
+    ];
+    expect(worstPiOfDay(intervals, 0)).toEqual({ 'AGENTS#1': 4, 'BATCH#1': 8, 'AVG#1': 4 });
+    expect(worstPiOfDay(intervals, 0, 20)).toEqual({ 'AGENTS#1': 1.1, 'BATCH#1': 8 });
+  });
 });
 
 describe('morning hints in a run', () => {

@@ -63,6 +63,9 @@ export interface SliceSpec {
   /** Queueing before the work manager sees the request (MXT, DBAT): end users feel it,
    * WLM and RMF response times do not include it. */
   outsideWaitSec: number;
+  /** The same queue had the work run at its unqueued service time (no CPU, I/O or other waits): the part of
+   * outsideWaitSec that arrival rate against the limit causes, rather than slow tasks holding their slot. */
+  outsideRefSec?: number;
   /** Diagnostic split of extraOtherSec (e.g. cf, lock, qr). */
   extraParts?: Record<string, number>;
   /** Report class from classification (reporting only: WLM never manages to it). */
@@ -120,6 +123,7 @@ export interface RtParts {
   extra: Record<string, number>;
   backlogWait: number;
   outside: number;
+  outsideRef: number;
 }
 
 export interface LparEvalInput {
@@ -292,6 +296,8 @@ function iosqByPriority(slices: readonly SliceSpec[], sliceDp: readonly number[]
       mean += (byDp[j]! / total) * waitByDp[j]!;
     }
     const scale = mean > 0 ? iosq / mean : 1;
+    // One service object per distinct DP, shared by the slices at that DP (they are only read).
+    const byLevel = new Array<IoService | undefined>(dps.length);
     const list = new Array<IoService>(n);
     for (let i = 0; i < n; i++) {
       if (slices[i]!.ioClass !== cls) {
@@ -299,8 +305,17 @@ function iosqByPriority(slices: readonly SliceSpec[], sliceDp: readonly number[]
         continue;
       }
       const j = dps.indexOf(sliceDp[i]!);
-      const w = j < 0 ? NaN : waitByDp[j]! * scale;
-      list[i] = Number.isFinite(w) ? { rtSec: svcIo.rtSec - iosq + w, delaySec: svcIo.delaySec - iosq + w, iosqSec: w, connSec: svcIo.connSec } : svcIo;
+      if (j < 0) {
+        list[i] = svcIo;
+        continue;
+      }
+      let o = byLevel[j];
+      if (o === undefined) {
+        const w = waitByDp[j]! * scale;
+        o = Number.isFinite(w) ? { rtSec: svcIo.rtSec - iosq + w, delaySec: svcIo.delaySec - iosq + w, iosqSec: w, connSec: svcIo.connSec } : svcIo;
+        byLevel[j] = o;
+      }
+      list[i] = o;
     }
     (out ??= {})[cls] = list;
   }
@@ -610,6 +625,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
             extra: s.extraParts ?? { other: s.extraOtherSec },
             backlogWait: waitSec,
             outside: s.outsideWaitSec,
+            outsideRef: s.outsideRefSec ?? 0,
           },
       newBacklog,
       health: 1,

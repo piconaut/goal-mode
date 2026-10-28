@@ -99,6 +99,8 @@ export interface CpuRecord {
   msuAvg: number;
   r4ha: number;
   definedCapacityMsu: number | null;
+  /** PR/SM absolute capping limit on the CP pool, in engines (absent in old saves). */
+  absoluteCapEngines?: number | null;
   ziipEngines: number;
   icfEngines: number;
 }
@@ -409,6 +411,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
       msuAvg: a.msu / n,
       r4ha: ctx.r4haByLpar[a.lparId] ?? 0,
       definedCapacityMsu: cfg?.definedCapacityMsu ?? null,
+      absoluteCapEngines: cp?.absoluteCapEngines ?? null,
       ziipEngines: a.deliveredZiip / n,
       icfEngines: a.deliveredIcf / n,
     };

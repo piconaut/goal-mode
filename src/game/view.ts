@@ -32,15 +32,17 @@ import { opexBudgetFor, type PreviewContext } from './catalog';
 import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import type { LcuConfig } from '../sim/io/dasd';
-import { allWorkloads, overallTrust, previewContext } from './run';
+import { allWorkloads, fixIdsOf, overallTrust, previewContext } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
+import { idText } from './ids';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
 export interface LparView {
   id: string;
   kind: 'ZOS' | 'CF';
+  cpcId: string;
   cpBusyPct: number;
   ziipBusyPct: number | null;
   logicalCps: number;
@@ -224,6 +226,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     return {
       id: l.id,
       kind: l.kind,
+      cpcId: l.cpcId,
       cpBusyPct: cp && cfgCp && cfgCp.logical > 0 ? (100 * cp.deliveredEngines) / cfgCp.logical : 0,
       ziipBusyPct: zi && cfgZi && cfgZi.logical > 0 ? (100 * zi.deliveredEngines) / cfgZi.logical : null,
       logicalCps: cfgCp?.logical ?? 0,
@@ -295,7 +298,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
     scenario: { id: packOf(run.scenarioId).id, name: packOf(run.scenarioId).name },
-    fixIds: [...new Set(packOf(run.scenarioId).game.events.flatMap((e) => (e.fix ? [e.fix] : [])))].sort(),
+    fixIds: fixIdsOf(packOf(run.scenarioId).game),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,
@@ -330,7 +333,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     endReason: run.endReason,
     endReport: run.phase === 'GAMEOVER' || run.phase === 'VICTORY' ? endReport(run, overallTrust(run)) : null,
     policyName: def.policyName,
-    previewCtx: previewContext(run),
+    previewCtx: previewContext(run, packOf(run.scenarioId).game),
     features: [...feats].sort(),
     mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,
     tools: toolsView(run),
@@ -348,7 +351,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
             id: a.id,
             text: autoRuleText(a, (id) => {
               const al = run.alerts?.rules.find((x) => x.id === id);
-              return al ? ruleText(al) : `alert #${id} (deleted)`;
+              return al ? ruleText(al) : `alert ${idText('alert', id)} (deleted)`;
             }),
             doneToday: run.automation?.day === run.day ? (run.automation?.doneToday[a.id] ?? 0) : 0,
           })),

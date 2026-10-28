@@ -32,6 +32,22 @@ describe('change preview', () => {
     expect(previewChange(previewContext(live), { commands: [] }).reason).toBe('Nothing to change');
   });
 
+  it("offers and accepts only the fixes this scenario's event cards call for", () => {
+    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
+    expect(buildView(r, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
+    expect(buildView(r, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS_REV');
+    expect(previewChange(previewContext(r, MIDWEST_GAME), { fixId: 'RECYCLE_PROD2_AORS' }).ok).toBe(true);
+    expect(requestChange(r, MIDWEST_GAME, { label: 'x', fixId: 'RECYCLE_PROD2_AORS_REV' }).ok).toBe(false);
+  });
+
+  it('an operator command during the live day skips the change-board trust cost but still takes hours', () => {
+    const live = startDay(newRun(MIDWEST, MIDWEST_GAME, 7), MIDWEST_GAME);
+    const op = previewChange(previewContext(live, MIDWEST_GAME), { fixId: 'CANCEL_RUNAWAY' });
+    expect(op.trustCostEach).toBe(0);
+    expect(op.hours).toBeGreaterThan(0);
+    expect(previewChange(previewContext(live, MIDWEST_GAME), { fixId: 'REBIND_REVERT' }).trustCostEach).toBeGreaterThan(0);
+  });
+
   it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {
     const r = fresh();
     const card = { uid: 'e1', defId: 'GREEN_IT_COD', name: 'Data centre power budget', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [] as string[], blocksHardware: ['COD_CP'], endCommands: [] as Command[] };
@@ -55,10 +71,36 @@ describe('cancel', () => {
     expect(r.hoursLeft).toBeCloseTo(r0.hoursLeft);
   });
 
+  it('hands back the policy of a cancelled activation and names the id on a repeat cancel', () => {
+    const r0 = fresh();
+    const definition = r0.sim.wlm.definition;
+    const r = requestChange(r0, content, { label: 'Activate policy', commands: [{ kind: 'ACTIVATE_POLICY', definition }] }).run;
+    const id = r.changes[0]!.id;
+    const out = cancelChange(r, id);
+    expect(out.restoredPolicy).toBe(definition);
+    const again = cancelChange(out.run, id);
+    expect(again.ok).toBe(false);
+    expect(again.message).toContain(`CHG${id}`);
+  });
+
   it('cannot cancel a change once its day has started', () => {
     let r = requestChange(fresh(), content, { label: 'w', commands: [weight(500)] }).run;
     r = startDay(r, content);
     expect(cancelChange(r, r.changes[0]!.id).ok).toBe(false);
+  });
+
+  it('refuses a command whose target does not exist, naming the real ones, and charges nothing', () => {
+    const r0 = fresh();
+    const out = requestChange(r0, content, { label: 'mxt', commands: [{ kind: 'SET_CICS', name: 'NOSUCH', maxTasks: 200 }] });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/No CICS region NOSUCH; CICS regions: \S+/);
+    expect(out.run.hoursLeft).toBe(r0.hoursLeft);
+    expect(requestChange(r0, content, { label: 'w', commands: [{ kind: 'SET_WEIGHT', lparId: 'PROD9', pool: 'CP', weight: 500 }] }).message).toMatch(/LPARs: .*PROD1/);
+  });
+
+  it('accepts a command on a region added by a change already planned', () => {
+    const r = requestChange(fresh(), content, { label: 'aor', commands: [{ kind: 'ADD_AOR', lparId: 'PROD1', name: 'CICSNEW', maxTasks: 100, qrFrac: 0.5 }] }).run;
+    expect(requestChange(r, content, { label: 'mxt', commands: [{ kind: 'SET_CICS', name: 'CICSNEW', maxTasks: 200 }] }).ok).toBe(true);
   });
 });
 

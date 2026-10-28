@@ -5,7 +5,7 @@ import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { packOf } from '../content/packs';
 import { MIDWEST } from '../content/scenarios';
-import { advance, cancelChange, chooseDraft, continueEndless, newRun, requestChange, startDay, submitRca } from '../game/run';
+import { advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeDefinition, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
@@ -26,6 +26,9 @@ import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
 import { decodeRunJson } from '../game/runFile';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
+import { buildMon3 } from '../game/mon3';
+import { emptyMon3History, mon3At, mon3HistoryRange, recordMon3History } from '../game/mon3History';
+import { MON3_HISTORY } from '../content/tools';
 import { classify } from '../sim/wlm/classify';
 import { explainClassification } from '../game/classifyExplain';
 import { runWorkItems } from '../game/workloads';
@@ -56,6 +59,8 @@ const AUTO_FRAME_BUDGET_MS = 60;
 
 let history: HistoryPoint[] = [];
 let historyDirty = true;
+/** Monitor III intervals for the retention window (recorded only while the Monitor III tool is owned). */
+let mon3Hist = emptyMon3History();
 let saved: RunState | null = null;
 let career: CareerState = EMPTY_CAREER;
 /** XP the run that just ended added to the career (shown on the end screen). */
@@ -130,7 +135,7 @@ function activate(def: ServiceDefinition) {
 }
 
 const sendView = () => {
-  post({ type: 'VIEW', view: buildView(run, sc()), history: historyDirty ? history : null, savedRunDay: saved ? saved.day : null, pending: pendingView(), speed });
+  post({ type: 'VIEW', view: buildView(run, sc()), history: historyDirty ? history : null, savedRunDay: saved ? saved.day : null, pending: pendingView(), speed, mon3Range: mon3HistoryRange(mon3Hist) });
   historyDirty = false;
 };
 
@@ -139,13 +144,15 @@ function advanceSampled(n: number) {
   let left = n;
   while (left > 0 && run.phase === 'LIVE') {
     const toSample = HISTORY_EVERY_TICKS - (run.sim.tick % HISTORY_EVERY_TICKS);
-    const k = Math.min(left, toSample);
+    const toMon3 = MON3_HISTORY.mintimeTicks - (run.sim.tick % MON3_HISTORY.mintimeTicks);
+    const k = Math.min(left, toSample, toMon3);
     run = advance(run, sc(), pack().game, k);
     left -= k;
     if (run.sim.tick % HISTORY_EVERY_TICKS === 0) {
       history = [...history, samplePoint(run)].slice(-HISTORY_MAX);
       historyDirty = true;
     }
+    if (run.sim.tick % MON3_HISTORY.mintimeTicks === 0 && hasFeature(run, 'MON3')) mon3Hist = recordMon3History(mon3Hist, run.sim.tick, buildMon3(run, sc()));
   }
   autosave();
 }
@@ -252,7 +259,7 @@ function whatIfChunk(token: number) {
 
 /** Spectator mode shows a run file another process plays; only reading messages get through. */
 let spectating = false;
-const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'SPECTATE_ADOPT', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'CLASSIFY', 'SET_BASKET']);
+const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'SPECTATE_ADOPT', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'GET_MON3_AT', 'CLASSIFY', 'SET_BASKET']);
 
 function spectate(text: string) {
   const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null }>(text);
@@ -263,7 +270,10 @@ function spectate(text: string) {
   speed = 0;
   whatIf = null;
   saved = null;
-  if (!sameRun) history = [];
+  if (!sameRun) {
+    history = [];
+    mon3Hist = emptyMon3History();
+  }
   run = next;
   lastPhase = run.phase;
   if (run.phase === 'LIVE' && history.at(-1)?.tick !== run.sim.tick) history = [...history, samplePoint(run)].slice(-HISTORY_MAX);
@@ -295,6 +305,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       lastRunXp = null;
       postCareer();
       history = [];
+      mon3Hist = emptyMon3History();
       historyDirty = true;
       saved = null;
       break;
@@ -303,6 +314,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         run = saved;
         lastPhase = run.phase;
         history = [];
+        mon3Hist = emptyMon3History();
         historyDirty = true;
         saved = null;
         pendingPolicy = savedDesk?.pendingPolicy ? normalizeDefinition(savedDesk.pendingPolicy) : null;
@@ -336,6 +348,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         lastPhase = run.phase;
         recordCareer();
         history = [];
+        mon3Hist = emptyMon3History();
         historyDirty = true;
       }
       break;
@@ -343,6 +356,11 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       const c = run.mon3Charts;
       if (!c || !hasFeature(run, 'MON3_CHARTS')) break;
       post({ type: 'MON3_CHARTS', fromSample: m.fromSample, fromMarker: m.fromMarker, samples: c.samples.slice(m.fromSample), markers: c.markers.slice(m.fromMarker) });
+      break;
+    }
+    case 'GET_MON3_AT': {
+      const at = hasFeature(run, 'MON3') ? mon3At(mon3Hist, m.tick) : null;
+      post({ type: 'MON3_AT', tick: at?.tick ?? m.tick, view: at?.view ?? null });
       break;
     }
     case 'WHATIF_RUN': {
@@ -425,7 +443,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'CANCEL_CHANGE': {
-      settle(cancelChange(run, m.changeId));
+      const o = cancelChange(run, m.changeId);
+      if (o.restoredPolicy && !pendingPolicy) pendingPolicy = o.restoredPolicy;
+      settle(o);
       break;
     }
     case 'GET_RULES':
@@ -439,6 +459,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'START_DAY':
       run = startDay(run, pack().game);
+      pendingPolicy ??= failedPolicyToday(run);
       if (m.auto && run.phase === 'LIVE') {
         if (speed !== AUTO_SPEED) speedBeforeAuto = speed > 0 ? speed : 1;
         speed = AUTO_SPEED;

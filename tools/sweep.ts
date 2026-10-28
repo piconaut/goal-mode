@@ -1,11 +1,12 @@
 // Balance sweep (SPEC §16, PROGRESS M8.2): run strategy bots over many seeds in parallel processes
 // and summarise when and why runs end. Each run is a separate `tools/bot.ts --json` process.
 //
-//   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--scenario midwest|revenue] [--out sweep.csv] [--resume]
+//   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--scenario midwest|revenue] [--out sweep.csv] [--resume] [--reader]
 
 import { spawn } from 'node:child_process';
-import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus } from 'node:os';
+import { dirname } from 'node:path';
 
 function arg(name: string, dflt: string): string {
   const i = process.argv.indexOf(`--${name}`);
@@ -23,6 +24,7 @@ const out = arg('out', 'sweep.csv');
 // Each finished run is appended here at once, so a killed sweep keeps its results; --resume skips them.
 const partial = `${out}.partial.jsonl`;
 const resume = process.argv.includes('--resume');
+mkdirSync(dirname(out), { recursive: true }); // CI checks out without runs/ (gitignored)
 
 interface Result {
   bot: string;
@@ -42,7 +44,7 @@ interface Result {
 
 function runOne(bot: string, seed: number): Promise<Result> {
   return new Promise((resolve, reject) => {
-    const args = ['--import', 'tsx', 'tools/bot.ts', '--bot', bot, '--seed', String(seed), '--json', ...(days ? ['--days', days] : []), ...(difficulty ? ['--difficulty', difficulty] : []), ...(scenarioId ? ['--scenario', scenarioId] : [])];
+    const args = ['--import', 'tsx', 'tools/bot.ts', '--bot', bot, '--seed', String(seed), '--json', ...(days ? ['--days', days] : []), ...(difficulty ? ['--difficulty', difficulty] : []), ...(scenarioId ? ['--scenario', scenarioId] : []), ...(process.argv.includes('--reader') ? ['--reader'] : [])];
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'inherit'] });
     let text = '';
     p.stdout.on('data', (d: Buffer) => (text += d.toString()));

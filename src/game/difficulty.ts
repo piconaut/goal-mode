@@ -51,6 +51,8 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
         return c.changes.backendDegrade === undefined ? c : { ...c, changes: { ...c.changes, backendDegrade: scaleExcess(c.changes.backendDegrade, mult) } };
       case 'SET_LOCK_BOOST':
         return { ...c, value: c.value * mult };
+      case 'SET_MLC_PRICE':
+        return { ...c, mult: scaleExcess(c.mult, mult) };
       case 'SET_LCU':
         return c.extraIops === undefined ? c : { ...c, extraIops: Object.fromEntries(Object.entries(c.extraIops).map(([k, v]) => [k, Math.round((v ?? 0) * mult)])) };
       default:

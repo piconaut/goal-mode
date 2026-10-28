@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { CodexHints } from './CodexHint';
 import type { EvidenceMetric } from '../content/evidence';
 import { explainWlmLog, type Mon3Cpc, type Mon3Row, type Mon3View } from '../game/mon3';
@@ -9,6 +9,9 @@ import { Automation } from './Automation';
 import { EvidenceBoard, PinButton } from './Evidence';
 import { Mon3Charts } from './Mon3Charts';
 import type { GameHandle } from './useGame';
+import { formatClock } from '../sim/core/clock';
+import { MON3_HISTORY } from '../content/tools';
+import type { Mon3HistoryRange } from '../game/mon3History';
 
 type View3 = 'SYSSUM' | 'SYSINFO' | 'DELAY' | 'PROCU' | 'ENCLAVE' | 'CPC' | 'WFEX' | 'WLM';
 // Report contents follow z/OS RMF Report Analysis (SC34-2665), "Interactive performance analysis with Monitor III".
@@ -41,29 +44,38 @@ const sameClass = (rows: Mon3Row[], i: number) => i > 0 && rows[i - 1]!.serviceC
 export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
   const [view, setView] = useState<View3>('SYSSUM');
   const [system, setSystem] = useState('*PLEX');
-  const m = v.mon3;
-  if (!m)
+  /** Tick of the past interval on screen; null = live. */
+  const [at, setAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (at !== null) game.send({ type: 'GET_MON3_AT', tick: at });
+  }, [at, game.send]);
+  const past = at === null ? null : game.mon3At;
+  const m = at === null ? v.mon3 : (past?.view ?? null);
+  // Pins read live values, so they are offered on the live views only.
+  const pins = at === null ? game : null;
+  if (!v.mon3)
     return (
       <div className="panel">
         <h3>RMF Monitor III</h3>
         <div className="muted">Live views need the RMF Monitor III tool (Analytics tab). Until then you diagnose from yesterday's Postprocessor reports.</div>
       </div>
     );
-  const systems = ['*PLEX', ...m.systems.map((s) => s.system)];
+  const systems = ['*PLEX', ...(m ?? v.mon3).systems.map((s) => s.system)];
   return (
     <>
     {/* Charts (when unlocked) sit above the live views; the locked teaser stays below. */}
     {v.mon3Charts && <Mon3Charts v={v} game={game} />}
     <div className="panel">
       <h3>
-        RMF Monitor III · {v.clock} · Range: {m.rangeSec} Sec · Policy: {m.policy}
+        RMF Monitor III · {at === null ? v.clock : past ? `${formatClock(past.tick)} (history)` : '…'} · Range: {(m ?? v.mon3).rangeSec} Sec · Policy: {(m ?? v.mon3).policy}
         <CodexHints ids={['rmf', 'blocked-workload']} />
       </h3>
+      {game.mon3Range && <TimeBar range={game.mon3Range} at={at} setAt={setAt} />}
       <div className="form">
         {VIEWS.map((x) => (
           <button key={x.id} className={view === x.id ? 'active' : ''} onClick={() => setView(x.id)}>
             {x.id}
-            {x.id === 'WFEX' && m.exceptions.length > 0 ? ` (${m.exceptions.length})` : ''}
+            {x.id === 'WFEX' && m && m.exceptions.length > 0 ? ` (${m.exceptions.length})` : ''}
           </button>
         ))}
         {(SYSTEM_VIEWS.includes(view) || view === 'ENCLAVE') && (
@@ -75,16 +87,17 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
         )}
       </div>
       <div className="help">{VIEWS.find((x) => x.id === view)!.help}</div>
-      <div style={{ overflowX: 'auto' }}>
-        {view === 'SYSSUM' && <SysSum m={m} game={game} />}
+      {!m && <div className="muted">That interval is no longer held (Monitor III keeps {MON3_HISTORY.retentionHours} hours).</div>}
+      {m && <div style={{ overflowX: 'auto' }}>
+        {view === 'SYSSUM' && <SysSum m={m} game={pins} />}
         {view === 'SYSINFO' && <SysInfo m={m} system={system} />}
-        {view === 'DELAY' && <Delay rows={m.rows.filter((r) => r.system === system)} game={game} />}
-        {view === 'PROCU' && <Procu rows={m.rows.filter((r) => r.system === system)} game={game} />}
+        {view === 'DELAY' && <Delay rows={m.rows.filter((r) => r.system === system)} game={pins} />}
+        {view === 'PROCU' && <Procu rows={m.rows.filter((r) => r.system === system)} game={pins} />}
         {view === 'ENCLAVE' && <Enclave m={m} system={system} />}
-        {view === 'CPC' && <Cpc m={m} system={system} game={game} />}
+        {view === 'CPC' && <Cpc m={m} system={system} game={pins} />}
         {view === 'WFEX' && <Wfex m={m} system={system} />}
         {view === 'WLM' && <WlmLog lines={v.wlmLog} />}
-      </div>
+      </div>}
     </div>
     {!v.mon3Charts && <Mon3Charts v={v} game={game} />}
     <Alerts v={v} game={game} />
@@ -94,7 +107,46 @@ export function Monitor({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
-function SysSum({ m, game }: { m: Mon3View; game: GameHandle }) {
+/** Monitor III history: step back through past MINTIME intervals (RMF III's BREF/FREF and range commands). */
+function TimeBar({ range, at, setAt }: { range: Mon3HistoryRange; at: number | null; setAt: (t: number | null) => void }) {
+  const step = range.everyTicks;
+  const cur = at ?? range.lastTick;
+  const back = (n: number) => setAt(Math.max(range.firstTick, (at ?? range.lastTick + step) - n * step));
+  const fwd = () => (at === null || at + step > range.lastTick ? setAt(null) : setAt(at + step));
+  return (
+    <div className="form" aria-label="Monitor III time">
+      <button onClick={() => back(36)} disabled={cur <= range.firstTick} title="Back one hour">
+        ◀◀
+      </button>
+      <button onClick={() => back(1)} disabled={cur <= range.firstTick} title="Back one interval (BREF)">
+        ◀
+      </button>
+      <input
+        type="range"
+        aria-label="Interval"
+        min={range.firstTick}
+        max={range.lastTick}
+        step={step}
+        value={cur}
+        onChange={(e) => {
+          const t = Number(e.target.value);
+          setAt(t >= range.lastTick && at === null ? null : t);
+        }}
+      />
+      <button onClick={fwd} disabled={at === null} title="Forward one interval (FREF)">
+        ▶
+      </button>
+      <button className={at === null ? 'active' : ''} onClick={() => setAt(null)}>
+        Live
+      </button>
+      <span className="muted">
+        {at === null ? 'live' : formatClock(at)} · held from {formatClock(range.firstTick)} ({range.count} intervals)
+      </span>
+    </div>
+  );
+}
+
+function SysSum({ m, game }: { m: Mon3View; game: GameHandle | null }) {
   const rows = m.rows.filter((r) => r.system === '*PLEX');
   return (
     <table>
@@ -211,7 +263,7 @@ function SysInfo({ m, system }: { m: Mon3View; system: string }) {
   );
 }
 
-function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle }) {
+function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null }) {
   const top = [...rows].filter((r) => r.delayFrac + r.unknownFrac > 0.005).sort((a, b) => b.delayFrac - a.delayFrac || (a.scKey < b.scKey ? -1 : 1));
   if (top.length === 0) return <div className="muted">Nobody is waiting.</div>;
   return (
@@ -256,7 +308,7 @@ function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle }) {
   );
 }
 
-function Procu({ rows, game }: { rows: Mon3Row[]; game: GameHandle }) {
+function Procu({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null }) {
   const top = [...rows].filter((r) => r.cpuEngines + r.ziipEngines > 0.001).sort((a, b) => b.cpuEngines - a.cpuEngines || (a.scKey < b.scKey ? -1 : 1));
   const p2 = (engines: number) => (engines * 100).toFixed(1);
   return (
@@ -341,7 +393,7 @@ function Enclave({ m, system }: { m: Mon3View; system: string }) {
   );
 }
 
-function Cpc({ m, system, game }: { m: Mon3View; system: string; game: GameHandle }) {
+function Cpc({ m, system, game }: { m: Mon3View; system: string; game: GameHandle | null }) {
   const heads = m.cpcHeaders.filter((h) => system === '*PLEX' || h.lparId === system);
   const zos = m.cpc.filter((c) => c.kind === 'ZOS');
   return (

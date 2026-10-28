@@ -26,13 +26,15 @@ npm run dev          # Vite dev server
 npm test             # Vitest (unit + realism + golden)
 npm run typecheck    # tsc --noEmit
 npm run check        # typecheck + tests (no lint script yet)
-npm run bench -- --hash   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
+npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
-npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
-npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl
+npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
+npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
+npx tsx tools/ci/behaviourNote.ts origin/dev     # CI gate: goldens changed ⇒ PR body needs "## Behaviour change" (PR_BODY env)
+npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5   # CI gate: bot sweep inside balance bands (see .github/workflows/ci.yml)
 # In `npm run dev` builds, globalThis.__goalMode.send(msg) talks to the worker (DEV_INSIGHT, DEV_FAST_DAYS, DEV_TFP_OFFER).
 ```
 
@@ -50,8 +52,9 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
    live in `src/content/`. Don't hard-code tunables in sim logic.
 4. **One tick = 10 sim-seconds** (the WLM policy adjustment interval). The pipeline order in
    SPEC §5.1 is the contract; new subsystems slot into it, they don't reorder it.
-5. **Performance budget:** ≤ 2 s per headless sim day, ≤ 4 ms per tick. Analytic/fluid models
-   per tick; only batch jobs are discrete entities. Benchmark if you touch hot paths.
+5. **Performance budget:** ≤ 4 ms per tick in the worker. Headless speed (≤ 2 s per day was the old target) is
+   no longer a gate (user decision 2026-10-27), but don't make it worse. Analytic/fluid models per tick; only batch
+   jobs are discrete entities. Benchmark if you touch hot paths.
 
 ## Conventions
 
@@ -79,6 +82,9 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
 - If you're unsure how z/OS really behaves, say so in PROGRESS.md "Open questions" rather than
   guessing silently. Pick a reasonable model, mark it `// APPROX:` and move on.
 - Update SPEC §17 (fidelity table) when you add or change a model.
+- Confirmed facts go in `docs/research.md` (fact, page-linked source, sim status); check it before modelling
+  something, and add a row when research settles a question. When the sim differs, also add an unticked item to
+  PROGRESS.md "Realism fixes"; update the ledger row and SPEC §17/§18 in the PR that changes the model.
 
 ## Testing expectations
 
@@ -107,11 +113,22 @@ node tools/screenshot.mjs <outDir>                                 # headless UI
 
 - Work milestone by milestone (PROGRESS.md). Keep the sim runnable headless at every step.
 - Small, focused commits. Don't mix model changes with UI changes.
+- Branches and PRs: one session branch per task, cut from `dev`; CI is the merge gate (PROGRESS.md "Branch workflow").
+  **Standing user request (2026-10-23): you are explicitly asked to open a pull request for every task, without
+  waiting to be asked in the session.** When the task is done and pushed (check green locally, PROGRESS.md updated):
+  1. Open a PR from the session branch into `dev` (never `main`; `dev` → `main` is the milestone PR above), with the
+     body following `.github/pull_request_template.md`. Fill in "Behaviour change" whenever goldens change; label
+     pure optimisations `perf`.
+  2. Enable auto-merge (squash). If GitHub refuses because the checks already passed, merge it (squash) directly.
+  3. Subscribe to the PR's activity and drive it to merged: fix red checks and push again.
+  Only merge or enable auto-merge on PRs from your own session branch; report anyone else's PR to the user.
+  After your PR is merged, further work in the same session starts again from the latest `dev` on the same branch
+  name, as a new PR.
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
 - Delegation (to save usage): hand well-scoped tasks to the Sonnet subagents in `.claude/agents/` —
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
   brief) `log-reader` (digest bot/sweep logs, test failures, long reports) and `pr-reviewer` (check out a PR in a worktree,
-  run check + bench hashes, verify its claims, return a merge verdict; the main agent merges or comments). Keep sim model changes,
+  run check, bench hashes and a sweep for milestones, verify its claims, post its report on the PR, return a merge verdict; the main agent merges). Keep sim model changes,
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.

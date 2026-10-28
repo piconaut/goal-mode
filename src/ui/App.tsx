@@ -19,6 +19,7 @@ import { useStored } from './useStored';
 import { Tutorial } from './Tutorial';
 import { AUTO_SPEED } from '../worker/protocol';
 import { hourTick, pagerChime } from './sound';
+import { idText } from '../game/ids';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
@@ -137,7 +138,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="stat">
         Fatigue <b>{v.fatigue.toFixed(0)}</b>
       </span>
-      <span className="stat">
+      <span className="stat" title="Month's bill so far: priced on the month's peak R4HA to date, so a cap or saving lowers it only once it lowers that peak">
         MLC est <b>${Math.round(v.mlcEstimate / 1000)}k</b>
       </span>
       <span className="stat">
@@ -234,7 +235,6 @@ export function piColor(pi: number | null): string {
   return 'rgba(255,107,107,0.55)';
 }
 
-export const SERIES_LPARS = ['PROD1', 'PROD2', 'DEVT', 'SYSP'];
 export const seriesColor = (i: number) => `var(--series-${i + 1})`;
 
 function hhmm(h: number): string {
@@ -243,26 +243,47 @@ function hhmm(h: number): string {
   return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
 }
 
+/** Day (0-based) a history sample belongs to: the day's ticks run (day·T, (day+1)·T]. */
+const sampleDay = (tick: number, ticksPerDay: number) => Math.max(0, Math.ceil(tick / ticksPerDay) - 1);
+
 function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
-  // Today's samples only (since the played day's 06:00).
-  const dayStart = v.day * v.ticksPerDay;
-  const pts = history.filter((p) => p.tick > dayStart);
+  // The played day's samples; before the next day's first sample, keep the last day on screen.
+  const last = history.at(-1);
+  const day = last && !history.some((p) => sampleDay(p.tick, v.ticksPerDay) === v.day) ? sampleDay(last.tick, v.ticksPerDay) : v.day;
+  const pts = history.filter((p) => sampleDay(p.tick, v.ticksPerDay) === day);
   const xLabels = pts.map((p) => hhmm(p.hourOfDay));
-  const mk = (key: 'msu' | 'r4ha') => SERIES_LPARS.map((id, i) => ({ id, color: seriesColor(i), values: pts.map((p) => p[key][id] ?? null) }));
+  const lpars = v.lpars.filter((l) => l.kind === 'ZOS');
+  // Colours follow the LPAR across the per-CPC MSU charts and the R4HA chart.
+  const series = (key: 'msu' | 'r4ha', ids: string[]) =>
+    ids.map((id) => ({ id, color: seriesColor(lpars.findIndex((l) => l.id === id)), values: pts.map((p) => p[key][id] ?? null) }));
+  // One MSU chart per CPC: each CPC's LPARs against its own installed capacity.
+  const cpcIds = [...new Set(lpars.map((l) => l.cpcId))];
+  const note = (text: string) => <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>{text}</div>;
   return (
     <div className="panel" style={{ gridColumn: '1 / -1' }}>
       <h3>
-        Capacity today
+        {day === v.day ? 'Capacity today' : `Capacity, day ${day + 1}`}
         <CodexHints ids={['r4ha']} />
       </h3>
       <div className="grid">
+        {cpcIds.map((cpcId) => (
+          <div key={cpcId}>
+            {note(`${cpcIds.length > 1 ? `${cpcId}: ` : ''}MSU per LPAR, stacked (5-minute samples); dashed: installed CP capacity, higher while On/Off CoD is active`)}
+            <LineChart
+              title={`MSU per LPAR on ${cpcId}`}
+              unit="MSU"
+              xLabels={xLabels}
+              stacked
+              series={[
+                ...series('msu', lpars.filter((l) => l.cpcId === cpcId).map((l) => l.id)),
+                { id: 'CP capacity', color: 'var(--muted)', dashed: true, overlay: true, values: pts.map((p) => p.capacityMsu?.[cpcId] ?? null) },
+              ]}
+            />
+          </div>
+        ))}
         <div>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>MSU consumption per LPAR (5-minute samples)</div>
-          <LineChart title="MSU per LPAR" unit="MSU" xLabels={xLabels} series={mk('msu')} />
-        </div>
-        <div>
-          <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Rolling 4-hour average per LPAR (drives soft capping and the MLC bill)</div>
-          <LineChart title="R4HA per LPAR" unit="MSU" xLabels={xLabels} series={mk('r4ha')} />
+          {note('Rolling 4-hour average per LPAR (drives soft capping and the MLC bill)')}
+          <LineChart title="R4HA per LPAR" unit="MSU" xLabels={xLabels} series={series('r4ha', lpars.map((l) => l.id))} />
         </div>
       </div>
     </div>
@@ -409,7 +430,7 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
         {[...v.incidents].reverse().slice(0, 12).map((i) => (
           <div className="row" key={i.id}>
             <span>
-              #{i.id} {i.workloadId} <span className="muted">day {i.day + 1}</span>
+              {idText('incident', i.id)} {i.workloadId} <span className="muted">day {i.day + 1}</span>
             </span>
             <span className={`tag ${i.endTick === null ? 'bad' : 'warn'}`}>
               {i.endTick === null ? 'OPEN' : 'closed'} · {i.hours}h · worst {i.worstAttainmentPct.toFixed(0)}%

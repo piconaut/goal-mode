@@ -11,7 +11,6 @@ import type { ProjectState } from './projects';
 import type { EvidencePin, PinVerdict } from './evidence';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
-import type { RngState } from '../sim/core/rng';
 import type { SimState } from '../sim/core/types';
 import type { NightSummary } from '../sim/subsys/batch';
 
@@ -32,8 +31,10 @@ export type Mechanism =
   | 'CF_SERVICE'
   | 'QR_TCB'
   | 'THREAD_LIMIT'
+  | 'ROUTING'
   | 'IO'
-  | 'STORAGE';
+  | 'STORAGE'
+  | 'JOB_FAILURE';
 
 export type Trigger =
   | 'DEMAND_SURGE'
@@ -43,7 +44,8 @@ export type Trigger =
   | 'POLICY'
   | 'HARDWARE_FAULT'
   | 'NEW_WORKLOAD'
-  | 'GROWTH';
+  | 'GROWTH'
+  | 'APPLICATION_ERROR';
 
 export interface PlannedChange {
   id: number;
@@ -76,6 +78,8 @@ export interface ActiveEvent {
   affects: string[];
   /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
   mechanisms?: Mechanism[];
+  /** Mechanism the card causes through failures rather than delay (copied from the card). */
+  failureMechanism?: Mechanism;
   /** Hardware items refused while the card runs (copied from the card). */
   blocksHardware?: string[];
   endCommands: Command[];
@@ -119,6 +123,12 @@ export interface HourAcc {
   /** Max capped fraction per LPAR during the hour. */
   cappedByLpar: Record<string, number>;
   cpcBusySum: number;
+  /** Per CPC: sum over the hour's ticks of general-CP busy (absent in older saves). */
+  cpcBusyById?: Record<string, number>;
+  /** Per LPAR: sum over the hour's ticks of CP delivered ÷ CP available to it (logical CPs, weight, white space). */
+  lparBusyById?: Record<string, number>;
+  /** Per LPAR: sum of CP engines consumed by importance rank 0–6 (see `importanceRank`). */
+  cpByImportance?: Record<string, number[]>;
   lockIndexSum: number;
 }
 
@@ -135,6 +145,8 @@ export interface Incident {
   aiops?: Hypothesis[];
   rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number } | null;
   trustLost: number;
+  /** Id of the first incident that day with the same root cause: one RCA covers the group, scored once (SPEC §10). */
+  rcaGroup?: number;
 }
 
 export interface SlaDay {
@@ -182,7 +194,6 @@ export interface RunState {
   careerRecorded?: boolean;
   /** Day the quarter closed when the player kept going (endless mode). */
   endlessFromDay?: number;
-  rng: RngState;
   sim: SimState;
   phase: Phase;
   day: number;
@@ -239,6 +250,8 @@ export interface RunState {
   events: ActiveEvent[];
   pendingCommands: Command[];
   hour: HourAcc | null;
+  /** The batch night's hours (18:00–06:00) summed, for a missed night's incident truth; reset at day end. */
+  nightHour?: HourAcc | null;
   /** EWMA of healthy-hour response-time parts per workload (incident baselines). */
   baselines: Record<string, Record<string, number>>;
   incidents: Incident[];

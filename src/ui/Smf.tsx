@@ -9,7 +9,7 @@ import type { GameHandle } from './useGame';
 
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
   { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF), and DBAT queueing.' },
-  { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, CPU dispatch wait.' },
+  { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share.' },
   { kind: 'BATCH', label: 'Batch (SMF 30)', help: 'Last night’s jobs: initiator queue time (grey) and elapsed (bar), critical jobs highlighted.' },
   { kind: 'SMF113', label: 'CPU MF (113)', help: 'Hardware counters per image: L1 misses, Relative Nest Intensity, cycles per instruction, LSPR category. Work on VM/VL engines loses cache affinity.' },
 ];
@@ -132,8 +132,9 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
                   <th className="num">vs base</th>
                   <th className="num">QR wait ms</th>
                   <th className="num">MXT wait ms</th>
-                  <th className="num">dispatch wait ms</th>
+                  <th className="num" title="Dispatched but not on a CP (USRDISPT − USRCPUT): z/OS CPU queueing">DISP−CPU ms</th>
                   <th className="num">failed</th>
+                  <th className="num">failed %</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,14 +158,18 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
                       {f1(r.mxtWaitMs)}
                       <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'MXT_WAIT' }} label={`${r.tranId} MXT wait`} />
                     </td>
-                    <td className="num">{f1(r.dispatchWaitMs)}</td>
+                    <td className="num">{f1(r.dispMinusCpuMs)}</td>
                     <td className="num">{Math.round(r.failed)}</td>
+                    <td className="num">
+                      {f1(r.failedPct)}
+                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'FAIL_PCT' }} label={`${r.tranId} failed %`} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           ))}
-        {d?.kind === 'BATCH' && (d.night ? <Gantt n={d.night} /> : <div className="muted">No batch has run yet.</div>)}
+        {d?.kind === 'BATCH' && (d.night ? <Gantt n={d.night} game={game} /> : <div className="muted">No batch has run yet.</div>)}
         {d?.kind === 'SMF113' && (
           <table>
             <thead>
@@ -196,7 +201,10 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
-function Gantt({ n }: { n: BatchNight }) {
+const DELAY_LABEL = { cpu: 'CPU', io: 'I/O', lock: 'Lock', db2: 'Db2', swap: 'Swap', init: 'Initiator' } as const;
+const DELAY_METRIC = { cpu: 'JOB_CPU', io: 'JOB_IO', lock: 'JOB_LOCK', db2: 'JOB_DB2', swap: 'JOB_SWAP', init: 'JOB_INIT' } as const;
+
+function Gantt({ n, game }: { n: BatchNight; game: GameHandle }) {
   const [stream, setStream] = useState('');
   const streams = [...new Set(n.jobs.map((j) => j.stream))].sort();
   const jobs = n.jobs.filter((j) => !stream || j.stream === stream);
@@ -220,9 +228,27 @@ function Gantt({ n }: { n: BatchNight }) {
           {n.criticalEnd ? ` · last critical job ${n.criticalEnd}` : ''}
         </span>
       </div>
+      {n.critical && (
+        <div className="muted" style={{ fontSize: 12, marginBottom: 6 }}>
+          Critical jobs' lost time (SMF 30):
+          {(['cpu', 'io', 'lock', 'db2', 'swap', 'init'] as const).map((c) => {
+            const metric = DELAY_METRIC[c];
+            return (
+              <span key={c} style={{ marginLeft: 10 }}>
+                {DELAY_LABEL[c]} {n.critical!.delaySharePct ? n.critical!.delaySharePct[c].toFixed(0) : '–'}%
+                {n.critical!.delaySharePct && <PinButton game={game} req={{ source: 'BATCH', day: n.day, metric }} label={`${DELAY_LABEL[c]} share of critical jobs' lost time`} />}
+              </span>
+            );
+          })}
+          <span style={{ marginLeft: 10 }}>
+            ABENDs: {n.critical.abended.length}
+            <PinButton game={game} req={{ source: 'BATCH', day: n.day, metric: 'JOB_ABEND' }} label="critical job ABENDs" />
+          </span>
+        </div>
+      )}
       <div className="gantt">
         {jobs.map((j) => (
-          <div className="gantt-row" key={`${j.name}:${j.startSec}`} title={`${j.name} (${j.stream}) on ${j.lparId}: queued ${Math.round(j.queuedSec / 60)} min, ran ${nightClock(n, j.startSec)}–${nightClock(n, j.endSec)}, stretch ×${j.stretch.toFixed(2)}`}>
+          <div className="gantt-row" key={`${j.name}:${j.startSec}`} title={`${j.name} (${j.stream}) on ${j.lparId}: queued ${Math.round(j.queuedSec / 60)} min, ran ${nightClock(n, j.startSec)}–${nightClock(n, j.endSec)}, ${j.stretch.toFixed(2)}× slower than running alone`}>
             <span className="gantt-name">
               {j.name}
               {j.critical && <span className="tag bad"> C</span>}

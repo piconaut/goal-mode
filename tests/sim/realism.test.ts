@@ -237,8 +237,16 @@ describe('WLM caps (resource group maximum, discretionary goal management)', () 
     const disc = (waiting: boolean) => ({ scKey: 'DEVBAT#1', dp: 150, starvedSec: 0, acc: waiting ? acc(1, 9, 1) : acc(9, 1, 1) });
     expect(discretionaryCaps(BASEPOL, sl, [tso2, disc(false)])).toBeUndefined();
     const cap = discretionaryCaps(BASEPOL, sl, [tso2, disc(true), { scKey: 'ONLHI#1', dp: 240, starvedSec: 0, acc: acc(9, 1, 6) }])!;
-    expect(cap(sl[0]!)).toBeCloseTo(0.8);
+    expect(cap(sl[0]!)).toBeCloseTo(0.5); // far below the 0.71–0.81 band: floor
     expect(cap(sl[1]!)).toBe(Infinity); // tight response-time goal: never capped
+    // Near the band the cap is gentle: velocity 4/13 ≈ 30.8 vs goal 20 is PI 0.65 → 1 − (0.81 − 0.65).
+    const near = discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: acc(4, 9, 6) }, disc(true)])!;
+    expect(near(sl[0]!)).toBeCloseTo(0.84, 2);
+    // PI 0.75 starts no cap, but a period already capped stays capped up to 0.81.
+    const pi75 = acc(4, 11, 6); // velocity 26.7, PI 0.75
+    expect(discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: pi75 }, disc(true)])).toBeUndefined();
+    const wasCapped = discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: { ...pi75, delayCap: 2 } }, disc(true)])!;
+    expect(wasCapped(sl[0]!)).toBeCloseTo(0.94, 2);
     // Small consumers are left alone.
     expect(discretionaryCaps(BASEPOL, sl, [{ ...tso2, acc: acc(9, 1, 0.1) }, disc(true)])).toBeUndefined();
   });
@@ -437,20 +445,22 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
-    const outside = (cmds: Parameters<typeof step>[1]) => {
+    const outside = (cmds: Parameters<typeof step>[1], part = 'outside') => {
       let s = step(base, cmds, MIDWEST);
       let out = 0;
       let n = 0;
       for (let i = 0; i < 180; i++) {
         s = step(s, [], MIDWEST);
         const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
-        out += w.parts.outside ?? 0;
+        out += w.parts[part] ?? 0;
         n += w.completions;
       }
       return (1000 * out) / Math.max(1, n);
     };
     expect(outside([])).toBe(0);
     expect(outside(card('CICS_SOS'))).toBeGreaterThan(5);
+    // The slots are too few for the arrival rate even at unqueued service time, so RCA sees the limit's own queue.
+    expect(outside(card('CICS_SOS'), 'outsideRef')).toBeGreaterThan(0.5 * outside(card('CICS_SOS')));
   }, 60_000);
 
   it('stored procedures losing zIIP eligibility move mobile CPU from zIIPs to general CPs', () => {

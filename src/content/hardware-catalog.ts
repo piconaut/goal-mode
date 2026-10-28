@@ -34,8 +34,8 @@ export const HARDWARE: HardwareItem[] = [
     leadDays: 0,
     perCpc: true,
     durationDays: 3,
-    commands: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', engines: cpc(s, id).engines.CP + 1 }],
-    revert: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', engines: cpc(s, id).engines.CP - 1 }],
+    commands: (s, id) => [{ kind: 'ADD_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', delta: 1 }],
+    revert: (s, id) => [{ kind: 'ADD_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', delta: -1 }],
   },
   {
     id: 'PERM_CP',
@@ -46,7 +46,7 @@ export const HARDWARE: HardwareItem[] = [
     leadDays: 4,
     perCpc: true,
     durationDays: null,
-    commands: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', engines: cpc(s, id).engines.CP + 1 }],
+    commands: (s, id) => [{ kind: 'ADD_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'CP', delta: 1 }],
     revert: () => [],
   },
   {
@@ -58,7 +58,7 @@ export const HARDWARE: HardwareItem[] = [
     leadDays: 4,
     perCpc: true,
     durationDays: null,
-    commands: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'ZIIP', engines: cpc(s, id).engines.ZIIP + 1 }],
+    commands: (s, id) => [{ kind: 'ADD_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'ZIIP', delta: 1 }],
     revert: () => [],
   },
   {
@@ -70,7 +70,7 @@ export const HARDWARE: HardwareItem[] = [
     leadDays: 4,
     perCpc: true,
     durationDays: null,
-    commands: (s, id) => [{ kind: 'SET_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'ICF', engines: cpc(s, id).engines.ICF + 1 }],
+    commands: (s, id) => [{ kind: 'ADD_CPC_ENGINES', cpcId: cpc(s, id).id, pool: 'ICF', delta: 1 }],
     revert: () => [],
   },
   {

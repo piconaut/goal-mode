@@ -5,31 +5,38 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 ## Current status
 
-- **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 on hold until the user says start. Playable in the browser
+- **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
-- **Last updated:** 2026-10-21
-- **Next up:** M8.4 events (23 of ~25), M8.2 balance (textbook below target by design: booking go-live kept, user decision 2026-10-21), M8.1 structural perf.
+- **Last updated:** 2026-10-28
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), then a human UI playtest (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
   docs-only or in-progress work. Before opening: `npm run check` green, bench hash recorded, PROGRESS updated. Body:
   what changed since the last merge to `main`, test count, hashes, sweep results, anything waiting on the user. At most
   one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
-  Each one gets a `pr-reviewer` review (base `main`, head `dev`); merge it when the verdict is MERGE, otherwise fix or
-  comment (user request 2026-10-21). NEEDS USER verdicts go to the user.
-- **Health:** `npm run check` green (360 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) `eddf17fc7c615524`.
+  The body also needs a "## Behaviour change" section listing the golden changes since the last merge to `main` (CI
+  `behaviour-note` gate). Each one gets a `pr-reviewer` review (base `main`, head `dev`), which it also posts on the PR
+  as a reference comment. When the verdict is MERGE and all required checks are green, merge it with a **merge commit**
+  (not squash, so `dev` and `main` keep shared history); otherwise fix or comment. No human approval is needed (user
+  decision 2026-10-26). NEEDS USER verdicts go to the user.
+- **Branch workflow (user request 2026-10-23):** each session works on its own branch cut from `dev`, opens a PR into
+  `dev` with auto-merge, and CI merges it when green. CI (`.github/workflows/`): `check` (typecheck + all tests,
+  goldens included); `behaviour-note` (a PR that changes `tests/golden/hashes.json` needs a filled-in
+  "## Behaviour change" section, see the PR template); `perf-hash` (a PR labelled `perf` or titled "perf…" must keep
+  the Midwest and Harbourline 1-day bench hashes of its base); `balance` (when goldens change: donothing/textbook/expert
+  over seeds 1–5 must stay inside the loose bands in `tools/ci/balanceGate.ts`). After a rebase that conflicts on
+  `hashes.json`, regenerate it with `UPDATE_GOLDEN=1`, never merge it by hand. Run one golden-changing PR at a time.
+  GitHub settings (user): default branch `dev`; protect `dev` and `main` with these four checks required; allow
+  auto-merge; delete head branches on merge. `main` requires the same checks but no approval: GitHub records Claude's
+  PRs as authored by the user, who can't approve their own PR (user decision 2026-10-26).
+- **Health:** `npm run check` green (430 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+  bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `be43ff16de564882` (since PR #9), Harbourline `be97b3e401164fc5`.
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
-  MOBILE (96–98%). PROD2 runs hottest (no zIIPs + all ad-hoc BI). On days 1–2 batch starts at 20:00 into Mobile's
-  evening peak and starves Db2 (F1) and DDF (F4) until WLM adapts. Critical batch (40 jobs) ends 04:13 → 04:44
-  (deadline 06:00) and erodes with 0.4%/day batch growth. CF02 (shared, polling, weight 10): sync ≈ 1.4 ms, ~98%
-  async (F8). Payday (15th, day 13) saturates the CPC and MOBILE misses SLA.
-
-## Milestones
-
-Legend: `[ ]` todo · `[~]` in progress · `[x]` done
+  MOBILE (96–98%). Batch starts at 20:00 into Mobile's evening peak and starves Db2 (F1) and DDF (F4) until WLM
+  adapts; critical batch ends 04:13 → 04:44 (deadline 06:00); payday (day 13) saturates the CPC.
 
 ### M0–M6 — Foundation and playable vertical slice (done)
 - [x] M0 scaffolding: Vite + React + TS strict, Vitest, purity test (`tests/sim/purity.test.ts`), seeded RNG, `npm run check`
@@ -63,125 +70,81 @@ Finance tab, multi-day projects, Codex with contextual "?" hints.
   periods; TFP unused baseline is lost (no rollover); lock requests never convert to async
 - Dev aids (dev builds): `globalThis.__goalMode.send(msg)` with `DEV_INSIGHT`, `DEV_FAST_DAYS {days}`, `DEV_TFP_OFFER`
 
+
 ### M8 — Balance, difficulty, content & polish
 Goal: a run that is fair, readable and replayable. Done when bots hit their targets on every difficulty,
 three scenarios ship, a new player can finish day 1 with the tutorial, and an accessibility pass is clean.
 
 **M8.1 Performance (prerequisite for bots and what-if)**
-- [ ] Target ≤ 2 s per headless day (now day 1 3.25–3.7 s, steady ~2.0–2.4 s on the cloud box)
+- [x] Closed 2026-10-27 (user decision): the gate is ≤ 4 ms per tick in the worker, which holds; ≤ 2 s per headless
+  day was a tooling convenience (Midwest 2.56 s, Harbourline 5.27 s on the cloud box). Revisit only if sweeps become
+  the bottleneck
 - [x] Benchmark `npm run bench [-- --days N --seed S --hash]` (`tools/bench.ts`); `--hash` proves an optimisation is
   behaviour-neutral. Seed 42 hashes: 1 day `8a82ad7db2b258ae`, 3 days `55d9e06f477c9197`, 8 days `c2ec32ace44f6b06` (since PR #8)
-- History: loop 21 ≈ 8.5 s/day → 2026-10-20 perf thread ~1.7–1.9× (index-based dispatcher/evaluator, shared
-  projection demand stage, copy-on-write batch jobs, cached keys; textbook bot 6.3 → 4.1 s/day) → 2026-10-21
-  `step` split into `lparDemand` / `dispatchLpar` stages sharing a `TickCtx` (day 1 4.05–4.18 → 3.25–3.7 s).
-  Profile is flat (no function > 13% self); left: allocation (GC ~5–7%), log-normal buckets (~5%), and JIT
-  deopts of `step` on days 1–4 as state objects change shape. Micro-opts are exhausted at ≤ 1% each (loops 91–92)
-- 2026-10-21 (2nd thread): soft capping, PR/SM, policy adjustment and the R4HA/MLC/RMF tail are their own
-  stages too (`softCap`, `prsm`, `adjustPolicies`, `stepCapping`, `stepCost`, `stepRmf`); `step` self time
-  11% → 8%. Slice templates were already memoised; `buildSlices` now skips the key string and nested lookups
-  per LPAR while inputs are unchanged, and Db2 use per workload is memoised. Hash-neutral; wall-clock gain is
-  within this VM's noise (it measured ~2× slower than the day before: base 3-day run 14–17 s). Lesson: building
-  slices with a field-by-field literal instead of a spread was ~40% slower overall (hidden-class split with
-  the other slice copies), so keep slice copies as spreads
-- [ ] Structural options for 4×, in expected-value order: (1) ~~cache per-LPAR slice specs~~ (templates
-  cached; the per-tick spread copy and demand fill remain, ~3%); (2) evaluate projections on a reduced slice set (only the receiver's and donors'
-  periods); (3) struct-of-arrays for scps/buckets to cut allocation; (4) evaluate DEVT/SYSP every 3rd
-  tick (low-importance images, APPROX); (5) RMF accumulation every tick → running sums without object spreads.
-  Each must keep the golden hash or regenerate it with a reason
+- [x] `step` is split into per-LPAR stages (`lparDemand`, `dispatchLpar`, `softCap`, `prsm`, `adjustPolicies`,
+  `stepCapping`, `stepCost`, `stepRmf`) sharing a `TickCtx`; profile is flat. Lesson: build slices with a spread, not a
+  field-by-field literal (hidden-class split made it ~40% slower)
+- [x] Structural options closed 2026-10-27: no hash-neutral item is left above ~3 %. Projecting only periods at or
+  below the touched DP was dropped (dependency health, CP queue ratio and I/O priority carry effects upward);
+  in-place RMF sums shelved (break `step` purity, save-format and hash churn); behaviour-changing skips not wanted
 - Decision: the what-if simulator doesn't wait on M8.1 (runs in the briefing with the clock stopped, chunked)
 
 **M8.2 Balance harness & targets (SPEC §16)**
 - [x] `npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs N] [--days D] [--out f.csv]` (`tools/sweep.ts`)
   → CSV + per-bot summary (day p10/median/p90, median score, ends by cause)
 - [x] Golden runs (`tests/golden/`, seed 42, 2 days; regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`)
-- [ ] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: SLA fine, loses on opex), expert (scripted good play incl. capacity orders and caps: wins with grade A on Normal)
-- [ ] Targets hold across ≥ 20 seeds (median and spread), not just seed 42; event-deck intensity, growth rates and trust weights tuned from sweeps
-  - Latest results, Normal (day p10 / median / p90):
-    - **Loop-113 re-sweep (2026-10-21, seeds 1–20, after RETRY_STORM, per-scenario facets and PR #13):** do-nothing
-      11 / 17 / 21, ends trust 14 · batch 6; textbook 17 / 28 / 28, ends batch 11 · trust 9 (median 28 reaches the 28–32
-      target, but 10 of 20 runs end on a batch miss on exactly day 28: a fixed wall where nightly growth outruns the
-      window and textbook buys no capacity; early ends are trust on days 17–22); expert 28 / 40 / 40, victory 17 · opex 3.
-      Traced (loop 116): the wall is REG_DEADLINE (05:00 from day 20) plus 0.4%/day nightly growth. Textbook batch ends
-      04:00–04:50 on days 20–26, then crosses 05:00 on day 27; two misses end the run on day 28. The batch-capacity
-      reaction lives in `fixer` (expert, spend-to-win), not textbook, by design; the morning hint and batch projection are
-      the clue path, and expert buys the capacity setting on day 1. No change: intended pressure, median on target.
-    - **Post-PR #8 re-sweep (2026-10-21, seeds 1–20, 22 cards):** do-nothing 12 / 15 / 21, ends batch 10 · trust 10
-      (median 15 is now on target, p90 a bit late); textbook 22 / 27 / 28, ends batch 12 · trust 8 (median 27 is still
-      below the 28–32 target, p10 up from 17). Early textbook ends: seeds 13 (day 17) and 20 (day 24) are Retail trust
-      collapses, and both drew NEW_APP_GOLIVE, so the booking decision still matters. Seeds 15, 17 and 5 (days 19–23)
-      are batch ends, and all three drew REORG_OVERRUN + JOB_ABEND. Outlier: do-nothing seed 17 ends on batch on
-      day 4 (JOB_ABEND only) and seed 9 on day 5. Cause: JOB_ABEND drawn on day 3 *and* day 4 (two unrestarted
-      abends = two misses). Fixed: no card is drawn two days running (`drawEvents`); seed 17 now lasts to day 10.
-    - **No-repeat re-sweep (loop 109, seeds 1–20):** do-nothing 10 / 16 / 21, ends trust 18 · batch 2 (seed 9 still ends
-      day 5 on trust; next earliest seeds 12 day 8, 17 day 10); textbook 20 / 26 / 28, ends trust 12 · batch 8 (short: seeds
-      1 day 15, 17 day 18, 3 day 20, all trust). Rule moved ends from batch to trust; textbook median 26 still below target.
-    - **do-nothing** 9 / 13 / 18, ends trust 14 · batch 6 (loop 37; median ok, p10 a bit early; not re-swept since)
-    - **expert** 40 / 40 / 40, victory 20/20 (loop 68, 19 cards); 4/4 victories in the loop 102 smoke sweep; loop 110 smoke after RETRY_STORM: 3/4 (seed 3 opex end day 28,
-      bill month 1 898k vs 860k; it never drew RETRY_STORM and wins on the commit before, so it's the reshuffled deck,
-      not the card). Watch in the full re-sweep
-    - **spend-to-win** 28 / 28 / 28, ends opex 20/20 (loop 68): right cause, zero spread (opex wall is the month-1 close)
-    - **textbook** 17 / 26 / 28, ends trust 14 · batch 6 (loop 68): **below target**. All eight Retail-trust
-      collapses on days 16–24 drew NEW_APP_GOLIVE: the booking app is Retail-judged with an SLA and textbook never
-      classifies it. Asked the user (keep / booking without an SLA or Internal stakeholder / forewarning that names
-      the work / later minDay). **User decision 2026-10-21: (a) keep as is.** Spotting new work is part of the game;
-      textbook's lower median on runs that draw NEW_APP_GOLIVE is accepted, not a balance bug
-  - Textbook spread is near zero even without that card (loop 46: 27 / 28 / 28): the day-20 05:00 deadline beat
-    plus 0.4%/day batch growth is a deterministic wall on days 27–28. Widening it (randomised growth or deadline)
-    is a balance call for later. Idea (closed PR #3): give textbook one obvious batch reaction (e.g. more
-    initiators when the critical path runs late) to lift its median toward 30 and widen the spread
-  - User decision (loop 46): textbook is a "reads the manual, no diagnosis" floor: day-0 F-fixes, reacts only to
-    abends and open SLA incidents. The diagnosing reactions live in the `fixer` base used by expert and spend-to-win,
-    which end event cards on sight with their fix
-  - Month-1 bill (loop 45 medians): textbook/expert/spend-to-win $832k / $862k / $837k against a $780k budget
+- [x] Bots: donothing (lose day 12–18), textbook (≈ day 28–32), spendtowin (On/Off CoD every day: loses on opex),
+  expert (scripted good play incl. capacity orders, caps and `tunePolicyIncidents`: wins with grade A on Normal)
+- [x] Targets hold across ≥ 20 seeds. Closed 2026-10-27 (user decision): bot balance is done; sweeps are now a
+  regression check (CI `balanceGate` on 5 seeds, 20 seeds to confirm a balance-affecting change), not a tuning
+  target. Harbourline expert's four trust ends (seeds 1, 2, 15, 20) are accepted as the hardest scenario's spread.
+  Harbourline opex budget is $1.6M (was $1.5M, user decision 2026-10-26); the opex ends are gone after that and the
+  CoD revert fix. Textbook is a "reads the manual, no diagnosis" floor (user decision, loop 46): its day-27/28 batch
+  wall is the REG_DEADLINE (05:00 from day 20) plus 0.4 %/day growth, intended pressure
+- Latest accepted baselines, Normal, seeds 1–20 (day p10 / median / p90; ends by cause):
+  - Midwest: do-nothing 11 / 16 / 21 (trust 14 · batch 6); textbook 20 / 28 / 28 (batch 10 · trust 10); expert
+    victory 19 · opex 1 (score median 2790); spendtowin opex 20
+  - Revenue: do-nothing 10 / 13 / 15 (trust 20); textbook 27 / 28 / 29 (trust 20); expert victory 20 (2777);
+    spendtowin opex 20
+  - Harbourline: do-nothing 8 / 12 / 15; textbook 29 / 31 / 37 (trust 18 · victory 2); expert victory 16 · trust 4
+    (2965); spendtowin opex 16 · trust 4
+  - Story (2026-10-26 full sweep): Midwest do-nothing 21 / 25 / 27, textbook 19 / 28 / 30, expert 20/20; Revenue
+    do-nothing 15 / 16 / 19, textbook 29 / 30 / 31, expert 19/20; Harbourline do-nothing 11 / 15 / 18, textbook
+    victory 18/20, expert 19/20. Hard: Midwest do-nothing 9 / 12 / 17, textbook 16 / 24 / 27, expert 28 / 40 / 40
+    (victory 8); Revenue do-nothing 8 / 9 / 12, textbook 26 / 27 / 28, expert victory 16/20; Harbourline do-nothing
+    8 / 10 / 11, textbook 18 / 26 / 28, expert 25 / 28 / 33 (no victories, before the $1.6M budget)
 
 **M8.3 Difficulty & run structure**
-- [x] Difficulty presets Story / Normal / Hard / Ironman (`src/content/difficulty.ts`, applied in the game layer):
-  growth, event rate and severity, constraint timing, budgets, start trust, starting fixes (Story: F7/F8/F11),
-  hint level, pause rules; picker in the day-1 briefing and on the end screen; `--difficulty` on bot/sweep
-  - [~] Bot sweeps per difficulty to check the presets land where SPEC §11.2 says (loop 52, seeds 1–10):
-    **Story** textbook 28 / 29 / 30 (batch 5 · trust 5, Retail at 0), expert victory 10/10. **Hard** textbook
-    18 / 24 / 26, expert 33 / 40 / 40 (victory 5 · trust 5). Hard separates well; Story barely helps a
-    non-diagnosing player (same batch-deadline wall; merger lands in SYSOTHER). User decision: a clear merger
-    hint two days ahead, on Story and Normal (`STORY_BEAT_HINTS`, loops 59/62). Bots don't read hints, so
-    their numbers don't move. Re-sweep Story/Hard after the deck is complete
-- [x] Morning hints (Story clear, Normal vague, none on Hard/Ironman; `src/game/hints.ts`, texts in `src/content/hints.ts`)
+- [x] Difficulty presets Story / Normal / Hard / Ironman (`src/content/difficulty.ts`; picker in the day-1 briefing and
+  end screen; `--difficulty` on bot/sweep). Presets order every scenario as intended (Story > Normal > Hard). Open
+  balance questions (not blocking): Hard Harbourline is unwinnable for the expert bot (checked before the $1.6M
+  budget); Story Midwest textbook still hits the batch-deadline wall; Story Harbourline is won by textbook (18/20)
+- [x] Morning hints (Story clear, Normal vague, none on Hard/Ironman; `src/game/hints.ts`, `src/content/hints.ts`)
 - [x] Weekend auto-simulation with the report card as summary; optional "play the weekend"
-- [x] Endless mode after victory; daily seed challenge (`src/game/daily.ts`)
-- [x] End-of-run report (`src/game/endReport.ts`): per-day score, PI heat-map history, R4HA chart, decisions
-  timeline, biggest incident, best RCA, grade S–D
+- [x] Endless mode after victory; daily seed challenge (`src/game/daily.ts`), startable from the day-1 briefing too
+- [x] End-of-run report (`src/game/endReport.ts`): per-day score, PI heat-map, R4HA chart, decisions timeline, grade S–D
 - [~] Meta-progression: career XP and seven levels unlocking starting perks (IndexedDB), level 7 unlocks a starting
   tool (Report Class Hoarder); Codex persists (localStorage). Still open: scenario unlocks (one scenario so far)
 
 **M8.4 Content**
-- [~] Events to ~25 (SPEC §9); 26 now (deck complete for this pass). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
+- [~] Events to ~25 (SPEC §9); 27 now (deck complete for this pass). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
   NEW_APP_GOLIVE, POWER_CAP, HSM_RECALL_STORM, CP_SPARING (red herring), HIRING_FREEZE, AUDIT_UNCLASSIFIED,
   ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106), RETRY_STORM (loop 110), XLOG_LOOP (loop 112: looping STC misclassified by the CICS* rule), ENCRYPTION_MANDATE and GREEN_IT_COD (loop 113). Re-sweep the bots once the deck is complete
-  - VENDOR_PRICE pending: needs a run-level product price multiplier in the sim or a run-aware scenario; asked the user
+  - VENDOR_PRICE (2026-10-23, user's option 1): `SET_MLC_PRICE` sets `cost.priceMult` (absent = 1, goldens unchanged);
+    card +8% from day 10, permanent, once per run, in all three decks; fix `NEGOTIATE_MLC_PRICE` (3 h, Finance −1);
+    TFP terms are not affected, later TFP offers are priced at the new list price
   - HyperPAV exhaustion dropped: organic LCU I/O is ~2k/s, so even zero aliases moves IOSQ < 0.3 ms (no symptom)
   - STORAGE card (DBA grows DB1B buffer pools on PROD2) not added (loop 107): it exposed a swap deadlock, fixed
     with `STORAGE_SWAP.minSwappedIn: 1`, but with the fix even +60 GB BP costs < 0.2 h of critical path. Needs a
     harsher paging model first
   - HSM storm magnitude 60k (75k is past the LCU 30 cliff, ≈ 15× response)
   - RCA truth: cards may declare `mechanisms`; `triggerOf` blames an active card only for incidents with one of them
-- [x] More draft options and perks: every SPEC §9.5 opportunity type, 11 perks, 2 pacts (`content/draft.ts`).
-  Loop 102 smoke sweep (seeds 1–4): no regression
+- [x] More draft options and perks: every SPEC §9.5 opportunity type, 11 perks, 2 pacts (`content/draft.ts`)
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
 - [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
-- [x] *State Revenue Agency* playable (loop 114, SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`,
-  picker in the new-run dialog and day-1 briefing), per-scenario facets, flaws G1–G3/H1–H2, story beats with a
-  two-day hint for pre-filled returns. First sweep (seeds 1–6, Normal): do-nothing 10 / 14 / 20 (trust 5 · batch 1,
-  mostly Regulator after batch misses), textbook 26 / 29 / 30 (trust 6: Taxpayers or Regulator), expert victory 6/6.
-  Agency deck done (loop 116: 16 adapted cards, see SPEC §13.4). 20-seed sweep with it (seeds 1–20, Normal):
-  do-nothing 15 / 22 / 23 (trust 20, 19 Taxpayers; too late, target ~12–18: the 7-card deck's frequent audit cards are
-  now diluted), textbook 27 / 29 / 29 (trust 20, all Taxpayers; on target), expert 40 / 40 / 40 (victory 19, trust 1).
-  Tried G1 heavier analytics (0.3 → 0.45 qps, seeds 1–10): no effect (do-nothing 18 / 22 / 24, textbook unchanged), reverted.
-  Both bots' incidents are mostly CPU_PRIORITY (do-nothing 298, textbook 217 over 20 seeds), so the planted fixes barely
-  relieve the main pressure. Seed 5: do-nothing's hits are EFILE CPU_PRIORITY (G1); textbook's are the day-22 PREFILL
-  app. Lowered WEBDDF to importance 4 (G1 bites harder; textbook gives e-filing its own class, so it is unaffected).
-  Seeds 1–10: do-nothing 11 / 14 / 15 (on target), textbook 28 / 29 / 29 (unchanged). Codex already covers
-  IIPHONORPRIORITY (`ziip`) and soft capping (`r4ha`). **20-seed confirmation (loop 117, Normal):** do-nothing
-  10 / 13 / 15, textbook 27 / 29 / 29, expert 40 / 40 / 40 (victory 19, trust 1); all ends trust. Done; follow-ups:
-  Story/Hard sweeps, textbook's day-22 PREFILL losses (its PFILAPI class still misses).
+- [x] *State Revenue Agency* playable (SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`, picker in
+  the new-run dialog and day-1 briefing), per-scenario facets, flaws G1–G3/H1–H2, story beats, 16-card agency deck.
+  Follow-up: textbook's day-22 PREFILL losses (its PFILAPI class still misses)
 - [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
   - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
@@ -197,6 +160,51 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - [x] Design: SPEC §13.5 "Harbourline Bank" (2 CPCs, 6 LPARs, starting tools; Problem 1 spiky markets work with
     four fix families; Problem 2 flaws B1–B4: static SD weights, storm drain, CP-only WLM weights, CF locality; build
     order multi-CPC → burst arrivals → routing policies → content)
+
+
+**M8.6 Playtesting, polish & progression (user request 2026-10-26)**
+- [ ] Playtesting: human and agent playtests on all three scenarios (`goal-mode-player` and the persona agents for
+  the headless side); record friction points and fix the worst ones
+  - Round 1 (2026-10-27, play CLI; Midwest seed 11, Revenue seed 23, Harbourline seed 37, to about day 9): CLI
+    friction fixed the same day. Findings A–F all done: A morning hint points at SMF 110/101 when WLMGL disagrees with
+    the SLA; B batch-window misses open a `BATCH` incident with its own RCA and SMF 30 pins (mechanism JOB_FAILURE);
+    C same-day same-truth incidents share one RCA (`rcaGroup`, trust reward scales with group size); D starting
+    insight 15 (`INSIGHT.starting`); E forewarnings reworded off "tomorrow", operator fixes (CANCEL_RUNAWAY etc.)
+    are `operational`; F Change Desk and `catalog` list only the scenario's fixes (`fixIdsOf`).
+  - Round 2 (2026-10-27, seed 2027; to the day-8 briefing, three personas): play CLI pin/smf day and hour labels fixed.
+    Findings done: G THREAD_LIMIT credited only with queue growth beyond baseline (`outsideRef`); H strain morning
+    hint for classes whose PI reached 3 and doubled; J GOODWILL left as is; K id prefixes per kind (`INC13`, `PIN12`, `CHG14`;
+    `src/game/ids.ts`), `status` lists projects, idle engineer-hours left as is; L `catalog` lists regions/MXT/MAXDBAT,
+    `cancel`, bad targets refused before charging; M ABS CAP column in Partition Data and `pin CPC … <interval>`;
+    N/O MXT queueing no longer scored THREAD_LIMIT, new trigger APPLICATION_ERROR for the JOB_ABEND card; P MLC
+    estimate tooltip says it follows the month's peak R4HA, `smf BATCH` legend, pin hour labels.
+  - [x] I: RCA guessing pays: CPU_PRIORITY/POLICY was right three times on CARDAUTH blips without evidence, and a
+    JOB_FAILURE trigger POLICY (the player's own activation) cannot be derived; half-right RCAs still give +1 on
+    every facet. User decision 2026-10-27: fine as it is (guessing may pay).
+  - Round 3 (2026-10-28, seed 2028; to the day-8 briefing, personas rotated): round 2 fixes held; `new` checks its
+    arguments and a cancelled policy activation keeps its edits. Findings done: Q new RCA mechanism ROUTING
+    (`failureMechanism`, SICK_AOR); R CICS view column DISP−CPU plus failed %; S failed activations explain why and
+    return edits to the pending policy; T `play policy [pending]`; U `restart <JOB>`, `advance` stops at an abend;
+    V `ask` allowed in REVIEW; W strain hint skips thin response-time intervals (`STRAIN.minEnded`) and batch
+    classes, `status` shows only the latest hints; X `pin` prints only its result, `smf BATCH` lists the critical path first, handover
+    mail at Harbourline day 0 (story beat `HANDOVER`; no day-1 trust grace); report-card naming and GOODWILL kept.
+- [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
+- [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
+- [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
+  the career XP system (M8.3 meta-progression)
+
+**M8.7 Realism fixes (researched 2026-10-26; facts and citations in `docs/research.md`)**
+Each is a sim model change: regenerate the goldens with a "Behaviour change" note, re-sweep, update SPEC §5.5.5 and §17.
+- [x] Soft capping cuts polarity: `resolveCpc` takes polarity from min(entitlement, soft-cap engines) (*MVS Planning: WLM* 3.1, p.46)
+- [x] Discretionary goal management: capped from PI < 0.71, cap = 1 − (0.81 − PI), floor 50 % (`DISC_GOAL_MGMT` in
+  `src/content/wlm/tuning.ts`; SG24-6472-03 p.183)
+- [x] SERVERWLM weights are zIIP-aware: `WLM{distMethod: BASEWLM | SERVERWLM}` replaces `ziipAware`
+  (`src/sim/workload/routing.ts`; PROCXCOST/PROCTYPE not modelled; Harbourline's B3 is "left on default BASEWLM")
+- [ ] **CICS transaction classes report work manager states, not using and delay samples.** For CICS and IMS,
+  resource usage and state samples go with the regions' service classes; transaction classes get the work manager
+  section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
+  The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
+  DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
 
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
@@ -217,9 +225,8 @@ to `main` (this is the last push there; M9 goes on its feature branch).
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
 changes; simplified mode is a game/UI layer over the same commands, reports and scoring.
-**HOLD: do not start M9 until the user explicitly says to start it (user request 2026-10-20), even if
-M7–M8.9 are done; if the loop reaches this point, stop and ask instead.** When told to start: do all M9
-work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main`.
+Hold released by the user on 2026-10-26 (was: don't start until told, 2026-10-20). Do all M9 work on a separate
+feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - [ ] Mode switch at run start (Expert / Simplified); same seed gives the same world in both modes
 - [ ] Keep the full WLM policy definition visible and editable, but offer **goal-level actions** that bundle
   the discrete changes an expert would make, e.g. "Protect mobile banking from ad-hoc queries" = new service
@@ -275,22 +282,47 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 | 2026-10-21 | NEW_APP_GOLIVE stays as is (booking app Retail-judged with an SLA, no forewarning, same minDay); textbook's median below 30 on runs that draw it is accepted | User decision (option a): spotting and classifying new work is part of the game, and textbook by design never diagnoses |
 | 2026-10-21 | Browser worker and headless `play` share game-layer helpers (`pendingBase`/`nextPolicyName`, `applyReportClassAdvice`, `runWorkItems`, `renderReport`); `noUnusedLocals` on | The two front ends had drifted copies of the same logic; one copy means one place to fix and test |
 | 2026-10-21 | Monitor III audit against *RMF Report Analysis* (SC34-2665, z/OS 2.5) ch. 2: new SYSSUM view holds goals vs actuals and PI (real SYSINFO has no PI); SYSINFO gets its real header (CPs/IIPs online, Avg CPU vs MVS Util%, Appl%/EAppl%/Appl% IIP) and per-period WFL%, Users ACT, AVG USG and avg delayed users; DELAY uses RMF columns (WFL/USG/DLY/UKN, PRC/DEV/STR/CAP) and server waits move from DLY % to UKN %; PROCU shows Time on CP % Total/IIP and EAppl % CP/IIP; ENCLAVE shows class, period, goal, EAppl% and USG/DLY/UNK; CPC shows the real header and Logical/Physical Util % columns (weight, polarity, PR/SM delay kept in a separate table); WFEX gets a Speed section and Name/Reason/Critical val. columns; ENCLAVE shows one line per DDF period (two DDF workloads in one class used to repeat the period's figures, and the DDF chart double-counted them) | Field names and formulas were invented or borrowed from other reports; UKN vs DLY changes how much "delay" a Db2-bound DDF period shows, which is the realistic reading. View-model only: no sim state change, hashes and goldens unchanged |
+| 2026-10-21 | VENDOR_PRICE card built on a run-level MLC price multiplier in sim cost state (default 1), changed by card commands | User decision (option 1 of 3): smallest sim change, keeps goldens, reusable by later perks or pacts |
+| 2026-10-22 | Monitor III history: 48 h of 100 s intervals, held by the worker outside the run (not saved, not hashed); pins live-only | User request and retention choice. Keeping it out of RunState keeps saves small and goldens stable; the cost is losing history on reload |
+| 2026-10-21 | Performance budget: ≤ 2 s per headless day applies to Midwest-size estates; larger estates (Harbourline, 6 LPARs, ~7 s/day) are accepted as they are, no structural perf work for now. ≤ 4 ms/tick is a Midwest target too | User decision. The profile is flat and reaching 2 s on 6 LPARs would need structural changes (fewer per-tick allocations, coarser ticks for quiet LPARs); not worth it yet |
+| 2026-10-21 | HiperDispatch: 0 < E < 1 CP gets 1 × VM and the rest VL (was 2 × VM); 1 ≤ E < 1.5 keeps 2 × VM | Claim confirmed by the user (PR #9). DEVT 2VM+2VL → 1VM+3VL, SYSP 2VM → 1VM+1VL on Midwest; goldens and bench hashes regenerated |
+| 2026-10-23 | Capacity chart: LPARs from the scenario; one stacked MSU chart per CPC (from the LPARs' `cpcId`, any CPC count; `overlay` series stay lines over the stack) with that CPC's dashed installed CP capacity line (rises with On/Off CoD), plus one R4HA chart for all LPARs; last played day stays on screen until the next day's first sample; `LineChart` end labels spread 12 px apart, shown for up to 8 series | User request 2026-10-22 (Harbourline chart was empty, labels overlapped). Per-CPC charts at user request 2026-10-23: one total capacity line squashed the LPAR lines on multi-CPC estates |
+| 2026-10-23 | CI is the merge gate for `dev` and `main`: tests + goldens, a required "Behaviour change" note when goldens change, bench-hash equality for `perf` PRs, and a 5-seed bot sweep inside loose bands when goldens change | Sessions merge unattended, so the gates must be enforced by CI, not by the agent's own report. A valid behaviour change passes (regenerated goldens + note); an unexplained one or a "perf" change that moves the state does not |
+| 2026-10-26 | `main` requires the four CI checks but no approving review; Claude merges milestone PRs (merge commit) after a `pr-reviewer` MERGE verdict, and the reviewer posts its report on the PR | Claude acts as the user's GitHub account, so a required approval could never be given (an author can't approve their own PR). The gate is CI plus a more thorough review: base-vs-head bench hashes for both scenarios, determinism re-run, a 10-seed sweep for milestones, adversarial read |
+| 2026-10-26 | Daily challenge on the day-1 briefing: a "Daily challenge" button next to Scenario/Difficulty restarts on today's UTC seed; a daily run shows a tag and "Random seed instead", and changing scenario or difficulty keeps it daily | User request: the button was only on the end screen, so a first-time player could not start a daily before finishing a run |
+| 2026-10-26 | M9 hold released; M8.6 added (playtesting, UI polish pass, more perks, wider career unlocks) | User request |
+| 2026-10-26 | Routing/capping open questions researched against IBM PDFs: group limits only clip bursts with `AbsMSUcapping=YES` (sim matches the NO default); soft capping by positive phantom weight can cut VH/VM (to model); discretionary goal management caps from PI < 0.71 and holds 0.71–0.81 (to model); CPSM routing factors confirmed | User request; the two model changes are listed in CLAUDE.md "Pending realism changes" so the next model session picks them up |
+| 2026-10-26 | Last two routing questions settled from books the agent now fetches itself (IP Configuration Guide, CPSM Managing Workloads, SG24-7621): SERVERWLM is zIIP-aware by default (realism change queued in CLAUDE.md); CPSM abend recovery matches the sim's shape, decay rate undocumented; `storm-drain` Codex thresholds corrected | User request |
+| 2026-10-26 | Pending realism changes moved from CLAUDE.md to PROGRESS.md "M8.7 Realism fixes"; CLAUDE.md keeps only the rule for where they go | User: CLAUDE.md was a misstatement; to-dos belong with the milestones |
+| 2026-10-26 | New `docs/research.md` ledger: one row per confirmed fact with a PDF page link and the sim status; settled research moved out of Open questions; SPEC §17 points to it, §18 stays the bibliography | User asked for one central place for researched facts. Pages re-checked against the 3.1 books; SPEC §17 "Discretionary capping conditions: Real" row dropped (the conditions are only partly modelled) |
+| 2026-10-26 | Discretionary goal management caps from PI < 0.71, stays capped below 0.81, cap = 1 − (0.81 − PI), floor 50 % (was 0.7 / 0.9 / flat 80 %) | M8.7: real WLM holds capped work's PI in 0.71–0.81 (SG24-6472-03 p.183). Proportional cap is APPROX of WLM's projection; balance check deferred to the post-sweep re-sweep |
+| 2026-10-26 | Routing `WLM{ziipAware}` → `WLM{distMethod}`: BASEWLM weighs systems by idle CP capacity, SERVERWLM by the CP/zIIP composite of displaceable capacity; Harbourline B3 recast as the distributor left on default BASEWLM | M8.7: SERVERWLM is zIIP-aware by default and BASEWLM is the default method, CP-only without PROCTYPE (IP Config Guide 3.1 p.555–556), so B3's puzzle keeps its fix with a real name. PROCXCOST not added: no crossover-penalty lever needed for B3. Harbourline hash changes; balance check deferred to the re-sweep |
+| 2026-10-26 | Event deck draws from its own RNG stream per (seed, day), not the shared run RNG | Change failures, activation failures, AIOps hypotheses and drafts rolled the same stream, so any extra bot action reshuffled every later event and seed-by-seed comparisons of bot variants were invalid (seed 18 diverged on day 21 after one CoD rental). Win rates over independent seeds before this stay unbiased but carry ~±10 pp noise at 20 seeds; per-seed claims and small variant deltas made before this are unreliable. Goldens regenerated; balance sweeps re-baselined after (user decision). |
+| 2026-10-26 | Every game roll gets its own keyed stream (`streamRng(seed, purpose, …key)`): events by day, draft by day, change and activation failures by day + label + attempt, AIOps by tick + workload, inquiries by ask tick + topic; `RunState.rng` removed | The event-only split (#41) still left the draft, failure, AIOps and inquiry rolls on one stream: in a paired sweep, seed 13's CoD rental shifted its day-9 draft (MENTOR instead of BELT_AND_BRACES) and the run lost ~4 trust on every facet from that alone. With keyed streams, seed 13 base and CoD draw identical events and drafts and differ only after the rental. Goldens regenerated; the paired sweep from #41 was stopped and is re-run on this. |
+| 2026-10-27 | Hardware engine adds and their reverts are relative (`ADD_CPC_ENGINES` delta, clamped ≥ 0); capacity-setting changes stay absolute | On/Off CoD reverted with "set N" computed when the lease was requested, so a lease taken over a pending or overlapping change lost or kept a CP for good (spendtowin bled CPs on Harbourline). Deltas compose in any order. Goldens unchanged |
+| 2026-10-27 | CPU_CAPACITY also when an image used ≥ 95 % of the CP available to it (online logical CPs, entitlement + white space), not only when its CPC was ≥ 90 % busy; the donor test is unchanged. Harbourline PRD images define 2 reserved logical CPs | User decision 2026-10-27. Seed 7 Harbourline: PRDA–PRDD sat at their logical CPs (13 of CPC1's 14 CPs, 10 of CPC2's 10) and the incidents read CPU_PRIORITY once a new CP lowered CPC busy to 86–89 %, the wrong clue. With no reserved CPs and no IPL lever a bought or rented CP could never reach production |
+| 2026-10-27 | The expert bot buys a permanent CP (PERM_CP) after CPU_CAPACITY incidents on 2 days within 7 on one CPC, then raises prod logical CPs by 1; On/Off CoD variant not adopted | User decision. 20-seed sweeps: same ends as the base expert in all three scenarios; the CoD variant cost Harbourline seed 11 an opex end |
+| 2026-10-27 | M8.1 closed: the performance gate is ≤ 4 ms per tick in the worker; ≤ 2 s per headless day is no longer a target | User decision. No hash-neutral optimisation above ~3 % is left, (2) and (5) were rejected, and the UI budget already holds. CLAUDE.md and SPEC §15 updated |
+| 2026-10-27 | M8.2 closed: bot balance done; sweeps become a regression check (CI 5 seeds, 20 to confirm) | User decision. Do-nothing, textbook and spendtowin hold in all three scenarios; expert wins 19/20, 20/20, 16/20 |
+| 2026-10-27 | Finding D: every run starts with 15 insight (`INSIGHT.starting`), was 0 | User decision among four swept options; bot outcomes unchanged, Monitor III affordable on day 1 |
+| 2026-10-27 | Finding I: RCA guessing may pay; no change | User decision |
+| 2026-10-27 | Finding J: GOODWILL (+4 trust with every stakeholder) stays as is | User decision; a draft reward's cost is the cards not picked |
+| 2026-10-27 | RCA truth credits THREAD_LIMIT only with MXT/DBAT queueing beyond the in-region growth | Little's law: slower tasks hold MXT slots longer, so the queueing is mostly a symptom of CPU or QR TCB delay (playtest findings N, O) |
+| 2026-10-28 | Finding Q: new RCA mechanism ROUTING, declared by a card for failure-only misses (SICK_AOR) | User decision; no delay grows when a region fails work fast, and DEPENDENCY means a slower server |
+| 2026-10-28 | Finding R: CICS view shows DISP−CPU (incl. the CPU backlog wait); WLMGL CPU delay stays per dispatchable unit | User decision after a check against the RMF, WLM and CICS books (`docs/research.md`) |
+| 2026-10-28 | Findings S–W: strain hints ignore thin response-time intervals (< 20 ended) and batch classes; ask allowed in REVIEW; play CLI gets `policy`, `restart`, abend stop on `advance` | Round 3 agents missed abends and chased hint noise; batch already has its own window hint; REVIEW asking matches planning a change there |
+| 2026-10-28 | Harbourline day 0 gets a handover mail naming the 09:00 open, PRDA's absolute cap and Partition Data; X's report-card and GOODWILL notes kept as they are | User: soften D1 with a clue rather than a trust grace or a weaker burst; the first miss now has a clue path (CLAUDE.md: no gotcha without one) |
 
 ## Open questions
 
-- Large-bank design (SPEC §13.5), to settle before building: how sysplex distributor `SERVERWLM` weights count zIIP
-  capacity by default; how CICSPlex SM abend-related health checks are configured and how fast a recovered region gets work
-  again; whether an LPAR absolute cap or a group absolute limit is the usual "clips bursts" lever.
-- HiperDispatch polarity for E < 1: SPEC/tests give 2 × VM for any E < 1.5 (Watson & Walker table as read). Under the
-  "each VM ≥ 50% of an engine" rule an LPAR with E < 1 would get a single VM. Check the source before changing.
+- Settled research (sysplex routing and capping, 2026-10-26, and everything earlier) is in `docs/research.md`. Only
+  open items stay here.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
+- RMF Partition Data shows PR/SM absolute capping somewhere; the sim's ABS CAP column (engines, next to DEF CAP) is an
+  APPROX of its name and place. Check the real report layout (*RMF Report Analysis*, Partition Data Report).
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
-- Soft capping by positive phantom weight lowers the LPAR's effective priority and can cut its VH/VM count (MVS Planning:
-  WLM). The sim caps with a flat MSU limit and leaves polarity alone. Worth modelling once PR #9's polarity rework lands?
-- SG24-7621 §4.22 lists "must be the last uncapped non-discretionary period" and "has not been a significant receiver
-  candidate" among the discretionary-capping conditions; neither is modelled and the first is ambiguous as written.
 - Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
   a soft-capped image. On a real system the latter probably shows as processor (PRC) delay, since PR/SM just stops
   dispatching the logical CPs. Unverified; the DELAY report keeps one CAP column.
@@ -313,13 +345,13 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
   airline scenario?
 - Tuning target for "fun density": how many meaningful decisions per live day? (Target: 3–6
   alerts that matter, 1–2 incidents in Act II+.)
-- Waiting on the user: VENDOR_PRICE price lever (M8.4); M9 start. (Booking go-live: decided (a) keep, 2026-10-21.)
+- Waiting on the user: nothing open (M9 released 2026-10-26). (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
 
 ## Risks
 
 - **Model complexity vs performance:** policy-adjustment projections re-run the evaluator
-  (≤2 receivers × ≤6 trials per system per tick). Steady days ~2.0–2.4 s headless against a 2 s/day target.
-  Fine for the UI (4 ms/tick budget) but slow for bots and sweeps. Options in M8.1.
+  (≤2 receivers × ≤6 trials per system per tick). Midwest ~2.6 s, Harbourline ~5.3 s per headless day.
+  Fine for the UI (4 ms/tick budget); the 2 s/day target was closed (M8.1, user 2026-10-27).
 - **Opaque cause and effect:** if players can't see *why*, it feels random. Mitigate with clue
   design rules (SPEC §13.3), the WLM Activity log, morning hints and the Codex.
 - **Balance whack-a-mole:** keep bots and golden runs green; sweep ≥ 20 seeds before tuning.
@@ -336,167 +368,18 @@ work on a separate feature branch (e.g. `feature/simplified-mode`), not on `main
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-27:** Play CLI fixes from playtest round 1 (M8.6). `rca` now says which half was right, the true
+  mechanism/trigger and the trust effect. Times read `D1 Tue 00:30` (played day plus calendar weekday). RMF intervals
+  have stable ids (end time in 5-minute slots) in `status`, `report`, `pin WLMGL` and incident lines, and `report`/`pin`
+  respect the fog of war (today's intervals need Monitor III), as the browser does. Bare class names mean period 1;
+  unknown rows list the valid keys. `status` shows the last completed hour's SLA when the current hour has no data
+  and the PI > 1 rows of the latest interval. `mon3 [system] [--json]` prints SYSINFO/CPC/DELAY/WFEX tables;
+  `smf` takes `12` or `D8 12`, lists hours by label and prints tables (`--json` for raw rows). REVIEW staging and
+  empty `--evidence` messages say what to do; the SET_PERIOD error names the 0-based index and `docs/agents.md` uses
+  `"period":0`. Goldens unchanged.
+- **2026-10-27:** Play CLI fix: `new` crashed on every fresh run file (`apply()` read `file.run` before the `new` case), found by the first agent playtest round, which could not start. `new` now runs first and refuses an unknown scenario instead of silently falling back to Midwest; usage and `docs/agents.md` list `harbourline`. Goldens unchanged.
+- **2026-10-23:** VENDOR_PRICE card (`SET_MLC_PRICE` → `cost.priceMult`, sub-capacity MLC ×1.08; fix `NEGOTIATE_MLC_PRICE`). Hashes unchanged (`be43ff16de564882`), 377 tests. Sweep seeds 1–5 (Normal, Midwest; card drawn in 8 of 15 runs): do-nothing 12 / 16 / 22 (batch 2 · trust 3), textbook 24 / 27 / 28 (batch 4 · trust 1), expert victory 5/5; inside the bands.
+- **2026-10-23:** CI added (`.github/workflows/ci.yml`, `pr-gates.yml`, `tools/ci/`, PR template) for the per-session-branch → `dev` auto-merge workflow. Balance bands checked against current `dev` (seeds 1–5): do-nothing 12 / 16 / 22 (batch 3 · trust 2), textbook 22 / 26 / 28 (batch 3 · trust 2), expert victory 5/5; all inside the bands, 15 runs in ~7 min on 4 cores. Waiting on the user for the GitHub settings (default branch, branch protection, auto-merge).
 - **2026-10-21 (loop 117):** revenue balance: REVPOL WEBDDF importance 3 → 4 (flaw G1); do-nothing median 22 → 14
   (seeds 1–10), textbook unchanged at 29. Heavier analytics tried first: no effect, reverted.
-- **2026-10-21 (loop 124):** slice templates cached per LPAR by that LPAR's shares within a routing-free scope (bounded
-  at 512 sets); bit-identical (hash `eddf17fc7c615524`). Harbourline day 8.7 s vs 9.3–9.9 s before; frozen dynamic
-  policies 7.7 s, all-static 6.9 s, so share changes still cost ~1.4 ms each (1 % steps rarely repeat, so misses stay
-  common). Next perf idea: share-independent templates (multiply shares at build time) so a change costs nothing; then
-  the structural M8.1 items.
-- **2026-10-21 (loop 123):** Harbourline perf measured (one headless day, seed 42, this box): Midwest 5.2 s, Harbourline
-  9.3–9.9 s, Harbourline with every policy static 7.1–7.7 s (same at the dynamic run's final shares, so it's overhead,
-  not load). Dynamic routing changes shares ~700×/day (MOBILE WLM every minute plus CPSM every 30 s); template rebuilds
-  ≈ 5 % of step time, updateRouting ≈ 2 %, rest GC/cache churn. Plan (M8.1): per-LPAR template reuse when that LPAR's
-  shares are unchanged, and make templates share-independent (multiply the share at build time, bit-identical order);
-  six LPARs alone are 1.4–1.5× Midwest, so the structural items in M8.1 matter more for the 2 s budget.
-- **2026-10-21 (loop 137):** Harbourline expert re-sweep with the day-1 capacity step (hb40d, seeds 1–8): expert
-  28 / 33 / 36, 0 wins (trust 6, opex 2). Harbourline growth was ~0.72 %/day CPU-weighted vs Midwest ~0.45 % → all
-  growth ×0.6. **Re-sweep hb40e (seeds 1–8, Normal, 40 days): donothing 11 / 12 / 12 (target 12–18), textbook
-  30 / 33 / 37 (target 28–32, a little long), expert 33 / 40 / 40, victory 5 · trust 2 · opex 1** (Midwest expert
-  17/20 wins). Month-1 bills $1.52–1.78M vs $1.5M budget (Midwest +7–10 %). Harbourline balance is now in the target
-  band; next: 20-seed confirmation sweep, Harbourline perf (~4.6 s/day), dev→main milestone PR.
-- **2026-10-21 (loop 136):** Harbourline collapse root-caused (sonnet replay of textbook seed 1, day 18): peak-hour
-  CP exhaustion on both CPCs (CPC1 85–98 %, CPC2 to 100 % from 09:00) under REGRESSION (RETAIL ×1.5 for 30 h, two
-  peaks) + MARKET_OPEN_SURGE + ENCRYPTION_MANDATE; no cap or model blow-up. Counterfactual with REGRESSION off:
-  Markets 80 vs 45, day recovers. Fixes: REGRESSION 12 h on Harbourline. Structural bug found: every hardware item
-  went to `cpcs[0]` (CPC1, already setting 7 / M2), so expert's day-1 capacity step was a no-op and CPC2 could never be
-  upgraded → `ChangeRequest.cpcId`, `HardwareItem.perCpc/unavailable`, refused pointless buys, UI CPC picker, bots
-  step the first CPC below 7 (SPEC §5.11.3). 360 tests, Midwest hash unchanged. Re-sweep running → runs/hb40c.csv
-  (before: hb40b textbook median day 28, expert 26, all trust/opex ends).
-  hb40c (12 h regression + per-CPC hardware): donothing 10 / 11 / 11, textbook 26 / 29 / 32 (in the 28–32 target),
-  expert 24 / 26 / 29 (target: wins). Seed-2 digest: expert's day-0 capacity step was refused for hours (Harbourline
-  day-0 fixes 10.5 h + 2 h > 12 h incl. overtime), so it played as plain fixer and its emergency changes cost trust and
-  shifted the event draw. Expert now retries the capacity step on days 1–2 (CPC2 5 → 6 from day 3). Expert re-sweep
-  seeds 1–8 running → runs/hb40d.csv. Open: donothing ends day 10–11 (target 12–18).
-- **2026-10-21 (loop 135):** Harbourline balance from the 40-day digest: REGRESSION adapted to RETAIL ×1.5 (was
-  Midwest's ×3; RETAIL ≈ half of online CPU, so ×3 added ~10 CPs of demand to a 24-CP sysplex), opex budget 1.4M → 1.5M
-  (textbook bills $1.6–1.7M, ~7 % over like Midwest's). Midwest hash unchanged. Re-sweep running → runs/hb40b.csv.
-- **2026-10-21 (loop 134):** Midwest perf re-measured (3 runs each, bench seed 42): dev 4.78/4.07/4.28 s vs pre-merge
-  main 4.49/3.98/4.39 s, same hash: noise, no regression. Harbourline `GameContent.startTools` (SPEC §13.5): Mon III,
-  Partition Data, CF/DASD, CICS monitoring, Db2 accounting installed on day 1 with their measurement overhead applied
-  at newRun (test added; Midwest hash unchanged, 359 tests). 40-day Harbourline sweep (3 bots × seeds 1–4) running →
-  runs/hb40.csv: every run loses on Markets trust (donothing day 9–11, textbook/expert median day 28–29; one textbook
-  opex end). Textbook seed 1 digest: Markets fine (88) until day 17, then day 18 REGRESSION (RETAIL cpu ×3) + MARKET_OPEN_SURGE
-  + scheduled index rebalance stack → MKTORD/RETAIL/CARDS/PAYMENTS at 0 % for 6–9 h, Markets 88 → 22 → 0 in two days;
-  MLC est. jumps $1.49M → $1.74M (budget 1.4M; already 1.42M by day 5). Next: check whether RETAIL ×3 alone saturates
-  both CPCs (Midwest-sized ×3 too big for Harbourline's RETAIL share?), whether bots apply REBIND_REVERT, and retune
-  opex budget vs day-1 MLC; then Harbourline perf (~4.6 s/day, budget 2 s).
-- **2026-10-21 (loop 133):** milestone PR #16 dev→main (Harbourline playable) reviewed by pr-reviewer: MERGE (358
-  tests, hash `eddf17fc7c615524` on both, goldens unchanged, layering/determinism clean); merged. Reviewer note: Midwest
-  bench day 4.7 s on dev vs 4.2 s on main (one run each, maybe noise) → re-measure next and profile if real. Next:
-  that perf check, 40-day Harbourline sweep, startTools for the pack.
-- **2026-10-21 (loop 132):** decision (user, 2026-10-21): QR TCB overload failures count as *slow*, not as abends,
-  for CPSM goal routing; real CICS queues on a saturated QR rather than abending fast, so an overloaded region
-  repels work and only a genuinely abending region (SICK_AOR) storm-drains. Sim: slices carry `abendFrac`
-  (Db2/MQ rejections, `regionFailFrac`) and `failByWorkloadLpar` counts only that. New test: a QR-saturated PROD2
-  never registers abends and doesn't draw RBANK (fails without the fix). SPEC §17 updated. 358 tests, hash
-  unchanged. Harbourline 3 days seed 1: donothing MKTORD worst hours 87–92 % (was 82–91), textbook unchanged.
-- **2026-10-21 (loop 131):** diagnosed the Harbourline dips (sonnet subagent): the scheduled 09:30 ×5 / 16:00 ×4
-  market bursts overloaded the AOR QR TCBs (qrFrac 0.6) on any config, and a starved MQ slice (PAYMENTS) reported
-  backlog / 1e-9 s as response time (~1e10 s → 0 % hour, and a bogus MXT wait labelled THREAD_LIMIT). Fixes: sim
-  bounds a starved queue's wait by Little's law on arrivals (hash unchanged); content open ×3, close ×2.5; textbook
-  bot also makes the AORs threadsafe (qrFrac 0.3). 3 days seed 1: donothing still has MKTORD 82–87 % hours and
-  MKTQRY 77 %, textbook green except one MKTQRY 86 % hour. Open: a sick/overloaded region still draws CPSM work
-  outside SICK_AOR (QR failures count as fast abends); consider whether QR_TCB failFrac should count for routing.
-- **2026-10-21 (loop 130):** bot day-0 fixes for Harbourline (`harbourlineDay0`: MKTORD PCT 90 % / 0.2 s, MKTQRY and
-  MOBILE on zIIP-aware WLM weights, ABENDTHRESH 10 % / ABENDCRIT 20 % on MKTORD and CARDS, payments 35/35/15/15,
-  PRDA absolute cap removed). SICK_AOR moved to CICSAOR3 on PRDC to match SPEC B2. Re-sweep (seeds 1–2, 10 days):
-  CAPPING incidents gone, but THREAD_LIMIT (21–26) and CPU_PRIORITY (18–26) take their place, trust 56–63 (was
-  58–71), scores 725–727. So the fixes move the bottleneck rather than help: next, find which workload/LPAR hits
-  the thread limit (DBAT? CICS MXT?) and whether removing the cap just floods PRDA; tune the fixes or the content.
-- **2026-10-21 (loop 129):** first Harbourline bot sweep (seeds 1–2, 10 days, normal): donothing 695 median, one
-  trust game-over on day 10 (lowest facet Markets), trust ~42; textbook 733 / trust 60–71; expert 727–733 / trust
-  58–65; no batch misses for the active bots. CAPPING dominates incidents (13–27 per run: the PRDA absolute cap, B?),
-  then QR_TCB. Expert ≈ textbook, so the bots don't use Harbourline's levers yet. Next: bot day-0 fixes for the
-  planted flaws (PRDA absolute cap, MKTORD avg goal in HBPOL, MKTQRY static weights → WLM, ABENDCRIT on CPSM
-  workloads), then retune volumes (CPC1 under target) and a 40-day sweep.
-- **2026-10-21 (loop 128):** Codex: `sd-wlm-weights`, `cpsm-routing`, `storm-drain` (found on SICK_AOR),
-  `absolute-capping`, `arrival-bursts` (found on MARKET_OPEN_SURGE), wired into the Routing and HMC sections; sources
-  checked against IBM pages (implementer drafted, URLs replaced with verified ones). Next: startTools for Harbourline,
-  bot day-0 fixes, volume retune + sweeps, Harbourline perf.
-- **2026-10-21 (loop 127):** UI: Change Desk → Batch & operations → Routing gets a routing-policy form (static / WLM
-  weights with zIIP-aware / CPSM goal with ABENDTHRESH, ABENDCRIT, quiesce per region); the static share editor shows
-  only under static weights. The Ops fix list now shows only fixes the scenario's deck can call for (`view.fixIds`;
-  before, Midwest listed revenue fixes too). Screenshot checked, 357 tests. Next: startTools, Codex entries (SD
-  weights, CPSM routing, storm drain, absolute capping, bursts), bot day-0 fixes, retune, sweeps.
-- **2026-10-21 (loop 126):** 4b part 2 (game layer): `SET_ROUTING_POLICY` costs 1 engineer-hour (SD VIPADISTRIBUTE / CPSM
-  WLMSPEC change), basket target and now → new text (`routingPolicyLabel`), config view exposes each workload's live
-  routing policy; new fix RECYCLE_SICK_AOR (1 h, −1 Markets) ends SICK_AOR. Quiescing a region costs its capacity, and
-  ABENDCRIT a trickle of failures, so the levers keep trade-offs. 357 tests, hash unchanged. Next: UI routing-policy
-  controls (Actions routing form), startTools, then 4c Codex/bots/retune/sweeps.
-- **2026-10-21 (loop 125):** large-bank step 4b part 1: Harbourline game pack (`PACKS.harbourline`, 'Harbourline Bank'):
-  FICTIONAL budgets ~2× Midwest, facets Markets/Cards/Retail/Payments/Finance/Regulator, 6 story beats, deck of neutral
-  and adapted Midwest cards plus SICK_AOR (B2: `regionFailFrac` 0.35 on MKTORD/CARDS@PRDB, storm-drain clue),
-  MARKET_OPEN_SURGE and HOLIDAY_CARD_SPIKE; pack tests. Built by the implementer, reviewed. 356 tests, hash unchanged.
-  Next (4b part 2): game verbs for routing policy / ABENDTHRESH-CRIT / quiesce / zIIP-aware weights with costs, so
-  SICK_AOR's fixes are playable; startTools; then 4c UI, Codex, bots, retune, sweeps.
-- **2026-10-21 (loop 122):** large-bank step 4a: Harbourline sim content (2 CPCs, 6 z/OS LPARs, HBPOL, 8 workloads with
-  bursts and B1–B4 planted, batch, products; `SCENARIOS.harbourline`, not yet a pack), built by the implementer subagent
-  and reviewed. It found a CPSM bug (timeouts read as fast abends → day-long storm drain into a saturated region), fixed
-  in sim. Day 1 seed 42: CPC1 55–66 %, CPC2 60–88 %, SLAs ~97–100 % per day, market-open window 72–97 %. Headless
-  day ~2× Midwest (6 LPARs + dynamic routing): perf follow-up before balancing. Next: 4b game pack (startTools, facets,
-  story, events incl. B2 sick AOR, routing verbs), then volume retune and sweeps.
-- **2026-10-21 (loop 121):** large-bank step 3 part 2: `CPSM_GOAL` routing with abend compensation and quiesce,
-  `mods.regionFailFrac` for a sick region. Midwest RBANK trial: a PROD2 region failing 40 % draws 96 % of RBANK
-  (overall failures 38 %); with ABENDCRIT 20 % it drops to the 2 % trickle. 346 tests, hash `eddf17fc7c615524`, no
-  timing change. Next: step 4 Harbourline content (world, workloads, policy B1–B4, events, Codex, game verbs).
-- **2026-10-21 (loop 120):** large-bank step 3 part 1: routing policies `STATIC | WLM{ziipAware}` (SD SERVERWLM-style
-  shares from displaceable capacity each minute; B3's CP-only default). Midwest MOBILE trial: WLM shifts 57–69 % to
-  PROD1, zIIP-aware 65–78 %; no day-time cost. 342 tests, hash `eddf17fc7c615524`. Next: `CPSM_GOAL` + region health
-  (B2 storm drain), quiesce, game-layer verbs.
-- **2026-10-21 (loop 119):** large-bank step 2: burst arrivals (`ArrivalShape.bursts`, random + scheduled, RNG drawn
-  only for bursty workloads). 335 tests, hash `eddf17fc7c615524`. Next: step 3 routing policies.
-- **2026-10-21 (loop 118):** large-bank step 1 (multi-CPC, SPEC §13.5): per-job-CPC critical projection, power cap hits
-  every CPC, capacity groups must stay on one CPC; two-CPC Midwest test (deterministic, group check). 332 tests, hash
-  `eddf17fc7c615524`. Next: view/hardware CPC selector, then step 2 burst arrivals.
-- **2026-10-21 (loop 116):** textbook day-28 wall traced (intended; above). Revenue deck: 16 agency cards adapted from
-  Midwest (retargeted mechanics, agency clues, facet-correct fix twins), bot fix lookup per scenario. 330 tests, Midwest
-  hash unchanged, Midwest expert table identical.
-- **2026-10-21 (loop 115):** PR #13 (Monitor III screens per RMF Report Analysis) reviewed by the new `pr-reviewer`
-  subagent and merged (325 tests, hash unchanged). Sweep now saves each run to `<out>.partial.jsonl` and has `--resume`
-  (a sweep killed at 59/60 had lost everything). SPEC §13.5 large-bank design written. Midwest 20-seed re-sweep: textbook
-  median 28 (on target) with a day-28 batch wall, do-nothing 17, expert 17/20 victories. Branch renamed to `dev`.
-- **2026-10-21 (loop 114):** second scenario *State Revenue Agency* (scenario packs, per-scenario facets, shared batch generator, REVPOL flaws G1–G3, H1–H2, SPEC §13.4, bot day-0 fixes, UI picker). Midwest unchanged: bench hash `eddf17fc7c615524`, goldens unchanged, 320 tests. Revenue sweep seeds 1–6 on target (above). The loop-113 Midwest re-sweep died mid-run (a bot.ts edit during the sweep); re-run pending. Planned a large-bank scenario (user request).
-- **2026-10-21 (loop 110):** PR #10 (CICS goal checks) merged after check + hashes; RETRY_STORM card (mobile λ ×2.5, CPU/txn flat; fix MOBILE_BACKOFF) with realism test. 308 tests, bench hash unchanged.
-- **2026-10-21 (IBM-docs realism thread):** audited WLM, capping, IEAOPTxx, CF heuristic against MVS Planning: WLM V2R5,
-  Init & Tuning Ref and the WSC sync/async paper. Fixed I/O using (connect only), discretionary batch zIIP overflow and
-  CF lock conversion (goldens/hashes regenerated); citations added to correct-but-uncited models. Seed 42 bots: do-nothing
-  day 15 → 16, textbook day 25 → 26 (small easing).
-- **2026-10-21 (loop 109):** no-repeat 20-seed re-sweep recorded: do-nothing median 16, textbook 26; ends now mostly trust. No code change.
-- **2026-10-21 (loop 108):** do-nothing day-4 loss traced to back-to-back JOB_ABEND draws; no card repeats on consecutive days. Bench hash unchanged, 299 tests.
-- **2026-10-21 (code-quality thread):** worker/play duplication folded into game helpers; policy names past 9 keep 8 chars (BASEPOL9 → BASEPO10, was BASEPOL1); `noUnusedLocals`. 8-day hash unchanged.
-- **2026-10-21 (realism thread):** period aging for batch jobs and address spaces, sysplex-scope type 1 resource
-  groups, SCRT capacity-group limit in MLC. Hash unchanged (25f061d42778588a). 294 tests.
-- **2026-10-21 (bug-hunt thread):** fixed three bugs. Successors of a batch job that overran 06:00 stayed HELD forever
-  (`closeNight` dropped the night's finished jobs while it still had stragglers). An SLA incident open at 06:00 kept
-  counting into the day it started, so the new day reported 100% attainment and paid the clean-day trust bonus; incidents
-  now split at the day boundary. Batch lock stretch used the online Db2 rate of the images dispatched so far, not the
-  sysplex rate (PROD1 batch saw only PROD1 traffic); goldens and the bench hash change with it. (Type 1 resource groups
-  were also applied in full on every system; left to the realism thread's PR #7.)
-- **2026-10-21 (perf thread):** `step` split into per-LPAR stages; day 1 ~20% faster, hash unchanged. 288 tests.
-- **2026-10-21 (loop 107):** STORAGE card tried; found and fixed a swap deadlock (`minSwappedIn: 1`); card not added (M8.4).
-- **2026-10-21 (loop 106):** SMF_AUDIT card (22 cards); HyperPAV exhaustion dropped.
-- **2026-10-21 (loop 105):** CICS_SOS card (21 cards), modelled as an MXT cut. Open question logged: raising MXT also clears it in the sim, unlike real SOS.
-- **2026-10-21 (loop 104):** ZIIP_LOSS card (20 cards): new sim modifier `ziipEligMult` (neutral 1, so SET_MODIFIER's reset-at-1 works and project `ziipShift` is untouched). Bench hash unchanged; goldens unaffected. 286 tests.
-- **2026-10-21 (loop 103):** career level 7 unlocks a starting tool (Report Class Hoarder).
-- **2026-10-21:** post-PR #8 20-seed re-sweep: do-nothing median 15, textbook median 27 (still short of target; booking go-live + reorg/abend batch walls).
-- **2026-10-21 (loops 93–102):** draft perks and the vendor tool trial; all SPEC §9.5 opportunities exist; smoke sweep, no regression.
-- **2026-10-20 (loops 80–92):** play CLI, player agents, spectator mode (M8.9); perf profiling.
-- **2026-10-20 (loop 79):** contrast audit fixed the light theme's status colours; contrast test for all themes. 273 tests.
-- **2026-10-20 (loop 78):** career v1 (XP across runs → starting-perk unlocks, IndexedDB). 270 tests.
-- **2026-10-20 (loop 77):** two pact draft cards (persistent perk + persistent downside). 267 tests.
-- **2026-10-20 (loop 76):** weekend auto-run (full sim at worker speed, report card as summary); weekday shown. 265 tests.
-- **2026-10-20 (loop 75):** day-1 guided tutorial (corner card, state-driven steps, F1 fix detection); ticked finished M7 items. 264 tests.
-- **2026-10-20 (loop 74):** three new draft options (Weekend push, Friend at the Vendor, Well Connected). 262 tests.
-- **2026-10-20 (loop 73):** hourly autosave during the live day (resume mid-day after a crash or reload; no more replaying a day from its briefing).
-- **2026-10-20 (loop 72):** endless mode after victory (fresh capex, counts as a win, endless days in report and share line). 259 tests.
-- **2026-10-20 (loop 69):** daily seed challenge (implementer subagent, reviewed): UTC-date seed, share line with Copy on the end screen. 257 tests.
-- **2026-10-20 (loop 68):** 20-seed Normal sweep with 19 cards: expert 20/20, textbook median 26 (booking go-live drives early Retail collapses). Asked the user.
-- **2026-10-20 (loop 67):** fixer bots (expert, spend-to-win) end cards on sight with their fix (REORG, monitor creep, shadow IT, teller release, HSM storm); expert seed 6 Normal now wins (was trust loss day 32).
-- **2026-10-20 (loop 66):** AUDIT_UNCLASSIFIED card (implementer subagent; reviewed: tunables moved to content). 19 cards, 253 tests.
-- **2026-10-20 (loop 65):** HIRING_FREEZE card (implementer subagent; reviewed: reason moved into the briefing). VENDOR_PRICE needs a product price lever in the sim or a run-aware scenario: asked the user. 250 tests.
-- **2026-10-20 (loop 64):** RCA trigger truth respects card mechanisms. 249 tests.
-- **2026-10-20 (loops 48–63):** morning hints, difficulty severity/timing/starting fixes, Story/Hard sweep, end-of-run report, six new event cards, merger hint (user decision). 229 → 246 tests.
-- **2026-10-21 (loop 112):** XLOG_LOOP card: CICSXLOG log archiver matches the CICS* STC rule, lands in STCHI (imp 1) and loops on ~1 engine on PROD1. Fixes: cancel (Regulator −1) or a reclassification rule. Built as an STC rather than the SPEC's batch job because address spaces classify by jobname only; SPEC §9 row updated. Realism test; 311 tests, bench hash unchanged (eddf17fc…).
-- **2026-10-21 (loop 113):** ENCRYPTION_MANDATE (permanent +6% CPU/txn on CARDAUTH/TELLER/PAYMQ; fix SCOPE_ENCRYPTION, Regulator −2) and GREEN_IT_COD (On/Off CoD refused for 7 days via a new `blocksHardware` card field checked in previewChange, so CPM automation is refused too). SPEC §9.4 rows updated. 313 tests; 1/3/8-day hashes unchanged. Full bot re-sweep started on the 26-card deck.
-- **2026-10-21 (thread):** Monitor III realism audit vs *RMF Report Analysis* ch. 2 (SYSSUM view added; SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX columns and formulas fixed; UKN split out of DLY %). The *RMF User's Guide* PDF could not be located under the usual ibm.com/docs PDF names. Game/UI layer only; goldens unchanged.
+- Older entries (loops 48–139 and earlier): `git log -p -- PROGRESS.md`.

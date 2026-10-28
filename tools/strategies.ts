@@ -172,8 +172,8 @@ function harbourlineDay0(r: RunState, c: GameContent): RunState {
   };
   const cpsm = { method: 'CPSM_GOAL' as const, abendThreshFrac: 0.1, abendCritFrac: 0.2, quiesced: [] };
   plan('Textbook WLM policy (MKTORD percentile goal)', [{ kind: 'ACTIVATE_POLICY', definition: harbourlineTextbookPolicy() }]);
-  plan('MKTQRY on zIIP-aware WLM weights (B1, B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MKTQRY', policy: { method: 'WLM', ziipAware: true } }]);
-  plan('MOBILE zIIP-aware weights (B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'WLM', ziipAware: true } }]);
+  plan('MKTQRY on SERVERWLM weights (B1, B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MKTQRY', policy: { method: 'WLM', distMethod: 'SERVERWLM' } }]);
+  plan('MOBILE SERVERWLM weights (B3)', [{ kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'WLM', distMethod: 'SERVERWLM' } }]);
   plan('CPSM ABENDTHRESH/ABENDCRIT (B2)', [
     { kind: 'SET_ROUTING_POLICY', workloadId: 'MKTORD', policy: cpsm },
     { kind: 'SET_ROUTING_POLICY', workloadId: 'CARDS', policy: cpsm },
@@ -259,6 +259,89 @@ const fixer: Strategy = {
 STRATEGIES.textbook = textbook;
 
 
+// Limits the expert raises toward; well inside the products' ranges (MAXDBAT up to 19999, MXT up to 2000).
+const MAXDBAT_CEILING = 2000;
+const MXT_CEILING = 1000;
+const QR_FLOOR_FRAC = 0.1;
+
+/** Yesterday's incidents with no event behind them (trigger POLICY) are the analyst's to tune away, read
+ * from the report each mechanism points at: DBAT or MXT queueing (THREAD_LIMIT) raises MAXDBAT or MXT on
+ * the images the workload runs on, and QR TCB saturation moves more of its AORs' work off QR.
+ * CPU_PRIORITY is left alone: raising importance traded one workload's incidents for another's in trials. */
+function tunePolicyIncidents(run: RunState, s: Scenario, c: GameContent): RunState {
+  const yday = run.incidents.filter((i) => i.day === run.day - 1 && i.truth.trigger === 'POLICY');
+  if (yday.length === 0) return run;
+  const cfg = run.sim.config;
+  const commands: import('../src/sim/core/commands').Command[] = [];
+  const done = new Set<string>();
+  const lparsOf = (w: Scenario['workloads'][number]) => Object.entries(run.sim.routing[w.id] ?? w.routing).filter(([, f]) => f > 0).map(([l]) => l);
+  for (const inc of yday) {
+    const w = s.workloads.find((x) => x.id === inc.workloadId);
+    if (!w) continue;
+    const lpars = lparsOf(w);
+    if (inc.truth.mechanism === 'THREAD_LIMIT') {
+      if (w.subsystem === 'DDF') {
+        for (const d of cfg.db2.filter((x) => lpars.includes(x.lparId) && x.maxDbat < MAXDBAT_CEILING && !done.has(x.ssid))) {
+          done.add(d.ssid);
+          commands.push({ kind: 'SET_DB2', ssid: d.ssid, maxDbat: Math.min(MAXDBAT_CEILING, Math.round(d.maxDbat * 1.5)) });
+        }
+      } else if (w.subsystem === 'CICS') {
+        for (const a of cfg.cics.filter((x) => lpars.includes(x.lparId) && x.maxTasks < MXT_CEILING && !done.has(`${x.name}:mxt`))) {
+          done.add(`${a.name}:mxt`);
+          commands.push({ kind: 'SET_CICS', name: a.name, maxTasks: Math.min(MXT_CEILING, Math.round(a.maxTasks * 1.5)) });
+        }
+      }
+    } else if (inc.truth.mechanism === 'QR_TCB') {
+      for (const a of cfg.cics.filter((x) => lpars.includes(x.lparId) && x.qrFrac > QR_FLOOR_FRAC + 1e-9 && !done.has(`${x.name}:qr`))) {
+        done.add(`${a.name}:qr`);
+        commands.push({ kind: 'SET_CICS', name: a.name, qrFrac: Math.max(QR_FLOOR_FRAC, a.qrFrac / 2) });
+      }
+    }
+  }
+  if (commands.length === 0) return run;
+  return requestChange(run, c, { label: 'Raise thread limits / threadsafe AORs for yesterday’s incidents', commands }).run;
+}
+
+/** Distinct days with CPU_CAPACITY incidents on a CPC, within this many days, that justify a permanent CP. */
+const PERM_CP_WINDOW_DAYS = 7;
+const PERM_CP_MIN_DAYS = 2;
+/** Capacity planning with capex: repeated no-donor CPU incidents on a CPC buy it a permanent CP (4-day lead), and
+ * once installed its production images get a logical CP more so they can use it. One purchase per CPC per window. */
+function buyCapacityForIncidents(run: RunState, s: Scenario, c: GameContent): RunState {
+  const cfg = run.sim.config;
+  const cpcOf = (l: string) => cfg.lpars.find((x) => x.id === l)?.cpcId ?? '';
+  const days = new Map<string, Set<number>>();
+  for (const inc of run.incidents.filter((i) => i.day >= run.day - PERM_CP_WINDOW_DAYS && i.truth.mechanism === 'CPU_CAPACITY')) {
+    const w = s.workloads.find((x) => x.id === inc.workloadId);
+    if (!w) continue;
+    for (const [l, f] of Object.entries(run.sim.routing[w.id] ?? w.routing)) {
+      if (f <= 0) continue;
+      const id = cpcOf(l);
+      if (!days.has(id)) days.set(id, new Set());
+      days.get(id)!.add(inc.day);
+    }
+  }
+  let r = run;
+  for (const cpc of cfg.cpcs) {
+    const label = `Permanent CP on ${cpc.id} for capacity incidents`;
+    const bought = r.changes.filter((x) => x.label === label && x.status !== 'FAILED');
+    if ((days.get(cpc.id)?.size ?? 0) >= PERM_CP_MIN_DAYS && !bought.some((x) => x.plannedDay > r.day - PERM_CP_WINDOW_DAYS)) {
+      r = requestChange(r, c, { label, hardwareId: 'PERM_CP', cpcId: cpc.id }).run;
+    }
+    const prod = cfg.lpars.filter((l) => l.cpcId === cpc.id && !l.id.startsWith('CF') && !['DEV1', 'TST1', 'DEVT', 'SYSP'].includes(l.id));
+    const commands = prod.flatMap((l) => {
+      const p = l.pools.find((x) => x.pool === 'CP');
+      return p && p.logical < cpc.engines.CP ? [{ kind: 'SET_LOGICAL' as const, lparId: l.id, pool: 'CP' as const, logical: p.logical + 1 }] : [];
+    });
+    // One logical CP per installed purchase, not a climb toward the physical count.
+    const raised = r.changes.filter((x) => x.label === `Logical CPs on ${cpc.id}` && x.status !== 'FAILED').length;
+    if (commands.length > 0 && raised < bought.filter((x) => x.status === 'APPLIED').length) {
+      r = requestChange(r, c, { label: `Logical CPs on ${cpc.id}`, commands }).run;
+    }
+  }
+  return r;
+}
+
 // ---------------------------------------------------------------------------
 // Expert: fixer plus capacity planning ahead of need. Buys the faster capacity setting on day 1
 // (critical batch is a serial chain and batch volumes grow every night) instead of waiting for the
@@ -266,12 +349,16 @@ STRATEGIES.textbook = textbook;
 const expert: Strategy = {
   briefing: (r, s, c) => {
     let run = fixer.briefing(r, s, c);
+    if (run.day > 0) run = tunePolicyIncidents(run, s, c);
+    if (run.day > 0) run = buyCapacityForIncidents(run, s, c);
     // At the first briefing with the hours for it (Harbourline's day-0 flaw fixes use the whole day).
     if (run.day <= 2 && !run.changes.some((x) => x.label === 'Capacity setting +1' && x.status !== 'FAILED')) run = capSettingUp(run, c);
     return run;
   },
   hourly: fixer.hourly,
-  review: passive.review,
+  // Turns down the capex-for-opex pact: its 10% lower opex budget turns an ordinary month-1 bill into a
+  // >25% overrun (the expert's opex game overs were all that pick).
+  review: (r, _s, c) => chooseDraft(r, c, r.draft?.find((d) => d.id !== 'BUDGET_SWAP')?.id ?? null),
 };
 STRATEGIES.expert = expert;
 

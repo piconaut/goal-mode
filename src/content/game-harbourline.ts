@@ -1,12 +1,14 @@
 import type { GameContent } from '../game/run';
 import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from './events/harbourline-events';
 
-/** FICTIONAL budgets for the Harbourline Bank run: a larger estate with two CPCs, so roughly double Midwest's. Opex is set so a
- * textbook month-1 bill lands ~7 % over it, like Midwest's (40-day sweep: bills $1.6–1.7M). */
+/** FICTIONAL budgets for the Harbourline Bank run: a larger estate with two CPCs, so roughly double Midwest's. Opex is set so
+ * month-1 bills land ~5–15 % over it (hb40e sweep: textbook $1.52–1.67M, expert $1.55–1.78M; Midwest's run 7–10 % over).
+ * Raised $1.5M → $1.6M (user decision 2026-10-26): good play hit the 25 % opex wall on day 28 when a spike day set the
+ * month's R4HA peak and the vendor price rise landed in month 1 (expert won 13/20 on Normal). */
 export const HARBOURLINE_GAME: GameContent = {
   events: HARBOURLINE_EVENTS,
   story: HARBOURLINE_STORY,
-  opexBudgetMonthly: 1_500_000,
+  opexBudgetMonthly: 1_600_000,
   capexQuarter: 2_400_000,
   maxDays: 40,
   facets: [

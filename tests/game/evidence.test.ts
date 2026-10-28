@@ -42,11 +42,15 @@ describe('evidence pins', () => {
     const r = pin(regressed, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' });
     const p = r.pins.at(-1)!;
     expect(p.value).toBeGreaterThan(2);
-    expect(p.text).toMatch(/Db2 101 .* RBANK CPU\/txn vs baseline ×/);
+    expect(p.text).toMatch(/^Db2 101 D1 \d\d:00–\d\d:00 RBANK CPU\/txn vs baseline ×/);
+    expect(p.text).toContain(`${hourKey.split(':')[1]!.padStart(2, '0')}:00–`);
     expect(addPin(r, MIDWEST, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' }).ok).toBe(false);
     const iv = regressed.sim.rmf.intervals.length - 1;
     const w = pin(r, { source: 'WLMGL', index: iv, system: '*PLEX', scKey: 'ONLHI#1', metric: 'APPL' });
     expect(w.pins.at(-1)!.source).toBe('WLMGL');
+    const c = pin(r, { source: 'CPC', index: iv, lparId: 'PROD1', metric: 'CAPPED' }).pins.at(-1)!;
+    expect(c.tick).toBe(regressed.sim.rmf.intervals[iv]!.endTick);
+    expect(c.value).toBe(regressed.sim.rmf.intervals[iv]!.cpu.find((x) => x.lparId === 'PROD1')!.cappedPct);
   });
 
   it('keeps at most the configured number of pins', () => {
@@ -55,6 +59,15 @@ describe('evidence pins', () => {
     r = pin(r, { source: 'CPC', lparId: 'PROD1', metric: 'PRSM_DELAY' });
     expect(r.pins.length).toBeLessThanOrEqual(EVIDENCE.maxPins + 3);
     expect(r.pins.at(-1)!.source).toBe('CPC');
+  });
+
+  it('pins the CICS failed share as evidence for ROUTING', () => {
+    const failing = advance({ ...regressed, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'regionFailFrac', key: 'RBANK@PROD1', value: 0.35 }] }, MIDWEST, content, HOUR);
+    const h = failing.smfHours.at(-1)!;
+    const r = pin(failing, { source: 'CICS', hour: `${h.day}:${h.hourOfDay}`, workloadId: 'RBANK', metric: 'FAIL_PCT' });
+    expect(r.pins.at(-1)!.value).toBeGreaterThan(5);
+    const [j] = judgeEvidence(r, MIDWEST, incident(r, { truth: { mechanism: 'ROUTING', trigger: 'POLICY' } }), r.pins.slice(-1));
+    expect(j!.relevance).toBe(1);
   });
 
   it('judges relevance by cause, subject, window and size', () => {
@@ -79,6 +92,53 @@ describe('evidence pins', () => {
     expect(right.insight - withInc.insight).toBe(5 + 2 + EVIDENCE.strongInsight);
     const wrong = submitRca(withInc, 999, 'LOCK_CONTENTION', 'ACCESS_PATH_REGRESSION', MIDWEST, ids);
     expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
+  });
+});
+
+describe('evidence pins on a missed batch night', () => {
+  const TPD = 24 * HOUR;
+  // A synthetic night: critical STL jobs on PROD1 lost most of their time to locks and one ABENDed.
+  const night = (r: RunState): RunState => ({
+    ...r,
+    reports: [...r.reports, {
+      day: 0, sla: [], batchMissed: true, trustDelta: {} as never, score: 0, mlcEstimate: 0, events: [],
+      batch: {
+        day: 0, jobs: 40, done: 38, criticalJobs: 14, criticalDone: 13, criticalEndSec: null, missedDeadline: true,
+        criticalDelaySec: { cpu: 300, io: 200, lock: 1400, db2: 100, swap: 0, init: 0 },
+        criticalAbended: ['STL009'],
+        criticalHosts: [{ lparId: 'PROD1', name: 'STL001', jobClass: 'A' }],
+      },
+    }],
+  });
+  const batchInc = (r: RunState, truth: Incident['truth']): Incident =>
+    incident(r, { workloadId: 'BATCH', startTick: 12 * HOUR, endTick: TPD, truth });
+
+  it('pins SMF 30 delay shares and ABENDs, and scores them against the night', () => {
+    let r = night(regressed);
+    r = pin(r, { source: 'BATCH', day: 0, metric: 'JOB_LOCK' });
+    r = pin(r, { source: 'BATCH', day: 0, metric: 'JOB_ABEND' });
+    r = pin(r, { source: 'BATCH', day: 0, metric: 'JOB_SWAP' });
+    const [lock, abend, swap] = r.pins.slice(-3);
+    expect(lock!.value).toBeCloseTo(70);
+    expect(lock!.source).toBe('SMF 30');
+    expect(abend!.value).toBe(1);
+    const v = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'LOCK_CONTENTION', trigger: 'BATCH_OVERLAP' }), [lock!, abend!, swap!]);
+    expect(v.map((x) => x.relevance)).toEqual([1, 0, 0]);
+    expect(v[2]!.why).toMatch(/unremarkable/);
+    const failed = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'JOB_FAILURE', trigger: 'BATCH_OVERLAP' }), [abend!]);
+    expect(failed[0]!.relevance).toBe(1);
+  });
+
+  it('counts WLMGL-style pins on the critical jobs\' service class as about BATCH', () => {
+    const r = night(regressed);
+    const p = { id: 1, source: 'WLMGL', metric: 'PI' as const, subject: 'BATCHPRD#1', system: '*PLEX', tick: 20 * HOUR, value: 3, text: '' };
+    const v = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'CPU_PRIORITY', trigger: 'BATCH_OVERLAP' }), [p]);
+    expect(v[0]!.why).not.toMatch(/not about/);
+  });
+
+  it('refuses a night without records', () => {
+    const out = addPin(regressed, MIDWEST, { source: 'BATCH', day: 0, metric: 'JOB_LOCK' });
+    expect(out.ok).toBe(false);
   });
 });
 

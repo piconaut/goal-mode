@@ -5,7 +5,7 @@
 import { storyBeatsFor } from './difficulty';
 import { APP_OWNERS, CALENDAR_FACTS, CURT_PREFIX, EVENT_RUMOURS, FRIENDLY_PREFIX, INQUIRY, INQUIRY_TOPICS, JOB_CLASS_MEANING, RUDE_REPLIES, STORY_RUMOURS, STREAM_STORY, type InquiryKind } from '../content/inquiries';
 import { clockAt } from '../sim/core/clock';
-import { Rng } from '../sim/core/rng';
+import { type Rng, streamRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import type { GameContent } from './run';
@@ -32,8 +32,9 @@ type Out = { run: RunState; ok: boolean; message: string };
 
 export function askAround(run: RunState, topicId: InquiryKind, workloadId: string | null, scenario: Scenario): Out {
   const t = INQUIRY_TOPICS.find((x) => x.id === topicId);
-  if (!t) return { run, ok: false, message: 'Unknown question' };
-  if (run.phase !== 'BRIEFING' && run.phase !== 'LIVE') return { run, ok: false, message: 'Ask during the day' };
+  if (!t) return { run, ok: false, message: `Unknown question; topics: ${INQUIRY_TOPICS.map((x) => x.id).join(', ')}` };
+  // REVIEW spends tomorrow's hours, like planning a change; the reply clock starts at once.
+  if (run.phase !== 'BRIEFING' && run.phase !== 'LIVE' && run.phase !== 'REVIEW') return { run, ok: false, message: 'The run is over' };
   const st = run.inquiries ?? empty();
   if (st.pending.length >= INQUIRY.maxOpen) return { run, ok: false, message: `Wait for answers first (at most ${INQUIRY.maxOpen} open questions)` };
   if (t.perWorkload && !allWorkloads(scenario, run).some((w) => w.id === workloadId)) return { run, ok: false, message: 'Pick an application' };
@@ -41,11 +42,11 @@ export function askAround(run: RunState, topicId: InquiryKind, workloadId: strin
   if (st.pending.some((p) => p.topic === topicId && p.workloadId === wid)) return { run, ok: false, message: 'Already asked; the answer is on its way' };
   const hours = inquiryHours(t.hours, run.perks);
   if (run.hoursLeft < hours) return { run, ok: false, message: `Asking takes ${hours}h` };
-  const rng = new Rng(run.rng);
+  const rng = streamRng(run.seed, 'inquiry-ask', run.sim.tick, topicId, wid ?? '');
   const delayH = rng.range(t.replyHours[0], t.replyHours[1]);
   const p: PendingInquiry = { id: run.nextId, topic: topicId, workloadId: wid, askedTick: run.sim.tick, replyTick: run.sim.tick + Math.round((delayH * 3600) / TICK_SEC) };
   return {
-    run: { ...run, rng: rng.snapshot(), nextId: run.nextId + 1, hoursLeft: run.hoursLeft - hours, inquiries: { ...st, pending: [...st.pending, p] } },
+    run: { ...run, nextId: run.nextId + 1, hoursLeft: run.hoursLeft - hours, inquiries: { ...st, pending: [...st.pending, p] } },
     ok: true,
     message: `Asked ${who(topicId, wid)}; expect an answer in a few hours`,
   };
@@ -62,10 +63,10 @@ export function deliverInquiries(run: RunState, scenario: Scenario, content: Gam
   if (hour < INQUIRY.officeHours[0] || hour >= INQUIRY.officeHours[1]) return run;
   const due = st.pending.filter((p) => p.replyTick <= run.sim.tick);
   if (due.length === 0) return run;
-  const rng = new Rng(run.rng);
   let revealed = [...st.revealed];
   const inbox = [...run.inbox];
   for (const p of due) {
+    const rng = streamRng(run.seed, 'inquiry-reply', p.askedTick, p.topic, p.workloadId ?? '');
     const t = INQUIRY_TOPICS.find((x) => x.id === p.topic)!;
     const subject = `Re: ${t.question}${p.workloadId ? ` (${p.workloadId})` : ''}`;
     const mood = moodOf(trustOf(run, scenario, p), rng);
@@ -79,7 +80,7 @@ export function deliverInquiries(run: RunState, scenario: Scenario, content: Gam
     }
     inbox.push({ day: run.day, from: who(p.topic, p.workloadId), subject, body });
   }
-  return { ...run, rng: rng.snapshot(), inbox, inquiries: { pending: st.pending.filter((p) => !due.includes(p)), revealed } };
+  return { ...run, inbox, inquiries: { pending: st.pending.filter((p) => !due.includes(p)), revealed } };
 }
 
 type Mood = 'RUDE' | 'CURT' | 'NEUTRAL' | 'FRIENDLY';

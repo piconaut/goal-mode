@@ -6,7 +6,7 @@ import type { Command } from '../../sim/core/commands';
 import type { WorkloadDef } from '../../sim/workload/types';
 import { MIDWEST_EVENTS, type EventDef, type ScriptedBeat } from './midwest-events';
 
-const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'GREEN_IT_COD', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
+const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'GREEN_IT_COD', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
 // A strict regulator: audit cards come up more often than at the bank.
 const WEIGHT_MULT: Record<string, number> = { SMF_AUDIT: 1.5, AUDIT_UNCLASSIFIED: 1.5 };
 
@@ -29,7 +29,7 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('CAMPAIGN', {
     id: 'FILE_EARLY_CAMPAIGN',
     name: '"File early" campaign',
-    forewarning: 'Communications: "Heads up, the file-early, get-your-refund-sooner campaign starts tomorrow. Could be big."',
+    forewarning: 'Communications: "Heads up, the file-early, get-your-refund-sooner campaign starts today. Could be big."',
     clue: 'DDF END/S for the e-filing site jumps ×2–3 on both systems; CPU per transaction unchanged.',
   }, { MOBILE: 'EFILE' }),
   adapt('RUNAWAY', {
@@ -41,7 +41,7 @@ const AGENCY_CARDS: EventDef[] = [
     id: 'EFILE_REGRESSION',
     name: 'Access-path regression after REBIND',
     fix: 'EFILE_REBIND_REVERT',
-    forewarning: 'Change board: "Db2 package REBINDs for the e-filing app are scheduled overnight."',
+    forewarning: 'Change board: "Db2 package REBINDs for the e-filing app ran overnight."',
     perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: "EXPLAIN diff after last night's REBIND: package EF01 changed access path (index probe → tablespace scan). Expect more CPU per e-filing transaction." },
     clue: 'WLMGL: e-filing service per transaction ×3 (APPL% up, END/S flat). Db2 accounting by package would point at EF01. Fixes: restore the previous access path, or absorb it with capacity.',
   }, { RBANK: 'EFILE' }),
@@ -60,12 +60,12 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('ENCRYPTION_MANDATE', {
     id: 'TAXDATA_ENCRYPTION',
     name: 'Taxpayer data encryption mandate',
-    forewarning: 'Regulator: "All taxpayer data sets must be encrypted at rest from tomorrow. We will check the key labels."',
+    forewarning: 'Regulator: "All taxpayer data sets must be encrypted at rest from today. We will check the key labels."',
     clue: 'WLMGL: CPU per transaction up ~6% on account, refund status and employer filing from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
   }, { CARDAUTH: 'ACCOUNT', TELLER: 'REFSTAT', PAYMQ: 'EMPLOYER' }),
   adapt('ZIIP_LOSS', {
     fix: 'NATIVE_SQL_PROCS_REV',
-    forewarning: 'Change board: "E-filing stored procedures are being redeployed overnight (new COBOL versions)."',
+    forewarning: 'Change board: "E-filing stored procedures were redeployed overnight (new COBOL versions)."',
     clue: 'WLMGL: WEBDDF (or e-filing\'s own class) APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures (Taxpayers trust), or absorb it (cap, more CP).',
   }, { MOBILE: 'EFILE' }),
   adapt('XLOG_LOOP', { affects: ['ACCOUNT', 'AGENTS'] }),

@@ -197,6 +197,8 @@ export const TOOLS: ToolDef[] = [
 
 // FICTIONAL: Insight income.
 export const INSIGHT = {
+  /** At the start of a run: enough for Monitor III on day 1, so diagnosis can start before income builds (finding D). */
+  starting: 15,
   /** Per distinct report opened in a played day. */
   perReport: 1,
   /** Cap on report Insight per played day. */
@@ -214,6 +216,14 @@ export const MON3_CHARTS = {
   sampleTicks: 6,
   /** WLM decision and change markers kept per day. */
   maxMarkers: 400,
+};
+
+// Monitor III history: RMF III writes one set of samples per MINTIME (default 100 s) to its VSAM data
+// sets, and the reports can be redisplayed for any range still held (RMF User's Guide, SC34-2664).
+// Retention is a game choice (user decision 2026-10-21), not a real default.
+export const MON3_HISTORY = {
+  mintimeTicks: 10,
+  retentionHours: 48,
 };
 
 export const toolDef = (id: string): ToolDef | undefined => TOOLS.find((t) => t.id === id);

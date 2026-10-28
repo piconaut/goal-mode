@@ -60,7 +60,7 @@ export function endReport(run: RunState, overallTrust: number): EndReport {
   for (const i of run.incidents) {
     if (!biggestIncident || i.hours > biggestIncident.hours)
       biggestIncident = { workloadId: i.workloadId, day: i.day, hours: i.hours, cause: causeOf(i.truth.mechanism, i.truth.trigger) };
-    const pts = (i.rca?.points ?? 0) + (i.rca?.evidencePoints ?? 0);
+    const pts = i.rca?.points ?? 0; // already includes evidence points
     if (i.rca && pts > 0 && (!bestRca || pts > bestRca.points)) bestRca = { workloadId: i.workloadId, day: i.day, points: pts, cause: causeOf(i.truth.mechanism, i.truth.trigger) };
   }
   const scKeys = [...new Set(reports.flatMap((r) => Object.keys(r.piWorst ?? {})))].sort();

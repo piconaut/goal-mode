@@ -1,4 +1,4 @@
-import { BATCH_HINTS, BATCH_TIGHT_SLACK_SEC, MAX_HINTS, MECHANISM_HINTS } from '../content/hints';
+import { BATCH_HINTS, BATCH_TIGHT_SLACK_SEC, MAX_HINTS, MECHANISM_HINTS, STRAIN_HINT, WLM_DISAGREE_HINTS } from '../content/hints';
 import type { Incident } from './types';
 
 export type HintLevel = keyof typeof MAX_HINTS;
@@ -8,6 +8,13 @@ export interface BatchOutcome {
   /** Seconds after 06:00 the critical path ended; null if it never did. */
   criticalEndSec: number | null;
   deadlineSec: number;
+}
+
+/** A service-class period whose worst PI jumped although none of its work raised an incident. */
+export interface StrainedClass {
+  scKey: string;
+  pi: number;
+  prevPi: number;
 }
 
 const fmtSlack = (sec: number) => (sec >= 3600 ? `${Math.floor(sec / 3600)} h ${Math.round((sec % 3600) / 60)} min` : `${Math.max(1, Math.round(sec / 60))} min`);
@@ -22,7 +29,15 @@ export function hintLevelFor(level: HintLevel, perks: readonly string[]): HintLe
  * Morning hints from yesterday's ground truth (SPEC §11.2): the same incident truth RCA scoring uses picks
  * the report to point at, but the text never names the mechanism, trigger or fix.
  */
-export function morningHints(level: HintLevel, incidents: readonly Incident[], batch: BatchOutcome | null): string[] {
+export function morningHints(
+  level: HintLevel,
+  incidents: readonly Incident[],
+  batch: BatchOutcome | null,
+  /** Workloads whose service class met its goal in WLMGL all day despite the incident → their subsystem. */
+  wlmHid: Readonly<Record<string, string>> = {},
+  /** Classes under new strain with no incident; hinted after the incidents, worst first. */
+  strained: readonly StrainedClass[] = [],
+): string[] {
   const max = MAX_HINTS[level];
   if (max === 0) return [];
   const key = level === 'CLEAR' ? 'clear' : 'vague';
@@ -43,7 +58,14 @@ export function morningHints(level: HintLevel, incidents: readonly Incident[], b
     if (!cur || i.hours > cur.hours || (i.hours === cur.hours && i.worstAttainmentPct < cur.worstAttainmentPct)) worst.set(i.workloadId, i);
   }
   const ranked = [...worst.values()].sort((a, b) => b.hours - a.hours || a.worstAttainmentPct - b.worstAttainmentPct || (a.workloadId < b.workloadId ? -1 : 1));
-  for (const i of ranked) out.push(MECHANISM_HINTS[i.truth.mechanism][key].replace('{w}', i.workloadId));
+  for (const i of ranked) {
+    const sub = wlmHid[i.workloadId];
+    const extra = sub ? (WLM_DISAGREE_HINTS[sub]?.[key] ?? '') : '';
+    out.push(MECHANISM_HINTS[i.truth.mechanism][key].replace('{w}', i.workloadId) + extra);
+  }
+
+  for (const c of strained)
+    out.push(STRAIN_HINT[key].replace('{sc}', c.scKey).replace('{pi}', c.pi.toFixed(1)).replace('{prev}', c.prevPi.toFixed(1)));
 
   if (batchHint && !batch?.missed) out.push(batchHint);
   return out.slice(0, max);

@@ -5,27 +5,33 @@ import { step } from '../../src/sim/core/step';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { cpsmGoalShares, wlmShares, type RoutingPolicy } from '../../src/sim/workload/routing';
 
-const cand = (lparId: string, cpFreeEngines: number, ziipFreeEngines: number) => ({ lparId, cpFreeEngines, ziipFreeEngines });
+const cand = (lparId: string, cpFreeEngines: number, ziipFreeEngines: number, cpIdleEngines = cpFreeEngines) => ({ lparId, cpFreeEngines, ziipFreeEngines, cpIdleEngines });
 
 describe('WLM routing weights', () => {
   it('follow displaceable CP capacity, with a floor and 1 % steps', () => {
-    const s = wlmShares([cand('A', 3, 0), cand('B', 1, 0), cand('C', 0, 0)], 0, false, 0.02, 0.01);
+    const s = wlmShares([cand('A', 3, 0), cand('B', 1, 0), cand('C', 0, 0)], 0, 'SERVERWLM', 0.02, 0.01);
     expect(s.A! + s.B! + s.C!).toBeCloseTo(1);
     expect(s.A! / s.B!).toBeCloseTo(3, 0);
     expect(s.C).toBeCloseTo(0.02);
     expect(Math.round(s.A! * 100) / 100).toBeCloseTo(s.A!, 6);
   });
 
-  it('ignore zIIP capacity unless zIIP-aware (B3)', () => {
+  it('BASEWLM ignores zIIP capacity; SERVERWLM counts it for the zIIP-eligible part (B3)', () => {
     const c = [cand('CPS', 2, 0), cand('ZIIPS', 1, 3)];
-    const cpOnly = wlmShares(c, 0.6, false, 0.02, 0.01);
-    const aware = wlmShares(c, 0.6, true, 0.02, 0.01);
+    const cpOnly = wlmShares(c, 0.6, 'BASEWLM', 0.02, 0.01);
+    const aware = wlmShares(c, 0.6, 'SERVERWLM', 0.02, 0.01);
     expect(cpOnly.CPS!).toBeGreaterThan(cpOnly.ZIIPS!);
     expect(aware.ZIIPS!).toBeGreaterThan(aware.CPS!);
   });
 
+  it('BASEWLM follows idle CP capacity, not capacity displaceable at the work\'s importance', () => {
+    const c = [cand('BUSY_LOW', 3, 0, 0.5), cand('IDLE', 1, 0, 1)];
+    expect(wlmShares(c, 0, 'BASEWLM', 0.02, 0.01).IDLE!).toBeGreaterThan(0.5);
+    expect(wlmShares(c, 0, 'SERVERWLM', 0.02, 0.01).BUSY_LOW!).toBeGreaterThan(0.5);
+  });
+
   it('split evenly when nothing is free', () => {
-    const s = wlmShares([cand('A', 0, 0), cand('B', 0, 0)], 0, false, 0.02, 0.01);
+    const s = wlmShares([cand('A', 0, 0), cand('B', 0, 0)], 0, 'SERVERWLM', 0.02, 0.01);
     expect(s.A).toBeCloseTo(0.5);
   });
 });
@@ -33,7 +39,7 @@ describe('WLM routing weights', () => {
 describe('routing policies in the sim', () => {
   const policied = () => {
     const workloads = structuredClone(MIDWEST.workloads);
-    workloads.find((w) => w.id === 'MOBILE')!.routingPolicy = { method: 'WLM', ziipAware: false };
+    workloads.find((w) => w.id === 'MOBILE')!.routingPolicy = { method: 'WLM', distMethod: 'BASEWLM' };
     return { ...MIDWEST, workloads, batchNetwork: MIDWEST.batchNetwork };
   };
 

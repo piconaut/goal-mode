@@ -1,0 +1,63 @@
+# Merge gate for dev and main (PROGRESS.md "Branch workflow"). Required status checks: `check` and `balance`.
+name: CI
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Typecheck + unit, realism and golden tests. A behaviour change must commit regenerated goldens.
+      - run: npm run check
+
+  # A PR that regenerates the goldens changes behaviour: re-check that the game still plays. Passes at once otherwise.
+  balance:
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: goldens
+        name: Did this PR regenerate the goldens?
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ] && ! git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- tests/golden/hashes.json; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Goldens unchanged: no balance sweep needed."
+          fi
+      - if: steps.goldens.outputs.changed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.goldens.outputs.changed == 'true'
+        run: npm ci
+      - if: steps.goldens.outputs.changed == 'true'
+        run: npm run sweep -- --bots donothing,textbook,expert --seeds 1-5 --out runs/ci-sweep.csv
+      - if: steps.goldens.outputs.changed == 'true'
+        run: npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5
+      - if: always() && steps.goldens.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-sweep
+          path: runs/ci-sweep.csv*
