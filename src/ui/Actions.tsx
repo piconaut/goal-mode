@@ -784,9 +784,7 @@ function Systems({ desk }: { desk: Desk }) {
     <>
       <div className="form">
         RMF interval
-        {[5, 15, 30].map((m) => (
-          <ChangeButtonsInline key={m} desk={desk} commands={[{ kind: 'SET_RMF_INTERVAL', minutes: m }]} disabled={m === cfg.rmfIntervalMin} text={`${m} min`} />
-        ))}
+        <Choices desk={desk} options={[5, 15, 30].map((m) => ({ text: `${m} min`, commands: [{ kind: 'SET_RMF_INTERVAL', minutes: m }], disabled: m === cfg.rmfIntervalMin }))} />
         <Now>{cfg.rmfIntervalMin} min</Now>
       </div>
       <div className="help">Shorter intervals give finer reports at the cost of SMF volume.</div>
@@ -806,19 +804,18 @@ function Systems({ desk }: { desk: Desk }) {
                 <td>
                   <span className="btns">
                     <span className="num">{s.blwlinthdSec}s</span>
-                    {[5, 20].map((sec) => (
-                      <ChangeButtonsInline key={sec} desk={desk} commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { blwlinthdSec: sec } }]} disabled={s.blwlinthdSec === sec} text={`${sec}s`} />
-                    ))}
+                    <Choices
+                      desk={desk}
+                      options={[5, 20].map((sec) => ({ text: `${sec}s`, commands: [{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { blwlinthdSec: sec } }], disabled: s.blwlinthdSec === sec }))}
+                    />
                   </span>
                 </td>
                 <td>
                   <span className="btns">
                     <span className="num">{s.iipHonorPriority ? 'YES' : 'NO'}</span>
-                    <ChangeButtonsInline
+                    <Choices
                       desk={desk}
-                      commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { iipHonorPriority: !s.iipHonorPriority } }]}
-                      disabled={false}
-                      text={s.iipHonorPriority ? 'NO' : 'YES'}
+                      options={[{ text: s.iipHonorPriority ? 'NO' : 'YES', commands: [{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { iipHonorPriority: !s.iipHonorPriority } }], disabled: false }]}
                     />
                   </span>
                 </td>
@@ -844,15 +841,68 @@ function CouplingFacilities({ desk }: { desk: Desk }) {
   );
 }
 
-/** Compact button pair for one-click choices: click applies, shift-click (or the + button) stages. */
-function ChangeButtonsInline({ desk, commands, disabled, text }: { desk: Desk; commands: Command[]; disabled: boolean; text: string }) {
+interface ChoiceOption {
+  text: string;
+  commands: Command[];
+  /** Already set, or not possible (e.g. the target CF is down). */
+  disabled: boolean;
+}
+
+/**
+ * A few fixed values (or one toggle). Picking one changes nothing yet: it shows `+ basket` and `Apply · cost`, like a typed
+ * setting row, so the hours, trust and fail risk are visible before anything is spent. Click the pick again to cancel.
+ */
+function Choices({ desk, options }: { desk: Desk; options: ChoiceOption[] }) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const opt = options.find((o) => o.text === picked && !o.disabled);
+  return (
+    <span className="btns">
+      {options.map((o) => (
+        <button
+          key={o.text}
+          type="button"
+          className={opt === o ? 'active' : undefined}
+          aria-pressed={opt === o}
+          disabled={o.disabled}
+          title={o.disabled ? 'Already set' : opt === o ? 'Cancel' : undefined}
+          onClick={() => setPicked(opt === o ? null : o.text)}
+        >
+          {o.text}
+        </button>
+      ))}
+      {opt && <ChoiceConfirm desk={desk} commands={opt.commands} done={() => setPicked(null)} />}
+    </span>
+  );
+}
+
+function ChoiceConfirm({ desk, commands, done }: { desk: Desk; commands: Command[]; done: () => void }) {
   const p = preview(desk.v, { commands });
   const label = describeCommand(commands[0]!, desk.cfg);
-  const title = disabled ? 'Already set' : p.reason ?? `${label}: ${costText(p)} (shift-click adds to basket)`;
   return (
-    <button disabled={disabled || !p.ok} title={title} onClick={(e) => (e.shiftKey ? desk.stage(commands) : desk.apply(label, commands))}>
-      {text}
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          desk.stage(commands);
+          done();
+        }}
+      >
+        + basket
+      </button>
+      <button
+        type="button"
+        className="apply"
+        disabled={p.reason !== null}
+        title={p.reason ?? (p.emergency ? 'Emergency change: applied within seconds' : 'Planned: takes effect at 06:00')}
+        onClick={() => {
+          desk.apply(label, commands);
+          done();
+        }}
+      >
+        Apply
+      </button>
+      {p.reason ? <span className="err">{p.reason}</span> : <span className="cost">{costText(p)}</span>}
+    </>
   );
 }
 
@@ -867,7 +917,7 @@ function CfRow({ desk, lparId }: { desk: Desk; lparId: string }) {
       <b>{lparId}</b>
       {c.failed && <span className="tag bad">DOWN</span>}
       thin interrupts {c.thinInterrupts ? 'on' : 'off'}
-      <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_CF', lparId, thinInterrupts: !c.thinInterrupts }]} disabled={false} text={c.thinInterrupts ? 'turn off' : 'turn on'} />
+      <Choices desk={desk} options={[{ text: c.thinInterrupts ? 'turn off' : 'turn on', commands: [{ kind: 'SET_CF', lparId, thinInterrupts: !c.thinInterrupts }], disabled: false }]} />
       <Now>
         {Math.round(share * 100)}% of CF requests · storage {used.toFixed(0)} of {mem} GB ({Math.max(0, mem - used).toFixed(0)} GB white space)
       </Now>
@@ -909,18 +959,17 @@ function Structures({ desk }: { desk: Desk }) {
                 <td className="num">{st.sizeGb ?? '-'} GB</td>
                 <td>{structureStatus(st, desk.cfg.cfs, desk.v.tick)}</td>
                 <td>
-                  {cfs.map((cf) => (
-                    <ChangeButtonsInline
-                      key={cf}
-                      desk={desk}
-                      commands={[{ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf }]}
-                      disabled={(st.cfLparId === cf && !st.lost) || !!desk.cfg.cfs.find((x) => x.lparId === cf)?.failed}
-                      text={cf}
-                    />
-                  ))}
+                  <Choices
+                    desk={desk}
+                    options={cfs.map((cf) => ({
+                      text: cf,
+                      commands: [{ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf }],
+                      disabled: (st.cfLparId === cf && !st.lost) || !!desk.cfg.cfs.find((x) => x.lparId === cf)?.failed,
+                    }))}
+                  />
                 </td>
                 <td>
-                  <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_DUPLEX', name: st.name, on: !st.duplexed }]} disabled={!!st.lost} text={st.duplexed ? 'stop' : 'duplex'} />
+                  <Choices desk={desk} options={[{ text: st.duplexed ? 'stop' : 'duplex', commands: [{ kind: 'SET_DUPLEX', name: st.name, on: !st.duplexed }], disabled: !!st.lost }]} />
                 </td>
               </tr>
             ))}
@@ -984,7 +1033,7 @@ function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
       <Now>
         {l.aliases} (max {max})
       </Now>
-      <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_LCU', lcuId, hotSkew: skew }]} disabled={l.hotSkew <= DASD_REBALANCE.minSkew} text="rebalance" />
+      <Choices desk={desk} options={[{ text: 'rebalance', commands: [{ kind: 'SET_LCU', lcuId, hotSkew: skew }], disabled: l.hotSkew <= DASD_REBALANCE.minSkew }]} />
     </SettingRow>
   );
 }
