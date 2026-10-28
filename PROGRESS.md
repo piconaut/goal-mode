@@ -386,6 +386,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** Change Desk one-click choices now pick-then-confirm (user request). RMF interval, IEAOPT
+  (BLWLINTHD, IIPHONORPRIORITY), CF thin interrupts, structure placement, duplexing and DASD rebalance used to apply
+  on a single click, with the cost only in a hover tooltip and shift-click to stage (neither works on touch).
+  Picking a value now shows `+ basket · Apply` and the hours/trust/fail-risk line, like the typed setting rows;
+  clicking the pick again cancels. Goldens unchanged.
 - **2026-10-28:** Change Desk Systems tab layout gaps: below the full-width CF card the tab is now two independent stacks,
   z/OS options + DASD | Db2 + MQ + CICS (CICS no longer full width), instead of a row grid that left holes beside
   short cards. Tab 2,016 → 1,828 px at 1920×1080; one column below ~1,130 px, no phone overflow. LPARs and Batch tabs

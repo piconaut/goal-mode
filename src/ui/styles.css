@@ -262,7 +262,8 @@ details.section[open] > summary { margin-bottom: 8px; }
 .srow input { min-width: 0; width: 100%; max-width: 8em; }
 .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .cost { min-width: 0; overflow-wrap: anywhere; font-size: 12px; color: var(--muted); font-family: var(--mono); }
-.btns { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.btns { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; white-space: nowrap; }
+.btns > .cost, .btns > .err { white-space: normal; }
 
 /* Windows High Contrast / forced colours: backgrounds are replaced by Canvas, so fills that carry data
    (bars, Gantt runs) and state (selected row, active tab, primary button) are redrawn in system colours. */
