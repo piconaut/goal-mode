@@ -31,7 +31,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   auto-merge; delete head branches on merge. `main` requires the same checks but no approval: GitHub records Claude's
   PRs as authored by the user, who can't approve their own PR (user decision 2026-10-26).
 - **Health:** `npm run check` green (430 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `be43ff16de564882` (since PR #9), Harbourline `be97b3e401164fc5`.
+  bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `fef4fa052462d635`, Harbourline `a1984addb2403be0` (dev after #70; merged to main in PR #72).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
@@ -368,6 +368,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** Milestone merge `dev` → `main` (PR #72, merge commit): pr-reviewer MERGE, 430 tests, hashes Midwest
+  `fef4fa052462d635` / Harbourline `a1984addb2403be0`, 10-seed Normal Midwest sweep do-nothing 16 / textbook 28 /
+  expert 9 of 10 wins. Health-line hashes updated. Follow-up idea: scale `balanceGate.ts` bands by seed count.
 - **2026-10-27:** Play CLI fixes from playtest round 1 (M8.6). `rca` now says which half was right, the true
   mechanism/trigger and the trust effect. Times read `D1 Tue 00:30` (played day plus calendar weekday). RMF intervals
   have stable ids (end time in 5-minute slots) in `status`, `report`, `pin WLMGL` and incident lines, and `report`/`pin`
