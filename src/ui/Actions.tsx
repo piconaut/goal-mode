@@ -110,7 +110,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
             <Section id="cf" title="Coupling facilities and structures" summary={summary.cf} codex={['cf-sync-async', 'cf-failure']} wide>
               <CouplingFacilities desk={desk} />
             </Section>
-            {/* Two independent stacks (z/OS and I/O | subsystems) so a short card doesn't leave a hole beside a tall one. */}
+            {/* Two independent stacks so a short card doesn't leave a hole beside a tall one; MQ sits left to balance their heights. */}
             <div className="desk-stack">
               <Section id="systems" title="z/OS options" summary={summary.systems}>
                 <Systems desk={desk} />
@@ -118,13 +118,13 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
               <Section id="dasd" title="DASD: HyperPAV aliases per LCU" summary={summary.dasd} codex={['hyperpav']}>
                 <Dasd desk={desk} />
               </Section>
+              <Section id="mq" title="MQ" summary={summary.mq} codex={['mq-queues']}>
+                <MqSection desk={desk} />
+              </Section>
             </div>
             <div className="desk-stack">
               <Section id="db2" title="Db2" summary={summary.db2} codex={['db2-velocity']}>
                 <Db2Section desk={desk} />
-              </Section>
-              <Section id="mq" title="MQ" summary={summary.mq} codex={['mq-queues']}>
-                <MqSection desk={desk} />
               </Section>
               <Section id="cics" title="CICS regions" summary={summary.cics} codex={['qr-tcb']}>
                 <CicsSection desk={desk} />
@@ -221,15 +221,10 @@ function ChangeButtons({ desk, label, commands, error, compact = false }: { desk
       <button type="submit" disabled={error !== null} title="Enter adds to the basket">
         + basket
       </button>
-      <button
-        type="button"
-        className="apply"
-        disabled={reason !== null}
-        title={reason ?? `${compact ? `${costText(p)}. ` : ''}${p.emergency ? 'Emergency change: applied within seconds' : 'Planned: takes effect at 06:00'}`}
-        onClick={() => desk.apply(label, commands)}
-      >
+      <button type="button" className="apply" disabled={reason !== null} title={reason ?? (p.emergency ? 'Emergency change: applied within seconds' : 'Planned: takes effect at 06:00')} onClick={() => desk.apply(label, commands)}>
         {compact ? 'Apply' : `Apply · ${costText(p)}`}
       </button>
+      {compact && !reason && <span className="cost">{costText(p)}</span>}
       {reason && <span className="err">{reason}</span>}
     </>
   );
@@ -249,55 +244,28 @@ function ChangeForm({ desk, label, commands, error, children }: { desk: Desk; la
   );
 }
 
-/**
- * One setting per line in a column grid (`cols` is a grid-template-columns value shared with its SettingHead); Enter stages like
- * ChangeForm. The buttons only appear once the value differs from the current one, so an untouched table stays one line per row.
- */
-function SettingRow({
-  desk,
-  label,
-  commands,
-  error,
-  dirty,
-  cols,
-  extra,
-  children,
-}: {
-  desk: Desk;
-  label: string;
-  commands: Command[];
-  error: string | null;
-  dirty: boolean;
-  cols: string;
-  /** More actions for the row's last column (e.g. a picked one-off action's confirm buttons). */
-  extra?: ReactNode;
-  children: ReactNode;
-}) {
+/** One setting per line in a column grid (`cols` is a grid-template-columns value shared with its SettingHead); Enter stages like ChangeForm. */
+function SettingRow({ desk, label, commands, error, cols, children }: { desk: Desk; label: string; commands: Command[]; error: string | null; cols: string; children: ReactNode }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (dirty && error === null) desk.stage(commands);
+    if (error === null) desk.stage(commands);
   };
   return (
-    <form className={dirty || extra ? 'srow dirty' : 'srow'} style={{ gridTemplateColumns: cols }} onSubmit={submit}>
+    <form className="srow" style={{ gridTemplateColumns: cols }} onSubmit={submit}>
       {children}
       <span className="acts">
-        {dirty && <ChangeButtons desk={desk} label={label} commands={commands} error={error} compact />}
-        {extra}
+        <ChangeButtons desk={desk} label={label} commands={commands} error={error} compact />
       </span>
     </form>
   );
 }
 
-/** Column headings; the last column shows what one change to a row costs (`sample` is any row's commands). */
-function SettingHead({ desk, cols, heads, sample }: { desk: Desk; cols: string; heads: string[]; sample: Command[] }) {
+function SettingHead({ cols, heads }: { cols: string; heads: string[] }) {
   return (
     <div className="srow head" style={{ gridTemplateColumns: cols }}>
       {heads.map((h, i) => (
         <span key={`${i}:${h}`}>{h}</span>
       ))}
-      <span className="cost" title="Cost of applying one row on its own; staged rows share one approval in the basket">
-        per row: {costText(preview(desk.v, { commands: sample }))}
-      </span>
     </div>
   );
 }
@@ -806,7 +774,9 @@ function Systems({ desk }: { desk: Desk }) {
     <>
       <div className="form">
         RMF interval
-        <Choices desk={desk} options={[5, 15, 30].map((m) => ({ text: `${m} min`, commands: [{ kind: 'SET_RMF_INTERVAL', minutes: m }], disabled: m === cfg.rmfIntervalMin }))} />
+        {[5, 15, 30].map((m) => (
+          <ChangeButtonsInline key={m} desk={desk} commands={[{ kind: 'SET_RMF_INTERVAL', minutes: m }]} disabled={m === cfg.rmfIntervalMin} text={`${m} min`} />
+        ))}
         <Now>{cfg.rmfIntervalMin} min</Now>
       </div>
       <div className="help">Shorter intervals give finer reports at the cost of SMF volume.</div>
@@ -826,18 +796,19 @@ function Systems({ desk }: { desk: Desk }) {
                 <td>
                   <span className="btns">
                     <span className="num">{s.blwlinthdSec}s</span>
-                    <Choices
-                      desk={desk}
-                      options={[5, 20].map((sec) => ({ text: `${sec}s`, commands: [{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { blwlinthdSec: sec } }], disabled: s.blwlinthdSec === sec }))}
-                    />
+                    {[5, 20].map((sec) => (
+                      <ChangeButtonsInline key={sec} desk={desk} commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { blwlinthdSec: sec } }]} disabled={s.blwlinthdSec === sec} text={`${sec}s`} />
+                    ))}
                   </span>
                 </td>
                 <td>
                   <span className="btns">
                     <span className="num">{s.iipHonorPriority ? 'YES' : 'NO'}</span>
-                    <Choices
+                    <ChangeButtonsInline
                       desk={desk}
-                      options={[{ text: s.iipHonorPriority ? 'NO' : 'YES', commands: [{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { iipHonorPriority: !s.iipHonorPriority } }], disabled: false }]}
+                      commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { iipHonorPriority: !s.iipHonorPriority } }]}
+                      disabled={false}
+                      text={s.iipHonorPriority ? 'NO' : 'YES'}
                     />
                   </span>
                 </td>
@@ -863,68 +834,15 @@ function CouplingFacilities({ desk }: { desk: Desk }) {
   );
 }
 
-interface ChoiceOption {
-  text: string;
-  commands: Command[];
-  /** Already set, or not possible (e.g. the target CF is down). */
-  disabled: boolean;
-}
-
-/**
- * A few fixed values (or one toggle). Picking one changes nothing yet: it shows `+ basket` and `Apply · cost`, like a typed
- * setting row, so the hours, trust and fail risk are visible before anything is spent. Click the pick again to cancel.
- */
-function Choices({ desk, options }: { desk: Desk; options: ChoiceOption[] }) {
-  const [picked, setPicked] = useState<string | null>(null);
-  const opt = options.find((o) => o.text === picked && !o.disabled);
-  return (
-    <span className="btns">
-      {options.map((o) => (
-        <button
-          key={o.text}
-          type="button"
-          className={opt === o ? 'active' : undefined}
-          aria-pressed={opt === o}
-          disabled={o.disabled}
-          title={o.disabled ? 'Already set' : opt === o ? 'Cancel' : undefined}
-          onClick={() => setPicked(opt === o ? null : o.text)}
-        >
-          {o.text}
-        </button>
-      ))}
-      {opt && <ChoiceConfirm desk={desk} commands={opt.commands} done={() => setPicked(null)} />}
-    </span>
-  );
-}
-
-function ChoiceConfirm({ desk, commands, done }: { desk: Desk; commands: Command[]; done: () => void }) {
+/** Compact button pair for one-click choices: click applies, shift-click (or the + button) stages. */
+function ChangeButtonsInline({ desk, commands, disabled, text }: { desk: Desk; commands: Command[]; disabled: boolean; text: string }) {
   const p = preview(desk.v, { commands });
   const label = describeCommand(commands[0]!, desk.cfg);
+  const title = disabled ? 'Already set' : p.reason ?? `${label}: ${costText(p)} (shift-click adds to basket)`;
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => {
-          desk.stage(commands);
-          done();
-        }}
-      >
-        + basket
-      </button>
-      <button
-        type="button"
-        className="apply"
-        disabled={p.reason !== null}
-        title={p.reason ?? (p.emergency ? 'Emergency change: applied within seconds' : 'Planned: takes effect at 06:00')}
-        onClick={() => {
-          desk.apply(label, commands);
-          done();
-        }}
-      >
-        Apply
-      </button>
-      {p.reason ? <span className="err">{p.reason}</span> : <span className="cost">{costText(p)}</span>}
-    </>
+    <button disabled={disabled || !p.ok} title={title} onClick={(e) => (e.shiftKey ? desk.stage(commands) : desk.apply(label, commands))}>
+      {text}
+    </button>
   );
 }
 
@@ -939,7 +857,7 @@ function CfRow({ desk, lparId }: { desk: Desk; lparId: string }) {
       <b>{lparId}</b>
       {c.failed && <span className="tag bad">DOWN</span>}
       thin interrupts {c.thinInterrupts ? 'on' : 'off'}
-      <Choices desk={desk} options={[{ text: c.thinInterrupts ? 'turn off' : 'turn on', commands: [{ kind: 'SET_CF', lparId, thinInterrupts: !c.thinInterrupts }], disabled: false }]} />
+      <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_CF', lparId, thinInterrupts: !c.thinInterrupts }]} disabled={false} text={c.thinInterrupts ? 'turn off' : 'turn on'} />
       <Now>
         {Math.round(share * 100)}% of CF requests · storage {used.toFixed(0)} of {mem} GB ({Math.max(0, mem - used).toFixed(0)} GB white space)
       </Now>
@@ -981,17 +899,18 @@ function Structures({ desk }: { desk: Desk }) {
                 <td className="num">{st.sizeGb ?? '-'} GB</td>
                 <td>{structureStatus(st, desk.cfg.cfs, desk.v.tick)}</td>
                 <td>
-                  <Choices
-                    desk={desk}
-                    options={cfs.map((cf) => ({
-                      text: cf,
-                      commands: [{ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf }],
-                      disabled: (st.cfLparId === cf && !st.lost) || !!desk.cfg.cfs.find((x) => x.lparId === cf)?.failed,
-                    }))}
-                  />
+                  {cfs.map((cf) => (
+                    <ChangeButtonsInline
+                      key={cf}
+                      desk={desk}
+                      commands={[{ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf }]}
+                      disabled={(st.cfLparId === cf && !st.lost) || !!desk.cfg.cfs.find((x) => x.lparId === cf)?.failed}
+                      text={cf}
+                    />
+                  ))}
                 </td>
                 <td>
-                  <Choices desk={desk} options={[{ text: st.duplexed ? 'stop' : 'duplex', commands: [{ kind: 'SET_DUPLEX', name: st.name, on: !st.duplexed }], disabled: !!st.lost }]} />
+                  <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_DUPLEX', name: st.name, on: !st.duplexed }]} disabled={!!st.lost} text={st.duplexed ? 'stop' : 'duplex'} />
                 </td>
               </tr>
             ))}
@@ -1008,8 +927,7 @@ function Structures({ desk }: { desk: Desk }) {
   );
 }
 
-// Every column has a fixed or fr width: each row is its own grid, so an 'auto' track would size per row and misalign the header.
-const LCU_COLS = 'minmax(140px, 1.4fr) 40px 60px 108px 96px minmax(150px, 2fr)';
+const LCU_COLS = 'minmax(140px, 1.4fr) 40px 60px 108px auto minmax(150px, 2fr)';
 
 function Dasd({ desk }: { desk: Desk }) {
   const { lcus, spareAliases } = desk.cfg.dasd;
@@ -1024,7 +942,7 @@ function Dasd({ desk }: { desk: Desk }) {
         </span>
       </div>
       <div className="stack-x">
-        {lcus[0] && <SettingHead desk={desk} cols={LCU_COLS} heads={['LCU', 'Vols', 'Aliases', 'Now (max)', '']} sample={[{ kind: 'SET_LCU', lcuId: lcus[0].id, aliases: lcus[0].aliases }]} />}
+        <SettingHead cols={LCU_COLS} heads={['LCU', 'Vols', 'Aliases', 'Now (max)', '', '']} />
         {lcus.map((l) => (
           <LcuRow key={`${l.id}:${l.aliases}:${l.hotSkew}:${spareAliases}`} desk={desk} lcuId={l.id} />
         ))}
@@ -1046,24 +964,8 @@ function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
   const max = Math.min(LCU_MAX_DEVICES - l.volumes, l.aliases + spare);
   const err = !(Number.isInteger(n) && n >= 0) ? 'Whole number ≥ 0' : n > LCU_MAX_DEVICES - l.volumes ? `Max ${LCU_MAX_DEVICES - l.volumes} (256 devices per LCU)` : n - l.aliases > spare ? `Only ${spare} spare` : null;
   const skew = Math.max(DASD_REBALANCE.minSkew, l.hotSkew * DASD_REBALANCE.skewFactor);
-  // Picking rebalance puts its confirm buttons in the row's action column; its own column is too narrow for them.
-  const [rebalance, setRebalance] = useState(false);
-  const rebalanceConfirm = rebalance && (
-    <span className="btns">
-      <span className="muted">rebalance:</span>
-      <ChoiceConfirm desk={desk} commands={[{ kind: 'SET_LCU', lcuId, hotSkew: skew }]} done={() => setRebalance(false)} />
-    </span>
-  );
   return (
-    <SettingRow
-      desk={desk}
-      label={`LCU ${lcuId} aliases ${val}`}
-      commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]}
-      error={err}
-      dirty={n !== l.aliases}
-      cols={LCU_COLS}
-      extra={rebalanceConfirm || undefined}
-    >
+    <SettingRow desk={desk} label={`LCU ${lcuId} aliases ${val}`} commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]} error={err} cols={LCU_COLS}>
       <span>
         <b>LCU {l.id}</b> <span className="muted">{l.label}</span>
       </span>
@@ -1072,16 +974,7 @@ function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
       <Now>
         {l.aliases} (max {max})
       </Now>
-      <button
-        type="button"
-        className={rebalance ? 'active' : undefined}
-        aria-pressed={rebalance}
-        disabled={l.hotSkew <= DASD_REBALANCE.minSkew}
-        title={l.hotSkew <= DASD_REBALANCE.minSkew ? 'Already balanced' : rebalance ? 'Cancel' : undefined}
-        onClick={() => setRebalance(!rebalance)}
-      >
-        rebalance
-      </button>
+      <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_LCU', lcuId, hotSkew: skew }]} disabled={l.hotSkew <= DASD_REBALANCE.minSkew} text="rebalance" />
     </SettingRow>
   );
 }
@@ -1092,7 +985,7 @@ function Db2Section({ desk }: { desk: Desk }) {
   return (
     <>
       <div className="stack-x">
-        {desk.cfg.db2[0] && <SettingHead desk={desk} cols={DB2_COLS} heads={['Subsystem', 'Setting', 'New value', 'Now']} sample={[{ kind: 'SET_DB2', ssid: desk.cfg.db2[0].ssid, maxDbat: desk.cfg.db2[0].maxDbat }]} />}
+        <SettingHead cols={DB2_COLS} heads={['Subsystem', 'Setting', 'New value', 'Now', '']} />
         {desk.cfg.db2.map((d) => (
           <Db2Rows key={`${d.ssid}:${d.bufferPoolGb}:${d.maxDbat}`} desk={desk} ssid={d.ssid} />
         ))}
@@ -1112,7 +1005,7 @@ function Db2Rows({ desk, ssid }: { desk: Desk; ssid: string }) {
   const dbatN = num(dbat);
   return (
     <>
-      <SettingRow desk={desk} label={`${ssid} BP ${bp} GB`} commands={[{ kind: 'SET_DB2', ssid, bufferPoolGb: bpN }]} error={bpErr} dirty={bpN !== d.bufferPoolGb} cols={DB2_COLS}>
+      <SettingRow desk={desk} label={`${ssid} BP ${bp} GB`} commands={[{ kind: 'SET_DB2', ssid, bufferPoolGb: bpN }]} error={bpErr} cols={DB2_COLS}>
         <span>
           <b>{ssid}</b> <span className="muted">({d.lparId})</span>
         </span>
@@ -1125,7 +1018,6 @@ function Db2Rows({ desk, ssid }: { desk: Desk; ssid: string }) {
         label={`${ssid} MAXDBAT ${dbat}`}
         commands={[{ kind: 'SET_DB2', ssid, maxDbat: dbatN }]}
         error={Number.isInteger(dbatN) && dbatN >= 1 ? null : 'MAXDBAT is a whole number ≥ 1'}
-        dirty={dbatN !== d.maxDbat}
         cols={DB2_COLS}
       >
         <span className="muted">{ssid}</span>
@@ -1145,7 +1037,7 @@ function MqSection({ desk }: { desk: Desk }) {
   return (
     <>
       <div className="stack-x">
-        <SettingHead desk={desk} cols={MQ_COLS} heads={['Queue', 'MAXDEPTH', 'Now']} sample={[{ kind: 'SET_MQ', workloadId: mq[0]!.workloadId, maxDepthMsgs: mq[0]!.maxDepth }]} />
+        <SettingHead cols={MQ_COLS} heads={['Queue', 'MAXDEPTH', 'Now', '']} />
         {mq.map((q) => (
           <MqRow key={`${q.workloadId}:${q.maxDepth}`} desk={desk} workloadId={q.workloadId} />
         ))}
@@ -1168,7 +1060,6 @@ function MqRow({ desk, workloadId }: { desk: Desk; workloadId: string }) {
       label={`ALTER QLOCAL(${q.queue}) MAXDEPTH(${depth})`}
       commands={[{ kind: 'SET_MQ', workloadId, maxDepthMsgs: n }]}
       error={Number.isInteger(n) && n >= 1 && n <= 999_999_999 ? null : 'MAXDEPTH is a whole number 1–999999999'}
-      dirty={n !== q.maxDepth}
       cols={MQ_COLS}
     >
       <span>
@@ -1188,7 +1079,7 @@ function CicsSection({ desk }: { desk: Desk }) {
   return (
     <>
       <div className="stack-x">
-        {cfg.cics[0] && <SettingHead desk={desk} cols={CICS_COLS} heads={['Region', 'LPAR', 'QR share', 'MXT', 'Now']} sample={[{ kind: 'SET_CICS', name: cfg.cics[0].name, maxTasks: cfg.cics[0].maxTasks }]} />}
+        <SettingHead cols={CICS_COLS} heads={['Region', 'LPAR', 'QR share', 'MXT', 'Now', '']} />
         {cfg.cics.map((r) => (
           <CicsRow key={`${r.name}:${r.maxTasks}:${r.qrFrac}`} desk={desk} name={r.name} />
         ))}
@@ -1205,7 +1096,7 @@ function CicsRow({ desk, name }: { desk: Desk; name: string }) {
   const [mxt, setMxt] = useState(String(r.maxTasks));
   const n = num(mxt);
   return (
-    <SettingRow desk={desk} label={`${name} MXT ${mxt}`} commands={[{ kind: 'SET_CICS', name, maxTasks: n }]} error={Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000'} dirty={n !== r.maxTasks} cols={CICS_COLS}>
+    <SettingRow desk={desk} label={`${name} MXT ${mxt}`} commands={[{ kind: 'SET_CICS', name, maxTasks: n }]} error={Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000'} cols={CICS_COLS}>
       <b>{name}</b>
       <span className="muted">{r.lparId}</span>
       <span className="num">{Math.round(r.qrFrac * 100)}%</span>
