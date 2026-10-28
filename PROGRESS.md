@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 3 (M8.6: check the round 2 fixes in play; then a human UI playtest), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 3 findings Q–X (M8.6; then a human UI playtest), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -463,6 +463,38 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     Done 2026-10-27: `status` and the header's MLC tooltip say the estimate is priced on the month's peak R4HA to
     date; `smf BATCH` ends with a legend for stretch (times slower than running alone) and queuedSec, and the Gantt
     tooltip says the same; Db2 101 and CICS 110 pins read `D3 10:00–11:00`.
+  - Round 3 (2026-10-28, seed 2028 Normal, to the day-8 briefing; personas rotated): cautious-operator on Midwest
+    (trust 82.9, score 457), cost-cutter on Revenue (trust 80.3, score 453), goal-mode-player on Harbourline (trust
+    61.6, score 517; Markets 30 and Cards 28 from repeated 09:00 open misses). Round 2 fixes in play: the
+    APPLICATION_ERROR truth for S0C7 was graded right in all three runs; INC/PIN/CHG prefixes and bare or `#` ids
+    worked (all three noticed the gaps from the shared counter; harmless); `catalog` regions/MXT and `cancel` worked;
+    Midwest and Revenue RCAs all read fair, and the morning strain hint pointed at the real cause (Midwest DDFPRD#2,
+    Harbourline Partition Data on D2) but repeats generically later. Fixed the same day: `new` checks its seed,
+    difficulty and scenario and prints the usage instead of a TypeError (two agents typed `new midwest 2028`);
+    cancelling a policy activation keeps its edits pending (it discarded them), and a repeat cancel says
+    `No planned change CHG14` instead of `No such change`. Open findings:
+  - [ ] Q (Harbourline): SICK_AOR (fast abends on PRDC, the CPSM storm drain) was scored QR_TCB/POLICY. The truth's
+    mechanism comes from delay growth, and failing transactions add no delay, so whatever delay is largest that hour
+    wins; no mechanism fits a failure-rate miss. Needs a model decision (a failure mechanism, or let the card declare
+    its mechanism as JOB_ABEND declares its trigger).
+  - [ ] R (Harbourline): other truths to check against the data the player saw: D4 INC35 CPU_PRIORITY/DEMAND_SURGE with
+    CPUs 62 % busy and CPU delay about 4 % (MXT waits 357 ms); D5 INC54 CPU_CAPACITY/GROWTH with nothing visible;
+    D1 INC2 CAPPING/POLICY with one 2.6 % CAPPED interval as the only clue (MXT waits looked like the cause).
+  - [ ] S: a failed policy activation (random "Change failed… backed out") also loses the pending edits, with no reason
+    given.
+  - [ ] T: no command shows the active service definition, classification rules, CICS QR share or zIIP counts
+    (Harbourline found its single zIIP from `mon3`); a WLM policy view in the play CLI (the UI has the WLM editor).
+  - [ ] U: batch abend restart: Midwest's Operations email says "restart needed" but the catalog shows no restart;
+    on Harbourline RESTART_JOB works only while live (D7: "SET016 is not abended"), and the alert is an inbox line
+    `advance` buries. Regulator trust fell 83 → 63 and 57 on the misses.
+  - [ ] V: `ask` is refused in BRIEFING and REVIEW ("Ask during the day"); replies take hours, so asking needs a
+    `start` first.
+  - [ ] W: hint noise: a sparse-sample PI of 4.00 at 23:45 on AGENTS#1 (100 % SLA) raised a strain hint; overnight
+    BATCHPRD/BATCHHI PI 8–10 every night with the window met is permanent alarm noise; old hints stay in the inbox.
+  - [ ] X: design notes for the user: the report card names the event ("Runaway compliance query", "Sick CICS
+    AOR"), which gives the diagnosis away; Harbourline trust starts falling at 09:00 on D1 before any diagnosis is
+    possible; GOODWILL (+4 trust) looks like the strongest draft (two agents skipped it by mistake: `draft none`);
+    `pin` reprints the whole status so the new PIN id is easy to miss; `smf BATCH` lists 20 DEV jobs first.
 - [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
 - [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
