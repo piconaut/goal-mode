@@ -386,6 +386,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** Removed the Harbourline day-0 handover mail from the outgoing analyst (story beat `HANDOVER`; user:
+  it read one seed's day 1, "Markets screams first, then Cards", as fixed). The PRDA absolute cap (B1) now has no
+  inbox clue before the first 09:00 open (no day-1 trust grace either, see playtest round 3 X); Partition Data and
+  the HMC image profile still show it. Test keeps the cap check. SPEC §Harbourline Problem 1 updated. Goldens unchanged.
 - **2026-10-28:** Rolled back (user request): `src/` is again as of `8b868d4` (#79) plus only the layout-gap fix of #81;
   #80 (Apply buttons only on changed rows, cost in the header), #82 (pick-then-confirm choices) and #83 (DASD header
   alignment, rebalance confirm) are undone, so their entries below no longer describe the code. With every row showing
