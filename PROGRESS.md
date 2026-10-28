@@ -314,6 +314,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | Discretionary goal management caps from PI < 0.71, stays capped below 0.81, cap = 1 − (0.81 − PI), floor 50 % (was 0.7 / 0.9 / flat 80 %) | M8.7: real WLM holds capped work's PI in 0.71–0.81 (SG24-6472-03 p.183). Proportional cap is APPROX of WLM's projection; balance check deferred to the post-sweep re-sweep |
 | 2026-10-26 | Routing `WLM{ziipAware}` → `WLM{distMethod}`: BASEWLM weighs systems by idle CP capacity, SERVERWLM by the CP/zIIP composite of displaceable capacity; Harbourline B3 recast as the distributor left on default BASEWLM | M8.7: SERVERWLM is zIIP-aware by default and BASEWLM is the default method, CP-only without PROCTYPE (IP Config Guide 3.1 p.555–556), so B3's puzzle keeps its fix with a real name. PROCXCOST not added: no crossover-penalty lever needed for B3. Harbourline hash changes; balance check deferred to the re-sweep |
 | 2026-10-26 | Event deck draws from its own RNG stream per (seed, day), not the shared run RNG | Change failures, activation failures, AIOps hypotheses and drafts rolled the same stream, so any extra bot action reshuffled every later event and seed-by-seed comparisons of bot variants were invalid (seed 18 diverged on day 21 after one CoD rental). Win rates over independent seeds before this stay unbiased but carry ~±10 pp noise at 20 seeds; per-seed claims and small variant deltas made before this are unreliable. Goldens regenerated; balance sweeps re-baselined after (user decision). |
+| 2026-10-28 | Change Desk: edit-in-place drafts plus one change request banner replace per-row "+ basket · Apply" buttons (Operations and hardware orders excepted) | Per-row buttons and cost lines overflowed tables and made it unclear which cost belonged to which change; hours are per change but emergency trust and fail risk are per request, so the request shows them once. User request, iterated on an artifact preview |
 | 2026-10-26 | Every game roll gets its own keyed stream (`streamRng(seed, purpose, …key)`): events by day, draft by day, change and activation failures by day + label + attempt, AIOps by tick + workload, inquiries by ask tick + topic; `RunState.rng` removed | The event-only split (#41) still left the draft, failure, AIOps and inquiry rolls on one stream: in a paired sweep, seed 13's CoD rental shifted its day-9 draft (MENTOR instead of BELT_AND_BRACES) and the run lost ~4 trust on every facet from that alone. With keyed streams, seed 13 base and CoD draw identical events and drafts and differ only after the rental. Goldens regenerated; the paired sweep from #41 was stopped and is re-run on this. |
 | 2026-10-27 | Hardware engine adds and their reverts are relative (`ADD_CPC_ENGINES` delta, clamped ≥ 0); capacity-setting changes stay absolute | On/Off CoD reverted with "set N" computed when the lease was requested, so a lease taken over a pending or overlapping change lost or kept a CP for good (spendtowin bled CPs on Harbourline). Deltas compose in any order. Goldens unchanged |
 | 2026-10-27 | CPU_CAPACITY also when an image used ≥ 95 % of the CP available to it (online logical CPs, entitlement + white space), not only when its CPC was ≥ 90 % busy; the donor test is unchanged. Harbourline PRD images define 2 reserved logical CPs | User decision 2026-10-27. Seed 7 Harbourline: PRDA–PRDD sat at their logical CPs (13 of CPC1's 14 CPs, 10 of CPC2's 10) and the incidents read CPU_PRIORITY once a new CP lowered CPC busy to 86–89 %, the wrong clue. With no reserved CPs and no IPL lever a bought or rented CP could never reach production |
@@ -335,6 +336,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 - Settled research (sysplex routing and capping, 2026-10-26, and everything earlier) is in `docs/research.md`. Only
   open items stay here.
+- Change Desk balance: trust and fail risk are paid per request, and the change request banner makes batching every
+  edit into one request the default. Bots send commands directly, so sweeps can't see this; check in a playtest whether
+  emergency trust costs now bite too little.
+- Change Desk drafts don't notice a live value changing under them (e.g. a CF fails): the draft stays as typed. Add a
+  "now X" check that drops drafts already satisfied, if playtests trip over it.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 - RMF Partition Data shows PR/SM absolute capping somewhere; the sim's ABS CAP column (engines, next to DEF CAP) is an
@@ -386,6 +392,15 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** Change Desk redesign (user request): rows edit drafts in place and one change request submits them.
+  Every setting outside the WLM tab (Systems, CF & I/O; LPAR image profile; routing; job classes) is a segmented
+  choice, a number field or a one-off action checkbox (DASD rebalance) with no per-row Apply or cost; a drafted value is
+  highlighted with "was <live>" (always rendered, invisible until drafted, so columns don't shift). Drafts live in the
+  existing basket, shown as a sticky "Change request" banner at the top (stacked with the pending WLM policy banner):
+  one line per change with its hours, the request's emergency trust and fail risk once, Submit as one change; invalid
+  fields block Submit and are named. Operations (restarts, event fixes) and hardware orders keep one-click buttons. WLM
+  period goals and resource groups now edit the pending policy in place (no Save buttons); Remove Pn sits in the last
+  period's row. Change board status tags no longer wrap. Goldens unchanged.
 - **2026-10-28:** Removed the Harbourline day-0 handover mail from the outgoing analyst (story beat `HANDOVER`; user:
   it read one seed's day 1, "Markets screams first, then Cards", as fixed). The PRDA absolute cap (B1) now has no
   inbox clue before the first 09:00 open (no day-1 trust grace either, see playtest round 3 X); Partition Data and

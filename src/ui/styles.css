@@ -242,7 +242,7 @@ a { color: var(--accent); }
 .desk-top { margin-bottom: 4px; }
 .section-summary { margin-left: 10px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
 details.section[open] > summary { margin-bottom: 8px; }
-@media (min-width: 1000px) { .desk-top { grid-template-columns: 2fr 1.3fr 1fr; } }
+@media (min-width: 1000px) { .desk-top { grid-template-columns: 2fr 1fr; } }
 
 .page { display: flex; flex-direction: column; gap: 12px; }
 .stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
@@ -293,3 +293,33 @@ details.section[open] > summary { margin-bottom: 8px; }
 .spectate-adopt {
   margin-left: 0.75em;
 }
+
+/* Change Desk drafts: an edited value is highlighted until the change request is submitted or cleared. */
+.seg { display: inline-flex; flex-wrap: wrap; align-items: center; }
+.seg > button { border-radius: 0; margin: 0 0 0 -1px; }
+.seg > button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.seg > button:nth-last-child(1 of button) { border-radius: 0 4px 4px 0; }
+.seg > button.on { background: var(--panel-2); border-color: var(--text); color: var(--text); box-shadow: inset 0 -2px 0 var(--text); }
+.seg.drafted > button.on { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.was { margin-left: 6px; font-size: 12px; color: var(--muted); font-family: var(--mono); white-space: nowrap; }
+.was.idle { visibility: hidden; height: 0; overflow: hidden; }
+.draft { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 0; }
+.draft .err { flex-basis: 100%; }
+.drafted input:not([type='checkbox']), .drafted.draft-action { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+.draft-action { white-space: nowrap; }
+.desk-banners { position: sticky; top: 0; z-index: 10; display: grid; gap: 6px; margin-bottom: 12px; }
+.desk-banners:empty { display: none; }
+.desk-banners > .banner { position: static; margin: 0; }
+.change-bar { display: block; border-color: var(--accent); }
+.change-bar-list { max-height: 45vh; overflow: auto; margin-bottom: 6px; }
+.drafted-form { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.change-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.change-bar-acts { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.change-bar .diff li > span:first-child { flex: 1; }
+button.link { background: none; border: none; padding: 0; font-weight: 600; color: var(--text); cursor: pointer; }
+
+/* Change board rows: a long request label wraps; the status tags stay whole on one line. */
+.change-label { overflow-wrap: anywhere; }
+.change-status { white-space: nowrap; width: 1%; }
+.change-status .tag { display: inline-block; }
+.change-status .tag + .tag { margin-left: 4px; }
