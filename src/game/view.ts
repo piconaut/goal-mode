@@ -35,6 +35,7 @@ import type { LcuConfig } from '../sim/io/dasd';
 import { allWorkloads, fixIdsOf, overallTrust, previewContext } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
+import { idText } from './ids';
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] as const;
 
@@ -350,7 +351,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
             id: a.id,
             text: autoRuleText(a, (id) => {
               const al = run.alerts?.rules.find((x) => x.id === id);
-              return al ? ruleText(al) : `alert #${id} (deleted)`;
+              return al ? ruleText(al) : `alert ${idText('alert', id)} (deleted)`;
             }),
             doneToday: run.automation?.day === run.day ? (run.automation?.doneToday[a.id] ?? 0) : 0,
           })),

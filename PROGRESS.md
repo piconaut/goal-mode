@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), the rest of playtest round 2 finding K (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 3 (M8.6: check the round 2 fixes in play; then a human UI playtest), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -418,13 +418,16 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     every facet. User decision 2026-10-27: fine as it is (guessing may pay).
   - [x] J: GOODWILL (and CFO_BONUS, RC_HOARDER) drafts show no visible cost; both agents called GOODWILL dominant.
     User decision 2026-10-27: leave it; draft rewards cost only the cards not picked.
-  - [ ] K: CLI and UX rough edges: pin ids share the incident counter; `smf CICS` lists workloads, not the region
+  - [x] K: CLI and UX rough edges: pin ids share the incident counter; `smf CICS` lists workloads, not the region
     names SET_CICS needs; finished projects disappear from status; a change with several commands costs the same
     1.5 h as one; `wlm` says "activate at tomorrow's briefing" but `activate` is refused until the draft closes;
     idle engineer-hours on quiet days.
     Partly done 2026-10-27: `status` lists projects (finished ones too); the REVIEW-phase `wlm` message says to close
-    the day first. Several commands summing their hours is kept (each change is real work); shared pin/incident ids
-    and idle hours left as is for now.
+    the day first. Several commands summing their hours is kept (each change is real work).
+    Rest done 2026-10-28: ids from the shared run counter show a prefix per kind (`INC13`, `PIN12`, `CHG14`, `ALR`,
+    `AUT`, `INQ`; `src/game/ids.ts`) in the play CLI and the UI; the CLI also takes `13`, `#13` or `inc13` and refuses
+    another kind's prefix. Display only (goldens unchanged). Idle engineer-hours on quiet days: user decision
+    2026-10-28, left as is (a quiet day is its own reward; projects take spare hours).
   - [x] L (Harbourline): CICS region names and current MXT are shown nowhere, so SET_CICS is a guess; a planned
     change is not checked against the config (a bogus region was accepted and charged) and cannot be withdrawn.
     Done 2026-10-27: requestChange dry-runs command changes on today's config plus the changes already planned and
@@ -445,7 +448,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     MXT/DBAT queueing beyond the in-region growth (SPEC §10). Harbourline seeds 11, 23 and 37 (do-nothing, 8 days):
     THREAD_LIMIT truths fell from about a third of incidents to one; the rest are CAPPING or CPU_PRIORITY (whether
     PRDA was capped over 5 % that hour), so the sysprog hint's "Partition Data" now points at the real cause.
-    Still open: the S0C7 abend read as JOB_FAILURE/POLICY.
+    S0C7 done 2026-10-28: new RCA trigger APPLICATION_ERROR, declared only by the JOB_ABEND card (a data exception
+    is bad input or a program defect, not policy); the JOB_ABEND pin supports it, the JOB_FAILURE hint asks about the
+    ABEND code, and a Codex entry explains S0C7. Sweep (expert and oraclerca with `--reader`, Normal, seeds 1–10, vs
+    dev after G): every run identical on all three scenarios (oraclerca answers the truth; the expert's
+    tune-away-POLICY rule never hinged on an abend incident).
     Sweep (expert and oraclerca with `--reader`, Normal, seeds 1–10, vs dev before the change): Midwest and Revenue
     ends unchanged; Harbourline expert 9 → 8 wins (seed 7 lost on trust on day 39, 61 → 58), mean trust 76.4 → 75.4;
     oraclerca truths there move from THREAD_LIMIT (22.5 → 1.6 per run) to CAPPING (23.8 → 55.4), its score rises

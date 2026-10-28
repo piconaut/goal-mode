@@ -52,7 +52,7 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
     vague: 'Yesterday was rough for {w}. SYSINFO might tell you more.',
   },
   JOB_FAILURE: {
-    clear: '{w} missed its window. The Batch view lists jobs that ABENDed. Did a critical one stop, and how long were its successors held?',
+    clear: '{w} missed its window. The Batch view lists jobs that ABENDed. Did a critical one stop, how long were its successors held, and what does its ABEND code say?',
     vague: 'Yesterday was rough for {w}. The Batch view might tell you more.',
   },
 };

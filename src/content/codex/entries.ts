@@ -368,6 +368,14 @@ export const CODEX: CodexEntry[] = [
     sources: [{ label: 'IBM z/OS RMF Report Analysis (SC34-2665): Monitor III', url: 'https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/erbb500_v2r5.pdf' }],
     discover: { events: ['MARKET_OPEN_SURGE'] },
   },
+  {
+    id: 'ABEND_S0C7',
+    title: 'S0C7: a data exception, not a tuning problem',
+    category: 'Subsystems',
+    body: 'A system completion code 0C7 is a program check for a data exception: a decimal instruction met a field that is not valid packed decimal, usually bad input data or an uninitialised field in the program. No WLM policy, capping or capacity change prevents it. The job has to be fixed or the bad record bypassed, then restarted; while it is down its successors are held, so a critical one can miss the batch window. In an RCA the trigger is APPLICATION_ERROR and the mechanism JOB_FAILURE.',
+    sources: [{ label: 'IBM docs: z/OS MVS System Codes (0C7)', url: 'https://www.ibm.com/docs/en/zos/2.5.0?topic=codes-0c7' }],
+    discover: { events: ['JOB_ABEND'] },
+  },
 ];
 
 export const codexEntry = (id: string): CodexEntry | undefined => CODEX.find((e) => e.id === id);

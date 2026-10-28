@@ -43,7 +43,8 @@ export type Trigger =
   | 'POLICY'
   | 'HARDWARE_FAULT'
   | 'NEW_WORKLOAD'
-  | 'GROWTH';
+  | 'GROWTH'
+  | 'APPLICATION_ERROR';
 
 export interface PlannedChange {
   id: number;

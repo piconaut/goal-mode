@@ -11,6 +11,7 @@ import { BATCH_INCIDENT } from './sla';
 import { cicsMonitoring, db2Accounting } from './smf';
 import type { Incident, RunState } from './types';
 import { allWorkloads } from './workloads';
+import { idText } from './ids';
 
 export interface EvidencePin {
   id: number;
@@ -166,7 +167,7 @@ export function addPin(run: RunState, scenario: Scenario, req: PinRequest): { ru
   const pin: EvidencePin = { ...loc, id: run.nextId, text: pinText(loc) };
   // Oldest pins fall off the board.
   const kept = [...pins, pin].slice(-EVIDENCE.maxPins);
-  return { run: { ...run, pins: kept, nextId: run.nextId + 1 }, ok: true, message: `Pinned: ${pin.text}` };
+  return { run: { ...run, pins: kept, nextId: run.nextId + 1 }, ok: true, message: `Pinned ${idText('pin', pin.id)}: ${pin.text}` };
 }
 
 export const removePin = (run: RunState, id: number): RunState => ({ ...run, pins: (run.pins ?? []).filter((p) => p.id !== id) });
