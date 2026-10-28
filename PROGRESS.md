@@ -222,6 +222,61 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
   DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
 
+Harbourline seed 42 realism audit (2026-10-28; experiments and numbers in `runs/lab/2026-10-28-harbourline-s42-audit.md`,
+local only). Do these in order, each as its own PR; the first two are user-ordered.
+- [ ] **1. A resource group max on a server region must slow its dependents (do first).** The cap works by making
+  the group's work units non-dispatchable for some time slices (*WLM Planning* p.60 note 4, p.57). Audit: STCHI
+  (CICS/Db2/MQ regions) at 2 % max fell from 51.7 % to 11.8 % use, yet MKTORD went 48 → 45 ms. Cause:
+  `prepareLpar` cuts the slice's demand (`sliceCut`, `src/sim/wlm/evaluate.ts:360-367`), then sets
+  `want = sliceCp + sliceZi` from the cut demand (`:481`), so `health = got/want` stays 1, `roleHealth` never drops
+  and neither `depDelay` (`:572`) nor batch dependency stretch sees the cap. Fix: health against `want + cut` (the
+  response-time path already uses `want + cut`, `:562`). This also lets discretionary caps reach dependents, which
+  is the same mechanism. Realism test: "RG max on the Db2 region class raises dependent transaction RT".
+- [ ] **2. A resource group on the CICS AOR class must cap the transactions that run in it (after 1).** You cap CICS
+  transactions by putting the resource group on their regions (*WLM Planning* p.60 note 1); transaction CPU is
+  consumed in the regions, AORs most of it (p.122, p.130). The sim keeps transaction CPU in TXN slices classified by
+  transaction class (`src/sim/workload/slices.ts`); the AOR slices carry only their base CPU, and no workload lists
+  `CICS.AOR` as a server, so fix 1 does nothing for an AOR cap.
+  - Content: optional `hostRole` on `WorkloadDef` (`'CICS.AOR'` for CICS workloads, the MPR role for IMS); unset for
+    DDF, which runs in enclaves under its own service class.
+  - `resourceGroupCaps` (`src/sim/core/step.ts:1243`): a TXN slice is a group member in proportion to the share of
+    its LPAR's host-role regions in the group. The existing `capOf`/`cut` path does the queueing and timeouts.
+  - **No double penalty:** a transaction's own host role does not also add `depDelay`; the cap on its CPU is the one
+    effect (the documented mechanism). `depDelay` stays for true server roles (TOR, Db2, MQ). If a capped AOR
+    should hurt more, tune a `content/` coefficient, not a second path.
+  - APPROX notes: CAP delay posts on the transaction class, not the region class (see the finding R item above);
+    with only some AORs in the group, the proportional share ignores CPSM routing away from them.
+  - Perf: one O(slices) pass per tick, only when a group has a max (`resourceGroupCaps` returns early otherwise).
+- [ ] **3. MAXDBAT and MXT must queue without bound once offered load exceeds the limit.** Db2 queues further
+  processing until an active DBAT ends (*Db2 13 Installation* p.212) and bounds the queue with MAXCONQN/MAXCONQW
+  (p.213, p.365); CICS MXT is 10–2000 and a too-low MXT causes "excessive queuing delays" (*CICS Performance* p.89).
+  Audit: MAXDBAT 1 on all members (≈ 10 DBATs wanted on PRDB) only took MKTQRY 51 → 116 ms, SLA 98–99 %, 0 failures;
+  MXT 1 the same for RETAIL. Cause: `dbatQueueWaitSec` / `mxtQueueWaitSec` (`src/sim/subsys/db2.ts`, `cics.ts`)
+  return `(rate·rt − limit)/rate`, always below one service time. Fix: throughput ≤ limit / rt (Little's law);
+  excess arrivals go to the slice backlog, waits grow and fail at the workload timeout (DDF: a MAXCONQW-like
+  timeout in `content/`), plus Erlang-C wait below saturation (`src/sim/zos/erlang.ts`). Reject MXT < 10 in
+  `SET_CICS` (`src/game/commands.ts`). Re-check the THREAD_LIMIT RCA rule (decision 2026-10-28) against the new curve.
+- [ ] **4. CF service per connected system with a link-distance term (planted flaw B4).** RMF CF Activity reports
+  requests and service times per connected system and estimates link distance as round-trip µs ÷ 10 µs/km
+  (*RMF Report Analysis* p.376, p.378). SPEC §13.5 B4 promises slower lock waits and higher async % on PRDC/PRDD.
+  Audit: sync service 23.3 µs on every system, 0 % async; routing PAYMENTS near-only 182 → 192 ms. Cause: one
+  plex-wide `cfServiceSec` (`src/sim/core/step.ts:150-158`), no distance in `src/sim/cf/cf.ts`. Fix: CPC → CF
+  distance in content (Harbourline 15 km), per-system sync service = base + 2 × 5 µs/km × km (FICTIONAL base;
+  10 µs/km round trip is the doc's figure), the existing sync→async heuristic per system, `cfServiceSec` per LPAR,
+  and a SYSTEM breakdown in the CF Activity report. Moving LOCK1 or duplexing it must then change PRDC/PRDD.
+- [ ] **5. Partition capping fields must report only capping.** Partition Data CAPPING shows DEF (Y/N for Initial
+  Capping, absolute HW cap, HW group cap) and WLM% = time WLM capped the partition (*RMF Report Analysis* p.401;
+  Monitor III CPC "WLM Capping %", p.98). Audit: with 6 CPs, an absolute cap of 6.0 delivered the same 3.05 engines
+  as no cap, yet CAPPED% read 56.4 vs 0. Cause: `cappedFrac` in `src/sim/hw/pools.ts:145` is
+  `(want − delivered)/want` whenever the cap is below demand, so PR/SM contention counts as capping. It also feeds
+  WLMGL's CAP/CPU delay split (`evaluate.ts:494`), CPU incident detection (`src/game/run.ts:554`) and Monitor III
+  WLM Capping % (`src/game/mon3.ts:324`). Fix: count the cap only when it binds (delivered ≥ cap − ε), and only the
+  part the cap removed (uncapped allocation − delivered; one extra `allocatePoolDetailed` call per pool without
+  caps); keep soft (WLM) capping and PR/SM absolute capping in separate fields, WLM% from soft capping only, and
+  show absolute capping as the DEF flags. Same audit: WLMGL posts LPAR soft-cap delay as CAP, but RMF's CAP delay is
+  resource-group and discretionary capping only and "NOT part of the CPU delay" (p.540); LPAR capping shows as CPU
+  delay plus Partition WLM%. Fold that into this change (it is the `capFrac` split) or queue it right after.
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
@@ -331,6 +386,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-28 | Harbourline day 0 gets a handover mail naming the 09:00 open, PRDA's absolute cap and Partition Data; X's report-card and GOODWILL notes kept as they are | User: soften D1 with a clue rather than a trust grace or a weaker burst; the first miss now has a clue path (CLAUDE.md: no gotcha without one) |
 | 2026-10-28 | Pins from past Monitor III ranges; the play CLI keeps only the pinnable values (option A), 48 h at the browser's interval, beside the run file | User choice over full views (≈ 18 MB binary on Harbourline) or views inside the run file (≈ 120 MB): ~5 MB, +~0.5 s per CLI day, run file stays small for spectator polling |
 | 2026-10-28 | Monitor III MINTIME 120 s (was 100 s, the RMF default) | User request. History and the CLI record every 12 ticks; the live view's smoothing is unchanged, so no golden moves |
+| 2026-10-28 | Harbourline audit: five realism fixes queued (M8.7 items 1–5). Resource group fixes in two steps, server-region health first, then AOR caps reaching transaction CPU; a transaction's host region adds no `depDelay` on top of its CPU cap | User decision. Item 1 is a one-expression change that closes the "park Db2 in a capped group for free" exploit; item 2 needs a content field and design calls. One cause (CPU withheld in the region) counts once, through the documented mechanism (*WLM Planning* p.60) |
 
 ## Open questions
 
@@ -343,13 +399,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   "now X" check that drops drafts already satisfied, if playtests trip over it.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
-- RMF Partition Data shows PR/SM absolute capping somewhere; the sim's ABS CAP column (engines, next to DEF CAP) is an
-  APPROX of its name and place. Check the real report layout (*RMF Report Analysis*, Partition Data Report).
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
 - Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
   a soft-capped image. On a real system the latter probably shows as processor (PRC) delay, since PR/SM just stops
-  dispatching the logical CPs. Unverified; the DELAY report keeps one CAP column.
+  dispatching the logical CPs. WLMGL side settled (CAP = RG and discretionary capping only, *RMF Report Analysis*
+  p.540; queued in M8.7 item 5); the Monitor III DELAY report's own columns are still unchecked.
 - Monitor III MVS Util% is derived as LPAR util ÷ (1 − short-engine wait) (APPROX). Real MVS busy also differs from LPAR
   busy through HiperDispatch parking and wait-completion settings; check against the CPU Activity report docs.
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
