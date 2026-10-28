@@ -20,7 +20,7 @@ import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, streamRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
-import type { ServiceDefinition } from '../sim/wlm/types';
+import type { ClassificationRule, ServiceDefinition } from '../sim/wlm/types';
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
 import { hintLevelFor, morningHints, type StrainedClass } from './hints';
@@ -402,6 +402,16 @@ function spendHours(run: RunState, hours: number): RunState {
   return { ...run, hoursLeft: left, fatigue: Math.min(100, run.fatigue + overtime * FATIGUE_PER_OVERTIME_HOUR) };
 }
 
+/** The policy of an activation that failed at this morning's start, so its edits can be pending again. */
+export function failedPolicyToday(run: RunState): ServiceDefinition | null {
+  for (const c of [...run.changes].reverse()) {
+    if (c.status !== 'FAILED' || c.activateDay !== run.day) continue;
+    const a = c.commands.find((x) => x.kind === 'ACTIVATE_POLICY');
+    if (a?.kind === 'ACTIVATE_POLICY') return a.definition;
+  }
+  return null;
+}
+
 /** BRIEFING → LIVE: activate planned changes due today (with failure risk). */
 export function startDay(run: RunState, content: GameContent): RunState {
   if (run.phase !== 'BRIEFING') return run;
@@ -414,7 +424,13 @@ export function startDay(run: RunState, content: GameContent): RunState {
       const failed = streamRng(r.seed, 'activate', r.day, c.label, attempt).chance(failRisk(r));
       if (failed) {
         changes.push({ ...c, status: 'FAILED' });
-        r = msg(r, 'Change board', `Change failed: ${c.label}`, 'Implementation backed out. Hours were spent; try again tomorrow.');
+        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? ' Its edits go back to the pending policy (unless newer edits are pending); activate to reschedule.' : '';
+        r = msg(
+          r,
+          'Change board',
+          `Change failed: ${c.label}`,
+          `Implementation backed out (risk was ${Math.round(failRisk(r) * 100)} %; tired teams and rushed changes fail more often). Hours were spent; try again tomorrow.${policy}`,
+        );
         continue;
       }
       pending.push(...c.commands);
@@ -683,11 +699,11 @@ export function wlmHidSlides(r: RunState, scenario: Scenario, incidents: readonl
 
 /**
  * Service-class periods whose worst PI rose to STRAIN.minPi and STRAIN.riseFactor × the day before, excluding the
- * classes of workloads that raised an incident (their own hint covers them). Worst first.
+ * classes of workloads that raised an incident (their own hint covers them) and batch classes. Worst first.
  */
 export function strainedClasses(r: RunState, scenario: Scenario, incidents: readonly Incident[], piWorst: Readonly<Record<string, number>>, prevPiWorst: Readonly<Record<string, number>> | undefined): StrainedClass[] {
   if (!prevPiWorst) return [];
-  const covered = new Set<string>();
+  const covered = jesClasses(r.sim.wlm.definition);
   for (const w of allWorkloads(scenario, r)) {
     if (!incidents.some((i) => i.workloadId === w.id)) continue;
     for (const lparId of Object.keys(r.sim.routing[w.id] ?? w.routing)) covered.add(classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass);
@@ -702,12 +718,31 @@ export function strainedClasses(r: RunState, scenario: Scenario, incidents: read
     .sort((a, b) => b.pi - a.pi);
 }
 
-/** Worst sysplex PI per service-class period across the RMF intervals that closed within the day. */
-export function worstPiOfDay(intervals: readonly RmfInterval[], day: number): Record<string, number> {
+/**
+ * Worst sysplex PI per service-class period across the RMF intervals that closed within the day. With minEnded,
+ * response-time periods count only in intervals where at least that many transactions ended.
+ */
+export function worstPiOfDay(intervals: readonly RmfInterval[], day: number, minEnded = 0): Record<string, number> {
   const out: Record<string, number> = {};
   for (const iv of intervals) {
     if (iv.endTick <= day * TICKS_PER_DAY || iv.endTick > (day + 1) * TICKS_PER_DAY) continue;
-    for (const w of iv.wlm) if (w.lparId === '*PLEX' && w.pi !== null && w.pi > (out[w.scKey] ?? -Infinity)) out[w.scKey] = w.pi;
+    for (const w of iv.wlm) {
+      if (w.lparId !== '*PLEX' || w.pi === null || w.pi <= (out[w.scKey] ?? -Infinity)) continue;
+      if (minEnded > 0 && RT_GOAL.test(w.goalText) && w.ended < minEnded) continue;
+      out[w.scKey] = w.pi;
+    }
+  }
+  return out;
+}
+const RT_GOAL = /^AVG |% </;
+
+/** Service classes the JES rules can assign (batch; the batch-window hint speaks for them). */
+function jesClasses(def: ServiceDefinition): Set<string> {
+  const out = new Set<string>();
+  const walk = (rs: readonly ClassificationRule[]) => rs.forEach((x) => (x.serviceClass && out.add(x.serviceClass), walk(x.children)));
+  for (const ss of def.subsystems.filter((x) => x.subsystem === 'JES')) {
+    if (ss.defaultServiceClass) out.add(ss.defaultServiceClass);
+    walk(ss.rules);
   }
   return out;
 }
@@ -862,7 +897,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
   const hid = wlmHidSlides(r, scenario, dayIncidents, report.piWorst ?? {});
-  const strained = strainedClasses(r, scenario, dayIncidents, report.piWorst ?? {}, r.reports.at(-2)?.piWorst);
+  const strained = strainedClasses(r, scenario, dayIncidents, worstPiOfDay(r.sim.rmf.intervals, day, STRAIN.minEnded), r.reports.at(-2)?.piWorst);
   for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null, hid, strained))
     r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);
   return openReview(r, content, day);

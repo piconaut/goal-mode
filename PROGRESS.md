@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 3 findings S–X (M8.6; then a human UI playtest), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 3 finding X design questions (user), then a human UI playtest (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -490,21 +490,38 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     DISP−CPU (USRDISPT − USRCPUT in CICS 110: dispatched, not on a CP) and includes the backlog wait, plus a failed %
     column. Counting waiting transactions in WLMGL CPU delay was checked and dropped: RMF samples TCBs and SRBs, not
     transactions (*RMF Report Analysis* p.540); the related gap (CICS transaction classes) is queued in M8.7.
-  - [ ] S: a failed policy activation (random "Change failed… backed out") also loses the pending edits, with no reason
+  - [x] S: a failed policy activation (random "Change failed… backed out") also loses the pending edits, with no reason
     given.
-  - [ ] T: no command shows the active service definition, classification rules, CICS QR share or zIIP counts
+    Done 2026-10-28: the Change board mail gives the failure risk and why (fatigue, rushed changes), and a failed
+    activation's edits go back to the pending policy (`failedPolicyToday`; worker and play CLI) unless newer edits are
+    pending.
+  - [x] T: no command shows the active service definition, classification rules, CICS QR share or zIIP counts
     (Harbourline found its single zIIP from `mon3`); a WLM policy view in the play CLI (the UI has the WLM editor).
-  - [ ] U: batch abend restart: Midwest's Operations email says "restart needed" but the catalog shows no restart;
+    Done 2026-10-28: `play policy [pending]` lists classes (periods, goals, importance, durations, CPU/storage
+    critical, resource groups), classification rules, LPAR logical CPs/zIIPs and weights, and CICS regions with MXT
+    and QR share (all shown in the UI already).
+  - [x] U: batch abend restart: Midwest's Operations email says "restart needed" but the catalog shows no restart;
     on Harbourline RESTART_JOB works only while live (D7: "SET016 is not abended"), and the alert is an inbox line
     `advance` buries. Regulator trust fell 83 → 63 and 57 on the misses.
-  - [ ] V: `ask` is refused in BRIEFING and REVIEW ("Ask during the day"); replies take hours, so asking needs a
+    Done 2026-10-28 (play CLI): `restart <JOB>` (the UI's Ops restart), `catalog` lists the abended jobs, `advance`
+    stops at the hour a job abends and lists new mail. A restart still works only during the job's batch night (by
+    06:00 the window has been met or missed), and the refusal now says so.
+  - [x] V: `ask` is refused in BRIEFING and REVIEW ("Ask during the day"); replies take hours, so asking needs a
     `start` first.
+    Done 2026-10-28: BRIEFING already allowed it; REVIEW now does too, on the next day's hours like planning a change
+    (UI button too). An unknown topic lists the valid ones.
   - [ ] W: hint noise: a sparse-sample PI of 4.00 at 23:45 on AGENTS#1 (100 % SLA) raised a strain hint; overnight
     BATCHPRD/BATCHHI PI 8–10 every night with the window met is permanent alarm noise; old hints stay in the inbox.
+    Done 2026-10-28: the strain hint skips response-time PIs from intervals with fewer than 20 ended transactions
+    (`STRAIN.minEnded`) and batch classes (assigned by the JES rules; the batch hint covers them). `status` shows only
+    the latest morning's hints. WLMGL still shows the batch PIs: velocity misses on a busy night are real data.
   - [ ] X: design notes for the user: the report card names the event ("Runaway compliance query", "Sick CICS
     AOR"), which gives the diagnosis away; Harbourline trust starts falling at 09:00 on D1 before any diagnosis is
     possible; GOODWILL (+4 trust) looks like the strongest draft (two agents skipped it by mistake: `draft none`);
     `pin` reprints the whole status so the new PIN id is easy to miss; `smf BATCH` lists 20 DEV jobs first.
+    CLI parts done 2026-10-28: `pin`/`unpin` print only their result; `smf BATCH` lists the critical path first and
+    DEV last; the draft prompt says `draft none` forgoes the option. Still open for the user: the report card naming
+    the event, Harbourline trust falling before a diagnosis is possible, and GOODWILL's strength.
 - [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
 - [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
@@ -642,6 +659,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-27 | RCA truth credits THREAD_LIMIT only with MXT/DBAT queueing beyond the in-region growth | Little's law: slower tasks hold MXT slots longer, so the queueing is mostly a symptom of CPU or QR TCB delay (playtest findings N, O) |
 | 2026-10-28 | Finding Q: new RCA mechanism ROUTING, declared by a card for failure-only misses (SICK_AOR) | User decision; no delay grows when a region fails work fast, and DEPENDENCY means a slower server |
 | 2026-10-28 | Finding R: CICS view shows DISP−CPU (incl. the CPU backlog wait); WLMGL CPU delay stays per dispatchable unit | User decision after a check against the RMF, WLM and CICS books (`docs/research.md`) |
+| 2026-10-28 | Findings S–W: strain hints ignore thin response-time intervals (< 20 ended) and batch classes; ask allowed in REVIEW; play CLI gets `policy`, `restart`, abend stop on `advance` | Round 3 agents missed abends and chased hint noise; batch already has its own window hint; REVIEW asking matches planning a change there |
 
 ## Open questions
 

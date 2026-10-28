@@ -1049,7 +1049,9 @@ workload missed its SLA while every service class serving it had a worst sysplex
 a class average or the regions' own goal hid it), the hint adds that WLMGL disagreed and points at the
 per-transaction records: CICS monitoring (SMF 110) or Db2 accounting (SMF 101). A service class under new
 pressure with no incident (worst PI ≥ 3 and at least double the day before; `STRAIN` in `content/hints.ts`) gets a
-strain hint after the incident hints, so a regression that broke no SLA still points the player at WLMGL.
+strain hint after the incident hints, so a regression that broke no SLA still points the player at WLMGL. A
+response-time PI from an interval with fewer than `STRAIN.minEnded` ended transactions does not count (one slow
+late-evening transaction reads PI 4), and batch classes (those the JES rules assign) are left to the batch hint.
 
 ### 11.3 Meta-progression ("Career")
 - Career XP from runs → unlock **scenarios**: *Midwest Mutual* (bank), *Continental Insurance*
@@ -1334,7 +1336,8 @@ editor, HMC image profile). Toggle "classic 3270 colours" for purists.
 7. **Change Calendar & Inbox:** scheduled changes, CAB status, lead-time deliveries,
    **Ask around** (questions to people in the organisation: costs a little time, answers arrive
    hours later in office hours, one incomplete fragment each: a critical job, a lock-heavy job, a job
-   class's meaning, how an app is classified, a growth estimate, a rumour of what's coming),
+   class's meaning, how an app is classified, a growth estimate, a rumour of what's coming; asking works in
+   the briefing, the live day and the end-of-day review, which spends the next day's hours),
    stakeholder messages.
 8. **Capacity Planner / What-if** (unlock).
 9. **Debrief:** SLA report card, MLC tracker, trust deltas, RCA board, draft choice.
