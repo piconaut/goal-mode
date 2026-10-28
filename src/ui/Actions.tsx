@@ -253,15 +253,37 @@ function ChangeForm({ desk, label, commands, error, children }: { desk: Desk; la
  * One setting per line in a column grid (`cols` is a grid-template-columns value shared with its SettingHead); Enter stages like
  * ChangeForm. The buttons only appear once the value differs from the current one, so an untouched table stays one line per row.
  */
-function SettingRow({ desk, label, commands, error, dirty, cols, children }: { desk: Desk; label: string; commands: Command[]; error: string | null; dirty: boolean; cols: string; children: ReactNode }) {
+function SettingRow({
+  desk,
+  label,
+  commands,
+  error,
+  dirty,
+  cols,
+  extra,
+  children,
+}: {
+  desk: Desk;
+  label: string;
+  commands: Command[];
+  error: string | null;
+  dirty: boolean;
+  cols: string;
+  /** More actions for the row's last column (e.g. a picked one-off action's confirm buttons). */
+  extra?: ReactNode;
+  children: ReactNode;
+}) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (dirty && error === null) desk.stage(commands);
   };
   return (
-    <form className={dirty ? 'srow dirty' : 'srow'} style={{ gridTemplateColumns: cols }} onSubmit={submit}>
+    <form className={dirty || extra ? 'srow dirty' : 'srow'} style={{ gridTemplateColumns: cols }} onSubmit={submit}>
       {children}
-      <span className="acts">{dirty && <ChangeButtons desk={desk} label={label} commands={commands} error={error} compact />}</span>
+      <span className="acts">
+        {dirty && <ChangeButtons desk={desk} label={label} commands={commands} error={error} compact />}
+        {extra}
+      </span>
     </form>
   );
 }
@@ -986,7 +1008,8 @@ function Structures({ desk }: { desk: Desk }) {
   );
 }
 
-const LCU_COLS = 'minmax(140px, 1.4fr) 40px 60px 108px auto minmax(150px, 2fr)';
+// Every column has a fixed or fr width: each row is its own grid, so an 'auto' track would size per row and misalign the header.
+const LCU_COLS = 'minmax(140px, 1.4fr) 40px 60px 108px 96px minmax(150px, 2fr)';
 
 function Dasd({ desk }: { desk: Desk }) {
   const { lcus, spareAliases } = desk.cfg.dasd;
@@ -1023,8 +1046,24 @@ function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
   const max = Math.min(LCU_MAX_DEVICES - l.volumes, l.aliases + spare);
   const err = !(Number.isInteger(n) && n >= 0) ? 'Whole number ≥ 0' : n > LCU_MAX_DEVICES - l.volumes ? `Max ${LCU_MAX_DEVICES - l.volumes} (256 devices per LCU)` : n - l.aliases > spare ? `Only ${spare} spare` : null;
   const skew = Math.max(DASD_REBALANCE.minSkew, l.hotSkew * DASD_REBALANCE.skewFactor);
+  // Picking rebalance puts its confirm buttons in the row's action column; its own column is too narrow for them.
+  const [rebalance, setRebalance] = useState(false);
+  const rebalanceConfirm = rebalance && (
+    <span className="btns">
+      <span className="muted">rebalance:</span>
+      <ChoiceConfirm desk={desk} commands={[{ kind: 'SET_LCU', lcuId, hotSkew: skew }]} done={() => setRebalance(false)} />
+    </span>
+  );
   return (
-    <SettingRow desk={desk} label={`LCU ${lcuId} aliases ${val}`} commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]} error={err} dirty={n !== l.aliases} cols={LCU_COLS}>
+    <SettingRow
+      desk={desk}
+      label={`LCU ${lcuId} aliases ${val}`}
+      commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]}
+      error={err}
+      dirty={n !== l.aliases}
+      cols={LCU_COLS}
+      extra={rebalanceConfirm || undefined}
+    >
       <span>
         <b>LCU {l.id}</b> <span className="muted">{l.label}</span>
       </span>
@@ -1033,7 +1072,16 @@ function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
       <Now>
         {l.aliases} (max {max})
       </Now>
-      <Choices desk={desk} options={[{ text: 'rebalance', commands: [{ kind: 'SET_LCU', lcuId, hotSkew: skew }], disabled: l.hotSkew <= DASD_REBALANCE.minSkew }]} />
+      <button
+        type="button"
+        className={rebalance ? 'active' : undefined}
+        aria-pressed={rebalance}
+        disabled={l.hotSkew <= DASD_REBALANCE.minSkew}
+        title={l.hotSkew <= DASD_REBALANCE.minSkew ? 'Already balanced' : rebalance ? 'Cancel' : undefined}
+        onClick={() => setRebalance(!rebalance)}
+      >
+        rebalance
+      </button>
     </SettingRow>
   );
 }

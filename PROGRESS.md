@@ -386,6 +386,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** DASD table headers lined up with their columns again: each setting row is its own CSS grid and the
+  rebalance column was `auto`, so it sized per row (0 px in the header) and pushed the header labels right; it is now a
+  fixed 96 px. A picked `rebalance` shows its `+ basket · Apply` and cost in the row's action column instead of
+  squeezing into that column. Tab split into "Systems" and "Db2, MQ & CICS" previewed for the user and not kept.
 - **2026-10-28:** Change Desk one-click choices now pick-then-confirm (user request). RMF interval, IEAOPT
   (BLWLINTHD, IIPHONORPRIORITY), CF thin interrupts, structure placement, duplexing and DASD rebalance used to apply
   on a single click, with the cost only in a hover tooltip and shift-click to stage (neither works on touch).
