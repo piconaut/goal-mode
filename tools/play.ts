@@ -16,7 +16,8 @@
 
 import { parseIdText } from '../src/game/ids';
 import { existsSync, readFileSync } from 'node:fs';
-import type { DifficultyId } from '../src/content/difficulty';
+import { DIFFICULTIES, type DifficultyId } from '../src/content/difficulty';
+import { SCENARIOS } from '../src/content/scenarios';
 import type { Mechanism, Trigger } from '../src/game/types';
 import type { PinRequest } from '../src/game/evidence';
 import type { EvidenceMetric } from '../src/content/evidence';
@@ -61,7 +62,14 @@ function parse(): PlayCommand | ReadOnly {
     case 'catalog': return 'catalog';
     case 'mon3': return 'mon3';
     case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, ...(rest.length > 1 ? { hour: rest.slice(1).join(' ') } : {}), ...(json ? { json } : {}) };
-    case 'new': return { cmd: 'new', seed: Number(rest[0] ?? 42), difficulty: (rest[1] ?? 'normal').toUpperCase() as DifficultyId, ...(rest[2] ? { scenario: rest[2] } : {}) };
+    case 'new': {
+      const seed = Number(rest[0] ?? 42), difficulty = (rest[1] ?? 'normal').toUpperCase(), scenario = rest[2];
+      const usage = 'usage: new <seed> [normal|story|hard|ironman] [midwest|revenue|harbourline]';
+      if (!Number.isInteger(seed)) throw new Error(`Seed must be a whole number, got "${rest[0]}"; ${usage}`);
+      if (!(difficulty in DIFFICULTIES)) throw new Error(`Unknown difficulty "${rest[1]}"; ${usage}`);
+      if (scenario && !(scenario in SCENARIOS)) throw new Error(`Unknown scenario "${scenario}"; ${usage}`);
+      return { cmd: 'new', seed, difficulty: difficulty as DifficultyId, ...(scenario ? { scenario } : {}) };
+    }
     case 'start': return { cmd: 'start' };
     case 'advance': return { cmd: 'advance', hours: Number(rest[0] ?? 1) };
     case 'note': return { cmd: 'note', text: rest.join(' ') };
