@@ -127,7 +127,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   tool (Report Class Hoarder); Codex persists (localStorage). Still open: scenario unlocks (one scenario so far)
 
 **M8.4 Content**
-- [~] Events to ~25 (SPEC §9); 27 now (deck complete for this pass). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
+- [x] Events to ~25 (SPEC §9); 27 now (deck complete; more only if a playtest asks for one). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
   NEW_APP_GOLIVE, POWER_CAP, HSM_RECALL_STORM, CP_SPARING (red herring), HIRING_FREEZE, AUDIT_UNCLASSIFIED,
   ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106), RETRY_STORM (loop 110), XLOG_LOOP (loop 112: looping STC misclassified by the CICS* rule), ENCRYPTION_MANDATE and GREEN_IT_COD (loop 113). Re-sweep the bots once the deck is complete
   - VENDOR_PRICE (2026-10-23, user's option 1): `SET_MLC_PRICE` sets `cost.priceMult` (absent = 1, goldens unchanged);
@@ -141,11 +141,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - RCA truth: cards may declare `mechanisms`; `triggerOf` blames an active card only for incidents with one of them
 - [x] More draft options and perks: every SPEC §9.5 opportunity type, 11 perks, 2 pacts (`content/draft.ts`)
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
-- [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
+- [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats (done for Midwest, Revenue and Harbourline; applies to Continental and Global Airline when built)
 - [x] *State Revenue Agency* playable (SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`, picker in
   the new-run dialog and day-1 briefing), per-scenario facets, flaws G1–G3/H1–H2, story beats, 16-card agency deck.
   Follow-up: textbook's day-22 PREFILL losses (its PFILAPI class still misses)
-- [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
+- [x] Scenario (user request 2026-10-21; built as Harbourline Bank): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
   - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
   - **Harder problems.** Two the user named:
@@ -155,7 +155,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     - **Workload-balancing issues across the sysplex:** sysplex distributor / CICSPlex SM routing and WLM routing
       recommendations send work to the wrong images, through skewed weights, a sick-but-alive region (storm
       drain) or uneven zIIP capacity. Fixes trade affinity against even load.
-  - **Needs:** a multi-CPC world (the hardware catalog and HMC assume one CPC), finer-than-hourly arrival bursts in
+  - [x] **Needs** (all built): a multi-CPC world (the hardware catalog and HMC assume one CPC), finer-than-hourly arrival bursts in
     the workload model, and routing that reacts to image health.
   - [x] Design: SPEC §13.5 "Harbourline Bank" (2 CPCs, 6 LPARs, starting tools; Problem 1 spiky markets work with
     four fix families; Problem 2 flaws B1–B4: static SD weights, storm drain, CP-only WLM weights, CF locality; build
