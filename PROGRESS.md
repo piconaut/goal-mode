@@ -61,8 +61,8 @@ and cost CPU (`mods.measureCpu`). Tier 1: Monitor III, live WLM log, CPC view. T
 per structure, DASD per LCU, SMF 101/110/30/113, RCA evidence pinning. Tier 3: what-if, capacity planner, alerts,
 automation + CoD, saved policies with a daily schedule. Tier 4: report classes + advisor, AIOps, TFP offer,
 Finance tab, multi-day projects, Codex with contextual "?" hints.
-- [ ] ~~RMF interval < 15 min needs the tool~~ dropped: the Postprocessor interval is just SMF INTVAL on real systems
-- [ ] PROCU is per service-class period, not per address space (slices are not kept per tick). Add top address
+- [x] ~~RMF interval < 15 min needs the tool~~ dropped: the Postprocessor interval is just SMF INTVAL on real systems
+- [x] PROCU is per service-class period, not per address space (slices are not kept per tick). Add top address
   spaces if a diagnosis needs it
 - Known gaps (APPROX, revisit only if gameplay needs them): per-AOR QR busy not shown in SMF 110 (QR is per LPAR);
   WLM "policy overrides" not modelled (whole policies are swapped); discretionary capping ignores "not a recent
@@ -163,7 +163,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 
 
 **M8.6 Playtesting, polish & progression (user request 2026-10-26)**
-- [ ] Playtesting: human and agent playtests on all three scenarios (`goal-mode-player` and the persona agents for
+- [x] Playtesting: human and agent playtests on all three scenarios (`goal-mode-player` and the persona agents for
   the headless side); record friction points and fix the worst ones
   - Round 1 (2026-10-27, play CLI; Midwest seed 11, Revenue seed 23, Harbourline seed 37, to about day 9): CLI
     friction fixed the same day. Findings A–F all done: A morning hint points at SMF 110/101 when WLMGL disagrees with
@@ -193,7 +193,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   (`src/game/mon3PinHistory.ts`) for 48 h in `runs/a.mon3.json` beside the run file, ~5 MB on Harbourline, and shows
   them with `mon3 [system] --at`. Recording only runs in the CLI's `advance` (bots and sweeps don't use it). Monitor
   III MINTIME is now 120 s (was 100 s, RMF's default); the "Range" header still shows WLM's ≈ 67 s smoothing (§17)
-- [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
+- [x] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
   - 2026-10-28, PR 1: `tools/screenshot.mjs` launches the pre-installed Chromium (`<outDir> [light|dark|3270] [--all]`);
     Change Desk "Systems, CF & I/O": DASD, Db2, MQ and CICS are setting rows in a column grid (name, input, now,
     actions) and Db2, MQ and CICS are separate sections. UI only; bench hashes unchanged.
