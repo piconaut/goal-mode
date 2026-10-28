@@ -30,7 +30,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   GitHub settings (user): default branch `dev`; protect `dev` and `main` with these four checks required; allow
   auto-merge; delete head branches on merge. `main` requires the same checks but no approval: GitHub records Claude's
   PRs as authored by the user, who can't approve their own PR (user decision 2026-10-26).
-- **Health:** `npm run check` green (430 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+- **Health:** `npm run check` green (437 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
   bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `fef4fa052462d635`, Harbourline `a1984addb2403be0` (dev after #70; merged to main in PR #72).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
@@ -386,6 +386,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** Change Desk, Systems tab height (user: too much scrolling). Setting rows (DASD LCUs, Db2, MQ, CICS) show
+  `+ basket`/`Apply` only once the value differs from now (the row gets an accent bar); the per-row cost moves to the
+  table header (`per row: …`) and the Apply tooltip, and Enter on an unchanged row no longer stages a no-op. Tab
+  2,379 → 2,016 px at 1920×1080 (DASD 595 → 431, Db2 536 → 345). Further ideas proposed, not done yet: one Db2 row per
+  subsystem, help text behind the Codex hints, masonry layout/jump links, subsystem tabs and one shared add-rule form in
+  the classification rules panel. Goldens unchanged.
 - **2026-10-28:** Milestone merge `dev` → `main` (PR #72, merge commit): pr-reviewer MERGE, 430 tests, hashes Midwest
   `fef4fa052462d635` / Harbourline `a1984addb2403be0`, 10-seed Normal Midwest sweep do-nothing 16 / textbook 28 /
   expert 9 of 10 wins. Health-line hashes updated. Follow-up idea: scale `balanceGate.ts` bands by seed count.

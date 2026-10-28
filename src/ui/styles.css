@@ -253,10 +253,11 @@ details.section[open] > summary { margin-bottom: 8px; }
 /* Change Desk setting rows: one setting per line in a shared column grid (SettingRow / SettingHead). */
 .grid-wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); align-items: start; }
 .stack-x { overflow-x: auto; margin: 4px 0; }
-.srow { display: grid; align-items: center; gap: 4px 10px; margin: 0; padding: 4px 2px; min-width: 520px; border-bottom: 1px solid var(--border); }
+.srow { display: grid; align-items: center; gap: 4px 10px; margin: 0; padding: 4px 2px 4px 7px; min-width: 520px; border-bottom: 1px solid var(--border); }
 .srow.head { padding-top: 0; font-size: 12px; color: var(--muted); }
 .srow .now { white-space: nowrap; }
 .srow:not(.head):hover { background: var(--panel-2); }
+.srow.dirty { box-shadow: inset 3px 0 var(--accent); }
 .srow input { min-width: 0; width: 100%; max-width: 8em; }
 .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .cost { min-width: 0; overflow-wrap: anywhere; font-size: 12px; color: var(--muted); font-family: var(--mono); }

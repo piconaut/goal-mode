@@ -216,10 +216,15 @@ function ChangeButtons({ desk, label, commands, error, compact = false }: { desk
       <button type="submit" disabled={error !== null} title="Enter adds to the basket">
         + basket
       </button>
-      <button type="button" className="apply" disabled={reason !== null} title={reason ?? (p.emergency ? 'Emergency change: applied within seconds' : 'Planned: takes effect at 06:00')} onClick={() => desk.apply(label, commands)}>
+      <button
+        type="button"
+        className="apply"
+        disabled={reason !== null}
+        title={reason ?? `${compact ? `${costText(p)}. ` : ''}${p.emergency ? 'Emergency change: applied within seconds' : 'Planned: takes effect at 06:00'}`}
+        onClick={() => desk.apply(label, commands)}
+      >
         {compact ? 'Apply' : `Apply · ${costText(p)}`}
       </button>
-      {compact && !reason && <span className="cost">{costText(p)}</span>}
       {reason && <span className="err">{reason}</span>}
     </>
   );
@@ -239,28 +244,33 @@ function ChangeForm({ desk, label, commands, error, children }: { desk: Desk; la
   );
 }
 
-/** One setting per line in a column grid (`cols` is a grid-template-columns value shared with its SettingHead); Enter stages like ChangeForm. */
-function SettingRow({ desk, label, commands, error, cols, children }: { desk: Desk; label: string; commands: Command[]; error: string | null; cols: string; children: ReactNode }) {
+/**
+ * One setting per line in a column grid (`cols` is a grid-template-columns value shared with its SettingHead); Enter stages like
+ * ChangeForm. The buttons only appear once the value differs from the current one, so an untouched table stays one line per row.
+ */
+function SettingRow({ desk, label, commands, error, dirty, cols, children }: { desk: Desk; label: string; commands: Command[]; error: string | null; dirty: boolean; cols: string; children: ReactNode }) {
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (error === null) desk.stage(commands);
+    if (dirty && error === null) desk.stage(commands);
   };
   return (
-    <form className="srow" style={{ gridTemplateColumns: cols }} onSubmit={submit}>
+    <form className={dirty ? 'srow dirty' : 'srow'} style={{ gridTemplateColumns: cols }} onSubmit={submit}>
       {children}
-      <span className="acts">
-        <ChangeButtons desk={desk} label={label} commands={commands} error={error} compact />
-      </span>
+      <span className="acts">{dirty && <ChangeButtons desk={desk} label={label} commands={commands} error={error} compact />}</span>
     </form>
   );
 }
 
-function SettingHead({ cols, heads }: { cols: string; heads: string[] }) {
+/** Column headings; the last column shows what one change to a row costs (`sample` is any row's commands). */
+function SettingHead({ desk, cols, heads, sample }: { desk: Desk; cols: string; heads: string[]; sample: Command[] }) {
   return (
     <div className="srow head" style={{ gridTemplateColumns: cols }}>
       {heads.map((h, i) => (
         <span key={`${i}:${h}`}>{h}</span>
       ))}
+      <span className="cost" title="Cost of applying one row on its own; staged rows share one approval in the basket">
+        per row: {costText(preview(desk.v, { commands: sample }))}
+      </span>
     </div>
   );
 }
@@ -937,7 +947,7 @@ function Dasd({ desk }: { desk: Desk }) {
         </span>
       </div>
       <div className="stack-x">
-        <SettingHead cols={LCU_COLS} heads={['LCU', 'Vols', 'Aliases', 'Now (max)', '', '']} />
+        {lcus[0] && <SettingHead desk={desk} cols={LCU_COLS} heads={['LCU', 'Vols', 'Aliases', 'Now (max)', '']} sample={[{ kind: 'SET_LCU', lcuId: lcus[0].id, aliases: lcus[0].aliases }]} />}
         {lcus.map((l) => (
           <LcuRow key={`${l.id}:${l.aliases}:${l.hotSkew}:${spareAliases}`} desk={desk} lcuId={l.id} />
         ))}
@@ -960,7 +970,7 @@ function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
   const err = !(Number.isInteger(n) && n >= 0) ? 'Whole number ≥ 0' : n > LCU_MAX_DEVICES - l.volumes ? `Max ${LCU_MAX_DEVICES - l.volumes} (256 devices per LCU)` : n - l.aliases > spare ? `Only ${spare} spare` : null;
   const skew = Math.max(DASD_REBALANCE.minSkew, l.hotSkew * DASD_REBALANCE.skewFactor);
   return (
-    <SettingRow desk={desk} label={`LCU ${lcuId} aliases ${val}`} commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]} error={err} cols={LCU_COLS}>
+    <SettingRow desk={desk} label={`LCU ${lcuId} aliases ${val}`} commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]} error={err} dirty={n !== l.aliases} cols={LCU_COLS}>
       <span>
         <b>LCU {l.id}</b> <span className="muted">{l.label}</span>
       </span>
@@ -980,7 +990,7 @@ function Db2Section({ desk }: { desk: Desk }) {
   return (
     <>
       <div className="stack-x">
-        <SettingHead cols={DB2_COLS} heads={['Subsystem', 'Setting', 'New value', 'Now', '']} />
+        {desk.cfg.db2[0] && <SettingHead desk={desk} cols={DB2_COLS} heads={['Subsystem', 'Setting', 'New value', 'Now']} sample={[{ kind: 'SET_DB2', ssid: desk.cfg.db2[0].ssid, maxDbat: desk.cfg.db2[0].maxDbat }]} />}
         {desk.cfg.db2.map((d) => (
           <Db2Rows key={`${d.ssid}:${d.bufferPoolGb}:${d.maxDbat}`} desk={desk} ssid={d.ssid} />
         ))}
@@ -1000,7 +1010,7 @@ function Db2Rows({ desk, ssid }: { desk: Desk; ssid: string }) {
   const dbatN = num(dbat);
   return (
     <>
-      <SettingRow desk={desk} label={`${ssid} BP ${bp} GB`} commands={[{ kind: 'SET_DB2', ssid, bufferPoolGb: bpN }]} error={bpErr} cols={DB2_COLS}>
+      <SettingRow desk={desk} label={`${ssid} BP ${bp} GB`} commands={[{ kind: 'SET_DB2', ssid, bufferPoolGb: bpN }]} error={bpErr} dirty={bpN !== d.bufferPoolGb} cols={DB2_COLS}>
         <span>
           <b>{ssid}</b> <span className="muted">({d.lparId})</span>
         </span>
@@ -1013,6 +1023,7 @@ function Db2Rows({ desk, ssid }: { desk: Desk; ssid: string }) {
         label={`${ssid} MAXDBAT ${dbat}`}
         commands={[{ kind: 'SET_DB2', ssid, maxDbat: dbatN }]}
         error={Number.isInteger(dbatN) && dbatN >= 1 ? null : 'MAXDBAT is a whole number ≥ 1'}
+        dirty={dbatN !== d.maxDbat}
         cols={DB2_COLS}
       >
         <span className="muted">{ssid}</span>
@@ -1032,7 +1043,7 @@ function MqSection({ desk }: { desk: Desk }) {
   return (
     <>
       <div className="stack-x">
-        <SettingHead cols={MQ_COLS} heads={['Queue', 'MAXDEPTH', 'Now', '']} />
+        <SettingHead desk={desk} cols={MQ_COLS} heads={['Queue', 'MAXDEPTH', 'Now']} sample={[{ kind: 'SET_MQ', workloadId: mq[0]!.workloadId, maxDepthMsgs: mq[0]!.maxDepth }]} />
         {mq.map((q) => (
           <MqRow key={`${q.workloadId}:${q.maxDepth}`} desk={desk} workloadId={q.workloadId} />
         ))}
@@ -1055,6 +1066,7 @@ function MqRow({ desk, workloadId }: { desk: Desk; workloadId: string }) {
       label={`ALTER QLOCAL(${q.queue}) MAXDEPTH(${depth})`}
       commands={[{ kind: 'SET_MQ', workloadId, maxDepthMsgs: n }]}
       error={Number.isInteger(n) && n >= 1 && n <= 999_999_999 ? null : 'MAXDEPTH is a whole number 1–999999999'}
+      dirty={n !== q.maxDepth}
       cols={MQ_COLS}
     >
       <span>
@@ -1074,7 +1086,7 @@ function CicsSection({ desk }: { desk: Desk }) {
   return (
     <>
       <div className="stack-x">
-        <SettingHead cols={CICS_COLS} heads={['Region', 'LPAR', 'QR share', 'MXT', 'Now', '']} />
+        {cfg.cics[0] && <SettingHead desk={desk} cols={CICS_COLS} heads={['Region', 'LPAR', 'QR share', 'MXT', 'Now']} sample={[{ kind: 'SET_CICS', name: cfg.cics[0].name, maxTasks: cfg.cics[0].maxTasks }]} />}
         {cfg.cics.map((r) => (
           <CicsRow key={`${r.name}:${r.maxTasks}:${r.qrFrac}`} desk={desk} name={r.name} />
         ))}
@@ -1091,7 +1103,7 @@ function CicsRow({ desk, name }: { desk: Desk; name: string }) {
   const [mxt, setMxt] = useState(String(r.maxTasks));
   const n = num(mxt);
   return (
-    <SettingRow desk={desk} label={`${name} MXT ${mxt}`} commands={[{ kind: 'SET_CICS', name, maxTasks: n }]} error={Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000'} cols={CICS_COLS}>
+    <SettingRow desk={desk} label={`${name} MXT ${mxt}`} commands={[{ kind: 'SET_CICS', name, maxTasks: n }]} error={Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000'} dirty={n !== r.maxTasks} cols={CICS_COLS}>
       <b>{name}</b>
       <span className="muted">{r.lparId}</span>
       <span className="num">{Math.round(r.qrFrac * 100)}%</span>
