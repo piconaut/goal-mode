@@ -473,10 +473,15 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     difficulty and scenario and prints the usage instead of a TypeError (two agents typed `new midwest 2028`);
     cancelling a policy activation keeps its edits pending (it discarded them), and a repeat cancel says
     `No planned change CHG14` instead of `No such change`. Open findings:
-  - [ ] Q (Harbourline): SICK_AOR (fast abends on PRDC, the CPSM storm drain) was scored QR_TCB/POLICY. The truth's
+  - [x] Q (Harbourline): SICK_AOR (fast abends on PRDC, the CPSM storm drain) was scored QR_TCB/POLICY. The truth's
     mechanism comes from delay growth, and failing transactions add no delay, so whatever delay is largest that hour
     wins; no mechanism fits a failure-rate miss. Needs a model decision (a failure mechanism, or let the card declare
     its mechanism as JOB_ABEND declares its trigger).
+    Done 2026-10-28 (user picked a new mechanism; none of the existing ones fit, DEPENDENCY means a slower server):
+    new mechanism ROUTING. A card names it as `failureMechanism`, and it is the truth when failures alone missed the
+    SLA (`failureMechanismOf`). SICK_AOR declares ROUTING, trigger stays POLICY. New hint, and a CICS 110 FAIL_PCT
+    pin as its evidence. Replay of the round 3 Harbourline run: INC60 MKTORD and INC61 CARDS go QR_TCB → ROUTING,
+    nothing else changes. Goldens unchanged.
   - [ ] R (Harbourline): other truths to check against the data the player saw: D4 INC35 CPU_PRIORITY/DEMAND_SURGE with
     CPUs 62 % busy and CPU delay about 4 % (MXT waits 357 ms); D5 INC54 CPU_CAPACITY/GROWTH with nothing visible;
     D1 INC2 CAPPING/POLICY with one 2.6 % CAPPED interval as the only clue (MXT waits looked like the cause).

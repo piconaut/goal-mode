@@ -43,6 +43,10 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
     clear: '{w} missed its SLA yesterday. Was work queueing before it even got to run? The Db2 and CICS reports show the queue time.',
     vague: 'Yesterday was rough for {w}. The Db2 and CICS reports might tell you more.',
   },
+  ROUTING: {
+    clear: '{w} missed its SLA yesterday on errors, not on response time. The CICS report counts failed transactions. Where was the work sent, and did one region fail it fast?',
+    vague: 'Yesterday was rough for {w}. The CICS report might tell you more.',
+  },
   IO: {
     clear: '{w} missed its SLA yesterday. The DASD report shows response time per volume. Did any of them look different from the day before?',
     vague: 'Yesterday was rough for {w}. The DASD report might tell you more.',

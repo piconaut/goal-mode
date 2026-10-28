@@ -31,6 +31,7 @@ export type Mechanism =
   | 'CF_SERVICE'
   | 'QR_TCB'
   | 'THREAD_LIMIT'
+  | 'ROUTING'
   | 'IO'
   | 'STORAGE'
   | 'JOB_FAILURE';
@@ -77,6 +78,8 @@ export interface ActiveEvent {
   affects: string[];
   /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
   mechanisms?: Mechanism[];
+  /** Mechanism the card causes through failures rather than delay (copied from the card). */
+  failureMechanism?: Mechanism;
   /** Hardware items refused while the card runs (copied from the card). */
   blocksHardware?: string[];
   endCommands: Command[];

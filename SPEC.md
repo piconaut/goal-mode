@@ -954,6 +954,13 @@ can't reach — *and* less than 10 % of that image's CP went to work less import
 workload's service class (WLM had no donors left), otherwise CPU_PRIORITY: the policy could have served it.
 Both thresholds are FICTIONAL.
 
+A miss caused by failures alone (with no failed transactions the hour would have met its SLA) has no delay group to
+point at, so a running card that affects the workload names the mechanism (`failureMechanism`). SICK_AOR names
+ROUTING: CICSPlex SM keeps routing to a region that fails transactions fast, because without abend thresholds a
+fast failure looks like a fast response (CPSM uses ABENDTHRESH/ABENDCRIT and region health to choose a target;
+CICS TS 6 CICSPlex SM Managing Workloads p.34). Its evidence is the CICS 110 failed share (FAIL_PCT). Without
+such a card the delay groups decide as above.
+
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or

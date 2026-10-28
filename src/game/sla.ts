@@ -109,13 +109,20 @@ export function mechanismOf(
   return full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
 }
 
+/** An incident whose hour failed its SLA only through failures (with none it would have met it) gets the
+ * mechanism a running card affecting the workload declares for its failures; no delay grew to point at one. */
+export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: readonly ActiveEvent[]): Mechanism | null {
+  if (h.failed <= 0 || !hourAttainment(w, { ...h, failed: 0 })?.met) return null;
+  return events.find((e) => e.started && !e.ended && e.failureMechanism && e.affects.includes(w.id))?.failureMechanism ?? null;
+}
+
 export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
   const ev = events.find((e) => e.started && !e.ended && e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)));
   if (ev) return ev.trigger;
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;
   if (lock > 1 && (mechanism === 'LOCK_CONTENTION' || mechanism === 'CPU_PRIORITY' || mechanism === 'DEPENDENCY')) return 'BATCH_OVERLAP';
-  if (mechanism === 'DEPENDENCY' || mechanism === 'CPU_PRIORITY' || mechanism === 'CAPPING' || mechanism === 'QR_TCB' || mechanism === 'THREAD_LIMIT') return 'POLICY';
+  if (mechanism === 'DEPENDENCY' || mechanism === 'CPU_PRIORITY' || mechanism === 'CAPPING' || mechanism === 'QR_TCB' || mechanism === 'THREAD_LIMIT' || mechanism === 'ROUTING') return 'POLICY';
   return 'GROWTH';
 }
 
@@ -175,7 +182,7 @@ export function updateBaseline(prev: Record<string, number> | undefined, parts: 
   return out;
 }
 
-export const MECHANISMS: Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'IO', 'STORAGE', 'JOB_FAILURE'];
+export const MECHANISMS: Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'ROUTING', 'IO', 'STORAGE', 'JOB_FAILURE'];
 export const TRIGGERS: Trigger[] = ['DEMAND_SURGE', 'ACCESS_PATH_REGRESSION', 'RUNAWAY_WORK', 'BATCH_OVERLAP', 'POLICY', 'HARDWARE_FAULT', 'NEW_WORKLOAD', 'GROWTH', 'APPLICATION_ERROR'];
 
 /** RCA scoring: 3 points for the mechanism, 2 for the trigger. */
