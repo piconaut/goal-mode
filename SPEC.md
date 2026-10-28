@@ -1243,6 +1243,9 @@ Valid fixes, each with a cost:
 - **Move the burst:** route MKTQRY price queries to CPC2's zIIPs (but see Problem 2).
 - **Caps:** swap the absolute cap for a defined capacity (MLC risk), or raise it.
 
+Day-1 clue: the outgoing analyst's handover mail (story beat `HANDOVER`, day 0, every difficulty) names the
+09:00 open, PRDA's absolute cap and Partition Data, so the first market-open miss has a lead before it lands.
+
 #### Problem 2: workload-balancing issues across the sysplex
 
 Routing becomes a model, not a fixed table. Each routed workload has a `routingPolicy`:
