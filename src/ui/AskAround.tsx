@@ -39,7 +39,7 @@ export function AskAround({ v, game }: { v: ViewModel; game: GameHandle }) {
             ))}
           </select>
         )}
-        <button type="submit" disabled={full || v.hoursLeft < t.hours || (v.phase !== 'BRIEFING' && v.phase !== 'LIVE')}>
+        <button type="submit" disabled={full || v.hoursLeft < t.hours || (v.phase !== 'BRIEFING' && v.phase !== 'LIVE' && v.phase !== 'REVIEW')}>
           Ask {t.perWorkload ? 'the owner' : t.contact.split(' (')[0]} · {t.hours}h
         </button>
       </form>
