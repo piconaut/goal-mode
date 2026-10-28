@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, catalogText, clockText, decodePlayFile, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
@@ -120,5 +120,30 @@ describe('headless play interface', () => {
     const once = run(base, [{ cmd: 'advance', hours: 2 }]);
     const paced = run(base, [{ cmd: 'advance', hours: 1 }, { cmd: 'advance', hours: 1 }]);
     expect(encodePlayFile({ ...paced, log: [] })).toBe(encodePlayFile({ ...once, log: [] }));
+  });
+
+  it('reads clock times as clockText prints them; the small hours belong to the played day', () => {
+    for (const t of [0, 1234, 4000, 8639, 9000]) expect(tickOfClock(clockText(t))).toBe(Math.floor(t / 6) * 6);
+    expect(tickOfClock('D1 06:00')).toBe(0);
+    expect(tickOfClock('D2 05:59')).toBe(2 * 8640 - 6);
+    expect(tickOfClock('D0 10:00')).toBeNull();
+    expect(tickOfClock('10:00')).toBeNull();
+  });
+
+  it('advance keeps a Monitor III history for mon3 --at and pin --at; paced advance keeps the same one', () => {
+    const base = run(newPlayFile(7, 'NORMAL', 'harbourline'), [{ cmd: 'start' }]);
+    const f = run(base, [{ cmd: 'advance', hours: 2 }]);
+    const paced = run(base, [{ cmd: 'advance', hours: 1 }, { cmd: 'advance', hours: 1 }]);
+    expect(encodePlayFile({ ...paced, log: [] })).toBe(encodePlayFile({ ...f, log: [] }));
+    expect(f.mon3!.entries.length).toBeGreaterThan(50);
+    expect(mon3Text(f)).toContain('history covers D1 Mon 06:02 to D1 Mon 08:00');
+    const past = mon3Text(f, { system: 'PRDA', at: 'D1 07:00' });
+    expect(past).toMatch(/^Monitor III history, range ending D1 Mon 07:00/);
+    expect(past).toContain('MKTORD#1');
+    const pinned = run(f, [{ cmd: 'pin', req: { source: 'MON3', system: 'PRDA', scKey: 'MKTORD', metric: 'PI' }, at: 'D1 07:00' }]);
+    expect(pinned.run.pins.at(-1)!.text).toMatch(/^SYSINFO D1 07:00 PRDA MKTORD#1 PI/);
+    expect(applyPlayCommand(f, { cmd: 'pin', req: { source: 'MON3', system: 'PRDA', scKey: 'MKTORD', metric: 'PI' }, at: 'D1 09:00' }).text).toContain('in the future');
+    expect(applyPlayCommand(f, { cmd: 'pin', req: { source: 'DB2', hour: '7', workloadId: 'X', metric: 'PI' }, at: 'D1 07:00' }).ok).toBe(false);
+    expect(applyPlayCommand(f, { cmd: 'new', seed: 1 }).file.mon3).toBeUndefined();
   });
 });

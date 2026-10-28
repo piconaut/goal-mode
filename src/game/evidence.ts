@@ -7,6 +7,7 @@ import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
 import { buildMon3 } from './mon3';
+import type { Mon3PinLookup, Mon3PinView } from './mon3PinHistory';
 import { BATCH_INCIDENT } from './sla';
 import { cicsMonitoring, db2Accounting } from './smf';
 import type { Incident, RunState } from './types';
@@ -29,17 +30,22 @@ export interface EvidencePin {
 
 export type PinRequest =
   | { source: 'WLMGL'; index: number; system: string; scKey: string; metric: EvidenceMetric }
-  | { source: 'MON3'; system: string; scKey: string; metric: EvidenceMetric }
-  /** index: an RMF interval (Partition Data); without it, the Monitor III CPC view now. */
-  | { source: 'CPC'; lparId: string; metric: 'PRSM_DELAY' | 'CAPPED'; index?: number }
+  /** tick: a past Monitor III range (the one ending at or before it, from the history); without it, now. */
+  | { source: 'MON3'; system: string; scKey: string; metric: EvidenceMetric; tick?: number }
+  /** index: an RMF interval (Partition Data); without it, the Monitor III CPC view (now, or at `tick`). */
+  | { source: 'CPC'; lparId: string; metric: 'PRSM_DELAY' | 'CAPPED'; index?: number; tick?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
   /** SMF 30 for the batch night that followed played day `day` (critical jobs' delay accounting). */
   | { source: 'BATCH'; day: number; metric: EvidenceMetric };
 
 type Located = Omit<EvidencePin, 'id' | 'text'>;
 
-function locate(run: RunState, scenario: Scenario, req: PinRequest): Located | string {
+function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mon3PinLookup): Located | string {
   const sim = run.sim;
+  const mon3 = (tick: number | undefined): { tick: number; view: Mon3PinView } | string => {
+    if (tick === undefined) return { tick: sim.tick, view: buildMon3(run, scenario) };
+    return history?.(tick) ?? 'Monitor III history does not reach back that far';
+  };
   switch (req.source) {
     case 'WLMGL': {
       const iv = sim.rmf.intervals[req.index];
@@ -61,7 +67,9 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest): Located | s
       return { source: 'WLMGL', metric: req.metric, subject: req.scKey, system: req.system, tick: iv.endTick, value };
     }
     case 'MON3': {
-      const r = buildMon3(run, scenario).rows.find((x) => x.system === req.system && x.scKey === req.scKey);
+      const m = mon3(req.tick);
+      if (typeof m === 'string') return m;
+      const r = m.view.rows.find((x) => x.system === req.system && x.scKey === req.scKey);
       if (!r) return 'No such Monitor III row';
       const v: Partial<Record<EvidenceMetric, number | null>> = {
         PI: r.pi,
@@ -77,7 +85,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest): Located | s
       const value = v[req.metric];
       if (value === undefined || value === null) return 'That metric is not in this view';
       const view = req.metric.startsWith('DELAY') ? 'DELAY' : req.metric === 'APPL' ? 'PROCU' : req.system === '*PLEX' ? 'SYSSUM' : 'SYSINFO';
-      return { source: view, metric: req.metric, subject: req.scKey, system: req.system, tick: sim.tick, value };
+      return { source: view, metric: req.metric, subject: req.scKey, system: req.system, tick: m.tick, value };
     }
     case 'CPC': {
       if (req.index !== undefined) {
@@ -86,9 +94,11 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest): Located | s
         if (!iv || !r) return 'No such Partition Data row';
         return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: iv.endTick, value: req.metric === 'CAPPED' ? r.cappedPct : r.prsmDelayPct };
       }
-      const c = buildMon3(run, scenario).cpc.find((x) => x.lparId === req.lparId);
+      const m = mon3(req.tick);
+      if (typeof m === 'string') return m;
+      const c = m.view.cpc.find((x) => x.lparId === req.lparId);
       if (!c) return 'No such LPAR';
-      return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: sim.tick, value: req.metric === 'CAPPED' ? c.cappedPct : c.prsmDelayPct };
+      return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: m.tick, value: req.metric === 'CAPPED' ? c.cappedPct : c.prsmDelayPct };
     }
     case 'DB2':
     case 'CICS': {
@@ -159,8 +169,9 @@ export function pinText(p: Located): string {
   return `${p.source} ${pinWhen(p)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}`;
 }
 
-export function addPin(run: RunState, scenario: Scenario, req: PinRequest): { run: RunState; ok: boolean; message: string } {
-  const loc = locate(run, scenario, req);
+/** history: where a pin with a past `tick` reads its Monitor III range (the worker's or the play CLI's history). */
+export function addPin(run: RunState, scenario: Scenario, req: PinRequest, history?: Mon3PinLookup): { run: RunState; ok: boolean; message: string } {
+  const loc = locate(run, scenario, req, history);
   if (typeof loc === 'string') return { run, ok: false, message: loc };
   const pins = run.pins ?? [];
   if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
