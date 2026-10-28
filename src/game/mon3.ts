@@ -1,6 +1,6 @@
 // RMF Monitor III style live views (SPEC §8 tier 1), built from WLM's smoothed per-period
 // accumulators. ACC_DECAY 0.85 per 10 s tick weights roughly the last minute or two, close to
-// Monitor III's default 100 s range (APPROX: exponential rather than a fixed MINTIME window).
+// Monitor III's 120 s MINTIME range (APPROX: exponential rather than a fixed MINTIME window).
 // Field names, columns and formulas follow z/OS RMF Report Analysis (SC34-2665, z/OS 2.5), ch. 2.
 // Samples here are time-average concurrency (average number of users in each state), so RMF's
 // group formulas ∑ samples ÷ (# samples × avg # address spaces) become state ÷ active users.

@@ -302,7 +302,7 @@ export const CODEX: CodexEntry[] = [
     id: 'rmf',
     title: 'RMF Postprocessor and Monitor III',
     category: 'Measurement',
-    body: 'RMF Postprocessor reports (Workload Activity/WLMGL, Partition Data, CF and DASD Activity) summarise SMF records per interval, typically 15 or 30 minutes, after the fact. Monitor III samples continuously and shows the last minutes live: SYSSUM (goals versus actuals and PI), SYSINFO, DELAY, PROCU, ENCLAVE, CPC and the WFEX exception list. Its using and delay percentages are shares of state samples: a job waiting on something RMF does not monitor (a Db2 thread, a CICS task slot) is in the unknown state (UKN), not delayed. Monitor III also keeps its samples in VSAM data sets, one set per MINTIME (100 s by default), so you can step back (BREF) to an earlier range; here it keeps 48 hours.',
+    body: 'RMF Postprocessor reports (Workload Activity/WLMGL, Partition Data, CF and DASD Activity) summarise SMF records per interval, typically 15 or 30 minutes, after the fact. Monitor III samples continuously and shows the last minutes live: SYSSUM (goals versus actuals and PI), SYSINFO, DELAY, PROCU, ENCLAVE, CPC and the WFEX exception list. Its using and delay percentages are shares of state samples: a job waiting on something RMF does not monitor (a Db2 thread, a CICS task slot) is in the unknown state (UKN), not delayed. Monitor III also keeps its samples in VSAM data sets, one set per MINTIME (100 s by default; this shop runs 120 s), so you can step back (BREF) to an earlier range; here it keeps 48 hours.',
     sources: [{ label: 'IBM z/OS RMF Report Analysis (SC34-2665), ch. 2: Monitor III', url: 'https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/erbb500_v2r5.pdf' }, PAICE_WLM],
     discover: { start: true },
   },

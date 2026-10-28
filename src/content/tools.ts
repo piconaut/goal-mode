@@ -61,7 +61,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: [],
     unlocks: ['MON3', 'WLM_ACTIVITY_LOG'],
     overhead: { addressSpaces: { jobnames: ['RMFGAT'], cpuFrac: 1 } },
-    reveals: 'Live SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC and WFEX views (last ~100 s), today’s reports as each interval closes, and the live WLM activity log.',
+    reveals: 'Live SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC and WFEX views (last ~120 s), today’s reports as each interval closes, and the live WLM activity log.',
   },
   {
     id: 'PARTITION_DATA',
@@ -220,9 +220,9 @@ export const MON3_CHARTS = {
 
 // Monitor III history: RMF III writes one set of samples per MINTIME (default 100 s) to its VSAM data
 // sets, and the reports can be redisplayed for any range still held (RMF User's Guide, SC34-2664).
-// Retention is a game choice (user decision 2026-10-21), not a real default.
+// These shops run MINTIME(120) (user decision 2026-10-28); retention is a game choice (2026-10-21).
 export const MON3_HISTORY = {
-  mintimeTicks: 10,
+  mintimeTicks: 12,
   retentionHours: 48,
 };
 
