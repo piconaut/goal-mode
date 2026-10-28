@@ -123,6 +123,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'cancel': {
       const o = cancelChange(run, c.changeId);
+      if (o.restoredPolicy && !file.pendingPolicy) return done(o.run, `${o.message}; its edits are pending again (activate to reschedule)`, o.ok, o.restoredPolicy);
       return done(o.run, o.message, o.ok);
     }
     case 'draft': {

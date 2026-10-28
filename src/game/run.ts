@@ -20,6 +20,7 @@ import { judgeEvidence } from './evidence';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { Rng, streamRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
+import type { ServiceDefinition } from '../sim/wlm/types';
 import type { DifficultyId } from '../content/difficulty';
 import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
 import { hintLevelFor, morningHints, type StrainedClass } from './hints';
@@ -250,6 +251,8 @@ export interface ChangeOutcome {
   run: RunState;
   ok: boolean;
   message: string;
+  /** The policy a cancelled activation would have installed, so the caller can keep it as pending edits. */
+  restoredPolicy?: ServiceDefinition;
 }
 
 function failRisk(run: RunState): number {
@@ -360,11 +363,13 @@ function targetHint(s: RunState['sim'], cmd: Command): string {
 /** Cancel a change that has not taken effect yet. Capex is refunded; hours only on the day they were spent. */
 export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
   const c = run.changes.find((x) => x.id === changeId);
-  if (!c) return { run, ok: false, message: 'No such change' };
+  if (!c) return { run, ok: false, message: `No planned change ${idText('change', changeId)} (already cancelled or applied?)` };
   if (c.status !== 'PLANNED') return { run, ok: false, message: `Already ${c.status.toLowerCase()}` };
   if (c.activateDay === run.day && run.phase !== 'BRIEFING') return { run, ok: false, message: 'It activates today and the day has started' };
   const refundHours = c.plannedDay === run.day ? c.hours : 0;
+  const activation = c.commands.find((x) => x.kind === 'ACTIVATE_POLICY');
   return {
+    ...(activation?.kind === 'ACTIVATE_POLICY' ? { restoredPolicy: activation.definition } : {}),
     run: logLine(
       { ...run, changes: run.changes.filter((x) => x.id !== changeId), capexRemaining: run.capexRemaining + c.capex, hoursLeft: run.hoursLeft + refundHours },
       `Change cancelled: ${c.label}`,
