@@ -59,7 +59,9 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
     systems: `RMF interval ${v.config.rmfIntervalMin} min · IEAOPT per system`,
     cf: v.config.cfs.map((c) => (c.failed ? `${c.lparId} DOWN` : `${c.lparId} ${Math.round(cfUsed[c.lparId] ?? 0)} GB used`)).join(' · ') + ` · ${v.config.cfStructures.filter((x) => x.lost).length} lost`,
     dasd: `${v.config.dasd.lcus.length} LCUs · ${v.config.dasd.spareAliases} spare aliases`,
-    subsys: `${v.config.db2.length} Db2 · ${v.config.cics.length} CICS AORs · ${v.config.mq.length} MQ queue${v.config.mq.length === 1 ? '' : 's'}`,
+    db2: `${v.config.db2.length} subsystem${v.config.db2.length === 1 ? '' : 's'}`,
+    mq: `${v.config.mq.length} queue${v.config.mq.length === 1 ? '' : 's'}`,
+    cics: `${v.config.cics.length} AORs`,
     routing: `${v.config.routing.length} workloads · ${v.config.jobClasses.length} job classes`,
     projects: `${v.projects.filter((p) => p.done).length} done · ${pendingProjects} in progress · ${v.projects.length} available`,
     ops: v.batch.abended.length ? `${v.batch.abended.length} abended job(s) to restart` : 'no abended jobs · event fixes',
@@ -80,7 +82,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         ))}
       </div>
       <div className="muted desk-hint">{AREAS.find((a) => a.id === area)?.hint}</div>
-      <div className="grid">
+      <div className={area === 'systems' ? 'grid grid-wide' : 'grid'}>
         {area === 'wlm' && (
           <>
             <Section id="wlm" title={`WLM policy: active ${v.policyName}`} summary={summary.wlm} codex={['service-class', 'importance', 'velocity', 'perf-index']} wide>
@@ -113,8 +115,14 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
             <Section id="dasd" title="DASD: HyperPAV aliases per LCU" summary={summary.dasd} codex={['hyperpav']}>
               <Dasd desk={desk} />
             </Section>
-            <Section id="subsys" title="Db2, MQ and CICS" summary={summary.subsys} codex={['db2-velocity', 'mq-queues', 'qr-tcb']}>
-              <Subsystems desk={desk} />
+            <Section id="db2" title="Db2" summary={summary.db2} codex={['db2-velocity']}>
+              <Db2Section desk={desk} />
+            </Section>
+            <Section id="mq" title="MQ" summary={summary.mq} codex={['mq-queues']}>
+              <MqSection desk={desk} />
+            </Section>
+            <Section id="cics" title="CICS regions" summary={summary.cics} codex={['qr-tcb']} wide>
+              <CicsSection desk={desk} />
             </Section>
           </>
         )}
@@ -199,7 +207,7 @@ const costText = (p: ChangePreview): string => {
 const preview = (v: ViewModel, req: Parameters<typeof previewChange>[1]) => previewChange(v.previewCtx, req);
 
 /** Apply / add-to-basket buttons with the cost on the button and the reason when it can't be done. */
-function ChangeButtons({ desk, label, commands, error }: { desk: Desk; label: string; commands: Command[]; error: string | null }) {
+function ChangeButtons({ desk, label, commands, error, compact = false }: { desk: Desk; label: string; commands: Command[]; error: string | null; compact?: boolean }) {
   const p = preview(desk.v, { commands });
   const reason = error ?? p.reason;
   return (
@@ -208,8 +216,9 @@ function ChangeButtons({ desk, label, commands, error }: { desk: Desk; label: st
         + basket
       </button>
       <button type="button" className="apply" disabled={reason !== null} title={reason ?? (p.emergency ? 'Emergency change: applied within seconds' : 'Planned: takes effect at 06:00')} onClick={() => desk.apply(label, commands)}>
-        Apply · {costText(p)}
+        {compact ? 'Apply' : `Apply · ${costText(p)}`}
       </button>
+      {compact && !reason && <span className="cost">{costText(p)}</span>}
       {reason && <span className="err">{reason}</span>}
     </>
   );
@@ -226,6 +235,32 @@ function ChangeForm({ desk, label, commands, error, children }: { desk: Desk; la
       {children}
       <ChangeButtons desk={desk} label={label} commands={commands} error={error} />
     </form>
+  );
+}
+
+/** One setting per line in a column grid (`cols` is a grid-template-columns value shared with its SettingHead); Enter stages like ChangeForm. */
+function SettingRow({ desk, label, commands, error, cols, children }: { desk: Desk; label: string; commands: Command[]; error: string | null; cols: string; children: ReactNode }) {
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    if (error === null) desk.stage(commands);
+  };
+  return (
+    <form className="srow" style={{ gridTemplateColumns: cols }} onSubmit={submit}>
+      {children}
+      <span className="acts">
+        <ChangeButtons desk={desk} label={label} commands={commands} error={error} compact />
+      </span>
+    </form>
+  );
+}
+
+function SettingHead({ cols, heads }: { cols: string; heads: string[] }) {
+  return (
+    <div className="srow head" style={{ gridTemplateColumns: cols }}>
+      {heads.map((h, i) => (
+        <span key={`${i}:${h}`}>{h}</span>
+      ))}
+    </div>
   );
 }
 
@@ -753,19 +788,23 @@ function Systems({ desk }: { desk: Desk }) {
               <tr key={s.lparId}>
                 <td>{s.lparId}</td>
                 <td>
-                  {s.blwlinthdSec}s{' '}
-                  {[5, 20].map((sec) => (
-                    <ChangeButtonsInline key={sec} desk={desk} commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { blwlinthdSec: sec } }]} disabled={s.blwlinthdSec === sec} text={`${sec}s`} />
-                  ))}
+                  <span className="btns">
+                    <span className="num">{s.blwlinthdSec}s</span>
+                    {[5, 20].map((sec) => (
+                      <ChangeButtonsInline key={sec} desk={desk} commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { blwlinthdSec: sec } }]} disabled={s.blwlinthdSec === sec} text={`${sec}s`} />
+                    ))}
+                  </span>
                 </td>
                 <td>
-                  {s.iipHonorPriority ? 'YES' : 'NO'}{' '}
-                  <ChangeButtonsInline
-                    desk={desk}
-                    commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { iipHonorPriority: !s.iipHonorPriority } }]}
-                    disabled={false}
-                    text={s.iipHonorPriority ? 'NO' : 'YES'}
-                  />
+                  <span className="btns">
+                    <span className="num">{s.iipHonorPriority ? 'YES' : 'NO'}</span>
+                    <ChangeButtonsInline
+                      desk={desk}
+                      commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { iipHonorPriority: !s.iipHonorPriority } }]}
+                      disabled={false}
+                      text={s.iipHonorPriority ? 'NO' : 'YES'}
+                    />
+                  </span>
                 </td>
               </tr>
             ))}
@@ -882,6 +921,8 @@ function Structures({ desk }: { desk: Desk }) {
   );
 }
 
+const LCU_COLS = 'minmax(140px, 1.4fr) 40px 60px 108px auto minmax(150px, 2fr)';
+
 function Dasd({ desk }: { desk: Desk }) {
   const { lcus, spareAliases } = desk.cfg.dasd;
   return (
@@ -894,9 +935,12 @@ function Dasd({ desk }: { desk: Desk }) {
           Lower an LCU to free aliases, raise another to use them; stage both in the basket to move them in one change.
         </span>
       </div>
-      {lcus.map((l) => (
-        <LcuRow key={`${l.id}:${l.aliases}:${l.hotSkew}:${spareAliases}`} desk={desk} lcuId={l.id} />
-      ))}
+      <div className="stack-x">
+        <SettingHead cols={LCU_COLS} heads={['LCU', 'Vols', 'Aliases', 'Now (max)', '', '']} />
+        {lcus.map((l) => (
+          <LcuRow key={`${l.id}:${l.aliases}:${l.hotSkew}:${spareAliases}`} desk={desk} lcuId={l.id} />
+        ))}
+      </div>
       <div className="help">
         HyperPAV aliases are pooled per logical control unit (LCU) and cannot be borrowed across LCUs; an LCU addresses at most {LCU_MAX_DEVICES} devices
         (volumes + aliases). IOSQ in the DASD Activity LCU summary means an LCU has run out. Rebalancing moves hot data sets off its busiest volumes.
@@ -915,68 +959,37 @@ function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
   const err = !(Number.isInteger(n) && n >= 0) ? 'Whole number ≥ 0' : n > LCU_MAX_DEVICES - l.volumes ? `Max ${LCU_MAX_DEVICES - l.volumes} (256 devices per LCU)` : n - l.aliases > spare ? `Only ${spare} spare` : null;
   const skew = Math.max(DASD_REBALANCE.minSkew, l.hotSkew * DASD_REBALANCE.skewFactor);
   return (
-    <ChangeForm desk={desk} label={`LCU ${lcuId} aliases ${val}`} commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]} error={err}>
-      <label>
-        <b>LCU {l.id}</b> <span className="muted">{l.label} · {l.volumes} vols</span> aliases{' '}
-        <input value={val} onChange={(e) => setVal(e.target.value)} size={3} inputMode="numeric" />
-      </label>
+    <SettingRow desk={desk} label={`LCU ${lcuId} aliases ${val}`} commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]} error={err} cols={LCU_COLS}>
+      <span>
+        <b>LCU {l.id}</b> <span className="muted">{l.label}</span>
+      </span>
+      <span className="num">{l.volumes}</span>
+      <input aria-label={`LCU ${l.id} aliases`} value={val} onChange={(e) => setVal(e.target.value)} size={3} inputMode="numeric" />
       <Now>
         {l.aliases} (max {max})
       </Now>
       <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_LCU', lcuId, hotSkew: skew }]} disabled={l.hotSkew <= DASD_REBALANCE.minSkew} text="rebalance" />
-    </ChangeForm>
+    </SettingRow>
   );
 }
 
-function Subsystems({ desk }: { desk: Desk }) {
-  const { cfg } = desk;
-  const prodLpars = [...new Set(cfg.cics.map((r) => r.lparId))].sort();
+const DB2_COLS = 'minmax(110px, 1.1fr) minmax(100px, 1fr) 80px 84px minmax(150px, 2fr)';
+
+function Db2Section({ desk }: { desk: Desk }) {
   return (
     <>
-      {cfg.db2.map((d) => (
-        <Db2Row key={`${d.ssid}:${d.bufferPoolGb}:${d.maxDbat}`} desk={desk} ssid={d.ssid} />
-      ))}
-      <div className="help">Bigger buffer pools raise the hit ratio (fewer sync I/Os) but use LPAR memory. MAXDBAT caps concurrent DDF threads; above it requests queue.</div>
-      {cfg.mq.map((q) => (
-        <MqRow key={`${q.workloadId}:${q.maxDepth}`} desk={desk} workloadId={q.workloadId} />
-      ))}
-      {cfg.mq.length > 0 && (
-        <div className="help">
-          Messages wait on the queue instead of timing out, so a slow consumer shows up as queue depth and end-to-end latency. Past MAXDEPTH, puts fail (MQRC 2053) and the
-          sender retries. A deeper queue rides out longer bursts but holds more messages in memory.
-        </div>
-      )}
-      <div style={{ overflowX: 'auto' }}>
-        {cfg.cics.map((r) => (
-          <CicsRow key={`${r.name}:${r.maxTasks}:${r.qrFrac}`} desk={desk} name={r.name} />
+      <div className="stack-x">
+        <SettingHead cols={DB2_COLS} heads={['Subsystem', 'Setting', 'New value', 'Now', '']} />
+        {desk.cfg.db2.map((d) => (
+          <Db2Rows key={`${d.ssid}:${d.bufferPoolGb}:${d.maxDbat}`} desk={desk} ssid={d.ssid} />
         ))}
       </div>
-      <AddAor desk={desk} lpars={prodLpars} />
-      <div className="help">MXT limits concurrent tasks per region. The QR share is CPU that must run on the single QR TCB (non-threadsafe code), so one region tops out near one engine.</div>
+      <div className="help">Bigger buffer pools raise the hit ratio (fewer sync I/Os) but use LPAR memory. MAXDBAT caps concurrent DDF threads; above it requests queue.</div>
     </>
   );
 }
 
-function MqRow({ desk, workloadId }: { desk: Desk; workloadId: string }) {
-  const q = desk.cfg.mq.find((x) => x.workloadId === workloadId)!;
-  const [depth, setDepth] = useState(String(q.maxDepth));
-  const n = num(depth);
-  return (
-    <ChangeForm
-      desk={desk}
-      label={`ALTER QLOCAL(${q.queue}) MAXDEPTH(${depth})`}
-      commands={[{ kind: 'SET_MQ', workloadId, maxDepthMsgs: n }]}
-      error={Number.isInteger(n) && n >= 1 && n <= 999_999_999 ? null : 'MAXDEPTH is a whole number 1–999999999'}
-    >
-      <label>
-        <b>{q.queue}</b> <span className="muted">({workloadId})</span> MAXDEPTH <input value={depth} onChange={(e) => setDepth(e.target.value)} size={8} inputMode="numeric" />
-      </label>
-      <Now>{q.maxDepth.toLocaleString()}</Now>
-    </ChangeForm>
-  );
-}
-
-function Db2Row({ desk, ssid }: { desk: Desk; ssid: string }) {
+function Db2Rows({ desk, ssid }: { desk: Desk; ssid: string }) {
   const d = desk.cfg.db2.find((x) => x.ssid === ssid)!;
   const [bp, setBp] = useState(String(d.bufferPoolGb));
   const [dbat, setDbat] = useState(String(d.maxDbat));
@@ -986,23 +999,88 @@ function Db2Row({ desk, ssid }: { desk: Desk; ssid: string }) {
   const dbatN = num(dbat);
   return (
     <>
-      <ChangeForm desk={desk} label={`${ssid} BP ${bp} GB`} commands={[{ kind: 'SET_DB2', ssid, bufferPoolGb: bpN }]} error={bpErr}>
-        <label>
-          <b>{ssid}</b> <span className="muted">({d.lparId})</span> buffer pools (GB) <input value={bp} onChange={(e) => setBp(e.target.value)} size={4} inputMode="numeric" />
-        </label>
+      <SettingRow desk={desk} label={`${ssid} BP ${bp} GB`} commands={[{ kind: 'SET_DB2', ssid, bufferPoolGb: bpN }]} error={bpErr} cols={DB2_COLS}>
+        <span>
+          <b>{ssid}</b> <span className="muted">({d.lparId})</span>
+        </span>
+        <span>Buffer pools (GB)</span>
+        <input aria-label={`${ssid} buffer pools (GB)`} value={bp} onChange={(e) => setBp(e.target.value)} size={4} inputMode="numeric" />
         <Now>{d.bufferPoolGb} GB</Now>
-      </ChangeForm>
-      <ChangeForm
+      </SettingRow>
+      <SettingRow
         desk={desk}
         label={`${ssid} MAXDBAT ${dbat}`}
         commands={[{ kind: 'SET_DB2', ssid, maxDbat: dbatN }]}
         error={Number.isInteger(dbatN) && dbatN >= 1 ? null : 'MAXDBAT is a whole number ≥ 1'}
+        cols={DB2_COLS}
       >
-        <label>
-          {ssid} MAXDBAT <input value={dbat} onChange={(e) => setDbat(e.target.value)} size={5} inputMode="numeric" />
-        </label>
+        <span className="muted">{ssid}</span>
+        <span>MAXDBAT</span>
+        <input aria-label={`${ssid} MAXDBAT`} value={dbat} onChange={(e) => setDbat(e.target.value)} size={5} inputMode="numeric" />
         <Now>{d.maxDbat}</Now>
-      </ChangeForm>
+      </SettingRow>
+    </>
+  );
+}
+
+const MQ_COLS = 'minmax(150px, 1.4fr) 100px 90px minmax(150px, 2fr)';
+
+function MqSection({ desk }: { desk: Desk }) {
+  const { mq } = desk.cfg;
+  if (mq.length === 0) return <div className="muted">No MQ queues in this estate.</div>;
+  return (
+    <>
+      <div className="stack-x">
+        <SettingHead cols={MQ_COLS} heads={['Queue', 'MAXDEPTH', 'Now', '']} />
+        {mq.map((q) => (
+          <MqRow key={`${q.workloadId}:${q.maxDepth}`} desk={desk} workloadId={q.workloadId} />
+        ))}
+      </div>
+      <div className="help">
+        Messages wait on the queue instead of timing out, so a slow consumer shows up as queue depth and end-to-end latency. Past MAXDEPTH, puts fail (MQRC 2053) and the
+        sender retries. A deeper queue rides out longer bursts but holds more messages in memory.
+      </div>
+    </>
+  );
+}
+
+function MqRow({ desk, workloadId }: { desk: Desk; workloadId: string }) {
+  const q = desk.cfg.mq.find((x) => x.workloadId === workloadId)!;
+  const [depth, setDepth] = useState(String(q.maxDepth));
+  const n = num(depth);
+  return (
+    <SettingRow
+      desk={desk}
+      label={`ALTER QLOCAL(${q.queue}) MAXDEPTH(${depth})`}
+      commands={[{ kind: 'SET_MQ', workloadId, maxDepthMsgs: n }]}
+      error={Number.isInteger(n) && n >= 1 && n <= 999_999_999 ? null : 'MAXDEPTH is a whole number 1–999999999'}
+      cols={MQ_COLS}
+    >
+      <span>
+        <b>{q.queue}</b> <span className="muted">({workloadId})</span>
+      </span>
+      <input aria-label={`${q.queue} MAXDEPTH`} value={depth} onChange={(e) => setDepth(e.target.value)} size={9} inputMode="numeric" />
+      <Now>{q.maxDepth.toLocaleString()}</Now>
+    </SettingRow>
+  );
+}
+
+const CICS_COLS = 'minmax(110px, 1.2fr) 70px 64px 72px 80px minmax(150px, 2fr)';
+
+function CicsSection({ desk }: { desk: Desk }) {
+  const { cfg } = desk;
+  const prodLpars = [...new Set(cfg.cics.map((r) => r.lparId))].sort();
+  return (
+    <>
+      <div className="stack-x">
+        <SettingHead cols={CICS_COLS} heads={['Region', 'LPAR', 'QR share', 'MXT', 'Now', '']} />
+        {cfg.cics.map((r) => (
+          <CicsRow key={`${r.name}:${r.maxTasks}:${r.qrFrac}`} desk={desk} name={r.name} />
+        ))}
+      </div>
+      <h4>New region</h4>
+      <AddAor desk={desk} lpars={prodLpars} />
+      <div className="help">MXT limits concurrent tasks per region. The QR share is CPU that must run on the single QR TCB (non-threadsafe code), so one region tops out near one engine.</div>
     </>
   );
 }
@@ -1012,12 +1090,13 @@ function CicsRow({ desk, name }: { desk: Desk; name: string }) {
   const [mxt, setMxt] = useState(String(r.maxTasks));
   const n = num(mxt);
   return (
-    <ChangeForm desk={desk} label={`${name} MXT ${mxt}`} commands={[{ kind: 'SET_CICS', name, maxTasks: n }]} error={Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000'}>
-      <label>
-        <b>{name}</b> <span className="muted">({r.lparId}, QR {Math.round(r.qrFrac * 100)}%)</span> MXT <input value={mxt} onChange={(e) => setMxt(e.target.value)} size={4} inputMode="numeric" />
-      </label>
+    <SettingRow desk={desk} label={`${name} MXT ${mxt}`} commands={[{ kind: 'SET_CICS', name, maxTasks: n }]} error={Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000'} cols={CICS_COLS}>
+      <b>{name}</b>
+      <span className="muted">{r.lparId}</span>
+      <span className="num">{Math.round(r.qrFrac * 100)}%</span>
+      <input aria-label={`${name} MXT`} value={mxt} onChange={(e) => setMxt(e.target.value)} size={4} inputMode="numeric" />
       <Now>{r.maxTasks}</Now>
-    </ChangeForm>
+    </SettingRow>
   );
 }
 
@@ -1029,13 +1108,17 @@ function AddAor({ desk, lpars }: { desk: Desk; lpars: string[] }) {
   const err = !/^[A-Z][A-Z0-9#@$]{0,7}$/.test(effective) ? '1–8 chars, starts with a letter' : names.includes(effective) ? 'Region exists' : null;
   return (
     <ChangeForm desk={desk} label={`New AOR ${effective} on ${lpar}`} commands={[{ kind: 'ADD_AOR', lparId: lpar, name: effective, maxTasks: 200, qrFrac: 0.6 }]} error={err}>
-      New CICS AOR on
-      <select aria-label="LPAR for the new region" value={lpar} onChange={(e) => setLpar(e.target.value)}>
-        {lpars.map((x) => (
-          <option key={x}>{x}</option>
-        ))}
-      </select>
-      <input aria-label="Region name" placeholder={nextAorName(names)} value={name} onChange={(e) => setName(e.target.value.toUpperCase())} size={9} />
+      <label>
+        LPAR{' '}
+        <select aria-label="LPAR for the new region" value={lpar} onChange={(e) => setLpar(e.target.value)}>
+          {lpars.map((x) => (
+            <option key={x}>{x}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Name <input aria-label="Region name" placeholder={nextAorName(names)} value={name} onChange={(e) => setName(e.target.value.toUpperCase())} size={9} />
+      </label>
     </ChangeForm>
   );
 }
