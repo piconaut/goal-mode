@@ -398,6 +398,7 @@ const num = (s: string) => (s.trim() === '' ? NaN : Number(s));
 
 function Prsm({ desk }: { desk: Desk }) {
   const zos = desk.cfg.lpars.filter((l) => l.kind === 'ZOS');
+  const cpcIds = [...new Set(zos.map((x) => x.cpcId))];
   const [lpar, setLpar] = useState(zos[0]?.id ?? '');
   return (
     <>
@@ -405,9 +406,15 @@ function Prsm({ desk }: { desk: Desk }) {
         <label>
           LPAR{' '}
           <select value={lpar} onChange={(e) => setLpar(e.target.value)}>
-            {zos.map((x) => (
-              <option key={x.id}>{x.id}</option>
-            ))}
+            {cpcIds.length > 1
+              ? cpcIds.map((id) => (
+                  <optgroup key={id} label={`CPC ${id}`}>
+                    {zos.filter((x) => x.cpcId === id).map((x) => (
+                      <option key={x.id}>{x.id}</option>
+                    ))}
+                  </optgroup>
+                ))
+              : zos.map((x) => <option key={x.id}>{x.id}</option>)}
           </select>
         </label>
         <span className="muted">{desk.v.lpars.find((x) => x.id === lpar)?.polarity}</span>
