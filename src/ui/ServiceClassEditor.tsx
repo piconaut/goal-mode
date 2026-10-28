@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { ViewModel } from '../game/view';
 import { goalText } from '../sim/wlm/goals';
 import type { Goal, Importance, PeriodDef, ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
@@ -130,13 +130,28 @@ function goalError(kind: Goal['kind'], val: number, pct: number): string | null 
   return null;
 }
 
+function sameGoal(a: Goal, b: Goal): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'VEL' && b.kind === 'VEL') return a.velocity === b.velocity;
+  if (a.kind === 'PCT' && b.kind === 'PCT') return a.rtSec === b.rtSec && a.pct === b.pct;
+  if (a.kind === 'AVG' && b.kind === 'AVG') return a.rtSec === b.rtSec;
+  return true;
+}
+
 function useGoalState(p?: PeriodDef) {
   const g = p?.goal;
   const [kind, setKind] = useState<Goal['kind']>(g?.kind ?? 'VEL');
   const [val, setVal] = useState(g?.kind === 'VEL' ? String(g.velocity) : g && 'rtSec' in g ? String(g.rtSec) : '30');
   const [pct, setPct] = useState(g?.kind === 'PCT' ? String(g.pct) : '90');
   const [imp, setImp] = useState<Importance>(p?.importance ?? 4);
-  return { kind, setKind, val, setVal, pct, setPct, imp, setImp, err: goalError(kind, Number(val), Number(pct)), goal: () => goalOf(kind, val, pct) };
+  /** Back to a period's values (after the pending policy was discarded or changed elsewhere). */
+  const reset = (q: PeriodDef) => {
+    setKind(q.goal.kind);
+    setVal(q.goal.kind === 'VEL' ? String(q.goal.velocity) : 'rtSec' in q.goal ? String(q.goal.rtSec) : '30');
+    setPct(q.goal.kind === 'PCT' ? String(q.goal.pct) : '90');
+    setImp(q.importance);
+  };
+  return { kind, setKind, val, setVal, pct, setPct, imp, setImp, reset, err: goalError(kind, Number(val), Number(pct)), goal: () => goalOf(kind, val, pct) };
 }
 
 function PeriodRow({ c, i, send }: { c: ServiceClassDef; i: number; send: (e: Edit) => void }) {
@@ -146,12 +161,26 @@ function PeriodRow({ c, i, send }: { c: ServiceClassDef; i: number; send: (e: Ed
   const [dur, setDur] = useState(p.durationSu == null ? '' : String(p.durationSu));
   const durErr = !last && !(Number(dur) > 0) ? 'Duration (SU) > 0' : null;
   const err = g.err ?? durErr;
+  // Edits go straight to the pending policy, like classification rules: a dropdown when it changes, a typed value when
+  // the field is left or Enter is pressed. Nothing is sent while the period is invalid or unchanged.
+  const edit = { goal: g.goal(), importance: g.imp, durationSu: last ? null : Number(dur) };
+  const changed = !sameGoal(edit.goal, p.goal) || edit.importance !== p.importance || (!last && edit.durationSu !== p.durationSu);
+  const commit = () => {
+    if (!err && changed) send({ type: 'WLM_EDIT', edit: { op: 'SET_PERIOD', classId: c.id, period: i, ...edit } });
+  };
+  useEffect(commit, [g.kind, g.imp]); // eslint-disable-line react-hooks/exhaustive-deps
+  const periodKey = JSON.stringify(p);
+  useEffect(() => {
+    g.reset(p);
+    setDur(p.durationSu == null ? '' : String(p.durationSu));
+  }, [periodKey]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <form
       className="form"
+      onBlur={commit}
       onSubmit={(e) => {
         e.preventDefault();
-        if (!err) send({ type: 'WLM_EDIT', edit: { op: 'SET_PERIOD', classId: c.id, period: i, goal: g.goal(), importance: g.imp, durationSu: last ? null : Number(dur) } });
+        commit();
       }}
     >
       <b style={{ minWidth: 28 }}>P{i + 1}</b>
@@ -161,9 +190,11 @@ function PeriodRow({ c, i, send }: { c: ServiceClassDef; i: number; send: (e: Ed
           for <input aria-label="Duration (service units)" value={dur} onChange={(e) => setDur(e.target.value)} size={7} inputMode="numeric" /> SU
         </label>
       )}
-      <button type="submit" disabled={err !== null}>
-        Save P{i + 1}
-      </button>
+      {last && i > 0 && (
+        <button type="button" onClick={() => send({ type: 'WLM_EDIT', edit: { op: 'REMOVE_PERIOD', classId: c.id } })}>
+          Remove P{i + 1}
+        </button>
+      )}
       {err && <span className="err">{err}</span>}
     </form>
   );
@@ -218,8 +249,8 @@ function ClassEditor({ c, groups, cics, send }: { c: ServiceClassDef; groups: Re
       {c.periods.map((_, i) => (
         <PeriodRow key={i} c={c} i={i} send={send} />
       ))}
-      <div className="form">
-        {canAdd && (
+      {canAdd && (
+        <div className="form">
           <>
             <span className="muted">Add P{c.periods.length + 1} after P{c.periods.length} uses</span>
             <input aria-label="Previous period duration (SU)" value={prevDur} onChange={(e) => setPrevDur(e.target.value)} size={7} inputMode="numeric" />
@@ -233,13 +264,8 @@ function ClassEditor({ c, groups, cics, send }: { c: ServiceClassDef; groups: Re
               Add period
             </button>
           </>
-        )}
-        {c.periods.length > 1 && (
-          <button type="button" onClick={() => send({ type: 'WLM_EDIT', edit: { op: 'REMOVE_PERIOD', classId: c.id } })}>
-            Remove P{c.periods.length}
-          </button>
-        )}
-      </div>
+        </div>
+      )}
       <h4>Attributes</h4>
       <div className="form">
         <label>
@@ -335,7 +361,6 @@ function ResourceGroups({ groups, defs, send }: { groups: ResourceGroupDef[]; de
               <th>Min</th>
               <th>Max</th>
               <th>Classes</th>
-              <th />
             </tr>
           </thead>
           <tbody>
@@ -355,14 +380,35 @@ function RgRow({ g, members, send }: { g: ResourceGroupDef; members: string[]; s
   const [min, setMin] = useState(g.min === null ? '' : String(g.min));
   const [max, setMax] = useState(g.max === null ? '' : String(g.max));
   const n = (x: string) => (x.trim() === '' ? null : Number(x));
-  const dirty = type !== g.type || n(min) !== g.min || n(max) !== g.max;
+  // Like periods: a type change, or leaving a limit field, edits the pending policy.
+  const commit = (t = type) => {
+    const changed = t !== g.type || n(min) !== g.min || n(max) !== g.max;
+    if (changed && members.length > 0) send({ type: 'WLM_EDIT', edit: { op: 'SET_RESOURCE_GROUP', classId: members[0]!, group: { id: g.id, type: t, min: n(min), max: n(max) } } });
+  };
+  const groupKey = JSON.stringify(g);
+  useEffect(() => {
+    setType(g.type);
+    setMin(g.min === null ? '' : String(g.min));
+    setMax(g.max === null ? '' : String(g.max));
+  }, [groupKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') commit();
+  };
   return (
     <tr>
       <td>
         <b>{g.id}</b>
       </td>
       <td>
-        <select aria-label={`${g.id} type`} value={type} onChange={(e) => setType(Number(e.target.value) as 1 | 2 | 3)}>
+        <select
+          aria-label={`${g.id} type`}
+          value={type}
+          onChange={(e) => {
+            const t = Number(e.target.value) as 1 | 2 | 3;
+            setType(t);
+            commit(t);
+          }}
+        >
           {RG_TYPES.map((t) => (
             <option key={t.type} value={t.type}>
               {t.label}
@@ -371,21 +417,12 @@ function RgRow({ g, members, send }: { g: ResourceGroupDef; members: string[]; s
         </select>
       </td>
       <td>
-        <input aria-label={`${g.id} minimum`} value={min} onChange={(e) => setMin(e.target.value)} size={6} placeholder="none" /> <span className="muted">{rgUnit(type)}</span>
+        <input aria-label={`${g.id} minimum`} value={min} onChange={(e) => setMin(e.target.value)} onBlur={() => commit()} onKeyDown={onKey} size={6} placeholder="none" /> <span className="muted">{rgUnit(type)}</span>
       </td>
       <td>
-        <input aria-label={`${g.id} maximum`} value={max} onChange={(e) => setMax(e.target.value)} size={6} placeholder="none" /> <span className="muted">{rgUnit(type)}</span>
+        <input aria-label={`${g.id} maximum`} value={max} onChange={(e) => setMax(e.target.value)} onBlur={() => commit()} onKeyDown={onKey} size={6} placeholder="none" /> <span className="muted">{rgUnit(type)}</span>
       </td>
       <td style={{ fontSize: 12 }}>{members.join(', ')}</td>
-      <td>
-        <button
-          type="button"
-          disabled={!dirty || members.length === 0}
-          onClick={() => send({ type: 'WLM_EDIT', edit: { op: 'SET_RESOURCE_GROUP', classId: members[0]!, group: { id: g.id, type, min: n(min), max: n(max) } } })}
-        >
-          Save
-        </button>
-      </td>
     </tr>
   );
 }
