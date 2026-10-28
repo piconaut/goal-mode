@@ -83,8 +83,9 @@ export const STRAIN_HINT: HintText = {
 };
 
 // FICTIONAL: a strain hint needs a worst PI of at least minPi and riseFactor × the day before, so classes that
-// run hot every night (velocity goals on a busy batch window) stay quiet.
-export const STRAIN = { minPi: 3, riseFactor: 2 };
+// run hot every night (velocity goals on a busy batch window) stay quiet. A response-time PI from fewer than
+// minEnded ended transactions in an interval is too thin to count (one slow transaction at 23:45 reads PI 4).
+export const STRAIN = { minPi: 3, riseFactor: 2, minEnded: 20 };
 
 export const BATCH_HINTS = {
   late: {

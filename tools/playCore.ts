@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { advance, cancelChange, chooseDraft, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
@@ -22,11 +22,13 @@ import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
 import { addPin, removePin, type PinRequest } from '../src/game/evidence';
 import { EVIDENCE_METRICS } from '../src/content/evidence';
+import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, pendingBase, type WlmEdit } from '../src/game/wlmEdit';
 import { buildView } from '../src/game/view';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
-import type { ServiceDefinition } from '../src/sim/wlm/types';
+import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
+import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
 import { TICK_SEC, TICKS_PER_HOUR } from '../src/sim/core/units';
 import type { SmfKind } from '../src/worker/protocol';
@@ -43,6 +45,7 @@ export type PlayCommand =
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
   | { cmd: 'project'; id: string; hours: number }
+  | { cmd: 'restart'; name: string }
   /** intervalId (WLMGL): the stable interval id the CLI shows; it replaces req.index. */
   | { cmd: 'pin'; req: PinRequest; intervalId?: number }
   | { cmd: 'unpin'; id: number }
@@ -106,7 +109,9 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
   switch (c.cmd) {
     case 'start': {
       if (run.phase !== 'BRIEFING') return fail(`Cannot start a day in phase ${run.phase}`);
-      return done(startDay(run, content), 'Day started (06:00).');
+      const started = startDay(run, content);
+      const failed = file.pendingPolicy ? null : failedPolicyToday(started);
+      return done(started, `Day started (06:00).${failed ? ` Policy activation failed; its edits are pending again (activate to reschedule).` : ''}`, true, failed ?? file.pendingPolicy);
     }
     case 'note':
       return c.text.trim() ? done(run, 'Noted.') : fail('Empty note');
@@ -114,11 +119,26 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (run.phase !== 'LIVE') return fail(`Nothing to advance in phase ${run.phase}; use start.`);
       const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
       let r = run;
-      for (let h = 0; h < hours && r.phase === 'LIVE'; h++) r = advance(r, sc(r), content, TICKS_PER_HOUR);
-      return done(r, r.phase === 'LIVE' ? `Advanced to ${buildView(r, sc(r)).clock}.` : `Day over: ${r.phase}.`);
+      const abended = (x: RunState) => new Set(buildView(x, sc(x)).batch.abended.map((a) => `${a.day}:${a.name}`));
+      const before = abended(run);
+      let fresh: string[] = [];
+      // Stop at the hour a job abends, as an operator would be paged.
+      for (let h = 0; h < hours && r.phase === 'LIVE' && fresh.length === 0; h++) {
+        r = advance(r, sc(r), content, TICKS_PER_HOUR);
+        if (r.phase === 'LIVE') fresh = buildView(r, sc(r)).batch.abended.filter((a) => !before.has(`${a.day}:${a.name}`)).map((a) => a.name);
+      }
+      const mail = r.inbox.slice(run.inbox.length).map((m) => `\n  mail: ${m.from}: ${m.subject}`).join('');
+      const page = fresh.length ? `\nSTOPPED: ${fresh.join(' ')} ABENDED. restart ${fresh[0]} (0.5h) or let it miss the window.` : '';
+      return done(r, `${r.phase === 'LIVE' ? `Advanced to ${buildView(r, sc(r)).clock}.` : `Day over: ${r.phase}.`}${mail}${page}`);
     }
     case 'change': {
       const o = requestChange(run, content, c.req);
+      return done(o.run, o.message, o.ok);
+    }
+    case 'restart': {
+      const a = buildView(run, sc(run)).batch.abended.find((x) => x.name === c.name.toUpperCase());
+      if (!a) return fail(`${c.name} is not abended now. Abended jobs: ${buildView(run, sc(run)).batch.abended.map((x) => x.name).join(' ') || 'none'} (a job can be restarted only during its batch night).`);
+      const o = requestChange(run, content, { label: `Restart ${a.name}`, commands: [{ kind: 'RESTART_JOB', day: a.day, name: a.name }] });
       return done(o.run, o.message, o.ok);
     }
     case 'cancel': {
@@ -282,7 +302,9 @@ function smfHourKey(run: RunState, arg: string | undefined): string | null {
 function batchText(b: object): string {
   // Days as the game labels them (D1 = first played day), matching `pin BATCH D2`.
   const scalars = Object.entries(b).filter(([, v]) => !Array.isArray(v)).map(([k, v]) => (k === 'day' && typeof v === 'number' ? [k, `D${v + 1}`] : [k, v]));
-  const lists = Object.entries(b).filter(([, v]) => Array.isArray(v)) as [string, object[]][];
+  // Critical path first, development work last; otherwise by start (the order batchNight gives).
+  const rank = (j: object) => ('critical' in j && j.critical ? 0 : 'stream' in j && j.stream === 'DEV' ? 2 : 1);
+  const lists = (Object.entries(b).filter(([, v]) => Array.isArray(v)) as [string, object[]][]).map(([k, v]): [string, object[]] => [k, [...v].sort((x, y) => rank(x) - rank(y))]);
   const legend = 'stretch: how many times slower than running alone, at the job\'s last interval (×1 = no contention; a capped or CPU-starved LPAR raises it); queuedSec: wait for an initiator';
   return [table([Object.fromEntries(scalars)]), ...lists.flatMap(([k, v]) => ['', k, table(v)]), '', legend].join('\n');
 }
@@ -323,7 +345,8 @@ export function statusText(file: PlayFile): string {
     out.push(`last report card (day ${r.day + 1}): score ${r.score}${r.batchMissed ? ', batch window MISSED' : ''}; events: ${r.events.join(', ') || 'none'}`);
     out.push('  ' + r.sla.map((s) => `${s.workloadId} ${s.attainmentPct.toFixed(1)}%`).join('  '));
   }
-  const today = v.inbox.filter((m) => m.day >= v.day - 1);
+  // Yesterday's mail stays (night-time alerts land on the played day before); only today's hints are shown.
+  const today = v.inbox.filter((m) => m.day >= v.day - 1 && (m.from !== HINT_SENDER || m.day >= v.day));
   if (today.length) {
     out.push('inbox:');
     for (const m of today) out.push(`  [day ${m.day + 1}] ${m.from}: ${m.subject}\n    ${m.body.replace(/\n/g, '\n    ')}`);
@@ -341,13 +364,13 @@ export function statusText(file: PlayFile): string {
   const projs = v.projects.filter((p) => p.hoursDone > 0);
   if (projs.length) out.push('projects: ' + projs.map((p) => (p.done ? `${p.id} done` : `${p.id} ${p.hoursDone}/${p.hours}h (${p.hoursToday}/${p.maxHoursPerDay}h today)`)).join('; '));
   if (planned.length) out.push('planned changes: ' + planned.map((c) => `${idText('change', c.id)} ${c.label} (day ${c.activateDay + 1})`).join('; '));
-  if (v.draft) out.push('draft options: ' + v.draft.map((d) => `${d.id}: ${d.title}. ${d.description}`).join('\n  '));
+  if (v.draft) out.push('draft options (take one with draft <id>; draft none forgoes it):\n  ' + v.draft.map((d) => `${d.id}: ${d.title}. ${d.description}`).join('\n  '));
   if (v.reports.length) {
     const ivs = run.sim.rmf.intervals;
     out.push(`RMF intervals (report KIND <id>): ${intervalId(ivs[v.reports[0]!.index]!)}..${intervalId(ivs[v.reports.at(-1)!.index]!)}, latest ${v.reports.slice(-4).map((r) => `${intervalId(ivs[r.index]!)} (${intervalLabel(ivs[r.index]!)})`).join(', ')}`);
   }
   if (v.endReason) out.push(`END: ${v.endReason}`);
-  out.push(`next: ${v.phase === 'BRIEFING' ? 'plan changes, then start' : v.phase === 'LIVE' ? 'advance <hours>' : v.phase === 'REVIEW' ? 'file RCAs, read reports, then draft <id|none> to close the day' : 'run over'}`);
+  out.push(`next: ${v.phase === 'BRIEFING' ? 'plan changes, then start' : v.phase === 'LIVE' ? 'advance <hours>' : v.phase === 'REVIEW' ? 'file RCAs, read reports, then draft <id> to take an option and close the day (draft none takes nothing)' : 'run over'}`);
   return out.join('\n');
 }
 
@@ -393,6 +416,36 @@ function table(rows: object[], omit: string[] = []): string {
   return [line(cols), ...flat.map((o) => line(cols.map((c) => o[c] ?? '')))].join('\n');
 }
 
+/** The WLM service definition (active, or the pending edits) and the configuration it runs on. */
+export function policyText(file: PlayFile, pending: boolean): string {
+  const run = file.run;
+  if (pending && !file.pendingPolicy) return 'No pending policy edits.';
+  const def = pending ? file.pendingPolicy! : run.sim.wlm.definition;
+  const out = [`${pending ? 'pending' : 'active'} policy ${def.policyName}  CICS regions managed by ${def.cicsRegionMode ?? 'TRANSACTION'} goals  I/O priority management ${def.ioPriorityManagement === false ? 'NO' : 'YES'}`];
+  out.push('service classes (period: goal, duration SU):');
+  for (const c of def.classes) {
+    const periods = c.periods.map((p, i) => `#${i + 1} ${goalText(p)}${p.durationSu !== null ? ` DUR ${p.durationSu}` : ''}`).join('; ');
+    const flags = [c.cpuCritical && 'CPU-critical', c.storageCritical && 'storage-critical', c.resourceGroup && `RG ${c.resourceGroup}`, c.honorPriority === false && 'zIIP honor priority NO'].filter(Boolean).join(', ');
+    out.push(`  ${c.id}: ${periods}${flags ? `  [${flags}]` : ''}`);
+  }
+  if (def.resourceGroups.length) out.push(`resource groups: ${def.resourceGroups.map((g) => `${g.id} type ${g.type} min ${g.min ?? '-'} max ${g.max ?? '-'}`).join(', ')}`);
+  if (def.reportClasses.length) out.push(`report classes: ${def.reportClasses.join(' ')}`);
+  out.push('classification rules (subsystem: qualifier=pattern → service class / report class):');
+  const rule = (r: ClassificationRule, depth: number): string[] => [
+    `${'  '.repeat(depth + 2)}${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(inherit)'}${r.reportClass ? ` / ${r.reportClass}` : ''}`,
+    ...r.children.flatMap((ch) => rule(ch, depth + 1)),
+  ];
+  for (const ss of def.subsystems) {
+    out.push(`  ${ss.subsystem} (default ${ss.defaultServiceClass ?? 'none'}${ss.defaultReportClass ? ` / ${ss.defaultReportClass}` : ''}):`);
+    for (const r of ss.rules) out.push(...rule(r, 0));
+  }
+  const cfg = run.sim.config;
+  out.push('LPARs (logical processors by pool; weight):');
+  for (const l of cfg.lpars) out.push(`  ${l.id} on ${l.cpcId}: ${l.pools.map((p) => `${p.pool} ${p.logical}${p.reserved ? ` (+${p.reserved} reserved)` : ''}${p.dedicated ? ' dedicated' : ` weight ${p.weight}`}`).join(', ')}`);
+  if (cfg.cics.length) out.push(`CICS regions: ${cfg.cics.map((r) => `${r.name}@${r.lparId} MXT ${r.maxTasks} QR ${Math.round(r.qrFrac * 100)}%`).join(', ')}`);
+  return out.join('\n');
+}
+
 /** What can be ordered or fixed: the Change Desk catalog, the tool tree and the RCA vocabulary. */
 export function catalogText(file: PlayFile): string {
   const v = buildView(file.run, sc(file.run));
@@ -400,6 +453,7 @@ export function catalogText(file: PlayFile): string {
   for (const h of HARDWARE) out.push(`  ${h.id}: ${h.name}. capex $${h.capex.toLocaleString()}, opex $${h.opexPerDay.toLocaleString()}/day, lead ${h.leadDays}d${h.durationDays ? `, lasts ${h.durationDays}d` : ''}. ${h.description}`);
   out.push('fixes (change {"label":..,"fixId":ID}):');
   for (const f of FIXES.filter((x) => v.fixIds.includes(x.id))) out.push(`  ${f.id}: ${f.name}. ${f.hours}h${f.trustCost ? `, ${f.trustCost.facet} trust -${f.trustCost.amount}` : ''}${f.operational ? ', operator command (no change-board trust cost)' : ''}. ${f.description}`);
+  out.push(`batch restart (restart JOB; 0.5h; from the last checkpoint, only during its batch night): abended now: ${v.batch.abended.map((a) => `${a.name}${a.critical ? ' (critical path)' : ''}`).join(' ') || 'none'}`);
   out.push(`tools (buy ID; insight ${v.insight}):`);
   for (const t of v.tools) out.push(`  ${t.id}${t.trialLastDay !== null ? ` [free trial to end of day ${t.trialLastDay + 1}; buy to keep]` : t.owned ? ' [owned]' : ''}${t.comingSoon ? ' [coming soon]' : ''}: ${t.name}, tier ${t.tier}, ${t.insightCost} insight${t.prereqs.length ? `, needs ${t.prereqs.join('+')}` : ''}. ${t.reveals}`);
   out.push(`RCA mechanisms: ${MECHANISMS.join(' ')}`, `RCA triggers: ${TRIGGERS.join(' ')}`);

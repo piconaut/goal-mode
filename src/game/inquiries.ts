@@ -32,8 +32,9 @@ type Out = { run: RunState; ok: boolean; message: string };
 
 export function askAround(run: RunState, topicId: InquiryKind, workloadId: string | null, scenario: Scenario): Out {
   const t = INQUIRY_TOPICS.find((x) => x.id === topicId);
-  if (!t) return { run, ok: false, message: 'Unknown question' };
-  if (run.phase !== 'BRIEFING' && run.phase !== 'LIVE') return { run, ok: false, message: 'Ask during the day' };
+  if (!t) return { run, ok: false, message: `Unknown question; topics: ${INQUIRY_TOPICS.map((x) => x.id).join(', ')}` };
+  // REVIEW spends tomorrow's hours, like planning a change; the reply clock starts at once.
+  if (run.phase !== 'BRIEFING' && run.phase !== 'LIVE' && run.phase !== 'REVIEW') return { run, ok: false, message: 'The run is over' };
   const st = run.inquiries ?? empty();
   if (st.pending.length >= INQUIRY.maxOpen) return { run, ok: false, message: `Wait for answers first (at most ${INQUIRY.maxOpen} open questions)` };
   if (t.perWorkload && !allWorkloads(scenario, run).some((w) => w.id === workloadId)) return { run, ok: false, message: 'Pick an application' };

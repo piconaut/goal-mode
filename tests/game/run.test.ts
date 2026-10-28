@@ -4,7 +4,7 @@ import { failRiskFor, hardwareItem, hoursFor, opexBudgetFor } from '../../src/ga
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
-import { advance, chooseDraft, continueEndless, drawEvents, newRun, overallTrust, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
+import { advance, chooseDraft, continueEndless, drawEvents, failedPolicyToday, newRun, overallTrust, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 import { streamRng } from '../../src/sim/core/rng';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
@@ -30,6 +30,15 @@ describe('changes', () => {
     const status = r.changes[0]!.status;
     if (status === 'APPLIED') expect(r.sim.config.lpars.find((l) => l.id === 'PROD1')!.pools[0]!.weight).toBe(565);
     else expect(status).toBe('FAILED');
+  });
+
+  it('a policy activation that failed this morning hands its edits back', () => {
+    const r = fresh();
+    const definition = { ...r.sim.wlm.definition, policyName: 'NEWPOL' };
+    const change = { id: 9, label: 'Activate policy NEWPOL', commands: [{ kind: 'ACTIVATE_POLICY' as const, definition }], hours: 1, capex: 0, opexPerDay: 0, activateDay: r.day, plannedDay: r.day, emergency: false, status: 'FAILED' as const, revertDay: null, revertCommands: [], endsEvent: null };
+    expect(failedPolicyToday({ ...r, changes: [change] })?.policyName).toBe('NEWPOL');
+    expect(failedPolicyToday({ ...r, changes: [{ ...change, activateDay: r.day - 1 }] })).toBeNull();
+    expect(failedPolicyToday({ ...r, changes: [{ ...change, status: 'APPLIED' }] })).toBeNull();
   });
 
   it('hardware orders spend capex and arrive after their lead time', () => {

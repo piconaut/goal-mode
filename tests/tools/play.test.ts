@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, catalogText, clockText, decodePlayFile, intervalId, mon3Text, encodePlayFile, newPlayFile, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, catalogText, clockText, decodePlayFile, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
@@ -88,6 +88,29 @@ describe('headless play interface', () => {
     expect(applyPlayCommand(f, { cmd: 'rca', incidentId: 1, mechanism: 'CPU_PRIORITY', trigger: 'POLICY', evidenceIds: [id + 99] }).ok).toBe(false);
     f = run(f, [{ cmd: 'unpin', id }]);
     expect(f.run.pins).toHaveLength(0);
+  });
+
+  it('advance stops at the hour a job abends, and restart takes the job by name', () => {
+    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 16 }]);
+    expect(applyPlayCommand(f, { cmd: 'restart', name: 'NOSUCH' }).text).toContain('Abended jobs: none');
+    f = { ...f, run: { ...f.run, pendingCommands: [...f.run.pendingCommands, { kind: 'ABEND_JOB', critical: true }] } };
+    const tick = f.run.sim.tick;
+    const r = applyPlayCommand(f, { cmd: 'advance', hours: 5 });
+    expect(r.file.run.sim.tick - tick).toBe(TICKS_PER_HOUR);
+    const name = /STOPPED: (\S+) ABENDED/.exec(r.text)![1]!;
+    expect(catalogText(r.file)).toContain(`abended now: ${name}`);
+    const back = applyPlayCommand(r.file, { cmd: 'restart', name: name.toLowerCase() });
+    expect(back.ok, back.text).toBe(true);
+    expect(back.file.run.changes.at(-1)!.label).toBe(`Restart ${name}`);
+  });
+
+  it('policy shows the service definition, its rules and the processors it runs on', () => {
+    const text = policyText(newPlayFile(7, 'NORMAL', 'harbourline'), false);
+    expect(text).toMatch(/active policy \S+/);
+    expect(text).toContain('MKTORD: #1 AVG 0.150s IMP 1');
+    expect(text).toContain('JES (default BATCHPRD)');
+    expect(text).toMatch(/PRDA on CPC1: CP \d+.*ZIIP 1/);
+    expect(policyText(newPlayFile(7), true)).toBe('No pending policy edits.');
   });
 
   it('notes are logged without touching the run; hour-by-hour advance (--pace) ends in the same state', () => {

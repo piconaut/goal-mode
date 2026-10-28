@@ -87,6 +87,22 @@ describe('strain hints (classes under new pressure with no incident)', () => {
     expect(strainedClasses(run, sc, [], today, prev).map((c) => c.scKey)).toEqual(['HOT#1', own]);
     expect(strainedClasses(run, sc, [inc(w.id, 'QR_TCB', 2)], today, prev).map((c) => c.scKey)).toEqual(['HOT#1']);
     expect(strainedClasses(run, sc, [], today, undefined)).toEqual([]);
+    // Batch classes (from the JES rules) are left to the batch-window hint.
+    const jes = run.sim.wlm.definition.subsystems.find((x) => x.subsystem === 'JES')!.defaultServiceClass!;
+    expect(strainedClasses(run, sc, [], { [`${jes}#1`]: 9 }, { [`${jes}#1`]: 1 })).toEqual([]);
+  });
+
+  it('ignore a response-time PI from too few ended transactions', async () => {
+    const { worstPiOfDay } = await import('../../src/game/run');
+    const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
+    const row = (scKey: string, goalText: string, pi: number, ended: number) => ({ lparId: '*PLEX', scKey, goalText, pi, ended });
+    const iv = (rows: object[]) => ({ endTick: TICKS_PER_DAY / 2, wlm: rows }) as never;
+    const intervals = [
+      iv([row('AGENTS#1', '90% < 0.500s IMP 2', 1.1, 300), row('BATCH#1', 'VELOCITY 30 IMP 4', 8, 0)]),
+      iv([row('AGENTS#1', '90% < 0.500s IMP 2', 4, 3), row('AVG#1', 'AVG 0.150s IMP 1', 4, 2)]),
+    ];
+    expect(worstPiOfDay(intervals, 0)).toEqual({ 'AGENTS#1': 4, 'BATCH#1': 8, 'AVG#1': 4 });
+    expect(worstPiOfDay(intervals, 0, 20)).toEqual({ 'AGENTS#1': 1.1, 'BATCH#1': 8 });
   });
 });
 

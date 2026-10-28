@@ -1,11 +1,11 @@
 // Headless play CLI for agents (PROGRESS M8.9). Each call loads the run file, applies one command, saves it.
 // Usage:
 //   npm run play -- runs/a.json new 42 [normal|story|hard|ironman] [midwest|revenue|harbourline]
-//   npm run play -- runs/a.json status | catalog | mon3 [system] [--json] | smf DB2|CICS|BATCH|SMF113 [hour|D8 12] [--json]
+//   npm run play -- runs/a.json status | catalog | policy [pending] | mon3 [system] [--json] | smf DB2|CICS|BATCH|SMF113 [hour|D8 12] [--json]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json rca INC<n> <MECHANISM> <TRIGGER> --evidence PIN<n>,PIN<n>   (bare numbers work too)
-//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n>
+//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n> | restart <JOB>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric>
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED [interval id: Partition Data; none = Monitor III now] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
@@ -24,7 +24,7 @@ import type { EvidenceMetric } from '../src/content/evidence';
 import type { InquiryKind } from '../src/content/inquiries';
 import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { writeSpectateFile } from './spectateFile';
-import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, statusText, type PlayCommand } from './playCore';
+import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, policyText, statusText, type PlayCommand } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
@@ -55,12 +55,13 @@ function pinRequest(a: string[]): PinRequest {
   throw new Error('pin source: WLMGL | MON3 | CPC | DB2 | CICS | BATCH');
 }
 
-type ReadOnly = 'status' | 'catalog' | 'mon3';
+type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy';
 function parse(): PlayCommand | ReadOnly {
   switch (verb) {
     case 'status': return 'status';
     case 'catalog': return 'catalog';
     case 'mon3': return 'mon3';
+    case 'policy': return 'policy';
     case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, ...(rest.length > 1 ? { hour: rest.slice(1).join(' ') } : {}), ...(json ? { json } : {}) };
     case 'new': {
       const seed = Number(rest[0] ?? 42), difficulty = (rest[1] ?? 'normal').toUpperCase(), scenario = rest[2];
@@ -81,6 +82,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
     case 'project': return { cmd: 'project', id: rest[0] ?? '', hours: Number(rest[1] ?? 1) };
     case 'unpin': return { cmd: 'unpin', id: parseIdText('pin', rest[0] ?? '') };
+    case 'restart': return { cmd: 'restart', name: rest[0] ?? '' };
     case 'cancel': return { cmd: 'cancel', changeId: parseIdText('change', rest[0] ?? '') };
     case 'pin': return pinCommand(rest);
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
@@ -105,13 +107,13 @@ const isNew = typeof c === 'object' && c.cmd === 'new';
 if (!isNew && !existsSync(path)) throw new Error(`${path} does not exist; start with: new <seed>`);
 let file = isNew ? null : decodePlayFile(readFileSync(path, 'utf8'));
 if (typeof c === 'string') {
-  console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : mon3Text(file!, { system: rest[0], json }));
+  console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : c === 'policy' ? policyText(file!, rest[0] === 'pending') : mon3Text(file!, { system: rest[0], json }));
 } else {
   // --pace: advance one hour at a time, saving after each so a spectator sees every step (same end state).
   const steps: PlayCommand[] = paceMs > 0 && c.cmd === 'advance' ? Array.from({ length: Math.max(1, Math.min(24, Math.floor(c.hours))) }, () => ({ cmd: 'advance', hours: 1 })) : [c];
   let res = { file: file ?? ({ version: 1, log: [] } as never), ok: true, text: '' };
   for (const [i, step] of steps.entries()) {
-    if (i > 0 && (res.file.run.phase !== 'LIVE' || !res.ok)) break;
+    if (i > 0 && (res.file.run.phase !== 'LIVE' || !res.ok || res.text.includes('\nSTOPPED:'))) break;
     if (i > 0) await new Promise((r) => setTimeout(r, paceMs));
     res = applyPlayCommand(res.file, step);
     if (res.ok) writeSpectateFile(path, res.file);
@@ -119,6 +121,6 @@ if (typeof c === 'string') {
   }
   file = res.file;
   if (steps.length === 1) console.log(res.ok ? res.text : `REFUSED: ${res.text}`);
-  if (res.ok && c.cmd !== 'report' && c.cmd !== 'smf' && c.cmd !== 'note') console.log('\n' + statusText(file));
+  if (res.ok && c.cmd !== 'report' && c.cmd !== 'smf' && c.cmd !== 'note' && c.cmd !== 'pin' && c.cmd !== 'unpin') console.log('\n' + statusText(file));
   process.exitCode = res.ok ? 0 : 2;
 }

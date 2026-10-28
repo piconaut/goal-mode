@@ -5,7 +5,7 @@ import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { packOf } from '../content/packs';
 import { MIDWEST } from '../content/scenarios';
-import { advance, cancelChange, chooseDraft, continueEndless, newRun, requestChange, startDay, submitRca } from '../game/run';
+import { advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeDefinition, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
@@ -459,6 +459,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'START_DAY':
       run = startDay(run, pack().game);
+      pendingPolicy ??= failedPolicyToday(run);
       if (m.auto && run.phase === 'LIVE') {
         if (speed !== AUTO_SPEED) speedBeforeAuto = speed > 0 ? speed : 1;
         speed = AUTO_SPEED;

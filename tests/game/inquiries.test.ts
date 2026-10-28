@@ -36,6 +36,13 @@ describe('ask around', () => {
     expect(replies).toMatch(/[A-Z]{3}\d{3}|MOBAPI|ZCONNECT|MOBPKG|DDF|class|Honestly|Not sure|asking|heads-down|predates/);
   });
 
+  it('can be asked in the end-of-day review, on tomorrow\'s hours, but not once the run is over', () => {
+    const r = newRun(MIDWEST, content, 7);
+    expect(askAround({ ...r, phase: 'REVIEW' }, 'JOB_CLASSES', null, MIDWEST).ok).toBe(true);
+    expect(askAround({ ...r, phase: 'GAMEOVER' }, 'JOB_CLASSES', null, MIDWEST).ok).toBe(false);
+    expect(askAround(r, 'NOPE' as never, null, MIDWEST).message).toContain('JOB_CLASSES');
+  });
+
   it('never repeats a fragment', () => {
     let r = startDay(newRun(MIDWEST, content, 11), content);
     const seen = new Set<string>();

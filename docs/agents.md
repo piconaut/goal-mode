@@ -10,7 +10,9 @@ npm run -s play -- runs/a.json new 42 normal harbourline  # new run: seed, diffi
 npm run -s play -- runs/a.json status             # phase, clock, trust, budgets, PI > 1, SLAs, inbox, incidents, draft
 npm run -s play -- runs/a.json catalog            # hardware, fixes, analytics tools, RCA vocabulary
 npm run -s play -- runs/a.json start              # start the day (BRIEFING → LIVE)
-npm run -s play -- runs/a.json advance 2          # advance the live day 1–24 sim hours
+npm run -s play -- runs/a.json advance 2          # advance the live day 1–24 sim hours (stops early when a job abends; lists new mail)
+npm run -s play -- runs/a.json restart SET016     # restart an abended batch job from its checkpoint (only during its batch night)
+npm run -s play -- runs/a.json policy [pending]   # the WLM service definition, classification rules, LPAR CP/zIIP counts, CICS regions
 npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD; id from status
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
 npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables (needs the RMF_MON3 tool)
