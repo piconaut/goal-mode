@@ -194,6 +194,10 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   them with `mon3 [system] --at`. Recording only runs in the CLI's `advance` (bots and sweeps don't use it). Monitor
   III MINTIME is now 120 s (was 100 s, RMF's default); the "Range" header still shows WLM's ≈ 67 s smoothing (§17)
 - [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
+  - 2026-10-28, PR 1: `tools/screenshot.mjs` launches the pre-installed Chromium (`<outDir> [light|dark|3270] [--all]`);
+    Change Desk "Systems, CF & I/O": DASD, Db2, MQ and CICS are setting rows in a column grid (name, input, now,
+    actions) and Db2, MQ and CICS are separate sections. UI only; bench hashes unchanged.
+    Still open: "?" hint labels, empty states, locked-view buttons, spacing, Ops Console column
 - [x] Multi-CPC views (user request 2026-10-28; done: Mon III CPC report shows a section per CPC with its own L:P, HMC LPAR picker groups by CPC; single-CPC scenarios unchanged): when the estate has more than one CPC (Harbourline), the Monitor III
   CPC report and the HMC show a separate table per CPC (its own capacity, MSU, capping and partitions), not one list
   of every LPAR
