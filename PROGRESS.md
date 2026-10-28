@@ -392,6 +392,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** New agent `goal-mode-realism-auditor` (user request): makes deliberate, drastic changes (defined
+  capacity far below demand, resource-group caps on the STC classes Db2 and CICS depend on, MAXDBAT 1, no aliases...)
+  in same-seed A/B runs, compares the results with IBM documentation through the zos-docs skill and `docs/research.md`,
+  reads `src/` to explain gaps, and reports Matches / Approx / Mismatch / Not modelled / Inconclusive with draft
+  research-ledger rows and realism-fix lines. Read-only on the repo; writes under `runs/lab/`. Not run yet.
 - **2026-10-28:** Change Desk redesign (user request): rows edit drafts in place and one change request submits them.
   Every setting outside the WLM tab (Systems, CF & I/O; LPAR image profile; routing; job classes) is a segmented
   choice, a number field or a one-off action checkbox (DASD rebalance) with no per-row Apply or cost; a drafted value is

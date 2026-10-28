@@ -93,7 +93,8 @@ The banner's **Take over this run** button stops watching and keeps the run as t
 
 Only what a player sees in the browser: the briefing and inbox, the status line, RMF reports, SMF and Monitor
 III views once the matching tool is owned, the catalog and the Codex. The CLI never prints incident ground
-truth, and the agent definitions forbid reading scenario and event files under `src/`.
+truth, and the agent definitions forbid reading scenario and event files under `src/`. The exception is `goal-mode-realism-auditor`,
+which audits the model rather than playing and is meant to read the code behind what it observes.
 
 ## The agents
 
@@ -104,6 +105,7 @@ Definitions live in `.claude/agents/`:
 | `goal-mode-player` | balanced analyst: diagnose, fix the planted flaws, buy tools, keep SLAs and cost in line |
 | `goal-mode-cautious-operator` | minimal, reversible changes; no emergency changes; keeps hours spare |
 | `goal-mode-cost-cutter` | keeps MLC under budget; capping and WLM tuning before capacity |
+| `goal-mode-realism-auditor` | not a player: makes drastic changes in same-seed A/B runs, checks the results against IBM docs (zos-docs skill) and reports matches and mismatches; may read `src/` and writes only under `runs/lab/` |
 
 Launch one from Claude Code, for example: *"Use the goal-mode-player agent to play runs/p42.json, seed 42,
 normal, up to day 5."* Each keeps a log next to the run file (`runs/p42.json.log.md`), one line per command plus
