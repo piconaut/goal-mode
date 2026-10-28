@@ -386,6 +386,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** Rolled back (user request): `src/` is again as of `8b868d4` (#79) plus only the layout-gap fix of #81;
+  #80 (Apply buttons only on changed rows, cost in the header), #82 (pick-then-confirm choices) and #83 (DASD header
+  alignment, rebalance confirm) are undone, so their entries below no longer describe the code. With every row showing
+  its buttons again, MQ moved to the left stack (z/OS options + DASD + MQ | Db2 + CICS) to balance the columns
+  (1,141 vs 1,041 px); tab 2,379 → 2,050 px at 1920×1080. Artifact rebuilt from this state.
 - **2026-10-28:** DASD table headers lined up with their columns again: each setting row is its own CSS grid and the
   rebalance column was `auto`, so it sized per row (0 px in the header) and pushed the header labels right; it is now a
   fixed 96 px. A picked `rebalance` shows its `+ basket · Apply` and cost in the row's action column instead of
