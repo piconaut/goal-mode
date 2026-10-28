@@ -65,7 +65,7 @@ const BANK_CARDS: EventDef[] = [
     fix: null,
     forewarning: 'Markets desk: "Index rebalance today, and the central bank speaks at nine. Expect a heavy open."',
     announcement: null,
-    clue: 'Mon III SYSSUM (100 s range): MKTORD PI and CPU delay spike from 09:30 while the 15-minute WLMGL interval looks mild; MKTORD END/S up ×1.6 on every PRD image and CICS monitoring shows MXT waits. Fixes: headroom (On/Off CoD on CPC1), a percentile goal for MKTORD, an importance-1 CPU-critical class, CICS MAXTASKS, or lifting the PRDA absolute cap.',
+    clue: 'Mon III SYSSUM (120 s range): MKTORD PI and CPU delay spike from 09:30 while the 15-minute WLMGL interval looks mild; MKTORD END/S up ×1.6 on every PRD image and CICS monitoring shows MXT waits. Fixes: headroom (On/Off CoD on CPC1), a percentile goal for MKTORD, an importance-1 CPU-critical class, CICS MAXTASKS, or lifting the PRDA absolute cap.',
   },
   {
     id: 'HOLIDAY_CARD_SPIKE',
