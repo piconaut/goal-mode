@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-27
-- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 3 findings Q–X (M8.6; then a human UI playtest), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), playtest round 3 findings S–X (M8.6; then a human UI playtest), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -473,13 +473,23 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     difficulty and scenario and prints the usage instead of a TypeError (two agents typed `new midwest 2028`);
     cancelling a policy activation keeps its edits pending (it discarded them), and a repeat cancel says
     `No planned change CHG14` instead of `No such change`. Open findings:
-  - [ ] Q (Harbourline): SICK_AOR (fast abends on PRDC, the CPSM storm drain) was scored QR_TCB/POLICY. The truth's
+  - [x] Q (Harbourline): SICK_AOR (fast abends on PRDC, the CPSM storm drain) was scored QR_TCB/POLICY. The truth's
     mechanism comes from delay growth, and failing transactions add no delay, so whatever delay is largest that hour
     wins; no mechanism fits a failure-rate miss. Needs a model decision (a failure mechanism, or let the card declare
     its mechanism as JOB_ABEND declares its trigger).
-  - [ ] R (Harbourline): other truths to check against the data the player saw: D4 INC35 CPU_PRIORITY/DEMAND_SURGE with
+    Done 2026-10-28 (user picked a new mechanism; none of the existing ones fit, DEPENDENCY means a slower server):
+    new mechanism ROUTING. A card names it as `failureMechanism`, and it is the truth when failures alone missed the
+    SLA (`failureMechanismOf`). SICK_AOR declares ROUTING, trigger stays POLICY. New hint, and a CICS 110 FAIL_PCT
+    pin as its evidence. Replay of the round 3 Harbourline run: INC60 MKTORD and INC61 CARDS go QR_TCB → ROUTING,
+    nothing else changes. Goldens unchanged.
+  - [x] R (Harbourline): other truths to check against the data the player saw: D4 INC35 CPU_PRIORITY/DEMAND_SURGE with
     CPUs 62 % busy and CPU delay about 4 % (MXT waits 357 ms); D5 INC54 CPU_CAPACITY/GROWTH with nothing visible;
     D1 INC2 CAPPING/POLICY with one 2.6 % CAPPED interval as the only clue (MXT waits looked like the cause).
+    Done 2026-10-28: the truths are right (the replay shows the CPU backlog wait, timeouts and a capped PRDA), but the
+    backlog wait was invisible: the CICS view's dispatch wait showed only z/OS CPU queueing. The column is now
+    DISP−CPU (USRDISPT − USRCPUT in CICS 110: dispatched, not on a CP) and includes the backlog wait, plus a failed %
+    column. Counting waiting transactions in WLMGL CPU delay was checked and dropped: RMF samples TCBs and SRBs, not
+    transactions (*RMF Report Analysis* p.540); the related gap (CICS transaction classes) is queued in M8.7.
   - [ ] S: a failed policy activation (random "Change failed… backed out") also loses the pending edits, with no reason
     given.
   - [ ] T: no command shows the active service definition, classification rules, CICS QR share or zIIP counts
@@ -512,6 +522,11 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   and 0.81, so little is taken (SG24-6472-03 PDF p.201, printed 183; eligibility in *MVS Planning: WLM* PDF p.118). The sim starts at
   0.7, stays capped below 0.9 and gives a flat 80 % of demand (`DISC_GOAL_MGMT` in `src/content/wlm/tuning.ts`);
   cap toward the 0.71–0.81 PI band instead. Done: cap = 1 − (0.81 − PI), floor 50 %; balance check with the post-sweep re-sweep.
+- [ ] **CICS transaction classes report work manager states, not using and delay samples.** For CICS and IMS,
+  resource usage and state samples go with the regions' service classes; transaction classes get the work manager
+  section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
+  The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
+  DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
 - [x] **SERVERWLM weights are zIIP-aware by default.** Since V1R9 the server-specific weight is a composite of the
   available and displaceable capacity of each processor type (CP, zAAP, zIIP), weighted by the server's current use
   of each; PROCTYPE only applies to BASEWLM, and PROCXCOST (1–100, 1 = no penalty) lowers the weight of servers
@@ -625,6 +640,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-27 | Finding I: RCA guessing may pay; no change | User decision |
 | 2026-10-27 | Finding J: GOODWILL (+4 trust with every stakeholder) stays as is | User decision; a draft reward's cost is the cards not picked |
 | 2026-10-27 | RCA truth credits THREAD_LIMIT only with MXT/DBAT queueing beyond the in-region growth | Little's law: slower tasks hold MXT slots longer, so the queueing is mostly a symptom of CPU or QR TCB delay (playtest findings N, O) |
+| 2026-10-28 | Finding Q: new RCA mechanism ROUTING, declared by a card for failure-only misses (SICK_AOR) | User decision; no delay grows when a region fails work fast, and DEPENDENCY means a slower server |
+| 2026-10-28 | Finding R: CICS view shows DISP−CPU (incl. the CPU backlog wait); WLMGL CPU delay stays per dispatchable unit | User decision after a check against the RMF, WLM and CICS books (`docs/research.md`) |
 
 ## Open questions
 

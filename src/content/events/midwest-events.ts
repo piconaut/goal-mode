@@ -15,6 +15,9 @@ export interface EventDef {
   affects: string[];
   /** Mechanisms the card causes; RCA ground truth blames it only for incidents with one of these (absent = any). */
   mechanisms?: Mechanism[];
+  /** Ground truth for an incident its failures alone caused (the hurt workload's response time met its SLA, its
+   * error rate didn't): no delay grows, so the card names the mechanism (e.g. ROUTING for a sick region). */
+  failureMechanism?: Mechanism;
   /** Wall-clock start hour range and duration in hours (null = until fixed). Events with a
    * fix still end on their own eventually; fixing them early limits the damage. */
   startHour: [number, number];

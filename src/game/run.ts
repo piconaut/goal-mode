@@ -36,7 +36,7 @@ import { allWorkloads } from './workloads';
 import type { NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, previewChange } from './catalog';
-import { addHour, BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, hourAttainment, importanceRank, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
+import { addHour, BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
 import {
   FACETS,
   facetsOf,
@@ -202,6 +202,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       trigger: def.trigger,
       affects: def.affects,
       ...(def.mechanisms ? { mechanisms: def.mechanisms } : {}),
+      ...(def.failureMechanism ? { failureMechanism: def.failureMechanism } : {}),
       ...(def.blocksHardware ? { blocksHardware: def.blocksHardware } : {}),
       endCommands: def.end,
       started: false,
@@ -626,7 +627,7 @@ function closeHour(run: RunState, scenario: Scenario): RunState {
           const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
-      const mechanism = mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
+      const mechanism = failureMechanismOf(w, wh, r.events) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
       const isNew = r.sim.extraWorkloads.some((x) => x.id === w.id);
       const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
       let aiops: Hypothesis[] | undefined;

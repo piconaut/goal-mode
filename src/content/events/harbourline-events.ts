@@ -37,6 +37,7 @@ const BANK_CARDS: EventDef[] = [
     weight: 2,
     trigger: 'POLICY',
     affects: ['MKTORD', 'CARDS'],
+    failureMechanism: 'ROUTING',
     startHour: [9, 15],
     durationHours: 5,
     // FICTIONAL: a third of the transactions routed to the sick region abend almost at once.

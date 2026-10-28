@@ -93,8 +93,11 @@ export interface CicsTxnRow {
   qrWaitMs: number;
   /** Waiting for an MXT slot before the task is attached. */
   mxtWaitMs: number;
-  dispatchWaitMs: number;
+  /** Dispatched by CICS but not running on a CP: USRDISPT − USRCPUT (z/OS CPU queueing, and the CPU backlog). */
+  dispMinusCpuMs: number;
   failed: number;
+  /** Failed share of the hour's transactions, 0..100. */
+  failedPct: number;
 }
 
 export function cicsMonitoring(run: RunState, scenario: Scenario, key: string): CicsTxnRow[] {
@@ -117,8 +120,9 @@ export function cicsMonitoring(run: RunState, scenario: Scenario, key: string): 
           cpuVsBaseline: base?.cpu ? cpuMs / (1000 * base.cpu) : null,
           qrWaitMs: perTxnMs(h, 'qr'),
           mxtWaitMs: perTxnMs(h, 'outside'),
-          dispatchWaitMs: perTxnMs(h, 'cpuQueue'),
+          dispMinusCpuMs: perTxnMs(h, 'cpuQueue') + perTxnMs(h, 'backlogWait'),
           failed: h.failed,
+          failedPct: (100 * h.failed) / (h.completions + h.failed),
         },
       ];
     });

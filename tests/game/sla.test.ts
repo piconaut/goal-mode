@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { addHour, batchMissMechanism, batchMissTrigger, importanceRank, mechanismOf, triggerOf } from '../../src/game/sla';
+import { addHour, batchMissMechanism, batchMissTrigger, failureMechanismOf, importanceRank, mechanismOf, triggerOf } from '../../src/game/sla';
+import type { WorkloadDef } from '../../src/sim/workload/types';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { NightSummary } from '../../src/sim/subsys/batch';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
@@ -23,6 +24,23 @@ describe('triggerOf', () => {
 
   it('ignores ended cards and cards for other workloads', () => {
     expect(triggerOf('RBANK', 'CPU_CAPACITY', [card({ ended: true }), card({ affects: ['MOBILE'] })], hour, false)).toBe('GROWTH');
+  });
+});
+
+describe('failureMechanismOf', () => {
+  const w = { id: 'RBANK', sla: { kind: 'AVG', rtSec: 0.5 } } as unknown as WorkloadDef;
+  const sick = card({ trigger: 'POLICY', failureMechanism: 'ROUTING' });
+  const wh = (rtSec: number, failed: number) => ({ completions: 1000, withinSla: 0, failed, rtSumSec: 1000 * rtSec, parts: {} });
+
+  it("names the card's mechanism when failures alone missed the SLA", () => {
+    expect(failureMechanismOf(w, wh(0.1, 300), [sick])).toBe('ROUTING');
+  });
+
+  it('leaves a slow hour, a clean hour or a card without one to the delay groups', () => {
+    expect(failureMechanismOf(w, wh(0.9, 300), [sick])).toBeNull();
+    expect(failureMechanismOf(w, wh(0.1, 0), [sick])).toBeNull();
+    expect(failureMechanismOf(w, wh(0.1, 300), [card({})])).toBeNull();
+    expect(failureMechanismOf(w, wh(0.1, 300), [{ ...sick, ended: true }])).toBeNull();
   });
 });
 

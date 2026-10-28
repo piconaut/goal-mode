@@ -9,7 +9,7 @@ import type { GameHandle } from './useGame';
 
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
   { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF), and DBAT queueing.' },
-  { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, CPU dispatch wait.' },
+  { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share.' },
   { kind: 'BATCH', label: 'Batch (SMF 30)', help: 'Last night’s jobs: initiator queue time (grey) and elapsed (bar), critical jobs highlighted.' },
   { kind: 'SMF113', label: 'CPU MF (113)', help: 'Hardware counters per image: L1 misses, Relative Nest Intensity, cycles per instruction, LSPR category. Work on VM/VL engines loses cache affinity.' },
 ];
@@ -132,8 +132,9 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
                   <th className="num">vs base</th>
                   <th className="num">QR wait ms</th>
                   <th className="num">MXT wait ms</th>
-                  <th className="num">dispatch wait ms</th>
+                  <th className="num" title="Dispatched but not on a CP (USRDISPT − USRCPUT): z/OS CPU queueing">DISP−CPU ms</th>
                   <th className="num">failed</th>
+                  <th className="num">failed %</th>
                 </tr>
               </thead>
               <tbody>
@@ -157,8 +158,12 @@ export function Smf({ v, game }: { v: ViewModel; game: GameHandle }) {
                       {f1(r.mxtWaitMs)}
                       <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'MXT_WAIT' }} label={`${r.tranId} MXT wait`} />
                     </td>
-                    <td className="num">{f1(r.dispatchWaitMs)}</td>
+                    <td className="num">{f1(r.dispMinusCpuMs)}</td>
                     <td className="num">{Math.round(r.failed)}</td>
+                    <td className="num">
+                      {f1(r.failedPct)}
+                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'FAIL_PCT' }} label={`${r.tranId} failed %`} />
+                    </td>
                   </tr>
                 ))}
               </tbody>

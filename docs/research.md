@@ -29,6 +29,8 @@ Books referred to below:
 | Setting Up a Sysplex | *z/OS MVS Setting Up a Sysplex* (ieaf100), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaf100_v3r1.pdf) |
 | IP Config Guide | *z/OS Communications Server: IP Configuration Guide* (halz002), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/halz002_v3r1.pdf) |
 | CPSM Workloads | *CICS TS 6 CICSPlex SM Managing Workloads*, [PDF](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/cpsm-managing-workloads_pdf.pdf) |
+| CICS Monitoring | *CICS TS 6 Monitoring*, [PDF](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf) |
+| CICS Performance | *CICS TS 6.1 Performance Guide*, [PDF](https://www.ibm.com/docs/en/SSGMCP_6.1.0/pdf/performance_pdf.pdf) |
 | CPSM Admin | *CICS TS 6 CICSPlex SM Administration*, [PDF](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/administering-cpsm_pdf.pdf) |
 | SG24-7621 | Redbook *ABCs of z/OS System Programming Vol. 12* (WLM), SG24-7621-00, Jan 2010, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf) |
 | SG24-6472 | Redbook *System Programmer's Guide to: Workload Manager*, SG24-6472-03, Mar 2008, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf) |
@@ -100,6 +102,9 @@ Books referred to below:
 | Fact | Source | Checked | Sim status |
 |---|---|---|---|
 | Monitor III common measurements (using, delay, workflow %, execution velocity) and MINTIME/range | [RMF Report Analysis p.50–55](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=50) | Checked | Approx: built from WLM's smoothed state (≈ 67 s), not a fixed MINTIME (`src/game/mon3.ts`) |
+| WLMGL CPU delay counts dispatchable units: each sampled TCB or SRB waiting to be dispatched adds one CPU delay sample | [RMF Report Analysis p.540](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=540) | Checked | Approx: delay samples are the CPU-seconds wanted but not granted, about the number of waiting TCBs; transactions queued inside a CICS region are not z/OS dispatchable units and add none |
+| For CICS and IMS, resource usage and state samples are reported with the regions' service classes, not the transactions'; transaction classes get work manager states (ACTIVE, READY, IDLE, WAITING FOR…, BTE and EXE phases) | [WLM Planning p.113](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=113), [RMF Report Analysis p.536–537](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=536) | Checked | Fix queued: the sim posts using and delay samples on CICS transaction classes |
+| CICS 110: DISPWTT (102) is wait for redispatch, QRMODDLY (249) wait for the QR TCB (part of DISPWTT), DSPDELAY (125) first dispatch delay with MXTDELAY (127) and TCLDELAY (126) as parts; USRDISPT (007) − USRCPUT (008) is time dispatched but not on a CP, and a low QR CPU/dispatch ratio means waiting for a physical processor | [CICS Monitoring p.251–254, 289–290, 295](https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=253), [CICS Performance p.18](https://www.ibm.com/docs/en/SSGMCP_6.1.0/pdf/performance_pdf.pdf#page=18) | Checked | Matches: the CICS view's QR wait, MXT wait and DISP−CPU (z/OS CPU queueing plus the CPU backlog wait) columns (`cicsMonitoring` in `src/game/smf.ts`) |
 
 ## Web and practitioner sources (not page-checked)
 
