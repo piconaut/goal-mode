@@ -443,7 +443,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'CANCEL_CHANGE': {
-      settle(cancelChange(run, m.changeId));
+      const o = cancelChange(run, m.changeId);
+      if (o.restoredPolicy && !pendingPolicy) pendingPolicy = o.restoredPolicy;
+      settle(o);
       break;
     }
     case 'GET_RULES':

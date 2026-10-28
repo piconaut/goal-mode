@@ -71,6 +71,18 @@ describe('cancel', () => {
     expect(r.hoursLeft).toBeCloseTo(r0.hoursLeft);
   });
 
+  it('hands back the policy of a cancelled activation and names the id on a repeat cancel', () => {
+    const r0 = fresh();
+    const definition = r0.sim.wlm.definition;
+    const r = requestChange(r0, content, { label: 'Activate policy', commands: [{ kind: 'ACTIVATE_POLICY', definition }] }).run;
+    const id = r.changes[0]!.id;
+    const out = cancelChange(r, id);
+    expect(out.restoredPolicy).toBe(definition);
+    const again = cancelChange(out.run, id);
+    expect(again.ok).toBe(false);
+    expect(again.message).toContain(`CHG${id}`);
+  });
+
   it('cannot cancel a change once its day has started', () => {
     let r = requestChange(fresh(), content, { label: 'w', commands: [weight(500)] }).run;
     r = startDay(r, content);
