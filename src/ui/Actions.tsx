@@ -312,15 +312,17 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
   const refund = c.plannedDay === v.day ? `${c.hours}h back` : 'hours already spent';
   return (
     <tr>
-      <td>
+      <td className="change-label">
         {c.label}
         {c.capex > 0 && c.status === 'PLANNED' && <span className="tag"> on order · arrives day {c.activateDay + 1}</span>}
       </td>
-      <td className="muted">day {c.activateDay + 1}</td>
+      <td className="muted" style={{ whiteSpace: 'nowrap' }}>
+        day {c.activateDay + 1}
+      </td>
       <td className="muted num">{c.hours}h</td>
-      <td>
+      <td className="change-status">
         <span className={`tag ${c.status === 'APPLIED' ? 'good' : c.status === 'FAILED' ? 'bad' : 'warn'}`}>{c.status}</span>
-        {c.emergency && <span className="tag bad"> EMERG</span>}
+        {c.emergency && <span className="tag bad">EMERG</span>}
       </td>
       <td style={{ textAlign: 'right' }}>
         {cancellable && (
