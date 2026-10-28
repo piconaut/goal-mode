@@ -110,21 +110,26 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
             <Section id="cf" title="Coupling facilities and structures" summary={summary.cf} codex={['cf-sync-async', 'cf-failure']} wide>
               <CouplingFacilities desk={desk} />
             </Section>
-            <Section id="systems" title="z/OS options" summary={summary.systems}>
-              <Systems desk={desk} />
-            </Section>
-            <Section id="dasd" title="DASD: HyperPAV aliases per LCU" summary={summary.dasd} codex={['hyperpav']}>
-              <Dasd desk={desk} />
-            </Section>
-            <Section id="db2" title="Db2" summary={summary.db2} codex={['db2-velocity']}>
-              <Db2Section desk={desk} />
-            </Section>
-            <Section id="mq" title="MQ" summary={summary.mq} codex={['mq-queues']}>
-              <MqSection desk={desk} />
-            </Section>
-            <Section id="cics" title="CICS regions" summary={summary.cics} codex={['qr-tcb']} wide>
-              <CicsSection desk={desk} />
-            </Section>
+            {/* Two independent stacks (z/OS and I/O | subsystems) so a short card doesn't leave a hole beside a tall one. */}
+            <div className="desk-stack">
+              <Section id="systems" title="z/OS options" summary={summary.systems}>
+                <Systems desk={desk} />
+              </Section>
+              <Section id="dasd" title="DASD: HyperPAV aliases per LCU" summary={summary.dasd} codex={['hyperpav']}>
+                <Dasd desk={desk} />
+              </Section>
+            </div>
+            <div className="desk-stack">
+              <Section id="db2" title="Db2" summary={summary.db2} codex={['db2-velocity']}>
+                <Db2Section desk={desk} />
+              </Section>
+              <Section id="mq" title="MQ" summary={summary.mq} codex={['mq-queues']}>
+                <MqSection desk={desk} />
+              </Section>
+              <Section id="cics" title="CICS regions" summary={summary.cics} codex={['qr-tcb']}>
+                <CicsSection desk={desk} />
+              </Section>
+            </div>
           </>
         )}
         {area === 'ops' && (

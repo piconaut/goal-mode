@@ -386,6 +386,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** Change Desk Systems tab layout gaps: below the full-width CF card the tab is now two independent stacks,
+  z/OS options + DASD | Db2 + MQ + CICS (CICS no longer full width), instead of a row grid that left holes beside
+  short cards. Tab 2,016 → 1,828 px at 1920×1080; one column below ~1,130 px, no phone overflow. LPARs and Batch tabs
+  have two equal-height cards each, nothing to fill. Goldens unchanged.
 - **2026-10-28:** Change Desk, Systems tab height (user: too much scrolling). Setting rows (DASD LCUs, Db2, MQ, CICS) show
   `+ basket`/`Apply` only once the value differs from now (the row gets an accent bar); the per-row cost moves to the
   table header (`per row: …`) and the Apply tooltip, and Enter on an unchanged row no longer stages a no-op. Tab
