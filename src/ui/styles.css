@@ -221,8 +221,9 @@ tr:hover .pin { opacity: 0.8; }
 details.codex { border-bottom: 1px solid var(--border); padding: 4px 0; }
 details.codex > summary { color: var(--text); font-size: 14px; margin: 0; }
 a { color: var(--accent); }
-.codex-hint { position: relative; display: inline-block; margin-left: 6px; vertical-align: middle; text-transform: none; letter-spacing: normal; font-weight: normal; }
-.codex-hint > button { width: 18px; height: 18px; padding: 0; border-radius: 50%; font-size: 11px; line-height: 16px; color: var(--muted); }
+.hints { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.codex-hint { position: relative; display: inline-block; vertical-align: middle; text-transform: none; letter-spacing: normal; font-weight: normal; }
+.codex-hint > button { height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; line-height: 18px; color: var(--muted); white-space: nowrap; }
 .codex-hint > button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
 .codex-card { position: fixed; z-index: 50; top: 0; left: 0; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); font-size: 13px; color: var(--text); cursor: default; white-space: normal; }
 .codex-body { line-height: 1.45; }
@@ -242,6 +243,12 @@ a { color: var(--accent); }
 .section-summary { margin-left: 10px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
 details.section[open] > summary { margin-bottom: 8px; }
 @media (min-width: 1000px) { .desk-top { grid-template-columns: 2fr 1.3fr 1fr; } }
+
+.page { display: flex; flex-direction: column; gap: 12px; }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.empty { padding: 4px 0; }
+.linkbtn { padding: 0; border: none; background: none; color: var(--accent); text-decoration: underline; }
+.linkbtn:hover { border: none; }
 
 /* Change Desk setting rows: one setting per line in a shared column grid (SettingRow / SettingHead). */
 .grid-wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); align-items: start; }

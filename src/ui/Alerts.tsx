@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { ALERT_METRICS, ALERTS, type AlertMetric } from '../content/alerts';
 import type { ViewModel } from '../game/view';
 import type { GameHandle } from './useGame';
+import { AnalyticsLink, Empty } from './Empty';
 
 const SUGGESTED: { metric: AlertMetric; subject: string; threshold: number; forMin: number; pause: boolean }[] = [
   { metric: 'PI', subject: 'ONLHI#1', threshold: 1.5, forMin: 5, pause: true },
@@ -10,7 +11,7 @@ const SUGGESTED: { metric: AlertMetric; subject: string; threshold: number; forM
 ];
 
 /** Alerting rules (tool ALERTS): thresholds over Monitor III data that page you. */
-export function Alerts({ v, game }: { v: ViewModel; game: GameHandle }) {
+export function Alerts({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle; openAnalytics: () => void }) {
   const a = v.alerts;
   const [metric, setMetric] = useState<AlertMetric>('PI');
   const def = ALERT_METRICS[metric];
@@ -23,9 +24,11 @@ export function Alerts({ v, game }: { v: ViewModel; game: GameHandle }) {
   const [pause, setPause] = useState(false);
   if (!a)
     return (
-      <div className="panel" style={{ marginTop: 12 }}>
+      <div className="panel">
         <h3>Alert rules</h3>
-        <div className="muted">Paging on thresholds is a tier-3 tool (Alerting rules) on the Analytics tab.</div>
+        <Empty>
+          Paging on thresholds is a tier-3 tool (Alerting rules) on the <AnalyticsLink open={openAnalytics} />.
+        </Empty>
       </div>
     );
   const subj = subjects.includes(subject) ? subject : (subjects[0] ?? '');
@@ -34,7 +37,7 @@ export function Alerts({ v, game }: { v: ViewModel; game: GameHandle }) {
     game.send({ type: 'ALERT_ADD', rule: { metric, subject: subj, threshold: Number(threshold), forMin: Number(forMin), pause } });
   };
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div className="panel">
       <h3>
         Alert rules ({a.rules.length}/{ALERTS.maxRules})
       </h3>
@@ -44,7 +47,7 @@ export function Alerts({ v, game }: { v: ViewModel; game: GameHandle }) {
       </div>
       {a.rules.length === 0 && (
         <div className="form">
-          <span className="muted">No rules yet.</span>
+          <Empty>No rules yet.</Empty>
           <button onClick={() => SUGGESTED.forEach((rule) => game.send({ type: 'ALERT_ADD', rule }))}>Add suggested rules</button>
         </div>
       )}

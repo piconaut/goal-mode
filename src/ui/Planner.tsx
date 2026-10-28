@@ -1,6 +1,7 @@
 import type { Forecast } from '../game/planner';
 import type { ViewModel } from '../game/view';
 import { LineChart, type Series } from './LineChart';
+import { Empty } from './Empty';
 
 const f1 = (x: number) => (x >= 100 ? x.toFixed(0) : x.toFixed(1));
 
@@ -15,7 +16,7 @@ export function Planner({ v }: { v: ViewModel }) {
         Trends fitted to the daily peaks of the last {Math.min(10, p.daysRecorded)} days and projected two weeks ahead. The band is a 90% prediction interval: it
         widens with the horizon and with day-to-day noise. It knows nothing about tomorrow&apos;s events or month-end.
       </p>
-      {p.forecasts.length === 0 && <div className="muted">Needs at least three measured days.</div>}
+      {p.forecasts.length === 0 && <Empty>Needs at least three measured days.</Empty>}
       <div className="grid">
         {p.forecasts.map((f) => (
           <ForecastChart key={f.id} f={f} />

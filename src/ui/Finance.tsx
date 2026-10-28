@@ -3,6 +3,7 @@ import { CodexHints } from './CodexHint';
 import type { ViewModel } from '../game/view';
 import { LineChart, type Series } from './LineChart';
 import type { GameHandle } from './useGame';
+import { Empty } from './Empty';
 
 const k$ = (x: number) => `$${Math.round(x / 1000).toLocaleString()}k`;
 
@@ -145,7 +146,7 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
       <div className="panel">
         <h3>Bills</h3>
         {f.bills.length === 0 ? (
-          <div className="muted">No bill yet: the first arrives at the end of month 1.</div>
+          <Empty>No bill yet: the first arrives at the end of month 1.</Empty>
         ) : (
           f.bills.map((b) => (
             <details key={b.month}>

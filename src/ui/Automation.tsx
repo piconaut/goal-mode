@@ -32,7 +32,7 @@ export function Automation({ v, game }: { v: ViewModel; game: GameHandle }) {
     game.send({ type: 'AUTO_ADD', rule: { trigger, action: act, maxPerDay: Number(max) || 1 } });
   };
   return (
-    <div className="panel" style={{ marginTop: 12 }}>
+    <div className="panel">
       <h3>
         Automation ({a.rules.length}/{AUTOMATION.maxRules})
       </h3>
