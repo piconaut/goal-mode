@@ -26,12 +26,10 @@ describe('Harbourline Bank pack', () => {
     expect(facetsOf(run)).toEqual(['Markets', 'Cards', 'Retail', 'Payments', 'Finance', 'Regulator']);
   });
 
-  it('the outgoing analyst points at the PRDA cap before the first market open, on every difficulty', () => {
+  it('PRDA starts with an absolute cap on every difficulty', () => {
     const game = { ...pack.game, events: [] };
     for (const d of ['STORY', 'NORMAL', 'HARD'] as const) {
       const run = newRun(pack.scenario, game, 3, d);
-      const mail = run.inbox.find((m) => m.subject.startsWith('Handover'));
-      expect(mail?.body, d).toMatch(/PRDA.*absolute cap.*Partition Data/s);
       expect(run.sim.config.lpars.find((l) => l.id === 'PRDA')!.pools.find((p) => p.pool === 'CP')!.absoluteCapEngines, d).not.toBeNull();
     }
   });

@@ -1245,8 +1245,9 @@ Valid fixes, each with a cost:
 - **Move the burst:** route MKTQRY price queries to CPC2's zIIPs (but see Problem 2).
 - **Caps:** swap the absolute cap for a defined capacity (MLC risk), or raise it.
 
-Day-1 clue: the outgoing analyst's handover mail (story beat `HANDOVER`, day 0, every difficulty) names the
-09:00 open, PRDA's absolute cap and Partition Data, so the first market-open miss has a lead before it lands.
+Day-1 clue: none in the inbox. The outgoing analyst's handover mail (story beat `HANDOVER`) was removed
+2026-10-28 (user): it described one seed's day 1 ("Markets screams first, then Cards") as if it were fixed.
+The cap shows in Partition Data and the HMC image profile like any other setting.
 
 #### Problem 2: workload-balancing issues across the sysplex
 
