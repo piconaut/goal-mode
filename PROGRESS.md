@@ -393,7 +393,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
 - **2026-10-28:** Change Desk redesign (user request): rows edit drafts in place and one change request submits them.
-  Every setting on the WLM-less tabs (Systems, CF & I/O; LPAR image profile; routing; job classes) is a segmented
+  Every setting outside the WLM tab (Systems, CF & I/O; LPAR image profile; routing; job classes) is a segmented
   choice, a number field or a one-off action checkbox (DASD rebalance) with no per-row Apply or cost; a drafted value is
   highlighted with "was <live>" (always rendered, invisible until drafted, so columns don't shift). Drafts live in the
   existing basket, shown as a sticky "Change request" banner at the top (stacked with the pending WLM policy banner):
