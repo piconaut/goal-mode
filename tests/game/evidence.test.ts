@@ -61,6 +61,15 @@ describe('evidence pins', () => {
     expect(r.pins.at(-1)!.source).toBe('CPC');
   });
 
+  it('pins the CICS failed share as evidence for ROUTING', () => {
+    const failing = advance({ ...regressed, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'regionFailFrac', key: 'RBANK@PROD1', value: 0.35 }] }, MIDWEST, content, HOUR);
+    const h = failing.smfHours.at(-1)!;
+    const r = pin(failing, { source: 'CICS', hour: `${h.day}:${h.hourOfDay}`, workloadId: 'RBANK', metric: 'FAIL_PCT' });
+    expect(r.pins.at(-1)!.value).toBeGreaterThan(5);
+    const [j] = judgeEvidence(r, MIDWEST, incident(r, { truth: { mechanism: 'ROUTING', trigger: 'POLICY' } }), r.pins.slice(-1));
+    expect(j!.relevance).toBe(1);
+  });
+
   it('judges relevance by cause, subject, window and size', () => {
     let r = pin(regressed, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' });
     r = pin(r, { source: 'MON3', system: '*PLEX', scKey: 'ONLHI#1', metric: 'PI' });

@@ -104,7 +104,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest): Located | s
       }
       const r = cicsMonitoring(run, scenario, req.hour).find((x) => x.workloadId === req.workloadId);
       if (!r) return 'No such transaction row';
-      const v: Partial<Record<EvidenceMetric, number | null>> = { CPU_VS_BASE: r.cpuVsBaseline, QR_WAIT: r.qrWaitMs, MXT_WAIT: r.mxtWaitMs, ENDED_RATE: r.txnPerSec };
+      const v: Partial<Record<EvidenceMetric, number | null>> = { CPU_VS_BASE: r.cpuVsBaseline, QR_WAIT: r.qrWaitMs, MXT_WAIT: r.mxtWaitMs, FAIL_PCT: r.failedPct, ENDED_RATE: r.txnPerSec };
       const value = v[req.metric];
       if (value === undefined || value === null) return 'That metric is not in CICS monitoring';
       return { source: 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, value };
