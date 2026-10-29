@@ -277,6 +277,84 @@ local only). Do these in order, each as its own PR; the first two are user-order
   resource-group and discretionary capping only and "NOT part of the CPU delay" (p.540); LPAR capping shows as CPU
   delay plus Partition WLM%. Fold that into this change (it is the `capFrac` split) or queue it right after.
 
+Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md`, local only). Not ordered yet.
+- [ ] **6. zIIPs offline must not inflate response time.** With zIIPs defined but offline, eligible work runs on CPs
+  as if it had no eligibility (*Init & Tuning* p.431). Audit: PRDC/PRDD zIIP logicals 3 → 0 took MKTQRY 48 → 82 ms,
+  MOBILE 68 → 106 ms and ADHOC 2.8 → 36.7 s (still 36.4 s at 23:00 on an idle LPAR); the CP side is right (IIPCP
+  filled, PRDC 3.39 → 3.73 CP engines). Cause: zero zIIP capacity gives rho = 1 (`src/sim/zos/dispatcher.ts:86`),
+  the zIIP queue ratio clamps at 50 (`src/sim/wlm/evaluate.ts:505`) and RT bills `ziipSecPerTxn × (1 + zq)` (`:584`).
+  Fix: with no online zIIP, zq = 0 and the eligible seconds are billed at CP speed with the CP queue ratio. Unit test
+  on the dispatcher with zero zIIP capacity.
+- [ ] **7. WLM-managed initiators must add initiation delay to velocity.** Velocity's delay includes "initiation
+  delays for batch jobs in WLM-managed job classes" (*WLM Planning* p.70, p.39 note 1). The size is the jobs' time
+  on the queue (waiting for an initiator, class limits, affinity, operator holds), and with large queues it "can
+  dominate the response time or velocity" (*JES2 Init & Tuning Guide* p.113–114). WLM reads it every 10 s policy
+  interval and starts up to five initiators per interval on unconstrained systems, but on a system over 95 % busy only
+  for work important enough to displace running work (SG24-6472-03, Mar 2008, p.211). Audit: class A at one
+  initiator per system gave byte-identical WLMGL rows in JES and WLM mode (BATCHPRD velocity 94.5 %, PI 0.32) while
+  critical jobs lost 10 770 s waiting for an initiator. Cause: queued jobs are in no slice
+  (`src/sim/batch/batch.ts:139-176`) and `evaluate.ts` has no initiation-delay term. Fix: in WLM mode, queued jobs add
+  delay samples to their service class (APPROX: one per queued job), so WLM sees the miss and raises initiators
+  toward demand; JES mode stays invisible to velocity.
+- [ ] **8. Storage Critical must cost the unprotected work.** Protected work loses storage only to equal or more
+  important work, and IBM warns it can reduce throughput (*WLM Planning* p.119). Audit: PRDA at 60 GB, STCHI storage
+  critical: STCHI storage delay 37 → 0 %, velocity 61.6 → 92.1, every other class unchanged. Cause: paging is one
+  image-wide fraction and `evaluate.ts:514` zeroes it for protected classes without moving it anywhere. Fix: keep the
+  image's paging pressure constant and spread the protected classes' share over the unprotected ones (more to lower
+  importance). A free lever breaks the "every lever has a cost" guardrail.
+- [ ] **9. Implicit CPU protection (IEAOPT CCImp, default 1 in z/OS 3.1).** CCImp=1 gives CPU protection to
+  importance-1 single-period classes and first periods without CPU Critical; CCImpBoost (default 2) applies while a
+  boost is active (*Init & Tuning* p.428). Audit (PRDA/PRDB at 4 logical CPs): MKTORD (imp 1) sat at DP 250 below
+  TSO#2 (imp 5) and STCMED (imp 3) at 252; with CPU Critical on MKTORD it went 98.1 % / 109 ms → 99.7 % / 46 ms.
+  Cause: `adjust.ts:84-92` checks only the explicit flag; no CCImp in the IEAOPT config. Fix: `ccImp` in the IEAOPT
+  config (scenario content picks the value; the 3.1 default is 1), applied in `violatesCpuCritical`. A balance change:
+  importance-1 work gets protected for free, so re-sweep and decide per scenario whether its world is pre-3.1
+  (CCImp absent, effectively 0) or 3.1. Changes goldens.
+- [ ] **10. WLM edits must reject invalid goals and flags.** CPU Critical needs a single-period, non-discretionary
+  class (*WLM Planning* p.120); velocity and percentile are 1–99, response time 1 ms–24 h (p.67). The sim accepts CPU
+  Critical on two-period MKTDDF and discretionary DEVBAT, velocity 0 and 100, percentile 100, and AVG 0 s (WLMGL then
+  prints `PERF INDX Infinity`). Fix: checks in `src/game/wlmEdit.ts` (`SET_FLAGS`, goal edits) with the doc's
+  wording in the error. Same item (audit r3): SYSSTC is valid only in ASCH, JES, OMVS, STC and TSO rules, SYSTEM only in
+  STC for high-dispatching-priority address spaces (*WLM Planning* p.102); `knownClass` (`wlmEdit.ts:264`) allows
+  both anywhere (`ADD_RULE`, `SET_RULE_TARGET`, `SET_DEFAULT`). DDF → SYSSTC took Midwest ONLHI velocity 76.9 → 9.3.
+  Audit r4: rules must use qualifiers valid for their subsystem (*WLM Planning* p.78 note 1, Table 7) and a
+  qualifier cannot be nested in itself unless it is longer than 8 characters (p.99); `ADD_RULE` accepts TN on DDF, PK
+  on TSO, TC on STC, a 12-character pattern and TN under TN, all of which never match. CLI only: `SET_PERIOD` accepts a
+  null or negative duration and importance 9.
+
+Audit round 3 (2026-10-29, Midwest seed 42; `runs/lab/2026-10-29-audit-r3.md`, local only).
+- [ ] **11. A resource group minimum on discretionary work must not override goal work.** For goal work below its
+  minimum WLM helps even at the cost of more important work; for discretionary work only "if that action does not
+  cause other work to miss its goal" (*WLM Planning* p.59). Audit (CP=7, DDFPRD period 2 DISC, type 2 minimum 30):
+  RBANK 99.7 % / 63 ms → 73.7 % / 3 704 ms, TELLER 100 → 65.6 %, ONLHI velocity 76.9 → 24.1. Cause: `missingGoal`
+  (`src/sim/core/step.ts:1210`) counts a DISC period as missing when delay > using, and `rgMin` lifts it at
+  `RG_MIN_DP = 252` (`src/sim/wlm/evaluate.ts:326`), above all managed work. Fix: a DISC period's minimum is served
+  only from capacity no goal period that misses its goal wants (dispatch it below managed work); goal periods keep DP 252.
+- [ ] **12. Lowering MQ MAXDEPTH must not discard queued messages.** Messages already on the queue above a reduced
+  MAXDEPTH "remain intact"; only new puts fail (*MQ 9.4 Administration Reference* p.463, p.636). Audit (Midwest CP=5,
+  PAYMQ MAXDEPTH → 100): the backlog fell from 19.4 s to 1.1 s of work in one tick with 0 completions; PAYMQ RT
+  30.2 → 8.7 s. A free, instant backlog flush. Cause: `evaluate.ts:555-558` truncates `newBacklog` to the cap every
+  tick. Fix: fail only this tick's arrivals beyond the cap, keep the excess and let it drain. Also allow MAXDEPTH 0
+  (`src/game/commands.ts:379` refuses it; z/OS range 0–999 999 999).
+
+Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, local only).
+- [ ] **13. Classification masks and wildcards must follow WLM syntax.** `%` masks one character (at the end it may
+  also match nothing); `*` is a wildcard only in the last position or alone and a literal anywhere else (`CI*S`
+  matches only `CI*S`); there is no `?` (*WLM Planning* p.104). `compileWildcard` (`src/sim/wlm/classify.ts:26`)
+  treats `*` as a wildcard anywhere, `?` as one character and `%` as a literal: `DEPT58%I` misses `DEPT58AI`, the
+  doc's own example. All three shipped policies use `rule('TN', '*IRLM', 'SYSSTC')` (`basepol.ts:73`, `hbpol.ts:44`,
+  `revpol.ts:43`), which real WLM reads as the literal `*IRLM`. Fix: the doc syntax in `compileWildcard`, the
+  policies to `%%%%IRLM` (names are `${ssid}IRLM`, 8 characters), the `RulesView.tsx:249` placeholder to
+  "DB1* or AUTH%", unit tests from the doc examples. Goldens may move if any other content pattern relied on the
+  old syntax; grep content for `?` and non-final `*` first.
+- [ ] **14. zIIP-eligible work must not soak up the CP backlog.** Capping and CP shortage limit general purpose CPs
+  only (*WLM Planning* p.182); work that is not zIIP-eligible cannot run on a zIIP (INFERENCE from the eligibility
+  rules, p.430–431 of *Init & Tuning*). Audit (PROD1 09:00–15:00): absolute cap 1.0 CP took zIIP engine-seconds
+  3 463 → 7 188 while CP fell 32 770 → 21 600; DC 150 MSU took zIIP 0.19 → 0.36 engines with equal or fewer
+  completions. Cause: `src/sim/core/step.ts:663-669` splits each slice's whole backlog by `cpShare`, so CP work left
+  unserved drains on idle zIIPs. Misleads diagnosis ("zIIP busy doubled, add zIIP"). Fix: carry the backlog per pool
+  (CP and zIIP), or grant zIIP no faster than the CP share of the same work allows. Changes goldens.
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
@@ -400,6 +478,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
+- Importance-1 work starved under CPU overload (audit r3, Midwest seed 42 at 5 CPs): ONLHI#1 sat at DP 250 below
+  STCMED, STCHI and DDFPRD#1 (251) for 6+ hours, RBANK 0 % in SLA 10:00–15:00, WLM log "PI=4.00 BTLNK=CPU no action
+  with net value"; an AVG goal behaved the same and a forced DP 253 did not recover it in 80 ticks. Real WLM would
+  take donors of lower importance. Not isolated (overload hurts every arm); recheck after items 1, 3 and 9, then trace
+  `passes()` in `src/sim/wlm/adjust.ts` for this case.
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
 - Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
   a soft-capped image. On a real system the latter probably shows as processor (PRC) delay, since PR/SM just stops
