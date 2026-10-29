@@ -380,7 +380,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
     }
 
     case 'SET_MQ':
-      if (!Number.isInteger(cmd.maxDepthMsgs) || cmd.maxDepthMsgs < 1 || cmd.maxDepthMsgs > 999_999_999) return fail(s, 'MAXDEPTH must be 1–999999999');
+      if (!Number.isInteger(cmd.maxDepthMsgs) || cmd.maxDepthMsgs < 0 || cmd.maxDepthMsgs > 999_999_999) return fail(s, 'MAXDEPTH must be 0–999999999');
       return ok({ ...s, mqMaxDepth: { ...(s.mqMaxDepth ?? {}), [cmd.workloadId]: cmd.maxDepthMsgs } }, `ALTER QLOCAL MAXDEPTH(${cmd.maxDepthMsgs}) for ${cmd.workloadId}`);
 
     case 'SET_PRICING':

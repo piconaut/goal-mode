@@ -563,11 +563,13 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const workPerTxn = s.cpuSecPerTxn + s.ziipSecPerTxn;
     let failed = 0;
     if (s.maxQueueMsgs !== undefined) {
-      // MQ: messages wait on the queue; only puts beyond MAXDEPTH fail (MQRC_Q_FULL).
+      // MQ: messages wait on the queue; only puts beyond MAXDEPTH fail (MQRC_Q_FULL). Messages already queued
+      // above a lowered MAXDEPTH "remain intact" and drain (MQ 9.4 Administration Reference p.463).
       const cap = s.maxQueueMsgs * workPerTxn;
       if (workPerTxn > 0 && newBacklog > cap) {
-        failed = (newBacklog - cap) / workPerTxn;
-        newBacklog = cap;
+        const keep = Math.min(newBacklog, Math.max(cap, (input.backlog[s.key] ?? 0) - gotSec));
+        failed = (newBacklog - keep) / workPerTxn;
+        newBacklog = keep;
         waitSec = newBacklog / gotRate;
       }
       // A starved queue: messages completing now waited about as long as the backlog took to build

@@ -337,7 +337,7 @@ Audit round 3 (2026-10-29, Midwest seed 42; `runs/lab/2026-10-29-audit-r3.md`, l
   (`src/sim/core/step.ts:1210`) counts a DISC period as missing when delay > using, and `rgMin` lifts it at
   `RG_MIN_DP = 252` (`src/sim/wlm/evaluate.ts:326`), above all managed work. Fix: a DISC period's minimum is served
   only from capacity no goal period that misses its goal wants (dispatch it below managed work); goal periods keep DP 252.
-- [ ] **12. Lowering MQ MAXDEPTH must not discard queued messages.** Messages already on the queue above a reduced
+- [x] **12. Lowering MQ MAXDEPTH must not discard queued messages.** Messages already on the queue above a reduced
   MAXDEPTH "remain intact"; only new puts fail (*MQ 9.4 Administration Reference* p.463, p.636). Audit (Midwest CP=5,
   PAYMQ MAXDEPTH → 100): the backlog fell from 19.4 s to 1.1 s of work in one tick with 0 completions; PAYMQ RT
   30.2 → 8.7 s. A free, instant backlog flush. Cause: `evaluate.ts:555-558` truncates `newBacklog` to the cap every
