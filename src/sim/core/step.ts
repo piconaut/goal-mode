@@ -763,7 +763,6 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     io,
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
     pagingFrac: pagingFrac[l.id] ?? 0,
-    cappedFrac: cpRt?.cappedFrac ?? 0,
     storageCritical,
     promoted,
     promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,

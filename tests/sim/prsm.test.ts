@@ -128,3 +128,31 @@ describe('soft capping and polarity', () => {
     expect(highPolarity(50)).toBe(highPolarity(Infinity));
   });
 });
+
+describe('capped fraction counts only binding caps (RMF Report Analysis p.401)', () => {
+  const cpc = MIDWEST_WORLD.cpcs[0]!;
+  const busy = (softCapPROD1 = Infinity) =>
+    MIDWEST_WORLD.lpars.flatMap((l) => l.pools.filter((p) => p.pool === 'CP' && !p.dedicated).map(() => ({
+      lparId: l.id, pool: 'CP' as const, demandEngines: 20, softCapEngines: l.id === 'PROD1' ? softCapPROD1 : Infinity,
+    })));
+  const withAbsCap = (cap: number) =>
+    MIDWEST_WORLD.lpars.map((l) =>
+      l.id === 'PROD1' ? { ...l, pools: l.pools.map((p) => (p.pool === 'CP' ? { ...p, absoluteCapEngines: cap } : p)) } : l,
+    );
+  it('an absolute cap above what the LPAR gets is not capping, even when PR/SM contention holds the LPAR back', () => {
+    const logical = MIDWEST_WORLD.lpars.find((l) => l.id === 'PROD1')!.pools.find((p) => p.pool === 'CP')!.logical;
+    const r = resolveCpc(cpc, withAbsCap(logical - 0.5), busy())['PROD1:CP']!;
+    expect(r.deliveredEngines).toBeLessThan(logical - 0.6);
+    expect(r.cappedFrac).toBe(0);
+  });
+  it('a binding absolute cap counts as capping but not as WLM capping', () => {
+    const r = resolveCpc(cpc, withAbsCap(1.5), busy())['PROD1:CP']!;
+    expect(r.cappedFrac).toBeGreaterThan(0);
+    expect(r.softCappedFrac).toBe(0);
+  });
+  it('a binding soft cap is WLM capping', () => {
+    const r = resolveCpc(cpc, MIDWEST_WORLD.lpars, busy(1.5))['PROD1:CP']!;
+    expect(r.softCappedFrac).toBeGreaterThan(0);
+    expect(r.softCappedFrac).toBe(r.cappedFrac);
+  });
+});

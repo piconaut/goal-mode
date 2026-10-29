@@ -321,7 +321,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
         cpcId: l.cpcId,
         cpcCapacityMsu: box.engines.CP * msuCp,
         imageCapacityMsu: Math.min(...limits),
-        wlmCappingPct: 100 * (sim.lpars.find((x) => x.id === l.id)?.pools.find((p) => p.pool === 'CP')?.cappedFrac ?? 0),
+        wlmCappingPct: 100 * (sim.lpars.find((x) => x.id === l.id)?.pools.find((p) => p.pool === 'CP')?.softCappedFrac ?? 0),
         r4haMsu: r4?.r4ha ?? 0,
         max4hMsu: r4 ? Math.max(0, ...r4.slots) : 0,
         group: grp?.id ?? null,
