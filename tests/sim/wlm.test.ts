@@ -19,9 +19,21 @@ describe('math', () => {
 describe('classification', () => {
   it('wildcards', () => {
     expect(wildcardMatch('DB*', 'DB1AMSTR')).toBe(true);
-    expect(wildcardMatch('*IRLM', 'DB1AIRLM')).toBe(true);
-    expect(wildcardMatch('AUTH?', 'AUTH1')).toBe(true);
-    expect(wildcardMatch('AUTH?', 'AUTH12')).toBe(false);
+    expect(wildcardMatch('%%%%IRLM', 'DB1AIRLM')).toBe(true);
+    expect(wildcardMatch('AUTH%', 'AUTH1')).toBe(true);
+    expect(wildcardMatch('AUTH%', 'AUTH12')).toBe(false);
+  });
+
+  it('follows WLM mask and wildcard syntax (WLM Planning p.104)', () => {
+    expect(wildcardMatch('DEPT58%I', 'DEPT58AI')).toBe(true);
+    expect(wildcardMatch('DEPT58%I', 'DEPT58I')).toBe(false);
+    expect(wildcardMatch('AUTH%', 'AUTH')).toBe(true);
+    expect(wildcardMatch('CI*S', 'CICS')).toBe(false);
+    expect(wildcardMatch('CI*S', 'CI*S')).toBe(true);
+    expect(wildcardMatch('*IRLM', 'DB1AIRLM')).toBe(false);
+    expect(wildcardMatch('*', 'ANYTHING')).toBe(true);
+    expect(wildcardMatch('AUTH?', 'AUTH1')).toBe(false);
+    expect(wildcardMatch('TOR*', 'TOR11')).toBe(true);
   });
   it('first matching rule wins, in order', () => {
     // *IRLM appears before DB* in BASEPOL, so IRLM lands in SYSSTC.

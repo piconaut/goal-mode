@@ -246,7 +246,7 @@ function AddRule({ sub, count, classIds, edit }: { sub: SubsystemType; count: nu
           </option>
         ))}
       </select>
-      <input aria-label="Pattern" placeholder="pattern, e.g. DB1* or AUTH?" value={pattern} onChange={(e) => setPattern(e.target.value)} size={14} />
+      <input aria-label="Pattern" placeholder="pattern, e.g. DB1* or AUTH%" value={pattern} onChange={(e) => setPattern(e.target.value)} size={14} />
       →
       <select aria-label="Service class" value={cls} onChange={(e) => setCls(e.target.value)}>
         {classIds.map((c) => (

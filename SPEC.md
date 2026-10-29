@@ -387,6 +387,8 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
 - **Classification rules** per subsystem type (CICS, DDF, JES, STC, TSO, MQ, OMVS) with
   qualifiers: TN (transaction/job name), UI (userid), CI (correlation ID), PK (package),
   PN (plan), TC (job class), SPM, SY (system), nested rules. Default class per subsystem.
+  Patterns use WLM syntax: `%` masks one character (trailing `%` may match none), `*` is a
+  wildcard only last or alone and a literal elsewhere (WLM Planning p.104).
   Anything unmatched in a non-STC subsystem goes to **SYSOTHER** (discretionary).
 - **Report classes** (pure reporting, cost nothing) — required for granular RMF views.
 - CICS/IMS region management: "Manage regions using goals of TRANSACTION | REGION".
@@ -1456,6 +1458,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Area | Fidelity | Notes |
 |---|---|---|
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
+| Classification masks and wildcards (`%`, trailing `*`) | **Real** | WLM Planning p.104; `*` mid-pattern is a literal |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
