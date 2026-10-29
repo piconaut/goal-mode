@@ -345,7 +345,7 @@ Audit round 3 (2026-10-29, Midwest seed 42; `runs/lab/2026-10-29-audit-r3.md`, l
   (`src/game/commands.ts:379` refuses it; z/OS range 0–999 999 999).
 
 Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, local only).
-- [ ] **13. Classification masks and wildcards must follow WLM syntax.** `%` masks one character (at the end it may
+- [x] **13. Classification masks and wildcards must follow WLM syntax.** `%` masks one character (at the end it may
   also match nothing); `*` is a wildcard only in the last position or alone and a literal anywhere else (`CI*S`
   matches only `CI*S`); there is no `?` (*WLM Planning* p.104). `compileWildcard` (`src/sim/wlm/classify.ts:26`)
   treats `*` as a wildcard anywhere, `?` as one character and `%` as a literal: `DEPT58%I` misses `DEPT58AI`, the
@@ -479,6 +479,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | Storage Critical redistributes paging instead of deleting it: unprotected periods absorb the protected share by activity × steal weight (imp 1..5 → 1..5, discretionary 6), capped at 0.9 | Keeps the image's paging constant so the lever has a cost (WLM Planning p.119). No scenario sets Storage Critical by default, so goldens and bench hashes are unchanged |
 | 2026-10-29 | IEAOPT CCIMP modelled per system, but every scenario stays pre-z/OS 3.1 (CCIMP 0); the player turns it on with SET_IEAOPT (CLI/change desk; no UI control yet) | Turning it on by default would protect importance-1 work for free and shift balance; as a lever it has a cost (fewer donors, lower work waits longer). Harbourline with PRDA/PRDB at 4 logical CPs: 3526 → 0 DP inversions under importance-1 first periods over 12 h. Goldens and bench hash unchanged |
 | 2026-10-29 | WLM edit validation follows *WLM Planning* Table 7 (p.84) for the six modelled qualifiers: STC TN/UI/SY, JES TN/UI/TC, CICS TN/UI/TC, DDF UI/PK/CI, TSO UI/SY, MQ TN/UI/TC, OMVS TN/UI/SY. A qualifier may not appear under itself at any level (APPROX: p.99 shows the direct case) | The table has no SY for JES, CICS or DDF, so the sim's JES `SY` attribute is never matchable; no shipped policy or bot uses it. Existing invalid policies stay loadable; only the edit is refused |
+| 2026-10-29 | Classification patterns follow WLM syntax (*WLM Planning* p.104): `%` one character (trailing `%` may match none), `*` wildcard only last or alone, literal elsewhere, no `?`; shipped IRLM rules become `%%%%IRLM` | `*IRLM` is a literal in real WLM; behaviour unchanged (goldens moved only by the pattern string in the hashed state; mapping it back reproduces the old hashes) |
 
 ## Open questions
 

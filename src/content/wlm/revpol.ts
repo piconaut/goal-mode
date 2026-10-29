@@ -40,7 +40,7 @@ export const REVPOL: ServiceDefinition = {
         rule('TN', 'TCPIP', 'SYSSTC'),
         rule('TN', 'RRS', 'SYSSTC'),
         rule('TN', 'RMF*', 'SYSSTC'),
-        rule('TN', '*IRLM', 'SYSSTC'),
+        rule('TN', '%%%%IRLM', 'SYSSTC'),
         rule('TN', 'DB*', 'STCHI'),
         rule('TN', 'CICS*', 'STCHI'),
         rule('TN', 'MON*', 'STCMED'),

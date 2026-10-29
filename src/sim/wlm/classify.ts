@@ -23,12 +23,17 @@ export function wildcardMatch(pattern: string, value: string): boolean {
   return rx.test(value.toUpperCase());
 }
 
+// WLM masks: % is one character (trailing % may also match none); * is a wildcard only
+// when last or alone, a literal anywhere else (WLM Planning, z/OS 3.1, p.104).
 function compileWildcard(pattern: string): RegExp {
+  const p = pattern.toUpperCase();
+  const trailingPct = p.length - p.replace(/%+$/, '').length;
   let re = '^';
-  for (const ch of pattern.toUpperCase()) {
-    if (ch === '*') re += '.*';
-    else if (ch === '?') re += '.';
-    else re += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i]!;
+    if (ch === '*' && i === p.length - 1) re += '.*';
+    else if (ch === '%') re += i >= p.length - trailingPct ? '.?' : '.';
+    else re += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
   return new RegExp(re + '$');
 }
