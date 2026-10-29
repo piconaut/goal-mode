@@ -286,7 +286,11 @@ Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md
   Fix: with no online zIIP, zq = 0 and the eligible seconds are billed at CP speed with the CP queue ratio. Unit test
   on the dispatcher with zero zIIP capacity.
 - [ ] **7. WLM-managed initiators must add initiation delay to velocity.** Velocity's delay includes "initiation
-  delays for batch jobs in WLM-managed job classes" (*WLM Planning* p.70, p.39 note 1). Audit: class A at one
+  delays for batch jobs in WLM-managed job classes" (*WLM Planning* p.70, p.39 note 1). The size is the jobs' time
+  on the queue (waiting for an initiator, class limits, affinity, operator holds), and with large queues it "can
+  dominate the response time or velocity" (*JES2 Init & Tuning Guide* p.113–114). WLM reads it every 10 s policy
+  interval and starts up to five initiators per interval on unconstrained systems, but on a system over 95 % busy only
+  for work important enough to displace running work (SG24-6472-03, Mar 2008, p.211). Audit: class A at one
   initiator per system gave byte-identical WLMGL rows in JES and WLM mode (BATCHPRD velocity 94.5 %, PI 0.32) while
   critical jobs lost 10 770 s waiting for an initiator. Cause: queued jobs are in no slice
   (`src/sim/batch/batch.ts:139-176`) and `evaluate.ts` has no initiation-delay term. Fix: in WLM mode, queued jobs add
