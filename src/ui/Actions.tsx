@@ -1277,7 +1277,7 @@ function MqSection({ desk }: { desk: Desk }) {
                     format={(n) => n.toLocaleString()}
                     make={(n) => ({ kind: 'SET_MQ', workloadId: q.workloadId, maxDepthMsgs: n })}
                     read={(c) => (c.kind === 'SET_MQ' ? c.maxDepthMsgs : q.maxDepth)}
-                    validate={(n) => (Number.isInteger(n) && n >= 1 && n <= 999_999_999 ? null : 'Whole number 1–999999999')}
+                    validate={(n) => (Number.isInteger(n) && n >= 0 && n <= 999_999_999 ? null : 'Whole number 0–999999999')}
                   />
                 </td>
               </tr>
