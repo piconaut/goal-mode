@@ -3,7 +3,7 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
-import { discretionaryCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
+import { discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { emptyAcc } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
@@ -240,6 +240,22 @@ describe('WLM caps (resource group maximum, discretionary goal management)', () 
     const capped = evaluateLpar({ ...base, capOf: (s: SliceSpec) => (s.scKey === 'STCHI#1' ? 0.05 : Infinity) });
     expect(capped.roleHealth['DB2.DBM1']!.health).toBeLessThan(0.2);
     expect(capped.slices[0]!.rtMeanSec).toBeGreaterThan(free.slices[0]!.rtMeanSec + 0.05);
+  });
+
+  it('RG max on the CICS AOR class caps the transactions that run in the AORs', () => {
+    const d = structuredClone(BASEPOL);
+    d.resourceGroups = [{ id: 'RGAOR', type: 3, max: 50, min: null }];
+    d.classes.find((c) => c.id === 'STCMED')!.resourceGroup = 'RGAOR';
+    const wl = { CICSW: { hostRole: 'CICS.AOR' }, DDFW: {} } as unknown as Parameters<typeof resourceGroupCaps>[5];
+    const t = txn({ key: 'T', scKey: 'ONLHI#1', workloadId: 'CICSW', cpEngines: 2 });
+    const ddf = txn({ key: 'D', scKey: 'ONLHI#1', workloadId: 'DDFW', cpEngines: 2 });
+    const aor = (key: string, scKey: string) => server({ key, scKey, role: 'CICS.AOR', cpEngines: 0.1 });
+    const all = resourceGroupCaps(d, [t, ddf, aor('A1', 'STCMED#1'), aor('A2', 'STCMED#1')], undefined, 1, {}, wl, {})!;
+    expect(all(t)).toBeCloseTo((0.5 * 2) / 2.2, 6);
+    expect(all(ddf)).toBe(Infinity);
+    // Half the AORs in the group: half the transaction CPU is capped, the rest runs free.
+    const half = resourceGroupCaps(d, [t, aor('A1', 'STCMED#1'), aor('A2', 'STCLO#1')], undefined, 1, {}, wl, {})!;
+    expect(half(t)).toBeCloseTo((0.5 * 1) / 1.1 + 1, 6);
   });
 
   it('caps over-achieving loose-goal work only while discretionary work waits', () => {

@@ -716,7 +716,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
     backlog: prev.backlog,
     dpOf,
-    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
+    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
     minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare).minOf,
     regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
     io,
@@ -1240,22 +1240,55 @@ export function rgMin(
   return Object.keys(minOf).length > 0 ? { minOf } : {};
 }
 
-function resourceGroupCaps(
+export function resourceGroupCaps(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
   plexShare: Readonly<Record<string, number>>,
+  workloadById: Readonly<Record<string, WorkloadDef>>,
+  backlog: Readonly<Record<string, number>>,
 ): ((s: SliceSpec) => number) | undefined {
   const groups = def.resourceGroups.filter((g) => g.max !== null);
   if (groups.length === 0) return undefined;
+  // Transactions consume their CPU in their host regions (CICS AORs), so a group on the regions' class caps
+  // them (WLM Planning p.60 note 1, p.122). APPROX: a transaction slice is a member in proportion to the CPU
+  // share of its LPAR's host regions in the group; CPSM routing away from capped AORs is ignored.
+  const hostEngines: Record<string, number> = {};
+  const hostInGroup: Record<string, Record<string, number>> = {};
+  for (const s of slices) {
+    if (s.kind !== 'AS' || !s.role) continue;
+    hostEngines[s.role] = (hostEngines[s.role] ?? 0) + s.cpEngines;
+    const rg = goalInfo(def, s.scKey)?.resourceGroup;
+    if (rg) (hostInGroup[s.role] ??= {})[rg] = (hostInGroup[s.role]![rg] ?? 0) + s.cpEngines;
+  }
+  const hostShare = (s: SliceSpec, rg: string): number => {
+    if (s.kind !== 'TXN' || !s.workloadId) return 0;
+    const role = workloadById[s.workloadId]?.hostRole;
+    const tot = role ? (hostEngines[role] ?? 0) : 0;
+    return tot > 0 ? (hostInGroup[role!]?.[rg] ?? 0) / tot : 0;
+  };
   const capBySlice: Record<string, number> = {};
   for (const g of groups) {
-    const members = slices.filter((s) => goalInfo(def, s.scKey)?.resourceGroup === g.id);
-    const demand = members.reduce((a, s) => a + s.cpEngines, 0);
+    const members: { s: SliceSpec; frac: number }[] = [];
+    for (const s of slices) {
+      const frac = goalInfo(def, s.scKey)?.resourceGroup === g.id ? 1 : hostShare(s, g.id);
+      if (frac > 0) members.push({ s, frac });
+    }
+    const demand = members.reduce((a, m) => a + m.frac * m.s.cpEngines, 0);
     if (demand <= 0) continue;
     const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, plexShare[g.id] ?? 1);
-    for (const s of members) capBySlice[s.key] = (cap * s.cpEngines) / demand;
+    for (const { s, frac } of members) {
+      const capped = (cap * frac * s.cpEngines) / demand;
+      if (frac >= 1) {
+        capBySlice[s.key] = capped;
+        continue;
+      }
+      // The part of the slice running outside the group's regions stays uncapped (same demand as evaluateLpar).
+      const tot = s.cpEngines + s.ziipEngines;
+      const uncapped = s.cpEngines + ((backlog[s.key] ?? 0) / TICK_SEC) * (tot > 0 ? s.cpEngines / tot : 1);
+      capBySlice[s.key] = capped + (1 - frac) * uncapped;
+    }
   }
   return (s) => capBySlice[s.key] ?? Infinity;
 }
