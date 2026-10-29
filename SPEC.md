@@ -799,9 +799,11 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 
 **Tier 1 (Insight cost: low):**
 - **RMF Monitor III** (live): SYSSUM (goals vs actuals, PI), SYSINFO, DELAY, PROCU, ENCLAVE, WFEX (exceptions), CPC capacity.
-  History: one set of views per MINTIME (100 s), kept for 48 hours, so the tabular views can step back to any past
+  History: one set of views per MINTIME (120 s; the RMF default is 100 s), kept for 48 hours, so the tabular views can step back to any past
   interval (like RMF III's VSAM data sets and BREF/FREF). Recorded only while the tool is owned; held by the worker,
-  not the run, so it is lost on reload and doesn't touch saves or hashes. Pins are live-only.
+  not the run, so it is lost on reload and doesn't touch saves or hashes. Evidence can be pinned from a past range
+  too (stamped with that range's end); the play CLI keeps only the pinnable values (PI, CPU, ended rate, delays per
+  period; PR/SM delay and capping per LPAR) beside the run file (`runs/a.mon3.json`) for `mon3 --at` and `pin --at`.
   Columns and formulas follow RMF Report Analysis ch. 2 (§18): DELAY splits active samples into USG/DLY/UKN
   (server and subsystem waits are UKN, not delay); SYSINFO shows the LPAR and MVS views of CPU (MVS above LPAR
   is the short-engine clue); PROCU's Time on CP % IIP is zIIP-eligible work run on CPs.
@@ -1223,7 +1225,7 @@ index-rebalance days (story). A burst lifts λ ×3–6 for 30 s – 5 min.
 
 Why it is hard (and real):
 - **Interval reports hide it.** A 15-min RMF interval averages a 2-minute ×5 burst into a +25 % blip.
-  WLMGL looks fine while the SLA counts misses. The clue path is Mon III (100 s range: SYSSUM PI and
+  WLMGL looks fine while the SLA counts misses. The clue path is Mon III (120 s range: SYSSUM PI and
   DELAY spike), CICS monitoring (per-minute response times) and SMF 113 / the incident timeline.
 - **WLM is not instant.** One receiver gets help per 10 s policy interval, and the PI is built from a
   smoothed history, so a burst shorter than ~a minute is over before WLM has reacted (§5.5).
@@ -1243,8 +1245,9 @@ Valid fixes, each with a cost:
 - **Move the burst:** route MKTQRY price queries to CPC2's zIIPs (but see Problem 2).
 - **Caps:** swap the absolute cap for a defined capacity (MLC risk), or raise it.
 
-Day-1 clue: the outgoing analyst's handover mail (story beat `HANDOVER`, day 0, every difficulty) names the
-09:00 open, PRDA's absolute cap and Partition Data, so the first market-open miss has a lead before it lands.
+Day-1 clue: none in the inbox. The outgoing analyst's handover mail (story beat `HANDOVER`) was removed
+2026-10-28 (user): it described one seed's day 1 ("Markets screams first, then Cards") as if it were fixed.
+The cap shows in Partition Data and the HMC image profile like any other setting.
 
 #### Problem 2: workload-balancing issues across the sysplex
 
@@ -1458,7 +1461,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Vendor list-price changes | **Simplified** | One run-level multiplier on sub-capacity MLC (all products alike); applies to the whole month it is in force, no proration; TFP terms are fixed once signed |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
-| Monitor III views (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | RMF field names and formulas (Report Analysis ch. 2). Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 100 s MINTIME; rows are service-class periods, not jobs or individual enclaves; no IDL state, workload groups or report classes; PRC/DEV using split and zIIP/IIPCP split follow the last tick's mix (APPROX); MVS Util% derived from the PR/SM short-engine wait (APPROX); PR/SM delay % shown directly though RMF has no such field; WFEX criteria are RT/WFL% thresholds at 1.5× the goal (FICTIONAL); history is a snapshot of that smoothed view every 100 s for 48 h (retention is a game choice; real retention depends on the VSAM data set size) |
+| Monitor III views (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | RMF field names and formulas (Report Analysis ch. 2). Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 120 s MINTIME; rows are service-class periods, not jobs or individual enclaves; no IDL state, workload groups or report classes; PRC/DEV using split and zIIP/IIPCP split follow the last tick's mix (APPROX); MVS Util% derived from the PR/SM short-engine wait (APPROX); PR/SM delay % shown directly though RMF has no such field; WFEX criteria are RT/WFL% thresholds at 1.5× the goal (FICTIONAL); history is a snapshot of that smoothed view every 120 s (MINTIME(120); RMF's default is 100 s) for 48 h (retention is a game choice; real retention depends on the VSAM data set size) |
 | Multi-day projects (threadsafe, zIIP-enable, compression, SQL tuning, archive) | **Plausible model** | Flat per-transaction multipliers on CPU, I/O and zIIP eligibility; sizes FICTIONAL. Events can also cut eligibility (`ziipEligMult`, moves zIIP time back to CP) |
 | Report classes in WLMGL (homogeneous / heterogeneous) | **Faithful simplification** | One row per report class; goal and PI only for a single service-class period (RMF would show report class periods) |
 | WLM service policies and scheduled V WLM,POLICY= switches | **Faithful simplification** | Whole policies are swapped; policy overrides within one policy are not modelled separately |

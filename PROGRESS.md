@@ -8,7 +8,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-10-28
-- **Next up:** Monitor III history follow-ups (pin evidence from a past interval; `play` CLI access), then a human UI playtest (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
+- **Next up:** a human UI playtest (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
@@ -30,8 +30,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   GitHub settings (user): default branch `dev`; protect `dev` and `main` with these four checks required; allow
   auto-merge; delete head branches on merge. `main` requires the same checks but no approval: GitHub records Claude's
   PRs as authored by the user, who can't approve their own PR (user decision 2026-10-26).
-- **Health:** `npm run check` green (430 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `be43ff16de564882` (since PR #9), Harbourline `be97b3e401164fc5`.
+- **Health:** `npm run check` green (437 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
+  bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `fef4fa052462d635`, Harbourline `a1984addb2403be0` (dev after #70; merged to main in PR #72).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
@@ -61,8 +61,8 @@ and cost CPU (`mods.measureCpu`). Tier 1: Monitor III, live WLM log, CPC view. T
 per structure, DASD per LCU, SMF 101/110/30/113, RCA evidence pinning. Tier 3: what-if, capacity planner, alerts,
 automation + CoD, saved policies with a daily schedule. Tier 4: report classes + advisor, AIOps, TFP offer,
 Finance tab, multi-day projects, Codex with contextual "?" hints.
-- [ ] ~~RMF interval < 15 min needs the tool~~ dropped: the Postprocessor interval is just SMF INTVAL on real systems
-- [ ] PROCU is per service-class period, not per address space (slices are not kept per tick). Add top address
+- [x] ~~RMF interval < 15 min needs the tool~~ dropped: the Postprocessor interval is just SMF INTVAL on real systems
+- [x] PROCU is per service-class period, not per address space (slices are not kept per tick). Add top address
   spaces if a diagnosis needs it
 - Known gaps (APPROX, revisit only if gameplay needs them): per-AOR QR busy not shown in SMF 110 (QR is per LPAR);
   WLM "policy overrides" not modelled (whole policies are swapped); discretionary capping ignores "not a recent
@@ -127,7 +127,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   tool (Report Class Hoarder); Codex persists (localStorage). Still open: scenario unlocks (one scenario so far)
 
 **M8.4 Content**
-- [~] Events to ~25 (SPEC §9); 27 now (deck complete for this pass). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
+- [x] Events to ~25 (SPEC §9); 27 now (deck complete; more only if a playtest asks for one). Since M5: REORG_OVERRUN, CF_FAILURE, SHADOW_IT, QR_RELEASE,
   NEW_APP_GOLIVE, POWER_CAP, HSM_RECALL_STORM, CP_SPARING (red herring), HIRING_FREEZE, AUDIT_UNCLASSIFIED,
   ZIIP_LOSS (loop 104), CICS_SOS (loop 105), SMF_AUDIT (loop 106), RETRY_STORM (loop 110), XLOG_LOOP (loop 112: looping STC misclassified by the CICS* rule), ENCRYPTION_MANDATE and GREEN_IT_COD (loop 113). Re-sweep the bots once the deck is complete
   - VENDOR_PRICE (2026-10-23, user's option 1): `SET_MLC_PRICE` sets `cost.priceMult` (absent = 1, goldens unchanged);
@@ -141,11 +141,11 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   - RCA truth: cards may declare `mechanisms`; `triggerOf` blames an active card only for incidents with one of them
 - [x] More draft options and perks: every SPEC §9.5 opportunity type, 11 perks, 2 pacts (`content/draft.ts`)
 - [ ] Scenarios: *Continental Insurance* (IMS-heavy claims batch, needs an IMS subsystem model), *State Revenue Agency* (tax-season spike, strict regulator), *Global Airline* (24×7, two CPCs/sites, GDPS-style constraints)
-- [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats
+- [ ] Each scenario ships with its own flaw list (SPEC §13.3 rules) and story beats (done for Midwest, Revenue and Harbourline; applies to Continental and Global Airline when built)
 - [x] *State Revenue Agency* playable (SPEC §13.4): scenario packs (`content/packs.ts`, `--scenario revenue`, picker in
   the new-run dialog and day-1 briefing), per-scenario facets, flaws G1–G3/H1–H2, story beats, 16-card agency deck.
   Follow-up: textbook's day-22 PREFILL losses (its PFILAPI class still misses)
-- [ ] Scenario (user request 2026-10-21): **large bank, big mainframe estate**, a harder run for experienced players.
+- [x] Scenario (user request 2026-10-21; built as Harbourline Bank): **large bank, big mainframe estate**, a harder run for experienced players.
   - **Estate:** several CPCs and many LPARs and sysplex members.
   - **Analytics at the start:** some tools are unlocked from day 1, so the challenge is diagnosis, not visibility.
   - **Harder problems.** Two the user named:
@@ -155,7 +155,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     - **Workload-balancing issues across the sysplex:** sysplex distributor / CICSPlex SM routing and WLM routing
       recommendations send work to the wrong images, through skewed weights, a sick-but-alive region (storm
       drain) or uneven zIIP capacity. Fixes trade affinity against even load.
-  - **Needs:** a multi-CPC world (the hardware catalog and HMC assume one CPC), finer-than-hourly arrival bursts in
+  - [x] **Needs** (all built): a multi-CPC world (the hardware catalog and HMC assume one CPC), finer-than-hourly arrival bursts in
     the workload model, and routing that reacts to image health.
   - [x] Design: SPEC §13.5 "Harbourline Bank" (2 CPCs, 6 LPARs, starting tools; Problem 1 spiky markets work with
     four fix families; Problem 2 flaws B1–B4: static SD weights, storm drain, CP-only WLM weights, CF locality; build
@@ -163,7 +163,7 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
 
 
 **M8.6 Playtesting, polish & progression (user request 2026-10-26)**
-- [ ] Playtesting: human and agent playtests on all three scenarios (`goal-mode-player` and the persona agents for
+- [x] Playtesting: human and agent playtests on all three scenarios (`goal-mode-player` and the persona agents for
   the headless side); record friction points and fix the worst ones
   - Round 1 (2026-10-27, play CLI; Midwest seed 11, Revenue seed 23, Harbourline seed 37, to about day 9): CLI
     friction fixed the same day. Findings A–F all done: A morning hint points at SMF 110/101 when WLMGL disagrees with
@@ -188,7 +188,23 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
     V `ask` allowed in REVIEW; W strain hint skips thin response-time intervals (`STRAIN.minEnded`) and batch
     classes, `status` shows only the latest hints; X `pin` prints only its result, `smf BATCH` lists the critical path first, handover
     mail at Harbourline day 0 (story beat `HANDOVER`; no day-1 trust grace); report-card naming and GOODWILL kept.
-- [ ] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
+- [x] Monitor III history follow-ups (2026-10-28): MON3 and CPC pins from a past range (browser: 📌 on a history view;
+  CLI: `pin MON3|CPC ... --at D2 10:40`), stamped with that range's end; the play CLI keeps the pinnable values
+  (`src/game/mon3PinHistory.ts`) for 48 h in `runs/a.mon3.json` beside the run file, ~5 MB on Harbourline, and shows
+  them with `mon3 [system] --at`. Recording only runs in the CLI's `advance` (bots and sweeps don't use it). Monitor
+  III MINTIME is now 120 s (was 100 s, RMF's default); the "Range" header still shows WLM's ≈ 67 s smoothing (§17)
+- [x] UI polish pass: consistency of panels, spacing, labels and empty states; phone width; follow-ups from playtests
+  - 2026-10-28, PR 1: `tools/screenshot.mjs` launches the pre-installed Chromium (`<outDir> [light|dark|3270] [--all]`);
+    Change Desk "Systems, CF & I/O": DASD, Db2, MQ and CICS are setting rows in a column grid (name, input, now,
+    actions) and Db2, MQ and CICS are separate sections. UI only; bench hashes unchanged.
+  - 2026-10-28, PR 2: Codex "?" hints are labelled pills ("? PI", "? velocity", ...) in one `.hints` group after each
+    title; one `Empty` style for every panel's empty state (Operations log and Inbox had none); the locked-view notes
+    ("Analytics tab") are buttons that switch tab (callback from `App.tsx`); tabs share one `.page` gap instead of
+    per-panel margins; Ops Console: Incidents, Operations log and Batch window stacked in one column. UI only.
+    Not done: phone-width pass on the new setting rows (they scroll sideways inside their panel)
+- [x] Multi-CPC views (user request 2026-10-28; done: Mon III CPC report shows a section per CPC with its own L:P, HMC LPAR picker groups by CPC; single-CPC scenarios unchanged): when the estate has more than one CPC (Harbourline), the Monitor III
+  CPC report and the HMC show a separate table per CPC (its own capacity, MSU, capping and partitions), not one list
+  of every LPAR
 - [ ] Additional perks: widen the draft and starting-perk pool (each with a cost or trade-off, data in `src/content/`)
 - [ ] Expand career unlocks: more levels and unlock kinds (scenarios, starting tools, cosmetic titles), building on
   the career XP system (M8.3 meta-progression)
@@ -205,6 +221,61 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
   The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
   DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
+
+Harbourline seed 42 realism audit (2026-10-28; experiments and numbers in `runs/lab/2026-10-28-harbourline-s42-audit.md`,
+local only). Do these in order, each as its own PR; the first two are user-ordered.
+- [ ] **1. A resource group max on a server region must slow its dependents (do first).** The cap works by making
+  the group's work units non-dispatchable for some time slices (*WLM Planning* p.60 note 4, p.57). Audit: STCHI
+  (CICS/Db2/MQ regions) at 2 % max fell from 51.7 % to 11.8 % use, yet MKTORD went 48 → 45 ms. Cause:
+  `prepareLpar` cuts the slice's demand (`sliceCut`, `src/sim/wlm/evaluate.ts:360-367`), then sets
+  `want = sliceCp + sliceZi` from the cut demand (`:481`), so `health = got/want` stays 1, `roleHealth` never drops
+  and neither `depDelay` (`:572`) nor batch dependency stretch sees the cap. Fix: health against `want + cut` (the
+  response-time path already uses `want + cut`, `:562`). This also lets discretionary caps reach dependents, which
+  is the same mechanism. Realism test: "RG max on the Db2 region class raises dependent transaction RT".
+- [ ] **2. A resource group on the CICS AOR class must cap the transactions that run in it (after 1).** You cap CICS
+  transactions by putting the resource group on their regions (*WLM Planning* p.60 note 1); transaction CPU is
+  consumed in the regions, AORs most of it (p.122, p.130). The sim keeps transaction CPU in TXN slices classified by
+  transaction class (`src/sim/workload/slices.ts`); the AOR slices carry only their base CPU, and no workload lists
+  `CICS.AOR` as a server, so fix 1 does nothing for an AOR cap.
+  - Content: optional `hostRole` on `WorkloadDef` (`'CICS.AOR'` for CICS workloads, the MPR role for IMS); unset for
+    DDF, which runs in enclaves under its own service class.
+  - `resourceGroupCaps` (`src/sim/core/step.ts:1243`): a TXN slice is a group member in proportion to the share of
+    its LPAR's host-role regions in the group. The existing `capOf`/`cut` path does the queueing and timeouts.
+  - **No double penalty:** a transaction's own host role does not also add `depDelay`; the cap on its CPU is the one
+    effect (the documented mechanism). `depDelay` stays for true server roles (TOR, Db2, MQ). If a capped AOR
+    should hurt more, tune a `content/` coefficient, not a second path.
+  - APPROX notes: CAP delay posts on the transaction class, not the region class (see the finding R item above);
+    with only some AORs in the group, the proportional share ignores CPSM routing away from them.
+  - Perf: one O(slices) pass per tick, only when a group has a max (`resourceGroupCaps` returns early otherwise).
+- [ ] **3. MAXDBAT and MXT must queue without bound once offered load exceeds the limit.** Db2 queues further
+  processing until an active DBAT ends (*Db2 13 Installation* p.212) and bounds the queue with MAXCONQN/MAXCONQW
+  (p.213, p.365); CICS MXT is 10–2000 and a too-low MXT causes "excessive queuing delays" (*CICS Performance* p.89).
+  Audit: MAXDBAT 1 on all members (≈ 10 DBATs wanted on PRDB) only took MKTQRY 51 → 116 ms, SLA 98–99 %, 0 failures;
+  MXT 1 the same for RETAIL. Cause: `dbatQueueWaitSec` / `mxtQueueWaitSec` (`src/sim/subsys/db2.ts`, `cics.ts`)
+  return `(rate·rt − limit)/rate`, always below one service time. Fix: throughput ≤ limit / rt (Little's law);
+  excess arrivals go to the slice backlog, waits grow and fail at the workload timeout (DDF: a MAXCONQW-like
+  timeout in `content/`), plus Erlang-C wait below saturation (`src/sim/zos/erlang.ts`). Reject MXT < 10 in
+  `SET_CICS` (`src/game/commands.ts`). Re-check the THREAD_LIMIT RCA rule (decision 2026-10-28) against the new curve.
+- [ ] **4. CF service per connected system with a link-distance term (planted flaw B4).** RMF CF Activity reports
+  requests and service times per connected system and estimates link distance as round-trip µs ÷ 10 µs/km
+  (*RMF Report Analysis* p.376, p.378). SPEC §13.5 B4 promises slower lock waits and higher async % on PRDC/PRDD.
+  Audit: sync service 23.3 µs on every system, 0 % async; routing PAYMENTS near-only 182 → 192 ms. Cause: one
+  plex-wide `cfServiceSec` (`src/sim/core/step.ts:150-158`), no distance in `src/sim/cf/cf.ts`. Fix: CPC → CF
+  distance in content (Harbourline 15 km), per-system sync service = base + 2 × 5 µs/km × km (FICTIONAL base;
+  10 µs/km round trip is the doc's figure), the existing sync→async heuristic per system, `cfServiceSec` per LPAR,
+  and a SYSTEM breakdown in the CF Activity report. Moving LOCK1 or duplexing it must then change PRDC/PRDD.
+- [ ] **5. Partition capping fields must report only capping.** Partition Data CAPPING shows DEF (Y/N for Initial
+  Capping, absolute HW cap, HW group cap) and WLM% = time WLM capped the partition (*RMF Report Analysis* p.401;
+  Monitor III CPC "WLM Capping %", p.98). Audit: with 6 CPs, an absolute cap of 6.0 delivered the same 3.05 engines
+  as no cap, yet CAPPED% read 56.4 vs 0. Cause: `cappedFrac` in `src/sim/hw/pools.ts:145` is
+  `(want − delivered)/want` whenever the cap is below demand, so PR/SM contention counts as capping. It also feeds
+  WLMGL's CAP/CPU delay split (`evaluate.ts:494`), CPU incident detection (`src/game/run.ts:554`) and Monitor III
+  WLM Capping % (`src/game/mon3.ts:324`). Fix: count the cap only when it binds (delivered ≥ cap − ε), and only the
+  part the cap removed (uncapped allocation − delivered; one extra `allocatePoolDetailed` call per pool without
+  caps); keep soft (WLM) capping and PR/SM absolute capping in separate fields, WLM% from soft capping only, and
+  show absolute capping as the DEF flags. Same audit: WLMGL posts LPAR soft-cap delay as CAP, but RMF's CAP delay is
+  resource-group and discretionary capping only and "NOT part of the CPU delay" (p.540); LPAR capping shows as CPU
+  delay plus Partition WLM%. Fold that into this change (it is the `capFrac` split) or queue it right after.
 
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
@@ -298,6 +369,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-26 | Discretionary goal management caps from PI < 0.71, stays capped below 0.81, cap = 1 − (0.81 − PI), floor 50 % (was 0.7 / 0.9 / flat 80 %) | M8.7: real WLM holds capped work's PI in 0.71–0.81 (SG24-6472-03 p.183). Proportional cap is APPROX of WLM's projection; balance check deferred to the post-sweep re-sweep |
 | 2026-10-26 | Routing `WLM{ziipAware}` → `WLM{distMethod}`: BASEWLM weighs systems by idle CP capacity, SERVERWLM by the CP/zIIP composite of displaceable capacity; Harbourline B3 recast as the distributor left on default BASEWLM | M8.7: SERVERWLM is zIIP-aware by default and BASEWLM is the default method, CP-only without PROCTYPE (IP Config Guide 3.1 p.555–556), so B3's puzzle keeps its fix with a real name. PROCXCOST not added: no crossover-penalty lever needed for B3. Harbourline hash changes; balance check deferred to the re-sweep |
 | 2026-10-26 | Event deck draws from its own RNG stream per (seed, day), not the shared run RNG | Change failures, activation failures, AIOps hypotheses and drafts rolled the same stream, so any extra bot action reshuffled every later event and seed-by-seed comparisons of bot variants were invalid (seed 18 diverged on day 21 after one CoD rental). Win rates over independent seeds before this stay unbiased but carry ~±10 pp noise at 20 seeds; per-seed claims and small variant deltas made before this are unreliable. Goldens regenerated; balance sweeps re-baselined after (user decision). |
+| 2026-10-28 | Change Desk: edit-in-place drafts plus one change request banner replace per-row "+ basket · Apply" buttons (Operations and hardware orders excepted) | Per-row buttons and cost lines overflowed tables and made it unclear which cost belonged to which change; hours are per change but emergency trust and fail risk are per request, so the request shows them once. User request, iterated on an artifact preview |
 | 2026-10-26 | Every game roll gets its own keyed stream (`streamRng(seed, purpose, …key)`): events by day, draft by day, change and activation failures by day + label + attempt, AIOps by tick + workload, inquiries by ask tick + topic; `RunState.rng` removed | The event-only split (#41) still left the draft, failure, AIOps and inquiry rolls on one stream: in a paired sweep, seed 13's CoD rental shifted its day-9 draft (MENTOR instead of BELT_AND_BRACES) and the run lost ~4 trust on every facet from that alone. With keyed streams, seed 13 base and CoD draw identical events and drafts and differ only after the rental. Goldens regenerated; the paired sweep from #41 was stopped and is re-run on this. |
 | 2026-10-27 | Hardware engine adds and their reverts are relative (`ADD_CPC_ENGINES` delta, clamped ≥ 0); capacity-setting changes stay absolute | On/Off CoD reverted with "set N" computed when the lease was requested, so a lease taken over a pending or overlapping change lost or kept a CP for good (spendtowin bled CPs on Harbourline). Deltas compose in any order. Goldens unchanged |
 | 2026-10-27 | CPU_CAPACITY also when an image used ≥ 95 % of the CP available to it (online logical CPs, entitlement + white space), not only when its CPC was ≥ 90 % busy; the donor test is unchanged. Harbourline PRD images define 2 reserved logical CPs | User decision 2026-10-27. Seed 7 Harbourline: PRDA–PRDD sat at their logical CPs (13 of CPC1's 14 CPs, 10 of CPC2's 10) and the incidents read CPU_PRIORITY once a new CP lowered CPC busy to 86–89 %, the wrong clue. With no reserved CPs and no IPL lever a bought or rented CP could never reach production |
@@ -312,20 +384,27 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-28 | Finding R: CICS view shows DISP−CPU (incl. the CPU backlog wait); WLMGL CPU delay stays per dispatchable unit | User decision after a check against the RMF, WLM and CICS books (`docs/research.md`) |
 | 2026-10-28 | Findings S–W: strain hints ignore thin response-time intervals (< 20 ended) and batch classes; ask allowed in REVIEW; play CLI gets `policy`, `restart`, abend stop on `advance` | Round 3 agents missed abends and chased hint noise; batch already has its own window hint; REVIEW asking matches planning a change there |
 | 2026-10-28 | Harbourline day 0 gets a handover mail naming the 09:00 open, PRDA's absolute cap and Partition Data; X's report-card and GOODWILL notes kept as they are | User: soften D1 with a clue rather than a trust grace or a weaker burst; the first miss now has a clue path (CLAUDE.md: no gotcha without one) |
+| 2026-10-28 | Pins from past Monitor III ranges; the play CLI keeps only the pinnable values (option A), 48 h at the browser's interval, beside the run file | User choice over full views (≈ 18 MB binary on Harbourline) or views inside the run file (≈ 120 MB): ~5 MB, +~0.5 s per CLI day, run file stays small for spectator polling |
+| 2026-10-28 | Monitor III MINTIME 120 s (was 100 s, the RMF default) | User request. History and the CLI record every 12 ticks; the live view's smoothing is unchanged, so no golden moves |
+| 2026-10-28 | Harbourline audit: five realism fixes queued (M8.7 items 1–5). Resource group fixes in two steps, server-region health first, then AOR caps reaching transaction CPU; a transaction's host region adds no `depDelay` on top of its CPU cap | User decision. Item 1 is a one-expression change that closes the "park Db2 in a capped group for free" exploit; item 2 needs a content field and design calls. One cause (CPU withheld in the region) counts once, through the documented mechanism (*WLM Planning* p.60) |
 
 ## Open questions
 
 - Settled research (sysplex routing and capping, 2026-10-26, and everything earlier) is in `docs/research.md`. Only
   open items stay here.
+- Change Desk balance: trust and fail risk are paid per request, and the change request banner makes batching every
+  edit into one request the default. Bots send commands directly, so sweeps can't see this; check in a playtest whether
+  emergency trust costs now bite too little.
+- Change Desk drafts don't notice a live value changing under them (e.g. a CF fails): the draft stays as typed. Add a
+  "now X" check that drops drafts already satisfied, if playtests trip over it.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
-- RMF Partition Data shows PR/SM absolute capping somewhere; the sim's ABS CAP column (engines, next to DEF CAP) is an
-  APPROX of its name and place. Check the real report layout (*RMF Report Analysis*, Partition Data Report).
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
 - Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
   a soft-capped image. On a real system the latter probably shows as processor (PRC) delay, since PR/SM just stops
-  dispatching the logical CPs. Unverified; the DELAY report keeps one CAP column.
+  dispatching the logical CPs. WLMGL side settled (CAP = RG and discretionary capping only, *RMF Report Analysis*
+  p.540; queued in M8.7 item 5); the Monitor III DELAY report's own columns are still unchecked.
 - Monitor III MVS Util% is derived as LPAR util ÷ (1 − short-engine wait) (APPROX). Real MVS busy also differs from LPAR
   busy through HiperDispatch parking and wait-completion settings; check against the CPU Activity report docs.
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
@@ -368,6 +447,51 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-28:** New agent `goal-mode-realism-auditor` (user request): makes deliberate, drastic changes (defined
+  capacity far below demand, resource-group caps on the STC classes Db2 and CICS depend on, MAXDBAT 1, no aliases...)
+  in same-seed A/B runs, compares the results with IBM documentation through the zos-docs skill and `docs/research.md`,
+  reads `src/` to explain gaps, and reports Matches / Approx / Mismatch / Not modelled / Inconclusive with draft
+  research-ledger rows and realism-fix lines. Read-only on the repo; writes under `runs/lab/`. Not run yet.
+- **2026-10-28:** Change Desk redesign (user request): rows edit drafts in place and one change request submits them.
+  Every setting outside the WLM tab (Systems, CF & I/O; LPAR image profile; routing; job classes) is a segmented
+  choice, a number field or a one-off action checkbox (DASD rebalance) with no per-row Apply or cost; a drafted value is
+  highlighted with "was <live>" (always rendered, invisible until drafted, so columns don't shift). Drafts live in the
+  existing basket, shown as a sticky "Change request" banner at the top (stacked with the pending WLM policy banner):
+  one line per change with its hours, the request's emergency trust and fail risk once, Submit as one change; invalid
+  fields block Submit and are named. Operations (restarts, event fixes) and hardware orders keep one-click buttons. WLM
+  period goals and resource groups now edit the pending policy in place (no Save buttons); Remove Pn sits in the last
+  period's row. Change board status tags no longer wrap. Goldens unchanged.
+- **2026-10-28:** Removed the Harbourline day-0 handover mail from the outgoing analyst (story beat `HANDOVER`; user:
+  it read one seed's day 1, "Markets screams first, then Cards", as fixed). The PRDA absolute cap (B1) now has no
+  inbox clue before the first 09:00 open (no day-1 trust grace either, see playtest round 3 X); Partition Data and
+  the HMC image profile still show it. Test keeps the cap check. SPEC §Harbourline Problem 1 updated. Goldens unchanged.
+- **2026-10-28:** Rolled back (user request): `src/` is again as of `8b868d4` (#79) plus only the layout-gap fix of #81;
+  #80 (Apply buttons only on changed rows, cost in the header), #82 (pick-then-confirm choices) and #83 (DASD header
+  alignment, rebalance confirm) are undone, so their entries below no longer describe the code. With every row showing
+  its buttons again, MQ moved to the left stack (z/OS options + DASD + MQ | Db2 + CICS) to balance the columns
+  (1,141 vs 1,041 px); tab 2,379 → 2,050 px at 1920×1080. Artifact rebuilt from this state.
+- **2026-10-28:** DASD table headers lined up with their columns again: each setting row is its own CSS grid and the
+  rebalance column was `auto`, so it sized per row (0 px in the header) and pushed the header labels right; it is now a
+  fixed 96 px. A picked `rebalance` shows its `+ basket · Apply` and cost in the row's action column instead of
+  squeezing into that column. Tab split into "Systems" and "Db2, MQ & CICS" previewed for the user and not kept.
+- **2026-10-28:** Change Desk one-click choices now pick-then-confirm (user request). RMF interval, IEAOPT
+  (BLWLINTHD, IIPHONORPRIORITY), CF thin interrupts, structure placement, duplexing and DASD rebalance used to apply
+  on a single click, with the cost only in a hover tooltip and shift-click to stage (neither works on touch).
+  Picking a value now shows `+ basket · Apply` and the hours/trust/fail-risk line, like the typed setting rows;
+  clicking the pick again cancels. Goldens unchanged.
+- **2026-10-28:** Change Desk Systems tab layout gaps: below the full-width CF card the tab is now two independent stacks,
+  z/OS options + DASD | Db2 + MQ + CICS (CICS no longer full width), instead of a row grid that left holes beside
+  short cards. Tab 2,016 → 1,828 px at 1920×1080; one column below ~1,130 px, no phone overflow. LPARs and Batch tabs
+  have two equal-height cards each, nothing to fill. Goldens unchanged.
+- **2026-10-28:** Change Desk, Systems tab height (user: too much scrolling). Setting rows (DASD LCUs, Db2, MQ, CICS) show
+  `+ basket`/`Apply` only once the value differs from now (the row gets an accent bar); the per-row cost moves to the
+  table header (`per row: …`) and the Apply tooltip, and Enter on an unchanged row no longer stages a no-op. Tab
+  2,379 → 2,016 px at 1920×1080 (DASD 595 → 431, Db2 536 → 345). Further ideas proposed, not done yet: one Db2 row per
+  subsystem, help text behind the Codex hints, masonry layout/jump links, subsystem tabs and one shared add-rule form in
+  the classification rules panel. Goldens unchanged.
+- **2026-10-28:** Milestone merge `dev` → `main` (PR #72, merge commit): pr-reviewer MERGE, 430 tests, hashes Midwest
+  `fef4fa052462d635` / Harbourline `a1984addb2403be0`, 10-seed Normal Midwest sweep do-nothing 16 / textbook 28 /
+  expert 9 of 10 wins. Health-line hashes updated. Follow-up idea: scale `balanceGate.ts` bands by seed count.
 - **2026-10-27:** Play CLI fixes from playtest round 1 (M8.6). `rca` now says which half was right, the true
   mechanism/trigger and the trust effect. Times read `D1 Tue 00:30` (played day plus calendar weekday). RMF intervals
   have stable ids (end time in 5-minute slots) in `status`, `report`, `pin WLMGL` and incident lines, and `report`/`pin`

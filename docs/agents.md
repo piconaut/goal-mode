@@ -16,8 +16,10 @@ npm run -s play -- runs/a.json policy [pending]   # the WLM service definition, 
 npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD; id from status
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
 npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables (needs the RMF_MON3 tool)
+npm run -s play -- runs/a.json mon3 PRDA --at D1 09:40   # a past range from the history (the values a pin reads; kept 48 h in runs/a.mon3.json)
 npm run -s play -- runs/a.json rca INC3 CPU_PRIORITY POLICY [--evidence PIN1,PIN4]   (ids: INC incident, PIN pin, CHG planned change; bare numbers work too)
 npm run -s play -- runs/a.json pin WLMGL 312 '*PLEX' ONLHI#1 DELAY_CPU   # interval id; also MON3, CPC, DB2, CICS (see catalog)
+npm run -s play -- runs/a.json pin MON3 PRDA MKTORD DELAY_CPU --at D1 09:40   # MON3 and CPC pins from a past Monitor III range
 npm run -s play -- runs/a.json ask CALENDAR       # ask around; APP_ENTRY/GROWTH take a workload id
 npm run -s play -- runs/a.json project SQL_TUNING 4   # spend engineer-hours on a multi-day project
 npm run -s play -- runs/a.json buy RMF_MON3
@@ -91,7 +93,8 @@ The banner's **Take over this run** button stops watching and keeps the run as t
 
 Only what a player sees in the browser: the briefing and inbox, the status line, RMF reports, SMF and Monitor
 III views once the matching tool is owned, the catalog and the Codex. The CLI never prints incident ground
-truth, and the agent definitions forbid reading scenario and event files under `src/`.
+truth, and the agent definitions forbid reading scenario and event files under `src/`. The exception is `goal-mode-realism-auditor`,
+which audits the model rather than playing and is meant to read the code behind what it observes.
 
 ## The agents
 
@@ -102,6 +105,7 @@ Definitions live in `.claude/agents/`:
 | `goal-mode-player` | balanced analyst: diagnose, fix the planted flaws, buy tools, keep SLAs and cost in line |
 | `goal-mode-cautious-operator` | minimal, reversible changes; no emergency changes; keeps hours spare |
 | `goal-mode-cost-cutter` | keeps MLC under budget; capping and WLM tuning before capacity |
+| `goal-mode-realism-auditor` | not a player: makes drastic changes in same-seed A/B runs, checks the results against IBM docs (zos-docs skill) and reports matches and mismatches; may read `src/` and writes only under `runs/lab/` |
 
 Launch one from Claude Code, for example: *"Use the goal-mode-player agent to play runs/p42.json, seed 42,
 normal, up to day 5."* Each keeps a log next to the run file (`runs/p42.json.log.md`), one line per command plus

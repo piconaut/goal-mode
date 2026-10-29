@@ -11,7 +11,7 @@ import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } fr
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
 import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
-import { TOOLS, type ToolFeature } from '../src/content/tools';
+import { MON3_HISTORY, TOOLS, type ToolFeature } from '../src/content/tools';
 import { applyReportClassAdvice } from '../src/game/rcAdvisor';
 import { clockAt, formatClock } from '../src/sim/core/clock';
 import { allWorkloads, runWorkItems } from '../src/game/workloads';
@@ -30,7 +30,9 @@ import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
-import { TICK_SEC, TICKS_PER_HOUR } from '../src/sim/core/units';
+import { DAY_START_HOUR, TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
+import { buildMon3 } from '../src/game/mon3';
+import { emptyMon3PinHistory, mon3PinRange, mon3PinsAt, recordMon3Pins, type Mon3PinHistory } from '../src/game/mon3PinHistory';
 import type { SmfKind } from '../src/worker/protocol';
 
 
@@ -47,7 +49,8 @@ export type PlayCommand =
   | { cmd: 'project'; id: string; hours: number }
   | { cmd: 'restart'; name: string }
   /** intervalId (WLMGL): the stable interval id the CLI shows; it replaces req.index. */
-  | { cmd: 'pin'; req: PinRequest; intervalId?: number }
+  /** at (MON3, CPC without an interval): a past time as `clockText` prints it (`D2 10:40`); it sets req.tick. */
+  | { cmd: 'pin'; req: PinRequest; intervalId?: number; at?: string }
   | { cmd: 'unpin'; id: number }
   | { cmd: 'wlm'; edit: WlmEdit }
   | { cmd: 'activate' }
@@ -67,6 +70,8 @@ export interface PlayFile {
   run: RunState;
   pendingPolicy: ServiceDefinition | null;
   log: PlayCommand[];
+  /** Monitor III history for pins (play.ts keeps it in a file beside the run file, not in it). */
+  mon3?: Mon3PinHistory;
 }
 
 export interface PlayResult {
@@ -119,17 +124,30 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (run.phase !== 'LIVE') return fail(`Nothing to advance in phase ${run.phase}; use start.`);
       const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
       let r = run;
+      let mon3 = file.mon3;
+      // Record a Monitor III range every MINTIME, as the browser's worker does.
+      const step = (x: RunState): RunState => {
+        if (!hasFeature(x, 'MON3')) return advance(x, sc(x), content, TICKS_PER_HOUR);
+        for (let left = TICKS_PER_HOUR; left > 0 && x.phase === 'LIVE'; ) {
+          const k = Math.min(left, MON3_HISTORY.mintimeTicks - (x.sim.tick % MON3_HISTORY.mintimeTicks));
+          x = advance(x, sc(x), content, k);
+          left -= k;
+          if (x.sim.tick % MON3_HISTORY.mintimeTicks === 0) mon3 = recordMon3Pins(mon3 ?? emptyMon3PinHistory(), x.sim.tick, buildMon3(x, sc(x)));
+        }
+        return x;
+      };
       const abended = (x: RunState) => new Set(buildView(x, sc(x)).batch.abended.map((a) => `${a.day}:${a.name}`));
       const before = abended(run);
       let fresh: string[] = [];
       // Stop at the hour a job abends, as an operator would be paged.
       for (let h = 0; h < hours && r.phase === 'LIVE' && fresh.length === 0; h++) {
-        r = advance(r, sc(r), content, TICKS_PER_HOUR);
+        r = step(r);
         if (r.phase === 'LIVE') fresh = buildView(r, sc(r)).batch.abended.filter((a) => !before.has(`${a.day}:${a.name}`)).map((a) => a.name);
       }
       const mail = r.inbox.slice(run.inbox.length).map((m) => `\n  mail: ${m.from}: ${m.subject}`).join('');
       const page = fresh.length ? `\nSTOPPED: ${fresh.join(' ')} ABENDED. restart ${fresh[0]} (0.5h) or let it miss the window.` : '';
-      return done(r, `${r.phase === 'LIVE' ? `Advanced to ${buildView(r, sc(r)).clock}.` : `Day over: ${r.phase}.`}${mail}${page}`);
+      const d = done(r, `${r.phase === 'LIVE' ? `Advanced to ${buildView(r, sc(r)).clock}.` : `Day over: ${r.phase}.`}${mail}${page}`);
+      return mon3 ? { ...d, file: { ...d.file, mon3 } } : d;
     }
     case 'change': {
       const o = requestChange(run, content, c.req);
@@ -198,8 +216,21 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
         req = { ...req, hour };
       }
-      if (req.source === 'MON3') req = { ...req, scKey: resolveKey(req.scKey, buildView(run, sc(run)).mon3?.rows.map((x) => x.scKey) ?? []) };
-      const o = addPin(run, sc(run), req);
+      if (c.at !== undefined) {
+        if (req.source !== 'MON3' && !(req.source === 'CPC' && req.index === undefined)) return fail('--at takes a Monitor III time (pin MON3 or pin CPC without an interval id)');
+        const tick = tickOfClock(c.at);
+        if (tick === null) return fail(`No time ${c.at}; write it as clockText does, e.g. D2 10:40 (D1 = first played day, 06:00 to 06:00)`);
+        if (tick > run.sim.tick) return fail(`${c.at} is in the future; it is ${clockText(run.sim.tick)}`);
+        const at = file.mon3 ? mon3PinsAt(file.mon3, tick) : null;
+        if (!at) return fail(`No Monitor III history at ${c.at}; ${mon3RangeText(file)}`);
+        req = { ...req, tick };
+      }
+      const history = (t: number) => (file.mon3 ? mon3PinsAt(file.mon3, t) : null);
+      if (req.source === 'MON3') {
+        const keys = (req.tick !== undefined ? history(req.tick)?.view.rows : buildView(run, sc(run)).mon3?.rows)?.map((x) => x.scKey) ?? [];
+        req = { ...req, scKey: resolveKey(req.scKey, keys) };
+      }
+      const o = addPin(run, sc(run), req, history);
       return done(o.run, o.message, o.ok);
     }
     case 'unpin': {
@@ -375,10 +406,11 @@ export function statusText(file: PlayFile): string {
 }
 
 /** Monitor III (tool MON3): SYSINFO, CPC, DELAY, enclave and WFEX tables for the current range (or JSON lines). */
-export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean } = {}): string {
+export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean; at?: string } = {}): string {
   const run = file.run;
   const m = buildView(run, sc(run)).mon3;
   if (!m) return 'Monitor III needs the MON3 tool.';
+  if (opts.at !== undefined) return mon3PastText(file, opts.at, opts.system?.toUpperCase(), opts.json);
   const sys = opts.system?.toUpperCase();
   const pick = <T,>(xs: T[], id: (x: T) => string) => (sys ? xs.filter((x) => id(x).toUpperCase() === sys) : xs);
   const systems = pick(m.systems, (x) => x.system);
@@ -388,10 +420,24 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
   const when = run.phase === 'LIVE' ? `range ending ${clockText(run.sim.tick)}` : `snapshot from ${clockText(run.sim.tick)} (not live: phase ${run.phase})`;
   const head = `Monitor III, last ${m.rangeSec}s, ${when}. Policy ${m.policy}. CPC logical:physical CP ratio ${m.logicalToPhysical.toFixed(2)}.`;
   if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
-  const out = [head, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', 'DELAY (fractions of active samples)', table(rows, ['serviceClass', 'period', 'goalVelocity', 'goalRtMs', 'goalPct', 'avgUsers', 'iipcpEngines'])];
+  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', 'DELAY (fractions of active samples)', table(rows, ['serviceClass', 'period', 'goalVelocity', 'goalRtMs', 'goalPct', 'avgUsers', 'iipcpEngines'])];
   if (m.enclaves.length && !sys) out.push('', 'ENCLAVE', table(m.enclaves));
   out.push('', 'WFEX exceptions', m.exceptions.length ? table(m.exceptions) : 'none');
   return out.join('\n');
+}
+
+/** A past Monitor III range from the history: only the values a pin can use. */
+function mon3PastText(file: PlayFile, at: string, sys: string | undefined, json?: boolean): string {
+  const tick = tickOfClock(at);
+  if (tick === null) return `No time ${at}; write it as D2 10:40 (D1 = first played day, 06:00 to 06:00)`;
+  const p = file.mon3 ? mon3PinsAt(file.mon3, tick) : null;
+  if (!p) return `No Monitor III history at ${at}; ${mon3RangeText(file)}.`;
+  const rows = p.view.rows.filter((x) => !sys || x.system.toUpperCase() === sys);
+  const cpc = p.view.cpc.filter((x) => !sys || x.lparId.toUpperCase() === sys);
+  if (sys && !rows.length && !cpc.length) return `No system ${sys} at ${at}`;
+  const head = `Monitor III history, range ending ${clockText(p.tick)}: the values a pin reads (pin MON3|CPC ... --at ${clockText(p.tick)}). Delays are fractions of active samples, cpuEngines is EAppl% ÷ 100.`;
+  if (json) return [head, ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x))].join('\n');
+  return [head, '', 'CPC', table(cpc), '', 'SERVICE CLASS PERIODS', table(rows)].join('\n');
 }
 
 /** Flat objects as a fixed-width table: numbers to 1 decimal (0..1 fractions to 2), nested objects as a.b columns. */
@@ -463,7 +509,7 @@ export function catalogText(file: PlayFile): string {
   out.push(`  workloads: ${iq.apps.map((a) => a.id).join(' ')}`);
   out.push('projects (project ID hours; engineer-hours spread over days):');
   for (const p of projectsView(file.run)) out.push(`  ${p.id}${p.done ? ' [done]' : ''}: ${p.name}, ${p.hoursDone}/${p.hours}h, max ${p.maxHoursPerDay}h/day. ${p.description}`);
-  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> | CPC <lparId> PRSM_DELAY|CAPPED [interval id, as in Partition Data] | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
+  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> [--at D2 10:40] | CPC <lparId> PRSM_DELAY|CAPPED [interval id, as in Partition Data | --at D2 10:40 for a past Monitor III range] | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
   out.push(`  metrics: ${Object.keys(EVIDENCE_METRICS).join(' ')}`);
   const cfg = file.run.sim.config;
   out.push('change targets (current config):');
@@ -485,6 +531,21 @@ export function clockText(tick: number): string {
   const f = formatClock(tick);
   return `${f.slice(0, f.indexOf(' '))} ${WEEKDAYS[clockAt(tick).dayOfWeek]} ${f.slice(-8, -3)}`;
 }
+/** `D2 10:40` or `D2 Tue 10:40` (as clockText prints it) → tick; the small hours belong to the played day before. */
+export function tickOfClock(text: string): number | null {
+  const m = /^D(\d+)\s+(?:[A-Za-z]{3}\s+)?(\d{1,2}):(\d{2})$/i.exec(text.trim());
+  if (!m) return null;
+  const day = Number(m[1]) - 1, hh = Number(m[2]), mm = Number(m[3]);
+  if (day < 0 || hh > 23 || mm > 59) return null;
+  const sec = ((hh - DAY_START_HOUR + 24) % 24) * 3600 + mm * 60;
+  return day * TICKS_PER_DAY + Math.floor(sec / TICK_SEC);
+}
+
+function mon3RangeText(file: PlayFile): string {
+  const r = file.mon3 ? mon3PinRange(file.mon3) : null;
+  return r ? `history covers ${clockText(r.firstTick)} to ${clockText(r.lastTick)}, one range every ${(MON3_HISTORY.mintimeTicks * TICK_SEC).toFixed(0)}s` : 'no Monitor III history yet (it is recorded while the day runs, once RMF_MON3 is owned)';
+}
+
 const intervalLabel = (iv: { startTick: number; endTick: number }) => `${clockText(iv.startTick)}–${clockText(iv.endTick).slice(-5)}`;
 
 function intervalList(run: RunState): string {

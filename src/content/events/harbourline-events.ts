@@ -65,7 +65,7 @@ const BANK_CARDS: EventDef[] = [
     fix: null,
     forewarning: 'Markets desk: "Index rebalance today, and the central bank speaks at nine. Expect a heavy open."',
     announcement: null,
-    clue: 'Mon III SYSSUM (100 s range): MKTORD PI and CPU delay spike from 09:30 while the 15-minute WLMGL interval looks mild; MKTORD END/S up ×1.6 on every PRD image and CICS monitoring shows MXT waits. Fixes: headroom (On/Off CoD on CPC1), a percentile goal for MKTORD, an importance-1 CPU-critical class, CICS MAXTASKS, or lifting the PRDA absolute cap.',
+    clue: 'Mon III SYSSUM (120 s range): MKTORD PI and CPU delay spike from 09:30 while the 15-minute WLMGL interval looks mild; MKTORD END/S up ×1.6 on every PRD image and CICS monitoring shows MXT waits. Fixes: headroom (On/Off CoD on CPC1), a percentile goal for MKTORD, an importance-1 CPU-critical class, CICS MAXTASKS, or lifting the PRDA absolute cap.',
   },
   {
     id: 'HOLIDAY_CARD_SPIKE',
@@ -143,8 +143,6 @@ export const HARBOURLINE_EVENTS: EventDef[] = [
 
 export const HARBOURLINE_STORY: ScriptedBeat[] = [
   { day: 0, id: 'WELCOME', from: 'CIO', title: 'Welcome to Harbourline', body: 'Two CPCs, fifteen kilometres apart, one sysplex, and a trading floor that notices every missed second. Analytics are in place; reading them across images is the job.' },
-  // Day-1 clue for the PRDA absolute cap (B1): the 09:00 market open can hit it before any diagnosis is possible.
-  { day: 0, id: 'HANDOVER', from: 'Outgoing analyst', title: 'Handover. Read this before nine.', body: "They've walked me out, so this is all you get. The trading floor bleeds out at 09:00 every morning: Markets screams first, then Cards, then it goes quiet and nobody says anything. PRDA has carried an absolute cap since before anyone remembers, nailed on to keep DEV1 off its throat. I never proved the two were connected. I never got the chance. RMF Partition Data, around nine. Look at it. Don't look away like I did. The plant is dead. Sorry." },
   { day: 3, id: 'TWO_CPCS', from: 'Capacity planning', title: 'CPC2 is the older machine', body: 'CPC2 has sub-capacity CPs and more zIIPs, and the Db2 lock structure lives on CF01 at the CPC1 site. Work routed to PRDC and PRDD pays for the 15 km link on every lock request.' },
   { day: 7, id: 'ROUTING', from: 'Middleware team', title: 'Routing was set up before the second CPC', body: 'The sysplex distributor weights and the CICSPlex SM router predate CPC2 and the last rebalance. Nobody has checked how they behave when a region misbehaves.' },
   { day: 12, id: 'CFO_MANDATE', from: 'Finance', title: 'Software costs must come down', body: 'Next month the MLC bill must be 10% lower than this month. Finance trust depends on it.', constraint: 'CFO_MANDATE' },

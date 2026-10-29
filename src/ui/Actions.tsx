@@ -6,7 +6,7 @@ import { useStored } from './useStored';
 import { DASD_REBALANCE, HARDWARE } from '../content/hardware-catalog';
 import { LCU_MAX_DEVICES } from '../sim/io/dasd';
 import { FIXES, previewChange, type ChangePreview } from '../game/catalog';
-import { addToBasket, basketLabel, describeCommand, orderBasket, spareAfterBasket, nextAorName, routingPolicyLabel, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../game/changeDesk';
+import { addToBasket, basketLabel, commandTarget, describeCommand, orderBasket, spareAfterBasket, nextAorName, routingPolicyLabel, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../game/changeDesk';
 import type { PlannedChange } from '../game/types';
 import type { ConfigView, ViewModel } from '../game/view';
 import type { Command } from '../sim/core/commands';
@@ -16,6 +16,7 @@ import type { Qualifier, SubsystemType, WorkAttributes } from '../sim/wlm/types'
 import { RulesView } from './RulesView';
 import { WhatIf } from './WhatIf';
 import type { GameHandle } from './useGame';
+import { Empty } from './Empty';
 
 /** Everything a control needs to preview, stage or apply a change. */
 interface Desk {
@@ -24,6 +25,11 @@ interface Desk {
   basket: Command[];
   apply: (label: string, commands: Command[]) => void;
   stage: (commands: Command[]) => void;
+  /** Put a draft for one target into the change request, or drop it (null). */
+  setDraft: (target: string, cmd: Command | null) => void;
+  /** Report a field whose typed value is invalid (or null when it is fixed or gone), so the request can't be submitted past it. */
+  setInvalid: (target: string, message: string | null) => void;
+  invalid: Record<string, string>;
 }
 
 // Only the command kind matters for the hours estimate.
@@ -32,12 +38,21 @@ const ACTIVATE_PREVIEW = [{ kind: 'ACTIVATE_POLICY' } as Command];
 export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
   const { basket, setBasket } = game;
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [invalid, setInvalidMap] = useState<Record<string, string>>({});
   const desk: Desk = {
     v,
     cfg: v.config,
     basket,
     apply: (label, commands) => game.send({ type: 'CHANGE', req: { label, commands } }),
     stage: (commands) => setBasket((b) => addToBasket(b, commands)),
+    setDraft: (target, cmd) => setBasket((b) => (cmd ? addToBasket(b, [cmd]) : b.filter((c) => commandTarget(c) !== target))),
+    invalid,
+    setInvalid: (target, message) =>
+      setInvalidMap((m) => {
+        if ((m[target] ?? null) === message) return m;
+        const { [target]: _, ...rest } = m;
+        return message === null ? rest : { ...rest, [target]: message };
+      }),
   };
   const [area, setArea] = useStored<Area>('goalmode.desk.area', 'wlm');
   const pendingProjects = v.projects.filter((p) => p.hoursDone > 0 && !p.done).length;
@@ -59,17 +74,21 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
     systems: `RMF interval ${v.config.rmfIntervalMin} min · IEAOPT per system`,
     cf: v.config.cfs.map((c) => (c.failed ? `${c.lparId} DOWN` : `${c.lparId} ${Math.round(cfUsed[c.lparId] ?? 0)} GB used`)).join(' · ') + ` · ${v.config.cfStructures.filter((x) => x.lost).length} lost`,
     dasd: `${v.config.dasd.lcus.length} LCUs · ${v.config.dasd.spareAliases} spare aliases`,
-    subsys: `${v.config.db2.length} Db2 · ${v.config.cics.length} CICS AORs · ${v.config.mq.length} MQ queue${v.config.mq.length === 1 ? '' : 's'}`,
+    db2: `${v.config.db2.length} subsystem${v.config.db2.length === 1 ? '' : 's'}`,
+    mq: `${v.config.mq.length} queue${v.config.mq.length === 1 ? '' : 's'}`,
+    cics: `${v.config.cics.length} AORs`,
     routing: `${v.config.routing.length} workloads · ${v.config.jobClasses.length} job classes`,
     projects: `${v.projects.filter((p) => p.done).length} done · ${pendingProjects} in progress · ${v.projects.length} available`,
     ops: v.batch.abended.length ? `${v.batch.abended.length} abended job(s) to restart` : 'no abended jobs · event fixes',
   };
   return (
     <>
-      {game.pending && <PendingBanner v={v} game={game} />}
+      <div className="desk-banners">
+        {game.pending && <PendingBanner v={v} game={game} />}
+        <ChangeRequestBar desk={desk} setBasket={setBasket} game={game} />
+      </div>
       <div className="grid desk-top">
         <Board v={v} game={game} />
-        <Basket desk={desk} basket={basket} setBasket={setBasket} game={game} />
         <Results game={game} />
       </div>
       <div className="subtabs" role="tablist" aria-label="Change Desk areas">
@@ -80,7 +99,7 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
         ))}
       </div>
       <div className="muted desk-hint">{AREAS.find((a) => a.id === area)?.hint}</div>
-      <div className="grid">
+      <div className={area === 'systems' ? 'grid grid-wide' : 'grid'}>
         {area === 'wlm' && (
           <>
             <Section id="wlm" title={`WLM policy: active ${v.policyName}`} summary={summary.wlm} codex={['service-class', 'importance', 'velocity', 'perf-index']} wide>
@@ -107,15 +126,26 @@ export function Actions({ v, game }: { v: ViewModel; game: GameHandle }) {
             <Section id="cf" title="Coupling facilities and structures" summary={summary.cf} codex={['cf-sync-async', 'cf-failure']} wide>
               <CouplingFacilities desk={desk} />
             </Section>
-            <Section id="systems" title="z/OS options" summary={summary.systems}>
-              <Systems desk={desk} />
-            </Section>
-            <Section id="dasd" title="DASD: HyperPAV aliases per LCU" summary={summary.dasd} codex={['hyperpav']}>
-              <Dasd desk={desk} />
-            </Section>
-            <Section id="subsys" title="Db2, MQ and CICS" summary={summary.subsys} codex={['db2-velocity', 'mq-queues', 'qr-tcb']}>
-              <Subsystems desk={desk} />
-            </Section>
+            {/* Two independent stacks so a short card doesn't leave a hole beside a tall one; MQ sits left to balance their heights. */}
+            <div className="desk-stack">
+              <Section id="systems" title="z/OS options" summary={summary.systems}>
+                <Systems desk={desk} />
+              </Section>
+              <Section id="dasd" title="DASD: HyperPAV aliases per LCU" summary={summary.dasd} codex={['hyperpav']}>
+                <Dasd desk={desk} />
+              </Section>
+              <Section id="mq" title="MQ" summary={summary.mq} codex={['mq-queues']}>
+                <MqSection desk={desk} />
+              </Section>
+            </div>
+            <div className="desk-stack">
+              <Section id="db2" title="Db2" summary={summary.db2} codex={['db2-velocity']}>
+                <Db2Section desk={desk} />
+              </Section>
+              <Section id="cics" title="CICS regions" summary={summary.cics} codex={['qr-tcb']}>
+                <CicsSection desk={desk} />
+              </Section>
+            </div>
           </>
         )}
         {area === 'ops' && (
@@ -198,37 +228,6 @@ const costText = (p: ChangePreview): string => {
 
 const preview = (v: ViewModel, req: Parameters<typeof previewChange>[1]) => previewChange(v.previewCtx, req);
 
-/** Apply / add-to-basket buttons with the cost on the button and the reason when it can't be done. */
-function ChangeButtons({ desk, label, commands, error }: { desk: Desk; label: string; commands: Command[]; error: string | null }) {
-  const p = preview(desk.v, { commands });
-  const reason = error ?? p.reason;
-  return (
-    <>
-      <button type="submit" disabled={error !== null} title="Enter adds to the basket">
-        + basket
-      </button>
-      <button type="button" className="apply" disabled={reason !== null} title={reason ?? (p.emergency ? 'Emergency change: applied within seconds' : 'Planned: takes effect at 06:00')} onClick={() => desk.apply(label, commands)}>
-        Apply · {costText(p)}
-      </button>
-      {reason && <span className="err">{reason}</span>}
-    </>
-  );
-}
-
-/** A form row: Enter stages the change in the basket. */
-function ChangeForm({ desk, label, commands, error, children }: { desk: Desk; label: string; commands: Command[]; error: string | null; children: ReactNode }) {
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (error === null) desk.stage(commands);
-  };
-  return (
-    <form className="form" onSubmit={submit}>
-      {children}
-      <ChangeButtons desk={desk} label={label} commands={commands} error={error} />
-    </form>
-  );
-}
-
 const Now = ({ children }: { children: ReactNode }) => <span className="now">now {children}</span>;
 
 function PendingBanner({ v, game }: { v: ViewModel; game: GameHandle }) {
@@ -264,7 +263,7 @@ function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
             : 'Changes can be made during the briefing or the live day.'}{' '}
         {v.constraints.includes('FREEZE') && <span className="tag bad">CHANGE FREEZE</span>} Hours left: {v.hoursLeft.toFixed(1)} · fatigue {v.fatigue.toFixed(0)}
       </div>
-      {days.length === 0 && <div className="muted" style={{ marginTop: 8 }}>Nothing planned.</div>}
+      {days.length === 0 && <Empty>Nothing planned.</Empty>}
       {days.map((d) => (
         <div key={d} style={{ marginTop: 8 }}>
           <div className="muted" style={{ fontSize: 12 }}>
@@ -313,15 +312,17 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
   const refund = c.plannedDay === v.day ? `${c.hours}h back` : 'hours already spent';
   return (
     <tr>
-      <td>
+      <td className="change-label">
         {c.label}
         {c.capex > 0 && c.status === 'PLANNED' && <span className="tag"> on order · arrives day {c.activateDay + 1}</span>}
       </td>
-      <td className="muted">day {c.activateDay + 1}</td>
+      <td className="muted" style={{ whiteSpace: 'nowrap' }}>
+        day {c.activateDay + 1}
+      </td>
       <td className="muted num">{c.hours}h</td>
-      <td>
+      <td className="change-status">
         <span className={`tag ${c.status === 'APPLIED' ? 'good' : c.status === 'FAILED' ? 'bad' : 'warn'}`}>{c.status}</span>
-        {c.emergency && <span className="tag bad"> EMERG</span>}
+        {c.emergency && <span className="tag bad">EMERG</span>}
       </td>
       <td style={{ textAlign: 'right' }}>
         {cancellable && (
@@ -334,43 +335,68 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
   );
 }
 
-function Basket({ desk, basket, setBasket, game }: { desk: Desk; basket: Command[]; setBasket: (b: Command[]) => void; game: GameHandle }) {
-  const p = preview(desk.v, { commands: basket });
+/**
+ * The change request: every drafted edit, one line each with its own hours, and the request-level cost (emergency trust
+ * and the one failure roll) once, next to Submit. Stays on screen at the bottom of the Change Desk.
+ */
+function ChangeRequestBar({ desk, setBasket, game }: { desk: Desk; setBasket: (b: Command[]) => void; game: GameHandle }) {
+  const [open, setOpen] = useState(false);
+  const { basket, cfg, v } = desk;
+  const bad = Object.values(desk.invalid);
+  if (basket.length === 0 && bad.length === 0) return null;
+  const ordered = orderBasket(cfg, basket);
+  const p = preview(v, { commands: ordered });
+  const request = [
+    p.emergency ? (p.trustCostEach > 0 ? `emergency: −${p.trustCostEach} trust each` : 'emergency') : 'planned: takes effect at 06:00',
+    ...(p.failRisk > 0 ? [`${(p.failRisk * 100).toFixed(0)}% fail risk (one roll)`] : []),
+  ].join(' · ');
   return (
-    <div className="panel">
-      <h3>Change basket ({basket.length})</h3>
-      {basket.length === 0 ? (
-        <div className="muted">Stage several edits (press Enter in any field, or “+ basket”) and submit them as one change: one approval, one failure roll.</div>
-      ) : (
-        <>
+    <div className="banner change-bar" role="region" aria-label="Change request">
+      {open && (
+        <div className="change-bar-list">
           <ul className="diff">
-            {basket.map((c, i) => (
-              <li key={i}>
-                <span>{describeCommand(c, desk.cfg)}</span>
-                <button aria-label="Remove from basket" onClick={() => setBasket(basket.filter((_, j) => j !== i))}>
+            {basket.map((c) => (
+              <li key={commandTarget(c)}>
+                <span>{describeCommand(c, cfg)}</span>
+                <span className="cost">{preview(v, { commands: [c] }).hours}h</span>
+                <button aria-label={`Remove ${describeCommand(c, cfg)}`} onClick={() => desk.setDraft(commandTarget(c), null)}>
                   ✕
                 </button>
               </li>
             ))}
           </ul>
-          <div className="form">
-            <button
-              className="primary"
-              disabled={!p.ok}
-              title={p.reason ?? undefined}
-              onClick={() => {
-                desk.apply(basketLabel(basket, desk.cfg), orderBasket(desk.cfg, basket));
-                setBasket([]);
-              }}
-            >
-              Submit as one change · {costText(p)}
-            </button>
-            <button onClick={() => setBasket([])}>Clear</button>
-            {p.reason && <span className="err">{p.reason}</span>}
-          </div>
-        </>
+          <WhatIf v={v} game={game} basket={ordered} label={basketLabel(basket, cfg)} />
+        </div>
       )}
-      <WhatIf v={desk.v} game={game} basket={orderBasket(desk.cfg, basket)} label={basket.length ? basketLabel(basket, desk.cfg) : ''} />
+      <div className="change-bar-row">
+        <button className="link" aria-expanded={open} onClick={() => setOpen(!open)}>
+          {open ? '▾' : '▸'} Change request · {basket.length} change{basket.length === 1 ? '' : 's'}
+        </button>
+        <span className="cost">
+          {p.hours}h of {v.previewCtx.hoursLeft.toFixed(1)}h left · {request}
+        </span>
+        <span className="change-bar-acts">
+          {bad.length > 0 ? (
+            <span className="err" title={bad.join('\n')}>
+              Fix or undo {bad.length === 1 ? bad[0] : `${bad.length} invalid fields`}
+            </span>
+          ) : (
+            p.reason && basket.length > 0 && <span className="err">{p.reason}</span>
+          )}
+          <button onClick={() => setBasket([])}>Clear</button>
+          <button
+            className="primary"
+            disabled={!p.ok || bad.length > 0}
+            title={bad.length ? 'A field has an invalid value' : p.reason ?? undefined}
+            onClick={() => {
+              desk.apply(basketLabel(basket, cfg), ordered);
+              setBasket([]);
+            }}
+          >
+            Submit as one change
+          </button>
+        </span>
+      </div>
     </div>
   );
 }
@@ -398,6 +424,7 @@ const num = (s: string) => (s.trim() === '' ? NaN : Number(s));
 
 function Prsm({ desk }: { desk: Desk }) {
   const zos = desk.cfg.lpars.filter((l) => l.kind === 'ZOS');
+  const cpcIds = [...new Set(zos.map((x) => x.cpcId))];
   const [lpar, setLpar] = useState(zos[0]?.id ?? '');
   return (
     <>
@@ -405,9 +432,15 @@ function Prsm({ desk }: { desk: Desk }) {
         <label>
           LPAR{' '}
           <select value={lpar} onChange={(e) => setLpar(e.target.value)}>
-            {zos.map((x) => (
-              <option key={x.id}>{x.id}</option>
-            ))}
+            {cpcIds.length > 1
+              ? cpcIds.map((id) => (
+                  <optgroup key={id} label={`CPC ${id}`}>
+                    {zos.filter((x) => x.cpcId === id).map((x) => (
+                      <option key={x.id}>{x.id}</option>
+                    ))}
+                  </optgroup>
+                ))
+              : zos.map((x) => <option key={x.id}>{x.id}</option>)}
           </select>
         </label>
         <span className="muted">{desk.v.lpars.find((x) => x.id === lpar)?.polarity}</span>
@@ -423,57 +456,100 @@ function Prsm({ desk }: { desk: Desk }) {
 
 function LparProfile({ desk, lparId }: { desk: Desk; lparId: string }) {
   const l = desk.cfg.lpars.find((x) => x.id === lparId);
-  const [weight, setWeight] = useState(String(l?.weight ?? 100));
-  const [lcp, setLcp] = useState(String(l?.cpLogical ?? 1));
-  const [ziip, setZiip] = useState(String(l?.ziipLogical ?? 0));
-  const [dc, setDc] = useState(l?.definedCapacity === null || !l ? '' : String(l.definedCapacity));
-  const [mem, setMem] = useState(String(l?.memoryGb ?? 0));
   if (!l) return null;
-  const dcVal = dc.trim() === '' ? null : num(dc);
+  const draftWeight = draftFor(desk, `SET_WEIGHT:${lparId}:CP`);
+  const draftLogical = draftFor(desk, `SET_LOGICAL:${lparId}:CP`);
+  const weight = draftWeight?.kind === 'SET_WEIGHT' ? draftWeight.weight : l.weight;
+  const logical = draftLogical?.kind === 'SET_LOGICAL' ? draftLogical.logical : l.cpLogical;
   return (
     <>
-      <PolarityPreview v={desk.v} lpar={lparId} weight={num(weight) || 0} logical={num(lcp) || 0} />
-      <ChangeForm desk={desk} label={`${lparId} CP weight ${weight}`} commands={[{ kind: 'SET_WEIGHT', lparId, pool: 'CP', weight: num(weight) }]} error={validateWeight(num(weight))}>
-        <label>
-          CP weight <input value={weight} onChange={(e) => setWeight(e.target.value)} size={4} inputMode="numeric" />
-        </label>
-        <Now>{l.weight}</Now>
-      </ChangeForm>
-      <ChangeForm desk={desk} label={`${lparId} logical CPs ${lcp}`} commands={[{ kind: 'SET_LOGICAL', lparId, pool: 'CP', logical: num(lcp) }]} error={validateLogical(desk.cfg, lparId, 'CP', num(lcp))}>
-        <label>
-          Logical CPs <input value={lcp} onChange={(e) => setLcp(e.target.value)} size={3} inputMode="numeric" />
-        </label>
-        <Now>
-          {l.cpLogical} online + {l.cpReserved} reserved
-        </Now>
-      </ChangeForm>
-      <ChangeForm desk={desk} label={`${lparId} logical zIIPs ${ziip}`} commands={[{ kind: 'SET_LOGICAL', lparId, pool: 'ZIIP', logical: num(ziip) }]} error={validateLogical(desk.cfg, lparId, 'ZIIP', num(ziip))}>
-        <label>
-          Logical zIIPs <input value={ziip} onChange={(e) => setZiip(e.target.value)} size={3} inputMode="numeric" />
-        </label>
-        <Now>
-          {l.ziipLogical} online + {l.ziipReserved} reserved
-        </Now>
-      </ChangeForm>
-      <ChangeForm
-        desk={desk}
-        label={`${lparId} defined capacity ${dcVal ?? 'none'}`}
-        commands={[{ kind: 'SET_DEFINED_CAPACITY', lparId, msu: dcVal }]}
-        error={validateDefinedCapacity(dcVal)}
-      >
-        <label>
-          Defined capacity (MSU, blank = none) <input value={dc} onChange={(e) => setDc(e.target.value)} size={5} inputMode="numeric" />
-        </label>
-        <Now>{l.definedCapacity ?? 'none'}</Now>
-      </ChangeForm>
-      <ChangeForm desk={desk} label={`${lparId} memory ${mem} GB`} commands={[{ kind: 'SET_LPAR_MEMORY', lparId, memoryGb: num(mem) }]} error={validateMemory(desk.cfg, lparId, num(mem))}>
-        <label>
-          Memory (GB) <input value={mem} onChange={(e) => setMem(e.target.value)} size={5} inputMode="numeric" />
-        </label>
-        <Now>
-          {l.memoryGb} GB · {desk.cfg.unassignedMemoryGb} GB unassigned
-        </Now>
-      </ChangeForm>
+      <PolarityPreview v={desk.v} lpar={lparId} weight={weight} logical={logical} />
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <tbody>
+            <tr>
+              <td>CP weight</td>
+              <td>
+                <DraftNumber
+                  desk={desk}
+                  label={`${lparId} CP weight`}
+                  live={l.weight}
+                  size={4}
+                  make={(n) => ({ kind: 'SET_WEIGHT', lparId, pool: 'CP', weight: n })}
+                  read={(c) => (c.kind === 'SET_WEIGHT' ? c.weight : l.weight)}
+                  validate={validateWeight}
+                />
+              </td>
+              <td />
+            </tr>
+            <tr>
+              <td>Logical CPs</td>
+              <td>
+                <DraftNumber
+                  desk={desk}
+                  label={`${lparId} logical CPs`}
+                  live={l.cpLogical}
+                  size={3}
+                  make={(n) => ({ kind: 'SET_LOGICAL', lparId, pool: 'CP', logical: n })}
+                  read={(c) => (c.kind === 'SET_LOGICAL' ? c.logical : l.cpLogical)}
+                  validate={(n) => validateLogical(desk.cfg, lparId, 'CP', n)}
+                />
+              </td>
+              <td className="muted">
+                {l.cpLogical} online + {l.cpReserved} reserved
+              </td>
+            </tr>
+            <tr>
+              <td>Logical zIIPs</td>
+              <td>
+                <DraftNumber
+                  desk={desk}
+                  label={`${lparId} logical zIIPs`}
+                  live={l.ziipLogical}
+                  size={3}
+                  make={(n) => ({ kind: 'SET_LOGICAL', lparId, pool: 'ZIIP', logical: n })}
+                  read={(c) => (c.kind === 'SET_LOGICAL' ? c.logical : l.ziipLogical)}
+                  validate={(n) => validateLogical(desk.cfg, lparId, 'ZIIP', n)}
+                />
+              </td>
+              <td className="muted">
+                {l.ziipLogical} online + {l.ziipReserved} reserved
+              </td>
+            </tr>
+            <tr>
+              <td>Defined capacity (MSU)</td>
+              <td>
+                <DraftNumber<number | null>
+                  desk={desk}
+                  label={`${lparId} defined capacity (MSU)`}
+                  live={l.definedCapacity}
+                  size={5}
+                  blank="none"
+                  make={(n) => ({ kind: 'SET_DEFINED_CAPACITY', lparId, msu: n })}
+                  read={(c) => (c.kind === 'SET_DEFINED_CAPACITY' ? c.msu : l.definedCapacity)}
+                  validate={validateDefinedCapacity}
+                />
+              </td>
+              <td className="muted">blank = none</td>
+            </tr>
+            <tr>
+              <td>Memory (GB)</td>
+              <td>
+                <DraftNumber
+                  desk={desk}
+                  label={`${lparId} memory (GB)`}
+                  live={l.memoryGb}
+                  size={5}
+                  make={(n) => ({ kind: 'SET_LPAR_MEMORY', lparId, memoryGb: n })}
+                  read={(c) => (c.kind === 'SET_LPAR_MEMORY' ? c.memoryGb : l.memoryGb)}
+                  validate={(n) => validateMemory(desk.cfg, lparId, n)}
+                />
+              </td>
+              <td className="muted">{desk.cfg.unassignedMemoryGb} GB unassigned</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
@@ -720,16 +796,162 @@ function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
+const draftFor = (desk: Desk, target: string): Command | undefined => desk.basket.find((c) => commandTarget(c) === target);
+
+/**
+ * "was <live value>" next to a drafted control. It is always rendered so table columns size for it up front and nothing
+ * shifts when a draft starts; until then it is invisible and has no height (where a column is too narrow it wraps onto a
+ * line of its own, which only takes room once the draft shows it).
+ */
+const Was = ({ shown = true, children }: { shown?: boolean; children: ReactNode }) => (
+  <span className={shown ? 'was' : 'was idle'} aria-hidden={!shown}>
+    was {children}
+  </span>
+);
+
+/**
+ * One of a few values (or on/off). Picking a value drafts it into the change request; picking the live value again drops the
+ * draft. Nothing is applied until the request is submitted, so the control needs no buttons or cost of its own.
+ */
+function DraftChoice<T>({
+  desk,
+  live,
+  options,
+  make,
+  read,
+  label,
+}: {
+  desk: Desk;
+  live: T;
+  options: { value: T; text: string; disabled?: boolean }[];
+  make: (value: T) => Command;
+  read: (draft: Command) => T;
+  label: string;
+}) {
+  const target = commandTarget(make(options[0]!.value));
+  const d = draftFor(desk, target);
+  const value = d ? read(d) : live;
+  const liveText = options.find((o) => o.value === live)?.text;
+  return (
+    <span className={d ? 'seg drafted' : 'seg'} role="radiogroup" aria-label={label}>
+      {options.map((o) => (
+        <button
+          key={o.text}
+          type="button"
+          role="radio"
+          aria-checked={o.value === value}
+          className={o.value === value ? 'on' : undefined}
+          disabled={o.disabled}
+          onClick={() => desk.setDraft(target, o.value === live ? null : make(o.value))}
+        >
+          {o.text}
+        </button>
+      ))}
+      {liveText && <Was shown={!!d}>{liveText}</Was>}
+    </span>
+  );
+}
+
+/** A number setting. A valid value that differs from the live one is drafted into the change request as you type. */
+function DraftNumber<T extends number | null = number>({
+  desk,
+  live,
+  make,
+  read,
+  validate,
+  label,
+  size,
+  format = String,
+  blank,
+}: {
+  desk: Desk;
+  live: T;
+  make: (value: T) => Command;
+  read: (draft: Command) => T;
+  validate: (value: T) => string | null;
+  label: string;
+  size: number;
+  format?: (value: T) => string;
+  /** Placeholder when an empty field means "none" (null). */
+  blank?: string;
+}) {
+  const target = commandTarget(make(live));
+  const d = draftFor(desk, target);
+  const show = (x: T) => (x === null ? '' : String(x));
+  const parse = (t: string): T => (blank !== undefined && t.trim() === '' ? null : num(t)) as T;
+  const [text, setText] = useState(show(d ? read(d) : live));
+  const err = validate(parse(text));
+  useEffect(() => {
+    desk.setInvalid(target, err && `${label}: ${err}`);
+    return () => desk.setInvalid(target, null);
+  }, [err]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Submitted or cleared elsewhere: show the live value again.
+  useEffect(() => {
+    if (!d && !err && parse(text) !== live) setText(show(live));
+  }, [d, live]); // eslint-disable-line react-hooks/exhaustive-deps
+  const onChange = (s: string) => {
+    setText(s);
+    const n = parse(s);
+    desk.setDraft(target, validate(n) !== null || n === live ? null : make(n));
+  };
+  return (
+    <span className={d ? 'draft drafted' : 'draft'}>
+      <input aria-label={label} aria-invalid={err !== null} value={text} onChange={(e) => onChange(e.target.value)} size={size} inputMode="numeric" placeholder={blank} />
+      <Was shown={!!d}>{live === null ? blank : format(live)}</Was>
+      {err && <span className="err">{err}</span>}
+    </span>
+  );
+}
+
+/** A one-off action (not a setting): ticking it drafts it into the change request. */
+function DraftAction({ desk, command, disabled, label, title }: { desk: Desk; command: Command; disabled: boolean; label: string; title?: string }) {
+  const target = commandTarget(command);
+  const d = draftFor(desk, target);
+  return (
+    <label className={d ? 'draft-action drafted' : 'draft-action'} title={title}>
+      <input type="checkbox" checked={!!d} disabled={disabled} onChange={(e) => desk.setDraft(target, e.target.checked ? command : null)} /> {label}
+    </label>
+  );
+}
+
+/**
+ * A draft built from several fields (routing policy, routing shares, job class). Form state stays local; whenever it is
+ * valid and differs from the live value its command is drafted, otherwise the draft is dropped.
+ */
+function useDraftForm<S>(desk: Desk, target: string, label: string, init: (draft: Command | undefined) => S, build: (s: S) => { cmd: Command | null; error: string | null }) {
+  const d = draftFor(desk, target);
+  const [s, setS] = useState<S>(() => init(d));
+  const { cmd, error } = build(s);
+  useEffect(() => {
+    desk.setInvalid(target, error && `${label}: ${error}`);
+    return () => desk.setInvalid(target, null);
+  }, [error]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Submitted or cleared elsewhere: back to the live value.
+  useEffect(() => {
+    if (!d && !error && cmd) setS(init(undefined));
+  }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
+  const update = (next: S) => {
+    setS(next);
+    const b = build(next);
+    desk.setDraft(target, b.error || !b.cmd ? null : b.cmd);
+  };
+  return { s, update, drafted: !!d, error };
+}
+
 function Systems({ desk }: { desk: Desk }) {
   const { cfg } = desk;
   return (
     <>
       <div className="form">
         RMF interval
-        {[5, 15, 30].map((m) => (
-          <ChangeButtonsInline key={m} desk={desk} commands={[{ kind: 'SET_RMF_INTERVAL', minutes: m }]} disabled={m === cfg.rmfIntervalMin} text={`${m} min`} />
-        ))}
-        <Now>{cfg.rmfIntervalMin} min</Now>
+        <DraftChoice
+          desk={desk}
+          label="RMF interval"
+          live={cfg.rmfIntervalMin}
+          options={[5, 15, 30].map((m) => ({ value: m, text: `${m} min` }))}
+          make={(m) => ({ kind: 'SET_RMF_INTERVAL', minutes: m })}
+          read={(c) => (c.kind === 'SET_RMF_INTERVAL' ? c.minutes : cfg.rmfIntervalMin)}
+        />
       </div>
       <div className="help">Shorter intervals give finer reports at the cost of SMF volume.</div>
       <div style={{ overflowX: 'auto' }}>
@@ -746,18 +968,26 @@ function Systems({ desk }: { desk: Desk }) {
               <tr key={s.lparId}>
                 <td>{s.lparId}</td>
                 <td>
-                  {s.blwlinthdSec}s{' '}
-                  {[5, 20].map((sec) => (
-                    <ChangeButtonsInline key={sec} desk={desk} commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { blwlinthdSec: sec } }]} disabled={s.blwlinthdSec === sec} text={`${sec}s`} />
-                  ))}
+                  <DraftChoice
+                    desk={desk}
+                    label={`${s.lparId} BLWLINTHD`}
+                    live={s.blwlinthdSec}
+                    options={[5, 20].map((sec) => ({ value: sec, text: `${sec}s` }))}
+                    make={(sec) => ({ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { blwlinthdSec: sec } })}
+                    read={(c) => (c.kind === 'SET_IEAOPT' ? c.changes.blwlinthdSec ?? s.blwlinthdSec : s.blwlinthdSec)}
+                  />
                 </td>
                 <td>
-                  {s.iipHonorPriority ? 'YES' : 'NO'}{' '}
-                  <ChangeButtonsInline
+                  <DraftChoice
                     desk={desk}
-                    commands={[{ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { iipHonorPriority: !s.iipHonorPriority } }]}
-                    disabled={false}
-                    text={s.iipHonorPriority ? 'NO' : 'YES'}
+                    label={`${s.lparId} IIPHONORPRIORITY`}
+                    live={s.iipHonorPriority}
+                    options={[
+                      { value: true, text: 'YES' },
+                      { value: false, text: 'NO' },
+                    ]}
+                    make={(on) => ({ kind: 'SET_IEAOPT', lparId: s.lparId, changes: { iipHonorPriority: on } })}
+                    read={(c) => (c.kind === 'SET_IEAOPT' ? c.changes.iipHonorPriority ?? s.iipHonorPriority : s.iipHonorPriority)}
                   />
                 </td>
               </tr>
@@ -771,45 +1001,55 @@ function Systems({ desk }: { desk: Desk }) {
 }
 
 function CouplingFacilities({ desk }: { desk: Desk }) {
+  const up = desk.cfg.cfs.filter((x) => !x.failed).map((x) => x.lparId);
+  const used = cfUsedGb(desk.cfg.cfStructures, up);
   return (
     <>
-      {desk.cfg.cfs.map((c) => (
-        <CfRow key={`${c.lparId}:${c.thinInterrupts}`} desk={desk} lparId={c.lparId} />
-      ))}
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>CF</th>
+              <th>Thin interrupts</th>
+              <th className="num">share of requests</th>
+              <th className="num">storage used</th>
+            </tr>
+          </thead>
+          <tbody>
+            {desk.cfg.cfs.map((c) => {
+              const share = desk.cfg.cfStructures.filter((x) => x.cfLparId === c.lparId && !x.lost).reduce((a, x) => a + x.requestShare, 0);
+              const mem = desk.cfg.lpars.find((l) => l.id === c.lparId)?.memoryGb ?? 0;
+              return (
+                <tr key={c.lparId}>
+                  <td>
+                    <b>{c.lparId}</b> {c.failed && <span className="tag bad">DOWN</span>}
+                  </td>
+                  <td>
+                    <DraftChoice
+                      desk={desk}
+                      label={`${c.lparId} thin interrupts`}
+                      live={c.thinInterrupts}
+                      options={[
+                        { value: true, text: 'on' },
+                        { value: false, text: 'off' },
+                      ]}
+                      make={(on) => ({ kind: 'SET_CF', lparId: c.lparId, thinInterrupts: on })}
+                      read={(x) => (x.kind === 'SET_CF' ? x.thinInterrupts ?? c.thinInterrupts : c.thinInterrupts)}
+                    />
+                  </td>
+                  <td className="num">{Math.round(share * 100)}%</td>
+                  <td className="num">
+                    {(used[c.lparId] ?? 0).toFixed(0)} of {mem} GB
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       <div className="help">Thin interrupts let a CF on shared engines wake on demand instead of waiting for a dispatch interval.</div>
       <Structures desk={desk} />
     </>
-  );
-}
-
-/** Compact button pair for one-click choices: click applies, shift-click (or the + button) stages. */
-function ChangeButtonsInline({ desk, commands, disabled, text }: { desk: Desk; commands: Command[]; disabled: boolean; text: string }) {
-  const p = preview(desk.v, { commands });
-  const label = describeCommand(commands[0]!, desk.cfg);
-  const title = disabled ? 'Already set' : p.reason ?? `${label}: ${costText(p)} (shift-click adds to basket)`;
-  return (
-    <button disabled={disabled || !p.ok} title={title} onClick={(e) => (e.shiftKey ? desk.stage(commands) : desk.apply(label, commands))}>
-      {text}
-    </button>
-  );
-}
-
-function CfRow({ desk, lparId }: { desk: Desk; lparId: string }) {
-  const c = desk.cfg.cfs.find((x) => x.lparId === lparId)!;
-  const share = desk.cfg.cfStructures.filter((x) => x.cfLparId === lparId && !x.lost).reduce((a, x) => a + x.requestShare, 0);
-  const up = desk.cfg.cfs.filter((x) => !x.failed).map((x) => x.lparId);
-  const used = cfUsedGb(desk.cfg.cfStructures, up)[lparId] ?? 0;
-  const mem = desk.cfg.lpars.find((l) => l.id === lparId)?.memoryGb ?? 0;
-  return (
-    <div className="form">
-      <b>{lparId}</b>
-      {c.failed && <span className="tag bad">DOWN</span>}
-      thin interrupts {c.thinInterrupts ? 'on' : 'off'}
-      <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_CF', lparId, thinInterrupts: !c.thinInterrupts }]} disabled={false} text={c.thinInterrupts ? 'turn off' : 'turn on'} />
-      <Now>
-        {Math.round(share * 100)}% of CF requests · storage {used.toFixed(0)} of {mem} GB ({Math.max(0, mem - used).toFixed(0)} GB white space)
-      </Now>
-    </div>
   );
 }
 
@@ -822,7 +1062,6 @@ function structureStatus(st: CfStructureConfig, cfs: readonly CfConfig[], tick: 
 
 /** Structure placement (SETXCF START,REBUILD): which CF each structure lives in. */
 function Structures({ desk }: { desk: Desk }) {
-  const cfs = desk.cfg.cfs.map((c) => c.lparId);
   return (
     <>
       <div style={{ overflowX: 'auto' }}>
@@ -834,7 +1073,7 @@ function Structures({ desk }: { desk: Desk }) {
               <th className="num">share of requests</th>
               <th className="num">size</th>
               <th>status</th>
-              <th>CF</th>
+              <th>in CF</th>
               <th>duplex</th>
             </tr>
           </thead>
@@ -847,18 +1086,28 @@ function Structures({ desk }: { desk: Desk }) {
                 <td className="num">{st.sizeGb ?? '-'} GB</td>
                 <td>{structureStatus(st, desk.cfg.cfs, desk.v.tick)}</td>
                 <td>
-                  {cfs.map((cf) => (
-                    <ChangeButtonsInline
-                      key={cf}
-                      desk={desk}
-                      commands={[{ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf }]}
-                      disabled={(st.cfLparId === cf && !st.lost) || !!desk.cfg.cfs.find((x) => x.lparId === cf)?.failed}
-                      text={cf}
-                    />
-                  ))}
+                  <DraftChoice
+                    desk={desk}
+                    label={`${st.name} CF`}
+                    // A lost structure is in no CF: any CF that is up rebuilds it.
+                    live={st.lost ? null : st.cfLparId}
+                    options={desk.cfg.cfs.map((c) => ({ value: c.lparId, text: c.lparId, disabled: c.failed }))}
+                    make={(cf) => ({ kind: 'MOVE_STRUCTURE', name: st.name, cfLparId: cf ?? st.cfLparId })}
+                    read={(c) => (c.kind === 'MOVE_STRUCTURE' ? c.cfLparId : st.cfLparId)}
+                  />
                 </td>
                 <td>
-                  <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_DUPLEX', name: st.name, on: !st.duplexed }]} disabled={!!st.lost} text={st.duplexed ? 'stop' : 'duplex'} />
+                  <DraftChoice
+                    desk={desk}
+                    label={`${st.name} duplexing`}
+                    live={!!st.duplexed}
+                    options={[
+                      { value: false, text: 'off', disabled: !!st.lost },
+                      { value: true, text: 'on', disabled: !!st.lost },
+                    ]}
+                    make={(on) => ({ kind: 'SET_DUPLEX', name: st.name, on })}
+                    read={(c) => (c.kind === 'SET_DUPLEX' ? c.on : !!st.duplexed)}
+                  />
                 </td>
               </tr>
             ))}
@@ -884,12 +1133,61 @@ function Dasd({ desk }: { desk: Desk }) {
           Spare aliases: <b>{spareAliases}</b>
         </span>
         <span className="muted" style={{ fontSize: 12 }}>
-          Lower an LCU to free aliases, raise another to use them; stage both in the basket to move them in one change.
+          Lower an LCU to free aliases and raise another to use them; both edits go into the same change request.
         </span>
       </div>
-      {lcus.map((l) => (
-        <LcuRow key={`${l.id}:${l.aliases}:${l.hotSkew}:${spareAliases}`} desk={desk} lcuId={l.id} />
-      ))}
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>LCU</th>
+              <th className="num">Vols</th>
+              <th>Aliases</th>
+              <th className="num">max</th>
+              <th>Hot data sets</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lcus.map((l) => {
+              // Aliases freed by drafts on other LCUs count as spare here.
+              const spare = spareAfterBasket(desk.cfg, desk.basket, l.id);
+              const max = Math.min(LCU_MAX_DEVICES - l.volumes, l.aliases + spare);
+              const skew = Math.max(DASD_REBALANCE.minSkew, l.hotSkew * DASD_REBALANCE.skewFactor);
+              return (
+                <tr key={l.id}>
+                  <td>
+                    <b>LCU {l.id}</b> <span className="muted">{l.label}</span>
+                  </td>
+                  <td className="num">{l.volumes}</td>
+                  <td>
+                    <DraftNumber
+                      desk={desk}
+                      label={`LCU ${l.id} aliases`}
+                      live={l.aliases}
+                      size={3}
+                      make={(n) => ({ kind: 'SET_LCU', lcuId: l.id, aliases: n })}
+                      read={(c) => (c.kind === 'SET_LCU' ? c.aliases ?? l.aliases : l.aliases)}
+                      validate={(n) =>
+                        !(Number.isInteger(n) && n >= 0) ? 'Whole number ≥ 0' : n > LCU_MAX_DEVICES - l.volumes ? `Max ${LCU_MAX_DEVICES - l.volumes} (256 devices per LCU)` : n - l.aliases > spare ? `Only ${spare} spare` : null
+                      }
+                    />
+                  </td>
+                  <td className="num">{max}</td>
+                  <td>
+                    <DraftAction
+                      desk={desk}
+                      label="rebalance"
+                      command={{ kind: 'SET_LCU', lcuId: l.id, hotSkew: skew }}
+                      disabled={l.hotSkew <= DASD_REBALANCE.minSkew}
+                      title={l.hotSkew <= DASD_REBALANCE.minSkew ? 'Already balanced' : 'Move hot data sets off the busiest volumes'}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
       <div className="help">
         HyperPAV aliases are pooled per logical control unit (LCU) and cannot be borrowed across LCUs; an LCU addresses at most {LCU_MAX_DEVICES} devices
         (volumes + aliases). IOSQ in the DASD Activity LCU summary means an LCU has run out. Rebalancing moves hot data sets off its busiest volumes.
@@ -898,119 +1196,146 @@ function Dasd({ desk }: { desk: Desk }) {
   );
 }
 
-function LcuRow({ desk, lcuId }: { desk: Desk; lcuId: string }) {
-  const l = desk.cfg.dasd.lcus.find((x) => x.id === lcuId)!;
-  const [val, setVal] = useState(String(l.aliases));
-  const n = num(val);
-  // Aliases freed by edits already in the basket count as spare here.
-  const spare = spareAfterBasket(desk.cfg, desk.basket, lcuId);
-  const max = Math.min(LCU_MAX_DEVICES - l.volumes, l.aliases + spare);
-  const err = !(Number.isInteger(n) && n >= 0) ? 'Whole number ≥ 0' : n > LCU_MAX_DEVICES - l.volumes ? `Max ${LCU_MAX_DEVICES - l.volumes} (256 devices per LCU)` : n - l.aliases > spare ? `Only ${spare} spare` : null;
-  const skew = Math.max(DASD_REBALANCE.minSkew, l.hotSkew * DASD_REBALANCE.skewFactor);
+function Db2Section({ desk }: { desk: Desk }) {
   return (
-    <ChangeForm desk={desk} label={`LCU ${lcuId} aliases ${val}`} commands={[{ kind: 'SET_LCU', lcuId, aliases: n }]} error={err}>
-      <label>
-        <b>LCU {l.id}</b> <span className="muted">{l.label} · {l.volumes} vols</span> aliases{' '}
-        <input value={val} onChange={(e) => setVal(e.target.value)} size={3} inputMode="numeric" />
-      </label>
-      <Now>
-        {l.aliases} (max {max})
-      </Now>
-      <ChangeButtonsInline desk={desk} commands={[{ kind: 'SET_LCU', lcuId, hotSkew: skew }]} disabled={l.hotSkew <= DASD_REBALANCE.minSkew} text="rebalance" />
-    </ChangeForm>
+    <>
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Subsystem</th>
+              <th>Buffer pools (GB)</th>
+              <th>MAXDBAT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {desk.cfg.db2.map((d) => {
+              const lpar = desk.cfg.lpars.find((l) => l.id === d.lparId);
+              return (
+                <tr key={d.ssid}>
+                  <td>
+                    <b>{d.ssid}</b> <span className="muted">({d.lparId})</span>
+                  </td>
+                  <td>
+                    <DraftNumber
+                      desk={desk}
+                      label={`${d.ssid} buffer pools (GB)`}
+                      live={d.bufferPoolGb}
+                      size={4}
+                      make={(n) => ({ kind: 'SET_DB2', ssid: d.ssid, bufferPoolGb: n })}
+                      read={(c) => (c.kind === 'SET_DB2' ? c.bufferPoolGb ?? d.bufferPoolGb : d.bufferPoolGb)}
+                      validate={(n) => (!(n > 0) ? 'Must be > 0 GB' : lpar && n > lpar.memoryGb * 0.6 ? `More than 60% of ${d.lparId}'s ${lpar.memoryGb} GB` : null)}
+                    />
+                  </td>
+                  <td>
+                    <DraftNumber
+                      desk={desk}
+                      label={`${d.ssid} MAXDBAT`}
+                      live={d.maxDbat}
+                      size={5}
+                      make={(n) => ({ kind: 'SET_DB2', ssid: d.ssid, maxDbat: n })}
+                      read={(c) => (c.kind === 'SET_DB2' ? c.maxDbat ?? d.maxDbat : d.maxDbat)}
+                      validate={(n) => (Number.isInteger(n) && n >= 1 ? null : 'Whole number ≥ 1')}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="help">Bigger buffer pools raise the hit ratio (fewer sync I/Os) but use LPAR memory. MAXDBAT caps concurrent DDF threads; above it requests queue.</div>
+    </>
   );
 }
 
-function Subsystems({ desk }: { desk: Desk }) {
+function MqSection({ desk }: { desk: Desk }) {
+  const { mq } = desk.cfg;
+  if (mq.length === 0) return <Empty>No MQ queues in this estate.</Empty>;
+  return (
+    <>
+      <div style={{ overflowX: 'auto' }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Queue</th>
+              <th>MAXDEPTH</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mq.map((q) => (
+              <tr key={q.workloadId}>
+                <td>
+                  <b>{q.queue}</b> <span className="muted">({q.workloadId})</span>
+                </td>
+                <td>
+                  <DraftNumber
+                    desk={desk}
+                    label={`${q.queue} MAXDEPTH`}
+                    live={q.maxDepth}
+                    size={9}
+                    format={(n) => n.toLocaleString()}
+                    make={(n) => ({ kind: 'SET_MQ', workloadId: q.workloadId, maxDepthMsgs: n })}
+                    read={(c) => (c.kind === 'SET_MQ' ? c.maxDepthMsgs : q.maxDepth)}
+                    validate={(n) => (Number.isInteger(n) && n >= 1 && n <= 999_999_999 ? null : 'Whole number 1–999999999')}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="help">
+        Messages wait on the queue instead of timing out, so a slow consumer shows up as queue depth and end-to-end latency. Past MAXDEPTH, puts fail (MQRC 2053) and the
+        sender retries. A deeper queue rides out longer bursts but holds more messages in memory.
+      </div>
+    </>
+  );
+}
+
+function CicsSection({ desk }: { desk: Desk }) {
   const { cfg } = desk;
   const prodLpars = [...new Set(cfg.cics.map((r) => r.lparId))].sort();
   return (
     <>
-      {cfg.db2.map((d) => (
-        <Db2Row key={`${d.ssid}:${d.bufferPoolGb}:${d.maxDbat}`} desk={desk} ssid={d.ssid} />
-      ))}
-      <div className="help">Bigger buffer pools raise the hit ratio (fewer sync I/Os) but use LPAR memory. MAXDBAT caps concurrent DDF threads; above it requests queue.</div>
-      {cfg.mq.map((q) => (
-        <MqRow key={`${q.workloadId}:${q.maxDepth}`} desk={desk} workloadId={q.workloadId} />
-      ))}
-      {cfg.mq.length > 0 && (
-        <div className="help">
-          Messages wait on the queue instead of timing out, so a slow consumer shows up as queue depth and end-to-end latency. Past MAXDEPTH, puts fail (MQRC 2053) and the
-          sender retries. A deeper queue rides out longer bursts but holds more messages in memory.
-        </div>
-      )}
       <div style={{ overflowX: 'auto' }}>
-        {cfg.cics.map((r) => (
-          <CicsRow key={`${r.name}:${r.maxTasks}:${r.qrFrac}`} desk={desk} name={r.name} />
-        ))}
+        <table>
+          <thead>
+            <tr>
+              <th>Region</th>
+              <th>LPAR</th>
+              <th className="num">QR share</th>
+              <th>MXT</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cfg.cics.map((r) => (
+              <tr key={r.name}>
+                <td>
+                  <b>{r.name}</b>
+                </td>
+                <td className="muted">{r.lparId}</td>
+                <td className="num">{Math.round(r.qrFrac * 100)}%</td>
+                <td>
+                  <DraftNumber
+                    desk={desk}
+                    label={`${r.name} MXT`}
+                    live={r.maxTasks}
+                    size={4}
+                    make={(n) => ({ kind: 'SET_CICS', name: r.name, maxTasks: n })}
+                    read={(c) => (c.kind === 'SET_CICS' ? c.maxTasks ?? r.maxTasks : r.maxTasks)}
+                    validate={(n) => (Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000')}
+                  />
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
+      <h4>New region</h4>
       <AddAor desk={desk} lpars={prodLpars} />
       <div className="help">MXT limits concurrent tasks per region. The QR share is CPU that must run on the single QR TCB (non-threadsafe code), so one region tops out near one engine.</div>
     </>
-  );
-}
-
-function MqRow({ desk, workloadId }: { desk: Desk; workloadId: string }) {
-  const q = desk.cfg.mq.find((x) => x.workloadId === workloadId)!;
-  const [depth, setDepth] = useState(String(q.maxDepth));
-  const n = num(depth);
-  return (
-    <ChangeForm
-      desk={desk}
-      label={`ALTER QLOCAL(${q.queue}) MAXDEPTH(${depth})`}
-      commands={[{ kind: 'SET_MQ', workloadId, maxDepthMsgs: n }]}
-      error={Number.isInteger(n) && n >= 1 && n <= 999_999_999 ? null : 'MAXDEPTH is a whole number 1–999999999'}
-    >
-      <label>
-        <b>{q.queue}</b> <span className="muted">({workloadId})</span> MAXDEPTH <input value={depth} onChange={(e) => setDepth(e.target.value)} size={8} inputMode="numeric" />
-      </label>
-      <Now>{q.maxDepth.toLocaleString()}</Now>
-    </ChangeForm>
-  );
-}
-
-function Db2Row({ desk, ssid }: { desk: Desk; ssid: string }) {
-  const d = desk.cfg.db2.find((x) => x.ssid === ssid)!;
-  const [bp, setBp] = useState(String(d.bufferPoolGb));
-  const [dbat, setDbat] = useState(String(d.maxDbat));
-  const lpar = desk.cfg.lpars.find((l) => l.id === d.lparId);
-  const bpN = num(bp);
-  const bpErr = !(bpN > 0) ? 'Must be > 0 GB' : lpar && bpN > lpar.memoryGb * 0.6 ? `More than 60% of ${d.lparId}'s ${lpar.memoryGb} GB` : null;
-  const dbatN = num(dbat);
-  return (
-    <>
-      <ChangeForm desk={desk} label={`${ssid} BP ${bp} GB`} commands={[{ kind: 'SET_DB2', ssid, bufferPoolGb: bpN }]} error={bpErr}>
-        <label>
-          <b>{ssid}</b> <span className="muted">({d.lparId})</span> buffer pools (GB) <input value={bp} onChange={(e) => setBp(e.target.value)} size={4} inputMode="numeric" />
-        </label>
-        <Now>{d.bufferPoolGb} GB</Now>
-      </ChangeForm>
-      <ChangeForm
-        desk={desk}
-        label={`${ssid} MAXDBAT ${dbat}`}
-        commands={[{ kind: 'SET_DB2', ssid, maxDbat: dbatN }]}
-        error={Number.isInteger(dbatN) && dbatN >= 1 ? null : 'MAXDBAT is a whole number ≥ 1'}
-      >
-        <label>
-          {ssid} MAXDBAT <input value={dbat} onChange={(e) => setDbat(e.target.value)} size={5} inputMode="numeric" />
-        </label>
-        <Now>{d.maxDbat}</Now>
-      </ChangeForm>
-    </>
-  );
-}
-
-function CicsRow({ desk, name }: { desk: Desk; name: string }) {
-  const r = desk.cfg.cics.find((x) => x.name === name)!;
-  const [mxt, setMxt] = useState(String(r.maxTasks));
-  const n = num(mxt);
-  return (
-    <ChangeForm desk={desk} label={`${name} MXT ${mxt}`} commands={[{ kind: 'SET_CICS', name, maxTasks: n }]} error={Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000'}>
-      <label>
-        <b>{name}</b> <span className="muted">({r.lparId}, QR {Math.round(r.qrFrac * 100)}%)</span> MXT <input value={mxt} onChange={(e) => setMxt(e.target.value)} size={4} inputMode="numeric" />
-      </label>
-      <Now>{r.maxTasks}</Now>
-    </ChangeForm>
   );
 }
 
@@ -1020,16 +1345,32 @@ function AddAor({ desk, lpars }: { desk: Desk; lpars: string[] }) {
   const [name, setName] = useState('');
   const effective = name || nextAorName(names);
   const err = !/^[A-Z][A-Z0-9#@$]{0,7}$/.test(effective) ? '1–8 chars, starts with a letter' : names.includes(effective) ? 'Region exists' : null;
+  const cmd: Command = { kind: 'ADD_AOR', lparId: lpar, name: effective, maxTasks: 200, qrFrac: 0.6 };
+  const drafted = !!draftFor(desk, commandTarget(cmd));
   return (
-    <ChangeForm desk={desk} label={`New AOR ${effective} on ${lpar}`} commands={[{ kind: 'ADD_AOR', lparId: lpar, name: effective, maxTasks: 200, qrFrac: 0.6 }]} error={err}>
-      New CICS AOR on
-      <select aria-label="LPAR for the new region" value={lpar} onChange={(e) => setLpar(e.target.value)}>
-        {lpars.map((x) => (
-          <option key={x}>{x}</option>
-        ))}
-      </select>
-      <input aria-label="Region name" placeholder={nextAorName(names)} value={name} onChange={(e) => setName(e.target.value.toUpperCase())} size={9} />
-    </ChangeForm>
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (err === null) desk.setDraft(commandTarget(cmd), cmd);
+      }}
+    >
+      <label>
+        LPAR{' '}
+        <select aria-label="LPAR for the new region" value={lpar} onChange={(e) => setLpar(e.target.value)}>
+          {lpars.map((x) => (
+            <option key={x}>{x}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Name <input aria-label="Region name" placeholder={nextAorName(names)} value={name} onChange={(e) => setName(e.target.value.toUpperCase())} size={9} />
+      </label>
+      <button type="submit" disabled={err !== null || drafted}>
+        {drafted ? 'In the change request' : 'Add to change request'}
+      </button>
+      {err && <span className="err">{err}</span>}
+    </form>
   );
 }
 
@@ -1063,74 +1404,89 @@ function Routing({ desk }: { desk: Desk }) {
 }
 
 function RoutingPolicyEditor({ desk, workloadId, lpars, current }: { desk: Desk; workloadId: string; lpars: string[]; current: RoutingPolicy }) {
-  const cpsm = current.method === 'CPSM_GOAL' ? current : null;
-  const [method, setMethod] = useState<RoutingPolicy['method']>(current.method);
-  const [distMethod, setDistMethod] = useState<'BASEWLM' | 'SERVERWLM'>(current.method === 'WLM' ? current.distMethod : 'SERVERWLM');
-  const [thresh, setThresh] = useState(cpsm?.abendThreshFrac != null ? String(Math.round(cpsm.abendThreshFrac * 100)) : '');
-  const [crit, setCrit] = useState(cpsm?.abendCritFrac != null ? String(Math.round(cpsm.abendCritFrac * 100)) : '');
-  const [quiesced, setQuiesced] = useState<string[]>(cpsm?.quiesced ?? []);
+  type Form = { method: RoutingPolicy['method']; distMethod: 'BASEWLM' | 'SERVERWLM'; thresh: string; crit: string; quiesced: string[] };
+  const pct = (f: number | null | undefined) => (f != null ? String(Math.round(f * 100)) : '');
   const frac = (v: string) => (v.trim() === '' ? null : num(v) / 100);
-  const policy: RoutingPolicy =
-    method === 'STATIC'
-      ? { method }
-      : method === 'WLM'
-        ? { method, distMethod }
-        : { method, abendThreshFrac: frac(thresh), abendCritFrac: frac(crit), quiesced: [...quiesced].sort() };
   const bad = (v: string) => v.trim() !== '' && !(num(v) > 0 && num(v) <= 100);
-  const error =
-    method === 'CPSM_GOAL' && (bad(thresh) || bad(crit))
-      ? 'Abend limits are 1–100%'
-      : method === 'CPSM_GOAL' && quiesced.length >= lpars.length
-        ? 'Leave at least one region open'
-        : JSON.stringify(policy) === JSON.stringify(current)
-          ? 'No change'
-          : null;
+  const { s: f, update, drafted, error } = useDraftForm<Form>(
+    desk,
+    `SET_ROUTING_POLICY:${workloadId}`,
+    `${workloadId} routing policy`,
+    (d) => {
+      const p = d?.kind === 'SET_ROUTING_POLICY' ? d.policy : current;
+      const cpsm = p.method === 'CPSM_GOAL' ? p : null;
+      return { method: p.method, distMethod: p.method === 'WLM' ? p.distMethod : 'SERVERWLM', thresh: pct(cpsm?.abendThreshFrac), crit: pct(cpsm?.abendCritFrac), quiesced: cpsm?.quiesced ?? [] };
+    },
+    (f) => {
+      const policy: RoutingPolicy =
+        f.method === 'STATIC'
+          ? { method: f.method }
+          : f.method === 'WLM'
+            ? { method: f.method, distMethod: f.distMethod }
+            : { method: f.method, abendThreshFrac: frac(f.thresh), abendCritFrac: frac(f.crit), quiesced: [...f.quiesced].sort() };
+      const error =
+        f.method === 'CPSM_GOAL' && (bad(f.thresh) || bad(f.crit)) ? 'Abend limits are 1–100%' : f.method === 'CPSM_GOAL' && f.quiesced.length >= lpars.length ? 'Leave at least one region open' : null;
+      return { cmd: JSON.stringify(policy) === JSON.stringify(current) ? null : { kind: 'SET_ROUTING_POLICY', workloadId, policy }, error };
+    },
+  );
   return (
-    <ChangeForm desk={desk} label={`${workloadId} routing policy`} commands={[{ kind: 'SET_ROUTING_POLICY', workloadId, policy }]} error={error}>
-      <select aria-label="Routing method" value={method} onChange={(e) => setMethod(e.target.value as RoutingPolicy['method'])}>
+    <div className={drafted ? 'form drafted-form' : 'form'}>
+      <select aria-label="Routing method" value={f.method} onChange={(e) => update({ ...f, method: e.target.value as RoutingPolicy['method'] })}>
         <option value="STATIC">Static weights</option>
         <option value="WLM">WLM weights (Sysplex Distributor)</option>
         <option value="CPSM_GOAL">CPSM goal routing</option>
       </select>
-      {method === 'WLM' && (
-        <select aria-label="DISTMETHOD" value={distMethod} onChange={(e) => setDistMethod(e.target.value as 'BASEWLM' | 'SERVERWLM')}>
+      {f.method === 'WLM' && (
+        <select aria-label="DISTMETHOD" value={f.distMethod} onChange={(e) => update({ ...f, distMethod: e.target.value as 'BASEWLM' | 'SERVERWLM' })}>
           <option value="BASEWLM">BASEWLM (system CP capacity)</option>
           <option value="SERVERWLM">SERVERWLM (server, CP + zIIP)</option>
         </select>
       )}
-      {method === 'CPSM_GOAL' && (
+      {f.method === 'CPSM_GOAL' && (
         <>
           <label>
-            ABENDTHRESH <input value={thresh} onChange={(e) => setThresh(e.target.value)} size={3} inputMode="numeric" placeholder="off" />%
+            ABENDTHRESH <input value={f.thresh} onChange={(e) => update({ ...f, thresh: e.target.value })} size={3} inputMode="numeric" placeholder="off" />%
           </label>
           <label>
-            ABENDCRIT <input value={crit} onChange={(e) => setCrit(e.target.value)} size={3} inputMode="numeric" placeholder="off" />%
+            ABENDCRIT <input value={f.crit} onChange={(e) => update({ ...f, crit: e.target.value })} size={3} inputMode="numeric" placeholder="off" />%
           </label>
           {lpars.map((l) => (
             <label key={l}>
-              <input type="checkbox" checked={quiesced.includes(l)} onChange={(e) => setQuiesced(e.target.checked ? [...quiesced, l] : quiesced.filter((x) => x !== l))} /> quiesce {l}
+              <input type="checkbox" checked={f.quiesced.includes(l)} onChange={(e) => update({ ...f, quiesced: e.target.checked ? [...f.quiesced, l] : f.quiesced.filter((x) => x !== l) })} /> quiesce {l}
             </label>
           ))}
         </>
       )}
-      <Now>{routingPolicyLabel(current)}</Now>
-    </ChangeForm>
+      {drafted ? <Was>{routingPolicyLabel(current)}</Was> : <Now>{routingPolicyLabel(current)}</Now>}
+      {error && <span className="err">{error}</span>}
+    </div>
   );
 }
 
 function RoutingEditor({ desk, workloadId, current }: { desk: Desk; workloadId: string; current: Record<string, number> }) {
   const lpars = Object.keys(current).sort();
-  const [vals, setVals] = useState<Record<string, string>>(Object.fromEntries(lpars.map((l) => [l, String(Math.round(current[l]! * 100))])));
-  const routing = Object.fromEntries(lpars.map((l) => [l, num(vals[l] ?? '') / 100]));
+  const pct = (r: Record<string, number>) => Object.fromEntries(lpars.map((l) => [l, String(Math.round((r[l] ?? 0) * 100))]));
+  const { s: vals, update, drafted, error } = useDraftForm<Record<string, string>>(
+    desk,
+    `SET_ROUTING:${workloadId}`,
+    `${workloadId} routing`,
+    (d) => pct(d?.kind === 'SET_ROUTING' ? d.routing : current),
+    (vals) => {
+      const routing = Object.fromEntries(lpars.map((l) => [l, num(vals[l] ?? '') / 100]));
+      const same = lpars.every((l) => Math.round(routing[l]! * 100) === Math.round(current[l]! * 100));
+      return { cmd: same ? null : { kind: 'SET_ROUTING', workloadId, routing }, error: validateRouting(routing) };
+    },
+  );
   return (
-    <ChangeForm desk={desk} label={`${workloadId} routing`} commands={[{ kind: 'SET_ROUTING', workloadId, routing }]} error={validateRouting(routing)}>
+    <div className={drafted ? 'form drafted-form' : 'form'}>
       {lpars.map((l) => (
         <label key={l}>
-          {l} <input value={vals[l]} onChange={(e) => setVals({ ...vals, [l]: e.target.value })} size={3} inputMode="numeric" />%
+          {l} <input aria-label={`${workloadId} share on ${l}`} value={vals[l]} onChange={(e) => update({ ...vals, [l]: e.target.value })} size={3} inputMode="numeric" />%
         </label>
       ))}
-      <Now>{lpars.map((l) => `${Math.round(current[l]! * 100)}%`).join(' / ')}</Now>
-    </ChangeForm>
+      {drafted ? <Was>{lpars.map((l) => `${Math.round(current[l]! * 100)}%`).join(' / ')}</Was> : <Now>{lpars.map((l) => `${Math.round(current[l]! * 100)}%`).join(' / ')}</Now>}
+      {error && <span className="err">{error}</span>}
+    </div>
   );
 }
 
@@ -1159,33 +1515,45 @@ function JobClasses({ desk }: { desk: Desk }) {
 function JobClassEditor({ desk, jobClass }: { desk: Desk; jobClass: string }) {
   const j = desk.cfg.jobClasses.find((x) => x.jobClass === jobClass)!;
   const lpars = desk.cfg.systems.map((s) => s.lparId).sort();
-  const [mode, setMode] = useState(j.mode);
-  const [inits, setInits] = useState<Record<string, string>>(Object.fromEntries(lpars.map((l) => [l, String(j.initiators[l] ?? 0)])));
-  const initiators = Object.fromEntries(lpars.map((l) => [l, num(inits[l] ?? '')]).filter(([, n]) => (n as number) > 0)) as Record<string, number>;
-  const bad = lpars.some((l) => {
-    const n = num(inits[l] ?? '');
-    return !(Number.isInteger(n) && n >= 0 && n <= 99);
-  });
-  const err = bad ? 'Initiators are 0–99 per system' : Object.keys(initiators).length === 0 ? 'At least one system needs initiators' : null;
+  type Form = { mode: 'JES' | 'WLM'; inits: Record<string, string> };
+  const nowText = `${j.mode} ${Object.keys(j.initiators)
+    .sort()
+    .map((k) => `${k}:${j.initiators[k]}`)
+    .join(' ')}`;
+  const { s: f, update, drafted, error } = useDraftForm<Form>(
+    desk,
+    `SET_JOB_CLASS:${jobClass}`,
+    `Class ${jobClass}`,
+    (d) => {
+      const mode = (d?.kind === 'SET_JOB_CLASS' ? d.mode : undefined) ?? j.mode;
+      const initiators = (d?.kind === 'SET_JOB_CLASS' ? d.initiators : undefined) ?? j.initiators;
+      return { mode, inits: Object.fromEntries(lpars.map((l) => [l, String(initiators[l] ?? 0)])) };
+    },
+    (f) => {
+      const initiators = Object.fromEntries(lpars.map((l) => [l, num(f.inits[l] ?? '')]).filter(([, n]) => (n as number) > 0)) as Record<string, number>;
+      const bad = lpars.some((l) => {
+        const n = num(f.inits[l] ?? '');
+        return !(Number.isInteger(n) && n >= 0 && n <= 99);
+      });
+      const error = bad ? 'Initiators are 0–99 per system' : Object.keys(initiators).length === 0 ? 'At least one system needs initiators' : null;
+      const same = f.mode === j.mode && lpars.every((l) => (initiators[l] ?? 0) === (j.initiators[l] ?? 0));
+      return { cmd: same ? null : { kind: 'SET_JOB_CLASS', jobClass, mode: f.mode, initiators }, error };
+    },
+  );
   return (
-    <ChangeForm desk={desk} label={`Class ${jobClass} ${mode}`} commands={[{ kind: 'SET_JOB_CLASS', jobClass, mode, initiators }]} error={err}>
-      <select aria-label="Initiator mode" value={mode} onChange={(e) => setMode(e.target.value as 'JES' | 'WLM')}>
+    <div className={drafted ? 'form drafted-form' : 'form'}>
+      <select aria-label="Initiator mode" value={f.mode} onChange={(e) => update({ ...f, mode: e.target.value as 'JES' | 'WLM' })}>
         <option value="JES">JES-managed</option>
         <option value="WLM">WLM-managed</option>
       </select>
       {lpars.map((l) => (
         <label key={l}>
-          {l} <input value={inits[l]} onChange={(e) => setInits({ ...inits, [l]: e.target.value })} size={2} inputMode="numeric" />
+          {l} <input aria-label={`Class ${jobClass} initiators on ${l}`} value={f.inits[l]} onChange={(e) => update({ ...f, inits: { ...f.inits, [l]: e.target.value } })} size={2} inputMode="numeric" />
         </label>
       ))}
-      <Now>
-        {j.mode}{' '}
-        {Object.keys(j.initiators)
-          .sort()
-          .map((k) => `${k}:${j.initiators[k]}`)
-          .join(' ')}
-      </Now>
-    </ChangeForm>
+      {drafted ? <Was>{nowText}</Was> : <Now>{nowText}</Now>}
+      {error && <span className="err">{error}</span>}
+    </div>
   );
 }
 
@@ -1278,7 +1646,7 @@ function Ops({ desk, game }: { desk: Desk; game: GameHandle }) {
   const incidentOpen = v.previewCtx.incidentOpen;
   return (
     <>
-      {v.batch.abended.length === 0 && <div className="muted">No abended jobs.</div>}
+      {v.batch.abended.length === 0 && <Empty>No abended jobs.</Empty>}
       {v.batch.abended.map((a) => {
         const commands: Command[] = [{ kind: 'RESTART_JOB', day: a.day, name: a.name }];
         const p = preview(v, { commands });

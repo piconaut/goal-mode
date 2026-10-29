@@ -1,6 +1,6 @@
 // RMF Monitor III style live views (SPEC §8 tier 1), built from WLM's smoothed per-period
 // accumulators. ACC_DECAY 0.85 per 10 s tick weights roughly the last minute or two, close to
-// Monitor III's default 100 s range (APPROX: exponential rather than a fixed MINTIME window).
+// Monitor III's 120 s MINTIME range (APPROX: exponential rather than a fixed MINTIME window).
 // Field names, columns and formulas follow z/OS RMF Report Analysis (SC34-2665, z/OS 2.5), ch. 2.
 // Samples here are time-average concurrency (average number of users in each state), so RMF's
 // group formulas ∑ samples ÷ (# samples × avg # address spaces) become state ÷ active users.
@@ -76,6 +76,7 @@ export interface Mon3System {
 
 export interface Mon3Cpc {
   lparId: string;
+  cpcId: string;
   kind: 'ZOS' | 'CF';
   /** CPC Capacity report columns. */
   msuDef: number | null;
@@ -99,6 +100,7 @@ export interface Mon3Cpc {
 /** CPC report header, for one partition (RMF shows it for the partition the reporter runs on). */
 export interface Mon3CpcHeader {
   lparId: string;
+  cpcId: string;
   cpcCapacityMsu: number;
   imageCapacityMsu: number;
   wlmCappingPct: number;
@@ -150,6 +152,8 @@ export interface Mon3View {
   rows: Mon3Row[];
   cpc: Mon3Cpc[];
   cpcHeaders: Mon3CpcHeader[];
+  /** Shared z/OS logical CPs per physical CP, per CPC (the aggregate is logicalToPhysical). */
+  logicalToPhysicalByCpc: Record<string, number>;
   logicalToPhysical: number;
   enclaves: Mon3Enclave[];
   speed: Mon3Speed[];
@@ -264,19 +268,24 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
 
   const cpcEngines = sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
   let totalLogical = 0;
+  const logicalByCpc: Record<string, number> = {};
   const cpc: Mon3Cpc[] = sim.config.lpars.map((l) => {
     const poolId = l.kind === 'CF' ? 'ICF' : 'CP';
     const cfg = l.pools.find((p) => p.pool === poolId);
     const rt = sim.lpars.find((x) => x.id === l.id)?.pools.find((p) => p.pool === poolId);
     const box = sim.config.cpcs.find((c) => c.id === l.cpcId);
     const phys = box?.engines[poolId] ?? 0;
-    if (l.kind === 'ZOS' && cfg && !cfg.dedicated) totalLogical += cfg.logical;
+    if (l.kind === 'ZOS' && cfg && !cfg.dedicated) {
+      totalLogical += cfg.logical;
+      logicalByCpc[l.cpcId] = (logicalByCpc[l.cpcId] ?? 0) + cfg.logical;
+    }
     const total = rt?.deliveredEngines ?? 0;
     // Effective dispatch excludes LPAR management time (RMF Report Analysis, CPC report).
     const effect = total * (1 - (rt?.overheadFrac ?? 0));
     const logical = cfg?.logical ?? 0;
     return {
       lparId: l.id,
+      cpcId: l.cpcId,
       kind: l.kind,
       msuDef: l.kind === 'ZOS' ? l.definedCapacityMsu : null,
       msuAct: l.kind === 'ZOS' && box ? effect * msuPerCp(box) : null,
@@ -309,6 +318,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
       if (cp?.absoluteCapEngines != null) limits.push(cp.absoluteCapEngines * msuCp);
       return {
         lparId: l.id,
+        cpcId: l.cpcId,
         cpcCapacityMsu: box.engines.CP * msuCp,
         imageCapacityMsu: Math.min(...limits),
         wlmCappingPct: 100 * (sim.lpars.find((x) => x.id === l.id)?.pools.find((p) => p.pool === 'CP')?.cappedFrac ?? 0),
@@ -389,6 +399,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     rows,
     cpc,
     cpcHeaders,
+    logicalToPhysicalByCpc: Object.fromEntries(sim.config.cpcs.map((c) => [c.id, c.engines.CP > 0 ? (logicalByCpc[c.id] ?? 0) / c.engines.CP : 0])),
     logicalToPhysical: cpcEngines > 0 ? totalLogical / cpcEngines : 0,
     enclaves,
     speed: speedSection(rows, systems),

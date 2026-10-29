@@ -22,8 +22,8 @@ beforeAll(() => {
 const f32 = (v: Mon3View) => JSON.parse(JSON.stringify(v), (_k, x) => (typeof x === 'number' ? Math.fround(x) : x));
 
 describe('Monitor III history', () => {
-  it('48 hours of 100 s intervals', () => {
-    expect(MON3_HISTORY_MAX).toBe((48 * TICKS_PER_HOUR) / 10);
+  it('48 hours of 120 s intervals (MINTIME(120))', () => {
+    expect(MON3_HISTORY_MAX).toBe((48 * TICKS_PER_HOUR) / 12);
   });
 
   it('packs and unpacks a view to Float32 precision, nulls and text intact', () => {

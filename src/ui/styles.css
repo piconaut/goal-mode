@@ -221,8 +221,9 @@ tr:hover .pin { opacity: 0.8; }
 details.codex { border-bottom: 1px solid var(--border); padding: 4px 0; }
 details.codex > summary { color: var(--text); font-size: 14px; margin: 0; }
 a { color: var(--accent); }
-.codex-hint { position: relative; display: inline-block; margin-left: 6px; vertical-align: middle; text-transform: none; letter-spacing: normal; font-weight: normal; }
-.codex-hint > button { width: 18px; height: 18px; padding: 0; border-radius: 50%; font-size: 11px; line-height: 16px; color: var(--muted); }
+.hints { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
+.codex-hint { position: relative; display: inline-block; vertical-align: middle; text-transform: none; letter-spacing: normal; font-weight: normal; }
+.codex-hint > button { height: 20px; padding: 0 8px; border-radius: 10px; font-size: 11px; line-height: 18px; color: var(--muted); white-space: nowrap; }
 .codex-hint > button[aria-expanded='true'] { color: var(--accent); border-color: var(--accent); }
 .codex-card { position: fixed; z-index: 50; top: 0; left: 0; width: min(380px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35); font-size: 13px; color: var(--text); cursor: default; white-space: normal; }
 .codex-body { line-height: 1.45; }
@@ -241,7 +242,26 @@ a { color: var(--accent); }
 .desk-top { margin-bottom: 4px; }
 .section-summary { margin-left: 10px; font-size: 12px; color: var(--muted); font-family: var(--mono); }
 details.section[open] > summary { margin-bottom: 8px; }
-@media (min-width: 1000px) { .desk-top { grid-template-columns: 2fr 1.3fr 1fr; } }
+@media (min-width: 1000px) { .desk-top { grid-template-columns: 2fr 1fr; } }
+
+.page { display: flex; flex-direction: column; gap: 12px; }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.empty { padding: 4px 0; }
+.linkbtn { padding: 0; border: none; background: none; color: var(--accent); text-decoration: underline; }
+.linkbtn:hover { border: none; }
+
+/* Change Desk setting rows: one setting per line in a shared column grid (SettingRow / SettingHead). */
+.grid-wide { grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr)); align-items: start; }
+.desk-stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.stack-x { overflow-x: auto; margin: 4px 0; }
+.srow { display: grid; align-items: center; gap: 4px 10px; margin: 0; padding: 4px 2px; min-width: 520px; border-bottom: 1px solid var(--border); }
+.srow.head { padding-top: 0; font-size: 12px; color: var(--muted); }
+.srow .now { white-space: nowrap; }
+.srow:not(.head):hover { background: var(--panel-2); }
+.srow input { min-width: 0; width: 100%; max-width: 8em; }
+.acts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.cost { min-width: 0; overflow-wrap: anywhere; font-size: 12px; color: var(--muted); font-family: var(--mono); }
+.btns { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 
 /* Windows High Contrast / forced colours: backgrounds are replaced by Canvas, so fills that carry data
    (bars, Gantt runs) and state (selected row, active tab, primary button) are redrawn in system colours. */
@@ -273,3 +293,33 @@ details.section[open] > summary { margin-bottom: 8px; }
 .spectate-adopt {
   margin-left: 0.75em;
 }
+
+/* Change Desk drafts: an edited value is highlighted until the change request is submitted or cleared. */
+.seg { display: inline-flex; flex-wrap: wrap; align-items: center; }
+.seg > button { border-radius: 0; margin: 0 0 0 -1px; }
+.seg > button:first-child { border-radius: 4px 0 0 4px; margin-left: 0; }
+.seg > button:nth-last-child(1 of button) { border-radius: 0 4px 4px 0; }
+.seg > button.on { background: var(--panel-2); border-color: var(--text); color: var(--text); box-shadow: inset 0 -2px 0 var(--text); }
+.seg.drafted > button.on { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.was { margin-left: 6px; font-size: 12px; color: var(--muted); font-family: var(--mono); white-space: nowrap; }
+.was.idle { visibility: hidden; height: 0; overflow: hidden; }
+.draft { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 0; }
+.draft .err { flex-basis: 100%; }
+.drafted input:not([type='checkbox']), .drafted.draft-action { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 3px; }
+.draft-action { white-space: nowrap; }
+.desk-banners { position: sticky; top: 0; z-index: 10; display: grid; gap: 6px; margin-bottom: 12px; }
+.desk-banners:empty { display: none; }
+.desk-banners > .banner { position: static; margin: 0; }
+.change-bar { display: block; border-color: var(--accent); }
+.change-bar-list { max-height: 45vh; overflow: auto; margin-bottom: 6px; }
+.drafted-form { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.change-bar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.change-bar-acts { margin-left: auto; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.change-bar .diff li > span:first-child { flex: 1; }
+button.link { background: none; border: none; padding: 0; font-weight: 600; color: var(--text); cursor: pointer; }
+
+/* Change board rows: a long request label wraps; the status tags stay whole on one line. */
+.change-label { overflow-wrap: anywhere; }
+.change-status { white-space: nowrap; width: 1%; }
+.change-status .tag { display: inline-block; }
+.change-status .tag + .tag { margin-left: 4px; }

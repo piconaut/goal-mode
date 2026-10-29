@@ -102,6 +102,14 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
     }
   });
 
+  it('CPC rows and headers carry their CPC id; L:P is reported per CPC', () => {
+    const m = buildMon3(noon, MIDWEST);
+    const ids = new Set(m.cpc.map((c) => c.cpcId));
+    expect([...ids]).toEqual(['CPCA']);
+    expect(m.cpcHeaders.every((h) => ids.has(h.cpcId))).toBe(true);
+    expect(m.logicalToPhysicalByCpc.CPCA).toBeCloseTo(m.logicalToPhysical, 9);
+  });
+
   it('WFEX exceptions carry an RMF-style reason and critical value', () => {
     const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
     const m = buildMon3(hot, MIDWEST);
