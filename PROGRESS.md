@@ -317,6 +317,10 @@ Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md
   wording in the error. Same item (audit r3): SYSSTC is valid only in ASCH, JES, OMVS, STC and TSO rules, SYSTEM only in
   STC for high-dispatching-priority address spaces (*WLM Planning* p.102); `knownClass` (`wlmEdit.ts:264`) allows
   both anywhere (`ADD_RULE`, `SET_RULE_TARGET`, `SET_DEFAULT`). DDF → SYSSTC took Midwest ONLHI velocity 76.9 → 9.3.
+  Audit r4: rules must use qualifiers valid for their subsystem (*WLM Planning* p.78 note 1, Table 7) and a
+  qualifier cannot be nested in itself unless it is longer than 8 characters (p.99); `ADD_RULE` accepts TN on DDF, PK
+  on TSO, TC on STC, a 12-character pattern and TN under TN, all of which never match. CLI only: `SET_PERIOD` accepts a
+  null or negative duration and importance 9.
 
 Audit round 3 (2026-10-29, Midwest seed 42; `runs/lab/2026-10-29-audit-r3.md`, local only).
 - [ ] **11. A resource group minimum on discretionary work must not override goal work.** For goal work below its
@@ -332,6 +336,24 @@ Audit round 3 (2026-10-29, Midwest seed 42; `runs/lab/2026-10-29-audit-r3.md`, l
   30.2 → 8.7 s. A free, instant backlog flush. Cause: `evaluate.ts:555-558` truncates `newBacklog` to the cap every
   tick. Fix: fail only this tick's arrivals beyond the cap, keep the excess and let it drain. Also allow MAXDEPTH 0
   (`src/game/commands.ts:379` refuses it; z/OS range 0–999 999 999).
+
+Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, local only).
+- [ ] **13. Classification masks and wildcards must follow WLM syntax.** `%` masks one character (at the end it may
+  also match nothing); `*` is a wildcard only in the last position or alone and a literal anywhere else (`CI*S`
+  matches only `CI*S`); there is no `?` (*WLM Planning* p.104). `compileWildcard` (`src/sim/wlm/classify.ts:26`)
+  treats `*` as a wildcard anywhere, `?` as one character and `%` as a literal: `DEPT58%I` misses `DEPT58AI`, the
+  doc's own example. All three shipped policies use `rule('TN', '*IRLM', 'SYSSTC')` (`basepol.ts:73`, `hbpol.ts:44`,
+  `revpol.ts:43`), which real WLM reads as the literal `*IRLM`. Fix: the doc syntax in `compileWildcard`, the
+  policies to `%%%%IRLM` (names are `${ssid}IRLM`, 8 characters), the `RulesView.tsx:249` placeholder to
+  "DB1* or AUTH%", unit tests from the doc examples. Goldens may move if any other content pattern relied on the
+  old syntax; grep content for `?` and non-final `*` first.
+- [ ] **14. zIIP-eligible work must not soak up the CP backlog.** Capping and CP shortage limit general purpose CPs
+  only (*WLM Planning* p.182); work that is not zIIP-eligible cannot run on a zIIP (INFERENCE from the eligibility
+  rules, p.430–431 of *Init & Tuning*). Audit (PROD1 09:00–15:00): absolute cap 1.0 CP took zIIP engine-seconds
+  3 463 → 7 188 while CP fell 32 770 → 21 600; DC 150 MSU took zIIP 0.19 → 0.36 engines with equal or fewer
+  completions. Cause: `src/sim/core/step.ts:663-669` splits each slice's whole backlog by `cpShare`, so CP work left
+  unserved drains on idle zIIPs. Misleads diagnosis ("zIIP busy doubled, add zIIP"). Fix: carry the backlog per pool
+  (CP and zIIP), or grant zIIP no faster than the CP share of the same work allows. Changes goldens.
 
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
