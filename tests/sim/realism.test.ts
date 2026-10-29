@@ -206,6 +206,14 @@ describe('resource group minimum', () => {
     expect(withMin.slices[0]!.cpGranted).toBeLessThan(without.slices[0]!.cpGranted - 1);
   });
 
+  it('serves a discretionary period only from capacity goal work does not want (WLM Planning p.59)', () => {
+    const disc = evaluateLpar({ ...base, dpOf: (k: string) => (k === 'HI#1' ? 240 : 196), minOf: { 'LO#1': 1.5 }, discMin: new Set(['LO#1']) });
+    expect(disc.slices[0]!.cpGranted).toBeGreaterThan(3.9);
+    expect(disc.slices[1]!.cpGranted).toBeLessThan(0.2);
+    const spare = evaluateLpar({ ...base, slices: [txn({ key: 'HI', scKey: 'HI#1', cpEngines: 2 }), slices[1]!], dpOf: (k: string) => (k === 'HI#1' ? 240 : 196), minOf: { 'LO#1': 1.5 }, discMin: new Set(['LO#1']) });
+    expect(spare.slices[1]!.cpGranted).toBeGreaterThan(1.4);
+  });
+
   it('is honoured only while the group misses its goals', () => {
     const d = structuredClone(BASEPOL);
     d.resourceGroups = [{ id: 'RGSTC', type: 3, min: 150, max: null }];
