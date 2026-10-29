@@ -52,7 +52,7 @@ describe('CICS transaction class goals (WLM Planning ch. 9–10)', () => {
     bad.resourceGroups.push({ id: 'RGONL', type: 3, min: null, max: 200 });
     bad.classes.find((c) => c.id === 'ONLHI')!.resourceGroup = 'RGONL';
     expect(cicsGoalIssues(bad).filter((i) => i.severity === 'error')).toHaveLength(1);
-    ok(applyWlmEdit(bad, { op: 'SET_FLAGS', classId: 'TSO', cpuCritical: true }));
+    ok(applyWlmEdit(bad, { op: 'SET_FLAGS', classId: 'STCHI', cpuCritical: true }));
     expect(cicsGoalIssues(ok(applyWlmEdit(bad, { op: 'SET_RESOURCE_GROUP', classId: 'ONLHI', group: null })))).toEqual([]);
   });
 });

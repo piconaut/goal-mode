@@ -34,6 +34,61 @@ export type WlmEdit =
   | { op: 'REMOVE_PERIOD'; classId: string }
   | { op: 'DELETE_CLASS'; classId: string };
 
+// Work qualifiers each subsystem type supports, limited to the ones the sim models (WLM Planning p.84 Table 7).
+const VALID_QUALIFIERS: Record<SubsystemType, readonly Qualifier[]> = {
+  STC: ['TN', 'UI', 'SY'],
+  JES: ['TN', 'UI', 'TC'],
+  CICS: ['TN', 'UI', 'TC'],
+  DDF: ['UI', 'PK', 'CI'],
+  TSO: ['UI', 'SY'],
+  MQ: ['TN', 'UI', 'TC'],
+  OMVS: ['TN', 'UI', 'SY'],
+};
+// SYSSTC only in ASCH, JES, OMVS, STC and TSO rules; SYSTEM only in STC (WLM Planning p.102).
+const SYSSTC_SUBSYSTEMS: readonly SubsystemType[] = ['JES', 'OMVS', 'STC', 'TSO'];
+
+const MAX_RT_SEC = 24 * 3600;
+
+/** Goal ranges from WLM Planning p.67: velocity and percentile 1–99, response time 1 ms–24 h. */
+export function goalError(g: Goal): string | null {
+  const rtOk = (rt: number) => Number.isFinite(rt) && rt >= 0.001 && rt <= MAX_RT_SEC;
+  switch (g.kind) {
+    case 'VEL':
+      return Number.isFinite(g.velocity) && g.velocity >= 1 && g.velocity <= 99 ? null : 'Velocity ranges from 1 to 99';
+    case 'PCT':
+      if (!(Number.isFinite(g.pct) && g.pct >= 1 && g.pct <= 99)) return 'Percentile boundaries vary from 1 to 99';
+      return rtOk(g.rtSec) ? null : 'Response time ranges from 1 millisecond to 24 hours';
+    case 'AVG':
+      return rtOk(g.rtSec) ? null : 'Response time varies from 1 millisecond to 24 hours';
+    case 'DISC':
+      return null;
+  }
+}
+
+const importanceError = (i: number) => (Number.isInteger(i) && i >= 1 && i <= 5 ? null : 'Importance is 1 (highest) to 5');
+
+// CPU Critical: "the service class must have only one period, and it cannot have a discretionary goal" (WLM Planning p.120).
+const CPU_CRITICAL_RULE = 'CPU Critical needs a single-period service class without a discretionary goal';
+
+function classTargetError(subsystem: SubsystemType, sc: string | null): string | null {
+  if (sc === 'SYSTEM' && subsystem !== 'STC') return 'SYSTEM can only be assigned in STC classification rules';
+  if (sc === 'SYSSTC' && !SYSSTC_SUBSYSTEMS.includes(subsystem)) return `SYSSTC can only be assigned in ${SYSSTC_SUBSYSTEMS.join(', ')} classification rules`;
+  return null;
+}
+
+/** Qualifiers of the rules on the path to a list position ([] = top level). */
+function ancestorQualifiers(ss: SubsystemRules, parent: RulePath): Qualifier[] {
+  const out: Qualifier[] = [];
+  let list = ss.rules;
+  for (const i of parent) {
+    const r = list[i];
+    if (!r) break;
+    out.push(r.qualifier);
+    list = r.children;
+  }
+  return out;
+}
+
 /** BASEPOL → BASEPOL2 → BASEPOL3 …, so RMF reports show which policy was active. The stem gives way to keep
  * the name within 8 characters (BASEPOL9 → BASEPO10). */
 export function nextPolicyName(name: string): string {
@@ -119,6 +174,14 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
       if (!c) return `No service class ${e.classId}`;
       if (!p) return `No period index ${e.period} in ${e.classId} (period is 0-based; it has ${c.periods.length} period${c.periods.length === 1 ? '' : 's'}: index 0${c.periods.length > 1 ? `..${c.periods.length - 1}` : ''})`;
       if (e.goal.kind === 'DISC' && e.period !== c.periods.length - 1) return 'Discretionary is only allowed in the last period';
+      const gErr = goalError(e.goal) ?? importanceError(e.importance);
+      if (gErr) return gErr;
+      if (e.goal.kind === 'DISC' && c.cpuCritical) return CPU_CRITICAL_RULE;
+      if (e.durationSu !== undefined) {
+        const last = e.period === c.periods.length - 1;
+        if (last && e.durationSu !== null) return 'The last period has no duration';
+        if (!last && !(e.durationSu !== null && Number.isFinite(e.durationSu) && e.durationSu > 0)) return 'Duration must be a number of service units above 0';
+      }
       p.goal = e.goal;
       p.importance = e.importance;
       if (e.durationSu !== undefined) p.durationSu = e.durationSu;
@@ -127,12 +190,20 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
     case 'ADD_CLASS':
       if (d.classes.some((x) => x.id === e.classId) || ['SYSTEM', 'SYSSTC', 'SYSOTHER'].includes(e.classId)) return `${e.classId} already exists`;
       if (!/^[A-Z][A-Z0-9]{0,7}$/.test(e.classId)) return 'Service class names are 1–8 characters, A–Z/0–9';
+      {
+        const gErr = goalError(e.goal) ?? importanceError(e.importance);
+        if (gErr) return gErr;
+      }
+      if (e.cpuCritical && e.goal.kind === 'DISC') return CPU_CRITICAL_RULE;
       d.classes.push({ id: e.classId, description: e.description, periods: [{ goal: e.goal, importance: e.importance, durationSu: null }], cpuCritical: e.cpuCritical, storageCritical: false, resourceGroup: null, honorPriority: true });
       return d;
     case 'ADD_PERIOD': {
       const c = d.classes.find((x) => x.id === e.classId);
       if (!c) return `No class ${e.classId}`;
       if (c.periods.length >= 8) return 'At most 8 periods';
+      if (c.cpuCritical) return CPU_CRITICAL_RULE;
+      const gErr = goalError(e.goal) ?? importanceError(e.importance);
+      if (gErr) return gErr;
       const last = c.periods[c.periods.length - 1]!;
       if (last.goal.kind === 'DISC') return 'Discretionary must stay the last period';
       if (!(Number.isFinite(e.previousDurationSu) && e.previousDurationSu > 0)) return `Give period ${c.periods.length} a duration (service units) first`;
@@ -190,6 +261,7 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
     case 'SET_FLAGS': {
       const c = d.classes.find((x) => x.id === e.classId);
       if (!c) return `No class ${e.classId}`;
+      if (e.cpuCritical && (c.periods.length !== 1 || c.periods[0]!.goal.kind === 'DISC')) return CPU_CRITICAL_RULE;
       if (e.cpuCritical !== undefined) c.cpuCritical = e.cpuCritical;
       if (e.storageCritical !== undefined) c.storageCritical = e.storageCritical;
       return d;
@@ -197,6 +269,10 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
     case 'ADD_RULE': {
       if (!knownClass(d, e.serviceClass)) return `No class ${e.serviceClass}`;
       if (!e.pattern.trim()) return 'A rule needs a pattern';
+      if (!VALID_QUALIFIERS[e.subsystem].includes(e.qualifier)) return `${e.qualifier} is not a work qualifier for ${e.subsystem} (valid: ${VALID_QUALIFIERS[e.subsystem].join(', ')})`;
+      if (e.pattern.trim().length > 8) return 'Qualifier names are at most 8 characters';
+      const tErr = classTargetError(e.subsystem, e.serviceClass);
+      if (tErr) return tErr;
       const rcErr = useReportClass(d, e.reportClass);
       if (rcErr) return rcErr;
       let ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
@@ -208,6 +284,8 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
       const at = e.at ?? [0];
       const list = listAt(ss, at.slice(0, -1));
       if (!list) return 'No such rule position';
+      // Only qualifiers longer than 8 characters can be nested in themselves (WLM Planning p.99).
+      if (ancestorQualifiers(ss, at.slice(0, -1)).includes(e.qualifier)) return `${e.qualifier} cannot be nested under another ${e.qualifier} rule`;
       const idx = Math.min(Math.max(0, at[at.length - 1] ?? 0), list.length);
       list.splice(idx, 0, { qualifier: e.qualifier, pattern: e.pattern.trim().toUpperCase(), serviceClass: e.serviceClass, reportClass: e.reportClass ?? null, children: [] });
       return d;
@@ -232,6 +310,8 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
     }
     case 'SET_RULE_TARGET': {
       if (e.serviceClass !== null && !knownClass(d, e.serviceClass)) return `No class ${e.serviceClass}`;
+      const tErr = classTargetError(e.subsystem, e.serviceClass);
+      if (tErr) return tErr;
       const ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
       const list = ss && listAt(ss, e.path.slice(0, -1));
       const r = list?.[e.path[e.path.length - 1] ?? -1];
@@ -244,6 +324,10 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
     }
     case 'SET_DEFAULT': {
       if (e.serviceClass !== null && !knownClass(d, e.serviceClass)) return `No class ${e.serviceClass}`;
+      {
+        const tErr = classTargetError(e.subsystem, e.serviceClass);
+        if (tErr) return tErr;
+      }
       let ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
       if (!ss) {
         ss = { subsystem: e.subsystem, defaultServiceClass: null, defaultReportClass: null, rules: [] };
