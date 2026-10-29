@@ -619,7 +619,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'SCOPE_SMF_AUDIT',
     forewarning: 'Regulator: "For the next three days keep full SMF 101 and 110 detail on every system. We will sample it."',
     announcement: null,
-    clue: 'WLMGL: SYSSTC APPL% up on every system with the SMF address space as its top consumer; MSU and R4HA up a little with no workload slower. Fixes: negotiate the scope down to sampled records (Regulator trust), or absorb the MSU for three days.',
+    clue: 'WLMGL: SYSSTC APPL% up on every system with the SMF address space as its top consumer; MSU and R4HA up a little; work slows only where a system already runs at its CP share (PROD2 at peak). Fixes: negotiate the scope down to sampled records (Regulator trust), or absorb the MSU for three days.',
   },
   {
     // FICTIONAL: a five-day regulator audit of workload classification; the lever is classification rules.

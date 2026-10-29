@@ -119,6 +119,7 @@ export function dispatch(input: DispatchInput): DispatchResult[] {
   allocateByPriority(input.cpCapacityEngines, input.cpServers, demands, order, cWant, cGranted, cQueue);
 
   const prsmDelayRatio = input.cpPrsmDelayFrac / Math.max(1e-6, 1 - input.cpPrsmDelayFrac);
+  const noZiip = input.ziipServers === 0;
   const out = new Array<DispatchResult>(n);
   for (let i = 0; i < n; i++) {
     const d = demands[i]!;
@@ -134,7 +135,8 @@ export function dispatch(input: DispatchInput): DispatchResult[] {
       ziipGranted: ziipGot,
       iipcpGranted: iipcp,
       cpQueueRatio: cQueue[i]!,
-      ziipQueueRatio: zQueue[i]!,
+      // With no zIIP online, eligible work is plain CP work and queues like it (Init & Tuning p.431).
+      ziipQueueRatio: noZiip ? cQueue[i]! + prsmDelayRatio : zQueue[i]!,
       prsmDelayRatio,
       cpUnmet: Math.max(0, d.cpEngines - (cpGot - iipcp)),
       ziipUnmet: Math.max(0, d.ziipEngines - ziipGot - iipcp),
