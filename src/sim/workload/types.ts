@@ -49,6 +49,9 @@ export interface WorkloadDef {
   stakeholder: string;
   work: WorkAttributes;
   subsystem: SubsystemType;
+  /** Region role the transactions' CPU is consumed in ('CICS.AOR'); a resource group on that region's class
+   *  caps them (WLM Planning p.60 note 1). Unset for DDF, which runs in enclaves under its own class. */
+  hostRole?: string;
   /** Peak arrival rate on day 1, transactions per second. */
   peakRatePerSec: number;
   shape: ArrivalShape;

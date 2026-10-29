@@ -233,7 +233,9 @@ local only). Do these in order, each as its own PR; the first two are user-order
   and neither `depDelay` (`:572`) nor batch dependency stretch sees the cap. Fix: health against `want + cut` (the
   response-time path already uses `want + cut`, `:562`). This also lets discretionary caps reach dependents, which
   is the same mechanism. Realism test: "RG max on the Db2 region class raises dependent transaction RT".
-- [ ] **2. A resource group on the CICS AOR class must cap the transactions that run in it (after 1).** You cap CICS
+- [x] **2. A resource group on the CICS AOR class must cap the transactions that run in it (after 1).** Done
+  2026-10-29: `hostRole: 'CICS.AOR'` on CICS workloads; `resourceGroupCaps` membership by host-region CPU share; test
+  added; goldens unchanged. You cap CICS
   transactions by putting the resource group on their regions (*WLM Planning* p.60 note 1); transaction CPU is
   consumed in the regions, AORs most of it (p.122, p.130). The sim keeps transaction CPU in TXN slices classified by
   transaction class (`src/sim/workload/slices.ts`); the AOR slices carry only their base CPU, and no workload lists
