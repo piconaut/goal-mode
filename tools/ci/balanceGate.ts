@@ -3,20 +3,23 @@
 // targets in PROGRESS.md M8.2 stay the job of full sweeps.
 //
 //   npm run sweep -- --bots donothing,textbook,expert --seeds 1-5 --out runs/ci-sweep.csv
-//   npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5
+//   npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]
 import { appendFileSync, readFileSync } from 'node:fs';
 
 interface Band {
   dayMedian: [number, number];
-  victories?: [number, number];
+  victoryFrac?: [number, number];
 }
 
-// Normal difficulty, Midwest, seeds 1–5. Wider than the M8.2 targets because five seeds are noisy.
+// Normal difficulty, Midwest, tuned on seeds 1–5. Wider than the M8.2 targets because five seeds are noisy.
+// Victories are a share of runs so the same bands hold for a 10- or 20-seed review sweep.
 export const BANDS: Record<string, Band> = {
-  donothing: { dayMedian: [8, 22], victories: [0, 0] },
+  donothing: { dayMedian: [8, 22], victoryFrac: [0, 0] },
   textbook: { dayMedian: [20, 36] },
-  expert: { dayMedian: [28, 40], victories: [3, 5] },
+  expert: { dayMedian: [28, 40], victoryFrac: [0.6, 1] },
 };
+
+const pct = (f: number) => `${Math.round(f * 100)}%`;
 
 export interface Row {
   bot: string;
@@ -52,8 +55,10 @@ export function checkBands(rows: Row[], seedsPerBot: number, bands = BANDS): { t
     for (const r of rs) causes[r.cause] = (causes[r.cause] ?? 0) + 1;
     if (rs.length !== seedsPerBot) failures.push(`${bot}: ${rs.length} of ${seedsPerBot} runs finished`);
     if (!(med >= band.dayMedian[0] && med <= band.dayMedian[1])) failures.push(`${bot}: median end day ${med} outside ${band.dayMedian.join('–')}`);
-    if (band.victories && (wins < band.victories[0] || wins > band.victories[1])) failures.push(`${bot}: ${wins} victories outside ${band.victories.join('–')}`);
-    const winBand = band.victories ? band.victories.join('–') : 'any';
+    const winFrac = rs.length ? wins / rs.length : 0;
+    const vf = band.victoryFrac;
+    if (vf && (winFrac < vf[0] || winFrac > vf[1])) failures.push(`${bot}: ${wins} of ${rs.length} victories outside ${pct(vf[0])}–${pct(vf[1])}`);
+    const winBand = vf ? `${pct(vf[0])}–${pct(vf[1])}` : 'any';
     const ends = Object.entries(causes).sort().map(([c, n]) => `${c} ${n}`).join(', ');
     table.push(`| ${bot} | ${rs.length} | ${med} (${band.dayMedian.join('–')}) | ${wins} (${winBand}) | ${ends} |`);
   }
@@ -61,10 +66,12 @@ export function checkBands(rows: Row[], seedsPerBot: number, bands = BANDS): { t
 }
 
 if (process.argv[1]?.endsWith('balanceGate.ts')) {
-  const [file, seeds] = process.argv.slice(2);
-  if (!file || !seeds) throw new Error('usage: balanceGate.ts <sweep.csv> <seedsPerBot>');
+  const [file, seeds, scenario = 'midwest'] = process.argv.slice(2);
+  if (!file || !seeds) throw new Error('usage: balanceGate.ts <sweep.csv> <seedsPerBot> [scenario]');
   const { table, failures } = checkBands(parseSweepCsv(readFileSync(file, 'utf8')), Number(seeds));
-  const report = ['### Balance sweep (Normal, Midwest)', '', ...table, '', ...(failures.length ? failures.map((f) => `- ❌ ${f}`) : ['All bots inside their bands.'])].join('\n');
+  // Only Midwest has tuned bands; other scenarios are checked against them as a rough reference.
+  const title = scenario === 'midwest' ? 'Normal, Midwest' : `Normal, ${scenario}, against Midwest bands`;
+  const report = [`### Balance sweep (${title})`, '', ...table, '', ...(failures.length ? failures.map((f) => `- ❌ ${f}`) : ['All bots inside their bands.'])].join('\n');
   console.log(report);
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, report + '\n');
   if (failures.length) process.exit(1);

@@ -34,7 +34,7 @@ npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUM
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
 npx tsx tools/ci/behaviourNote.ts origin/dev     # CI gate: goldens changed ⇒ PR body needs "## Behaviour change" (PR_BODY env)
-npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5   # CI gate: bot sweep inside balance bands (see .github/workflows/ci.yml)
+npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot sweep inside balance bands (victories as a share of runs) (see .github/workflows/ci.yml)
 # In `npm run dev` builds, globalThis.__goalMode.send(msg) talks to the worker (DEV_INSIGHT, DEV_FAST_DAYS, DEV_TFP_OFFER).
 ```
 
