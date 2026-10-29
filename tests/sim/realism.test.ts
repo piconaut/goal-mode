@@ -316,7 +316,7 @@ describe('MQ queue depth (PAYMQ)', () => {
   it('starved messages queue instead of timing out; puts fail only past MAXDEPTH', () => {
     const online = evaluateLpar({ ...base, slices: [txn({ key: 'T', cpEngines: 2, timeoutSec: 30 })] }).slices[0]!;
     const mq = evaluateLpar({ ...base, slices: [txn({ key: 'M', cpEngines: 2, timeoutSec: Infinity, maxQueueMsgs: 1e6 })] }).slices[0]!;
-    const full = evaluateLpar({ ...base, slices: [txn({ key: 'M', cpEngines: 2, timeoutSec: Infinity, maxQueueMsgs: 1000 })] }).slices[0]!;
+    const full = evaluateLpar({ ...base, backlog: { M: 5 }, slices: [txn({ key: 'M', cpEngines: 2, timeoutSec: Infinity, maxQueueMsgs: 1000 })] }).slices[0]!;
     expect(online.failed).toBeGreaterThan(0);
     expect(mq.failed).toBe(0);
     expect(mq.newBacklog).toBeGreaterThan(online.newBacklog);
@@ -708,4 +708,20 @@ describe('IEAOPT CCIMP implicit CPU protection (Init & Tuning p.428)', () => {
     expect(inversions(0)).toBeGreaterThan(100);
     expect(inversions(1)).toBe(0);
   }, 120_000);
+});
+
+describe('MQ MAXDEPTH lowered below the current depth (MQ 9.4 Administration Reference p.463)', () => {
+  const q = txn({ key: 'Q', scKey: 'PAYMQ#1', rate: 50, cpEngines: 0.5, cpuSecPerTxn: 0.01, maxQueueMsgs: 100, timeoutSec: Infinity });
+  const base = { cpCapacityEngines: 1, cpServers: 1, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices: [q], io: IO, pagingFrac: 0, dpOf: () => 230 };
+  it('keeps the queued messages and fails only new puts', () => {
+    const r = evaluateLpar({ ...base, backlog: { Q: 100 } }).slices[0]!;
+    // 100 engine-s queued, 10 served this tick: the rest stays; this tick's 500 puts fail.
+    expect(r.newBacklog).toBeGreaterThan(85);
+    expect(r.failed).toBeGreaterThan(450);
+    expect(r.failed).toBeLessThan(550);
+  });
+  it('still fails only the puts beyond MAXDEPTH on a queue below it', () => {
+    const r = evaluateLpar({ ...base, slices: [{ ...q, cpEngines: 2, rate: 200 }], backlog: { Q: 0.5 } }).slices[0]!;
+    expect(r.newBacklog).toBeCloseTo(1, 6);
+  });
 });
