@@ -317,7 +317,7 @@ Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md
   config (scenario content picks the value; the 3.1 default is 1), applied in `violatesCpuCritical`. A balance change:
   importance-1 work gets protected for free, so re-sweep and decide per scenario whether its world is pre-3.1
   (CCImp absent, effectively 0) or 3.1. Changes goldens.
-- [ ] **10. WLM edits must reject invalid goals and flags.** CPU Critical needs a single-period, non-discretionary
+- [x] **10. WLM edits must reject invalid goals and flags.** CPU Critical needs a single-period, non-discretionary
   class (*WLM Planning* p.120); velocity and percentile are 1–99, response time 1 ms–24 h (p.67). The sim accepts CPU
   Critical on two-period MKTDDF and discretionary DEVBAT, velocity 0 and 100, percentile 100, and AVG 0 s (WLMGL then
   prints `PERF INDX Infinity`). Fix: checks in `src/game/wlmEdit.ts` (`SET_FLAGS`, goal edits) with the doc's
@@ -478,6 +478,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | SMF_AUDIT may slow work on a system already at its CP share (Midwest PROD2 at 10:00: MOBILE 94 → 115 ms); clue text and realism test bound (1.3×) updated | M8.7 item 6 removed the ×51 zIIP queue billed on zIIP-less PROD2 (F7), which had hidden PROD2's CP-share sensitivity. Extra SYSSTC work on a CP-bound LPAR does delay lower work; the event stays a cost card elsewhere |
 | 2026-10-29 | Storage Critical redistributes paging instead of deleting it: unprotected periods absorb the protected share by activity × steal weight (imp 1..5 → 1..5, discretionary 6), capped at 0.9 | Keeps the image's paging constant so the lever has a cost (WLM Planning p.119). No scenario sets Storage Critical by default, so goldens and bench hashes are unchanged |
 | 2026-10-29 | IEAOPT CCIMP modelled per system, but every scenario stays pre-z/OS 3.1 (CCIMP 0); the player turns it on with SET_IEAOPT (CLI/change desk; no UI control yet) | Turning it on by default would protect importance-1 work for free and shift balance; as a lever it has a cost (fewer donors, lower work waits longer). Harbourline with PRDA/PRDB at 4 logical CPs: 3526 → 0 DP inversions under importance-1 first periods over 12 h. Goldens and bench hash unchanged |
+| 2026-10-29 | WLM edit validation follows *WLM Planning* Table 7 (p.84) for the six modelled qualifiers: STC TN/UI/SY, JES TN/UI/TC, CICS TN/UI/TC, DDF UI/PK/CI, TSO UI/SY, MQ TN/UI/TC, OMVS TN/UI/SY. A qualifier may not appear under itself at any level (APPROX: p.99 shows the direct case) | The table has no SY for JES, CICS or DDF, so the sim's JES `SY` attribute is never matchable; no shipped policy or bot uses it. Existing invalid policies stay loadable; only the edit is refused |
 
 ## Open questions
 
