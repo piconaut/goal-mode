@@ -114,7 +114,7 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,
     buckets: decayBuckets(acc.buckets, t.buckets, d),
     using: acc.using * d + t.usingCpu + t.usingZiip + t.usingIo,
-    delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap,
+    delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
     delayCpu: acc.delayCpu * d + t.delayCpu,
     delayZiip: acc.delayZiip * d + t.delayZiip,
     delayIo: acc.delayIo * d + t.delayIo,
@@ -160,7 +160,7 @@ export function tickPi(goal: Goal, t: ScpTick): number | null {
     rtSumSec: t.rtSumSec,
     buckets: t.buckets,
     usingSamples: t.usingCpu + t.usingZiip + t.usingIo,
-    delaySamples: t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap,
+    delaySamples: t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
   });
 }
 

@@ -142,6 +142,16 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   startJobs(batch.jobs, prev.tick, { jobClasses: config.jobClasses, lparBusy });
   const runningBy: Record<string, JobRuntime[]> = {};
   for (const j of batch.jobs) if (j.status === 'RUNNING' && j.lparId !== null) (runningBy[j.lparId] ??= []).push(j);
+  // Jobs waiting for an initiator in a WLM-managed class are initiation delay for their service class
+  // (WLM Planning p.70); APPROX: counted on the first eligible system. JES-managed queues stay invisible.
+  const queuedWlmBy: Record<string, JobRuntime[]> = {};
+  for (const j of batch.jobs) {
+    if (j.status !== 'QUEUED') continue;
+    const jc = config.jobClasses.find((c) => c.jobClass === j.def.jobClass);
+    if (jc?.mode !== 'WLM') continue;
+    const home = j.def.sysaff ?? Object.keys(jc.initiators).filter((l) => (jc.initiators[l] ?? 0) > 0).sort()[0];
+    if (home) (queuedWlmBy[home] ??= []).push(j);
+  }
 
   const io: Record<IoClass, IoService> = env.dasd
     ? {
@@ -198,6 +208,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     db2FailFrac,
     mqFailFrac,
     runningBy,
+    queuedWlmBy,
     slicesBy: {},
     batchRefsBy: {},
     swappedBy: {},
@@ -337,6 +348,7 @@ interface TickCtx {
   db2FailFrac: number;
   mqFailFrac: number;
   runningBy: Record<string, JobRuntime[]>;
+  queuedWlmBy: Record<string, JobRuntime[]>;
   slicesBy: Record<string, SliceSpec[]>;
   batchRefsBy: Record<string, BatchSliceRef[]>;
   swappedBy: Record<string, Set<JobRuntime>>;
@@ -726,7 +738,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
-  const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
+  const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, queuedWlmBy, pagingFrac } = t;
   const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
@@ -781,6 +793,16 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     }
     t.delayStorage += 1;
     addJobDelay(j, 'swap', TICK_SEC);
+  }
+  // APPROX: one delay sample per queued job, in the class's first period.
+  for (const j of queuedWlmBy[l.id] ?? []) {
+    const k = scKeyAtService(def, classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id }).serviceClass, 0);
+    let t = res.scps.find((x) => x.scKey === k);
+    if (!t) {
+      t = emptyScpTick(k, dpOf(k));
+      res.scps.push(t);
+    }
+    t.delayQueue = (t.delayQueue ?? 0) + 1;
   }
 
   const compBy: Record<string, number> = {};

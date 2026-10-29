@@ -57,6 +57,7 @@ const WLM_COLS: Col[] = [
   { w: 4, h1: '', h2: 'IIP', v: (r) => fmt(r.delayPct.ziip, 0) },
   { w: 4, h1: '', h2: 'I/O', v: (r) => fmt(r.delayPct.io, 0) },
   { w: 4, h1: '', h2: 'STO', v: (r) => fmt(r.delayPct.storage, 0) },
+  { w: 5, h1: '', h2: 'QMPL', v: (r) => fmt(r.delayPct.queue ?? 0, 0) },
   { w: 4, h1: '', h2: 'CAP', v: (r) => fmt(r.delayPct.cap, 0) },
   { w: 4, h1: '', h2: 'OTH', v: (r) => fmt(r.delayPct.other, 0) },
 ];
@@ -134,7 +135,7 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
   out.push(`APPL% CP ${r.applCpPct.toFixed(1)}  IIPCP ${r.applIipcpPct.toFixed(1)}  IIP ${r.applIipPct.toFixed(1)}`);
   out.push(
     `USING% CPU ${r.usingPct.cpu.toFixed(1)} IIP ${r.usingPct.ziip.toFixed(1)} I/O ${r.usingPct.io.toFixed(1)}   ` +
-      `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
+      `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} QMPL ${(r.delayPct.queue ?? 0).toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
   );
   const total = r.buckets.reduce((a, b) => a + b, 0);
   if (total > 0 && r.goalText.includes('<')) {

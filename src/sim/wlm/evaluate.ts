@@ -210,6 +210,8 @@ export interface ScpTick {
   delayOther: number;
   delayStorage: number;
   delayCap: number;
+  /** Batch jobs queued for an initiator in a WLM-managed job class (WLMGL QMPL). */
+  delayQueue?: number;
   completions: number;
   failed: number;
   rtSumSec: number;
