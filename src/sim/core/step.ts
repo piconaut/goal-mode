@@ -781,7 +781,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     backlog: prev.backlog,
     dpOf,
     capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
-    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare).minOf,
+    ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare),
     regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
     io,
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
@@ -1304,7 +1304,7 @@ export function rgMin(
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
   plexShare: Readonly<Record<string, number>> = {},
-): { minOf?: Record<string, number> } {
+): { minOf?: Record<string, number>; discMin?: Set<string> } {
   const groups = def.resourceGroups.filter((g) => g.min !== null && g.min > 0);
   if (groups.length === 0) return {};
   const minOf: Record<string, number> = {};
@@ -1317,7 +1317,9 @@ export function rgMin(
     const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, plexShare[g.id] ?? 1);
     for (const k of keys) minOf[k] = (min * demand[k]!) / total;
   }
-  return Object.keys(minOf).length > 0 ? { minOf } : {};
+  if (Object.keys(minOf).length === 0) return {};
+  const disc = Object.keys(minOf).filter((k) => goalInfo(def, k)?.goal.kind === 'DISC');
+  return disc.length > 0 ? { minOf, discMin: new Set(disc) } : { minOf };
 }
 
 export function resourceGroupCaps(

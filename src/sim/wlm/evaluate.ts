@@ -5,7 +5,7 @@
 import { lognormCdf } from '../core/math';
 import { TICK_SEC } from '../core/units';
 import { STORAGE_STEAL_MAX_FRAC } from '../../content/wlm/tuning';
-import { dispatch, type DispatchDemand, type DispatchResult } from '../zos/dispatcher';
+import { DP, dispatch, type DispatchDemand, type DispatchResult } from '../zos/dispatcher';
 import { addToBuckets, emptyBuckets } from './goals';
 
 import type { IoClass } from '../io/dasd';
@@ -141,6 +141,8 @@ export interface LparEvalInput {
   capOf?: (slice: SliceSpec) => number;
   /** Resource group minimums in force this tick: CP engines per service-class period. */
   minOf?: Readonly<Record<string, number>>;
+  /** Periods in minOf that are discretionary: their minimum yields to goal work. */
+  discMin?: ReadonlySet<string>;
   /** CICS work runs inside region address spaces, so it shares their dispatching priority: the most
    * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION). */
   regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string };
@@ -329,6 +331,10 @@ function iosqByPriority(slices: readonly SliceSpec[], sliceDp: readonly number[]
 
 /** Above every goal-managed period, below SYSTEM/SYSSTC and blocked-workload promotion. */
 const RG_MIN_DP = 252;
+/** Discretionary work gets its minimum only "if that action does not cause other work to miss its goal" (WLM
+ * Planning p.59): above other discretionary work, below every goal-managed period. APPROX: it is served from
+ * capacity no goal period wants, not only from goal periods that are meeting their goals. */
+const RG_MIN_DISC_DP = DP.MANAGED_MIN - 1;
 
 /** Per-slice demand and its per-period totals: everything in an evaluation that does not depend on DPs. */
 export interface PreparedLpar {
@@ -436,7 +442,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       const lift = Math.min(m, d.cpEngines);
       if (lift > 0) {
         d.cpEngines -= lift;
-        demands.push({ id: `${d.id}~rgmin`, dp: RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
+        demands.push({ id: `${d.id}~rgmin`, dp: input.discMin?.has(d.id) ? RG_MIN_DISC_DP : RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
       }
     }
   }

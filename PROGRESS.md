@@ -330,7 +330,7 @@ Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md
   null or negative duration and importance 9.
 
 Audit round 3 (2026-10-29, Midwest seed 42; `runs/lab/2026-10-29-audit-r3.md`, local only).
-- [ ] **11. A resource group minimum on discretionary work must not override goal work.** For goal work below its
+- [x] **11. A resource group minimum on discretionary work must not override goal work.** For goal work below its
   minimum WLM helps even at the cost of more important work; for discretionary work only "if that action does not
   cause other work to miss its goal" (*WLM Planning* p.59). Audit (CP=7, DDFPRD period 2 DISC, type 2 minimum 30):
   RBANK 99.7 % / 63 ms → 73.7 % / 3 704 ms, TELLER 100 → 65.6 %, ONLHI velocity 76.9 → 24.1. Cause: `missingGoal`
