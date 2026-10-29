@@ -22,7 +22,7 @@ describe('behaviourNote', () => {
 
 describe('balance gate', () => {
   const csv = (rows: string[]) => ['bot,seed,phase,cause,day,score,overall_trust', ...rows].join('\n');
-  const bands = { donothing: { dayMedian: [8, 22] as [number, number], victories: [0, 0] as [number, number] }, expert: { dayMedian: [28, 40] as [number, number], victories: [2, 3] as [number, number] } };
+  const bands = { donothing: { dayMedian: [8, 22] as [number, number], victoryFrac: [0, 0] as [number, number] }, expert: { dayMedian: [28, 40] as [number, number], victoryFrac: [0.6, 1] as [number, number] } };
 
   it('passes runs inside their bands', () => {
     const rows = parseSweepCsv(csv(['donothing,1,LOST,trust,12,100,40', 'donothing,2,LOST,batch,15,90,40', 'donothing,3,LOST,trust,20,90,40', 'expert,1,VICTORY,victory,40,3000,80', 'expert,2,VICTORY,victory,40,2900,80', 'expert,3,LOST,opex,28,2000,60']));
@@ -34,9 +34,14 @@ describe('balance gate', () => {
     expect(checkBands(rows, 3, bands).failures).toEqual([
       'donothing: 2 of 3 runs finished',
       'donothing: median end day 35 outside 8–22',
-      'donothing: 1 victories outside 0–0',
+      'donothing: 1 of 2 victories outside 0%–0%',
       'expert: median end day 25 outside 28–40',
-      'expert: 1 victories outside 2–3',
+      'expert: 1 of 3 victories outside 60%–100%',
     ]);
+  });
+
+  it('scales the victory band with the number of seeds', () => {
+    const rows = parseSweepCsv(csv(Array.from({ length: 10 }, (_, i) => `expert,${i + 1},${i < 9 ? 'VICTORY,victory,40' : 'LOST,opex,30'},3000,80`)));
+    expect(checkBands(rows, 10, { expert: { dayMedian: [28, 40], victoryFrac: [0.6, 1] } }).failures).toEqual([]);
   });
 });
