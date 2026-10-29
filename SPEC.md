@@ -573,6 +573,10 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   **async**. Async requests are slower and cost more z/OS CPU
   ([IBM: sync/async heuristic](https://www.ibm.com/support/pages/system/files/inline-files/Sync_Async_Heuristic.pdf);
   [IBM docs: sync→async conversion](https://www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.ieaf100/huer.htm)).
+- **Link distance:** each connected system sees its own service: the structure's sync time plus a
+  10 µs/km round trip to its CF (to both copies when duplexed), then the sync→async heuristic on that
+  system's own sync time. CPCs carry a `siteKm` (Harbourline's CPC2 is 15 km out). CF Activity has a
+  CONNECTED SYSTEMS section with estimated distance (*RMF Report Analysis* p.376, p.378).
 - **Dynamic CF dispatching / thin interrupts** on a shared CF improves response consistency
   (player toggle).
 - Sync requests **spin on the z/OS CP**, so slow CF responses *burn z/OS CPU*. That is a hidden
@@ -1477,7 +1481,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | SMF 101/110 views | **Faithful simplification** | From the sim's per-transaction response-time parts; all transaction CPU shown as class 1 CPU; CF time stands in for GBP/lock-structure suspensions |
 | SMF 113 counters, LSPR category | **Plausible model / real table** | L1MP/RNI/CPI are FICTIONAL functions of polarity mix and CPC busy; the LOW/AVERAGE/HIGH table is IBM's |
 | Response-time distributions | **Log-normal assumption** | Tunable σ per workload |
-| CF sync/async, 50% CF guideline, shared-CF penalties | **Real concepts, invented coefficients** | |
+| CF sync/async, 50% CF guideline, shared-CF penalties | **Real concepts, invented coefficients** | Per connected system with a 10 µs/km link round trip (RMF's own figure); CF-side utilisation stays plex-wide |
 | CICS QR TCB single-engine limit | **Real** | |
 | Db2 address space placement guidance | **Real (IBM)** | |
 | Machine capacity, MSU/CP, price tables | **Fictional** | Proportions plausible; no real LSPR numbers |

@@ -3,7 +3,7 @@
 // latency. z/OS converts slow sync requests to async (heuristic); sync requests spin
 // on the z/OS CP for their whole service time, async ones cost a fixed CPU overhead.
 
-import { CF_ASYNC_THRESHOLD_MULT, CF_DUPLEX, CF_FAILURE } from '../../content/cf';
+import { CF_ASYNC_THRESHOLD_MULT, CF_DUPLEX, CF_FAILURE, CF_LINK_ROUND_TRIP_SEC_PER_KM } from '../../content/cf';
 
 export interface CfConfig {
   lparId: string;
@@ -209,4 +209,56 @@ export function failCf(
     }
   }
   return { structures: out, notes };
+}
+
+export interface CfSystemResult {
+  /** Farthest link this system uses to a structure (primary or duplex secondary), km. */
+  distKm: number;
+  requestRate: number;
+  syncSec: number;
+  asyncFrac: number;
+  serviceSec: number;
+  zosCpuSec: number;
+}
+
+/**
+ * CF service as one connected system sees it: the structure's sync time plus the link round trip to its CF
+ * (to both copies when duplexed), then z/OS's sync→async heuristic on that system's own sync time. RMF CF
+ * Activity reports requests and service times per connected system (RMF Report Analysis p.376).
+ */
+export function cfServiceForSystem(
+  results: readonly CfResult[],
+  structures: readonly CfStructureConfig[],
+  kmTo: (cfLparId: string) => number,
+  t: CfTunables,
+  requestRate: number,
+): CfSystemResult {
+  const up = results.map((r) => r.lparId);
+  let share = 0;
+  let distKm = 0;
+  let syncW = 0;
+  let asyncW = 0;
+  let serviceW = 0;
+  let cpuW = 0;
+  for (const r of results) {
+    for (const st of r.structures) {
+      const x = structures.find((s) => s.name === st.name);
+      if (!x) continue;
+      const sec = duplexSecondary(x, up);
+      const km = Math.max(kmTo(st.cfLparId), sec ? kmTo(sec) : 0);
+      const link = km * CF_LINK_ROUND_TRIP_SEC_PER_KM;
+      const sync = st.syncSec + link;
+      const threshold = t.syncThresholdSec * CF_ASYNC_THRESHOLD_MULT[st.type];
+      const asyncFrac = sync <= threshold ? 0 : Math.min(0.98, 1 - threshold / sync);
+      const asyncSec = t.asyncBaseSec + (sync - t.linkSyncSec);
+      distKm = Math.max(distKm, km);
+      share += x.requestShare;
+      syncW += x.requestShare * sync;
+      asyncW += x.requestShare * asyncFrac;
+      serviceW += x.requestShare * ((1 - asyncFrac) * sync + asyncFrac * asyncSec);
+      cpuW += x.requestShare * ((1 - asyncFrac) * sync + asyncFrac * t.asyncZosCpuSec);
+    }
+  }
+  const n = share > 0 ? share : 1;
+  return { distKm, requestRate, syncSec: syncW / n, asyncFrac: asyncW / n, serviceSec: serviceW, zosCpuSec: cpuW };
 }

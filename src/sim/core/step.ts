@@ -2,7 +2,7 @@
 // here is the contract. Circular couplings (I/O response, CF service, lock contention,
 // subsystem concurrency) use the previous tick's values carried in `env`.
 
-import { evaluateCf, type CfImageInput } from '../cf/cf';
+import { cfServiceForSystem, evaluateCf, type CfImageInput, type CfSystemResult } from '../cf/cf';
 import { accrueTfp, closeMonth, recordHour } from '../cost/mlc';
 import { groupShares, newR4ha, stepR4ha } from '../cost/r4ha';
 import { accumulateTick, closeInterval, newRmfAcc, type JobEndRecord } from '../measure/rmf';
@@ -161,15 +161,18 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     }
   }
   // CF failure: structures being rebuilt stall their requesters; lost ones take work down.
+  let cfStallSec = 0;
   let db2FailFrac = 0;
   let mqFailFrac = 0;
   for (const x of config.cfStructures) {
-    if (x.rebuildUntilTick !== undefined && x.rebuildUntilTick > prev.tick) cfServiceSec += x.requestShare * CF_FAILURE.stallSecPerRequest;
+    if (x.rebuildUntilTick !== undefined && x.rebuildUntilTick > prev.tick) cfStallSec += x.requestShare * CF_FAILURE.stallSecPerRequest;
     if (!x.lost) continue;
     if (x.lostImpact === 'DB2_DOWN') db2FailFrac = Math.max(db2FailFrac, CF_FAILURE.db2DownFailFrac);
     else if (x.lostImpact === 'DB2_GRECP') db2FailFrac = Math.max(db2FailFrac, CF_FAILURE.grecpFailFrac);
     else if (x.lostImpact === 'MQ_DOWN') mqFailFrac = Math.max(mqFailFrac, CF_FAILURE.mqDownFailFrac);
   }
+
+  cfServiceSec += cfStallSec;
 
   // 3–4. Slices and demand per z/OS image. The per-image stages are separate functions so a
   // deoptimisation in one (state shapes settle over the first simulated days) stays cheap.
@@ -191,6 +194,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     io,
     cfServiceSec,
     cfZosCpuSec,
+    cfStallSec,
     db2FailFrac,
     mqFailFrac,
     runningBy,
@@ -236,7 +240,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   }
   for (const c of def.classes) if (c.storageCritical) c.periods.forEach((_, i) => storageCritical.add(scKeyOf(c.id, i)));
 
-  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0 };
+  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0, cfRequestsBy: {} };
   for (const l of zosLpars) dispatchLpar(t, l, sums);
   const { randomIops, seqIops, cfRequests } = sums;
 
@@ -251,6 +255,12 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     return [{ cfg, availableEngines: rt.availableEngines, entitlementEngines: rt.entitlementEngines, dedicated: icf.dedicated }];
   });
   const cf = evaluateCf(cfImages, config.cfStructures, cfRequests, scenario.cfTunables);
+  const siteKm = (lparId: string) => cpcOf[config.lpars.find((x) => x.id === lparId)?.cpcId ?? '']?.siteKm ?? 0;
+  const cfBySystem: Record<string, CfSystemResult> = {};
+  for (const l of zosLpars) {
+    const here = siteKm(l.id);
+    cfBySystem[l.id] = cfServiceForSystem(cf, config.cfStructures, (cfId) => Math.abs(siteKm(cfId) - here), scenario.cfTunables, sums.cfRequestsBy[l.id] ?? 0);
+  }
   const lockIndex = batch.jobs.reduce((a, j) => (j.status === 'RUNNING' ? a + j.def.lockIntensity : a), 0) + prev.mods.lockBoost;
 
   // Batch critical-path projection and end-of-night summary.
@@ -282,12 +292,13 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
     : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
   if (Object.keys(t.slotQueue).length > 0) nextEnv.slotQueue = t.slotQueue;
+  if (cf.length > 0) nextEnv.cfBySystem = cfBySystem;
   nextEnv.holdByWorkloadLpar = holdByWorkloadLpar;
 
   const nextTick = prev.tick + 1;
   const { cappingLpars, cappingGroups, msuBy, r4haBy } = stepCapping(t, zosLpars);
   const cost = stepCost(t, zosLpars, msuBy, r4haBy, nextTick);
-  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, nextTick);
+  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, nextTick, cfBySystem);
   return {
     ...prev,
     tick: prev.tick + 1,
@@ -321,6 +332,8 @@ interface TickCtx {
   io: Record<IoClass, IoService>;
   cfServiceSec: number;
   cfZosCpuSec: number;
+  /** Rebuild stall per request, on top of each system's own CF service. */
+  cfStallSec: number;
   db2FailFrac: number;
   mqFailFrac: number;
   runningBy: Record<string, JobRuntime[]>;
@@ -352,6 +365,7 @@ interface TickSums {
   randomIops: number;
   seqIops: number;
   cfRequests: number;
+  cfRequestsBy: Record<string, number>;
 }
 
 /** 6. Soft capping: LPARs whose R4HA exceeds their defined capacity, and members of capacity
@@ -471,6 +485,7 @@ function stepRmf(
   cf: EnvState['cf'],
   r4haBy: Record<string, number>,
   nextTick: number,
+  cfBySystem: Record<string, CfSystemResult>,
 ): SimState['rmf'] {
   const { prev, def, config, lparTicks, lpars } = t;
   const jobsEnded: JobEndRecord[] = [];
@@ -487,7 +502,7 @@ function stepRmf(
       stretch: j.stretch,
     });
   }
-  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf);
+  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf, cfBySystem);
   let jobsThisInterval = jobsEnded.length ? [...prev.rmf.jobsThisInterval, ...jobsEnded] : prev.rmf.jobsThisInterval;
   let intervals = prev.rmf.intervals;
   const intervalTicks = Math.max(1, Math.round((config.rmfIntervalMin * 60) / TICK_SEC));
@@ -503,8 +518,12 @@ function stepRmf(
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
 function lparDemand(t: TickCtx, l: LparConfig): void {
   const { prev, scenario, def, env, config, clock, cpcOf, workloads, workloadById, addressSpaces, rates, io } = t;
-  const { cfServiceSec, cfZosCpuSec, db2FailFrac, mqFailFrac, runningBy, slicesBy, batchRefsBy, swappedBy, pagingFrac, demands } = t;
+  const { cfStallSec, db2FailFrac, mqFailFrac, runningBy, slicesBy, batchRefsBy, swappedBy, pagingFrac, demands } = t;
   const cpc = cpcOf[l.cpcId]!;
+  // This system's own CF service (link distance, its own sync→async conversion); plex average before the first CF tick.
+  const cfSys = prev.env.cfBySystem?.[l.id];
+  const cfServiceSec = cfSys ? cfSys.serviceSec + cfStallSec : t.cfServiceSec;
+  const cfZosCpuSec = cfSys ? cfSys.zosCpuSec : t.cfZosCpuSec;
   const cpSp = cpSpeed(cpc);
   const zSp = ziipSpeed(cpc);
   const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads) }), prev.mods);
@@ -796,6 +815,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       sums.randomIops += s.rate * s.ioPerTxn;
       if (usesDb2(w)) {
         sums.cfRequests += s.rate * DB2.cfRequestsPerTxn;
+        sums.cfRequestsBy[l.id] = (sums.cfRequestsBy[l.id] ?? 0) + s.rate * DB2.cfRequestsPerTxn;
       }
     }
   });
@@ -845,7 +865,10 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       );
       const ioNow = jr.shape.ioRate / Math.max(1, jr.job.stretch);
       sums.seqIops += ioNow;
-      if (jr.job.def.usesDb2) sums.cfRequests += ioNow * DB2.cfRequestsPerBatchIo;
+      if (jr.job.def.usesDb2) {
+        sums.cfRequests += ioNow * DB2.cfRequestsPerBatchIo;
+        sums.cfRequestsBy[l.id] = (sums.cfRequestsBy[l.id] ?? 0) + ioNow * DB2.cfRequestsPerBatchIo;
+      }
     }
   }
 

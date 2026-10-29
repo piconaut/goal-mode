@@ -1,6 +1,6 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { generateMidwestNetwork } from '../../src/content/batch/midwest-batch';
-import { evaluateCf } from '../../src/sim/cf/cf';
+import { cfServiceForSystem, evaluateCf } from '../../src/sim/cf/cf';
 import { evaluateDasd } from '../../src/sim/io/dasd';
 import { advanceJob, closeNight, emptyBatch, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobDef } from '../../src/sim/subsys/batch';
 import { qrTcb } from '../../src/sim/subsys/cics';
@@ -55,6 +55,22 @@ describe('coupling facility', () => {
     const [r] = evaluateCf([ded], one, 10_000, t);
     expect(r!.asyncFrac).toBe(0);
     expect(r!.syncSec).toBeLessThan(t.syncThresholdSec);
+  });
+  it('a system 15 km from the CF pays the link round trip and converts more to async; moving the structure helps', () => {
+    const b = { ...ded, cfg: { lparId: 'B', thinInterrupts: true } };
+    const lock = (cf: string) => [{ name: 'LOCK1', type: 'LOCK' as const, requestShare: 0.6, cfLparId: cf, costMult: 1 }, { name: 'GBP', type: 'CACHE' as const, requestShare: 0.4, cfLparId: 'B', costMult: 1 }];
+    const km = (cf: string) => (cf === 'A' ? 15 : 0); // the system sits at B's site
+    const far = cfServiceForSystem(evaluateCf([ded, b], lock('A'), 10_000, t), lock('A'), km, t, 100);
+    const near = cfServiceForSystem(evaluateCf([ded, b], lock('B'), 10_000, t), lock('B'), km, t, 100);
+    const local = cfServiceForSystem(evaluateCf([ded, b], lock('A'), 10_000, t), lock('A'), () => 0, t, 100);
+    expect(far.distKm).toBe(15);
+    expect(far.syncSec - local.syncSec).toBeCloseTo(0.6 * 150e-6, 9); // 10 us/km round trip on LOCK1's share
+    expect(far.asyncFrac).toBeGreaterThan(local.asyncFrac + 0.3);
+    expect(near.serviceSec).toBeLessThan(far.serviceSec / 2);
+    expect(near.distKm).toBe(0);
+    // Duplexing LOCK1 into A from B reaches across the link again.
+    const dup = lock('B').map((x) => (x.name === 'LOCK1' ? { ...x, duplexed: true, prefList: ['B', 'A'] } : x));
+    expect(cfServiceForSystem(evaluateCf([ded, b], dup, 10_000, t), dup, km, t, 100).distKm).toBe(15);
   });
   it('a shared, low-weight CF converts to async and burns more z/OS CPU per request', () => {
     const shared = { ...ded, dedicated: false, entitlementEngines: 0.1, cfg: { ...ded.cfg, thinInterrupts: false } };

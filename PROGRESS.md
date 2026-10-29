@@ -261,7 +261,9 @@ local only). Do these in order, each as its own PR; the first two are user-order
   excess arrivals go to the slice backlog, waits grow and fail at the workload timeout (DDF: a MAXCONQW-like
   timeout in `content/`), plus Erlang-C wait below saturation (`src/sim/zos/erlang.ts`). Reject MXT < 10 in
   `SET_CICS` (`src/game/commands.ts`). Re-check the THREAD_LIMIT RCA rule (decision 2026-10-28) against the new curve.
-- [ ] **4. CF service per connected system with a link-distance term (planted flaw B4).** RMF CF Activity reports
+- [x] **4. CF service per connected system with a link-distance term (planted flaw B4).** Done 2026-10-29:
+  `cfServiceForSystem` (`src/sim/cf/cf.ts`), `CpcConfig.siteKm` (Harbourline CPC2 15 km), per-LPAR `cfServiceSec`,
+  CONNECTED SYSTEMS in CF Activity. Midwest behaviour unchanged (state gains `env.cfBySystem`); Harbourline moved. RMF CF Activity reports
   requests and service times per connected system and estimates link distance as round-trip µs ÷ 10 µs/km
   (*RMF Report Analysis* p.376, p.378). SPEC §13.5 B4 promises slower lock waits and higher async % on PRDC/PRDD.
   Audit: sync service 23.3 µs on every system, 0 % async; routing PAYMENTS near-only 182 → 192 ms. Cause: one
