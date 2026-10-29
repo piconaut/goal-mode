@@ -224,7 +224,8 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
 
 Harbourline seed 42 realism audit (2026-10-28; experiments and numbers in `runs/lab/2026-10-28-harbourline-s42-audit.md`,
 local only). Do these in order, each as its own PR; the first two are user-ordered.
-- [ ] **1. A resource group max on a server region must slow its dependents (do first).** The cap works by making
+- [x] **1. A resource group max on a server region must slow its dependents (do first).** Done 2026-10-29: health
+  is `got / (want + cut)`; realism test added; goldens unchanged (no shipped policy caps a server region by default). The cap works by making
   the group's work units non-dispatchable for some time slices (*WLM Planning* p.60 note 4, p.57). Audit: STCHI
   (CICS/Db2/MQ regions) at 2 % max fell from 51.7 % to 11.8 % use, yet MKTORD went 48 → 45 ms. Cause:
   `prepareLpar` cuts the slice's demand (`sliceCut`, `src/sim/wlm/evaluate.ts:360-367`), then sets

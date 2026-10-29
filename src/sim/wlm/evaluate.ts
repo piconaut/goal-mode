@@ -478,7 +478,10 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     ziUnmetS[i] = r.ziipUnmet * fz;
     want[i] = sliceCp[i]! + sliceZi[i]!;
     got[i] = cpG[i]! + ziG[i]! + iipcpG[i]!;
-    health[i] = want[i]! > 1e-12 ? Math.min(1, got[i]! / want[i]!) : 1;
+    // Capped demand is still wanted: a resource group max makes the region non-dispatchable, so its
+    // dependents wait on it (WLM Planning p.57, p.60 note 4).
+    const wantAll = want[i]! + sliceCut[i]!;
+    health[i] = wantAll > 1e-12 ? Math.min(1, got[i]! / wantAll) : 1;
     queueRatio[i] = Math.min(MAX_QUEUE_RATIO, r.cpQueueRatio + r.prsmDelayRatio);
     if (s.kind === 'AS' && s.role) {
       const prev = roleHealth[s.role];
