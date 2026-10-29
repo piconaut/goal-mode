@@ -559,7 +559,8 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 
 - **Real memory per LPAR** against working-set demand (sum of address spaces + Db2 buffer pools +
   CICS DSAs + system). If overcommitted, paging delay feeds into "storage delay" samples, and
-  **Storage Critical** classes are protected first.
+  **Storage Critical** classes are protected first: they page nothing, and the frames they keep come from
+  unprotected work, more from less important work, so the image's paging doesn't shrink.
 - **Db2 buffer-pool hit ratio** follows a working-set curve:
   `hit = 1 − missBase × (BPsize / workingSet)^(−α)`, so more memory means fewer I/Os per
   transaction (and less CPU, since I/O has a CPU cost). Buying memory and resizing BPs is a
@@ -1472,6 +1473,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
 | LPAR capping measurement | **Matches** | Capped share = what a binding cap removed vs. an uncapped allocation; PR/SM contention excluded. Partition WLM% from soft capping only; LPAR capping posts CPU delay, not CAP (RMF Report Analysis p.401, p.540) |
 | Batch initiation delay (WLM-managed job classes) | **Plausible model** | Jobs queued for an initiator add one delay sample per tick to their service class (WLMGL QMPL), so velocity sees the miss; JES-managed queues stay invisible (WLM Planning p.70). APPROX: counted on the first eligible system; WLM still starts at most 2 initiators per interval below 92 % busy |
+| Storage Critical (paging protection) | **Plausible model** | Image paging is one over-commitment fraction; protected periods page nothing and their share moves to unprotected work in proportion to activity × steal weight (importance 5 and discretionary most), so total paging stays the same (WLM Planning p.119). APPROX: CP+zIIP activity stands in for frames held |
 | zIIP-eligible work with no zIIP online | **Matches** | Runs on CPs as plain CP work and queues with the CP queue ratio, not a saturated zIIP pool (Init & Tuning p.431) |
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |

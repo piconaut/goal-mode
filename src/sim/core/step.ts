@@ -32,7 +32,7 @@ import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandi
 import { ROUTING } from '../../content/routing';
 import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
-import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../content/wlm/tuning';
+import { DISC_GOAL_MGMT, STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC, STORAGE_SWAP } from '../../content/wlm/tuning';
 import { CF_FAILURE } from '../../content/cf';
 import {
   decayInto,
@@ -216,6 +216,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     demands,
     lpars: [],
     storageCritical: new Set<string>(),
+    pagingWeight: {},
     evalInputs: {},
     backlog: {},
     failedBy: {},
@@ -245,11 +246,18 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const lpars = t.lpars;
 
   // 7–10. Dispatch and response per image.
-  const { backlog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical } = t;
+  const { backlog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical, pagingWeight } = t;
   for (const w of workloads) {
     wlTick[w.id] = { id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
   }
   for (const c of def.classes) if (c.storageCritical) c.periods.forEach((_, i) => storageCritical.add(scKeyOf(c.id, i)));
+  if (storageCritical.size > 0) {
+    for (const c of def.classes) {
+      c.periods.forEach((p, i) => {
+        pagingWeight[scKeyOf(c.id, i)] = p.goal.kind === 'DISC' ? STORAGE_STEAL_WEIGHT_DISC : (STORAGE_STEAL_WEIGHT_BY_IMP[p.importance - 1] ?? 1);
+      });
+    }
+  }
 
   const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0, cfRequestsBy: {} };
   for (const l of zosLpars) dispatchLpar(t, l, sums);
@@ -356,6 +364,8 @@ interface TickCtx {
   demands: PoolDemand[];
   lpars: LparRuntime[];
   storageCritical: Set<string>;
+  /** Per-period share of the storage that storage-critical work keeps (only filled when some class is protected). */
+  pagingWeight: Record<string, number>;
   evalInputs: Record<string, LparEvalInput>;
   backlog: Record<string, number>;
   failedBy: Record<string, number>;
@@ -739,7 +749,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, queuedWlmBy, pagingFrac } = t;
-  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
+  const { storageCritical, pagingWeight, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
   const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
@@ -776,6 +786,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
     pagingFrac: pagingFrac[l.id] ?? 0,
     storageCritical,
+    pagingWeight,
     promoted,
     promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
     scpsOnly: false,

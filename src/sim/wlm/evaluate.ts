@@ -4,6 +4,7 @@
 
 import { lognormCdf } from '../core/math';
 import { TICK_SEC } from '../core/units';
+import { STORAGE_STEAL_MAX_FRAC } from '../../content/wlm/tuning';
 import { dispatch, type DispatchDemand, type DispatchResult } from '../zos/dispatcher';
 import { addToBuckets, emptyBuckets } from './goals';
 
@@ -149,6 +150,8 @@ export interface LparEvalInput {
   /** Paging delay fraction on this image (storage-critical classes are exempt). */
   pagingFrac: number;
   storageCritical?: ReadonlySet<string>;
+  /** Steal weight per service-class period: how much of the protected classes' paging it absorbs. */
+  pagingWeight?: Readonly<Record<string, number>>;
   /** Service-class periods starved past BLWLINTHD, eligible for promotion. */
   promoted?: ReadonlySet<string>;
   promotionShareFrac?: number;
@@ -494,7 +497,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const prio = input.ioPriority === false ? null : iosqByPriority(slices, sliceDp, input.io);
   // Without I/O priority management, I/O samples don't count towards velocity.
   const ioSamples = input.ioPriority === false ? 0 : 1;
-  const storageCritical = input.storageCritical;
+  const pgBy = slicePagingFrac(slices, input.pagingFrac, input.storageCritical, input.pagingWeight);
 
   const results = new Array<SliceResult>(n);
   for (let i = 0; i < n; i++) {
@@ -514,7 +517,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const unmetZiip = ziUnmetS[i]!;
 
     const io = prio?.[s.ioClass]?.[i] ?? input.io[s.ioClass];
-    const pg = storageCritical?.has(s.scKey) ? 0 : input.pagingFrac;
+    const pg = pgBy[i]!;
     if (s.kind === 'AS') {
       results[i] = {
         key: s.key,
@@ -679,4 +682,36 @@ function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean):
   t.failed += r.failed;
   t.rtSumSec += r.completions * r.rtMeanSec;
   if (buckets && s.goalRtSec !== null) addToBuckets(t.buckets, s.goalRtSec, r.completions, r.rtMeanSec, s.rtSigma);
+}
+
+/** Per-slice paging delay fraction. Storage-critical periods page nothing; the paging they avoid moves to the
+ * unprotected periods in proportion to demand × steal weight, so the image's total stays the same (Storage
+ * Critical keeps frames by taking them from less important work, WLM Planning p.119). APPROX: activity
+ * (CP + zIIP demand) stands in for frames held. */
+export function slicePagingFrac(
+  slices: readonly SliceSpec[],
+  pagingFrac: number,
+  storageCritical: ReadonlySet<string> | undefined,
+  weightOf: Readonly<Record<string, number>> | undefined,
+): number[] {
+  const n = slices.length;
+  const out = new Array<number>(n).fill(pagingFrac);
+  if (!storageCritical || storageCritical.size === 0) return out;
+  let keptAct = 0;
+  let stealDen = 0;
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
+    const act = s.cpEngines + s.ziipEngines;
+    if (storageCritical.has(s.scKey)) keptAct += act;
+    else stealDen += act * (weightOf?.[s.scKey] ?? 1);
+  }
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
+    if (storageCritical.has(s.scKey)) out[i] = 0;
+    else if (stealDen > 0) {
+      const extra = (pagingFrac * keptAct * (weightOf?.[s.scKey] ?? 1)) / stealDen;
+      out[i] = Math.min(Math.max(pagingFrac, STORAGE_STEAL_MAX_FRAC), pagingFrac + extra);
+    }
+  }
+  return out;
 }
