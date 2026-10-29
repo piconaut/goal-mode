@@ -20,8 +20,10 @@ import {
   startJobs,
   type JobRuntime,
 } from '../subsys/batch';
-import { mxtQueueWaitSec, qrTcb } from '../subsys/cics';
-import { bpIoMultiplier, dbatQueueWaitSec, DB2 } from '../subsys/db2';
+import { qrTcb } from '../subsys/cics';
+import { slotQueueStep } from '../subsys/slots';
+import { SLOT_QUEUE } from '../../content/subsys';
+import { bpIoMultiplier, DB2 } from '../subsys/db2';
 import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/arrivals';
 import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
@@ -204,10 +206,12 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     failedBy: {},
     wlTick: {},
     rtByWorkloadLpar: {},
+    holdByWorkloadLpar: {},
     failByWorkloadLpar: prev.routingPolicies ? {} : null,
     systems: [],
     lparTicks: [],
     onlineDb2Rate: 0,
+    slotQueue: {},
   };
   for (const l of zosLpars) lparDemand(t, l);
   // Coupling facilities: request work from last tick; a shared CF without thin
@@ -226,7 +230,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const lpars = t.lpars;
 
   // 7–10. Dispatch and response per image.
-  const { backlog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, storageCritical } = t;
+  const { backlog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical } = t;
   for (const w of workloads) {
     wlTick[w.id] = { id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
   }
@@ -277,6 +281,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const nextEnv: EnvState = t.failByWorkloadLpar
     ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
     : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
+  if (Object.keys(t.slotQueue).length > 0) nextEnv.slotQueue = t.slotQueue;
+  nextEnv.holdByWorkloadLpar = holdByWorkloadLpar;
 
   const nextTick = prev.tick + 1;
   const { cappingLpars, cappingGroups, msuBy, r4haBy } = stepCapping(t, zosLpars);
@@ -330,12 +336,15 @@ interface TickCtx {
   failedBy: Record<string, number>;
   wlTick: Record<string, WorkloadTick>;
   rtByWorkloadLpar: Record<string, number>;
+  holdByWorkloadLpar: Record<string, number>;
   /** Failed fraction per workload@lpar, kept only when a dynamic routing policy needs it. */
   failByWorkloadLpar: Record<string, number> | null;
   systems: WlmSystemState[];
   lparTicks: LparTick[];
   /** Sysplex online Db2 transaction rate (global lock contention for batch). */
   onlineDb2Rate: number;
+  /** Transactions queued for a task slot (MXT, MAXDBAT) per `lparId:kind`. */
+  slotQueue: Record<string, number>;
 }
 
 /** Sums over all images, accumulated in image order. */
@@ -516,9 +525,11 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   for (const s of base) {
     if (s.kind !== 'TXN' || !s.workloadId) continue;
     const w = workloadById[s.workloadId]!;
-    const prevRt = env.rtByWorkloadLpar[wlLparKey(w.id, l.id)] ?? 0.05;
     const ioSvc = io[s.ioClass];
     const refRt = s.baseLatencySec + s.cpuSecPerTxn + s.ziipSecPerTxn + s.ioPerTxn * (ioSvc.rtSec - ioSvc.delaySec);
+    // Slot hold time: last tick's in-region time without the CPU backlog wait; the unqueued time if nothing completed.
+    const lastHold = env.holdByWorkloadLpar?.[wlLparKey(w.id, l.id)] ?? 0;
+    const prevRt = lastHold > 0 ? lastHold : refRt;
     if (w.subsystem === 'CICS') {
       cicsQrCpu += s.rate * s.cpuSecPerTxn;
       cicsRate += s.rate;
@@ -534,11 +545,21 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   const meanQrFrac = aors.length ? aors.reduce((a, c) => a + c.qrFrac, 0) / aors.length : 0;
   const qr = qrTcb(aors.length ? (cicsQrCpu * meanQrFrac) / aors.length : 0);
   const maxTasks = aors.reduce((a, c) => a + c.maxTasks, 0);
-  const mxtWait = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRtWeighted / cicsRate : 0, maxTasks) : 0;
-  const dbatWait = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRtWeighted / ddfRate : 0, db2.maxDbat) : 0;
-  // Same queues at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
-  const mxtRef = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRefWeighted / cicsRate : 0, maxTasks) : 0;
-  const dbatRef = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRefWeighted / ddfRate : 0, db2.maxDbat) : 0;
+  // Task-slot queues persist across ticks: offered load above MXT / MAXDBAT builds a backlog that only
+  // drains at limit / hold time, and times out (MAXCONQW for DDF).
+  const slotQ = (kind: 'MXT' | 'DBAT', on: boolean, rate: number, holdW: number, refW: number, limit: number, timeoutSec: number) => {
+    if (!on) return { waitSec: 0, refSec: 0, failFrac: 0 };
+    const key = `${l.id}:${kind}`;
+    const hold = rate > 0 ? holdW / rate : 0;
+    const refHold = rate > 0 ? refW / rate : 0;
+    const r = slotQueueStep(prev.env.slotQueue?.[key] ?? 0, rate, hold, limit, timeoutSec, TICK_SEC);
+    if (r.queued > 1e-9) t.slotQueue[key] = r.queued;
+    // Same queue at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
+    const refSec = rate * refHold >= Math.max(1, Math.floor(limit)) ? r.waitSec : slotQueueStep(0, rate, refHold, limit, timeoutSec, TICK_SEC).waitSec;
+    return { waitSec: r.waitSec, refSec, failFrac: r.failFrac };
+  };
+  const mxt = slotQ('MXT', aors.length > 0, cicsRate, cicsRtWeighted, cicsRefWeighted, maxTasks, SLOT_QUEUE.cicsQueueTimeoutSec);
+  const dbat = slotQ('DBAT', !!db2, ddfRate, ddfRtWeighted, ddfRefWeighted, db2?.maxDbat ?? 0, SLOT_QUEUE.ddfQueueTimeoutSec);
 
   // `base` holds fresh objects built for this tick, so transactions are completed in place.
   for (const s of base) {
@@ -562,13 +583,14 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     if (w.subsystem === 'CICS' && aors.length) {
       parts.qr = s.cpuSecPerTxn * meanQrFrac * qr.qrWaitRatio;
       extra += parts.qr;
-      outside += mxtWait;
-      outsideRef += mxtRef;
-      failFrac = qr.failFrac;
+      outside += mxt.waitSec;
+      outsideRef += mxt.refSec;
+      failFrac = Math.max(qr.failFrac, mxt.failFrac);
     }
     if (w.subsystem === 'DDF') {
-      outside += dbatWait;
-      outsideRef += dbatRef;
+      outside += dbat.waitSec;
+      outsideRef += dbat.refSec;
+      failFrac = Math.max(failFrac, dbat.failFrac);
     }
     if (db2Work) t.onlineDb2Rate += s.rate;
     // A saturated QR TCB makes a region slow, not fast-failing, so it doesn't count as an abend for routing.
@@ -686,7 +708,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
-  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
+  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
   const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
@@ -763,6 +785,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       }
       const k = wlLparKey(s.workloadId, l.id);
       rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
+      holdByWorkloadLpar[k] = (holdByWorkloadLpar[k] ?? 0) + r.completions * r.holdSec;
       compBy[k] = (compBy[k] ?? 0) + r.completions;
       if (failByWorkloadLpar) {
         // Only fast failures (abends, subsystem rejections) count; timeouts and QR overload are slow and show in the response.
@@ -779,6 +802,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   for (const k in compBy) {
     const c = compBy[k]!;
     rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
+    holdByWorkloadLpar[k] = c > 0 ? holdByWorkloadLpar[k]! / c : 0;
     if (failByWorkloadLpar) {
       const n = tries[k] ?? 0;
       failByWorkloadLpar[k] = n > 0 ? (failByWorkloadLpar[k] ?? 0) / n : 0;

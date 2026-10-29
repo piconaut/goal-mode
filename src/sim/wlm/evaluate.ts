@@ -185,6 +185,8 @@ export interface SliceResult {
   failed: number;
   /** Response time as WLM/RMF see it. */
   rtMeanSec: number;
+  /** In-region time a transaction holds its task slot, excluding the CPU backlog wait (already a queue). */
+  holdSec: number;
   /** Response time as end users see it (adds pre-work-manager queueing). */
   userRtSec: number;
   parts: RtParts | null;
@@ -534,6 +536,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         completions: 0,
         failed: 0,
         rtMeanSec: 0,
+        holdSec: 0,
         userRtSec: 0,
         parts: null,
         newBacklog: 0,
@@ -614,6 +617,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       completions,
       failed,
       rtMeanSec: rt,
+      holdSec: rt - waitSec,
       userRtSec: rt + s.outsideWaitSec,
       parts: scpsOnly
         ? null

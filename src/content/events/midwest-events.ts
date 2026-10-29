@@ -537,7 +537,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
   },
   {
     // A program storage leak drives both PROD2 AORs short on storage: CICS stops attaching new tasks until it recovers.
-    // APPROX: SOS modelled as an effective MXT cut (5 per region), so queued tasks show as MXT wait.
+    // APPROX: SOS modelled as an effective MXT cut (10 per region, MXT's floor), so queued tasks show as MXT wait.
     id: 'CICS_SOS',
     name: 'CICS short on storage (PROD2 AORs)',
     category: 'SOFTWARE',
@@ -549,8 +549,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     startHour: [9, 14],
     durationHours: 4,
     begin: [
-      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 5 },
-      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 5 },
+      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 10 },
+      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 10 },
     ],
     end: [
       { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 200 },
