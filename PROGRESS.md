@@ -314,7 +314,24 @@ Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md
   class (*WLM Planning* p.120); velocity and percentile are 1–99, response time 1 ms–24 h (p.67). The sim accepts CPU
   Critical on two-period MKTDDF and discretionary DEVBAT, velocity 0 and 100, percentile 100, and AVG 0 s (WLMGL then
   prints `PERF INDX Infinity`). Fix: checks in `src/game/wlmEdit.ts` (`SET_FLAGS`, goal edits) with the doc's
-  wording in the error.
+  wording in the error. Same item (audit r3): SYSSTC is valid only in ASCH, JES, OMVS, STC and TSO rules, SYSTEM only in
+  STC for high-dispatching-priority address spaces (*WLM Planning* p.102); `knownClass` (`wlmEdit.ts:264`) allows
+  both anywhere (`ADD_RULE`, `SET_RULE_TARGET`, `SET_DEFAULT`). DDF → SYSSTC took Midwest ONLHI velocity 76.9 → 9.3.
+
+Audit round 3 (2026-10-29, Midwest seed 42; `runs/lab/2026-10-29-audit-r3.md`, local only).
+- [ ] **11. A resource group minimum on discretionary work must not override goal work.** For goal work below its
+  minimum WLM helps even at the cost of more important work; for discretionary work only "if that action does not
+  cause other work to miss its goal" (*WLM Planning* p.59). Audit (CP=7, DDFPRD period 2 DISC, type 2 minimum 30):
+  RBANK 99.7 % / 63 ms → 73.7 % / 3 704 ms, TELLER 100 → 65.6 %, ONLHI velocity 76.9 → 24.1. Cause: `missingGoal`
+  (`src/sim/core/step.ts:1210`) counts a DISC period as missing when delay > using, and `rgMin` lifts it at
+  `RG_MIN_DP = 252` (`src/sim/wlm/evaluate.ts:326`), above all managed work. Fix: a DISC period's minimum is served
+  only from capacity no goal period that misses its goal wants (dispatch it below managed work); goal periods keep DP 252.
+- [ ] **12. Lowering MQ MAXDEPTH must not discard queued messages.** Messages already on the queue above a reduced
+  MAXDEPTH "remain intact"; only new puts fail (*MQ 9.4 Administration Reference* p.463, p.636). Audit (Midwest CP=5,
+  PAYMQ MAXDEPTH → 100): the backlog fell from 19.4 s to 1.1 s of work in one tick with 0 completions; PAYMQ RT
+  30.2 → 8.7 s. A free, instant backlog flush. Cause: `evaluate.ts:555-558` truncates `newBacklog` to the cap every
+  tick. Fix: fail only this tick's arrivals beyond the cap, keep the excess and let it drain. Also allow MAXDEPTH 0
+  (`src/game/commands.ts:379` refuses it; z/OS range 0–999 999 999).
 
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
@@ -439,6 +456,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
+- Importance-1 work starved under CPU overload (audit r3, Midwest seed 42 at 5 CPs): ONLHI#1 sat at DP 250 below
+  STCMED, STCHI and DDFPRD#1 (251) for 6+ hours, RBANK 0 % in SLA 10:00–15:00, WLM log "PI=4.00 BTLNK=CPU no action
+  with net value"; an AVG goal behaved the same and a forced DP 253 did not recover it in 80 ticks. Real WLM would
+  take donors of lower importance. Not isolated (overload hurts every arm); recheck after items 1, 3 and 9, then trace
+  `passes()` in `src/sim/wlm/adjust.ts` for this case.
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
 - Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
   a soft-capped image. On a real system the latter probably shows as processor (PRC) delay, since PR/SM just stops
