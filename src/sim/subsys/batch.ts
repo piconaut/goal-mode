@@ -40,6 +40,9 @@ export interface JobRuntime {
   endTick: number | null;
   /** Last tick's elapsed stretch vs unconstrained (for projections and reports). */
   stretch: number;
+  /** Last tick's CP and zIIP demand pace (0..1): a job held back on one pool uses the other more slowly. */
+  cpPace?: number;
+  ziipPace?: number;
   /** Elapsed seconds lost so far, by cause (SMF 30-style delay accounting; feeds a missed night's RCA truth). */
   delaySec?: JobDelaySec;
   /** The job ABENDed at least once this night (it keeps the flag after a restart). */
@@ -202,6 +205,10 @@ export function advanceJob(j: JobRuntime, shape: ReturnType<typeof jobShape>, p:
   const zStretch = p.ziipWanted > 1e-12 ? p.ziipWanted / Math.max(p.ziipGot, 1e-9) : 1;
   const eff = (shape.cpSec * Math.min(cpStretch, 1e4) + shape.zSec * Math.min(zStretch, 1e4) + shape.ioSec) * p.extraStretch;
   j.stretch = eff / shape.elapsed;
+  // A job's CP and zIIP phases are sequential: CP work stuck behind a cap or CP shortage holds back its zIIP work
+  // (and vice versa); capping limits general purpose CPs only (WLM Planning p.182).
+  j.cpPace = shape.elapsed / (shape.cpSec + shape.zSec * Math.min(zStretch, 1e4) + shape.ioSec);
+  j.ziipPace = shape.elapsed / (shape.cpSec * Math.min(cpStretch, 1e4) + shape.zSec + shape.ioSec);
   j.progress += TICK_SEC / eff;
   // Of this tick's TICK_SEC of elapsed, the parts that were waiting rather than working.
   const cpuWait = shape.cpSec * (Math.min(cpStretch, 1e4) - 1) + shape.zSec * (Math.min(zStretch, 1e4) - 1);

@@ -194,6 +194,20 @@ describe('batch', () => {
     expect(j.progress).toBeCloseTo(TICK_SEC / (j.stretch * shape.elapsed));
   });
 
+  it('a job held back on CPs uses its zIIPs more slowly, and vice versa', () => {
+    const def = { ...job('J'), ziipFrac: 0.5 };
+    const shape = jobShape(def, 0.6, 0.86, 0.0004);
+    const b = releaseNetwork(emptyBatch(), 0, [def]);
+    const j = b.jobs[0]!;
+    j.status = 'RUNNING';
+    advanceJob(j, shape, { cpWanted: shape.cpRate, cpGot: shape.cpRate / 4, ziipWanted: shape.zRate, ziipGot: shape.zRate, extraStretch: 1 }, 0);
+    expect(j.cpPace).toBeCloseTo(1);
+    expect(j.ziipPace).toBeLessThan(0.5);
+    advanceJob(j, shape, { cpWanted: shape.cpRate, cpGot: shape.cpRate, ziipWanted: shape.zRate, ziipGot: shape.zRate / 4, extraStretch: 1 }, 1);
+    expect(j.ziipPace).toBeCloseTo(1);
+    expect(j.cpPace).toBeLessThan(0.5);
+  });
+
   it('accounts lost elapsed time by cause, and a missed night sums it for its critical jobs', () => {
     const def = job('J', [], { critical: true, deadlineSec: 100 });
     const shape = jobShape(def, 0.6, 0.86, 0.0004);

@@ -18,6 +18,7 @@ export function initState(seed: number, scenario: Scenario): SimState {
     wlm: { definition: structuredClone(scenario.definition), systems: [], log: [] },
     workloads: scenario.workloads.map((w) => ({ id: w.id, noise: 0, retryRate: 0, lastRtSec: 0 })),
     backlog: {},
+    ziipBacklog: {},
     last: { lpars: [], workloads: [] },
     env: { dasd: null, cf: [], lockIndex: 0, rtByWorkloadLpar: {}, pagingFrac: {} },
     batch: emptyBatch(),

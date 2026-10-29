@@ -232,6 +232,8 @@ export interface SimState {
   workloads: WorkloadRuntime[];
   /** Backlogged work per slice key, engine-seconds. */
   backlog: Record<string, number>;
+  /** zIIP-eligible part of backlog per slice key, engine-seconds (absent in saves from before it was tracked). */
+  ziipBacklog?: Record<string, number>;
   last: { lpars: LparTick[]; workloads: WorkloadTick[] };
   env: EnvState;
   batch: BatchState;

@@ -354,7 +354,7 @@ Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, l
   policies to `%%%%IRLM` (names are `${ssid}IRLM`, 8 characters), the `RulesView.tsx:249` placeholder to
   "DB1* or AUTH%", unit tests from the doc examples. Goldens may move if any other content pattern relied on the
   old syntax; grep content for `?` and non-final `*` first.
-- [ ] **14. zIIP-eligible work must not soak up the CP backlog.** Capping and CP shortage limit general purpose CPs
+- [x] **14. zIIP-eligible work must not soak up the CP backlog.** Capping and CP shortage limit general purpose CPs
   only (*WLM Planning* p.182); work that is not zIIP-eligible cannot run on a zIIP (INFERENCE from the eligibility
   rules, p.430–431 of *Init & Tuning*). Audit (PROD1 09:00–15:00): absolute cap 1.0 CP took zIIP engine-seconds
   3 463 → 7 188 while CP fell 32 770 → 21 600; DC 150 MSU took zIIP 0.19 → 0.36 engines with equal or fewer
@@ -480,6 +480,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | IEAOPT CCIMP modelled per system, but every scenario stays pre-z/OS 3.1 (CCIMP 0); the player turns it on with SET_IEAOPT (CLI/change desk; no UI control yet) | Turning it on by default would protect importance-1 work for free and shift balance; as a lever it has a cost (fewer donors, lower work waits longer). Harbourline with PRDA/PRDB at 4 logical CPs: 3526 → 0 DP inversions under importance-1 first periods over 12 h. Goldens and bench hash unchanged |
 | 2026-10-29 | WLM edit validation follows *WLM Planning* Table 7 (p.84) for the six modelled qualifiers: STC TN/UI/SY, JES TN/UI/TC, CICS TN/UI/TC, DDF UI/PK/CI, TSO UI/SY, MQ TN/UI/TC, OMVS TN/UI/SY. A qualifier may not appear under itself at any level (APPROX: p.99 shows the direct case) | The table has no SY for JES, CICS or DDF, so the sim's JES `SY` attribute is never matchable; no shipped policy or bot uses it. Existing invalid policies stay loadable; only the edit is refused |
 | 2026-10-29 | Classification patterns follow WLM syntax (*WLM Planning* p.104): `%` one character (trailing `%` may match none), `*` wildcard only last or alone, literal elsewhere, no `?`; shipped IRLM rules become `%%%%IRLM` | `*IRLM` is a literal in real WLM; behaviour unchanged (goldens moved only by the pattern string in the hashed state; mapping it back reproduces the old hashes) |
+| 2026-10-29 | zIIP no longer soaks up the CP backlog: transaction backlog carried per pool (`SimState.ziipBacklog`), batch CP/zIIP demand scaled by the pace the other pool allows (`JobRuntime.cpPace/ziipPace`) | Midwest seed 7, PROD1 absolute cap 1.0 CP, full day: zIIP 66 953 → 15 799 engine-s (uncapped 20 233), BATCHPRD zIIP 46 245 → 3 296. Uncapped batch zIIP also fell 13 318 → 8 591 (it was inflated by CP contention in the batch window); seed 42 MOBILE no longer has a rough day 1, so the hints test moved to seed 1. Goldens changed |
 
 ## Open questions
 
