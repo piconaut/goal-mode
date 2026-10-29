@@ -648,3 +648,23 @@ describe('WLM-managed initiators (WLM Planning p.70)', () => {
     expect(wlm.queue).toBeLessThanOrEqual(wlm.queuedJobTicks);
   }, 120_000);
 });
+
+describe('Storage Critical (WLM Planning p.119)', () => {
+  const slices = [
+    server({ key: 'HI', scKey: 'STCHI#1', cpEngines: 1 }),
+    server({ key: 'MED', scKey: 'STCMED#1', cpEngines: 1 }),
+    server({ key: 'LO', scKey: 'STCLO#1', cpEngines: 1 }),
+  ];
+  const base = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0.2, dpOf: () => 240 };
+  const weight = { 'STCHI#1': 1, 'STCMED#1': 3, 'STCLO#1': 5 };
+  it('protects one class at the cost of the less important ones', () => {
+    const off = evaluateLpar(base);
+    const on = evaluateLpar({ ...base, storageCritical: new Set(['STCHI#1']), pagingWeight: weight });
+    const stor = (r: typeof off) => r.slices.map((x) => x.delayStorage);
+    expect(stor(on)[0]).toBe(0);
+    expect(stor(on)[1]!).toBeGreaterThan(stor(off)[1]!);
+    expect(stor(on)[2]!).toBeGreaterThan(stor(on)[1]!);
+    const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
+    expect(sum(stor(on))).toBeCloseTo(sum(stor(off)), 6);
+  });
+});

@@ -303,7 +303,7 @@ Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md
   (`src/sim/batch/batch.ts:139-176`) and `evaluate.ts` has no initiation-delay term. Fix: in WLM mode, queued jobs add
   delay samples to their service class (APPROX: one per queued job), so WLM sees the miss and raises initiators
   toward demand; JES mode stays invisible to velocity.
-- [ ] **8. Storage Critical must cost the unprotected work.** Protected work loses storage only to equal or more
+- [x] **8. Storage Critical must cost the unprotected work.** Protected work loses storage only to equal or more
   important work, and IBM warns it can reduce throughput (*WLM Planning* p.119). Audit: PRDA at 60 GB, STCHI storage
   critical: STCHI storage delay 37 → 0 %, velocity 61.6 → 92.1, every other class unchanged. Cause: paging is one
   image-wide fraction and `evaluate.ts:514` zeroes it for protected classes without moving it anywhere. Fix: keep the
@@ -476,6 +476,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | LPAR capping (soft or absolute) posts as CPU delay; WLMGL CAP delay is resource-group and discretionary capping only. Folded into M8.7 item 5 | RMF's CAP delay is "NOT part of the CPU delay" and covers RG/discretionary capping (*RMF Report Analysis* p.540); LPAR capping is visible as Partition WLM% / ABS CAP. The CPC `% capped` evidence keeps the CAPPING clue path. Balance check deferred to the end-of-audit sweep |
 | 2026-10-29 | Balance gate victory bands are a share of runs (expert 60–100%, donothing 0%), not counts; the gate takes an optional scenario name for its report title | The 5-seed count band (expert 3–5) failed every 10-seed review sweep, including the pre-fix baseline (9 of 10). Only Midwest has tuned bands; Harbourline and revenue sweeps are checked against them as a reference |
 | 2026-10-29 | SMF_AUDIT may slow work on a system already at its CP share (Midwest PROD2 at 10:00: MOBILE 94 → 115 ms); clue text and realism test bound (1.3×) updated | M8.7 item 6 removed the ×51 zIIP queue billed on zIIP-less PROD2 (F7), which had hidden PROD2's CP-share sensitivity. Extra SYSSTC work on a CP-bound LPAR does delay lower work; the event stays a cost card elsewhere |
+| 2026-10-29 | Storage Critical redistributes paging instead of deleting it: unprotected periods absorb the protected share by activity × steal weight (imp 1..5 → 1..5, discretionary 6), capped at 0.9 | Keeps the image's paging constant so the lever has a cost (WLM Planning p.119). No scenario sets Storage Critical by default, so goldens and bench hashes are unchanged |
 
 ## Open questions
 

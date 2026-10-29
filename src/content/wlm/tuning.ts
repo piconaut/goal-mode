@@ -30,3 +30,12 @@ export const STORAGE_SWAP = {
   // above swapToFrac (e.g. oversized buffer pools) froze every batch job for the whole night.
   minSwappedIn: 1,
 };
+
+// Storage Critical: protected work loses frames only to equal or more important work, so the paging it avoids
+// lands on unprotected work, more on less important work (WLM Planning p.119: "can reduce throughput").
+// FICTIONAL: steal weight per importance 1..5, and for discretionary; the shape is "importance 5 and
+// discretionary absorb most of it".
+export const STORAGE_STEAL_WEIGHT_BY_IMP = [1, 2, 3, 4, 5];
+export const STORAGE_STEAL_WEIGHT_DISC = 6;
+// FICTIONAL: ceiling on any one period's paging delay fraction after redistribution.
+export const STORAGE_STEAL_MAX_FRAC = 0.9;
