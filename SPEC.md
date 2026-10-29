@@ -461,7 +461,10 @@ for importance in 1..5:
   importance, chosen in reverse order of receivers.
 - **Non-WLM-fixable bottlenecks** (lock contention, a starved dependency server, PR/SM delay,
   soft-cap delay) cannot be fixed by WLM. It flails, and RMF shows the receiver unhappy with
-  little CPU delay. *This is the key diagnostic pattern the player learns.*
+  little CPU delay. *This is the key diagnostic pattern the player learns.* LPAR capping (soft or
+  absolute) is the exception: it shows as CPU delay, with Partition Data WLM% (soft capping) or the
+  ABS CAP flag as the clue; WLMGL CAP delay is resource-group and discretionary capping only
+  (*RMF Report Analysis* p.401, p.540).
 - Other WLM actions at lower cadence: start/stop **WLM-managed initiators** (batch queue delay),
   adjust **MPL**, **storage protection**, **I/O priority**, **server address-space priority via
   topology** (CICS regions take on the most important unhappy class they serve, giving
@@ -1467,6 +1470,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
 | HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM confirmed (PR #9); a soft cap lowers E for polarity (WLM Planning p.46) | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
+| LPAR capping measurement | **Matches** | Capped share = what a binding cap removed vs. an uncapped allocation; PR/SM contention excluded. Partition WLM% from soft capping only; LPAR capping posts CPU delay, not CAP (RMF Report Analysis p.401, p.540) |
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Vendor list-price changes | **Simplified** | One run-level multiplier on sub-capacity MLC (all products alike); applies to the whole month it is in force, no proration; TFP terms are fixed once signed |

@@ -60,17 +60,21 @@ describe('R4HA and soft capping', () => {
     let s = initState(5, scenario);
     let cappedMsu = 0;
     let cappedTicks = 0;
+    let softCapped = 0;
     for (let i = 0; i < 6 * 360 + 4 * 360; i++) {
       s = step(s, [], scenario);
       if (s.capping.lpars.find((r) => r.id === 'PROD2')!.capped) {
         cappedMsu += s.lpars.find((l) => l.id === 'PROD2')!.msuRate;
         cappedTicks++;
+        softCapped += s.lpars.find((l) => l.id === 'PROD2')!.pools.find((p) => p.pool === 'CP')!.softCappedFrac;
       }
     }
     expect(cappedTicks).toBeGreaterThan(100);
     expect(cappedMsu / cappedTicks).toBeLessThan(305);
+    // Soft capping reports as Partition WLM% and CPU delay; WLMGL CAP delay is resource groups only (p.540).
+    expect(softCapped).toBeGreaterThan(0);
     const prod2 = s.last.lpars.find((l) => l.lparId === 'PROD2')!;
-    expect(prod2.scps.reduce((a, x) => a + x.delayCap, 0)).toBeGreaterThan(0);
+    expect(prod2.scps.reduce((a, x) => a + x.delayCap, 0)).toBe(0);
   });
 });
 

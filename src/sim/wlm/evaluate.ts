@@ -148,8 +148,6 @@ export interface LparEvalInput {
   ioPriority?: boolean;
   /** Paging delay fraction on this image (storage-critical classes are exempt). */
   pagingFrac: number;
-  /** Fraction of the image's CP demand withheld by capping this tick. */
-  cappedFrac?: number;
   storageCritical?: ReadonlySet<string>;
   /** Service-class periods starved past BLWLINTHD, eligible for promotion. */
   promoted?: ReadonlySet<string>;
@@ -494,9 +492,6 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const prio = input.ioPriority === false ? null : iosqByPriority(slices, sliceDp, input.io);
   // Without I/O priority management, I/O samples don't count towards velocity.
   const ioSamples = input.ioPriority === false ? 0 : 1;
-  // APPROX: while an image is capped, most of its undispatched ready work is waiting
-  // on the cap rather than on priority.
-  const capFrac = Math.min(1, 4 * (input.cappedFrac ?? 0));
   const storageCritical = input.storageCritical;
 
   const results = new Array<SliceResult>(n);
@@ -509,10 +504,11 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const qr = queueRatio[i]!;
     const zq = Math.min(MAX_QUEUE_RATIO, r.ziipQueueRatio);
     const cpUsing = cpGranted + iipcpGranted;
-    const unmetCp = cpUnmetS[i]! * (1 - capFrac);
-    // Work held back by a WLM cap waits on the cap and stays queued.
+    // LPAR capping (soft or absolute) shows as CPU delay; CAP delay is resource-group and discretionary
+    // capping only, "not part of the CPU delay" (RMF Report Analysis p.540).
+    const unmetCp = cpUnmetS[i]!;
     const cut = sliceCut[i]!;
-    const capDelay = cpUnmetS[i]! * capFrac + cut;
+    const capDelay = cut;
     const unmetZiip = ziUnmetS[i]!;
 
     const io = prio?.[s.ioClass]?.[i] ?? input.io[s.ioClass];

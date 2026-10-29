@@ -32,6 +32,7 @@ export interface LparIntervalAcc {
   deliveredIcf: number;
   overhead: number;
   capped: number;
+  wlmCapped?: number;
   prsmDelay: number;
   msu: number;
   vh: number;
@@ -97,6 +98,8 @@ export interface CpuRecord {
   logicalBusyPct: number;
   overheadPct: number;
   cappedPct: number;
+  /** Time WLM soft-capped the partition (Partition Data WLM%, RMF Report Analysis p.401). */
+  wlmCappingPct?: number;
   prsmDelayPct: number;
   msuAvg: number;
   r4ha: number;
@@ -190,6 +193,7 @@ export function accumulateTick(
       deliveredIcf: a.deliveredIcf + (icf?.deliveredEngines ?? 0),
       overhead: a.overhead + (cp?.overheadFrac ?? 0),
       capped: a.capped + (cp?.cappedFrac ?? 0),
+      wlmCapped: (a.wlmCapped ?? 0) + (cp?.softCappedFrac ?? 0),
       prsmDelay: a.prsmDelay + (cp?.prsmDelayFrac ?? 0),
       msu: a.msu + l.msuRate,
       vh: cp?.vh ?? 0,
@@ -420,6 +424,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
       logicalBusyPct: cp && cp.logical > 0 ? (100 * a.deliveredCp) / n / cp.logical : 0,
       overheadPct: (100 * a.overhead) / n,
       cappedPct: (100 * a.capped) / n,
+      wlmCappingPct: (100 * (a.wlmCapped ?? 0)) / n,
       prsmDelayPct: (100 * a.prsmDelay) / n,
       msuAvg: a.msu / n,
       r4ha: ctx.r4haByLpar[a.lparId] ?? 0,
