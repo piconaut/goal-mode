@@ -136,6 +136,8 @@ export interface LparEvalInput {
   slices: readonly SliceSpec[];
   /** Backlogged work per slice key, engine-seconds (CP + zIIP). */
   backlog: Readonly<Record<string, number>>;
+  /** zIIP-eligible part of `backlog`, engine-seconds. Absent: the backlog splits by the slice's arrival mix. */
+  ziipBacklog?: Readonly<Record<string, number>>;
   dpOf: (scKey: string) => number;
   /** Optional per-slice CP cap (resource group maximums), engines. */
   capOf?: (slice: SliceSpec) => number;
@@ -194,6 +196,8 @@ export interface SliceResult {
   userRtSec: number;
   parts: RtParts | null;
   newBacklog: number;
+  /** zIIP-eligible part of newBacklog, engine-seconds. */
+  newZiipBacklog: number;
   /** Health of this address space as a server (granted/wanted), 1 for transactions. */
   health: number;
   queueRatio: number;
@@ -350,8 +354,19 @@ export interface PreparedLpar {
   aggOverflow: boolean[];
 }
 
+/**
+ * CP part of a slice's backlog, engine-seconds. Each pool keeps its own backlog: CP work left unserved by a cap or a
+ * CP shortage cannot drain on idle zIIPs (WLM Planning p.182: capping limits general purpose CPs only).
+ */
+export function backlogCpSec(s: SliceSpec, backlog: Readonly<Record<string, number>>, ziipBacklog?: Readonly<Record<string, number>>): number {
+  const bl = backlog[s.key] ?? 0;
+  if (ziipBacklog) return Math.max(0, bl - (ziipBacklog[s.key] ?? 0));
+  const tot = s.cpEngines + s.ziipEngines;
+  return bl * (tot > 0 ? s.cpEngines / tot : 1);
+}
+
 export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
-  const { slices, backlog } = input;
+  const { slices, backlog, ziipBacklog } = input;
   const n = slices.length;
   // Per-slice demand (new arrivals + backlog drain), then aggregate per service-class
   // period: equal-DP work shares in proportion to demand, so dispatching per period is
@@ -369,13 +384,11 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const bl = backlog[s.key] ?? 0;
-    const tot = s.cpEngines + s.ziipEngines;
-    const blRate = bl / TICK_SEC;
-    const cpShare = tot > 0 ? s.cpEngines / tot : 1;
-    const uncapped = s.cpEngines + blRate * cpShare;
+    const blCp = backlogCpSec(s, backlog, ziipBacklog);
+    const uncapped = s.cpEngines + blCp / TICK_SEC;
     const cp = capOf ? Math.min(uncapped, capOf(s)) : uncapped;
     sliceCut[i] = uncapped - cp;
-    const zi = s.ziipEngines + blRate * (1 - cpShare);
+    const zi = s.ziipEngines + (bl - blCp) / TICK_SEC;
     sliceCp[i] = cp;
     sliceZi[i] = zi;
     let a = aggIdx[s.scKey];
@@ -547,6 +560,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         userRtSec: 0,
         parts: null,
         newBacklog: 0,
+        newZiipBacklog: 0,
         health: health[i]!,
         queueRatio: qr,
         withinSla: 0,
@@ -558,6 +572,8 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const wantSec = (want[i]! + cut) * TICK_SEC;
     const gotSec = got[i]! * TICK_SEC;
     let newBacklog = Math.max(0, wantSec - gotSec);
+    const rawBacklog = newBacklog;
+    const rawZiipBacklog = Math.min(rawBacklog, Math.max(0, sliceZi[i]! - ziG[i]! - iipcpG[i]!) * TICK_SEC);
     const gotRate = Math.max(got[i]!, 1e-9);
     let waitSec = newBacklog / gotRate;
     const workPerTxn = s.cpuSecPerTxn + s.ziipSecPerTxn;
@@ -644,6 +660,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
             outsideRef: s.outsideRefSec ?? 0,
           },
       newBacklog,
+      newZiipBacklog: rawBacklog > 0 ? (rawZiipBacklog * newBacklog) / rawBacklog : 0,
       health: 1,
       queueRatio: qr,
       withinSla: !scpsOnly && s.slaRtSec !== null ? completions * lognormCdf(s.slaRtSec, rt + s.outsideWaitSec, s.rtSigma) : 0,

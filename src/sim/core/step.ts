@@ -30,7 +30,7 @@ import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
 import { ROUTING } from '../../content/routing';
-import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
+import { backlogCpSec, emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC, STORAGE_SWAP } from '../../content/wlm/tuning';
 import { CF_FAILURE } from '../../content/cf';
@@ -219,6 +219,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     pagingWeight: {},
     evalInputs: {},
     backlog: {},
+    ziipBacklog: {},
     failedBy: {},
     wlTick: {},
     rtByWorkloadLpar: {},
@@ -246,7 +247,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const lpars = t.lpars;
 
   // 7–10. Dispatch and response per image.
-  const { backlog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical, pagingWeight } = t;
+  const { backlog, ziipBacklog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical, pagingWeight } = t;
   for (const w of workloads) {
     wlTick[w.id] = { id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
   }
@@ -326,6 +327,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     wlm: { definition: def, systems: adjusted, log },
     workloads: workloadRt,
     backlog,
+    ziipBacklog,
     last: { lpars: lparTicks, workloads: Object.values(wlTick) },
     env: nextEnv,
     batch,
@@ -368,6 +370,7 @@ interface TickCtx {
   pagingWeight: Record<string, number>;
   evalInputs: Record<string, LparEvalInput>;
   backlog: Record<string, number>;
+  ziipBacklog: Record<string, number>;
   failedBy: Record<string, number>;
   wlTick: Record<string, WorkloadTick>;
   rtByWorkloadLpar: Record<string, number>;
@@ -710,10 +713,12 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       };
       refs[refKey] = ref;
     }
-    ref.slice.cpEngines += shape.cpRate + cfCpu;
-    ref.slice.ziipEngines += shape.zRate;
+    const cpWant = shape.cpRate * (j.cpPace ?? 1) + cfCpu;
+    const ziWant = shape.zRate * (j.ziipPace ?? 1);
+    ref.slice.cpEngines += cpWant;
+    ref.slice.ziipEngines += ziWant;
     ref.slice.ioRate += shape.ioRate / Math.max(1, j.stretch);
-    ref.jobs.push({ job: j, cp: shape.cpRate + cfCpu, zi: shape.zRate, shape });
+    ref.jobs.push({ job: j, cp: cpWant, zi: ziWant, shape });
   }
   const batchRefs = Object.values(refs);
   batchRefsBy[l.id] = batchRefs;
@@ -726,11 +731,10 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   let cp = 0;
   let zi = 0;
   for (const s of all) {
-    const bl = (prev.backlog[s.key] ?? 0) / TICK_SEC;
-    const tot = s.cpEngines + s.ziipEngines;
-    const cpShare = tot > 0 ? s.cpEngines / tot : 1;
-    cp += s.cpEngines + bl * cpShare;
-    zi += s.ziipEngines + bl * (1 - cpShare);
+    const bl = prev.backlog[s.key] ?? 0;
+    const blCp = backlogCpSec(s, prev.backlog, prev.ziipBacklog ?? {});
+    cp += s.cpEngines + blCp / TICK_SEC;
+    zi += s.ziipEngines + (bl - blCp) / TICK_SEC;
   }
   const prevRt = prev.lpars.find((x) => x.id === l.id);
   const ratio = (pool: 'CP' | 'ZIIP') => {
@@ -750,7 +754,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, queuedWlmBy, pagingFrac } = t;
-  const { storageCritical, pagingWeight, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
+  const { storageCritical, pagingWeight, evalInputs, backlog, ziipBacklog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
   const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
@@ -779,8 +783,9 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
     slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
     backlog: prev.backlog,
+    ziipBacklog: prev.ziipBacklog ?? {},
     dpOf,
-    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
+    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
     ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare),
     regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
     io,
@@ -821,7 +826,10 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const tries: Record<string, number> = {};
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
-    if (r.newBacklog > 1e-9) backlog[s.key] = r.newBacklog;
+    if (r.newBacklog > 1e-9) {
+      backlog[s.key] = r.newBacklog;
+      if (r.newZiipBacklog > 1e-9) ziipBacklog[s.key] = r.newZiipBacklog;
+    }
     if (s.workloadId) {
       const wt = wlTick[s.workloadId]!;
       wt.completions += r.completions;
@@ -1330,6 +1338,7 @@ export function resourceGroupCaps(
   plexShare: Readonly<Record<string, number>>,
   workloadById: Readonly<Record<string, WorkloadDef>>,
   backlog: Readonly<Record<string, number>>,
+  ziipBacklog?: Readonly<Record<string, number>>,
 ): ((s: SliceSpec) => number) | undefined {
   const groups = def.resourceGroups.filter((g) => g.max !== null);
   if (groups.length === 0) return undefined;
@@ -1367,8 +1376,7 @@ export function resourceGroupCaps(
         continue;
       }
       // The part of the slice running outside the group's regions stays uncapped (same demand as evaluateLpar).
-      const tot = s.cpEngines + s.ziipEngines;
-      const uncapped = s.cpEngines + ((backlog[s.key] ?? 0) / TICK_SEC) * (tot > 0 ? s.cpEngines / tot : 1);
+      const uncapped = s.cpEngines + backlogCpSec(s, backlog, ziipBacklog) / TICK_SEC;
       capBySlice[s.key] = capped + (1 - frac) * uncapped;
     }
   }

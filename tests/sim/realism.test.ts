@@ -725,3 +725,22 @@ describe('MQ MAXDEPTH lowered below the current depth (MQ 9.4 Administration Ref
     expect(r.newBacklog).toBeCloseTo(1, 6);
   });
 });
+
+describe('zIIP-eligible work does not soak up the CP backlog (WLM Planning p.182)', () => {
+  const base = { cpCapacityEngines: 1, cpServers: 1, ziipCapacityEngines: 2, ziipServers: 2, cpPrsmDelayFrac: 0, io: IO, pagingFrac: 0, dpOf: () => 230 };
+  const s = txn({ cpEngines: 0.8, ziipEngines: 0.8, cpuSecPerTxn: 0.008, ziipSecPerTxn: 0.008, timeoutSec: 1e6 });
+
+  it('a CP backlog stays on the CPs while the zIIPs sit idle', () => {
+    // 100 engine-seconds of CP work queued behind a cap; arrivals use 0.8 CP + 0.8 zIIP engines.
+    const r = evaluateLpar({ ...base, slices: [s], backlog: { T: 100 }, ziipBacklog: {} }).slices[0]!;
+    expect(r.ziipGranted).toBeCloseTo(0.8, 6);
+    expect(r.newBacklog).toBeGreaterThan(95);
+    expect(r.newZiipBacklog).toBe(0);
+  });
+
+  it('a zIIP backlog drains on the zIIPs', () => {
+    const r = evaluateLpar({ ...base, slices: [s], backlog: { T: 10 }, ziipBacklog: { T: 10 } }).slices[0]!;
+    expect(r.ziipGranted).toBeGreaterThan(1.5);
+    expect(r.newZiipBacklog).toBeLessThan(10);
+  });
+});
