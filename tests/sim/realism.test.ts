@@ -1,10 +1,10 @@
 // Behavioural "realism" tests from SPEC §16.
 
-import { MIDWEST } from '../../src/content/scenarios';
+import { HARBOURLINE, MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
 import { discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
-import { emptyAcc } from '../../src/sim/wlm/runtime';
+import { emptyAcc, goalInfo } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
@@ -667,4 +667,37 @@ describe('Storage Critical (WLM Planning p.119)', () => {
     const sum = (a: number[]) => a.reduce((x, y) => x + y, 0);
     expect(sum(stor(on))).toBeCloseTo(sum(stor(off)), 6);
   });
+});
+
+describe('IEAOPT CCIMP implicit CPU protection (Init & Tuning p.428)', () => {
+  // PRDA/PRDB squeezed to 4 logical CPs: WLM donates from importance-1 MKTORD until TSO sits above it.
+  const inversions = (ccImp: 0 | 1) => {
+    let s = initState(42, HARBOURLINE);
+    s = step(
+      s,
+      [
+        ...s.config.systems.map((x) => ({ kind: 'SET_IEAOPT' as const, lparId: x.lparId, changes: { ccImp } })),
+        ...['PRDA', 'PRDB'].map((lparId) => ({ kind: 'SET_LOGICAL' as const, lparId, pool: 'CP' as const, logical: 4 })),
+      ],
+      HARBOURLINE,
+    );
+    let n = 0;
+    for (let i = 0; i < 4320; i++) {
+      s = step(s, [], HARBOURLINE);
+      if (i % 60) continue;
+      for (const sys of s.wlm.systems) {
+        const imp = (k: string) => goalInfo(s.wlm.definition, k);
+        for (const p of sys.scps) {
+          const g = imp(p.scKey);
+          if (!g || g.goal.kind === 'DISC' || g.period !== 0 || g.importance !== 1) continue;
+          for (const q of sys.scps) if ((imp(q.scKey)?.importance ?? 0) > 1 && q.dp >= p.dp) n++;
+        }
+      }
+    }
+    return n;
+  };
+  it('keeps less important work below first periods of importance 1 only when CCIMP=1', () => {
+    expect(inversions(0)).toBeGreaterThan(100);
+    expect(inversions(1)).toBe(0);
+  }, 120_000);
 });

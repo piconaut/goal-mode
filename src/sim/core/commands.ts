@@ -128,6 +128,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       return ok(withConfig(s, (c) => (c.lpars.find((x) => x.id === cmd.lparId)!.pools.find((p) => p.pool === 'CP')!.absoluteCapEngines = cmd.engines)), `${cmd.lparId} absolute cap ${cmd.engines ?? 'none'}`);
 
     case 'SET_IEAOPT':
+      if (cmd.changes.ccImp !== undefined && ![0, 1, 2].includes(cmd.changes.ccImp)) return fail(s, 'CCIMP must be 0, 1 or 2');
       return ok(withConfig(s, (c) => Object.assign(c.systems.find((x) => x.lparId === cmd.lparId)!, cmd.changes)), `SET OPT on ${cmd.lparId}`);
 
     case 'SET_RMF_INTERVAL':

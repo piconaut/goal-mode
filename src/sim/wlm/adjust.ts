@@ -31,6 +31,8 @@ export interface AdjustInput {
   current: readonly ScpTick[];
   sysplexPi: Readonly<Record<string, number | null>>;
   clockText: string;
+  /** IEAOPT CCIMP on this system. */
+  ccImp?: number;
 }
 
 export interface AdjustOutput {
@@ -83,9 +85,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
 
   // Long-term CPU protection: less important work never gets an equal or higher DP than a CPU-critical
   // class (MVS Planning: WLM, ch. 14; enqueue promotion is the documented exception, not modelled).
+  // CCIMP extends it to first or only periods up to that importance (Init & Tuning p.428). APPROX: no
+  // System Recovery Boost in the sim, so CCIMPBOOST never applies.
+  const ccImp = input.ccImp ?? 0;
   const violatesCpuCritical = (trial: Record<string, number>) => {
     for (const [k, g] of Object.entries(info)) {
-      if (!g.cpuCritical) continue;
+      if (!g.cpuCritical && !(g.period === 0 && g.importance <= ccImp)) continue;
       for (const [k2, g2] of Object.entries(info)) {
         if (g2.importance > g.importance && (trial[k2] ?? 0) >= (trial[k] ?? 0)) return true;
       }

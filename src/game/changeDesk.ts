@@ -73,6 +73,7 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
       if (cmd.changes.blwlinthdSec !== undefined) parts.push(`BLWLINTHD ${s?.blwlinthdSec ?? '?'} → ${cmd.changes.blwlinthdSec}s`);
       if (cmd.changes.blwltrpctFrac !== undefined) parts.push(`BLWLTRPCT ${s ? pct(s.blwltrpctFrac) : '?'} → ${pct(cmd.changes.blwltrpctFrac)}`);
       if (cmd.changes.iipHonorPriority !== undefined) parts.push(`IIPHONORPRIORITY ${s?.iipHonorPriority ? 'YES' : 'NO'} → ${cmd.changes.iipHonorPriority ? 'YES' : 'NO'}`);
+      if (cmd.changes.ccImp !== undefined) parts.push(`CCIMP ${s?.ccImp ?? 0} → ${cmd.changes.ccImp}`);
       return `${cmd.lparId} IEAOPT ${parts.join(', ')}`;
     }
     case 'SET_RMF_INTERVAL':
