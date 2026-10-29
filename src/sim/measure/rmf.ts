@@ -21,6 +21,7 @@ export interface ScpIntervalAcc extends ScpAcc {
   usingZiip: number;
   usingIo: number;
   delayStorage: number;
+  delayQueue?: number;
   failed: number;
 }
 
@@ -80,7 +81,7 @@ export interface WlmRecord {
   applIipcpPct: number;
   applIipPct: number;
   usingPct: { cpu: number; ziip: number; io: number };
-  delayPct: { cpu: number; ziip: number; io: number; storage: number; cap: number; other: number };
+  delayPct: { cpu: number; ziip: number; io: number; storage: number; cap: number; other: number; queue?: number };
   buckets: number[];
   /** Report class row: `serviceClass` holds the report class name. */
   reportClass?: boolean;
@@ -285,7 +286,7 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
     rtSumSec: a.rtSumSec + t.rtSumSec,
     buckets: addBuckets(a.buckets, t.buckets),
     using: a.using + t.usingCpu + t.usingZiip + t.usingIo,
-    delay: a.delay + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap,
+    delay: a.delay + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
     delayCpu: a.delayCpu + t.delayCpu,
     delayZiip: a.delayZiip + t.delayZiip,
     delayIo: a.delayIo + t.delayIo,
@@ -301,6 +302,7 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
     usingZiip: a.usingZiip + t.usingZiip,
     usingIo: a.usingIo + t.usingIo,
     delayStorage: a.delayStorage + t.delayStorage,
+    ...(t.delayQueue || a.delayQueue ? { delayQueue: (a.delayQueue ?? 0) + (t.delayQueue ?? 0) } : {}),
     failed: a.failed + t.failed,
   };
   scps[k] = (members !== undefined ? { ...out, members } : out) as T;
@@ -325,6 +327,7 @@ function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
     usingZiip: p.usingZiip + a.usingZiip,
     usingIo: p.usingIo + a.usingIo,
     delayStorage: p.delayStorage + a.delayStorage,
+    ...(p.delayQueue || a.delayQueue ? { delayQueue: (p.delayQueue ?? 0) + (a.delayQueue ?? 0) } : {}),
     delayCap: p.delayCap + a.delayCap,
     failed: p.failed + a.failed,
   };
@@ -376,7 +379,7 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
     applIipcpPct: ticks > 0 ? (100 * a.iipcpEngines) / ticks : 0,
     applIipPct: ticks > 0 ? (100 * a.ziipEngines) / ticks : 0,
     usingPct: { cpu: pct(a.usingCpu), ziip: pct(a.usingZiip), io: pct(a.usingIo) },
-    delayPct: { cpu: pct(a.delayCpu), ziip: pct(a.delayZiip), io: pct(a.delayIo), storage: pct(a.delayStorage), cap: pct(a.delayCap), other: pct(a.delayOther) },
+    delayPct: { cpu: pct(a.delayCpu), ziip: pct(a.delayZiip), io: pct(a.delayIo), storage: pct(a.delayStorage), cap: pct(a.delayCap), other: pct(a.delayOther), queue: pct(a.delayQueue ?? 0) },
     buckets: a.buckets.length === BUCKETS ? a.buckets : emptyBuckets(),
   };
 }

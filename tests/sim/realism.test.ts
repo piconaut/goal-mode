@@ -625,3 +625,26 @@ describe('event cards (SPEC §9)', () => {
     expect(storm.iosq).toBeGreaterThan(100 * asIs.iosq);
   }, 60_000);
 });
+
+describe('WLM-managed initiators (WLM Planning p.70)', () => {
+  const night = (mode: 'JES' | 'WLM') => {
+    let s = initState(42, MIDWEST);
+    s = step(s, [{ kind: 'SET_JOB_CLASS', jobClass: 'A', mode, initiators: { PROD1: 1, PROD2: 1 } }], MIDWEST);
+    let queue = 0;
+    let queuedJobTicks = 0;
+    for (let i = 0; i < 8640; i++) {
+      s = step(s, [], MIDWEST);
+      queuedJobTicks += s.batch.jobs.filter((j) => j.status === 'QUEUED' && j.def.jobClass === 'A').length;
+      for (const l of s.last.lpars) for (const sc of l.scps) queue += sc.delayQueue ?? 0;
+    }
+    return { queue, queuedJobTicks };
+  };
+  it('jobs queued for an initiator are delay samples in WLM mode only', () => {
+    const jes = night('JES');
+    const wlm = night('WLM');
+    expect(jes.queuedJobTicks).toBeGreaterThan(100);
+    expect(jes.queue).toBe(0);
+    expect(wlm.queue).toBeGreaterThan(0);
+    expect(wlm.queue).toBeLessThanOrEqual(wlm.queuedJobTicks);
+  }, 120_000);
+});

@@ -198,6 +198,7 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
   const serviceClass = hash >= 0 ? scKey.slice(0, hash) : scKey;
   const period = hash >= 0 ? Number(scKey.slice(hash + 1)) || 1 : 1;
   const delayCpu = a.delayCpu, delayZiip = a.delayZiip, delayIo = a.delayIo, delayCap = a.delayCap;
+  // APPROX: initiation queue delay (WLMGL QMPL) has no Monitor III column here and shows in STOR.
   const delayStor = Math.max(0, a.delay - delayCpu - delayZiip - delayIo - delayCap);
   const samples = a.using + a.delay + a.delayOther;
   const frac = (x: number) => (samples > 0 ? x / samples : 0);

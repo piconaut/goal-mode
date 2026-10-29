@@ -292,7 +292,7 @@ Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md
   the zIIP queue ratio clamps at 50 (`src/sim/wlm/evaluate.ts:505`) and RT bills `ziipSecPerTxn × (1 + zq)` (`:584`).
   Fix: with no online zIIP, zq = 0 and the eligible seconds are billed at CP speed with the CP queue ratio. Unit test
   on the dispatcher with zero zIIP capacity.
-- [ ] **7. WLM-managed initiators must add initiation delay to velocity.** Velocity's delay includes "initiation
+- [x] **7. WLM-managed initiators must add initiation delay to velocity.** Done 2026-10-29: queued jobs in WLM-mode classes add one `delayQueue` sample per tick to their class's first period (WLMGL QMPL column); realism test added. Initiator start rate/threshold left as is. Velocity's delay includes "initiation
   delays for batch jobs in WLM-managed job classes" (*WLM Planning* p.70, p.39 note 1). The size is the jobs' time
   on the queue (waiting for an initiator, class limits, affinity, operator holds), and with large queues it "can
   dominate the response time or velocity" (*JES2 Init & Tuning Guide* p.113–114). WLM reads it every 10 s policy
