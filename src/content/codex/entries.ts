@@ -103,6 +103,14 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'ccimp',
+    title: 'Implicit CPU protection (CCIMP)',
+    category: 'WLM',
+    body: 'IEAOPT CCIMP gives the first (or only) period of every class up to that importance the same long-term CPU protection as CPU Critical: WLM never lets less important work reach an equal or higher dispatching priority. CCIMP=1 is the z/OS 3.1 default; 0 is the older behaviour. Protection costs WLM donors, so less important work can wait longer when the system is short of CPU.',
+    sources: [IEAOPT],
+    discover: { tools: ['RMF_MON3'] },
+  },
+  {
     id: 'cics-region-mode',
     title: 'CICS region management (TRANSACTION vs REGION)',
     category: 'Subsystems',

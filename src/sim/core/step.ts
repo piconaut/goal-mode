@@ -439,7 +439,7 @@ function prsm(t: TickCtx): void {
 
 /** 12b. Policy adjustment, one receiver per system. */
 function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemState[]; log: string[] } {
-  const { prev, def, systems, lparTicks, evalInputs } = t;
+  const { prev, def, config, systems, lparTicks, evalInputs } = t;
   const spPi = sysplexPis(def, systems);
   // The previous log is only copied once a line is added (states are never mutated in place).
   let log = prev.wlm.log;
@@ -452,6 +452,7 @@ function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemSta
       current: lt.scps,
       sysplexPi: spPi,
       clockText,
+      ccImp: config.systems.find((c) => c.lparId === sys.lparId)?.ccImp,
     });
     if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
       if (log === prev.wlm.log) log = [...log];

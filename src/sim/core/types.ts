@@ -67,6 +67,9 @@ export interface ZosSystemConfig {
   blwltrpctFrac: number;
   /** IIPHONORPRIORITY: zIIP-eligible work may overflow to CPs. */
   iipHonorPriority: boolean;
+  /** CCIMP: first (or only) periods up to this importance get CPU protection without CPU Critical (0 = off,
+   * the pre-z/OS 3.1 behaviour; absent means 0). */
+  ccImp?: 0 | 1 | 2;
 }
 
 export interface Db2MemberConfig {

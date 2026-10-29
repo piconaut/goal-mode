@@ -309,7 +309,7 @@ Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md
   image-wide fraction and `evaluate.ts:514` zeroes it for protected classes without moving it anywhere. Fix: keep the
   image's paging pressure constant and spread the protected classes' share over the unprotected ones (more to lower
   importance). A free lever breaks the "every lever has a cost" guardrail.
-- [ ] **9. Implicit CPU protection (IEAOPT CCImp, default 1 in z/OS 3.1).** CCImp=1 gives CPU protection to
+- [x] **9. Implicit CPU protection (IEAOPT CCImp, default 1 in z/OS 3.1).** CCImp=1 gives CPU protection to
   importance-1 single-period classes and first periods without CPU Critical; CCImpBoost (default 2) applies while a
   boost is active (*Init & Tuning* p.428). Audit (PRDA/PRDB at 4 logical CPs): MKTORD (imp 1) sat at DP 250 below
   TSO#2 (imp 5) and STCMED (imp 3) at 252; with CPU Critical on MKTORD it went 98.1 % / 109 ms → 99.7 % / 46 ms.
@@ -477,6 +477,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | Balance gate victory bands are a share of runs (expert 60–100%, donothing 0%), not counts; the gate takes an optional scenario name for its report title | The 5-seed count band (expert 3–5) failed every 10-seed review sweep, including the pre-fix baseline (9 of 10). Only Midwest has tuned bands; Harbourline and revenue sweeps are checked against them as a reference |
 | 2026-10-29 | SMF_AUDIT may slow work on a system already at its CP share (Midwest PROD2 at 10:00: MOBILE 94 → 115 ms); clue text and realism test bound (1.3×) updated | M8.7 item 6 removed the ×51 zIIP queue billed on zIIP-less PROD2 (F7), which had hidden PROD2's CP-share sensitivity. Extra SYSSTC work on a CP-bound LPAR does delay lower work; the event stays a cost card elsewhere |
 | 2026-10-29 | Storage Critical redistributes paging instead of deleting it: unprotected periods absorb the protected share by activity × steal weight (imp 1..5 → 1..5, discretionary 6), capped at 0.9 | Keeps the image's paging constant so the lever has a cost (WLM Planning p.119). No scenario sets Storage Critical by default, so goldens and bench hashes are unchanged |
+| 2026-10-29 | IEAOPT CCIMP modelled per system, but every scenario stays pre-z/OS 3.1 (CCIMP 0); the player turns it on with SET_IEAOPT (CLI/change desk; no UI control yet) | Turning it on by default would protect importance-1 work for free and shift balance; as a lever it has a cost (fewer donors, lower work waits longer). Harbourline with PRDA/PRDB at 4 logical CPs: 3526 → 0 DP inversions under importance-1 first periods over 12 h. Goldens and bench hash unchanged |
 
 ## Open questions
 
