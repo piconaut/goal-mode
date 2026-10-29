@@ -1,7 +1,7 @@
 // Plain-data world configuration and runtime state. Everything here must be
 // JSON-serialisable and built in a deterministic order (arrays, not Maps).
 
-import type { CfConfig, CfStructureConfig, CfResult } from '../cf/cf';
+import type { CfConfig, CfStructureConfig, CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdConfig, DasdResult } from '../io/dasd';
 import type { BatchState } from '../subsys/batch';
 import type { CostState } from '../cost/mlc';
@@ -24,6 +24,8 @@ export interface CpcConfig {
   /** Active physical engines per pool (shared + dedicated). */
   engines: Record<PoolType, number>;
   memoryGb: number;
+  /** Position of the CPC's site along the CF links, km (distance = difference); default 0. */
+  siteKm?: number;
 }
 
 export interface LparPoolConfig {
@@ -185,6 +187,8 @@ export interface EnvState {
   slotQueue?: Record<string, number>;
   /** Mean time a transaction holds its task slot per workload@lpar (in-region RT less CPU backlog wait). */
   holdByWorkloadLpar?: Record<string, number>;
+  /** CF service each connected z/OS system saw last tick (link distance, own async conversion). */
+  cfBySystem?: Record<string, CfSystemResult>;
 }
 
 /** Runtime modifiers set by events and fixes (all multiplicative, default 1). */

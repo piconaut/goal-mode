@@ -36,7 +36,8 @@ export const HARBOURLINE_WORLD: WorldConfig = {
   cpcs: [
     { id: 'CPC1', generation: 'M2', capacitySetting: 7, engines: { CP: 14, ZIIP: 2, ICF: 1 }, memoryGb: 1536 },
     // One generation older and sub-capacity, but more zIIPs (B3 sends DDF work away from them).
-    { id: 'CPC2', generation: 'M1', capacitySetting: 5, engines: { CP: 10, ZIIP: 6, ICF: 1 }, memoryGb: 1024 },
+    // FICTIONAL: the second site is 15 km away; every CF request crossing it pays the link round trip.
+    { id: 'CPC2', generation: 'M1', capacitySetting: 5, engines: { CP: 10, ZIIP: 6, ICF: 1 }, memoryGb: 1024, siteKm: 15 },
   ],
   lpars: [
     // Problem 1: an absolute cap set to fence PRDA off from DEV1 years ago. It is above the average

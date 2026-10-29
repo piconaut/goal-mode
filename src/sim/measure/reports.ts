@@ -208,6 +208,14 @@ export function renderCfActivity(iv: RmfInterval): string {
       out.push(`${padR(st.name, 18)} ${padR(st.type, 6)} ${padR(st.cfLparId, 8)} ${f(st.reqPerSec, 0, 8)} ${f(st.syncPct, 1, 8)} ${f(st.syncUs, 1, 15)} ${f(st.serviceUs, 1, 14)}`);
     }
   }
+  if ((iv.cfSystems ?? []).length) {
+    // RMF estimates link distance from the round trip at 10 us/km (RMF Report Analysis p.378).
+    out.push('', 'CONNECTED SYSTEMS');
+    out.push('SYSTEM     REQ/SEC   SYNC SERV(us)  ASYNC %   AVG SERV(us)  EST DIST(km)');
+    for (const s of iv.cfSystems ?? []) {
+      out.push(`${padR(s.system, 8)} ${f(s.reqPerSec, 0, 9)} ${f(s.syncUs, 1, 15)} ${f(s.asyncPct, 1, 9)} ${f(s.serviceUs, 1, 14)} ${f(s.distKm, 0, 13)}`);
+    }
+  }
   return out.join('\n');
 }
 

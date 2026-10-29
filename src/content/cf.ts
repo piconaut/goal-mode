@@ -27,3 +27,7 @@ export const CF_DUPLEX = {
 // synchronous a little longer than cache/list ones, but a slow or shared-engine CF still converts them,
 // which trades z/OS CPU spin for longer lock-request elapsed time.
 export const CF_ASYNC_THRESHOLD_MULT: Record<'LOCK' | 'LIST' | 'CACHE', number> = { LOCK: 1.5, LIST: 1, CACHE: 1 };
+
+/** Signal round trip per km of CF link: RMF estimates link distance as round-trip µs ÷ 10 µs/km
+ *  (RMF Report Analysis p.376, p.378). */
+export const CF_LINK_ROUND_TRIP_SEC_PER_KM = 10e-6;

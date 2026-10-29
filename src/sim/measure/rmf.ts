@@ -2,7 +2,7 @@
 // interval into records shaped like SMF 70.1 (CPU/partition), 72.3 (workload activity),
 // 74.1 (DASD), 74.4 (CF) and 30 (job end).
 
-import type { CfResult } from '../cf/cf';
+import type { CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdResult } from '../io/dasd';
 import type { LparRuntime, LparTick, WorldConfig } from '../core/types';
 import type { ScpTick } from '../wlm/evaluate';
@@ -55,6 +55,8 @@ export interface RmfAcc {
   cf: Record<string, { busy: number; rate: number; sync: number; async: number; service: number; ticks: number }>;
   /** Per structure: request-weighted sums (rate × value) so interval averages weight busy ticks. */
   cfStructures: Record<string, { type: string; cfLparId: string; rate: number; syncReq: number; syncSecW: number; serviceSecW: number; ticks: number }>;
+  /** Per connected system: request-weighted sums of its own CF service. */
+  cfSystems?: Record<string, { distKm: number; rate: number; syncSecW: number; asyncW: number; serviceSecW: number; ticks: number }>;
   /** Report classes, keyed lpar|name (only once the policy assigns any). */
   rcs?: Record<string, RcIntervalAcc>;
 }
@@ -130,6 +132,7 @@ export interface RmfInterval {
   lcus: { id: string; label: string; volumes: number; aliases: number; iops: number; iosqMs: number; rtMs: number; aliasesPerHotVol: number }[];
   cf: { lparId: string; busyPct: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
   cfStructures: { name: string; type: string; cfLparId: string; reqPerSec: number; syncPct: number; syncUs: number; serviceUs: number }[];
+  cfSystems?: { system: string; distKm: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
   jobs: JobEndRecord[];
 }
 
@@ -156,6 +159,7 @@ export function accumulateTick(
   lpars: readonly LparRuntime[],
   dasd: DasdResult | null,
   cf: readonly CfResult[],
+  cfSys?: Readonly<Record<string, CfSystemResult>>,
 ): RmfAcc {
   const scps = { ...acc.scps };
   let rcs = acc.rcs;
@@ -238,7 +242,16 @@ export function accumulateTick(
       };
     }
   }
-  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(rcs ? { rcs } : {}) };
+  let sy = acc.cfSystems;
+  if (cfSys) {
+    sy = { ...(sy ?? {}) };
+    for (const id of Object.keys(cfSys).sort()) {
+      const r = cfSys[id]!;
+      const a = sy[id] ?? { distKm: 0, rate: 0, syncSecW: 0, asyncW: 0, serviceSecW: 0, ticks: 0 };
+      sy[id] = { distKm: r.distKm, rate: a.rate + r.requestRate, syncSecW: a.syncSecW + r.requestRate * r.syncSec, asyncW: a.asyncW + r.requestRate * r.asyncFrac, serviceSecW: a.serviceSecW + r.requestRate * r.serviceSec, ticks: a.ticks + 1 };
+    }
+  }
+  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(sy ? { cfSystems: sy } : {}), ...(rcs ? { rcs } : {}) };
 }
 
 // `${lparId}|${scKey}` without building a new string every tick.
@@ -472,6 +485,21 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
         syncUs: a.syncReq > 0 ? (1e6 * a.syncSecW) / a.syncReq : 0,
         serviceUs: a.rate > 0 ? (1e6 * a.serviceSecW) / a.rate : 0,
       })),
+    ...(acc.cfSystems
+      ? {
+          cfSystems: Object.entries(acc.cfSystems)
+            .sort(([a], [b]) => (a < b ? -1 : 1))
+            .filter(([, a]) => a.rate > 0)
+            .map(([system, a]) => ({
+              system,
+              distKm: a.distKm,
+              reqPerSec: a.rate / Math.max(1, a.ticks),
+              syncUs: (1e6 * a.syncSecW) / a.rate,
+              asyncPct: (100 * a.asyncW) / a.rate,
+              serviceUs: (1e6 * a.serviceSecW) / a.rate,
+            })),
+        }
+      : {}),
     jobs: ctx.jobs,
   };
 }
