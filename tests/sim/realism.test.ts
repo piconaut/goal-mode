@@ -589,7 +589,7 @@ describe('event cards (SPEC §9)', () => {
     expect(fixed.stchi).toBeLessThan(asIs.stchi + 0.1);
   }, 60_000);
 
-  it('an SMF retention audit raises SMF address space CPU and total MSU but no workload response', () => {
+  it('an SMF retention audit raises SMF address space CPU and total MSU, slowing work only on the CP-bound PROD2', () => {
     const asIs = run([]);
     const audit = run(card('SMF_AUDIT'));
     const msu = (cmds: Parameters<typeof step>[1]) => {
@@ -602,7 +602,8 @@ describe('event cards (SPEC §9)', () => {
       return m;
     };
     expect(msu(card('SMF_AUDIT'))).toBeGreaterThan(1.03 * msu([]));
-    expect(audit.mobileRtMs).toBeLessThan(1.05 * asIs.mobileRtMs);
+    // PROD2 runs at its CP share at 10:00 (F7: no zIIPs, so MOBILE's eligible work queues there on CPs).
+    expect(audit.mobileRtMs).toBeLessThan(1.3 * asIs.mobileRtMs);
   }, 60_000);
 
   it('an HSM recall storm raises LCU 30 IOSQ and response time', () => {

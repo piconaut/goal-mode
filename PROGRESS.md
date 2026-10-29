@@ -285,7 +285,7 @@ local only). Do these in order, each as its own PR; the first two are user-order
   delay plus Partition WLM%. Fold that into this change (it is the `capFrac` split) or queue it right after.
 
 Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md`, local only). Not ordered yet.
-- [ ] **6. zIIPs offline must not inflate response time.** With zIIPs defined but offline, eligible work runs on CPs
+- [x] **6. zIIPs offline must not inflate response time.** Done 2026-10-29: with no zIIP online the dispatcher reports the CP queue ratio (plus PR/SM delay) for the eligible work; dispatcher unit test added. With zIIPs defined but offline, eligible work runs on CPs
   as if it had no eligibility (*Init & Tuning* p.431). Audit: PRDC/PRDD zIIP logicals 3 → 0 took MKTQRY 48 → 82 ms,
   MOBILE 68 → 106 ms and ADHOC 2.8 → 36.7 s (still 36.4 s at 23:00 on an idle LPAR); the CP side is right (IIPCP
   filled, PRDC 3.39 → 3.73 CP engines). Cause: zero zIIP capacity gives rho = 1 (`src/sim/zos/dispatcher.ts:86`),
@@ -475,6 +475,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | MXT/MAXDBAT slot queues persist across ticks and time out; a slot is held for the in-region time less the CPU backlog wait | Holding time with the backlog wait made CPU starvation and the slot limit fail the same transactions twice (zero completions in the RBANK CPU ×3 evidence test). Real CICS would move the queued tasks from CPU wait to MXT wait; the sim keeps them in the CPU backlog (APPROX). CICS_SOS cuts MXT to 10 (was 5, below the legal 10) |
 | 2026-10-29 | LPAR capping (soft or absolute) posts as CPU delay; WLMGL CAP delay is resource-group and discretionary capping only. Folded into M8.7 item 5 | RMF's CAP delay is "NOT part of the CPU delay" and covers RG/discretionary capping (*RMF Report Analysis* p.540); LPAR capping is visible as Partition WLM% / ABS CAP. The CPC `% capped` evidence keeps the CAPPING clue path. Balance check deferred to the end-of-audit sweep |
 | 2026-10-29 | Balance gate victory bands are a share of runs (expert 60–100%, donothing 0%), not counts; the gate takes an optional scenario name for its report title | The 5-seed count band (expert 3–5) failed every 10-seed review sweep, including the pre-fix baseline (9 of 10). Only Midwest has tuned bands; Harbourline and revenue sweeps are checked against them as a reference |
+| 2026-10-29 | SMF_AUDIT may slow work on a system already at its CP share (Midwest PROD2 at 10:00: MOBILE 94 → 115 ms); clue text and realism test bound (1.3×) updated | M8.7 item 6 removed the ×51 zIIP queue billed on zIIP-less PROD2 (F7), which had hidden PROD2's CP-share sensitivity. Extra SYSSTC work on a CP-bound LPAR does delay lower work; the event stays a cost card elsewhere |
 
 ## Open questions
 
