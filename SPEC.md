@@ -594,7 +594,8 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   ([IBM CICS threadsafe white paper](https://public.dhe.ibm.com/software/uk/itsolutions/leveragingmiddleware/new-face-of-cics/cics-threadsafe-whitepaper.pdf)).
   Fixes: add AORs (memory and a change), or invest in a "threadsafe conversion" project
   (multi-day, cuts QR dependence; TCB switching costs vanish too).
-- **MXT** (max tasks): above it, tasks queue (queue delay).
+- **MXT** (max tasks, 10–2000): above it, tasks queue (queue delay). Throughput is bounded by MXT ÷ hold time; the
+  excess queues across ticks without bound and times out (FICTIONAL 60 s); M/M/c wait below the limit (*CICS Performance* p.89).
 - **Region management** under WLM: TRANSACTION vs REGION goals (§5.5.4).
 - **CICS SMF 110 monitoring** (analytics unlock) gives per-transaction CPU and wait breakdowns
   but adds ~3–5% CPU per transaction (tunable).
@@ -606,7 +607,8 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   **multi-period** class is typical: period 1 short RT goal (e.g. duration 2,000 SU), period 2
   velocity, period 3 discretionary. Long ad-hoc queries age into later periods, which is the
   point.
-- **Thread limits** (MAXDBAT, CONDBAT): exceeding them queues DDF requests (queue delay).
+- **Thread limits** (MAXDBAT, CONDBAT): exceeding them queues DDF requests (queue delay). Same slot-queue model as MXT;
+  queued connections time out after a MAXCONQW-like 120 s (*Db2 13 Installation* p.212–213).
 - **Access-path regression** event: after a REBIND, one package's CPU/txn jumps ×3–×10.
   Diagnosable only via Db2 accounting (SMF 101) with the package (PK) breakdown, or by
   noticing CPU/txn (service per transaction) jump for that class in RMF.
@@ -881,7 +883,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 |---|---|---|
 | Access-path regression (REBIND) | One package CPU/txn ×4 | Service/txn jump; Db2 accounting PK |
 | Lock escalation in batch | Lock waits for online | Db2 class 3 lock suspensions; CF lock contention |
-| CICS SOS (`CICS_SOS`) | Storage leak in both PROD2 AORs: effective MXT 5 per region for ~4 h (APPROX: SOS as an MXT cut); silent, rumoured | CICS report / Mon III: MXT wait ↑ on PROD2 only, CPU and QR normal; WFEX "queued for a task slot". Fixes: recycle the PROD2 AORs (Retail trust −1), route teller work to PROD1 |
+| CICS SOS (`CICS_SOS`) | Storage leak in both PROD2 AORs: effective MXT 10 per region for ~4 h (APPROX: SOS as an MXT cut); silent, rumoured | CICS report / Mon III: MXT wait ↑ on PROD2 only, CPU and QR normal; WFEX "queued for a task slot". Fixes: recycle the PROD2 AORs (Retail trust −1), route teller work to PROD1 |
 | SMF retention audit (`SMF_AUDIT`) | Regulator keeps full SMF 101/110 detail for 3 days: SMF address space CPU ×10 on every system (APPROX: overhead charged to SMF only); forewarned, once per run, rumoured | WLMGL: SYSSTC APPL% ↑ everywhere, SMF top consumer, MSU/R4HA ↑ ~5% with no workload slower. Fixes: negotiate scope to sampled records (Regulator trust −2), or absorb the MSU |
 | QR TCB saturation | Region at ~1 engine | CICS 110 dispatch/QR; region CPU ≈ 100% of 1 CP |
 | Non-threadsafe release (`QR_RELEASE`) | Teller release forces QR on the PROD1 AORs (QR fraction 0.6 → 0.95) for ~36 h | CICS report: QR wait per txn ↑ in CICSAOR1/3 only, low CPU delay. Fixes: roll back, route to PROD2, add an AOR |
@@ -1483,7 +1485,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
 | CICS region management | **Simplified** | CICS work on an image shares the AOR regions' DP: most important served period (TRANSACTION, free ride) or the region STC class (REGION); no per-region split of work |
-| Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time; RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
+| Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
 | Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |

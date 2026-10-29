@@ -472,6 +472,27 @@ describe('event cards (SPEC §9)', () => {
     expect(run(begin).bookingDone).toBeGreaterThan(0);
   }, 60_000);
 
+  it('MAXDBAT far below the DBATs wanted queues DDF work without bound until it times out', () => {
+    const mobile = (cmds: Parameters<typeof step>[1]) => {
+      let s = step(base, cmds, MIDWEST);
+      let rt = 0;
+      let n = 0;
+      let failed = 0;
+      for (let i = 0; i < 90; i++) {
+        s = step(s, [], MIDWEST);
+        const w = s.last.workloads.find((x) => x.id === 'MOBILE')!;
+        rt += w.rtSumSec;
+        n += w.completions;
+        failed += w.failed;
+      }
+      return { rtSec: rt / Math.max(1, n), failed };
+    };
+    const ok = mobile([]);
+    const starved = mobile(['DB1A', 'DB1B'].map((ssid) => ({ kind: 'SET_DB2' as const, ssid, maxDbat: 1 })));
+    expect(starved.rtSec).toBeGreaterThan(20 * ok.rtSec);
+    expect(starved.failed).toBeGreaterThan(ok.failed + 100);
+  }, 60_000);
+
   it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
     const outside = (cmds: Parameters<typeof step>[1], part = 'outside') => {
       let s = step(base, cmds, MIDWEST);

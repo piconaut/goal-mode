@@ -3,8 +3,9 @@ import { generateMidwestNetwork } from '../../src/content/batch/midwest-batch';
 import { evaluateCf } from '../../src/sim/cf/cf';
 import { evaluateDasd } from '../../src/sim/io/dasd';
 import { advanceJob, closeNight, emptyBatch, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobDef } from '../../src/sim/subsys/batch';
-import { mxtQueueWaitSec, qrTcb } from '../../src/sim/subsys/cics';
-import { bpIoMultiplier, dbatQueueWaitSec } from '../../src/sim/subsys/db2';
+import { qrTcb } from '../../src/sim/subsys/cics';
+import { slotQueueStep } from '../../src/sim/subsys/slots';
+import { bpIoMultiplier } from '../../src/sim/subsys/db2';
 import { pagingDelayFrac } from '../../src/sim/zos/storage';
 import { TICK_SEC } from '../../src/sim/core/units';
 
@@ -104,10 +105,28 @@ describe('Db2, CICS, storage', () => {
     expect(bpIoMultiplier(80, 160)).toBeLessThan(0.75);
     expect(bpIoMultiplier(20, 160)).toBeGreaterThan(1.3);
   });
-  it('DBAT and MXT queues only form above the limit', () => {
-    expect(dbatQueueWaitSec(100, 1, 400)).toBe(0);
-    expect(dbatQueueWaitSec(500, 1, 400)).toBeCloseTo(0.2);
-    expect(mxtQueueWaitSec(300, 1, 200)).toBeCloseTo(1 / 3);
+  it('task-slot queues: Erlang-C wait below the limit, unbounded backlog above it, timeouts at the cap', () => {
+    // 100/s × 1 s hold = 100 busy slots of 400: no wait to speak of.
+    expect(slotQueueStep(0, 100, 1, 400, 120, 10).waitSec).toBe(0);
+    // MAXDBAT 1 at 10 DBATs wanted: throughput 1/s, 9/s pile up each second.
+    let q = 0;
+    const waits: number[] = [];
+    for (let k = 0; k < 3; k++) {
+      const r = slotQueueStep(q, 10, 1, 1, 120, 10);
+      q = r.queued;
+      waits.push(r.waitSec);
+    }
+    expect(waits[0]).toBeCloseTo(90);
+    expect(waits[1]).toBe(120); // capped at the timeout ...
+    const r = slotQueueStep(q, 10, 1, 1, 120, 10);
+    expect(r.failFrac).toBeCloseTo(0.9); // ... and the excess arrivals fail
+    expect(r.queued).toBeCloseTo(120);
+    // Just below saturation a small pool queues per Erlang C.
+    const near = slotQueueStep(0, 0.9, 1, 1, 120, 10);
+    expect(near.queued).toBe(0);
+    expect(near.waitSec).toBeCloseTo(9); // M/M/1: ρ/(1−ρ) × S
+    // A backlog drains at limit / hold once load falls.
+    expect(slotQueueStep(50, 0, 1, 2, 120, 10).queued).toBeCloseTo(30);
   });
   it('the QR TCB saturates at one engine', () => {
     expect(qrTcb(0.5).failFrac).toBe(0);

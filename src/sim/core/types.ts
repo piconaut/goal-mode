@@ -181,6 +181,10 @@ export interface EnvState {
   pagingFrac: Record<string, number>;
   /** Failed fraction per workload@lpar; present only while a dynamic routing policy is on. */
   failByWorkloadLpar?: Record<string, number>;
+  /** Transactions queued for a task slot (CICS MXT, Db2 MAXDBAT) per `lparId:MXT|DBAT`; absent when empty. */
+  slotQueue?: Record<string, number>;
+  /** Mean time a transaction holds its task slot per workload@lpar (in-region RT less CPU backlog wait). */
+  holdByWorkloadLpar?: Record<string, number>;
 }
 
 /** Runtime modifiers set by events and fixes (all multiplicative, default 1). */

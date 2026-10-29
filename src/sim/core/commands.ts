@@ -180,6 +180,8 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
 
     case 'SET_CICS':
       if (!s.config.cics.some((r) => r.name === cmd.name)) return fail(s, `No CICS region ${cmd.name}`);
+      // CICS Performance p.89: MXT is 10–2000.
+      if (cmd.maxTasks !== undefined && (!Number.isInteger(cmd.maxTasks) || cmd.maxTasks < 10 || cmd.maxTasks > 2000)) return fail(s, 'MXT must be 10–2000');
       return ok(
         withConfig(s, (c) => {
           const r = c.cics.find((x) => x.name === cmd.name)!;
@@ -190,6 +192,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       );
 
     case 'ADD_AOR': {
+      if (!Number.isInteger(cmd.maxTasks) || cmd.maxTasks < 10 || cmd.maxTasks > 2000) return fail(s, 'MXT must be 10–2000');
       const st = withConfig(s, (c) => c.cics.push({ name: cmd.name, lparId: cmd.lparId, maxTasks: cmd.maxTasks, qrFrac: cmd.qrFrac }));
       const as: AddressSpaceDef = { jobname: cmd.name, lparId: cmd.lparId, role: 'CICS.AOR', subsystem: 'STC', baseEnginesRef: 0.012, ziipFrac: 0 };
       return ok({ ...st, extraAddressSpaces: [...st.extraAddressSpaces, as] }, `${cmd.name} started on ${cmd.lparId}`);

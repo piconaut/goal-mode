@@ -250,7 +250,9 @@ local only). Do these in order, each as its own PR; the first two are user-order
   - APPROX notes: CAP delay posts on the transaction class, not the region class (see the finding R item above);
     with only some AORs in the group, the proportional share ignores CPSM routing away from them.
   - Perf: one O(slices) pass per tick, only when a group has a max (`resourceGroupCaps` returns early otherwise).
-- [ ] **3. MAXDBAT and MXT must queue without bound once offered load exceeds the limit.** Db2 queues further
+- [x] **3. MAXDBAT and MXT must queue without bound once offered load exceeds the limit.** Done 2026-10-29:
+  `slotQueueStep` (`src/sim/subsys/slots.ts`) with a persistent queue per LPAR, timeouts in `content/subsys.ts`, MXT
+  10–2000 in `SET_CICS`/`ADD_AOR`; CICS_SOS now cuts MXT to 10. THREAD_LIMIT RCA tests still pass. Goldens moved. Db2 queues further
   processing until an active DBAT ends (*Db2 13 Installation* p.212) and bounds the queue with MAXCONQN/MAXCONQW
   (p.213, p.365); CICS MXT is 10–2000 and a too-low MXT causes "excessive queuing delays" (*CICS Performance* p.89).
   Audit: MAXDBAT 1 on all members (≈ 10 DBATs wanted on PRDB) only took MKTQRY 51 → 116 ms, SLA 98–99 %, 0 failures;
@@ -468,6 +470,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-28 | Pins from past Monitor III ranges; the play CLI keeps only the pinnable values (option A), 48 h at the browser's interval, beside the run file | User choice over full views (≈ 18 MB binary on Harbourline) or views inside the run file (≈ 120 MB): ~5 MB, +~0.5 s per CLI day, run file stays small for spectator polling |
 | 2026-10-28 | Monitor III MINTIME 120 s (was 100 s, the RMF default) | User request. History and the CLI record every 12 ticks; the live view's smoothing is unchanged, so no golden moves |
 | 2026-10-28 | Harbourline audit: five realism fixes queued (M8.7 items 1–5). Resource group fixes in two steps, server-region health first, then AOR caps reaching transaction CPU; a transaction's host region adds no `depDelay` on top of its CPU cap | User decision. Item 1 is a one-expression change that closes the "park Db2 in a capped group for free" exploit; item 2 needs a content field and design calls. One cause (CPU withheld in the region) counts once, through the documented mechanism (*WLM Planning* p.60) |
+| 2026-10-29 | MXT/MAXDBAT slot queues persist across ticks and time out; a slot is held for the in-region time less the CPU backlog wait | Holding time with the backlog wait made CPU starvation and the slot limit fail the same transactions twice (zero completions in the RBANK CPU ×3 evidence test). Real CICS would move the queued tasks from CPU wait to MXT wait; the sim keeps them in the CPU backlog (APPROX). CICS_SOS cuts MXT to 10 (was 5, below the legal 10) |
 
 ## Open questions
 
