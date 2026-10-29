@@ -544,7 +544,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     minDay: 5,
     weight: 1,
     trigger: 'POLICY',
-    affects: ['TELLER', 'RBANK'],
+    affects: ['TELLER', 'RBANK', 'CARDAUTH', 'PAYMQ'],
     mechanisms: ['THREAD_LIMIT'],
     startHour: [9, 14],
     durationHours: 4,
@@ -559,7 +559,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'RECYCLE_PROD2_AORS',
     forewarning: null,
     announcement: null,
-    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs, or route teller work to PROD1.',
+    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs, or route the CICS work (teller, online banking, card authorisation, payments) to PROD1.',
   },
   {
     id: 'CP_SPARING',

@@ -236,6 +236,7 @@ const ON_SIGHT_FIXES: Record<string, string> = {
   SHADOW_IT: 'STOP_SHADOW_IT',
   QR_RELEASE: 'ROLLBACK_TELLER_RELEASE',
   HSM_RECALL_STORM: 'HOLD_HSM_RECALLS',
+  CICS_SOS: 'RECYCLE_PROD2_AORS',
 };
 
 // Fixer: textbook plus the diagnosing reactions (batch capacity on the trend, classifying new work,

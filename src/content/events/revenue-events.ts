@@ -81,9 +81,9 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('POWER_CAP', { affects: ['EFILE', 'ACCOUNT'] }),
   adapt('HSM_RECALL_STORM', { affects: ['ACCOUNT', 'AGENTS', 'EMPLOYER', 'EFILE'], fix: 'HOLD_HSM_RECALLS_REV' }),
   adapt('CICS_SOS', {
-    affects: ['AGENTS', 'ACCOUNT'],
+    affects: ['AGENTS', 'ACCOUNT', 'REFSTAT', 'EMPLOYER'],
     fix: 'RECYCLE_PROD2_AORS_REV',
-    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs (Agents trust), or route agent work to PROD1.',
+    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs (Agents trust), or route the CICS work (agents, accounts, refund status, employers) to PROD1.',
   }),
 ];
 
