@@ -277,6 +277,41 @@ local only). Do these in order, each as its own PR; the first two are user-order
   resource-group and discretionary capping only and "NOT part of the CPU delay" (p.540); LPAR capping shows as CPU
   delay plus Partition WLM%. Fold that into this change (it is the `capFrac` split) or queue it right after.
 
+Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md`, local only). Not ordered yet.
+- [ ] **6. zIIPs offline must not inflate response time.** With zIIPs defined but offline, eligible work runs on CPs
+  as if it had no eligibility (*Init & Tuning* p.431). Audit: PRDC/PRDD zIIP logicals 3 → 0 took MKTQRY 48 → 82 ms,
+  MOBILE 68 → 106 ms and ADHOC 2.8 → 36.7 s (still 36.4 s at 23:00 on an idle LPAR); the CP side is right (IIPCP
+  filled, PRDC 3.39 → 3.73 CP engines). Cause: zero zIIP capacity gives rho = 1 (`src/sim/zos/dispatcher.ts:86`),
+  the zIIP queue ratio clamps at 50 (`src/sim/wlm/evaluate.ts:505`) and RT bills `ziipSecPerTxn × (1 + zq)` (`:584`).
+  Fix: with no online zIIP, zq = 0 and the eligible seconds are billed at CP speed with the CP queue ratio. Unit test
+  on the dispatcher with zero zIIP capacity.
+- [ ] **7. WLM-managed initiators must add initiation delay to velocity.** Velocity's delay includes "initiation
+  delays for batch jobs in WLM-managed job classes" (*WLM Planning* p.70, p.39 note 1). Audit: class A at one
+  initiator per system gave byte-identical WLMGL rows in JES and WLM mode (BATCHPRD velocity 94.5 %, PI 0.32) while
+  critical jobs lost 10 770 s waiting for an initiator. Cause: queued jobs are in no slice
+  (`src/sim/batch/batch.ts:139-176`) and `evaluate.ts` has no initiation-delay term. Fix: in WLM mode, queued jobs add
+  delay samples to their service class (APPROX: one per queued job), so WLM sees the miss and raises initiators
+  toward demand; JES mode stays invisible to velocity.
+- [ ] **8. Storage Critical must cost the unprotected work.** Protected work loses storage only to equal or more
+  important work, and IBM warns it can reduce throughput (*WLM Planning* p.119). Audit: PRDA at 60 GB, STCHI storage
+  critical: STCHI storage delay 37 → 0 %, velocity 61.6 → 92.1, every other class unchanged. Cause: paging is one
+  image-wide fraction and `evaluate.ts:514` zeroes it for protected classes without moving it anywhere. Fix: keep the
+  image's paging pressure constant and spread the protected classes' share over the unprotected ones (more to lower
+  importance). A free lever breaks the "every lever has a cost" guardrail.
+- [ ] **9. Implicit CPU protection (IEAOPT CCImp, default 1 in z/OS 3.1).** CCImp=1 gives CPU protection to
+  importance-1 single-period classes and first periods without CPU Critical; CCImpBoost (default 2) applies while a
+  boost is active (*Init & Tuning* p.428). Audit (PRDA/PRDB at 4 logical CPs): MKTORD (imp 1) sat at DP 250 below
+  TSO#2 (imp 5) and STCMED (imp 3) at 252; with CPU Critical on MKTORD it went 98.1 % / 109 ms → 99.7 % / 46 ms.
+  Cause: `adjust.ts:84-92` checks only the explicit flag; no CCImp in the IEAOPT config. Fix: `ccImp` in the IEAOPT
+  config (scenario content picks the value; the 3.1 default is 1), applied in `violatesCpuCritical`. A balance change:
+  importance-1 work gets protected for free, so re-sweep and decide per scenario whether its world is pre-3.1
+  (CCImp absent, effectively 0) or 3.1. Changes goldens.
+- [ ] **10. WLM edits must reject invalid goals and flags.** CPU Critical needs a single-period, non-discretionary
+  class (*WLM Planning* p.120); velocity and percentile are 1–99, response time 1 ms–24 h (p.67). The sim accepts CPU
+  Critical on two-period MKTDDF and discretionary DEVBAT, velocity 0 and 100, percentile 100, and AVG 0 s (WLMGL then
+  prints `PERF INDX Infinity`). Fix: checks in `src/game/wlmEdit.ts` (`SET_FLAGS`, goal edits) with the doc's
+  wording in the error.
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
