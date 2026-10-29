@@ -491,7 +491,7 @@ Every unit of business work flows through a **dependency chain** of server addre
 server has a health score per tick:
 
 ```
-health_s = clamp( granted_s / demand_s , 0, 1 )         // CPU-starvation health
+health_s = clamp( granted_s / demand_s , 0, 1 )         // CPU-starvation health; demand includes CPU a WLM cap withheld
          × availability_s                                // 0 if down
          × internalLimit_s                               // e.g. thread/MXT/QR saturation
 ```

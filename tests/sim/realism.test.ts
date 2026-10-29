@@ -230,6 +230,18 @@ describe('WLM caps (resource group maximum, discretionary goal management)', () 
     expect(capped.newBacklog).toBeGreaterThan(free.newBacklog + 3);
   });
 
+  it('RG max on the Db2 region class raises dependent transaction RT', () => {
+    const slices = [
+      txn({ key: 'DDF', scKey: 'DDF#1', cpEngines: 1, servers: [{ role: 'DB2.DBM1', latencySec: 0.012 }] }),
+      server({ key: 'DBM1', scKey: 'STCHI#1', role: 'DB2.DBM1', cpEngines: 0.5 }),
+    ];
+    const base = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0, dpOf: (k: string) => (k === 'STCHI#1' ? 250 : 240) };
+    const free = evaluateLpar(base);
+    const capped = evaluateLpar({ ...base, capOf: (s: SliceSpec) => (s.scKey === 'STCHI#1' ? 0.05 : Infinity) });
+    expect(capped.roleHealth['DB2.DBM1']!.health).toBeLessThan(0.2);
+    expect(capped.slices[0]!.rtMeanSec).toBeGreaterThan(free.slices[0]!.rtMeanSec + 0.05);
+  });
+
   it('caps over-achieving loose-goal work only while discretionary work waits', () => {
     const acc = (using: number, delay: number, cpuEngines: number) => ({ ...emptyAcc(), using, delay, cpuEngines });
     const sl = [server({ key: 'TSO2', scKey: 'TSO#2', cpEngines: 1 }), server({ key: 'ONL', scKey: 'ONLHI#1', cpEngines: 1 })];
