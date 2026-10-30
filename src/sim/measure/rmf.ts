@@ -7,7 +7,7 @@ import type { DasdResult } from '../io/dasd';
 import type { LparRuntime, LparTick, WorldConfig } from '../core/types';
 import type { ScpTick } from '../wlm/evaluate';
 import { BUCKETS, emptyBuckets, velocityOf } from '../wlm/goals';
-import { goalInfo, accPi, emptyAcc, type ScpAcc } from '../wlm/runtime';
+import { goalInfo, accPi, emptyAcc, velDelay, velUsing, type ScpAcc } from '../wlm/runtime';
 import type { ServiceDefinition } from '../wlm/types';
 import { TICK_SEC } from '../core/units';
 
@@ -307,6 +307,9 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
     usingIo: a.usingIo + t.usingIo,
     delayStorage: a.delayStorage + t.delayStorage,
     ...(t.delayQueue || a.delayQueue ? { delayQueue: (a.delayQueue ?? 0) + (t.delayQueue ?? 0) } : {}),
+    ...(t.usingIoNoVel !== undefined || a.usingIoNoVel !== undefined
+      ? { usingIoNoVel: (a.usingIoNoVel ?? 0) + (t.usingIoNoVel ?? 0), delayIoNoVel: (a.delayIoNoVel ?? 0) + (t.delayIoNoVel ?? 0) }
+      : {}),
     failed: a.failed + t.failed,
   };
   scps[k] = (members !== undefined ? { ...out, members } : out) as T;
@@ -332,6 +335,9 @@ function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
     usingIo: p.usingIo + a.usingIo,
     delayStorage: p.delayStorage + a.delayStorage,
     ...(p.delayQueue || a.delayQueue ? { delayQueue: (p.delayQueue ?? 0) + (a.delayQueue ?? 0) } : {}),
+    ...(p.usingIoNoVel !== undefined || a.usingIoNoVel !== undefined
+      ? { usingIoNoVel: (p.usingIoNoVel ?? 0) + (a.usingIoNoVel ?? 0), delayIoNoVel: (p.delayIoNoVel ?? 0) + (a.delayIoNoVel ?? 0) }
+      : {}),
     delayCap: p.delayCap + a.delayCap,
     failed: p.failed + a.failed,
   };
@@ -377,7 +383,7 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
     endPerSec: sec > 0 ? a.completions / sec : 0,
     failed: a.failed,
     avgRtSec: a.completions > 1e-9 ? a.rtSumSec / a.completions : null,
-    execVelocity: velocityOf(a.using, a.delay),
+    execVelocity: velocityOf(velUsing(a), velDelay(a)),
     pi: goal ? accPi(goal, a) : null,
     applCpPct: ticks > 0 ? (100 * a.cpuEngines) / ticks : 0,
     applIipcpPct: ticks > 0 ? (100 * a.iipcpEngines) / ticks : 0,

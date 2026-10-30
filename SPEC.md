@@ -406,8 +406,9 @@ into SYSTEM regardless of rules, as z/OS does
 
 Per tick, per period, we derive "sample" fractions as if sampled every 250 ms:
 
-- **Using:** CPU, zIIP, I/O (if I/O priority management on).
-- **Delay:** CPU, zIIP, I/O, paging/storage, capping, MPL/swap, queue (initiator/thread wait).
+- **Using:** CPU, zIIP, I/O (I/O in velocity only if I/O priority management on).
+- **Delay:** CPU, zIIP, I/O (in velocity only if on), paging/storage, capping, MPL/swap, queue (initiator/thread wait).
+  I/O samples are reported either way (WLM Planning p.115).
 - **Idle / unknown:** excluded from velocity.
 
 ```
@@ -1468,7 +1469,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
 | Swap / MPL delay | **Simplified** | Only batch jobs are swappable; swap out least important first when storage overcommits; swap-in immediate when it frees |
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH (0–999 999 999); messages already queued above a lowered MAXDEPTH stay and drain (MQ 9.4 Administration Reference p.463); depth adds memory; no MQ SMF 115/116 |
-| WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved); NO excludes I/O from velocity |
+| WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved), on or off: NO sets I/O priority = DP (WLM Planning p.115). NO leaves I/O using/delay samples out of velocity (and velocity PI) only; WLMGL, WLM_DETAIL and Monitor III still report them (p.70, p.115). APPROX: YES (goal-based I/O priorities) also uses DP |
 | Discretionary goal management | **Simplified** | Eligibility per WLM Planning (velocity ≤ 30 or RT > 1 min, no resource group); small consumers skipped; other SG24-7621 Fig. 4-22 conditions not modelled. Starts at PI < 0.71 and stays capped below 0.81 (WLM's band); the cap grows with the distance below 0.81 (gain and 50 % floor FICTIONAL) |
 | Resource group types 1/2/3 semantics | **Real** | MVS Planning: WLM ch. 7. CP only (specialty consumption excluded, the default). Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals; a discretionary member's share sits just below goal work, so it only takes capacity no goal period wants (WLM Planning p.59; APPROX: not limited to periods meeting their goals). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX). A group on a region class caps the transactions hosted there (by host-region CPU share, APPROX) and slows the region's dependents |
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |

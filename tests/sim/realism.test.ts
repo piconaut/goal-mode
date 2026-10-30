@@ -6,7 +6,7 @@ import { resolveCpc } from '../../src/sim/hw/pools';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
 import { discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
-import { emptyAcc, goalInfo } from '../../src/sim/wlm/runtime';
+import { accPi, decayInto, emptyAcc, goalInfo, tickPi } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
@@ -300,10 +300,30 @@ describe('WLM I/O priority management', () => {
     expect(perIo(r[0]!)).toBeLessThan(perIo(r[1]!));
     expect((perIo(r[0]!) + perIo(r[1]!)) / 2).toBeCloseTo(io.RANDOM.delaySec, 6);
   });
-  it('when off, IOSQ is first come first served and I/O samples leave velocity', () => {
-    const r = evaluateLpar({ ...base, ioPriority: false }).slices;
-    expect(r[0]!.parts!.io).toBeCloseTo(r[1]!.parts!.io, 9);
-    expect(r[0]!.usingIo + r[0]!.delayIo).toBe(0);
+  it('I/O priority management off keeps I/O delay in WLMGL but not in velocity', () => {
+    // NO "sets I/O priorities equal to dispatching priorities"; I/O using and delay samples "are reported even
+    // when I/O priority management is turned off" but are not in the velocity formula (WLM Planning p.115, p.70).
+    const on = evaluateLpar(base);
+    const off = evaluateLpar({ ...base, ioPriority: false });
+    for (let i = 0; i < 2; i++) {
+      const a = on.slices[i]!, b = off.slices[i]!;
+      expect(b.delayIo).toBeGreaterThan(0);
+      expect(b.delayIo).toBeCloseTo(a.delayIo, 12);
+      expect(b.usingIo).toBeCloseTo(a.usingIo, 12);
+      expect(b.delayOther).toBeCloseTo(a.delayOther, 12); // OTHER does not absorb the I/O delay
+      expect(b.rtMeanSec).toBeCloseTo(a.rtMeanSec, 12);
+    }
+    expect(off.slices[0]!.parts!.io).toBeLessThan(off.slices[1]!.parts!.io); // still DP-ordered, not FIFO
+    const goal = { kind: 'VEL' as const, velocity: 50 };
+    const t = (r: typeof on, k: string) => r.scps.find((x) => x.scKey === k)!;
+    const hiOn = t(on, 'HI#1'), hiOff = t(off, 'HI#1');
+    const v = (using: number, delay: number) => (100 * using) / (using + delay);
+    const cpuUsing = hiOff.usingCpu + hiOff.usingZiip;
+    const cpuDelay = hiOff.delayCpu + hiOff.delayZiip + hiOff.delayStorage + hiOff.delayCap;
+    expect(tickPi(goal, hiOn)).toBeCloseTo(50 / v(cpuUsing + hiOn.usingIo, cpuDelay + hiOn.delayIo), 9);
+    expect(tickPi(goal, hiOff)).toBeCloseTo(50 / v(cpuUsing, cpuDelay), 9);
+    // The smoothed WLM accumulator follows the same formula.
+    expect(accPi(goal, decayInto(emptyAcc(), hiOff))).toBeCloseTo(50 / v(cpuUsing, cpuDelay), 9);
   });
   it('counts only device connect as I/O using: disconnect is neither using nor delay', () => {
     const withConn = { ...io, RANDOM: { ...io.RANDOM, connSec: 0.0005 } };

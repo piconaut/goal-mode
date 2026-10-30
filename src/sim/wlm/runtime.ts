@@ -20,7 +20,14 @@ export interface ScpAcc {
   delayOther: number;
   delayCap: number;
   cpuEngines: number;
+  /** Parts of using / delay left out of velocity (I/O priority management off); absent when none. */
+  usingIoNoVel?: number;
+  delayIoNoVel?: number;
 }
+
+/** Velocity samples: all using / delay samples except I/O while I/O priority management is off. */
+export const velUsing = (a: { using: number; usingIoNoVel?: number }): number => a.using - (a.usingIoNoVel ?? 0);
+export const velDelay = (a: { delay: number; delayIoNoVel?: number }): number => a.delay - (a.delayIoNoVel ?? 0);
 
 export interface ScpState {
   scKey: string;
@@ -121,6 +128,9 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
     delayOther: acc.delayOther * d + t.delayOther,
     delayCap: acc.delayCap * d + t.delayCap,
     cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
+    ...(acc.usingIoNoVel !== undefined || t.usingIoNoVel !== undefined
+      ? { usingIoNoVel: (acc.usingIoNoVel ?? 0) * d + (t.usingIoNoVel ?? 0), delayIoNoVel: (acc.delayIoNoVel ?? 0) * d + (t.delayIoNoVel ?? 0) }
+      : {}),
   };
 }
 
@@ -142,6 +152,10 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   out.delayOther += a.delayOther;
   out.delayCap += a.delayCap;
   out.cpuEngines += a.cpuEngines;
+  if (a.usingIoNoVel !== undefined) {
+    out.usingIoNoVel = (out.usingIoNoVel ?? 0) + a.usingIoNoVel;
+    out.delayIoNoVel = (out.delayIoNoVel ?? 0) + (a.delayIoNoVel ?? 0);
+  }
 }
 
 export function accPi(goal: Goal, a: ScpAcc): number | null {
@@ -149,8 +163,8 @@ export function accPi(goal: Goal, a: ScpAcc): number | null {
     completions: a.completions,
     rtSumSec: a.rtSumSec,
     buckets: a.buckets,
-    usingSamples: a.using,
-    delaySamples: a.delay,
+    usingSamples: velUsing(a),
+    delaySamples: velDelay(a),
   });
 }
 
@@ -159,8 +173,8 @@ export function tickPi(goal: Goal, t: ScpTick): number | null {
     completions: t.completions,
     rtSumSec: t.rtSumSec,
     buckets: t.buckets,
-    usingSamples: t.usingCpu + t.usingZiip + t.usingIo,
-    delaySamples: t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
+    usingSamples: t.usingCpu + t.usingZiip + t.usingIo - (t.usingIoNoVel ?? 0),
+    delaySamples: t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0) - (t.delayIoNoVel ?? 0),
   });
 }
 
