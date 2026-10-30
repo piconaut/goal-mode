@@ -28,6 +28,7 @@ npm run typecheck    # tsc --noEmit
 npm run check        # typecheck + tests (no lint script yet)
 npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
+npm run lab -- a.json b.json   # realism lab: A/B runs from JSON specs, side by side per RMF interval (format in tools/lab.ts)
 npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
 npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)

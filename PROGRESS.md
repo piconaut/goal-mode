@@ -382,6 +382,25 @@ Audit round 5 (2026-10-30, Midwest seed 7; `runs/lab/2026-10-30-audit-r5.md`, lo
   on logical capacity (`evaluate.ts:431`), buffer pool miss multiplier capped at ×4. Noted, not queued: aliases 0 is
   inert at default load (volumes about 1 % busy), so the lever has no clue path until an event adds I/O.
 
+Audit round 6 (2026-10-30, Harbourline seed 13; `runs/lab/2026-10-30-audit-r6.md`, local only).
+- [ ] **17. I/O priority management off must keep reporting I/O samples and DP-ordered IOSQ.** NO "sets I/O
+  priorities equal to dispatching priorities", and the DASD I/O using and delay samples "are reported even when I/O
+  priority management is turned off"; only velocity leaves them out (*WLM Planning* p.115, p.70). Audit (LCU 10–12
+  aliases 0 + 60 000 IOPS): OFF took ONLHI I/O delay 41 → 0 %, OTH 41 → 73 %, MKTORD RT 0.044 → 0.048 s. Cause:
+  `evaluate.ts:518` zeroes I/O samples in the reports, and `:516` makes IOSQ FIFO. Fix: keep the samples for
+  WLMGL, drop them only from velocity; order IOSQ by DP when off. APPROX: goal-based I/O priority when on is not
+  modelled (on also orders by DP).
+- [ ] **18. CF Activity must show duplexed secondaries and per-structure system rows.** The Usage Summary marks
+  PRIM/SEC for synchronously duplexed structures (*RMF Report Analysis* p.365). Audit: LOCK1 duplexed, CF02 shows
+  16 733 req/s at 40.2 % UTIL, CF01 25 100 req/s at 30.1 %, no secondary row; the secondary's CPU is counted
+  (`cf.ts:97-105`) but not its requests. CONNECTED SYSTEMS is blended over all structures (control PRDA shows
+  15 km though its lock is local). Fix: PRIM/SEC rows with the secondary's requests, structure × system rows.
+  Reporting only.
+- Matches: Db2 address spaces below their work (delay in OTH, not CPU), LOCK1 move/duplex service and async
+  share, period switching on DURATION, HiperDispatch polarity and the LPAR/MVS BUSY columns. Noted: Harbourline
+  CPU and DASD have headroom (CPC1 ~60 %, IOSQ needs ~60 000 extra IOPS per LCU), so those levers bite only after
+  an event or squeeze.
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
@@ -504,6 +523,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | Expert/fixer bots recycle the PROD2 AORs on CICS_SOS on sight; the card's `affects` and clue name every PROD2 CICS workload (Midwest, revenue) | Post-M8.7 sweeps: fix 3 made CICS_SOS time out all PROD2 CICS work for 4 h, and no bot applied its fix, so expert lost Midwest seeds 6 and 10 (victories 9 → 7). With the fix, 10-seed sweeps on a27b131: Midwest expert 9 victories (was 7), revenue expert 10 (unchanged, scores +3 to +13), Harbourline unchanged (no CICS_SOS); donothing and textbook rows identical. All gates pass. `affects` only feeds incident attribution and the card's trigger is POLICY, the fallback those incidents already got, so no sim change; goldens unchanged |
 | 2026-10-30 | Audit rounds run as a paced loop (`/audit-loop <rounds> <pace>`): Sonnet auditor subagents, vetting by the main agent, Opus `realism-fixer` subagents in worktrees, fixes landed one PR at a time, 10-seed sweeps per scenario on Sonnet worker sessions; a scheduled task launches audits and is deleted after the last round | User request. Each audit is processed as it finishes; sweeps go to separate containers because the 4-core box can't sweep and test at once; one golden-changing PR at a time still holds |
 | 2026-10-30 | Partition Data shows LPAR BUSY% and MVS BUSY%; MVS BUSY = CP demand / unparked logical CPs; Monitor III MVS Util% uses it (was lparBusy/(1 − short-engine delay)) | Audit r5 item 16 (*RMF Report Analysis* p.389). Midwest seed 7, PROD1 weight 50 on 4 CPs: LPAR 7.0 / MVS 8.1 → 7.0 / 100. Reporting only; one-day state hash without the new fields equals dev, so no sweep |
+| 2026-10-30 | Realism lab harness `tools/lab.ts` (`npm run lab`): JSON specs with `extends`, timed changes (commands, WLM edits, config patches), chosen report fields per interval, A/B side by side; auditor and fixer agents use it | User request: auditors were each writing their own harness (`runs/lab/r5.ts`, `runs/lab/r6/h.ts`); one shared harness keeps A/Bs comparable and lets fixers rerun the audit's exact specs |
 
 ## Open questions
 
