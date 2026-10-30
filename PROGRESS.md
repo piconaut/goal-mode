@@ -382,6 +382,25 @@ Audit round 5 (2026-10-30, Midwest seed 7; `runs/lab/2026-10-30-audit-r5.md`, lo
   on logical capacity (`evaluate.ts:431`), buffer pool miss multiplier capped at ×4. Noted, not queued: aliases 0 is
   inert at default load (volumes about 1 % busy), so the lever has no clue path until an event adds I/O.
 
+Audit round 6 (2026-10-30, Harbourline seed 13; `runs/lab/2026-10-30-audit-r6.md`, local only).
+- [ ] **17. I/O priority management off must keep reporting I/O samples and DP-ordered IOSQ.** NO "sets I/O
+  priorities equal to dispatching priorities", and the DASD I/O using and delay samples "are reported even when I/O
+  priority management is turned off"; only velocity leaves them out (*WLM Planning* p.115, p.70). Audit (LCU 10–12
+  aliases 0 + 60 000 IOPS): OFF took ONLHI I/O delay 41 → 0 %, OTH 41 → 73 %, MKTORD RT 0.044 → 0.048 s. Cause:
+  `evaluate.ts:518` zeroes I/O samples in the reports, and `:516` makes IOSQ FIFO. Fix: keep the samples for
+  WLMGL, drop them only from velocity; order IOSQ by DP when off. APPROX: goal-based I/O priority when on is not
+  modelled (on also orders by DP).
+- [ ] **18. CF Activity must show duplexed secondaries and per-structure system rows.** The Usage Summary marks
+  PRIM/SEC for synchronously duplexed structures (*RMF Report Analysis* p.365). Audit: LOCK1 duplexed, CF02 shows
+  16 733 req/s at 40.2 % UTIL, CF01 25 100 req/s at 30.1 %, no secondary row; the secondary's CPU is counted
+  (`cf.ts:97-105`) but not its requests. CONNECTED SYSTEMS is blended over all structures (control PRDA shows
+  15 km though its lock is local). Fix: PRIM/SEC rows with the secondary's requests, structure × system rows.
+  Reporting only.
+- Matches: Db2 address spaces below their work (delay in OTH, not CPU), LOCK1 move/duplex service and async
+  share, period switching on DURATION, HiperDispatch polarity and the LPAR/MVS BUSY columns. Noted: Harbourline
+  CPU and DASD have headroom (CPC1 ~60 %, IOSQ needs ~60 000 extra IOPS per LCU), so those levers bite only after
+  an event or squeeze.
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
