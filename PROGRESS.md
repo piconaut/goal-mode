@@ -383,14 +383,14 @@ Audit round 5 (2026-10-30, Midwest seed 7; `runs/lab/2026-10-30-audit-r5.md`, lo
   inert at default load (volumes about 1 % busy), so the lever has no clue path until an event adds I/O.
 
 Audit round 6 (2026-10-30, Harbourline seed 13; `runs/lab/2026-10-30-audit-r6.md`, local only).
-- [ ] **17. I/O priority management off must keep reporting I/O samples and DP-ordered IOSQ.** NO "sets I/O
+- [x] **17. I/O priority management off must keep reporting I/O samples and DP-ordered IOSQ.** Done 2026-10-30: `usingIoNoVel`/`delayIoNoVel` keep the samples for reports and leave them out of velocity and the WLM bottleneck; IOSQ always DP-ordered; realism test replaced; goldens unchanged. NO "sets I/O
   priorities equal to dispatching priorities", and the DASD I/O using and delay samples "are reported even when I/O
   priority management is turned off"; only velocity leaves them out (*WLM Planning* p.115, p.70). Audit (LCU 10–12
   aliases 0 + 60 000 IOPS): OFF took ONLHI I/O delay 41 → 0 %, OTH 41 → 73 %, MKTORD RT 0.044 → 0.048 s. Cause:
   `evaluate.ts:518` zeroes I/O samples in the reports, and `:516` makes IOSQ FIFO. Fix: keep the samples for
   WLMGL, drop them only from velocity; order IOSQ by DP when off. APPROX: goal-based I/O priority when on is not
   modelled (on also orders by DP).
-- [ ] **18. CF Activity must show duplexed secondaries and per-structure system rows.** The Usage Summary marks
+- [x] **18. CF Activity must show duplexed secondaries and per-structure system rows.** Done 2026-10-30: STRUCTURE SUMMARY PRIM/SEC rows with the secondary's traffic on its CF, STRUCTURE ACTIVITY per copy × system, SUBCHANNEL ACTIVITY per CF × system with the distance to that CF; realism tests added; goldens moved (state fields only). The Usage Summary marks
   PRIM/SEC for synchronously duplexed structures (*RMF Report Analysis* p.365). Audit: LOCK1 duplexed, CF02 shows
   16 733 req/s at 40.2 % UTIL, CF01 25 100 req/s at 30.1 %, no secondary row; the secondary's CPU is counted
   (`cf.ts:97-105`) but not its requests. CONNECTED SYSTEMS is blended over all structures (control PRDA shows
@@ -524,6 +524,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-30 | Audit rounds run as a paced loop (`/audit-loop <rounds> <pace>`): Sonnet auditor subagents, vetting by the main agent, Opus `realism-fixer` subagents in worktrees, fixes landed one PR at a time, 10-seed sweeps per scenario on Sonnet worker sessions; a scheduled task launches audits and is deleted after the last round | User request. Each audit is processed as it finishes; sweeps go to separate containers because the 4-core box can't sweep and test at once; one golden-changing PR at a time still holds |
 | 2026-10-30 | Partition Data shows LPAR BUSY% and MVS BUSY%; MVS BUSY = CP demand / unparked logical CPs; Monitor III MVS Util% uses it (was lparBusy/(1 − short-engine delay)) | Audit r5 item 16 (*RMF Report Analysis* p.389). Midwest seed 7, PROD1 weight 50 on 4 CPs: LPAR 7.0 / MVS 8.1 → 7.0 / 100. Reporting only; one-day state hash without the new fields equals dev, so no sweep |
 | 2026-10-30 | Realism lab harness `tools/lab.ts` (`npm run lab`): JSON specs with `extends`, timed changes (commands, WLM edits, config patches), chosen report fields per interval, A/B side by side; auditor and fixer agents use it | User request: auditors were each writing their own harness (`runs/lab/r5.ts`, `runs/lab/r6/h.ts`); one shared harness keeps A/Bs comparable and lets fixers rerun the audit's exact specs |
+| 2026-10-30 | I/O priority management NO keeps DASD I/O using/delay in WLMGL, WLM_DETAIL and Monitor III, keeps the IOSQ ordered by DP, and leaves I/O out of velocity and of the WLM bottleneck | Audit r6 item 17 (*WLM Planning* p.115, p.70). Harbourline seed 13, busy LCUs, OFF at PRDA 10:00: ONLHI I/O delay 0 → 42 %, OTH 80 → 43 %, MKTORD RT 0.048 → 0.044 s (FIFO gone). Default policies keep I/O priority on: goldens and bench hashes unchanged, so no sweep |
+| 2026-10-30 | CF Activity follows the RMF layout: duplexed structures get PRIM and SEC rows (the secondary's requests count on its CF), STRUCTURE ACTIVITY per structure copy × system, SUBCHANNEL ACTIVITY (was CONNECTED SYSTEMS) per CF × system with that CF's distance | Audit r6 item 18 (*RMF Report Analysis* p.365, p.372–378). Harbourline seed 13, LOCK1 duplexed: CF02 REQ/SEC 16 733 → 33 466; EST DIST per row 0/15 km instead of 15 everywhere. Reporting only: state hash without the new fields equals dev (f7c857525081d79f), so no sweep. APPROX: both copies report the duplexed request's elapsed time |
 
 ## Open questions
 

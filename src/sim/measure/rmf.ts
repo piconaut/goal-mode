@@ -7,7 +7,7 @@ import type { DasdResult } from '../io/dasd';
 import type { LparRuntime, LparTick, WorldConfig } from '../core/types';
 import type { ScpTick } from '../wlm/evaluate';
 import { BUCKETS, emptyBuckets, velocityOf } from '../wlm/goals';
-import { goalInfo, accPi, emptyAcc, type ScpAcc } from '../wlm/runtime';
+import { goalInfo, accPi, emptyAcc, velDelay, velUsing, type ScpAcc } from '../wlm/runtime';
 import type { ServiceDefinition } from '../wlm/types';
 import { TICK_SEC } from '../core/units';
 
@@ -57,11 +57,31 @@ export interface RmfAcc {
   lcus: Record<string, { ios: number; iosqW: number; rtW: number; aliasesPerHot: number; ticks: number }>;
   cf: Record<string, { busy: number; rate: number; sync: number; async: number; service: number; ticks: number }>;
   /** Per structure: request-weighted sums (rate × value) so interval averages weight busy ticks. */
-  cfStructures: Record<string, { type: string; cfLparId: string; rate: number; syncReq: number; syncSecW: number; serviceSecW: number; ticks: number }>;
-  /** Per connected system: request-weighted sums of its own CF service. */
-  cfSystems?: Record<string, { distKm: number; rate: number; syncSecW: number; asyncW: number; serviceSecW: number; ticks: number }>;
+  /** Keyed by name, or name|SEC for a duplexed secondary copy. */
+  cfStructures: Record<string, { name?: string; role?: 'PRIM' | 'SEC'; type: string; cfLparId: string; rate: number; syncReq: number; syncSecW: number; serviceSecW: number; ticks: number }>;
+  /** Per connected system and CF (Subchannel Activity), keyed system|cf: request-weighted sums of its CF service. */
+  cfSystems?: Record<string, { system?: string; cfLparId?: string; distKm: number; rate: number; syncSecW: number; asyncW: number; serviceSecW: number; ticks: number }>;
+  /** Per structure copy and connected system (Structure Activity), keyed name|role|system. */
+  cfStructSystems?: Record<string, CfStructSystemAcc>;
   /** Report classes, keyed lpar|name (only once the policy assigns any). */
   rcs?: Record<string, RcIntervalAcc>;
+}
+
+/** Structure name, then PRIM before SEC. */
+const byNameRole = (a: string, ar: string | undefined, b: string, br: string | undefined) => (a !== b ? (a < b ? -1 : 1) : (ar ?? '') < (br ?? '') ? -1 : (ar ?? '') > (br ?? '') ? 1 : 0);
+
+export interface CfStructSystemAcc {
+  name: string;
+  type: string;
+  role?: 'PRIM' | 'SEC';
+  cfLparId: string;
+  system: string;
+  rate: number;
+  syncReq: number;
+  syncSecW: number;
+  asyncReq: number;
+  asyncSecW: number;
+  ticks: number;
 }
 
 export interface WlmRecord {
@@ -138,8 +158,12 @@ export interface RmfInterval {
   dasd: { iops: number; rtRandomMs: number; rtSeqMs: number; iosqMs: number; pendMs: number; discMs: number; connMs: number };
   lcus: { id: string; label: string; volumes: number; aliases: number; iops: number; iosqMs: number; rtMs: number; aliasesPerHotVol: number }[];
   cf: { lparId: string; busyPct: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
-  cfStructures: { name: string; type: string; cfLparId: string; reqPerSec: number; syncPct: number; syncUs: number; serviceUs: number }[];
-  cfSystems?: { system: string; distKm: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
+  /** Usage Summary: every structure copy; a synchronously duplexed pair shows as PRIM and SEC (RMF Report Analysis p.365). */
+  cfStructures: { name: string; role?: 'PRIM' | 'SEC'; type: string; cfLparId: string; reqPerSec: number; syncPct: number; syncUs: number; serviceUs: number }[];
+  /** Subchannel Activity: one row per connected system per CF, distance to that CF (p.376–378). */
+  cfSystems?: { system: string; cfLparId: string; distKm: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
+  /** Structure Activity: one row per structure copy per connected system (p.372–374). */
+  cfStructSystems?: { name: string; type: string; role?: 'PRIM' | 'SEC'; cfLparId: string; system: string; reqPerSec: number; syncPct: number; syncUs: number; asyncUs: number }[];
   jobs: JobEndRecord[];
 }
 
@@ -226,21 +250,38 @@ export function accumulateTick(
   const c = { ...acc.cf };
   for (const r of cf) {
     const a = c[r.lparId] ?? { busy: 0, rate: 0, sync: 0, async: 0, service: 0, ticks: 0 };
+    // Requests to secondary copies are CF requests too: fold them into the CF's rate and averages.
+    let rate = r.requestRate;
+    let sync = r.syncSec;
+    let async = r.asyncFrac;
+    let service = r.serviceSec;
+    if (r.secondaries) {
+      const all = [...r.structures, ...r.secondaries];
+      rate = all.reduce((x, st) => x + st.requestRate, 0);
+      if (rate > 0) {
+        sync = all.reduce((x, st) => x + st.requestRate * st.syncSec, 0) / rate;
+        async = all.reduce((x, st) => x + st.requestRate * st.asyncFrac, 0) / rate;
+        service = all.reduce((x, st) => x + st.requestRate * st.serviceSec, 0) / rate;
+      }
+    }
     c[r.lparId] = {
       busy: a.busy + r.busyFrac,
-      rate: a.rate + r.requestRate,
-      sync: a.sync + r.syncSec,
-      async: a.async + r.asyncFrac,
-      service: a.service + r.serviceSec,
+      rate: a.rate + rate,
+      sync: a.sync + sync,
+      async: a.async + async,
+      service: a.service + service,
       ticks: a.ticks + 1,
     };
   }
   const cs = { ...(acc.cfStructures ?? {}) };
   for (const r of cf) {
-    for (const st of r.structures ?? []) {
-      const a = cs[st.name] ?? { type: st.type, cfLparId: st.cfLparId, rate: 0, syncReq: 0, syncSecW: 0, serviceSecW: 0, ticks: 0 };
+    for (const st of [...(r.structures ?? []), ...(r.secondaries ?? [])]) {
+      const key = st.role === 'SEC' ? `${st.name}|SEC` : st.name;
+      const a = cs[key] ?? { type: st.type, cfLparId: st.cfLparId, rate: 0, syncReq: 0, syncSecW: 0, serviceSecW: 0, ticks: 0 };
       const syncRate = st.requestRate * (1 - st.asyncFrac);
-      cs[st.name] = {
+      cs[key] = {
+        name: st.name,
+        ...(st.role ? { role: st.role } : {}),
         type: st.type,
         cfLparId: st.cfLparId,
         rate: a.rate + st.requestRate,
@@ -252,15 +293,27 @@ export function accumulateTick(
     }
   }
   let sy = acc.cfSystems;
+  let ss = acc.cfStructSystems;
   if (cfSys) {
     sy = { ...(sy ?? {}) };
+    ss = { ...(ss ?? {}) };
     for (const id of Object.keys(cfSys).sort()) {
-      const r = cfSys[id]!;
-      const a = sy[id] ?? { distKm: 0, rate: 0, syncSecW: 0, asyncW: 0, serviceSecW: 0, ticks: 0 };
-      sy[id] = { distKm: r.distKm, rate: a.rate + r.requestRate, syncSecW: a.syncSecW + r.requestRate * r.syncSec, asyncW: a.asyncW + r.requestRate * r.asyncFrac, serviceSecW: a.serviceSecW + r.requestRate * r.serviceSec, ticks: a.ticks + 1 };
+      const touched = new Set<string>();
+      for (const x of cfSys[id]!.byStructure ?? []) {
+        const k = `${x.name}|${x.role ?? ''}|${id}`;
+        const b = ss[k] ?? { name: x.name, type: x.type, ...(x.role ? { role: x.role } : {}), cfLparId: x.cfLparId, system: id, rate: 0, syncReq: 0, syncSecW: 0, asyncReq: 0, asyncSecW: 0, ticks: 0 };
+        const syncRate = x.requestRate * (1 - x.asyncFrac);
+        const asyncRate = x.requestRate * x.asyncFrac;
+        ss[k] = { ...b, cfLparId: x.cfLparId, rate: b.rate + x.requestRate, syncReq: b.syncReq + syncRate, syncSecW: b.syncSecW + syncRate * x.syncSec, asyncReq: b.asyncReq + asyncRate, asyncSecW: b.asyncSecW + asyncRate * x.asyncSec, ticks: b.ticks + 1 };
+        // Subchannel Activity: this system's requests to that CF, over every structure copy there.
+        const sk = `${id}|${x.cfLparId}`;
+        const a = sy[sk] ?? { system: id, cfLparId: x.cfLparId, distKm: 0, rate: 0, syncSecW: 0, asyncW: 0, serviceSecW: 0, ticks: 0 };
+        sy[sk] = { ...a, distKm: x.distKm, rate: a.rate + x.requestRate, syncSecW: a.syncSecW + x.requestRate * x.syncSec, asyncW: a.asyncW + x.requestRate * x.asyncFrac, serviceSecW: a.serviceSecW + x.requestRate * x.serviceSec, ticks: a.ticks + (touched.has(sk) ? 0 : 1) };
+        touched.add(sk);
+      }
     }
   }
-  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(sy ? { cfSystems: sy } : {}), ...(rcs ? { rcs } : {}) };
+  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(sy ? { cfSystems: sy } : {}), ...(ss ? { cfStructSystems: ss } : {}), ...(rcs ? { rcs } : {}) };
 }
 
 // `${lparId}|${scKey}` without building a new string every tick.
@@ -307,6 +360,9 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
     usingIo: a.usingIo + t.usingIo,
     delayStorage: a.delayStorage + t.delayStorage,
     ...(t.delayQueue || a.delayQueue ? { delayQueue: (a.delayQueue ?? 0) + (t.delayQueue ?? 0) } : {}),
+    ...(t.usingIoNoVel !== undefined || a.usingIoNoVel !== undefined
+      ? { usingIoNoVel: (a.usingIoNoVel ?? 0) + (t.usingIoNoVel ?? 0), delayIoNoVel: (a.delayIoNoVel ?? 0) + (t.delayIoNoVel ?? 0) }
+      : {}),
     failed: a.failed + t.failed,
   };
   scps[k] = (members !== undefined ? { ...out, members } : out) as T;
@@ -332,6 +388,9 @@ function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
     usingIo: p.usingIo + a.usingIo,
     delayStorage: p.delayStorage + a.delayStorage,
     ...(p.delayQueue || a.delayQueue ? { delayQueue: (p.delayQueue ?? 0) + (a.delayQueue ?? 0) } : {}),
+    ...(p.usingIoNoVel !== undefined || a.usingIoNoVel !== undefined
+      ? { usingIoNoVel: (p.usingIoNoVel ?? 0) + (a.usingIoNoVel ?? 0), delayIoNoVel: (p.delayIoNoVel ?? 0) + (a.delayIoNoVel ?? 0) }
+      : {}),
     delayCap: p.delayCap + a.delayCap,
     failed: p.failed + a.failed,
   };
@@ -377,7 +436,7 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
     endPerSec: sec > 0 ? a.completions / sec : 0,
     failed: a.failed,
     avgRtSec: a.completions > 1e-9 ? a.rtSumSec / a.completions : null,
-    execVelocity: velocityOf(a.using, a.delay),
+    execVelocity: velocityOf(velUsing(a), velDelay(a)),
     pi: goal ? accPi(goal, a) : null,
     applCpPct: ticks > 0 ? (100 * a.cpuEngines) / ticks : 0,
     applIipcpPct: ticks > 0 ? (100 * a.iipcpEngines) / ticks : 0,
@@ -488,9 +547,10 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
       };
     }),
     cfStructures: Object.entries(acc.cfStructures ?? {})
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([name, a]) => ({
-        name,
+      .sort(([a, x], [b, y]) => byNameRole(x.name ?? a, x.role, y.name ?? b, y.role))
+      .map(([key, a]) => ({
+        name: a.name ?? key,
+        ...(a.role ? { role: a.role } : {}),
         type: a.type,
         cfLparId: a.cfLparId,
         reqPerSec: a.rate / Math.max(1, a.ticks),
@@ -501,15 +561,34 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
     ...(acc.cfSystems
       ? {
           cfSystems: Object.entries(acc.cfSystems)
-            .sort(([a], [b]) => (a < b ? -1 : 1))
             .filter(([, a]) => a.rate > 0)
-            .map(([system, a]) => ({
-              system,
+            .map(([key, a]) => ({
+              system: a.system ?? key,
+              cfLparId: a.cfLparId ?? '',
               distKm: a.distKm,
               reqPerSec: a.rate / Math.max(1, a.ticks),
               syncUs: (1e6 * a.syncSecW) / a.rate,
               asyncPct: (100 * a.asyncW) / a.rate,
               serviceUs: (1e6 * a.serviceSecW) / a.rate,
+            }))
+            .sort((a, b) => (a.cfLparId !== b.cfLparId ? (a.cfLparId < b.cfLparId ? -1 : 1) : a.system < b.system ? -1 : 1)),
+        }
+      : {}),
+    ...(acc.cfStructSystems
+      ? {
+          cfStructSystems: Object.values(acc.cfStructSystems)
+            .filter((a) => a.rate > 0)
+            .sort((a, b) => byNameRole(a.name, a.role, b.name, b.role) || (a.system < b.system ? -1 : a.system > b.system ? 1 : 0))
+            .map((a) => ({
+              name: a.name,
+              type: a.type,
+              ...(a.role ? { role: a.role } : {}),
+              cfLparId: a.cfLparId,
+              system: a.system,
+              reqPerSec: a.rate / Math.max(1, a.ticks),
+              syncPct: (100 * a.syncReq) / a.rate,
+              syncUs: a.syncReq > 0 ? (1e6 * a.syncSecW) / a.syncReq : 0,
+              asyncUs: a.asyncReq > 0 ? (1e6 * a.asyncSecW) / a.asyncReq : 0,
             })),
         }
       : {}),

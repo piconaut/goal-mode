@@ -138,7 +138,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // Projection is the expensive part: assess at most two fixable receivers per interval.
     if (projected >= 2) break;
     const scState = system.scps.find((s) => s.scKey === receiver)!;
-    const btl = bottleneckOf(scState.acc);
+    // With I/O priority management off, I/O samples are outside velocity and WLM doesn't manage I/O (WLM Planning p.115).
+    const btl = bottleneckOf({ ...scState.acc, delayIo: scState.acc.delayIo - (scState.acc.delayIoNoVel ?? 0) });
     const pi = (input.sysplexPi[receiver] ?? localPi[receiver] ?? 0).toFixed(2);
     if (btl !== 'CPU' && btl !== 'ZIIP') {
       notes.push(`${receiver} PI=${pi} BTLNK=${btl} not WLM-fixable`);

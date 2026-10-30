@@ -149,7 +149,7 @@ export interface LparEvalInput {
    * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION). */
   regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string };
   io: Record<IoClass, IoService>;
-  /** WLM I/O priority management: IOSQ ordered by DP and I/O samples count in velocity. */
+  /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
   /** Paging delay fraction on this image (storage-critical classes are exempt). */
   pagingFrac: number;
@@ -221,6 +221,9 @@ export interface ScpTick {
   delayCap: number;
   /** Batch jobs queued for an initiator in a WLM-managed job class (WLMGL QMPL). */
   delayQueue?: number;
+  /** The part of usingIo / delayIo left out of velocity (I/O priority management off). */
+  usingIoNoVel?: number;
+  delayIoNoVel?: number;
   completions: number;
   failed: number;
   rtSumSec: number;
@@ -513,9 +516,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     }
   }
 
-  const prio = input.ioPriority === false ? null : iosqByPriority(slices, sliceDp, input.io);
-  // Without I/O priority management, I/O samples don't count towards velocity.
-  const ioSamples = input.ioPriority === false ? 0 : 1;
+  // I/O priority management NO "sets I/O priorities equal to dispatching priorities" (WLM Planning p.115), so
+  // the IOSQ is DP-ordered either way. APPROX: YES (goal-based I/O priorities) is not modelled and also uses DP.
+  const prio = iosqByPriority(slices, sliceDp, input.io);
   const pgBy = slicePagingFrac(slices, input.pagingFrac, input.storageCritical, input.pagingWeight);
 
   const results = new Array<SliceResult>(n);
@@ -546,10 +549,10 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         iipcpGranted,
         usingCpu: cpUsing,
         usingZiip: ziipGranted,
-        usingIo: ioSamples * s.ioRate * ioUsingSec(io),
+        usingIo: s.ioRate * ioUsingSec(io),
         delayCpu: cpUsing * qr + unmetCp,
         delayZiip: ziipGranted * zq + unmetZiip,
-        delayIo: ioSamples * s.ioRate * io.delaySec,
+        delayIo: s.ioRate * io.delaySec,
         delayOther: 0,
         delayStorage: (cpUsing + ziipGranted) * pg,
         delayCap: capDelay,
@@ -632,10 +635,10 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       iipcpGranted,
       usingCpu: cpUsing,
       usingZiip: ziipGranted,
-      usingIo: ioSamples * ioRate * ioUsingSec(io),
+      usingIo: ioRate * ioUsingSec(io),
       delayCpu: cpUsing * qr + unmetCp,
       delayZiip: ziipGranted * zq + unmetZiip,
-      delayIo: ioSamples * ioRate * io.delaySec,
+      delayIo: ioRate * io.delaySec,
       delayOther: s.rate * otherSec,
       delayStorage: s.rate * pagingSec,
       delayCap: capDelay,
@@ -686,8 +689,19 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     }
     addSliceTo(scps[sliceAgg[i]!]!, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey));
   }
+  // With I/O priority management off, I/O using and delay samples are still reported but "not included" in
+  // the velocity formula (WLM Planning p.70, p.115).
+  if (input.ioPriority === false) {
+    for (const t of scps) excludeIoFromVelocity(t);
+    for (const t of rcs) excludeIoFromVelocity(t);
+  }
 
   return rcs.length > 0 ? { slices: results, scps, roleHealth, rcs } : { slices: results, scps, roleHealth };
+}
+
+function excludeIoFromVelocity(t: ScpTick): void {
+  t.usingIoNoVel = t.usingIo;
+  t.delayIoNoVel = t.delayIo;
 }
 
 function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean): void {

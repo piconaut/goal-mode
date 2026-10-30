@@ -10,7 +10,7 @@ import { TICK_SEC } from '../sim/core/units';
 import { msuPerCp } from '../sim/hw/cpc';
 import { classify } from '../sim/wlm/classify';
 import { BUCKET_BOUNDS, goalText, velocityOf } from '../sim/wlm/goals';
-import { ACC_DECAY, accPi, goalInfo, sumAcc, type ScpAcc } from '../sim/wlm/runtime';
+import { ACC_DECAY, accPi, goalInfo, sumAcc, velDelay, velUsing, type ScpAcc } from '../sim/wlm/runtime';
 import type { ScpTick } from '../sim/wlm/evaluate';
 import { allWorkloads } from './workloads';
 import type { RunState } from './types';
@@ -204,7 +204,7 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
   const frac = (x: number) => (samples > 0 ? x / samples : 0);
   const delay = { cpu: frac(delayCpu), ziip: frac(delayZiip), io: frac(delayIo), stor: frac(delayStor), cap: frac(delayCap), other: frac(a.delayOther) };
   const top = DELAY_NAMES.reduce<[string, number] | null>((best, [k, label]) => (delay[k] > 0.02 && (!best || delay[k] > best[1]) ? [label, delay[k]] : best), null);
-  const v = velocityOf(a.using, a.delay);
+  const v = velocityOf(velUsing(a), velDelay(a));
   const goal = g?.goal;
   const rtGoal = goal && (goal.kind === 'AVG' || goal.kind === 'PCT');
   // APPROX: the smoothed accumulator keeps total Using and CP time only; split them by the last tick's mix.

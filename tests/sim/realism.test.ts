@@ -6,7 +6,7 @@ import { resolveCpc } from '../../src/sim/hw/pools';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
 import { discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
-import { emptyAcc, goalInfo } from '../../src/sim/wlm/runtime';
+import { accPi, decayInto, emptyAcc, goalInfo, tickPi } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
@@ -300,10 +300,30 @@ describe('WLM I/O priority management', () => {
     expect(perIo(r[0]!)).toBeLessThan(perIo(r[1]!));
     expect((perIo(r[0]!) + perIo(r[1]!)) / 2).toBeCloseTo(io.RANDOM.delaySec, 6);
   });
-  it('when off, IOSQ is first come first served and I/O samples leave velocity', () => {
-    const r = evaluateLpar({ ...base, ioPriority: false }).slices;
-    expect(r[0]!.parts!.io).toBeCloseTo(r[1]!.parts!.io, 9);
-    expect(r[0]!.usingIo + r[0]!.delayIo).toBe(0);
+  it('I/O priority management off keeps I/O delay in WLMGL but not in velocity', () => {
+    // NO "sets I/O priorities equal to dispatching priorities"; I/O using and delay samples "are reported even
+    // when I/O priority management is turned off" but are not in the velocity formula (WLM Planning p.115, p.70).
+    const on = evaluateLpar(base);
+    const off = evaluateLpar({ ...base, ioPriority: false });
+    for (let i = 0; i < 2; i++) {
+      const a = on.slices[i]!, b = off.slices[i]!;
+      expect(b.delayIo).toBeGreaterThan(0);
+      expect(b.delayIo).toBeCloseTo(a.delayIo, 12);
+      expect(b.usingIo).toBeCloseTo(a.usingIo, 12);
+      expect(b.delayOther).toBeCloseTo(a.delayOther, 12); // OTHER does not absorb the I/O delay
+      expect(b.rtMeanSec).toBeCloseTo(a.rtMeanSec, 12);
+    }
+    expect(off.slices[0]!.parts!.io).toBeLessThan(off.slices[1]!.parts!.io); // still DP-ordered, not FIFO
+    const goal = { kind: 'VEL' as const, velocity: 50 };
+    const t = (r: typeof on, k: string) => r.scps.find((x) => x.scKey === k)!;
+    const hiOn = t(on, 'HI#1'), hiOff = t(off, 'HI#1');
+    const v = (using: number, delay: number) => (100 * using) / (using + delay);
+    const cpuUsing = hiOff.usingCpu + hiOff.usingZiip;
+    const cpuDelay = hiOff.delayCpu + hiOff.delayZiip + hiOff.delayStorage + hiOff.delayCap;
+    expect(tickPi(goal, hiOn)).toBeCloseTo(50 / v(cpuUsing + hiOn.usingIo, cpuDelay + hiOn.delayIo), 9);
+    expect(tickPi(goal, hiOff)).toBeCloseTo(50 / v(cpuUsing, cpuDelay), 9);
+    // The smoothed WLM accumulator follows the same formula.
+    expect(accPi(goal, decayInto(emptyAcc(), hiOff))).toBeCloseTo(50 / v(cpuUsing, cpuDelay), 9);
   });
   it('counts only device connect as I/O using: disconnect is neither using nor delay', () => {
     const withConn = { ...io, RANDOM: { ...io.RANDOM, connSec: 0.0005 } };
@@ -404,6 +424,42 @@ describe('CF failure, rebuild and duplexing', () => {
     const lock = failed.config.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!;
     expect(lock).toMatchObject({ cfLparId: 'CF02', duplexed: false });
     expect(lock.rebuildUntilTick).toBeUndefined();
+  }, 60_000);
+});
+
+describe('CF Activity: duplexed copies and per-system structure service (RMF Report Analysis p.365, p.372, p.376)', () => {
+  // Harbourline: CF01 on CPC1 with PRDA/PRDB, CF02 and PRDC/PRDD on CPC2 15 km away; DB1G_LOCK1 lives in CF01.
+  const interval = (cmds: Parameters<typeof step>[1]) => {
+    let s = step(initState(13, HARBOURLINE), cmds, HARBOURLINE);
+    for (let i = 1; i < 2 * 90; i++) s = step(s, [], HARBOURLINE);
+    return s.rmf.intervals.at(-1)!;
+  };
+  it('duplexed structure shows PRIM and SEC rows with traffic on both CFs', () => {
+    const base = interval([]);
+    const iv = interval([{ kind: 'SET_DUPLEX', name: 'DB1G_LOCK1', on: true }]);
+    const lock = iv.cfStructures.filter((x) => x.name === 'DB1G_LOCK1');
+    expect(lock.map((x) => [x.role, x.cfLparId])).toEqual([
+      ['PRIM', 'CF01'],
+      ['SEC', 'CF02'],
+    ]);
+    expect(lock[1]!.reqPerSec).toBeGreaterThan(0);
+    expect(lock[1]!.reqPerSec).toBeCloseTo(lock[0]!.reqPerSec, 6);
+    // The secondary's requests count on CF02 alongside its own structures.
+    const cf02 = (v: typeof iv) => v.cf.find((c) => c.lparId === 'CF02')!.reqPerSec;
+    expect(cf02(iv)).toBeCloseTo(cf02(base) + lock[1]!.reqPerSec, 0);
+    expect(iv.cfStructSystems!.some((x) => x.name === 'DB1G_LOCK1' && x.role === 'SEC' && x.system === 'PRDA' && x.reqPerSec > 0)).toBe(true);
+    expect(base.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!.role).toBeUndefined();
+  }, 60_000);
+  it('structure activity separates a local lock from a remote one per system', () => {
+    const iv = interval([]);
+    const row = (name: string, sys: string) => iv.cfStructSystems!.find((x) => x.name === name && x.system === sys)!;
+    // LOCK1 in CF01: local to PRDA, 15 km for PRDC; GBP1 in CF02 the other way round.
+    expect(row('DB1G_LOCK1', 'PRDA').syncUs).toBeLessThan(row('DB1G_LOCK1', 'PRDC').syncUs - 100);
+    expect(row('DB1G_LOCK1', 'PRDA').syncPct).toBeGreaterThan(row('DB1G_LOCK1', 'PRDC').syncPct);
+    expect(row('DB1G_GBP1', 'PRDC').syncUs).toBeLessThan(row('DB1G_GBP1', 'PRDA').syncUs - 100);
+    // Subchannel Activity: distance to the CF of the row, not the farthest structure.
+    const dist = (cf: string, sys: string) => iv.cfSystems!.find((x) => x.cfLparId === cf && x.system === sys)!.distKm;
+    expect([dist('CF01', 'PRDA'), dist('CF01', 'PRDC'), dist('CF02', 'PRDA'), dist('CF02', 'PRDC')]).toEqual([0, 15, 15, 0]);
   }, 60_000);
 });
 
