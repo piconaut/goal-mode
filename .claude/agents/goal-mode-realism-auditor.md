@@ -36,7 +36,7 @@ purpose, watch what happens, and check whether real z/OS (as IBM documents it) w
      control spec and a treatment spec under `runs/lab/` (the treatment `extends` the control and adds only the
      change), then `npm run -s lab -- runs/lab/<x>-a.json runs/lab/<x>-b.json`. The spec format is in the header of
      `tools/lab.ts`; `tools/lab-examples/` has a defined-capacity A/B. Rows print A and B per RMF interval, `fields`
-     picks any report field, `dump` prints full reports, `final` prints state. Use it instead of writing your own
+     picks any report field, `paths` prints any state path on every row, `dump` prints full reports (`MON3` for the Monitor III DELAY rows), `wlmLog` collects the whole WLM adjustment log, `config` can `add` an entry (e.g. a capacity group), `final` prints state. Use it instead of writing your own
      harness; if it lacks something you need, write a small `runs/lab/*.ts` on the same pattern and say in your
      report what the harness should gain. `npm run sim -- --days 1 --seed 42 --hourly --dc PROD2=420` is the
      quickest way to try capping.
