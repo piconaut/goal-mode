@@ -29,6 +29,10 @@ and fully processed.
 ## Start (when invoked by the user)
 
 1. `get_session` with no id: note this session's id (workers send results to it) and branch.
+   Then make the IBM books available to the auditors (subagents can't attach repositories): `add_repo`
+   `piconaut/ibm-zos-books`, clone it as that result says (`/home/user/ibm-zos-books`, long timeout),
+   `register_repo_root`, and check `python3 <zos-docs skill>/scripts/books.py locate erbb500` prints a path in the
+   clone. See "Books".
 2. `list_triggers`: if an enabled task named `audit-loop` exists, ask the user whether to replace it.
 3. Read PROGRESS.md (M8.7 and every "Audit round" section) and `docs/research.md` to build the coverage list:
    scenarios and seeds already audited and behaviours already tested or queued.
@@ -43,11 +47,18 @@ and fully processed.
 1. `get_trigger` for the launched count `k`. Rebuild state if this context lost it: open PRs from your session
    branch, fixer branches (`git branch --list 'fix/*'`), local `runs/lab/`, PROGRESS.md.
 2. Do pending work first: red or conflicted PR, finished fixer waiting to land, sweep result to judge.
-3. If `k < rounds` and fewer than 2 audits are running: launch the next audit, then `update_trigger` the prompt to
+3. If `k < rounds` and fewer than 2 audits are running: check the books clone (see Books), launch the next audit, then `update_trigger` the prompt to
    `Launched k+1 of <rounds>`. If 2 are still running, skip this launch (don't count it) and say so in one line.
 4. If `k == rounds`: no launch. When every round is closed (audit vetted, its fixes merged or deferred, its sweep
    judged), run Finish.
 5. If nothing changed, end the tick with no message.
+
+## Books
+
+The auditor checks IBM pages with the zos-docs skill, which reads a local clone of `piconaut/ibm-zos-books`. A
+subagent cannot `add_repo` or clone it through the git proxy, so the coordinator does it: at Start, and on every tick
+before launching an audit (the container may have been reclaimed), run the `books.py locate erbb500` check; if it
+fails, redo the Start step. Tell the auditor the clone's path in its prompt.
 
 ## Audit
 
@@ -55,7 +66,7 @@ Pick the next untested combination: rotate scenario (midwest → harbourline →
 that scenario, and focus areas from the auditor's list that the coverage list doesn't cover. Launch:
 
 `Agent(subagent_type: "goal-mode-realism-auditor", run_in_background: true, description: "Audit round K")`,
-prompt: scenario, seed, 3–5 focus behaviours, the list of findings already queued or fixed (so it doesn't repeat
+prompt: scenario, seed, 3–5 focus behaviours, the books clone path (`/home/user/ibm-zos-books`, for zos-docs), the list of findings already queued or fixed (so it doesn't repeat
 them), and "write runs/lab/<date>-audit-rK.md".
 
 ## Vet (as soon as an audit finishes)
