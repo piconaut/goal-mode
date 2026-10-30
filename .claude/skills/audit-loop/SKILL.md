@@ -102,13 +102,17 @@ Link it from the PROGRESS.md item and from the Finish report. Don't subscribe to
 2. Add the PROGRESS.md lines (tick the item, decision row with before → after numbers). `npm run check` (pass/fail
    line only; failures to `log-reader`).
 3. Push, open the PR into `dev` per `.github/pull_request_template.md` (Behaviour change filled when goldens
-   change), enable squash auto-merge, `subscribe_pr_activity`. Drive it to merged.
-4. The next fix waits until this one merges. Fixers already done wait as local branches.
+   change), `subscribe_pr_activity`, keep CI green. If goldens changed, open it as a **draft** and go to Balance; it
+   stays a draft until the sweeps are judged and any follow-up fixes are pushed to it. If goldens didn't change (no
+   sweep needed), open it ready and enable squash auto-merge.
+4. After Balance passes: push the sweep numbers into the PR's PROGRESS.md decision row, mark it ready for review
+   (`update_pull_request` `draft: false`), enable squash auto-merge, drive it to merged.
+5. The next fix waits until this one merges. Fixers already done wait as local branches.
 
 ## Balance
 
-After each merged PR that changed goldens (CI only sweeps Midwest seeds 1–5), sweep the merged `dev` SHA. To save
-cost, batch: if another fix of the same round is about to land, sweep after it instead.
+Sweep each golden-changing fix PR before it merges (CI only sweeps Midwest seeds 1–5), on its pushed head SHA. To
+save cost, batch: if another fix of the same round is ready, cherry-pick it onto the same PR first and sweep once.
 Start one worker per scenario with `create_session`: `model: "claude-sonnet-5-5"`, `source_url:
 "https://github.com/piconaut/goal-mode"`, `source_revision: <SHA>`, title `Sweep <scenario> rK`, prompt:
 
@@ -119,8 +123,9 @@ Start one worker per scenario with `create_session`: `model: "claude-sonnet-5-5"
 > seeds that did not end in victory for expert. Nothing else. Don't edit, commit or push anything.
 
 When a worker reports, compare with the last recorded sweep for that scenario in PROGRESS.md, then `archive_session`
-the worker. Gate red or expert down by ≥ 2 victories: diagnose (bot gap like #107, or the fix itself) and treat the
-cure as a fix of the same round. Record the numbers in PROGRESS.md with the next PR that lands.
+the worker. Gate red or expert down by ≥ 2 victories: diagnose (bot gap like #107, or the fix itself), push the cure
+to the same draft PR and re-sweep the affected scenarios on the new head. When every scenario's sweep is judged
+fine, finish Land step 4 (ready + auto-merge).
 
 ## Finish
 
