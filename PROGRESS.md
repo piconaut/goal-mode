@@ -363,7 +363,7 @@ Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, l
   (CP and zIIP), or grant zIIP no faster than the CP share of the same work allows. Changes goldens.
 
 Audit round 5 (2026-10-30, Midwest seed 7; `runs/lab/2026-10-30-audit-r5.md`, local only).
-- [ ] **15. Most important missing work must stay receivable under a CPU cap.** Needs user (2026-10-30): reproduces at DC 200 on seeds 7 and 11 (not DC 100); unclamping the projection (WIP `fix/r5-receiver-clamp`, local) is not enough, because raising ONLHI starves its own CICS regions (txn and region CPU compete; real regions follow their transactions' goals, *WLM Planning* p.122) and lowering STCMED lowers Db2 (flaw F1). Side effects: STCMED promotion vetoed ~1.5 h, TSO#2/DDFPRD#2 DP ping-pong. WLM helps the most important work
+- [ ] **15. Most important missing work must stay receivable under a CPU cap.** Needs user (2026-10-30): reproduces at DC 200 on seeds 7 and 11 (not DC 100); unclamping the projection (WIP `fix/r5-receiver-clamp`, local) is not enough, because raising ONLHI starves its own CICS regions (txn and region CPU compete; real regions follow their transactions' goals, *WLM Planning* p.122) and lowering STCMED lowers Db2 (flaw F1). Side effects: STCMED promotion vetoed ~1.5 h, TSO#2/DDFPRD#2 DP ping-pong. Draft PR #111 (not for merge) holds the WIP and the design questions. WLM helps the most important work
   missing its goal first (*WLM Planning* ch.1). Audit (PROD1 DC 100 MSU): ONLHI (imp 1) PI 0.50 → 4.00, RT 0.040 →
   7.5 s from 10:00 to about 21:00 at DP FA while STCMED (imp 3, PI 0.59), TSO#2 and DDFPRD#2 (imp 4) sit at FB; WLM
   log `ONLHI#1 PI=4.00 BTLNK=CPU no action with net value` every interval. Cause: the projected percentile PI is
