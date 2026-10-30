@@ -1466,7 +1466,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
 | Classification masks and wildcards (`%`, trailing `*`) | **Real** | WLM Planning p.104; `*` mid-pattern is a literal |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
-| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
+| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents. Between equal-importance periods a move must gain more than it harms and leave the projected PIs closer together (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52) |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |
@@ -1580,7 +1580,7 @@ Primary IBM sources:
   https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/cpsm-managing-workloads_pdf.pdf
   https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/administering-cpsm_pdf.pdf
 - IBM Redbook **SG24-6472-03**, *System Programmer's Guide to: Workload Manager* (Mar 2008): enqueue promotion,
-  discretionary goal management PI band. https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf
+  discretionary goal management PI band, equal-importance donors (p.60). https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf
 - IBM Redbook **SG24-7817-00**, *System z Parallel Sysplex Best Practices* (Jan 2011): CICSPlex SM routing.
   https://www.redbooks.ibm.com/redbooks/pdfs/sg247817.pdf
 
@@ -1603,6 +1603,8 @@ Practitioner sources:
   https://www.longpelaexpertise.com.au/ezine/IsDiscretionaryBad.php
 - Peter Enrico, *WLM: revisiting goals over time* (SHARE).
   https://share.confex.com/share/123/webprogram/Handout/Session15850/Peter.Enrico.WLM.Revisiting.Goals.Over.Time.pdf
+- Peter Enrico, *How WLM Works* (EPS), slide 52: equal-importance receiver/donor test.
+  https://www.epstrategies.com/library/content/Enrico.WLM032-WLMHowWLMWorks.pdf
 - SHARE: *WLM – Are you set up to fail?*
   https://share.confex.com/share/123/webprogram/Handout/Session15707/WLM%20-%20Are%20you%20Set%20Up%20to%20Fail.pdf
 - SHARE: *Capping, capping, capping*.

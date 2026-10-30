@@ -115,7 +115,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       if (p0 == null || p1 == null) continue;
       const harm = Math.max(0, p1 - Math.max(p0, DONOR_CREDIT_FLOOR));
       if (g.importance < rImp && p1 > 1 && harm > 0.02) return false;
-      if (g.importance === rImp) equalHarm += harm;
+      if (g.importance === rImp) {
+        // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,
+        // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
+        if (harm > 0 && Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return false;
+        equalHarm += harm;
+      }
     }
     return gain > equalHarm;
   };

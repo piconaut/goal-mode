@@ -824,3 +824,35 @@ describe('LPAR BUSY vs MVS BUSY (RMF Report Analysis 3.1 p.389)', () => {
     expect(r.mvsBusyFrac).toBeCloseTo(lparBusy(r, 6), 6);
   });
 });
+
+describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 52)', () => {
+  // Midwest seed 7, PROD1 capped at 200 MSU: TSO#2 and DDFPRD#2 (both importance 4) compete for PROD2's CPs.
+  // Without the gap test they traded places as receiver and donor every few minutes (DPs ED↔EB).
+  it('equally important classes do not keep taking DP from each other', () => {
+    let s = initState(7, MIDWEST);
+    s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
+    const move = /PROD2 RCVR=(?:TSO#2|DDFPRD#2) .*?(TSO#2|DDFPRD#2) DP ([0-9A-F]+)→([0-9A-F]+)/;
+    const lines: string[] = [];
+    for (let t = 0; t < 4.5 * 360; t++) {
+      const prev = s.wlm.log;
+      s = step(s, [], MIDWEST);
+      if (s.wlm.log === prev) continue;
+      const last = prev[prev.length - 1];
+      const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
+      for (const l of s.wlm.log.slice(from)) if (/ (09|10):\d\d:\d\d /.test(l) && move.test(l)) lines.push(l);
+    }
+    expect(lines.length).toBeGreaterThan(0);
+    const donorMoves = lines.filter((l) => /RCVR=TSO#2 .*DONOR DDFPRD#2|RCVR=DDFPRD#2 .*DONOR TSO#2/.test(l));
+    expect(donorMoves.length).toBeLessThanOrEqual(1);
+    // Neither class's DP goes down, up and down again.
+    const reversals = (sc: string) => {
+      const dirs = lines.flatMap((l) => {
+        const m = move.exec(l)!;
+        return m[1] === sc ? [Math.sign(parseInt(m[3]!, 16) - parseInt(m[2]!, 16))] : [];
+      });
+      return dirs.filter((d, i) => i > 0 && d !== dirs[i - 1]).length;
+    };
+    expect(reversals('TSO#2')).toBeLessThanOrEqual(1);
+    expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(1);
+  }, 120_000);
+});
