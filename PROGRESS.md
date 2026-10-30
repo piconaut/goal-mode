@@ -401,6 +401,28 @@ Audit round 6 (2026-10-30, Harbourline seed 13; `runs/lab/2026-10-30-audit-r6.md
   CPU and DASD have headroom (CPC1 ~60 %, IOSQ needs ~60 000 extra IOPS per LCU), so those levers bite only after
   an event or squeeze.
 
+Audit round 7 (2026-10-30, Revenue seed 19; `runs/lab/2026-10-30-audit-r7.md`, specs `runs/lab/r7/`, local only).
+- [x] **19. Monitor III DELAY must use RMF's columns and Primary Reason forms.** Done 2026-10-30: % Delayed for
+  is PRC (CP + zIIP) DEV STR SUB OPR ENQ, plus IDL; no CAP or PRC IIP column; capping counts only in DLY %; Primary
+  Reason is the heaviest other processor user's jobname or `*ENCLAVE`, `LCU <id>`, `LOCL` or `RG-Cap`; the
+  `DELAY_CAP` pin moves to the RG-Cap cell. View model only, goldens unchanged. Source: *RMF Report Analysis*
+  Table 20, p.106–110. p.109 says DLY % may exceed the column sum "such as WLM capping delay", and RG-Cap is a
+  Primary Reason (p.110). The audit found the sim printing a CAP column and the resource name (`PRC`) as the
+  reason. APPROX: rows stay service-class summaries, not jobs (overlaps the CICS work-manager item); DEV gives an
+  LCU, not a volser; IDL/SUB/OPR/ENQ are not modelled.
+- Matches:
+  - capacity group capping, members held to the limit and split by weight (*WLM Planning* p.44–47);
+  - sub-capacity billing capped by DC or group limit;
+  - unclassified work goes to SYSOTHER as discretionary (*WLM Planning* p.37, p.103);
+  - an unreachable velocity goal is chased at lower-importance work's expense.
+- Unverified: SCRT combining LPAR values per interval. The SCRT guide isn't in the books repo and the IBM page
+  fetch failed, so this rests on SPEC §5.11.2 alone.
+- Lab harness gaps reported:
+  - no way to add a capacity group through `config`;
+  - no per-interval state paths;
+  - WLM log window (208 lines) too short;
+  - no Monitor III dump.
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
