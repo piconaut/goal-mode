@@ -427,6 +427,42 @@ describe('CF failure, rebuild and duplexing', () => {
   }, 60_000);
 });
 
+describe('CF Activity: duplexed copies and per-system structure service (RMF Report Analysis p.365, p.372, p.376)', () => {
+  // Harbourline: CF01 on CPC1 with PRDA/PRDB, CF02 and PRDC/PRDD on CPC2 15 km away; DB1G_LOCK1 lives in CF01.
+  const interval = (cmds: Parameters<typeof step>[1]) => {
+    let s = step(initState(13, HARBOURLINE), cmds, HARBOURLINE);
+    for (let i = 1; i < 2 * 90; i++) s = step(s, [], HARBOURLINE);
+    return s.rmf.intervals.at(-1)!;
+  };
+  it('duplexed structure shows PRIM and SEC rows with traffic on both CFs', () => {
+    const base = interval([]);
+    const iv = interval([{ kind: 'SET_DUPLEX', name: 'DB1G_LOCK1', on: true }]);
+    const lock = iv.cfStructures.filter((x) => x.name === 'DB1G_LOCK1');
+    expect(lock.map((x) => [x.role, x.cfLparId])).toEqual([
+      ['PRIM', 'CF01'],
+      ['SEC', 'CF02'],
+    ]);
+    expect(lock[1]!.reqPerSec).toBeGreaterThan(0);
+    expect(lock[1]!.reqPerSec).toBeCloseTo(lock[0]!.reqPerSec, 6);
+    // The secondary's requests count on CF02 alongside its own structures.
+    const cf02 = (v: typeof iv) => v.cf.find((c) => c.lparId === 'CF02')!.reqPerSec;
+    expect(cf02(iv)).toBeCloseTo(cf02(base) + lock[1]!.reqPerSec, 0);
+    expect(iv.cfStructSystems!.some((x) => x.name === 'DB1G_LOCK1' && x.role === 'SEC' && x.system === 'PRDA' && x.reqPerSec > 0)).toBe(true);
+    expect(base.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!.role).toBeUndefined();
+  }, 60_000);
+  it('structure activity separates a local lock from a remote one per system', () => {
+    const iv = interval([]);
+    const row = (name: string, sys: string) => iv.cfStructSystems!.find((x) => x.name === name && x.system === sys)!;
+    // LOCK1 in CF01: local to PRDA, 15 km for PRDC; GBP1 in CF02 the other way round.
+    expect(row('DB1G_LOCK1', 'PRDA').syncUs).toBeLessThan(row('DB1G_LOCK1', 'PRDC').syncUs - 100);
+    expect(row('DB1G_LOCK1', 'PRDA').syncPct).toBeGreaterThan(row('DB1G_LOCK1', 'PRDC').syncPct);
+    expect(row('DB1G_GBP1', 'PRDC').syncUs).toBeLessThan(row('DB1G_GBP1', 'PRDA').syncUs - 100);
+    // Subchannel Activity: distance to the CF of the row, not the farthest structure.
+    const dist = (cf: string, sys: string) => iv.cfSystems!.find((x) => x.cfLparId === cf && x.system === sys)!.distKm;
+    expect([dist('CF01', 'PRDA'), dist('CF01', 'PRDC'), dist('CF02', 'PRDA'), dist('CF02', 'PRDC')]).toEqual([0, 15, 15, 0]);
+  }, 60_000);
+});
+
 describe('CICS region management', () => {
   // Online work in two classes plus batch competing for 2 engines.
   const slices = [

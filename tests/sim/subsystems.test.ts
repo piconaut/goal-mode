@@ -1,6 +1,7 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { generateMidwestNetwork } from '../../src/content/batch/midwest-batch';
 import { cfServiceForSystem, evaluateCf } from '../../src/sim/cf/cf';
+import { CF_DUPLEX } from '../../src/content/cf';
 import { evaluateDasd } from '../../src/sim/io/dasd';
 import { advanceJob, closeNight, emptyBatch, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobDef } from '../../src/sim/subsys/batch';
 import { qrTcb } from '../../src/sim/subsys/cics';
@@ -71,6 +72,28 @@ describe('coupling facility', () => {
     // Duplexing LOCK1 into A from B reaches across the link again.
     const dup = lock('B').map((x) => (x.name === 'LOCK1' ? { ...x, duplexed: true, prefList: ['B', 'A'] } : x));
     expect(cfServiceForSystem(evaluateCf([ded, b], dup, 10_000, t), dup, km, t, 100).distKm).toBe(15);
+  });
+  it('a duplexed structure reports its secondary copy with traffic, and per-copy distance by system', () => {
+    const b = { ...ded, cfg: { lparId: 'B', thinInterrupts: true } };
+    const cfg = [
+      { name: 'LOCK1', type: 'LOCK' as const, requestShare: 0.6, cfLparId: 'B', costMult: 1, duplexed: true, prefList: ['B', 'A'] },
+      { name: 'GBP', type: 'CACHE' as const, requestShare: 0.4, cfLparId: 'B', costMult: 1, duplexed: true, prefList: ['B', 'A'] },
+    ];
+    const res = evaluateCf([ded, b], cfg, 10_000, t);
+    const [a, bb] = res;
+    expect(bb!.structures.map((x) => x.role)).toEqual(['PRIM', 'PRIM']);
+    expect(a!.structures).toEqual([]);
+    const lock = a!.secondaries!.find((x) => x.name === 'LOCK1')!;
+    expect(lock).toMatchObject({ role: 'SEC', cfLparId: 'A', requestRate: 6_000 });
+    expect(lock.syncSec).toBe(bb!.structures[0]!.syncSec);
+    // GBP duplexing copies only writes.
+    expect(a!.secondaries!.find((x) => x.name === 'GBP')!.requestRate).toBeCloseTo(4_000 * CF_DUPLEX.cacheWriteFrac, 6);
+    const km = (cf: string) => (cf === 'A' ? 15 : 0);
+    const rows = cfServiceForSystem(res, cfg, km, t, 100).byStructure!;
+    expect(rows.filter((x) => x.name === 'LOCK1').map((x) => [x.role, x.cfLparId, x.distKm, x.requestRate])).toEqual([
+      ['PRIM', 'B', 0, 60],
+      ['SEC', 'A', 15, 60],
+    ]);
   });
   it('a shared, low-weight CF converts to async and burns more z/OS CPU per request', () => {
     const shared = { ...ded, dedicated: false, entitlementEngines: 0.1, cfg: { ...ded.cfg, thinInterrupts: false } };

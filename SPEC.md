@@ -582,8 +582,13 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   [IBM docs: sync→async conversion](https://www.ibm.com/support/knowledgecenter/en/SSLTBW_2.2.0/com.ibm.zos.v2r2.ieaf100/huer.htm)).
 - **Link distance:** each connected system sees its own service: the structure's sync time plus a
   10 µs/km round trip to its CF (to both copies when duplexed), then the sync→async heuristic on that
-  system's own sync time. CPCs carry a `siteKm` (Harbourline's CPC2 is 15 km out). CF Activity has a
-  CONNECTED SYSTEMS section with estimated distance (*RMF Report Analysis* p.376, p.378).
+  system's own sync time. CPCs carry a `siteKm` (Harbourline's CPC2 is 15 km out). CF Activity follows
+  the Postprocessor layout: a STRUCTURE SUMMARY listing every structure copy with duplexed pairs marked
+  PRIM/SEC (*RMF Report Analysis* p.365), STRUCTURE ACTIVITY per structure copy × connected system
+  (requests, sync/async %, sync and async service, p.372–374) and SUBCHANNEL ACTIVITY per CF × system
+  with the estimated distance to that CF (p.376, p.378). A duplexed request also drives the secondary
+  (writes only for a GBP), so the secondary's CF shows that traffic; both copies report the duplexed
+  request's elapsed time (APPROX: real RMF times each copy's operation separately).
 - **Dynamic CF dispatching / thin interrupts** on a shared CF improves response consistency
   (player toggle).
 - Sync requests **spin on the z/OS CP**, so slow CF responses *burn z/OS CPU*. That is a hidden
@@ -1463,7 +1468,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
-| CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU |
+| CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |
 | CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast; QR TCB overload and timeouts count as slow, so only a genuinely abending region storm-drains), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
 | Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
@@ -1496,7 +1501,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | SMF 101/110 views | **Faithful simplification** | From the sim's per-transaction response-time parts; all transaction CPU shown as class 1 CPU; CF time stands in for GBP/lock-structure suspensions |
 | SMF 113 counters, LSPR category | **Plausible model / real table** | L1MP/RNI/CPI are FICTIONAL functions of polarity mix and CPC busy; the LOW/AVERAGE/HIGH table is IBM's |
 | Response-time distributions | **Log-normal assumption** | Tunable σ per workload |
-| CF sync/async, 50% CF guideline, shared-CF penalties | **Real concepts, invented coefficients** | Per connected system with a 10 µs/km link round trip (RMF's own figure); CF-side utilisation stays plex-wide |
+| CF sync/async, 50% CF guideline, shared-CF penalties | **Real concepts, invented coefficients** | Per connected system with a 10 µs/km link round trip (RMF's own figure); CF-side utilisation stays plex-wide. Reported per structure copy × system and per CF × system as RMF does (p.372–378); a duplexed request's link term uses the farther copy for both rows (APPROX) |
 | CICS QR TCB single-engine limit | **Real** | |
 | Db2 address space placement guidance | **Real (IBM)** | |
 | Machine capacity, MSU/CP, price tables | **Fictional** | Proportions plausible; no real LSPR numbers |
