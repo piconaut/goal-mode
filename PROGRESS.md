@@ -362,6 +362,26 @@ Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, l
   unserved drains on idle zIIPs. Misleads diagnosis ("zIIP busy doubled, add zIIP"). Fix: carry the backlog per pool
   (CP and zIIP), or grant zIIP no faster than the CP share of the same work allows. Changes goldens.
 
+Audit round 5 (2026-10-30, Midwest seed 7; `runs/lab/2026-10-30-audit-r5.md`, local only).
+- [ ] **15. Most important missing work must stay receivable under a CPU cap.** WLM helps the most important work
+  missing its goal first (*WLM Planning* ch.1). Audit (PROD1 DC 100 MSU): ONLHI (imp 1) PI 0.50 → 4.00, RT 0.040 →
+  7.5 s from 10:00 to about 21:00 at DP FA while STCMED (imp 3, PI 0.59), TSO#2 and DDFPRD#2 (imp 4) sit at FB; WLM
+  log `ONLHI#1 PI=4.00 BTLNK=CPU no action with net value` every interval. Cause: the projected percentile PI is
+  clamped at 4.0 (`goals.ts:11`), so `passes` (`adjust.ts:107`) never sees receiver value once a class is past 4×
+  its goal; receivers are also taken from the per-tick `localPi` order. Fix: assess receiver value on an unclamped
+  measure, so donors above a missing imp-1 class can be lowered. Confirm on a second seed first.
+- [ ] **16. CPU reports must show MVS BUSY next to LPAR BUSY.** LPAR BUSY is dispatched time over online time; MVS
+  BUSY is (time range − wait) over time range, with parked time excluded under HiperDispatch, and is "a direct
+  indicator to see a CPU bottleneck" (*RMF Report Analysis* p.389). Audit (CPC 8 → 4 CPs, PROD1 weight 500 → 50):
+  LOG BUSY 33.9 → 7.0 %, PR/SM DLY% 9.9 → 13.9, while SYSSTC velocity 90 → 10 and CPU delay 10 → 90 %; Monitor
+  III MVS busy read 8.1 %. Cause: no MVS BUSY column; `mon3.ts:355` derives it as `lparBusy/(1 − prsmDelayFrac)`
+  with only the short-engine term (`prsm.ts:169-177`). Fix: MVS BUSY = min(1, demanded engines / unparked logical
+  CPs) in the Partition/CPU reports and Monitor III. Reporting only.
+- Matches: defined capacity before the R4HA fills, batch under the cap, HyperPAV aliases 0 (IOSQ and I/O delay
+  under load), tiny Db2 buffer pools (I/O delay, not CPU), IIPHONORPRIORITY=NO. Approx (known): BLWL promotion share
+  on logical capacity (`evaluate.ts:431`), buffer pool miss multiplier capped at ×4. Noted, not queued: aliases 0 is
+  inert at default load (volumes about 1 % busy), so the lever has no clue path until an event adds I/O.
+
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
   Alt+1–8); forced-colors support; contrast test for dark, light and 3270 themes (`tests/ui/contrast.test.ts`);
