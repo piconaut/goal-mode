@@ -7,6 +7,7 @@ import {
   entitlements,
   logicalToPhysical,
   lparOverheadFrac,
+  mvsBusyFrac,
   physicalOverheadEngines,
   polarity,
   polarityEfficiency,
@@ -114,6 +115,7 @@ export function resolveCpc(
         unparkedVl: 0,
         overheadFrac: lparOverheadFrac(1, 0),
         prsmDelayFrac: 0,
+        mvsBusyFrac: mvsBusyFrac(demand, m.pc.logical, m.pc.logical),
         cappedFrac: 0,
         softCappedFrac: 0,
       };
@@ -165,6 +167,11 @@ export function resolveCpc(
         unparkedVl: effRes.unparkedVl,
         overheadFrac: ovh,
         prsmDelayFrac: shortEngineDelayFrac(e, m.pc.logical, busyFrac),
+        mvsBusyFrac: mvsBusyFrac(
+          claim.demandEngines,
+          m.pc.logical,
+          m.lpar.hiperDispatch ? pol.vh + pol.vm + effRes.unparkedVl : m.pc.logical,
+        ),
         cappedFrac,
         softCappedFrac,
       };

@@ -1,6 +1,8 @@
 // Behavioural "realism" tests from SPEC §16.
 
 import { HARBOURLINE, MIDWEST } from '../../src/content/scenarios';
+import { MIDWEST_WORLD } from '../../src/content/scenarios/midwest';
+import { resolveCpc } from '../../src/sim/hw/pools';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
 import { discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
@@ -742,5 +744,27 @@ describe('zIIP-eligible work does not soak up the CP backlog (WLM Planning p.182
     const r = evaluateLpar({ ...base, slices: [s], backlog: { T: 10 }, ziipBacklog: { T: 10 } }).slices[0]!;
     expect(r.ziipGranted).toBeGreaterThan(1.5);
     expect(r.newZiipBacklog).toBeLessThan(10);
+  });
+});
+
+describe('LPAR BUSY vs MVS BUSY (RMF Report Analysis 3.1 p.389)', () => {
+  const cpcOf = (cp: number) => ({ ...MIDWEST_WORLD.cpcs[0]!, engines: { ...MIDWEST_WORLD.cpcs[0]!.engines, CP: cp } });
+  const lparsWith = (weightProd1: number, hiperDispatch = true) =>
+    MIDWEST_WORLD.lpars.map((l) =>
+      l.id !== 'PROD1' ? l : { ...l, hiperDispatch, pools: l.pools.map((p) => (p.pool === 'CP' ? { ...p, weight: weightProd1 } : p)) },
+    );
+  const demand = (byLpar: Record<string, number>) =>
+    Object.entries(byLpar).map(([lparId, demandEngines]) => ({ lparId, pool: 'CP' as const, demandEngines, softCapEngines: Infinity }));
+  const lparBusy = (r: { deliveredEngines: number }, logical: number) => r.deliveredEngines / logical;
+
+  it('a low-weight LPAR starved by PR/SM shows MVS BUSY near 100 % while its LPAR BUSY is low', () => {
+    const r = resolveCpc(cpcOf(4), lparsWith(50), demand({ PROD1: 3, PROD2: 4, DEVT: 1 }))['PROD1:CP']!;
+    expect(lparBusy(r, 6)).toBeLessThan(0.2);
+    expect(r.mvsBusyFrac).toBeGreaterThanOrEqual(0.9);
+  });
+  it('uncontended and horizontal, MVS BUSY equals LPAR BUSY', () => {
+    const r = resolveCpc(cpcOf(8), lparsWith(500, false), demand({ PROD1: 2, PROD2: 1, DEVT: 0.3 }))['PROD1:CP']!;
+    expect(r.deliveredEngines).toBeCloseTo(2);
+    expect(r.mvsBusyFrac).toBeCloseTo(lparBusy(r, 6), 6);
   });
 });

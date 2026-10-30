@@ -4,6 +4,7 @@ import {
   allocatePool,
   entitlements,
   lparOverheadFrac,
+  mvsBusyFrac,
   polarity,
   polarityEfficiency,
 } from '../../src/sim/hw/prsm';
@@ -154,5 +155,18 @@ describe('capped fraction counts only binding caps (RMF Report Analysis p.401)',
     const r = resolveCpc(cpc, MIDWEST_WORLD.lpars, busy(1.5))['PROD1:CP']!;
     expect(r.softCappedFrac).toBeGreaterThan(0);
     expect(r.softCappedFrac).toBe(r.cappedFrac);
+  });
+});
+
+describe('mvsBusyFrac (RMF Report Analysis 3.1 p.389)', () => {
+  it('counts ready work against unparked online time', () => {
+    expect(mvsBusyFrac(1.5, 6, 6)).toBeCloseTo(0.25);
+    expect(mvsBusyFrac(1.5, 6, 3)).toBeCloseTo(0.5);
+  });
+  it('saturates at 1 when ready work exceeds the unparked logical CPs', () => {
+    expect(mvsBusyFrac(5, 6, 1)).toBe(1);
+  });
+  it('is 0 with nothing online', () => {
+    expect(mvsBusyFrac(2, 0, 0)).toBe(0);
   });
 });

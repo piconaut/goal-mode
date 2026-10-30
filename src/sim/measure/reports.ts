@@ -170,7 +170,7 @@ export function renderPartitionData(iv: RmfInterval): string {
   for (const c of iv.cpcBusy) out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
   out.push('');
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
-  out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG  LOG BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');
+  out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG LPAR BUSY%  MVS BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');
   for (const r of iv.cpu.filter((x) => x.logicalCps > 0)) {
     out.push(
       [
@@ -180,6 +180,7 @@ export function renderPartitionData(iv: RmfInterval): string {
         ' ' + padR(r.polarity, 14),
         f(r.physicalEngines, 2, 9),
         f(r.logicalBusyPct, 1, 10),
+        f(r.mvsBusyPct, 1, 10),
         f(r.overheadPct, 2, 11),
         f(r.prsmDelayPct, 1, 11),
         f(r.wlmCappingPct ?? 0, 1, 8),

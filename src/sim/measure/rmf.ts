@@ -35,6 +35,7 @@ export interface LparIntervalAcc {
   capped: number;
   wlmCapped?: number;
   prsmDelay: number;
+  mvsBusy?: number;
   msu: number;
   vh: number;
   vm: number;
@@ -97,6 +98,8 @@ export interface CpuRecord {
   /** Average physical CP engines dispatched for this LPAR. */
   physicalEngines: number;
   logicalBusyPct: number;
+  /** RMF MVS BUSY (absent in old saves): non-wait share of unparked online time, ready-but-undispatched included. */
+  mvsBusyPct?: number;
   overheadPct: number;
   cappedPct: number;
   /** Time WLM soft-capped the partition (Partition Data WLM%, RMF Report Analysis p.401). */
@@ -196,6 +199,7 @@ export function accumulateTick(
       capped: a.capped + (cp?.cappedFrac ?? 0),
       wlmCapped: (a.wlmCapped ?? 0) + (cp?.softCappedFrac ?? 0),
       prsmDelay: a.prsmDelay + (cp?.prsmDelayFrac ?? 0),
+      mvsBusy: (a.mvsBusy ?? 0) + (cp?.mvsBusyFrac ?? 0),
       msu: a.msu + l.msuRate,
       vh: cp?.vh ?? 0,
       vm: cp?.vm ?? 0,
@@ -425,6 +429,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
       polarity: cfg?.hiperDispatch && cp ? `${a.vh}VH ${a.vm}VM ${a.vl}VL` : 'HORIZ',
       physicalEngines: a.deliveredCp / n,
       logicalBusyPct: cp && cp.logical > 0 ? (100 * a.deliveredCp) / n / cp.logical : 0,
+      mvsBusyPct: (100 * (a.mvsBusy ?? 0)) / n,
       overheadPct: (100 * a.overhead) / n,
       cappedPct: (100 * a.capped) / n,
       wlmCappingPct: (100 * (a.wlmCapped ?? 0)) / n,

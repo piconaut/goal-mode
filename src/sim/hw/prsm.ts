@@ -175,3 +175,14 @@ export function shortEngineDelayFrac(
   const perLogical = clamp(entitlement / logicalOnline, 0, 1);
   return PRSM.shortEngineK * (1 - perLogical) * clamp(poolBusyFrac, 0, 1);
 }
+
+/**
+ * MVS BUSY: share of unparked online time a logical CP is out of wait. Ready work counts whether or not
+ * PR/SM dispatched it, so a starved LPAR reads near 100 % while its LPAR BUSY (dispatched/online) stays
+ * low; parked VLs leave the time range (RMF Report Analysis 3.1 p.389).
+ */
+export function mvsBusyFrac(demandEngines: number, logicalOnline: number, unparkedLogical: number): number {
+  const online = Math.min(logicalOnline, unparkedLogical);
+  if (online <= 0) return 0;
+  return clamp(demandEngines / online, 0, 1);
+}
