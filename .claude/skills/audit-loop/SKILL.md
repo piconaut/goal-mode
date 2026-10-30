@@ -67,7 +67,8 @@ that scenario, and focus areas from the auditor's list that the coverage list do
 
 `Agent(subagent_type: "goal-mode-realism-auditor", run_in_background: true, description: "Audit round K")`,
 prompt: scenario, seed, 3–5 focus behaviours, the books clone path (`/home/user/ibm-zos-books`, for zos-docs), the list of findings already queued or fixed (so it doesn't repeat
-them), and "write runs/lab/<date>-audit-rK.md".
+them), "use the lab harness (`npm run lab`, `tools/lab.ts`) for A/B runs; put specs in runs/lab/rK/", and
+"write runs/lab/<date>-audit-rK.md". Fixer briefs name the audit's spec files so the fixer reruns the same A/B.
 
 ## Vet (as soon as an audit finishes)
 
