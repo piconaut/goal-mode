@@ -3,8 +3,10 @@
 // (receiver up, donors down); accept the first move with receiver value and net value.
 // At most one receiver is helped per interval.
 
+import { PCT_PROJECTION_SIGMA } from '../../content/wlm/tuning';
 import { DP } from '../zos/dispatcher';
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
+import { projectedPercentilePi } from './goals';
 import { accPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
@@ -60,11 +62,17 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   }
   const tickOf: Record<string, ScpTick> = {};
   for (const t of input.current) tickOf[t.scKey] = t;
+  // Receiver value and donor harm are judged on a percentile PI that is not clamped at 4.0, or a period far past
+  // its goal could never show a projected gain and would never be helped.
   const instPi = (ticks: readonly ScpTick[]) => {
     const m: Record<string, number | null> = {};
     for (const t of ticks) {
       const g = info[t.scKey];
-      m[t.scKey] = g ? tickPi(g.goal, t) : null;
+      m[t.scKey] = !g
+        ? null
+        : g.goal.kind === 'PCT'
+          ? projectedPercentilePi(t.buckets, g.goal.pct, t.completions, t.rtSumSec, g.goal.rtSec, PCT_PROJECTION_SIGMA)
+          : tickPi(g.goal, t);
     }
     return m;
   };

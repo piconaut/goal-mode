@@ -39,3 +39,10 @@ export const STORAGE_STEAL_WEIGHT_BY_IMP = [1, 2, 3, 4, 5];
 export const STORAGE_STEAL_WEIGHT_DISC = 6;
 // FICTIONAL: ceiling on any one period's paging delay fraction after redistribution.
 export const STORAGE_STEAL_MAX_FRAC = 0.9;
+
+// Percentile goals past the last bounded bucket: the reported PI stops at 4.0 (RMF/WLM bucket layout, SG24-7621
+// §3.10), but WLM's projection of receiver value and donor harm must still see a period at 30× its goal improve
+// to 10× (SG24-7621 §3.12–3.15; WLM Planning ch.1: the most important work missing its goal is helped first).
+// APPROX: projections extrapolate the goal-percentile response time from the mean RT, assuming a log-normal of
+// this shape. FICTIONAL: 0.5 makes the 95th percentile ≈ 2× the mean, inside the range of the scenarios' rtSigma.
+export const PCT_PROJECTION_SIGMA = 0.5;
