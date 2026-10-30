@@ -88,6 +88,12 @@ For each **fix now** item, start a fixer immediately, at most 2 running at once 
 `Agent(subagent_type: "realism-fixer", isolation: "worktree", run_in_background: true)`, brief: the finding with its
 numbers and citation, the chosen fix, the realism test to add, branch `fix/rK-<slug>`.
 Review its diff before landing. If it stopped for a design call, decide or move it to **needs user**.
+A **needs user** item with fixer work (finished or WIP) goes up as a PR that is pushed but never merged: push its
+`fix/rK-<slug>` branch, open a **draft** PR into `dev` titled `[needs user] …`, no auto-merge, not counted against
+the one-golden-PR-at-a-time rule. The body follows the PR template and holds everything needed to decide without this
+session: the finding with audit numbers and citations, what the branch does and doesn't do, before → after numbers,
+state (check/goldens run or not), side effects, and the numbered design questions with options and a recommendation.
+Link it from the PROGRESS.md item and from the Finish report. Don't subscribe to it.
 
 ## Land (one at a time)
 
