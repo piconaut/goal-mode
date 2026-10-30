@@ -221,6 +221,12 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
   The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
   DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
+- [ ] **Equal-importance moves must narrow the PI gap (stops TSO#2/DDFPRD#2 thrashing).** Real net value for a
+  donor of the same importance needs the receiver's gain to beat the donor's loss *and* less disparity in the
+  projected PIs (Enrico, *How WLM Works*, slide 52; `docs/research.md`). `passes()` (`src/sim/wlm/adjust.ts`) checks
+  only the first. Midwest seed 7 on dev: TSO#2 and DDFPRD#2 (imp 4) swap ED↔EB on PROD2 every 1.5–8 min from 09:20
+  to 10:12, with DDFPRD#2 PI swinging 1.4–8.2; draft #111 shows the same pair FB↔F4 for hours on PROD1. Fix: add
+  the disparity test (max of the two projected PIs must fall). Moves goldens; sweep.
 
 Harbourline seed 42 realism audit (2026-10-28; experiments and numbers in `runs/lab/2026-10-28-harbourline-s42-audit.md`,
 local only). Do these in order, each as its own PR; the first two are user-ordered.
@@ -415,8 +421,8 @@ Audit round 7 (2026-10-30, Revenue seed 19; `runs/lab/2026-10-30-audit-r7.md`, s
   - sub-capacity billing capped by DC or group limit;
   - unclassified work goes to SYSOTHER as discretionary (*WLM Planning* p.37, p.103);
   - an unreachable velocity goal is chased at lower-importance work's expense.
-- Unverified: SCRT combining LPAR values per interval. The SCRT guide isn't in the books repo and the IBM page
-  fetch failed, so this rests on SPEC §5.11.2 alone.
+- SCRT peak of hourly sums across LPARs: verified 2026-10-30 against the SCRT guide (e0zs100 p.38, p.139), added
+  to the books repo on user request.
 - Lab harness gaps reported (added 2026-10-30, see decision row):
   - no way to add a capacity group through `config`;
   - no per-interval state paths;
