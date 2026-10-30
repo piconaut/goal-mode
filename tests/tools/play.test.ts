@@ -52,6 +52,10 @@ describe('headless play interface', () => {
     expect(mon3Text(f)).toContain('SYSINFO');
     expect(mon3Text(f, { json: true }).split('\n')[1]).toMatch(/^\{/);
     expect(mon3Text(f, { system: 'NOSUCH' })).toContain('No system NOSUCH');
+    // DELAY columns as RMF Report Analysis p.108–109: no CAP or PRC IIP column.
+    const delayCols = mon3Text(f).split('\n').find((l) => l.startsWith('system ') && l.includes(' DLY '))!;
+    expect(delayCols).toMatch(/USG\s+DLY\s+IDL\s+UKN\s+PRC\s+DEV\s+STR\s+SUB\s+OPR\s+ENQ\s+primaryReason$/);
+    expect(delayCols).not.toMatch(/\bCAP\b|delay\.cap|delay\.ziip/);
   });
 
   it('clock text names the weekday: the small hours still belong to the played day that began at 06:00', () => {

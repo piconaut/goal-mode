@@ -20,7 +20,7 @@ type View3 = 'SYSSUM' | 'SYSINFO' | 'DELAY' | 'PROCU' | 'ENCLAVE' | 'CPC' | 'WFE
 const VIEWS: { id: View3; help: string }[] = [
   { id: 'SYSSUM', help: 'Sysplex Summary: goals versus actuals and the performance index for each service-class period, sysplex-wide. Percentile goals show the % of transactions that ended within the goal time.' },
   { id: 'SYSINFO', help: 'System Information: CPU utilisation (LPAR view and z/OS view), then per period the workflow, response time, rate and the average number of users using or delayed for each resource.' },
-  { id: 'DELAY', help: 'Who is waiting, and for what: USG/DLY/UKN % of active samples, and % Delayed for each resource. Response-time work spends much of its time in subsystems (Db2, CF, locks, CICS), which RMF cannot see and shows as UKN; that is normal when the PI is fine. Look for what changed.' },
+  { id: 'DELAY', help: 'Who is waiting, and for what: USG/DLY/UKN % of active samples, and % Delayed for each resource (PRC covers CPs and zIIPs). DLY % also counts WLM capping, which has no column: Primary Reason shows RG-Cap. Otherwise Primary Reason names the job using the processor most, the LCU, or the paging type. Rows are service-class summaries. Response-time work spends much of its time in subsystems (Db2, CF, locks, CICS), which RMF cannot see and shows as UKN; that is normal when the PI is fine. Look for what changed.' },
   { id: 'PROCU', help: 'Processor Usage by service-class period: Time on CP % (IIP = zIIP-eligible work that ran on CPs) and EAppl % (enclaves included). 100 = one engine.' },
   { id: 'ENCLAVE', help: 'DDF work runs as enclaves, managed by their own goals: CPU on CPs and zIIPs, and the enclave state samples.' },
   { id: 'CPC', help: 'CPC Capacity: MSU and capping for the partition, then logical and physical utilisation of every partition. Weight, polarity and PR/SM delay come from the Partition Data view.' },
@@ -31,12 +31,15 @@ const SYSTEM_VIEWS: View3[] = ['SYSINFO', 'DELAY', 'PROCU', 'CPC', 'WFEX'];
 
 const pct = (f: number) => (f * 100).toFixed(0);
 const n1 = (x: number) => x.toFixed(1);
-const DELAY_PINS: [keyof Mon3Row['delay'], EvidenceMetric][] = [
-  ['cpu', 'DELAY_CPU'],
-  ['ziip', 'DELAY_ZIIP'],
-  ['io', 'DELAY_IO'],
-  ['stor', 'DELAY_STO'],
-  ['cap', 'DELAY_CAP'],
+// DELAY's % Delayed for columns (RMF Report Analysis p.109): PRC covers CPs and zIIPs, each pinnable on its own.
+// APPROX: SUB, OPR and ENQ delays are not modelled and show 0; WLM capping has no column (DLY % includes it).
+const DELAY_COLS: { label: string; parts: [keyof Mon3Row['delay'], EvidenceMetric, string][] }[] = [
+  { label: 'PRC', parts: [['cpu', 'DELAY_CPU', 'CP'], ['ziip', 'DELAY_ZIIP', 'zIIP']] },
+  { label: 'DEV', parts: [['io', 'DELAY_IO', 'DEV']] },
+  { label: 'STR', parts: [['stor', 'DELAY_STO', 'STR']] },
+  { label: 'SUB', parts: [] },
+  { label: 'OPR', parts: [] },
+  { label: 'ENQ', parts: [] },
 ];
 // RMF scales anything above 99999 ms with K/M (SYSINFO RESP Time, SYSSUM).
 const ms = (x: number | null) => (x === null ? '-' : x < 100_000 ? x.toFixed(0) : x < 1e8 ? `${(x / 1000).toFixed(0)}K` : `${(x / 1e6).toFixed(0)}M`);
@@ -279,12 +282,13 @@ function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null }) {
           <th className="num">WFL %</th>
           <th className="num">USG %</th>
           <th className="num">DLY %</th>
+          <th className="num">IDL %</th>
           <th className="num">UKN %</th>
-          <th className="num">PRC CP</th>
-          <th className="num">PRC IIP</th>
-          <th className="num">DEV</th>
-          <th className="num">STR</th>
-          <th className="num">CAP</th>
+          {DELAY_COLS.map((c) => (
+            <th className="num" key={c.label}>
+              {c.label}
+            </th>
+          ))}
           <th>Primary Reason</th>
         </tr>
       </thead>
@@ -295,17 +299,21 @@ function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null }) {
             <td className="num">{r.velocity === null ? '' : r.velocity.toFixed(0)}</td>
             <td className="num">{pct(r.usingFrac)}</td>
             <td className="num">{pct(r.delayFrac)}</td>
+            <td className="num" title="Idle state is not modelled"></td>
             <td className="num">
               {pct(r.unknownFrac)}
               {r.unknownFrac > 0.005 && <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'DELAY_OTHER' }} label={`${r.scKey} UKN`} />}
             </td>
-            {DELAY_PINS.map(([k, metric]) => (
-              <td className="num" key={k}>
-                {pct(r.delay[k])}
-                {r.delay[k] > 0.005 && <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric }} label={`${r.scKey} ${k} delay`} />}
+            {DELAY_COLS.map((c) => (
+              <td className="num" key={c.label}>
+                {pct(c.parts.reduce((a, [k]) => a + r.delay[k], 0))}
+                {c.parts.map(([k, metric, name]) => r.delay[k] > 0.005 && <PinButton key={k} game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric }} label={`${r.scKey} ${name} delay`} />)}
               </td>
             ))}
-            <td>{r.primaryDelay ?? ''}</td>
+            <td>
+              {r.primaryReason ?? ''}
+              {r.primaryDelay === 'CAP' && <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'DELAY_CAP' }} label={`${r.scKey} capping delay`} />}
+            </td>
           </tr>
         ))}
       </tbody>

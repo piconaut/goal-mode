@@ -46,14 +46,22 @@ export interface Mon3Row {
   iipcpEngines: number;
   /** SYSINFO "Users ACT", "AVG USG" and "Average Number Delayed For" (average number of users). */
   avgUsers: { active: number; proc: number; dev: number; delayProc: number; delayDev: number; delayStor: number };
-  /** DELAY report USG %, DLY % and UKN % as 0..1 of active samples (IDL is not modelled). */
+  /** DELAY report USG %, DLY % and UKN % as 0..1 of active samples.
+   * APPROX: IDL %, SUB, OPR and ENQ are not modelled (the UI shows them blank or 0). */
   usingFrac: number;
   delayFrac: number;
   unknownFrac: number;
-  /** % Delayed for, 0..1: PRC split CP/zIIP, DEV, STR, CAP; `other` is the UKN state. */
+  /** % Delayed for, 0..1. The DELAY report shows PRC (cpu + ziip), DEV (io) and STR (stor); `cap` (WLM capping)
+   * has no column and counts only in DLY %, so DLY % may exceed the column sum (p.109); `other` is the UKN state. */
   delay: { cpu: number; ziip: number; io: number; stor: number; cap: number; other: number };
-  primaryDelay: string | null;
+  /** Resource with the largest delay above 2% (CAP = WLM capping), or null. */
+  primaryDelay: Mon3DelayResource | null;
+  /** DELAY "Primary Reason" in RMF's forms (p.110): the heaviest other processor user's jobname (or *ENCLAVE)
+   * for PRC, the LCU for DEV, LOCL for STR, RG-Cap for capping. */
+  primaryReason: string | null;
 }
+
+export type Mon3DelayResource = 'PRC' | 'DEV' | 'STR' | 'CAP';
 
 export interface Mon3System {
   system: string;
@@ -160,14 +168,16 @@ export interface Mon3View {
   exceptions: Mon3Exception[];
 }
 
-// DELAY report "Primary Reason" names the resource with the largest % Delayed for.
-const DELAY_NAMES: [keyof Mon3Row['delay'], string][] = [
-  ['cpu', 'PRC'],
-  ['ziip', 'PRC (IIP)'],
-  ['io', 'DEV'],
-  ['stor', 'STR'],
-  ['cap', 'CAP'],
-];
+/** The resource behind DELAY's Primary Reason: the largest % Delayed for above 2%, capping included (p.110). */
+export function primaryDelayOf(delay: Mon3Row['delay']): Mon3DelayResource | null {
+  const by: [Mon3DelayResource, number][] = [
+    ['PRC', delay.cpu + delay.ziip],
+    ['DEV', delay.io],
+    ['STR', delay.stor],
+    ['CAP', delay.cap],
+  ];
+  return by.reduce<[Mon3DelayResource, number] | null>((best, x) => (x[1] > 0.02 && (!best || x[1] > best[1]) ? x : best), null)?.[0] ?? null;
+}
 
 type LastSplit = { usingCpu: number; usingZiip: number; usingIo: number; cpEngines: number; ziipEngines: number; iipcpEngines: number };
 const noSplit = (): LastSplit => ({ usingCpu: 0, usingZiip: 0, usingIo: 0, cpEngines: 0, ziipEngines: 0, iipcpEngines: 0 });
@@ -203,7 +213,6 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
   const samples = a.using + a.delay + a.delayOther;
   const frac = (x: number) => (samples > 0 ? x / samples : 0);
   const delay = { cpu: frac(delayCpu), ziip: frac(delayZiip), io: frac(delayIo), stor: frac(delayStor), cap: frac(delayCap), other: frac(a.delayOther) };
-  const top = DELAY_NAMES.reduce<[string, number] | null>((best, [k, label]) => (delay[k] > 0.02 && (!best || delay[k] > best[1]) ? [label, delay[k]] : best), null);
   const v = velocityOf(velUsing(a), velDelay(a));
   const goal = g?.goal;
   const rtGoal = goal && (goal.kind === 'AVG' || goal.kind === 'PCT');
@@ -245,7 +254,8 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
     delayFrac: frac(a.delay),
     unknownFrac: frac(a.delayOther),
     delay,
-    primaryDelay: top?.[0] ?? null,
+    primaryDelay: primaryDelayOf(delay),
+    primaryReason: null,
   };
 }
 
@@ -266,6 +276,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   const keys = [...new Set(rows.map((r) => r.scKey))].sort();
   for (const k of keys)
     rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => s.scps.filter((p) => p.scKey === k).map((p) => p.acc))), lastBy(null, k), cicsTxn));
+  primaryReasons(run, scenario, rows, ddfClasses);
 
   const cpcEngines = sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
   let totalLogical = 0;
@@ -407,6 +418,58 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   };
 }
 
+/** DELAY Primary Reason (RMF Report Analysis Table 20, p.110), filled in once all rows exist.
+ * APPROX: rows are service-class period summaries, not jobs, so PRC names the main address space of the
+ * class (other than this row) that used that processor most, DEV the LCU with the slowest response time in
+ * the DASD report (real RMF gives the volser), and STR is always LOCL (the sim models paging only). */
+function primaryReasons(run: RunState, scenario: Scenario, rows: Mon3Row[], ddfClasses: ReadonlySet<string>): void {
+  const sim = run.sim;
+  const def = sim.wlm.definition;
+  const lcus = sim.env.dasd?.lcus ?? [];
+  const worstLcu = lcus.reduce<(typeof lcus)[number] | null>((w, l) => (!w || l.rtSec > w.rtSec ? l : w), null);
+  const spaces = [...scenario.addressSpaces, ...sim.extraAddressSpaces];
+  const workloads = allWorkloads(scenario, run);
+  const names = new Map<string, string | null>();
+  // The jobname RMF would show for a class's heaviest processor user on one system.
+  const jobOf = (system: string, serviceClass: string): string | null => {
+    const k = `${system}|${serviceClass}`;
+    if (names.has(k)) return names.get(k)!;
+    let name: string | null = null;
+    if (ddfClasses.has(serviceClass)) name = '*ENCLAVE';
+    for (const w of workloads) {
+      if (name) break;
+      if (classify(def, { ...w.work, SY: system }).serviceClass !== serviceClass) continue;
+      // CICS transactions run in the AORs; TSO users show under their user id.
+      if (w.hostRole) name = spaces.filter((a) => a.lparId === system && a.role === w.hostRole).map((a) => a.jobname).sort()[0] ?? null;
+      else if (w.work.UI) name = w.work.UI;
+    }
+    if (!name) {
+      const own = spaces.filter((a) => a.lparId === system && classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: system }).serviceClass === serviceClass);
+      name = own.sort((a, b) => b.baseEnginesRef - a.baseEnginesRef || (a.jobname < b.jobname ? -1 : 1))[0]?.jobname ?? null;
+    }
+    if (!name) {
+      const jobs = sim.batch.jobs.filter(
+        (j) => j.status === 'RUNNING' && j.lparId === system && classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: system }).serviceClass === serviceClass,
+      );
+      name = jobs.sort((a, b) => b.def.cpuSecRef - a.def.cpuSecRef || (a.def.name < b.def.name ? -1 : 1))[0]?.def.name ?? null;
+    }
+    names.set(k, name);
+    return name;
+  };
+  for (const r of rows) {
+    if (r.primaryDelay === 'CAP') r.primaryReason = 'RG-Cap';
+    else if (r.primaryDelay === 'DEV') r.primaryReason = worstLcu ? `LCU ${worstLcu.id}` : null;
+    else if (r.primaryDelay === 'STR') r.primaryReason = 'LOCL';
+    else if (r.primaryDelay === 'PRC') {
+      const use = r.delay.ziip > r.delay.cpu ? (x: Mon3Row) => x.ziipEngines : (x: Mon3Row) => x.cpuEngines;
+      const top = rows
+        .filter((x) => x.system !== '*PLEX' && (r.system === '*PLEX' || x.system === r.system) && x.scKey !== r.scKey && use(x) > 1e-6)
+        .reduce<Mon3Row | null>((b, x) => (!b || use(x) > use(b) ? x : b), null);
+      r.primaryReason = top ? jobOf(top.system, top.serviceClass) : null;
+    }
+  }
+}
+
 /** WFEX Speed section: workflow of *SYSTEM, *PROC, *DEV and each service class, per system. */
 function speedSection(rows: Mon3Row[], systems: Mon3System[]): Mon3Speed[] {
   const out: Mon3Speed[] = [];
@@ -450,7 +513,7 @@ function exceptions(run: RunState, rows: Mon3Row[], systems: Mon3System[], cpc: 
       where: `${r.system} ${r.scKey}`,
       reason,
       value,
-      text: `PI ${r.pi.toFixed(2)} (imp ${r.importance})${r.primaryDelay ? `, main delay ${r.primaryDelay}` : r.unknownFrac > 0.3 ? ', mostly UKN (servers, subsystems)' : ''}`,
+      text: `PI ${r.pi.toFixed(2)} (imp ${r.importance})${r.primaryDelay ? `, main delay ${r.primaryDelay}${r.primaryReason ? ` (${r.primaryReason})` : ''}` : r.unknownFrac > 0.3 ? ', mostly UKN (servers, subsystems)' : ''}`,
     });
   }
   for (const s of systems) if (s.capped) out.push({ severity: 'crit', where: s.system, reason: 'CAPPED', value: `${s.msu.toFixed(0)} MSU`, text: 'Soft capped: R4HA above defined/group capacity' });
