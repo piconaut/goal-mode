@@ -130,6 +130,9 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   brief) `log-reader` (digest bot/sweep logs, test failures, long reports) and `pr-reviewer` (check out a PR in a worktree,
   run check, bench hashes and a sweep for milestones, verify its claims, post its report on the PR, return a merge verdict; the main agent merges). Keep sim model changes,
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
+  Exception (user request 2026-10-30): in the `audit-loop` skill (`.claude/skills/audit-loop/`), vetted realism fixes
+  go to the Opus `realism-fixer` subagent and balance sweeps to Sonnet worker sessions; vetting and balance calls stay
+  on the main agent.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
 - Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
