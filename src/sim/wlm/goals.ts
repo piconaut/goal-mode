@@ -1,6 +1,6 @@
 // Performance index and response-time distribution buckets (SG24-7621 §3.10–3.11).
 
-import { lognormCdf, normCdf } from '../core/math';
+import { lognormCdf, lognormQuantile, normCdf } from '../core/math';
 import type { Goal, PeriodDef } from './types';
 
 /** Upper bounds of the 14 RMF/WLM buckets as multiples of the goal; the last is open (SG24-7621 §3.10). */
@@ -71,6 +71,22 @@ export function percentilePi(buckets: readonly number[], pct: number): number | 
     }
   }
   return PI_MAX_PERCENTILE;
+}
+
+/** Percentile PI for WLM's projections: the bucketed PI, except that once the goal percentile is past the last
+ * bounded bucket (PI 4.0) it is extrapolated from the mean response time as a log-normal of `sigma`, so work far
+ * beyond 4× its goal still shows the gain (or harm) of a DP move. Reports keep the clamped PI. */
+export function projectedPercentilePi(
+  buckets: readonly number[],
+  pct: number,
+  completions: number,
+  rtSumSec: number,
+  goalRtSec: number,
+  sigma: number,
+): number | null {
+  const pi = percentilePi(buckets, pct);
+  if (pi === null || pi < PI_MAX_PERCENTILE || !(completions > 1e-9) || !(rtSumSec > 0)) return pi;
+  return Math.max(PI_MAX_PERCENTILE, lognormQuantile(pct / 100, rtSumSec / completions, sigma) / goalRtSec);
 }
 
 export interface PiInputs {
