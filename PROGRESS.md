@@ -363,14 +363,14 @@ Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, l
   (CP and zIIP), or grant zIIP no faster than the CP share of the same work allows. Changes goldens.
 
 Audit round 5 (2026-10-30, Midwest seed 7; `runs/lab/2026-10-30-audit-r5.md`, local only).
-- [ ] **15. Most important missing work must stay receivable under a CPU cap.** WLM helps the most important work
+- [ ] **15. Most important missing work must stay receivable under a CPU cap.** Needs user (2026-10-30): reproduces at DC 200 on seeds 7 and 11 (not DC 100); unclamping the projection (WIP `fix/r5-receiver-clamp`, local) is not enough, because raising ONLHI starves its own CICS regions (txn and region CPU compete; real regions follow their transactions' goals, *WLM Planning* p.122) and lowering STCMED lowers Db2 (flaw F1). Side effects: STCMED promotion vetoed ~1.5 h, TSO#2/DDFPRD#2 DP ping-pong. Draft PR #111 (not for merge) holds the WIP and the design questions. WLM helps the most important work
   missing its goal first (*WLM Planning* ch.1). Audit (PROD1 DC 100 MSU): ONLHI (imp 1) PI 0.50 → 4.00, RT 0.040 →
   7.5 s from 10:00 to about 21:00 at DP FA while STCMED (imp 3, PI 0.59), TSO#2 and DDFPRD#2 (imp 4) sit at FB; WLM
   log `ONLHI#1 PI=4.00 BTLNK=CPU no action with net value` every interval. Cause: the projected percentile PI is
   clamped at 4.0 (`goals.ts:11`), so `passes` (`adjust.ts:107`) never sees receiver value once a class is past 4×
   its goal; receivers are also taken from the per-tick `localPi` order. Fix: assess receiver value on an unclamped
   measure, so donors above a missing imp-1 class can be lowered. Confirm on a second seed first.
-- [ ] **16. CPU reports must show MVS BUSY next to LPAR BUSY.** LPAR BUSY is dispatched time over online time; MVS
+- [x] **16. CPU reports must show MVS BUSY next to LPAR BUSY.** Done 2026-10-30: `mvsBusyFrac` (`src/sim/hw/prsm.ts`) = CP demand / unparked logical CPs; Partition Data LPAR BUSY% (was LOG BUSY%) and MVS BUSY%, Monitor III MVS Util% from it; realism test added; goldens moved (state fields only). LPAR BUSY is dispatched time over online time; MVS
   BUSY is (time range − wait) over time range, with parked time excluded under HiperDispatch, and is "a direct
   indicator to see a CPU bottleneck" (*RMF Report Analysis* p.389). Audit (CPC 8 → 4 CPs, PROD1 weight 500 → 50):
   LOG BUSY 33.9 → 7.0 %, PR/SM DLY% 9.9 → 13.9, while SYSSTC velocity 90 → 10 and CPU delay 10 → 90 %; Monitor
@@ -503,6 +503,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | zIIP no longer soaks up the CP backlog: transaction backlog carried per pool (`SimState.ziipBacklog`), batch CP/zIIP demand scaled by the pace the other pool allows (`JobRuntime.cpPace/ziipPace`) | Midwest seed 7, PROD1 absolute cap 1.0 CP, full day: zIIP 66 953 → 15 799 engine-s (uncapped 20 233), BATCHPRD zIIP 46 245 → 3 296. Uncapped batch zIIP also fell 13 318 → 8 591 (it was inflated by CP contention in the batch window); seed 42 MOBILE no longer has a rough day 1, so the hints test moved to seed 1. Goldens changed |
 | 2026-10-29 | Expert/fixer bots recycle the PROD2 AORs on CICS_SOS on sight; the card's `affects` and clue name every PROD2 CICS workload (Midwest, revenue) | Post-M8.7 sweeps: fix 3 made CICS_SOS time out all PROD2 CICS work for 4 h, and no bot applied its fix, so expert lost Midwest seeds 6 and 10 (victories 9 → 7). With the fix, 10-seed sweeps on a27b131: Midwest expert 9 victories (was 7), revenue expert 10 (unchanged, scores +3 to +13), Harbourline unchanged (no CICS_SOS); donothing and textbook rows identical. All gates pass. `affects` only feeds incident attribution and the card's trigger is POLICY, the fallback those incidents already got, so no sim change; goldens unchanged |
 | 2026-10-30 | Audit rounds run as a paced loop (`/audit-loop <rounds> <pace>`): Sonnet auditor subagents, vetting by the main agent, Opus `realism-fixer` subagents in worktrees, fixes landed one PR at a time, 10-seed sweeps per scenario on Sonnet worker sessions; a scheduled task launches audits and is deleted after the last round | User request. Each audit is processed as it finishes; sweeps go to separate containers because the 4-core box can't sweep and test at once; one golden-changing PR at a time still holds |
+| 2026-10-30 | Partition Data shows LPAR BUSY% and MVS BUSY%; MVS BUSY = CP demand / unparked logical CPs; Monitor III MVS Util% uses it (was lparBusy/(1 − short-engine delay)) | Audit r5 item 16 (*RMF Report Analysis* p.389). Midwest seed 7, PROD1 weight 50 on 4 CPs: LPAR 7.0 / MVS 8.1 → 7.0 / 100. Reporting only; one-day state hash without the new fields equals dev, so no sweep |
 
 ## Open questions
 

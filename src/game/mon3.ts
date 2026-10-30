@@ -350,9 +350,8 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
         cpsOnline: lcp,
         iipsOnline: lzi,
         cpBusyPct: 100 * lparBusy,
-        // APPROX: a logical CP that is ready but not dispatched by PR/SM is busy to z/OS (not in wait),
-        // so the MVS view exceeds the LPAR view by the short-engine wait.
-        mvsBusyPct: 100 * Math.min(1, lparBusy / Math.max(0.05, 1 - (cp?.prsmDelayFrac ?? 0))),
+        // Ready-but-undispatched logical CPs are busy to z/OS (RMF Report Analysis 3.1 p.389).
+        mvsBusyPct: 100 * (cp?.mvsBusyFrac ?? lparBusy),
         ziipBusyPct: zi && lzi > 0 ? (100 * zi.deliveredEngines) / lzi : null,
         applPct: lcp > 0 ? (100 * (eappl - enclaveCp)) / lcp : 0,
         eapplPct: lcp > 0 ? (100 * eappl) / lcp : 0,
