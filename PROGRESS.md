@@ -482,6 +482,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-29 | Classification patterns follow WLM syntax (*WLM Planning* p.104): `%` one character (trailing `%` may match none), `*` wildcard only last or alone, literal elsewhere, no `?`; shipped IRLM rules become `%%%%IRLM` | `*IRLM` is a literal in real WLM; behaviour unchanged (goldens moved only by the pattern string in the hashed state; mapping it back reproduces the old hashes) |
 | 2026-10-29 | zIIP no longer soaks up the CP backlog: transaction backlog carried per pool (`SimState.ziipBacklog`), batch CP/zIIP demand scaled by the pace the other pool allows (`JobRuntime.cpPace/ziipPace`) | Midwest seed 7, PROD1 absolute cap 1.0 CP, full day: zIIP 66 953 → 15 799 engine-s (uncapped 20 233), BATCHPRD zIIP 46 245 → 3 296. Uncapped batch zIIP also fell 13 318 → 8 591 (it was inflated by CP contention in the batch window); seed 42 MOBILE no longer has a rough day 1, so the hints test moved to seed 1. Goldens changed |
 | 2026-10-29 | Expert/fixer bots recycle the PROD2 AORs on CICS_SOS on sight; the card's `affects` and clue name every PROD2 CICS workload (Midwest, revenue) | Post-M8.7 sweeps: fix 3 made CICS_SOS time out all PROD2 CICS work for 4 h, and no bot applied its fix, so expert lost Midwest seeds 6 and 10 (victories 9 → 7). With the fix, 10-seed sweeps on a27b131: Midwest expert 9 victories (was 7), revenue expert 10 (unchanged, scores +3 to +13), Harbourline unchanged (no CICS_SOS); donothing and textbook rows identical. All gates pass. `affects` only feeds incident attribution and the card's trigger is POLICY, the fallback those incidents already got, so no sim change; goldens unchanged |
+| 2026-10-30 | Audit rounds run as a paced loop (`/audit-loop <rounds> <pace>`): Sonnet auditor subagents, vetting by the main agent, Opus `realism-fixer` subagents in worktrees, fixes landed one PR at a time, 10-seed sweeps per scenario on Sonnet worker sessions; a scheduled task launches audits and is deleted after the last round | User request. Each audit is processed as it finishes; sweeps go to separate containers because the 4-core box can't sweep and test at once; one golden-changing PR at a time still holds |
 
 ## Open questions
 
@@ -547,6 +548,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-10-30:** New skill `audit-loop` and agent `realism-fixer` (user request): paced audit → vet → fix → sweep
+  loop driven by a scheduled task (see Decisions). `.gitignore` now keeps `.claude/skills/`.
 - **2026-10-28:** New agent `goal-mode-realism-auditor` (user request): makes deliberate, drastic changes (defined
   capacity far below demand, resource-group caps on the STC classes Db2 and CICS depend on, MAXDBAT 1, no aliases...)
   in same-seed A/B runs, compares the results with IBM documentation through the zos-docs skill and `docs/research.md`,
