@@ -221,6 +221,14 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
   The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
   DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
+- [ ] **CICS/IMS regions must follow their transactions' goals.** Decided 2026-10-31 (user, #111 Q1): model it, as
+  its own PR, merged before item 15. By default WLM manages CICS/IMS regions to the goals of the transaction service
+  classes they serve; REGION mode on the classification rule keeps the region's own goal (*WLM Planning* p.122;
+  SG24-7621 §3.30–3.32; `docs/research.md`). The sim bills transaction CPU to ONLHI and region CPU to STCHI
+  separately and sets each DP on its own, so raising ONLHI starves its own regions (#111, seed 7 15:00: STCHI PI
+  0.69 → 31.9). Plan: a region class's DP and projection follow the most important transaction class it serves
+  (server topology), with an optional REGION mode; overlaps the work-manager-states item above. Cross-layer
+  and shifts balance in all three scenarios: sweeps needed.
 - [x] **Equal-importance moves must narrow the PI gap.** Done 2026-10-30 (fix 20): `passes()` rejects a move whose projected gap to a harmed equal-importance class doesn't shrink; Midwest seed 7 PROD2 09:00–10:30 TSO#2/DDFPRD#2 moves 15 → 5, donor moves between them 6 → 1, no ED↔EB swaps (both now climb); goldens moved; sweeps below. When receiver and donor have the same importance and both
   miss, WLM brings their goal achievement closer together (SG24-6472 p.60); Enrico's test: the receiver's gain beats
   the donor's loss *and* the projected PIs end up less far apart (*How WLM Works*, slide 52; `docs/research.md`). `passes()` (`src/sim/wlm/adjust.ts`) checks
@@ -369,7 +377,7 @@ Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, l
   (CP and zIIP), or grant zIIP no faster than the CP share of the same work allows. Changes goldens.
 
 Audit round 5 (2026-10-30, Midwest seed 7; `runs/lab/2026-10-30-audit-r5.md`, local only).
-- [ ] **15. Most important missing work must stay receivable under a CPU cap.** Needs user (2026-10-30): reproduces at DC 200 on seeds 7 and 11 (not DC 100); unclamping the projection (WIP `fix/r5-receiver-clamp`, local) is not enough, because raising ONLHI starves its own CICS regions (txn and region CPU compete; real regions follow their transactions' goals, *WLM Planning* p.122) and lowering STCMED lowers Db2 (flaw F1). Side effects: STCMED promotion vetoed ~1.5 h, TSO#2/DDFPRD#2 DP ping-pong. Draft PR #111 (not for merge) holds the WIP and the design questions. WLM helps the most important work
+- [ ] **15. Most important missing work must stay receivable under a CPU cap.** Blocked on the CICS regions item (Q1 decided 2026-10-31: model region server topology first, then rebase #111 on it); Q2 and Q3 still need the user. Found 2026-10-30: reproduces at DC 200 on seeds 7 and 11 (not DC 100); unclamping the projection (WIP `fix/r5-receiver-clamp`, local) is not enough, because raising ONLHI starves its own CICS regions (txn and region CPU compete; real regions follow their transactions' goals, *WLM Planning* p.122) and lowering STCMED lowers Db2 (flaw F1). Side effects: STCMED promotion vetoed ~1.5 h, TSO#2/DDFPRD#2 DP ping-pong. Draft PR #111 (not for merge) holds the WIP and the design questions. WLM helps the most important work
   missing its goal first (*WLM Planning* ch.1). Audit (PROD1 DC 100 MSU): ONLHI (imp 1) PI 0.50 → 4.00, RT 0.040 →
   7.5 s from 10:00 to about 21:00 at DP FA while STCMED (imp 3, PI 0.59), TSO#2 and DDFPRD#2 (imp 4) sit at FB; WLM
   log `ONLHI#1 PI=4.00 BTLNK=CPU no action with net value` every interval. Cause: the projected percentile PI is
@@ -583,8 +591,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   that enough for the strategic choice to feel real?
 - Tuning target for "fun density": how many meaningful decisions per live day? (Target: 3–6
   alerts that matter, 1–2 incidents in Act II+.)
-- Waiting on the user: M8.7 item 15 (draft PR #111, Q1–Q3: CICS regions following their transactions' goals, Midwest F1
-  under a cap, veto vs gain). M9 released 2026-10-26. (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
+- Waiting on the user: M8.7 item 15 (draft PR #111), Q2 (is ONLHI collapsing under a cap an intended result of F1?) and
+  Q3 (veto vs gain; on realism the veto is right). Q1 decided 2026-10-31: CICS regions follow their transactions' goals. M9 released 2026-10-26. (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
 
 ## Risks
 
