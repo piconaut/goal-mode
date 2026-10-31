@@ -569,36 +569,22 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
-- Importance-1 work starved under CPU overload (audit r3, Midwest seed 42 at 5 CPs): ONLHI#1 sat at DP 250 below
-  STCMED, STCHI and DDFPRD#1 (251) for 6+ hours, RBANK 0 % in SLA 10:00–15:00, WLM log "PI=4.00 BTLNK=CPU no action
-  with net value"; an AVG goal behaved the same and a forced DP 253 did not recover it in 80 ticks. Real WLM would
-  take donors of lower importance. Not isolated (overload hurts every arm); recheck after items 1, 3 and 9, then trace
-  `passes()` in `src/sim/wlm/adjust.ts` for this case.
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
-- Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
-  a soft-capped image. On a real system the latter probably shows as processor (PRC) delay, since PR/SM just stops
-  dispatching the logical CPs. WLMGL side settled (CAP = RG and discretionary capping only, *RMF Report Analysis*
-  p.540; queued in M8.7 item 5); the Monitor III DELAY report's own columns are still unchecked.
-- Monitor III MVS Util% is derived as LPAR util ÷ (1 − short-engine wait) (APPROX). Real MVS busy also differs from LPAR
-  busy through HiperDispatch parking and wait-completion settings; check against the CPU Activity report docs.
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
-- Resource group minimum for discretionary members: what exactly counts as "missing goals"? Modelled as delay > using.
+- Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using
+  (`missingGoal` in `src/sim/core/step.ts`, APPROX); item 11 settled only that it yields to goal work.
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
 - Policy-adjust projections don't model backlog/DBAT feedback, so WLM sometimes places batch above
   DDF while DDF is happy and then can't undo it quickly. Realistic in spirit, but watch in balancing.
 - Percentile PI edge cases: how exactly does WLM handle periods with very few completions
   (minimum-sample rules)? Currently an EWMA with a variable horizon. Check *MVS Planning: WLM*.
-- WLM-managed initiator start/stop heuristics: the JES2 Init & Tuning Guide "queue delay
-  measurements" section wasn't reviewed yet.
-- ~~R4HA after IPL~~ settled: *MVS Planning: WLM* says WLM starts with a four-hour window containing no usage, i.e. 48 zero slots, as modelled.
 - TFP details (baseline commitment, overage pricing) are left deliberately abstract; is
   that enough for the strategic choice to feel real?
-- Should two-CPC topologies (cross-site sysplex) be in the base scenario or saved for the
-  airline scenario?
 - Tuning target for "fun density": how many meaningful decisions per live day? (Target: 3–6
   alerts that matter, 1–2 incidents in Act II+.)
-- Waiting on the user: nothing open (M9 released 2026-10-26). (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
+- Waiting on the user: M8.7 item 15 (draft PR #111, Q1–Q3: CICS regions following their transactions' goals, Midwest F1
+  under a cap, veto vs gain). M9 released 2026-10-26. (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
 
 ## Risks
 
