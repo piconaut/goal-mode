@@ -51,4 +51,5 @@ the sim in a Web Worker; `tools/` holds the headless runners and strategy bots.
   references).
 - [`PROGRESS.md`](PROGRESS.md): milestones, decisions, balance results and open questions.
 - [`CLAUDE.md`](CLAUDE.md): architecture rules and conventions for contributors (human or AI).
+- [`AGENTS.md`](AGENTS.md): Codex entry point; [`docs/codex.md`](docs/codex.md) explains native agent roles.
 - [`docs/agents.md`](docs/agents.md): the headless play CLI and the AI agents that play the game through it.

@@ -614,6 +614,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Session log
 
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-11-01:** Added Codex entry point `AGENTS.md`, eight native roles in `.codex/config.toml`
+  and role wrappers that load the existing `.claude/agents/` briefs with Codex host adaptations.
+  Shared briefs remain authoritative; models and permission policy inherit from the host.
+  Setup and fresh-session role verification are documented in `docs/codex.md`. Game behaviour unchanged.
 - **2026-10-30:** New skill `audit-loop` and agent `realism-fixer` (user request): paced audit → vet → fix → sweep
   loop driven by a scheduled task (see Decisions). `.gitignore` now keeps `.claude/skills/`.
 - **2026-10-28:** New agent `goal-mode-realism-auditor` (user request): makes deliberate, drastic changes (defined
