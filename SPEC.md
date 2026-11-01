@@ -391,7 +391,10 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   wildcard only last or alone and a literal elsewhere (WLM Planning p.104).
   Anything unmatched in a non-STC subsystem goes to **SYSOTHER** (discretionary).
 - **Report classes** (pure reporting, cost nothing) — required for granular RMF views.
-- CICS/IMS region management: "Manage regions using goals of TRANSACTION | REGION".
+- CICS/IMS region management: "Manage Region Using Goals Of TRANSACTION | REGION | BOTH" on each STC/JES
+  classification rule (inherited by sub-rules; WLM Planning p.122, p.211). TRANSACTION regions are transaction
+  servers: their own CPU runs at the DP of the most important transaction class they serve, and WLM manages the
+  transaction classes, not the region class, for them. REGION and BOTH regions run at their class's DP.
 - CICS transaction classes (any class a CICS rule or the CICS default points at) take one period with a
   response-time goal. The editor warns on velocity, discretionary or multi-period goals ("not supported",
   WLM Planning ch. 9–10) and refuses a resource group on such a class, the one case IBM documents the ISPF
@@ -1508,7 +1511,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts |
 | I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
-| CICS region management | **Simplified** | CICS work on an image shares the AOR regions' DP: most important served period (TRANSACTION, free ride) or the region STC class (REGION); no per-region split of work |
+| CICS region management | **Simplified** | Per region on its STC/JES rule. CICS transactions on an image share the AORs' DP: most important served period (TRANSACTION, free ride) or the AOR class (REGION/BOTH). TRANSACTION regions' own CPU dispatches with the transactions; their samples are reported in the region class but left out of its goal-management PI, so a class holding only such regions is not managed. BOTH = REGION for dispatch. No per-region split of a workload's transactions: if any AOR on the image is TRANSACTION, all its CICS transactions ride the transaction DP |
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
@@ -1540,6 +1543,9 @@ Primary IBM sources:
   cap pattern and phantom weight), group capacity shares, long-term CPU protection, Honor Priority (no CP help
   for discretionary work), CICS/IMS region management.
   https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieaw100_v2r5.pdf
+  z/OS 3.1 edition: "Manage Region Using Goals Of" TRANSACTION / REGION / BOTH on STC and JES rules, and the
+  warning that it limits WLM's ability to manage the system (PDF p.122, p.211).
+  https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf
 - IBM, *z/OS MVS Initialization and Tuning Reference* (V2R5), IEAOPTxx: BLWLINTHD (default 20 s), BLWLTRPCT
   (default 0.5%, bounds how many units are promoted), IIPHONORPRIORITY (default YES; no zIIPs online → CPs),
   ABSMSUCAPPING (cap while R4HA ≥ limit, or always), ERV.
