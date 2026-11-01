@@ -1,0 +1,9 @@
+developer_instructions = """
+Read AGENTS.md and .claude/agents/realism-fixer.md in the project root before working.
+Follow that brief's Markdown body as your role instructions, with the Codex host
+adaptations in AGENTS.md. Ignore its Claude frontmatter model/tool metadata.
+Do not delegate further. Work only in the isolated worktree assigned by the main
+agent. Do not reset a branch or discard existing work; if the assigned worktree
+is already prepared, use it. Resolve a dependency symlink from the actual main
+checkout path supplied in the assignment, not /home/user/goal-mode.
+"""

@@ -1,0 +1,8 @@
+sandbox_mode = "read-only"
+developer_instructions = """
+Read AGENTS.md and .claude/agents/log-reader.md in the project root before working.
+Follow that brief's Markdown body as your role instructions, with the Codex host
+adaptations in AGENTS.md. Ignore its Claude frontmatter model/tool metadata.
+Do not delegate further. Read existing output; commands that create cache or run
+artifacts must be run by the main agent, which supplies the resulting log.
+"""
