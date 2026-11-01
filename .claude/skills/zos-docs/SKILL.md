@@ -28,6 +28,12 @@ mentioned, else 3.1, and say which. If the answer likely spans two books (e.g. S
 layouts are in both `ieag200` and `grbdp00`), one is usually enough — start with the more
 specific one.
 
+The map links to dated validation evidence. An IBM library listing can confirm a title
+and form number without confirming its exact PDF filename; respect the unverified markers.
+RMF's Programmer's Guide (`erbrp00`) and Data Gatherer's Programmer's Guide (`grbdp00`)
+are separate books. For SCRT, follow the map's explicit URL/local-alias instructions
+rather than constructing a z/OS-release URL from its local filename.
+
 **Redbooks** (`sgNNNNNN`, e.g. `sg246472` = SG24-6472) and Redpapers (`redpNNNN`) are
 valid sources too. They often explain *how* something works internally (algorithms,
 intervals, rules of thumb) where the product books only say how to configure it. Use one
