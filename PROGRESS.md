@@ -613,7 +613,24 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Session log
 
+- **2026-11-01:** Audited the zos-docs book map against all 24 stored IBM PDFs and IBM web
+  sources. Added IP Configuration Guide, SCRT 30.1 (with its local alias and canonical URL),
+  CPSM Managing Workloads and ABCs Volume 12; restored the separate RMF Programmer's Guide,
+  completed message volumes 7–9, corrected titles/missing forms and stale draft status.
+  Added dated per-entry validation evidence distinguishing title/form confirmation from
+  exact filename verification; retained explicit unresolved candidates. Validation:
+  `npm run check` green (57 files, 477 tests), all stored PDFs represented, local Markdown
+  links checked, `git diff --check` clean. No game behaviour change.
+
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-11-01:** Set explicit Codex role models and reasoning: Luna low for log reading,
+  Luna high for all three players, Sol medium for bounded implementation, Sol high for PR review
+  and vetted realism fixes, Astra high for open-ended realism auditing. Assignments and rationale
+  are in `docs/codex.md`; host-tool fallbacks must preserve the configured model/effort when supported.
+- **2026-11-01:** Added Codex entry point `AGENTS.md`, eight native roles in `.codex/config.toml`
+  and role wrappers that load the existing `.claude/agents/` briefs with Codex host adaptations.
+  Shared briefs remain authoritative; models and permission policy inherit from the host.
+  Setup and fresh-session role verification are documented in `docs/codex.md`. Game behaviour unchanged.
 - **2026-10-30:** New skill `audit-loop` and agent `realism-fixer` (user request): paced audit → vet → fix → sweep
   loop driven by a scheduled task (see Decisions). `.gitignore` now keeps `.claude/skills/`.
 - **2026-10-28:** New agent `goal-mode-realism-auditor` (user request): makes deliberate, drastic changes (defined
