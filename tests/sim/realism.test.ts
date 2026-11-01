@@ -5,8 +5,10 @@ import { MIDWEST_WORLD } from '../../src/content/scenarios/midwest';
 import { resolveCpc } from '../../src/sim/hw/pools';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
-import { discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
-import { accPi, decayInto, emptyAcc, goalInfo, tickPi } from '../../src/sim/wlm/runtime';
+import { cicsRegions, discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
+import { MIDWEST_ADDRESS_SPACES } from '../../src/content/scenarios/midwest-workloads';
+import type { RegionMode } from '../../src/sim/wlm/types';
+import { accPi, decayInto, emptyAcc, goalInfo, goalPi, tickPi } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
@@ -483,6 +485,75 @@ describe('CICS region management', () => {
     const region = evaluateLpar({ ...base, dpOf: (k) => ({ ...dps, 'STCHI#1': 210 })[k]!, regions: { keys: ['ONLHI#1', 'ONLMED#1'], mode: 'REGION', regionKey: 'STCHI#1' } });
     // Region class below batch: even ONLHI waits behind batch.
     expect(region.slices[0]!.cpGranted).toBeLessThan(evaluateLpar(base).slices[0]!.cpGranted);
+  });
+
+  // The regions' own CPU: an AOR (transaction server) and an MQ queue manager share STCHI.
+  const regionSlices = [
+    txn({ key: 'HI', scKey: 'ONLHI#1', cpEngines: 2.5 }),
+    server({ key: 'AOR@P', scKey: 'STCHI#1', role: 'CICS.AOR', jobname: 'AOR', cpEngines: 0.2 }),
+    server({ key: 'MQ@P', scKey: 'STCHI#1', role: 'MQ.MSTR', jobname: 'MQ', cpEngines: 0.2 }),
+  ];
+  const regionBase = { ...base, slices: regionSlices };
+  const run = (onlhiDp: number, mode: 'TRANSACTION' | 'REGION', servers: string[]) =>
+    evaluateLpar({ ...regionBase, dpOf: (k) => ({ 'ONLHI#1': onlhiDp, 'STCHI#1': 240 })[k]!, regions: { keys: ['ONLHI#1'], mode, regionKey: 'STCHI#1', servers } });
+  const cpuDelayFrac = (r: ReturnType<typeof evaluateLpar>, key: string) => {
+    const x = r.slices.find((s) => s.key === key)!;
+    return x.delayCpu / (x.usingCpu + x.delayCpu);
+  };
+  it('TRANSACTION mode: raising the transaction class above the region class does not starve its own regions', () => {
+    // WLM Planning p.122: a transaction-server region is managed to the goals of the transactions it serves.
+    const low = run(230, 'TRANSACTION', ['AOR@P']);
+    const high = run(252, 'TRANSACTION', ['AOR@P']);
+    expect(high.slices[1]!.cpGranted).toBeCloseTo(0.2 * (2 / 2.7), 6); // shares ONLHI's DP and its shortage
+    expect(cpuDelayFrac(high, 'AOR@P')).toBeLessThan(cpuDelayFrac(low, 'AOR@P') + 0.3);
+    // The MQ queue manager is not a transaction server: it stays at STCHI's DP, behind ONLHI.
+    expect(high.slices[2]!.cpGranted).toBeLessThan(0.01);
+    // Without the topology (the old model) the region starved behind its own transactions.
+    const old = run(252, 'TRANSACTION', []);
+    expect(old.slices[1]!.cpGranted).toBeLessThan(0.01);
+  });
+  it('REGION and BOTH: the region class DP governs the region and its transactions', () => {
+    const r = run(252, 'REGION', []);
+    // Transactions ride STCHI's DP (240) with the AOR and MQ: ONLHI's own DP is not used.
+    const total = 2.5 + 0.2 + 0.2;
+    expect(r.slices[0]!.cpGranted).toBeCloseTo((2 * 2.5) / total, 6);
+    expect(r.slices[1]!.cpGranted).toBeCloseTo((2 * 0.2) / total, 6);
+  });
+  it('Manage Region Using Goals Of is read per region from its STC rule (WLM Planning p.211)', () => {
+    const asSlice = (jobname: string, role: string) => server({ key: `${jobname}@PROD1`, scKey: 'STCHI#1', role, jobname });
+    const sl = [txn({ key: 'RB', scKey: 'ONLHI#1', workloadId: 'W' }), asSlice('CICSTOR1', 'CICS.TOR'), asSlice('CICSAOR1', 'CICS.AOR'), asSlice('CICSAOR3', 'CICS.AOR'), asSlice('MQ1AMSTR', 'MQ.MSTR')];
+    const byId = { W: { subsystem: 'CICS' } } as unknown as Parameters<typeof cicsRegions>[2];
+    const withRules = (pre: { pattern: string; regionMode: RegionMode }[], legacy?: 'REGION') => ({
+      ...BASEPOL,
+      ...(legacy ? { cicsRegionMode: legacy } : {}),
+      subsystems: BASEPOL.subsystems.map((ss) =>
+        ss.subsystem === 'STC' ? { ...ss, rules: [...pre.map((r) => ({ qualifier: 'TN' as const, pattern: r.pattern, serviceClass: 'STCHI', reportClass: null, children: [], regionMode: r.regionMode })), ...ss.rules] } : ss,
+      ),
+    });
+    const regionsOf = (def: typeof BASEPOL) => cicsRegions(def, sl, byId, MIDWEST_ADDRESS_SPACES, 'PROD1').regions!;
+    // Default: every region is a transaction server.
+    expect(regionsOf(BASEPOL)).toMatchObject({ mode: 'TRANSACTION', servers: ['CICSAOR1@PROD1', 'CICSAOR3@PROD1', 'CICSTOR1@PROD1'] });
+    // IBM's advice: TOR = BOTH, AORs at the default.
+    expect(regionsOf(withRules([{ pattern: 'CICSTOR*', regionMode: 'BOTH' }]))).toMatchObject({ mode: 'TRANSACTION', servers: ['CICSAOR1@PROD1', 'CICSAOR3@PROD1'] });
+    // AORs REGION: the transactions ride the AOR class DP.
+    expect(regionsOf(withRules([{ pattern: 'CICSAOR*', regionMode: 'REGION' }]))).toMatchObject({ mode: 'REGION', regionKey: 'STCHI#1', servers: ['CICSTOR1@PROD1'] });
+    // Saved games with the old policy-wide REGION setting keep it.
+    expect(regionsOf(withRules([], 'REGION'))).toMatchObject({ mode: 'REGION', servers: [] });
+  });
+  it('the region class is reported with its server regions but managed without them', () => {
+    const t = run(252, 'TRANSACTION', ['AOR@P']).scps.find((x) => x.scKey === 'STCHI#1')!;
+    const goal = goalInfo(BASEPOL, 'STCHI#1')!.goal;
+    // Reported: the AOR's samples are in the class's tick.
+    expect(t.usingCpu + t.delayCpu).toBeGreaterThan(0.39);
+    // Managed: only the MQ queue manager counts (fully delayed here), so velocity ≈ 0.
+    const acc = decayInto(emptyAcc(), t);
+    expect(accPi(goal, acc)).toBeLessThan(goalPi(goal, acc)!);
+    expect(tickPi(goal, t)).toBeCloseTo(goalPi(goal, acc)!, 6);
+    // Only server regions in the class: nothing left to manage.
+    const only = evaluateLpar({ ...regionBase, slices: regionSlices.slice(0, 2), dpOf: (k) => ({ 'ONLHI#1': 252, 'STCHI#1': 240 })[k]!, regions: { keys: ['ONLHI#1'], mode: 'TRANSACTION', regionKey: 'STCHI#1', servers: ['AOR@P'] } });
+    const t2 = only.scps.find((x) => x.scKey === 'STCHI#1')!;
+    expect(goalPi(goal, decayInto(emptyAcc(), t2))).toBeNull();
+    expect(accPi(goal, decayInto(emptyAcc(), t2))).not.toBeNull();
   });
 });
 

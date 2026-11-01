@@ -4,7 +4,7 @@
 
 import type { AddressSpaceDef, WorkloadDef } from '../sim/workload/types';
 import { classify, wildcardMatch } from '../sim/wlm/classify';
-import { FORCED_SYSTEM_JOBNAMES, SYSOTHER, SYSSTC, type ClassificationRule, type ServiceDefinition, type SubsystemType, type WorkAttributes } from '../sim/wlm/types';
+import { FORCED_SYSTEM_JOBNAMES, SYSOTHER, SYSSTC, type ClassificationRule, type RegionMode, type ServiceDefinition, type SubsystemType, type WorkAttributes } from '../sim/wlm/types';
 import type { RulePath } from './wlmEdit';
 
 export interface WorkItem {
@@ -24,6 +24,8 @@ export interface RuleRow {
   catches: string[];
   /** Resulting service class for that work (a nested rule may override). */
   effectiveClass: string;
+  /** STC/JES rules: "Manage Region Using Goals Of" set on this rule (absent: inherited). */
+  regionMode?: RegionMode;
 }
 
 export interface SubsystemExplain {
@@ -37,6 +39,8 @@ export interface SubsystemExplain {
 
 export interface ClassificationExplain {
   subsystems: SubsystemExplain[];
+  /** "Manage Region Using Goals Of" for rules that set none (the legacy policy-wide value, else TRANSACTION). */
+  regionModeDefault: 'TRANSACTION' | 'REGION';
   forcedSystem: string[];
   sysother: string[];
 }
@@ -116,6 +120,7 @@ export function explainClassification(def: ServiceDefinition, items: readonly Wo
           reportClass: r.reportClass,
           catches: hit?.catches ?? [],
           effectiveClass: hit?.cls ?? r.serviceClass ?? '(parent)',
+          ...(r.regionMode ? { regionMode: r.regionMode } : {}),
         });
         walk(r.children, path);
       });
@@ -130,7 +135,7 @@ export function explainClassification(def: ServiceDefinition, items: readonly Wo
       defaultCatches: catches,
     });
   }
-  return { subsystems, forcedSystem, sysother };
+  return { subsystems, regionModeDefault: def.cicsRegionMode ?? 'TRANSACTION', forcedSystem, sysother };
 }
 
 export type RowChange = 'added' | 'changed' | 'same';
@@ -142,7 +147,7 @@ export function diffRows(active: readonly RuleRow[], pending: readonly RuleRow[]
   const changes = pending.map((r): RowChange => {
     const a = act.get(key(r));
     if (!a) return 'added';
-    return a.serviceClass !== r.serviceClass || a.reportClass !== r.reportClass || a.path.join('.') !== r.path.join('.') ? 'changed' : 'same';
+    return a.serviceClass !== r.serviceClass || a.reportClass !== r.reportClass || a.regionMode !== r.regionMode || a.path.join('.') !== r.path.join('.') ? 'changed' : 'same';
   });
   const pend = new Set(pending.map(key));
   return { changes, removed: active.filter((r) => !pend.has(key(r))) };

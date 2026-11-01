@@ -40,7 +40,15 @@ export interface ClassificationRule {
   serviceClass: string | null;
   reportClass: string | null;
   children: ClassificationRule[];
+  /** STC/JES rules only: "Manage Region Using Goals Of" for the CICS/IMS regions this rule catches (absent =
+   * inherited from the enclosing rule, else the policy-wide legacy `cicsRegionMode`, else TRANSACTION). */
+  regionMode?: RegionMode;
 }
+
+/** TRANSACTION: managed as a transaction server, to the goals of the transaction classes it serves. REGION: to the
+ * region's own service class goal. BOTH: like REGION, but transaction completions are still tracked so the
+ * transaction classes keep their response-time management (WLM Planning 3.1 p.122, p.211). */
+export type RegionMode = 'TRANSACTION' | 'REGION' | 'BOTH';
 
 export interface SubsystemRules {
   subsystem: SubsystemType;
@@ -64,7 +72,8 @@ export interface ServiceDefinition {
   classes: ServiceClassDef[];
   reportClasses: string[];
   resourceGroups: ResourceGroupDef[];
-  /** "Manage regions using goals of" for CICS regions (absent = TRANSACTION). */
+  /** Legacy policy-wide "Manage regions using goals of" (saved games before it moved to the STC/JES rules):
+   * the fallback for rules without their own `regionMode`. Absent = TRANSACTION. */
   cicsRegionMode?: 'TRANSACTION' | 'REGION';
   /** Service coefficient option "I/O priority management" (absent = YES). */
   ioPriorityManagement?: boolean;

@@ -85,9 +85,8 @@ function pendingView(): PendingPolicyView | null {
     resourceGroups: pendingPolicy.resourceGroups,
     classDefs: pendingPolicy.classes,
     ioPriorityManagement: pendingPolicy.ioPriorityManagement !== false,
-    cicsRegionMode: pendingPolicy.cicsRegionMode ?? 'TRANSACTION',
     rules: pendingPolicy.subsystems.flatMap((ss) =>
-      ss.rules.map((r) => ({ subsystem: ss.subsystem, text: `${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(default)'}` })),
+      ss.rules.map((r) => ({ subsystem: ss.subsystem, text: `${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(default)'}${r.regionMode ? ` [${r.regionMode}]` : ''}` })),
     ),
     cicsClasses: cicsTransactionClasses(pendingPolicy),
     cicsIssues: cicsGoalIssues(pendingPolicy),

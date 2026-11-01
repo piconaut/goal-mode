@@ -221,7 +221,7 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
   The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
   DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
-- [ ] **CICS/IMS regions must follow their transactions' goals.** Decided 2026-10-31 (user, #111 Q1): model it, as
+- [x] **CICS/IMS regions must follow their transactions' goals.** Done 2026-11-01: "Manage Region Using Goals Of" per STC/JES rule (TRANSACTION, REGION, BOTH); in TRANSACTION the AOR/TOR address spaces' CPU dispatches at the most important CICS transaction class's DP and their samples leave the region class's managed PI (still reported); REGION/BOTH dispatch as the old REGION mode; old saves fall back to policy-wide `cicsRegionMode`. Decided 2026-10-31 (user, #111 Q1): model it, as
   its own PR, merged before item 15. By default WLM manages CICS/IMS regions to the goals of the transaction service
   classes they serve; REGION mode on the classification rule keeps the region's own goal (*WLM Planning* p.122;
   SG24-7621 §3.30–3.32; `docs/research.md`). The sim bills transaction CPU to ONLHI and region CPU to STCHI
@@ -564,6 +564,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-30 | I/O priority management NO keeps DASD I/O using/delay in WLMGL, WLM_DETAIL and Monitor III, keeps the IOSQ ordered by DP, and leaves I/O out of velocity and of the WLM bottleneck | Audit r6 item 17 (*WLM Planning* p.115, p.70). Harbourline seed 13, busy LCUs, OFF at PRDA 10:00: ONLHI I/O delay 0 → 42 %, OTH 80 → 43 %, MKTORD RT 0.048 → 0.044 s (FIFO gone). Default policies keep I/O priority on: goldens and bench hashes unchanged, so no sweep |
 | 2026-10-30 | CF Activity follows the RMF layout: duplexed structures get PRIM and SEC rows (the secondary's requests count on its CF), STRUCTURE ACTIVITY per structure copy × system, SUBCHANNEL ACTIVITY (was CONNECTED SYSTEMS) per CF × system with that CF's distance | Audit r6 item 18 (*RMF Report Analysis* p.365, p.372–378). Harbourline seed 13, LOCK1 duplexed: CF02 REQ/SEC 16 733 → 33 466; EST DIST per row 0/15 km instead of 15 everywhere. Reporting only: state hash without the new fields equals dev (f7c857525081d79f), so no sweep. APPROX: both copies report the duplexed request's elapsed time |
 | 2026-10-30 | Equal-importance net value needs a shrinking PI gap (fix 20): a move that harms an equal-importance class is rejected unless the gap between the receiver's and that class's projected PIs shrinks (SG24-6472 p.60; Enrico slide 52). Applies to all equal-importance moves, not only when both miss | Stops TSO#2/DDFPRD#2 trading CPU every few minutes (Midwest seed 7: 15 → 5 moves 09:00–10:30). Leapfrogging upward (each raises its own DP, no projected harm) remains and is consistent with WLM. Bench midwest 88dac8daa434772b → 1b9844d8ee9e0fe8, harbourline b00a39eb23e07173 → b572057c3980beb1. 10-seed sweeps on 14c53c0, all inside bands: Midwest do-nothing 15 / textbook 27 / expert 9 victories (seed 2 trust, day 40); Harbourline 10 / 30.5 / expert 9 (seed 2 trust, day 33); revenue 8.5 / 28 / expert 10. In line with the last recorded sweeps |
+| 2026-11-01 | CICS/IMS regions follow their transactions' goals: Manage Region Using Goals Of on STC/JES rules (TRANSACTION default, REGION, BOTH), WLM Planning p.102 and p.122 | Raising a CICS transaction class starved its own regions in the region class (#111, STCHI PI 0.69 to 31.9). Midwest seed 7 PROD1 DC 200 15:00: reported STCHI PI 0.70 to 11.2 (regions now wait with ONLHI, not managed), ONLHI completions 131 to 155/s. APPROX: no per-region split of a workload's transactions. Bench midwest 1b9844d8ee9e0fe8 to ce49e04837e95694, harbourline b572057c3980beb1 to acac2578d02b2cdd. Sweeps: pending |
 
 ## Open questions
 
@@ -629,7 +630,7 @@ Newest first. Entries before loop 48 are summarised in the milestones above; see
   are in `docs/codex.md`; host-tool fallbacks must preserve the configured model/effort when supported.
 - **2026-11-01:** Added Codex entry point `AGENTS.md`, eight native roles in `.codex/config.toml`
   and role wrappers that load the existing `.claude/agents/` briefs with Codex host adaptations.
-  Shared briefs remain authoritative; models and permission policy inherit from the host.
+  Shared briefs remain authoritative; models and permission policy inherit from the host (superseded: per-role models since #124).
   Setup and fresh-session role verification are documented in `docs/codex.md`. Game behaviour unchanged.
 - **2026-10-30:** New skill `audit-loop` and agent `realism-fixer` (user request): paced audit → vet → fix → sweep
   loop driven by a scheduled task (see Decisions). `.gitignore` now keeps `.claude/skills/`.
