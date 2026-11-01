@@ -1,3 +1,6 @@
+model = "gpt-6-luna"
+model_reasoning_effort = "high"
+
 developer_instructions = """
 Read AGENTS.md and .claude/agents/goal-mode-player.md in the project root.
 Follow that brief's Markdown body as your role instructions, with the Codex host
