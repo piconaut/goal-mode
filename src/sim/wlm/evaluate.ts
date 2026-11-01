@@ -148,8 +148,10 @@ export interface LparEvalInput {
   /** CICS work runs inside region address spaces, so it shares their dispatching priority: the most
    * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION/BOTH).
    * `servers`: slice keys of the region address spaces managed as transaction servers (TRANSACTION); their own
-   * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122). */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[] };
+   * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
+   * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
+   * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean };
   io: Record<IoClass, IoService>;
   /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
@@ -716,7 +718,8 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       addSliceTo(rt, s, r, true);
     }
     const t = scps[scpOfAgg[sliceAgg[i]!]!]!;
-    addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey));
+    const untracked = reg !== undefined && reg.rtTracked === false && s.kind === 'TXN' && reg.keys.includes(s.scKey);
+    addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey), !untracked);
     if (order[sliceAgg[i]!] !== s.scKey) {
       // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).
       t.srvUsing = (t.srvUsing ?? 0) + r.usingCpu + r.usingZiip + (input.ioPriority === false ? 0 : r.usingIo);
@@ -738,7 +741,7 @@ function excludeIoFromVelocity(t: ScpTick): void {
   t.delayIoNoVel = t.delayIo;
 }
 
-function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean): void {
+function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean, rt = true): void {
   t.cpEngines += r.cpGranted;
   t.ziipEngines += r.ziipGranted;
   t.iipcpEngines += r.iipcpGranted;
@@ -751,6 +754,7 @@ function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean):
   t.delayOther += r.delayOther;
   t.delayStorage += r.delayStorage;
   t.delayCap += r.delayCap;
+  if (!rt) return;
   t.completions += r.completions;
   t.failed += r.failed;
   t.rtSumSec += r.completions * r.rtMeanSec;

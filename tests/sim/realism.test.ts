@@ -540,6 +540,32 @@ describe('CICS region management', () => {
     // Saved games with the old policy-wide REGION setting keep it.
     expect(regionsOf(withRules([], 'REGION'))).toMatchObject({ mode: 'REGION', servers: [] });
   });
+  it('REGION drops the transactions\' response times from their service class; BOTH keeps them (WLM Planning p.103)', () => {
+    const rt = (rtTracked: boolean) => {
+      const r = evaluateLpar({ ...regionBase, dpOf: (k) => ({ 'ONLHI#1': 252, 'STCHI#1': 240 })[k]!, regions: { keys: ['ONLHI#1'], mode: 'REGION', regionKey: 'STCHI#1', servers: [], rtTracked } });
+      return { slice: r.slices[0]!.completions, sc: r.scps.find((x) => x.scKey === 'ONLHI#1')!.completions };
+    };
+    const tracked = rt(true);
+    const region = rt(false);
+    expect(region.slice).toBeCloseTo(tracked.slice, 9); // the work still runs and completes
+    expect(tracked.sc).toBeGreaterThan(0);
+    expect(region.sc).toBe(0); // no response time data for WLM to manage the class to
+  });
+  it('response times are tracked unless every region is REGION', () => {
+    const asSlice = (jobname: string, role: string) => server({ key: `${jobname}@PROD1`, scKey: 'STCHI#1', role, jobname });
+    const sl = [txn({ key: 'RB', scKey: 'ONLHI#1', workloadId: 'W' }), asSlice('CICSTOR1', 'CICS.TOR'), asSlice('CICSAOR1', 'CICS.AOR'), asSlice('CICSAOR3', 'CICS.AOR')];
+    const byId = { W: { subsystem: 'CICS' } } as unknown as Parameters<typeof cicsRegions>[2];
+    const withRules = (pre: { pattern: string; regionMode: RegionMode }[]) => ({
+      ...BASEPOL,
+      subsystems: BASEPOL.subsystems.map((ss) =>
+        ss.subsystem === 'STC' ? { ...ss, rules: [...pre.map((r) => ({ qualifier: 'TN' as const, pattern: r.pattern, serviceClass: 'STCHI', reportClass: null, children: [], regionMode: r.regionMode })), ...ss.rules] } : ss,
+      ),
+    });
+    const tracked = (pre: { pattern: string; regionMode: RegionMode }[]) => cicsRegions(withRules(pre), sl, byId, MIDWEST_ADDRESS_SPACES, 'PROD1').regions!.rtTracked;
+    expect(tracked([])).toBe(true);
+    expect(tracked([{ pattern: 'CICS*', regionMode: 'REGION' }])).toBe(false);
+    expect(tracked([{ pattern: 'CICSTOR*', regionMode: 'BOTH' }, { pattern: 'CICSAOR*', regionMode: 'REGION' }])).toBe(true);
+  });
   it('the region class is reported with its server regions but managed without them', () => {
     const t = run(252, 'TRANSACTION', ['AOR@P']).scps.find((x) => x.scKey === 'STCHI#1')!;
     const goal = goalInfo(BASEPOL, 'STCHI#1')!.goal;

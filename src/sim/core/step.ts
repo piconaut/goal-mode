@@ -1297,16 +1297,21 @@ export function cicsRegions(
   const modeOf = (a: AddressSpaceDef) => classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: lparId }).regionMode ?? legacy;
   const servers: string[] = [];
   let txnMode: 'TRANSACTION' | 'REGION' = 'REGION';
+  let rtTracked = false;
   for (const s of slices) {
     if (s.kind !== 'AS' || (s.role !== 'CICS.AOR' && s.role !== 'CICS.TOR')) continue;
     const a = addressSpaces.find((x) => x.lparId === lparId && x.jobname === s.jobname);
-    if (!a || modeOf(a) !== 'TRANSACTION') continue;
+    const m = a ? modeOf(a) : 'REGION';
+    // REGION: "Transaction response times reported by these regions is not reported in any service class";
+    // TRANSACTION and BOTH track the completions (WLM Planning 3.1 p.102-103).
+    if (m !== 'REGION') rtTracked = true;
+    if (m !== 'TRANSACTION') continue;
     servers.push(s.key);
     if (s.role === 'CICS.AOR') txnMode = 'TRANSACTION';
   }
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
-  return { regions: { keys, mode: txnMode, regionKey, servers } };
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked } };
 }
 
 /** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly
