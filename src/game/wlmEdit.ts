@@ -1,7 +1,7 @@
 // Small structured edits to a WLM service definition (the UI's policy editor builds
 // ACTIVATE_POLICY commands from these). Pure: returns a new definition.
 
-import type { ResourceGroupDef, ClassificationRule, Goal, Importance, ServiceDefinition, SubsystemRules, SubsystemType, Qualifier } from '../sim/wlm/types';
+import type { ResourceGroupDef, ClassificationRule, Goal, Importance, RegionMode, ServiceDefinition, SubsystemRules, SubsystemType, Qualifier } from '../sim/wlm/types';
 
 /** Address of a rule: indices from the top-level list down through `children`. */
 export type RulePath = number[];
@@ -28,7 +28,8 @@ export type WlmEdit =
   /** Put a class in a resource group (created or updated with these limits), or take it out (group null). */
   | { op: 'SET_RESOURCE_GROUP'; classId: string; group: ResourceGroupDef | null }
   | { op: 'SET_IO_PRIORITY'; on: boolean }
-  | { op: 'SET_CICS_MODE'; mode: 'TRANSACTION' | 'REGION' }
+  /** "Manage Region Using Goals Of" on an STC/JES rule; null inherits (the enclosing rule's, else TRANSACTION). */
+  | { op: 'SET_RULE_REGION_MODE'; subsystem: SubsystemType; path: RulePath; mode: RegionMode | null }
   /** Append a period; the previous last period needs a duration (service units) to hand work on. */
   | { op: 'ADD_PERIOD'; classId: string; goal: Goal; importance: Importance; previousDurationSu: number }
   | { op: 'REMOVE_PERIOD'; classId: string }
@@ -230,9 +231,17 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
       if (rg && !d.classes.some((x) => x.resourceGroup === rg)) d.resourceGroups = d.resourceGroups.filter((g) => g.id !== rg);
       return d;
     }
-    case 'SET_CICS_MODE':
-      d.cicsRegionMode = e.mode;
+    case 'SET_RULE_REGION_MODE': {
+      // "This option can be used only in STC and JES classification rules" (WLM Planning p.122).
+      if (e.subsystem !== 'STC' && e.subsystem !== 'JES') return 'Manage Region Using Goals Of can only be set in STC and JES classification rules';
+      const ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
+      const list = ss && listAt(ss, e.path.slice(0, -1));
+      const r = list?.[e.path[e.path.length - 1] ?? -1];
+      if (!r) return 'No such rule';
+      if (e.mode === null) delete r.regionMode;
+      else r.regionMode = e.mode;
       return d;
+    }
     case 'SET_IO_PRIORITY':
       d.ioPriorityManagement = e.on;
       return d;

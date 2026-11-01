@@ -112,10 +112,10 @@ export const CODEX: CodexEntry[] = [
   },
   {
     id: 'cics-region-mode',
-    title: 'CICS region management (TRANSACTION vs REGION)',
+    title: 'Manage Region Using Goals Of (TRANSACTION, REGION, BOTH)',
     category: 'Subsystems',
-    body: 'CICS transactions are classified into service classes, but they run inside region address spaces, and WLM can only set a region’s dispatching priority. With TRANSACTION goals, WLM manages each region to the most demanding transaction class it serves, so less important transactions in the same region get a “free ride”. With REGION goals, the regions are managed to their own started-task class and transaction goals are only reported. Separating important and less important work into different regions is the usual fix for the free ride.',
-    sources: [ABCS_WLM],
+    body: 'CICS transactions are classified into service classes, but they run inside region address spaces, and WLM can only set a region’s dispatching priority. “Manage Region Using Goals Of” is a column of the STC and JES classification rules that catch the regions, so each region can have its own setting. TRANSACTION (the default): the region is a transaction server, managed to the goals of the transaction classes it serves. It runs at the priority the most demanding of them needs, so less important transactions in the same region get a “free ride”, and the region’s own service class is still reported but not used to manage it. REGION: the region is managed to its own service class goal, like any started task, and its transactions run at that priority. BOTH: managed to its own goal like REGION, but transaction completions are still tracked so the transaction classes keep their response-time management; sites use it to keep a TOR at a fixed high priority while the AORs stay on TRANSACTION. IBM warns that using this option “limits WLM’s ability to manage the system” and may reduce overall throughput. Separating important and less important work into different regions is the usual fix for the free ride.',
+    sources: [ABCS_WLM, { label: 'IBM z/OS MVS Planning: Workload Management, “Manage Region Using Goals Of” (pp. 102, 191)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122' }],
     discover: { start: true },
   },
   {
