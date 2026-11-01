@@ -613,6 +613,15 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Session log
 
+- **2026-11-01:** Audited the zos-docs book map against all 24 stored IBM PDFs and IBM web
+  sources. Added IP Configuration Guide, SCRT 30.1 (with its local alias and canonical URL),
+  CPSM Managing Workloads and ABCs Volume 12; restored the separate RMF Programmer's Guide,
+  completed message volumes 7–9, corrected titles/missing forms and stale draft status.
+  Added dated per-entry validation evidence distinguishing title/form confirmation from
+  exact filename verification; retained explicit unresolved candidates. Validation:
+  `npm run check` green (57 files, 477 tests), all stored PDFs represented, local Markdown
+  links checked, `git diff --check` clean. No game behaviour change.
+
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
 - **2026-11-01:** Set explicit Codex role models and reasoning: Luna low for log reading,
   Luna high for all three players, Sol medium for bounded implementation, Sol high for PR review
