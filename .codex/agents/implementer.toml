@@ -1,3 +1,6 @@
+model = "gpt-6.1-sol"
+model_reasoning_effort = "medium"
+
 developer_instructions = """
 Read AGENTS.md and .claude/agents/implementer.md in the project root before working.
 Follow that brief's Markdown body as your role instructions, with the Codex host

@@ -1,5 +1,5 @@
 # Instructions live in the existing briefs; role files adapt them for Codex.
-# Model, reasoning and permission policy remain controlled by the host/user.
+# Role files select model and reasoning defaults; permission policy stays with the host/user.
 
 [agents.implementer]
 description = "Implement a precise content/data, existing-function test or small UI task; no model or balance decisions."

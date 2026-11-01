@@ -31,15 +31,18 @@ truth, even though implementation agents can.
   Skill/WebFetch names. Use `rg` for searches. Use tracked command sessions for
   long jobs and collect their exit status; Claude's `run_in_background` option
   is not a Codex tool option.
-- Claude's `sonnet`/`opus` metadata does not select Codex models. Roles inherit
-  the host's model and reasoning settings unless configured by the user.
+- Claude's `sonnet`/`opus` metadata does not select Codex models. Each Codex role
+  specifies its own model and reasoning defaults in `.codex/agents/`; see the
+  assignments and rationale in `docs/codex.md`.
 - Resolve checkout and dependency paths from the actual workspace, never from
   a hard-coded `/home/user/goal-mode` path.
 - When a named skill is unavailable, use the brief's documented fallback and
   report the limitation. Never claim to have used an unavailable skill or tool.
 - Role availability depends on the Codex host and project configuration loading.
   In a fresh trusted session, verify the named roles are exposed before relying
-  on them. If unavailable, pass the matching brief and adapters explicitly to an
-  available subagent tool and report that fallback.
+  on them. If unavailable, pass the matching brief, adapters, configured model
+  and reasoning level explicitly to an available subagent tool and report that
+  fallback. Report unavailable models or unsupported overrides instead of
+  claiming the configured selection was used.
 
 See [docs/codex.md](docs/codex.md) for configuration and validation details.
