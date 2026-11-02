@@ -5,23 +5,11 @@
 import type { Command } from '../../sim/core/commands';
 import type { WorkloadDef } from '../../sim/workload/types';
 import { MIDWEST_EVENTS, type EventDef, type ScriptedBeat } from './midwest-events';
+import { adapt } from './adapt';
 
 const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'GREEN_IT_COD', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
 // A strict regulator: audit cards come up more often than at the bank.
 const WEIGHT_MULT: Record<string, number> = { SMF_AUDIT: 1.5, AUDIT_UNCLASSIFIED: 1.5 };
-
-const midwestCard = (id: string): EventDef => {
-  const c = MIDWEST_EVENTS.find((e) => e.id === id);
-  if (!c) throw new Error(`No Midwest card ${id}`);
-  return c;
-};
-
-/** Clone a Midwest card with overrides, retargeting workload ids in its begin/end commands (and affects). */
-function adapt(id: string, overrides: Partial<EventDef>, retarget: Record<string, string> = {}): EventDef {
-  let json = JSON.stringify(midwestCard(id));
-  for (const [from, to] of Object.entries(retarget)) json = json.split(`"${from}"`).join(`"${to}"`);
-  return { ...(JSON.parse(json) as EventDef), ...overrides };
-}
 
 const ALL_ONLINE = ['EFILE', 'ACCOUNT', 'REFSTAT', 'AGENTS', 'EMPLOYER'];
 
