@@ -7,7 +7,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
-- **Last updated:** 2026-10-28
+- **Last updated:** 2026-11-02
 - **Next up:** a human UI playtest (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
@@ -30,8 +30,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   GitHub settings (user): default branch `dev`; protect `dev` and `main` with these four checks required; allow
   auto-merge; delete head branches on merge. `main` requires the same checks but no approval: GitHub records Claude's
   PRs as authored by the user, who can't approve their own PR (user decision 2026-10-26).
-- **Health:** `npm run check` green (437 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `fef4fa052462d635`, Harbourline `a1984addb2403be0` (dev after #70; merged to main in PR #72).
+- **Health:** `npm run check` green (488 tests). Headless (cloud box): bench day 1 4.6–5.3 s (0.53 ms/tick).
+  Bench hash (seed 42, 1 day) Midwest `b1aa42059d46952e`, Harbourline `c47f6b8416f440f8` (dev after #111, 2026-11-02).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
