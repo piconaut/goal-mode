@@ -5,6 +5,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 ## Current status
 
+- **Maintenance:** separated run lifecycle orchestration from change requests, events, hourly accounting, diagnostics, and RCA; preserved the public run API.
+
 - **Maintenance:** split the Change Desk UI into domain modules and shared draft controls; all 47 declaration bodies preserved exactly apart from exports.
 
 - **Maintenance:** shared the identical scenario event-card adaptation helper (2026-11-02).
