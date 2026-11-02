@@ -643,6 +643,28 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Session log
 
+- **2026-11-02:** Revised the headless performance proposal after review. Same-host three-day comparisons of
+  five revisions (two passes, reverse order) show current totals ~28% above M8.1 closure for Midwest and ~47%
+  for Harbourline; the older revision is also slower here than its recorded timing, so the reported doubling
+  cannot all be attributed to code. Consecutive Harbourline profiles show distributed growth, with RMF rising
+  from ~1.3 to ~2.9 s over three days. CI model-change sweeps sampled at 8m51s and 12m33s; ordinary pushes skip
+  them. User clarified full-quarter sweeps run daily (supersedes the earlier answer of only around model changes).
+  Two isolated runner fixes prepared: available concurrency default and hourly diagnostics gating. Bot bundling
+  deferred (~0.18 s startup saved/run). Shared preparation is the first conditional sim prototype; no full LPAR
+  plan yet. Numeric-kernel work requires measured ≥15% end-to-end savings and removal of the old production path
+  in the same milestone; `advanceBatch` stays shelved. Raw historical CSV and revised plan in docs/performance/
+  and docs/headless-performance.md; no simulator or golden changes.
+
+- **2026-11-01:** Analyzed headless performance on `dev` at `f3b0008`; recorded
+  profiles, repeat timings, constraints, and a ranked implementation proposal in
+  [docs/headless-performance.md](docs/headless-performance.md). Current evaluator
+  cost is ~25–27% across a six-day Midwest textbook bot and three-day Harbourline
+  bare sim; projection-only cost is ~10%/~2%, respectively. Recommend compiled
+  LPAR metadata and a shared numeric evaluator with temporary buffers, retaining
+  pure snapshots and exact hashes. Target a measured ≥15% improvement for that
+  combined prototype; no runtime changes or claimed achieved speedup. Repeated
+  three-day seed-42 hashes: Midwest `bf00428ee23a9475`, Harbourline `9ef0c8246b23b71c`.
+
 - **2026-11-01:** Audited the zos-docs book map against all 24 stored IBM PDFs and IBM web
   sources. Added IP Configuration Guide, SCRT 30.1 (with its local alias and canonical URL),
   CPSM Managing Workloads and ABCs Volume 12; restored the separate RMF Programmer's Guide,
