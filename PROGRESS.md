@@ -106,11 +106,14 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   textbook day 27 / 0, expert day 40 / 4 of 5. Performance follow-up reruns CI; PR #147 stays open.
   One-day seed-42 internal-state hashes matched dev in Midwest, Harbourline and Revenue after excluding
   reporting data. Independent review covered source claims, migration, sample/metadata expiry and backlog.
-  Performance follow-up: cache region topology, Set transaction membership, sparse report ticks/history,
+  Performance follow-up: Set transaction membership, sparse report ticks/history,
   reuse immutable RT/buckets, and reuse sorted region keys instead of rebuilding Sets per merge.
   Same-host medians of two interleaved seed-42 one-day runs (reverse order on trial 2), ms/tick:
   Midwest dev 0.439 / reviewed head 0.707 / revised 0.474 (+7.9% vs dev; -32.9% vs reviewed head);
   Harbourline 0.705 / 1.155 / 0.726 (+2.9%; -37.1%). Measurements ran without other CPU jobs.
+  The module-level region topology cache was later removed: cache on/off benched within noise (Midwest
+  0.89/1.06 vs 0.99/0.91 ms/tick; Harbourline 1.65/1.77 vs 1.74/1.55), same state hashes, and it relied on
+  the WLM definition never being edited in place.
   Full-day hourly RMF/Monitor III report-value hashes match the reviewed head in all three scenarios;
   management hashes match dev. Raw goldens change because redundant serialized history is removed.
   Full check: 533 tests / 60 files pass; readonly goldens and the queue-reporting assertion pass; build passes.

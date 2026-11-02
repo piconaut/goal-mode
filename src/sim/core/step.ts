@@ -1315,46 +1315,12 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
   };
 }
 
-interface CicsRegionCacheEntry {
-  addressSpaces: readonly AddressSpaceDef[];
-  members: Pick<SliceSpec, 'key' | 'scKey' | 'reportClass' | 'jobname' | 'role' | 'kind'>[];
-  result: { regions?: LparEvalInput['regions'] };
-}
-// Immutable policies/AS content and slice classifications define topology; rates and routing do not.
-const cicsRegionCache = new WeakMap<SimState['wlm']['definition'], Map<string, CicsRegionCacheEntry>>();
-const cicsMember = (s: SliceSpec, byId: Record<string, WorkloadDef>) =>
-  s.kind === 'TXN' ? !!s.workloadId && byId[s.workloadId]?.subsystem === 'CICS' : s.role === 'CICS.AOR' || s.role === 'CICS.TOR';
-
 /** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). "Manage
  * Region Using Goals Of" is set per region on its STC/JES rule (WLM Planning 3.1 p.122, p.211). TRANSACTION regions
  * are transaction servers: their own CPU dispatches with the transactions. APPROX: the sim does not split a
  * workload's transactions between regions, so the transactions follow the AORs together: they ride the most
  * important served class's DP if any AOR on the image is TRANSACTION, else the first AOR's class DP. */
 export function cicsRegions(
-  def: SimState['wlm']['definition'], slices: readonly SliceSpec[], byId: Record<string, WorkloadDef>,
-  addressSpaces: readonly AddressSpaceDef[], lparId: string,
-): { regions?: LparEvalInput['regions'] } {
-  let systems = cicsRegionCache.get(def);
-  if (!systems) cicsRegionCache.set(def, (systems = new Map()));
-  const hit = systems.get(lparId);
-  if (hit && hit.addressSpaces === addressSpaces) {
-    let member = 0, same = true;
-    for (const s of slices) if (cicsMember(s, byId)) {
-      const prev = hit.members[member++];
-      if (!prev || prev.key !== s.key || prev.scKey !== s.scKey || prev.reportClass !== s.reportClass ||
-          prev.jobname !== s.jobname || prev.role !== s.role || prev.kind !== s.kind) { same = false; break; }
-    }
-    if (same && member === hit.members.length) return hit.result;
-  }
-  const result = uncachedCicsRegions(def, slices, byId, addressSpaces, lparId);
-  const members = slices.filter((s) => cicsMember(s, byId)).map((s) => ({
-    key: s.key, scKey: s.scKey, reportClass: s.reportClass, jobname: s.jobname, role: s.role, kind: s.kind,
-  }));
-  systems.set(lparId, { addressSpaces, members, result });
-  return result;
-}
-
-function uncachedCicsRegions(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
   byId: Record<string, WorkloadDef>,

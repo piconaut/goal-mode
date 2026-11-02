@@ -184,7 +184,7 @@ it('keeps reporting history only for affected classes and shares their immutable
   }
 });
 
-it('reuses region topology across changing rates and invalidates it on reclassification', async () => {
+it('keeps region topology across changing rates and follows reclassification', async () => {
   const { cicsRegions } = await import('../../src/sim/core/step');
   const { MIDWEST } = await import('../../src/content/scenarios');
   const byId = Object.fromEntries(MIDWEST.workloads.map((w) => [w.id, w]));
@@ -192,10 +192,10 @@ it('reuses region topology across changing rates and invalidates it on reclassif
   const slices = i.slices.map((s) => s.key === 'CICS' ? { ...s, workloadId: 'RBANK' } : s);
   const a = cicsRegions(MIDWEST.definition, slices, byId, MIDWEST.addressSpaces, 'PROD1').regions!;
   const b = cicsRegions(MIDWEST.definition, slices.map((s) => ({ ...s, rate: s.rate * 2 })), { ...byId }, MIDWEST.addressSpaces, 'PROD1').regions!;
-  expect(b).toBe(a);
+  expect(b).toEqual(a);
   expect(a.transactionKeys!.has('CICS')).toBe(true);
   const c = cicsRegions(MIDWEST.definition, slices.map((s) => s.key === 'CICS' ? { ...s, scKey: 'NEW#1', reportClass: 'NEWRC' } : s), byId, MIDWEST.addressSpaces, 'PROD1').regions!;
-  expect(c).not.toBe(a);
+  expect(c).not.toEqual(a);
   expect(c.reportingPlan!.serviceClasses.has('NEW#1')).toBe(true);
   expect(c.reportingPlan!.reportClasses.has('NEWRC')).toBe(true);
 });
