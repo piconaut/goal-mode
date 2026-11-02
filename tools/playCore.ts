@@ -478,7 +478,7 @@ export function policyText(file: PlayFile, pending: boolean): string {
   const run = file.run;
   if (pending && !file.pendingPolicy) return 'No pending policy edits.';
   const def = pending ? file.pendingPolicy! : run.sim.wlm.definition;
-  const out = [`${pending ? 'pending' : 'active'} policy ${def.policyName}  CICS regions managed by ${def.cicsRegionMode ?? 'TRANSACTION'} goals  I/O priority management ${def.ioPriorityManagement === false ? 'NO' : 'YES'}`];
+  const out = [`${pending ? 'pending' : 'active'} policy ${def.policyName}  I/O priority management ${def.ioPriorityManagement === false ? 'NO' : 'YES'}${def.cicsRegionMode === 'REGION' ? '  manage regions using goals of REGION (rules without their own setting)' : ''}`];
   out.push('service classes (period: goal, duration SU):');
   for (const c of def.classes) {
     const periods = c.periods.map((p, i) => `#${i + 1} ${goalText(p)}${p.durationSu !== null ? ` DUR ${p.durationSu}` : ''}`).join('; ');
@@ -487,9 +487,9 @@ export function policyText(file: PlayFile, pending: boolean): string {
   }
   if (def.resourceGroups.length) out.push(`resource groups: ${def.resourceGroups.map((g) => `${g.id} type ${g.type} min ${g.min ?? '-'} max ${g.max ?? '-'}`).join(', ')}`);
   if (def.reportClasses.length) out.push(`report classes: ${def.reportClasses.join(' ')}`);
-  out.push('classification rules (subsystem: qualifier=pattern → service class / report class):');
+  out.push('classification rules (subsystem: qualifier=pattern → service class / report class [manage region using goals of]):');
   const rule = (r: ClassificationRule, depth: number): string[] => [
-    `${'  '.repeat(depth + 2)}${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(inherit)'}${r.reportClass ? ` / ${r.reportClass}` : ''}`,
+    `${'  '.repeat(depth + 2)}${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(inherit)'}${r.reportClass ? ` / ${r.reportClass}` : ''}${r.regionMode ? ` [${r.regionMode}]` : ''}`,
     ...r.children.flatMap((ch) => rule(ch, depth + 1)),
   ];
   for (const ss of def.subsystems) {

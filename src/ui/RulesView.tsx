@@ -4,7 +4,7 @@ import { CodexHints } from './CodexHint';
 import { diffRows, type RowChange, type RuleRow, type SubsystemExplain } from '../game/classifyExplain';
 import type { ViewModel } from '../game/view';
 import type { RulePath } from '../game/wlmEdit';
-import type { Qualifier, SubsystemType } from '../sim/wlm/types';
+import type { Qualifier, RegionMode, SubsystemType } from '../sim/wlm/types';
 import type { GameHandle } from './useGame';
 
 const QUALIFIERS: { q: Qualifier; label: string }[] = [
@@ -59,6 +59,7 @@ export function RulesView({ v, game, onClose }: { v: ViewModel; game: GameHandle
               <Subsystem
                 key={ss.subsystem}
                 ss={ss}
+                regionModeDefault={shown.regionModeDefault}
                 active={r.pending ? r.active.subsystems.find((x) => x.subsystem === ss.subsystem) : undefined}
                 classIds={r.classIds}
                 game={game}
@@ -77,10 +78,14 @@ const MARK: Record<RowChange, { label: string; cls: string } | null> = {
   same: null,
 };
 
-function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; active: SubsystemExplain | undefined; classIds: string[]; game: GameHandle }) {
+const REGION_MODES: RegionMode[] = ['TRANSACTION', 'REGION', 'BOTH'];
+
+function Subsystem({ ss, active, classIds, regionModeDefault, game }: { ss: SubsystemExplain; active: SubsystemExplain | undefined; classIds: string[]; regionModeDefault: RegionMode; game: GameHandle }) {
   const diff = active ? diffRows(active.rows, ss.rows) : null;
   const edit = (e: Parameters<GameHandle['send']>[0]) => game.send(e);
   const sub = ss.subsystem;
+  // "Manage Region Using Goals Of" exists only on STC and JES rules (WLM Planning p.211).
+  const regions = sub === 'STC' || sub === 'JES';
   return (
     <div className="subsys">
       <h4>Subsystem {sub}</h4>
@@ -92,6 +97,12 @@ function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; activ
               <th>Rule</th>
               <th>Service class</th>
               <th>Report class</th>
+              {regions && (
+                <th>
+                  Manage region using goals of
+                  <CodexHints ids={['cics-region-mode']} />
+                </th>
+              )}
               <th>Catches now</th>
               <th />
             </tr>
@@ -130,6 +141,20 @@ function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; activ
                       onSet={(rc) => edit({ type: 'WLM_EDIT', edit: { op: 'SET_RULE_TARGET', subsystem: sub, path: row.path, serviceClass: row.serviceClass, reportClass: rc } })}
                     />
                   </td>
+                  {regions && (
+                    <td>
+                      <select
+                        aria-label={`Manage region using goals of, rule ${row.qualifier}=${row.pattern}`}
+                        value={row.regionMode ?? ''}
+                        onChange={(e) => edit({ type: 'WLM_EDIT', edit: { op: 'SET_RULE_REGION_MODE', subsystem: sub, path: row.path, mode: (e.target.value || null) as RegionMode | null } })}
+                      >
+                        <option value="">{row.depth > 0 ? '(inherit)' : `(default ${regionModeDefault})`}</option>
+                        {REGION_MODES.map((m) => (
+                          <option key={m}>{m}</option>
+                        ))}
+                      </select>
+                    </td>
+                  )}
                   <td style={{ fontSize: 12, minWidth: 160 }}>{row.catches.length ? row.catches.join(', ') : <span className="muted">nothing today</span>}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <RowActions sub={sub} row={row} edit={edit} />
@@ -145,6 +170,7 @@ function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; activ
                 </td>
                 <td>{row.serviceClass}</td>
                 <td>{row.reportClass ?? '-'}</td>
+                {regions && <td>{row.regionMode ?? ''}</td>}
                 <td style={{ fontSize: 12 }}>{row.catches.join(', ')}</td>
                 <td />
               </tr>
@@ -165,6 +191,7 @@ function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; activ
                 </select>
               </td>
               <td />
+              {regions && <td />}
               <td style={{ fontSize: 12 }}>{ss.defaultCatches.length ? ss.defaultCatches.join(', ') : <span className="muted">nothing today</span>}</td>
               <td />
             </tr>

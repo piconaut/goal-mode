@@ -5,7 +5,7 @@
 
 import { DP } from '../zos/dispatcher';
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
-import { accPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
+import { goalPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -56,7 +56,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const localPi: Record<string, number | null> = {};
   for (const s of system.scps) {
     const g = info[s.scKey];
-    localPi[s.scKey] = g ? accPi(g.goal, s.acc) : null;
+    localPi[s.scKey] = g ? goalPi(g.goal, s.acc) : null;
   }
   const tickOf: Record<string, ScpTick> = {};
   for (const t of input.current) tickOf[t.scKey] = t;

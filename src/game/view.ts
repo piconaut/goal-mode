@@ -206,7 +206,6 @@ export interface ViewModel {
   classDefs: ServiceClassDef[];
   inquiries: ReturnType<typeof inquiriesView>;
   ioPriorityManagement: boolean;
-  cicsRegionMode: 'TRANSACTION' | 'REGION';
   cicsClasses: string[];
   cicsIssues: CicsGoalIssue[];
 }
@@ -377,7 +376,6 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     classDefs: def.classes,
     inquiries: inquiriesView(run, scenario),
     ioPriorityManagement: def.ioPriorityManagement !== false,
-    cicsRegionMode: def.cicsRegionMode ?? 'TRANSACTION',
     cicsClasses: cicsTransactionClasses(def),
     cicsIssues: cicsGoalIssues(def),
   };
