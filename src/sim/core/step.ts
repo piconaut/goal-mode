@@ -721,6 +721,8 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     ref.jobs.push({ job: j, cp: cpWant, zi: ziWant, shape });
   }
   const batchRefs = Object.values(refs);
+  // One TCB per running job.
+  for (const r of batchRefs) r.slice.units = r.jobs.length;
   batchRefsBy[l.id] = batchRefs;
   const all = [...slices, ...batchRefs.map((r) => r.slice)];
   slicesBy[l.id] = all;

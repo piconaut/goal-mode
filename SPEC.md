@@ -348,7 +348,12 @@ DP 191  quiesced work
 Algorithm per pool:
 1. Group demand by DP level, from high to low.
 2. At each level, `avail = C − consumedByHigherLevels`. Periods sharing a level split the
-   available capacity in proportion to demand (z/OS rotates equal-DP work).
+   available capacity **by ready units, max-min fair**: z/OS dispatches equal-DP work from one queue, a turn per
+   ready unit, so each period gets `min(demand, units × L)` for one fair level `L`, and what light work leaves goes
+   to the rest. Units: an address space's TCBs/SRBs (`content/subsys.ts` `DISPATCH_UNITS`, at least one), one per
+   running batch job, and for transactions one per engine of new arrivals. A backlog adds demand but no units
+   (APPROX: unserved work waits in subsystem queues), so a backlogged class cannot crowd out light work at its DP.
+   A period's grant is split among its slices the same way (the level is solved on period totals, APPROX).
 3. **CPU queueing delay** even when demand is fully granted: use an **Erlang-C (M/M/c)**
    approximation with `c = online logical engines (unparked)` and `ρ = utilisation by work at
    ≥ this DP`. Delay ratio `Wq/S = ErlangC(c, ρ·c) / (c·(1−ρ))`, with ρ clamped to 0.995 and
@@ -1509,6 +1514,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Vendor list-price changes | **Simplified** | One run-level multiplier on sub-capacity MLC (all products alike); applies to the whole month it is in force, no proration; TFP terms are fixed once signed |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
+| Equal-DP sharing by ready units (max-min) | **Approximation** | Fluid processor sharing over time-averaged units, not task-level time slicing. Unit counts per address-space role are FICTIONAL; transactions count one unit per engine of new work, backlog excluded (`dispatcher.ts` `shareByUnits`) |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
 | WLMGL APPL% CP/IIPCP/IIP | **Matches** | CP includes all time executed on general CPs; IIPCP is its zIIP-eligible subset, and IIP is time executed on zIIPs (RMF Report Analysis 3.1 [p.534 Table 222](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534)). Service/report classes average engine use over the full interval; plex rows sum systems. APPL evidence adds CP + IIP, counting IIPCP once |
 | Monitor III views (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | RMF field names and formulas (Report Analysis ch. 2). Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 120 s MINTIME; rows are service-class periods, not jobs or individual enclaves; no IDL state, workload groups or report classes; DELAY shows % Delayed for PRC (CP + zIIP), DEV, STR, SUB, OPR, ENQ (SUB/OPR/ENQ 0) with capping counted only in DLY % and Primary Reason in RMF's forms (heaviest other class's main jobname or *ENCLAVE, LCU id instead of volser, LOCL, RG-Cap; Report Analysis 3.1 p.106–110); PRC/DEV using split and zIIP/IIPCP split follow the last tick's mix (APPROX); MVS Util% is the MVS BUSY of the Partition Data row (ready work over unparked logical CPs); PR/SM delay % shown directly though RMF has no such field; WFEX criteria are RT/WFL% thresholds at 1.5× the goal (FICTIONAL); history is a snapshot of that smoothed view every 120 s (MINTIME(120); RMF's default is 100 s) for 48 h (retention is a game choice; real retention depends on the VSAM data set size) |

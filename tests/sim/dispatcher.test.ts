@@ -1,4 +1,4 @@
-import { dispatch } from '../../src/sim/zos/dispatcher';
+import { dispatch, shareByUnits } from '../../src/sim/zos/dispatcher';
 import { queueDelayRatio } from '../../src/sim/zos/erlang';
 
 describe('Erlang-C', () => {
@@ -45,6 +45,21 @@ describe('dispatcher', () => {
     expect(r[1]!.cpGranted).toBeCloseTo(0.5);
   });
 
+  it('equal DP with ready units: light work is served in full, the rest shares per unit', () => {
+    // A backlogged class (6 engines wanted, 3 units) and Db2 (0.5 engines over 12 SRBs) on 2 engines.
+    const r = dispatch({
+      ...base,
+      cpCapacityEngines: 2,
+      demands: [
+        { id: 'onl', dp: 240, cpEngines: 6, ziipEngines: 0, ziipMayOverflow: true, units: 3 },
+        { id: 'db2', dp: 240, cpEngines: 0.5, ziipEngines: 0, ziipMayOverflow: true, units: 12 },
+      ],
+    });
+    expect(r[1]!.cpGranted).toBeCloseTo(0.5);
+    expect(r[0]!.cpGranted).toBeCloseTo(1.5);
+    expect(r[0]!.cpUnmet).toBeCloseTo(4.5);
+  });
+
   it('zIIP-eligible work runs on CP (IIPCP) when the image has no zIIPs', () => {
     const [r] = dispatch({
       ...base,
@@ -79,5 +94,36 @@ describe('zIIPs offline (Init & Tuning p.431)', () => {
     expect(r!.iipcpGranted).toBeCloseTo(1);
     expect(r!.ziipQueueRatio).toBeCloseTo(r!.cpQueueRatio);
     expect(r!.ziipQueueRatio).toBeLessThan(1);
+  });
+});
+
+describe('shareByUnits (max-min by ready units)', () => {
+  const run = (total: number, want: number[], units: (number | undefined)[]) => {
+    const out = new Array<number>(want.length).fill(0);
+    shareByUnits(total, want.map((_, i) => i), want, units, out);
+    return out;
+  };
+  it('without units it shares in proportion to demand', () => {
+    const g = run(2, [3, 1], [undefined, undefined]);
+    expect(g[0]).toBeCloseTo(1.5);
+    expect(g[1]).toBeCloseTo(0.5);
+  });
+  it('equal units get equal shares when both want more than the fair level', () => {
+    const g = run(2, [3, 1], [1, 1]);
+    expect(g[0]).toBeCloseTo(1);
+    expect(g[1]).toBeCloseTo(1);
+  });
+  it('what light entries leave goes to the rest by units', () => {
+    const g = run(3, [0.2, 4, 4], [2, 1, 3]);
+    expect(g[0]).toBeCloseTo(0.2);
+    expect(g[1]).toBeCloseTo(0.7);
+    expect(g[2]).toBeCloseTo(2.1);
+    expect(g.reduce((a, b) => a + b, 0)).toBeCloseTo(3);
+  });
+  it('enough capacity: everyone gets what they want', () => {
+    expect(run(10, [1, 2], [5, 1])).toEqual([1, 2]);
+  });
+  it('a lone entry gets all of the level even with few units', () => {
+    expect(run(2, [5], [0.1])[0]).toBeCloseTo(2);
   });
 });

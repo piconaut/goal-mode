@@ -95,6 +95,14 @@ export const CODEX: CodexEntry[] = [
     discover: { tools: ['RMF_MON3'] },
   },
   {
+    id: 'equal-dp-sharing',
+    title: 'Work at the same dispatching priority',
+    category: 'WLM',
+    body: 'Work at one dispatching priority waits in one dispatcher queue, and every ready TCB or SRB gets its turn. So a period’s share of the CPU left at its priority depends on how many units it has ready, not on how much work it has queued: an address space with a dozen lightly loaded SRBs, such as Db2, keeps most of what it needs, and a transaction class with a large backlog cannot take it away just by having more work waiting. Raising a class above the servers it ties with removes that protection, so the servers can starve and the class ends up waiting on them.',
+    sources: [ABCS_WLM],
+    discover: { tools: ['RMF_MON3'] },
+  },
+  {
     id: 'blocked-workload',
     title: 'Blocked workload support',
     category: 'WLM',
