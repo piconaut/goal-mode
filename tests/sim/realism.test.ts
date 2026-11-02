@@ -1015,3 +1015,28 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
     expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(1);
   }, 120_000);
 });
+
+describe('CICS transaction classes in WLMGL (WLM Planning p.113, RMF Report Analysis p.536–537)', () => {
+  it('report a response time breakdown while WLM still manages them from the regions\' samples', () => {
+    let s = initState(42, MIDWEST);
+    for (let i = 0; i < 9 * 360; i++) s = step(s, [], MIDWEST);
+    const iv = s.rmf.intervals.at(-1)!;
+    const plex = (k: string) => iv.wlm.find((r) => r.lparId === '*PLEX' && r.scKey === k)!;
+    for (const k of ['ONLHI#1', 'ONLMED#1']) {
+      const r = plex(k);
+      expect(r.ended).toBeGreaterThan(0);
+      expect(r.applCpPct).toBeGreaterThan(0);
+      expect(r.usingPct.cpu + r.delayPct.cpu + r.delayPct.other).toBe(0);
+      expect(r.execVelocity).toBeNull();
+      const w = r.workMgr!;
+      expect(w.activePct + w.readyPct + w.idlePct + w.lockPct + w.ioPct + w.convPct + w.prodPct + w.miscPct).toBeCloseTo(100);
+      expect(w.activePct).toBeGreaterThan(0);
+      expect(w.prodPct).toBeGreaterThan(0); // Db2 waits
+    }
+    // The AORs' class carries the transactions' samples, Db2 waits included.
+    expect(plex('STCHI#1').delayPct.other).toBeGreaterThan(20);
+    // WLM's own view is unchanged: it still sees CPU delay samples for the transaction class.
+    const acc = s.wlm.systems.find((x) => x.lparId === 'PROD1')!.scps.find((p) => p.scKey === 'ONLHI#1')!.acc;
+    expect(acc.using + acc.delay).toBeGreaterThan(0);
+  }, 60_000);
+});

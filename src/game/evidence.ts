@@ -62,6 +62,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         DELAY_CAP: w.delayPct.cap,
         DELAY_OTHER: w.delayPct.other,
       };
+      if (w.workMgr && req.metric.startsWith('DELAY_')) return 'CICS transaction classes report a response time breakdown, not delay samples: pin the CICS regions\' service class';
       const value = v[req.metric];
       if (value === undefined || value === null) return 'That metric is not in the Workload Activity report';
       return { source: 'WLMGL', metric: req.metric, subject: req.scKey, system: req.system, tick: iv.endTick, value };

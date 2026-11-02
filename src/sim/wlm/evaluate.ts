@@ -131,6 +131,42 @@ export interface RtParts {
   outsideRef: number;
 }
 
+/** Where RMF reports CICS transactions' state samples: with the region's service and report class, while the
+ * transaction classes get the work manager's response time breakdown (WLM Planning 3.1 p.113; RMF Report Analysis
+ * p.536–537). WLM itself still manages the transaction classes from them (SG24-7621 p.81). */
+export interface RegionRmf {
+  /** CICS transaction slice keys on this image. */
+  txnSlices: readonly string[];
+  regionKey: string;
+  regionReportClass: string | null;
+}
+
+/** Using and delay samples of a tick that RMF reports with another class (`to`; null: no report class). */
+export interface MovedSamples {
+  to: string | null;
+  usingCpu: number;
+  usingZiip: number;
+  usingIo: number;
+  delayCpu: number;
+  delayZiip: number;
+  delayIo: number;
+  delayOther: number;
+  delayStorage: number;
+  delayCap: number;
+  usingIoNoVel?: number;
+  delayIoNoVel?: number;
+}
+
+/** Work manager states (RMF response time breakdown), in transaction-seconds: completions × seconds per state. */
+export interface WorkMgrSums {
+  active: number;
+  ready: number;
+  lock: number;
+  io: number;
+  prod: number;
+  misc: number;
+}
+
 export interface LparEvalInput {
   cpCapacityEngines: number;
   cpServers: number;
@@ -155,7 +191,7 @@ export interface LparEvalInput {
    * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
    * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
    * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean };
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean; rmf?: RegionRmf };
   io: Record<IoClass, IoService>;
   /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
@@ -235,6 +271,10 @@ export interface ScpTick {
   /** Velocity samples of transaction-server regions in this period: reported, but left out of its PI. */
   srvUsing?: number;
   srvDelay?: number;
+  /** Samples of CICS transactions that RMF reports with the region's class instead (reporting only). */
+  rmfMoved?: MovedSamples;
+  /** Work manager states of CICS transactions (reporting only). */
+  wm?: WorkMgrSums;
   completions: number;
   failed: number;
   rtSumSec: number;
@@ -639,6 +679,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const pgBy = slicePagingFrac(slices, input.pagingFrac, input.storageCritical, input.pagingWeight);
 
   const results = new Array<SliceResult>(n);
+  const srvCpuOf = new Array<number>(n).fill(0);
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const r = dres[sliceAgg[i]!]!;
@@ -731,6 +772,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       depDelay += d;
       if (srvRoles[srv.role]) srvCpuSec += d;
     }
+    srvCpuOf[i] = srvCpuSec;
 
     const ioSec = s.ioPerTxn * io.rtSec;
     const pagingSec = (s.cpuSecPerTxn + s.ziipSecPerTxn) * pg * 3;
@@ -810,9 +852,11 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   }
   const rcMap: Record<string, ReportClassTick> = {};
   const rcs: ReportClassTick[] = [];
+  const rmf = scpsOnly ? undefined : reg?.rmf;
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const r = results[i]!;
+    const cicsTxn = rmf !== undefined && s.kind === 'TXN' && rmf.txnSlices.includes(s.key);
     if (s.reportClass && !scpsOnly) {
       let rt = rcMap[s.reportClass];
       if (!rt) {
@@ -822,10 +866,13 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       }
       if (!rt.members.includes(s.scKey)) rt.members.push(s.scKey);
       addSliceTo(rt, s, r, true);
+      if (cicsTxn) addWorkMgr(rt, r, srvCpuOf[i]!, rmf.regionReportClass);
     }
     const t = scps[scpOfAgg[sliceAgg[i]!]!]!;
     const untracked = reg !== undefined && reg.rtTracked === false && s.kind === 'TXN' && reg.keys.includes(s.scKey);
     addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey), !untracked);
+    // REGION mode: response times reach no service class (WLM Planning p.123), so neither does the breakdown.
+    if (cicsTxn) addWorkMgr(t, r, srvCpuOf[i]!, rmf.regionKey, !untracked);
     if (order[sliceAgg[i]!] !== s.scKey) {
       // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).
       t.srvUsing = (t.srvUsing ?? 0) + r.usingCpu + r.usingZiip + (input.ioPriority === false ? 0 : r.usingIo);
@@ -845,6 +892,42 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
 function excludeIoFromVelocity(t: ScpTick): void {
   t.usingIoNoVel = t.usingIo;
   t.delayIoNoVel = t.delayIo;
+  if (t.rmfMoved) {
+    t.rmfMoved.usingIoNoVel = t.rmfMoved.usingIo;
+    t.rmfMoved.delayIoNoVel = t.rmfMoved.delayIo;
+  }
+}
+
+/** A CICS transaction slice's samples move to the region's class in RMF; its response time is broken down into
+ * work manager states instead. APPROX: one CICS EXE phase; CPU and zIIP service are ACTIVE; CPU queueing, waits
+ * for starved transaction-server regions, the CPU backlog and the QR TCB are READY; Db2 lock waits LOCK; other
+ * server waits and Db2's CF requests PROD (waiting for another product); the rest MISC. IDLE and CONV stay 0. */
+function addWorkMgr(t: ScpTick, r: SliceResult, srvCpuSec: number, to: string | null, rt = true): void {
+  const m = (t.rmfMoved ??= { to, usingCpu: 0, usingZiip: 0, usingIo: 0, delayCpu: 0, delayZiip: 0, delayIo: 0, delayOther: 0, delayStorage: 0, delayCap: 0 });
+  m.usingCpu += r.usingCpu;
+  m.usingZiip += r.usingZiip;
+  m.usingIo += r.usingIo;
+  m.delayCpu += r.delayCpu;
+  m.delayZiip += r.delayZiip;
+  m.delayIo += r.delayIo;
+  m.delayOther += r.delayOther;
+  m.delayStorage += r.delayStorage;
+  m.delayCap += r.delayCap;
+  const p = r.parts;
+  if (!rt || !p || r.completions <= 0) return;
+  const qr = p.extra.qr ?? 0;
+  const lock = p.extra.lock ?? 0;
+  const cf = p.extra.cf ?? 0;
+  let extra = 0;
+  for (const k in p.extra) extra += p.extra[k]!;
+  const w = (t.wm ??= { active: 0, ready: 0, lock: 0, io: 0, prod: 0, misc: 0 });
+  const c = r.completions;
+  w.active += c * p.cpu;
+  w.ready += c * (p.cpuQueue + p.ziip + srvCpuSec + p.backlogWait + qr);
+  w.lock += c * lock;
+  w.io += c * p.io;
+  w.prod += c * (p.dependency - srvCpuSec + cf);
+  w.misc += c * (p.base + p.paging + extra - qr - lock - cf);
 }
 
 function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean, rt = true): void {

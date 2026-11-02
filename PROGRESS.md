@@ -92,11 +92,14 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   regions and Db2 at ONLHI's DP no longer share its shortage, so WLM finds no gain lifting a capped ONLHI over
   them (Midwest seed-7 capped test now asserts that); goldens regenerated; ~3 % slower per tick. CI sweep
   (Midwest, seeds 1–5): donothing day 15 / 0 wins, textbook day 27 / 0, expert day 40 / 4 of 5; all in band.
-- [ ] **CICS transaction classes report work manager states, not using and delay samples.** For CICS and IMS,
-  resource usage and state samples go with the regions' service classes; transaction classes get the work manager
-  section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
-  The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
-  DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
+- [x] **CICS transaction classes report work manager states, not using and delay samples.** (2026-11-02) Report
+  only: evaluateLpar tags each CICS transaction tick with the samples RMF reports elsewhere (`rmfMoved`, to the image's
+  first AOR's service class and its report class, if any) and a work manager breakdown (`wm`); RMF accumulation moves
+  them, and WLMGL detail shows RESPONSE TIME BREAKDOWN IN PERCENTAGE (one CICS EXE row). WLM still manages the
+  transaction classes from the samples (SG24-7621 p.81). APPL% stays on the transaction class so per-class CPU clues
+  keep working (open question below). Pinning a WLMGL DELAY_* metric on a CICS transaction row now points the player
+  at the regions' class. Golden hashes changed only in the archived reports: sim state minus RMF and the run log are
+  equal to dev for the golden script.
 
 ### Active realism audit loop (2026-11-02)
 
@@ -192,6 +195,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   emergency trust costs now bite too little.
 - Change Desk drafts don't notice a live value changing under them (e.g. a CF fails): the draft stays as typed. Add a
   "now X" check that drops drafts already satisfied, if playtests trip over it.
+- CICS transaction APPL%: real RMF reports CICS transactions' CPU service with the regions' service class (no
+  address space runs in a transaction class); the sim keeps APPL% on the transaction class because event clues read
+  "CPU per transaction" there. Moving it needs those clues rewritten to report classes or CICS SMF 110. Related: with
+  every AOR in REGION mode, WLM manages the region class from the regions' own samples only, while real region samples
+  include the transactions' work. Monitor III still shows delay samples on CICS transaction classes.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
