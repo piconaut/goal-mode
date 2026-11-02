@@ -2,6 +2,7 @@
 // period's DP, then derive response times, dependency delays and WLM using/delay
 // samples. Pure, so policy adjustment can re-run it to project the effect of a DP move.
 
+import { projectCicsReports, type WorkManagerSamples } from './reporting';
 import { lognormCdf } from '../core/math';
 import { TICK_SEC } from '../core/units';
 import { STORAGE_STEAL_MAX_FRAC } from '../../content/wlm/tuning';
@@ -155,7 +156,7 @@ export interface LparEvalInput {
    * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
    * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
    * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean };
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean; transactionKeys?: readonly string[] };
   io: Record<IoClass, IoService>;
   /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
@@ -213,6 +214,9 @@ export interface SliceResult {
 }
 
 export interface ScpTick {
+  /** Reporting only: CICS work manager concurrency and presence of resource samples. */
+  workManager?: WorkManagerSamples;
+  resourceSamples?: boolean;
   scKey: string;
   dp: number;
   cpEngines: number;
@@ -268,6 +272,8 @@ export const emptyScpTick = (scKey: string, dp: number): ScpTick => ({
 });
 
 export interface LparEvalResult {
+  /** Resource accounting for reports; management continues to use scps. */
+  reportedScps?: ScpTick[];
   slices: SliceResult[];
   scps: ScpTick[];
   /** Report classes (only when the policy assigns any). */
@@ -839,7 +845,8 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     for (const t of rcs) excludeIoFromVelocity(t);
   }
 
-  return rcs.length > 0 ? { slices: results, scps, roleHealth, rcs } : { slices: results, scps, roleHealth };
+  const reporting = !scpsOnly && reg ? projectCicsReports(input, results, scps, rcs) : {};
+  return { slices: results, scps, roleHealth, ...(rcs.length ? { rcs } : {}), ...reporting };
 }
 
 function excludeIoFromVelocity(t: ScpTick): void {

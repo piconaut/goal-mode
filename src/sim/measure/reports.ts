@@ -71,7 +71,7 @@ const fmt = (x: number | null | undefined, d: number) => (x === null || x === un
 const cell = (c: Col, s: string) => (c.left ? padR(s, c.w) : pad(s, c.w)).slice(0, Math.max(c.w, s.length));
 
 function wlmRow(r: WlmRecord): string {
-  return WLM_COLS.map((c) => cell(c, c.v(r))).join(' ');
+  return WLM_COLS.map((c, i) => cell(c, r.resourceSamples === false && (i === 5 || i >= 9) ? '-' : c.v(r))).join(' ');
 }
 
 /** Two header lines whose labels sit over their columns; group labels are centred in dashes. */
@@ -116,7 +116,18 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
     out.push('', 'SERVICE CLASS PERIODS PER REPORT CLASS');
     for (const r of rcRows) out.push(`${padR(r.serviceClass, 9)} ${(r.members ?? []).join(', ')}`);
   }
+  for (const r of [...rows, ...rcRows]) if (r.workManager) out.push('', `${r.scKey}${r.reportClass ? ' (REPORT CLASS)' : ''}`, ...workManagerLines(r));
   return out.join('\n');
+}
+
+function workManagerLines(r: WlmRecord): string[] {
+  const w = r.workManager!;
+  return [
+    'WORK MANAGER STATES (AVG TRANSACTIONS; APPROX)',
+    `ACTIVE ${w.active.toFixed(2)}  READY ${w.ready.toFixed(2)}  IDLE ${w.idle.toFixed(2)}  WAITING FOR I/O ${w.waitingIo.toFixed(2)}  WAITING FOR OTHER ${w.waitingOther.toFixed(2)}`,
+    `PHASE BTE ${w.bte.toFixed(2)}  EXE ${w.exe.toFixed(2)}  (BTE/IDLE NOT MODELLED)`,
+    `RESOURCE USAGE AND USING/DELAY SAMPLES: REGION CLASSES ${w.regionKeys.join(', ')}`,
+  ];
 }
 
 export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'): string {
@@ -132,11 +143,14 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
   out.push('');
   out.push(`-TRANSACTIONS-   ENDED ${Math.round(r.ended)}   END/S ${r.endPerSec.toFixed(2)}   FAILED ${Math.round(r.failed)}`);
   out.push(`ACTUAL RESP ${r.avgRtSec === null ? '-' : r.avgRtSec.toFixed(4) + 's'}   EX VEL% ${f(r.execVelocity, 1, 0)}   PERF INDX ${f(r.pi, 2, 0)}`);
-  out.push(`APPL% CP ${r.applCpPct.toFixed(1)}  IIPCP ${r.applIipcpPct.toFixed(1)}  IIP ${r.applIipPct.toFixed(1)}`);
-  out.push(
-    `USING% CPU ${r.usingPct.cpu.toFixed(1)} IIP ${r.usingPct.ziip.toFixed(1)} I/O ${r.usingPct.io.toFixed(1)}   ` +
-      `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} QMPL ${(r.delayPct.queue ?? 0).toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
-  );
+  if (r.resourceSamples !== false) {
+    out.push(`APPL% CP ${r.applCpPct.toFixed(1)}  IIPCP ${r.applIipcpPct.toFixed(1)}  IIP ${r.applIipPct.toFixed(1)}`);
+    out.push(
+      `USING% CPU ${r.usingPct.cpu.toFixed(1)} IIP ${r.usingPct.ziip.toFixed(1)} I/O ${r.usingPct.io.toFixed(1)}   ` +
+        `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} QMPL ${(r.delayPct.queue ?? 0).toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
+    );
+  }
+  if (r.workManager) out.push(...workManagerLines(r));
   const total = r.buckets.reduce((a, b) => a + b, 0);
   if (total > 0 && r.goalText.includes('<')) {
     const goalSec = Number(/< ([\d.]+)s/.exec(r.goalText)?.[1] ?? 0);

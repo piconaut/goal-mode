@@ -173,6 +173,7 @@ export interface WorkloadTick {
 }
 
 export interface LparTick {
+  reportedScps?: ScpTick[];
   lparId: string;
   scps: ScpTick[];
   rcs?: ReportClassTick[];

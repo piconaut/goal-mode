@@ -92,11 +92,16 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   regions and Db2 at ONLHI's DP no longer share its shortage, so WLM finds no gain lifting a capped ONLHI over
   them (Midwest seed-7 capped test now asserts that); goldens regenerated; ~3 % slower per tick. CI sweep
   (Midwest, seeds 1–5): donothing day 15 / 0 wins, textbook day 27 / 0, expert day 40 / 4 of 5; all in band.
-- [ ] **CICS transaction classes report work manager states, not using and delay samples.** For CICS and IMS,
-  resource usage and state samples go with the regions' service classes; transaction classes get the work manager
-  section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
-  The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
-  DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
+- [x] **CICS transaction classes report work manager states, not using and delay samples.**
+  Reporting-only projection sends CICS resource usage/samples to AOR service/report classes, while
+  transaction rows retain RT/PI/buckets and estimated work manager states. Monitor III, stored pin
+  history, region evidence relevance and hints follow the corrected attribution. Mixed classes retain
+  non-CICS resource samples. APPROX: equal AOR split; BTE/IDLE populations not modelled. WLM management
+  signals are unchanged. Sources: WLM Planning 3.1 p.113; RMF Report Analysis p.536–537.
+  Validation: typecheck + 524 tests / 60 files pass; production build passes; reporting-state goldens
+  regenerated. One-day seed-42 internal-state hashes match dev in Midwest, Harbourline and Revenue
+  after excluding reporting data. Independent review covered migration, sample expiry and draining backlog.
+  Benchmarks stay under 4 ms/tick (Midwest 1.16 ms; Harbourline 3.12 ms under test contention).
 
 ### Active realism audit loop (2026-11-02)
 

@@ -41,3 +41,19 @@ describe('WLMGL layout', () => {
     expect(row.slice(delayCpuEnd - 2, delayCpuEnd)).toBe('69');
   });
 });
+
+it('shows CICS work manager states and region sample owners without invented transaction resource percentages', async () => {
+  const { renderWlmDetail } = await import('../../src/sim/measure/reports');
+  const wm = { active: 4, ready: 2, idle: 0, waitingIo: 1, waitingOther: 0.5, bte: 0, exe: 4, regionKeys: ['STCHI#1'] };
+  const iv = { startTick: 0, endTick: 180, intervalSec: 1800, policy: 'P', wlm: [rec({ resourceSamples: false, workManager: wm })] } as unknown as RmfInterval;
+  const detail = renderWlmDetail(iv, 'ONLRETL#1');
+  expect(detail).toContain('WORK MANAGER STATES');
+  expect(detail).toContain('READY 2.00');
+  expect(detail).toContain('REGION CLASSES STCHI#1');
+  expect(detail).not.toContain('USING% CPU');
+  expect(detail).not.toContain('APPL% CP');
+  const summary = renderWlmSummary(iv);
+  expect(summary).toContain('WORK MANAGER STATES');
+  const row = summary.split('\n').find((l) => l.startsWith('ONLRETL'))!;
+  expect(row.trimEnd().endsWith('-')).toBe(true);
+});

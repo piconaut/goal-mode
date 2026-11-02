@@ -813,6 +813,12 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       res.scps.push(t);
     }
     t.delayStorage += 1;
+    if (res.reportedScps) {
+      let reported = res.reportedScps.find((r) => r.scKey === k);
+      if (!reported) { reported = emptyScpTick(k, dpOf(k)); res.reportedScps.push(reported); }
+      reported.delayStorage += 1;
+      reported.resourceSamples = true;
+    }
     addJobDelay(j, 'swap', TICK_SEC);
   }
   // APPROX: one delay sample per queued job, in the class's first period.
@@ -824,6 +830,12 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       res.scps.push(t);
     }
     t.delayQueue = (t.delayQueue ?? 0) + 1;
+    if (res.reportedScps) {
+      let reported = res.reportedScps.find((r) => r.scKey === k);
+      if (!reported) { reported = emptyScpTick(k, dpOf(k)); res.reportedScps.push(reported); }
+      reported.delayQueue = (reported.delayQueue ?? 0) + 1;
+      reported.resourceSamples = true;
+    }
   }
 
   const compBy: Record<string, number> = {};
@@ -931,14 +943,17 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       dp: dpOf(t.scKey),
       starvedSec: starved ? (p?.starvedSec ?? 0) + TICK_SEC : 0,
       acc: decayInto(p?.acc ?? emptyAcc(), t),
+      ...(res.reportedScps || p?.reportAcc ? { reportAcc: decayInto(p?.reportAcc ?? emptyAcc(), res.reportedScps?.find((r) => r.scKey === t.scKey) ?? t) } : {}),
     });
   }
   for (const p of prevSys?.scps ?? []) {
     if (seen.has(p.scKey)) continue;
-    scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)) });
+    scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)),
+      ...(p.reportAcc ? { reportAcc: decayInto(p.reportAcc, idleScpTick(p.scKey, p.dp)) } : {}),
+    });
   }
   systems.push({ lparId: l.id, scps });
-  lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth });
+  lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, ...(res.reportedScps ? { reportedScps: res.reportedScps } : {}), roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, ...(res.reportedScps ? { reportedScps: res.reportedScps } : {}), roleHealth: res.roleHealth });
 }
 
 /** Seconds after a played day's 06:00 start → wall-clock text. */
@@ -1315,7 +1330,9 @@ export function cicsRegions(
   }
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked } };
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked,
+    transactionKeys: slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key),
+  } };
 }
 
 /** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a

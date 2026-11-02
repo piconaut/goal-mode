@@ -1,5 +1,6 @@
 // WLM runtime state: per-system service-class-period DPs and smoothed measurements.
 
+import { mergeWorkManager, type WorkManagerSamples } from './reporting';
 import { DP } from '../zos/dispatcher';
 import { emptyBuckets, performanceIndex } from './goals';
 import type { ScpTick } from './evaluate';
@@ -9,6 +10,8 @@ import { SYSOTHER, SYSSTC, SYSTEM, type Goal, type Importance, type ServiceDefin
 export const ACC_DECAY = 0.85;
 
 export interface ScpAcc {
+  workManager?: WorkManagerSamples;
+  resourceSamples?: boolean;
   completions: number;
   rtSumSec: number;
   buckets: number[];
@@ -37,6 +40,8 @@ export interface ScpState {
   dp: number;
   starvedSec: number;
   acc: ScpAcc;
+  /** Reporting accounting, independent of WLM management measurements (absent in old saves). */
+  reportAcc?: ScpAcc;
 }
 
 export interface WlmSystemState {
@@ -119,7 +124,13 @@ function decayBuckets(acc: readonly number[], add: readonly number[], d: number)
 
 export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
   const d = ACC_DECAY;
-  return {
+  // A mixed class can lose its last non-CICS member. Keep resource metrics available while
+  // its earlier samples remain in the Monitor III smoothing history.
+  const retainedResources = acc.resourceSamples === true &&
+    d * (acc.using + acc.delay + acc.delayOther + acc.cpuEngines) > 1e-9;
+  const out: ScpAcc = {
+    ...(t.workManager || acc.workManager ? { workManager: mergeWorkManager(acc.workManager, t.workManager, d) } : {}),
+    ...(t.resourceSamples !== undefined ? { resourceSamples: t.resourceSamples || retainedResources } : acc.resourceSamples !== undefined ? { resourceSamples: acc.resourceSamples } : {}),
     completions: acc.completions * d + t.completions,
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,
     buckets: decayBuckets(acc.buckets, t.buckets, d),
@@ -138,6 +149,12 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
       ? { srvUsing: (acc.srvUsing ?? 0) * d + (t.srvUsing ?? 0), srvDelay: (acc.srvDelay ?? 0) * d + (t.srvDelay ?? 0) }
       : {}),
   };
+  if (out.resourceSamples === false) {
+    // Expired resource samples must not leave a normalized DELAY percentage behind.
+    out.using = out.delay = out.delayCpu = out.delayZiip = out.delayIo = out.delayOther = out.delayCap = out.cpuEngines = 0;
+    if (out.usingIoNoVel !== undefined) out.usingIoNoVel = out.delayIoNoVel = 0;
+  }
+  return out;
 }
 
 export function sumAcc(accs: readonly ScpAcc[]): ScpAcc {
@@ -147,6 +164,8 @@ export function sumAcc(accs: readonly ScpAcc[]): ScpAcc {
 }
 
 function addAccInto(out: ScpAcc, a: ScpAcc): void {
+  if (a.workManager) out.workManager = mergeWorkManager(out.workManager, a.workManager);
+  out.resourceSamples = (out.resourceSamples ?? false) || (a.resourceSamples ?? true);
   out.completions += a.completions;
   out.rtSumSec += a.rtSumSec;
   for (let i = 0; i < a.buckets.length; i++) out.buckets[i] = (out.buckets[i] ?? 0) + a.buckets[i]!;

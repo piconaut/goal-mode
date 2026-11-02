@@ -83,7 +83,12 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
       // PI ≤ 1 exactly when at least the goal percentile ended within the goal time.
       if (r.pi !== null && r.pi <= 1) expect(r.withinGoalPct!).toBeGreaterThanOrEqual(r.goalPct! - 1e-6);
     }
-    expect(rows.some((r) => r.velocity !== null && r.velocityAct === null)).toBe(true);
+    const cics = rows.find((r) => r.scKey === 'ONLHI#1')!;
+    expect(cics.velocity).toBeNull();
+    expect(cics.velocityAct).toBeNull();
+    expect(cics.workManager!.active).toBeGreaterThan(0);
+    expect(cics.avgRtMs).not.toBeNull();
+    expect(cics.pi).not.toBeNull();
   });
 
   it('SYSINFO MVS view is at least the LPAR view, and EAppl% ≥ Appl%', () => {
@@ -126,10 +131,10 @@ describe('Monitor III DELAY columns and Primary Reason', () => {
 
   it('capping counts in DLY % but in no column, and reads RG-Cap', () => {
     const def = structuredClone(noon.sim.wlm.definition);
-    def.resourceGroups = [...def.resourceGroups, { id: 'RGTEST', type: 3, min: null, max: 10 }];
-    def.classes.find((c) => c.id === 'ONLMED')!.resourceGroup = 'RGTEST';
+    def.resourceGroups = [...def.resourceGroups, { id: 'RGTEST', type: 3, min: null, max: 1 }];
+    def.classes.find((c) => c.id === 'DDFPRD')!.resourceGroup = 'RGTEST';
     const capped = advance({ ...noon, sim: { ...noon.sim, wlm: { ...noon.sim.wlm, definition: def } } }, MIDWEST, content, 60);
-    const r = buildMon3(capped, MIDWEST).rows.find((x) => x.system === 'PROD1' && x.scKey === 'ONLMED#1')!;
+    const r = buildMon3(capped, MIDWEST).rows.find((x) => x.system === 'PROD1' && x.scKey === 'DDFPRD#1')!;
     expect(r.delay.cap).toBeGreaterThan(0.05);
     expect(r.delayFrac).toBeGreaterThan(columns(r.delay) + 0.05);
     expect(r.primaryReason).toBe('RG-Cap');
@@ -144,4 +149,15 @@ describe('Monitor III DELAY columns and Primary Reason', () => {
       expect(r.primaryReason).not.toMatch(/^PRC/);
     }
   });
+});
+
+it('starts reporting accounting cleanly when advancing an older save without reportAcc', () => {
+  const legacy = structuredClone(noon);
+  for (const s of legacy.sim.wlm.systems) for (const p of s.scps) delete p.reportAcc;
+  const resumed = advance(legacy, MIDWEST, content, 1);
+  const onl = buildMon3(resumed, MIDWEST).rows.find((r) => r.system === 'PROD1' && r.scKey === 'ONLHI#1')!;
+  expect(onl.resourceSamples).toBe(false);
+  expect(onl.cpuEngines).toBe(0);
+  expect(onl.usingFrac + onl.delayFrac + onl.unknownFrac).toBe(0);
+  expect(onl.pi).not.toBeNull();
 });
