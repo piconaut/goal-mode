@@ -358,6 +358,16 @@ Algorithm per pool:
    `IIPHONORPRIORITY=YES`, overflow is allowed onto CPs at the work's DP, after a "needs help"
    latency penalty. It is reported as IIPCP ("zIIP-eligible on CP"). Discretionary work
    gets no zIIP help ([IBM Db2 12: configuring zIIPs](https://www.ibm.com/docs/SSEPEK_12.0.0/perf/src/tpc/db2z_ibmziip.html)).
+   Honor Priority NO normally blocks the service class's overflow. For transaction-managed CICS
+   regions, any participating transaction class at DEFAULT permits the region's work to overflow;
+   only all NO blocks it (WLM Planning 3.1 p.121–122). APPROX: all CICS transactions on one image
+   share its AORs, so if any AOR is TRANSACTION this mix governs all its CICS transaction slices;
+   TRANSACTION AOR/TOR address-space CPU uses the same mix. Only CICS classes with arrivals,
+   current CPU demand or queued CP/zIIP work on that image participate. With none, the address
+   space uses its own class again. REGION/BOTH address spaces and DDF enclaves retain their own
+   settings; discretionary periods remain ineligible and system `IIPHONORPRIORITY=NO` overrides
+   the mix. CICS and DDF slices sharing a service class keep separate overflow permissions but
+   one service-class goal/report row. No per-region transaction assignment is modelled.
    If the LPAR has no zIIPs, *all* eligible work runs on CP. That costs MSU and software
    dollars, a planted flaw in the starting scenario.
 5. **Blocked workload support:** periods that got 0 CPU for longer than `BLWLINTHD` (default
@@ -1494,6 +1504,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CPU protection (CPU Critical, IEAOPT CCIMP) | **Plausible model** | Policy adjustment rejects any DP set where less important work reaches a protected period's DP; CCIMP (0–2, absent = 0) adds first or only periods up to that importance (Init & Tuning p.428). Scenarios run pre-3.1 (CCIMP 0); the player can set it per system. APPROX: no System Recovery Boost, so CCIMPBOOST is not modelled |
 | CP and zIIP backlog under a CP cap or shortage | **Plausible model** | Transaction backlog carried per pool (CP work left unserved stays on the CPs); a batch job's CP and zIIP demand follow the pace the other pool allows (phases are sequential). APPROX: a transaction's zIIP part is not held back by its CP part |
 | zIIP-eligible work with no zIIP online | **Matches** | Runs on CPs as plain CP work and queues with the CP queue ratio, not a saturated zIIP pool (Init & Tuning p.431) |
+| CICS shared-region Honor Priority | **Faithful simplification** | Any participating DEFAULT CICS transaction class permits TRANSACTION regions' overflow; all NO blocks it (WLM Planning 3.1 p.121–122). Existing topology approximation: transactions share all AORs on an image; if any AOR is TRANSACTION the mix applies to all CICS transaction slices, plus each TRANSACTION AOR/TOR's own CPU. Participation includes arrivals and both pools' backlog, recomputed each tick; no transaction work reverts the address space to its own class. Other images, DDF and REGION/BOTH address spaces keep independent settings; discretionary and system-wide NO protection remain |
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Vendor list-price changes | **Simplified** | One run-level multiplier on sub-capacity MLC (all products alike); applies to the whole month it is in force, no proration; TFP terms are fixed once signed |
@@ -1549,6 +1560,9 @@ Primary IBM sources:
   cap pattern and phantom weight), group capacity shares, long-term CPU protection, Honor Priority (no CP help
   for discretionary work), CICS/IMS region management.
   https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieaw100_v2r5.pdf
+  Version 3.1 p.121–122: Honor Priority for transaction-server CICS/IMS regions and enclave servers;
+  all served transaction classes must be NO to prevent a shared region's overflow.
+  https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122
   z/OS 3.1 edition: "Manage Region Using Goals Of" TRANSACTION / REGION / BOTH on STC and JES rules, and the
   warning that it limits WLM's ability to manage the system (PDF p.122, p.211).
   https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf

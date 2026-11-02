@@ -362,8 +362,11 @@ export interface PreparedLpar {
   sliceCut: number[];
   /** Index of each slice's dispatch aggregate in `order`. */
   sliceAgg: number[];
-  /** Dispatch aggregates: service-class periods, plus `<scKey>~srv` for the transaction-server regions in a period. */
+  /** Dispatch identities: service-class periods, plus `<scKey>~srv` for transaction-server regions.
+   * An identity can occur twice when its slices have different overflow eligibility. */
   order: string[];
+  dispatchIds: string[];
+  cpShares: number[] | null;
   aggCp: number[];
   aggZi: number[];
   aggOverflow: boolean[];
@@ -391,6 +394,7 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
   const sliceCut = new Array<number>(n);
   const sliceAgg = new Array<number>(n);
   const aggIdx: Record<string, number> = {};
+  let mixedIdx: Record<string, number> | undefined;
   const order: string[] = [];
   const aggCp: number[] = [];
   const aggZi: number[] = [];
@@ -408,10 +412,15 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
     sliceCp[i] = cp;
     sliceZi[i] = zi;
     const id = servers !== undefined && s.kind === 'AS' && servers.includes(s.key) ? `${s.scKey}${SRV}` : s.scKey;
+    // CICS region work and DDF enclaves can share a service class but have different Honor
+    // Priority eligibility (WLM Planning 3.1 p.122). Keep their dispatch grants separate.
     let a = aggIdx[id];
+    const split = a !== undefined && aggOverflow[a] !== s.mayOverflow;
+    if (split) a = (mixedIdx ??= {})[id];
     if (a === undefined) {
       a = order.length;
-      aggIdx[id] = a;
+      if (split) mixedIdx![id] = a;
+      else aggIdx[id] = a;
       order.push(id);
       aggCp.push(0);
       aggZi.push(0);
@@ -421,7 +430,17 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
     aggCp[a] = aggCp[a]! + cp;
     aggZi[a] = aggZi[a]! + zi;
   }
-  return { sliceCp, sliceZi, sliceCut, sliceAgg, order, aggCp, aggZi, aggOverflow };
+  // WLM reuses this preparation for DP projections. Only mixed-eligibility identities
+  // need unique dispatch IDs and apportioned promotion/minimum shares.
+  let dispatchIds = order;
+  let cpShares: number[] | null = null;
+  if (mixedIdx) {
+    dispatchIds = order.map((k, a) => aggIdx[k] === a ? k : `${k}~overflow`);
+    const cpById: Record<string, number> = {};
+    for (let a = 0; a < order.length; a++) cpById[order[a]!] = (cpById[order[a]!] ?? 0) + aggCp[a]!;
+    cpShares = aggCp.map((cp, a) => cpById[order[a]!]! > 0 ? cp / cpById[order[a]!]! : 0);
+  }
+  return { sliceCp, sliceZi, sliceCut, sliceAgg, order, dispatchIds, cpShares, aggCp, aggZi, aggOverflow };
 }
 
 export function evaluateLpar(input: LparEvalInput): LparEvalResult {
@@ -429,7 +448,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const n = slices.length;
   const scpsOnly = input.scpsOnly === true;
   const bucketsFor = scpsOnly ? input.bucketsFor : undefined;
-  const { sliceCp, sliceZi, sliceCut, sliceAgg, order, aggCp, aggZi, aggOverflow } = input.prepared ?? prepareLpar(input);
+  const { sliceCp, sliceZi, sliceCut, sliceAgg, order, dispatchIds, cpShares, aggCp, aggZi, aggOverflow } = input.prepared ?? prepareLpar(input);
   const reg = input.regions;
   // Transaction-server regions run at the DP of the most important transaction class they serve.
   const txnDp = reg ? Math.max(...reg.keys.map((k) => input.dpOf(k))) : 0;
@@ -440,8 +459,8 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const sliceDp = new Array<number>(n);
   for (let i = 0; i < n; i++) sliceDp[i] = runDp[sliceAgg[i]!]!;
 
-  const demands: DispatchDemand[] = order.map((k, a) => ({
-    id: k,
+  const demands: DispatchDemand[] = order.map((_, a) => ({
+    id: dispatchIds[a]!,
     dp: runDp[a]!,
     cpEngines: aggCp[a]!,
     ziipEngines: aggZi[a]!,
@@ -454,10 +473,12 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const anyPromo = input.promoted !== undefined && input.promoted.size > 0;
   if (anyPromo) {
     const share = (input.promotionShareFrac ?? 0.005) * input.cpCapacityEngines;
-    const promotedDemands = demands.filter((d) => input.promoted!.has(d.id));
-    const per = promotedDemands.length > 0 ? share / promotedDemands.length : 0;
-    for (const d of promotedDemands) {
-      const lift = Math.min(per, d.cpEngines);
+    const promotedKeys = new Set(order.filter((k) => input.promoted!.has(k)));
+    const per = promotedKeys.size > 0 ? share / promotedKeys.size : 0;
+    for (let a = 0; a < order.length; a++) {
+      if (!promotedKeys.has(order[a]!)) continue;
+      const d = demands[a]!;
+      const lift = Math.min(per * (cpShares?.[a] ?? 1), d.cpEngines);
       if (lift > 0) {
         d.cpEngines -= lift;
         demands.push({ id: `${d.id}~promo`, dp: 253, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
@@ -469,13 +490,14 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   // even at the expense of more important work (SG24-7621 §4.17; MVS Planning: WLM, ch. 7 "Minimum").
   const minOf = input.minOf;
   if (minOf) {
-    for (const d of [...demands]) {
-      const m = minOf[d.id];
-      if (!m || d.id.endsWith('~promo')) continue;
+    for (let a = 0; a < order.length; a++) {
+      const d = demands[a]!;
+      const m = (minOf[order[a]!] ?? 0) * (cpShares?.[a] ?? 1);
+      if (!m) continue;
       const lift = Math.min(m, d.cpEngines);
       if (lift > 0) {
         d.cpEngines -= lift;
-        demands.push({ id: `${d.id}~rgmin`, dp: input.discMin?.has(d.id) ? RG_MIN_DISC_DP : RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
+        demands.push({ id: `${d.id}~rgmin`, dp: input.discMin?.has(order[a]!) ? RG_MIN_DISC_DP : RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
       }
     }
   }
@@ -511,8 +533,8 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const a = sliceAgg[i]!;
     const r = dres[a]!;
     const own = order[a] === s.scKey;
-    const promo = anyPromo && own ? extraById[`${s.scKey}~promo`] : undefined;
-    const rgmin = minOf && own ? extraById[`${s.scKey}~rgmin`] : undefined;
+    const promo = anyPromo && own ? extraById[`${dispatchIds[a]}~promo`] : undefined;
+    const rgmin = minOf && own ? extraById[`${dispatchIds[a]}~rgmin`] : undefined;
     const totCp = aggCp[a]!;
     const totZi = aggZi[a]!;
     const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
