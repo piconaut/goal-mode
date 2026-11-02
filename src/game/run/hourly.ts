@@ -7,9 +7,9 @@ import { classify } from '../../sim/wlm/classify';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
 import { addHour, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline } from '../sla';
 import {
-type CapacityDay,
-type HourAcc,
-type RunState
+  type CapacityDay,
+  type HourAcc,
+  type RunState
 } from '../types';
 import { allWorkloads } from '../workloads';
 import { toolOn } from './shared';

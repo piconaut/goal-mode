@@ -6,8 +6,8 @@ import { classify } from '../../sim/wlm/classify';
 import type { ClassificationRule, ServiceDefinition } from '../../sim/wlm/types';
 import { type StrainedClass } from '../hints';
 import {
-type Incident,
-type RunState
+  type Incident,
+  type RunState
 } from '../types';
 import { allWorkloads } from '../workloads';
 

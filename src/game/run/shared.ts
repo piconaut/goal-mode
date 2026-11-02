@@ -3,9 +3,9 @@ import { type EventDef, type ScriptedBeat } from '../../content/events/midwest-e
 import { type Command } from '../../sim/core/commands';
 import type { WorkloadDef } from '../../sim/workload/types';
 import {
-facetsOf,
-type Facet,
-type RunState
+  facetsOf,
+  type Facet,
+  type RunState
 } from '../types';
 
 export interface GameContent {

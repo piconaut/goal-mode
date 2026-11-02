@@ -33,13 +33,13 @@ import { BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, importanceRank } 
 import { tfpAtDayEnd } from './tfp';
 import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
-FACETS,
-facetsOf,
-type DayReport,
-type Facet,
-type Incident,
-type PlannedChange,
-type RunState
+  FACETS,
+  facetsOf,
+  type DayReport,
+  type Facet,
+  type Incident,
+  type PlannedChange,
+  type RunState
 } from './types';
 import { allWorkloads } from './workloads';
 

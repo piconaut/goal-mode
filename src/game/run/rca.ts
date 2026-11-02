@@ -3,10 +3,10 @@ import type { Scenario } from '../../sim/core/scenario';
 import { judgeEvidence } from '../evidence';
 import { scoreRca } from '../sla';
 import {
-type Incident,
-type Mechanism,
-type RunState,
-type Trigger
+  type Incident,
+  type Mechanism,
+  type RunState,
+  type Trigger
 } from '../types';
 import { mapTrust } from './shared';
 

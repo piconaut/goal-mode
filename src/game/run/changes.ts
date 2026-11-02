@@ -4,8 +4,8 @@ import type { ServiceDefinition } from '../../sim/wlm/types';
 import { failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
 import { idText } from '../ids';
 import {
-type PlannedChange,
-type RunState
+  type PlannedChange,
+  type RunState
 } from '../types';
 import { endEventByFix, fixIdsOf } from './events';
 import type { GameContent } from './shared';

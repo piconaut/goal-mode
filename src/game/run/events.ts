@@ -4,8 +4,8 @@ import { Rng, streamRng } from '../../sim/core/rng';
 import { TICK_SEC, TICKS_PER_DAY } from '../../sim/core/units';
 import { difficultyOf, storyBeatsFor } from '../difficulty';
 import {
-type ActiveEvent,
-type RunState
+  type ActiveEvent,
+  type RunState
 } from '../types';
 import type { GameContent } from './shared';
 import { msg } from './shared';
