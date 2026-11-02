@@ -637,6 +637,18 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Session log
 
+- **2026-11-02:** Revised the headless performance proposal after review. Same-host three-day comparisons of
+  five revisions (two passes, reverse order) show current totals ~28% above M8.1 closure for Midwest and ~47%
+  for Harbourline; the older revision is also slower here than its recorded timing, so the reported doubling
+  cannot all be attributed to code. Consecutive Harbourline profiles show distributed growth, with RMF rising
+  from ~1.3 to ~2.9 s over three days. CI model-change sweeps sampled at 8m51s and 12m33s; ordinary pushes skip
+  them. User clarified full-quarter sweeps run daily (supersedes the earlier answer of only around model changes).
+  Two isolated runner fixes prepared: available concurrency default and hourly diagnostics gating. Bot bundling
+  deferred (~0.18 s startup saved/run). Shared preparation is the first conditional sim prototype; no full LPAR
+  plan yet. Numeric-kernel work requires measured ≥15% end-to-end savings and removal of the old production path
+  in the same milestone; `advanceBatch` stays shelved. Raw historical CSV and revised plan in docs/performance/
+  and docs/headless-performance.md; no simulator or golden changes.
+
 - **2026-11-01:** Analyzed headless performance on `dev` at `f3b0008`; recorded
   profiles, repeat timings, constraints, and a ranked implementation proposal in
   [docs/headless-performance.md](docs/headless-performance.md). Current evaluator
