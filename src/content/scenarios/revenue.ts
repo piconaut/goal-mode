@@ -3,17 +3,7 @@
 
 import type { LparConfig, LparPoolConfig, WorldConfig } from '../../sim/core/types';
 import { MIDWEST_WORLD } from './midwest';
-
-const pool = (pool: LparPoolConfig['pool'], logical: number, weight: number, extra: Partial<LparPoolConfig> = {}): LparPoolConfig => ({
-  pool,
-  logical,
-  reserved: 0,
-  weight,
-  dedicated: false,
-  initialCapping: false,
-  absoluteCapEngines: null,
-  ...extra,
-});
+import { pool } from './pool';
 
 const zos = (id: string, pools: LparPoolConfig[], memoryGb: number, definedCapacityMsu: number | null = null): LparConfig => ({
   id,
