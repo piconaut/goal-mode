@@ -637,6 +637,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Session log
 
+- **2026-11-01:** Analyzed headless performance on `dev` at `f3b0008`; recorded
+  profiles, repeat timings, constraints, and a ranked implementation proposal in
+  [docs/headless-performance.md](docs/headless-performance.md). Current evaluator
+  cost is ~25–27% across a six-day Midwest textbook bot and three-day Harbourline
+  bare sim; projection-only cost is ~10%/~2%, respectively. Recommend compiled
+  LPAR metadata and a shared numeric evaluator with temporary buffers, retaining
+  pure snapshots and exact hashes. Target a measured ≥15% improvement for that
+  combined prototype; no runtime changes or claimed achieved speedup. Repeated
+  three-day seed-42 hashes: Midwest `bf00428ee23a9475`, Harbourline `9ef0c8246b23b71c`.
+
 - **2026-11-01:** Audited the zos-docs book map against all 24 stored IBM PDFs and IBM web
   sources. Added IP Configuration Guide, SCRT 30.1 (with its local alias and canonical URL),
   CPSM Managing Workloads and ABCs Volume 12; restored the separate RMF Programmer's Guide,
