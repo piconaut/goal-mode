@@ -43,12 +43,12 @@ export async function saveRun(run: RunState, desk?: DeskState): Promise<boolean>
   }
 }
 
-export async function loadRun(): Promise<RunState | null> {
+async function load<T>(key: string): Promise<T | null> {
   try {
     const db = await open();
-    return await new Promise<RunState | null>((resolve, reject) => {
-      const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(KEY);
-      req.onsuccess = () => resolve((req.result as RunState | undefined) ?? null);
+    return await new Promise<T | null>((resolve, reject) => {
+      const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(key);
+      req.onsuccess = () => resolve((req.result as T | undefined) ?? null);
       req.onerror = () => reject(req.error);
     });
   } catch {
@@ -56,17 +56,12 @@ export async function loadRun(): Promise<RunState | null> {
   }
 }
 
-export async function loadDesk(): Promise<DeskState | null> {
-  try {
-    const db = await open();
-    return await new Promise<DeskState | null>((resolve, reject) => {
-      const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(DESK_KEY);
-      req.onsuccess = () => resolve((req.result as DeskState | undefined) ?? null);
-      req.onerror = () => reject(req.error);
-    });
-  } catch {
-    return null;
-  }
+export function loadRun(): Promise<RunState | null> {
+  return load<RunState>(KEY);
+}
+
+export function loadDesk(): Promise<DeskState | null> {
+  return load<DeskState>(DESK_KEY);
 }
 
 export async function saveCareer(career: CareerState): Promise<boolean> {
@@ -84,15 +79,6 @@ export async function saveCareer(career: CareerState): Promise<boolean> {
   }
 }
 
-export async function loadCareer(): Promise<CareerState | null> {
-  try {
-    const db = await open();
-    return await new Promise<CareerState | null>((resolve, reject) => {
-      const req = db.transaction(STORE, 'readonly').objectStore(STORE).get(CAREER_KEY);
-      req.onsuccess = () => resolve((req.result as CareerState | undefined) ?? null);
-      req.onerror = () => reject(req.error);
-    });
-  } catch {
-    return null;
-  }
+export function loadCareer(): Promise<CareerState | null> {
+  return load<CareerState>(CAREER_KEY);
 }

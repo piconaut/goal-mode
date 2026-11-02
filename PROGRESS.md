@@ -5,6 +5,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 ## Current status
 
+- **Maintenance:** consolidated the three IndexedDB read paths without changing save/load behaviour (2026-11-02).
+
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
 - **Last updated:** 2026-11-02 (milestone merged to `main` in #129; published build rebuilt from `main` fbc518b)
