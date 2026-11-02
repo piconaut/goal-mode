@@ -61,6 +61,14 @@ describe('evidence pins', () => {
     expect(r.pins.at(-1)!.source).toBe('CPC');
   });
 
+  it('counts the IIPCP subset once in WLMGL APPL evidence', () => {
+    const index = regressed.sim.rmf.intervals.length - 1;
+    const row = regressed.sim.rmf.intervals[index]!.wlm.find((w) => w.applIipcpPct > 0)!;
+    expect(row).toBeDefined();
+    const r = pin(regressed, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'APPL' });
+    expect(r.pins.at(-1)!.value).toBe(row.applCpPct + row.applIipPct);
+  });
+
   it('pins the CICS failed share as evidence for ROUTING', () => {
     const failing = advance({ ...regressed, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'regionFailFrac', key: 'RBANK@PROD1', value: 0.35 }] }, MIDWEST, content, HOUR);
     const h = failing.smfHours.at(-1)!;
