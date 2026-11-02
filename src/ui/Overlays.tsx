@@ -10,7 +10,7 @@ import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
 import type { ViewModel } from '../game/view';
-import { piColor, seriesColor } from './App';
+import { piColor, seriesColor } from './colors';
 import { LineChart } from './LineChart';
 import type { GameHandle } from './useGame';
 import { CAREER_LEVELS } from '../content/career';

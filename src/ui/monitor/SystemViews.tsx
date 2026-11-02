@@ -1,5 +1,5 @@
 import { type Mon3View } from '../../game/mon3';
-import { piColor } from '../App';
+import { piColor } from '../colors';
 import { PinButton } from '../Evidence';
 import type { GameHandle } from '../useGame';
 import { ms, n1, sameClass } from './shared';
