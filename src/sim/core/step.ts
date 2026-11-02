@@ -774,6 +774,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
   const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id);
+  const regions = cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions;
+  const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
   // Every optional field is always present so all evaluator inputs share one shape.
   const evalInput: LparEvalInput = {
     cpCapacityEngines: cpRt?.availableEffectiveEngines ?? 0,
@@ -781,13 +783,13 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     ziipCapacityEngines: ziRt?.availableEffectiveEngines ?? 0,
     ziipServers: servers(ziRt, ziCfg?.logical ?? 0, l.hiperDispatch),
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
-    slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
+    slices: sysCfg && !sysCfg.iipHonorPriority ? overflowSlices.map((s) => ({ ...s, mayOverflow: false })) : overflowSlices,
     backlog: prev.backlog,
     ziipBacklog: prev.ziipBacklog ?? {},
     dpOf,
     capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
     ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare),
-    regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
+    regions,
     io,
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
     pagingFrac: pagingFrac[l.id] ?? 0,
@@ -1312,6 +1314,31 @@ export function cicsRegions(
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked } };
+}
+
+/** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a
+ * transaction-server region's overflow. APPROX: CICS transactions share the AORs on this image.
+ * Recompute from live demand (including both pools' backlog), outside the rate-independent cache. */
+export function cicsHonorPriority(
+  def: SimState['wlm']['definition'],
+  slices: readonly SliceSpec[],
+  byId: Readonly<Record<string, WorkloadDef>>,
+  regions: LparEvalInput['regions'],
+  backlog: Readonly<Record<string, number>>,
+  ziipBacklog: Readonly<Record<string, number>>,
+): readonly SliceSpec[] {
+  if (!regions) return slices;
+  const isCics = (s: SliceSpec) => s.kind === 'TXN' && s.workloadId !== null && byId[s.workloadId]?.subsystem === 'CICS';
+  const participating = slices.filter((s) => isCics(s) && (s.rate > 0 || s.cpEngines > 0 || s.ziipEngines > 0 || (backlog[s.key] ?? 0) > 0 || (ziipBacklog[s.key] ?? 0) > 0));
+  // With no transactions the address space is no longer a transaction server (p.122).
+  if (participating.length === 0) return slices;
+  const mayOverflow = participating.some((s) => s.mayOverflow);
+  return slices.map((s) => {
+    const shared = (regions.mode === 'TRANSACTION' && isCics(s)) || (s.kind === 'AS' && regions.servers?.includes(s.key));
+    if (!shared) return s;
+    const allowed = mayOverflow && goalInfo(def, s.scKey)?.goal.kind !== 'DISC';
+    return s.mayOverflow === allowed ? s : { ...s, mayOverflow: allowed };
+  });
 }
 
 /** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly

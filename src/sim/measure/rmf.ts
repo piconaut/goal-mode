@@ -98,6 +98,7 @@ export interface WlmRecord {
   avgRtSec: number | null;
   execVelocity: number | null;
   pi: number | null;
+  /** All time executed on general CPs, including the IIPCP subset (RMF Report Analysis p.534). */
   applCpPct: number;
   applIipcpPct: number;
   applIipPct: number;
@@ -438,7 +439,7 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
     avgRtSec: a.completions > 1e-9 ? a.rtSumSec / a.completions : null,
     execVelocity: velocityOf(velUsing(a), velDelay(a)),
     pi: goal ? accPi(goal, a) : null,
-    applCpPct: ticks > 0 ? (100 * a.cpuEngines) / ticks : 0,
+    applCpPct: ticks > 0 ? (100 * (a.cpuEngines + a.iipcpEngines)) / ticks : 0,
     applIipcpPct: ticks > 0 ? (100 * a.iipcpEngines) / ticks : 0,
     applIipPct: ticks > 0 ? (100 * a.ziipEngines) / ticks : 0,
     usingPct: { cpu: pct(a.usingCpu), ziip: pct(a.usingZiip), io: pct(a.usingIo) },
