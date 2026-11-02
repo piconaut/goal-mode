@@ -12,7 +12,7 @@ type HourAcc,
 type RunState
 } from '../types';
 import { allWorkloads } from '../workloads';
-import { toolOn } from './';
+import { toolOn } from './shared';
 import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
 
 export const newHour = (tick: number): HourAcc => ({

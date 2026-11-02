@@ -1,3 +1,4 @@
+import { toolOn } from './run/shared';
 import { ALERTS } from '../content/alerts';
 import type { DifficultyId } from '../content/difficulty';
 import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
@@ -145,7 +146,6 @@ export function startDay(run: RunState, content: GameContent): RunState {
   return r;
 }
 
-export const toolOn = (r: RunState, id: string) => r.tools.includes(id) && !r.toolsOff.includes(id);
 const chartsActive = (r: RunState) => toolOn(r, 'MON3_CHARTS') && toolOn(r, 'RMF_MON3');
 
 /** Advance the live day by up to `ticks` ticks. Ends the day automatically at 06:00. */

@@ -49,3 +49,5 @@ export function msg(run: RunState, from: string, subject: string, body: string, 
 export function logLine(run: RunState, text: string): RunState {
   return { ...run, log: [...run.log, text].slice(-300) };
 }
+
+export const toolOn = (r: RunState, id: string) => r.tools.includes(id) && !r.toolsOff.includes(id);
