@@ -96,6 +96,33 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
   DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
 
+### Active realism audit loop (2026-11-02)
+
+User request: three audits over three hours; one-hour launch spacing, first audit
+started in the initiating turn. [Durable record](docs/audit-loops/2026-11-02.md).
+Round 1/global r8: Midwest seed 23; r9 Harbourline seed 29 and r10 Revenue seed 31
+are planned for the hourly continuations. Each round is vetted before contained
+fixes land in serial PRs; design questions wait for the final loop report.
+
+Audit round 8 (2026-11-02, Midwest seed 23, NORMAL): five behaviours tested, two
+contained findings implemented and reviewed on the session branch. Exact setup/numbers are in the durable
+record above; `runs/lab/r8/hp-*.json` reproduces both.
+- Shared CICS Honor Priority is incorrectly per class: ONLMED IIPCP APPL%
+  32.49 → 0 with ONLMED NO despite active ONLHI DEFAULT; all-NO is also 0
+  (08:30–09:00 PROD1). IBM requires all classes in a transaction-managed region
+  to say NO ([WLM Planning 3.1 p.122](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122)).
+- WLMGL APPL% CP omits IIPCP, which IBM defines as its subset
+  ([RMF 3.1 p.534](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534)).
+  DDFPRD#1 reports CP 91.14 / IIPCP 76.66 instead of total CP 167.80 at 09:00.
+  Correct the report only; preserve internal native/overflow CPU separation.
+- After: mixed CICS matches DEFAULT (IIPCP 32.49%, RT 0.897 s), all-NO and DDF NO
+  stay blocked. Corrected DDFPRD#1 CP is 167.7971%; ONLMED noon CP is 297.6879%.
+  Report-state goldens regenerated intentionally; internal simulation/cost
+  snapshots are equal. Combined check and three-scenario sweeps are pending.
+- Matches: per-class DDF Honor Priority, HiperDispatch ON/OFF MVS report
+  denominators, and system/plex WLM report aggregation. Cross-system WLM moves
+  were not isolated. No design questions were raised by this round.
+
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
 changes; simplified mode is a game/UI layer over the same commands, reports and scoring.
