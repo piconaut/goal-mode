@@ -128,8 +128,12 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
   // its earlier samples remain in the Monitor III smoothing history.
   const retainedResources = acc.resourceSamples === true &&
     d * (acc.using + acc.delay + acc.delayOther + acc.cpuEngines) > 1e-9;
+  const workManager = t.workManager || acc.workManager ? mergeWorkManager(acc.workManager, t.workManager, d) : undefined;
+  const retainedWorkManager = workManager &&
+    workManager.active + workManager.ready + workManager.idle + workManager.waitingIo + workManager.waitingOther > 1e-9;
   const out: ScpAcc = {
-    ...(t.workManager || acc.workManager ? { workManager: mergeWorkManager(acc.workManager, t.workManager, d) } : {}),
+    // Subsystem Actual velocity is N/A only while subsystem data remain available (RMF p.237).
+    ...(workManager && (t.workManager || retainedWorkManager) ? { workManager } : {}),
     ...(t.resourceSamples !== undefined ? { resourceSamples: t.resourceSamples || retainedResources } : acc.resourceSamples !== undefined ? { resourceSamples: acc.resourceSamples } : {}),
     completions: acc.completions * d + t.completions,
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,

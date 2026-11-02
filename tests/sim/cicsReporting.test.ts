@@ -33,7 +33,7 @@ describe('CICS reporting accounting', () => {
     const rc = r.rcs!.find((t) => t.scKey === 'CICSR')!;
     expect(rc.cpEngines).toBe(0);
     expect(rc.resourceSamples).toBe(false);
-    expect(rc.workManager?.ready).toBeGreaterThan(0);
+    expect(rc.workManager?.ready).toBe(0); // z/OS CPU shortage is not a CICS dispatcher wait
     expect(r.rcs!.find((t) => t.scKey === 'DDFR')!.usingCpu).toBe(ddf.usingCpu);
     expect(r.rcs!.find((t) => t.scKey === 'REGR')!.cpEngines).toBeGreaterThan(0);
   });
@@ -55,10 +55,11 @@ describe('CICS reporting accounting', () => {
     expect(plex.workManager!.regionKeys).toEqual(['REG1#1', 'REG2#1']);
   });
 
-  it('REGION mode keeps service-class RT and work manager states suppressed, but reports transaction records', () => {
+  it('REGION mode suppresses service-class RT while state estimates and transaction report records remain', () => {
     const i = input();
-    const r = evaluateLpar({ ...i, regions: { ...i.regions!, mode: 'REGION', servers: [], rtTracked: false } });
-    expect(r.reportedScps!.find((t) => t.scKey === 'ONL#1')!.workManager).toBeUndefined();
+    const r = evaluateLpar({ ...i, slices: i.slices.filter((s) => s.key !== 'DDF'), regions: { ...i.regions!, mode: 'REGION', servers: [], rtTracked: false } });
+    expect(r.reportedScps!.find((t) => t.scKey === 'ONL#1')!.completions).toBe(0);
+    expect(r.reportedScps!.find((t) => t.scKey === 'ONL#1')!.workManager!.active).toBeGreaterThan(0);
     expect(r.rcs!.find((t) => t.scKey === 'CICSR')!.workManager!.active).toBeGreaterThan(0);
     expect(r.reportedScps!.find((t) => t.scKey === 'REG1#1')!.usingCpu).toBeGreaterThan(0);
   });
@@ -89,6 +90,8 @@ it('averages work manager concurrency per tick and sums it across systems in RMF
   const own = iv.wlm.find((t) => t.lparId === 'PROD1' && t.scKey === 'ONL#1')!;
   const plex = iv.wlm.find((t) => t.lparId === '*PLEX' && t.scKey === 'ONL#1')!;
   expect(own.workManager!.active).toBeCloseTo(wm.active);
+  expect(own.resourceSamples).toBe(true); // mixed CICS/DDF
+  expect(own.execVelocity).toBeNull();
   expect(plex.workManager!.active).toBeCloseTo(2 * wm.active);
   const rc = iv.wlmRc!.find((t) => t.lparId === '*PLEX' && t.scKey === 'CICSR')!;
   expect(rc.workManager!.active).toBeCloseTo(2 * wm.active);
@@ -103,7 +106,29 @@ it('reports a consistent active population while zero-arrival CICS backlog drain
   const slices = i.slices.filter((s) => s.key !== 'DDF').map((s) => s.key === 'CICS' ? { ...s, rate: 0, cpEngines: 0 } : s);
   const r = evaluateLpar({ ...i, slices, backlog: { CICS: 100 } });
   const wm = r.reportedScps!.find((t) => t.scKey === 'ONL#1')!.workManager!;
-  expect(wm.ready).toBeGreaterThan(0);
-  expect(wm.active).toBeGreaterThanOrEqual(wm.ready + wm.waitingIo);
-  expect(wm.exe).toBe(wm.active);
+  expect(wm.active).toBeGreaterThan(0);
+  expect(wm.ready).toBe(0);
+});
+
+it('keeps z/OS CPU waits ACTIVE and reserves READY for modeled CICS QR dispatch waits', () => {
+  const i = input();
+  const cpu = evaluateLpar(i);
+  expect(cpu.slices.find((s) => s.key === 'CICS')!.delayCpu).toBeGreaterThan(0);
+  expect(cpu.reportedScps!.find((t) => t.scKey === 'ONL#1')!.workManager!.ready).toBe(0);
+  const slices = i.slices.map((s) => s.key === 'CICS' ? { ...s, extraOtherSec: 0.05, extraParts: { qr: 0.05 } } : s);
+  const qr = evaluateLpar({ ...i, slices });
+  expect(qr.reportedScps!.find((t) => t.scKey === 'ONL#1')!.workManager!.ready).toBeCloseTo(5);
+});
+
+it('expires old subsystem data after CICS leaves a mixed class, while retaining current zero-weight data', () => {
+  const i = input();
+  const mixed = evaluateLpar(i).reportedScps!.find((t) => t.scKey === 'ONL#1')!;
+  const ddfOnly = evaluateLpar({ ...i, slices: i.slices.filter((s) => s.key !== 'CICS') }).reportedScps!.find((t) => t.scKey === 'ONL#1')!;
+  let a = decayInto(emptyAcc(), mixed);
+  for (let tick = 0; tick < 250; tick++) a = decayInto(a, ddfOnly);
+  expect(a.workManager).toBeUndefined();
+  expect(a.resourceSamples).toBe(true);
+  expect(a.using).toBeGreaterThan(0);
+  const current = { ...mixed, workManager: { active: 0, ready: 0, idle: 0, waitingIo: 0, waitingOther: 0, regionKeys: ['REG1#1'] } };
+  expect(decayInto(emptyAcc(), current).workManager).toEqual(current.workManager);
 });

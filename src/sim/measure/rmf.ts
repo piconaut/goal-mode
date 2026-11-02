@@ -446,7 +446,7 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
     endPerSec: sec > 0 ? a.completions / sec : 0,
     failed: a.failed,
     avgRtSec: a.completions > 1e-9 ? a.rtSumSec / a.completions : null,
-    execVelocity: a.resourceSamples === false ? null : velocityOf(velUsing(a), velDelay(a)),
+    execVelocity: a.workManager || a.resourceSamples === false ? null : velocityOf(velUsing(a), velDelay(a)),
     pi: goal ? accPi(goal, a) : null,
     applCpPct: ticks > 0 ? (100 * (a.cpuEngines + a.iipcpEngines)) / ticks : 0,
     applIipcpPct: ticks > 0 ? (100 * a.iipcpEngines) / ticks : 0,

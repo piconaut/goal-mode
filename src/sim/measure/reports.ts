@@ -122,10 +122,13 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
 
 function workManagerLines(r: WlmRecord): string[] {
   const w = r.workManager!;
+  const total = w.active + w.ready + w.idle + w.waitingIo + w.waitingOther;
+  const pct = (n: number) => total > 0 ? (100 * n / total).toFixed(1) : '-';
   return [
-    'WORK MANAGER STATES (AVG TRANSACTIONS; APPROX)',
-    `ACTIVE ${w.active.toFixed(2)}  READY ${w.ready.toFixed(2)}  IDLE ${w.idle.toFixed(2)}  WAITING FOR I/O ${w.waitingIo.toFixed(2)}  WAITING FOR OTHER ${w.waitingOther.toFixed(2)}`,
-    `PHASE BTE ${w.bte.toFixed(2)}  EXE ${w.exe.toFixed(2)}  (BTE/IDLE NOT MODELLED)`,
+    'WORK MANAGER STATES: STATE SAMPLES BREAKDOWN (%) (ESTIMATED)',
+    `CICS EXE  ACTIVE* ${pct(w.active)}  READY ${pct(w.ready)}  IDLE -  WAITING FOR I/O ${pct(w.waitingIo)}  MISC ${pct(w.waitingOther)}`,
+    'CICS BTE (BEGIN-TO-END/TOR): NOT MODELLED; EXE RESPONSE-TIME COVERAGE NOT MODELLED',
+    '* ACTIVE COMBINES SUB/APPL; IDLE TASK POPULATIONS NOT MODELLED. READY ESTIMATES CICS QR DISPATCH WAITS.',
     `RESOURCE USAGE AND USING/DELAY SAMPLES: REGION CLASSES ${w.regionKeys.join(', ')}`,
   ];
 }

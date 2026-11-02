@@ -203,7 +203,7 @@ export function withinGoalPct(buckets: readonly number[]): number | null {
   return (100 * within) / total;
 }
 
-function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: LastSplit, cicsTxn: ReadonlySet<string>): Mon3Row {
+function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: LastSplit): Mon3Row {
   const def = run.sim.wlm.definition;
   const g = goalInfo(def, scKey);
   const per = g ? def.classes.find((c) => c.id === g.serviceClass)?.periods[g.period] : undefined;
@@ -238,7 +238,7 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
     goalPct: goal?.kind === 'PCT' ? goal.pct : null,
     velocity: v,
     // Exec Vel Act is N/A where subsystem delay data replace it (CICS/IMS transaction classes).
-    velocityAct: cicsTxn.has(serviceClass) && rtGoal ? null : v,
+    velocityAct: a.workManager ? null : v,
     withinGoalPct: goal?.kind === 'PCT' ? withinGoalPct(a.buckets) : null,
     pi: g ? accPi(g.goal, a) : null,
     endedPerSec: (a.completions * NORM) / TICK_SEC,
@@ -268,11 +268,6 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   const sim = run.sim;
   const def = sim.wlm.definition;
   const workloads = allWorkloads(scenario, run);
-  // Transaction classes are managed (no velocity) while some AOR is a transaction server (Manage Region Using Goals Of).
-  const aorTxn = [...scenario.addressSpaces, ...sim.extraAddressSpaces].some(
-    (a) => a.role === 'CICS.AOR' && (classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).regionMode ?? def.cicsRegionMode ?? 'TRANSACTION') === 'TRANSACTION',
-  );
-  const cicsTxn = new Set(aorTxn ? workloads.filter((w) => w.subsystem === 'CICS').map((w) => classify(def, w.work).serviceClass) : []);
   const ddfClasses = new Set(workloads.filter((w) => w.subsystem === 'DDF').map((w) => classify(def, w.work).serviceClass));
   const lastBy = (lparId: string | null, scKey: string): LastSplit => {
     const o = noSplit();
@@ -280,11 +275,11 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     return o;
   };
   const rows: Mon3Row[] = [];
-  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, p.reportAcc ?? p.acc, lastBy(s.lparId, p.scKey), cicsTxn));
+  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, p.reportAcc ?? p.acc, lastBy(s.lparId, p.scKey)));
   // Sysplex rows, like Monitor III's sysplex-wide SYSSUM.
   const keys = [...new Set(rows.map((r) => r.scKey))].sort();
   for (const k of keys)
-    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => s.scps.filter((p) => p.scKey === k).map((p) => p.reportAcc ?? p.acc))), lastBy(null, k), cicsTxn));
+    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => s.scps.filter((p) => p.scKey === k).map((p) => p.reportAcc ?? p.acc))), lastBy(null, k)));
   primaryReasons(run, scenario, rows, ddfClasses);
 
   const cpcEngines = sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);

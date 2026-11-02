@@ -3,14 +3,13 @@
 import { emptyScpTick, type LparEvalInput, type ReportClassTick, type ScpTick, type SliceResult } from './evaluate';
 
 export interface WorkManagerSamples {
-  /** Average transaction concurrency, not percentages of region resource samples. */
+  /** Analytic EXE state weights; normalize their sum for STATE SAMPLES BREAKDOWN (%).
+   * ACTIVE combines SUB/APPL. The first-region (normally TOR) BTE phase is not simulated. */
   active: number;
   ready: number;
   idle: number;
   waitingIo: number;
   waitingOther: number;
-  bte: number;
-  exe: number;
   /** Region service-class periods that own the resource samples. */
   regionKeys: string[];
 }
@@ -22,8 +21,6 @@ export function mergeWorkManager(a?: WorkManagerSamples, b?: WorkManagerSamples,
     idle: (a?.idle ?? 0) * decay + (b?.idle ?? 0),
     waitingIo: (a?.waitingIo ?? 0) * decay + (b?.waitingIo ?? 0),
     waitingOther: (a?.waitingOther ?? 0) * decay + (b?.waitingOther ?? 0),
-    bte: (a?.bte ?? 0) * decay + (b?.bte ?? 0),
-    exe: (a?.exe ?? 0) * decay + (b?.exe ?? 0),
     regionKeys: [...new Set([...(a?.regionKeys ?? []), ...(b?.regionKeys ?? [])])].sort(),
   };
 }
@@ -69,20 +66,26 @@ export function projectCicsReports(input: LparEvalInput, results: readonly Slice
       addResources(rc, r);
       continue;
     }
-    // APPROX: Little's-law concurrency from existing RT parts. No pre-execution phase or idle
-    // transaction population is simulated: BTE and IDLE stay zero. MXT admission wait is outside WLM.
-    const ready = r.delayCpu + r.delayZiip + r.delayCap;
+    // CICS tasks are Running (ACTIVE) or Dispatchable (READY): Monitoring CICS v6 p.55.
+    // BCP CPU waits need not be READY to CICS (RMF p.536). APPROX: QR contention is the
+    // only modeled CICS dispatcher wait; BCP CPU/backlog/paging waits remain ACTIVE.
+    const parts = r.parts;
+    const ready = s.rate * (parts?.extra.qr ?? 0);
     const waitingIo = s.rate * (r.parts?.io ?? 0);
-    // Existing CPU backlog still represents active work after arrivals stop.
-    const active = Math.max(s.rate * r.rtMeanSec, r.usingCpu + r.usingZiip + ready + waitingIo);
+    const cpuPhaseSec = parts ? parts.cpu + parts.cpuQueue + parts.ziip + parts.paging + parts.backlogWait : 0;
+    const workPerTxn = s.cpuSecPerTxn + s.ziipSecPerTxn;
+    const backlogTasks = workPerTxn > 0 ? r.newBacklog / workPerTxn : 0;
+    const active = Math.max(s.rate * cpuPhaseSec, r.usingCpu + r.usingZiip, backlogTasks);
     const wm: WorkManagerSamples = {
       active, ready, idle: 0,
       waitingIo,
-      waitingOther: Math.max(0, active - r.usingCpu - r.usingZiip - ready - waitingIo),
-      bte: 0, exe: active, regionKeys,
+      // No product-switch or TOR state machine: unclassified suspension remains MISC.
+      waitingOther: Math.max(0, s.rate * r.rtMeanSec - active - ready - waitingIo),
+      regionKeys,
     };
-    // REGION-only mode suppresses service-class transaction reporting, including work manager states.
-    if (reg.rtTracked !== false) t.workManager = mergeWorkManager(t.workManager, wm);
+    // RT tracking and this reporting-only state estimate are independent. WLM Planning p.123
+    // defines the REGION-mode RT rule; this estimate does not infer further state suppression.
+    t.workManager = mergeWorkManager(t.workManager, wm);
     if (rc) rc.workManager = mergeWorkManager(rc.workManager, wm);
     if (aors.length) for (const a of aors) {
       addResources(byKey.get(a.scKey), r, 1 / aors.length);

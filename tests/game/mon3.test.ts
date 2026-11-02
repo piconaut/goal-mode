@@ -161,3 +161,14 @@ it('starts reporting accounting cleanly when advancing an older save without rep
   expect(onl.usingFrac + onl.delayFrac + onl.unknownFrac).toBe(0);
   expect(onl.pi).not.toBeNull();
 });
+
+it('shows N/A actual velocity for mixed classes with subsystem states, independent of region mode or goal', () => {
+  const mixed = structuredClone(noon);
+  mixed.sim.wlm.definition.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal = { kind: 'VEL', velocity: 80 };
+  for (const rule of mixed.sim.wlm.definition.subsystems.flatMap((s) => s.rules)) rule.regionMode = 'BOTH';
+  const p = mixed.sim.wlm.systems.find((s) => s.lparId === 'PROD1')!.scps.find((p) => p.scKey === 'ONLHI#1')!;
+  p.reportAcc = { ...p.reportAcc!, resourceSamples: true, using: 2, delay: 1, delayCpu: 1, cpuEngines: 1 };
+  const row = buildMon3(mixed, MIDWEST).rows.find((r) => r.system === 'PROD1' && r.scKey === 'ONLHI#1')!;
+  expect(row.velocity).not.toBeNull(); // resource workflow of the non-CICS members is still meaningful
+  expect(row.velocityAct).toBeNull(); // subsystem states replace the goal actual, RMF p.237
+});

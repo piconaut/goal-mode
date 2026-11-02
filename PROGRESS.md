@@ -93,15 +93,18 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   them (Midwest seed-7 capped test now asserts that); goldens regenerated; ~3 % slower per tick. CI sweep
   (Midwest, seeds 1–5): donothing day 15 / 0 wins, textbook day 27 / 0, expert day 40 / 4 of 5; all in band.
 - [x] **CICS transaction classes report work manager states, not using and delay samples.**
-  Reporting-only projection sends CICS resource usage/samples to AOR service/report classes, while
-  transaction rows retain RT/PI/buckets and estimated work manager states. Monitor III, stored pin
-  history, region evidence relevance and hints follow the corrected attribution. Mixed classes retain
-  non-CICS resource samples. APPROX: equal AOR split; BTE/IDLE populations not modelled. WLM management
-  signals are unchanged. Sources: WLM Planning 3.1 p.113; RMF Report Analysis p.536–537.
-  Validation: typecheck + 524 tests / 60 files pass; production build passes; reporting-state goldens
-  regenerated. One-day seed-42 internal-state hashes match dev in Midwest, Harbourline and Revenue
-  after excluding reporting data. Independent review covered migration, sample expiry and draining backlog.
-  Benchmarks stay under 4 ms/tick (Midwest 1.16 ms; Harbourline 3.12 ms under test contention).
+  Reporting-only projection sends ordinary CICS resource usage/samples to AOR service/report classes;
+  transaction rows retain RT/PI/buckets and estimated EXE state percentages. Monitor III, stored pins,
+  evidence relevance and hints follow the attribution. Mixed classes retain non-CICS resource samples.
+  The zos-docs audit corrected ACTIVE vs total population, READY vs BCP waits, BTE meaning, and
+  mixed/BOTH velocity; it documents optional TRANS-APPL% accounting. [Audit](docs/reviews/pr-147-realism.md).
+  APPROX: equal AOR allocation; combined ACTIVE SUB/APPL; READY from QR dispatch waits. TOR/BTE,
+  IDLE, EXE coverage and optional transaction processor accounting are not modeled. Management unchanged.
+  Validation: typecheck + 527 tests / 60 files pass; production build passes; reporting goldens regenerated
+  and verified without update mode. Original PR-head CI sweep passed: donothing day 15 / 0 wins,
+  textbook day 27 / 0, expert day 40 / 4 of 5. Audited head will rerun CI; user asked to keep PR #147 open.
+  One-day seed-42 internal-state hashes matched dev in Midwest, Harbourline and Revenue after excluding
+  reporting data. Independent review covered source claims, migration, sample/metadata expiry and backlog.
 
 ### Active realism audit loop (2026-11-02)
 
