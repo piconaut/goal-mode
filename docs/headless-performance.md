@@ -120,14 +120,14 @@ start and completion rather than queued workflow time.
 
 ## Small runner fixes
 
-Two changes are prepared on separate branches from `dev`:
+Two changes are implemented in separate PRs from `dev`:
 
-- `perf/sweep-parallelism`: replace `cpus().length` with
+- [#138](https://github.com/piconaut/goal-mode/pull/138), `perf/sweep-parallelism`: replace `cpus().length` with
   `os.availableParallelism()` as the default. Preserve explicit `--jobs`. This is
   the OS's available concurrency estimate, not a custom cgroup-quota parser;
   verify its value on each host. A two-seed, one-day CSV matched baseline output
   with `--jobs 1`; explicit override smoke checks passed too.
-- `perf/headless-hourly`: collect hourly-only statistics inside `if (hourly)` and
+- [#139](https://github.com/piconaut/goal-mode/pull/139), `perf/headless-hourly`: collect hourly-only statistics inside `if (hourly)` and
   remove per-tick CF-string formatting whose result was never printed. Daily
   summaries, requested RMF reports, final DPs, and logs remain available.
 
@@ -142,6 +142,10 @@ candidate's quiet runs were faster and hourly runs slightly slower in that order
 the historical samples demonstrate substantial host variation. No achieved
 percentage speedup is claimed. This CLI diagnostic change does not accelerate
 the bot's simulation loop.
+
+Typecheck passed in both runner worktrees. The shared suite passed: 57 files and
+488 tests. The analysis worktree also passed typecheck; `git diff --check` passed
+for all three changes.
 
 Five alternating zero-day bot starts measured startup separately: median 0.259 s
 with tsx versus 0.082 s with a prebuilt bundle, with identical JSON summaries.
