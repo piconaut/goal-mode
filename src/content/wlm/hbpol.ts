@@ -1,14 +1,8 @@
 // Starting WLM service definition for Harbourline Bank. Its deliberate flaw is the average-response
 // goal on market order capture (SPEC §13.5, Problem 1); the rest is a reasonable policy.
 
-import type { ClassificationRule, PeriodDef, ServiceClassDef, ServiceDefinition } from '../../sim/wlm/types';
-
-const vel = (velocity: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({ goal: { kind: 'VEL', velocity }, importance, durationSu });
-const pct = (p: number, rtSec: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({ goal: { kind: 'PCT', pct: p, rtSec }, importance, durationSu });
-const avg = (rtSec: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({ goal: { kind: 'AVG', rtSec }, importance, durationSu });
-const disc = (): PeriodDef => ({ goal: { kind: 'DISC' }, importance: 5, durationSu: null });
-const sc = (id: string, description: string, periods: PeriodDef[]): ServiceClassDef => ({ id, description, periods, cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
-const rule = (qualifier: ClassificationRule['qualifier'], pattern: string, serviceClass: string | null): ClassificationRule => ({ qualifier, pattern, serviceClass, reportClass: null, children: [] });
+import type { ServiceDefinition } from '../../sim/wlm/types';
+import { vel, pct, avg, disc, sc, rule } from './policyBuilders';
 
 export const HBPOL: ServiceDefinition = {
   policyName: 'HBPOL',

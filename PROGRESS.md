@@ -11,6 +11,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 - **Maintenance:** shared the identical scenario pool configuration helper (2026-11-02).
 
+- **Maintenance:** shared the identical Harbourline and Revenue policy builders (2026-11-02).
+
 - **Maintenance:** consolidated the three IndexedDB read paths without changing save/load behaviour (2026-11-02).
 
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser

@@ -1,14 +1,8 @@
 // Starting WLM service definition for the State Revenue Agency. Flaws G1–G3 are deliberate (see the
 // scenario notes in SPEC §13.4).
 
-import type { ClassificationRule, PeriodDef, ServiceClassDef, ServiceDefinition } from '../../sim/wlm/types';
-
-const vel = (velocity: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({ goal: { kind: 'VEL', velocity }, importance, durationSu });
-const pct = (p: number, rtSec: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({ goal: { kind: 'PCT', pct: p, rtSec }, importance, durationSu });
-const avg = (rtSec: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({ goal: { kind: 'AVG', rtSec }, importance, durationSu });
-const disc = (): PeriodDef => ({ goal: { kind: 'DISC' }, importance: 5, durationSu: null });
-const sc = (id: string, description: string, periods: PeriodDef[]): ServiceClassDef => ({ id, description, periods, cpuCritical: false, storageCritical: false, resourceGroup: null, honorPriority: true });
-const rule = (qualifier: ClassificationRule['qualifier'], pattern: string, serviceClass: string | null): ClassificationRule => ({ qualifier, pattern, serviceClass, reportClass: null, children: [] });
+import type { ServiceDefinition } from '../../sim/wlm/types';
+import { vel, pct, avg, disc, sc, rule } from './policyBuilders';
 
 export const REVPOL: ServiceDefinition = {
   policyName: 'REVPOL',
