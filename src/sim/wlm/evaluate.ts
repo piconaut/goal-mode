@@ -505,6 +505,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
 
   // First pass: address spaces → server health by role.
   const roleHealth: Record<string, { health: number; queueRatio: number }> = {};
+  const srvRoles: Record<string, true> = {};
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const a = sliceAgg[i]!;
@@ -529,6 +530,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     health[i] = wantAll > 1e-12 ? Math.min(1, got[i]! / wantAll) : 1;
     queueRatio[i] = Math.min(MAX_QUEUE_RATIO, r.cpQueueRatio + r.prsmDelayRatio);
     if (s.kind === 'AS' && s.role) {
+      if (order[a]!.endsWith(SRV)) srvRoles[s.role] = true;
       const prev = roleHealth[s.role];
       if (!prev || health[i]! < prev.health) roleHealth[s.role] = { health: health[i]!, queueRatio: queueRatio[i]! };
     }
@@ -621,15 +623,21 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     }
 
     let depDelay = 0;
+    // Waiting for regions managed to this work's goals is this work's CPU delay: the regions' delay states count
+    // for the transaction classes they serve, and WLM helps those regions to help the class (SG24-7621 p.81, p.126).
+    // APPROX: the whole wait counts as CPU, whatever starves the region.
+    let srvCpuSec = 0;
     for (const srv of s.servers) {
       const h = roleHealth[srv.role];
       if (!h) continue;
-      depDelay += srv.latencySec * (1 / Math.max(h.health, 0.02) - 1 + h.queueRatio);
+      const d = srv.latencySec * (1 / Math.max(h.health, 0.02) - 1 + h.queueRatio);
+      depDelay += d;
+      if (srvRoles[srv.role]) srvCpuSec += d;
     }
 
     const ioSec = s.ioPerTxn * io.rtSec;
     const pagingSec = (s.cpuSecPerTxn + s.ziipSecPerTxn) * pg * 3;
-    const otherSec = depDelay + s.extraOtherSec;
+    const otherSec = depDelay - srvCpuSec + s.extraOtherSec;
     const rt =
       s.baseLatencySec +
       s.cpuSecPerTxn * (1 + qr) +
@@ -637,6 +645,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       ioSec +
       pagingSec +
       otherSec +
+      srvCpuSec +
       waitSec;
 
     const arrivals = s.rate * TICK_SEC;
@@ -654,7 +663,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       usingCpu: cpUsing,
       usingZiip: ziipGranted,
       usingIo: ioRate * ioUsingSec(io),
-      delayCpu: cpUsing * qr + unmetCp,
+      delayCpu: cpUsing * qr + unmetCp + s.rate * srvCpuSec,
       delayZiip: ziipGranted * zq + unmetZiip,
       delayIo: ioRate * io.delaySec,
       delayOther: s.rate * otherSec,
