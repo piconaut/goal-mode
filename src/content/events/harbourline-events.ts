@@ -5,21 +5,9 @@
 
 import type { Command } from '../../sim/core/commands';
 import { MIDWEST_EVENTS, type EventDef, type ScriptedBeat } from './midwest-events';
+import { adapt } from './adapt';
 
 const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
-
-const midwestCard = (id: string): EventDef => {
-  const c = MIDWEST_EVENTS.find((e) => e.id === id);
-  if (!c) throw new Error(`No Midwest card ${id}`);
-  return c;
-};
-
-/** Clone a Midwest card with overrides, retargeting workload ids in its begin/end commands (and affects). */
-function adapt(id: string, overrides: Partial<EventDef>, retarget: Record<string, string> = {}): EventDef {
-  let json = JSON.stringify(midwestCard(id));
-  for (const [from, to] of Object.entries(retarget)) json = json.split(`"${from}"`).join(`"${to}"`);
-  return { ...(JSON.parse(json) as EventDef), ...overrides };
-}
 
 const mod = (m: 'rate' | 'cpu', key: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: m, key, value });
 const failFrac = (workloadId: string, lparId: string, value: number): Command => ({ kind: 'SET_MODIFIER', mod: 'regionFailFrac', key: `${workloadId}@${lparId}`, value });
