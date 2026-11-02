@@ -5,6 +5,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 ## Current status
 
+- **Maintenance:** extracted shared chart colors from App to remove the App/Monitor and App/Overlays runtime import cycles.
+
 - **Maintenance:** split Monitor III navigation and history controls from the system, workload, CPC, and exception report views.
 
 - **Maintenance:** separated run lifecycle orchestration from change requests, events, hourly accounting, diagnostics, and RCA; preserved the public run API.
