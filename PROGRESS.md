@@ -97,14 +97,24 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   transaction rows retain RT/PI/buckets and estimated EXE state percentages. Monitor III, stored pins,
   evidence relevance and hints follow the attribution. Mixed classes retain non-CICS resource samples.
   The zos-docs audit corrected ACTIVE vs total population, READY vs BCP waits, BTE meaning, and
-  mixed/BOTH velocity; it documents optional TRANS-APPL% accounting. [Audit](docs/reviews/pr-147-realism.md).
+  mixed/BOTH velocity; it documents optional TRANS-APPL% accounting. Durable facts are in the research
+  ledger; PR-specific evidence belongs in the PR discussion.
   APPROX: equal AOR allocation; combined ACTIVE SUB/APPL; READY from QR dispatch waits. TOR/BTE,
   IDLE, EXE coverage and optional transaction processor accounting are not modeled. Management unchanged.
-  Validation: typecheck + 527 tests / 60 files pass; production build passes; reporting goldens regenerated
+  Validation: typecheck + 533 tests / 60 files pass; production build passes; reporting goldens regenerated
   and verified without update mode. Original PR-head CI sweep passed: donothing day 15 / 0 wins,
-  textbook day 27 / 0, expert day 40 / 4 of 5. Audited head will rerun CI; user asked to keep PR #147 open.
+  textbook day 27 / 0, expert day 40 / 4 of 5. Performance follow-up reruns CI; PR #147 stays open.
   One-day seed-42 internal-state hashes matched dev in Midwest, Harbourline and Revenue after excluding
   reporting data. Independent review covered source claims, migration, sample/metadata expiry and backlog.
+  Performance follow-up: cache region topology, Set transaction membership, sparse report ticks/history,
+  reuse immutable RT/buckets, and reuse sorted region keys instead of rebuilding Sets per merge.
+  Same-host medians of two interleaved seed-42 one-day runs (reverse order on trial 2), ms/tick:
+  Midwest dev 0.439 / reviewed head 0.707 / revised 0.474 (+7.9% vs dev; -32.9% vs reviewed head);
+  Harbourline 0.705 / 1.155 / 0.726 (+2.9%; -37.1%). Measurements ran without other CPU jobs.
+  Full-day hourly RMF/Monitor III report-value hashes match the reviewed head in all three scenarios;
+  management hashes match dev. Raw goldens change because redundant serialized history is removed.
+  Full check: 533 tests / 60 files pass; readonly goldens and the queue-reporting assertion pass; build passes.
+  Per-PR audit file removed; Codex agent guidance now keeps PR evidence on the PR.
 
 ### Active realism audit loop (2026-11-02)
 

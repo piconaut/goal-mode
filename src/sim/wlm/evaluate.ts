@@ -2,7 +2,7 @@
 // period's DP, then derive response times, dependency delays and WLM using/delay
 // samples. Pure, so policy adjustment can re-run it to project the effect of a DP move.
 
-import { projectCicsReports, type WorkManagerSamples } from './reporting';
+import { projectCicsReports, type WorkManagerSamples, type CicsReportPlan } from './reporting';
 import { lognormCdf } from '../core/math';
 import { TICK_SEC } from '../core/units';
 import { STORAGE_STEAL_MAX_FRAC } from '../../content/wlm/tuning';
@@ -156,7 +156,7 @@ export interface LparEvalInput {
    * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
    * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
    * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean; transactionKeys?: readonly string[] };
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean; transactionKeys?: ReadonlySet<string>; reportingPlan?: CicsReportPlan };
   io: Record<IoClass, IoService>;
   /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
@@ -274,6 +274,8 @@ export const emptyScpTick = (scKey: string, dp: number): ScpTick => ({
 export interface LparEvalResult {
   /** Resource accounting for reports; management continues to use scps. */
   reportedScps?: ScpTick[];
+  /** Sparse reporting overrides, ephemeral: untouched periods reuse their management tick. */
+  reportedScpsByKey?: Record<string, ScpTick>;
   slices: SliceResult[];
   scps: ScpTick[];
   /** Report classes (only when the policy assigns any). */

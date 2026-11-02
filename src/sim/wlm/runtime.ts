@@ -124,17 +124,7 @@ function decayBuckets(acc: readonly number[], add: readonly number[], d: number)
 
 export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
   const d = ACC_DECAY;
-  // A mixed class can lose its last non-CICS member. Keep resource metrics available while
-  // its earlier samples remain in the Monitor III smoothing history.
-  const retainedResources = acc.resourceSamples === true &&
-    d * (acc.using + acc.delay + acc.delayOther + acc.cpuEngines) > 1e-9;
-  const workManager = t.workManager || acc.workManager ? mergeWorkManager(acc.workManager, t.workManager, d) : undefined;
-  const retainedWorkManager = workManager &&
-    workManager.active + workManager.ready + workManager.idle + workManager.waitingIo + workManager.waitingOther > 1e-9;
   const out: ScpAcc = {
-    // Subsystem Actual velocity is N/A only while subsystem data remain available (RMF p.237).
-    ...(workManager && (t.workManager || retainedWorkManager) ? { workManager } : {}),
-    ...(t.resourceSamples !== undefined ? { resourceSamples: t.resourceSamples || retainedResources } : acc.resourceSamples !== undefined ? { resourceSamples: acc.resourceSamples } : {}),
     completions: acc.completions * d + t.completions,
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,
     buckets: decayBuckets(acc.buckets, t.buckets, d),
@@ -153,6 +143,42 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
       ? { srvUsing: (acc.srvUsing ?? 0) * d + (t.srvUsing ?? 0), srvDelay: (acc.srvDelay ?? 0) * d + (t.srvDelay ?? 0) }
       : {}),
   };
+  return reportingMetadata(out, acc, t);
+}
+
+/** Reporting RT and buckets are identical to the management measurements; share their immutable data. */
+export function decayReportInto(acc: ScpAcc, t: ScpTick, measured: ScpAcc): ScpAcc {
+  const d = ACC_DECAY;
+  const out: ScpAcc = {
+    completions: measured.completions,
+    rtSumSec: measured.rtSumSec,
+    buckets: measured.buckets,
+    using: acc.using * d + t.usingCpu + t.usingZiip + t.usingIo,
+    delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
+    delayCpu: acc.delayCpu * d + t.delayCpu,
+    delayZiip: acc.delayZiip * d + t.delayZiip,
+    delayIo: acc.delayIo * d + t.delayIo,
+    delayOther: acc.delayOther * d + t.delayOther,
+    delayCap: acc.delayCap * d + t.delayCap,
+    cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
+  };
+  if (acc.usingIoNoVel !== undefined || t.usingIoNoVel !== undefined) {
+    out.usingIoNoVel = (acc.usingIoNoVel ?? 0) * d + (t.usingIoNoVel ?? 0);
+    out.delayIoNoVel = (acc.delayIoNoVel ?? 0) * d + (t.delayIoNoVel ?? 0);
+  }
+  return reportingMetadata(out, acc, t);
+}
+
+function reportingMetadata(out: ScpAcc, acc: ScpAcc, t: ScpTick): ScpAcc {
+  const d = ACC_DECAY;
+  if (t.workManager || acc.workManager) {
+    const wm = mergeWorkManager(acc.workManager, t.workManager, d);
+    if (t.workManager || wm.active + wm.ready + wm.idle + wm.waitingIo + wm.waitingOther > 1e-9) out.workManager = wm;
+  }
+  if (t.resourceSamples !== undefined) {
+    const retained = acc.resourceSamples === true && d * (acc.using + acc.delay + acc.delayOther + acc.cpuEngines) > 1e-9;
+    out.resourceSamples = t.resourceSamples || retained;
+  } else if (acc.resourceSamples !== undefined) out.resourceSamples = acc.resourceSamples;
   if (out.resourceSamples === false) {
     // Expired resource samples must not leave a normalized DELAY percentage behind.
     out.using = out.delay = out.delayCpu = out.delayZiip = out.delayIo = out.delayOther = out.delayCap = out.cpuEngines = 0;

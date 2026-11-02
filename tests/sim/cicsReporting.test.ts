@@ -12,7 +12,7 @@ const input = (over: Partial<LparEvalInput> = {}): LparEvalInput => ({
     sliceSpec({ key: 'AOR1', scKey: 'REG1#1', kind: 'AS', role: 'CICS.AOR', cpEngines: 0.1, reportClass: 'REGR' }),
     sliceSpec({ key: 'AOR2', scKey: 'REG2#1', kind: 'AS', role: 'CICS.AOR', cpEngines: 0.1 }),
   ],
-  regions: { keys: ['ONL#1'], transactionKeys: ['CICS'], mode: 'TRANSACTION', regionKey: 'REG1#1', servers: ['AOR1', 'AOR2'] },
+  regions: { keys: ['ONL#1'], transactionKeys: new Set(['CICS']), mode: 'TRANSACTION', regionKey: 'REG1#1', servers: ['AOR1', 'AOR2'] },
   ...over,
 });
 
@@ -131,4 +131,108 @@ it('expires old subsystem data after CICS leaves a mixed class, while retaining 
   expect(a.using).toBeGreaterThan(0);
   const current = { ...mixed, workManager: { active: 0, ready: 0, idle: 0, waitingIo: 0, waitingOther: 0, regionKeys: ['REG1#1'] } };
   expect(decayInto(emptyAcc(), current).workManager).toEqual(current.workManager);
+});
+
+it('reuses unrelated period ticks instead of cloning their resource accounting', () => {
+  const i = input();
+  const other = sliceSpec({ key: 'OTHER', scKey: 'OTHER#1', kind: 'AS', cpEngines: 0.2 });
+  const r = evaluateLpar({ ...i, slices: [...i.slices, other] });
+  expect(r.reportedScps!.find((t) => t.scKey === 'OTHER#1')).toBe(r.scps.find((t) => t.scKey === 'OTHER#1'));
+  expect(r.reportedScpsByKey!['OTHER#1']).toBeUndefined();
+});
+
+it('shares canonical region keys and merges changed region sets in sorted order', async () => {
+  const { mergeWorkManager } = await import('../../src/sim/wlm/reporting');
+  const a = { active: 1, ready: 0, idle: 0, waitingIo: 0, waitingOther: 0, regionKeys: ['A#1', 'Z#1'] };
+  expect(mergeWorkManager(a, a).regionKeys).toBe(a.regionKeys);
+  expect(mergeWorkManager(a, { ...a, regionKeys: [...a.regionKeys] }).regionKeys).toBe(a.regionKeys);
+  expect(mergeWorkManager(a, { ...a, regionKeys: ['B#1', 'Z#1'] }).regionKeys).toEqual(['A#1', 'B#1', 'Z#1']);
+});
+
+it('keeps reporting history only for affected classes and shares their immutable RT buckets', async () => {
+  const { initState } = await import('../../src/sim/core/init');
+  const { step } = await import('../../src/sim/core/step');
+  const { MIDWEST } = await import('../../src/content/scenarios');
+  let s = step(initState(42, MIDWEST), [], MIDWEST);
+  let affected = 0, ordinary = 0;
+  for (const system of s.wlm.systems) {
+    const last = s.last.lpars.find((l) => l.lparId === system.lparId)!;
+    for (const p of system.scps) {
+      const raw = last.scps.find((t) => t.scKey === p.scKey);
+      const report = last.reportedScps?.find((t) => t.scKey === p.scKey) ?? raw;
+      if (raw !== report) {
+        affected++;
+        expect(p.reportAcc!.buckets).toBe(p.acc.buckets);
+      } else {
+        ordinary++;
+        expect(p.reportAcc).toBeUndefined();
+        // Simulate the earlier PR's redundant per-period history, then verify it is retired.
+        p.reportAcc = { ...p.acc, resourceSamples: true };
+      }
+    }
+  }
+  expect(affected).toBeGreaterThan(0);
+  expect(ordinary).toBeGreaterThan(affected);
+  s = step(s, [], MIDWEST);
+  for (const system of s.wlm.systems) {
+    const last = s.last.lpars.find((l) => l.lparId === system.lparId)!;
+    for (const p of system.scps) {
+      const raw = last.scps.find((t) => t.scKey === p.scKey);
+      const report = last.reportedScps?.find((t) => t.scKey === p.scKey) ?? raw;
+      if (raw === report) expect(p.reportAcc).toBeUndefined();
+    }
+  }
+});
+
+it('reuses region topology across changing rates and invalidates it on reclassification', async () => {
+  const { cicsRegions } = await import('../../src/sim/core/step');
+  const { MIDWEST } = await import('../../src/content/scenarios');
+  const byId = Object.fromEntries(MIDWEST.workloads.map((w) => [w.id, w]));
+  const i = input();
+  const slices = i.slices.map((s) => s.key === 'CICS' ? { ...s, workloadId: 'RBANK' } : s);
+  const a = cicsRegions(MIDWEST.definition, slices, byId, MIDWEST.addressSpaces, 'PROD1').regions!;
+  const b = cicsRegions(MIDWEST.definition, slices.map((s) => ({ ...s, rate: s.rate * 2 })), { ...byId }, MIDWEST.addressSpaces, 'PROD1').regions!;
+  expect(b).toBe(a);
+  expect(a.transactionKeys!.has('CICS')).toBe(true);
+  const c = cicsRegions(MIDWEST.definition, slices.map((s) => s.key === 'CICS' ? { ...s, scKey: 'NEW#1', reportClass: 'NEWRC' } : s), byId, MIDWEST.addressSpaces, 'PROD1').regions!;
+  expect(c).not.toBe(a);
+  expect(c.reportingPlan!.serviceClasses.has('NEW#1')).toBe(true);
+  expect(c.reportingPlan!.reportClasses.has('NEWRC')).toBe(true);
+});
+
+it('uses the declared region class when no AOR slices are present', () => {
+  const i = input();
+  const r = evaluateLpar({ ...i, slices: i.slices.filter((s) => s.role !== 'CICS.AOR'), regions: { ...i.regions!, regionKey: 'FALLBACK#1', servers: [] } });
+  const region = r.reportedScps!.find((t) => t.scKey === 'FALLBACK#1')!;
+  expect(region.cpEngines).toBe(r.slices.find((s) => s.key === 'CICS')!.cpGranted);
+  expect(r.reportedScps!.find((t) => t.scKey === 'ONL#1')!.workManager!.regionKeys).toEqual(['FALLBACK#1']);
+});
+
+it('does not seed mixed-class reporting resources from an older save without reporting history', async () => {
+  const { initState } = await import('../../src/sim/core/init');
+  const { step } = await import('../../src/sim/core/step');
+  const { MIDWEST } = await import('../../src/content/scenarios');
+  let legacy = initState(42, MIDWEST);
+  const def = structuredClone(legacy.wlm.definition);
+  const ddf = def.subsystems.find((s) => s.subsystem === 'DDF')!;
+  ddf.defaultServiceClass = 'ONLHI';
+  for (const rule of ddf.rules) rule.serviceClass = 'ONLHI';
+  legacy = step({ ...legacy, wlm: { ...legacy.wlm, definition: def } }, [], MIDWEST);
+  for (const system of legacy.wlm.systems) for (const p of system.scps) {
+    delete p.reportAcc;
+    if (p.scKey === 'ONLHI#1') p.acc.using += 10000;
+  }
+  for (const l of legacy.last.lpars) delete l.reportedScps;
+  const resumed = step(legacy, [], MIDWEST);
+  let mixedRows = 0;
+  for (const system of resumed.wlm.systems) {
+    const p = system.scps.find((p) => p.scKey === 'ONLHI#1');
+    if (!p?.reportAcc) continue;
+    const t = resumed.last.lpars.find((l) => l.lparId === system.lparId)!.reportedScps!.find((t) => t.scKey === p.scKey)!;
+    mixedRows++;
+    expect(t.resourceSamples).toBe(true);
+    expect(p.reportAcc.using).toBe(t.usingCpu + t.usingZiip + t.usingIo);
+    expect(p.reportAcc.buckets).toBe(p.acc.buckets);
+  }
+  expect(mixedRows).toBeGreaterThan(0);
 });

@@ -768,6 +768,9 @@ contents simplified):
   Mixed classes retain resource samples from their non-CICS work. Monitor III and its evidence history
   use the same attribution; CPU-delay evidence on a region class can support its hosted CICS incidents.
   WLM's internal management measurements and dispatch decisions are independent of this reporting projection.
+  The projection caches immutable region/classification topology, reuses untouched period ticks and keeps
+  extra resource history only for affected classes (or their still-distinct retained history). Reporting RT
+  totals/buckets share the immutable management measurements; the topology's Sets are not persisted.
   APPROX: transaction resources split equally across AORs; work manager concurrency is estimated from
   existing response-time parts and normalized as estimated EXE state percentages. ACTIVE combines SUB/APPL
   and includes BCP processor waits; READY estimates the CICS dispatchable queue from QR contention.

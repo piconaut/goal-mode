@@ -343,7 +343,6 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
   const members = (a as Partial<RcIntervalAcc>).members;
   // Explicit literal in the accumulator's key order (no spread: hot path, once per period per tick).
   const out: ScpIntervalAcc = {
-    ...(t.workManager || a.workManager ? { workManager: mergeWorkManager(a.workManager, t.workManager) } : {}),
     resourceSamples: (a.resourceSamples ?? false) || (t.resourceSamples ?? true),
     completions: a.completions + t.completions,
     rtSumSec: a.rtSumSec + t.rtSumSec,
@@ -371,6 +370,7 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
       : {}),
     failed: a.failed + t.failed,
   };
+  if (t.workManager || a.workManager) out.workManager = mergeWorkManager(a.workManager, t.workManager);
   scps[k] = (members !== undefined ? { ...out, members } : out) as T;
 }
 

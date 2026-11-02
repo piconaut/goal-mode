@@ -30,18 +30,21 @@ import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
 import { ROUTING } from '../../content/routing';
+import { cicsReportPlan } from '../wlm/reporting';
 import { backlogCpSec, emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC, STORAGE_SWAP } from '../../content/wlm/tuning';
 import { CF_FAILURE } from '../../content/cf';
 import {
   decayInto,
+  decayReportInto,
   emptyAcc,
   ACC_DECAY,
   goalPi,
   goalInfo,
   initialDp,
   sysplexPis,
+  type ScpAcc,
   type ScpState,
   type WlmSystemState,
 } from '../wlm/runtime';
@@ -811,14 +814,11 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     if (!t) {
       t = emptyScpTick(k, dpOf(k));
       res.scps.push(t);
+      if (!res.reportedScpsByKey?.[k]) res.reportedScps?.push(t);
     }
     t.delayStorage += 1;
-    if (res.reportedScps) {
-      let reported = res.reportedScps.find((r) => r.scKey === k);
-      if (!reported) { reported = emptyScpTick(k, dpOf(k)); res.reportedScps.push(reported); }
-      reported.delayStorage += 1;
-      reported.resourceSamples = true;
-    }
+    const reported = res.reportedScpsByKey?.[k];
+    if (reported) { reported.delayStorage += 1; reported.resourceSamples = true; }
     addJobDelay(j, 'swap', TICK_SEC);
   }
   // APPROX: one delay sample per queued job, in the class's first period.
@@ -828,14 +828,11 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     if (!t) {
       t = emptyScpTick(k, dpOf(k));
       res.scps.push(t);
+      if (!res.reportedScpsByKey?.[k]) res.reportedScps?.push(t);
     }
     t.delayQueue = (t.delayQueue ?? 0) + 1;
-    if (res.reportedScps) {
-      let reported = res.reportedScps.find((r) => r.scKey === k);
-      if (!reported) { reported = emptyScpTick(k, dpOf(k)); res.reportedScps.push(reported); }
-      reported.delayQueue = (reported.delayQueue ?? 0) + 1;
-      reported.resourceSamples = true;
-    }
+    const reported = res.reportedScpsByKey?.[k];
+    if (reported) { reported.delayQueue = (reported.delayQueue ?? 0) + 1; reported.resourceSamples = true; }
   }
 
   const compBy: Record<string, number> = {};
@@ -938,22 +935,48 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     seen.add(t.scKey);
     const p = prevScp[t.scKey];
     const starved = t.delayCpu > 1e-6 && t.usingCpu < 0.01 * (t.usingCpu + t.delayCpu);
-    scps.push({
+    const next: ScpState = {
       scKey: t.scKey,
       dp: dpOf(t.scKey),
       starvedSec: starved ? (p?.starvedSec ?? 0) + TICK_SEC : 0,
       acc: decayInto(p?.acc ?? emptyAcc(), t),
-      ...(res.reportedScps || p?.reportAcc ? { reportAcc: decayInto(p?.reportAcc ?? emptyAcc(), res.reportedScps?.find((r) => r.scKey === t.scKey) ?? t) } : {}),
-    });
+    };
+    const reported = res.reportedScpsByKey?.[t.scKey];
+    if (reported) {
+      let seed = p?.reportAcc;
+      if (!seed) {
+        // Only reuse known non-CICS report history. Old saves have unprojected resource samples.
+        const before = prev.last.lpars.find((lpar) => lpar.lparId === l.id)?.reportedScps?.find((r) => r.scKey === t.scKey);
+        seed = p && before && !before.workManager ? p.acc : emptyAcc();
+      }
+      next.reportAcc = decayReportInto(seed, reported, next.acc);
+    } else if (p?.reportAcc) {
+      const reportAcc = decayReportInto(p.reportAcc, { ...t, resourceSamples: true }, next.acc);
+      if (!sameReportedAcc(reportAcc, next.acc)) next.reportAcc = reportAcc;
+    }
+    scps.push(next);
   }
   for (const p of prevSys?.scps ?? []) {
     if (seen.has(p.scKey)) continue;
-    scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)),
-      ...(p.reportAcc ? { reportAcc: decayInto(p.reportAcc, idleScpTick(p.scKey, p.dp)) } : {}),
-    });
+    const idle = idleScpTick(p.scKey, p.dp);
+    const next: ScpState = { scKey: p.scKey, dp: p.dp, starvedSec: 0, acc: decayInto(p.acc, idle) };
+    if (p.reportAcc) {
+      const reportAcc = decayReportInto(p.reportAcc, idle, next.acc);
+      if (!sameReportedAcc(reportAcc, next.acc)) next.reportAcc = reportAcc;
+    }
+    scps.push(next);
   }
   systems.push({ lparId: l.id, scps });
   lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, ...(res.reportedScps ? { reportedScps: res.reportedScps } : {}), roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, ...(res.reportedScps ? { reportedScps: res.reportedScps } : {}), roleHealth: res.roleHealth });
+}
+
+function sameReportedAcc(a: ScpAcc, b: ScpAcc): boolean {
+  return !a.workManager && a.resourceSamples !== false &&
+    a.completions === b.completions && a.rtSumSec === b.rtSumSec &&
+    a.using === b.using && a.delay === b.delay && a.delayCpu === b.delayCpu && a.delayZiip === b.delayZiip &&
+    a.delayIo === b.delayIo && a.delayOther === b.delayOther && a.delayCap === b.delayCap && a.cpuEngines === b.cpuEngines &&
+    (a.usingIoNoVel ?? 0) === (b.usingIoNoVel ?? 0) && (a.delayIoNoVel ?? 0) === (b.delayIoNoVel ?? 0) &&
+    a.buckets.every((n, i) => n === b.buckets[i]);
 }
 
 /** Seconds after a played day's 06:00 start → wall-clock text. */
@@ -1292,12 +1315,46 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
   };
 }
 
+interface CicsRegionCacheEntry {
+  addressSpaces: readonly AddressSpaceDef[];
+  members: Pick<SliceSpec, 'key' | 'scKey' | 'reportClass' | 'jobname' | 'role' | 'kind'>[];
+  result: { regions?: LparEvalInput['regions'] };
+}
+// Immutable policies/AS content and slice classifications define topology; rates and routing do not.
+const cicsRegionCache = new WeakMap<SimState['wlm']['definition'], Map<string, CicsRegionCacheEntry>>();
+const cicsMember = (s: SliceSpec, byId: Record<string, WorkloadDef>) =>
+  s.kind === 'TXN' ? !!s.workloadId && byId[s.workloadId]?.subsystem === 'CICS' : s.role === 'CICS.AOR' || s.role === 'CICS.TOR';
+
 /** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). "Manage
  * Region Using Goals Of" is set per region on its STC/JES rule (WLM Planning 3.1 p.122, p.211). TRANSACTION regions
  * are transaction servers: their own CPU dispatches with the transactions. APPROX: the sim does not split a
  * workload's transactions between regions, so the transactions follow the AORs together: they ride the most
  * important served class's DP if any AOR on the image is TRANSACTION, else the first AOR's class DP. */
 export function cicsRegions(
+  def: SimState['wlm']['definition'], slices: readonly SliceSpec[], byId: Record<string, WorkloadDef>,
+  addressSpaces: readonly AddressSpaceDef[], lparId: string,
+): { regions?: LparEvalInput['regions'] } {
+  let systems = cicsRegionCache.get(def);
+  if (!systems) cicsRegionCache.set(def, (systems = new Map()));
+  const hit = systems.get(lparId);
+  if (hit && hit.addressSpaces === addressSpaces) {
+    let member = 0, same = true;
+    for (const s of slices) if (cicsMember(s, byId)) {
+      const prev = hit.members[member++];
+      if (!prev || prev.key !== s.key || prev.scKey !== s.scKey || prev.reportClass !== s.reportClass ||
+          prev.jobname !== s.jobname || prev.role !== s.role || prev.kind !== s.kind) { same = false; break; }
+    }
+    if (same && member === hit.members.length) return hit.result;
+  }
+  const result = uncachedCicsRegions(def, slices, byId, addressSpaces, lparId);
+  const members = slices.filter((s) => cicsMember(s, byId)).map((s) => ({
+    key: s.key, scKey: s.scKey, reportClass: s.reportClass, jobname: s.jobname, role: s.role, kind: s.kind,
+  }));
+  systems.set(lparId, { addressSpaces, members, result });
+  return result;
+}
+
+function uncachedCicsRegions(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
   byId: Record<string, WorkloadDef>,
@@ -1330,8 +1387,9 @@ export function cicsRegions(
   }
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked,
-    transactionKeys: slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key),
+  const transactionKeys = new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key));
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys,
+    reportingPlan: cicsReportPlan(slices, transactionKeys, regionKey),
   } };
 }
 
