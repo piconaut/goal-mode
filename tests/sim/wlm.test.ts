@@ -1,7 +1,7 @@
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify, wildcardMatch } from '../../src/sim/wlm/classify';
 import type { ClassificationRule, RegionMode } from '../../src/sim/wlm/types';
-import { addToBuckets, emptyBuckets, percentilePi, performanceIndex, velocityOf } from '../../src/sim/wlm/goals';
+import { addToBuckets, emptyBuckets, percentilePi, performanceIndex, projectedPercentilePi, velocityOf } from '../../src/sim/wlm/goals';
 import { splitPeriods } from '../../src/sim/workload/periods';
 import { lognormCdf, normCdf, normInv } from '../../src/sim/core/math';
 
@@ -100,6 +100,22 @@ describe('performance index', () => {
     expect(percentilePi(sg24, 85)).toBe(1.1);
     expect(percentilePi(sg24, 90)).toBe(2.0);
     expect(percentilePi(sg24, 99)).toBe(4.0);
+  });
+  it('projections extrapolate a percentile PI past the 4.0 bucket ceiling from the mean RT', () => {
+    // Below the ceiling: the bucketed PI, untouched.
+    expect(projectedPercentilePi(sg24, 70, 100, 50, 0.6, 0.5)).toBe(0.5);
+    // Everything in the open bucket: 95th percentile of a log-normal, mean 10 s, sigma 0.5 → ≈ 20.1 s.
+    const open = [...emptyBuckets()];
+    open[open.length - 1] = 100;
+    expect(percentilePi(open, 95)).toBe(4.0);
+    const pi = projectedPercentilePi(open, 95, 100, 1000, 0.25, 0.5)!;
+    expect(pi).toBeCloseTo(80.3, 0);
+    // Monotone in the mean, so a projected improvement shows as a lower PI.
+    expect(projectedPercentilePi(open, 95, 100, 500, 0.25, 0.5)!).toBeLessThan(pi);
+    // Never below the ceiling it extends, and no data stays no data.
+    expect(projectedPercentilePi(open, 95, 100, 1, 0.25, 0.5)).toBe(4.0);
+    expect(projectedPercentilePi(open, 95, 0, 0, 0.25, 0.5)).toBe(4.0);
+    expect(projectedPercentilePi(emptyBuckets(), 95, 0, 0, 0.25, 0.5)).toBeNull();
   });
   it('velocity and discretionary PIs', () => {
     expect(velocityOf(30, 70)).toBeCloseTo(30);

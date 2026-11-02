@@ -566,6 +566,20 @@ describe('CICS region management', () => {
     expect(tracked([{ pattern: 'CICS*', regionMode: 'REGION' }])).toBe(false);
     expect(tracked([{ pattern: 'CICSTOR*', regionMode: 'BOTH' }, { pattern: 'CICSAOR*', regionMode: 'REGION' }])).toBe(true);
   });
+  it('TRANSACTION mode: waiting for the regions is the transactions\' CPU delay; REGION mode leaves it in OTHER (WLM Planning p.103, p.113)', () => {
+    // The AOR's transactions and the AOR itself overload 2 engines: the AOR is CPU-starved.
+    const sl = [txn({ key: 'HI', scKey: 'ONLHI#1', cpEngines: 2.5, servers: [{ role: 'CICS.AOR', latencySec: 0.01 }] }), regionSlices[1]!];
+    const ev = (mode: 'TRANSACTION' | 'REGION', servers: string[]) =>
+      evaluateLpar({ ...regionBase, slices: sl, dpOf: (k) => ({ 'ONLHI#1': 240, 'STCHI#1': 240 })[k]!, regions: { keys: ['ONLHI#1'], mode, regionKey: 'STCHI#1', servers } }).slices[0]!;
+    const managed = ev('TRANSACTION', ['AOR@P']);
+    const region = ev('REGION', []);
+    expect(region.delayOther).toBeGreaterThan(0.3 * region.delayCpu); // waiting on another class: not this class's CPU
+    expect(managed.delayOther).toBeCloseTo(0, 9);
+    expect(managed.delayCpu).toBeGreaterThan(region.delayCpu);
+    // Same wait, only the attribution differs.
+    expect(managed.delayCpu + managed.delayOther).toBeCloseTo(region.delayCpu + region.delayOther, 9);
+    expect(managed.rtMeanSec).toBeCloseTo(region.rtMeanSec, 9);
+  });
   it('the region class is reported with its server regions but managed without them', () => {
     const t = run(252, 'TRANSACTION', ['AOR@P']).scps.find((x) => x.scKey === 'STCHI#1')!;
     const goal = goalInfo(BASEPOL, 'STCHI#1')!.goal;
@@ -920,6 +934,29 @@ describe('LPAR BUSY vs MVS BUSY (RMF Report Analysis 3.1 p.389)', () => {
     expect(r.deliveredEngines).toBeCloseTo(2);
     expect(r.mvsBusyFrac).toBeCloseTo(lparBusy(r, 6), 6);
   });
+});
+
+describe('most important work missing its goal is helped first (WLM Planning ch.1; SG24-7621 §3.12-3.15)', () => {
+  // Midwest seed 7, PROD1 capped at 200 MSU from about 10:00, Db2 moved up to STCHI with the CICS regions (the
+  // shipped policy keeps Db2 below its clients, F1). ONLHI runs far past 4× its goal; the reported PI stops at
+  // 4.0, but WLM's projection must still see the gain of a DP move, and the wait for its own regions is CPU delay.
+  it('ONLHI is the first receiver on PROD1 once capped', () => {
+    let s = initState(7, MIDWEST);
+    s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
+    for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
+    const lines: string[] = [];
+    for (let t = 0; t < 10 * 360 && !lines.some((l) => /RCVR=/.test(l)); t++) {
+      const prev = s.wlm.log;
+      s = step(s, [], MIDWEST);
+      if (s.wlm.log === prev) continue;
+      const last = prev[prev.length - 1];
+      const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
+      for (const l of s.wlm.log.slice(from)) if (/ 1\d:\d\d:\d\d PROD1 /.test(l)) lines.push(l);
+    }
+    expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
+    expect(lines.some((l) => /ONLHI#1 .*BTLNK=OTHER/.test(l))).toBe(false);
+    expect(lines.find((l) => /RCVR=/.test(l))).toMatch(/RCVR=ONLHI#1 PI=4\.00 BTLNK=CPU ONLHI#1 DP FA→/);
+  }, 180_000);
 });
 
 describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 52)', () => {
