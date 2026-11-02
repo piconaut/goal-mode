@@ -7,7 +7,7 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
 
 - **Phase:** M0–M7 and M8.9 done; M8 in progress; M9 released (user, 2026-10-26). Playable in the browser
   (`npm run dev`); published build: https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv (private; republish on request).
-- **Last updated:** 2026-10-28
+- **Last updated:** 2026-11-02
 - **Next up:** a human UI playtest (M8.6), M8.4 events (27 in the deck; more only if a playtest asks for one). M8.1 and M8.2 closed (2026-10-27).
 - **Repo:** https://github.com/piconaut/goal-mode (build-loop branch `dev`, renamed from `ccr-2af28431-vidfb0` on 2026-10-21; merged into `main` from time to time).
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
@@ -30,8 +30,8 @@ Finished work is summarised; the full per-loop detail is in git history (`git lo
   GitHub settings (user): default branch `dev`; protect `dev` and `main` with these four checks required; allow
   auto-merge; delete head branches on merge. `main` requires the same checks but no approval: GitHub records Claude's
   PRs as authored by the user, who can't approve their own PR (user decision 2026-10-26).
-- **Health:** `npm run check` green (437 tests). Headless (cloud box): day 1 3.25–3.7 s, steady days ~2.0–2.4 s;
-  bots ~4 s/day. Bench hash (seed 42, 1 day) Midwest `fef4fa052462d635`, Harbourline `a1984addb2403be0` (dev after #70; merged to main in PR #72).
+- **Health:** `npm run check` green (488 tests). Headless (cloud box): bench day 1 4.6–5.3 s (0.53 ms/tick).
+  Bench hash (seed 42, 1 day) Midwest `b1aa42059d46952e`, Harbourline `c47f6b8416f440f8` (dev after #111, 2026-11-02).
 - **Try it:** `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1` prints daily SLA/batch/MLC summaries,
   hourly busy/PI, and Postprocessor-style WLMGL, Partition Data, CF and DASD reports. `--dc PROD2=420` sets a defined capacity.
 - **Calibration (seed 42, BASEPOL, no player action):** day 1–3 CPC peak ≈ 85% at 12:00; online SLAs 99.5–99.9% except
@@ -216,15 +216,37 @@ Each is a sim model change: regenerate the goldens with a "Behaviour change" not
   `src/content/wlm/tuning.ts`; SG24-6472-03 p.183)
 - [x] SERVERWLM weights are zIIP-aware: `WLM{distMethod: BASEWLM | SERVERWLM}` replaces `ziipAware`
   (`src/sim/workload/routing.ts`; PROCXCOST/PROCTYPE not modelled; Harbourline's B3 is "left on default BASEWLM")
+- [ ] **Work at an equal DP should share CPU by ready units, not by demand.** The dispatcher splits a DP level's
+  grant in proportion to each period's CP demand, backlog included, so a backlogged class crowds out light work at
+  the same DP. Found 2026-11-02 (#111, Harbourline expert seed 9 day 29): MKTORD at FC drags all CICS work on PRDA
+  to FC (free ride), tying with Db2 in STCHI; ONLHI's 13-engine demand on a 6.9-engine LPAR leaves Db2 about 40 % of
+  its want, and everything waiting on Db2 stalls for 6 h. Real z/OS dispatches equal-priority work from one queue,
+  a time slice per ready unit, so Db2's few busy SRBs/TCBs would keep a fairer share (APPROX today). Model a
+  per-DP share by active units (or cap a period's share at its dispatchable units), then re-sweep. Changes goldens.
 - [ ] **CICS transaction classes report work manager states, not using and delay samples.** For CICS and IMS,
   resource usage and state samples go with the regions' service classes; transaction classes get the work manager
   section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
   The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
   DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
+- [x] **CICS/IMS regions must follow their transactions' goals.** Done 2026-11-01: "Manage Region Using Goals Of" per STC/JES rule (TRANSACTION, REGION, BOTH); in TRANSACTION the AOR/TOR address spaces' CPU dispatches at the most important CICS transaction class's DP and their samples leave the region class's managed PI (still reported); REGION/BOTH dispatch as the old REGION mode, and with every region REGION the transactions' completions reach only their report classes (*WLM Planning* p.103); old saves fall back to policy-wide `cicsRegionMode`. Decided 2026-10-31 (user, #111 Q1): model it, as
+  its own PR, merged before item 15. By default WLM manages CICS/IMS regions to the goals of the transaction service
+  classes they serve; REGION mode on the classification rule keeps the region's own goal (*WLM Planning* p.122;
+  SG24-7621 §3.30–3.32; `docs/research.md`). The sim bills transaction CPU to ONLHI and region CPU to STCHI
+  separately and sets each DP on its own, so raising ONLHI starves its own regions (#111, seed 7 15:00: STCHI PI
+  0.69 → 31.9). Plan: a region class's DP and projection follow the most important transaction class it serves
+  (server topology), with an optional REGION mode; overlaps the work-manager-states item above. Cross-layer
+  and shifts balance in all three scenarios: sweeps needed.
+- [x] **Equal-importance moves must narrow the PI gap.** Done 2026-10-30 (fix 20): `passes()` rejects a move whose projected gap to a harmed equal-importance class doesn't shrink; Midwest seed 7 PROD2 09:00–10:30 TSO#2/DDFPRD#2 moves 15 → 5, donor moves between them 6 → 1, no ED↔EB swaps (both now climb); goldens moved; sweeps below. When receiver and donor have the same importance and both
+  miss, WLM brings their goal achievement closer together (SG24-6472 p.60); Enrico's test: the receiver's gain beats
+  the donor's loss *and* the projected PIs end up less far apart (*How WLM Works*, slide 52; `docs/research.md`). `passes()` (`src/sim/wlm/adjust.ts`) checks
+  only the first. Midwest seed 7 on dev: TSO#2 and DDFPRD#2 (imp 4) swap ED↔EB on PROD2 every 1.5–8 min from 09:20
+  to 10:12, with DDFPRD#2 PI swinging 1.4–8.2; draft #111 shows the same pair FB↔F4 for hours on PROD1. Fix: add
+  the disparity test (max of the two projected PIs must fall). Moves goldens; sweep.
 
 Harbourline seed 42 realism audit (2026-10-28; experiments and numbers in `runs/lab/2026-10-28-harbourline-s42-audit.md`,
 local only). Do these in order, each as its own PR; the first two are user-ordered.
-- [ ] **1. A resource group max on a server region must slow its dependents (do first).** The cap works by making
+- [x] **1. A resource group max on a server region must slow its dependents (do first).** Done 2026-10-29: health
+  is `got / (want + cut)`; realism test added; goldens unchanged (no shipped policy caps a server region by default). The cap works by making
   the group's work units non-dispatchable for some time slices (*WLM Planning* p.60 note 4, p.57). Audit: STCHI
   (CICS/Db2/MQ regions) at 2 % max fell from 51.7 % to 11.8 % use, yet MKTORD went 48 → 45 ms. Cause:
   `prepareLpar` cuts the slice's demand (`sliceCut`, `src/sim/wlm/evaluate.ts:360-367`), then sets
@@ -232,7 +254,9 @@ local only). Do these in order, each as its own PR; the first two are user-order
   and neither `depDelay` (`:572`) nor batch dependency stretch sees the cap. Fix: health against `want + cut` (the
   response-time path already uses `want + cut`, `:562`). This also lets discretionary caps reach dependents, which
   is the same mechanism. Realism test: "RG max on the Db2 region class raises dependent transaction RT".
-- [ ] **2. A resource group on the CICS AOR class must cap the transactions that run in it (after 1).** You cap CICS
+- [x] **2. A resource group on the CICS AOR class must cap the transactions that run in it (after 1).** Done
+  2026-10-29: `hostRole: 'CICS.AOR'` on CICS workloads; `resourceGroupCaps` membership by host-region CPU share; test
+  added; goldens unchanged. You cap CICS
   transactions by putting the resource group on their regions (*WLM Planning* p.60 note 1); transaction CPU is
   consumed in the regions, AORs most of it (p.122, p.130). The sim keeps transaction CPU in TXN slices classified by
   transaction class (`src/sim/workload/slices.ts`); the AOR slices carry only their base CPU, and no workload lists
@@ -247,7 +271,9 @@ local only). Do these in order, each as its own PR; the first two are user-order
   - APPROX notes: CAP delay posts on the transaction class, not the region class (see the finding R item above);
     with only some AORs in the group, the proportional share ignores CPSM routing away from them.
   - Perf: one O(slices) pass per tick, only when a group has a max (`resourceGroupCaps` returns early otherwise).
-- [ ] **3. MAXDBAT and MXT must queue without bound once offered load exceeds the limit.** Db2 queues further
+- [x] **3. MAXDBAT and MXT must queue without bound once offered load exceeds the limit.** Done 2026-10-29:
+  `slotQueueStep` (`src/sim/subsys/slots.ts`) with a persistent queue per LPAR, timeouts in `content/subsys.ts`, MXT
+  10–2000 in `SET_CICS`/`ADD_AOR`; CICS_SOS now cuts MXT to 10. THREAD_LIMIT RCA tests still pass. Goldens moved. Db2 queues further
   processing until an active DBAT ends (*Db2 13 Installation* p.212) and bounds the queue with MAXCONQN/MAXCONQW
   (p.213, p.365); CICS MXT is 10–2000 and a too-low MXT causes "excessive queuing delays" (*CICS Performance* p.89).
   Audit: MAXDBAT 1 on all members (≈ 10 DBATs wanted on PRDB) only took MKTQRY 51 → 116 ms, SLA 98–99 %, 0 failures;
@@ -256,7 +282,9 @@ local only). Do these in order, each as its own PR; the first two are user-order
   excess arrivals go to the slice backlog, waits grow and fail at the workload timeout (DDF: a MAXCONQW-like
   timeout in `content/`), plus Erlang-C wait below saturation (`src/sim/zos/erlang.ts`). Reject MXT < 10 in
   `SET_CICS` (`src/game/commands.ts`). Re-check the THREAD_LIMIT RCA rule (decision 2026-10-28) against the new curve.
-- [ ] **4. CF service per connected system with a link-distance term (planted flaw B4).** RMF CF Activity reports
+- [x] **4. CF service per connected system with a link-distance term (planted flaw B4).** Done 2026-10-29:
+  `cfServiceForSystem` (`src/sim/cf/cf.ts`), `CpcConfig.siteKm` (Harbourline CPC2 15 km), per-LPAR `cfServiceSec`,
+  CONNECTED SYSTEMS in CF Activity. Midwest behaviour unchanged (state gains `env.cfBySystem`); Harbourline moved. RMF CF Activity reports
   requests and service times per connected system and estimates link distance as round-trip µs ÷ 10 µs/km
   (*RMF Report Analysis* p.376, p.378). SPEC §13.5 B4 promises slower lock waits and higher async % on PRDC/PRDD.
   Audit: sync service 23.3 µs on every system, 0 % async; routing PAYMENTS near-only 182 → 192 ms. Cause: one
@@ -264,7 +292,7 @@ local only). Do these in order, each as its own PR; the first two are user-order
   distance in content (Harbourline 15 km), per-system sync service = base + 2 × 5 µs/km × km (FICTIONAL base;
   10 µs/km round trip is the doc's figure), the existing sync→async heuristic per system, `cfServiceSec` per LPAR,
   and a SYSTEM breakdown in the CF Activity report. Moving LOCK1 or duplexing it must then change PRDC/PRDD.
-- [ ] **5. Partition capping fields must report only capping.** Partition Data CAPPING shows DEF (Y/N for Initial
+- [x] **5. Partition capping fields must report only capping.** Done 2026-10-29: `cappedFrac` counts only a binding cap's removal against an uncapped allocation; new `softCappedFrac` feeds Partition WLM% (column renamed from CAPPED%) and Monitor III WLM Capping %; LPAR capping now posts CPU delay, WLMGL CAP delay is RG/discretionary only (folded in). Partition Data CAPPING shows DEF (Y/N for Initial
   Capping, absolute HW cap, HW group cap) and WLM% = time WLM capped the partition (*RMF Report Analysis* p.401;
   Monitor III CPC "WLM Capping %", p.98). Audit: with 6 CPs, an absolute cap of 6.0 delivered the same 3.05 engines
   as no cap, yet CAPPED% read 56.4 vs 0. Cause: `cappedFrac` in `src/sim/hw/pools.ts:145` is
@@ -276,6 +304,145 @@ local only). Do these in order, each as its own PR; the first two are user-order
   show absolute capping as the DEF flags. Same audit: WLMGL posts LPAR soft-cap delay as CAP, but RMF's CAP delay is
   resource-group and discretionary capping only and "NOT part of the CPU delay" (p.540); LPAR capping shows as CPU
   delay plus Partition WLM%. Fold that into this change (it is the `capFrac` split) or queue it right after.
+
+Audit round 2 (2026-10-29, Harbourline seed 42; `runs/lab/2026-10-29-audit-r2.md`, local only). Not ordered yet.
+- [x] **6. zIIPs offline must not inflate response time.** Done 2026-10-29: with no zIIP online the dispatcher reports the CP queue ratio (plus PR/SM delay) for the eligible work; dispatcher unit test added. With zIIPs defined but offline, eligible work runs on CPs
+  as if it had no eligibility (*Init & Tuning* p.431). Audit: PRDC/PRDD zIIP logicals 3 → 0 took MKTQRY 48 → 82 ms,
+  MOBILE 68 → 106 ms and ADHOC 2.8 → 36.7 s (still 36.4 s at 23:00 on an idle LPAR); the CP side is right (IIPCP
+  filled, PRDC 3.39 → 3.73 CP engines). Cause: zero zIIP capacity gives rho = 1 (`src/sim/zos/dispatcher.ts:86`),
+  the zIIP queue ratio clamps at 50 (`src/sim/wlm/evaluate.ts:505`) and RT bills `ziipSecPerTxn × (1 + zq)` (`:584`).
+  Fix: with no online zIIP, zq = 0 and the eligible seconds are billed at CP speed with the CP queue ratio. Unit test
+  on the dispatcher with zero zIIP capacity.
+- [x] **7. WLM-managed initiators must add initiation delay to velocity.** Done 2026-10-29: queued jobs in WLM-mode classes add one `delayQueue` sample per tick to their class's first period (WLMGL QMPL column); realism test added. Initiator start rate/threshold left as is. Velocity's delay includes "initiation
+  delays for batch jobs in WLM-managed job classes" (*WLM Planning* p.70, p.39 note 1). The size is the jobs' time
+  on the queue (waiting for an initiator, class limits, affinity, operator holds), and with large queues it "can
+  dominate the response time or velocity" (*JES2 Init & Tuning Guide* p.113–114). WLM reads it every 10 s policy
+  interval and starts up to five initiators per interval on unconstrained systems, but on a system over 95 % busy only
+  for work important enough to displace running work (SG24-6472-03, Mar 2008, p.211). Audit: class A at one
+  initiator per system gave byte-identical WLMGL rows in JES and WLM mode (BATCHPRD velocity 94.5 %, PI 0.32) while
+  critical jobs lost 10 770 s waiting for an initiator. Cause: queued jobs are in no slice
+  (`src/sim/batch/batch.ts:139-176`) and `evaluate.ts` has no initiation-delay term. Fix: in WLM mode, queued jobs add
+  delay samples to their service class (APPROX: one per queued job), so WLM sees the miss and raises initiators
+  toward demand; JES mode stays invisible to velocity.
+- [x] **8. Storage Critical must cost the unprotected work.** Protected work loses storage only to equal or more
+  important work, and IBM warns it can reduce throughput (*WLM Planning* p.119). Audit: PRDA at 60 GB, STCHI storage
+  critical: STCHI storage delay 37 → 0 %, velocity 61.6 → 92.1, every other class unchanged. Cause: paging is one
+  image-wide fraction and `evaluate.ts:514` zeroes it for protected classes without moving it anywhere. Fix: keep the
+  image's paging pressure constant and spread the protected classes' share over the unprotected ones (more to lower
+  importance). A free lever breaks the "every lever has a cost" guardrail.
+- [x] **9. Implicit CPU protection (IEAOPT CCImp, default 1 in z/OS 3.1).** CCImp=1 gives CPU protection to
+  importance-1 single-period classes and first periods without CPU Critical; CCImpBoost (default 2) applies while a
+  boost is active (*Init & Tuning* p.428). Audit (PRDA/PRDB at 4 logical CPs): MKTORD (imp 1) sat at DP 250 below
+  TSO#2 (imp 5) and STCMED (imp 3) at 252; with CPU Critical on MKTORD it went 98.1 % / 109 ms → 99.7 % / 46 ms.
+  Cause: `adjust.ts:84-92` checks only the explicit flag; no CCImp in the IEAOPT config. Fix: `ccImp` in the IEAOPT
+  config (scenario content picks the value; the 3.1 default is 1), applied in `violatesCpuCritical`. A balance change:
+  importance-1 work gets protected for free, so re-sweep and decide per scenario whether its world is pre-3.1
+  (CCImp absent, effectively 0) or 3.1. Changes goldens.
+- [x] **10. WLM edits must reject invalid goals and flags.** CPU Critical needs a single-period, non-discretionary
+  class (*WLM Planning* p.120); velocity and percentile are 1–99, response time 1 ms–24 h (p.67). The sim accepts CPU
+  Critical on two-period MKTDDF and discretionary DEVBAT, velocity 0 and 100, percentile 100, and AVG 0 s (WLMGL then
+  prints `PERF INDX Infinity`). Fix: checks in `src/game/wlmEdit.ts` (`SET_FLAGS`, goal edits) with the doc's
+  wording in the error. Same item (audit r3): SYSSTC is valid only in ASCH, JES, OMVS, STC and TSO rules, SYSTEM only in
+  STC for high-dispatching-priority address spaces (*WLM Planning* p.102); `knownClass` (`wlmEdit.ts:264`) allows
+  both anywhere (`ADD_RULE`, `SET_RULE_TARGET`, `SET_DEFAULT`). DDF → SYSSTC took Midwest ONLHI velocity 76.9 → 9.3.
+  Audit r4: rules must use qualifiers valid for their subsystem (*WLM Planning* p.78 note 1, Table 7) and a
+  qualifier cannot be nested in itself unless it is longer than 8 characters (p.99); `ADD_RULE` accepts TN on DDF, PK
+  on TSO, TC on STC, a 12-character pattern and TN under TN, all of which never match. CLI only: `SET_PERIOD` accepts a
+  null or negative duration and importance 9.
+
+Audit round 3 (2026-10-29, Midwest seed 42; `runs/lab/2026-10-29-audit-r3.md`, local only).
+- [x] **11. A resource group minimum on discretionary work must not override goal work.** For goal work below its
+  minimum WLM helps even at the cost of more important work; for discretionary work only "if that action does not
+  cause other work to miss its goal" (*WLM Planning* p.59). Audit (CP=7, DDFPRD period 2 DISC, type 2 minimum 30):
+  RBANK 99.7 % / 63 ms → 73.7 % / 3 704 ms, TELLER 100 → 65.6 %, ONLHI velocity 76.9 → 24.1. Cause: `missingGoal`
+  (`src/sim/core/step.ts:1210`) counts a DISC period as missing when delay > using, and `rgMin` lifts it at
+  `RG_MIN_DP = 252` (`src/sim/wlm/evaluate.ts:326`), above all managed work. Fix: a DISC period's minimum is served
+  only from capacity no goal period that misses its goal wants (dispatch it below managed work); goal periods keep DP 252.
+- [x] **12. Lowering MQ MAXDEPTH must not discard queued messages.** Messages already on the queue above a reduced
+  MAXDEPTH "remain intact"; only new puts fail (*MQ 9.4 Administration Reference* p.463, p.636). Audit (Midwest CP=5,
+  PAYMQ MAXDEPTH → 100): the backlog fell from 19.4 s to 1.1 s of work in one tick with 0 completions; PAYMQ RT
+  30.2 → 8.7 s. A free, instant backlog flush. Cause: `evaluate.ts:555-558` truncates `newBacklog` to the cap every
+  tick. Fix: fail only this tick's arrivals beyond the cap, keep the excess and let it drain. Also allow MAXDEPTH 0
+  (`src/game/commands.ts:379` refuses it; z/OS range 0–999 999 999).
+
+Audit round 4 (2026-10-29, Revenue seed 42; `runs/lab/2026-10-29-audit-r4.md`, local only).
+- [x] **13. Classification masks and wildcards must follow WLM syntax.** `%` masks one character (at the end it may
+  also match nothing); `*` is a wildcard only in the last position or alone and a literal anywhere else (`CI*S`
+  matches only `CI*S`); there is no `?` (*WLM Planning* p.104). `compileWildcard` (`src/sim/wlm/classify.ts:26`)
+  treats `*` as a wildcard anywhere, `?` as one character and `%` as a literal: `DEPT58%I` misses `DEPT58AI`, the
+  doc's own example. All three shipped policies use `rule('TN', '*IRLM', 'SYSSTC')` (`basepol.ts:73`, `hbpol.ts:44`,
+  `revpol.ts:43`), which real WLM reads as the literal `*IRLM`. Fix: the doc syntax in `compileWildcard`, the
+  policies to `%%%%IRLM` (names are `${ssid}IRLM`, 8 characters), the `RulesView.tsx:249` placeholder to
+  "DB1* or AUTH%", unit tests from the doc examples. Goldens may move if any other content pattern relied on the
+  old syntax; grep content for `?` and non-final `*` first.
+- [x] **14. zIIP-eligible work must not soak up the CP backlog.** Capping and CP shortage limit general purpose CPs
+  only (*WLM Planning* p.182); work that is not zIIP-eligible cannot run on a zIIP (INFERENCE from the eligibility
+  rules, p.430–431 of *Init & Tuning*). Audit (PROD1 09:00–15:00): absolute cap 1.0 CP took zIIP engine-seconds
+  3 463 → 7 188 while CP fell 32 770 → 21 600; DC 150 MSU took zIIP 0.19 → 0.36 engines with equal or fewer
+  completions. Cause: `src/sim/core/step.ts:663-669` splits each slice's whole backlog by `cpShare`, so CP work left
+  unserved drains on idle zIIPs. Misleads diagnosis ("zIIP busy doubled, add zIIP"). Fix: carry the backlog per pool
+  (CP and zIIP), or grant zIIP no faster than the CP share of the same work allows. Changes goldens.
+
+Audit round 5 (2026-10-30, Midwest seed 7; `runs/lab/2026-10-30-audit-r5.md`, local only).
+- [x] **15. Most important missing work must stay receivable under a CPU cap.** Done 2026-11-02 in #111 (after #127): projections extend the percentile PI past 4.0 (`projectedPercentilePi`), and a transaction's wait for TRANSACTION regions is its CPU delay (SG24-7621 p.81, p.126). After #127 ONLHI's bottleneck read OTHER (TOR/AOR health 0.37, the regions starve at ONLHI's DP) and was "not WLM-fixable". With Db2 in STCHI at DC 200, seed 7, ONLHI is now the first PROD1 receiver once capped (14:00, FA→FC). It stays at about 7 s through the peak in every variant, because the shared regions also carry ONLMED: a capacity shortfall, not an inversion. Was blocked on the CICS regions item. Decided 2026-10-31 (user, #111): Q1 model region server topology first, then rebase #111 on it; Q2 ONLHI collapsing under a cap with Db2 below its clients is intended (F1), so the realism test uses a policy with Db2 above the work it serves; Q3 keep the veto (unclamped harm to more important missing work rejects the move, SG24-6472 p.66–67), no gain override. Found 2026-10-30: reproduces at DC 200 on seeds 7 and 11 (not DC 100); unclamping the projection (WIP `fix/r5-receiver-clamp`, local) is not enough, because raising ONLHI starves its own CICS regions (txn and region CPU compete; real regions follow their transactions' goals, *WLM Planning* p.122) and lowering STCMED lowers Db2 (flaw F1). Side effects: STCMED promotion vetoed ~1.5 h, TSO#2/DDFPRD#2 DP ping-pong. Draft PR #111 (not for merge) holds the WIP and the design questions. WLM helps the most important work
+  missing its goal first (*WLM Planning* ch.1). Audit (PROD1 DC 100 MSU): ONLHI (imp 1) PI 0.50 → 4.00, RT 0.040 →
+  7.5 s from 10:00 to about 21:00 at DP FA while STCMED (imp 3, PI 0.59), TSO#2 and DDFPRD#2 (imp 4) sit at FB; WLM
+  log `ONLHI#1 PI=4.00 BTLNK=CPU no action with net value` every interval. Cause: the projected percentile PI is
+  clamped at 4.0 (`goals.ts:11`), so `passes` (`adjust.ts:107`) never sees receiver value once a class is past 4×
+  its goal; receivers are also taken from the per-tick `localPi` order. Fix: assess receiver value on an unclamped
+  measure, so donors above a missing imp-1 class can be lowered. Confirm on a second seed first.
+- [x] **16. CPU reports must show MVS BUSY next to LPAR BUSY.** Done 2026-10-30: `mvsBusyFrac` (`src/sim/hw/prsm.ts`) = CP demand / unparked logical CPs; Partition Data LPAR BUSY% (was LOG BUSY%) and MVS BUSY%, Monitor III MVS Util% from it; realism test added; goldens moved (state fields only). LPAR BUSY is dispatched time over online time; MVS
+  BUSY is (time range − wait) over time range, with parked time excluded under HiperDispatch, and is "a direct
+  indicator to see a CPU bottleneck" (*RMF Report Analysis* p.389). Audit (CPC 8 → 4 CPs, PROD1 weight 500 → 50):
+  LOG BUSY 33.9 → 7.0 %, PR/SM DLY% 9.9 → 13.9, while SYSSTC velocity 90 → 10 and CPU delay 10 → 90 %; Monitor
+  III MVS busy read 8.1 %. Cause: no MVS BUSY column; `mon3.ts:355` derives it as `lparBusy/(1 − prsmDelayFrac)`
+  with only the short-engine term (`prsm.ts:169-177`). Fix: MVS BUSY = min(1, demanded engines / unparked logical
+  CPs) in the Partition/CPU reports and Monitor III. Reporting only.
+- Matches: defined capacity before the R4HA fills, batch under the cap, HyperPAV aliases 0 (IOSQ and I/O delay
+  under load), tiny Db2 buffer pools (I/O delay, not CPU), IIPHONORPRIORITY=NO. Approx (known): BLWL promotion share
+  on logical capacity (`evaluate.ts:431`), buffer pool miss multiplier capped at ×4. Noted, not queued: aliases 0 is
+  inert at default load (volumes about 1 % busy), so the lever has no clue path until an event adds I/O.
+
+Audit round 6 (2026-10-30, Harbourline seed 13; `runs/lab/2026-10-30-audit-r6.md`, local only).
+- [x] **17. I/O priority management off must keep reporting I/O samples and DP-ordered IOSQ.** Done 2026-10-30: `usingIoNoVel`/`delayIoNoVel` keep the samples for reports and leave them out of velocity and the WLM bottleneck; IOSQ always DP-ordered; realism test replaced; goldens unchanged. NO "sets I/O
+  priorities equal to dispatching priorities", and the DASD I/O using and delay samples "are reported even when I/O
+  priority management is turned off"; only velocity leaves them out (*WLM Planning* p.115, p.70). Audit (LCU 10–12
+  aliases 0 + 60 000 IOPS): OFF took ONLHI I/O delay 41 → 0 %, OTH 41 → 73 %, MKTORD RT 0.044 → 0.048 s. Cause:
+  `evaluate.ts:518` zeroes I/O samples in the reports, and `:516` makes IOSQ FIFO. Fix: keep the samples for
+  WLMGL, drop them only from velocity; order IOSQ by DP when off. APPROX: goal-based I/O priority when on is not
+  modelled (on also orders by DP).
+- [x] **18. CF Activity must show duplexed secondaries and per-structure system rows.** Done 2026-10-30: STRUCTURE SUMMARY PRIM/SEC rows with the secondary's traffic on its CF, STRUCTURE ACTIVITY per copy × system, SUBCHANNEL ACTIVITY per CF × system with the distance to that CF; realism tests added; goldens moved (state fields only). The Usage Summary marks
+  PRIM/SEC for synchronously duplexed structures (*RMF Report Analysis* p.365). Audit: LOCK1 duplexed, CF02 shows
+  16 733 req/s at 40.2 % UTIL, CF01 25 100 req/s at 30.1 %, no secondary row; the secondary's CPU is counted
+  (`cf.ts:97-105`) but not its requests. CONNECTED SYSTEMS is blended over all structures (control PRDA shows
+  15 km though its lock is local). Fix: PRIM/SEC rows with the secondary's requests, structure × system rows.
+  Reporting only.
+- Matches: Db2 address spaces below their work (delay in OTH, not CPU), LOCK1 move/duplex service and async
+  share, period switching on DURATION, HiperDispatch polarity and the LPAR/MVS BUSY columns. Noted: Harbourline
+  CPU and DASD have headroom (CPC1 ~60 %, IOSQ needs ~60 000 extra IOPS per LCU), so those levers bite only after
+  an event or squeeze.
+
+Audit round 7 (2026-10-30, Revenue seed 19; `runs/lab/2026-10-30-audit-r7.md`, specs `runs/lab/r7/`, local only).
+- [x] **19. Monitor III DELAY must use RMF's columns and Primary Reason forms.** Done 2026-10-30: % Delayed for
+  is PRC (CP + zIIP) DEV STR SUB OPR ENQ, plus IDL; no CAP or PRC IIP column; capping counts only in DLY %; Primary
+  Reason is the heaviest other processor user's jobname or `*ENCLAVE`, `LCU <id>`, `LOCL` or `RG-Cap`; the
+  `DELAY_CAP` pin moves to the RG-Cap cell. View model only, goldens unchanged. Source: *RMF Report Analysis*
+  Table 20, p.106–110. p.109 says DLY % may exceed the column sum "such as WLM capping delay", and RG-Cap is a
+  Primary Reason (p.110). The audit found the sim printing a CAP column and the resource name (`PRC`) as the
+  reason. APPROX: rows stay service-class summaries, not jobs (overlaps the CICS work-manager item); DEV gives an
+  LCU, not a volser; IDL/SUB/OPR/ENQ are not modelled.
+- Matches:
+  - capacity group capping, members held to the limit and split by weight (*WLM Planning* p.44–47);
+  - sub-capacity billing capped by DC or group limit;
+  - unclassified work goes to SYSOTHER as discretionary (*WLM Planning* p.37, p.103);
+  - an unreachable velocity goal is chased at lower-importance work's expense.
+- SCRT peak of hourly sums across LPARs: verified 2026-10-30 against the SCRT guide (e0zs100 p.38, p.139), added
+  to the books repo on user request.
+- Lab harness gaps reported (added 2026-10-30, see decision row):
+  - no way to add a capacity group through `config`;
+  - no per-interval state paths;
+  - WLM log window (208 lines) too short;
+  - no Monitor III dump.
 
 **M8.5 UX polish & accessibility** (done)
 - [x] Day-1 guided tutorial; charts with crosshair tooltips and table views; keyboard shortcuts (Space, 1–5,
@@ -387,6 +554,25 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 | 2026-10-28 | Pins from past Monitor III ranges; the play CLI keeps only the pinnable values (option A), 48 h at the browser's interval, beside the run file | User choice over full views (≈ 18 MB binary on Harbourline) or views inside the run file (≈ 120 MB): ~5 MB, +~0.5 s per CLI day, run file stays small for spectator polling |
 | 2026-10-28 | Monitor III MINTIME 120 s (was 100 s, the RMF default) | User request. History and the CLI record every 12 ticks; the live view's smoothing is unchanged, so no golden moves |
 | 2026-10-28 | Harbourline audit: five realism fixes queued (M8.7 items 1–5). Resource group fixes in two steps, server-region health first, then AOR caps reaching transaction CPU; a transaction's host region adds no `depDelay` on top of its CPU cap | User decision. Item 1 is a one-expression change that closes the "park Db2 in a capped group for free" exploit; item 2 needs a content field and design calls. One cause (CPU withheld in the region) counts once, through the documented mechanism (*WLM Planning* p.60) |
+| 2026-10-29 | MXT/MAXDBAT slot queues persist across ticks and time out; a slot is held for the in-region time less the CPU backlog wait | Holding time with the backlog wait made CPU starvation and the slot limit fail the same transactions twice (zero completions in the RBANK CPU ×3 evidence test). Real CICS would move the queued tasks from CPU wait to MXT wait; the sim keeps them in the CPU backlog (APPROX). CICS_SOS cuts MXT to 10 (was 5, below the legal 10) |
+| 2026-10-29 | LPAR capping (soft or absolute) posts as CPU delay; WLMGL CAP delay is resource-group and discretionary capping only. Folded into M8.7 item 5 | RMF's CAP delay is "NOT part of the CPU delay" and covers RG/discretionary capping (*RMF Report Analysis* p.540); LPAR capping is visible as Partition WLM% / ABS CAP. The CPC `% capped` evidence keeps the CAPPING clue path. Balance check deferred to the end-of-audit sweep |
+| 2026-10-29 | Balance gate victory bands are a share of runs (expert 60–100%, donothing 0%), not counts; the gate takes an optional scenario name for its report title | The 5-seed count band (expert 3–5) failed every 10-seed review sweep, including the pre-fix baseline (9 of 10). Only Midwest has tuned bands; Harbourline and revenue sweeps are checked against them as a reference |
+| 2026-10-29 | SMF_AUDIT may slow work on a system already at its CP share (Midwest PROD2 at 10:00: MOBILE 94 → 115 ms); clue text and realism test bound (1.3×) updated | M8.7 item 6 removed the ×51 zIIP queue billed on zIIP-less PROD2 (F7), which had hidden PROD2's CP-share sensitivity. Extra SYSSTC work on a CP-bound LPAR does delay lower work; the event stays a cost card elsewhere |
+| 2026-10-29 | Storage Critical redistributes paging instead of deleting it: unprotected periods absorb the protected share by activity × steal weight (imp 1..5 → 1..5, discretionary 6), capped at 0.9 | Keeps the image's paging constant so the lever has a cost (WLM Planning p.119). No scenario sets Storage Critical by default, so goldens and bench hashes are unchanged |
+| 2026-10-29 | IEAOPT CCIMP modelled per system, but every scenario stays pre-z/OS 3.1 (CCIMP 0); the player turns it on with SET_IEAOPT (CLI/change desk; no UI control yet) | Turning it on by default would protect importance-1 work for free and shift balance; as a lever it has a cost (fewer donors, lower work waits longer). Harbourline with PRDA/PRDB at 4 logical CPs: 3526 → 0 DP inversions under importance-1 first periods over 12 h. Goldens and bench hash unchanged |
+| 2026-10-29 | WLM edit validation follows *WLM Planning* Table 7 (p.84) for the six modelled qualifiers: STC TN/UI/SY, JES TN/UI/TC, CICS TN/UI/TC, DDF UI/PK/CI, TSO UI/SY, MQ TN/UI/TC, OMVS TN/UI/SY. A qualifier may not appear under itself at any level (APPROX: p.99 shows the direct case) | The table has no SY for JES, CICS or DDF, so the sim's JES `SY` attribute is never matchable; no shipped policy or bot uses it. Existing invalid policies stay loadable; only the edit is refused |
+| 2026-10-29 | Classification patterns follow WLM syntax (*WLM Planning* p.104): `%` one character (trailing `%` may match none), `*` wildcard only last or alone, literal elsewhere, no `?`; shipped IRLM rules become `%%%%IRLM` | `*IRLM` is a literal in real WLM; behaviour unchanged (goldens moved only by the pattern string in the hashed state; mapping it back reproduces the old hashes) |
+| 2026-10-29 | zIIP no longer soaks up the CP backlog: transaction backlog carried per pool (`SimState.ziipBacklog`), batch CP/zIIP demand scaled by the pace the other pool allows (`JobRuntime.cpPace/ziipPace`) | Midwest seed 7, PROD1 absolute cap 1.0 CP, full day: zIIP 66 953 → 15 799 engine-s (uncapped 20 233), BATCHPRD zIIP 46 245 → 3 296. Uncapped batch zIIP also fell 13 318 → 8 591 (it was inflated by CP contention in the batch window); seed 42 MOBILE no longer has a rough day 1, so the hints test moved to seed 1. Goldens changed |
+| 2026-10-29 | Expert/fixer bots recycle the PROD2 AORs on CICS_SOS on sight; the card's `affects` and clue name every PROD2 CICS workload (Midwest, revenue) | Post-M8.7 sweeps: fix 3 made CICS_SOS time out all PROD2 CICS work for 4 h, and no bot applied its fix, so expert lost Midwest seeds 6 and 10 (victories 9 → 7). With the fix, 10-seed sweeps on a27b131: Midwest expert 9 victories (was 7), revenue expert 10 (unchanged, scores +3 to +13), Harbourline unchanged (no CICS_SOS); donothing and textbook rows identical. All gates pass. `affects` only feeds incident attribution and the card's trigger is POLICY, the fallback those incidents already got, so no sim change; goldens unchanged |
+| 2026-10-30 | Audit rounds run as a paced loop (`/audit-loop <rounds> <pace>`): Sonnet auditor subagents, vetting by the main agent, Opus `realism-fixer` subagents in worktrees, fixes landed one PR at a time, 10-seed sweeps per scenario on Sonnet worker sessions; a scheduled task launches audits and is deleted after the last round | User request. Each audit is processed as it finishes; sweeps go to separate containers because the 4-core box can't sweep and test at once; one golden-changing PR at a time still holds |
+| 2026-10-30 | Partition Data shows LPAR BUSY% and MVS BUSY%; MVS BUSY = CP demand / unparked logical CPs; Monitor III MVS Util% uses it (was lparBusy/(1 − short-engine delay)) | Audit r5 item 16 (*RMF Report Analysis* p.389). Midwest seed 7, PROD1 weight 50 on 4 CPs: LPAR 7.0 / MVS 8.1 → 7.0 / 100. Reporting only; one-day state hash without the new fields equals dev, so no sweep |
+| 2026-10-30 | Realism lab harness `tools/lab.ts` (`npm run lab`): JSON specs with `extends`, timed changes (commands, WLM edits, config patches), chosen report fields per interval, A/B side by side; auditor and fixer agents use it | User request: auditors were each writing their own harness (`runs/lab/r5.ts`, `runs/lab/r6/h.ts`); one shared harness keeps A/Bs comparable and lets fixers rerun the audit's exact specs |
+| 2026-10-30 | Lab harness gains `paths` (any state path per row), `wlmLog` (the whole WLM adjustment log, optionally filtered; state keeps only 400 lines), a `MON3` dump (Monitor III DELAY rows with Primary Reason) and `config` `add` (e.g. a capacity group) | Gaps the round 7 auditor hit; it worked around them with `cmds`, `final` and the play CLI. Fold a gap in once it recurs, keep ad hoc scripts allowed. Tools only |
+| 2026-10-30 | I/O priority management NO keeps DASD I/O using/delay in WLMGL, WLM_DETAIL and Monitor III, keeps the IOSQ ordered by DP, and leaves I/O out of velocity and of the WLM bottleneck | Audit r6 item 17 (*WLM Planning* p.115, p.70). Harbourline seed 13, busy LCUs, OFF at PRDA 10:00: ONLHI I/O delay 0 → 42 %, OTH 80 → 43 %, MKTORD RT 0.048 → 0.044 s (FIFO gone). Default policies keep I/O priority on: goldens and bench hashes unchanged, so no sweep |
+| 2026-10-30 | CF Activity follows the RMF layout: duplexed structures get PRIM and SEC rows (the secondary's requests count on its CF), STRUCTURE ACTIVITY per structure copy × system, SUBCHANNEL ACTIVITY (was CONNECTED SYSTEMS) per CF × system with that CF's distance | Audit r6 item 18 (*RMF Report Analysis* p.365, p.372–378). Harbourline seed 13, LOCK1 duplexed: CF02 REQ/SEC 16 733 → 33 466; EST DIST per row 0/15 km instead of 15 everywhere. Reporting only: state hash without the new fields equals dev (f7c857525081d79f), so no sweep. APPROX: both copies report the duplexed request's elapsed time |
+| 2026-10-30 | Equal-importance net value needs a shrinking PI gap (fix 20): a move that harms an equal-importance class is rejected unless the gap between the receiver's and that class's projected PIs shrinks (SG24-6472 p.60; Enrico slide 52). Applies to all equal-importance moves, not only when both miss | Stops TSO#2/DDFPRD#2 trading CPU every few minutes (Midwest seed 7: 15 → 5 moves 09:00–10:30). Leapfrogging upward (each raises its own DP, no projected harm) remains and is consistent with WLM. Bench midwest 88dac8daa434772b → 1b9844d8ee9e0fe8, harbourline b00a39eb23e07173 → b572057c3980beb1. 10-seed sweeps on 14c53c0, all inside bands: Midwest do-nothing 15 / textbook 27 / expert 9 victories (seed 2 trust, day 40); Harbourline 10 / 30.5 / expert 9 (seed 2 trust, day 33); revenue 8.5 / 28 / expert 10. In line with the last recorded sweeps |
+| 2026-11-01 | CICS/IMS regions follow their transactions' goals: Manage Region Using Goals Of on STC/JES rules (TRANSACTION default, REGION, BOTH), WLM Planning p.102 and p.122 | Raising a CICS transaction class starved its own regions in the region class (#111, STCHI PI 0.69 to 31.9). Midwest seed 7 PROD1 DC 200 15:00: reported STCHI PI 0.70 to 11.2 (regions now wait with ONLHI, not managed), ONLHI completions 131 to 155/s. APPROX: no per-region split of a workload's transactions. Bench midwest 1b9844d8ee9e0fe8 to ce49e04837e95694, harbourline b572057c3980beb1 to acac2578d02b2cdd. 10-seed sweeps on 27d5b51: Midwest do-nothing 11 / textbook 27 / expert 9 victories (seed 2 trust), was 15 / 27 / 9; Harbourline 10 / 30 / expert 8 (seeds 2, 7 trust), was 10 / 30.5 / 9; revenue 7 / 28 / expert 10, was 8.5 / 28 / 10. Revenue do-nothing is below the Midwest band it borrows (8 to 22), accepted: unmanaged regions now wait with their transactions, so a hands-off run fails sooner, and the CI-gated Midwest stays in band |
+| 2026-11-02 | WLM projections extend the percentile PI past 4.0; a transaction's wait for TRANSACTION regions is its CPU delay (#111, fix 15) | Receiver value was blind past 4× the goal, and after #127 ONLHI's region wait read OTHER (not WLM-fixable). SG24-7621 p.81, p.126; veto kept (user, Q3). Bench midwest ce49e04837e95694 to b1aa42059d46952e, harbourline acac2578d02b2cdd to c47f6b8416f440f8. 10-seed sweeps on b8d835e: Midwest do-nothing 16.5 / textbook 27 / expert 8 victories (seeds 1, 2 trust), was 11 / 27 / 9; Harbourline 9 / 29 / expert 6 (seeds 1, 2, 7, 9 trust), was 10 / 30 / 8; revenue 8.5 / 28 / 10, was 7 / 28 / 10 (back in band). Harbourline expert -2 accepted (user, 2026-11-02): seed 1 is marginal on dev too; seed 9 loses on day 29 because WLM now raises MKTORD to Db2's DP (STCHI FC), all CICS work rides there and crowds Db2 out. A realistic inversion (IBM advises Db2 above CICS); the expert bot never moves Db2 (bot gap), and the severity comes from demand-proportional sharing at an equal DP, logged in M8.7 Realism fixes |
 
 ## Open questions
 
@@ -401,30 +587,20 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
 - CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
-- Monitor III CAP column: the sim's capping delay mixes WLM resource-group capping (RMF RG-Cap) with work held back by
-  a soft-capped image. On a real system the latter probably shows as processor (PRC) delay, since PR/SM just stops
-  dispatching the logical CPs. WLMGL side settled (CAP = RG and discretionary capping only, *RMF Report Analysis*
-  p.540; queued in M8.7 item 5); the Monitor III DELAY report's own columns are still unchecked.
-- Monitor III MVS Util% is derived as LPAR util ÷ (1 − short-engine wait) (APPROX). Real MVS busy also differs from LPAR
-  busy through HiperDispatch parking and wait-completion settings; check against the CPU Activity report docs.
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
-- Resource group minimum for discretionary members: what exactly counts as "missing goals"? Modelled as delay > using.
+- Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using
+  (`missingGoal` in `src/sim/core/step.ts`, APPROX); item 11 settled only that it yields to goal work.
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
 - Policy-adjust projections don't model backlog/DBAT feedback, so WLM sometimes places batch above
   DDF while DDF is happy and then can't undo it quickly. Realistic in spirit, but watch in balancing.
 - Percentile PI edge cases: how exactly does WLM handle periods with very few completions
   (minimum-sample rules)? Currently an EWMA with a variable horizon. Check *MVS Planning: WLM*.
-- WLM-managed initiator start/stop heuristics: the JES2 Init & Tuning Guide "queue delay
-  measurements" section wasn't reviewed yet.
-- ~~R4HA after IPL~~ settled: *MVS Planning: WLM* says WLM starts with a four-hour window containing no usage, i.e. 48 zero slots, as modelled.
 - TFP details (baseline commitment, overage pricing) are left deliberately abstract; is
   that enough for the strategic choice to feel real?
-- Should two-CPC topologies (cross-site sysplex) be in the base scenario or saved for the
-  airline scenario?
 - Tuning target for "fun density": how many meaningful decisions per live day? (Target: 3–6
   alerts that matter, 1–2 incidents in Act II+.)
-- Waiting on the user: nothing open (M9 released 2026-10-26). (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
+- Waiting on the user: nothing open (#111 Q1–Q3 decided 2026-10-31). M9 released 2026-10-26. (VENDOR_PRICE: decided option 1, sim price multiplier, 2026-10-21.) (Booking go-live: decided (a) keep, 2026-10-21.)
 
 ## Risks
 
@@ -446,7 +622,26 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Session log
 
+- **2026-11-01:** Audited the zos-docs book map against all 24 stored IBM PDFs and IBM web
+  sources. Added IP Configuration Guide, SCRT 30.1 (with its local alias and canonical URL),
+  CPSM Managing Workloads and ABCs Volume 12; restored the separate RMF Programmer's Guide,
+  completed message volumes 7–9, corrected titles/missing forms and stale draft status.
+  Added dated per-entry validation evidence distinguishing title/form confirmation from
+  exact filename verification; retained explicit unresolved candidates. Validation:
+  `npm run check` green (57 files, 477 tests), all stored PDFs represented, local Markdown
+  links checked, `git diff --check` clean. No game behaviour change.
+
 Newest first. Entries before loop 48 are summarised in the milestones above; see git history for detail.
+- **2026-11-01:** Set explicit Codex role models and reasoning: Luna low for log reading,
+  Luna high for all three players, Sol medium for bounded implementation, Sol high for PR review
+  and vetted realism fixes, Astra high for open-ended realism auditing. Assignments and rationale
+  are in `docs/codex.md`; host-tool fallbacks must preserve the configured model/effort when supported.
+- **2026-11-01:** Added Codex entry point `AGENTS.md`, eight native roles in `.codex/config.toml`
+  and role wrappers that load the existing `.claude/agents/` briefs with Codex host adaptations.
+  Shared briefs remain authoritative; models and permission policy inherit from the host (superseded: per-role models since #124).
+  Setup and fresh-session role verification are documented in `docs/codex.md`. Game behaviour unchanged.
+- **2026-10-30:** New skill `audit-loop` and agent `realism-fixer` (user request): paced audit → vet → fix → sweep
+  loop driven by a scheduled task (see Decisions). `.gitignore` now keeps `.claude/skills/`.
 - **2026-10-28:** New agent `goal-mode-realism-auditor` (user request): makes deliberate, drastic changes (defined
   capacity far below demand, resource-group caps on the STC classes Db2 and CICS depend on, MAXDBAT 1, no aliases...)
   in same-seed A/B runs, compares the results with IBM documentation through the zos-docs skill and `docs/research.md`,

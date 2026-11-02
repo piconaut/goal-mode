@@ -7,6 +7,7 @@ import {
   SYSSTC,
   SYSTEM,
   type ClassificationRule,
+  type RegionMode,
   type ServiceDefinition,
   type WorkAttributes,
 } from './types';
@@ -23,12 +24,17 @@ export function wildcardMatch(pattern: string, value: string): boolean {
   return rx.test(value.toUpperCase());
 }
 
+// WLM masks: % is one character (trailing % may also match none); * is a wildcard only
+// when last or alone, a literal anywhere else (WLM Planning, z/OS 3.1, p.104).
 function compileWildcard(pattern: string): RegExp {
+  const p = pattern.toUpperCase();
+  const trailingPct = p.length - p.replace(/%+$/, '').length;
   let re = '^';
-  for (const ch of pattern.toUpperCase()) {
-    if (ch === '*') re += '.*';
-    else if (ch === '?') re += '.';
-    else re += ch.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  for (let i = 0; i < p.length; i++) {
+    const ch = p[i]!;
+    if (ch === '*' && i === p.length - 1) re += '.*';
+    else if (ch === '%') re += i >= p.length - trailingPct ? '.?' : '.';
+    else re += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
   return new RegExp(re + '$');
 }
@@ -38,21 +44,25 @@ export interface ClassificationResult {
   reportClass: string | null;
   /** Describes how the result was reached, for the rule test bench. */
   path: string[];
+  /** STC/JES only: "Manage Region Using Goals Of" set on the matching rule (or an enclosing one). */
+  regionMode?: RegionMode;
 }
 
 function walk(
   rules: readonly ClassificationRule[],
   work: WorkAttributes,
   path: string[],
-): { sc: string | null; rc: string | null } | null {
+): { sc: string | null; rc: string | null; rm?: RegionMode } | null {
   for (const r of rules) {
     const v = work[r.qualifier];
     if (v === undefined || !wildcardMatch(r.pattern, v)) continue;
     path.push(`${r.qualifier}=${r.pattern}`);
     const deeper = walk(r.children, work, path);
+    const rm = deeper?.rm ?? r.regionMode;
     return {
       sc: deeper?.sc ?? r.serviceClass,
       rc: deeper?.rc ?? r.reportClass,
+      ...(rm ? { rm } : {}),
     };
   }
   return null;
@@ -86,5 +96,7 @@ export function classifyUncached(def: ServiceDefinition, work: WorkAttributes): 
   const rc = hit?.rc ?? ss.defaultReportClass;
   if (!hit) path.push('default');
   const known = sc === SYSTEM || sc === SYSSTC || sc === SYSOTHER || def.classes.some((c) => c.id === sc);
-  return { serviceClass: known ? sc : SYSOTHER, reportClass: rc, path };
+  const out: ClassificationResult = { serviceClass: known ? sc : SYSOTHER, reportClass: rc, path };
+  if (hit?.rm && (work.subsystem === 'STC' || work.subsystem === 'JES')) out.regionMode = hit.rm;
+  return out;
 }

@@ -16,8 +16,3 @@ export function qrTcb(qrCpuEngines: number): QrResult {
   return { qrBusy: rho, qrWaitRatio: r / (1 - r), failFrac: rho > 1 ? 1 - 1 / rho : 0 };
 }
 
-export function mxtQueueWaitSec(rate: number, rtSec: number, maxTasks: number): number {
-  const tasks = rate * rtSec;
-  if (rate <= 0 || tasks <= maxTasks) return 0;
-  return (tasks - maxTasks) / rate;
-}

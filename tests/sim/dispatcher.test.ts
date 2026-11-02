@@ -71,3 +71,13 @@ describe('dispatcher', () => {
     expect(mk(false).ziipUnmet).toBeCloseTo(0.5);
   });
 });
+
+describe('zIIPs offline (Init & Tuning p.431)', () => {
+  const demands = [{ id: 'A', dp: 240, cpEngines: 1, ziipEngines: 1, ziipMayOverflow: false }];
+  it('eligible work queues like CP work, not like a saturated zIIP pool', () => {
+    const [r] = dispatch({ cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, demands });
+    expect(r!.iipcpGranted).toBeCloseTo(1);
+    expect(r!.ziipQueueRatio).toBeCloseTo(r!.cpQueueRatio);
+    expect(r!.ziipQueueRatio).toBeLessThan(1);
+  });
+});

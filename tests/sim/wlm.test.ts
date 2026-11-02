@@ -1,6 +1,7 @@
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify, wildcardMatch } from '../../src/sim/wlm/classify';
-import { addToBuckets, emptyBuckets, percentilePi, performanceIndex, velocityOf } from '../../src/sim/wlm/goals';
+import type { ClassificationRule, RegionMode } from '../../src/sim/wlm/types';
+import { addToBuckets, emptyBuckets, percentilePi, performanceIndex, projectedPercentilePi, velocityOf } from '../../src/sim/wlm/goals';
 import { splitPeriods } from '../../src/sim/workload/periods';
 import { lognormCdf, normCdf, normInv } from '../../src/sim/core/math';
 
@@ -19,9 +20,21 @@ describe('math', () => {
 describe('classification', () => {
   it('wildcards', () => {
     expect(wildcardMatch('DB*', 'DB1AMSTR')).toBe(true);
-    expect(wildcardMatch('*IRLM', 'DB1AIRLM')).toBe(true);
-    expect(wildcardMatch('AUTH?', 'AUTH1')).toBe(true);
-    expect(wildcardMatch('AUTH?', 'AUTH12')).toBe(false);
+    expect(wildcardMatch('%%%%IRLM', 'DB1AIRLM')).toBe(true);
+    expect(wildcardMatch('AUTH%', 'AUTH1')).toBe(true);
+    expect(wildcardMatch('AUTH%', 'AUTH12')).toBe(false);
+  });
+
+  it('follows WLM mask and wildcard syntax (WLM Planning p.104)', () => {
+    expect(wildcardMatch('DEPT58%I', 'DEPT58AI')).toBe(true);
+    expect(wildcardMatch('DEPT58%I', 'DEPT58I')).toBe(false);
+    expect(wildcardMatch('AUTH%', 'AUTH')).toBe(true);
+    expect(wildcardMatch('CI*S', 'CICS')).toBe(false);
+    expect(wildcardMatch('CI*S', 'CI*S')).toBe(true);
+    expect(wildcardMatch('*IRLM', 'DB1AIRLM')).toBe(false);
+    expect(wildcardMatch('*', 'ANYTHING')).toBe(true);
+    expect(wildcardMatch('AUTH?', 'AUTH1')).toBe(false);
+    expect(wildcardMatch('TOR*', 'TOR11')).toBe(true);
   });
   it('first matching rule wins, in order', () => {
     // *IRLM appears before DB* in BASEPOL, so IRLM lands in SYSSTC.
@@ -60,6 +73,21 @@ describe('classification', () => {
     expect(classify(def, { subsystem: 'DDF', UI: 'MOBAPI', PK: 'OTHER' }).serviceClass).toBe('ONLMED');
     expect(classify(def, { subsystem: 'DDF', UI: 'BIUSER' }).serviceClass).toBe('DDFPRD');
   });
+  it('Manage Region Using Goals Of comes from the matching STC/JES rule, inherited by sub-rules (WLM Planning p.211)', () => {
+    const r = (pattern: string, children: ClassificationRule[] = [], regionMode?: RegionMode): ClassificationRule => ({ qualifier: 'TN', pattern, serviceClass: 'STCHI', reportClass: null, children, ...(regionMode ? { regionMode } : {}) });
+    const def = {
+      ...BASEPOL,
+      subsystems: [
+        { subsystem: 'STC' as const, defaultServiceClass: 'STCLO', defaultReportClass: null, rules: [r('CICSTOR*', [], 'BOTH'), r('CICS*', [r('CICSAOR9')], 'REGION'), r('MQ*')] },
+        { subsystem: 'CICS' as const, defaultServiceClass: 'ONLMED', defaultReportClass: null, rules: [r('RB*', [], 'REGION')] },
+      ],
+    };
+    expect(classify(def, { subsystem: 'STC', TN: 'CICSTOR1' }).regionMode).toBe('BOTH');
+    expect(classify(def, { subsystem: 'STC', TN: 'CICSAOR9' }).regionMode).toBe('REGION');
+    expect(classify(def, { subsystem: 'STC', TN: 'MQ1AMSTR' }).regionMode).toBeUndefined();
+    // N/A outside STC and JES rules.
+    expect(classify(def, { subsystem: 'CICS', TN: 'RB01' }).regionMode).toBeUndefined();
+  });
 });
 
 describe('performance index', () => {
@@ -72,6 +100,22 @@ describe('performance index', () => {
     expect(percentilePi(sg24, 85)).toBe(1.1);
     expect(percentilePi(sg24, 90)).toBe(2.0);
     expect(percentilePi(sg24, 99)).toBe(4.0);
+  });
+  it('projections extrapolate a percentile PI past the 4.0 bucket ceiling from the mean RT', () => {
+    // Below the ceiling: the bucketed PI, untouched.
+    expect(projectedPercentilePi(sg24, 70, 100, 50, 0.6, 0.5)).toBe(0.5);
+    // Everything in the open bucket: 95th percentile of a log-normal, mean 10 s, sigma 0.5 → ≈ 20.1 s.
+    const open = [...emptyBuckets()];
+    open[open.length - 1] = 100;
+    expect(percentilePi(open, 95)).toBe(4.0);
+    const pi = projectedPercentilePi(open, 95, 100, 1000, 0.25, 0.5)!;
+    expect(pi).toBeCloseTo(80.3, 0);
+    // Monotone in the mean, so a projected improvement shows as a lower PI.
+    expect(projectedPercentilePi(open, 95, 100, 500, 0.25, 0.5)!).toBeLessThan(pi);
+    // Never below the ceiling it extends, and no data stays no data.
+    expect(projectedPercentilePi(open, 95, 100, 1, 0.25, 0.5)).toBe(4.0);
+    expect(projectedPercentilePi(open, 95, 0, 0, 0.25, 0.5)).toBe(4.0);
+    expect(projectedPercentilePi(emptyBuckets(), 95, 0, 0, 0.25, 0.5)).toBeNull();
   });
   it('velocity and discretionary PIs', () => {
     expect(velocityOf(30, 70)).toBeCloseTo(30);

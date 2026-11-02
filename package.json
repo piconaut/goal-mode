@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "sim": "tsx tools/headless.ts",
+    "lab": "tsx tools/lab.ts",
     "bot": "tsx tools/bot.ts",
     "check": "tsc --noEmit && vitest run",
     "bench": "tsx tools/bench.ts",

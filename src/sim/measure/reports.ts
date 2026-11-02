@@ -57,6 +57,7 @@ const WLM_COLS: Col[] = [
   { w: 4, h1: '', h2: 'IIP', v: (r) => fmt(r.delayPct.ziip, 0) },
   { w: 4, h1: '', h2: 'I/O', v: (r) => fmt(r.delayPct.io, 0) },
   { w: 4, h1: '', h2: 'STO', v: (r) => fmt(r.delayPct.storage, 0) },
+  { w: 5, h1: '', h2: 'QMPL', v: (r) => fmt(r.delayPct.queue ?? 0, 0) },
   { w: 4, h1: '', h2: 'CAP', v: (r) => fmt(r.delayPct.cap, 0) },
   { w: 4, h1: '', h2: 'OTH', v: (r) => fmt(r.delayPct.other, 0) },
 ];
@@ -134,7 +135,7 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
   out.push(`APPL% CP ${r.applCpPct.toFixed(1)}  IIPCP ${r.applIipcpPct.toFixed(1)}  IIP ${r.applIipPct.toFixed(1)}`);
   out.push(
     `USING% CPU ${r.usingPct.cpu.toFixed(1)} IIP ${r.usingPct.ziip.toFixed(1)} I/O ${r.usingPct.io.toFixed(1)}   ` +
-      `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
+      `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} QMPL ${(r.delayPct.queue ?? 0).toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
   );
   const total = r.buckets.reduce((a, b) => a + b, 0);
   if (total > 0 && r.goalText.includes('<')) {
@@ -169,7 +170,7 @@ export function renderPartitionData(iv: RmfInterval): string {
   for (const c of iv.cpcBusy) out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
   out.push('');
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
-  out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG  LOG BUSY%  LPAR MGMT%  PR/SM DLY%  CAPPED%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');
+  out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG LPAR BUSY%  MVS BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');
   for (const r of iv.cpu.filter((x) => x.logicalCps > 0)) {
     out.push(
       [
@@ -179,9 +180,10 @@ export function renderPartitionData(iv: RmfInterval): string {
         ' ' + padR(r.polarity, 14),
         f(r.physicalEngines, 2, 9),
         f(r.logicalBusyPct, 1, 10),
+        f(r.mvsBusyPct, 1, 10),
         f(r.overheadPct, 2, 11),
         f(r.prsmDelayPct, 1, 11),
-        f(r.cappedPct, 1, 8),
+        f(r.wlmCappingPct ?? 0, 1, 8),
         f(r.msuAvg, 0, 8),
         f(r.r4ha, 0, 7),
         pad(r.definedCapacityMsu ?? '-', 8),
@@ -202,10 +204,35 @@ export function renderCfActivity(iv: RmfInterval): string {
     out.push(`${padR(c.lparId, 8)} ${f(c.busyPct, 1, 6)} ${f(c.reqPerSec, 0, 10)} ${f(c.syncUs, 1, 14)} ${f(c.asyncPct, 1, 9)} ${f(c.serviceUs, 1, 14)}`);
   }
   if ((iv.cfStructures ?? []).length) {
+    // Usage Summary lists every structure copy; synchronously duplexed pairs are marked PRIM/SEC (RMF Report Analysis p.365).
     out.push('', 'STRUCTURE SUMMARY');
-    out.push('STRUCTURE NAME     TYPE   CF        REQ/SEC   SYNC %   SYNC SERV(us)   AVG SERV(us)');
+    out.push('STRUCTURE NAME     TYPE   STATUS  CF        REQ/SEC   SYNC %   SYNC SERV(us)   AVG SERV(us)');
     for (const st of iv.cfStructures) {
-      out.push(`${padR(st.name, 18)} ${padR(st.type, 6)} ${padR(st.cfLparId, 8)} ${f(st.reqPerSec, 0, 8)} ${f(st.syncPct, 1, 8)} ${f(st.syncUs, 1, 15)} ${f(st.serviceUs, 1, 14)}`);
+      out.push(`${padR(st.name, 18)} ${padR(st.type, 6)} ${padR(st.role ?? '', 7)} ${padR(st.cfLparId, 8)} ${f(st.reqPerSec, 0, 8)} ${f(st.syncPct, 1, 8)} ${f(st.syncUs, 1, 15)} ${f(st.serviceUs, 1, 14)}`);
+    }
+  }
+  if ((iv.cfStructSystems ?? []).length) {
+    // Structure Activity: per structure, one line per connected system (p.372–374). Service times include
+    // the system's own link round trip.
+    out.push('', 'STRUCTURE ACTIVITY');
+    let last = '';
+    for (const r of iv.cfStructSystems ?? []) {
+      const head = `${r.name}|${r.role ?? ''}`;
+      if (head !== last) {
+        out.push(`STRUCTURE NAME = ${r.name}  TYPE = ${r.type}  STATUS = ACTIVE${r.role ? ` ${r.role}` : ''}  CF = ${r.cfLparId}`);
+        out.push('  SYSTEM     REQ/SEC   SYNC %  ASYNC %  SYNC SERV(us)  ASYNC SERV(us)');
+        last = head;
+      }
+      out.push(`  ${padR(r.system, 8)} ${f(r.reqPerSec, 0, 9)} ${f(r.syncPct, 1, 8)} ${f(100 - r.syncPct, 1, 8)} ${f(r.syncUs, 1, 14)} ${f(r.asyncUs, 1, 15)}`);
+    }
+  }
+  if ((iv.cfSystems ?? []).length) {
+    // Subchannel Activity: one line per system attached to each CF; RMF estimates link distance from the
+    // round trip at 10 us/km (p.376, p.378).
+    out.push('', 'SUBCHANNEL ACTIVITY');
+    out.push('CF       SYSTEM     REQ/SEC   SYNC SERV(us)  ASYNC %   AVG SERV(us)  EST DIST(km)');
+    for (const s of iv.cfSystems ?? []) {
+      out.push(`${padR(s.cfLparId, 8)} ${padR(s.system, 8)} ${f(s.reqPerSec, 0, 9)} ${f(s.syncUs, 1, 15)} ${f(s.asyncPct, 1, 9)} ${f(s.serviceUs, 1, 14)} ${f(s.distKm, 0, 13)}`);
     }
   }
   return out.join('\n');

@@ -62,6 +62,7 @@ WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy u
 {"op":"ADD_CLASS","classId":"MOBILE","description":"Mobile API","goal":{"kind":"AVG","rtSec":0.4},"importance":2,"cpuCritical":false}
 {"op":"ADD_RULE","subsystem":"DDF","qualifier":"UI","pattern":"MOB*","serviceClass":"MOBILE","reportClass":"RMOBILE"}
 {"op":"SET_RULE_TARGET","subsystem":"DDF","path":[0],"serviceClass":null,"reportClass":"RMOBILE"}
+{"op":"SET_RULE_REGION_MODE","subsystem":"STC","path":[7],"mode":"BOTH"}   # Manage Region Using Goals Of (STC/JES rules; null inherits)
 {"op":"SET_RESOURCE_GROUP","classId":"BATLO","group":{"id":"RGBAT","type":2,"min":null,"max":30}}
 ```
 

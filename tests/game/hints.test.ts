@@ -112,7 +112,7 @@ describe('morning hints in a run', () => {
     const { SCENARIOS } = await import('../../src/content/scenarios');
     const { advance, newRun, startDay } = await import('../../src/game/run');
     const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
-    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 42, 'NORMAL'), MIDWEST_GAME);
+    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 1, 'NORMAL'), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
     const hints = run.inbox.filter((m) => m.subject === 'A thought for this morning');
     expect(hints.length).toBeGreaterThan(0);

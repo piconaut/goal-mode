@@ -23,9 +23,3 @@ export function bpIoMultiplier(bufferPoolGb: number, workingSetGb: number): numb
   return Math.min(4, Math.pow(ratio / DB2.referenceBpRatio, -DB2.alpha));
 }
 
-/** Extra wait when active DBATs exceed MAXDBAT (Little's law on the excess). */
-export function dbatQueueWaitSec(rate: number, rtSec: number, maxDbat: number): number {
-  const active = rate * rtSec;
-  if (rate <= 0 || active <= maxDbat) return 0;
-  return (active - maxDbat) / rate;
-}

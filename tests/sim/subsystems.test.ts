@@ -1,10 +1,12 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { generateMidwestNetwork } from '../../src/content/batch/midwest-batch';
-import { evaluateCf } from '../../src/sim/cf/cf';
+import { cfServiceForSystem, evaluateCf } from '../../src/sim/cf/cf';
+import { CF_DUPLEX } from '../../src/content/cf';
 import { evaluateDasd } from '../../src/sim/io/dasd';
 import { advanceJob, closeNight, emptyBatch, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobDef } from '../../src/sim/subsys/batch';
-import { mxtQueueWaitSec, qrTcb } from '../../src/sim/subsys/cics';
-import { bpIoMultiplier, dbatQueueWaitSec } from '../../src/sim/subsys/db2';
+import { qrTcb } from '../../src/sim/subsys/cics';
+import { slotQueueStep } from '../../src/sim/subsys/slots';
+import { bpIoMultiplier } from '../../src/sim/subsys/db2';
 import { pagingDelayFrac } from '../../src/sim/zos/storage';
 import { TICK_SEC } from '../../src/sim/core/units';
 
@@ -55,6 +57,44 @@ describe('coupling facility', () => {
     expect(r!.asyncFrac).toBe(0);
     expect(r!.syncSec).toBeLessThan(t.syncThresholdSec);
   });
+  it('a system 15 km from the CF pays the link round trip and converts more to async; moving the structure helps', () => {
+    const b = { ...ded, cfg: { lparId: 'B', thinInterrupts: true } };
+    const lock = (cf: string) => [{ name: 'LOCK1', type: 'LOCK' as const, requestShare: 0.6, cfLparId: cf, costMult: 1 }, { name: 'GBP', type: 'CACHE' as const, requestShare: 0.4, cfLparId: 'B', costMult: 1 }];
+    const km = (cf: string) => (cf === 'A' ? 15 : 0); // the system sits at B's site
+    const far = cfServiceForSystem(evaluateCf([ded, b], lock('A'), 10_000, t), lock('A'), km, t, 100);
+    const near = cfServiceForSystem(evaluateCf([ded, b], lock('B'), 10_000, t), lock('B'), km, t, 100);
+    const local = cfServiceForSystem(evaluateCf([ded, b], lock('A'), 10_000, t), lock('A'), () => 0, t, 100);
+    expect(far.distKm).toBe(15);
+    expect(far.syncSec - local.syncSec).toBeCloseTo(0.6 * 150e-6, 9); // 10 us/km round trip on LOCK1's share
+    expect(far.asyncFrac).toBeGreaterThan(local.asyncFrac + 0.3);
+    expect(near.serviceSec).toBeLessThan(far.serviceSec / 2);
+    expect(near.distKm).toBe(0);
+    // Duplexing LOCK1 into A from B reaches across the link again.
+    const dup = lock('B').map((x) => (x.name === 'LOCK1' ? { ...x, duplexed: true, prefList: ['B', 'A'] } : x));
+    expect(cfServiceForSystem(evaluateCf([ded, b], dup, 10_000, t), dup, km, t, 100).distKm).toBe(15);
+  });
+  it('a duplexed structure reports its secondary copy with traffic, and per-copy distance by system', () => {
+    const b = { ...ded, cfg: { lparId: 'B', thinInterrupts: true } };
+    const cfg = [
+      { name: 'LOCK1', type: 'LOCK' as const, requestShare: 0.6, cfLparId: 'B', costMult: 1, duplexed: true, prefList: ['B', 'A'] },
+      { name: 'GBP', type: 'CACHE' as const, requestShare: 0.4, cfLparId: 'B', costMult: 1, duplexed: true, prefList: ['B', 'A'] },
+    ];
+    const res = evaluateCf([ded, b], cfg, 10_000, t);
+    const [a, bb] = res;
+    expect(bb!.structures.map((x) => x.role)).toEqual(['PRIM', 'PRIM']);
+    expect(a!.structures).toEqual([]);
+    const lock = a!.secondaries!.find((x) => x.name === 'LOCK1')!;
+    expect(lock).toMatchObject({ role: 'SEC', cfLparId: 'A', requestRate: 6_000 });
+    expect(lock.syncSec).toBe(bb!.structures[0]!.syncSec);
+    // GBP duplexing copies only writes.
+    expect(a!.secondaries!.find((x) => x.name === 'GBP')!.requestRate).toBeCloseTo(4_000 * CF_DUPLEX.cacheWriteFrac, 6);
+    const km = (cf: string) => (cf === 'A' ? 15 : 0);
+    const rows = cfServiceForSystem(res, cfg, km, t, 100).byStructure!;
+    expect(rows.filter((x) => x.name === 'LOCK1').map((x) => [x.role, x.cfLparId, x.distKm, x.requestRate])).toEqual([
+      ['PRIM', 'B', 0, 60],
+      ['SEC', 'A', 15, 60],
+    ]);
+  });
   it('a shared, low-weight CF converts to async and burns more z/OS CPU per request', () => {
     const shared = { ...ded, dedicated: false, entitlementEngines: 0.1, cfg: { ...ded.cfg, thinInterrupts: false } };
     const [d] = evaluateCf([ded], one, 10_000, t);
@@ -104,10 +144,28 @@ describe('Db2, CICS, storage', () => {
     expect(bpIoMultiplier(80, 160)).toBeLessThan(0.75);
     expect(bpIoMultiplier(20, 160)).toBeGreaterThan(1.3);
   });
-  it('DBAT and MXT queues only form above the limit', () => {
-    expect(dbatQueueWaitSec(100, 1, 400)).toBe(0);
-    expect(dbatQueueWaitSec(500, 1, 400)).toBeCloseTo(0.2);
-    expect(mxtQueueWaitSec(300, 1, 200)).toBeCloseTo(1 / 3);
+  it('task-slot queues: Erlang-C wait below the limit, unbounded backlog above it, timeouts at the cap', () => {
+    // 100/s × 1 s hold = 100 busy slots of 400: no wait to speak of.
+    expect(slotQueueStep(0, 100, 1, 400, 120, 10).waitSec).toBe(0);
+    // MAXDBAT 1 at 10 DBATs wanted: throughput 1/s, 9/s pile up each second.
+    let q = 0;
+    const waits: number[] = [];
+    for (let k = 0; k < 3; k++) {
+      const r = slotQueueStep(q, 10, 1, 1, 120, 10);
+      q = r.queued;
+      waits.push(r.waitSec);
+    }
+    expect(waits[0]).toBeCloseTo(90);
+    expect(waits[1]).toBe(120); // capped at the timeout ...
+    const r = slotQueueStep(q, 10, 1, 1, 120, 10);
+    expect(r.failFrac).toBeCloseTo(0.9); // ... and the excess arrivals fail
+    expect(r.queued).toBeCloseTo(120);
+    // Just below saturation a small pool queues per Erlang C.
+    const near = slotQueueStep(0, 0.9, 1, 1, 120, 10);
+    expect(near.queued).toBe(0);
+    expect(near.waitSec).toBeCloseTo(9); // M/M/1: ρ/(1−ρ) × S
+    // A backlog drains at limit / hold once load falls.
+    expect(slotQueueStep(50, 0, 1, 2, 120, 10).queued).toBeCloseTo(30);
   });
   it('the QR TCB saturates at one engine', () => {
     expect(qrTcb(0.5).failFrac).toBe(0);
@@ -157,6 +215,20 @@ describe('batch', () => {
     advanceJob(j, shape, { cpWanted: shape.cpRate, cpGot: shape.cpRate / 2, ziipWanted: 0, ziipGot: 0, extraStretch: 1 }, 0);
     expect(j.stretch).toBeGreaterThan(1.8);
     expect(j.progress).toBeCloseTo(TICK_SEC / (j.stretch * shape.elapsed));
+  });
+
+  it('a job held back on CPs uses its zIIPs more slowly, and vice versa', () => {
+    const def = { ...job('J'), ziipFrac: 0.5 };
+    const shape = jobShape(def, 0.6, 0.86, 0.0004);
+    const b = releaseNetwork(emptyBatch(), 0, [def]);
+    const j = b.jobs[0]!;
+    j.status = 'RUNNING';
+    advanceJob(j, shape, { cpWanted: shape.cpRate, cpGot: shape.cpRate / 4, ziipWanted: shape.zRate, ziipGot: shape.zRate, extraStretch: 1 }, 0);
+    expect(j.cpPace).toBeCloseTo(1);
+    expect(j.ziipPace).toBeLessThan(0.5);
+    advanceJob(j, shape, { cpWanted: shape.cpRate, cpGot: shape.cpRate, ziipWanted: shape.zRate, ziipGot: shape.zRate / 4, extraStretch: 1 }, 1);
+    expect(j.ziipPace).toBeCloseTo(1);
+    expect(j.cpPace).toBeLessThan(0.5);
   });
 
   it('accounts lost elapsed time by cause, and a missed night sums it for its critical jobs', () => {

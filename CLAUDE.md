@@ -28,13 +28,14 @@ npm run typecheck    # tsc --noEmit
 npm run check        # typecheck + tests (no lint script yet)
 npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
+npm run lab -- a.json b.json   # realism lab: A/B runs from JSON specs, side by side per RMF interval (format in tools/lab.ts)
 npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
 npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
 npx tsx tools/ci/behaviourNote.ts origin/dev     # CI gate: goldens changed ⇒ PR body needs "## Behaviour change" (PR_BODY env)
-npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5   # CI gate: bot sweep inside balance bands (see .github/workflows/ci.yml)
+npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot sweep inside balance bands (victories as a share of runs) (see .github/workflows/ci.yml)
 # In `npm run dev` builds, globalThis.__goalMode.send(msg) talks to the worker (DEV_INSIGHT, DEV_FAST_DAYS, DEV_TFP_OFFER).
 ```
 
@@ -130,6 +131,9 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5   # CI gate: bot sweep insid
   brief) `log-reader` (digest bot/sweep logs, test failures, long reports) and `pr-reviewer` (check out a PR in a worktree,
   run check, bench hashes and a sweep for milestones, verify its claims, post its report on the PR, return a merge verdict; the main agent merges). Keep sim model changes,
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
+  Exception (user request 2026-10-30): in the `audit-loop` skill (`.claude/skills/audit-loop/`), vetted realism fixes
+  go to the Opus `realism-fixer` subagent and balance sweeps to Sonnet worker sessions; vetting and balance calls stay
+  on the main agent.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
 - Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never

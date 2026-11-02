@@ -1,0 +1,7 @@
+{
+  "extends": "dc-control.json",
+  "changes": [{ "at": "06:00", "config": [{ "in": "lpars", "id": "PROD1", "set": { "definedCapacityMsu": 200 } }] }],
+  "dump": ["11:00"],
+  "dumpWhat": ["PART"],
+  "final": ["capping.lpars"]
+}

@@ -3,9 +3,11 @@
 // (receiver up, donors down); accept the first move with receiver value and net value.
 // At most one receiver is helped per interval.
 
+import { PCT_PROJECTION_SIGMA } from '../../content/wlm/tuning';
 import { DP } from '../zos/dispatcher';
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
-import { accPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
+import { projectedPercentilePi } from './goals';
+import { goalPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -31,6 +33,8 @@ export interface AdjustInput {
   current: readonly ScpTick[];
   sysplexPi: Readonly<Record<string, number | null>>;
   clockText: string;
+  /** IEAOPT CCIMP on this system. */
+  ccImp?: number;
 }
 
 export interface AdjustOutput {
@@ -54,15 +58,21 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const localPi: Record<string, number | null> = {};
   for (const s of system.scps) {
     const g = info[s.scKey];
-    localPi[s.scKey] = g ? accPi(g.goal, s.acc) : null;
+    localPi[s.scKey] = g ? goalPi(g.goal, s.acc) : null;
   }
   const tickOf: Record<string, ScpTick> = {};
   for (const t of input.current) tickOf[t.scKey] = t;
+  // Receiver value and donor harm are judged on a percentile PI that is not clamped at 4.0, or a period far past
+  // its goal could never show a projected gain and would never be helped.
   const instPi = (ticks: readonly ScpTick[]) => {
     const m: Record<string, number | null> = {};
     for (const t of ticks) {
       const g = info[t.scKey];
-      m[t.scKey] = g ? tickPi(g.goal, t) : null;
+      m[t.scKey] = !g
+        ? null
+        : g.goal.kind === 'PCT'
+          ? projectedPercentilePi(t.buckets, g.goal.pct, t.completions, t.rtSumSec, g.goal.rtSec, PCT_PROJECTION_SIGMA)
+          : tickPi(g.goal, t);
     }
     return m;
   };
@@ -83,9 +93,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
 
   // Long-term CPU protection: less important work never gets an equal or higher DP than a CPU-critical
   // class (MVS Planning: WLM, ch. 14; enqueue promotion is the documented exception, not modelled).
+  // CCIMP extends it to first or only periods up to that importance (Init & Tuning p.428). APPROX: no
+  // System Recovery Boost in the sim, so CCIMPBOOST never applies.
+  const ccImp = input.ccImp ?? 0;
   const violatesCpuCritical = (trial: Record<string, number>) => {
     for (const [k, g] of Object.entries(info)) {
-      if (!g.cpuCritical) continue;
+      if (!g.cpuCritical && !(g.period === 0 && g.importance <= ccImp)) continue;
       for (const [k2, g2] of Object.entries(info)) {
         if (g2.importance > g.importance && (trial[k2] ?? 0) >= (trial[k] ?? 0)) return true;
       }
@@ -110,7 +123,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       if (p0 == null || p1 == null) continue;
       const harm = Math.max(0, p1 - Math.max(p0, DONOR_CREDIT_FLOOR));
       if (g.importance < rImp && p1 > 1 && harm > 0.02) return false;
-      if (g.importance === rImp) equalHarm += harm;
+      if (g.importance === rImp) {
+        // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,
+        // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
+        if (harm > 0 && Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return false;
+        equalHarm += harm;
+      }
     }
     return gain > equalHarm;
   };
@@ -133,7 +151,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // Projection is the expensive part: assess at most two fixable receivers per interval.
     if (projected >= 2) break;
     const scState = system.scps.find((s) => s.scKey === receiver)!;
-    const btl = bottleneckOf(scState.acc);
+    // With I/O priority management off, I/O samples are outside velocity and WLM doesn't manage I/O (WLM Planning p.115).
+    const btl = bottleneckOf({ ...scState.acc, delayIo: scState.acc.delayIo - (scState.acc.delayIoNoVel ?? 0) });
     const pi = (input.sysplexPi[receiver] ?? localPi[receiver] ?? 0).toFixed(2);
     if (btl !== 'CPU' && btl !== 'ZIIP') {
       notes.push(`${receiver} PI=${pi} BTLNK=${btl} not WLM-fixable`);

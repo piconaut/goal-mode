@@ -7,6 +7,7 @@ import {
   entitlements,
   logicalToPhysical,
   lparOverheadFrac,
+  mvsBusyFrac,
   physicalOverheadEngines,
   polarity,
   polarityEfficiency,
@@ -114,7 +115,9 @@ export function resolveCpc(
         unparkedVl: 0,
         overheadFrac: lparOverheadFrac(1, 0),
         prsmDelayFrac: 0,
+        mvsBusyFrac: mvsBusyFrac(demand, m.pc.logical, m.pc.logical),
         cappedFrac: 0,
+        softCappedFrac: 0,
       };
     }
 
@@ -128,6 +131,11 @@ export function resolveCpc(
     });
     const alloc = allocatePoolDetailed(claims, usablePhysical);
     const delivered = alloc.delivered;
+    // What each LPAR would get with no caps, so capping counts only what a binding cap removed and PR/SM
+    // contention doesn't (RMF Report Analysis p.401).
+    const uncapped = claims.some((c) => Number.isFinite(c.capEngines))
+      ? allocatePoolDetailed(claims.map((c) => ({ ...c, capEngines: Infinity })), usablePhysical).delivered
+      : delivered;
     const busyFrac = physicalShared > 0 ? delivered.reduce((a, b) => a + b, 0) / physicalShared : 0;
 
     shared.forEach((m, i) => {
@@ -143,10 +151,10 @@ export function resolveCpc(
       const avail = alloc.available[i] ?? del;
       const availEff = polarityEfficiency(avail, pol, m.lpar.hiperDispatch).effectiveEngines * (1 - ovh);
       const uncappedWant = Math.min(claim.demandEngines, claim.logical);
-      const cappedFrac =
-        uncappedWant > 1e-9 && claim.capEngines < uncappedWant
-          ? clamp((uncappedWant - Math.max(del, 0)) / uncappedWant, 0, 1)
-          : 0;
+      const binds = uncappedWant > 1e-9 && claim.capEngines < uncappedWant && del >= claim.capEngines - 1e-6;
+      const cappedFrac = binds ? clamp(((uncapped[i] ?? del) - del) / uncappedWant, 0, 1) : 0;
+      const softCap = demandOf(m.lpar.id, pool)?.softCapEngines ?? Infinity;
+      const softCappedFrac = softCap <= claim.capEngines + 1e-9 ? cappedFrac : 0;
       out[poolKey(m.lpar.id, pool)] = {
         pool,
         entitlementEngines: e,
@@ -159,7 +167,13 @@ export function resolveCpc(
         unparkedVl: effRes.unparkedVl,
         overheadFrac: ovh,
         prsmDelayFrac: shortEngineDelayFrac(e, m.pc.logical, busyFrac),
+        mvsBusyFrac: mvsBusyFrac(
+          claim.demandEngines,
+          m.pc.logical,
+          m.lpar.hiperDispatch ? pol.vh + pol.vm + effRes.unparkedVl : m.pc.logical,
+        ),
         cappedFrac,
+        softCappedFrac,
       };
     });
   }

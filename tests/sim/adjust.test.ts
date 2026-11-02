@@ -55,3 +55,30 @@ describe('policy adjustment', () => {
     expect(changed.length).toBe(1);
   });
 });
+
+describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How WLM Works, slide 52)', () => {
+  // ONLMED and DDFPRD period 1 are both importance 2; ONLMED (PI 4) sits below DDFPRD on a saturated image.
+  const run = (ddfLatencySec: number) => {
+    const slices = [slice('A', 'ONLMED#1', 2.5, 0.5), { ...slice('B', 'DDFPRD#1', 1, 0.5), baseLatencySec: ddfLatencySec }];
+    const evalInput = { cpCapacityEngines: 3.5, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = { 'ONLMED#1': 230, 'DDFPRD#1': 240 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = {
+      lparId: 'SYS1',
+      scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+    };
+    return { dps, out: policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' }) };
+  };
+
+  it('accepts a move that brings the two PIs closer (4.0 / 0.5 → 0.5 / 1.0)', () => {
+    const { out } = run(0.02);
+    expect(out.log).toContain('RCVR=ONLMED#1');
+    expect(out.dps['ONLMED#1']!).toBeGreaterThan(out.dps['DDFPRD#1']!);
+  });
+
+  it('rejects a move whose gain beats the harm but leaves the PIs further apart (4.0 / 1.4 → 0.5 / 4.0)', () => {
+    const { dps, out } = run(0.4);
+    expect(out.dps).toEqual(dps);
+    expect(out.log).toContain('no action');
+  });
+});

@@ -20,7 +20,17 @@ export interface ScpAcc {
   delayOther: number;
   delayCap: number;
   cpuEngines: number;
+  /** Parts of using / delay left out of velocity (I/O priority management off); absent when none. */
+  usingIoNoVel?: number;
+  delayIoNoVel?: number;
+  /** Velocity samples of transaction-server regions: reported, but not used to manage this period; absent when none. */
+  srvUsing?: number;
+  srvDelay?: number;
 }
+
+/** Velocity samples: all using / delay samples except I/O while I/O priority management is off. */
+export const velUsing = (a: { using: number; usingIoNoVel?: number }): number => a.using - (a.usingIoNoVel ?? 0);
+export const velDelay = (a: { delay: number; delayIoNoVel?: number }): number => a.delay - (a.delayIoNoVel ?? 0);
 
 export interface ScpState {
   scKey: string;
@@ -114,13 +124,19 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,
     buckets: decayBuckets(acc.buckets, t.buckets, d),
     using: acc.using * d + t.usingCpu + t.usingZiip + t.usingIo,
-    delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap,
+    delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
     delayCpu: acc.delayCpu * d + t.delayCpu,
     delayZiip: acc.delayZiip * d + t.delayZiip,
     delayIo: acc.delayIo * d + t.delayIo,
     delayOther: acc.delayOther * d + t.delayOther,
     delayCap: acc.delayCap * d + t.delayCap,
     cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
+    ...(acc.usingIoNoVel !== undefined || t.usingIoNoVel !== undefined
+      ? { usingIoNoVel: (acc.usingIoNoVel ?? 0) * d + (t.usingIoNoVel ?? 0), delayIoNoVel: (acc.delayIoNoVel ?? 0) * d + (t.delayIoNoVel ?? 0) }
+      : {}),
+    ...(acc.srvUsing !== undefined || t.srvUsing !== undefined
+      ? { srvUsing: (acc.srvUsing ?? 0) * d + (t.srvUsing ?? 0), srvDelay: (acc.srvDelay ?? 0) * d + (t.srvDelay ?? 0) }
+      : {}),
   };
 }
 
@@ -142,6 +158,14 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   out.delayOther += a.delayOther;
   out.delayCap += a.delayCap;
   out.cpuEngines += a.cpuEngines;
+  if (a.usingIoNoVel !== undefined) {
+    out.usingIoNoVel = (out.usingIoNoVel ?? 0) + a.usingIoNoVel;
+    out.delayIoNoVel = (out.delayIoNoVel ?? 0) + (a.delayIoNoVel ?? 0);
+  }
+  if (a.srvUsing !== undefined) {
+    out.srvUsing = (out.srvUsing ?? 0) + a.srvUsing;
+    out.srvDelay = (out.srvDelay ?? 0) + (a.srvDelay ?? 0);
+  }
 }
 
 export function accPi(goal: Goal, a: ScpAcc): number | null {
@@ -149,8 +173,22 @@ export function accPi(goal: Goal, a: ScpAcc): number | null {
     completions: a.completions,
     rtSumSec: a.rtSumSec,
     buckets: a.buckets,
-    usingSamples: a.using,
-    delaySamples: a.delay,
+    usingSamples: velUsing(a),
+    delaySamples: velDelay(a),
+  });
+}
+
+/** The PI WLM manages a period to: like accPi, but without the samples of transaction-server regions, which are
+ * managed to the goals of the transactions they serve (WLM Planning p.122). APPROX: a class holding only such
+ * regions has no samples left and is not managed; a mixed class is managed for its other members. */
+export function goalPi(goal: Goal, a: ScpAcc): number | null {
+  if (a.srvUsing === undefined) return accPi(goal, a);
+  return performanceIndex(goal, {
+    completions: a.completions,
+    rtSumSec: a.rtSumSec,
+    buckets: a.buckets,
+    usingSamples: velUsing(a) - a.srvUsing,
+    delaySamples: velDelay(a) - (a.srvDelay ?? 0),
   });
 }
 
@@ -159,12 +197,12 @@ export function tickPi(goal: Goal, t: ScpTick): number | null {
     completions: t.completions,
     rtSumSec: t.rtSumSec,
     buckets: t.buckets,
-    usingSamples: t.usingCpu + t.usingZiip + t.usingIo,
-    delaySamples: t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap,
+    usingSamples: t.usingCpu + t.usingZiip + t.usingIo - (t.usingIoNoVel ?? 0) - (t.srvUsing ?? 0),
+    delaySamples: t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0) - (t.delayIoNoVel ?? 0) - (t.srvDelay ?? 0),
   });
 }
 
-/** Sysplex PI per scKey: merge every system's accumulators, then compute. */
+/** Sysplex PI per scKey (the goal-management PI, see goalPi): merge every system's accumulators, then compute. */
 export function sysplexPis(def: ServiceDefinition, systems: readonly WlmSystemState[]): Record<string, number | null> {
   // Summed in system order, as sumAcc would (hot path: no per-period arrays).
   const sums: Record<string, ScpAcc> = {};
@@ -172,7 +210,7 @@ export function sysplexPis(def: ServiceDefinition, systems: readonly WlmSystemSt
   const out: Record<string, number | null> = {};
   for (const k in sums) {
     const g = goalInfo(def, k);
-    out[k] = g ? accPi(g.goal, sums[k]!) : null;
+    out[k] = g ? goalPi(g.goal, sums[k]!) : null;
   }
   return out;
 }

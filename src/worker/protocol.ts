@@ -33,7 +33,6 @@ export interface PendingPolicyView {
   resourceGroups: ResourceGroupDef[];
   classDefs: ServiceClassDef[];
   ioPriorityManagement: boolean;
-  cicsRegionMode: 'TRANSACTION' | 'REGION';
   rules: { subsystem: string; text: string }[];
   /** CICS transaction classes and what's wrong with their goals. */
   cicsClasses: string[];

@@ -70,7 +70,7 @@ export const BASEPOL: ServiceDefinition = {
         rule('TN', 'TCPIP', 'SYSSTC'),
         rule('TN', 'RRS', 'SYSSTC'),
         rule('TN', 'RMF*', 'SYSSTC'),
-        rule('TN', '*IRLM', 'SYSSTC'),
+        rule('TN', '%%%%IRLM', 'SYSSTC'),
         rule('TN', 'DB*', 'STCMED'),
         rule('TN', 'CICS*', 'STCHI'),
         rule('TN', 'MQ*', 'STCHI'),

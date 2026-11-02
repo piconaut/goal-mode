@@ -4,7 +4,8 @@
 
 import { lognormCdf } from '../core/math';
 import { TICK_SEC } from '../core/units';
-import { dispatch, type DispatchDemand, type DispatchResult } from '../zos/dispatcher';
+import { STORAGE_STEAL_MAX_FRAC } from '../../content/wlm/tuning';
+import { DP, dispatch, type DispatchDemand, type DispatchResult } from '../zos/dispatcher';
 import { addToBuckets, emptyBuckets } from './goals';
 
 import type { IoClass } from '../io/dasd';
@@ -135,22 +136,30 @@ export interface LparEvalInput {
   slices: readonly SliceSpec[];
   /** Backlogged work per slice key, engine-seconds (CP + zIIP). */
   backlog: Readonly<Record<string, number>>;
+  /** zIIP-eligible part of `backlog`, engine-seconds. Absent: the backlog splits by the slice's arrival mix. */
+  ziipBacklog?: Readonly<Record<string, number>>;
   dpOf: (scKey: string) => number;
   /** Optional per-slice CP cap (resource group maximums), engines. */
   capOf?: (slice: SliceSpec) => number;
   /** Resource group minimums in force this tick: CP engines per service-class period. */
   minOf?: Readonly<Record<string, number>>;
+  /** Periods in minOf that are discretionary: their minimum yields to goal work. */
+  discMin?: ReadonlySet<string>;
   /** CICS work runs inside region address spaces, so it shares their dispatching priority: the most
-   * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION). */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string };
+   * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION/BOTH).
+   * `servers`: slice keys of the region address spaces managed as transaction servers (TRANSACTION); their own
+   * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
+   * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
+   * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean };
   io: Record<IoClass, IoService>;
-  /** WLM I/O priority management: IOSQ ordered by DP and I/O samples count in velocity. */
+  /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
   /** Paging delay fraction on this image (storage-critical classes are exempt). */
   pagingFrac: number;
-  /** Fraction of the image's CP demand withheld by capping this tick. */
-  cappedFrac?: number;
   storageCritical?: ReadonlySet<string>;
+  /** Steal weight per service-class period: how much of the protected classes' paging it absorbs. */
+  pagingWeight?: Readonly<Record<string, number>>;
   /** Service-class periods starved past BLWLINTHD, eligible for promotion. */
   promoted?: ReadonlySet<string>;
   promotionShareFrac?: number;
@@ -185,10 +194,14 @@ export interface SliceResult {
   failed: number;
   /** Response time as WLM/RMF see it. */
   rtMeanSec: number;
+  /** In-region time a transaction holds its task slot, excluding the CPU backlog wait (already a queue). */
+  holdSec: number;
   /** Response time as end users see it (adds pre-work-manager queueing). */
   userRtSec: number;
   parts: RtParts | null;
   newBacklog: number;
+  /** zIIP-eligible part of newBacklog, engine-seconds. */
+  newZiipBacklog: number;
   /** Health of this address space as a server (granted/wanted), 1 for transactions. */
   health: number;
   queueRatio: number;
@@ -210,6 +223,14 @@ export interface ScpTick {
   delayOther: number;
   delayStorage: number;
   delayCap: number;
+  /** Batch jobs queued for an initiator in a WLM-managed job class (WLMGL QMPL). */
+  delayQueue?: number;
+  /** The part of usingIo / delayIo left out of velocity (I/O priority management off). */
+  usingIoNoVel?: number;
+  delayIoNoVel?: number;
+  /** Velocity samples of transaction-server regions in this period: reported, but left out of its PI. */
+  srvUsing?: number;
+  srvDelay?: number;
   completions: number;
   failed: number;
   rtSumSec: number;
@@ -324,6 +345,14 @@ function iosqByPriority(slices: readonly SliceSpec[], sliceDp: readonly number[]
 
 /** Above every goal-managed period, below SYSTEM/SYSSTC and blocked-workload promotion. */
 const RG_MIN_DP = 252;
+/** Discretionary work gets its minimum only "if that action does not cause other work to miss its goal" (WLM
+ * Planning p.59): above other discretionary work, below every goal-managed period. APPROX: it is served from
+ * capacity no goal period wants, not only from goal periods that are meeting their goals. */
+const RG_MIN_DISC_DP = DP.MANAGED_MIN - 1;
+
+/** Suffix of the dispatch aggregate holding a period's transaction-server regions. */
+const SRV = '~srv';
+const baseKey = (id: string) => (id.endsWith(SRV) ? id.slice(0, -SRV.length) : id);
 
 /** Per-slice demand and its per-period totals: everything in an evaluation that does not depend on DPs. */
 export interface PreparedLpar {
@@ -331,16 +360,28 @@ export interface PreparedLpar {
   sliceZi: number[];
   /** CP demand withheld by a resource group maximum or discretionary goal management cap. */
   sliceCut: number[];
-  /** Index of each slice's service-class period in `order`. */
+  /** Index of each slice's dispatch aggregate in `order`. */
   sliceAgg: number[];
+  /** Dispatch aggregates: service-class periods, plus `<scKey>~srv` for the transaction-server regions in a period. */
   order: string[];
   aggCp: number[];
   aggZi: number[];
   aggOverflow: boolean[];
 }
 
+/**
+ * CP part of a slice's backlog, engine-seconds. Each pool keeps its own backlog: CP work left unserved by a cap or a
+ * CP shortage cannot drain on idle zIIPs (WLM Planning p.182: capping limits general purpose CPs only).
+ */
+export function backlogCpSec(s: SliceSpec, backlog: Readonly<Record<string, number>>, ziipBacklog?: Readonly<Record<string, number>>): number {
+  const bl = backlog[s.key] ?? 0;
+  if (ziipBacklog) return Math.max(0, bl - (ziipBacklog[s.key] ?? 0));
+  const tot = s.cpEngines + s.ziipEngines;
+  return bl * (tot > 0 ? s.cpEngines / tot : 1);
+}
+
 export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
-  const { slices, backlog } = input;
+  const { slices, backlog, ziipBacklog } = input;
   const n = slices.length;
   // Per-slice demand (new arrivals + backlog drain), then aggregate per service-class
   // period: equal-DP work shares in proportion to demand, so dispatching per period is
@@ -355,23 +396,23 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
   const aggZi: number[] = [];
   const aggOverflow: boolean[] = [];
   const capOf = input.capOf;
+  const servers = input.regions?.servers;
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const bl = backlog[s.key] ?? 0;
-    const tot = s.cpEngines + s.ziipEngines;
-    const blRate = bl / TICK_SEC;
-    const cpShare = tot > 0 ? s.cpEngines / tot : 1;
-    const uncapped = s.cpEngines + blRate * cpShare;
+    const blCp = backlogCpSec(s, backlog, ziipBacklog);
+    const uncapped = s.cpEngines + blCp / TICK_SEC;
     const cp = capOf ? Math.min(uncapped, capOf(s)) : uncapped;
     sliceCut[i] = uncapped - cp;
-    const zi = s.ziipEngines + blRate * (1 - cpShare);
+    const zi = s.ziipEngines + (bl - blCp) / TICK_SEC;
     sliceCp[i] = cp;
     sliceZi[i] = zi;
-    let a = aggIdx[s.scKey];
+    const id = servers !== undefined && s.kind === 'AS' && servers.includes(s.key) ? `${s.scKey}${SRV}` : s.scKey;
+    let a = aggIdx[id];
     if (a === undefined) {
       a = order.length;
-      aggIdx[s.scKey] = a;
-      order.push(s.scKey);
+      aggIdx[id] = a;
+      order.push(id);
       aggCp.push(0);
       aggZi.push(0);
       aggOverflow.push(s.mayOverflow);
@@ -389,16 +430,19 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const scpsOnly = input.scpsOnly === true;
   const bucketsFor = scpsOnly ? input.bucketsFor : undefined;
   const { sliceCp, sliceZi, sliceCut, sliceAgg, order, aggCp, aggZi, aggOverflow } = input.prepared ?? prepareLpar(input);
-  // dpOf is pure: look each period up once.
-  const aggDp = order.map((k) => input.dpOf(k));
-  const sliceDp = new Array<number>(n);
-  for (let i = 0; i < n; i++) sliceDp[i] = aggDp[sliceAgg[i]!]!;
-
   const reg = input.regions;
-  const regionDp = reg ? (reg.mode === 'REGION' ? input.dpOf(reg.regionKey) : Math.max(...reg.keys.map((k) => input.dpOf(k)))) : 0;
+  // Transaction-server regions run at the DP of the most important transaction class they serve.
+  const txnDp = reg ? Math.max(...reg.keys.map((k) => input.dpOf(k))) : 0;
+  const regionDp = reg ? (reg.mode === 'REGION' ? input.dpOf(reg.regionKey) : txnDp) : 0;
+  // dpOf is pure: look each period up once. Reported DPs are the periods' own.
+  const aggDp = order.map((k) => input.dpOf(baseKey(k)));
+  const runDp = order.map((k, a) => (k.endsWith(SRV) ? txnDp : reg && reg.keys.includes(k) ? regionDp : aggDp[a]!));
+  const sliceDp = new Array<number>(n);
+  for (let i = 0; i < n; i++) sliceDp[i] = runDp[sliceAgg[i]!]!;
+
   const demands: DispatchDemand[] = order.map((k, a) => ({
     id: k,
-    dp: reg && reg.keys.includes(k) ? regionDp : aggDp[a]!,
+    dp: runDp[a]!,
     cpEngines: aggCp[a]!,
     ziipEngines: aggZi[a]!,
     ziipMayOverflow: aggOverflow[a]!,
@@ -431,7 +475,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       const lift = Math.min(m, d.cpEngines);
       if (lift > 0) {
         d.cpEngines -= lift;
-        demands.push({ id: `${d.id}~rgmin`, dp: RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
+        demands.push({ id: `${d.id}~rgmin`, dp: input.discMin?.has(d.id) ? RG_MIN_DISC_DP : RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
       }
     }
   }
@@ -461,12 +505,14 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
 
   // First pass: address spaces → server health by role.
   const roleHealth: Record<string, { health: number; queueRatio: number }> = {};
+  const srvRoles: Record<string, true> = {};
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const a = sliceAgg[i]!;
     const r = dres[a]!;
-    const promo = anyPromo ? extraById[`${s.scKey}~promo`] : undefined;
-    const rgmin = minOf ? extraById[`${s.scKey}~rgmin`] : undefined;
+    const own = order[a] === s.scKey;
+    const promo = anyPromo && own ? extraById[`${s.scKey}~promo`] : undefined;
+    const rgmin = minOf && own ? extraById[`${s.scKey}~rgmin`] : undefined;
     const totCp = aggCp[a]!;
     const totZi = aggZi[a]!;
     const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
@@ -478,21 +524,22 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     ziUnmetS[i] = r.ziipUnmet * fz;
     want[i] = sliceCp[i]! + sliceZi[i]!;
     got[i] = cpG[i]! + ziG[i]! + iipcpG[i]!;
-    health[i] = want[i]! > 1e-12 ? Math.min(1, got[i]! / want[i]!) : 1;
+    // Capped demand is still wanted: a resource group max makes the region non-dispatchable, so its
+    // dependents wait on it (WLM Planning p.57, p.60 note 4).
+    const wantAll = want[i]! + sliceCut[i]!;
+    health[i] = wantAll > 1e-12 ? Math.min(1, got[i]! / wantAll) : 1;
     queueRatio[i] = Math.min(MAX_QUEUE_RATIO, r.cpQueueRatio + r.prsmDelayRatio);
     if (s.kind === 'AS' && s.role) {
+      if (order[a]!.endsWith(SRV)) srvRoles[s.role] = true;
       const prev = roleHealth[s.role];
       if (!prev || health[i]! < prev.health) roleHealth[s.role] = { health: health[i]!, queueRatio: queueRatio[i]! };
     }
   }
 
-  const prio = input.ioPriority === false ? null : iosqByPriority(slices, sliceDp, input.io);
-  // Without I/O priority management, I/O samples don't count towards velocity.
-  const ioSamples = input.ioPriority === false ? 0 : 1;
-  // APPROX: while an image is capped, most of its undispatched ready work is waiting
-  // on the cap rather than on priority.
-  const capFrac = Math.min(1, 4 * (input.cappedFrac ?? 0));
-  const storageCritical = input.storageCritical;
+  // I/O priority management NO "sets I/O priorities equal to dispatching priorities" (WLM Planning p.115), so
+  // the IOSQ is DP-ordered either way. APPROX: YES (goal-based I/O priorities) is not modelled and also uses DP.
+  const prio = iosqByPriority(slices, sliceDp, input.io);
+  const pgBy = slicePagingFrac(slices, input.pagingFrac, input.storageCritical, input.pagingWeight);
 
   const results = new Array<SliceResult>(n);
   for (let i = 0; i < n; i++) {
@@ -504,14 +551,15 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const qr = queueRatio[i]!;
     const zq = Math.min(MAX_QUEUE_RATIO, r.ziipQueueRatio);
     const cpUsing = cpGranted + iipcpGranted;
-    const unmetCp = cpUnmetS[i]! * (1 - capFrac);
-    // Work held back by a WLM cap waits on the cap and stays queued.
+    // LPAR capping (soft or absolute) shows as CPU delay; CAP delay is resource-group and discretionary
+    // capping only, "not part of the CPU delay" (RMF Report Analysis p.540).
+    const unmetCp = cpUnmetS[i]!;
     const cut = sliceCut[i]!;
-    const capDelay = cpUnmetS[i]! * capFrac + cut;
+    const capDelay = cut;
     const unmetZiip = ziUnmetS[i]!;
 
     const io = prio?.[s.ioClass]?.[i] ?? input.io[s.ioClass];
-    const pg = storageCritical?.has(s.scKey) ? 0 : input.pagingFrac;
+    const pg = pgBy[i]!;
     if (s.kind === 'AS') {
       results[i] = {
         key: s.key,
@@ -521,19 +569,21 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         iipcpGranted,
         usingCpu: cpUsing,
         usingZiip: ziipGranted,
-        usingIo: ioSamples * s.ioRate * ioUsingSec(io),
+        usingIo: s.ioRate * ioUsingSec(io),
         delayCpu: cpUsing * qr + unmetCp,
         delayZiip: ziipGranted * zq + unmetZiip,
-        delayIo: ioSamples * s.ioRate * io.delaySec,
+        delayIo: s.ioRate * io.delaySec,
         delayOther: 0,
         delayStorage: (cpUsing + ziipGranted) * pg,
         delayCap: capDelay,
         completions: 0,
         failed: 0,
         rtMeanSec: 0,
+        holdSec: 0,
         userRtSec: 0,
         parts: null,
         newBacklog: 0,
+        newZiipBacklog: 0,
         health: health[i]!,
         queueRatio: qr,
         withinSla: 0,
@@ -545,16 +595,20 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const wantSec = (want[i]! + cut) * TICK_SEC;
     const gotSec = got[i]! * TICK_SEC;
     let newBacklog = Math.max(0, wantSec - gotSec);
+    const rawBacklog = newBacklog;
+    const rawZiipBacklog = Math.min(rawBacklog, Math.max(0, sliceZi[i]! - ziG[i]! - iipcpG[i]!) * TICK_SEC);
     const gotRate = Math.max(got[i]!, 1e-9);
     let waitSec = newBacklog / gotRate;
     const workPerTxn = s.cpuSecPerTxn + s.ziipSecPerTxn;
     let failed = 0;
     if (s.maxQueueMsgs !== undefined) {
-      // MQ: messages wait on the queue; only puts beyond MAXDEPTH fail (MQRC_Q_FULL).
+      // MQ: messages wait on the queue; only puts beyond MAXDEPTH fail (MQRC_Q_FULL). Messages already queued
+      // above a lowered MAXDEPTH "remain intact" and drain (MQ 9.4 Administration Reference p.463).
       const cap = s.maxQueueMsgs * workPerTxn;
       if (workPerTxn > 0 && newBacklog > cap) {
-        failed = (newBacklog - cap) / workPerTxn;
-        newBacklog = cap;
+        const keep = Math.min(newBacklog, Math.max(cap, (input.backlog[s.key] ?? 0) - gotSec));
+        failed = (newBacklog - keep) / workPerTxn;
+        newBacklog = keep;
         waitSec = newBacklog / gotRate;
       }
       // A starved queue: messages completing now waited about as long as the backlog took to build
@@ -569,15 +623,21 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     }
 
     let depDelay = 0;
+    // Waiting for regions managed to this work's goals is this work's CPU delay: the regions' delay states count
+    // for the transaction classes they serve, and WLM helps those regions to help the class (SG24-7621 p.81, p.126).
+    // APPROX: the whole wait counts as CPU, whatever starves the region.
+    let srvCpuSec = 0;
     for (const srv of s.servers) {
       const h = roleHealth[srv.role];
       if (!h) continue;
-      depDelay += srv.latencySec * (1 / Math.max(h.health, 0.02) - 1 + h.queueRatio);
+      const d = srv.latencySec * (1 / Math.max(h.health, 0.02) - 1 + h.queueRatio);
+      depDelay += d;
+      if (srvRoles[srv.role]) srvCpuSec += d;
     }
 
     const ioSec = s.ioPerTxn * io.rtSec;
     const pagingSec = (s.cpuSecPerTxn + s.ziipSecPerTxn) * pg * 3;
-    const otherSec = depDelay + s.extraOtherSec;
+    const otherSec = depDelay - srvCpuSec + s.extraOtherSec;
     const rt =
       s.baseLatencySec +
       s.cpuSecPerTxn * (1 + qr) +
@@ -585,6 +645,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       ioSec +
       pagingSec +
       otherSec +
+      srvCpuSec +
       waitSec;
 
     const arrivals = s.rate * TICK_SEC;
@@ -601,16 +662,17 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       iipcpGranted,
       usingCpu: cpUsing,
       usingZiip: ziipGranted,
-      usingIo: ioSamples * ioRate * ioUsingSec(io),
-      delayCpu: cpUsing * qr + unmetCp,
+      usingIo: ioRate * ioUsingSec(io),
+      delayCpu: cpUsing * qr + unmetCp + s.rate * srvCpuSec,
       delayZiip: ziipGranted * zq + unmetZiip,
-      delayIo: ioSamples * ioRate * io.delaySec,
+      delayIo: ioRate * io.delaySec,
       delayOther: s.rate * otherSec,
       delayStorage: s.rate * pagingSec,
       delayCap: capDelay,
       completions,
       failed,
       rtMeanSec: rt,
+      holdSec: rt - waitSec,
       userRtSec: rt + s.outsideWaitSec,
       parts: scpsOnly
         ? null
@@ -628,14 +690,27 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
             outsideRef: s.outsideRefSec ?? 0,
           },
       newBacklog,
+      newZiipBacklog: rawBacklog > 0 ? (rawZiipBacklog * newBacklog) / rawBacklog : 0,
       health: 1,
       queueRatio: qr,
       withinSla: !scpsOnly && s.slaRtSec !== null ? completions * lognormCdf(s.slaRtSec, rt + s.outsideWaitSec, s.rtSigma) : 0,
     };
   }
 
-  const scps: ScpTick[] = new Array<ScpTick>(order.length);
-  for (let a = 0; a < order.length; a++) scps[a] = emptyScpTick(order[a]!, aggDp[a]!);
+  // One tick per period: transaction-server regions are reported with their own class (WLM Planning p.113).
+  const scps: ScpTick[] = [];
+  const scpOfAgg = new Array<number>(order.length);
+  const scpIdx: Record<string, number> = {};
+  for (let a = 0; a < order.length; a++) {
+    const k = baseKey(order[a]!);
+    let j = scpIdx[k];
+    if (j === undefined) {
+      j = scps.length;
+      scpIdx[k] = j;
+      scps.push(emptyScpTick(k, aggDp[a]!));
+    }
+    scpOfAgg[a] = j;
+  }
   const rcMap: Record<string, ReportClassTick> = {};
   const rcs: ReportClassTick[] = [];
   for (let i = 0; i < n; i++) {
@@ -651,13 +726,31 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       if (!rt.members.includes(s.scKey)) rt.members.push(s.scKey);
       addSliceTo(rt, s, r, true);
     }
-    addSliceTo(scps[sliceAgg[i]!]!, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey));
+    const t = scps[scpOfAgg[sliceAgg[i]!]!]!;
+    const untracked = reg !== undefined && reg.rtTracked === false && s.kind === 'TXN' && reg.keys.includes(s.scKey);
+    addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey), !untracked);
+    if (order[sliceAgg[i]!] !== s.scKey) {
+      // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).
+      t.srvUsing = (t.srvUsing ?? 0) + r.usingCpu + r.usingZiip + (input.ioPriority === false ? 0 : r.usingIo);
+      t.srvDelay = (t.srvDelay ?? 0) + r.delayCpu + r.delayZiip + (input.ioPriority === false ? 0 : r.delayIo) + r.delayStorage + r.delayCap;
+    }
+  }
+  // With I/O priority management off, I/O using and delay samples are still reported but "not included" in
+  // the velocity formula (WLM Planning p.70, p.115).
+  if (input.ioPriority === false) {
+    for (const t of scps) excludeIoFromVelocity(t);
+    for (const t of rcs) excludeIoFromVelocity(t);
   }
 
   return rcs.length > 0 ? { slices: results, scps, roleHealth, rcs } : { slices: results, scps, roleHealth };
 }
 
-function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean): void {
+function excludeIoFromVelocity(t: ScpTick): void {
+  t.usingIoNoVel = t.usingIo;
+  t.delayIoNoVel = t.delayIo;
+}
+
+function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean, rt = true): void {
   t.cpEngines += r.cpGranted;
   t.ziipEngines += r.ziipGranted;
   t.iipcpEngines += r.iipcpGranted;
@@ -670,8 +763,41 @@ function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean):
   t.delayOther += r.delayOther;
   t.delayStorage += r.delayStorage;
   t.delayCap += r.delayCap;
+  if (!rt) return;
   t.completions += r.completions;
   t.failed += r.failed;
   t.rtSumSec += r.completions * r.rtMeanSec;
   if (buckets && s.goalRtSec !== null) addToBuckets(t.buckets, s.goalRtSec, r.completions, r.rtMeanSec, s.rtSigma);
+}
+
+/** Per-slice paging delay fraction. Storage-critical periods page nothing; the paging they avoid moves to the
+ * unprotected periods in proportion to demand × steal weight, so the image's total stays the same (Storage
+ * Critical keeps frames by taking them from less important work, WLM Planning p.119). APPROX: activity
+ * (CP + zIIP demand) stands in for frames held. */
+export function slicePagingFrac(
+  slices: readonly SliceSpec[],
+  pagingFrac: number,
+  storageCritical: ReadonlySet<string> | undefined,
+  weightOf: Readonly<Record<string, number>> | undefined,
+): number[] {
+  const n = slices.length;
+  const out = new Array<number>(n).fill(pagingFrac);
+  if (!storageCritical || storageCritical.size === 0) return out;
+  let keptAct = 0;
+  let stealDen = 0;
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
+    const act = s.cpEngines + s.ziipEngines;
+    if (storageCritical.has(s.scKey)) keptAct += act;
+    else stealDen += act * (weightOf?.[s.scKey] ?? 1);
+  }
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
+    if (storageCritical.has(s.scKey)) out[i] = 0;
+    else if (stealDen > 0) {
+      const extra = (pagingFrac * keptAct * (weightOf?.[s.scKey] ?? 1)) / stealDen;
+      out[i] = Math.min(Math.max(pagingFrac, STORAGE_STEAL_MAX_FRAC), pagingFrac + extra);
+    }
+  }
+  return out;
 }

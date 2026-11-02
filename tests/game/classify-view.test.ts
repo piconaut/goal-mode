@@ -17,10 +17,10 @@ describe('explainClassification', () => {
   const stc = ex.subsystems.find((s) => s.subsystem === 'STC')!;
   const row = (pattern: string) => stc.rows.find((r) => r.pattern === pattern)!;
 
-  it('DB* catches the Db2 MSTR/DBM1/DIST address spaces but not IRLM (*IRLM matches first)', () => {
+  it('DB* catches the Db2 MSTR/DBM1/DIST address spaces but not IRLM (%%%%IRLM matches first)', () => {
     expect(row('DB*').catches).toEqual(expect.arrayContaining(['DB1AMSTR', 'DB1ADBM1', 'DB1ADIST']));
     expect(row('DB*').catches).not.toContain('DB1AIRLM');
-    expect(row('*IRLM').catches).toContain('DB1AIRLM');
+    expect(row('%%%%IRLM').catches).toContain('DB1AIRLM');
   });
 
   it('lists forced-SYSTEM address spaces and the STC default', () => {
@@ -44,11 +44,11 @@ describe('explainClassification', () => {
 
 describe('rule edits by path', () => {
   it('moves a rule and changes what it catches', () => {
-    // Moving DB* above *IRLM lets DB* catch IRLM too (a classic misclassification).
+    // Moving DB* above %%%%IRLM lets DB* catch IRLM too (a classic misclassification).
     const stcRules = BASEPOL.subsystems.find((s) => s.subsystem === 'STC')!.rules;
     const db = stcRules.findIndex((r) => r.pattern === 'DB*');
     let def = BASEPOL;
-    for (let i = db; i > stcRules.findIndex((r) => r.pattern === '*IRLM'); i--) def = edit(def, { op: 'MOVE_RULE', subsystem: 'STC', path: [i], delta: -1 });
+    for (let i = db; i > stcRules.findIndex((r) => r.pattern === '%%%%IRLM'); i--) def = edit(def, { op: 'MOVE_RULE', subsystem: 'STC', path: [i], delta: -1 });
     const ex = explainClassification(def, items);
     expect(ex.subsystems.find((s) => s.subsystem === 'STC')!.rows.find((r) => r.pattern === 'DB*')!.catches).toContain('DB1AIRLM');
   });

@@ -537,20 +537,20 @@ export const MIDWEST_EVENTS: EventDef[] = [
   },
   {
     // A program storage leak drives both PROD2 AORs short on storage: CICS stops attaching new tasks until it recovers.
-    // APPROX: SOS modelled as an effective MXT cut (5 per region), so queued tasks show as MXT wait.
+    // APPROX: SOS modelled as an effective MXT cut (10 per region, MXT's floor), so queued tasks show as MXT wait.
     id: 'CICS_SOS',
     name: 'CICS short on storage (PROD2 AORs)',
     category: 'SOFTWARE',
     minDay: 5,
     weight: 1,
     trigger: 'POLICY',
-    affects: ['TELLER', 'RBANK'],
+    affects: ['TELLER', 'RBANK', 'CARDAUTH', 'PAYMQ'],
     mechanisms: ['THREAD_LIMIT'],
     startHour: [9, 14],
     durationHours: 4,
     begin: [
-      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 5 },
-      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 5 },
+      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 10 },
+      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 10 },
     ],
     end: [
       { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 200 },
@@ -559,7 +559,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'RECYCLE_PROD2_AORS',
     forewarning: null,
     announcement: null,
-    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs, or route teller work to PROD1.',
+    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs, or route the CICS work (teller, online banking, card authorisation, payments) to PROD1.',
   },
   {
     id: 'CP_SPARING',
@@ -619,7 +619,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'SCOPE_SMF_AUDIT',
     forewarning: 'Regulator: "For the next three days keep full SMF 101 and 110 detail on every system. We will sample it."',
     announcement: null,
-    clue: 'WLMGL: SYSSTC APPL% up on every system with the SMF address space as its top consumer; MSU and R4HA up a little with no workload slower. Fixes: negotiate the scope down to sampled records (Regulator trust), or absorb the MSU for three days.',
+    clue: 'WLMGL: SYSSTC APPL% up on every system with the SMF address space as its top consumer; MSU and R4HA up a little; work slows only where a system already runs at its CP share (PROD2 at peak). Fixes: negotiate the scope down to sampled records (Regulator trust), or absorb the MSU for three days.',
   },
   {
     // FICTIONAL: a five-day regulator audit of workload classification; the lever is classification rules.

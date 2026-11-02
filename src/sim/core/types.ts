@@ -1,7 +1,7 @@
 // Plain-data world configuration and runtime state. Everything here must be
 // JSON-serialisable and built in a deterministic order (arrays, not Maps).
 
-import type { CfConfig, CfStructureConfig, CfResult } from '../cf/cf';
+import type { CfConfig, CfStructureConfig, CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdConfig, DasdResult } from '../io/dasd';
 import type { BatchState } from '../subsys/batch';
 import type { CostState } from '../cost/mlc';
@@ -24,6 +24,8 @@ export interface CpcConfig {
   /** Active physical engines per pool (shared + dedicated). */
   engines: Record<PoolType, number>;
   memoryGb: number;
+  /** Position of the CPC's site along the CF links, km (distance = difference); default 0. */
+  siteKm?: number;
 }
 
 export interface LparPoolConfig {
@@ -65,6 +67,9 @@ export interface ZosSystemConfig {
   blwltrpctFrac: number;
   /** IIPHONORPRIORITY: zIIP-eligible work may overflow to CPs. */
   iipHonorPriority: boolean;
+  /** CCIMP: first (or only) periods up to this importance get CPU protection without CPU Critical (0 = off,
+   * the pre-z/OS 3.1 behaviour; absent means 0). */
+  ccImp?: 0 | 1 | 2;
 }
 
 export interface Db2MemberConfig {
@@ -127,7 +132,12 @@ export interface LparPoolRuntime {
   overheadFrac: number;
   /** Fraction of ready time a logical CP waits for a physical engine (short-engine effect). */
   prsmDelayFrac: number;
+  /** RMF MVS BUSY: ready-or-running share of unparked logical CP time (dispatched or not). */
+  mvsBusyFrac: number;
+  /** Share of demand a binding cap (soft, absolute or initial) removed; PR/SM contention excluded. */
   cappedFrac: number;
+  /** The part of cappedFrac due to WLM soft capping (Partition Data WLM%). */
+  softCappedFrac: number;
 }
 
 export interface LparRuntime {
@@ -181,6 +191,12 @@ export interface EnvState {
   pagingFrac: Record<string, number>;
   /** Failed fraction per workload@lpar; present only while a dynamic routing policy is on. */
   failByWorkloadLpar?: Record<string, number>;
+  /** Transactions queued for a task slot (CICS MXT, Db2 MAXDBAT) per `lparId:MXT|DBAT`; absent when empty. */
+  slotQueue?: Record<string, number>;
+  /** Mean time a transaction holds its task slot per workload@lpar (in-region RT less CPU backlog wait). */
+  holdByWorkloadLpar?: Record<string, number>;
+  /** CF service each connected z/OS system saw last tick (link distance, own async conversion). */
+  cfBySystem?: Record<string, CfSystemResult>;
 }
 
 /** Runtime modifiers set by events and fixes (all multiplicative, default 1). */
@@ -218,6 +234,8 @@ export interface SimState {
   workloads: WorkloadRuntime[];
   /** Backlogged work per slice key, engine-seconds. */
   backlog: Record<string, number>;
+  /** zIIP-eligible part of backlog per slice key, engine-seconds (absent in saves from before it was tracked). */
+  ziipBacklog?: Record<string, number>;
   last: { lpars: LparTick[]; workloads: WorkloadTick[] };
   env: EnvState;
   batch: BatchState;

@@ -2,7 +2,7 @@
 // here is the contract. Circular couplings (I/O response, CF service, lock contention,
 // subsystem concurrency) use the previous tick's values carried in `env`.
 
-import { evaluateCf, type CfImageInput } from '../cf/cf';
+import { cfServiceForSystem, evaluateCf, type CfImageInput, type CfSystemResult } from '../cf/cf';
 import { accrueTfp, closeMonth, recordHour } from '../cost/mlc';
 import { groupShares, newR4ha, stepR4ha } from '../cost/r4ha';
 import { accumulateTick, closeInterval, newRmfAcc, type JobEndRecord } from '../measure/rmf';
@@ -20,23 +20,25 @@ import {
   startJobs,
   type JobRuntime,
 } from '../subsys/batch';
-import { mxtQueueWaitSec, qrTcb } from '../subsys/cics';
-import { bpIoMultiplier, dbatQueueWaitSec, DB2 } from '../subsys/db2';
+import { qrTcb } from '../subsys/cics';
+import { slotQueueStep } from '../subsys/slots';
+import { SLOT_QUEUE } from '../../content/subsys';
+import { bpIoMultiplier, DB2 } from '../subsys/db2';
 import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/arrivals';
 import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
 import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
 import { ROUTING } from '../../content/routing';
-import { emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
+import { backlogCpSec, emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
-import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../content/wlm/tuning';
+import { DISC_GOAL_MGMT, STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC, STORAGE_SWAP } from '../../content/wlm/tuning';
 import { CF_FAILURE } from '../../content/cf';
 import {
   decayInto,
   emptyAcc,
   ACC_DECAY,
-  accPi,
+  goalPi,
   goalInfo,
   initialDp,
   sysplexPis,
@@ -140,6 +142,16 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   startJobs(batch.jobs, prev.tick, { jobClasses: config.jobClasses, lparBusy });
   const runningBy: Record<string, JobRuntime[]> = {};
   for (const j of batch.jobs) if (j.status === 'RUNNING' && j.lparId !== null) (runningBy[j.lparId] ??= []).push(j);
+  // Jobs waiting for an initiator in a WLM-managed class are initiation delay for their service class
+  // (WLM Planning p.70); APPROX: counted on the first eligible system. JES-managed queues stay invisible.
+  const queuedWlmBy: Record<string, JobRuntime[]> = {};
+  for (const j of batch.jobs) {
+    if (j.status !== 'QUEUED') continue;
+    const jc = config.jobClasses.find((c) => c.jobClass === j.def.jobClass);
+    if (jc?.mode !== 'WLM') continue;
+    const home = j.def.sysaff ?? Object.keys(jc.initiators).filter((l) => (jc.initiators[l] ?? 0) > 0).sort()[0];
+    if (home) (queuedWlmBy[home] ??= []).push(j);
+  }
 
   const io: Record<IoClass, IoService> = env.dasd
     ? {
@@ -159,15 +171,18 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     }
   }
   // CF failure: structures being rebuilt stall their requesters; lost ones take work down.
+  let cfStallSec = 0;
   let db2FailFrac = 0;
   let mqFailFrac = 0;
   for (const x of config.cfStructures) {
-    if (x.rebuildUntilTick !== undefined && x.rebuildUntilTick > prev.tick) cfServiceSec += x.requestShare * CF_FAILURE.stallSecPerRequest;
+    if (x.rebuildUntilTick !== undefined && x.rebuildUntilTick > prev.tick) cfStallSec += x.requestShare * CF_FAILURE.stallSecPerRequest;
     if (!x.lost) continue;
     if (x.lostImpact === 'DB2_DOWN') db2FailFrac = Math.max(db2FailFrac, CF_FAILURE.db2DownFailFrac);
     else if (x.lostImpact === 'DB2_GRECP') db2FailFrac = Math.max(db2FailFrac, CF_FAILURE.grecpFailFrac);
     else if (x.lostImpact === 'MQ_DOWN') mqFailFrac = Math.max(mqFailFrac, CF_FAILURE.mqDownFailFrac);
   }
+
+  cfServiceSec += cfStallSec;
 
   // 3–4. Slices and demand per z/OS image. The per-image stages are separate functions so a
   // deoptimisation in one (state shapes settle over the first simulated days) stays cheap.
@@ -189,9 +204,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     io,
     cfServiceSec,
     cfZosCpuSec,
+    cfStallSec,
     db2FailFrac,
     mqFailFrac,
     runningBy,
+    queuedWlmBy,
     slicesBy: {},
     batchRefsBy: {},
     swappedBy: {},
@@ -199,15 +216,19 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     demands,
     lpars: [],
     storageCritical: new Set<string>(),
+    pagingWeight: {},
     evalInputs: {},
     backlog: {},
+    ziipBacklog: {},
     failedBy: {},
     wlTick: {},
     rtByWorkloadLpar: {},
+    holdByWorkloadLpar: {},
     failByWorkloadLpar: prev.routingPolicies ? {} : null,
     systems: [],
     lparTicks: [],
     onlineDb2Rate: 0,
+    slotQueue: {},
   };
   for (const l of zosLpars) lparDemand(t, l);
   // Coupling facilities: request work from last tick; a shared CF without thin
@@ -226,13 +247,20 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const lpars = t.lpars;
 
   // 7–10. Dispatch and response per image.
-  const { backlog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, storageCritical } = t;
+  const { backlog, ziipBacklog, failedBy, wlTick, lparTicks, rtByWorkloadLpar, holdByWorkloadLpar, storageCritical, pagingWeight } = t;
   for (const w of workloads) {
     wlTick[w.id] = { id: w.id, arrivalRate: rates[w.id] ?? 0, completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
   }
   for (const c of def.classes) if (c.storageCritical) c.periods.forEach((_, i) => storageCritical.add(scKeyOf(c.id, i)));
+  if (storageCritical.size > 0) {
+    for (const c of def.classes) {
+      c.periods.forEach((p, i) => {
+        pagingWeight[scKeyOf(c.id, i)] = p.goal.kind === 'DISC' ? STORAGE_STEAL_WEIGHT_DISC : (STORAGE_STEAL_WEIGHT_BY_IMP[p.importance - 1] ?? 1);
+      });
+    }
+  }
 
-  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0 };
+  const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0, cfRequestsBy: {} };
   for (const l of zosLpars) dispatchLpar(t, l, sums);
   const { randomIops, seqIops, cfRequests } = sums;
 
@@ -247,6 +275,12 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     return [{ cfg, availableEngines: rt.availableEngines, entitlementEngines: rt.entitlementEngines, dedicated: icf.dedicated }];
   });
   const cf = evaluateCf(cfImages, config.cfStructures, cfRequests, scenario.cfTunables);
+  const siteKm = (lparId: string) => cpcOf[config.lpars.find((x) => x.id === lparId)?.cpcId ?? '']?.siteKm ?? 0;
+  const cfBySystem: Record<string, CfSystemResult> = {};
+  for (const l of zosLpars) {
+    const here = siteKm(l.id);
+    cfBySystem[l.id] = cfServiceForSystem(cf, config.cfStructures, (cfId) => Math.abs(siteKm(cfId) - here), scenario.cfTunables, sums.cfRequestsBy[l.id] ?? 0);
+  }
   const lockIndex = batch.jobs.reduce((a, j) => (j.status === 'RUNNING' ? a + j.def.lockIntensity : a), 0) + prev.mods.lockBoost;
 
   // Batch critical-path projection and end-of-night summary.
@@ -277,11 +311,14 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const nextEnv: EnvState = t.failByWorkloadLpar
     ? { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac, failByWorkloadLpar: t.failByWorkloadLpar }
     : { dasd, cf, lockIndex, rtByWorkloadLpar, pagingFrac };
+  if (Object.keys(t.slotQueue).length > 0) nextEnv.slotQueue = t.slotQueue;
+  if (cf.length > 0) nextEnv.cfBySystem = cfBySystem;
+  nextEnv.holdByWorkloadLpar = holdByWorkloadLpar;
 
   const nextTick = prev.tick + 1;
   const { cappingLpars, cappingGroups, msuBy, r4haBy } = stepCapping(t, zosLpars);
   const cost = stepCost(t, zosLpars, msuBy, r4haBy, nextTick);
-  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, nextTick);
+  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, nextTick, cfBySystem);
   return {
     ...prev,
     tick: prev.tick + 1,
@@ -290,6 +327,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     wlm: { definition: def, systems: adjusted, log },
     workloads: workloadRt,
     backlog,
+    ziipBacklog,
     last: { lpars: lparTicks, workloads: Object.values(wlTick) },
     env: nextEnv,
     batch,
@@ -315,9 +353,12 @@ interface TickCtx {
   io: Record<IoClass, IoService>;
   cfServiceSec: number;
   cfZosCpuSec: number;
+  /** Rebuild stall per request, on top of each system's own CF service. */
+  cfStallSec: number;
   db2FailFrac: number;
   mqFailFrac: number;
   runningBy: Record<string, JobRuntime[]>;
+  queuedWlmBy: Record<string, JobRuntime[]>;
   slicesBy: Record<string, SliceSpec[]>;
   batchRefsBy: Record<string, BatchSliceRef[]>;
   swappedBy: Record<string, Set<JobRuntime>>;
@@ -325,17 +366,23 @@ interface TickCtx {
   demands: PoolDemand[];
   lpars: LparRuntime[];
   storageCritical: Set<string>;
+  /** Per-period share of the storage that storage-critical work keeps (only filled when some class is protected). */
+  pagingWeight: Record<string, number>;
   evalInputs: Record<string, LparEvalInput>;
   backlog: Record<string, number>;
+  ziipBacklog: Record<string, number>;
   failedBy: Record<string, number>;
   wlTick: Record<string, WorkloadTick>;
   rtByWorkloadLpar: Record<string, number>;
+  holdByWorkloadLpar: Record<string, number>;
   /** Failed fraction per workload@lpar, kept only when a dynamic routing policy needs it. */
   failByWorkloadLpar: Record<string, number> | null;
   systems: WlmSystemState[];
   lparTicks: LparTick[];
   /** Sysplex online Db2 transaction rate (global lock contention for batch). */
   onlineDb2Rate: number;
+  /** Transactions queued for a task slot (MXT, MAXDBAT) per `lparId:kind`. */
+  slotQueue: Record<string, number>;
 }
 
 /** Sums over all images, accumulated in image order. */
@@ -343,6 +390,7 @@ interface TickSums {
   randomIops: number;
   seqIops: number;
   cfRequests: number;
+  cfRequestsBy: Record<string, number>;
 }
 
 /** 6. Soft capping: LPARs whose R4HA exceeds their defined capacity, and members of capacity
@@ -394,7 +442,7 @@ function prsm(t: TickCtx): void {
 
 /** 12b. Policy adjustment, one receiver per system. */
 function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemState[]; log: string[] } {
-  const { prev, def, systems, lparTicks, evalInputs } = t;
+  const { prev, def, config, systems, lparTicks, evalInputs } = t;
   const spPi = sysplexPis(def, systems);
   // The previous log is only copied once a line is added (states are never mutated in place).
   let log = prev.wlm.log;
@@ -407,6 +455,7 @@ function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemSta
       current: lt.scps,
       sysplexPi: spPi,
       clockText,
+      ccImp: config.systems.find((c) => c.lparId === sys.lparId)?.ccImp,
     });
     if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
       if (log === prev.wlm.log) log = [...log];
@@ -462,6 +511,7 @@ function stepRmf(
   cf: EnvState['cf'],
   r4haBy: Record<string, number>,
   nextTick: number,
+  cfBySystem: Record<string, CfSystemResult>,
 ): SimState['rmf'] {
   const { prev, def, config, lparTicks, lpars } = t;
   const jobsEnded: JobEndRecord[] = [];
@@ -478,7 +528,7 @@ function stepRmf(
       stretch: j.stretch,
     });
   }
-  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf);
+  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf, cfBySystem);
   let jobsThisInterval = jobsEnded.length ? [...prev.rmf.jobsThisInterval, ...jobsEnded] : prev.rmf.jobsThisInterval;
   let intervals = prev.rmf.intervals;
   const intervalTicks = Math.max(1, Math.round((config.rmfIntervalMin * 60) / TICK_SEC));
@@ -494,8 +544,12 @@ function stepRmf(
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
 function lparDemand(t: TickCtx, l: LparConfig): void {
   const { prev, scenario, def, env, config, clock, cpcOf, workloads, workloadById, addressSpaces, rates, io } = t;
-  const { cfServiceSec, cfZosCpuSec, db2FailFrac, mqFailFrac, runningBy, slicesBy, batchRefsBy, swappedBy, pagingFrac, demands } = t;
+  const { cfStallSec, db2FailFrac, mqFailFrac, runningBy, slicesBy, batchRefsBy, swappedBy, pagingFrac, demands } = t;
   const cpc = cpcOf[l.cpcId]!;
+  // This system's own CF service (link distance, its own sync→async conversion); plex average before the first CF tick.
+  const cfSys = prev.env.cfBySystem?.[l.id];
+  const cfServiceSec = cfSys ? cfSys.serviceSec + cfStallSec : t.cfServiceSec;
+  const cfZosCpuSec = cfSys ? cfSys.zosCpuSec : t.cfZosCpuSec;
   const cpSp = cpSpeed(cpc);
   const zSp = ziipSpeed(cpc);
   const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads) }), prev.mods);
@@ -516,9 +570,11 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   for (const s of base) {
     if (s.kind !== 'TXN' || !s.workloadId) continue;
     const w = workloadById[s.workloadId]!;
-    const prevRt = env.rtByWorkloadLpar[wlLparKey(w.id, l.id)] ?? 0.05;
     const ioSvc = io[s.ioClass];
     const refRt = s.baseLatencySec + s.cpuSecPerTxn + s.ziipSecPerTxn + s.ioPerTxn * (ioSvc.rtSec - ioSvc.delaySec);
+    // Slot hold time: last tick's in-region time without the CPU backlog wait; the unqueued time if nothing completed.
+    const lastHold = env.holdByWorkloadLpar?.[wlLparKey(w.id, l.id)] ?? 0;
+    const prevRt = lastHold > 0 ? lastHold : refRt;
     if (w.subsystem === 'CICS') {
       cicsQrCpu += s.rate * s.cpuSecPerTxn;
       cicsRate += s.rate;
@@ -534,11 +590,21 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   const meanQrFrac = aors.length ? aors.reduce((a, c) => a + c.qrFrac, 0) / aors.length : 0;
   const qr = qrTcb(aors.length ? (cicsQrCpu * meanQrFrac) / aors.length : 0);
   const maxTasks = aors.reduce((a, c) => a + c.maxTasks, 0);
-  const mxtWait = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRtWeighted / cicsRate : 0, maxTasks) : 0;
-  const dbatWait = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRtWeighted / ddfRate : 0, db2.maxDbat) : 0;
-  // Same queues at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
-  const mxtRef = aors.length ? mxtQueueWaitSec(cicsRate, cicsRate > 0 ? cicsRefWeighted / cicsRate : 0, maxTasks) : 0;
-  const dbatRef = db2 ? dbatQueueWaitSec(ddfRate, ddfRate > 0 ? ddfRefWeighted / ddfRate : 0, db2.maxDbat) : 0;
+  // Task-slot queues persist across ticks: offered load above MXT / MAXDBAT builds a backlog that only
+  // drains at limit / hold time, and times out (MAXCONQW for DDF).
+  const slotQ = (kind: 'MXT' | 'DBAT', on: boolean, rate: number, holdW: number, refW: number, limit: number, timeoutSec: number) => {
+    if (!on) return { waitSec: 0, refSec: 0, failFrac: 0 };
+    const key = `${l.id}:${kind}`;
+    const hold = rate > 0 ? holdW / rate : 0;
+    const refHold = rate > 0 ? refW / rate : 0;
+    const r = slotQueueStep(prev.env.slotQueue?.[key] ?? 0, rate, hold, limit, timeoutSec, TICK_SEC);
+    if (r.queued > 1e-9) t.slotQueue[key] = r.queued;
+    // Same queue at the unqueued service time, so RCA can tell a limit too low for the arrival rate from slow tasks.
+    const refSec = rate * refHold >= Math.max(1, Math.floor(limit)) ? r.waitSec : slotQueueStep(0, rate, refHold, limit, timeoutSec, TICK_SEC).waitSec;
+    return { waitSec: r.waitSec, refSec, failFrac: r.failFrac };
+  };
+  const mxt = slotQ('MXT', aors.length > 0, cicsRate, cicsRtWeighted, cicsRefWeighted, maxTasks, SLOT_QUEUE.cicsQueueTimeoutSec);
+  const dbat = slotQ('DBAT', !!db2, ddfRate, ddfRtWeighted, ddfRefWeighted, db2?.maxDbat ?? 0, SLOT_QUEUE.ddfQueueTimeoutSec);
 
   // `base` holds fresh objects built for this tick, so transactions are completed in place.
   for (const s of base) {
@@ -562,13 +628,14 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     if (w.subsystem === 'CICS' && aors.length) {
       parts.qr = s.cpuSecPerTxn * meanQrFrac * qr.qrWaitRatio;
       extra += parts.qr;
-      outside += mxtWait;
-      outsideRef += mxtRef;
-      failFrac = qr.failFrac;
+      outside += mxt.waitSec;
+      outsideRef += mxt.refSec;
+      failFrac = Math.max(qr.failFrac, mxt.failFrac);
     }
     if (w.subsystem === 'DDF') {
-      outside += dbatWait;
-      outsideRef += dbatRef;
+      outside += dbat.waitSec;
+      outsideRef += dbat.refSec;
+      failFrac = Math.max(failFrac, dbat.failFrac);
     }
     if (db2Work) t.onlineDb2Rate += s.rate;
     // A saturated QR TCB makes a region slow, not fast-failing, so it doesn't count as an abend for routing.
@@ -646,10 +713,12 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       };
       refs[refKey] = ref;
     }
-    ref.slice.cpEngines += shape.cpRate + cfCpu;
-    ref.slice.ziipEngines += shape.zRate;
+    const cpWant = shape.cpRate * (j.cpPace ?? 1) + cfCpu;
+    const ziWant = shape.zRate * (j.ziipPace ?? 1);
+    ref.slice.cpEngines += cpWant;
+    ref.slice.ziipEngines += ziWant;
     ref.slice.ioRate += shape.ioRate / Math.max(1, j.stretch);
-    ref.jobs.push({ job: j, cp: shape.cpRate + cfCpu, zi: shape.zRate, shape });
+    ref.jobs.push({ job: j, cp: cpWant, zi: ziWant, shape });
   }
   const batchRefs = Object.values(refs);
   batchRefsBy[l.id] = batchRefs;
@@ -662,11 +731,10 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   let cp = 0;
   let zi = 0;
   for (const s of all) {
-    const bl = (prev.backlog[s.key] ?? 0) / TICK_SEC;
-    const tot = s.cpEngines + s.ziipEngines;
-    const cpShare = tot > 0 ? s.cpEngines / tot : 1;
-    cp += s.cpEngines + bl * cpShare;
-    zi += s.ziipEngines + bl * (1 - cpShare);
+    const bl = prev.backlog[s.key] ?? 0;
+    const blCp = backlogCpSec(s, prev.backlog, prev.ziipBacklog ?? {});
+    cp += s.cpEngines + blCp / TICK_SEC;
+    zi += s.ziipEngines + (bl - blCp) / TICK_SEC;
   }
   const prevRt = prev.lpars.find((x) => x.id === l.id);
   const ratio = (pool: 'CP' | 'ZIIP') => {
@@ -685,8 +753,8 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
 
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
-  const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
-  const { storageCritical, evalInputs, backlog, failedBy, wlTick, rtByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
+  const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, queuedWlmBy, pagingFrac } = t;
+  const { storageCritical, pagingWeight, evalInputs, backlog, ziipBacklog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
   const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
@@ -715,15 +783,16 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
     slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
     backlog: prev.backlog,
+    ziipBacklog: prev.ziipBacklog ?? {},
     dpOf,
-    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
-    minOf: rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare).minOf,
+    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
+    ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare),
     regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
     io,
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
     pagingFrac: pagingFrac[l.id] ?? 0,
-    cappedFrac: cpRt?.cappedFrac ?? 0,
     storageCritical,
+    pagingWeight,
     promoted,
     promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
     scpsOnly: false,
@@ -742,12 +811,25 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     t.delayStorage += 1;
     addJobDelay(j, 'swap', TICK_SEC);
   }
+  // APPROX: one delay sample per queued job, in the class's first period.
+  for (const j of queuedWlmBy[l.id] ?? []) {
+    const k = scKeyAtService(def, classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: l.id }).serviceClass, 0);
+    let t = res.scps.find((x) => x.scKey === k);
+    if (!t) {
+      t = emptyScpTick(k, dpOf(k));
+      res.scps.push(t);
+    }
+    t.delayQueue = (t.delayQueue ?? 0) + 1;
+  }
 
   const compBy: Record<string, number> = {};
   const tries: Record<string, number> = {};
   slices.forEach((s, i) => {
     const r = res.slices[i]!;
-    if (r.newBacklog > 1e-9) backlog[s.key] = r.newBacklog;
+    if (r.newBacklog > 1e-9) {
+      backlog[s.key] = r.newBacklog;
+      if (r.newZiipBacklog > 1e-9) ziipBacklog[s.key] = r.newZiipBacklog;
+    }
     if (s.workloadId) {
       const wt = wlTick[s.workloadId]!;
       wt.completions += r.completions;
@@ -763,6 +845,7 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       }
       const k = wlLparKey(s.workloadId, l.id);
       rtByWorkloadLpar[k] = (rtByWorkloadLpar[k] ?? 0) + r.completions * r.rtMeanSec;
+      holdByWorkloadLpar[k] = (holdByWorkloadLpar[k] ?? 0) + r.completions * r.holdSec;
       compBy[k] = (compBy[k] ?? 0) + r.completions;
       if (failByWorkloadLpar) {
         // Only fast failures (abends, subsystem rejections) count; timeouts and QR overload are slow and show in the response.
@@ -773,12 +856,14 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       sums.randomIops += s.rate * s.ioPerTxn;
       if (usesDb2(w)) {
         sums.cfRequests += s.rate * DB2.cfRequestsPerTxn;
+        sums.cfRequestsBy[l.id] = (sums.cfRequestsBy[l.id] ?? 0) + s.rate * DB2.cfRequestsPerTxn;
       }
     }
   });
   for (const k in compBy) {
     const c = compBy[k]!;
     rtByWorkloadLpar[k] = c > 0 ? rtByWorkloadLpar[k]! / c : 0;
+    holdByWorkloadLpar[k] = c > 0 ? holdByWorkloadLpar[k]! / c : 0;
     if (failByWorkloadLpar) {
       const n = tries[k] ?? 0;
       failByWorkloadLpar[k] = n > 0 ? (failByWorkloadLpar[k] ?? 0) / n : 0;
@@ -821,7 +906,10 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       );
       const ioNow = jr.shape.ioRate / Math.max(1, jr.job.stretch);
       sums.seqIops += ioNow;
-      if (jr.job.def.usesDb2) sums.cfRequests += ioNow * DB2.cfRequestsPerBatchIo;
+      if (jr.job.def.usesDb2) {
+        sums.cfRequests += ioNow * DB2.cfRequestsPerBatchIo;
+        sums.cfRequestsBy[l.id] = (sums.cfRequestsBy[l.id] ?? 0) + ioNow * DB2.cfRequestsPerBatchIo;
+      }
     }
   }
 
@@ -1171,7 +1259,7 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
     // Decayed sum → steady-state engines.
     const engines = st.acc.cpuEngines * (1 - ACC_DECAY);
     if (engines < D.minEngines) continue;
-    const pi = accPi(goal, st.acc);
+    const pi = goalPi(goal, st.acc);
     if (pi === null) continue;
     const wasCapped = st.acc.delayCap > 0.05 * samples;
     if (pi < D.piBelow || (wasCapped && pi < D.stayCappedPiBelow)) {
@@ -1185,8 +1273,12 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
   };
 }
 
-/** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). */
-function cicsRegions(
+/** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). "Manage
+ * Region Using Goals Of" is set per region on its STC/JES rule (WLM Planning 3.1 p.122, p.211). TRANSACTION regions
+ * are transaction servers: their own CPU dispatches with the transactions. APPROX: the sim does not split a
+ * workload's transactions between regions, so the transactions follow the AORs together: they ride the most
+ * important served class's DP if any AOR on the image is TRANSACTION, else the first AOR's class DP. */
+export function cicsRegions(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
   byId: Record<string, WorkloadDef>,
@@ -1201,8 +1293,25 @@ function cicsRegions(
   }
   if (keys.length === 0) return {};
   keys.sort();
+  const legacy = def.cicsRegionMode ?? 'TRANSACTION';
+  const modeOf = (a: AddressSpaceDef) => classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: lparId }).regionMode ?? legacy;
+  const servers: string[] = [];
+  let txnMode: 'TRANSACTION' | 'REGION' = 'REGION';
+  let rtTracked = false;
+  for (const s of slices) {
+    if (s.kind !== 'AS' || (s.role !== 'CICS.AOR' && s.role !== 'CICS.TOR')) continue;
+    const a = addressSpaces.find((x) => x.lparId === lparId && x.jobname === s.jobname);
+    const m = a ? modeOf(a) : 'REGION';
+    // REGION: "Transaction response times reported by these regions is not reported in any service class";
+    // TRANSACTION and BOTH track the completions (WLM Planning 3.1 p.102-103).
+    if (m !== 'REGION') rtTracked = true;
+    if (m !== 'TRANSACTION') continue;
+    servers.push(s.key);
+    if (s.role === 'CICS.AOR') txnMode = 'TRANSACTION';
+  }
+  servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
-  return { regions: { keys, mode: def.cicsRegionMode ?? 'TRANSACTION', regionKey } };
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked } };
 }
 
 /** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly
@@ -1212,7 +1321,7 @@ function missingGoal(def: SimState['wlm']['definition'], st: ScpState | undefine
   const g = goalInfo(def, scKey)?.goal;
   if (!g) return false;
   if (g.kind === 'DISC') return st.acc.delay > st.acc.using;
-  const pi = accPi(g, st.acc);
+  const pi = goalPi(g, st.acc);
   return pi !== null && pi > 1;
 }
 
@@ -1224,7 +1333,7 @@ export function rgMin(
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
   plexShare: Readonly<Record<string, number>> = {},
-): { minOf?: Record<string, number> } {
+): { minOf?: Record<string, number>; discMin?: Set<string> } {
   const groups = def.resourceGroups.filter((g) => g.min !== null && g.min > 0);
   if (groups.length === 0) return {};
   const minOf: Record<string, number> = {};
@@ -1237,25 +1346,60 @@ export function rgMin(
     const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, plexShare[g.id] ?? 1);
     for (const k of keys) minOf[k] = (min * demand[k]!) / total;
   }
-  return Object.keys(minOf).length > 0 ? { minOf } : {};
+  if (Object.keys(minOf).length === 0) return {};
+  const disc = Object.keys(minOf).filter((k) => goalInfo(def, k)?.goal.kind === 'DISC');
+  return disc.length > 0 ? { minOf, discMin: new Set(disc) } : { minOf };
 }
 
-function resourceGroupCaps(
+export function resourceGroupCaps(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
   cpRt: LparPoolRuntime | undefined,
   suPerSec: number,
   plexShare: Readonly<Record<string, number>>,
+  workloadById: Readonly<Record<string, WorkloadDef>>,
+  backlog: Readonly<Record<string, number>>,
+  ziipBacklog?: Readonly<Record<string, number>>,
 ): ((s: SliceSpec) => number) | undefined {
   const groups = def.resourceGroups.filter((g) => g.max !== null);
   if (groups.length === 0) return undefined;
+  // Transactions consume their CPU in their host regions (CICS AORs), so a group on the regions' class caps
+  // them (WLM Planning p.60 note 1, p.122). APPROX: a transaction slice is a member in proportion to the CPU
+  // share of its LPAR's host regions in the group; CPSM routing away from capped AORs is ignored.
+  const hostEngines: Record<string, number> = {};
+  const hostInGroup: Record<string, Record<string, number>> = {};
+  for (const s of slices) {
+    if (s.kind !== 'AS' || !s.role) continue;
+    hostEngines[s.role] = (hostEngines[s.role] ?? 0) + s.cpEngines;
+    const rg = goalInfo(def, s.scKey)?.resourceGroup;
+    if (rg) (hostInGroup[s.role] ??= {})[rg] = (hostInGroup[s.role]![rg] ?? 0) + s.cpEngines;
+  }
+  const hostShare = (s: SliceSpec, rg: string): number => {
+    if (s.kind !== 'TXN' || !s.workloadId) return 0;
+    const role = workloadById[s.workloadId]?.hostRole;
+    const tot = role ? (hostEngines[role] ?? 0) : 0;
+    return tot > 0 ? (hostInGroup[role!]?.[rg] ?? 0) / tot : 0;
+  };
   const capBySlice: Record<string, number> = {};
   for (const g of groups) {
-    const members = slices.filter((s) => goalInfo(def, s.scKey)?.resourceGroup === g.id);
-    const demand = members.reduce((a, s) => a + s.cpEngines, 0);
+    const members: { s: SliceSpec; frac: number }[] = [];
+    for (const s of slices) {
+      const frac = goalInfo(def, s.scKey)?.resourceGroup === g.id ? 1 : hostShare(s, g.id);
+      if (frac > 0) members.push({ s, frac });
+    }
+    const demand = members.reduce((a, m) => a + m.frac * m.s.cpEngines, 0);
     if (demand <= 0) continue;
     const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, plexShare[g.id] ?? 1);
-    for (const s of members) capBySlice[s.key] = (cap * s.cpEngines) / demand;
+    for (const { s, frac } of members) {
+      const capped = (cap * frac * s.cpEngines) / demand;
+      if (frac >= 1) {
+        capBySlice[s.key] = capped;
+        continue;
+      }
+      // The part of the slice running outside the group's regions stays uncapped (same demand as evaluateLpar).
+      const uncapped = s.cpEngines + backlogCpSec(s, backlog, ziipBacklog) / TICK_SEC;
+      capBySlice[s.key] = capped + (1 - frac) * uncapped;
+    }
   }
   return (s) => capBySlice[s.key] ?? Infinity;
 }
