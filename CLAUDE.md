@@ -126,10 +126,11 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   After your PR is merged, further work in the same session starts again from the latest `dev` on the same branch
   name, as a new PR.
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
-- Delegation (to save usage): hand well-scoped tasks to the Sonnet subagents in `.claude/agents/` —
+- Delegation (to save usage): hand well-scoped tasks to the subagents in `.claude/agents/` — Sonnet
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
-  brief) `log-reader` (digest bot/sweep logs, test failures, long reports) and `pr-reviewer` (check out a PR in a worktree,
-  run check, bench hashes and a sweep for milestones, verify its claims, post its report on the PR, return a merge verdict; the main agent merges). Keep sim model changes,
+  brief) and `log-reader` (digest bot/sweep logs, test failures, long reports), and Opus `pr-reviewer` (user request
+  2026-11-02; check out a PR in a worktree, run check, bench hashes and a sweep for milestones, verify its claims,
+  post its report on the PR, return a merge verdict; the main agent merges). Keep sim model changes,
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
   Exception (user request 2026-10-30): in the `audit-loop` skill (`.claude/skills/audit-loop/`), vetted realism fixes
   go to the Opus `realism-fixer` subagent and balance sweeps to Sonnet worker sessions; vetting and balance calls stay
