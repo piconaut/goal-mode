@@ -95,6 +95,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   the bottleneck
 - [x] Benchmark `npm run bench [-- --days N --seed S --hash]` (`tools/bench.ts`); `--hash` proves an optimisation is
   behaviour-neutral. Seed 42 hashes: 1 day `8a82ad7db2b258ae`, 3 days `55d9e06f477c9197`, 8 days `c2ec32ace44f6b06` (since PR #8)
+- [x] 2026-11-02 runner fix: sweep concurrency defaults to `os.availableParallelism()` instead of host CPU count;
+  explicit `--jobs` is unchanged. Two-seed one-day CSV matches the baseline with `--jobs 1`; explicit override
+  smoke passed. No simulator or golden changes.
 - [x] `step` is split into per-LPAR stages (`lparDemand`, `dispatchLpar`, `softCap`, `prsm`, `adjustPolicies`,
   `stepCapping`, `stepCost`, `stepRmf`) sharing a `TickCtx`; profile is flat. Lesson: build slices with a spread, not a
   field-by-field literal (hidden-class split made it ~40% slower)
