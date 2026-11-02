@@ -173,7 +173,7 @@ function reportingMetadata(out: ScpAcc, acc: ScpAcc, t: ScpTick): ScpAcc {
   const d = ACC_DECAY;
   if (t.workManager || acc.workManager) {
     const wm = mergeWorkManager(acc.workManager, t.workManager, d);
-    if (t.workManager || wm.active + wm.ready + wm.idle + wm.waitingIo + wm.waitingOther > 1e-9) out.workManager = wm;
+    if (t.workManager || wm.active + wm.ready + wm.idle + wm.waitingIo + wm.waitingLock + wm.waitingProd + wm.waitingMisc > 1e-9) out.workManager = wm;
   }
   if (t.resourceSamples !== undefined) {
     const retained = acc.resourceSamples === true && d * (acc.using + acc.delay + acc.delayOther + acc.cpuEngines) > 1e-9;

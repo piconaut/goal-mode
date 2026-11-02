@@ -90,7 +90,7 @@ const HB_CARDS: EventDef[] = [
     durationHours: 12,
     begin: [mod('cpu', 'RETAIL', 1.5)],
     end: [mod('cpu', 'RETAIL', 1)],
-    clue: 'RETAIL service per transaction ×1.5 (APPL% up, END/S flat) on all four PRD images. Db2 accounting by package would point at RB01.',
+    clue: 'WLMGL: STCHI (the CICS regions\' class) APPL% up with RETAIL END/S flat on all four PRD images; CICS monitoring shows CPU per RB01 transaction ×1.5, and Db2 accounting by package would point at RB01.',
     perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: "EXPLAIN diff after last night's REBIND: package RB01 changed access path (index probe → tablespace scan). Expect more CPU per retail transaction." },
   }, { RBANK: 'RETAIL' }),
   adapt('BOT_ATTACK', {
@@ -102,7 +102,7 @@ const HB_CARDS: EventDef[] = [
     clue: 'Mobile END/S ×2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); DDFPRD APPL% up in step. Fixes: protect Cards and Markets and ride it out, or shed with MAXDBAT.',
   }),
   adapt('ENCRYPTION_MANDATE', {
-    clue: 'WLMGL: CPU per transaction up ~6% on cards, retail and payments from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
+    clue: 'CPU per transaction up ~6% on cards, retail and payments from one morning (WLMGL: STCHI APPL% up against flat CICS END/S; CICS monitoring per transaction), END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
   }, { CARDAUTH: 'CARDS', TELLER: 'RETAIL', PAYMQ: 'PAYMENTS' }),
   adapt('ZIIP_LOSS', {
     fix: null,

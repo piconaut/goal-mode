@@ -43,13 +43,13 @@ const AGENCY_CARDS: EventDef[] = [
     id: 'REFUND_RETRY_STORM',
     name: 'Refund status retry storm',
     fix: 'REFSTAT_BACKOFF',
-    clue: 'Refund-status END/S ×2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); CICS RFST transaction rate and APPL% up in step. Fixes: have the status page say "check back tomorrow" and back off retries (Refunds trust), or protect refund status and ride it out.',
+    clue: 'Refund-status END/S ×2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); CICS RFST transaction rate up, with STCHI (the CICS regions\' class) APPL% in step. Fixes: have the status page say "check back tomorrow" and back off retries (Refunds trust), or protect refund status and ride it out.',
   }, { MOBILE: 'REFSTAT' }),
   adapt('ENCRYPTION_MANDATE', {
     id: 'TAXDATA_ENCRYPTION',
     name: 'Taxpayer data encryption mandate',
     forewarning: 'Regulator: "All taxpayer data sets must be encrypted at rest from today. We will check the key labels."',
-    clue: 'WLMGL: CPU per transaction up ~6% on account, refund status and employer filing from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
+    clue: 'CPU per transaction up ~6% on account, refund status and employer filing from one morning (WLMGL: APPL% per END/S; for CICS work read STCHI APPL% against CICS END/S), END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
   }, { CARDAUTH: 'ACCOUNT', TELLER: 'REFSTAT', PAYMQ: 'EMPLOYER' }),
   adapt('ZIIP_LOSS', {
     fix: 'NATIVE_SQL_PROCS_REV',

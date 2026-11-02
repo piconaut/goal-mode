@@ -122,11 +122,16 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
 
 function workManagerLines(r: WlmRecord): string[] {
   const w = r.workManager!;
-  const total = w.active + w.ready + w.idle + w.waitingIo + w.waitingOther;
-  const pct = (n: number) => total > 0 ? (100 * n / total).toFixed(1) : '-';
+  const total = w.active + w.ready + w.idle + w.waitingIo + w.waitingLock + w.waitingProd + w.waitingMisc;
+  const pct = (n: number) => pad(total > 0 ? ((100 * n) / total).toFixed(1) : '-', 7);
+  // RMF Report Analysis p.536–537 column order; CONV, DIST, LOCAL, SYSPL, REMOT and TIMER are not modelled.
+  const cols = ['ACTIVE*', 'READY', 'IDLE', 'LOCK', 'I/O', 'CONV', 'PROD', 'MISC'];
+  const vals = [pct(w.active), pct(w.ready), pad('-', 7), pct(w.waitingLock), pct(w.waitingIo), pad('-', 7), pct(w.waitingProd), pct(w.waitingMisc)];
   return [
     'WORK MANAGER STATES: STATE SAMPLES BREAKDOWN (%) (ESTIMATED)',
-    `CICS EXE  ACTIVE* ${pct(w.active)}  READY ${pct(w.ready)}  IDLE -  WAITING FOR I/O ${pct(w.waitingIo)}  MISC ${pct(w.waitingOther)}`,
+    `${''.padEnd(10)}${''.padEnd(24)}${'-'.repeat(14)}WAITING FOR${'-'.repeat(15)}`,
+    `${padR('SUB  TYPE', 10)}${cols.map((c) => pad(c, 7)).join(' ')}`,
+    `${padR('CICS EXE', 10)}${vals.join(' ')}`,
     'CICS BTE (BEGIN-TO-END/TOR): NOT MODELLED; EXE RESPONSE-TIME COVERAGE NOT MODELLED',
     '* ACTIVE COMBINES SUB/APPL; IDLE TASK POPULATIONS NOT MODELLED. READY ESTIMATES CICS QR DISPATCH WAITS.',
     `RESOURCE USAGE AND USING/DELAY SAMPLES: REGION CLASSES ${w.regionKeys.join(', ')}`,

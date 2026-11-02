@@ -162,7 +162,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     forewarning: 'Change board: "Db2 package REBINDs for the retail app ran overnight."',
     announcement: null,
     perkTip: { perk: 'DB2_WHISPERER', from: 'DBA team', text: 'EXPLAIN diff after last night\'s REBIND: package RB01 changed access path (index probe → tablespace scan). Expect more CPU per retail transaction.' },
-    clue: 'ONLHI service per transaction ×3 (APPL% up, END/S flat). Db2 accounting by package would point at RB01.',
+    clue: 'WLMGL: STCHI (the CICS regions\' class) APPL% up with ONLHI END/S flat, and ONLHI\'s response time breakdown shifts to ACTIVE; CICS monitoring shows CPU per RB01 transaction ×3, and Db2 accounting by package would point at RB01.',
   },
   {
     id: 'BOT_ATTACK',
@@ -220,7 +220,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'CANCEL_XLOG',
     forewarning: null,
     announcement: null,
-    clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay. Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
+    clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay (CICS classes: in the CICS regions\' class, and READY/ACTIVE in their response time breakdown). Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
   },
   {
     // Data set encryption (DFSMS + ICSF): every read and write of an encrypted data set goes through CPACF, so the
@@ -241,7 +241,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'SCOPE_ENCRYPTION',
     forewarning: 'Regulator: "All customer data sets must be encrypted at rest from today. We will check the key labels."',
     announcement: null,
-    clue: 'WLMGL: CPU per transaction up ~6% on card auth, teller and payments from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
+    clue: 'CPU per transaction up ~6% on card auth, teller and payments from one morning (WLMGL: STCHI APPL% up against flat CICS END/S; CICS monitoring per transaction), END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
   },
   {
     // Software vendors raise MLC list prices with notice; the new price applies to the whole bill of the month it

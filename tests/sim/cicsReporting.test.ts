@@ -55,11 +55,11 @@ describe('CICS reporting accounting', () => {
     expect(plex.workManager!.regionKeys).toEqual(['REG1#1', 'REG2#1']);
   });
 
-  it('REGION mode suppresses service-class RT while state estimates and transaction report records remain', () => {
+  it('REGION mode leaves response times and the state breakdown to report classes (WLM Planning p.123)', () => {
     const i = input();
     const r = evaluateLpar({ ...i, slices: i.slices.filter((s) => s.key !== 'DDF'), regions: { ...i.regions!, mode: 'REGION', servers: [], rtTracked: false } });
     expect(r.reportedScps!.find((t) => t.scKey === 'ONL#1')!.completions).toBe(0);
-    expect(r.reportedScps!.find((t) => t.scKey === 'ONL#1')!.workManager!.active).toBeGreaterThan(0);
+    expect(r.reportedScps!.find((t) => t.scKey === 'ONL#1')!.workManager).toBeUndefined();
     expect(r.rcs!.find((t) => t.scKey === 'CICSR')!.workManager!.active).toBeGreaterThan(0);
     expect(r.reportedScps!.find((t) => t.scKey === 'REG1#1')!.usingCpu).toBeGreaterThan(0);
   });
@@ -129,7 +129,7 @@ it('expires old subsystem data after CICS leaves a mixed class, while retaining 
   expect(a.workManager).toBeUndefined();
   expect(a.resourceSamples).toBe(true);
   expect(a.using).toBeGreaterThan(0);
-  const current = { ...mixed, workManager: { active: 0, ready: 0, idle: 0, waitingIo: 0, waitingOther: 0, regionKeys: ['REG1#1'] } };
+  const current = { ...mixed, workManager: { active: 0, ready: 0, idle: 0, waitingIo: 0, waitingLock: 0, waitingProd: 0, waitingMisc: 0, regionKeys: ['REG1#1'] } };
   expect(decayInto(emptyAcc(), current).workManager).toEqual(current.workManager);
 });
 
@@ -143,7 +143,7 @@ it('reuses unrelated period ticks instead of cloning their resource accounting',
 
 it('shares canonical region keys and merges changed region sets in sorted order', async () => {
   const { mergeWorkManager } = await import('../../src/sim/wlm/reporting');
-  const a = { active: 1, ready: 0, idle: 0, waitingIo: 0, waitingOther: 0, regionKeys: ['A#1', 'Z#1'] };
+  const a = { active: 1, ready: 0, idle: 0, waitingIo: 0, waitingLock: 0, waitingProd: 0, waitingMisc: 0, regionKeys: ['A#1', 'Z#1'] };
   expect(mergeWorkManager(a, a).regionKeys).toBe(a.regionKeys);
   expect(mergeWorkManager(a, { ...a, regionKeys: [...a.regionKeys] }).regionKeys).toBe(a.regionKeys);
   expect(mergeWorkManager(a, { ...a, regionKeys: ['B#1', 'Z#1'] }).regionKeys).toEqual(['A#1', 'B#1', 'Z#1']);

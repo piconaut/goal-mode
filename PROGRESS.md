@@ -101,6 +101,10 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   ledger; PR-specific evidence belongs in the PR discussion.
   APPROX: equal AOR allocation; combined ACTIVE SUB/APPL; READY from QR dispatch waits. TOR/BTE,
   IDLE, EXE coverage and optional transaction processor accounting are not modeled. Management unchanged.
+  Merged with the alternative #148 after a side-by-side review (2026-11-02): WAITING FOR LOCK/PROD/MISC split
+  (Db2 locks, Db2/MQ/server waits and CF, rest) in the RMF column layout instead of one MISC bucket; all-REGION
+  mode leaves the breakdown to report classes; CICS event clues (access-path regression, retail, refund status,
+  the SMF-audit CPU/txn clues, XLOG) read CPU from STCHI or CICS monitoring, with a content test guarding them.
   Validation: typecheck + 533 tests / 60 files pass; production build passes; reporting goldens regenerated
   and verified without update mode. Original PR-head CI sweep passed: donothing day 15 / 0 wins,
   textbook day 27 / 0, expert day 40 / 4 of 5. Performance follow-up reruns CI; PR #147 stays open.

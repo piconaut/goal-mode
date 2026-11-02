@@ -9,7 +9,12 @@ export interface WorkManagerSamples {
   ready: number;
   idle: number;
   waitingIo: number;
-  waitingOther: number;
+  /** WAITING FOR LOCK: Db2 lock waits. */
+  waitingLock: number;
+  /** WAITING FOR PROD (another product): Db2, MQ and other server waits, Db2's CF requests. */
+  waitingProd: number;
+  /** WAITING FOR MISC: everything else (base latency, paging). */
+  waitingMisc: number;
   /** Region service-class periods that own the resource samples. */
   regionKeys: string[];
 }
@@ -31,12 +36,14 @@ export function mergeWorkManager(a?: WorkManagerSamples, b?: WorkManagerSamples,
     ready: (a?.ready ?? 0) * decay + (b?.ready ?? 0),
     idle: (a?.idle ?? 0) * decay + (b?.idle ?? 0),
     waitingIo: (a?.waitingIo ?? 0) * decay + (b?.waitingIo ?? 0),
-    waitingOther: (a?.waitingOther ?? 0) * decay + (b?.waitingOther ?? 0),
+    waitingLock: (a?.waitingLock ?? 0) * decay + (b?.waitingLock ?? 0),
+    waitingProd: (a?.waitingProd ?? 0) * decay + (b?.waitingProd ?? 0),
+    waitingMisc: (a?.waitingMisc ?? 0) * decay + (b?.waitingMisc ?? 0),
     regionKeys: a && b ? mergeRegionKeys(a.regionKeys, b.regionKeys) : (a ?? b)?.regionKeys ?? [],
   };
 }
 
-/** Immutable topology, cached by system/policy in core/step; never persisted in SimState. */
+/** Immutable per-tick topology; never persisted in SimState. */
 export interface CicsReportPlan {
   transactionKeys: ReadonlySet<string>;
   serviceClasses: ReadonlySet<string>;
@@ -91,13 +98,17 @@ function addResources(t: ScpTick | undefined, r: SliceResult, share = 1): void {
   t.delayCap += r.delayCap * share;
 }
 
-function addWorkManager(t: ScpTick, active: number, ready: number, waitingIo: number, waitingOther: number, regionKeys: string[]): void {
-  if (!t.workManager) t.workManager = { active, ready, idle: 0, waitingIo, waitingOther, regionKeys };
+type WmStates = Omit<WorkManagerSamples, 'idle' | 'regionKeys'>;
+
+function addWorkManager(t: ScpTick, w: WmStates, regionKeys: string[]): void {
+  if (!t.workManager) t.workManager = { ...w, idle: 0, regionKeys };
   else {
-    t.workManager.active += active;
-    t.workManager.ready += ready;
-    t.workManager.waitingIo += waitingIo;
-    t.workManager.waitingOther += waitingOther;
+    t.workManager.active += w.active;
+    t.workManager.ready += w.ready;
+    t.workManager.waitingIo += w.waitingIo;
+    t.workManager.waitingLock += w.waitingLock;
+    t.workManager.waitingProd += w.waitingProd;
+    t.workManager.waitingMisc += w.waitingMisc;
   }
 }
 
@@ -138,10 +149,17 @@ export function projectCicsReports(input: LparEvalInput, results: readonly Slice
     const workPerTxn = s.cpuSecPerTxn + s.ziipSecPerTxn;
     const backlogTasks = workPerTxn > 0 ? r.newBacklog / workPerTxn : 0;
     const active = Math.max(s.rate * cpuPhaseSec, r.usingCpu + r.usingZiip, backlogTasks);
-    const waitingOther = Math.max(0, s.rate * r.rtMeanSec - active - ready - waitingIo);
+    // RMF WAITING FOR states (Report Analysis p.536): Db2 lock waits are LOCK; waits for Db2, MQ or a slow server
+    // and Db2's CF requests are PROD; the rest of the response time is MISC. APPROX: the mapping from the sim's
+    // response-time parts.
+    const waitingLock = s.rate * (parts?.extra.lock ?? 0);
+    const waitingProd = s.rate * ((parts?.dependency ?? 0) + (parts?.extra.cf ?? 0));
+    const waitingMisc = Math.max(0, s.rate * r.rtMeanSec - active - ready - waitingIo - waitingLock - waitingProd);
+    const w = { active, ready, waitingIo, waitingLock, waitingProd, waitingMisc };
     // These aggregates belong exclusively to this new tick; older frames are never mutated.
-    addWorkManager(t!, active, ready, waitingIo, waitingOther, plan.regionKeys);
-    if (rc) addWorkManager(rc, active, ready, waitingIo, waitingOther, plan.regionKeys);
+    // REGION mode: the response times reach report classes only (WLM Planning p.123), and so does the breakdown.
+    if (reg.rtTracked !== false) addWorkManager(t!, w, plan.regionKeys);
+    if (rc) addWorkManager(rc, w, plan.regionKeys);
     // APPROX: equal per-AOR accounting; preserve the slice/AOR summation order.
     if (plan.aors.length) for (const a of plan.aors) {
       addResources(byKey[a.scKey], r, plan.share);

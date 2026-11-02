@@ -44,11 +44,13 @@ describe('WLMGL layout', () => {
 
 it('shows CICS work manager states and region sample owners without invented transaction resource percentages', async () => {
   const { renderWlmDetail } = await import('../../src/sim/measure/reports');
-  const wm = { active: 4, ready: 2, idle: 0, waitingIo: 1, waitingOther: 0.5, regionKeys: ['STCHI#1'] };
+  const wm = { active: 4, ready: 2, idle: 0, waitingIo: 1, waitingLock: 0.25, waitingProd: 1.5, waitingMisc: 0.5, regionKeys: ['STCHI#1'] };
   const iv = { startTick: 0, endTick: 180, intervalSec: 1800, policy: 'P', wlm: [rec({ resourceSamples: false, workManager: wm })] } as unknown as RmfInterval;
   const detail = renderWlmDetail(iv, 'ONLRETL#1');
   expect(detail).toContain('WORK MANAGER STATES');
-  expect(detail).toContain('READY 26.7');
+  // Total 9.25: ACTIVE 43.2, READY 21.6, IDLE -, LOCK 2.7, I/O 10.8, CONV -, PROD 16.2, MISC 5.4.
+  expect(detail).toMatch(/CICS EXE +43\.2 +21\.6 +- +2\.7 +10\.8 +- +16\.2 +5\.4/);
+  expect(detail).toMatch(/ACTIVE\* +READY +IDLE +LOCK +I\/O +CONV +PROD +MISC/);
   expect(detail).toContain('CICS EXE');
   expect(detail).toContain('BTE (BEGIN-TO-END/TOR): NOT MODELLED');
   expect(detail).not.toContain('PHASE BTE 0');
