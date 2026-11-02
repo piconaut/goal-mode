@@ -1,104 +1,48 @@
-// Run lifecycle (SPEC §2): BRIEFING → LIVE (06:00→06:00) → REVIEW (draft) → next day.
-// Pure functions over plain data; the game RNG is separate from the sim's.
-
-import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
-import { grantProjectHours } from './projects';
-import { AUDIT, type EventDef, type ScriptedBeat } from '../content/events/midwest-events';
-import { applyCommand, applyCommands, type Command } from '../sim/core/commands';
-import { clockAt } from '../sim/core/clock';
-import { initState } from '../sim/core/init';
 import { ALERTS } from '../content/alerts';
-import { PLANNER } from '../content/planner';
-import { aiopsHypotheses, type Hypothesis } from './aiops';
-import { emptyAlerts, evaluateAlerts } from './alerts';
-import { emptyAutomation, runAutomation } from './automation';
-import { emptyPolicyBook, scheduledActivation } from './policies';
+import type { DifficultyId } from '../content/difficulty';
+import { DRAFT_OPTIONS, DRAFT_TUNING } from '../content/draft';
+import { AUDIT } from '../content/events/midwest-events';
+import { HINT_SENDER, STRAIN } from '../content/hints';
 import { INSIGHT, MON3_CHARTS } from '../content/tools';
-import { expireToolTrials, measurementCommands, trialTool } from './tools';
-import { EVIDENCE } from '../content/evidence';
-import { judgeEvidence } from './evidence';
-import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
+import { applyCommands, type Command } from '../sim/core/commands';
+import { initState } from '../sim/core/init';
 import { Rng, streamRng } from '../sim/core/rng';
 import type { Scenario } from '../sim/core/scenario';
-import type { ClassificationRule, ServiceDefinition } from '../sim/wlm/types';
-import type { DifficultyId } from '../content/difficulty';
-import { difficultyOf, scaleEventCommands, scenarioFor, storyBeatsFor } from './difficulty';
-import { hintLevelFor, morningHints, type StrainedClass } from './hints';
-import { HINT_SENDER, STORY_BEAT_HINTS, STRAIN, WLM_DISAGREE_HINTS } from '../content/hints';
 import { step } from '../sim/core/step';
-import { classify } from '../sim/wlm/classify';
-import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
-import type { RmfInterval } from '../sim/measure/rmf';
-import { tfpAtDayEnd } from './tfp';
-import { deliverInquiries } from './inquiries';
-import { allWorkloads } from './workloads';
 import type { NightSummary } from '../sim/subsys/batch';
-import type { WorkloadDef } from '../sim/workload/types';
-import { failRiskFor, FIXES, opexBudgetFor, hardwareItem, previewChange } from './catalog';
-import { addHour, BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, rankedMechanismGroups, perTxnParts, scoreRca, triggerOf, updateBaseline } from './sla';
+import { classify } from '../sim/wlm/classify';
+import { emptyAlerts, evaluateAlerts } from './alerts';
+import { emptyAutomation, runAutomation } from './automation';
+import { opexBudgetFor } from './catalog';
+import { difficultyOf, scaleEventCommands, scenarioFor } from './difficulty';
+import { hintLevelFor, morningHints } from './hints';
+import { deliverInquiries } from './inquiries';
+import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
+import { emptyPolicyBook, scheduledActivation } from './policies';
+import { grantProjectHours } from './projects';
+import { failRisk, requestChange } from './run/changes';
+import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
+import { drawEvents, endEventByFix, storyFor } from './run/events';
+import { accumulateHour, closeHour, newHour } from './run/hourly';
+import type { GameContent } from './run/shared';
+import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
+import { BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, importanceRank } from './sla';
+import { tfpAtDayEnd } from './tfp';
+import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
-  FACETS,
-  facetsOf,
-  type ActiveEvent,
-  type DayReport,
-  type Facet,
-  type CapacityDay,
-  type HourAcc,
-  type Incident,
-  type Mechanism,
-  type PlannedChange,
-  type RunState,
-  type Trigger,
+FACETS,
+facetsOf,
+type DayReport,
+type Facet,
+type Incident,
+type PlannedChange,
+type RunState
 } from './types';
-import { idText } from './ids';
+import { allWorkloads } from './workloads';
 
-export interface GameContent {
-  events: EventDef[];
-  story: ScriptedBeat[];
-  opexBudgetMonthly: number;
-  capexQuarter: number;
-  maxDays: number;
-  /** Stakeholder facets with their SLA-breach trust weights; absent = Midwest's (FACET_WEIGHT). */
-  facets?: { id: Facet; weight: number }[];
-  /** Facet that also loses trust on a missed batch deadline (default Retail). */
-  batchMissFacet?: Facet;
-  /** Planted flaws already fixed at the start on a difficulty (SPEC §11.2, §13.3). */
-  startingFixes?: Partial<Record<DifficultyId, { flaw: string; label: string; commands: Command[] }[]>>;
-  /** Analytics tools already installed on day 1 (SPEC §13.5); their measurement overhead applies from the start. */
-  startTools?: string[];
-}
-
-const BASE_HOURS = 8;
-const FATIGUE_PER_OVERTIME_HOUR = 6;
-const FACET_WEIGHT: Record<string, number> = { Cards: 1.4, Retail: 1.2, Digital: 1, Payments: 1, Finance: 1, Regulator: 1 };
-
-const facetOf = (w: WorkloadDef): Facet | null => (w.stakeholder === 'Internal' ? null : w.stakeholder);
-
-export const overallTrust = (run: RunState) => {
-  const fs = facetsOf(run);
-  return fs.reduce((a, f) => a + run.trust[f]!, 0) / fs.length;
-};
-
-/** Applies f to every facet's trust and clamps. */
-const mapTrust = (run: RunState, f: (t: number) => number): Record<Facet, number> =>
-  Object.fromEntries(facetsOf(run).map((k) => [k, clampTrust(f(run.trust[k]!))]));
-
-const clampTrust = (x: number) => Math.max(0, Math.min(100, x));
-
-
-/** `day` dates the message for a later morning's briefing (default: today). */
-function msg(run: RunState, from: string, subject: string, body: string, day = run.day): RunState {
-  return { ...run, inbox: [...run.inbox, { day, from, subject, body }] };
-}
-
-function logLine(run: RunState, text: string): RunState {
-  return { ...run, log: [...run.log, text].slice(-300) };
-}
-
-/** Seconds after the played day's 06:00 start for a wall-clock hour (24+ = next morning). */
-const secAfterStart = (hour: number) => ((hour - 6 + 48) % 24) * 3600;
-
+export type { GameContent } from './run/shared';
 export { allWorkloads } from './workloads';
 
 export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL', daily?: string): RunState {
@@ -165,253 +109,6 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
   return storyFor(run, content, 0);
 }
 
-/** Pick tomorrow's (or today's) events; forewarn when the card says so. */
-export function drawEvents(run: RunState, content: GameContent, day: number): RunState {
-  const picked = ((rng: Rng) => {
-    const lambda = (0.35 + 0.05 * day) * difficultyOf(run.difficulty).eventRateMult;
-    const n = Math.floor(lambda) + (rng.chance(lambda - Math.floor(lambda)) ? 1 : 0);
-    const dayStartTick = day * TICKS_PER_DAY;
-    const pool = content.events.filter(
-      (e) =>
-        day >= e.minDay &&
-        !(e.oncePerRun && run.events.some((x) => x.defId === e.id)) &&
-        // no card two days running: back-to-back repeats (e.g. two abends) read as noise, not a new problem
-        !run.events.some((x) => x.defId === e.id && x.startTick >= dayStartTick - TICKS_PER_DAY) &&
-        // an hours card must not stack on itself while still running
-        !(e.hoursDelta && run.events.some((x) => x.defId === e.id && (x.endTick === null || x.endTick > dayStartTick))),
-    );
-    const out: { def: EventDef; hour: number }[] = [];
-    for (let i = 0; i < n && pool.length > 0; i++) {
-      const def = rng.pickWeighted(pool, (e) => e.weight * (e.category === 'WORKLOAD' ? 1 : 1 + day / 20));
-      if (!def) break;
-      pool.splice(pool.indexOf(def), 1);
-      out.push({ def, hour: rng.range(def.startHour[0], def.startHour[1]) });
-    }
-    return out;
-  })(streamRng(run.seed, 'events', day));
-  let r = run;
-  for (const { def, hour } of picked) {
-    const startTick = day * TICKS_PER_DAY + Math.round(secAfterStart(hour) / TICK_SEC);
-    const endTick = def.durationHours === null ? null : startTick + Math.max(1, Math.round((def.durationHours * 3600) / TICK_SEC));
-    const ev: ActiveEvent = {
-      uid: `${def.id}@${day}`,
-      defId: def.id,
-      name: def.name,
-      startTick,
-      endTick,
-      trigger: def.trigger,
-      affects: def.affects,
-      ...(def.mechanisms ? { mechanisms: def.mechanisms } : {}),
-      ...(def.failureMechanism ? { failureMechanism: def.failureMechanism } : {}),
-      ...(def.blocksHardware ? { blocksHardware: def.blocksHardware } : {}),
-      endCommands: def.end,
-      started: false,
-      ended: false,
-    };
-    r = { ...r, events: [...r.events, ev] };
-    if (def.hoursDelta) {
-      // Same bookkeeping as the CONTRACTOR perk: endDay recomputes hoursLeft from baseHours + live entries each morning.
-      const days = Math.max(1, Math.ceil((def.durationHours ?? 24) / 24));
-      r = { ...r, bonusHours: [...r.bonusHours, { hours: def.hoursDelta, untilDay: day + days }], hoursLeft: Math.max(0, r.hoursLeft + def.hoursDelta) };
-    }
-    if (def.forewarning) r = msg(r, 'Inbox', `For day ${day + 1}`, def.forewarning, day);
-  }
-  return r;
-}
-
-function storyFor(run: RunState, content: GameContent, day: number): RunState {
-  let r = run;
-  for (const b of storyBeatsFor(content.story, run.difficulty, day)) {
-    r = msg(r, b.from, b.title, b.body);
-    if (b.constraint) {
-      r = { ...r, constraints: [...r.constraints, b.constraint] };
-      if (b.constraint === 'DEADLINE_0500') r = { ...r, batchDeadlineSec: 23 * 3600 };
-    }
-    if (b.commands) r = { ...r, pendingCommands: [...r.pendingCommands, ...b.commands] };
-  }
-  if (difficultyOf(run.difficulty).hints !== 'NONE') {
-    for (const [id, h] of Object.entries(STORY_BEAT_HINTS)) {
-      if (storyBeatsFor(content.story, run.difficulty, day + h.daysBefore).some((b) => b.id === id)) r = msg(r, h.from, h.subject, h.body);
-    }
-  }
-  return r;
-}
-
-export interface ChangeRequest {
-  label: string;
-  commands?: Command[];
-  hardwareId?: string;
-  /** Target CPC of a per-CPC hardware item (default the first). */
-  cpcId?: string;
-  fixId?: string;
-  /** Pre-approved automation: no engineer-hours, no emergency trust cost, a misfire chance instead. */
-  automated?: { misfireFrac: number };
-}
-
-export interface ChangeOutcome {
-  run: RunState;
-  ok: boolean;
-  message: string;
-  /** The policy a cancelled activation would have installed, so the caller can keep it as pending edits. */
-  restoredPolicy?: ServiceDefinition;
-}
-
-function failRisk(run: RunState): number {
-  return failRiskFor(run.fatigue, run.perks);
-}
-
-/** Context for previewChange from the current run. */
-/** Fixes the scenario's event cards call for: the Change Desk offers and accepts only these. */
-export const fixIdsOf = (content: GameContent): string[] => [...new Set(content.events.flatMap((e) => (e.fix ? [e.fix] : [])))].sort();
-
-export function previewContext(run: RunState, content?: GameContent) {
-  return {
-    phase: run.phase,
-    perks: run.perks,
-    fatigue: run.fatigue,
-    hoursLeft: run.hoursLeft,
-    capexRemaining: run.capexRemaining,
-    incidentOpen: run.incidents.some((i) => i.endTick === null),
-    constraints: run.constraints,
-    blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
-    cpcs: run.sim.config.cpcs.map((c) => ({ id: c.id, capacitySetting: c.capacitySetting, generation: c.generation })),
-    ...(content ? { fixIds: fixIdsOf(content) } : {}),
-  };
-}
-
-/** Plan (BRIEFING) or make an emergency change (LIVE). */
-export function requestChange(run: RunState, content: GameContent, req: ChangeRequest): ChangeOutcome {
-  const live = run.phase === 'LIVE';
-  const preview = previewChange(previewContext(run, content), req);
-  if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
-  const refused = !req.hardwareId && !req.fixId ? dryRunRefusal(run, req.commands ?? []) : null;
-  if (refused) return { run, ok: false, message: refused };
-  const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
-  const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
-  const commands = hw ? hw.commands(run.sim, req.cpcId) : (req.commands ?? []);
-  const hours = req.automated ? 0 : preview.hours;
-  const { capex } = preview;
-
-  let r = spendHours(run, hours);
-  r = { ...r, capexRemaining: r.capexRemaining - capex };
-  const change: PlannedChange = {
-    id: r.nextId,
-    label: req.label,
-    commands,
-    hours,
-    capex,
-    opexPerDay: hw?.opexPerDay ?? 0,
-    activateDay: run.day + preview.leadDays,
-    plannedDay: run.day,
-    emergency: live,
-    status: 'PLANNED',
-    revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
-    revertCommands: hw?.durationDays ? hw.revert(run.sim, req.cpcId) : [],
-    endsEvent: fix?.id ?? null,
-  };
-  r = { ...r, nextId: r.nextId + 1 };
-
-  if (live) {
-    // Emergency change board: costs trust, more when no incident justifies it.
-    const trustCost = req.automated ? 0 : preview.trustCostEach;
-    r = { ...r, trust: mapTrust(r, (t) => t - trustCost) };
-    if (fix?.trustCost && fix.trustCost.facet in r.trust) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet]! - fix.trustCost.amount) } };
-    const risk = req.automated ? req.automated.misfireFrac : failRisk(r);
-    const attempt = r.changes.filter((x) => x.plannedDay === r.day && x.label === req.label).length;
-    const failed = streamRng(r.seed, 'live-change', r.day, req.label, attempt).chance(risk);
-    if (failed && !fix) {
-      r = { ...r, changes: [...r.changes, { ...change, status: 'FAILED' }] };
-      return {
-        run: logLine(r, `${req.automated ? 'Automation MISFIRED' : 'Emergency change FAILED'}: ${req.label}`),
-        ok: false,
-        message: `${req.automated ? 'Automation misfired' : 'Change failed during implementation'} (risk ${(100 * risk).toFixed(0)}%): ${req.label}`,
-      };
-    }
-    if (change.activateDay === r.day) {
-      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
-    } else r = { ...r, changes: [...r.changes, change] };
-    if (fix) r = endEventByFix(r, content, fix.id);
-    return { run: logLine(r, `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
-  }
-  return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned ${idText('change', change.id)} for day ${change.activateDay + 1}: ${req.label}` };
-}
-
-/** Why the config would reject these commands (unknown region, LPAR, pool...), tried on today's config with
- * the changes already planned; null when they apply. Catches a mistyped target before it costs hours. */
-export function dryRunRefusal(run: RunState, commands: readonly Command[]): string | null {
-  let s = run.sim;
-  for (const c of run.changes) if (c.status === 'PLANNED') for (const cmd of c.commands) s = applyCommand(s, cmd).state;
-  for (const cmd of commands) {
-    const res = applyCommand(s, cmd);
-    if (!res.ok) return `${res.message}${targetHint(s, cmd)}`;
-    s = res.state;
-  }
-  return null;
-}
-
-function targetHint(s: RunState['sim'], cmd: Command): string {
-  const list = (what: string, names: readonly string[]) => `; ${what}: ${names.join(' ')}`;
-  switch (cmd.kind) {
-    case 'SET_CICS': return list('CICS regions', s.config.cics.map((r) => r.name));
-    case 'SET_DB2': return list('Db2 subsystems', s.config.db2.map((d) => d.ssid));
-    case 'SET_WEIGHT': case 'SET_LOGICAL': case 'SET_DEFINED_CAPACITY': case 'SET_ABSOLUTE_CAP': case 'SET_IEAOPT': case 'SET_LPAR_MEMORY':
-      return list('LPARs', s.config.lpars.map((l) => l.id));
-    default: return '';
-  }
-}
-
-/** End every active event whose card names this fix. */
-/** Cancel a change that has not taken effect yet. Capex is refunded; hours only on the day they were spent. */
-export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
-  const c = run.changes.find((x) => x.id === changeId);
-  if (!c) return { run, ok: false, message: `No planned change ${idText('change', changeId)} (already cancelled or applied?)` };
-  if (c.status !== 'PLANNED') return { run, ok: false, message: `Already ${c.status.toLowerCase()}` };
-  if (c.activateDay === run.day && run.phase !== 'BRIEFING') return { run, ok: false, message: 'It activates today and the day has started' };
-  const refundHours = c.plannedDay === run.day ? c.hours : 0;
-  const activation = c.commands.find((x) => x.kind === 'ACTIVATE_POLICY');
-  return {
-    ...(activation?.kind === 'ACTIVATE_POLICY' ? { restoredPolicy: activation.definition } : {}),
-    run: logLine(
-      { ...run, changes: run.changes.filter((x) => x.id !== changeId), capexRemaining: run.capexRemaining + c.capex, hoursLeft: run.hoursLeft + refundHours },
-      `Change cancelled: ${c.label}`,
-    ),
-    ok: true,
-    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}`,
-  };
-}
-
-function endEventByFix(run: RunState, content: GameContent, fixId: string): RunState {
-  const tick = run.sim.tick;
-  let r = run;
-  for (const e of r.events) {
-    const def = content.events.find((d) => d.id === e.defId);
-    if (e.started && !e.ended && def?.fix === fixId) {
-      r = {
-        ...r,
-        events: r.events.map((x) => (x.uid === e.uid ? { ...x, ended: true, endTick: tick } : x)),
-        pendingCommands: [...r.pendingCommands, ...e.endCommands],
-      };
-    }
-  }
-  return r;
-}
-
-function spendHours(run: RunState, hours: number): RunState {
-  const left = run.hoursLeft - hours;
-  const overtime = Math.max(0, -left) - Math.max(0, -run.hoursLeft);
-  return { ...run, hoursLeft: left, fatigue: Math.min(100, run.fatigue + overtime * FATIGUE_PER_OVERTIME_HOUR) };
-}
-
-/** The policy of an activation that failed at this morning's start, so its edits can be pending again. */
-export function failedPolicyToday(run: RunState): ServiceDefinition | null {
-  for (const c of [...run.changes].reverse()) {
-    if (c.status !== 'FAILED' || c.activateDay !== run.day) continue;
-    const a = c.commands.find((x) => x.kind === 'ACTIVATE_POLICY');
-    if (a?.kind === 'ACTIVATE_POLICY') return a.definition;
-  }
-  return null;
-}
-
 /** BRIEFING → LIVE: activate planned changes due today (with failure risk). */
 export function startDay(run: RunState, content: GameContent): RunState {
   if (run.phase !== 'BRIEFING') return run;
@@ -448,20 +145,7 @@ export function startDay(run: RunState, content: GameContent): RunState {
   return r;
 }
 
-const newHour = (tick: number): HourAcc => ({
-  hourIndex: Math.floor(tick / TICKS_PER_HOUR),
-  ticks: 0,
-  workloads: {},
-  maxCappedFrac: 0,
-  cappedByLpar: {},
-  cpcBusySum: 0,
-  cpcBusyById: {},
-  lparBusyById: {},
-  cpByImportance: {},
-  lockIndexSum: 0,
-});
-
-const toolOn = (r: RunState, id: string) => r.tools.includes(id) && !r.toolsOff.includes(id);
+export const toolOn = (r: RunState, id: string) => r.tools.includes(id) && !r.toolsOff.includes(id);
 const chartsActive = (r: RunState) => toolOn(r, 'MON3_CHARTS') && toolOn(r, 'RMF_MON3');
 
 /** Advance the live day by up to `ticks` ticks. Ends the day automatically at 06:00. */
@@ -527,238 +211,6 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   }
   return r;
 }
-
-function accumulateHour(run: RunState): RunState {
-  const h = run.hour ?? newHour(run.sim.tick - 1);
-  const workloads = { ...h.workloads };
-  for (const w of run.sim.last.workloads) {
-    const a = workloads[w.id] ?? { completions: 0, withinSla: 0, failed: 0, rtSumSec: 0, parts: {} };
-    const parts = { ...a.parts };
-    for (const [k, v] of Object.entries(w.parts)) parts[k] = (parts[k] ?? 0) + v;
-    workloads[w.id] = {
-      completions: a.completions + w.completions,
-      withinSla: a.withinSla + w.withinSla,
-      failed: a.failed + w.failed,
-      rtSumSec: a.rtSumSec + w.rtSumSec,
-      parts,
-    };
-  }
-  let capped = 0;
-  let delivered = 0;
-  const cappedByLpar = { ...h.cappedByLpar };
-  const deliveredByCpc: Record<string, number> = {};
-  const lparBusyById = { ...(h.lparBusyById ?? {}) };
-  for (const l of run.sim.lpars) {
-    const cp = l.pools.find((p) => p.pool === 'CP');
-    if (!cp) continue;
-    capped = Math.max(capped, cp.cappedFrac);
-    cappedByLpar[l.id] = Math.max(cappedByLpar[l.id] ?? 0, cp.cappedFrac);
-    delivered += cp.deliveredEngines;
-    if (cp.availableEngines > 0) lparBusyById[l.id] = (lparBusyById[l.id] ?? 0) + Math.min(1, cp.deliveredEngines / cp.availableEngines);
-    const cpcId = run.sim.config.lpars.find((x) => x.id === l.id)?.cpcId;
-    if (cpcId) deliveredByCpc[cpcId] = (deliveredByCpc[cpcId] ?? 0) + cp.deliveredEngines;
-  }
-  const engines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
-  const cpcBusyById = { ...(h.cpcBusyById ?? {}) };
-  for (const c of run.sim.config.cpcs) {
-    if (c.engines.CP > 0) cpcBusyById[c.id] = (cpcBusyById[c.id] ?? 0) + (deliveredByCpc[c.id] ?? 0) / c.engines.CP;
-  }
-  const cpByImportance = { ...(h.cpByImportance ?? {}) };
-  const def = run.sim.wlm.definition;
-  for (const lt of run.sim.last.lpars) {
-    const acc = [...(cpByImportance[lt.lparId] ?? [0, 0, 0, 0, 0, 0, 0])];
-    for (const x of lt.scps) acc[importanceRank(def, x.scKey)]! += x.cpEngines;
-    cpByImportance[lt.lparId] = acc;
-  }
-  return {
-    ...run,
-    hour: {
-      ...h,
-      ticks: h.ticks + 1,
-      workloads,
-      maxCappedFrac: Math.max(h.maxCappedFrac, capped),
-      cappedByLpar,
-      cpcBusySum: h.cpcBusySum + (engines > 0 ? delivered / engines : 0),
-      cpcBusyById,
-      lparBusyById,
-      cpByImportance,
-      lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
-    },
-  };
-}
-
-/** Fold this hour's averages into today's capacity peaks. */
-function hourPeaks(r: RunState, h: HourAcc): CapacityDay {
-  const t = r.capacityToday ?? { day: r.day, peakCpcBusyPct: 0, peakR4ha: {}, peakR4haSum: 0, definedCapacity: {}, criticalEndSec: null };
-  const peakR4ha = { ...t.peakR4ha };
-  let sum = 0;
-  for (const l of r.sim.capping.lpars) {
-    peakR4ha[l.id] = Math.max(peakR4ha[l.id] ?? 0, l.r4ha);
-    sum += l.r4ha;
-  }
-  const definedCapacity = Object.fromEntries(r.sim.config.lpars.filter((l) => l.kind === 'ZOS').map((l) => [l.id, l.definedCapacityMsu]));
-  // Online peak only: overnight batch fills whatever CPU is free, so night busy says nothing about headroom.
-  const startHour = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
-  const online = startHour >= PLANNER.onlineHours[0] && startHour < PLANNER.onlineHours[1];
-  const busy = online && h.ticks > 0 ? (100 * h.cpcBusySum) / h.ticks : 0;
-  return { ...t, peakCpcBusyPct: Math.max(t.peakCpcBusyPct, busy), peakR4ha, peakR4haSum: Math.max(t.peakR4haSum, sum), definedCapacity };
-}
-
-/** Hours of per-workload SMF detail kept in the run (two played days). */
-const SMF_HOURS_KEPT = 48;
-
-function closeHour(run: RunState, scenario: Scenario): RunState {
-  const h = run.hour;
-  if (!h) return run;
-  let r = run;
-  const trust = { ...r.trust };
-  let incidents = [...r.incidents];
-  const baselines = { ...r.baselines };
-  for (const w of allWorkloads(scenario, r)) {
-    const wh = h.workloads[w.id];
-    if (!wh) continue;
-    const att = hourAttainment(w, wh);
-    if (!att) continue;
-    const parts = perTxnParts(wh);
-    // Incidents are per played day (the day's SLA report and RCA count them): one still open at
-    // 06:00 is closed there, and a breach that carries on opens a new incident for the new day.
-    const hourStart = r.sim.tick - TICKS_PER_HOUR;
-    incidents = incidents.map((i) => (i.workloadId === w.id && i.endTick === null && i.day !== r.day ? { ...i, endTick: hourStart } : i));
-    const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
-    if (att.met) {
-      baselines[w.id] = updateBaseline(baselines[w.id], parts);
-      if (openIdx >= 0) incidents[openIdx] = { ...incidents[openIdx]!, endTick: r.sim.tick };
-      continue;
-    }
-    const facet = facetOf(w);
-    const loss = facet ? att.severity * 0.9 * ((r.facetWeights ?? FACET_WEIGHT)[facet] ?? 1) : 0;
-    if (facet && facet in trust) trust[facet] = clampTrust(trust[facet]! - loss);
-    if (openIdx >= 0) {
-      const inc = incidents[openIdx]!;
-      incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
-    } else {
-      const hosts = Object.entries(r.sim.routing[w.id] ?? w.routing)
-        .filter(([, f]) => f > 0)
-        .map(([lparId]) => {
-          const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
-          return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
-        });
-      const mechanism = failureMechanismOf(w, wh, r.events) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
-      const isNew = r.sim.extraWorkloads.some((x) => x.id === w.id);
-      const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
-      let aiops: Hypothesis[] | undefined;
-      if (toolOn(r, 'AIOPS')) {
-        aiops = aiopsHypotheses(truth, rankedMechanismGroups(parts, baselines[w.id] ?? {}), streamRng(r.seed, 'aiops', r.sim.tick, w.id));
-      }
-      const lead = incidents.find((i) => i.day === r.day && i.rcaGroup === undefined && i.truth.mechanism === truth.mechanism && i.truth.trigger === truth.trigger);
-      incidents = [
-        ...incidents,
-        {
-          id: r.nextId,
-          workloadId: w.id,
-          day: r.day,
-          startTick: r.sim.tick - TICKS_PER_HOUR,
-          endTick: null,
-          hours: 1,
-          worstAttainmentPct: att.attainmentPct,
-          truth,
-          ...(aiops ? { aiops } : {}),
-          rca: lead?.rca ?? null,
-          trustLost: loss,
-          ...(lead ? { rcaGroup: lead.id } : {}),
-        },
-      ];
-      r = { ...r, nextId: r.nextId + 1 };
-      r = logLine(r, `INCIDENT ${w.id}: SLA missed (${att.attainmentPct.toFixed(1)}%)`);
-    }
-  }
-  r = { ...r, capacityToday: hourPeaks(r, h) };
-  const hourOfDay = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
-  if (hourOfDay >= 18 || hourOfDay < 6) r = { ...r, nightHour: addHour(r.nightHour, h) };
-  const smfHours = [...(r.smfHours ?? []), { day: r.day, hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay), workloads: h.workloads }].slice(-SMF_HOURS_KEPT);
-  return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
-}
-
-/**
- * Incident workloads whose service class never missed its goal in WLMGL that day (every host's class had a
- * worst sysplex PI ≤ 1): the class average or region goal hid the slide. Only subsystems with a
- * per-transaction record to point at count. Workload id → subsystem.
- */
-export function wlmHidSlides(r: RunState, scenario: Scenario, incidents: readonly Incident[], piWorst: Readonly<Record<string, number>>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const w of allWorkloads(scenario, r)) {
-    const sub = w.work.subsystem;
-    if (!sub || !(sub in WLM_DISAGREE_HINTS) || !incidents.some((i) => i.workloadId === w.id)) continue;
-    const pis = Object.entries(r.sim.routing[w.id] ?? w.routing)
-      .filter(([, f]) => f > 0)
-      .map(([lparId]) => piWorst[`${classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass}#1`]);
-    if (pis.length > 0 && pis.every((p) => p !== undefined && p <= 1)) out[w.id] = sub;
-  }
-  return out;
-}
-
-/**
- * Service-class periods whose worst PI rose to STRAIN.minPi and STRAIN.riseFactor × the day before, excluding the
- * classes of workloads that raised an incident (their own hint covers them) and batch classes. Worst first.
- */
-export function strainedClasses(r: RunState, scenario: Scenario, incidents: readonly Incident[], piWorst: Readonly<Record<string, number>>, prevPiWorst: Readonly<Record<string, number>> | undefined): StrainedClass[] {
-  if (!prevPiWorst) return [];
-  const covered = jesClasses(r.sim.wlm.definition);
-  for (const w of allWorkloads(scenario, r)) {
-    if (!incidents.some((i) => i.workloadId === w.id)) continue;
-    for (const lparId of Object.keys(r.sim.routing[w.id] ?? w.routing)) covered.add(classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass);
-  }
-  return Object.keys(piWorst)
-    .sort()
-    .flatMap((scKey) => {
-      const pi = piWorst[scKey]!;
-      const prevPi = prevPiWorst[scKey] ?? 0;
-      return pi >= STRAIN.minPi && pi >= STRAIN.riseFactor * prevPi && !covered.has(scKey.split('#')[0]!) ? [{ scKey, pi, prevPi }] : [];
-    })
-    .sort((a, b) => b.pi - a.pi);
-}
-
-/**
- * Worst sysplex PI per service-class period across the RMF intervals that closed within the day. With minEnded,
- * response-time periods count only in intervals where at least that many transactions ended.
- */
-export function worstPiOfDay(intervals: readonly RmfInterval[], day: number, minEnded = 0): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const iv of intervals) {
-    if (iv.endTick <= day * TICKS_PER_DAY || iv.endTick > (day + 1) * TICKS_PER_DAY) continue;
-    for (const w of iv.wlm) {
-      if (w.lparId !== '*PLEX' || w.pi === null || w.pi <= (out[w.scKey] ?? -Infinity)) continue;
-      if (minEnded > 0 && RT_GOAL.test(w.goalText) && w.ended < minEnded) continue;
-      out[w.scKey] = w.pi;
-    }
-  }
-  return out;
-}
-const RT_GOAL = /^AVG |% </;
-
-/** Service classes the JES rules can assign (batch; the batch-window hint speaks for them). */
-function jesClasses(def: ServiceDefinition): Set<string> {
-  const out = new Set<string>();
-  const walk = (rs: readonly ClassificationRule[]) => rs.forEach((x) => (x.serviceClass && out.add(x.serviceClass), walk(x.children)));
-  for (const ss of def.subsystems.filter((x) => x.subsystem === 'JES')) {
-    if (ss.defaultServiceClass) out.add(ss.defaultServiceClass);
-    walk(ss.rules);
-  }
-  return out;
-}
-
-/** Peak SYSOTHER APPL CP% per LPAR (periods summed within an interval) across the day's closed RMF intervals. */
-export function sysotherByLpar(intervals: readonly RmfInterval[], day: number): Record<string, number> {
-  const out: Record<string, number> = {};
-  for (const iv of intervals) {
-    if (iv.endTick <= day * TICKS_PER_DAY || iv.endTick > (day + 1) * TICKS_PER_DAY) continue;
-    const here: Record<string, number> = {};
-    for (const w of iv.wlm) if (w.serviceClass === 'SYSOTHER' && w.lparId !== '*PLEX') here[w.lparId] = (here[w.lparId] ?? 0) + w.applCpPct;
-    for (const [id, v] of Object.entries(here)) if (v > (out[id] ?? 0)) out[id] = v;
-  }
-  return out;
-}
-
 
 /** A missed batch window opens an incident for the night, so it can get an RCA like an online SLA miss. */
 function batchMissIncident(r: RunState, night: NightSummary, trustLost: number): RunState {
@@ -1006,37 +458,34 @@ export function chooseDraft(run: RunState, content: GameContent, optionId: strin
   return storyFor(r, content, r.day);
 }
 
-/** The incident whose RCA covers this one (itself unless linked to an earlier same-cause incident that day). */
-export function rcaLeadId(inc: Incident): number {
-  return inc.rcaGroup ?? inc.id;
-}
+export { overallTrust } from './run/shared';
 
-/** Root-cause analysis for an incident and every incident linked to it; scored once against the ground truth. */
-export function submitRca(run: RunState, incidentId: number, mechanism: Mechanism, trigger: Trigger, scenario?: Scenario, evidenceIds: readonly number[] = []): RunState {
-  const inc = run.incidents.find((i) => i.id === incidentId);
-  if (!inc || inc.rca) return run;
-  const leadId = rcaLeadId(inc);
-  const group = run.incidents.filter((i) => rcaLeadId(i) === leadId);
-  const points = scoreRca(inc.truth, { mechanism, trigger });
-  const pins = (run.pins ?? []).filter((p) => evidenceIds.includes(p.id)).slice(0, EVIDENCE.perRca);
-  // A pin counts if it is evidence for any incident in the group (each has its own workload and window).
-  const verdicts = scenario
-    ? group.map((g) => judgeEvidence(run, scenario, g, pins)).reduce((best, vs) => best.map((b, k) => (vs[k]!.relevance > b.relevance ? vs[k]! : b)))
-    : [];
-  const relevance = verdicts.reduce((a, v) => a + v.relevance, 0);
-  // Evidence only earns points when it supports the right mechanism (SPEC §10).
-  const evidencePoints = mechanism === inc.truth.mechanism ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
-  const strong = evidencePoints > 0 && relevance >= EVIDENCE.strongAt;
-  const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
-  const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
-  const trust = mapTrust(run, (t) => t + facetTrust / 2);
-  const total = points + evidencePoints;
-  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints };
-  return {
-    ...run,
-    trust,
-    insight: run.insight + total + (strong ? EVIDENCE.strongInsight : 0),
-    score: run.score + total,
-    incidents: run.incidents.map((i) => (rcaLeadId(i) === leadId ? { ...i, rca } : i)),
-  };
-}
+export { drawEvents } from './run/events';
+
+export type { ChangeRequest } from './run/changes';
+
+export type { ChangeOutcome } from './run/changes';
+
+export { fixIdsOf } from './run/events';
+
+export { previewContext } from './run/changes';
+
+export { requestChange } from './run/changes';
+
+export { dryRunRefusal } from './run/changes';
+
+export { cancelChange } from './run/changes';
+
+export { failedPolicyToday } from './run/changes';
+
+export { wlmHidSlides } from './run/diagnostics';
+
+export { strainedClasses } from './run/diagnostics';
+
+export { worstPiOfDay } from './run/diagnostics';
+
+export { sysotherByLpar } from './run/diagnostics';
+
+export { rcaLeadId } from './run/rca';
+
+export { submitRca } from './run/rca';

@@ -1,0 +1,167 @@
+import { applyCommand, type Command } from '../../sim/core/commands';
+import { streamRng } from '../../sim/core/rng';
+import type { ServiceDefinition } from '../../sim/wlm/types';
+import { failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
+import { idText } from '../ids';
+import {
+type PlannedChange,
+type RunState
+} from '../types';
+import { endEventByFix, fixIdsOf } from './events';
+import type { GameContent } from './shared';
+import { clampTrust, FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
+
+export interface ChangeRequest {
+  label: string;
+  commands?: Command[];
+  hardwareId?: string;
+  /** Target CPC of a per-CPC hardware item (default the first). */
+  cpcId?: string;
+  fixId?: string;
+  /** Pre-approved automation: no engineer-hours, no emergency trust cost, a misfire chance instead. */
+  automated?: { misfireFrac: number };
+}
+
+export interface ChangeOutcome {
+  run: RunState;
+  ok: boolean;
+  message: string;
+  /** The policy a cancelled activation would have installed, so the caller can keep it as pending edits. */
+  restoredPolicy?: ServiceDefinition;
+}
+
+export function failRisk(run: RunState): number {
+  return failRiskFor(run.fatigue, run.perks);
+}
+
+export function previewContext(run: RunState, content?: GameContent) {
+  return {
+    phase: run.phase,
+    perks: run.perks,
+    fatigue: run.fatigue,
+    hoursLeft: run.hoursLeft,
+    capexRemaining: run.capexRemaining,
+    incidentOpen: run.incidents.some((i) => i.endTick === null),
+    constraints: run.constraints,
+    blockedHardware: run.events.flatMap((e) => (e.started && !e.ended ? (e.blocksHardware ?? []) : [])),
+    cpcs: run.sim.config.cpcs.map((c) => ({ id: c.id, capacitySetting: c.capacitySetting, generation: c.generation })),
+    ...(content ? { fixIds: fixIdsOf(content) } : {}),
+  };
+}
+
+/** Plan (BRIEFING) or make an emergency change (LIVE). */
+export function requestChange(run: RunState, content: GameContent, req: ChangeRequest): ChangeOutcome {
+  const live = run.phase === 'LIVE';
+  const preview = previewChange(previewContext(run, content), req);
+  if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
+  const refused = !req.hardwareId && !req.fixId ? dryRunRefusal(run, req.commands ?? []) : null;
+  if (refused) return { run, ok: false, message: refused };
+  const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
+  const fix = req.fixId ? FIXES.find((f) => f.id === req.fixId) : undefined;
+  const commands = hw ? hw.commands(run.sim, req.cpcId) : (req.commands ?? []);
+  const hours = req.automated ? 0 : preview.hours;
+  const { capex } = preview;
+
+  let r = spendHours(run, hours);
+  r = { ...r, capexRemaining: r.capexRemaining - capex };
+  const change: PlannedChange = {
+    id: r.nextId,
+    label: req.label,
+    commands,
+    hours,
+    capex,
+    opexPerDay: hw?.opexPerDay ?? 0,
+    activateDay: run.day + preview.leadDays,
+    plannedDay: run.day,
+    emergency: live,
+    status: 'PLANNED',
+    revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
+    revertCommands: hw?.durationDays ? hw.revert(run.sim, req.cpcId) : [],
+    endsEvent: fix?.id ?? null,
+  };
+  r = { ...r, nextId: r.nextId + 1 };
+
+  if (live) {
+    // Emergency change board: costs trust, more when no incident justifies it.
+    const trustCost = req.automated ? 0 : preview.trustCostEach;
+    r = { ...r, trust: mapTrust(r, (t) => t - trustCost) };
+    if (fix?.trustCost && fix.trustCost.facet in r.trust) r = { ...r, trust: { ...r.trust, [fix.trustCost.facet]: clampTrust(r.trust[fix.trustCost.facet]! - fix.trustCost.amount) } };
+    const risk = req.automated ? req.automated.misfireFrac : failRisk(r);
+    const attempt = r.changes.filter((x) => x.plannedDay === r.day && x.label === req.label).length;
+    const failed = streamRng(r.seed, 'live-change', r.day, req.label, attempt).chance(risk);
+    if (failed && !fix) {
+      r = { ...r, changes: [...r.changes, { ...change, status: 'FAILED' }] };
+      return {
+        run: logLine(r, `${req.automated ? 'Automation MISFIRED' : 'Emergency change FAILED'}: ${req.label}`),
+        ok: false,
+        message: `${req.automated ? 'Automation misfired' : 'Change failed during implementation'} (risk ${(100 * risk).toFixed(0)}%): ${req.label}`,
+      };
+    }
+    if (change.activateDay === r.day) {
+      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
+    } else r = { ...r, changes: [...r.changes, change] };
+    if (fix) r = endEventByFix(r, content, fix.id);
+    return { run: logLine(r, `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
+  }
+  return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned ${idText('change', change.id)} for day ${change.activateDay + 1}: ${req.label}` };
+}
+
+/** Why the config would reject these commands (unknown region, LPAR, pool...), tried on today's config with
+ * the changes already planned; null when they apply. Catches a mistyped target before it costs hours. */
+export function dryRunRefusal(run: RunState, commands: readonly Command[]): string | null {
+  let s = run.sim;
+  for (const c of run.changes) if (c.status === 'PLANNED') for (const cmd of c.commands) s = applyCommand(s, cmd).state;
+  for (const cmd of commands) {
+    const res = applyCommand(s, cmd);
+    if (!res.ok) return `${res.message}${targetHint(s, cmd)}`;
+    s = res.state;
+  }
+  return null;
+}
+
+function targetHint(s: RunState['sim'], cmd: Command): string {
+  const list = (what: string, names: readonly string[]) => `; ${what}: ${names.join(' ')}`;
+  switch (cmd.kind) {
+    case 'SET_CICS': return list('CICS regions', s.config.cics.map((r) => r.name));
+    case 'SET_DB2': return list('Db2 subsystems', s.config.db2.map((d) => d.ssid));
+    case 'SET_WEIGHT': case 'SET_LOGICAL': case 'SET_DEFINED_CAPACITY': case 'SET_ABSOLUTE_CAP': case 'SET_IEAOPT': case 'SET_LPAR_MEMORY':
+      return list('LPARs', s.config.lpars.map((l) => l.id));
+    default: return '';
+  }
+}
+
+/** End every active event whose card names this fix. */
+/** Cancel a change that has not taken effect yet. Capex is refunded; hours only on the day they were spent. */
+export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
+  const c = run.changes.find((x) => x.id === changeId);
+  if (!c) return { run, ok: false, message: `No planned change ${idText('change', changeId)} (already cancelled or applied?)` };
+  if (c.status !== 'PLANNED') return { run, ok: false, message: `Already ${c.status.toLowerCase()}` };
+  if (c.activateDay === run.day && run.phase !== 'BRIEFING') return { run, ok: false, message: 'It activates today and the day has started' };
+  const refundHours = c.plannedDay === run.day ? c.hours : 0;
+  const activation = c.commands.find((x) => x.kind === 'ACTIVATE_POLICY');
+  return {
+    ...(activation?.kind === 'ACTIVATE_POLICY' ? { restoredPolicy: activation.definition } : {}),
+    run: logLine(
+      { ...run, changes: run.changes.filter((x) => x.id !== changeId), capexRemaining: run.capexRemaining + c.capex, hoursLeft: run.hoursLeft + refundHours },
+      `Change cancelled: ${c.label}`,
+    ),
+    ok: true,
+    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}`,
+  };
+}
+
+function spendHours(run: RunState, hours: number): RunState {
+  const left = run.hoursLeft - hours;
+  const overtime = Math.max(0, -left) - Math.max(0, -run.hoursLeft);
+  return { ...run, hoursLeft: left, fatigue: Math.min(100, run.fatigue + overtime * FATIGUE_PER_OVERTIME_HOUR) };
+}
+
+/** The policy of an activation that failed at this morning's start, so its edits can be pending again. */
+export function failedPolicyToday(run: RunState): ServiceDefinition | null {
+  for (const c of [...run.changes].reverse()) {
+    if (c.status !== 'FAILED' || c.activateDay !== run.day) continue;
+    const a = c.commands.find((x) => x.kind === 'ACTIVATE_POLICY');
+    if (a?.kind === 'ACTIVATE_POLICY') return a.definition;
+  }
+  return null;
+}
