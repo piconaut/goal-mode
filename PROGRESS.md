@@ -15,7 +15,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
   from `main` at `fbc518b` after milestone PR #129. Republish on request.
 - **Latest verified dev:** #143; 57 test files / 488 tests pass. Independent reviews and CI passed for
   run-lifecycle, Monitor III, and shared-color refactors (#141–#143); no behavior or hash changes.
-- **Seed-42 one-day hashes:** Midwest `b1aa42059d46952e`; Harbourline `c47f6b8416f440f8`.
+- **Seed-42 one-day hashes:** Midwest `58c0964974945e25`; Harbourline `c70c88eb43a9db09` (equal-DP ready units, 2026-11-02).
   Host timings vary; use adjacent comparisons rather than old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
@@ -90,7 +90,8 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   ONLHI keeps its CPU (realism test). A first try counting in-flight tasks by Little's law fed back: tasks waiting
   on a starved Db2 inflated ONLHI's units and starved Db2 further, so waits are not units. Side effects: light
   regions and Db2 at ONLHI's DP no longer share its shortage, so WLM finds no gain lifting a capped ONLHI over
-  them (Midwest seed-7 capped test now asserts that); goldens regenerated; ~3 % slower per tick.
+  them (Midwest seed-7 capped test now asserts that); goldens regenerated; ~3 % slower per tick. CI sweep
+  (Midwest, seeds 1–5): donothing day 15 / 0 wins, textbook day 27 / 0, expert day 40 / 4 of 5; all in band.
 - [ ] **CICS transaction classes report work manager states, not using and delay samples.** For CICS and IMS,
   resource usage and state samples go with the regions' service classes; transaction classes get the work manager
   section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
