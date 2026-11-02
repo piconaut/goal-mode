@@ -77,6 +77,15 @@ function classTargetError(subsystem: SubsystemType, sc: string | null): string |
   return null;
 }
 
+function ensureSubsystem(d: ServiceDefinition, subsystem: SubsystemType): SubsystemRules {
+  let ss = d.subsystems.find((x) => x.subsystem === subsystem);
+  if (!ss) {
+    ss = { subsystem, defaultServiceClass: null, defaultReportClass: null, rules: [] };
+    d.subsystems.push(ss);
+  }
+  return ss;
+}
+
 /** Qualifiers of the rules on the path to a list position ([] = top level). */
 function ancestorQualifiers(ss: SubsystemRules, parent: RulePath): Qualifier[] {
   const out: Qualifier[] = [];
@@ -284,11 +293,7 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
       if (tErr) return tErr;
       const rcErr = useReportClass(d, e.reportClass);
       if (rcErr) return rcErr;
-      let ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
-      if (!ss) {
-        ss = { subsystem: e.subsystem, defaultServiceClass: null, defaultReportClass: null, rules: [] };
-        d.subsystems.push(ss);
-      }
+      const ss = ensureSubsystem(d, e.subsystem);
       // Default position is first, so the new rule takes precedence (first match wins).
       const at = e.at ?? [0];
       const list = listAt(ss, at.slice(0, -1));
@@ -337,11 +342,7 @@ function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | stri
         const tErr = classTargetError(e.subsystem, e.serviceClass);
         if (tErr) return tErr;
       }
-      let ss = d.subsystems.find((x) => x.subsystem === e.subsystem);
-      if (!ss) {
-        ss = { subsystem: e.subsystem, defaultServiceClass: null, defaultReportClass: null, rules: [] };
-        d.subsystems.push(ss);
-      }
+      const ss = ensureSubsystem(d, e.subsystem);
       ss.defaultServiceClass = e.serviceClass;
       return d;
     }
