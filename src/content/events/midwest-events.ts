@@ -407,7 +407,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: null,
     forewarning: null,
     announcement: null,
-    clue: 'Card auth response time up with little CPU delay; UNK delay up; IRLM healthy; batch running.',
+    clue: 'Card auth response time up with little READY time; its work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running.',
   },
   {
     // A data-science team runs model training from TSO. On DEVT (uncapped, F9) it steals CPC capacity from PROD

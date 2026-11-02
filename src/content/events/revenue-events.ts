@@ -63,7 +63,7 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('LOCK_ESCALATION', {
     name: 'Lock escalation in refund batch',
     affects: ['ACCOUNT', 'REFSTAT'],
-    clue: 'Account and refund-status response time up with little CPU delay; UNK delay up; IRLM healthy; batch running.',
+    clue: 'Account and refund-status response time up with little READY time; their work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running.',
   }),
   adapt('MONITOR_CREEP', { affects: ['EFILE', 'ACCOUNT'] }),
   adapt('POWER_CAP', { affects: ['EFILE', 'ACCOUNT'] }),

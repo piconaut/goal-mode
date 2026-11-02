@@ -16,14 +16,19 @@ const cases = [
 describe('event clues and CICS transaction classes', () => {
   it.each(cases)('%s clues read CICS CPU from the region class, not the transaction class', (id, events) => {
     const sc = SCENARIOS[id]!;
-    const cics = new Set(sc.workloads.filter((w) => w.subsystem === 'CICS').map((w) => classify(sc.definition, w.work).serviceClass));
+    const cicsWork = sc.workloads.filter((w) => w.subsystem === 'CICS');
+    const cics = new Set(cicsWork.map((w) => classify(sc.definition, w.work).serviceClass));
+    const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     expect(cics.size).toBeGreaterThan(0);
     for (const e of events) {
       const clue = (e as { clue?: string }).clue ?? '';
       for (const cls of cics) {
-        expect(clue, `${e.id}: ${cls}`).not.toMatch(new RegExp(`\\b${cls}\\b (service|APPL%|CPU delay|DELAY)`));
-        expect(clue, `${e.id}: ${cls}`).not.toMatch(new RegExp(`\\b${cls}\\b[^.;]*\\(APPL% up`));
+        // In the same clause: the class's APPL%, service or delay samples (WLMGL and Monitor III show none).
+        expect(clue, `${e.id}: ${cls}`).not.toMatch(new RegExp(`\\b${cls}\\b[^.;:]*?(APPL%|service per|CPU delay|UNK delay|DELAY %)`));
+        expect(clue, `${e.id}: ${cls}`).not.toMatch(new RegExp(`\\b${cls}\\b (service|APPL%)`));
       }
+      // Workloads by name: their delays show on the regions, not on them.
+      for (const w of cicsWork) expect(clue, `${e.id}: ${w.name}`).not.toMatch(new RegExp(`${esc(w.name)}[^.;]*?(CPU delay|UNK delay)`, 'i'));
     }
   });
 });

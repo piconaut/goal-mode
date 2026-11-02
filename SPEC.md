@@ -486,7 +486,8 @@ for importance in 1..5:
   importance, chosen in reverse order of receivers.
 - **Non-WLM-fixable bottlenecks** (lock contention, a starved dependency server, PR/SM delay,
   soft-cap delay) cannot be fixed by WLM. It flails, and RMF shows the receiver unhappy with
-  little CPU delay. *This is the key diagnostic pattern the player learns.* LPAR capping (soft or
+  little CPU delay (for CICS: little READY in its work manager breakdown, healthy serving AORs in SYSWKM).
+  *This is the key diagnostic pattern the player learns.* LPAR capping (soft or
   absolute) is the exception: it shows as CPU delay, with Partition Data WLM% (soft capping) or the
   ABS CAP flag as the clue; WLMGL CAP delay is resource-group and discretionary capping only
   (*RMF Report Analysis* p.401, p.540).
@@ -774,6 +775,10 @@ contents simplified):
   APPROX: transaction resources split equally across AORs; work manager concurrency is estimated from
   existing response-time parts and normalized as estimated EXE state percentages. ACTIVE combines SUB/APPL
   and includes BCP processor waits; READY estimates the CICS dispatchable queue from QR contention.
+  Monitor III SYSWKM (Report Analysis p.204–207): per CICS transaction class, the breakdown and the AORs serving it
+  (jobname, management mode, region class, Service %, velocity, Proc/I/O-Usg, Capp; Quies 0, not modelled); AOR
+  figures are WLM's own per-system CICS samples, equal for AORs on one system (APPROX); pins go to the region class row.
+  WLMGL detail on a region class lists SERVICE CLASSES BEING SERVED (p.525).
   WAITING FOR states follow the RMF columns (Report Analysis p.536): I/O; Db2 lock waits LOCK; waits for
   Db2, MQ or a slow server and Db2's CF requests PROD; the rest MISC. CONV, DIST, LOCAL, SYSPL, REMOT and TIMER
   are not modelled. Event clues read CICS CPU from the region class (STCHI) against CICS END/S, or from CICS monitoring. These are analytic estimates,

@@ -62,3 +62,14 @@ it('shows CICS work manager states and region sample owners without invented tra
   const row = summary.split('\n').find((l) => l.startsWith('ONLRETL'))!;
   expect(row.trimEnd().endsWith('-')).toBe(true);
 });
+
+it('lists the CICS transaction classes a region class serves (RMF Report Analysis p.525)', async () => {
+  const { renderWlmDetail } = await import('../../src/sim/measure/reports');
+  const wm = { active: 1, ready: 0, idle: 0, waitingIo: 0, waitingLock: 0, waitingProd: 0, waitingMisc: 0, regionKeys: ['STCHI#1'] };
+  const iv = {
+    startTick: 0, endTick: 180, intervalSec: 1800, policy: 'P',
+    wlm: [rec({ resourceSamples: false, workManager: wm }), rec({ scKey: 'ONLMED#1', serviceClass: 'ONLMED', resourceSamples: false, workManager: wm }), rec({ scKey: 'STCHI#1', serviceClass: 'STCHI' })],
+  } as unknown as RmfInterval;
+  expect(renderWlmDetail(iv, 'STCHI#1')).toContain('SERVICE CLASSES BEING SERVED: ONLMED ONLRETL');
+  expect(renderWlmDetail(iv, 'ONLMED#1')).not.toContain('BEING SERVED');
+});

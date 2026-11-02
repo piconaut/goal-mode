@@ -105,6 +105,12 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   (Db2 locks, Db2/MQ/server waits and CF, rest) in the RMF column layout instead of one MISC bucket; all-REGION
   mode leaves the breakdown to report classes; CICS event clues (access-path regression, retail, refund status,
   the SMF-audit CPU/txn clues, XLOG) read CPU from STCHI or CICS monitoring, with a content test guarding them.
+  Follow-up after a zos-docs check (2026-11-02): Monitor III SYSWKM view (p.204–207) with the breakdown and serving
+  AORs (velocity, Proc/I/O-Usg, Capp; pins go to the region class row), so CICS CPU diagnosis in Monitor III goes
+  through the AORs; WLMGL SERVICE CLASSES BEING SERVED on region classes (p.525); MKTORD market-open and the
+  card-auth/account lock clues rewritten (READY, SYSWKM, WAITING FOR LOCK); wider clue test. Open: AORs on one system
+  show identical SYSWKM figures (CICS work is modelled per system, not per region); real WLMGL shows only non-zero
+  states, a BTE row with RESP TIME %, ACTIVE SUB/APPL split and state-switched samples (not modelled).
   Validation: typecheck + 533 tests / 60 files pass; production build passes; reporting goldens regenerated
   and verified without update mode. Original PR-head CI sweep passed: donothing day 15 / 0 wins,
   textbook day 27 / 0, expert day 40 / 4 of 5. Performance follow-up reruns CI; PR #147 stays open.

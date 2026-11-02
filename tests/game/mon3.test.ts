@@ -172,3 +172,26 @@ it('shows N/A actual velocity for mixed classes with subsystem states, independe
   expect(row.velocity).not.toBeNull(); // resource workflow of the non-CICS members is still meaningful
   expect(row.velocityAct).toBeNull(); // subsystem states replace the goal actual, RMF p.237
 });
+
+// SYSWKM (RMF Report Analysis p.204–207): the breakdown of a CICS transaction class and the AORs serving it.
+describe('SYSWKM work manager delays', () => {
+  it('lists each CICS class with its state breakdown and serving AORs', () => {
+    const m = buildMon3(noon, MIDWEST);
+    const onl = m.wkm!.find((w) => w.scKey === 'ONLHI#1')!;
+    const s = onl.states;
+    expect(s.active + s.ready + s.lock + s.io + s.prod + s.misc).toBeCloseTo(100);
+    expect([s.idle, s.conv]).toEqual([null, null]);
+    expect(onl.servers.map((x) => `${x.system}:${x.jobname}`)).toEqual(['PROD1:CICSAOR1', 'PROD1:CICSAOR3', 'PROD2:CICSAOR2', 'PROD2:CICSAOR4']);
+    for (const x of onl.servers) {
+      expect(x.mgmt).toBe('TRANSACTION');
+      expect(x.rowKey).toBe('STCHI#1');
+      expect(x.velocity).toBeGreaterThan(0);
+      expect(x.procUsgPct).toBeGreaterThan(0);
+    }
+    // An AOR's service shares across the CICS classes it serves add up to 100 %.
+    const aor1 = m.wkm!.flatMap((w) => w.servers.filter((x) => x.jobname === 'CICSAOR1'));
+    expect(aor1.reduce((a, x) => a + x.servicePct, 0)).toBeCloseTo(100);
+    // No other class is listed: only CICS transaction classes have work manager data.
+    expect(m.wkm!.every((w) => m.rows.find((r) => r.system === '*PLEX' && r.scKey === w.scKey)?.workManager)).toBe(true);
+  });
+});

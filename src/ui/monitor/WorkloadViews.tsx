@@ -138,3 +138,90 @@ export function Enclave({ m, system }: { m: Mon3View; system: string }) {
     </>
   );
 }
+
+/** SYSWKM Work Manager Delays (RMF Report Analysis p.204–207): one block per CICS transaction class period. */
+export function Wkm({ m, game }: { m: Mon3View; game: GameHandle | null }) {
+  const list = m.wkm ?? [];
+  if (list.length === 0) return <Empty>No transaction class has work manager data (CICS regions managed as REGION report response times to report classes only).</Empty>;
+  const f = (x: number | null) => (x === null ? '-' : x.toFixed(0));
+  return (
+    <>
+      {list.map((w) => (
+        <div key={w.scKey} style={{ marginBottom: '1em' }}>
+          <div>
+            <b>Class: {w.serviceClass}</b> Period: {w.period} · Goal: {w.goal} · Avg. Resp. time: {w.avgRtMs === null ? '-' : `${w.avgRtMs.toFixed(0)} ms`} · {w.endedPerSec.toFixed(1)} TRX/s · PI {w.pi === null ? '-' : w.pi.toFixed(1)}
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Sub P</th>
+                <th className="num" title="Running in the region, from CICS's point of view (SUB and APPL combined)">ACTIVE</th>
+                <th className="num" title="Dispatchable but CICS ran another task first">READY</th>
+                <th className="num" title="Not modelled">IDLE</th>
+                <th className="num">LOCK</th>
+                <th className="num">I/O</th>
+                <th className="num" title="Not modelled">CONV</th>
+                <th className="num" title="Waiting for another product (Db2, MQ, a slow server)">PROD</th>
+                <th className="num">MISC</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>CICS EXE</td>
+                <td className="num">{f(w.states.active)}</td>
+                <td className="num">{f(w.states.ready)}</td>
+                <td className="num">{f(w.states.idle)}</td>
+                <td className="num">{f(w.states.lock)}</td>
+                <td className="num">{f(w.states.io)}</td>
+                <td className="num">{f(w.states.conv)}</td>
+                <td className="num">{f(w.states.prod)}</td>
+                <td className="num">{f(w.states.misc)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <table>
+            <thead>
+              <tr>
+                <th colSpan={10}>Address Spaces Serving this Service Class</th>
+              </tr>
+              <tr>
+                <th>Jobname</th>
+                <th>M</th>
+                <th>System</th>
+                <th>Service Class</th>
+                <th className="num">Service %</th>
+                <th className="num">Veloc</th>
+                <th className="num">Proc-Usg</th>
+                <th className="num">I/O-Usg</th>
+                <th className="num">Capp</th>
+                <th className="num" title="Operator quiesce is not modelled">Quies</th>
+              </tr>
+            </thead>
+            <tbody>
+              {w.servers.map((s) => (
+                <tr key={`${s.system}|${s.jobname}`}>
+                  <td>{s.jobname}</td>
+                  <td title={`Managed as ${s.mgmt}`}>{s.mgmt === 'TRANSACTION' ? 'T' : s.mgmt === 'REGION' ? 'R' : 'B'}</td>
+                  <td>{s.system}</td>
+                  <td>{s.serviceClass}</td>
+                  <td className="num">{s.servicePct.toFixed(0)}</td>
+                  <td className="num">
+                    {f(s.velocity)}
+                    {s.rowKey && <PinButton game={game} req={{ source: 'MON3', system: s.system, scKey: s.rowKey, metric: 'DELAY_CPU' }} label={`${s.rowKey} CPU delay on ${s.system}`} />}
+                  </td>
+                  <td className="num">{s.procUsgPct.toFixed(0)}</td>
+                  <td className="num">{s.ioUsgPct.toFixed(0)}</td>
+                  <td className="num">
+                    {s.cappPct.toFixed(0)}
+                    {s.rowKey && s.cappPct > 0.5 && <PinButton game={game} req={{ source: 'MON3', system: s.system, scKey: s.rowKey, metric: 'DELAY_CAP' }} label={`${s.rowKey} capping delay on ${s.system}`} />}
+                  </td>
+                  <td className="num">{s.quiescePct.toFixed(0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
+    </>
+  );
+}

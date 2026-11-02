@@ -156,6 +156,39 @@ export interface Mon3Exception {
   text: string;
 }
 
+/** SYSWKM "Address Spaces Serving this Service Class" row (RMF Report Analysis p.206–207). */
+export interface Mon3Server {
+  jobname: string;
+  system: string;
+  /** How WLM manages the region (Manage Region Using Goals Of). */
+  mgmt: 'TRANSACTION' | 'REGION' | 'BOTH';
+  /** The region's own service class, and the matching Monitor III row on its system (pin target). */
+  serviceClass: string;
+  rowKey: string | null;
+  /** Share of the region's service given to the reported class, 0..100. */
+  servicePct: number;
+  velocity: number | null;
+  procUsgPct: number;
+  ioUsgPct: number;
+  cappPct: number;
+  /** Operator quiesce (RESET QUIESCE) is not modelled: always 0. */
+  quiescePct: number;
+}
+
+/** SYSWKM Work Manager Delays report, sysplex-wide, for one CICS transaction class period (p.204–207). */
+export interface Mon3Wkm {
+  scKey: string;
+  serviceClass: string;
+  period: number;
+  goal: string;
+  avgRtMs: number | null;
+  endedPerSec: number;
+  pi: number | null;
+  /** Response time breakdown, % of the EXE phase states. */
+  states: { active: number; ready: number; idle: number | null; lock: number; io: number; conv: number | null; prod: number; misc: number };
+  servers: Mon3Server[];
+}
+
 export interface Mon3View {
   rangeSec: number;
   policy: string;
@@ -169,6 +202,8 @@ export interface Mon3View {
   enclaves: Mon3Enclave[];
   speed: Mon3Speed[];
   exceptions: Mon3Exception[];
+  /** SYSWKM: CICS transaction classes with work manager data (absent in old pin snapshots). */
+  wkm?: Mon3Wkm[];
 }
 
 /** The resource behind DELAY's Primary Reason: the largest % Delayed for above 2%, capping included (p.110). */
@@ -417,6 +452,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     logicalToPhysicalByCpc: Object.fromEntries(sim.config.cpcs.map((c) => [c.id, c.engines.CP > 0 ? (logicalByCpc[c.id] ?? 0) / c.engines.CP : 0])),
     logicalToPhysical: cpcEngines > 0 ? totalLogical / cpcEngines : 0,
     enclaves,
+    wkm: wkmSection(run, scenario, rows),
     speed: speedSection(rows, systems),
     exceptions: exceptions(run, rows, systems, cpc, totalLogical, cpcEngines),
   };
@@ -566,4 +602,80 @@ export function explainWlmLog(line: string): string {
   const noNet = /(\S+) (\S+) PI=([\d.]+) BTLNK=(\S+) no action with net value/.exec(line);
   if (noNet) return `On ${noNet[1]}, ${noNet[2]} misses its goal (PI ${noNet[3]}) but every move WLM projected would hurt donors more than it helps. There isn't enough capacity to go round at this importance.`;
   return line;
+}
+
+/**
+ * SYSWKM per CICS transaction class: its response time breakdown and the AORs serving it. The sim models CICS work per
+ * workload and system, not per region, so the AORs on one system share that system's CICS samples equally (APPROX, as
+ * in the WLMGL attribution). Their samples are WLM's own view of the transactions (the management accumulators), split
+ * by the class's share of the system's CICS CPU for Service %.
+ */
+function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[]): Mon3Wkm[] {
+  const sim = run.sim;
+  const def = sim.wlm.definition;
+  const plex = rows.filter((r) => r.system === '*PLEX' && r.workManager);
+  if (plex.length === 0) return [];
+  const cicsKeys = new Set(plex.map((r) => r.scKey));
+  const aors = [...scenario.addressSpaces, ...sim.extraAddressSpaces].filter((a) => a.role === 'CICS.AOR');
+  // Per system: CICS samples (WLM's view) summed over the transaction classes, and each class's CPU.
+  const bySys: Record<string, { acc: ScpAcc; cpuByKey: Record<string, number>; cpu: number }> = {};
+  for (const s of sim.wlm.systems) {
+    const accs = s.scps.filter((p) => cicsKeys.has(p.scKey));
+    if (accs.length === 0) continue;
+    const cpuByKey: Record<string, number> = {};
+    let cpu = 0;
+    for (const p of accs) {
+      cpuByKey[p.scKey] = (cpuByKey[p.scKey] ?? 0) + p.acc.cpuEngines;
+      cpu += p.acc.cpuEngines;
+    }
+    bySys[s.lparId] = { acc: sumAcc(accs.map((p) => p.acc)), cpuByKey, cpu };
+  }
+  const servers = (scKey: string): Mon3Server[] => {
+    const out: Mon3Server[] = [];
+    for (const a of aors) {
+      const sys = bySys[a.lparId];
+      if (!sys || sys.cpuByKey[scKey] === undefined) continue;
+      const cls = classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId });
+      const acc = sys.acc;
+      const samples = acc.using + acc.delay + acc.delayOther;
+      const last = { usingCpu: 0, usingZiip: 0, usingIo: 0 };
+      for (const l of sim.last.lpars) if (l.lparId === a.lparId) for (const t of l.scps) if (cicsKeys.has(t.scKey)) {
+        last.usingCpu += t.usingCpu;
+        last.usingZiip += t.usingZiip;
+        last.usingIo += t.usingIo;
+      }
+      const usingAll = last.usingCpu + last.usingZiip + last.usingIo;
+      const usingFrac = samples > 0 ? acc.using / samples : 0;
+      out.push({
+        jobname: a.jobname,
+        system: a.lparId,
+        mgmt: cls.regionMode ?? def.cicsRegionMode ?? 'TRANSACTION',
+        serviceClass: cls.serviceClass,
+        rowKey: rows.find((r) => r.system === a.lparId && r.serviceClass === cls.serviceClass)?.scKey ?? null,
+        servicePct: sys.cpu > 1e-12 ? (100 * sys.cpuByKey[scKey]!) / sys.cpu : 100 / Math.max(1, Object.keys(sys.cpuByKey).length),
+        velocity: velocityOf(velUsing(acc), velDelay(acc)),
+        procUsgPct: 100 * usingFrac * ratio(last.usingCpu + last.usingZiip, usingAll),
+        ioUsgPct: 100 * usingFrac * ratio(last.usingIo, usingAll),
+        cappPct: samples > 0 ? (100 * acc.delayCap) / samples : 0,
+        quiescePct: 0,
+      });
+    }
+    return out.sort((x, y) => (x.system !== y.system ? (x.system < y.system ? -1 : 1) : x.jobname < y.jobname ? -1 : x.jobname > y.jobname ? 1 : 0));
+  };
+  return plex.map((r) => {
+    const w = r.workManager!;
+    const tot = w.active + w.ready + w.idle + w.waitingIo + w.waitingLock + w.waitingProd + w.waitingMisc;
+    const pct = (x: number) => (tot > 0 ? (100 * x) / tot : 0);
+    return {
+      scKey: r.scKey,
+      serviceClass: r.serviceClass,
+      period: r.period,
+      goal: r.goal,
+      avgRtMs: r.avgRtMs,
+      endedPerSec: r.endedPerSec,
+      pi: r.pi,
+      states: { active: pct(w.active), ready: pct(w.ready), idle: null, lock: pct(w.waitingLock), io: pct(w.waitingIo), conv: null, prod: pct(w.waitingProd), misc: pct(w.waitingMisc) },
+      servers: servers(r.scKey),
+    };
+  });
 }

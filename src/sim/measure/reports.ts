@@ -159,6 +159,9 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
     );
   }
   if (r.workManager) out.push(...workManagerLines(r));
+  // Region classes doing work for transactions classified elsewhere (RMF Report Analysis p.525, p.536).
+  const served = r.reportClass ? [] : iv.wlm.filter((x) => x.lparId === system && x.workManager?.regionKeys.includes(r.scKey)).map((x) => x.serviceClass);
+  if (served.length > 0) out.push('', `SERVICE CLASSES BEING SERVED: ${[...new Set(served)].sort().join(' ')}`);
   const total = r.buckets.reduce((a, b) => a + b, 0);
   if (total > 0 && r.goalText.includes('<')) {
     const goalSec = Number(/< ([\d.]+)s/.exec(r.goalText)?.[1] ?? 0);
