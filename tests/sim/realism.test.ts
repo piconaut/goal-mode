@@ -1,10 +1,14 @@
 // Behavioural "realism" tests from SPEC §16.
 
 import { HARBOURLINE, MIDWEST } from '../../src/content/scenarios';
+import { MIDWEST_WORLD } from '../../src/content/scenarios/midwest';
+import { resolveCpc } from '../../src/sim/hw/pools';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { initState } from '../../src/sim/core/init';
-import { discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
-import { emptyAcc, goalInfo } from '../../src/sim/wlm/runtime';
+import { cicsRegions, discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
+import { MIDWEST_ADDRESS_SPACES } from '../../src/content/scenarios/midwest-workloads';
+import type { RegionMode } from '../../src/sim/wlm/types';
+import { accPi, decayInto, emptyAcc, goalInfo, goalPi, tickPi } from '../../src/sim/wlm/runtime';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
@@ -298,10 +302,30 @@ describe('WLM I/O priority management', () => {
     expect(perIo(r[0]!)).toBeLessThan(perIo(r[1]!));
     expect((perIo(r[0]!) + perIo(r[1]!)) / 2).toBeCloseTo(io.RANDOM.delaySec, 6);
   });
-  it('when off, IOSQ is first come first served and I/O samples leave velocity', () => {
-    const r = evaluateLpar({ ...base, ioPriority: false }).slices;
-    expect(r[0]!.parts!.io).toBeCloseTo(r[1]!.parts!.io, 9);
-    expect(r[0]!.usingIo + r[0]!.delayIo).toBe(0);
+  it('I/O priority management off keeps I/O delay in WLMGL but not in velocity', () => {
+    // NO "sets I/O priorities equal to dispatching priorities"; I/O using and delay samples "are reported even
+    // when I/O priority management is turned off" but are not in the velocity formula (WLM Planning p.115, p.70).
+    const on = evaluateLpar(base);
+    const off = evaluateLpar({ ...base, ioPriority: false });
+    for (let i = 0; i < 2; i++) {
+      const a = on.slices[i]!, b = off.slices[i]!;
+      expect(b.delayIo).toBeGreaterThan(0);
+      expect(b.delayIo).toBeCloseTo(a.delayIo, 12);
+      expect(b.usingIo).toBeCloseTo(a.usingIo, 12);
+      expect(b.delayOther).toBeCloseTo(a.delayOther, 12); // OTHER does not absorb the I/O delay
+      expect(b.rtMeanSec).toBeCloseTo(a.rtMeanSec, 12);
+    }
+    expect(off.slices[0]!.parts!.io).toBeLessThan(off.slices[1]!.parts!.io); // still DP-ordered, not FIFO
+    const goal = { kind: 'VEL' as const, velocity: 50 };
+    const t = (r: typeof on, k: string) => r.scps.find((x) => x.scKey === k)!;
+    const hiOn = t(on, 'HI#1'), hiOff = t(off, 'HI#1');
+    const v = (using: number, delay: number) => (100 * using) / (using + delay);
+    const cpuUsing = hiOff.usingCpu + hiOff.usingZiip;
+    const cpuDelay = hiOff.delayCpu + hiOff.delayZiip + hiOff.delayStorage + hiOff.delayCap;
+    expect(tickPi(goal, hiOn)).toBeCloseTo(50 / v(cpuUsing + hiOn.usingIo, cpuDelay + hiOn.delayIo), 9);
+    expect(tickPi(goal, hiOff)).toBeCloseTo(50 / v(cpuUsing, cpuDelay), 9);
+    // The smoothed WLM accumulator follows the same formula.
+    expect(accPi(goal, decayInto(emptyAcc(), hiOff))).toBeCloseTo(50 / v(cpuUsing, cpuDelay), 9);
   });
   it('counts only device connect as I/O using: disconnect is neither using nor delay', () => {
     const withConn = { ...io, RANDOM: { ...io.RANDOM, connSec: 0.0005 } };
@@ -405,6 +429,42 @@ describe('CF failure, rebuild and duplexing', () => {
   }, 60_000);
 });
 
+describe('CF Activity: duplexed copies and per-system structure service (RMF Report Analysis p.365, p.372, p.376)', () => {
+  // Harbourline: CF01 on CPC1 with PRDA/PRDB, CF02 and PRDC/PRDD on CPC2 15 km away; DB1G_LOCK1 lives in CF01.
+  const interval = (cmds: Parameters<typeof step>[1]) => {
+    let s = step(initState(13, HARBOURLINE), cmds, HARBOURLINE);
+    for (let i = 1; i < 2 * 90; i++) s = step(s, [], HARBOURLINE);
+    return s.rmf.intervals.at(-1)!;
+  };
+  it('duplexed structure shows PRIM and SEC rows with traffic on both CFs', () => {
+    const base = interval([]);
+    const iv = interval([{ kind: 'SET_DUPLEX', name: 'DB1G_LOCK1', on: true }]);
+    const lock = iv.cfStructures.filter((x) => x.name === 'DB1G_LOCK1');
+    expect(lock.map((x) => [x.role, x.cfLparId])).toEqual([
+      ['PRIM', 'CF01'],
+      ['SEC', 'CF02'],
+    ]);
+    expect(lock[1]!.reqPerSec).toBeGreaterThan(0);
+    expect(lock[1]!.reqPerSec).toBeCloseTo(lock[0]!.reqPerSec, 6);
+    // The secondary's requests count on CF02 alongside its own structures.
+    const cf02 = (v: typeof iv) => v.cf.find((c) => c.lparId === 'CF02')!.reqPerSec;
+    expect(cf02(iv)).toBeCloseTo(cf02(base) + lock[1]!.reqPerSec, 0);
+    expect(iv.cfStructSystems!.some((x) => x.name === 'DB1G_LOCK1' && x.role === 'SEC' && x.system === 'PRDA' && x.reqPerSec > 0)).toBe(true);
+    expect(base.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!.role).toBeUndefined();
+  }, 60_000);
+  it('structure activity separates a local lock from a remote one per system', () => {
+    const iv = interval([]);
+    const row = (name: string, sys: string) => iv.cfStructSystems!.find((x) => x.name === name && x.system === sys)!;
+    // LOCK1 in CF01: local to PRDA, 15 km for PRDC; GBP1 in CF02 the other way round.
+    expect(row('DB1G_LOCK1', 'PRDA').syncUs).toBeLessThan(row('DB1G_LOCK1', 'PRDC').syncUs - 100);
+    expect(row('DB1G_LOCK1', 'PRDA').syncPct).toBeGreaterThan(row('DB1G_LOCK1', 'PRDC').syncPct);
+    expect(row('DB1G_GBP1', 'PRDC').syncUs).toBeLessThan(row('DB1G_GBP1', 'PRDA').syncUs - 100);
+    // Subchannel Activity: distance to the CF of the row, not the farthest structure.
+    const dist = (cf: string, sys: string) => iv.cfSystems!.find((x) => x.cfLparId === cf && x.system === sys)!.distKm;
+    expect([dist('CF01', 'PRDA'), dist('CF01', 'PRDC'), dist('CF02', 'PRDA'), dist('CF02', 'PRDC')]).toEqual([0, 15, 15, 0]);
+  }, 60_000);
+});
+
 describe('CICS region management', () => {
   // Online work in two classes plus batch competing for 2 engines.
   const slices = [
@@ -425,6 +485,101 @@ describe('CICS region management', () => {
     const region = evaluateLpar({ ...base, dpOf: (k) => ({ ...dps, 'STCHI#1': 210 })[k]!, regions: { keys: ['ONLHI#1', 'ONLMED#1'], mode: 'REGION', regionKey: 'STCHI#1' } });
     // Region class below batch: even ONLHI waits behind batch.
     expect(region.slices[0]!.cpGranted).toBeLessThan(evaluateLpar(base).slices[0]!.cpGranted);
+  });
+
+  // The regions' own CPU: an AOR (transaction server) and an MQ queue manager share STCHI.
+  const regionSlices = [
+    txn({ key: 'HI', scKey: 'ONLHI#1', cpEngines: 2.5 }),
+    server({ key: 'AOR@P', scKey: 'STCHI#1', role: 'CICS.AOR', jobname: 'AOR', cpEngines: 0.2 }),
+    server({ key: 'MQ@P', scKey: 'STCHI#1', role: 'MQ.MSTR', jobname: 'MQ', cpEngines: 0.2 }),
+  ];
+  const regionBase = { ...base, slices: regionSlices };
+  const run = (onlhiDp: number, mode: 'TRANSACTION' | 'REGION', servers: string[]) =>
+    evaluateLpar({ ...regionBase, dpOf: (k) => ({ 'ONLHI#1': onlhiDp, 'STCHI#1': 240 })[k]!, regions: { keys: ['ONLHI#1'], mode, regionKey: 'STCHI#1', servers } });
+  const cpuDelayFrac = (r: ReturnType<typeof evaluateLpar>, key: string) => {
+    const x = r.slices.find((s) => s.key === key)!;
+    return x.delayCpu / (x.usingCpu + x.delayCpu);
+  };
+  it('TRANSACTION mode: raising the transaction class above the region class does not starve its own regions', () => {
+    // WLM Planning p.122: a transaction-server region is managed to the goals of the transactions it serves.
+    const low = run(230, 'TRANSACTION', ['AOR@P']);
+    const high = run(252, 'TRANSACTION', ['AOR@P']);
+    expect(high.slices[1]!.cpGranted).toBeCloseTo(0.2 * (2 / 2.7), 6); // shares ONLHI's DP and its shortage
+    expect(cpuDelayFrac(high, 'AOR@P')).toBeLessThan(cpuDelayFrac(low, 'AOR@P') + 0.3);
+    // The MQ queue manager is not a transaction server: it stays at STCHI's DP, behind ONLHI.
+    expect(high.slices[2]!.cpGranted).toBeLessThan(0.01);
+    // Without the topology (the old model) the region starved behind its own transactions.
+    const old = run(252, 'TRANSACTION', []);
+    expect(old.slices[1]!.cpGranted).toBeLessThan(0.01);
+  });
+  it('REGION and BOTH: the region class DP governs the region and its transactions', () => {
+    const r = run(252, 'REGION', []);
+    // Transactions ride STCHI's DP (240) with the AOR and MQ: ONLHI's own DP is not used.
+    const total = 2.5 + 0.2 + 0.2;
+    expect(r.slices[0]!.cpGranted).toBeCloseTo((2 * 2.5) / total, 6);
+    expect(r.slices[1]!.cpGranted).toBeCloseTo((2 * 0.2) / total, 6);
+  });
+  it('Manage Region Using Goals Of is read per region from its STC rule (WLM Planning p.211)', () => {
+    const asSlice = (jobname: string, role: string) => server({ key: `${jobname}@PROD1`, scKey: 'STCHI#1', role, jobname });
+    const sl = [txn({ key: 'RB', scKey: 'ONLHI#1', workloadId: 'W' }), asSlice('CICSTOR1', 'CICS.TOR'), asSlice('CICSAOR1', 'CICS.AOR'), asSlice('CICSAOR3', 'CICS.AOR'), asSlice('MQ1AMSTR', 'MQ.MSTR')];
+    const byId = { W: { subsystem: 'CICS' } } as unknown as Parameters<typeof cicsRegions>[2];
+    const withRules = (pre: { pattern: string; regionMode: RegionMode }[], legacy?: 'REGION') => ({
+      ...BASEPOL,
+      ...(legacy ? { cicsRegionMode: legacy } : {}),
+      subsystems: BASEPOL.subsystems.map((ss) =>
+        ss.subsystem === 'STC' ? { ...ss, rules: [...pre.map((r) => ({ qualifier: 'TN' as const, pattern: r.pattern, serviceClass: 'STCHI', reportClass: null, children: [], regionMode: r.regionMode })), ...ss.rules] } : ss,
+      ),
+    });
+    const regionsOf = (def: typeof BASEPOL) => cicsRegions(def, sl, byId, MIDWEST_ADDRESS_SPACES, 'PROD1').regions!;
+    // Default: every region is a transaction server.
+    expect(regionsOf(BASEPOL)).toMatchObject({ mode: 'TRANSACTION', servers: ['CICSAOR1@PROD1', 'CICSAOR3@PROD1', 'CICSTOR1@PROD1'] });
+    // IBM's advice: TOR = BOTH, AORs at the default.
+    expect(regionsOf(withRules([{ pattern: 'CICSTOR*', regionMode: 'BOTH' }]))).toMatchObject({ mode: 'TRANSACTION', servers: ['CICSAOR1@PROD1', 'CICSAOR3@PROD1'] });
+    // AORs REGION: the transactions ride the AOR class DP.
+    expect(regionsOf(withRules([{ pattern: 'CICSAOR*', regionMode: 'REGION' }]))).toMatchObject({ mode: 'REGION', regionKey: 'STCHI#1', servers: ['CICSTOR1@PROD1'] });
+    // Saved games with the old policy-wide REGION setting keep it.
+    expect(regionsOf(withRules([], 'REGION'))).toMatchObject({ mode: 'REGION', servers: [] });
+  });
+  it('REGION drops the transactions\' response times from their service class; BOTH keeps them (WLM Planning p.103)', () => {
+    const rt = (rtTracked: boolean) => {
+      const r = evaluateLpar({ ...regionBase, dpOf: (k) => ({ 'ONLHI#1': 252, 'STCHI#1': 240 })[k]!, regions: { keys: ['ONLHI#1'], mode: 'REGION', regionKey: 'STCHI#1', servers: [], rtTracked } });
+      return { slice: r.slices[0]!.completions, sc: r.scps.find((x) => x.scKey === 'ONLHI#1')!.completions };
+    };
+    const tracked = rt(true);
+    const region = rt(false);
+    expect(region.slice).toBeCloseTo(tracked.slice, 9); // the work still runs and completes
+    expect(tracked.sc).toBeGreaterThan(0);
+    expect(region.sc).toBe(0); // no response time data for WLM to manage the class to
+  });
+  it('response times are tracked unless every region is REGION', () => {
+    const asSlice = (jobname: string, role: string) => server({ key: `${jobname}@PROD1`, scKey: 'STCHI#1', role, jobname });
+    const sl = [txn({ key: 'RB', scKey: 'ONLHI#1', workloadId: 'W' }), asSlice('CICSTOR1', 'CICS.TOR'), asSlice('CICSAOR1', 'CICS.AOR'), asSlice('CICSAOR3', 'CICS.AOR')];
+    const byId = { W: { subsystem: 'CICS' } } as unknown as Parameters<typeof cicsRegions>[2];
+    const withRules = (pre: { pattern: string; regionMode: RegionMode }[]) => ({
+      ...BASEPOL,
+      subsystems: BASEPOL.subsystems.map((ss) =>
+        ss.subsystem === 'STC' ? { ...ss, rules: [...pre.map((r) => ({ qualifier: 'TN' as const, pattern: r.pattern, serviceClass: 'STCHI', reportClass: null, children: [], regionMode: r.regionMode })), ...ss.rules] } : ss,
+      ),
+    });
+    const tracked = (pre: { pattern: string; regionMode: RegionMode }[]) => cicsRegions(withRules(pre), sl, byId, MIDWEST_ADDRESS_SPACES, 'PROD1').regions!.rtTracked;
+    expect(tracked([])).toBe(true);
+    expect(tracked([{ pattern: 'CICS*', regionMode: 'REGION' }])).toBe(false);
+    expect(tracked([{ pattern: 'CICSTOR*', regionMode: 'BOTH' }, { pattern: 'CICSAOR*', regionMode: 'REGION' }])).toBe(true);
+  });
+  it('the region class is reported with its server regions but managed without them', () => {
+    const t = run(252, 'TRANSACTION', ['AOR@P']).scps.find((x) => x.scKey === 'STCHI#1')!;
+    const goal = goalInfo(BASEPOL, 'STCHI#1')!.goal;
+    // Reported: the AOR's samples are in the class's tick.
+    expect(t.usingCpu + t.delayCpu).toBeGreaterThan(0.39);
+    // Managed: only the MQ queue manager counts (fully delayed here), so velocity ≈ 0.
+    const acc = decayInto(emptyAcc(), t);
+    expect(accPi(goal, acc)).toBeLessThan(goalPi(goal, acc)!);
+    expect(tickPi(goal, t)).toBeCloseTo(goalPi(goal, acc)!, 6);
+    // Only server regions in the class: nothing left to manage.
+    const only = evaluateLpar({ ...regionBase, slices: regionSlices.slice(0, 2), dpOf: (k) => ({ 'ONLHI#1': 252, 'STCHI#1': 240 })[k]!, regions: { keys: ['ONLHI#1'], mode: 'TRANSACTION', regionKey: 'STCHI#1', servers: ['AOR@P'] } });
+    const t2 = only.scps.find((x) => x.scKey === 'STCHI#1')!;
+    expect(goalPi(goal, decayInto(emptyAcc(), t2))).toBeNull();
+    expect(accPi(goal, decayInto(emptyAcc(), t2))).not.toBeNull();
   });
 });
 
@@ -743,4 +898,58 @@ describe('zIIP-eligible work does not soak up the CP backlog (WLM Planning p.182
     expect(r.ziipGranted).toBeGreaterThan(1.5);
     expect(r.newZiipBacklog).toBeLessThan(10);
   });
+});
+
+describe('LPAR BUSY vs MVS BUSY (RMF Report Analysis 3.1 p.389)', () => {
+  const cpcOf = (cp: number) => ({ ...MIDWEST_WORLD.cpcs[0]!, engines: { ...MIDWEST_WORLD.cpcs[0]!.engines, CP: cp } });
+  const lparsWith = (weightProd1: number, hiperDispatch = true) =>
+    MIDWEST_WORLD.lpars.map((l) =>
+      l.id !== 'PROD1' ? l : { ...l, hiperDispatch, pools: l.pools.map((p) => (p.pool === 'CP' ? { ...p, weight: weightProd1 } : p)) },
+    );
+  const demand = (byLpar: Record<string, number>) =>
+    Object.entries(byLpar).map(([lparId, demandEngines]) => ({ lparId, pool: 'CP' as const, demandEngines, softCapEngines: Infinity }));
+  const lparBusy = (r: { deliveredEngines: number }, logical: number) => r.deliveredEngines / logical;
+
+  it('a low-weight LPAR starved by PR/SM shows MVS BUSY near 100 % while its LPAR BUSY is low', () => {
+    const r = resolveCpc(cpcOf(4), lparsWith(50), demand({ PROD1: 3, PROD2: 4, DEVT: 1 }))['PROD1:CP']!;
+    expect(lparBusy(r, 6)).toBeLessThan(0.2);
+    expect(r.mvsBusyFrac).toBeGreaterThanOrEqual(0.9);
+  });
+  it('uncontended and horizontal, MVS BUSY equals LPAR BUSY', () => {
+    const r = resolveCpc(cpcOf(8), lparsWith(500, false), demand({ PROD1: 2, PROD2: 1, DEVT: 0.3 }))['PROD1:CP']!;
+    expect(r.deliveredEngines).toBeCloseTo(2);
+    expect(r.mvsBusyFrac).toBeCloseTo(lparBusy(r, 6), 6);
+  });
+});
+
+describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 52)', () => {
+  // Midwest seed 7, PROD1 capped at 200 MSU: TSO#2 and DDFPRD#2 (both importance 4) compete for PROD2's CPs.
+  // Without the gap test they traded places as receiver and donor every few minutes (DPs ED↔EB).
+  it('equally important classes do not keep taking DP from each other', () => {
+    let s = initState(7, MIDWEST);
+    s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
+    const move = /PROD2 RCVR=(?:TSO#2|DDFPRD#2) .*?(TSO#2|DDFPRD#2) DP ([0-9A-F]+)→([0-9A-F]+)/;
+    const lines: string[] = [];
+    for (let t = 0; t < 4.5 * 360; t++) {
+      const prev = s.wlm.log;
+      s = step(s, [], MIDWEST);
+      if (s.wlm.log === prev) continue;
+      const last = prev[prev.length - 1];
+      const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
+      for (const l of s.wlm.log.slice(from)) if (/ (09|10):\d\d:\d\d /.test(l) && move.test(l)) lines.push(l);
+    }
+    expect(lines.length).toBeGreaterThan(0);
+    const donorMoves = lines.filter((l) => /RCVR=TSO#2 .*DONOR DDFPRD#2|RCVR=DDFPRD#2 .*DONOR TSO#2/.test(l));
+    expect(donorMoves.length).toBeLessThanOrEqual(1);
+    // Neither class's DP goes down, up and down again.
+    const reversals = (sc: string) => {
+      const dirs = lines.flatMap((l) => {
+        const m = move.exec(l)!;
+        return m[1] === sc ? [Math.sign(parseInt(m[3]!, 16) - parseInt(m[2]!, 16))] : [];
+      });
+      return dirs.filter((d, i) => i > 0 && d !== dirs[i - 1]).length;
+    };
+    expect(reversals('TSO#2')).toBeLessThanOrEqual(1);
+    expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(1);
+  }, 120_000);
 });

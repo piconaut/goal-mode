@@ -50,6 +50,8 @@ export interface CfStructureResult {
   asyncFrac: number;
   serviceSec: number;
   zosCpuSec: number;
+  /** Duplexed structure: PRIM on the primary's CF, SEC for the copy (RMF Usage Summary status). Absent when simplex. */
+  role?: 'PRIM' | 'SEC';
 }
 
 export interface CfTunables {
@@ -83,7 +85,13 @@ export interface CfResult {
   /** z/OS CPU per request: spin time for sync, overhead for async. */
   zosCpuSec: number;
   structures: CfStructureResult[];
+  /** Secondary copies of duplexed structures held here (reporting only): each duplexed request also drives
+   *  them, so they carry the primary's request rate (writes only for a GBP) and its duplexed service time. */
+  secondaries?: CfStructureResult[];
 }
+
+/** Share of a duplexed structure's requests that also go to the secondary: GBP duplexing copies only writes. */
+const duplexFrac = (x: CfStructureConfig) => (x.type === 'CACHE' ? CF_DUPLEX.cacheWriteFrac : 1);
 
 /** Where a duplexed structure's secondary copy lives: the next CF on its preference list that is up. */
 export function duplexSecondary(x: CfStructureConfig, upCfs: readonly string[]): string | null {
@@ -93,7 +101,6 @@ export function duplexSecondary(x: CfStructureConfig, upCfs: readonly string[]):
 
 export function evaluateCf(images: readonly CfImageInput[], structures: readonly CfStructureConfig[], totalRequestRate: number, t: CfTunables): CfResult[] {
   const up = images.map((im) => im.cfg.lparId);
-  const dupFrac = (x: CfStructureConfig) => (x.type === 'CACHE' ? CF_DUPLEX.cacheWriteFrac : 1);
   // CF CPU demand per image, including the secondary copies of duplexed structures.
   const demandBy: Record<string, number> = {};
   for (const x of structures) {
@@ -101,7 +108,7 @@ export function evaluateCf(images: readonly CfImageInput[], structures: readonly
     const d = totalRequestRate * x.requestShare * t.cpuSecPerRequest * x.costMult;
     demandBy[x.cfLparId] = (demandBy[x.cfLparId] ?? 0) + d;
     const sec = duplexSecondary(x, up);
-    if (sec) demandBy[sec] = (demandBy[sec] ?? 0) + d * dupFrac(x);
+    if (sec) demandBy[sec] = (demandBy[sec] ?? 0) + d * duplexFrac(x);
   }
   const busyOf: Record<string, number> = {};
   const waitOf: Record<string, number> = {};
@@ -115,31 +122,39 @@ export function evaluateCf(images: readonly CfImageInput[], structures: readonly
     const im = images.find((i) => i.cfg.lparId === cfId)!;
     return (t.linkSyncSec + (t.cpuSecPerRequest * costMult) / (1 - busyOf[cfId]!)) * (im.cfg.degrade ?? 1) + waitOf[cfId]!;
   };
+  const resultOf = (x: CfStructureConfig): CfStructureResult => {
+    const id = x.cfLparId;
+    const sec = duplexSecondary(x, up);
+    // Duplexed: the request completes when both copies have it.
+    const sync = sec ? Math.max(syncAt(id, x.costMult), syncAt(sec, x.costMult)) * CF_DUPLEX.syncMult : syncAt(id, x.costMult);
+    // Heuristic conversion (z/OS 1.2+, all structure types): the slower sync gets relative to the
+    // type's threshold, the more converts; every Nth request stays sync to resample (IBM WSC).
+    const threshold = t.syncThresholdSec * CF_ASYNC_THRESHOLD_MULT[x.type];
+    const asyncFrac = sync <= threshold ? 0 : Math.min(0.98, 1 - threshold / sync);
+    const asyncSec = t.asyncBaseSec + (sync - t.linkSyncSec);
+    return {
+      name: x.name,
+      type: x.type,
+      cfLparId: x.cfLparId,
+      requestRate: totalRequestRate * x.requestShare,
+      syncSec: sync,
+      asyncFrac,
+      serviceSec: (1 - asyncFrac) * sync + asyncFrac * asyncSec,
+      zosCpuSec: (1 - asyncFrac) * sync + asyncFrac * t.asyncZosCpuSec,
+      ...(sec ? { role: 'PRIM' as const } : {}),
+    };
+  };
   return images.map((im) => {
     const id = im.cfg.lparId;
-    const here = structures.filter((x) => x.cfLparId === id && !x.lost);
-    const rates = here.map((x) => totalRequestRate * x.requestShare);
-    const rate = rates.reduce((a, r) => a + r, 0);
-    const res: CfStructureResult[] = here.map((x, i) => {
-      const sec = duplexSecondary(x, up);
-      // Duplexed: the request completes when both copies have it.
-      const sync = sec ? Math.max(syncAt(id, x.costMult), syncAt(sec, x.costMult)) * CF_DUPLEX.syncMult : syncAt(id, x.costMult);
-      // Heuristic conversion (z/OS 1.2+, all structure types): the slower sync gets relative to the
-      // type's threshold, the more converts; every Nth request stays sync to resample (IBM WSC).
-      const threshold = t.syncThresholdSec * CF_ASYNC_THRESHOLD_MULT[x.type];
-      const asyncFrac = sync <= threshold ? 0 : Math.min(0.98, 1 - threshold / sync);
-      const asyncSec = t.asyncBaseSec + (sync - t.linkSyncSec);
-      return {
-        name: x.name,
-        type: x.type,
-        cfLparId: x.cfLparId,
-        requestRate: rates[i]!,
-        syncSec: sync,
-        asyncFrac,
-        serviceSec: (1 - asyncFrac) * sync + asyncFrac * asyncSec,
-        zosCpuSec: (1 - asyncFrac) * sync + asyncFrac * t.asyncZosCpuSec,
-      };
-    });
+    const live = structures.filter((x) => !x.lost && up.includes(x.cfLparId));
+    const res = live.filter((x) => x.cfLparId === id).map(resultOf);
+    const rate = res.reduce((a, r) => a + r.requestRate, 0);
+    const secondaries = live
+      .filter((x) => duplexSecondary(x, up) === id)
+      .map((x) => {
+        const p = resultOf(x);
+        return { ...p, cfLparId: id, requestRate: p.requestRate * duplexFrac(x), role: 'SEC' as const };
+      });
     const w = (f: (r: CfStructureResult) => number, idle: number) => (rate > 0 ? res.reduce((a, r) => a + r.requestRate * f(r), 0) / rate : idle);
     const idleSync = syncAt(id, 1);
     return {
@@ -152,6 +167,7 @@ export function evaluateCf(images: readonly CfImageInput[], structures: readonly
       serviceSec: w((r) => r.serviceSec, idleSync),
       zosCpuSec: w((r) => r.zosCpuSec, idleSync),
       structures: res,
+      ...(secondaries.length ? { secondaries } : {}),
     };
   });
 }
@@ -219,6 +235,25 @@ export interface CfSystemResult {
   asyncFrac: number;
   serviceSec: number;
   zosCpuSec: number;
+  /** Reporting only: this system's traffic per structure copy (RMF Structure Activity and Subchannel Activity). */
+  byStructure?: CfSystemStructureResult[];
+}
+
+/** One connected system's requests to one structure copy. A duplexed request drives both copies and completes
+ *  when both have it, so the SEC copy carries the same elapsed times (writes only for a GBP). */
+export interface CfSystemStructureResult {
+  name: string;
+  type: CfStructureType;
+  role?: 'PRIM' | 'SEC';
+  cfLparId: string;
+  /** Link distance to this copy's CF, km. */
+  distKm: number;
+  requestRate: number;
+  syncSec: number;
+  asyncFrac: number;
+  /** Elapsed time of the requests that ran asynchronously. */
+  asyncSec: number;
+  serviceSec: number;
 }
 
 /**
@@ -240,6 +275,7 @@ export function cfServiceForSystem(
   let asyncW = 0;
   let serviceW = 0;
   let cpuW = 0;
+  const byStructure: CfSystemStructureResult[] = [];
   for (const r of results) {
     for (const st of r.structures) {
       const x = structures.find((s) => s.name === st.name);
@@ -257,8 +293,11 @@ export function cfServiceForSystem(
       asyncW += x.requestShare * asyncFrac;
       serviceW += x.requestShare * ((1 - asyncFrac) * sync + asyncFrac * asyncSec);
       cpuW += x.requestShare * ((1 - asyncFrac) * sync + asyncFrac * t.asyncZosCpuSec);
+      const row = { name: st.name, type: st.type, requestRate: requestRate * x.requestShare, syncSec: sync, asyncFrac, asyncSec, serviceSec: (1 - asyncFrac) * sync + asyncFrac * asyncSec };
+      byStructure.push({ ...row, ...(sec ? { role: 'PRIM' as const } : {}), cfLparId: st.cfLparId, distKm: kmTo(st.cfLparId) });
+      if (sec) byStructure.push({ ...row, requestRate: row.requestRate * duplexFrac(x), role: 'SEC', cfLparId: sec, distKm: kmTo(sec) });
     }
   }
   const n = share > 0 ? share : 1;
-  return { distKm, requestRate, syncSec: syncW / n, asyncFrac: asyncW / n, serviceSec: serviceW, zosCpuSec: cpuW };
+  return { distKm, requestRate, syncSec: syncW / n, asyncFrac: asyncW / n, serviceSec: serviceW, zosCpuSec: cpuW, byStructure };
 }

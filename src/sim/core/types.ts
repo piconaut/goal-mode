@@ -132,6 +132,8 @@ export interface LparPoolRuntime {
   overheadFrac: number;
   /** Fraction of ready time a logical CP waits for a physical engine (short-engine effect). */
   prsmDelayFrac: number;
+  /** RMF MVS BUSY: ready-or-running share of unparked logical CP time (dispatched or not). */
+  mvsBusyFrac: number;
   /** Share of demand a binding cap (soft, absolute or initial) removed; PR/SM contention excluded. */
   cappedFrac: number;
   /** The part of cappedFrac due to WLM soft capping (Partition Data WLM%). */

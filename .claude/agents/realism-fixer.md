@@ -13,7 +13,8 @@ Setup (you run in a git worktree):
 3. Read CLAUDE.md, then the SPEC.md sections and `docs/research.md` rows the finding touches.
 
 Do the fix:
-- Reproduce the finding first (the brief's command or a `runs/lab/*.ts` script) and note the before numbers.
+- Reproduce the finding first (the brief's command, or `npm run -s lab -- <control.json> <treatment.json>` with the
+  audit's specs; format in `tools/lab.ts`) and note the before numbers. Re-run the same specs for the after numbers.
 - Change the model the smallest way that makes it behave as documented. Follow CLAUDE.md: layering,
   determinism, units in names, tunables in `src/content/` with `// FICTIONAL:` / `// APPROX:` and a source cite.
 - Add a test that fails before and passes after: a unit test for a pure function, or a realism test in

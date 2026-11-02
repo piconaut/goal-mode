@@ -1,0 +1,34 @@
+# Instructions live in the existing briefs; role files adapt them for Codex.
+# Role files select model and reasoning defaults; permission policy stays with the host/user.
+
+[agents.implementer]
+description = "Implement a precise content/data, existing-function test or small UI task; no model or balance decisions."
+config_file = "agents/implementer.toml"
+
+[agents.log-reader]
+description = "Read long logs or failures and return exact evidence answering the assigned question; read-only."
+config_file = "agents/log-reader.toml"
+
+[agents.pr-reviewer]
+description = "Review a PR in disposable worktrees, verify its claims and return a merge verdict; never merge or push."
+config_file = "agents/pr-reviewer.toml"
+
+[agents.realism-fixer]
+description = "Implement one vetted realism finding in an assigned isolated worktree, with tests and fidelity documentation."
+config_file = "agents/realism-fixer.toml"
+
+[agents.goal-mode-realism-auditor]
+description = "Audit documented z/OS behaviour with controlled experiments; write findings only under runs/lab/."
+config_file = "agents/goal-mode-realism-auditor.toml"
+
+[agents.goal-mode-player]
+description = "Play headlessly from player-visible evidence, keeping a decision log and reporting outcomes."
+config_file = "agents/goal-mode-player.toml"
+
+[agents.goal-mode-cost-cutter]
+description = "Play headlessly with a cost-cutting strategy and player-visible evidence only."
+config_file = "agents/goal-mode-cost-cutter.toml"
+
+[agents.goal-mode-cautious-operator]
+description = "Play headlessly with cautious reversible changes and player-visible evidence only."
+config_file = "agents/goal-mode-cautious-operator.toml"

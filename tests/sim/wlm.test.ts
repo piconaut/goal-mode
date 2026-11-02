@@ -1,5 +1,6 @@
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify, wildcardMatch } from '../../src/sim/wlm/classify';
+import type { ClassificationRule, RegionMode } from '../../src/sim/wlm/types';
 import { addToBuckets, emptyBuckets, percentilePi, performanceIndex, velocityOf } from '../../src/sim/wlm/goals';
 import { splitPeriods } from '../../src/sim/workload/periods';
 import { lognormCdf, normCdf, normInv } from '../../src/sim/core/math';
@@ -71,6 +72,21 @@ describe('classification', () => {
     expect(classify(def, { subsystem: 'DDF', UI: 'MOBAPI', PK: 'LOGINPKG' })).toMatchObject({ serviceClass: 'ONLHI', reportClass: 'RMOBILE' });
     expect(classify(def, { subsystem: 'DDF', UI: 'MOBAPI', PK: 'OTHER' }).serviceClass).toBe('ONLMED');
     expect(classify(def, { subsystem: 'DDF', UI: 'BIUSER' }).serviceClass).toBe('DDFPRD');
+  });
+  it('Manage Region Using Goals Of comes from the matching STC/JES rule, inherited by sub-rules (WLM Planning p.211)', () => {
+    const r = (pattern: string, children: ClassificationRule[] = [], regionMode?: RegionMode): ClassificationRule => ({ qualifier: 'TN', pattern, serviceClass: 'STCHI', reportClass: null, children, ...(regionMode ? { regionMode } : {}) });
+    const def = {
+      ...BASEPOL,
+      subsystems: [
+        { subsystem: 'STC' as const, defaultServiceClass: 'STCLO', defaultReportClass: null, rules: [r('CICSTOR*', [], 'BOTH'), r('CICS*', [r('CICSAOR9')], 'REGION'), r('MQ*')] },
+        { subsystem: 'CICS' as const, defaultServiceClass: 'ONLMED', defaultReportClass: null, rules: [r('RB*', [], 'REGION')] },
+      ],
+    };
+    expect(classify(def, { subsystem: 'STC', TN: 'CICSTOR1' }).regionMode).toBe('BOTH');
+    expect(classify(def, { subsystem: 'STC', TN: 'CICSAOR9' }).regionMode).toBe('REGION');
+    expect(classify(def, { subsystem: 'STC', TN: 'MQ1AMSTR' }).regionMode).toBeUndefined();
+    // N/A outside STC and JES rules.
+    expect(classify(def, { subsystem: 'CICS', TN: 'RB01' }).regionMode).toBeUndefined();
   });
 });
 

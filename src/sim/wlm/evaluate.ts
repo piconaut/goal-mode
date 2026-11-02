@@ -146,10 +146,14 @@ export interface LparEvalInput {
   /** Periods in minOf that are discretionary: their minimum yields to goal work. */
   discMin?: ReadonlySet<string>;
   /** CICS work runs inside region address spaces, so it shares their dispatching priority: the most
-   * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION). */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string };
+   * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION/BOTH).
+   * `servers`: slice keys of the region address spaces managed as transaction servers (TRANSACTION); their own
+   * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
+   * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
+   * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean };
   io: Record<IoClass, IoService>;
-  /** WLM I/O priority management: IOSQ ordered by DP and I/O samples count in velocity. */
+  /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
   /** Paging delay fraction on this image (storage-critical classes are exempt). */
   pagingFrac: number;
@@ -221,6 +225,12 @@ export interface ScpTick {
   delayCap: number;
   /** Batch jobs queued for an initiator in a WLM-managed job class (WLMGL QMPL). */
   delayQueue?: number;
+  /** The part of usingIo / delayIo left out of velocity (I/O priority management off). */
+  usingIoNoVel?: number;
+  delayIoNoVel?: number;
+  /** Velocity samples of transaction-server regions in this period: reported, but left out of its PI. */
+  srvUsing?: number;
+  srvDelay?: number;
   completions: number;
   failed: number;
   rtSumSec: number;
@@ -340,14 +350,19 @@ const RG_MIN_DP = 252;
  * capacity no goal period wants, not only from goal periods that are meeting their goals. */
 const RG_MIN_DISC_DP = DP.MANAGED_MIN - 1;
 
+/** Suffix of the dispatch aggregate holding a period's transaction-server regions. */
+const SRV = '~srv';
+const baseKey = (id: string) => (id.endsWith(SRV) ? id.slice(0, -SRV.length) : id);
+
 /** Per-slice demand and its per-period totals: everything in an evaluation that does not depend on DPs. */
 export interface PreparedLpar {
   sliceCp: number[];
   sliceZi: number[];
   /** CP demand withheld by a resource group maximum or discretionary goal management cap. */
   sliceCut: number[];
-  /** Index of each slice's service-class period in `order`. */
+  /** Index of each slice's dispatch aggregate in `order`. */
   sliceAgg: number[];
+  /** Dispatch aggregates: service-class periods, plus `<scKey>~srv` for the transaction-server regions in a period. */
   order: string[];
   aggCp: number[];
   aggZi: number[];
@@ -381,6 +396,7 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
   const aggZi: number[] = [];
   const aggOverflow: boolean[] = [];
   const capOf = input.capOf;
+  const servers = input.regions?.servers;
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const bl = backlog[s.key] ?? 0;
@@ -391,11 +407,12 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
     const zi = s.ziipEngines + (bl - blCp) / TICK_SEC;
     sliceCp[i] = cp;
     sliceZi[i] = zi;
-    let a = aggIdx[s.scKey];
+    const id = servers !== undefined && s.kind === 'AS' && servers.includes(s.key) ? `${s.scKey}${SRV}` : s.scKey;
+    let a = aggIdx[id];
     if (a === undefined) {
       a = order.length;
-      aggIdx[s.scKey] = a;
-      order.push(s.scKey);
+      aggIdx[id] = a;
+      order.push(id);
       aggCp.push(0);
       aggZi.push(0);
       aggOverflow.push(s.mayOverflow);
@@ -413,16 +430,19 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const scpsOnly = input.scpsOnly === true;
   const bucketsFor = scpsOnly ? input.bucketsFor : undefined;
   const { sliceCp, sliceZi, sliceCut, sliceAgg, order, aggCp, aggZi, aggOverflow } = input.prepared ?? prepareLpar(input);
-  // dpOf is pure: look each period up once.
-  const aggDp = order.map((k) => input.dpOf(k));
-  const sliceDp = new Array<number>(n);
-  for (let i = 0; i < n; i++) sliceDp[i] = aggDp[sliceAgg[i]!]!;
-
   const reg = input.regions;
-  const regionDp = reg ? (reg.mode === 'REGION' ? input.dpOf(reg.regionKey) : Math.max(...reg.keys.map((k) => input.dpOf(k)))) : 0;
+  // Transaction-server regions run at the DP of the most important transaction class they serve.
+  const txnDp = reg ? Math.max(...reg.keys.map((k) => input.dpOf(k))) : 0;
+  const regionDp = reg ? (reg.mode === 'REGION' ? input.dpOf(reg.regionKey) : txnDp) : 0;
+  // dpOf is pure: look each period up once. Reported DPs are the periods' own.
+  const aggDp = order.map((k) => input.dpOf(baseKey(k)));
+  const runDp = order.map((k, a) => (k.endsWith(SRV) ? txnDp : reg && reg.keys.includes(k) ? regionDp : aggDp[a]!));
+  const sliceDp = new Array<number>(n);
+  for (let i = 0; i < n; i++) sliceDp[i] = runDp[sliceAgg[i]!]!;
+
   const demands: DispatchDemand[] = order.map((k, a) => ({
     id: k,
-    dp: reg && reg.keys.includes(k) ? regionDp : aggDp[a]!,
+    dp: runDp[a]!,
     cpEngines: aggCp[a]!,
     ziipEngines: aggZi[a]!,
     ziipMayOverflow: aggOverflow[a]!,
@@ -489,8 +509,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const s = slices[i]!;
     const a = sliceAgg[i]!;
     const r = dres[a]!;
-    const promo = anyPromo ? extraById[`${s.scKey}~promo`] : undefined;
-    const rgmin = minOf ? extraById[`${s.scKey}~rgmin`] : undefined;
+    const own = order[a] === s.scKey;
+    const promo = anyPromo && own ? extraById[`${s.scKey}~promo`] : undefined;
+    const rgmin = minOf && own ? extraById[`${s.scKey}~rgmin`] : undefined;
     const totCp = aggCp[a]!;
     const totZi = aggZi[a]!;
     const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
@@ -513,9 +534,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     }
   }
 
-  const prio = input.ioPriority === false ? null : iosqByPriority(slices, sliceDp, input.io);
-  // Without I/O priority management, I/O samples don't count towards velocity.
-  const ioSamples = input.ioPriority === false ? 0 : 1;
+  // I/O priority management NO "sets I/O priorities equal to dispatching priorities" (WLM Planning p.115), so
+  // the IOSQ is DP-ordered either way. APPROX: YES (goal-based I/O priorities) is not modelled and also uses DP.
+  const prio = iosqByPriority(slices, sliceDp, input.io);
   const pgBy = slicePagingFrac(slices, input.pagingFrac, input.storageCritical, input.pagingWeight);
 
   const results = new Array<SliceResult>(n);
@@ -546,10 +567,10 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         iipcpGranted,
         usingCpu: cpUsing,
         usingZiip: ziipGranted,
-        usingIo: ioSamples * s.ioRate * ioUsingSec(io),
+        usingIo: s.ioRate * ioUsingSec(io),
         delayCpu: cpUsing * qr + unmetCp,
         delayZiip: ziipGranted * zq + unmetZiip,
-        delayIo: ioSamples * s.ioRate * io.delaySec,
+        delayIo: s.ioRate * io.delaySec,
         delayOther: 0,
         delayStorage: (cpUsing + ziipGranted) * pg,
         delayCap: capDelay,
@@ -632,10 +653,10 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       iipcpGranted,
       usingCpu: cpUsing,
       usingZiip: ziipGranted,
-      usingIo: ioSamples * ioRate * ioUsingSec(io),
+      usingIo: ioRate * ioUsingSec(io),
       delayCpu: cpUsing * qr + unmetCp,
       delayZiip: ziipGranted * zq + unmetZiip,
-      delayIo: ioSamples * ioRate * io.delaySec,
+      delayIo: ioRate * io.delaySec,
       delayOther: s.rate * otherSec,
       delayStorage: s.rate * pagingSec,
       delayCap: capDelay,
@@ -667,8 +688,20 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     };
   }
 
-  const scps: ScpTick[] = new Array<ScpTick>(order.length);
-  for (let a = 0; a < order.length; a++) scps[a] = emptyScpTick(order[a]!, aggDp[a]!);
+  // One tick per period: transaction-server regions are reported with their own class (WLM Planning p.113).
+  const scps: ScpTick[] = [];
+  const scpOfAgg = new Array<number>(order.length);
+  const scpIdx: Record<string, number> = {};
+  for (let a = 0; a < order.length; a++) {
+    const k = baseKey(order[a]!);
+    let j = scpIdx[k];
+    if (j === undefined) {
+      j = scps.length;
+      scpIdx[k] = j;
+      scps.push(emptyScpTick(k, aggDp[a]!));
+    }
+    scpOfAgg[a] = j;
+  }
   const rcMap: Record<string, ReportClassTick> = {};
   const rcs: ReportClassTick[] = [];
   for (let i = 0; i < n; i++) {
@@ -684,13 +717,31 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       if (!rt.members.includes(s.scKey)) rt.members.push(s.scKey);
       addSliceTo(rt, s, r, true);
     }
-    addSliceTo(scps[sliceAgg[i]!]!, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey));
+    const t = scps[scpOfAgg[sliceAgg[i]!]!]!;
+    const untracked = reg !== undefined && reg.rtTracked === false && s.kind === 'TXN' && reg.keys.includes(s.scKey);
+    addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey), !untracked);
+    if (order[sliceAgg[i]!] !== s.scKey) {
+      // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).
+      t.srvUsing = (t.srvUsing ?? 0) + r.usingCpu + r.usingZiip + (input.ioPriority === false ? 0 : r.usingIo);
+      t.srvDelay = (t.srvDelay ?? 0) + r.delayCpu + r.delayZiip + (input.ioPriority === false ? 0 : r.delayIo) + r.delayStorage + r.delayCap;
+    }
+  }
+  // With I/O priority management off, I/O using and delay samples are still reported but "not included" in
+  // the velocity formula (WLM Planning p.70, p.115).
+  if (input.ioPriority === false) {
+    for (const t of scps) excludeIoFromVelocity(t);
+    for (const t of rcs) excludeIoFromVelocity(t);
   }
 
   return rcs.length > 0 ? { slices: results, scps, roleHealth, rcs } : { slices: results, scps, roleHealth };
 }
 
-function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean): void {
+function excludeIoFromVelocity(t: ScpTick): void {
+  t.usingIoNoVel = t.usingIo;
+  t.delayIoNoVel = t.delayIo;
+}
+
+function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean, rt = true): void {
   t.cpEngines += r.cpGranted;
   t.ziipEngines += r.ziipGranted;
   t.iipcpEngines += r.iipcpGranted;
@@ -703,6 +754,7 @@ function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean):
   t.delayOther += r.delayOther;
   t.delayStorage += r.delayStorage;
   t.delayCap += r.delayCap;
+  if (!rt) return;
   t.completions += r.completions;
   t.failed += r.failed;
   t.rtSumSec += r.completions * r.rtMeanSec;

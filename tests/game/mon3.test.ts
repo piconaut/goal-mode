@@ -1,6 +1,6 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
-import { buildMon3, explainWlmLog } from '../../src/game/mon3';
+import { buildMon3, explainWlmLog, type Mon3Row } from '../../src/game/mon3';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
@@ -116,5 +116,32 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
     expect(m.exceptions.length).toBeGreaterThan(0);
     for (const e of m.exceptions) expect(e.reason.length).toBeGreaterThan(0);
     expect(m.speed.some((s) => s.name === '*PROC')).toBe(true);
+  });
+});
+
+// RMF Report Analysis Table 20 (erbb500 v3r1 pp.108–110): % Delayed for PRC DEV STR SUB OPR ENQ, no capping
+// column, so DLY % may exceed their sum; Primary Reason is a jobname for PRC and RG-Cap for capping.
+describe('Monitor III DELAY columns and Primary Reason', () => {
+  const columns = (d: Mon3Row['delay']) => d.cpu + d.ziip + d.io + d.stor;
+
+  it('capping counts in DLY % but in no column, and reads RG-Cap', () => {
+    const def = structuredClone(noon.sim.wlm.definition);
+    def.resourceGroups = [...def.resourceGroups, { id: 'RGTEST', type: 3, min: null, max: 10 }];
+    def.classes.find((c) => c.id === 'ONLMED')!.resourceGroup = 'RGTEST';
+    const capped = advance({ ...noon, sim: { ...noon.sim, wlm: { ...noon.sim.wlm, definition: def } } }, MIDWEST, content, 60);
+    const r = buildMon3(capped, MIDWEST).rows.find((x) => x.system === 'PROD1' && x.scKey === 'ONLMED#1')!;
+    expect(r.delay.cap).toBeGreaterThan(0.05);
+    expect(r.delayFrac).toBeGreaterThan(columns(r.delay) + 0.05);
+    expect(r.primaryReason).toBe('RG-Cap');
+  });
+
+  it('processor delay names the heaviest other user, not the resource', () => {
+    const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
+    const rows = buildMon3(hot, MIDWEST).rows.filter((r) => r.primaryDelay === 'PRC');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) {
+      expect(r.primaryReason).toMatch(/^(\*ENCLAVE|[A-Z@#$][A-Z0-9@#$]{0,7})$/);
+      expect(r.primaryReason).not.toMatch(/^PRC/);
+    }
   });
 });

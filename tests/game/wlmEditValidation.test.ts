@@ -19,6 +19,17 @@ describe('WLM edit validation (WLM Planning p.67, p.84, p.99, p.102, p.120)', ()
     refused(applyWlmEdit(BASEPOL, { op: 'SET_PERIOD', classId: 'TSO', period: 0, goal: { kind: 'AVG', rtSec: 1 }, importance: 2, durationSu: null }));
   });
 
+  it('sets Manage Region Using Goals Of only on STC and JES rules (WLM Planning p.122)', () => {
+    refused(applyWlmEdit(BASEPOL, { op: 'SET_RULE_REGION_MODE', subsystem: 'CICS', path: [0], mode: 'REGION' }));
+    refused(applyWlmEdit(BASEPOL, { op: 'SET_RULE_REGION_MODE', subsystem: 'STC', path: [99], mode: 'REGION' }));
+    const cicsRule = BASEPOL.subsystems.find((s) => s.subsystem === 'STC')!.rules.findIndex((r) => r.pattern === 'CICS*');
+    const d = applyWlmEdit(BASEPOL, { op: 'SET_RULE_REGION_MODE', subsystem: 'STC', path: [cicsRule], mode: 'BOTH' }) as typeof BASEPOL;
+    accepted(d);
+    expect(d.subsystems.find((s) => s.subsystem === 'STC')!.rules[cicsRule]!.regionMode).toBe('BOTH');
+    const back = applyWlmEdit(d, { op: 'SET_RULE_REGION_MODE', subsystem: 'STC', path: [cicsRule], mode: null }) as typeof BASEPOL;
+    expect('regionMode' in back.subsystems.find((s) => s.subsystem === 'STC')!.rules[cicsRule]!).toBe(false);
+  });
+
   it('allows CPU Critical only on single-period, non-discretionary classes', () => {
     refused(applyWlmEdit(BASEPOL, { op: 'SET_FLAGS', classId: 'DDFPRD', cpuCritical: true }));
     refused(applyWlmEdit(BASEPOL, { op: 'SET_FLAGS', classId: 'DEVBAT', cpuCritical: true }));

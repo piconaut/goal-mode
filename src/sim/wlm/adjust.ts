@@ -7,7 +7,7 @@ import { PCT_PROJECTION_SIGMA } from '../../content/wlm/tuning';
 import { DP } from '../zos/dispatcher';
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
 import { projectedPercentilePi } from './goals';
-import { accPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
+import { goalPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -58,7 +58,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const localPi: Record<string, number | null> = {};
   for (const s of system.scps) {
     const g = info[s.scKey];
-    localPi[s.scKey] = g ? accPi(g.goal, s.acc) : null;
+    localPi[s.scKey] = g ? goalPi(g.goal, s.acc) : null;
   }
   const tickOf: Record<string, ScpTick> = {};
   for (const t of input.current) tickOf[t.scKey] = t;
@@ -123,7 +123,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       if (p0 == null || p1 == null) continue;
       const harm = Math.max(0, p1 - Math.max(p0, DONOR_CREDIT_FLOOR));
       if (g.importance < rImp && p1 > 1 && harm > 0.02) return false;
-      if (g.importance === rImp) equalHarm += harm;
+      if (g.importance === rImp) {
+        // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,
+        // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
+        if (harm > 0 && Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return false;
+        equalHarm += harm;
+      }
     }
     return gain > equalHarm;
   };
@@ -146,7 +151,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // Projection is the expensive part: assess at most two fixable receivers per interval.
     if (projected >= 2) break;
     const scState = system.scps.find((s) => s.scKey === receiver)!;
-    const btl = bottleneckOf(scState.acc);
+    // With I/O priority management off, I/O samples are outside velocity and WLM doesn't manage I/O (WLM Planning p.115).
+    const btl = bottleneckOf({ ...scState.acc, delayIo: scState.acc.delayIo - (scState.acc.delayIoNoVel ?? 0) });
     const pi = (input.sysplexPi[receiver] ?? localPi[receiver] ?? 0).toFixed(2);
     if (btl !== 'CPU' && btl !== 'ZIIP') {
       notes.push(`${receiver} PI=${pi} BTLNK=${btl} not WLM-fixable`);

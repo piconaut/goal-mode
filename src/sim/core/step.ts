@@ -38,7 +38,7 @@ import {
   decayInto,
   emptyAcc,
   ACC_DECAY,
-  accPi,
+  goalPi,
   goalInfo,
   initialDp,
   sysplexPis,
@@ -1259,7 +1259,7 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
     // Decayed sum → steady-state engines.
     const engines = st.acc.cpuEngines * (1 - ACC_DECAY);
     if (engines < D.minEngines) continue;
-    const pi = accPi(goal, st.acc);
+    const pi = goalPi(goal, st.acc);
     if (pi === null) continue;
     const wasCapped = st.acc.delayCap > 0.05 * samples;
     if (pi < D.piBelow || (wasCapped && pi < D.stayCappedPiBelow)) {
@@ -1273,8 +1273,12 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
   };
 }
 
-/** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). */
-function cicsRegions(
+/** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). "Manage
+ * Region Using Goals Of" is set per region on its STC/JES rule (WLM Planning 3.1 p.122, p.211). TRANSACTION regions
+ * are transaction servers: their own CPU dispatches with the transactions. APPROX: the sim does not split a
+ * workload's transactions between regions, so the transactions follow the AORs together: they ride the most
+ * important served class's DP if any AOR on the image is TRANSACTION, else the first AOR's class DP. */
+export function cicsRegions(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
   byId: Record<string, WorkloadDef>,
@@ -1289,8 +1293,25 @@ function cicsRegions(
   }
   if (keys.length === 0) return {};
   keys.sort();
+  const legacy = def.cicsRegionMode ?? 'TRANSACTION';
+  const modeOf = (a: AddressSpaceDef) => classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: lparId }).regionMode ?? legacy;
+  const servers: string[] = [];
+  let txnMode: 'TRANSACTION' | 'REGION' = 'REGION';
+  let rtTracked = false;
+  for (const s of slices) {
+    if (s.kind !== 'AS' || (s.role !== 'CICS.AOR' && s.role !== 'CICS.TOR')) continue;
+    const a = addressSpaces.find((x) => x.lparId === lparId && x.jobname === s.jobname);
+    const m = a ? modeOf(a) : 'REGION';
+    // REGION: "Transaction response times reported by these regions is not reported in any service class";
+    // TRANSACTION and BOTH track the completions (WLM Planning 3.1 p.102-103).
+    if (m !== 'REGION') rtTracked = true;
+    if (m !== 'TRANSACTION') continue;
+    servers.push(s.key);
+    if (s.role === 'CICS.AOR') txnMode = 'TRANSACTION';
+  }
+  servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
-  return { regions: { keys, mode: def.cicsRegionMode ?? 'TRANSACTION', regionKey } };
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked } };
 }
 
 /** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly
@@ -1300,7 +1321,7 @@ function missingGoal(def: SimState['wlm']['definition'], st: ScpState | undefine
   const g = goalInfo(def, scKey)?.goal;
   if (!g) return false;
   if (g.kind === 'DISC') return st.acc.delay > st.acc.using;
-  const pi = accPi(g, st.acc);
+  const pi = goalPi(g, st.acc);
   return pi !== null && pi > 1;
 }
 

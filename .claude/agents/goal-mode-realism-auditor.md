@@ -31,10 +31,14 @@ purpose, watch what happens, and check whether real z/OS (as IBM documents it) w
    - **Play CLI** (`docs/agents.md`): `npm run -s play -- runs/lab/<name>.json new <seed> story <scenario>`, then
      `json '{"cmd":"change",...}'` or `wlm` edits + `activate`, `start`, `advance`, `report ...`, `smf ...`,
      `policy`. Changes made in the BRIEFING apply at 06:00; during the live day they are emergency changes.
-   - **Your own scripts** when you need control the CLI doesn't give (no engineer-hour limit, several changes
-     at once, reading internal state per tick): copy the pattern in `tools/headless.ts` (`initState`, `step`,
-     the report renderers) into `runs/lab/*.ts` and run them with `npx tsx`. Keep them deterministic (seeded),
-     and print the numbers you compare. `npm run sim -- --days 1 --seed 42 --hourly --dc PROD2=420` is the
+   - **Lab harness** (`tools/lab.ts`) when you need control the CLI doesn't give (no engineer-hour limit, several
+     changes at once, config no command reaches, exact change times, per-interval numbers side by side): write a
+     control spec and a treatment spec under `runs/lab/` (the treatment `extends` the control and adds only the
+     change), then `npm run -s lab -- runs/lab/<x>-a.json runs/lab/<x>-b.json`. The spec format is in the header of
+     `tools/lab.ts`; `tools/lab-examples/` has a defined-capacity A/B. Rows print A and B per RMF interval, `fields`
+     picks any report field, `paths` prints any state path on every row, `dump` prints full reports (`MON3` for the Monitor III DELAY rows), `wlmLog` collects the whole WLM adjustment log, `config` can `add` an entry (e.g. a capacity group), `final` prints state. Use it instead of writing your own
+     harness; if it lacks something you need, write a small `runs/lab/*.ts` on the same pattern and say in your
+     report what the harness should gain. `npm run sim -- --days 1 --seed 42 --hourly --dc PROD2=420` is the
      quickest way to try capping.
 4. **Observe** the way an analyst would first (RMF Postprocessor reports: WLM_SUMMARY/WLM_DETAIL, PARTITION,
    CF, DASD; SMF; Monitor III), then confirm with internal state if needed. Record the actual numbers for

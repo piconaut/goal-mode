@@ -1,0 +1,9 @@
+{
+  "scenario": "midwest",
+  "seed": 7,
+  "hours": [9, 10, 11, 12],
+  "wlm": ["ONLHI#1", "STCMED#1", "TSO#2"],
+  "systems": ["PROD1"],
+  "cpu": ["PROD1"],
+  "dps": "PROD1"
+}

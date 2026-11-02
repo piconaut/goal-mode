@@ -31,7 +31,7 @@ import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
 import { DAY_START_HOUR, TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
-import { buildMon3 } from '../src/game/mon3';
+import { buildMon3, type Mon3Row } from '../src/game/mon3';
 import { emptyMon3PinHistory, mon3PinRange, mon3PinsAt, recordMon3Pins, type Mon3PinHistory } from '../src/game/mon3PinHistory';
 import type { SmfKind } from '../src/worker/protocol';
 
@@ -405,6 +405,17 @@ export function statusText(file: PlayFile): string {
   return out.join('\n');
 }
 
+const DELAY_HEAD =
+  'DELAY (fractions of active samples; rows are service-class summaries). DLY includes WLM capping delay, which has no column (Primary Reason RG-Cap), so it can exceed PRC+DEV+STR. IDL, SUB, OPR, ENQ are not modelled. Pin DELAY_CPU/DELAY_ZIIP for the PRC split, DELAY_CAP for capping; --json has every field.';
+
+/** One DELAY line in the report's column order (RMF Report Analysis p.108–110), plus the SYSSUM/PROCU values a pin reads. */
+function delayRow(r: Mon3Row): object {
+  const { system, scKey, goal, importance, pi, endedPerSec, avgRtMs, cpuEngines, ziipEngines, withinGoalPct, velocityAct, delay: d } = r;
+  const head = { system, scKey, goal, importance, pi, endedPerSec, avgRtMs, cpuEngines, ziipEngines, withinGoalPct, velocityAct };
+  const states = { 'WFL%': r.velocity, USG: r.usingFrac, DLY: r.delayFrac, IDL: null, UKN: r.unknownFrac };
+  return { ...head, ...states, PRC: d.cpu + d.ziip, DEV: d.io, STR: d.stor, SUB: 0, OPR: 0, ENQ: 0, primaryReason: r.primaryReason };
+}
+
 /** Monitor III (tool MON3): SYSINFO, CPC, DELAY, enclave and WFEX tables for the current range (or JSON lines). */
 export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean; at?: string } = {}): string {
   const run = file.run;
@@ -420,7 +431,7 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
   const when = run.phase === 'LIVE' ? `range ending ${clockText(run.sim.tick)}` : `snapshot from ${clockText(run.sim.tick)} (not live: phase ${run.phase})`;
   const head = `Monitor III, last ${m.rangeSec}s, ${when}. Policy ${m.policy}. CPC logical:physical CP ratio ${m.logicalToPhysical.toFixed(2)}.`;
   if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
-  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', 'DELAY (fractions of active samples)', table(rows, ['serviceClass', 'period', 'goalVelocity', 'goalRtMs', 'goalPct', 'avgUsers', 'iipcpEngines'])];
+  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', DELAY_HEAD, table(rows.map(delayRow))];
   if (m.enclaves.length && !sys) out.push('', 'ENCLAVE', table(m.enclaves));
   out.push('', 'WFEX exceptions', m.exceptions.length ? table(m.exceptions) : 'none');
   return out.join('\n');
@@ -467,7 +478,7 @@ export function policyText(file: PlayFile, pending: boolean): string {
   const run = file.run;
   if (pending && !file.pendingPolicy) return 'No pending policy edits.';
   const def = pending ? file.pendingPolicy! : run.sim.wlm.definition;
-  const out = [`${pending ? 'pending' : 'active'} policy ${def.policyName}  CICS regions managed by ${def.cicsRegionMode ?? 'TRANSACTION'} goals  I/O priority management ${def.ioPriorityManagement === false ? 'NO' : 'YES'}`];
+  const out = [`${pending ? 'pending' : 'active'} policy ${def.policyName}  I/O priority management ${def.ioPriorityManagement === false ? 'NO' : 'YES'}${def.cicsRegionMode === 'REGION' ? '  manage regions using goals of REGION (rules without their own setting)' : ''}`];
   out.push('service classes (period: goal, duration SU):');
   for (const c of def.classes) {
     const periods = c.periods.map((p, i) => `#${i + 1} ${goalText(p)}${p.durationSu !== null ? ` DUR ${p.durationSu}` : ''}`).join('; ');
@@ -476,9 +487,9 @@ export function policyText(file: PlayFile, pending: boolean): string {
   }
   if (def.resourceGroups.length) out.push(`resource groups: ${def.resourceGroups.map((g) => `${g.id} type ${g.type} min ${g.min ?? '-'} max ${g.max ?? '-'}`).join(', ')}`);
   if (def.reportClasses.length) out.push(`report classes: ${def.reportClasses.join(' ')}`);
-  out.push('classification rules (subsystem: qualifier=pattern → service class / report class):');
+  out.push('classification rules (subsystem: qualifier=pattern → service class / report class [manage region using goals of]):');
   const rule = (r: ClassificationRule, depth: number): string[] => [
-    `${'  '.repeat(depth + 2)}${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(inherit)'}${r.reportClass ? ` / ${r.reportClass}` : ''}`,
+    `${'  '.repeat(depth + 2)}${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(inherit)'}${r.reportClass ? ` / ${r.reportClass}` : ''}${r.regionMode ? ` [${r.regionMode}]` : ''}`,
     ...r.children.flatMap((ch) => rule(ch, depth + 1)),
   ];
   for (const ss of def.subsystems) {
