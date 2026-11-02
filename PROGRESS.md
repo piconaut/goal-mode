@@ -102,6 +102,9 @@ three scenarios ship, a new player can finish day 1 with the tutorial, and an ac
   below the touched DP was dropped (dependency health, CP queue ratio and I/O priority carry effects upward);
   in-place RMF sums shelved (break `step` purity, save-format and hash churn); behaviour-changing skips not wanted
 - Decision: the what-if simulator doesn't wait on M8.1 (runs in the briefing with the clock stopped, chunked)
+- [x] 2026-11-02 runner fix: `tools/headless.ts` collects hourly diagnostics only with `--hourly` and stops
+  formatting an unused per-tick CF string. Daily summaries and selected reports remain unchanged. Output and
+  final-state hashes match for both scenarios with/without hourly output, including a capped Midwest report/log run.
 
 **M8.2 Balance harness & targets (SPEC §16)**
 - [x] `npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs N] [--days D] [--out f.csv]` (`tools/sweep.ts`)

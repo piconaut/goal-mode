@@ -37,16 +37,9 @@ const t0 = performance.now();
 for (let d = 0; d < days; d++) {
   const wl: Record<string, { c: number; ok: number; f: number; rt: number }> = {};
   const busy: Record<string, { sum: number; peak: number }> = {};
-  const hours: Record<number, { busy: Record<string, number>; pi: Record<string, number[]>; n: number; io: number; cf: string; running: number; lock: number }> = {};
+  const hours: Record<number, { busy: Record<string, number>; pi: Record<string, number[]>; n: number; io: number; running: number; lock: number }> = {};
   for (let t = 0; t < TICKS_PER_DAY; t++) {
     state = step(state, [], scenario);
-    const hour = Math.floor(clockAt(state.tick - 1).hourOfDay);
-    const h = (hours[hour] ??= { busy: {}, pi: {}, n: 0, io: 0, cf: '', running: 0, lock: 0 });
-    h.n++;
-    h.io += state.env.dasd ? state.env.dasd.classes.RANDOM.rtSec * 1000 : 0;
-    h.running += state.batch.jobs.filter((j) => j.status === 'RUNNING').length;
-    h.lock += state.env.lockIndex;
-    h.cf = state.env.cf.map((c) => `${c.lparId}:${(c.busyFrac * 100).toFixed(0)}%/${(c.serviceSec * 1e6).toFixed(0)}us/a${(c.asyncFrac * 100).toFixed(0)}%`).join(' ');
     for (const w of state.last.workloads) {
       const a = (wl[w.id] ??= { c: 0, ok: 0, f: 0, rt: 0 });
       a.c += w.completions;
@@ -63,14 +56,25 @@ for (let d = 0; d < days; d++) {
       const a = (busy[l.id] ??= { sum: 0, peak: 0 });
       a.sum += b;
       a.peak = Math.max(a.peak, b);
-      h.busy[l.id] = (h.busy[l.id] ?? 0) + cp.deliveredEngines;
     }
-    for (const lt of state.last.lpars) {
-      for (const s of lt.scps) {
-        const g = goalInfo(state.wlm.definition, s.scKey);
-        if (!g || g.goal.kind === 'DISC') continue;
-        const pi = tickPi(g.goal, s);
-        if (pi !== null) (h.pi[`${lt.lparId}.${s.scKey}`] ??= []).push(pi);
+    if (hourly) {
+      const hour = Math.floor(clockAt(state.tick - 1).hourOfDay);
+      const h = (hours[hour] ??= { busy: {}, pi: {}, n: 0, io: 0, running: 0, lock: 0 });
+      h.n++;
+      h.io += state.env.dasd ? state.env.dasd.classes.RANDOM.rtSec * 1000 : 0;
+      h.running += state.batch.jobs.filter((j) => j.status === 'RUNNING').length;
+      h.lock += state.env.lockIndex;
+      for (const l of state.lpars) {
+        const cp = l.pools.find((p) => p.pool === 'CP');
+        if (cp) h.busy[l.id] = (h.busy[l.id] ?? 0) + cp.deliveredEngines;
+      }
+      for (const lt of state.last.lpars) {
+        for (const s of lt.scps) {
+          const g = goalInfo(state.wlm.definition, s.scKey);
+          if (!g || g.goal.kind === 'DISC') continue;
+          const pi = tickPi(g.goal, s);
+          if (pi !== null) (h.pi[`${lt.lparId}.${s.scKey}`] ??= []).push(pi);
+        }
       }
     }
   }
