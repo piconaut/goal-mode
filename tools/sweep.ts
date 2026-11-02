@@ -8,10 +8,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { cpus } from 'node:os';
 import { dirname } from 'node:path';
 
-function arg(name: string, dflt: string): string {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : dflt;
-}
+import { arg } from './args';
 
 const bots = arg('bots', 'donothing,textbook').split(',');
 const [lo, hi] = arg('seeds', '1-20').split('-').map(Number) as [number, number];
