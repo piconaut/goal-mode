@@ -267,8 +267,11 @@ export const CODEX: CodexEntry[] = [
     id: 'cics-sos',
     title: 'CICS MXT and short-on-storage (SOS)',
     category: 'Subsystems',
-    body: 'MXT caps how many user tasks a CICS region runs at once; work beyond it waits to be attached, which shows as queue time rather than CPU. When a dynamic storage area runs short (SOS), CICS stops attaching new tasks and may purge waiting ones until storage frees up, so it looks like an MXT wall. The real cure is storage: find the leak, recycle the region, or move work elsewhere.',
-    sources: [{ label: 'IBM CICS TS: Short-on-storage conditions in dynamic storage areas', url: 'https://www.ibm.com/docs/en/cics-ts/6.x?topic=storage-short-conditions-in-dynamic-areas' }],
+    body: 'MXT caps how many user tasks a CICS region runs at once; work beyond it waits to be attached, which shows as queue time rather than CPU. Each task also needs dynamic storage, so EDSALIM (default 800 MB) has to hold the region\'s base storage plus its in-flight tasks. When the extended DSAs run short (SOS, message DFHSM0133), CICS defers new task attaches and stops new input until storage frees up, so it looks like an MXT wall. The storage manager statistics show it: EDSA peak at EDSALIM and time spent SOS. Fixes: find the leak and recycle the region, raise EDSALIM while the region runs, lower MXT to what storage holds (fewer concurrent tasks use less storage), or move work elsewhere. A very large EDSALIM delays the SOS warning until a leak is hard to resolve.',
+    sources: [
+      { label: 'IBM CICS TS 6: Performance (performance_pdf), p.73 EDSALIM, p.76–78 SOS', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/performance_pdf.pdf#page=76' },
+      { label: 'IBM CICS TS: Short-on-storage conditions in dynamic storage areas', url: 'https://www.ibm.com/docs/en/cics-ts/6.x?topic=storage-short-conditions-in-dynamic-areas' },
+    ],
     discover: { events: ['CICS_SOS'] },
   },
   {

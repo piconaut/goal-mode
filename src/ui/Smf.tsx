@@ -10,7 +10,7 @@ import { AnalyticsLink, Empty } from './Empty';
 
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
   { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF), and DBAT queueing.' },
-  { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share.' },
+  { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share. Per region: EDSA peak against EDSALIM and time short on storage (SOS).' },
   { kind: 'BATCH', label: 'Batch (SMF 30)', help: 'Last night’s jobs: initiator queue time (grey) and elapsed (bar), critical jobs highlighted.' },
   { kind: 'SMF113', label: 'CPU MF (113)', help: 'Hardware counters per image: L1 misses, Relative Nest Intensity, cycles per instruction, LSPR category. Work on VM/VL engines loses cache affinity.' },
 ];
@@ -172,6 +172,31 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
               </tbody>
             </table>
           ))}
+        {d?.kind === 'CICS' && (d.storage?.length ?? 0) > 0 && (
+          <>
+            <h4>Region storage (storage manager statistics)</h4>
+            <table>
+              <thead>
+                <tr>
+                  <th>Region</th>
+                  <th className="num">EDSA peak MB</th>
+                  <th className="num">EDSALIM MB</th>
+                  <th className="num">SOS time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.storage.map((r) => (
+                  <tr key={r.region}>
+                    <td>{r.region}</td>
+                    <td className="num">{r.peakMb.toFixed(0)}</td>
+                    <td className="num">{r.limitMb}</td>
+                    <td className={`num${r.sosSec > 0 ? ' bad' : ''}`}>{r.sosSec > 0 ? `${(r.sosSec / 60).toFixed(0)} min (DFHSM0133)` : '0'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
         {d?.kind === 'BATCH' && (d.night ? <Gantt n={d.night} game={game} /> : <div className="muted">No batch has run yet.</div>)}
         {d?.kind === 'SMF113' && (
           <table>

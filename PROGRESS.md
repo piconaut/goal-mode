@@ -14,14 +14,15 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
      seed entry; WFEX "No work" for CICS transaction classes; SYSWKM pin target; Monitor III history gap; failed change
      request returns its changes to the basket; Ops Console layout; job-level PROCU/DELAY rows.
      (Change Desk JES-rule hint dropped by the user, 2026-11-03.)
-  2. **CICS_SOS realism fix** (M8.7), then the **Revenue retune** (M8.7), with sweeps on Sonnet worker sessions.
-  3. **`step.ts` split** (Maintenance), hash-neutral, labelled `perf`, last so model changes don't rebase onto it.
-  4. Republish the artifact from `dev` when done.
-  **Held for the user** (write proposals, don't implement): the finance feedback loop, the full-day tutorial, M9.
+  2. ~~CICS_SOS realism fix~~ (#166) and ~~Revenue retune~~ (M8.7) done.
+  3. ~~`step.ts` split~~ done (#168, hash-neutral: Midwest/Harbourline/Revenue bench hashes unchanged).
+  4. ~~Republish the artifact from `dev`~~ done (#168 build). Overnight plan complete; loop stopped.
+  **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
+  the user" in Remaining work; none is implemented.
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-  link"), rebuilt 2026-11-03 from `dev` at `2253b11` (#164). Republish on request.
-- **Latest verified dev:** #155; 61 test files / 543 tests pass; production build boots without console errors.
+  link"), rebuilt 2026-11-03 from `dev` at `c9275e7` (#168). Republish on request.
+- **Latest verified dev:** #168; 63 test files / 558 tests pass; production build boots without console errors.
 - **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
@@ -41,6 +42,43 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 | Maintenance | Shared storage/content/CLI helpers (#131–#136); modular Change Desk (#137), run lifecycle (#141), Monitor III (#142); circular UI imports removed (#143). |
 
 ## Remaining work
+
+### Proposals awaiting the user (written 2026-11-03; not implemented)
+
+**P1. Finance feedback loop.** Problem: the first MLC bill closes at month end, so a player who stops by day 8 never
+sees one, and a 40-day run leaves one chance to correct. `estimateMonth` (bill-to-date at current peaks) already exists
+and feeds the What-if panel and the end report. Proposal, game/UI only (no sim change, goldens unchanged):
+- a **weekly cost statement** in the night briefing every 7th day: month-to-date estimate, change against last week,
+  the top two drivers (the LPAR and product whose peak R4HA set it, with the hour), and the projected bill if the
+  current peak holds;
+- an **R4HA peak alert** in the live day when a new monthly peak is set, linking to Partition Data and Finance;
+- the CFO mandate is judged against the projection mid-month (a warning only); the score still uses the real bill.
+Cost or trade-off: the estimate tells the player *when* a peak happened, so capping decisions get easier. Keep it a
+night-briefing artefact, not a live gauge, so the player still has to go and find the cause. Validation: reader-bot
+sweeps should show fewer cost-driven losses. That is acceptable if expert results don't move.
+
+**P2. Full-day guided tutorial.** Today's day-1 tutorial (`src/game/tutorial.ts`, `src/ui/Tutorial.tsx`) has 6
+stages and one judged step (F1: Db2 below its clients). Proposal: a separate "Guided day" scenario mode on Midwest seed
+1, with scripted events at fixed times, in the order a non-expert should learn the reports:
+1. 06:00 morning check: SYSINFO → WLMGL (read a PI, find the red class);
+2. 09:30 CPU contention: DELAY → PROCU, then fix it with a classification change through the Change Desk;
+3. 12:00 Db2 dependency (F1, the existing judged step);
+4. 14:00 a CICS short-on-storage message: Ops Console → SMF CICS storage → EDSALIM or MXT;
+5. 17:00 batch window: critical path and initiators;
+6. night: read the bill (ties in with P1).
+Each step is data in `src/content/` (trigger, the report to open, a success predicate over existing state, a hint
+ladder). Steps never auto-fix anything, and every step accepts more than one valid fix. Cost: about 2–3 PRs (content
+and engine, UI, playtests). Risk: the scripted events must not leak into normal runs (a separate scenario flag).
+
+**P3. M9 simplified mode.** Requirements are already listed under M9 below. Suggested order, each step on
+`feature/simplified-mode`:
+(a) bundle data model plus 3 bundles built on existing Change Desk commands, with undo as a unit;
+(b) the run-start mode switch and a bundle panel beside the full policy editor;
+(c) plain-language incident summaries generated from the existing alert/evidence data;
+(d) a bundles-only bot and sweep against the textbook bands;
+(e) the simplified tutorial, reusing P2's step engine.
+Decision needed: whether P2 lands first (the step engine is shared) and whether simplified mode is a difficulty
+level or a separate toggle.
 
 ### M8.1 Performance
 
@@ -209,19 +247,25 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   10 / 29 / 6/10 (losses 1, 2, 4, 7); Revenue 1–5: 22 / 29 / 5/5. Revenue do-nothing was day 10 on dev (same
   seeds): G1's daily EFILE CPU_PRIORITY/POLICY misses partly came from WLM feeding a falsely suffering
   importance-4 batch class from WEBDDF. Follow-up below.
-- [ ] **Revenue retune after the sampling fix:** do-nothing survives to day 22 (band top). Restore G1's pressure
-  through content (compliance analytics load in WEBDDF, EFILE growth), not by reintroducing the inflated batch PI.
+- [x] **Revenue retune after the sampling fix** (2026-11-03): do-nothing survived to day 23 (above the 8–22 band).
+  G1's pressure restored through content: compliance analytics queries (WEBDDF, with e-filing) peak 0.3 → 0.6/s and
+  grow 2 %/day (was 0.5 %). Local sweep, Revenue Normal: do-nothing seeds 1–8 median day 19 (p10 16, p90 21, all
+  trust losses); textbook seeds 1–10 median 27; expert 10/10 victories. Goldens unchanged (no Revenue golden).
 - [x] **Monitor III DELAY Primary Reason may name a job of the same class** (playtest: BATCHPRD named idle
   CICSAOR1; STCHI with misrouted STM batch named CICSAOR1). The own class competes with its other units, and a
   class's address spaces and running batch jobs compete by estimated CP engines (reporting only; `npm run compare`:
   sim/game/RMF identical, Monitor III Primary Reason values differ).
-- [ ] **NEXT: CICS_SOS rewards the wrong fix.** The card (loop 105) is modelled as an effective MXT cut, so raising
-  MXT on the PROD2 AORs clears it; real short-on-storage gets *worse* with a higher MXT (more concurrent tasks want
-  more DSA). This teaches the opposite of the real remedy. Minimum fix: while the card is active, a higher MXT raises
-  SOS severity (or MXT is locked with a clue saying why); proper fix: a small DSA/EDSA storage model per AOR
-  (DSALIM/EDSALIM, storage per task) so SOS, MXT and storage-limit levers interact. Needs symptoms/clues in the CICS
-  and SMF 110 views, at least two valid fixes (lower MXT/route work away, raise EDSALIM, fix the storage-hungry
-  transaction), a zos-docs check of the CICS SOS behaviour, a Codex entry, goldens and a sweep.
+- [x] **CICS_SOS rewards the wrong fix.** (2026-11-03) Replaced the MXT cut with an EDSA model per AOR
+  (`src/sim/subsys/cics.ts`, FICTIONAL sizes in `CICS_STORAGE`; IBM default EDSALIM 800 MB): the card starts a
+  storage leak; once in-flight tasks outgrow EDSALIM the region is SOS and thrashes, so raising MXT no longer helps.
+  Clues: SMF 110 region storage (EDSA peak / EDSALIM / SOS minutes, DFHSM0133). Fixes: recycle, raise EDSALIM
+  (new Change Desk lever, SET_CICS `edsaLimitMb`), MXT down to what storage holds (fewer failures), route away.
+  Not modelled: DSALIM/24-bit, and the doc's warning that a maximal EDSALIM hides a leak (a pre-emptive max EDSALIM
+  is cheap insurance against this card; see Open questions).
+  Sweep (3 bots × 20 seeds, base dev vs head): balance-neutral. Mean days survived and score unchanged within ±0.1 d
+  and ±0.6 %, e.g. midwest textbook 24.3→24.4 d, revenue textbook 28.5→28.6 d; expert still 20/20 on both. Runs
+  drawing CICS_SOS are likewise unchanged. Speed: bench 0.83 vs 0.85 ms/tick (midwest), 0.79 vs 0.82 (revenue),
+  within noise; sweep wall time head +1–3 % with base and head sharing one machine.
 
 - [x] **Work at an equal DP should share CPU by ready units, not by demand.** (2026-11-02) Equal-DP work now
   shares max-min by ready units (`shareByUnits` in `src/sim/zos/dispatcher.ts`): address spaces count their
@@ -352,10 +396,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
-- CICS_SOS: scheduled as the next M8.7 fix (see above); open detail is how much DSA model is needed.
+- CICS_SOS (2026-11-03): EDSALIM raised to the max before the card is cheap insurance; should a large EDSALIM carry a cost (real storage, or a later abend when a leak finally exhausts it)?
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
 - Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using
-  (`missingGoal` in `src/sim/core/step.ts`, APPROX); item 11 settled only that it yields to goal work.
+  (`missingGoal` in `src/sim/core/tick/helpers.ts`, APPROX); item 11 settled only that it yields to goal work.
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
 - Policy-adjust projections don't model backlog/DBAT feedback, so WLM sometimes places batch above
@@ -393,11 +437,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
-- [ ] **NEXT after CICS_SOS: split `src/sim/core/step.ts`** (~1,440 lines; most model fixes land there). Move each
-  SPEC §5.1 pipeline stage into its own module with a `stepX(state, ctx)` entry point, keep `step.ts` as the
-  orchestrator in contract order. Must be hash-neutral: label the PR `perf`/refactor so the `perf-hash` gate proves
-  identical Midwest and Harbourline bench hashes; also compare Revenue by hand. `src/sim/wlm/evaluate.ts` (~910) is
-  the next candidate.
+- [x] **Split `src/sim/core/step.ts`** (1,458 → 270 lines): `step()` stays the SPEC §5.1 orchestrator; stage bodies
+  moved verbatim to `src/sim/core/tick/` — `ctx` (TickCtx, constants), `control` (soft cap, PR/SM, policy adjust,
+  capping, cost, RMF), `demand` (3–4), `dispatch` (7–12a), `helpers` (routing, caps, CICS regions; public helpers are
+  re-exported from `step.ts`). Bench hashes unchanged on all three scenarios. `src/sim/wlm/evaluate.ts` (~910) is the
+  next candidate.
 - Stale remote branches (`claude/*`, `ccr-d83b42c6-*`, Oct 21–29) hold only already squash-merged work; delete
   when convenient.
 

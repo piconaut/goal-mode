@@ -1,3 +1,4 @@
+import { CICS_STORAGE } from '../content/subsys';
 import type { Command } from '../sim/core/commands';
 import type { RoutingPolicy } from '../sim/workload/routing';
 import type { ConfigView } from './view';
@@ -95,6 +96,7 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
       const parts: string[] = [];
       if (cmd.maxTasks !== undefined) parts.push(`MXT ${r?.maxTasks ?? '?'} → ${cmd.maxTasks}`);
       if (cmd.qrFrac !== undefined) parts.push(`QR share ${r ? pct(r.qrFrac) : '?'} → ${pct(cmd.qrFrac)}`);
+      if (cmd.edsaLimitMb !== undefined) parts.push(`EDSALIM ${r?.edsaLimitMb ?? CICS_STORAGE.defaultEdsaLimitMb} → ${cmd.edsaLimitMb} MB`);
       return `${cmd.name} ${parts.join(', ')}`;
     }
     case 'ADD_AOR':
@@ -178,7 +180,7 @@ export function commandTarget(cmd: Command): string {
     case 'SET_DB2':
       return `${cmd.kind}:${cmd.ssid}:${cmd.bufferPoolGb !== undefined ? 'bp' : ''}${cmd.maxDbat !== undefined ? 'dbat' : ''}`;
     case 'SET_CICS':
-      return `${cmd.kind}:${cmd.name}:${cmd.maxTasks !== undefined ? 'mxt' : ''}${cmd.qrFrac !== undefined ? 'qr' : ''}`;
+      return `${cmd.kind}:${cmd.name}:${cmd.maxTasks !== undefined ? 'mxt' : ''}${cmd.qrFrac !== undefined ? 'qr' : ''}${cmd.edsaLimitMb !== undefined ? 'edsa' : ''}`;
     case 'SET_JOB_CLASS':
       return `${cmd.kind}:${cmd.jobClass}`;
     case 'SET_ROUTING':

@@ -27,3 +27,22 @@ export const DISPATCH_UNITS = {
     'MQ.CHIN': 6,
   } as Readonly<Record<string, number>>,
 };
+
+/** CICS dynamic storage (EDSA) and short-on-storage. CICS Performance Guide 6 p.73: per-task storage multiplies by the
+ *  number of concurrent tasks; p.76: SOS defers new task attach; p.78: fewer concurrent tasks (lower MXT) mean less
+ *  storage and less SOS. All sizes FICTIONAL. */
+export const CICS_STORAGE = {
+  /** EDSALIM default is 800 MB (CICS Performance p.73). FICTIONAL min/max: the lever's range. */
+  defaultEdsaLimitMb: 800,
+  minEdsaLimitMb: 400,
+  maxEdsaLimitMb: 1600,
+  /** FICTIONAL: storage a region holds with no tasks (programs, control blocks, buffers), MB. */
+  baseMb: 300,
+  /** FICTIONAL: storage per concurrent task, MB. */
+  perTaskMb: 2,
+  /** APPROX: the storage cushion keeps a few tasks running even deep in SOS. */
+  minTasks: 10,
+  /** FICTIONAL: how sharply a region thrashes once more tasks are in flight than fit: effective concurrency is
+   *  cap × (cap / in-flight)^gamma. Shape: an MXT above what storage holds makes SOS worse, not better. */
+  sosThrashGamma: 0.5,
+};

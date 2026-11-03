@@ -591,7 +591,7 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   `hit = 1 − missBase × (BPsize / workingSet)^(−α)`, so more memory means fewer I/Os per
   transaction (and less CPU, since I/O has a CPU cost). Buying memory and resizing BPs is a
   powerful, realistic optimisation.
-- **CICS short-on-storage (SOS)** event: when a region's DSA limit is exceeded, tasks stall.
+- **CICS short-on-storage (SOS)** event: when a region's EDSA (EDSALIM) cannot hold its in-flight tasks, CICS defers attaches and the work queues for task slots (see §17).
 
 ### 5.9 Coupling facility & data sharing
 
@@ -823,7 +823,7 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 | PR/SM | Memory (reserved → online) | dynamic if reserved, else IPL | 1 | |
 | Hardware | On/Off CoD activate/deactivate | ~immediate | 0.5 | Daily cost |
 | Hardware | Order permanent upgrade / new CPC | lead time | 2 | Capex approval may be needed |
-| Subsystem | CICS: add/remove AOR, MXT, routing algorithm | next day (region restart) | 2 | Needs memory |
+| Subsystem | CICS: add/remove AOR, MXT, EDSALIM, routing algorithm | next day (region restart) | 2 | Needs memory |
 | Subsystem | Db2: BP sizes, MAXDBAT/CONDBAT, REBIND (revert access path) | dynamic / next day | 1–2 | |
 | Subsystem | DDF/Sysplex distributor routing weights or WLM routing | dynamic | 0.5 | |
 | Batch | Reschedule streams, change job classes, initiator counts/mode, split jobs, add dependencies | next batch window | 1–3 | |
@@ -954,7 +954,7 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 |---|---|---|
 | Access-path regression (REBIND) | One package CPU/txn ×4 | Service/txn jump; Db2 accounting PK |
 | Lock escalation in batch | Lock waits for online | Db2 class 3 lock suspensions; CF lock contention |
-| CICS SOS (`CICS_SOS`) | Storage leak in both PROD2 AORs: effective MXT 10 per region for ~4 h (APPROX: SOS as an MXT cut); silent, rumoured | CICS report / Mon III: MXT wait ↑ on PROD2 only, CPU and QR normal; WFEX "queued for a task slot". Fixes: recycle the PROD2 AORs (Retail trust −1), route teller work to PROD1 |
+| CICS SOS (`CICS_SOS`) | A program storage leak in both PROD2 AORs fills their EDSA for ~4 h: once in-flight tasks no longer fit under EDSALIM the region defers attaches and thrashes (fewer task slots than storage would hold); silent, rumoured | SMF 110: MXT wait ↑ on PROD2 only, CPU and QR normal; region storage: EDSA peak at EDSALIM, SOS minutes (DFHSM0133); WFEX "queued for a task slot". Fixes: recycle the PROD2 AORs (Retail trust −1), raise EDSALIM, lower MXT to what storage holds (fewer failures, still queues), route the CICS work to PROD1. A higher MXT does not help |
 | SMF retention audit (`SMF_AUDIT`) | Regulator keeps full SMF 101/110 detail for 3 days: SMF address space CPU ×10 on every system (APPROX: overhead charged to SMF only); forewarned, once per run, rumoured | WLMGL: SYSSTC APPL% ↑ everywhere, SMF top consumer, MSU/R4HA ↑ ~5% with no workload slower. Fixes: negotiate scope to sampled records (Regulator trust −2), or absorb the MSU |
 | QR TCB saturation | Region at ~1 engine | CICS 110 dispatch/QR; region CPU ≈ 100% of 1 CP |
 | Non-threadsafe release (`QR_RELEASE`) | Teller release forces QR on the PROD1 AORs (QR fraction 0.6 → 0.95) for ~36 h | CICS report: QR wait per txn ↑ in CICSAOR1/3 only, low CPU delay. Fixes: roll back, route to PROD2, add an AOR |
@@ -1561,6 +1561,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Response-time distributions | **Log-normal assumption** | Tunable σ per workload |
 | CF sync/async, 50% CF guideline, shared-CF penalties | **Real concepts, invented coefficients** | Per connected system with a 10 µs/km link round trip (RMF's own figure); CF-side utilisation stays plex-wide. Reported per structure copy × system and per CF × system as RMF does (p.372–378); a duplexed request's link term uses the farther copy for both rows (APPROX) |
 | CICS QR TCB single-engine limit | **Real** | |
+| CICS dynamic storage and SOS | **Real concept**, FICTIONAL sizes | Per AOR: EDSA in use = base + leak + tasks × per-task storage (CICS Performance p.73); default EDSALIM 800 MB (p.73), settable while running (p.76). In-flight tasks (min of MXT and offered concurrency) above what EDSALIM holds put the region short on storage: it delivers cap × (cap ÷ in-flight)^0.5 task slots (APPROX thrash), so a higher MXT never helps and MXT at the cap avoids the thrash (p.78). A cushion keeps ≥ 10 tasks (APPROX). Storage manager statistics in the SMF 110 view: EDSA peak, EDSALIM, SOS time (`src/sim/subsys/cics.ts`, `src/content/subsys.ts` `CICS_STORAGE`) |
 | Db2 address space placement guidance | **Real (IBM)** | |
 | Machine capacity, MSU/CP, price tables | **Fictional** | Proportions plausible; no real LSPR numbers |
 | WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts. An address space's states are bounded by its dispatchable units (batch: one TCB per job; started tasks: `DISPATCH_UNITS`, else one): processor delay is scaled down so using + delay never exceeds them (RMF Report Analysis p.52–53, p.540). APPROX: Monitor III's single-state count per address space is not separated from WLM's per-unit count, so multi-unit address spaces can show more than one active user. CICS transaction classes report estimated EXE state percentages; ordinary resource samples/APPL belong to AOR classes (equal split, APPROX). ACTIVE combines SUB/APPL and BCP waits; READY estimates QR dispatch waits; WAITING FOR splits LOCK (Db2 locks), PROD (Db2/MQ/server waits, CF) and MISC. BTE/TOR, IDLE, EXE coverage and optional TRANS-APPL% accounting are not modeled. Reporting is independent of WLM management |

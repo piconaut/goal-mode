@@ -71,7 +71,7 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('CICS_SOS', {
     affects: ['AGENTS', 'ACCOUNT', 'REFSTAT', 'EMPLOYER'],
     fix: 'RECYCLE_PROD2_AORS_REV',
-    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs (Agents trust), or route the CICS work (agents, accounts, refund status, employers) to PROD1.',
+    clue: 'SMF 110 / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); CICS region storage shows EDSA in use at EDSALIM and SOS on the PROD2 AORs (DFHSM0133 messages). Fixes: recycle the PROD2 AORs (Agents trust), raise EDSALIM, lower MXT to what storage holds, or route the CICS work (agents, accounts, refund status, employers) to PROD1.',
   }),
 ];
 
