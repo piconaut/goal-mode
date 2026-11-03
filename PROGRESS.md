@@ -106,8 +106,11 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
 - [x] **SYSWKM: pinning a region's velocity pins the DELAY CPU-delay figure** instead (pin target mismatch). Fixed
   2026-11-03: the Veloc pin records that server row's velocity (new `VELOCITY` metric, source SYSWKM, a symptom
   with no cause weight, like PI); CLI: `pin MON3 <system> <txn class> VELOCITY <jobname>` (current range only).
-- [ ] **Monitor III history gap:** SYSSUM history went from 23:22 straight to 23:44 (check MINTIME snapshots and the
-  history picker).
+- [x] **Monitor III history gap:** SYSSUM history went from 23:22 straight to 23:44 (check MINTIME snapshots and the
+  history picker). Fixed 2026-11-03: recording has no gap (a replay of the worker's chunked loop over 20 sim hours
+  held every 2-minute range); the slider does: ≈1,400 held ranges over a few hundred pixels, so one pixel of drag
+  skips ~10 ranges (≈22 min). The time bar now has **Go to** (`D2 23:30`, the range ending at or before it) and
+  labels the shown range (`D2 23:28–23:30`); ◀/▶ and the slider's arrow keys still step one range.
 - [ ] **Failed change requests:** a failed request should return its changes to the basket; the change list in the
   failure notice is truncated, so a failed 9-change request was unrecoverable.
 - [ ] **Ops Console layout:** Batch Window above Operations Log; keep Incidents and Batch Window visible (the at-a-glance

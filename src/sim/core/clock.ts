@@ -42,3 +42,13 @@ export function formatClock(tick: number): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `D${c.day + 1} ${pad(Math.floor(secOfDay / 3600))}:${pad(Math.floor((secOfDay % 3600) / 60))}:${pad(secOfDay % 60)}`;
 }
+
+/** `D2 10:40` or `D2 Tue 10:40` (formatClock's day and time) → tick; the small hours belong to the played day before. */
+export function tickOfClock(text: string): number | null {
+  const m = /^D(\d+)\s+(?:[A-Za-z]{3}\s+)?(\d{1,2}):(\d{2})(?::\d{2})?$/i.exec(text.trim());
+  if (!m) return null;
+  const day = Number(m[1]) - 1, hh = Number(m[2]), mm = Number(m[3]);
+  if (day < 0 || hh > 23 || mm > 59) return null;
+  const sec = ((hh - DAY_START_HOUR + 24) % 24) * 3600 + mm * 60;
+  return day * TICKS_PER_DAY + Math.floor(sec / TICK_SEC);
+}

@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { MON3_HISTORY } from '../content/tools';
 import type { Mon3HistoryRange } from '../game/mon3History';
 import type { ViewModel } from '../game/view';
-import { formatClock } from '../sim/core/clock';
-import { TICKS_PER_HOUR } from '../sim/core/units';
+import { formatClock, tickOfClock } from '../sim/core/clock';
+import { TICK_SEC, TICKS_PER_HOUR } from '../sim/core/units';
 import { Alerts } from './Alerts';
 import { Automation } from './Automation';
 import { CodexHints } from './CodexHint';
@@ -102,10 +102,23 @@ export function Monitor({ v, game, openAnalytics }: { v: ViewModel; game: GameHa
   );
 }
 
-/** Monitor III history: step back through past MINTIME intervals (RMF III's BREF/FREF and range commands). */
+/** Monitor III history: step back through past MINTIME intervals (RMF III's BREF/FREF and range commands).
+ * The slider spans up to two days of 2-minute ranges, so one pixel skips several of them: Go to (and ◀/▶, or the
+ * arrow keys on the slider) reach every range. */
 function TimeBar({ range, at, setAt }: { range: Mon3HistoryRange; at: number | null; setAt: (t: number | null) => void }) {
   const step = range.everyTicks;
   const cur = at ?? range.lastTick;
+  const [goto, setGoto] = useState('');
+  const [bad, setBad] = useState(false);
+  const jump = () => {
+    const t = tickOfClock(goto);
+    if (t === null || t < range.firstTick) return setBad(true);
+    setBad(false);
+    // Monitor III shows the range ending at or before the chosen time.
+    const snapped = Math.floor(t / step) * step;
+    setAt(snapped >= range.lastTick ? null : Math.max(range.firstTick, snapped));
+  };
+  const rangeText = (end: number) => `${formatClock(end - step).slice(0, -3)}–${formatClock(end).slice(-8, -3)}`;
   const back = (n: number) => setAt(Math.max(range.firstTick, (at ?? range.lastTick + step) - n * step));
   const fwd = () => (at === null || at + step > range.lastTick ? setAt(null) : setAt(at + step));
   return (
@@ -134,8 +147,23 @@ function TimeBar({ range, at, setAt }: { range: Mon3HistoryRange; at: number | n
       <button className={at === null ? 'active' : ''} onClick={() => setAt(null)}>
         Live
       </button>
+      <label title="Jump to the range ending at a time, e.g. D2 23:30 (the small hours belong to the played day before)">
+        Go to{' '}
+        <input
+          size={9}
+          placeholder="D2 23:30"
+          aria-invalid={bad}
+          value={goto}
+          onChange={(e) => (setGoto(e.target.value), setBad(false))}
+          onKeyDown={(e) => e.key === 'Enter' && jump()}
+        />
+      </label>
+      <button onClick={jump} disabled={goto.trim() === ''}>
+        Go
+      </button>
       <span className="muted">
-        {at === null ? 'live' : formatClock(at)} · held from {formatClock(range.firstTick)} ({range.count} intervals)
+        {at === null ? 'live' : rangeText(at)} · held from {formatClock(range.firstTick).slice(0, -3)} ({range.count} ranges of {(step * TICK_SEC).toFixed(0)} s)
+        {bad && <span className="bad"> · not a held time (use D2 23:30)</span>}
       </span>
     </div>
   );
