@@ -15,7 +15,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
      request returns its changes to the basket; Ops Console layout; job-level PROCU/DELAY rows.
      (Change Desk JES-rule hint dropped by the user, 2026-11-03.)
   2. ~~CICS_SOS realism fix~~ (#166) and ~~Revenue retune~~ (M8.7) done.
-  3. **`step.ts` split** (Maintenance), hash-neutral, labelled `perf`, last so model changes don't rebase onto it.
+  3. ~~`step.ts` split~~ done (hash-neutral: Midwest/Harbourline/Revenue bench hashes unchanged).
   4. Republish the artifact from `dev` when done.
   **Held for the user** (write proposals, don't implement): the finance feedback loop, the full-day tutorial, M9.
   The 27-card event deck is complete; add events only if a playtest asks for them.
@@ -304,7 +304,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS_SOS (2026-11-03): EDSALIM raised to the max before the card is cheap insurance; should a large EDSALIM carry a cost (real storage, or a later abend when a leak finally exhausts it)?
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
 - Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using
-  (`missingGoal` in `src/sim/core/step.ts`, APPROX); item 11 settled only that it yields to goal work.
+  (`missingGoal` in `src/sim/core/tick/helpers.ts`, APPROX); item 11 settled only that it yields to goal work.
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
 - Policy-adjust projections don't model backlog/DBAT feedback, so WLM sometimes places batch above
@@ -342,11 +342,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
-- [ ] **NEXT after CICS_SOS: split `src/sim/core/step.ts`** (~1,440 lines; most model fixes land there). Move each
-  SPEC §5.1 pipeline stage into its own module with a `stepX(state, ctx)` entry point, keep `step.ts` as the
-  orchestrator in contract order. Must be hash-neutral: label the PR `perf`/refactor so the `perf-hash` gate proves
-  identical Midwest and Harbourline bench hashes; also compare Revenue by hand. `src/sim/wlm/evaluate.ts` (~910) is
-  the next candidate.
+- [x] **Split `src/sim/core/step.ts`** (1,458 → 270 lines): `step()` stays the SPEC §5.1 orchestrator; stage bodies
+  moved verbatim to `src/sim/core/tick/` — `ctx` (TickCtx, constants), `control` (soft cap, PR/SM, policy adjust,
+  capping, cost, RMF), `demand` (3–4), `dispatch` (7–12a), `helpers` (routing, caps, CICS regions; public helpers are
+  re-exported from `step.ts`). Bench hashes unchanged on all three scenarios. `src/sim/wlm/evaluate.ts` (~910) is the
+  next candidate.
 - Stale remote branches (`claude/*`, `ccr-d83b42c6-*`, Oct 21–29) hold only already squash-merged work; delete
   when convenient.
 
