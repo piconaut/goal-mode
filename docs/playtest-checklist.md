@@ -1,7 +1,7 @@
 # Human playtest checklist (M8.6)
 
 Build: the published artifact (see PROGRESS.md "Published build"), or `npm run dev`. Play Midwest on Normal,
-seed of your choice, with the tutorial on. Aim for days 1–5 in one sitting (≈1 hour), then one later-act day
+seed of your choice (type it in the briefing's Seed box), with the tutorial on. Aim for days 1–5 in one sitting (≈1 hour), then one later-act day
 if time allows. Jot the time of day and the sim clock (`D3 10:40`) next to every note.
 
 ## Before you start
@@ -45,7 +45,9 @@ For each incident or alert that mattered, note:
 ## UI and comfort
 - [ ] Phone width: settings rows (known to scroll inside panels), Change Desk, reports. Anything unusable?
 - [ ] Keyboard controls, theme/contrast, sound: anything annoying or missing?
-- [ ] Autosave / reload: reload mid-day and confirm you resume where you were.
+- [ ] Autosave / reload: reload mid-day, press **Continue saved run** and confirm you resume within a few sim
+  minutes of where you were (the live day saves every few seconds).
+- [ ] At the end of the session press **⇩ export** and attach the run file to your notes (it replays headlessly).
 - [ ] Any error, frozen UI, or console error (F12) — note the sim clock.
 
 ## Wrap-up (answer in a sentence each)

@@ -90,6 +90,10 @@ new state the CLI writes.
 The banner's **Take over this run** button stops watching and keeps the run as the browser's own save
 (replacing any saved run), so a human can carry on from where the agent stopped.
 
+The other way round: the top bar's **⇩ export** button downloads the browser's run as a run file
+(`goal-mode-<scenario>-<seed>-day<N>.json`) that `npm run play -- <file> status` (and every other verb) reads, so a
+human playtest can be inspected or continued headlessly; **⇧ import** loads such a file back as the browser's run.
+
 ## What an agent can see
 
 Only what a player sees in the browser: the briefing and inbox, the status line, RMF reports, SMF and Monitor
