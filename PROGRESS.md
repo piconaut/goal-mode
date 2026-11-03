@@ -15,13 +15,14 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
      request returns its changes to the basket; Ops Console layout; job-level PROCU/DELAY rows.
      (Change Desk JES-rule hint dropped by the user, 2026-11-03.)
   2. ~~CICS_SOS realism fix~~ (#166) and ~~Revenue retune~~ (M8.7) done.
-  3. ~~`step.ts` split~~ done (hash-neutral: Midwest/Harbourline/Revenue bench hashes unchanged).
-  4. Republish the artifact from `dev` when done.
-  **Held for the user** (write proposals, don't implement): the finance feedback loop, the full-day tutorial, M9.
+  3. ~~`step.ts` split~~ done (#168, hash-neutral: Midwest/Harbourline/Revenue bench hashes unchanged).
+  4. ~~Republish the artifact from `dev`~~ done (#168 build). Overnight plan complete; loop stopped.
+  **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
+  the user" in Remaining work; none is implemented.
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-  link"), rebuilt 2026-11-03 from `dev` at `2253b11` (#164). Republish on request.
-- **Latest verified dev:** #155; 61 test files / 543 tests pass; production build boots without console errors.
+  link"), rebuilt 2026-11-03 from `dev` at `c9275e7` (#168). Republish on request.
+- **Latest verified dev:** #168; 63 test files / 558 tests pass; production build boots without console errors.
 - **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
@@ -41,6 +42,43 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 | Maintenance | Shared storage/content/CLI helpers (#131–#136); modular Change Desk (#137), run lifecycle (#141), Monitor III (#142); circular UI imports removed (#143). |
 
 ## Remaining work
+
+### Proposals awaiting the user (written 2026-11-03; not implemented)
+
+**P1. Finance feedback loop.** Problem: the first MLC bill closes at month end, so a player who stops by day 8 never
+sees one, and a 40-day run leaves one chance to correct. `estimateMonth` (bill-to-date at current peaks) already exists
+and feeds the What-if panel and the end report. Proposal, game/UI only (no sim change, goldens unchanged):
+- a **weekly cost statement** in the night briefing every 7th day: month-to-date estimate, change against last week,
+  the top two drivers (the LPAR and product whose peak R4HA set it, with the hour), and the projected bill if the
+  current peak holds;
+- an **R4HA peak alert** in the live day when a new monthly peak is set, linking to Partition Data and Finance;
+- the CFO mandate is judged against the projection mid-month (a warning only); the score still uses the real bill.
+Cost or trade-off: the estimate tells the player *when* a peak happened, so capping decisions get easier. Keep it a
+night-briefing artefact, not a live gauge, so the player still has to go and find the cause. Validation: reader-bot
+sweeps should show fewer cost-driven losses. That is acceptable if expert results don't move.
+
+**P2. Full-day guided tutorial.** Today's day-1 tutorial (`src/game/tutorial.ts`, `src/ui/Tutorial.tsx`) has 6
+stages and one judged step (F1: Db2 below its clients). Proposal: a separate "Guided day" scenario mode on Midwest seed
+1, with scripted events at fixed times, in the order a non-expert should learn the reports:
+1. 06:00 morning check: SYSINFO → WLMGL (read a PI, find the red class);
+2. 09:30 CPU contention: DELAY → PROCU, then fix it with a classification change through the Change Desk;
+3. 12:00 Db2 dependency (F1, the existing judged step);
+4. 14:00 a CICS short-on-storage message: Ops Console → SMF CICS storage → EDSALIM or MXT;
+5. 17:00 batch window: critical path and initiators;
+6. night: read the bill (ties in with P1).
+Each step is data in `src/content/` (trigger, the report to open, a success predicate over existing state, a hint
+ladder). Steps never auto-fix anything, and every step accepts more than one valid fix. Cost: about 2–3 PRs (content
+and engine, UI, playtests). Risk: the scripted events must not leak into normal runs (a separate scenario flag).
+
+**P3. M9 simplified mode.** Requirements are already listed under M9 below. Suggested order, each step on
+`feature/simplified-mode`:
+(a) bundle data model plus 3 bundles built on existing Change Desk commands, with undo as a unit;
+(b) the run-start mode switch and a bundle panel beside the full policy editor;
+(c) plain-language incident summaries generated from the existing alert/evidence data;
+(d) a bundles-only bot and sweep against the textbook bands;
+(e) the simplified tutorial, reusing P2's step engine.
+Decision needed: whether P2 lands first (the step engine is shared) and whether simplified mode is a difficulty
+level or a separate toggle.
 
 ### M8.1 Performance
 
