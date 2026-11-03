@@ -769,9 +769,10 @@ contents simplified):
   Mixed classes retain resource samples from their non-CICS work. Monitor III and its evidence history
   use the same attribution; CPU-delay evidence on a region class can support its hosted CICS incidents.
   WLM's internal management measurements and dispatch decisions are independent of this reporting projection.
-  The projection derives region/classification topology each tick (uncached), reuses untouched period ticks and keeps
-  extra resource history only for affected classes (or their still-distinct retained history). Reporting RT
-  totals/buckets share the immutable management measurements; the topology's Sets are not persisted.
+  Implementation (`sim/wlm/reporting.ts`): each CICS transaction tick carries the samples RMF reports elsewhere
+  (`moved`) and its work manager states; the image's tick names the AOR targets (`cics`). RMF accumulation and
+  Monitor III apply the move (`reportedTicks`, `reportedAccs` over WLM's decayed accumulator, which keeps a decayed
+  `moved`); WLM manages from the unmoved ticks.
   APPROX: transaction resources split equally across AORs; work manager concurrency is estimated from
   existing response-time parts and normalized as estimated EXE state percentages. ACTIVE combines SUB/APPL
   and includes BCP processor waits; READY estimates the CICS dispatchable queue from QR contention.

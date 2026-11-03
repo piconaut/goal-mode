@@ -30,21 +30,19 @@ import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
 import { ROUTING } from '../../content/routing';
-import { cicsReportPlan } from '../wlm/reporting';
+import { cicsTargets } from '../wlm/reporting';
 import { backlogCpSec, emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC, STORAGE_SWAP } from '../../content/wlm/tuning';
 import { CF_FAILURE } from '../../content/cf';
 import {
   decayInto,
-  decayReportInto,
   emptyAcc,
   ACC_DECAY,
   goalPi,
   goalInfo,
   initialDp,
   sysplexPis,
-  type ScpAcc,
   type ScpState,
   type WlmSystemState,
 } from '../wlm/runtime';
@@ -814,11 +812,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     if (!t) {
       t = emptyScpTick(k, dpOf(k));
       res.scps.push(t);
-      if (!res.reportedScpsByKey?.[k]) res.reportedScps?.push(t);
     }
     t.delayStorage += 1;
-    const reported = res.reportedScpsByKey?.[k];
-    if (reported) { reported.delayStorage += 1; reported.resourceSamples = true; }
     addJobDelay(j, 'swap', TICK_SEC);
   }
   // APPROX: one delay sample per queued job, in the class's first period.
@@ -828,11 +823,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     if (!t) {
       t = emptyScpTick(k, dpOf(k));
       res.scps.push(t);
-      if (!res.reportedScpsByKey?.[k]) res.reportedScps?.push(t);
     }
     t.delayQueue = (t.delayQueue ?? 0) + 1;
-    const reported = res.reportedScpsByKey?.[k];
-    if (reported) { reported.delayQueue = (reported.delayQueue ?? 0) + 1; reported.resourceSamples = true; }
   }
 
   const compBy: Record<string, number> = {};
@@ -935,48 +927,20 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     seen.add(t.scKey);
     const p = prevScp[t.scKey];
     const starved = t.delayCpu > 1e-6 && t.usingCpu < 0.01 * (t.usingCpu + t.delayCpu);
-    const next: ScpState = {
+    scps.push({
       scKey: t.scKey,
       dp: dpOf(t.scKey),
       starvedSec: starved ? (p?.starvedSec ?? 0) + TICK_SEC : 0,
       acc: decayInto(p?.acc ?? emptyAcc(), t),
-    };
-    const reported = res.reportedScpsByKey?.[t.scKey];
-    if (reported) {
-      let seed = p?.reportAcc;
-      if (!seed) {
-        // Only reuse known non-CICS report history. Old saves have unprojected resource samples.
-        const before = prev.last.lpars.find((lpar) => lpar.lparId === l.id)?.reportedScps?.find((r) => r.scKey === t.scKey);
-        seed = p && before && !before.workManager ? p.acc : emptyAcc();
-      }
-      next.reportAcc = decayReportInto(seed, reported, next.acc);
-    } else if (p?.reportAcc) {
-      const reportAcc = decayReportInto(p.reportAcc, { ...t, resourceSamples: true }, next.acc);
-      if (!sameReportedAcc(reportAcc, next.acc)) next.reportAcc = reportAcc;
-    }
-    scps.push(next);
+    });
   }
   for (const p of prevSys?.scps ?? []) {
     if (seen.has(p.scKey)) continue;
-    const idle = idleScpTick(p.scKey, p.dp);
-    const next: ScpState = { scKey: p.scKey, dp: p.dp, starvedSec: 0, acc: decayInto(p.acc, idle) };
-    if (p.reportAcc) {
-      const reportAcc = decayReportInto(p.reportAcc, idle, next.acc);
-      if (!sameReportedAcc(reportAcc, next.acc)) next.reportAcc = reportAcc;
-    }
-    scps.push(next);
+    scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)) });
   }
   systems.push({ lparId: l.id, scps });
-  lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, ...(res.reportedScps ? { reportedScps: res.reportedScps } : {}), roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, ...(res.reportedScps ? { reportedScps: res.reportedScps } : {}), roleHealth: res.roleHealth });
-}
-
-function sameReportedAcc(a: ScpAcc, b: ScpAcc): boolean {
-  return !a.workManager && a.resourceSamples !== false &&
-    a.completions === b.completions && a.rtSumSec === b.rtSumSec &&
-    a.using === b.using && a.delay === b.delay && a.delayCpu === b.delayCpu && a.delayZiip === b.delayZiip &&
-    a.delayIo === b.delayIo && a.delayOther === b.delayOther && a.delayCap === b.delayCap && a.cpuEngines === b.cpuEngines &&
-    (a.usingIoNoVel ?? 0) === (b.usingIoNoVel ?? 0) && (a.delayIoNoVel ?? 0) === (b.delayIoNoVel ?? 0) &&
-    a.buckets.every((n, i) => n === b.buckets[i]);
+  const cics = regions?.targets;
+  lparTicks.push({ lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, ...(res.rcs ? { rcs: res.rcs } : {}), ...(cics ? { cics } : {}) });
 }
 
 /** Seconds after a played day's 06:00 start → wall-clock text. */
@@ -1354,9 +1318,7 @@ export function cicsRegions(
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   const transactionKeys = new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key));
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys,
-    reportingPlan: cicsReportPlan(slices, transactionKeys, regionKey),
-  } };
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey) } };
 }
 
 /** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a

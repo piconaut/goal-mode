@@ -2,7 +2,7 @@
 // period's DP, then derive response times, dependency delays and WLM using/delay
 // samples. Pure, so policy adjustment can re-run it to project the effect of a DP move.
 
-import { projectCicsReports, type WorkManagerSamples, type CicsReportPlan } from './reporting';
+import { excludeMovedIo, tagCicsSlice, type CicsTargets, type MovedSamples, type WorkManagerSamples } from './reporting';
 import { lognormCdf } from '../core/math';
 import { TICK_SEC } from '../core/units';
 import { STORAGE_STEAL_MAX_FRAC } from '../../content/wlm/tuning';
@@ -156,7 +156,7 @@ export interface LparEvalInput {
    * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
    * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
    * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean; transactionKeys?: ReadonlySet<string>; reportingPlan?: CicsReportPlan };
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean; transactionKeys?: ReadonlySet<string>; targets?: CicsTargets };
   io: Record<IoClass, IoService>;
   /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
@@ -214,9 +214,10 @@ export interface SliceResult {
 }
 
 export interface ScpTick {
-  /** Reporting only: CICS work manager concurrency and presence of resource samples. */
+  /** Reporting only: CICS transactions' resource accounting, which RMF reports with the region classes, and
+   * their work manager states (reporting.ts). */
+  moved?: MovedSamples;
   workManager?: WorkManagerSamples;
-  resourceSamples?: boolean;
   scKey: string;
   dp: number;
   cpEngines: number;
@@ -272,10 +273,6 @@ export const emptyScpTick = (scKey: string, dp: number): ScpTick => ({
 });
 
 export interface LparEvalResult {
-  /** Resource accounting for reports; management continues to use scps. */
-  reportedScps?: ScpTick[];
-  /** Sparse reporting overrides, ephemeral: untouched periods reuse their management tick. */
-  reportedScpsByKey?: Record<string, ScpTick>;
   slices: SliceResult[];
   scps: ScpTick[];
   /** Report classes (only when the policy assigns any). */
@@ -818,9 +815,11 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   }
   const rcMap: Record<string, ReportClassTick> = {};
   const rcs: ReportClassTick[] = [];
+  const cics = scpsOnly ? undefined : reg?.targets;
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const r = results[i]!;
+    const cicsTxn = cics !== undefined && reg!.transactionKeys!.has(s.key);
     if (s.reportClass && !scpsOnly) {
       let rt = rcMap[s.reportClass];
       if (!rt) {
@@ -830,10 +829,12 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       }
       if (!rt.members.includes(s.scKey)) rt.members.push(s.scKey);
       addSliceTo(rt, s, r, true);
+      if (cicsTxn) tagCicsSlice(rt, s, r, cics.regionKeys);
     }
     const t = scps[scpOfAgg[sliceAgg[i]!]!]!;
     const untracked = reg !== undefined && reg.rtTracked === false && s.kind === 'TXN' && reg.keys.includes(s.scKey);
     addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey), !untracked);
+    if (cicsTxn) tagCicsSlice(t, s, r, cics.regionKeys, !untracked);
     if (order[sliceAgg[i]!] !== s.scKey) {
       // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).
       t.srvUsing = (t.srvUsing ?? 0) + r.usingCpu + r.usingZiip + (input.ioPriority === false ? 0 : r.usingIo);
@@ -847,13 +848,13 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     for (const t of rcs) excludeIoFromVelocity(t);
   }
 
-  const reporting = !scpsOnly && reg ? projectCicsReports(input, results, scps, rcs) : {};
-  return { slices: results, scps, roleHealth, ...(rcs.length ? { rcs } : {}), ...reporting };
+  return rcs.length > 0 ? { slices: results, scps, roleHealth, rcs } : { slices: results, scps, roleHealth };
 }
 
 function excludeIoFromVelocity(t: ScpTick): void {
   t.usingIoNoVel = t.usingIo;
   t.delayIoNoVel = t.delayIo;
+  excludeMovedIo(t);
 }
 
 function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean, rt = true): void {

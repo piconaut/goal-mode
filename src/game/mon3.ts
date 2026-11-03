@@ -5,7 +5,7 @@
 // Samples here are time-average concurrency (average number of users in each state), so RMF's
 // group formulas ∑ samples ÷ (# samples × avg # address spaces) become state ÷ active users.
 
-import { mergeWorkManager, type WorkManagerSamples } from '../sim/wlm/reporting';
+import { mergeWorkManager, noResources, reportedAccs, reportedTicks, type WorkManagerSamples } from '../sim/wlm/reporting';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
 import { msuPerCp } from '../sim/hw/cpc';
@@ -261,7 +261,7 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
   const cpLast = last.cpEngines + last.iipcpEngines;
   return {
     ...(a.workManager ? { workManager: mergeWorkManager(a.workManager, undefined, NORM) } : {}),
-    ...(a.resourceSamples !== undefined ? { resourceSamples: a.resourceSamples } : {}),
+    ...(a.workManager || a.moved ? { resourceSamples: !noResources(a) } : {}),
     system,
     scKey,
     serviceClass,
@@ -306,15 +306,19 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   const ddfClasses = new Set(workloads.filter((w) => w.subsystem === 'DDF').map((w) => classify(def, w.work).serviceClass));
   const lastBy = (lparId: string | null, scKey: string): LastSplit => {
     const o = noSplit();
-    for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of l.reportedScps ?? l.scps) if (t.scKey === scKey) addSplit(o, t);
+    for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of reportedTicks(l.scps, l.cics)) if (t.scKey === scKey) addSplit(o, t);
     return o;
   };
+  // CICS transaction samples shown with the region classes, as in WLMGL (reporting.ts).
+  const reported = Object.fromEntries(
+    sim.wlm.systems.map((s) => [s.lparId, reportedAccs(Object.fromEntries(s.scps.map((p) => [p.scKey, p.acc])), sim.last.lpars.find((l) => l.lparId === s.lparId)?.cics)]),
+  );
   const rows: Mon3Row[] = [];
-  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, p.reportAcc ?? p.acc, lastBy(s.lparId, p.scKey)));
+  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, reported[s.lparId]![p.scKey]!, lastBy(s.lparId, p.scKey)));
   // Sysplex rows, like Monitor III's sysplex-wide SYSSUM.
   const keys = [...new Set(rows.map((r) => r.scKey))].sort();
   for (const k of keys)
-    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => s.scps.filter((p) => p.scKey === k).map((p) => p.reportAcc ?? p.acc))), lastBy(null, k)));
+    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => (reported[s.lparId]![k] ? [reported[s.lparId]![k]!] : []))), lastBy(null, k)));
   primaryReasons(run, scenario, rows, ddfClasses);
 
   const cpcEngines = sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);

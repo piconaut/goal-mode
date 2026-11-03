@@ -1,6 +1,6 @@
 // WLM runtime state: per-system service-class-period DPs and smoothed measurements.
 
-import { mergeWorkManager, type WorkManagerSamples } from './reporting';
+import { decayMoved, mergeWorkManager, type MovedSamples, type WorkManagerSamples } from './reporting';
 import { DP } from '../zos/dispatcher';
 import { emptyBuckets, performanceIndex } from './goals';
 import type { ScpTick } from './evaluate';
@@ -10,8 +10,10 @@ import { SYSOTHER, SYSSTC, SYSTEM, type Goal, type Importance, type ServiceDefin
 export const ACC_DECAY = 0.85;
 
 export interface ScpAcc {
+  /** Reporting only (Monitor III): the decayed part of using/delay/CPU that RMF reports with CICS region classes,
+   * and the CICS work manager states. */
+  moved?: MovedSamples;
   workManager?: WorkManagerSamples;
-  resourceSamples?: boolean;
   completions: number;
   rtSumSec: number;
   buckets: number[];
@@ -40,8 +42,6 @@ export interface ScpState {
   dp: number;
   starvedSec: number;
   acc: ScpAcc;
-  /** Reporting accounting, independent of WLM management measurements (absent in old saves). */
-  reportAcc?: ScpAcc;
 }
 
 export interface WlmSystemState {
@@ -143,46 +143,11 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
       ? { srvUsing: (acc.srvUsing ?? 0) * d + (t.srvUsing ?? 0), srvDelay: (acc.srvDelay ?? 0) * d + (t.srvDelay ?? 0) }
       : {}),
   };
-  return reportingMetadata(out, acc, t);
-}
-
-/** Reporting RT and buckets are identical to the management measurements; share their immutable data. */
-export function decayReportInto(acc: ScpAcc, t: ScpTick, measured: ScpAcc): ScpAcc {
-  const d = ACC_DECAY;
-  const out: ScpAcc = {
-    completions: measured.completions,
-    rtSumSec: measured.rtSumSec,
-    buckets: measured.buckets,
-    using: acc.using * d + t.usingCpu + t.usingZiip + t.usingIo,
-    delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
-    delayCpu: acc.delayCpu * d + t.delayCpu,
-    delayZiip: acc.delayZiip * d + t.delayZiip,
-    delayIo: acc.delayIo * d + t.delayIo,
-    delayOther: acc.delayOther * d + t.delayOther,
-    delayCap: acc.delayCap * d + t.delayCap,
-    cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
-  };
-  if (acc.usingIoNoVel !== undefined || t.usingIoNoVel !== undefined) {
-    out.usingIoNoVel = (acc.usingIoNoVel ?? 0) * d + (t.usingIoNoVel ?? 0);
-    out.delayIoNoVel = (acc.delayIoNoVel ?? 0) * d + (t.delayIoNoVel ?? 0);
-  }
-  return reportingMetadata(out, acc, t);
-}
-
-function reportingMetadata(out: ScpAcc, acc: ScpAcc, t: ScpTick): ScpAcc {
-  const d = ACC_DECAY;
+  const moved = decayMoved(acc.moved, t.moved, d);
+  if (moved) out.moved = moved;
   if (t.workManager || acc.workManager) {
     const wm = mergeWorkManager(acc.workManager, t.workManager, d);
     if (t.workManager || wm.active + wm.ready + wm.idle + wm.waitingIo + wm.waitingLock + wm.waitingProd + wm.waitingMisc > 1e-9) out.workManager = wm;
-  }
-  if (t.resourceSamples !== undefined) {
-    const retained = acc.resourceSamples === true && d * (acc.using + acc.delay + acc.delayOther + acc.cpuEngines) > 1e-9;
-    out.resourceSamples = t.resourceSamples || retained;
-  } else if (acc.resourceSamples !== undefined) out.resourceSamples = acc.resourceSamples;
-  if (out.resourceSamples === false) {
-    // Expired resource samples must not leave a normalized DELAY percentage behind.
-    out.using = out.delay = out.delayCpu = out.delayZiip = out.delayIo = out.delayOther = out.delayCap = out.cpuEngines = 0;
-    if (out.usingIoNoVel !== undefined) out.usingIoNoVel = out.delayIoNoVel = 0;
   }
   return out;
 }
@@ -195,7 +160,6 @@ export function sumAcc(accs: readonly ScpAcc[]): ScpAcc {
 
 function addAccInto(out: ScpAcc, a: ScpAcc): void {
   if (a.workManager) out.workManager = mergeWorkManager(out.workManager, a.workManager);
-  out.resourceSamples = (out.resourceSamples ?? false) || (a.resourceSamples ?? true);
   out.completions += a.completions;
   out.rtSumSec += a.rtSumSec;
   for (let i = 0; i < a.buckets.length; i++) out.buckets[i] = (out.buckets[i] ?? 0) + a.buckets[i]!;

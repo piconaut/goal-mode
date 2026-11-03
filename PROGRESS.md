@@ -111,6 +111,11 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   card-auth/account lock clues rewritten (READY, SYSWKM, WAITING FOR LOCK); wider clue test. Open: AORs on one system
   show identical SYSWKM figures (CICS work is modelled per system, not per region); real WLMGL shows only non-zero
   states, a BTE row with RESP TIME %, ACTIVE SUB/APPL split and state-switched samples (not modelled).
+  Simplified (2026-11-03): the parallel reporting projection (second tick list, second decayed accumulator per
+  period, stored resource-sample flag, old-save seeding) became a `moved` tag on CICS transaction ticks plus a decayed
+  `moved` in WLM's accumulator. WLMGL text and Monitor III views identical to the previous head in all three
+  scenarios (records equal to the last bit, ~1e-16); sim state minus reporting equal; −45 source and −57 test lines;
+  speed unchanged from the previous head (Midwest ~+8 %, Harbourline ~+8–10 % per tick vs dev, noisy).
   Validation: typecheck + 533 tests / 60 files pass; production build passes; reporting goldens regenerated
   and verified without update mode. Original PR-head CI sweep passed: donothing day 15 / 0 wins,
   textbook day 27 / 0, expert day 40 / 4 of 5. Performance follow-up reruns CI; PR #147 stays open.

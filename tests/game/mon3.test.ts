@@ -151,11 +151,8 @@ describe('Monitor III DELAY columns and Primary Reason', () => {
   });
 });
 
-it('starts reporting accounting cleanly when advancing an older save without reportAcc', () => {
-  const legacy = structuredClone(noon);
-  for (const s of legacy.sim.wlm.systems) for (const p of s.scps) delete p.reportAcc;
-  const resumed = advance(legacy, MIDWEST, content, 1);
-  const onl = buildMon3(resumed, MIDWEST).rows.find((r) => r.system === 'PROD1' && r.scKey === 'ONLHI#1')!;
+it('shows CICS transaction classes without resources of their own (RMF Report Analysis p.224)', () => {
+  const onl = buildMon3(noon, MIDWEST).rows.find((r) => r.system === 'PROD1' && r.scKey === 'ONLHI#1')!;
   expect(onl.resourceSamples).toBe(false);
   expect(onl.cpuEngines).toBe(0);
   expect(onl.usingFrac + onl.delayFrac + onl.unknownFrac).toBe(0);
@@ -167,7 +164,8 @@ it('shows N/A actual velocity for mixed classes with subsystem states, independe
   mixed.sim.wlm.definition.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal = { kind: 'VEL', velocity: 80 };
   for (const rule of mixed.sim.wlm.definition.subsystems.flatMap((s) => s.rules)) rule.regionMode = 'BOTH';
   const p = mixed.sim.wlm.systems.find((s) => s.lparId === 'PROD1')!.scps.find((p) => p.scKey === 'ONLHI#1')!;
-  p.reportAcc = { ...p.reportAcc!, resourceSamples: true, using: 2, delay: 1, delayCpu: 1, cpuEngines: 1 };
+  // Non-CICS members' samples: what WLM measured beyond the CICS transactions' moved part.
+  p.acc = { ...p.acc, using: p.acc.using + 2, delay: p.acc.delay + 1, delayCpu: p.acc.delayCpu + 1, cpuEngines: p.acc.cpuEngines + 1 };
   const row = buildMon3(mixed, MIDWEST).rows.find((r) => r.system === 'PROD1' && r.scKey === 'ONLHI#1')!;
   expect(row.velocity).not.toBeNull(); // resource workflow of the non-CICS members is still meaningful
   expect(row.velocityAct).toBeNull(); // subsystem states replace the goal actual, RMF p.237

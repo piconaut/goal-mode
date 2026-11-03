@@ -13,6 +13,7 @@ import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
+import { reportedTicks } from '../../src/sim/wlm/reporting';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
 
@@ -837,7 +838,7 @@ describe('WLM-managed initiators (WLM Planning p.70)', () => {
       queuedJobTicks += s.batch.jobs.filter((j) => j.status === 'QUEUED' && j.def.jobClass === 'A').length;
       for (const l of s.last.lpars) {
         for (const sc of l.scps) queue += sc.delayQueue ?? 0;
-        for (const sc of l.reportedScps ?? l.scps) reportedQueue += sc.delayQueue ?? 0;
+        for (const sc of reportedTicks(l.scps, l.cics)) reportedQueue += sc.delayQueue ?? 0;
       }
     }
     return { queue, queuedJobTicks, reportedQueue };
