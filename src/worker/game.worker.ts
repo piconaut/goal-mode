@@ -25,6 +25,7 @@ import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase } fro
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
 import { decodeRunJson, encodeRunJson } from '../game/runFile';
+import { basketAfterFailure } from '../game/changeDesk';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { buildMon3 } from '../game/mon3';
 import { emptyMon3History, mon3At, mon3HistoryRange, recordMon3History } from '../game/mon3History';
@@ -101,6 +102,16 @@ function pendingView(): PendingPolicyView | null {
 const currentItems = () => runWorkItems(sc(), run);
 
 /** Adopt an action's outcome and tell the player how it went. */
+/** Hand the changes of requests that just failed back to the Change Desk basket, and say so. */
+function returnFailed(before: RunState) {
+  const back = basketAfterFailure(before, run, basket);
+  if (!back) return;
+  const n = back.length - basket.length;
+  basket = back;
+  post({ type: 'BASKET', basket });
+  post({ type: 'RESULT', ok: false, message: `The failed change was backed out: ${n > 0 ? `${n} change${n === 1 ? ' is' : 's are'} back` : 'its changes are back'} in the change request, to retry or edit.` });
+}
+
 function settle(out: { run: RunState; ok: boolean; message: string }) {
   run = out.run;
   post({ type: 'RESULT', ok: out.ok, message: out.message });
@@ -519,14 +530,17 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'SET_STARTING_PERK':
       run = setStartingPerk(run, m.perkId, career.xp);
       break;
-    case 'START_DAY':
+    case 'START_DAY': {
+      const before = run;
       run = startDay(run, pack().game);
+      returnFailed(before);
       pendingPolicy ??= failedPolicyToday(run);
       if (m.auto && run.phase === 'LIVE') {
         if (speed !== AUTO_SPEED) speedBeforeAuto = speed > 0 ? speed : 1;
         speed = AUTO_SPEED;
       } else if (!m.auto && speed === AUTO_SPEED) speed = speedBeforeAuto;
       break;
+    }
     case 'SET_SPEED':
       if (m.speed <= 0 && !canPause()) {
         speed = IRONMAN_MIN_SPEED;
@@ -537,7 +551,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       }
       break;
     case 'CHANGE': {
+      const before = run;
       settle(requestChange(run, pack().game, m.req));
+      returnFailed(before);
       break;
     }
     case 'DRAFT':
