@@ -1,7 +1,7 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { previewChange } from '../../src/game/catalog';
-import { addToBasket, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../../src/game/changeDesk';
+import { addToBasket, basketAfterFailure, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../../src/game/changeDesk';
 import { cancelChange, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
 import { buildView } from '../../src/game/view';
 import type { Command } from '../../src/sim/core/commands';
@@ -152,5 +152,31 @@ describe('alias moves in the basket', () => {
     expect(orderBasket(cfg, [add, free])).toEqual([free, add]);
     const out = requestChange(fresh(), content, { label: 'move', commands: orderBasket(cfg, [add, free]) });
     expect(out.ok).toBe(true);
+  });
+});
+
+// Playtest round 1: a failed 9-change request was unrecoverable; its changes now go back to the basket.
+describe('basketAfterFailure', () => {
+  const change = (id: number, status: 'PLANNED' | 'APPLIED' | 'FAILED', commands: Command[], over: Record<string, unknown> = {}) => ({
+    id, label: `c${id}`, commands, hours: 1, capex: 0, opexPerDay: 0, activateDay: 0, plannedDay: 0, emergency: false, status, revertDay: null, revertCommands: [], endsEvent: null, ...over,
+  });
+  it('hands back the desk changes of newly failed changes, keeping later drafts of the same target', () => {
+    const r = fresh();
+    const before = { ...r, changes: [change(1, 'PLANNED', [weight(500), { kind: 'SET_WEIGHT', lparId: 'PROD2', pool: 'CP', weight: 400 }]), change(2, 'FAILED', [weight(300)])] };
+    const after = {
+      ...before,
+      changes: [
+        change(1, 'FAILED', before.changes[0]!.commands),
+        change(2, 'FAILED', [weight(300)]),
+        change(3, 'FAILED', [weight(450)], { capex: 100 }),
+        change(4, 'FAILED', [{ kind: 'ACTIVATE_POLICY', definition: r.sim.wlm.definition } as Command]),
+      ],
+    };
+    const drafted = [weight(600)];
+    const out = basketAfterFailure(before, after, drafted)!;
+    expect(out).toHaveLength(2);
+    expect(out).toContainEqual(weight(600));
+    expect(out).toContainEqual({ kind: 'SET_WEIGHT', lparId: 'PROD2', pool: 'CP', weight: 400 });
+    expect(basketAfterFailure(before, before, drafted)).toBeNull();
   });
 });

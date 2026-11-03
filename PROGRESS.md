@@ -20,7 +20,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
   **Held for the user** (write proposals, don't implement): the finance feedback loop, the full-day tutorial, M9.
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-  link"), rebuilt 2026-11-03 from `dev` at `92e16bd` (#154). Republish on request.
+  link"), rebuilt 2026-11-03 from `dev` at `8c0dd9e` (#160). Republish on request.
 - **Latest verified dev:** #155; 61 test files / 543 tests pass; production build boots without console errors.
 - **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
@@ -111,8 +111,11 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
   held every 2-minute range); the slider does: ≈1,400 held ranges over a few hundred pixels, so one pixel of drag
   skips ~10 ranges (≈22 min). The time bar now has **Go to** (`D2 23:30`, the range ending at or before it) and
   labels the shown range (`D2 23:28–23:30`); ◀/▶ and the slider's arrow keys still step one range.
-- [ ] **Failed change requests:** a failed request should return its changes to the basket; the change list in the
-  failure notice is truncated, so a failed 9-change request was unrecoverable.
+- [x] **Failed change requests:** a failed request should return its changes to the basket; the change list in the
+  failure notice is truncated, so a failed 9-change request was unrecoverable. Fixed 2026-11-03: a backed-out
+  change (emergency, or planned and failed at 06:00) hands its Change Desk changes back to the basket (a later
+  draft of the same target wins) with a notice; policy activations keep going back to the pending policy; fixes
+  and hardware orders aren't basket changes.
 - [ ] **Ops Console layout:** Batch Window above Operations Log; keep Incidents and Batch Window visible (the at-a-glance
   health panels) when the window is narrower than full desktop width or at phone width, instead of dropping them to the
   bottom.
