@@ -99,6 +99,7 @@ export function useGame(): GameHandle {
       else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds, advice: m.advice });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
+      else if (m.type === 'RUN_FILE') downloadText(m.name, m.text);
       else if (m.type === 'RESULT') {
         setToast({ ok: m.ok, message: m.message });
         setResults((r) => [...r, { ok: m.ok, message: m.message, clock: clockRef.current }].slice(-50));
@@ -108,7 +109,16 @@ export function useGame(): GameHandle {
     // Start at the player's last running speed (never paused: a reload shouldn't leave the clock stopped).
     const stored = Number(readPref(SPEED_KEY));
     if (stored > 0) w.postMessage({ type: 'SET_SPEED', speed: stored } satisfies ToWorker);
-    return () => w.terminate();
+    // Save when the tab is hidden or closed, so a reload mid-day resumes where the player left.
+    const flush = () => w.postMessage({ type: 'SAVE_NOW' } satisfies ToWorker);
+    const onHide = () => document.visibilityState === 'hidden' && flush();
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+      w.terminate();
+    };
   }, []);
 
   const send = useCallback((m: ToWorker) => {
@@ -173,3 +183,12 @@ const writePref = (key: string, value: string) => {
     // Storage blocked: the speed just isn't remembered.
   }
 };
+
+function downloadText(name: string, text: string) {
+  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  a.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

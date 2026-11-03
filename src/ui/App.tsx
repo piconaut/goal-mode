@@ -155,8 +155,37 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
         Score <b>{v.score}</b>
       </span>
       <SoundToggle v={v} />
+      <RunFileButtons game={game} />
       <ThemeToggle />
     </div>
+  );
+}
+
+/** Export the run as a play-CLI run file (replay or inspect it headlessly), or load one back as the current run. */
+function RunFileButtons({ game }: { game: GameHandle }) {
+  const input = useRef<HTMLInputElement>(null);
+  return (
+    <>
+      <button title="Download this run as a file (npm run play -- <file> status reads it)" onClick={() => game.send({ type: 'EXPORT_RUN' })}>
+        ⇩ export
+      </button>
+      {!game.spectate && (
+        <button title="Load an exported run file (replaces the current run and the save)" onClick={() => input.current?.click()}>
+          ⇧ import
+        </button>
+      )}
+      <input
+        ref={input}
+        type="file"
+        accept=".json,application/json"
+        hidden
+        onChange={async (e) => {
+          const f = e.target.files?.[0];
+          e.target.value = '';
+          if (f && confirm(`Load ${f.name}? It replaces the current run and the saved run.`)) game.send({ type: 'IMPORT_RUN', text: await f.text() });
+        }}
+      />
+    </>
   );
 }
 

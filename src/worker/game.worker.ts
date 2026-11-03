@@ -24,7 +24,7 @@ import { buildView } from '../game/view';
 import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
-import { decodeRunJson } from '../game/runFile';
+import { decodeRunJson, encodeRunJson } from '../game/runFile';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { buildMon3 } from '../game/mon3';
 import { emptyMon3History, mon3At, mon3HistoryRange, recordMon3History } from '../game/mon3History';
@@ -69,6 +69,11 @@ let savedDesk: DeskState | null = null;
 const LIVE_SAVE_EVERY_TICKS = 360; // one sim hour
 let lastLiveSaveHour = -1;
 let liveSaveInFlight = false;
+/** Live-day saves: each sim hour, but at least every few real seconds (a reload or closed tab can't flush a save:
+ * the worker is gone before IndexedDB commits) and not more often than every couple of seconds at high speed. */
+const LIVE_SAVE_MAX_MS = 5000;
+const LIVE_SAVE_MIN_MS = 2000;
+let lastLiveSaveMs = 0;
 /** Mirror of the UI's change basket, so it can be saved with the run. */
 let basket: Command[] = [];
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -170,20 +175,28 @@ function recordCareer() {
   postCareer();
 }
 
-/** Save whenever the phase changes (end of day, game over) so a reload resumes there, and every sim hour of the
- * live day so a crash or reload costs at most an hour (and cannot replay the day from its briefing). */
+/** Save whenever the phase changes (end of day, game over) so a reload resumes there, and through the live day
+ * (see LIVE_SAVE_MAX_MS) so a crash or reload costs a few seconds (and cannot replay the day from its briefing). */
 function autosave() {
   if (spectating) return;
   if (run.phase !== lastPhase) {
     lastPhase = run.phase;
     recordCareer();
     lastLiveSaveHour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
-    if (run.phase !== 'LIVE' && storageReady) void saveRun(run, desk());
+    if (run.phase !== 'LIVE' && storageReady) {
+      // This run now replaces any older save still on offer, so stop offering it (and stop blocking saves).
+      saved = null;
+      savedDesk = null;
+      void saveRun(run, desk());
+    }
     return;
   }
   const hour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
-  if (run.phase === 'LIVE' && hour !== lastLiveSaveHour && storageReady && saved === null && !liveSaveInFlight) {
+  const now = performance.now();
+  const due = hour !== lastLiveSaveHour ? now - lastLiveSaveMs >= LIVE_SAVE_MIN_MS : now - lastLiveSaveMs >= LIVE_SAVE_MAX_MS;
+  if (run.phase === 'LIVE' && due && storageReady && saved === null && !liveSaveInFlight) {
     lastLiveSaveHour = hour;
+    lastLiveSaveMs = now;
     liveSaveInFlight = true;
     void saveRun(run, desk()).finally(() => (liveSaveInFlight = false));
   }
@@ -191,17 +204,53 @@ function autosave() {
 
 const desk = (): DeskState => ({ pendingPolicy, basket });
 
-/** Save soon after any action outside the live day (planned changes, purchases, project hours, the
- * basket and pending WLM edits), not just on phase changes. Never while an older save is still on offer:
- * it is only replaced once this run reaches a phase change, as before. */
+/** Save soon after any action (planned changes, purchases, project hours, the basket, pending WLM edits), live day
+ * included: outside it shortly after the last action, during it at most every few seconds. Never while an older save
+ * is still on offer: it is only replaced once this run reaches a phase change. */
+const LIVE_PERSIST_MS = 3000;
 function persistSoon() {
   if (spectating) return;
-  if (!storageReady || saved !== null || run.phase === 'LIVE') return;
-  if (persistTimer) clearTimeout(persistTimer);
+  if (!storageReady || saved !== null) return;
+  const live = run.phase === 'LIVE';
+  if (persistTimer) {
+    if (live) return;
+    clearTimeout(persistTimer);
+  }
   persistTimer = setTimeout(() => {
     persistTimer = null;
-    if (storageReady && saved === null && run.phase !== 'LIVE') void saveRun(run, desk());
-  }, 400);
+    saveNow();
+  }, live ? LIVE_PERSIST_MS : 400);
+}
+
+function saveNow() {
+  if (spectating || !storageReady || saved !== null) return;
+  if (run.phase === 'LIVE') lastLiveSaveHour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
+  void saveRun(run, desk());
+}
+
+/** Same shape as tools/playCore.ts PlayFile, so `npm run play -- <file> status` and spectator mode can read it. */
+function runFileText(): string {
+  return encodeRunJson({ version: 1, run, pendingPolicy, log: [{ cmd: 'note', text: `Exported from the browser on day ${run.day + 1}` }] });
+}
+
+function importRun(text: string) {
+  const f = decodeRunJson<{ run?: RunState; pendingPolicy?: ServiceDefinition | null }>(text);
+  if (!f?.run?.sim || !f.run.scenarioId) throw new Error('Not a GOAL MODE run file');
+  run = normalizeRun(f.run, packOf(f.run.scenarioId).scenario);
+  lastPhase = run.phase;
+  speed = 0;
+  whatIf = null;
+  history = [];
+  mon3Hist = emptyMon3History();
+  if (run.phase === 'LIVE') history = [samplePoint(run)];
+  historyDirty = true;
+  saved = null;
+  savedDesk = null;
+  pendingPolicy = f.pendingPolicy ? normalizeDefinition(f.pendingPolicy) : null;
+  basket = [];
+  postPolicy();
+  post({ type: 'BASKET', basket });
+  saveNow();
 }
 
 void Promise.all([loadRun(), loadDesk(), loadCareer()]).then(([r, d, c]) => {
@@ -258,7 +307,7 @@ function whatIfChunk(token: number) {
 
 /** Spectator mode shows a run file another process plays; only reading messages get through. */
 let spectating = false;
-const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'SPECTATE_ADOPT', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'GET_MON3_AT', 'CLASSIFY', 'SET_BASKET']);
+const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'EXPORT_RUN', 'SPECTATE_ADOPT', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'GET_MON3_AT', 'CLASSIFY', 'SET_BASKET']);
 
 function spectate(text: string) {
   const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null }>(text);
@@ -306,7 +355,21 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       history = [];
       mon3Hist = emptyMon3History();
       historyDirty = true;
-      saved = null;
+      // An older save stays on offer (Continue saved run) until this run reaches a phase change.
+      break;
+    case 'SAVE_NOW':
+      saveNow();
+      break;
+    case 'EXPORT_RUN':
+      post({ type: 'RUN_FILE', name: `goal-mode-${run.scenarioId}-${run.seed}-day${run.day + 1}.json`, text: runFileText() });
+      break;
+    case 'IMPORT_RUN':
+      try {
+        importRun(m.text);
+        post({ type: 'RESULT', ok: true, message: `Loaded run: ${run.scenarioId}, seed ${run.seed}, day ${run.day + 1}` });
+      } catch (e) {
+        post({ type: 'RESULT', ok: false, message: `Import failed: ${(e as Error).message}` });
+      }
       break;
     case 'CONTINUE_SAVED':
       if (saved) {

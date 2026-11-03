@@ -74,6 +74,12 @@ export type ToWorker =
   | { type: 'SPECTATE'; text: string }
   /** Stop spectating and keep the watched run as this browser's own save. */
   | { type: 'SPECTATE_ADOPT' }
+  /** The page is being hidden or closed: save now (live day included). */
+  | { type: 'SAVE_NOW' }
+  /** Download the run as a play-CLI run file (`npm run play -- <file> status`). */
+  | { type: 'EXPORT_RUN' }
+  /** Replace the current run (and the save) with an exported run file. */
+  | { type: 'IMPORT_RUN'; text: string }
   /** The UI's change basket, mirrored so it is saved with the run. */
   | { type: 'SET_BASKET'; basket: Command[] }
   | { type: 'GET_RULES' }
@@ -115,6 +121,7 @@ export type FromWorker =
   | { type: 'MON3_CHARTS'; fromSample: number; fromMarker: number; samples: Mon3Sample[]; markers: ChartMarker[] }
   | { type: 'RULES'; active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null }
   | { type: 'REPORT'; text: string }
+  | { type: 'RUN_FILE'; name: string; text: string }
   | { type: 'POLICY'; json: string }
   /** Restore the change basket (continuing a saved run, new run). */
   | { type: 'BASKET'; basket: Command[] }

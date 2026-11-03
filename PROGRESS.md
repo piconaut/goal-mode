@@ -110,11 +110,15 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
 - [ ] **Ops Console layout:** Batch Window above Operations Log; keep Incidents and Batch Window visible (the at-a-glance
   health panels) when the window is narrower than full desktop width or at phone width, instead of dropping them to the
   bottom.
-- [ ] **Saves are written only outside the live day** (`persist` in `src/worker/game.worker.ts` skips LIVE), so a
-  reload mid-day falls back to the last briefing/review; the checklist claimed otherwise. Save during LIVE (throttled).
-  The player also lost a whole save after the 2026-11-03 republish (cause not yet known).
-- [ ] **Save export** (button) so a playtest run can be replayed headlessly; there is no seed entry either (only random
-  or the daily challenge).
+- [x] **Saves during the live day, save export, seed entry** (2026-11-03). The live day already saved each sim hour,
+  but only while no older save was on offer, and the phase-change save that replaced an older save never cleared
+  that offer, so a session that started a new run over an old save never saved mid-day again (likely the
+  reported fallback). Restarting from the first briefing (scenario, difficulty, daily challenge) also dropped the
+  older save at once and saved over it within 400 ms (a likely cause of the lost save). Now: an older save stays on
+  offer until the new run's first phase change (Start day asks first), the live day saves every 5 s real time (and
+  each sim hour, ≥2 s apart; a pagehide flush can't land because the worker dies first), actions save within 3 s
+  in the live day; top-bar **⇩ export** / **⇧ import** of play-CLI run files; a Seed box on the first briefing
+  and the new-run screen.
 - [ ] **Finance feedback loop:** the monthly MLC bill arrives too late (a player who stops by day 8 never sees one; 40
   days leave little room to correct). Consider a weekly/rolling cost signal or a mid-month bill estimate.
 - [ ] **Tutorial:** a full guided day for non-experts (the expert knew where to look; others won't).
