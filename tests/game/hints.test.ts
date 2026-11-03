@@ -110,13 +110,16 @@ describe('morning hints in a run', () => {
   it('are dated for the next morning so the briefing shows them', async () => {
     const { MIDWEST_GAME } = await import('../../src/content/game-midwest');
     const { SCENARIOS } = await import('../../src/content/scenarios');
-    const { advance, newRun, startDay } = await import('../../src/game/run');
+    const { advance, chooseDraft, newRun, startDay } = await import('../../src/game/run');
     const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
-    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 1, 'NORMAL'), MIDWEST_GAME);
+    // Seed 2's first day is quiet; its second day leaves hints for the third morning (day index 2).
+    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 2, 'NORMAL'), MIDWEST_GAME);
+    run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
+    run = startDay(chooseDraft(run, MIDWEST_GAME, null), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
     const hints = run.inbox.filter((m) => m.subject === 'A thought for this morning');
     expect(hints.length).toBeGreaterThan(0);
-    expect(hints.every((m) => m.day === 1)).toBe(true);
+    expect(hints.every((m) => m.day === 2)).toBe(true);
     expect(Object.keys(run.reports[0]!.piWorst ?? {}).length).toBeGreaterThan(3);
     const forewarnings = run.inbox.filter((m) => m.subject === 'For day 2');
     expect(forewarnings.every((m) => m.day === 1)).toBe(true);
