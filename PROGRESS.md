@@ -139,6 +139,54 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
 - [ ] **Tutorial:** a full guided day for non-experts (the expert knew where to look; others won't).
 - Positive: the batch critical-path estimate slipping on night 1 reads as a fair early warning of the day-27/28 wall.
 
+### Playtest round 2 (2026-11-04, expert player, daily challenge 2026-11-04, Midwest Normal, seed 467203; in progress)
+
+Same player as round 1. Run started on `8c0dd9e` (#160), which became unplayable through a UI problem; continued on the
+published `2253b11` (#164), where the incident below happened. Player policy differs from the default in the way that
+matters here: card authorisation moved from ONLHI (importance 1, 95% < 0.25 s) to ONLCARD (importance 2, 99% < 0.1 s),
+the same tier as DDFMOB, TSO period 1 and the other CICS classes; CICS regions `TN=CICS* → STCHI`, managed to the
+transactions' goals (the default). Replays: the player's save plus forward runs from it with `play` (`draft none`) on
+`2253b11`; the WLM trial trace came from temporary scratch logging in `policyAdjust`, not committed.
+
+**INC19 CARDAUTH, D4 23:02–23:30, PROD2** (noticed in the Ops Console service levels; resolved by itself; RCA
+CPU_PRIORITY/BATCH_OVERLAP, truth CPU_PRIORITY/POLICY, partial credit). The player found the clues alone (DELAY
+STCHI#1 CPU delay 42%, WLMGL PROD2 STCHI#1 CPU delay 34.6%, SYSWKM CICSAOR2 velocity 9.4%, SYSSUM ONLCARD PI 4.0) but
+couldn't explain why CICS was CPU-delayed with little more important work around, or why WLM never raised the
+priority of ONLCARD or STCHI. WLMGL 1074 PROD2: STCHI velocity 26.8%, PI 2.23; ONLCARD PI 4.00, 90.3% < 50 ms but 2.8%
+> 0.4 s, FAILED 2528. Real behaviour, not a bug: regions managed to transaction goals run at the DP of the most important
+transaction class they serve (F4 here), not at STCHI's own FA, so STCHI is never a receiver (WLM Planning p.122–123,
+already in docs/research.md).
+- [ ] **WLM projection inconsistent between adjacent intervals (likely sim bug).** With the same DPs, BATCHPRD#1's
+  (importance 4) self-raise F2→F4 was projected at D5 22:22:50 to take ONLCARD's PI from 0.80 to 61.8 (rejected), and at
+  22:23:00 to leave it at 0.80 (accepted). Batch then ties the CICS regions' DP on PROD2's 4 CPs; ONLCARD lowers it,
+  BATCHHI (sysplex PI ≈0.8, taken as receiver on its local PI) lowers it again, and BATCHPRD raises itself back: a
+  ~2.5-minute cycle in the WLM log, D4 23:00–23:22 (save) and again D5 22:20–22:36 (replay). BATCHHI also went F3→F5,
+  above the importance-2 CICS classes, at D5 22:36:50. Find out why the projection base drops the CICS contention on
+  some intervals (instantaneous inputs? batch job state?), and add a realism test: less important work must not be
+  raised to or above the DP of more important work that is missing its goal on that system.
+- [ ] **Equal-importance veto from bystanders; co-served classes not credited (design gap, real rule not verified).**
+  At D5 22:21:00 ONLCARD's own raise F4→F6 (which lifts the CICS regions) was projected to take ONLCARD 61.8→0.80,
+  ONLRBANK 82→0.5, ONLTELR 46→0.5 and ONLPAYMQ 13.9→0.17, but `passes()` rejected it because DDFMOB (68.7→74.7) and
+  TSO#1 (27→29.6), also importance 2, got worse and the "PIs must end closer together" test failed. That test is for
+  equal-importance *donors* (SG24-6472 p.60); here it vetoes on bystanders already far past goal, and the gain counts
+  only the receiver, not the other transaction classes served by the same regions. WLM fell back to the weaker donor
+  move. Check with zos-docs how WLM values a server move that helps several served classes, then decide.
+- [ ] **Clue path for "why didn't WLM raise CICS".** The player read the WLM log correctly but couldn't see why there
+  was no receiver raise. Consider logging the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal
+  importance"), and showing on WLMGL/SYSWKM that a region class managed to transaction goals runs at the served classes'
+  DP (its own PI is reported, not managed to).
+- [ ] **⇩ export does nothing in the published artifact:** the claude.ai artifact sandbox blocks downloads. The player
+  exported with a dev-tools IndexedDB script and "Copy string contents" (the JSON arrived wrapped in backticks). Use the
+  artifact's file-save runtime capability, or add "Copy save to clipboard"; let ⇧ import take pasted text and strip
+  stray backticks. Also: the save has no Monitor III history, so `mon3 --at` on an imported save shows nothing for
+  past ranges (replay forward instead, or include the history).
+- [ ] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. Probably the worker request
+  loops fixed in #164; confirm with the player's symptoms before closing.
+- [ ] **RCA evidence mark to check:** the PROCU pin "BATCHHI#1 APPL 442%" (D4 23:04) was marked "not about CARDAUTH",
+  though batch at the CICS regions' DP on PROD2 was the CPU competitor. Check whether the evidence matcher should accept
+  the competing class's CPU for CPU_PRIORITY.
+- Positive: DELAY Primary Reason named the right job; DELAY and WLMGL CPU-delay pins were marked "points at the cause".
+
 ### M8.7 Realism fixes
 
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a
