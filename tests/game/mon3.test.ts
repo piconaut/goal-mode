@@ -115,6 +115,16 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
     expect(m.logicalToPhysicalByCpc.CPCA).toBeCloseTo(m.logicalToPhysical, 9);
   });
 
+  it('WFEX Speed of a CICS transaction class comes from its serving regions, not "No work"', () => {
+    const m = buildMon3(noon, MIDWEST);
+    const tx = m.rows.find((r) => r.system !== '*PLEX' && r.workManager && r.resourceSamples === false && r.workManager.active > 0)!;
+    expect(tx).toBeDefined();
+    const s = m.speed.find((x) => x.system === tx.system && x.name === tx.scKey)!;
+    expect(s.servedBy).toEqual(tx.workManager!.regionKeys.filter((k) => m.rows.some((r) => r.system === tx.system && r.scKey === k)));
+    expect(s.speed).not.toBeNull();
+    expect(s.speed!).toBeGreaterThan(0);
+  });
+
   it('WFEX exceptions carry an RMF-style reason and critical value', () => {
     const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
     const m = buildMon3(hot, MIDWEST);

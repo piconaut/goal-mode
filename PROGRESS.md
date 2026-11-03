@@ -12,7 +12,8 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 - **Next up (in order; user-approved overnight plan 2026-11-03):**
   1. **Playtest round 1 fixes** (section below), one PR each, in this order: save during the live day + save export +
      seed entry; WFEX "No work" for CICS transaction classes; SYSWKM pin target; Monitor III history gap; failed change
-     request returns its changes to the basket; Ops Console layout; Change Desk JES-rule hint; job-level PROCU/DELAY rows.
+     request returns its changes to the basket; Ops Console layout; job-level PROCU/DELAY rows.
+     (Change Desk JES-rule hint dropped by the user, 2026-11-03.)
   2. **CICS_SOS realism fix** (M8.7), then the **Revenue retune** (M8.7), with sweeps on Sonnet worker sessions.
   3. **`step.ts` split** (Maintenance), hash-neutral, labelled `perf`, last so model changes don't rebase onto it.
   4. Republish the artifact from `dev` when done.
@@ -98,13 +99,13 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
   contention. Fixed 2026-11-03: goldens and `compare` unchanged; Midwest textbook/expert seeds 1–5 identical.
 - [ ] **PROCU/DELAY are class rows:** real Monitor III lists jobs, so STMxxxx under STCHI is visible in seconds. Add the
   top jobs per class (expandable rows or a job-level PROCU), from the sim's per-job batch state and address spaces.
-- [ ] **WFEX Speed says "No work" for CICS transaction classes** with work (since #147 their resource samples moved to
-  the AOR classes). Use the work-manager states (or the region classes) for their speed.
+- [x] **WFEX Speed says "No work" for CICS transaction classes** with work (since #147 their resource samples moved to
+  the AOR classes). Fixed 2026-11-03: their Speed is the serving region classes' workflow, marked "(regions)"
+  (SYSWKM shows the serving address spaces' using and velocity, SG24-6645 p.277–278; see docs/research.md).
+  Reporting only.
 - [ ] **SYSWKM: pinning a region's velocity pins the DELAY CPU-delay figure** instead (pin target mismatch).
 - [ ] **Monitor III history gap:** SYSSUM history went from 23:22 straight to 23:44 (check MINTIME snapshots and the
   history picker).
-- [ ] **Change Desk hint** when a JES rule routes jobs into a class that serves CICS regions or started tasks (warn,
-  don't block: it's a valid mistake to be able to make).
 - [ ] **Failed change requests:** a failed request should return its changes to the basket; the change list in the
   failure notice is truncated, so a failed 9-change request was unrecoverable.
 - [ ] **Ops Console layout:** Batch Window above Operations Log; keep Incidents and Batch Window visible (the at-a-glance

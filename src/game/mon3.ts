@@ -146,6 +146,8 @@ export interface Mon3Speed {
   activeUsers: number;
   /** Workflow %, 0..100 (null = No work). */
   speed: number | null;
+  /** CICS/IMS transaction classes: the region classes whose samples gave the speed. */
+  servedBy?: string[];
 }
 
 export interface Mon3Exception {
@@ -554,7 +556,19 @@ function speedSection(rows: Mon3Row[], systems: Mon3System[]): Mon3Speed[] {
     // Resource workflow: using ÷ (using + delayed) for that resource (Report Analysis, "Resource workflow").
     out.push({ system: s.system, name: '*PROC', activeUsers: sum((r) => r.avgUsers.proc + r.avgUsers.delayProc), speed: wf(sum((r) => r.avgUsers.proc), sum((r) => r.avgUsers.delayProc)) });
     out.push({ system: s.system, name: '*DEV', activeUsers: sum((r) => r.avgUsers.dev + r.avgUsers.delayDev), speed: wf(sum((r) => r.avgUsers.dev), sum((r) => r.avgUsers.delayDev)) });
-    for (const r of mine) if (r.importance !== null) out.push({ system: s.system, name: r.scKey, activeUsers: r.avgUsers.active, speed: r.velocity });
+    for (const r of mine) {
+      if (r.importance === null) continue;
+      if (r.workManager && r.resourceSamples === false) {
+        // Workflow is a state-sampling measure of address spaces (erbb500 v3r1 p.147, p.255) and a transaction class
+        // owns none: its samples are the serving regions' (#147). RMF shows the serving address spaces' using and
+        // velocity for such a class (SYSWKM; SG24-6645 p.277–278). APPROX: WFEX itself is undocumented for this
+        // case; show the regions' workflow, since "No work" would read as idle while transactions run.
+        const regions = mine.filter((x) => r.workManager!.regionKeys.includes(x.scKey));
+        const add = (f: (x: Mon3Row) => number) => regions.reduce((a, x) => a + f(x), 0);
+        const speed = wf(add((x) => x.avgUsers.proc + x.avgUsers.dev), add((x) => x.avgUsers.delayProc + x.avgUsers.delayDev + x.avgUsers.delayStor));
+        out.push({ system: s.system, name: r.scKey, activeUsers: add((x) => x.avgUsers.active), speed, servedBy: regions.map((x) => x.scKey) });
+      } else out.push({ system: s.system, name: r.scKey, activeUsers: r.avgUsers.active, speed: r.velocity });
+    }
   }
   return out;
 }
