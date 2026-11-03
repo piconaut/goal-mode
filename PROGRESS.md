@@ -14,7 +14,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
      seed entry; WFEX "No work" for CICS transaction classes; SYSWKM pin target; Monitor III history gap; failed change
      request returns its changes to the basket; Ops Console layout; job-level PROCU/DELAY rows.
      (Change Desk JES-rule hint dropped by the user, 2026-11-03.)
-  2. **CICS_SOS realism fix** (M8.7), then the **Revenue retune** (M8.7), with sweeps on Sonnet worker sessions.
+  2. ~~CICS_SOS realism fix~~ (#166) and ~~Revenue retune~~ (M8.7) done.
   3. **`step.ts` split** (Maintenance), hash-neutral, labelled `perf`, last so model changes don't rebase onto it.
   4. Republish the artifact from `dev` when done.
   **Held for the user** (write proposals, don't implement): the finance feedback loop, the full-day tutorial, M9.
@@ -152,8 +152,10 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   10 / 29 / 6/10 (losses 1, 2, 4, 7); Revenue 1–5: 22 / 29 / 5/5. Revenue do-nothing was day 10 on dev (same
   seeds): G1's daily EFILE CPU_PRIORITY/POLICY misses partly came from WLM feeding a falsely suffering
   importance-4 batch class from WEBDDF. Follow-up below.
-- [ ] **Revenue retune after the sampling fix:** do-nothing survives to day 22 (band top). Restore G1's pressure
-  through content (compliance analytics load in WEBDDF, EFILE growth), not by reintroducing the inflated batch PI.
+- [x] **Revenue retune after the sampling fix** (2026-11-03): do-nothing survived to day 23 (above the 8–22 band).
+  G1's pressure restored through content: compliance analytics queries (WEBDDF, with e-filing) peak 0.3 → 0.6/s and
+  grow 2 %/day (was 0.5 %). Local sweep, Revenue Normal: do-nothing seeds 1–8 median day 19 (p10 16, p90 21, all
+  trust losses); textbook seeds 1–10 median 27; expert 10/10 victories. Goldens unchanged (no Revenue golden).
 - [x] **Monitor III DELAY Primary Reason may name a job of the same class** (playtest: BATCHPRD named idle
   CICSAOR1; STCHI with misrouted STM batch named CICSAOR1). The own class competes with its other units, and a
   class's address spaces and running batch jobs compete by estimated CP engines (reporting only; `npm run compare`:
