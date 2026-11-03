@@ -103,7 +103,9 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
   the AOR classes). Fixed 2026-11-03: their Speed is the serving region classes' workflow, marked "(regions)"
   (SYSWKM shows the serving address spaces' using and velocity, SG24-6645 p.277–278; see docs/research.md).
   Reporting only.
-- [ ] **SYSWKM: pinning a region's velocity pins the DELAY CPU-delay figure** instead (pin target mismatch).
+- [x] **SYSWKM: pinning a region's velocity pins the DELAY CPU-delay figure** instead (pin target mismatch). Fixed
+  2026-11-03: the Veloc pin records that server row's velocity (new `VELOCITY` metric, source SYSWKM, a symptom
+  with no cause weight, like PI); CLI: `pin MON3 <system> <txn class> VELOCITY <jobname>` (current range only).
 - [ ] **Monitor III history gap:** SYSSUM history went from 23:22 straight to 23:44 (check MINTIME snapshots and the
   history picker).
 - [ ] **Failed change requests:** a failed request should return its changes to the basket; the change list in the

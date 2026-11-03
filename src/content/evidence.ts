@@ -3,6 +3,7 @@ import type { Mechanism, Trigger } from '../game/types';
 /** What a pinned data point measures, and which root causes it is evidence for (SPEC §10). */
 export type EvidenceMetric =
   | 'PI'
+  | 'VELOCITY'
   | 'APPL'
   | 'ENDED_RATE'
   | 'DELAY_CPU'
@@ -45,6 +46,7 @@ export interface EvidenceMetricDef {
 // FICTIONAL thresholds: roughly where a performance analyst would start to call a value abnormal.
 export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   PI: { label: 'PI', unit: '', mechanisms: [], triggers: [], notableAt: 1.2, weight: 0 },
+  VELOCITY: { label: 'velocity %', unit: '%', mechanisms: [], triggers: [], notableAt: 0, weight: 0 },
   APPL: { label: 'APPL %', unit: '%', mechanisms: ['CPU_CAPACITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'ACCESS_PATH_REGRESSION'], notableAt: 0, weight: 0.5 },
   ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5 },
   DELAY_CPU: { label: 'CPU delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'DEPENDENCY'], triggers: [], notableAt: 10, weight: 1, anySubject: true },

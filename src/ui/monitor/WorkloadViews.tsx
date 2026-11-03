@@ -207,7 +207,7 @@ export function Wkm({ m, game }: { m: Mon3View; game: GameHandle | null }) {
                   <td className="num">{s.servicePct.toFixed(0)}</td>
                   <td className="num">
                     {f(s.velocity)}
-                    {s.rowKey && <PinButton game={game} req={{ source: 'MON3', system: s.system, scKey: s.rowKey, metric: 'DELAY_CPU' }} label={`${s.rowKey} CPU delay on ${s.system}`} />}
+                    {s.velocity !== null && <PinButton game={game} req={{ source: 'MON3', system: s.system, scKey: w.scKey, jobname: s.jobname, metric: 'VELOCITY' }} label={`${s.jobname} velocity on ${s.system}`} />}
                   </td>
                   <td className="num">{s.procUsgPct.toFixed(0)}</td>
                   <td className="num">{s.ioUsgPct.toFixed(0)}</td>
