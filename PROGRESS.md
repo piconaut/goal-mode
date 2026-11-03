@@ -9,13 +9,14 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
-- **Next up:** a human UI playtest (M8.6), the two pending realism fixes (M8.7), and optional content/progression.
+- **Next up (in order):** (1) human UI playtest of the republished build (M8.6; checklist in
+  [docs/playtest-checklist.md](docs/playtest-checklist.md)); (2) **CICS_SOS realism fix** (M8.7 below); (3) **`step.ts`
+  refactor** (Maintenance below); then a fresh 20-seed baseline sweep, and M9 shaped by the playtest.
   The 27-card event deck is complete; add events only if a playtest asks for them.
-- **Published build:** [private artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv), last recorded rebuild
-  from `main` at `fbc518b` after milestone PR #129. Republish on request.
-- **Latest verified dev:** #143; 57 test files / 488 tests pass. Independent reviews and CI passed for
-  run-lifecycle, Monitor III, and shared-color refactors (#141–#143); no behavior or hash changes.
-- **Seed-42 one-day hashes:** Midwest `58c0964974945e25`; Harbourline `c70c88eb43a9db09` (equal-DP ready units, 2026-11-02).
+- **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
+  link"), rebuilt 2026-11-03 from `dev` at `232a5d1` (#149), the head of the 2026-11-03 milestone PR to `main`. Republish on request.
+- **Latest verified dev:** #149 (`232a5d1`); 61 test files / 538 tests pass; production build boots without console errors.
+- **Seed-42 one-day hashes (`232a5d1`):** Midwest `10f752818d6c8660`; Harbourline `8a846963e9c0263b`; Revenue `d55fd0a5a51ac138`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
@@ -29,7 +30,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 | M8.1–M8.3 | Bench/sweep harnesses, difficulty presets, hints, weekends, endless/daily modes, end reports, career XP and starting unlocks. Performance and balance targets closed by user decision; regression checks remain. |
 | M8.4 | Midwest, Revenue, and Harbourline scenarios with flaws/story beats; 27-card Midwest deck, scenario adaptations, draft options, 11 perks and 2 pacts. |
 | M8.5–M8.6 | Tutorial, accessibility/themes/contrast, keyboard controls, sound, autosave, agent playtests and CLI fixes, draft-based Change Desk, multi-CPC views. Human/phone follow-ups remain below. |
-| M8.7 | Completed researched realism fixes are recorded in SPEC §17 and docs/research.md; two pending fixes remain below. |
+| M8.7 | Completed researched realism fixes are recorded in SPEC §17 and docs/research.md; CICS_SOS is the next open fix below. |
 | M8.9 | Headless play CLI, three player personas, deterministic command logs, spectator mode and take-over saves. |
 | Maintenance | Shared storage/content/CLI helpers (#131–#136); modular Change Desk (#137), run lifecycle (#141), Monitor III (#142); circular UI imports removed (#143). |
 
@@ -83,6 +84,14 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a
 “Behaviour change” note, re-sweeps, and the relevant SPEC §5/§17 updates.
 
+- [ ] **NEXT: CICS_SOS rewards the wrong fix.** The card (loop 105) is modelled as an effective MXT cut, so raising
+  MXT on the PROD2 AORs clears it; real short-on-storage gets *worse* with a higher MXT (more concurrent tasks want
+  more DSA). This teaches the opposite of the real remedy. Minimum fix: while the card is active, a higher MXT raises
+  SOS severity (or MXT is locked with a clue saying why); proper fix: a small DSA/EDSA storage model per AOR
+  (DSALIM/EDSALIM, storage per task) so SOS, MXT and storage-limit levers interact. Needs symptoms/clues in the CICS
+  and SMF 110 views, at least two valid fixes (lower MXT/route work away, raise EDSALIM, fix the storage-hungry
+  transaction), a zos-docs check of the CICS SOS behaviour, a Codex entry, goldens and a sweep.
+
 - [x] **Work at an equal DP should share CPU by ready units, not by demand.** (2026-11-02) Equal-DP work now
   shares max-min by ready units (`shareByUnits` in `src/sim/zos/dispatcher.ts`): address spaces count their
   TCBs/SRBs (`DISPATCH_UNITS` in `content/subsys.ts`, FICTIONAL, at least one), batch one per running job,
@@ -134,32 +143,13 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   Full check: 533 tests / 60 files pass; readonly goldens and the queue-reporting assertion pass; build passes.
   Per-PR audit file removed; Codex agent guidance now keeps PR evidence on the PR.
 
-### Active realism audit loop (2026-11-02)
+### Realism audit loop (2026-11-02) — stopped after round 8
 
-User request: three audits over three hours; one-hour launch spacing, first audit
-started in the initiating turn. [Durable record](docs/audit-loops/2026-11-02.md).
-Round 1/global r8: Midwest seed 23; r9 Harbourline seed 29 and r10 Revenue seed 31
-are planned for the hourly continuations. Each round is vetted before contained
-fixes land in serial PRs; design questions wait for the final loop report.
-
-Audit round 8 (2026-11-02, Midwest seed 23, NORMAL): five behaviours tested, two
-contained findings implemented and reviewed on the session branch. Exact setup/numbers are in the durable
-record above; `runs/lab/r8/hp-*.json` reproduces both.
-- Shared CICS Honor Priority is incorrectly per class: ONLMED IIPCP APPL%
-  32.49 → 0 with ONLMED NO despite active ONLHI DEFAULT; all-NO is also 0
-  (08:30–09:00 PROD1). IBM requires all classes in a transaction-managed region
-  to say NO ([WLM Planning 3.1 p.122](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122)).
-- WLMGL APPL% CP omits IIPCP, which IBM defines as its subset
-  ([RMF 3.1 p.534](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534)).
-  DDFPRD#1 reports CP 91.14 / IIPCP 76.66 instead of total CP 167.80 at 09:00.
-  Correct the report only; preserve internal native/overflow CPU separation.
-- After: mixed CICS matches DEFAULT (IIPCP 32.49%, RT 0.897 s), all-NO and DDF NO
-  stay blocked. Corrected DDFPRD#1 CP is 167.7971%; ONLMED noon CP is 297.6879%.
-  Report-state goldens regenerated intentionally; internal simulation/cost
-  snapshots are equal. Combined check and three-scenario sweeps are pending.
-- Matches: per-class DDF Honor Priority, HiperDispatch ON/OFF MVS report
-  denominators, and system/plex WLM report aggregation. Cross-system WLM moves
-  were not isolated. No design questions were raised by this round.
+[Durable record](docs/audit-loops/2026-11-02.md). Round 8 (Midwest seed 23) found two contained mismatches, both
+fixed and merged in #145: shared CICS Honor Priority now applies per region (all served classes must say NO,
+WLM Planning 3.1 p.122), and WLMGL APPL% CP includes IIPCP (RMF 3.1 p.534). Rounds 9 (Harbourline seed 29) and
+10 (Revenue seed 31) were planned but never ran; they are **not** scheduled. Restart with `/audit-loop` after the
+playtest if wanted.
 
 ### M9 — Simplified mode (after M8; user request 2026-10-20)
 Goal: the same simulation, made approachable for players who aren't z/OS experts. Nothing in `src/sim`
@@ -231,7 +221,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
-- CICS_SOS (loop 105) is modelled as an effective MXT cut, so a player who raises MXT on the PROD2 AORs clears it. Real SOS gets worse with a higher MXT. A proper fix needs a DSA storage model (or a lock on MXT while the card runs).
+- CICS_SOS: scheduled as the next M8.7 fix (see above); open detail is how much DSA model is needed.
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
 - Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using
   (`missingGoal` in `src/sim/core/step.ts`, APPROX); item 11 settled only that it yields to goal work.
@@ -268,6 +258,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   Use commit/PR links for completed detail rather than rebuilding a chronological transcript.
 
 ## Latest maintenance
+
+- [ ] **NEXT after CICS_SOS: split `src/sim/core/step.ts`** (~1,440 lines; most model fixes land there). Move each
+  SPEC §5.1 pipeline stage into its own module with a `stepX(state, ctx)` entry point, keep `step.ts` as the
+  orchestrator in contract order. Must be hash-neutral: label the PR `perf`/refactor so the `perf-hash` gate proves
+  identical Midwest and Harbourline bench hashes; also compare Revenue by hand. `src/sim/wlm/evaluate.ts` (~910) is
+  the next candidate.
+- Stale remote branches (`claude/*`, `ccr-d83b42c6-*`, Oct 21–29) hold only already squash-merged work; delete
+  when convenient.
 
 - Pruned completed milestone checklists, superseded decisions, stale timings, and chronological session logs.
   Pending requirements/questions and current validation remain above; the full pre-prune tracker is recoverable
