@@ -137,19 +137,6 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
     `USING% CPU ${r.usingPct.cpu.toFixed(1)} IIP ${r.usingPct.ziip.toFixed(1)} I/O ${r.usingPct.io.toFixed(1)}   ` +
       `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} QMPL ${(r.delayPct.queue ?? 0).toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
   );
-  const wm = r.workMgr;
-  if (wm) {
-    // RMF Report Analysis p.536–537: CICS/IMS transaction classes carry the work manager's states; their using and
-    // delay samples are in the regions' service classes.
-    out.push('');
-    out.push('USING/DELAY SAMPLES: REPORTED WITH THE CICS REGIONS\' SERVICE CLASS');
-    const cols = ['TOTAL', 'ACTIVE', 'READY', 'IDLE', 'LOCK', 'I/O', 'CONV', 'PROD', 'MISC'];
-    const vals = [wm.activePct + wm.readyPct + wm.idlePct + wm.lockPct + wm.ioPct + wm.convPct + wm.prodPct + wm.miscPct, wm.activePct, wm.readyPct, wm.idlePct, wm.lockPct, wm.ioPct, wm.convPct, wm.prodPct, wm.miscPct];
-    out.push(`${''.padEnd(14)}${'-'.repeat(13)}RESPONSE TIME BREAKDOWN IN PERCENTAGE${'-'.repeat(13)}`);
-    out.push(`${''.padEnd(14)}${''.padEnd(32)}${'-'.repeat(14)}WAITING FOR${'-'.repeat(14)}`);
-    out.push(`${padR('SUB   TYPE', 14)}${cols.map((c) => pad(c, 7)).join(' ')}`);
-    out.push(`${padR(wm.phase.replace(' ', '  '), 14)}${vals.map((x) => f(x, 1, 7)).join(' ')}`);
-  }
   const total = r.buckets.reduce((a, b) => a + b, 0);
   if (total > 0 && r.goalText.includes('<')) {
     const goalSec = Number(/< ([\d.]+)s/.exec(r.goalText)?.[1] ?? 0);

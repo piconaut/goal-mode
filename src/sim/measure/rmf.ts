@@ -5,7 +5,7 @@
 import type { CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdResult } from '../io/dasd';
 import type { LparRuntime, LparTick, WorldConfig } from '../core/types';
-import type { MovedSamples, ScpTick, WorkMgrSums } from '../wlm/evaluate';
+import type { ScpTick } from '../wlm/evaluate';
 import { BUCKETS, emptyBuckets, velocityOf } from '../wlm/goals';
 import { goalInfo, accPi, emptyAcc, velDelay, velUsing, type ScpAcc } from '../wlm/runtime';
 import type { ServiceDefinition } from '../wlm/types';
@@ -23,8 +23,6 @@ export interface ScpIntervalAcc extends ScpAcc {
   delayStorage: number;
   delayQueue?: number;
   failed: number;
-  /** CICS transaction classes: work manager states (transaction-seconds). */
-  wm?: WorkMgrSums;
 }
 
 export interface LparIntervalAcc {
@@ -111,21 +109,6 @@ export interface WlmRecord {
   reportClass?: boolean;
   /** Service-class periods the report class's work ran in. */
   members?: string[];
-  /** CICS transaction classes: response time breakdown in percent of the work manager states; their using and
-   * delay samples are reported with the region's class (WLM Planning 3.1 p.113; RMF Report Analysis p.536–537). */
-  workMgr?: WorkMgrRecord;
-}
-
-export interface WorkMgrRecord {
-  phase: 'CICS EXE';
-  activePct: number;
-  readyPct: number;
-  idlePct: number;
-  lockPct: number;
-  ioPct: number;
-  convPct: number;
-  prodPct: number;
-  miscPct: number;
 }
 
 export interface CpuRecord {
@@ -213,26 +196,16 @@ export function accumulateTick(
   const scps = { ...acc.scps };
   let rcs = acc.rcs;
   for (const lt of lparTicks) {
-    let moved: MovedSamples[] | undefined;
-    for (const t of lt.scps) {
-      addScp(scps, lt.lparId, t.rmfMoved ? ownPart(t, t.rmfMoved) : t);
-      if (t.rmfMoved) (moved ??= []).push(t.rmfMoved);
-    }
-    // After the image's own ticks, so the region class's accumulator carries its DP.
-    for (const m of moved ?? []) if (m.to) addMoved(scps, lt.lparId, m, true);
+    for (const t of lt.scps) addScp(scps, lt.lparId, t);
     if (lt.rcs) {
       rcs = rcs ? { ...rcs } : {};
-      let rcMoved: MovedSamples[] | undefined;
       for (const t of lt.rcs) {
         const k = accKey(lt.lparId, t.scKey);
         const prevMembers = rcs[k]?.members ?? [];
-        addScp(rcs, lt.lparId, t.rmfMoved ? ownPart(t, t.rmfMoved) : t);
-        if (t.rmfMoved) (rcMoved ??= []).push(t.rmfMoved);
+        addScp(rcs, lt.lparId, t);
         const members = t.members.every((m) => prevMembers.includes(m)) ? prevMembers : [...new Set([...prevMembers, ...t.members])].sort();
         rcs[k] = { ...rcs[k]!, members };
       }
-      // A region without a report class takes its transactions' samples out of every report class.
-      for (const m of rcMoved ?? []) if (m.to) addMoved(rcs, lt.lparId, m, false);
     }
   }
   const la = { ...acc.lpars };
@@ -348,56 +321,6 @@ export function accumulateTick(
 const accKeys: Record<string, Record<string, string>> = {};
 const accKey = (lparId: string, scKey: string) => ((accKeys[lparId] ??= {})[scKey] ??= `${lparId}|${scKey}`);
 
-/** The part of a tick RMF reports with its own class: everything but the samples moved to the region's class. */
-function ownPart(t: ScpTick, m: MovedSamples): ScpTick {
-  return {
-    ...t,
-    usingCpu: t.usingCpu - m.usingCpu,
-    usingZiip: t.usingZiip - m.usingZiip,
-    usingIo: t.usingIo - m.usingIo,
-    delayCpu: t.delayCpu - m.delayCpu,
-    delayZiip: t.delayZiip - m.delayZiip,
-    delayIo: t.delayIo - m.delayIo,
-    delayOther: t.delayOther - m.delayOther,
-    delayStorage: t.delayStorage - m.delayStorage,
-    delayCap: t.delayCap - m.delayCap,
-    ...(t.usingIoNoVel !== undefined ? { usingIoNoVel: t.usingIoNoVel - (m.usingIoNoVel ?? 0), delayIoNoVel: (t.delayIoNoVel ?? 0) - (m.delayIoNoVel ?? 0) } : {}),
-  };
-}
-
-/** Adds moved samples to the target class's accumulator (created for a service class, skipped for a report class
- * the image never reported). */
-function addMoved<T extends ScpIntervalAcc>(accs: Record<string, T>, lparId: string, m: MovedSamples, create: boolean) {
-  const k = accKey(lparId, m.to!);
-  const a = accs[k];
-  if (!a && !create) return;
-  const t: ScpTick = {
-    scKey: m.to!,
-    dp: a?.dp ?? 0,
-    cpEngines: 0,
-    ziipEngines: 0,
-    iipcpEngines: 0,
-    usingCpu: m.usingCpu,
-    usingZiip: m.usingZiip,
-    usingIo: m.usingIo,
-    delayCpu: m.delayCpu,
-    delayZiip: m.delayZiip,
-    delayIo: m.delayIo,
-    delayOther: m.delayOther,
-    delayStorage: m.delayStorage,
-    delayCap: m.delayCap,
-    ...(m.usingIoNoVel !== undefined ? { usingIoNoVel: m.usingIoNoVel, delayIoNoVel: m.delayIoNoVel ?? 0 } : {}),
-    completions: 0,
-    failed: 0,
-    rtSumSec: 0,
-    buckets: [],
-  };
-  addScp(accs, lparId, t);
-}
-
-const addWm = (a: WorkMgrSums | undefined, b: WorkMgrSums | undefined): WorkMgrSums | undefined =>
-  !a ? b && { ...b } : !b ? a : { active: a.active + b.active, ready: a.ready + b.ready, lock: a.lock + b.lock, io: a.io + b.io, prod: a.prod + b.prod, misc: a.misc + b.misc };
-
 function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: string, t: ScpTick) {
   const k = accKey(lparId, t.scKey);
   const a: ScpIntervalAcc = scps[k] ?? {
@@ -442,7 +365,6 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
       ? { usingIoNoVel: (a.usingIoNoVel ?? 0) + (t.usingIoNoVel ?? 0), delayIoNoVel: (a.delayIoNoVel ?? 0) + (t.delayIoNoVel ?? 0) }
       : {}),
     failed: a.failed + t.failed,
-    ...(t.wm || a.wm ? { wm: addWm(a.wm, t.wm) } : {}),
   };
   scps[k] = (members !== undefined ? { ...out, members } : out) as T;
 }
@@ -472,15 +394,7 @@ function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
       : {}),
     delayCap: p.delayCap + a.delayCap,
     failed: p.failed + a.failed,
-    ...(p.wm || a.wm ? { wm: addWm(p.wm, a.wm) } : {}),
   };
-}
-
-function workMgrRecord(w: WorkMgrSums): WorkMgrRecord | undefined {
-  const tot = w.active + w.ready + w.lock + w.io + w.prod + w.misc;
-  if (tot <= 1e-12) return undefined;
-  const pct = (x: number) => (100 * x) / tot;
-  return { phase: 'CICS EXE', activePct: pct(w.active), readyPct: pct(w.ready), idlePct: 0, lockPct: pct(w.lock), ioPct: pct(w.io), convPct: 0, prodPct: pct(w.prod), miscPct: pct(w.misc) };
 }
 
 /** A report class is homogeneous when all its work runs in one service class, heterogeneous when it
@@ -511,7 +425,6 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
   const sec = ticks * TICK_SEC;
   const goal = g?.goal;
   const p = def.classes.find((c) => c.id === g?.serviceClass)?.periods[g?.period ?? 0];
-  const wm = a.wm && workMgrRecord(a.wm);
   return {
     lparId,
     scKey: a.scKey,
@@ -532,7 +445,6 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
     usingPct: { cpu: pct(a.usingCpu), ziip: pct(a.usingZiip), io: pct(a.usingIo) },
     delayPct: { cpu: pct(a.delayCpu), ziip: pct(a.delayZiip), io: pct(a.delayIo), storage: pct(a.delayStorage), cap: pct(a.delayCap), other: pct(a.delayOther), queue: pct(a.delayQueue ?? 0) },
     buckets: a.buckets.length === BUCKETS ? a.buckets : emptyBuckets(),
-    ...(wm ? { workMgr: wm } : {}),
   };
 }
 

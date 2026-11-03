@@ -220,7 +220,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'CANCEL_XLOG',
     forewarning: null,
     announcement: null,
-    clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay (for CICS classes, READY in the WLMGL response time breakdown). Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
+    clue: 'WLMGL: STCHI service up by about one engine on PROD1 with no rise in CICS transaction rates; CICSXLOG is the top consumer in STCHI. Importance-2 and lower work on PROD1 shows CPU delay. Fixes: cancel the job, or add a classification rule putting CICSXLOG in a low STC class.',
   },
   {
     // Data set encryption (DFSMS + ICSF): every read and write of an encrypted data set goes through CPACF, so the

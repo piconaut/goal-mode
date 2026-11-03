@@ -1292,15 +1292,11 @@ export function cicsRegions(
   const aor = addressSpaces.find((a) => a.lparId === lparId && a.role === 'CICS.AOR');
   if (!aor) return {};
   const keys: string[] = [];
-  const txnSlices: string[] = [];
   for (const s of slices) {
-    if (s.kind !== 'TXN' || !s.workloadId || byId[s.workloadId]?.subsystem !== 'CICS') continue;
-    txnSlices.push(s.key);
-    if (!keys.includes(s.scKey)) keys.push(s.scKey);
+    if (s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS' && !keys.includes(s.scKey)) keys.push(s.scKey);
   }
   if (keys.length === 0) return {};
   keys.sort();
-  txnSlices.sort();
   const legacy = def.cicsRegionMode ?? 'TRANSACTION';
   const modeOf = (a: AddressSpaceDef) => classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: lparId }).regionMode ?? legacy;
   const servers: string[] = [];
@@ -1318,13 +1314,8 @@ export function cicsRegions(
     if (s.role === 'CICS.AOR') txnMode = 'TRANSACTION';
   }
   servers.sort();
-  const aorCls = classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId });
-  const regionKey = scKeyAtService(def, aorCls.serviceClass, Infinity);
-  // RMF reports the transactions' state samples with the region's classes (WLM Planning 3.1 p.113). APPROX: all
-  // of them with the image's first AOR, as the sim does not split a workload's transactions between regions.
-  const aorSlice = slices.find((s) => s.kind === 'AS' && s.jobname === aor.jobname);
-  const rmf = { txnSlices, regionKey: aorSlice?.scKey ?? regionKey, regionReportClass: aorSlice ? (aorSlice.reportClass ?? null) : (aorCls.reportClass ?? null) };
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, rmf } };
+  const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked } };
 }
 
 /** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a
