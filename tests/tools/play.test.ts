@@ -52,6 +52,9 @@ describe('headless play interface', () => {
     expect(mon3Text(f)).toContain('SYSINFO');
     expect(mon3Text(f, { json: true }).split('\n')[1]).toMatch(/^\{/);
     expect(mon3Text(f, { system: 'NOSUCH' })).toContain('No system NOSUCH');
+    // SYSWKM: CICS class breakdown and serving AORs, in text and JSON.
+    expect(mon3Text(f, { system: 'PROD1' })).toMatch(/SYSWKM ONLHI period 1[\s\S]*CICS EXE %: ACTIVE[\s\S]*CICSAOR1/);
+    expect(mon3Text(f, { json: true }).split('\n').some((l) => l.startsWith('SYSWKM {'))).toBe(true);
     // DELAY columns as RMF Report Analysis p.108–109: no CAP or PRC IIP column.
     const delayCols = mon3Text(f).split('\n').find((l) => l.startsWith('system ') && l.includes(' DLY '))!;
     expect(delayCols).toMatch(/USG\s+DLY\s+IDL\s+UKN\s+PRC\s+DEV\s+STR\s+SUB\s+OPR\s+ENQ\s+primaryReason$/);
