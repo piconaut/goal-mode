@@ -49,7 +49,7 @@ export function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: G
   useEffect(() => setJson(''), [game.policy]);
   useEffect(() => {
     game.send({ type: 'GET_RULES' });
-  }, [game, v.policyName, v.day]);
+  }, [game.send, v.policyName, v.day]);
   const jsonEdited = json !== '' && json !== game.policy;
   const p = preview(v, { commands: ACTIVATE_PREVIEW });
   return (

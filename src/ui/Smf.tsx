@@ -29,7 +29,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
   const refresh = Math.floor(v.tickOfDay / 30);
   useEffect(() => {
     if (k) game.send({ type: 'GET_SMF', kind: k, hour: h });
-  }, [k, h, refresh, game]);
+  }, [k, h, refresh, game.send]);
   if (owned.length === 0)
     return (
       <div className="panel">
