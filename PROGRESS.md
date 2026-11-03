@@ -264,6 +264,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - The cloud host is noisy. Compare old/new back to back; prove behavior neutrality with bench hashes.
   Avoid concurrent suites/benches that cause subprocess timeouts.
 - Track long jobs and stop their exact PIDs/task sessions; broad `pgrep -f`/`pkill -f` patterns can match themselves.
+- `npm run compare` (2026-11-03) backs "report-only" / "pure refactor" claims: sim state with reporting excluded, game
+  state, log, every RMF report's text and records, Monitor III views, base vs head in worktrees (~20 s for three
+  scenarios). `play … mon3` now prints SYSWKM too; use the play CLI for report and Monitor III questions.
 - Keep new session updates brief: current status, changed decisions, unresolved work, and latest validation.
   Use commit/PR links for completed detail rather than rebuilding a chronological transcript.
 
