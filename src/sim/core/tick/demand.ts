@@ -207,7 +207,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     ref.slice.cpEngines += cpWant;
     ref.slice.ziipEngines += ziWant;
     ref.slice.ioRate += shape.ioRate / Math.max(1, j.stretch);
-    ref.jobs.push({ job: j, cp: cpWant, zi: ziWant, shape });
+    ref.jobs.push({ job: j, cp: cpWant, zi: ziWant, cfCpEngines: cfCpu, shape });
   }
   const batchRefs = Object.values(refs);
   // One TCB per running job.

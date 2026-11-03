@@ -202,12 +202,21 @@ already in docs/research.md).
   above the importance-2 CICS classes, at D5 22:36:50. Find out why the projection base drops the CICS contention on
   some intervals. Cause: starvation cross-paced both CPU demands down on an image without zIIPs. CP-only images now
   retain ready demand; a blanket importance-based DP ceiling would be too strict without CPU Critical. Receiver
-  candidates now follow global/local order within each importance tier (SG24-7621 pp.106–107). Separate-pool pacing
-  remains approximate and needs independent investigation. Save-inspired no-zIIP and receiver-order tests added.
+  candidates now follow global/local order within each importance tier (SG24-7621 pp.106–107). Separate-pool trials
+  now follow a conservative envelope of demand already enabled by this tick's grants or restored by projected
+  CPU grants, using execution's pacing
+  formula. Every intermediate distribution must pass net value; unsettled trials are rejected at a bounded
+  iteration limit. This remains an approximation, with I/O rates/backlogs and capacities held at the snapshot.
+  Regressions cover recovery in either direction, CP help enabled/disabled, CP caps with spare zIIPs, a safe raise
+  with headroom, and exhausted projection budgets. Save-inspired no-zIIP and receiver-order tests remain.
   Production replay from the uploaded save, D5 22:00–23:00: CARDAUTH 98.585% → 99.933% within SLA,
   failures 3,512 → 0 and BATCHPRD self-raises 8 → 0; all 40 critical jobs finish, 70 seconds later at 01:56:10.
   Validation: `npm run check` 553 tests passed; Midwest Normal CI sweep seeds 1–5 passed all bands (do-nothing
   median day 16, textbook 27, expert 40 with 5/5 victories). Golden hashes changed with the intended model behavior.
+  Separate-pool follow-up: `npm run check` 573 tests passed (10 coupled-projection regressions); the final
+  seed 1–5 sweep passes the same bands and 5/5 expert victories. Replaying the uploaded save through the final
+  code preserves 99.933% attainment, zero card failures/self-raises, and all critical jobs on time. Isolated
+  bench 3.27 s/day (0.38 ms/tick), versus 3.20 s/day before the extension; day-1 hash and existing goldens unchanged.
 - [x] **Equal-importance veto from bystanders; co-served classes not credited (investigated).**
   At D5 22:21:00 ONLCARD's own raise F4→F6 (which lifts the CICS regions) was projected to take ONLCARD 61.8→0.80,
   ONLRBANK 82→0.5, ONLTELR 46→0.5 and ONLPAYMQ 13.9→0.17, but `passes()` rejected it because DDFMOB (68.7→74.7) and

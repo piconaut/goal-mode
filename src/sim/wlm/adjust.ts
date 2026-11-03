@@ -5,7 +5,8 @@
 
 import { PCT_PROJECTION_SIGMA } from '../../content/wlm/tuning';
 import { DP } from '../zos/dispatcher';
-import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
+import { prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
+import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
 import { projectedPercentilePi } from './goals';
 import { goalPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
@@ -35,6 +36,8 @@ export interface AdjustInput {
   clockText: string;
   /** IEAOPT CCIMP on this system. */
   ccImp?: number;
+  /** Measured demand and next-tick demand already enabled by execution's grants. */
+  batch?: readonly BatchProjectionSlice[];
 }
 
 export interface AdjustOutput {
@@ -78,9 +81,9 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   };
   const before = instPi(input.current);
 
-  // Trials only move DPs: the demand stage is shared, and only percentile goals need buckets.
+  // The first evaluation shares prepared demand; later evaluations follow cross-pool batch recovery.
   let projectBase: LparEvalInput | null = null;
-  const project = (trial: Record<string, number>) => {
+  const project = (trial: Record<string, number>, accepts: (after: Record<string, number | null>) => boolean) => {
     projectBase ??= {
       ...input.evalInput,
       dpOf: (k) => dps[k] ?? 196,
@@ -88,7 +91,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       bucketsFor: new Set(Object.keys(info).filter((k) => info[k]!.goal.kind === 'PCT')),
       prepared: prepareLpar(input.evalInput),
     };
-    return instPi(evaluateLpar({ ...projectBase, dpOf: (k) => trial[k] ?? dps[k] ?? 196 }).scps);
+    return batchRecoveryAccepts({ ...projectBase, dpOf: (k) => trial[k] ?? dps[k] ?? 196 }, input.batch ?? [], (r) => accepts(instPi(r.scps)));
   };
 
   // Long-term CPU protection: less important work never gets an equal or higher DP than a CPU-critical
@@ -108,29 +111,30 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
 
   const passes = (receiver: string, trial: Record<string, number>): boolean => {
     if (violatesCpuCritical(trial)) return false;
-    const after = project(trial);
-    const r0 = before[receiver];
-    const r1 = after[receiver];
-    if (r0 == null || r1 == null || r1 >= r0) return false;
-    if (r0 - r1 < RECEIVER_VALUE_FRAC * (r0 - 1)) return false;
-    const rImp = info[receiver]!.importance;
-    const gain = Math.max(0, r0 - Math.max(r1, DONOR_CREDIT_FLOOR));
-    let equalHarm = 0;
-    for (const [k, g] of Object.entries(info)) {
-      if (k === receiver) continue;
-      const p0 = before[k];
-      const p1 = after[k];
-      if (p0 == null || p1 == null) continue;
-      const harm = Math.max(0, p1 - Math.max(p0, DONOR_CREDIT_FLOOR));
-      if (g.importance < rImp && p1 > 1 && harm > 0.02) return false;
-      if (g.importance === rImp) {
-        // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,
-        // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
-        if (harm > 0 && Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return false;
-        equalHarm += harm;
+    return project(trial, (after) => {
+      const r0 = before[receiver];
+      const r1 = after[receiver];
+      if (r0 == null || r1 == null || r1 >= r0) return false;
+      if (r0 - r1 < RECEIVER_VALUE_FRAC * (r0 - 1)) return false;
+      const rImp = info[receiver]!.importance;
+      const gain = Math.max(0, r0 - Math.max(r1, DONOR_CREDIT_FLOOR));
+      let equalHarm = 0;
+      for (const [k, g] of Object.entries(info)) {
+        if (k === receiver) continue;
+        const p0 = before[k];
+        const p1 = after[k];
+        if (p0 == null || p1 == null) continue;
+        const harm = Math.max(0, p1 - Math.max(p0, DONOR_CREDIT_FLOOR));
+        if (g.importance < rImp && p1 > 1 && harm > 0.02) return false;
+        if (g.importance === rImp) {
+          // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,
+          // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
+          if (harm > 0 && Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return false;
+          equalHarm += harm;
+        }
       }
-    }
-    return gain > equalHarm;
+      return gain > equalHarm;
+    });
   };
 
   const ordered = (piOf: Record<string, number | null>) =>

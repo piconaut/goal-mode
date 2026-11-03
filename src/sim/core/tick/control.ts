@@ -5,6 +5,7 @@ import { accumulateTick, closeInterval, newRmfAcc, type JobEndRecord } from '../
 import { msuPerCp } from '../../hw/cpc';
 import { poolKey, resolveCpc } from '../../hw/pools';
 import { policyAdjust } from '../../wlm/adjust';
+import { jobCpuDemand } from '../../subsys/batch';
 import { sysplexPis, type WlmSystemState } from '../../wlm/runtime';
 import { clockAt } from '../clock';
 import type { LparConfig, EnvState, SimState } from '../types';
@@ -66,14 +67,22 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
   let log = prev.wlm.log;
   const adjusted = systems.map((sys) => {
     const lt = lparTicks.find((x) => x.lparId === sys.lparId)!;
+    const evalInput = evalInputs[sys.lparId]!;
     const out = policyAdjust({
       def,
       system: sys,
-      evalInput: evalInputs[sys.lparId]!,
+      evalInput,
       current: lt.scps,
       sysplexPi: spPi,
       clockText,
       ccImp: config.systems.find((c) => c.lparId === sys.lparId)?.ccImp,
+      batch: evalInput.ziipServers > 0 ? t.batchRefsBy[sys.lparId]?.map((r) => ({
+        key: r.slice.key,
+        jobs: r.jobs.map((j) => {
+          const next = jobCpuDemand(j.shape, j.job, true);
+          return { ...j, nextCp: next.cp + j.cfCpEngines, nextZi: next.ziip };
+        }),
+      })) : undefined,
     });
     if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
       if (log === prev.wlm.log) log = [...log];

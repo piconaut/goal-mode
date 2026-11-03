@@ -207,16 +207,28 @@ export interface JobProgressInput {
   ioDelayFrac?: number;
 }
 
+/** Cross-pool demand implied by the CPU grants, shared by execution and WLM trials. */
+export function jobPacing(shape: ReturnType<typeof jobShape>, p: Pick<JobProgressInput, 'cpWanted' | 'cpGot' | 'ziipWanted' | 'ziipGot'>) {
+  const cpStretch = p.cpWanted > 1e-12 ? Math.min(p.cpWanted / Math.max(p.cpGot, 1e-9), 1e4) : 1;
+  const zStretch = p.ziipWanted > 1e-12 ? Math.min(p.ziipWanted / Math.max(p.ziipGot, 1e-9), 1e4) : 1;
+  return {
+    cpStretch,
+    zStretch,
+    cpPace: shape.elapsed / (shape.cpSec + shape.zSec * zStretch + shape.ioSec),
+    ziipPace: shape.elapsed / (shape.cpSec * cpStretch + shape.zSec + shape.ioSec),
+  };
+}
+
 /** Advance a running job one tick; returns true if it finished. */
 export function advanceJob(j: JobRuntime, shape: ReturnType<typeof jobShape>, p: JobProgressInput, tick: number): boolean {
-  const cpStretch = p.cpWanted > 1e-12 ? p.cpWanted / Math.max(p.cpGot, 1e-9) : 1;
-  const zStretch = p.ziipWanted > 1e-12 ? p.ziipWanted / Math.max(p.ziipGot, 1e-9) : 1;
+  const pace = jobPacing(shape, p);
+  const { cpStretch, zStretch } = pace;
   const eff = (shape.cpSec * Math.min(cpStretch, 1e4) + shape.zSec * Math.min(zStretch, 1e4) + shape.ioSec) * p.extraStretch;
   j.stretch = eff / shape.elapsed;
   // A job's CP and zIIP phases are sequential: CP work stuck behind a cap or CP shortage holds back its zIIP work
   // (and vice versa); capping limits general purpose CPs only (WLM Planning p.182).
-  j.cpPace = shape.elapsed / (shape.cpSec + shape.zSec * Math.min(zStretch, 1e4) + shape.ioSec);
-  j.ziipPace = shape.elapsed / (shape.cpSec * Math.min(cpStretch, 1e4) + shape.zSec + shape.ioSec);
+  j.cpPace = pace.cpPace;
+  j.ziipPace = pace.ziipPace;
   j.progress += TICK_SEC / eff;
   // Of this tick's TICK_SEC of elapsed, the parts that were waiting rather than working.
   const cpuWait = shape.cpSec * (Math.min(cpStretch, 1e4) - 1) + shape.zSec * (Math.min(zStretch, 1e4) - 1);
