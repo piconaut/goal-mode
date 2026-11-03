@@ -9,13 +9,18 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
-- **Next up (in order):** (1) continue the human playtest and work its findings ("Playtest round 1"; checklist in
-  [docs/playtest-checklist.md](docs/playtest-checklist.md)); (2) **CICS_SOS realism fix** (M8.7 below); (3) **`step.ts`
-  refactor** (Maintenance below); then a fresh 20-seed baseline sweep, and M9 shaped by the playtest.
+- **Next up (in order; user-approved overnight plan 2026-11-03):**
+  1. **Playtest round 1 fixes** (section below), one PR each, in this order: save during the live day + save export +
+     seed entry; WFEX "No work" for CICS transaction classes; SYSWKM pin target; Monitor III history gap; failed change
+     request returns its changes to the basket; Ops Console layout; Change Desk JES-rule hint; job-level PROCU/DELAY rows.
+  2. **CICS_SOS realism fix** (M8.7), then the **Revenue retune** (M8.7), with sweeps on Sonnet worker sessions.
+  3. **`step.ts` split** (Maintenance), hash-neutral, labelled `perf`, last so model changes don't rebase onto it.
+  4. Republish the artifact from `dev` when done.
+  **Held for the user** (write proposals, don't implement): the finance feedback loop, the full-day tutorial, M9.
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-  link"), rebuilt 2026-11-03 from `dev` at `232a5d1` (#149), the head of the 2026-11-03 milestone PR to `main`. Republish on request.
-- **Latest verified dev:** #149 (`232a5d1`); 61 test files / 538 tests pass; production build boots without console errors.
+  link"), rebuilt 2026-11-03 from `dev` at `92e16bd` (#154). Republish on request.
+- **Latest verified dev:** #155; 61 test files / 543 tests pass; production build boots without console errors.
 - **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
