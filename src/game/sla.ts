@@ -121,7 +121,10 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
   if (ev) return ev.trigger;
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;
-  if (lock > 1 && (mechanism === 'LOCK_CONTENTION' || mechanism === 'CPU_PRIORITY' || mechanism === 'DEPENDENCY')) return 'BATCH_OVERLAP';
+  // Batch overlap is the lock clash between batch and online (the DASD/lock clue path). Without a card, a CPU
+  // priority or dependency miss is the policy's, even at night with batch running: importance, goals and
+  // classification decide who waits (playtest 2026-11-03: misrouted critical batch was labelled BATCH_OVERLAP).
+  if (lock > 1 && mechanism === 'LOCK_CONTENTION') return 'BATCH_OVERLAP';
   if (mechanism === 'DEPENDENCY' || mechanism === 'CPU_PRIORITY' || mechanism === 'CAPPING' || mechanism === 'QR_TCB' || mechanism === 'THREAD_LIMIT' || mechanism === 'ROUTING') return 'POLICY';
   return 'GROWTH';
 }
