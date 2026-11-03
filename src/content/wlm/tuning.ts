@@ -46,3 +46,8 @@ export const STORAGE_STEAL_MAX_FRAC = 0.9;
 // APPROX: projections extrapolate the goal-percentile response time from the mean RT, assuming a log-normal of
 // this shape. FICTIONAL: 0.5 makes the 95th percentile ≈ 2× the mean, inside the range of the scenarios' rtSigma.
 export const PCT_PROJECTION_SIGMA = 0.5;
+
+// FICTIONAL: bound the cost of coupled batch-demand recovery in a DP trial. Each round retains the
+// larger of current demand and demand enabled by the grants. Unsettled trials are rejected, never accepted
+// using the final, possibly optimistic estimate. Tolerance is engines per job, not an IBM WLM threshold.
+export const BATCH_PROJECTION = { maxRecoveryRounds: 8, demandToleranceEngines: 1e-8 };

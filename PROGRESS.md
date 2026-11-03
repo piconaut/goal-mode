@@ -177,6 +177,73 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
 - [ ] **Tutorial:** a full guided day for non-experts (the expert knew where to look; others won't).
 - Positive: the batch critical-path estimate slipping on night 1 reads as a fair early warning of the day-27/28 wall.
 
+### Playtest round 2 (2026-11-04, expert player, daily challenge 2026-11-04, Midwest Normal, seed 467203; in progress)
+
+Same player as round 1. Run started on `8c0dd9e` (#160), which became unplayable through a UI problem; continued on the
+published `2253b11` (#164), where the incident below happened. Player policy differs from the default in the way that
+matters here: card authorisation moved from ONLHI (importance 1, 95% < 0.25 s) to ONLCARD (importance 2, 99% < 0.1 s),
+the same tier as DDFMOB, TSO period 1 and the other CICS classes; CICS regions `TN=CICS* → STCHI`, managed to the
+transactions' goals (the default). Replays: the player's save plus forward runs from it with `play` (`draft none`) on
+`2253b11`; the WLM trial trace came from temporary scratch logging in `policyAdjust`, not committed.
+
+**INC19 CARDAUTH, D4 23:02–23:30, PROD2** (noticed in the Ops Console service levels; resolved by itself; RCA
+CPU_PRIORITY/BATCH_OVERLAP, truth CPU_PRIORITY/POLICY, partial credit). The player found the clues alone (DELAY
+STCHI#1 CPU delay 42%, WLMGL PROD2 STCHI#1 CPU delay 34.6%, SYSWKM CICSAOR2 velocity 9.4%, SYSSUM ONLCARD PI 4.0) but
+couldn't explain why CICS was CPU-delayed with little more important work around, or why WLM never raised the
+priority of ONLCARD or STCHI. WLMGL 1074 PROD2: STCHI velocity 26.8%, PI 2.23; ONLCARD PI 4.00, 90.3% < 50 ms but 2.8%
+> 0.4 s, FAILED 2528. Real behaviour, not a bug: regions managed to transaction goals run at the DP of the most important
+transaction class they serve (F4 here), not at STCHI's own FA, so STCHI is never a receiver (WLM Planning p.122–123,
+already in docs/research.md).
+- [x] **WLM projection inconsistent between adjacent intervals (sim bug, fixed).** With the same DPs, BATCHPRD#1's
+  (importance 4) self-raise F2→F4 was projected at D5 22:22:50 to take ONLCARD's PI from 0.80 to 61.8 (rejected), and at
+  22:23:00 to leave it at 0.80 (accepted). Batch then ties the CICS regions' DP on PROD2's 4 CPs; ONLCARD lowers it,
+  BATCHHI (sysplex PI ≈0.8, taken as receiver on its local PI) lowers it again, and BATCHPRD raises itself back: a
+  ~2.5-minute cycle in the WLM log, D4 23:00–23:22 (save) and again D5 22:20–22:36 (replay). BATCHHI also went F3→F5,
+  above the importance-2 CICS classes, at D5 22:36:50. Find out why the projection base drops the CICS contention on
+  some intervals. Cause: starvation cross-paced both CPU demands down on an image without zIIPs. CP-only images now
+  retain ready demand; a blanket importance-based DP ceiling would be too strict without CPU Critical. Receiver
+  candidates now follow global/local order within each importance tier (SG24-7621 pp.106–107). Separate-pool trials
+  now follow a conservative envelope of demand already enabled by this tick's grants or restored by projected
+  CPU grants, using execution's pacing
+  formula. Every intermediate distribution must pass net value; unsettled trials are rejected at a bounded
+  iteration limit. This remains an approximation, with I/O rates/backlogs and capacities held at the snapshot.
+  Regressions cover recovery in either direction, CP help enabled/disabled, CP caps with spare zIIPs, a safe raise
+  with headroom, and exhausted projection budgets. Save-inspired no-zIIP and receiver-order tests remain.
+  Production replay from the uploaded save, D5 22:00–23:00: CARDAUTH 98.585% → 99.933% within SLA,
+  failures 3,512 → 0 and BATCHPRD self-raises 8 → 0; all 40 critical jobs finish, 70 seconds later at 01:56:10.
+  Validation: `npm run check` 553 tests passed; Midwest Normal CI sweep seeds 1–5 passed all bands (do-nothing
+  median day 16, textbook 27, expert 40 with 5/5 victories). Golden hashes changed with the intended model behavior.
+  Separate-pool follow-up: `npm run check` 573 tests passed (10 coupled-projection regressions); the final
+  seed 1–5 sweep passes the same bands and 5/5 expert victories. Replaying the uploaded save through the final
+  code preserves 99.933% attainment, zero card failures/self-raises, and all critical jobs on time. Isolated
+  bench 3.27 s/day (0.38 ms/tick), versus 3.20 s/day before the extension; day-1 hash and existing goldens unchanged.
+- [x] **Equal-importance veto from bystanders; co-served classes not credited (investigated).**
+  At D5 22:21:00 ONLCARD's own raise F4→F6 (which lifts the CICS regions) was projected to take ONLCARD 61.8→0.80,
+  ONLRBANK 82→0.5, ONLTELR 46→0.5 and ONLPAYMQ 13.9→0.17, but `passes()` rejected it because DDFMOB (68.7→74.7) and
+  TSO#1 (27→29.6), also importance 2, got worse and the "PIs must end closer together" test failed. That test is for
+  equal-importance *donors* (SG24-6472 p.60); here it vetoes on bystanders already far past goal, and the gain counts
+  only the receiver, not the other transaction classes served by the same regions. WLM fell back to the weaker donor
+  move. IBM's WLM Services p.147 describes secondary donors with unchanged DP, and its net-value rules (p.138) apply
+  to primary and secondary donors; with IBM's 2002 Intelligent Resource Director paper they support evaluating donor
+  harm and equal-importance convergence separately. Co-served improvements are projected, but pooled credit cannot
+  override that veto; no change made. The sim's summed donor-harm comparison remains a separate fidelity question;
+  co-served credit and equal-importance convergence for secondary donors are under "Open questions".
+- [ ] **Clue path for "why didn't WLM raise CICS".** The player read the WLM log correctly but couldn't see why there
+  was no receiver raise. Consider logging the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal
+  importance"), and showing on WLMGL/SYSWKM that a region class managed to transaction goals runs at the served classes'
+  DP (its own PI is reported, not managed to).
+- [ ] **⇩ export does nothing in the published artifact:** the claude.ai artifact sandbox blocks downloads. The player
+  exported with a dev-tools IndexedDB script and "Copy string contents" (the JSON arrived wrapped in backticks). Use the
+  artifact's file-save runtime capability, or add "Copy save to clipboard"; let ⇧ import take pasted text and strip
+  stray backticks. Also: the save has no Monitor III history, so `mon3 --at` on an imported save shows nothing for
+  past ranges (replay forward instead, or include the history).
+- [x] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. The player confirmed it was
+  the worker request loops, fixed in #164.
+- [ ] **RCA evidence mark to check:** the PROCU pin "BATCHHI#1 APPL 442%" (D4 23:04) was marked "not about CARDAUTH",
+  though batch at the CICS regions' DP on PROD2 was the CPU competitor. Check whether the evidence matcher should accept
+  the competing class's CPU for CPU_PRIORITY.
+- Positive: DELAY Primary Reason named the right job; DELAY and WLMGL CPU-delay pins were marked "points at the cause".
+
 ### M8.7 Realism fixes
 
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a
@@ -339,6 +406,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
+- WLM net value with server topology (playtest round 2, #170): does a move that lifts CICS regions credit the other
+  transaction classes those regions serve (secondary receivers, WLM Services p.137, trace code PA_PRO_UNC_SEC_REC
+  p.708)? Net value is described as donor harm vs "projected improvement to the receiver" (p.138), and SG24-6472
+  p.63/p.81 call the co-served gain a "free ride" side effect, without saying whether it counts. Also unverified:
+  whether the equal-importance convergence rule (SG24-6472 p.60, stated for "the receiver and the donor") applies to
+  secondary donors. The sim credits only the receiver and applies convergence to every equal-importance period.
 - CICS_SOS (2026-11-03): EDSALIM raised to the max before the card is cheap insurance; should a large EDSALIM carry a cost (real storage, or a later abend when a leak finally exhausts it)?
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
 - Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using

@@ -468,13 +468,14 @@ Modelled on SG24-7621 §3.12–3.15 and the WLM patents:
 
 ```
 for importance in 1..5:
-    candidates = periods at this importance with sysplex PI > 1  (worst PI first)
-    if none: candidates = periods with local PI > 1 (second pass)
+    candidates = periods at this importance with sysplex PI > 1 (worst PI first),
+                 then remaining periods with local PI > 1 (worst PI first)
     for receiver in candidates:
         bottleneck = largest delay type of receiver (CPU, zIIP, I/O, storage, MPL/initiator, queue)
         if bottleneck is not WLM-fixable (capping, PR/SM delay, lock wait, dependency): record & continue
         for each candidate action (move receiver up 1..k DP; move donors down):
             project new CPU distribution with the dispatcher model (re-run §5.4 on a copy)
+            follow separate-pool batch demand recovery; check net value at every distribution
             receiverValue = improvement ≥ 10% of (PI_receiver − 1)   // reject marginal moves
             netValue      = no higher-or-equal-importance period harmed beyond its goal;
                             receiver gains more than donors lose (PI credit only above 0.90)
@@ -667,6 +668,16 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   (lock intensity), earliest start (time or predecessor), job class, critical flag, and
   restartability.
 - Job progress per tick = min(CPU granted rate, I/O completion rate, lock-wait factor).
+- On images without logical zIIPs, running jobs retain their unpaced CP and zIIP-eligible ready demand,
+  both dispatched on CPs. On separate pools, CP and zIIP demand is cross-paced by the prior tick's
+  starvation (APPROX); job progress still reflects the CPU actually granted.
+- WLM trials on separate pools also evaluate demand that restored CPU service enables. Starting from
+  the measured demand and demand already enabled by this tick's grants, recompute each job's
+  cross-pacing from projected grants and retain any larger
+  native or eligible demand. Repeat until the envelope settles; every intermediate distribution must
+  pass receiver value and donor checks. Reject an unsettled trial at `BATCH_PROJECTION`'s work limit.
+  APPROX: this is a conservative CPU-demand envelope, not IBM's algorithm or a full future simulation;
+  I/O rates, transaction backlogs, pool capacities and caps remain at the measured snapshot.
 - **Initiators:** JES-managed (fixed count per class) or **WLM-managed** (`MODE=WLM`; WLM
   starts initiators per service class from queue delay, importance and capacity). Too few
   initiators → queue delay. Too many → thrash and lock contention.
@@ -1569,7 +1580,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
-| Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |
+| Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; CP-only images retain ready demand. Separate-pool WLM trials check a conservative demand-recovery envelope using the execution cross-pacing formula; unsettled trials are rejected. Pacing and recovery remain approximations. Lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |
 
 Whenever a coefficient is invented, it lives in `content/` with a `// FICTIONAL:` comment and
 the shape it is meant to reproduce.

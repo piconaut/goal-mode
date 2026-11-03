@@ -34,7 +34,7 @@ export function usesDb2(w: WorkloadDef): boolean {
 
 export interface BatchSliceRef {
   slice: SliceSpec;
-  jobs: { job: JobRuntime; cp: number; zi: number; shape: ReturnType<typeof jobShape> }[];
+  jobs: { job: JobRuntime; cp: number; zi: number; cfCpEngines: number; shape: ReturnType<typeof jobShape> }[];
 }
 
 /** Everything the per-image stages of one tick read or fill in. */

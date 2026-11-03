@@ -1,5 +1,5 @@
 import { cpSpeed, ziipSpeed } from '../../hw/cpc';
-import { jobShape } from '../../subsys/batch';
+import { jobCpuDemand, jobShape } from '../../subsys/batch';
 import { edsaInUseMb, effectiveMxt, qrTcb, storageCapTasks } from '../../subsys/cics';
 import { slotQueueStep } from '../../subsys/slots';
 import { CICS_STORAGE, SLOT_QUEUE } from '../../../content/subsys';
@@ -157,6 +157,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb, (j) => jobServiceSu(j, jobShape(j.def, cpSp, zSp, seqRt), cpc));
   if (swapped.size > 0) swappedBy[l.id] = swapped;
   let runningJobs = 0;
+  const hasZiips = l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
   for (const j of running) {
     if (swapped.has(j)) continue;
     runningJobs++;
@@ -200,12 +201,13 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
       };
       refs[refKey] = ref;
     }
-    const cpWant = shape.cpRate * (j.cpPace ?? 1) + cfCpu;
-    const ziWant = shape.zRate * (j.ziipPace ?? 1);
+    const demand = jobCpuDemand(shape, j, hasZiips);
+    const cpWant = demand.cp + cfCpu;
+    const ziWant = demand.ziip;
     ref.slice.cpEngines += cpWant;
     ref.slice.ziipEngines += ziWant;
     ref.slice.ioRate += shape.ioRate / Math.max(1, j.stretch);
-    ref.jobs.push({ job: j, cp: cpWant, zi: ziWant, shape });
+    ref.jobs.push({ job: j, cp: cpWant, zi: ziWant, cfCpEngines: cfCpu, shape });
   }
   const batchRefs = Object.values(refs);
   // One TCB per running job.
