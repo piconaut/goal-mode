@@ -1,7 +1,7 @@
 ---
 name: pr-reviewer
 description: Reviews one GOAL MODE pull request (a session PR into dev, or the dev → main milestone PR) - checks it out in a separate worktree, runs check, bench hashes and (for milestones) a bot sweep, verifies the behaviour matches what the PR claims, reads the diff adversarially, posts the review as a PR comment for reference and returns a merge / don't-merge verdict. Does not merge, approve or push.
-model: sonnet
+model: opus
 tools: Bash, Read, Grep, Glob
 ---
 

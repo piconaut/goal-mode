@@ -30,6 +30,7 @@ import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
 import { ROUTING } from '../../content/routing';
+import { cicsTargets } from '../wlm/reporting';
 import { backlogCpSec, emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC, STORAGE_SWAP } from '../../content/wlm/tuning';
@@ -721,6 +722,8 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
     ref.jobs.push({ job: j, cp: cpWant, zi: ziWant, shape });
   }
   const batchRefs = Object.values(refs);
+  // One TCB per running job.
+  for (const r of batchRefs) r.slice.units = r.jobs.length;
   batchRefsBy[l.id] = batchRefs;
   const all = [...slices, ...batchRefs.map((r) => r.slice)];
   slicesBy[l.id] = all;
@@ -774,6 +777,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
   const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id);
+  const regions = cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions;
+  const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
   // Every optional field is always present so all evaluator inputs share one shape.
   const evalInput: LparEvalInput = {
     cpCapacityEngines: cpRt?.availableEffectiveEngines ?? 0,
@@ -781,13 +786,13 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     ziipCapacityEngines: ziRt?.availableEffectiveEngines ?? 0,
     ziipServers: servers(ziRt, ziCfg?.logical ?? 0, l.hiperDispatch),
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
-    slices: sysCfg && !sysCfg.iipHonorPriority ? slices.map((s) => ({ ...s, mayOverflow: false })) : slices,
+    slices: sysCfg && !sysCfg.iipHonorPriority ? overflowSlices.map((s) => ({ ...s, mayOverflow: false })) : overflowSlices,
     backlog: prev.backlog,
     ziipBacklog: prev.ziipBacklog ?? {},
     dpOf,
     capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
     ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare),
-    regions: cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions,
+    regions,
     io,
     ioPriority: def.ioPriorityManagement === false ? false : undefined,
     pagingFrac: pagingFrac[l.id] ?? 0,
@@ -934,7 +939,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)) });
   }
   systems.push({ lparId: l.id, scps });
-  lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth });
+  const cics = regions?.targets;
+  lparTicks.push({ lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, ...(res.rcs ? { rcs: res.rcs } : {}), ...(cics ? { cics } : {}) });
 }
 
 /** Seconds after a played day's 06:00 start → wall-clock text. */
@@ -1311,7 +1317,33 @@ export function cicsRegions(
   }
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked } };
+  const transactionKeys = new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key));
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey) } };
+}
+
+/** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a
+ * transaction-server region's overflow. APPROX: CICS transactions share the AORs on this image.
+ * Recompute from live demand (including both pools' backlog), outside the rate-independent cache. */
+export function cicsHonorPriority(
+  def: SimState['wlm']['definition'],
+  slices: readonly SliceSpec[],
+  byId: Readonly<Record<string, WorkloadDef>>,
+  regions: LparEvalInput['regions'],
+  backlog: Readonly<Record<string, number>>,
+  ziipBacklog: Readonly<Record<string, number>>,
+): readonly SliceSpec[] {
+  if (!regions) return slices;
+  const isCics = (s: SliceSpec) => s.kind === 'TXN' && s.workloadId !== null && byId[s.workloadId]?.subsystem === 'CICS';
+  const participating = slices.filter((s) => isCics(s) && (s.rate > 0 || s.cpEngines > 0 || s.ziipEngines > 0 || (backlog[s.key] ?? 0) > 0 || (ziipBacklog[s.key] ?? 0) > 0));
+  // With no transactions the address space is no longer a transaction server (p.122).
+  if (participating.length === 0) return slices;
+  const mayOverflow = participating.some((s) => s.mayOverflow);
+  return slices.map((s) => {
+    const shared = (regions.mode === 'TRANSACTION' && isCics(s)) || (s.kind === 'AS' && regions.servers?.includes(s.key));
+    if (!shared) return s;
+    const allowed = mayOverflow && goalInfo(def, s.scKey)?.goal.kind !== 'DISC';
+    return s.mayOverflow === allowed ? s : { ...s, mayOverflow: allowed };
+  });
 }
 
 /** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly

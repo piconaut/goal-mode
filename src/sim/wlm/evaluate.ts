@@ -2,10 +2,11 @@
 // period's DP, then derive response times, dependency delays and WLM using/delay
 // samples. Pure, so policy adjustment can re-run it to project the effect of a DP move.
 
+import { excludeMovedIo, tagCicsSlice, type CicsTargets, type MovedSamples, type WorkManagerSamples } from './reporting';
 import { lognormCdf } from '../core/math';
 import { TICK_SEC } from '../core/units';
 import { STORAGE_STEAL_MAX_FRAC } from '../../content/wlm/tuning';
-import { DP, dispatch, type DispatchDemand, type DispatchResult } from '../zos/dispatcher';
+import { DP, dispatch, shareByUnits, type DispatchDemand, type DispatchResult } from '../zos/dispatcher';
 import { addToBuckets, emptyBuckets } from './goals';
 
 import type { IoClass } from '../io/dasd';
@@ -75,6 +76,9 @@ export interface SliceSpec {
   mqQueueFrac?: number;
   /** Messages this slice may keep queued before puts fail (MAXDEPTH share); no timeout applies. */
   maxQueueMsgs?: number;
+  /** Dispatchable units able to run this work (TCBs/SRBs, batch jobs): its weight against other work at the
+   * same DP. 0 or absent: at least one for an address space; for transactions one per engine of new work. */
+  units?: number;
 }
 
 /** Builds a slice with every field present in one fixed order, so all slices share one hidden
@@ -109,6 +113,7 @@ export function sliceSpec(p: Pick<SliceSpec, 'key' | 'scKey' | 'kind'> & Partial
     reportClass: p.reportClass ?? null,
     mqQueueFrac: p.mqQueueFrac,
     maxQueueMsgs: p.maxQueueMsgs,
+    units: p.units ?? 0,
   };
 }
 
@@ -151,7 +156,7 @@ export interface LparEvalInput {
    * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
    * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
    * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean };
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean; transactionKeys?: ReadonlySet<string>; targets?: CicsTargets };
   io: Record<IoClass, IoService>;
   /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
@@ -209,6 +214,10 @@ export interface SliceResult {
 }
 
 export interface ScpTick {
+  /** Reporting only: CICS transactions' resource accounting, which RMF reports with the region classes, and
+   * their work manager states (reporting.ts). */
+  moved?: MovedSamples;
+  workManager?: WorkManagerSamples;
   scKey: string;
   dp: number;
   cpEngines: number;
@@ -362,11 +371,20 @@ export interface PreparedLpar {
   sliceCut: number[];
   /** Index of each slice's dispatch aggregate in `order`. */
   sliceAgg: number[];
-  /** Dispatch aggregates: service-class periods, plus `<scKey>~srv` for the transaction-server regions in a period. */
+  /** Dispatch identities: service-class periods, plus `<scKey>~srv` for transaction-server regions.
+   * An identity can occur twice when its slices have different overflow eligibility. */
   order: string[];
+  dispatchIds: string[];
+  cpShares: number[] | null;
   aggCp: number[];
   aggZi: number[];
   aggOverflow: boolean[];
+  /** Ready units per slice; undefined shares by demand. */
+  sliceUnits: (number | undefined)[];
+  /** Ready units per dispatch aggregate; undefined when none of its slices count units. */
+  aggUnits: (number | undefined)[];
+  /** Slice indices of each dispatch aggregate. */
+  aggSlices: number[][];
 }
 
 /**
@@ -383,14 +401,15 @@ export function backlogCpSec(s: SliceSpec, backlog: Readonly<Record<string, numb
 export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
   const { slices, backlog, ziipBacklog } = input;
   const n = slices.length;
-  // Per-slice demand (new arrivals + backlog drain), then aggregate per service-class
-  // period: equal-DP work shares in proportion to demand, so dispatching per period is
-  // equivalent to dispatching per slice and much cheaper.
+  // Per-slice demand (new arrivals + backlog drain), then aggregate per service-class period. Equal-DP work
+  // shares by ready units; the period's grant is then split among its slices the same way.
+  // APPROX: the level is solved on period totals, not per slice.
   const sliceCp = new Array<number>(n);
   const sliceZi = new Array<number>(n);
   const sliceCut = new Array<number>(n);
   const sliceAgg = new Array<number>(n);
   const aggIdx: Record<string, number> = {};
+  let mixedIdx: Record<string, number> | undefined;
   const order: string[] = [];
   const aggCp: number[] = [];
   const aggZi: number[] = [];
@@ -408,10 +427,15 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
     sliceCp[i] = cp;
     sliceZi[i] = zi;
     const id = servers !== undefined && s.kind === 'AS' && servers.includes(s.key) ? `${s.scKey}${SRV}` : s.scKey;
+    // CICS region work and DDF enclaves can share a service class but have different Honor
+    // Priority eligibility (WLM Planning 3.1 p.122). Keep their dispatch grants separate.
     let a = aggIdx[id];
+    const split = a !== undefined && aggOverflow[a] !== s.mayOverflow;
+    if (split) a = (mixedIdx ??= {})[id];
     if (a === undefined) {
       a = order.length;
-      aggIdx[id] = a;
+      if (split) mixedIdx![id] = a;
+      else aggIdx[id] = a;
       order.push(id);
       aggCp.push(0);
       aggZi.push(0);
@@ -421,7 +445,42 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
     aggCp[a] = aggCp[a]! + cp;
     aggZi[a] = aggZi[a]! + zi;
   }
-  return { sliceCp, sliceZi, sliceCut, sliceAgg, order, aggCp, aggZi, aggOverflow };
+  const sliceUnits = new Array<number | undefined>(n);
+  const aggUnits = new Array<number | undefined>(order.length).fill(undefined);
+  const aggSlices: number[][] = order.map(() => []);
+  for (let i = 0; i < n; i++) {
+    const s = slices[i]!;
+    // Address spaces: their TCBs/SRBs, at least one. Transactions: one ready unit per engine of new work; the
+    // backlog adds demand, not units (APPROX: unserved work waits in the subsystem's own queues, MXT, QR TCB or
+    // DDF threads, rather than as extra z/OS dispatchable units).
+    const own = (s.units ?? 0) > 0 ? s.units! : 0;
+    const u = own > 0 ? own : s.kind === 'AS' ? Math.max(1, sliceCp[i]! + sliceZi[i]!) : Math.max(s.cpEngines + s.ziipEngines, 0.01 * (sliceCp[i]! + sliceZi[i]!));
+    sliceUnits[i] = u > 0 ? u : undefined;
+    aggSlices[sliceAgg[i]!]!.push(i);
+  }
+  for (let a = 0; a < order.length; a++) {
+    const idx = aggSlices[a]!;
+    let u = 0;
+    let any = false;
+    for (let k = 0; k < idx.length; k++) {
+      const i = idx[k]!;
+      const ui = sliceUnits[i];
+      if (ui !== undefined) any = true;
+      u += ui ?? sliceCp[i]! + sliceZi[i]!;
+    }
+    if (any) aggUnits[a] = u;
+  }
+  // WLM reuses this preparation for DP projections. Only mixed-eligibility identities
+  // need unique dispatch IDs and apportioned promotion/minimum shares.
+  let dispatchIds = order;
+  let cpShares: number[] | null = null;
+  if (mixedIdx) {
+    dispatchIds = order.map((k, a) => aggIdx[k] === a ? k : `${k}~overflow`);
+    const cpById: Record<string, number> = {};
+    for (let a = 0; a < order.length; a++) cpById[order[a]!] = (cpById[order[a]!] ?? 0) + aggCp[a]!;
+    cpShares = aggCp.map((cp, a) => cpById[order[a]!]! > 0 ? cp / cpById[order[a]!]! : 0);
+  }
+  return { sliceCp, sliceZi, sliceCut, sliceAgg, order, dispatchIds, cpShares, aggCp, aggZi, aggOverflow, sliceUnits, aggUnits, aggSlices };
 }
 
 export function evaluateLpar(input: LparEvalInput): LparEvalResult {
@@ -429,7 +488,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const n = slices.length;
   const scpsOnly = input.scpsOnly === true;
   const bucketsFor = scpsOnly ? input.bucketsFor : undefined;
-  const { sliceCp, sliceZi, sliceCut, sliceAgg, order, aggCp, aggZi, aggOverflow } = input.prepared ?? prepareLpar(input);
+  const { sliceCp, sliceZi, sliceCut, sliceAgg, order, dispatchIds, cpShares, aggCp, aggZi, aggOverflow, sliceUnits, aggUnits, aggSlices } = input.prepared ?? prepareLpar(input);
   const reg = input.regions;
   // Transaction-server regions run at the DP of the most important transaction class they serve.
   const txnDp = reg ? Math.max(...reg.keys.map((k) => input.dpOf(k))) : 0;
@@ -440,12 +499,13 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const sliceDp = new Array<number>(n);
   for (let i = 0; i < n; i++) sliceDp[i] = runDp[sliceAgg[i]!]!;
 
-  const demands: DispatchDemand[] = order.map((k, a) => ({
-    id: k,
+  const demands: DispatchDemand[] = order.map((_, a) => ({
+    id: dispatchIds[a]!,
     dp: runDp[a]!,
     cpEngines: aggCp[a]!,
     ziipEngines: aggZi[a]!,
     ziipMayOverflow: aggOverflow[a]!,
+    units: aggUnits[a],
   }));
 
   // Blocked workload support: ready work that got no CPU for BLWLINTHD (default 20 s) is promoted; BLWLTRPCT
@@ -454,10 +514,12 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const anyPromo = input.promoted !== undefined && input.promoted.size > 0;
   if (anyPromo) {
     const share = (input.promotionShareFrac ?? 0.005) * input.cpCapacityEngines;
-    const promotedDemands = demands.filter((d) => input.promoted!.has(d.id));
-    const per = promotedDemands.length > 0 ? share / promotedDemands.length : 0;
-    for (const d of promotedDemands) {
-      const lift = Math.min(per, d.cpEngines);
+    const promotedKeys = new Set(order.filter((k) => input.promoted!.has(k)));
+    const per = promotedKeys.size > 0 ? share / promotedKeys.size : 0;
+    for (let a = 0; a < order.length; a++) {
+      if (!promotedKeys.has(order[a]!)) continue;
+      const d = demands[a]!;
+      const lift = Math.min(per * (cpShares?.[a] ?? 1), d.cpEngines);
       if (lift > 0) {
         d.cpEngines -= lift;
         demands.push({ id: `${d.id}~promo`, dp: 253, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
@@ -469,13 +531,14 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   // even at the expense of more important work (SG24-7621 §4.17; MVS Planning: WLM, ch. 7 "Minimum").
   const minOf = input.minOf;
   if (minOf) {
-    for (const d of [...demands]) {
-      const m = minOf[d.id];
-      if (!m || d.id.endsWith('~promo')) continue;
+    for (let a = 0; a < order.length; a++) {
+      const d = demands[a]!;
+      const m = (minOf[order[a]!] ?? 0) * (cpShares?.[a] ?? 1);
+      if (!m) continue;
       const lift = Math.min(m, d.cpEngines);
       if (lift > 0) {
         d.cpEngines -= lift;
-        demands.push({ id: `${d.id}~rgmin`, dp: input.discMin?.has(d.id) ? RG_MIN_DISC_DP : RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
+        demands.push({ id: `${d.id}~rgmin`, dp: input.discMin?.has(order[a]!) ? RG_MIN_DISC_DP : RG_MIN_DP, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
       }
     }
   }
@@ -503,6 +566,57 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const health = new Array<number>(n);
   const queueRatio = new Array<number>(n);
 
+  // Each period's grant split among its slices: by demand, or by ready units when the period counts them.
+  for (let a = 0; a < order.length; a++) {
+    const idx = aggSlices[a]!;
+    if (idx.length === 0) continue;
+    const r = dres[a]!;
+    const own = order[a] === slices[idx[0]!]!.scKey;
+    const promo = anyPromo && own ? extraById[`${dispatchIds[a]}~promo`] : undefined;
+    const rgmin = minOf && own ? extraById[`${dispatchIds[a]}~rgmin`] : undefined;
+    const cpGot = r.cpGranted + (promo?.cpGranted ?? 0) + (rgmin?.cpGranted ?? 0);
+    const cpMiss = r.cpUnmet + (promo?.cpUnmet ?? 0) + (rgmin?.cpUnmet ?? 0);
+    const totCp = aggCp[a]!;
+    const totZi = aggZi[a]!;
+    if (cpGot >= totCp && r.ziipGranted >= totZi) {
+      for (const i of idx) {
+        cpG[i] = sliceCp[i]!;
+        ziG[i] = sliceZi[i]!;
+        iipcpG[i] = 0;
+        cpUnmetS[i] = 0;
+        ziUnmetS[i] = 0;
+      }
+      continue;
+    }
+    if (aggUnits[a] === undefined || idx.length === 1) {
+      for (const i of idx) {
+        const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
+        const fz = totZi > 0 ? sliceZi[i]! / totZi : 0;
+        cpG[i] = cpGot * fc;
+        ziG[i] = r.ziipGranted * fz;
+        iipcpG[i] = r.iipcpGranted * fz;
+        cpUnmetS[i] = cpMiss * fc;
+        ziUnmetS[i] = r.ziipUnmet * fz;
+      }
+      continue;
+    }
+    shareByUnits(Math.min(cpGot, totCp), idx, sliceCp, sliceUnits, cpG);
+    shareByUnits(Math.min(r.ziipGranted, totZi), idx, sliceZi, sliceUnits, ziG);
+    let cpShort = 0;
+    let ziShort = 0;
+    for (const i of idx) {
+      cpShort += Math.max(0, sliceCp[i]! - cpG[i]!);
+      ziShort += Math.max(0, sliceZi[i]! - ziG[i]!);
+    }
+    for (const i of idx) {
+      const fc = cpShort > 0 ? Math.max(0, sliceCp[i]! - cpG[i]!) / cpShort : 0;
+      const fz = ziShort > 0 ? Math.max(0, sliceZi[i]! - ziG[i]!) / ziShort : 0;
+      cpUnmetS[i] = cpMiss * fc;
+      iipcpG[i] = r.iipcpGranted * fz;
+      ziUnmetS[i] = r.ziipUnmet * fz;
+    }
+  }
+
   // First pass: address spaces → server health by role.
   const roleHealth: Record<string, { health: number; queueRatio: number }> = {};
   const srvRoles: Record<string, true> = {};
@@ -510,18 +624,6 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const s = slices[i]!;
     const a = sliceAgg[i]!;
     const r = dres[a]!;
-    const own = order[a] === s.scKey;
-    const promo = anyPromo && own ? extraById[`${s.scKey}~promo`] : undefined;
-    const rgmin = minOf && own ? extraById[`${s.scKey}~rgmin`] : undefined;
-    const totCp = aggCp[a]!;
-    const totZi = aggZi[a]!;
-    const fc = totCp > 0 ? sliceCp[i]! / totCp : 0;
-    const fz = totZi > 0 ? sliceZi[i]! / totZi : 0;
-    cpG[i] = (r.cpGranted + (promo?.cpGranted ?? 0) + (rgmin?.cpGranted ?? 0)) * fc;
-    ziG[i] = r.ziipGranted * fz;
-    iipcpG[i] = r.iipcpGranted * fz;
-    cpUnmetS[i] = (r.cpUnmet + (promo?.cpUnmet ?? 0) + (rgmin?.cpUnmet ?? 0)) * fc;
-    ziUnmetS[i] = r.ziipUnmet * fz;
     want[i] = sliceCp[i]! + sliceZi[i]!;
     got[i] = cpG[i]! + ziG[i]! + iipcpG[i]!;
     // Capped demand is still wanted: a resource group max makes the region non-dispatchable, so its
@@ -713,9 +815,11 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   }
   const rcMap: Record<string, ReportClassTick> = {};
   const rcs: ReportClassTick[] = [];
+  const cics = scpsOnly ? undefined : reg?.targets;
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const r = results[i]!;
+    const cicsTxn = cics !== undefined && reg!.transactionKeys!.has(s.key);
     if (s.reportClass && !scpsOnly) {
       let rt = rcMap[s.reportClass];
       if (!rt) {
@@ -725,10 +829,12 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
       }
       if (!rt.members.includes(s.scKey)) rt.members.push(s.scKey);
       addSliceTo(rt, s, r, true);
+      if (cicsTxn) tagCicsSlice(rt, s, r, cics.regionKeys);
     }
     const t = scps[scpOfAgg[sliceAgg[i]!]!]!;
     const untracked = reg !== undefined && reg.rtTracked === false && s.kind === 'TXN' && reg.keys.includes(s.scKey);
     addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey), !untracked);
+    if (cicsTxn) tagCicsSlice(t, s, r, cics.regionKeys, !untracked);
     if (order[sliceAgg[i]!] !== s.scKey) {
       // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).
       t.srvUsing = (t.srvUsing ?? 0) + r.usingCpu + r.usingZiip + (input.ioPriority === false ? 0 : r.usingIo);
@@ -748,6 +854,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
 function excludeIoFromVelocity(t: ScpTick): void {
   t.usingIoNoVel = t.usingIo;
   t.delayIoNoVel = t.delayIo;
+  excludeMovedIo(t);
 }
 
 function addSliceTo(t: ScpTick, s: SliceSpec, r: SliceResult, buckets: boolean, rt = true): void {

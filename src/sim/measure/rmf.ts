@@ -2,6 +2,7 @@
 // interval into records shaped like SMF 70.1 (CPU/partition), 72.3 (workload activity),
 // 74.1 (DASD), 74.4 (CF) and 30 (job end).
 
+import { mergeWorkManager, noResources, reportedTicks, type WorkManagerSamples } from '../wlm/reporting';
 import type { CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdResult } from '../io/dasd';
 import type { LparRuntime, LparTick, WorldConfig } from '../core/types';
@@ -85,6 +86,8 @@ export interface CfStructSystemAcc {
 }
 
 export interface WlmRecord {
+  workManager?: WorkManagerSamples;
+  resourceSamples?: boolean;
   lparId: string; // '*PLEX' for the sysplex roll-up
   scKey: string;
   serviceClass: string;
@@ -98,6 +101,7 @@ export interface WlmRecord {
   avgRtSec: number | null;
   execVelocity: number | null;
   pi: number | null;
+  /** All time executed on general CPs, including the IIPCP subset (RMF Report Analysis p.534). */
   applCpPct: number;
   applIipcpPct: number;
   applIipPct: number;
@@ -195,10 +199,10 @@ export function accumulateTick(
   const scps = { ...acc.scps };
   let rcs = acc.rcs;
   for (const lt of lparTicks) {
-    for (const t of lt.scps) addScp(scps, lt.lparId, t);
+    for (const t of reportedTicks(lt.scps, lt.cics)) addScp(scps, lt.lparId, t);
     if (lt.rcs) {
       rcs = rcs ? { ...rcs } : {};
-      for (const t of lt.rcs) {
+      for (const t of reportedTicks(lt.rcs, lt.cics, true)) {
         const k = accKey(lt.lparId, t.scKey);
         const prevMembers = rcs[k]?.members ?? [];
         addScp(rcs, lt.lparId, t);
@@ -365,12 +369,14 @@ function addScp<T extends ScpIntervalAcc>(scps: Record<string, T>, lparId: strin
       : {}),
     failed: a.failed + t.failed,
   };
+  if (t.workManager || a.workManager) out.workManager = mergeWorkManager(a.workManager, t.workManager);
   scps[k] = (members !== undefined ? { ...out, members } : out) as T;
 }
 
 function mergeAcc<T extends ScpIntervalAcc>(p: T, a: ScpIntervalAcc): T {
   return {
     ...p,
+    ...(p.workManager || a.workManager ? { workManager: mergeWorkManager(p.workManager, a.workManager) } : {}),
     completions: p.completions + a.completions,
     rtSumSec: p.rtSumSec + a.rtSumSec,
     buckets: addBuckets(p.buckets, a.buckets),
@@ -432,13 +438,15 @@ function wlmRecord(def: ServiceDefinition, lparId: string, a: ScpIntervalAcc, ti
     goalText: !goal ? 'SYSTEM' : goal.kind === 'DISC' ? 'DISCRETIONARY' : goal.kind === 'VEL' ? `EXECUTION VELOCITY ${goal.velocity}%` : goal.kind === 'AVG' ? `AVG RESPONSE ${goal.rtSec.toFixed(3)}s` : `${goal.pct}% < ${goal.rtSec.toFixed(3)}s`,
     importance: g && goal?.kind !== 'DISC' ? (p?.importance ?? g.importance) : null,
     dp,
+    ...(a.workManager ? { workManager: mergeWorkManager(a.workManager, undefined, 1 / Math.max(1, ticks)) } : {}),
+    resourceSamples: !noResources(a),
     ended: a.completions,
     endPerSec: sec > 0 ? a.completions / sec : 0,
     failed: a.failed,
     avgRtSec: a.completions > 1e-9 ? a.rtSumSec / a.completions : null,
-    execVelocity: velocityOf(velUsing(a), velDelay(a)),
+    execVelocity: a.workManager ? null : velocityOf(velUsing(a), velDelay(a)),
     pi: goal ? accPi(goal, a) : null,
-    applCpPct: ticks > 0 ? (100 * a.cpuEngines) / ticks : 0,
+    applCpPct: ticks > 0 ? (100 * (a.cpuEngines + a.iipcpEngines)) / ticks : 0,
     applIipcpPct: ticks > 0 ? (100 * a.iipcpEngines) / ticks : 0,
     applIipPct: ticks > 0 ? (100 * a.ziipEngines) / ticks : 0,
     usingPct: { cpu: pct(a.usingCpu), ziip: pct(a.usingZiip), io: pct(a.usingIo) },

@@ -12,15 +12,15 @@ export interface HintText {
 
 export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
   CPU_CAPACITY: {
-    clear: '{w} missed its SLA yesterday. Partition Data and the DELAY breakdown in WLMGL might show what it was waiting for, and whether anything was using more CPU than usual.',
+    clear: '{w} missed its SLA yesterday. Partition Data and the DELAY breakdown in WLMGL (on the regions\' service classes for CICS) might show what it was waiting for, and whether anything was using more CPU than usual.',
     vague: 'Yesterday was rough for {w}. Partition Data is worth a look.',
   },
   CPU_PRIORITY: {
-    clear: '{w} missed its SLA yesterday. In WLMGL, compare its CPU delay and PI with the classes running alongside it. Who was ahead of it in the queue?',
+    clear: '{w} missed its SLA yesterday. In WLMGL, compare its PI with the classes running alongside it. For CICS, check CPU delay on its regions\' service classes; the transaction class shows work manager states. Who was ahead of it in the queue?',
     vague: 'Yesterday was rough for {w}. WLMGL might tell you more.',
   },
   CAPPING: {
-    clear: '{w} missed its SLA yesterday. Check the CAP delay in WLMGL and the capped columns in Partition Data around the peak hour.',
+    clear: '{w} missed its SLA yesterday. Check the CAP delay in WLMGL (on the regions\' service classes for CICS) and the capped columns in Partition Data around the peak hour.',
     vague: 'Yesterday was rough for {w}. Partition Data around the peak might tell you more.',
   },
   DEPENDENCY: {
@@ -52,7 +52,7 @@ export const MECHANISM_HINTS: Record<Mechanism, HintText> = {
     vague: 'Yesterday was rough for {w}. The DASD report might tell you more.',
   },
   STORAGE: {
-    clear: '{w} missed its SLA yesterday. Storage delay in WLMGL, or the STOR delayed users in Monitor III SYSINFO, might show what it was waiting for.',
+    clear: '{w} missed its SLA yesterday. Storage delay in WLMGL (on the regions\' service classes for CICS), or the STOR delayed users in Monitor III SYSINFO, might show what it was waiting for.',
     vague: 'Yesterday was rough for {w}. SYSINFO might tell you more.',
   },
   JOB_FAILURE: {

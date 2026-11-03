@@ -430,9 +430,18 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
   if (sys && !systems.length && !cpc.length) return `No system ${opts.system}; systems: ${m.systems.map((x) => x.system).join(' ')}`;
   const when = run.phase === 'LIVE' ? `range ending ${clockText(run.sim.tick)}` : `snapshot from ${clockText(run.sim.tick)} (not live: phase ${run.phase})`;
   const head = `Monitor III, last ${m.rangeSec}s, ${when}. Policy ${m.policy}. CPC logical:physical CP ratio ${m.logicalToPhysical.toFixed(2)}.`;
-  if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
-  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', DELAY_HEAD, table(rows.map(delayRow))];
+  if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...(m.wkm ?? []).map((x) => 'SYSWKM ' + JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
+  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', DELAY_HEAD, table(rows.filter((r) => r.resourceSamples !== false).map(delayRow))];
   if (m.enclaves.length && !sys) out.push('', 'ENCLAVE', table(m.enclaves));
+  // SYSWKM: CICS classes' work manager states and the AORs serving them (their CPU and delays live on those AORs).
+  for (const w of m.wkm ?? []) {
+    if (sys && !w.servers.some((x) => x.system.toUpperCase() === sys)) continue;
+    const st = w.states;
+    const f = (x: number | null) => (x === null ? '-' : x.toFixed(0));
+    out.push('', `SYSWKM ${w.serviceClass} period ${w.period}: ${w.goal}, avg ${w.avgRtMs === null ? '-' : w.avgRtMs.toFixed(0)} ms, ${w.endedPerSec.toFixed(1)}/s, PI ${w.pi === null ? '-' : w.pi.toFixed(2)}`,
+      `  CICS EXE %: ACTIVE ${f(st.active)} READY ${f(st.ready)} IDLE ${f(st.idle)} LOCK ${f(st.lock)} I/O ${f(st.io)} CONV ${f(st.conv)} PROD ${f(st.prod)} MISC ${f(st.misc)}`,
+      table(w.servers.filter((x) => !sys || x.system.toUpperCase() === sys).map((x) => ({ jobname: x.jobname, mgmt: x.mgmt, system: x.system, serviceClass: x.serviceClass, servicePct: x.servicePct, velocity: x.velocity, procUsgPct: x.procUsgPct, ioUsgPct: x.ioUsgPct, cappPct: x.cappPct }))));
+  }
   out.push('', 'WFEX exceptions', m.exceptions.length ? table(m.exceptions) : 'none');
   return out.join('\n');
 }

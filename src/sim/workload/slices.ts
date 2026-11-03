@@ -7,6 +7,7 @@ import { classify } from '../wlm/classify';
 import type { ServiceDefinition } from '../wlm/types';
 import { SYSOTHER, SYSSTC, SYSTEM } from '../wlm/types';
 import { sliceSpec, type SliceSpec } from '../wlm/evaluate';
+import { DISPATCH_UNITS } from '../../content/subsys';
 import { periodAtService, splitPeriods } from './periods';
 import type { AddressSpaceDef, WorkloadDef } from './types';
 
@@ -178,6 +179,7 @@ function buildTemplates(input: SliceBuildInput): SliceTemplate[] {
         workloadId: null,
         jobname: a.jobname,
         role: a.role,
+        units: (a.role ? DISPATCH_UNITS.byRole[a.role] : undefined) ?? 0,
         rate: 0,
         cpEngines: 0,
         ziipEngines: 0,

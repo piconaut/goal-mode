@@ -13,10 +13,7 @@ import { writeSpectateFile } from './spectateFile';
 import { buyTool, noteReportOpened } from '../src/game/tools';
 import { INSIGHT, TOOLS } from '../src/content/tools';
 
-function arg(name: string, dflt: string): string {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : dflt;
-}
+import { arg } from './args';
 
 const pack = packOf(arg('scenario', 'midwest'));
 const scenario = pack.scenario;

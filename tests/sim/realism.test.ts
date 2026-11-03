@@ -13,6 +13,7 @@ import { BASEPOL } from '../../src/content/wlm/basepol';
 import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
+import { reportedTicks } from '../../src/sim/wlm/reporting';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
 
@@ -63,6 +64,26 @@ describe('priority inversion through dependencies', () => {
     // the damage shows up as "other" delay that WLM cannot fix.
     expect(b.delayCpu).toBeLessThanOrEqual(g.delayCpu + 1e-9);
     expect(b.delayOther).toBeGreaterThan(10 * g.delayOther + 1e-9);
+  });
+});
+
+describe('equal-DP work shares by ready units, not by demand (PROGRESS realism fix, #111)', () => {
+  // ONLHI (heavily backlogged) ties with Db2 at one DP on a 2-engine image. By demand Db2 would get 0.2/(2.4+40/10)
+  // of the level; as a dozen lightly loaded SRBs it is served first and only the transactions queue.
+  const slices = [
+    txn({ key: 'ONL', scKey: 'ONLHI#1', cpEngines: 2.4, servers: [{ role: 'DB2.DBM1', latencySec: 0.012 }] }),
+    server({ key: 'DBM1', scKey: 'STCHI#1', role: 'DB2.DBM1', cpEngines: 0.2, units: 12 }),
+  ];
+  const run = (backlogSec: number) =>
+    evaluateLpar({ cpCapacityEngines: 2, cpServers: 2, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: { ONL: backlogSec }, io: IO, pagingFrac: 0, dpOf: () => 240 });
+  it('a backlog does not crowd Db2 out of its CPU', () => {
+    const r = run(40);
+    expect(r.slices[1]!.cpGranted).toBeCloseTo(0.2, 6);
+    expect(r.slices[1]!.health).toBeCloseTo(1, 6);
+    expect(r.slices[0]!.cpGranted).toBeCloseTo(1.8, 6);
+  });
+  it('without a backlog the same split holds: the transactions get what Db2 leaves', () => {
+    expect(run(0).slices[1]!.cpGranted).toBeCloseTo(0.2, 6);
   });
 });
 
@@ -504,7 +525,9 @@ describe('CICS region management', () => {
     // WLM Planning p.122: a transaction-server region is managed to the goals of the transactions it serves.
     const low = run(230, 'TRANSACTION', ['AOR@P']);
     const high = run(252, 'TRANSACTION', ['AOR@P']);
-    expect(high.slices[1]!.cpGranted).toBeCloseTo(0.2 * (2 / 2.7), 6); // shares ONLHI's DP and its shortage
+    // Shares ONLHI's DP; as one lightly loaded ready unit against ONLHI's backlog it keeps its CPU (equal-DP
+    // work shares by ready units, not by demand).
+    expect(high.slices[1]!.cpGranted).toBeCloseTo(0.2, 6);
     expect(cpuDelayFrac(high, 'AOR@P')).toBeLessThan(cpuDelayFrac(low, 'AOR@P') + 0.3);
     // The MQ queue manager is not a transaction server: it stays at STCHI's DP, behind ONLHI.
     expect(high.slices[2]!.cpGranted).toBeLessThan(0.01);
@@ -515,9 +538,9 @@ describe('CICS region management', () => {
   it('REGION and BOTH: the region class DP governs the region and its transactions', () => {
     const r = run(252, 'REGION', []);
     // Transactions ride STCHI's DP (240) with the AOR and MQ: ONLHI's own DP is not used.
-    const total = 2.5 + 0.2 + 0.2;
-    expect(r.slices[0]!.cpGranted).toBeCloseTo((2 * 2.5) / total, 6);
-    expect(r.slices[1]!.cpGranted).toBeCloseTo((2 * 0.2) / total, 6);
+    // At that DP the AOR and MQ (one ready unit each, 0.2 engine) are served in full; ONLHI gets the rest.
+    expect(r.slices[0]!.cpGranted).toBeCloseTo(2 - 0.2 - 0.2, 6);
+    expect(r.slices[1]!.cpGranted).toBeCloseTo(0.2, 6);
   });
   it('Manage Region Using Goals Of is read per region from its STC rule (WLM Planning p.211)', () => {
     const asSlice = (jobname: string, role: string) => server({ key: `${jobname}@PROD1`, scKey: 'STCHI#1', role, jobname });
@@ -809,12 +832,16 @@ describe('WLM-managed initiators (WLM Planning p.70)', () => {
     s = step(s, [{ kind: 'SET_JOB_CLASS', jobClass: 'A', mode, initiators: { PROD1: 1, PROD2: 1 } }], MIDWEST);
     let queue = 0;
     let queuedJobTicks = 0;
+    let reportedQueue = 0;
     for (let i = 0; i < 8640; i++) {
       s = step(s, [], MIDWEST);
       queuedJobTicks += s.batch.jobs.filter((j) => j.status === 'QUEUED' && j.def.jobClass === 'A').length;
-      for (const l of s.last.lpars) for (const sc of l.scps) queue += sc.delayQueue ?? 0;
+      for (const l of s.last.lpars) {
+        for (const sc of l.scps) queue += sc.delayQueue ?? 0;
+        for (const sc of reportedTicks(l.scps, l.cics)) reportedQueue += sc.delayQueue ?? 0;
+      }
     }
-    return { queue, queuedJobTicks };
+    return { queue, queuedJobTicks, reportedQueue };
   };
   it('jobs queued for an initiator are delay samples in WLM mode only', () => {
     const jes = night('JES');
@@ -823,6 +850,8 @@ describe('WLM-managed initiators (WLM Planning p.70)', () => {
     expect(jes.queue).toBe(0);
     expect(wlm.queue).toBeGreaterThan(0);
     expect(wlm.queue).toBeLessThanOrEqual(wlm.queuedJobTicks);
+    expect(jes.reportedQueue).toBe(jes.queue);
+    expect(wlm.reportedQueue).toBe(wlm.queue);
   }, 120_000);
 });
 
@@ -940,7 +969,9 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
   // Midwest seed 7, PROD1 capped at 200 MSU from about 10:00, Db2 moved up to STCHI with the CICS regions (the
   // shipped policy keeps Db2 below its clients, F1). ONLHI runs far past 4× its goal; the reported PI stops at
   // 4.0, but WLM's projection must still see the gain of a DP move, and the wait for its own regions is CPU delay.
-  it('ONLHI is the first receiver on PROD1 once capped', () => {
+  // ONLHI already ties with its regions and Db2 in STCHI, and equal-DP work shares by ready units, so the light
+  // region and Db2 work keeps its CPU: lifting ONLHI over them would only starve the servers it waits for.
+  it('ONLHI stays CPU-bound on PROD1 once capped, and WLM helps the next receiver past PI 4.0', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
@@ -955,7 +986,8 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     }
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
     expect(lines.some((l) => /ONLHI#1 .*BTLNK=OTHER/.test(l))).toBe(false);
-    expect(lines.find((l) => /RCVR=/.test(l))).toMatch(/RCVR=ONLHI#1 PI=4\.00 BTLNK=CPU ONLHI#1 DP FA→/);
+    expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
+    expect(lines.find((l) => /RCVR=/.test(l))).toMatch(/RCVR=\S+ PI=4\.00 BTLNK=CPU \S+ DP /);
   }, 180_000);
 });
 

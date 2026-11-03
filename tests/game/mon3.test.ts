@@ -83,7 +83,12 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
       // PI ≤ 1 exactly when at least the goal percentile ended within the goal time.
       if (r.pi !== null && r.pi <= 1) expect(r.withinGoalPct!).toBeGreaterThanOrEqual(r.goalPct! - 1e-6);
     }
-    expect(rows.some((r) => r.velocity !== null && r.velocityAct === null)).toBe(true);
+    const cics = rows.find((r) => r.scKey === 'ONLHI#1')!;
+    expect(cics.velocity).toBeNull();
+    expect(cics.velocityAct).toBeNull();
+    expect(cics.workManager!.active).toBeGreaterThan(0);
+    expect(cics.avgRtMs).not.toBeNull();
+    expect(cics.pi).not.toBeNull();
   });
 
   it('SYSINFO MVS view is at least the LPAR view, and EAppl% ≥ Appl%', () => {
@@ -126,10 +131,10 @@ describe('Monitor III DELAY columns and Primary Reason', () => {
 
   it('capping counts in DLY % but in no column, and reads RG-Cap', () => {
     const def = structuredClone(noon.sim.wlm.definition);
-    def.resourceGroups = [...def.resourceGroups, { id: 'RGTEST', type: 3, min: null, max: 10 }];
-    def.classes.find((c) => c.id === 'ONLMED')!.resourceGroup = 'RGTEST';
+    def.resourceGroups = [...def.resourceGroups, { id: 'RGTEST', type: 3, min: null, max: 1 }];
+    def.classes.find((c) => c.id === 'DDFPRD')!.resourceGroup = 'RGTEST';
     const capped = advance({ ...noon, sim: { ...noon.sim, wlm: { ...noon.sim.wlm, definition: def } } }, MIDWEST, content, 60);
-    const r = buildMon3(capped, MIDWEST).rows.find((x) => x.system === 'PROD1' && x.scKey === 'ONLMED#1')!;
+    const r = buildMon3(capped, MIDWEST).rows.find((x) => x.system === 'PROD1' && x.scKey === 'DDFPRD#1')!;
     expect(r.delay.cap).toBeGreaterThan(0.05);
     expect(r.delayFrac).toBeGreaterThan(columns(r.delay) + 0.05);
     expect(r.primaryReason).toBe('RG-Cap');
@@ -144,4 +149,54 @@ describe('Monitor III DELAY columns and Primary Reason', () => {
       expect(r.primaryReason).not.toMatch(/^PRC/);
     }
   });
+});
+
+it('shows CICS transaction classes without resources of their own (RMF Report Analysis p.224)', () => {
+  const onl = buildMon3(noon, MIDWEST).rows.find((r) => r.system === 'PROD1' && r.scKey === 'ONLHI#1')!;
+  expect(onl.resourceSamples).toBe(false);
+  expect(onl.cpuEngines).toBe(0);
+  expect(onl.usingFrac + onl.delayFrac + onl.unknownFrac).toBe(0);
+  expect(onl.pi).not.toBeNull();
+});
+
+it('shows N/A actual velocity for mixed classes with subsystem states, independent of region mode or goal', () => {
+  const mixed = structuredClone(noon);
+  mixed.sim.wlm.definition.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal = { kind: 'VEL', velocity: 80 };
+  for (const rule of mixed.sim.wlm.definition.subsystems.flatMap((s) => s.rules)) rule.regionMode = 'BOTH';
+  const p = mixed.sim.wlm.systems.find((s) => s.lparId === 'PROD1')!.scps.find((p) => p.scKey === 'ONLHI#1')!;
+  // Non-CICS members' samples: what WLM measured beyond the CICS transactions' moved part.
+  p.acc = { ...p.acc, using: p.acc.using + 2, delay: p.acc.delay + 1, delayCpu: p.acc.delayCpu + 1, cpuEngines: p.acc.cpuEngines + 1 };
+  const row = buildMon3(mixed, MIDWEST).rows.find((r) => r.system === 'PROD1' && r.scKey === 'ONLHI#1')!;
+  expect(row.velocity).not.toBeNull(); // resource workflow of the non-CICS members is still meaningful
+  expect(row.velocityAct).toBeNull(); // subsystem states replace the goal actual, RMF p.237
+});
+
+// SYSWKM (RMF Report Analysis p.204–207): the breakdown of a CICS transaction class and the AORs serving it.
+describe('SYSWKM work manager delays', () => {
+  it('lists each CICS class with its state breakdown and serving AORs', () => {
+    const m = buildMon3(noon, MIDWEST);
+    const onl = m.wkm!.find((w) => w.scKey === 'ONLHI#1')!;
+    const s = onl.states;
+    expect(s.active + s.ready + s.lock + s.io + s.prod + s.misc).toBeCloseTo(100);
+    expect([s.idle, s.conv]).toEqual([null, null]);
+    expect(onl.servers.map((x) => `${x.system}:${x.jobname}`)).toEqual(['PROD1:CICSAOR1', 'PROD1:CICSAOR3', 'PROD2:CICSAOR2', 'PROD2:CICSAOR4']);
+    for (const x of onl.servers) {
+      expect(x.mgmt).toBe('TRANSACTION');
+      expect(x.rowKey).toBe('STCHI#1');
+      expect(x.velocity).toBeGreaterThan(0);
+      expect(x.procUsgPct).toBeGreaterThan(0);
+    }
+    // An AOR's service shares across the CICS classes it serves add up to 100 %.
+    const aor1 = m.wkm!.flatMap((w) => w.servers.filter((x) => x.jobname === 'CICSAOR1'));
+    expect(aor1.reduce((a, x) => a + x.servicePct, 0)).toBeCloseTo(100);
+    // No other class is listed: only CICS transaction classes have work manager data.
+    expect(m.wkm!.every((w) => m.rows.find((r) => r.system === '*PLEX' && r.scKey === w.scKey)?.workManager)).toBe(true);
+  });
+});
+
+it('marks CICS transaction classes and their server class for SYSSUM (RMF Report Analysis p.237)', () => {
+  const m = buildMon3(noon, MIDWEST);
+  const onl = m.rows.find((r) => r.system === '*PLEX' && r.scKey === 'ONLHI#1')!;
+  expect([onl.velocityAct, !!onl.workManager]).toEqual([null, true]);
+  expect(m.wkm!.flatMap((w) => w.servers.filter((x) => x.mgmt === 'TRANSACTION').map((x) => x.serviceClass))).toContain('STCHI');
 });

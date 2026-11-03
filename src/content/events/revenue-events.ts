@@ -5,23 +5,11 @@
 import type { Command } from '../../sim/core/commands';
 import type { WorkloadDef } from '../../sim/workload/types';
 import { MIDWEST_EVENTS, type EventDef, type ScriptedBeat } from './midwest-events';
+import { adapt } from './adapt';
 
 const NEUTRAL_CARDS = ['REORG_OVERRUN', 'JOB_ABEND', 'CP_SPARING', 'HIRING_FREEZE', 'VENDOR_PRICE', 'GREEN_IT_COD', 'SMF_AUDIT', 'AUDIT_UNCLASSIFIED'];
 // A strict regulator: audit cards come up more often than at the bank.
 const WEIGHT_MULT: Record<string, number> = { SMF_AUDIT: 1.5, AUDIT_UNCLASSIFIED: 1.5 };
-
-const midwestCard = (id: string): EventDef => {
-  const c = MIDWEST_EVENTS.find((e) => e.id === id);
-  if (!c) throw new Error(`No Midwest card ${id}`);
-  return c;
-};
-
-/** Clone a Midwest card with overrides, retargeting workload ids in its begin/end commands (and affects). */
-function adapt(id: string, overrides: Partial<EventDef>, retarget: Record<string, string> = {}): EventDef {
-  let json = JSON.stringify(midwestCard(id));
-  for (const [from, to] of Object.entries(retarget)) json = json.split(`"${from}"`).join(`"${to}"`);
-  return { ...(JSON.parse(json) as EventDef), ...overrides };
-}
 
 const ALL_ONLINE = ['EFILE', 'ACCOUNT', 'REFSTAT', 'AGENTS', 'EMPLOYER'];
 
@@ -55,13 +43,13 @@ const AGENCY_CARDS: EventDef[] = [
     id: 'REFUND_RETRY_STORM',
     name: 'Refund status retry storm',
     fix: 'REFSTAT_BACKOFF',
-    clue: 'Refund-status END/S ×2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); CICS RFST transaction rate and APPL% up in step. Fixes: have the status page say "check back tomorrow" and back off retries (Refunds trust), or protect refund status and ride it out.',
+    clue: 'Refund-status END/S ×2.5 at midday with CPU per transaction unchanged (bot traffic would be cheaper per transaction); CICS RFST transaction rate up, with STCHI (the CICS regions\' class) APPL% in step. Fixes: have the status page say "check back tomorrow" and back off retries (Refunds trust), or protect refund status and ride it out.',
   }, { MOBILE: 'REFSTAT' }),
   adapt('ENCRYPTION_MANDATE', {
     id: 'TAXDATA_ENCRYPTION',
     name: 'Taxpayer data encryption mandate',
     forewarning: 'Regulator: "All taxpayer data sets must be encrypted at rest from today. We will check the key labels."',
-    clue: 'WLMGL: CPU per transaction up ~6% on account, refund status and employer filing from one morning, END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
+    clue: 'CPU per transaction up ~6% on account, refund status and employer filing from one morning (WLMGL: APPL% per END/S; for CICS work read STCHI APPL% against CICS END/S), END/S flat; MSU/R4HA up. Fixes: agree a narrower scope with the regulator (Regulator trust), or absorb it with tuning and capacity.',
   }, { CARDAUTH: 'ACCOUNT', TELLER: 'REFSTAT', PAYMQ: 'EMPLOYER' }),
   adapt('ZIIP_LOSS', {
     fix: 'NATIVE_SQL_PROCS_REV',
@@ -75,7 +63,7 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('LOCK_ESCALATION', {
     name: 'Lock escalation in refund batch',
     affects: ['ACCOUNT', 'REFSTAT'],
-    clue: 'Account and refund-status response time up with little CPU delay; UNK delay up; IRLM healthy; batch running.',
+    clue: 'Account and refund-status response time up with little READY time; their work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running.',
   }),
   adapt('MONITOR_CREEP', { affects: ['EFILE', 'ACCOUNT'] }),
   adapt('POWER_CAP', { affects: ['EFILE', 'ACCOUNT'] }),

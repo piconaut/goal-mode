@@ -5,18 +5,15 @@
 
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { cpus } from 'node:os';
+import { availableParallelism } from 'node:os';
 import { dirname } from 'node:path';
 
-function arg(name: string, dflt: string): string {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : dflt;
-}
+import { arg } from './args';
 
 const bots = arg('bots', 'donothing,textbook').split(',');
 const [lo, hi] = arg('seeds', '1-20').split('-').map(Number) as [number, number];
 const seeds = Array.from({ length: (hi ?? lo) - lo + 1 }, (_, i) => lo + i);
-const jobs = Number(arg('jobs', String(Math.max(1, cpus().length))));
+const jobs = Number(arg('jobs', String(availableParallelism())));
 const days = arg('days', '');
 const difficulty = arg('difficulty', '');
 const scenarioId = arg('scenario', '');

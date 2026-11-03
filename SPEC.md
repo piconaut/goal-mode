@@ -348,7 +348,12 @@ DP 191  quiesced work
 Algorithm per pool:
 1. Group demand by DP level, from high to low.
 2. At each level, `avail = C − consumedByHigherLevels`. Periods sharing a level split the
-   available capacity in proportion to demand (z/OS rotates equal-DP work).
+   available capacity **by ready units, max-min fair**: z/OS dispatches equal-DP work from one queue, a turn per
+   ready unit, so each period gets `min(demand, units × L)` for one fair level `L`, and what light work leaves goes
+   to the rest. Units: an address space's TCBs/SRBs (`content/subsys.ts` `DISPATCH_UNITS`, at least one), one per
+   running batch job, and for transactions one per engine of new arrivals. A backlog adds demand but no units
+   (APPROX: unserved work waits in subsystem queues), so a backlogged class cannot crowd out light work at its DP.
+   A period's grant is split among its slices the same way (the level is solved on period totals, APPROX).
 3. **CPU queueing delay** even when demand is fully granted: use an **Erlang-C (M/M/c)**
    approximation with `c = online logical engines (unparked)` and `ρ = utilisation by work at
    ≥ this DP`. Delay ratio `Wq/S = ErlangC(c, ρ·c) / (c·(1−ρ))`, with ρ clamped to 0.995 and
@@ -358,6 +363,16 @@ Algorithm per pool:
    `IIPHONORPRIORITY=YES`, overflow is allowed onto CPs at the work's DP, after a "needs help"
    latency penalty. It is reported as IIPCP ("zIIP-eligible on CP"). Discretionary work
    gets no zIIP help ([IBM Db2 12: configuring zIIPs](https://www.ibm.com/docs/SSEPEK_12.0.0/perf/src/tpc/db2z_ibmziip.html)).
+   Honor Priority NO normally blocks the service class's overflow. For transaction-managed CICS
+   regions, any participating transaction class at DEFAULT permits the region's work to overflow;
+   only all NO blocks it (WLM Planning 3.1 p.121–122). APPROX: all CICS transactions on one image
+   share its AORs, so if any AOR is TRANSACTION this mix governs all its CICS transaction slices;
+   TRANSACTION AOR/TOR address-space CPU uses the same mix. Only CICS classes with arrivals,
+   current CPU demand or queued CP/zIIP work on that image participate. With none, the address
+   space uses its own class again. REGION/BOTH address spaces and DDF enclaves retain their own
+   settings; discretionary periods remain ineligible and system `IIPHONORPRIORITY=NO` overrides
+   the mix. CICS and DDF slices sharing a service class keep separate overflow permissions but
+   one service-class goal/report row. No per-region transaction assignment is modelled.
    If the LPAR has no zIIPs, *all* eligible work runs on CP. That costs MSU and software
    dollars, a planted flaw in the starting scenario.
 5. **Blocked workload support:** periods that got 0 CPU for longer than `BLWLINTHD` (default
@@ -471,7 +486,8 @@ for importance in 1..5:
   importance, chosen in reverse order of receivers.
 - **Non-WLM-fixable bottlenecks** (lock contention, a starved dependency server, PR/SM delay,
   soft-cap delay) cannot be fixed by WLM. It flails, and RMF shows the receiver unhappy with
-  little CPU delay. *This is the key diagnostic pattern the player learns.* LPAR capping (soft or
+  little CPU delay (for CICS: little READY in its work manager breakdown, healthy serving AORs in SYSWKM).
+  *This is the key diagnostic pattern the player learns.* LPAR capping (soft or
   absolute) is the exception: it shows as CPU delay, with Partition Data WLM% (soft capping) or the
   ABS CAP flag as the clue; WLMGL CAP delay is resource-group and discretionary capping only
   (*RMF Report Analysis* p.401, p.540).
@@ -747,6 +763,35 @@ contents simplified):
 | SMF 110 | CICS monitoring (unlock) | Per-transaction CPU, wait-type breakdown |
 | SMF 30 | Job/step accounting | Batch job elapsed/CPU, initiator queue time |
 
+- **CICS reporting:** transaction service/report classes retain completions, response times, PI and
+  response-time buckets, with work manager states instead of resource using/delay samples. Resource
+  usage (APPL) and state samples are attributed to the AOR service/report classes on the same image.
+  Mixed classes retain resource samples from their non-CICS work. Monitor III and its evidence history
+  use the same attribution; CPU-delay evidence on a region class can support its hosted CICS incidents.
+  WLM's internal management measurements and dispatch decisions are independent of this reporting projection.
+  Implementation (`sim/wlm/reporting.ts`): each CICS transaction tick carries the samples RMF reports elsewhere
+  (`moved`) and its work manager states; the image's tick names the AOR targets (`cics`). RMF accumulation and
+  Monitor III apply the move (`reportedTicks`, `reportedAccs` over WLM's decayed accumulator, which keeps a decayed
+  `moved`); WLM manages from the unmoved ticks.
+  APPROX: transaction resources split equally across AORs; work manager concurrency is estimated from
+  existing response-time parts and normalized as estimated EXE state percentages. ACTIVE combines SUB/APPL
+  and includes BCP processor waits; READY estimates the CICS dispatchable queue from QR contention.
+  Monitor III SYSWKM (Report Analysis p.204–207): per CICS transaction class, the breakdown and the AORs serving it
+  (jobname, management mode, region class, Service %, velocity, Proc/I/O-Usg, Capp; Quies 0, not modelled); AOR
+  figures are WLM's own per-system CICS samples, equal for AORs on one system (APPROX); pins go to the region class row.
+  WLMGL detail on a region class lists SERVICE CLASSES BEING SERVED (p.525).
+  WAITING FOR states follow the RMF columns (Report Analysis p.536): I/O; Db2 lock waits LOCK; waits for
+  Db2, MQ or a slow server and Db2's CF requests PROD; the rest MISC. CONV, DIST, LOCAL, SYSPL, REMOT and TIMER
+  are not modelled. Event clues read CICS CPU from the region class (STCHI) against CICS END/S, or from CICS monitoring. These are analytic estimates,
+  not CICS notification data; the projection assumes transactions routed to AORs. No TOR timeline or idle task population is modeled: BTE (begin-to-end),
+  EXE response-time coverage and IDLE are unavailable, not zero measurements. MXT admission wait stays
+  outside WLM in the existing model. REGION-only suppresses service-class RT and the state breakdown per WLM p.123 (report classes keep both);
+  retaining reporting-only state estimates is a model choice independent of RT tracking.
+  Execution Velocity Actual is N/A whenever subsystem state data is available, including mixed classes
+  and BOTH mode (RMF p.237). The optional IWM4RPT/IWM4MNTF transaction processor accounting path
+  (TRANS-APPL%, RMF p.531) is not modeled; the region attribution here covers ordinary resource samples.
+  Sources: WLM Planning 3.1 p.113, p.123; RMF Report Analysis p.237, p.524, p.531, p.536–537;
+  CICS TS 6 Monitoring CICS p.55 and p.58.
 - **SMF overhead:** each enabled record family adds a small CPU cost (very small for 70–79,
   noticeable for 101 class 3 and 110 detail).
 - **Report rendering:** a faithful *Postprocessor-style* monospace text layout (with a chart
@@ -1494,11 +1539,14 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CPU protection (CPU Critical, IEAOPT CCIMP) | **Plausible model** | Policy adjustment rejects any DP set where less important work reaches a protected period's DP; CCIMP (0–2, absent = 0) adds first or only periods up to that importance (Init & Tuning p.428). Scenarios run pre-3.1 (CCIMP 0); the player can set it per system. APPROX: no System Recovery Boost, so CCIMPBOOST is not modelled |
 | CP and zIIP backlog under a CP cap or shortage | **Plausible model** | Transaction backlog carried per pool (CP work left unserved stays on the CPs); a batch job's CP and zIIP demand follow the pace the other pool allows (phases are sequential). APPROX: a transaction's zIIP part is not held back by its CP part |
 | zIIP-eligible work with no zIIP online | **Matches** | Runs on CPs as plain CP work and queues with the CP queue ratio, not a saturated zIIP pool (Init & Tuning p.431) |
+| CICS shared-region Honor Priority | **Faithful simplification** | Any participating DEFAULT CICS transaction class permits TRANSACTION regions' overflow; all NO blocks it (WLM Planning 3.1 p.121–122). Existing topology approximation: transactions share all AORs on an image; if any AOR is TRANSACTION the mix applies to all CICS transaction slices, plus each TRANSACTION AOR/TOR's own CPU. Participation includes arrivals and both pools' backlog, recomputed each tick; no transaction work reverts the address space to its own class. Other images, DDF and REGION/BOTH address spaces keep independent settings; discretionary and system-wide NO protection remain |
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Vendor list-price changes | **Simplified** | One run-level multiplier on sub-capacity MLC (all products alike); applies to the whole month it is in force, no proration; TFP terms are fixed once signed |
 | Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex |
+| Equal-DP sharing by ready units (max-min) | **Approximation** | Fluid processor sharing over time-averaged units, not task-level time slicing. Unit counts per address-space role are FICTIONAL; transactions count one unit per engine of new work, backlog excluded (`dispatcher.ts` `shareByUnits`) |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
+| WLMGL APPL% CP/IIPCP/IIP | **Matches** | CP includes all time executed on general CPs; IIPCP is its zIIP-eligible subset, and IIP is time executed on zIIPs (RMF Report Analysis 3.1 [p.534 Table 222](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534)). Service/report classes average engine use over the full interval; plex rows sum systems. APPL evidence adds CP + IIP, counting IIPCP once |
 | Monitor III views (SYSSUM, SYSINFO, DELAY, PROCU, ENCLAVE, CPC, WFEX) | **Faithful simplification** | RMF field names and formulas (Report Analysis ch. 2). Built from WLM's exponentially smoothed state samples (≈ 67 s), not a fixed 120 s MINTIME; rows are service-class periods, not jobs or individual enclaves; no IDL state, workload groups or report classes; DELAY shows % Delayed for PRC (CP + zIIP), DEV, STR, SUB, OPR, ENQ (SUB/OPR/ENQ 0) with capping counted only in DLY % and Primary Reason in RMF's forms (heaviest other class's main jobname or *ENCLAVE, LCU id instead of volser, LOCL, RG-Cap; Report Analysis 3.1 p.106–110); PRC/DEV using split and zIIP/IIPCP split follow the last tick's mix (APPROX); MVS Util% is the MVS BUSY of the Partition Data row (ready work over unparked logical CPs); PR/SM delay % shown directly though RMF has no such field; WFEX criteria are RT/WFL% thresholds at 1.5× the goal (FICTIONAL); history is a snapshot of that smoothed view every 120 s (MINTIME(120); RMF's default is 100 s) for 48 h (retention is a game choice; real retention depends on the VSAM data set size) |
 | Multi-day projects (threadsafe, zIIP-enable, compression, SQL tuning, archive) | **Plausible model** | Flat per-transaction multipliers on CPU, I/O and zIIP eligibility; sizes FICTIONAL. Events can also cut eligibility (`ziipEligMult`, moves zIIP time back to CP) |
 | Report classes in WLMGL (homogeneous / heterogeneous) | **Faithful simplification** | One row per report class; goal and PI only for a single service-class period (RMF would show report class periods) |
@@ -1512,7 +1560,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CICS QR TCB single-engine limit | **Real** | |
 | Db2 address space placement guidance | **Real (IBM)** | |
 | Machine capacity, MSU/CP, price tables | **Fictional** | Proportions plausible; no real LSPR numbers |
-| WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts |
+| WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts. CICS transaction classes report estimated EXE state percentages; ordinary resource samples/APPL belong to AOR classes (equal split, APPROX). ACTIVE combines SUB/APPL and BCP waits; READY estimates QR dispatch waits; WAITING FOR splits LOCK (Db2 locks), PROD (Db2/MQ/server waits, CF) and MISC. BTE/TOR, IDLE, EXE coverage and optional TRANS-APPL% accounting are not modeled. Reporting is independent of WLM management |
 | I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
 | CICS region management | **Simplified** | Per region on its STC/JES rule. CICS transactions on an image share the AORs' DP: most important served period (TRANSACTION, free ride) or the AOR class (REGION/BOTH). TRANSACTION regions' own CPU dispatches with the transactions; their samples are reported in the region class but left out of its goal-management PI, so a class holding only such regions is not managed. BOTH = REGION for dispatch; when every region is REGION, transaction completions go to report classes only (no service-class response time data). No per-region split of a workload's transactions: if any AOR on the image is TRANSACTION, all its CICS transactions ride the transaction DP. The wait for TRANSACTION regions is the transactions' CPU delay (all of it, APPROX) |
@@ -1548,6 +1596,9 @@ Primary IBM sources:
   cap pattern and phantom weight), group capacity shares, long-term CPU protection, Honor Priority (no CP help
   for discretionary work), CICS/IMS region management.
   https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieaw100_v2r5.pdf
+  Version 3.1 p.121–122: Honor Priority for transaction-server CICS/IMS regions and enclave servers;
+  all served transaction classes must be NO to prevent a shared region's overflow.
+  https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122
   z/OS 3.1 edition: "Manage Region Using Goals Of" TRANSACTION / REGION / BOTH on STC and JES rules, and the
   warning that it limits WLM's ability to manage the system (PDF p.122, p.211).
   https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf

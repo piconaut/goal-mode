@@ -46,7 +46,7 @@ describe('evidence pins', () => {
     expect(p.text).toContain(`${hourKey.split(':')[1]!.padStart(2, '0')}:00–`);
     expect(addPin(r, MIDWEST, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' }).ok).toBe(false);
     const iv = regressed.sim.rmf.intervals.length - 1;
-    const w = pin(r, { source: 'WLMGL', index: iv, system: '*PLEX', scKey: 'ONLHI#1', metric: 'APPL' });
+    const w = pin(r, { source: 'WLMGL', index: iv, system: '*PLEX', scKey: 'STCHI#1', metric: 'APPL' });
     expect(w.pins.at(-1)!.source).toBe('WLMGL');
     const c = pin(r, { source: 'CPC', index: iv, lparId: 'PROD1', metric: 'CAPPED' }).pins.at(-1)!;
     expect(c.tick).toBe(regressed.sim.rmf.intervals[iv]!.endTick);
@@ -59,6 +59,14 @@ describe('evidence pins', () => {
     r = pin(r, { source: 'CPC', lparId: 'PROD1', metric: 'PRSM_DELAY' });
     expect(r.pins.length).toBeLessThanOrEqual(EVIDENCE.maxPins + 3);
     expect(r.pins.at(-1)!.source).toBe('CPC');
+  });
+
+  it('counts the IIPCP subset once in WLMGL APPL evidence', () => {
+    const index = regressed.sim.rmf.intervals.length - 1;
+    const row = regressed.sim.rmf.intervals[index]!.wlm.find((w) => w.applIipcpPct > 0)!;
+    expect(row).toBeDefined();
+    const r = pin(regressed, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'APPL' });
+    expect(r.pins.at(-1)!.value).toBe(row.applCpPct + row.applIipPct);
   });
 
   it('pins the CICS failed share as evidence for ROUTING', () => {
@@ -149,5 +157,27 @@ describe('SLA attainment', () => {
     const att = hourAttainment(w, { completions: 1000, withinSla: 1000, failed: 30, rtSumSec: 1000 * 0.1, parts: {} })!;
     expect(att.met).toBe(false);
     expect(att.attainmentPct).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('CICS resource evidence on region classes', () => {
+  it('rejects transaction resource pins in WLMGL, live Monitor III and saved pin history', () => {
+    const index = regressed.sim.rmf.intervals.length - 1;
+    const wlm = addPin(regressed, MIDWEST, { source: 'WLMGL', index, system: '*PLEX', scKey: 'ONLHI#1', metric: 'DELAY_CPU' });
+    expect(wlm.ok).toBe(false);
+    expect(wlm.message).toContain('STCHI#1');
+    const live = addPin(regressed, MIDWEST, { source: 'MON3', system: '*PLEX', scKey: 'ONLHI#1', metric: 'APPL' });
+    expect(live.ok).toBe(false);
+    const historical = addPin(regressed, MIDWEST, { source: 'MON3', system: '*PLEX', scKey: 'ONLHI#1', metric: 'DELAY_CPU', tick: regressed.sim.tick }, () => ({ tick: regressed.sim.tick, view: { rows: [{ system: '*PLEX', scKey: 'ONLHI#1', resourceSamples: false, pi: 2, cpuEngines: 0, endedPerSec: 100, delay: { cpu: 0, ziip: 0, io: 0, stor: 0, cap: 0, other: 0 } }], cpc: [] } }));
+    expect(historical.ok).toBe(false);
+  });
+
+  it('accepts cap delay on a hosted region class as relevant to the CICS incident', () => {
+    const p = { id: 1, source: 'WLMGL', metric: 'DELAY_CAP' as const, subject: 'STCHI#1', system: 'PROD1', tick: regressed.sim.tick, value: 80, text: 'Region CPU delay' };
+    const inc = incident(regressed, { truth: { mechanism: 'CAPPING', trigger: 'POLICY' } });
+    const [v] = judgeEvidence(regressed, MIDWEST, inc, [p]);
+    expect(v!.relevance).toBeGreaterThan(0);
+    const [unrelated] = judgeEvidence(regressed, MIDWEST, inc, [{ ...p, subject: 'DEVONLY#1' }]);
+    expect(unrelated!.relevance).toBe(0);
   });
 });

@@ -1,7 +1,7 @@
 // z/OS dispatcher model for one LPAR and one tick. SPEC §5.4.
 // Work is allocated by dispatching priority (DP) level, highest first; equal-DP work
-// shares in proportion to demand; queueing delay comes from Erlang-C at the cumulative
-// utilisation of work at or above each level.
+// shares by ready units (max-min fair, see shareByUnits); queueing delay comes from Erlang-C
+// at the cumulative utilisation of work at or above each level.
 
 import { queueDelayRatio } from './erlang';
 
@@ -26,6 +26,9 @@ export interface DispatchDemand {
   ziipEngines: number;
   /** May overflow to CPs when zIIPs are busy (IIPHONORPRIORITY=YES and not discretionary). */
   ziipMayOverflow: boolean;
+  /** Dispatchable units (TCBs/SRBs) behind this demand: its weight at an equal DP. Absent: one per
+   * engine of demand, which shares the level in proportion to demand. */
+  units?: number;
 }
 
 export interface DispatchInput {
@@ -63,6 +66,69 @@ function dispatchOrder(demands: readonly DispatchDemand[]): number[] {
   });
 }
 
+/**
+ * Splits `total` engines among work at one DP the way the z/OS dispatcher's single queue does: every ready
+ * unit gets an equal turn, so each entry gets min(want, units × L) for one fair level L per unit, and what a
+ * light entry leaves is shared by the rest (max-min fairness). Units default to `want` (share by demand).
+ * APPROX: a fluid processor-sharing view of time slicing; units are time averages, not counted TCBs/SRBs.
+ * Writes into `out` at `idx`; `total` must not exceed the sum of `want` over `idx`.
+ */
+export function shareByUnits(total: number, idx: readonly number[], want: readonly number[], units: readonly (number | undefined)[], out: number[]): void {
+  const m = idx.length;
+  let proportional = true;
+  let wantSum = 0;
+  for (let k = 0; k < m; k++) {
+    const i = idx[k]!;
+    wantSum += want[i]!;
+    if (units[i] !== undefined) proportional = false;
+  }
+  if (total >= wantSum || proportional) {
+    for (let k = 0; k < m; k++) {
+      const i = idx[k]!;
+      out[i] = wantSum > 0 ? (total >= wantSum ? want[i]! : (total * want[i]!) / wantSum) : 0;
+    }
+    return;
+  }
+  if (m === 1) {
+    out[idx[0]!] = Math.min(total, want[idx[0]!]!);
+    return;
+  }
+  // Fill entries in order of want per unit: the lightest are satisfied first.
+  const u = new Array<number>(m);
+  const per = new Array<number>(m);
+  const ord = new Array<number>(m);
+  let unitsLeft = 0;
+  for (let k = 0; k < m; k++) {
+    const i = idx[k]!;
+    const w = want[i]!;
+    const ui = w > 0 ? ((units[i] ?? 0) > 0 ? units[i]! : w) : 0;
+    u[k] = ui;
+    per[k] = ui > 0 ? w / ui : 0;
+    ord[k] = k;
+    unitsLeft += ui;
+  }
+  ord.sort((a, b) => per[a]! - per[b]! || a - b);
+  let remaining = total;
+  let k = 0;
+  for (; k < m; k++) {
+    const j = ord[k]!;
+    const i = idx[j]!;
+    if (u[j]! <= 0) {
+      out[i] = 0;
+      continue;
+    }
+    if (per[j]! * unitsLeft > remaining) break;
+    out[i] = want[i]!;
+    remaining -= want[i]!;
+    unitsLeft -= u[j]!;
+  }
+  const level = unitsLeft > 0 ? Math.max(0, remaining) / unitsLeft : 0;
+  for (; k < m; k++) {
+    const j = ord[k]!;
+    out[idx[j]!] = Math.min(want[idx[j]!]!, u[j]! * level);
+  }
+}
+
 /** Fills granted/queueRatio (indexed like the demands) level by level in dispatch order. */
 function allocateByPriority(
   capacity: number,
@@ -70,6 +136,7 @@ function allocateByPriority(
   demands: readonly DispatchDemand[],
   order: readonly number[],
   want: readonly number[],
+  units: readonly (number | undefined)[],
   granted: number[],
   queueRatio: number[],
 ): void {
@@ -85,11 +152,12 @@ function allocateByPriority(
     usedAbove += levelGet;
     const rho = capacity > 0 ? usedAbove / capacity : 1;
     const q = queueDelayRatio(servers, rho);
-    for (let k = start; k < end; k++) {
-      const i = order[k]!;
-      granted[i] = levelWant > 0 ? (levelGet * want[i]!) / levelWant : 0;
-      queueRatio[i] = q;
+    if (levelGet >= levelWant) {
+      for (let k = start; k < end; k++) granted[order[k]!] = want[order[k]!]!;
+    } else {
+      shareByUnits(levelGet, order.slice(start, end), want, units, granted);
     }
+    for (let k = start; k < end; k++) queueRatio[order[k]!] = q;
     start = end;
   }
 }
@@ -102,7 +170,8 @@ export function dispatch(input: DispatchInput): DispatchResult[] {
   for (let i = 0; i < n; i++) zWant[i] = demands[i]!.ziipEngines;
   const zGranted = new Array<number>(n).fill(0);
   const zQueue = new Array<number>(n).fill(0);
-  allocateByPriority(input.ziipCapacityEngines, input.ziipServers, demands, order, zWant, zGranted, zQueue);
+  const units = demands.map((d) => d.units);
+  allocateByPriority(input.ziipCapacityEngines, input.ziipServers, demands, order, zWant, units, zGranted, zQueue);
 
   // zIIP-eligible work that could not get a zIIP overflows to CPs at the same DP (IIPHONORPRIORITY=YES,
   // the default); with no zIIPs online it simply runs on CPs (MVS Init & Tuning Ref, IEAOPTxx).
@@ -116,7 +185,7 @@ export function dispatch(input: DispatchInput): DispatchResult[] {
   }
   const cGranted = new Array<number>(n).fill(0);
   const cQueue = new Array<number>(n).fill(0);
-  allocateByPriority(input.cpCapacityEngines, input.cpServers, demands, order, cWant, cGranted, cQueue);
+  allocateByPriority(input.cpCapacityEngines, input.cpServers, demands, order, cWant, units, cGranted, cQueue);
 
   const prsmDelayRatio = input.cpPrsmDelayFrac / Math.max(1e-6, 1 - input.cpPrsmDelayFrac);
   const noZiip = input.ziipServers === 0;
