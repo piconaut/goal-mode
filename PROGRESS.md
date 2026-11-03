@@ -87,10 +87,10 @@ Player profile: sysperf/capacity team lead at a major bank; played an earlier bu
 starved behind batch at its own DP and WLM found no donor. A legitimate player mistake, but the game hid it:
 - [x] Velocity/PI/ACT inflated by double-counted delay samples (velocity 1, PI 497, ACT 256) — #153.
 - [x] DELAY Primary Reason named a CICS region instead of the STM job (see M8.7).
-- [ ] **RCA trigger mislabel:** no card was active, yet the truth was CPU_PRIORITY/BATCH_OVERLAP and
+- [x] **RCA trigger mislabel:** no card was active, yet the truth was CPU_PRIORITY/BATCH_OVERLAP and
   DEPENDENCY/BATCH_OVERLAP: `triggerOf` (`src/game/sla.ts`) returns BATCH_OVERLAP whenever the Db2 lock index > 1,
   before POLICY. Without a card, CPU priority and dependency misses are the policy's; keep BATCH_OVERLAP for lock
-  contention. Game-rule change: goldens/oracle-RCA sweep.
+  contention. Fixed 2026-11-03: goldens and `compare` unchanged; Midwest textbook/expert seeds 1–5 identical.
 - [ ] **PROCU/DELAY are class rows:** real Monitor III lists jobs, so STMxxxx under STCHI is visible in seconds. Add the
   top jobs per class (expandable rows or a job-level PROCU), from the sim's per-job batch state and address spaces.
 - [ ] **WFEX Speed says "No work" for CICS transaction classes** with work (since #147 their resource samples moved to
@@ -105,6 +105,9 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
 - [ ] **Ops Console layout:** Batch Window above Operations Log; keep Incidents and Batch Window visible (the at-a-glance
   health panels) when the window is narrower than full desktop width or at phone width, instead of dropping them to the
   bottom.
+- [ ] **Saves are written only outside the live day** (`persist` in `src/worker/game.worker.ts` skips LIVE), so a
+  reload mid-day falls back to the last briefing/review; the checklist claimed otherwise. Save during LIVE (throttled).
+  The player also lost a whole save after the 2026-11-03 republish (cause not yet known).
 - [ ] **Save export** (button) so a playtest run can be replayed headlessly; there is no seed entry either (only random
   or the daily challenge).
 - [ ] **Finance feedback loop:** the monthly MLC bill arrives too late (a player who stops by day 8 never sees one; 40
