@@ -25,7 +25,7 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
 
   useEffect(() => {
     if (sel !== null) game.send({ type: 'GET_REPORT', index: sel, kind, system, scKey });
-  }, [sel, kind, system, scKey, game]);
+  }, [sel, kind, system, scKey, game.send]);
 
   if (v.reports.length === 0) {
     return (

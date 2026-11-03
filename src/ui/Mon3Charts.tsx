@@ -28,7 +28,7 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
     const stale = all.length > meta.samples || (all.length > 0 && all[0]!.tick !== meta.firstTick);
     if (stale) game.send({ type: 'GET_MON3_CHARTS', fromSample: 0, fromMarker: 0 });
     else if (all.length < meta.samples || allMarkers.length < meta.markers) game.send({ type: 'GET_MON3_CHARTS', fromSample: all.length, fromMarker: allMarkers.length });
-  }, [meta?.samples, meta?.markers, meta?.firstTick, all, allMarkers.length, game, meta]);
+  }, [meta?.samples, meta?.markers, meta?.firstTick, all, allMarkers.length, game.send, meta]);
 
   const [zoom, setZoom] = useState<[number, number] | null>(null);
   const [open, setOpen] = useState(() => {

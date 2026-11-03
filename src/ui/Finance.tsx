@@ -12,7 +12,7 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
   const hour = Math.floor(v.tickOfDay / 360);
   useEffect(() => {
     game.send({ type: 'GET_FINANCE' });
-  }, [game, hour, v.day]);
+  }, [game.send, hour, v.day]);
   const f = game.finance;
   if (!f) return <div className="panel">Loading…</div>;
   const overTarget = f.cfoTarget !== null && f.monthToDate > f.cfoTarget;
