@@ -21,8 +21,8 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
   the user" in Remaining work; none is implemented.
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-  link"), rebuilt 2026-11-03 from `dev` at `c9275e7` (#168). Republish on request.
-- **Latest verified dev:** #168; 63 test files / 558 tests pass; production build boots without console errors.
+  link"), rebuilt 2026-11-03 from `dev` at `d8ada51` (#170). Republish on request.
+- **Latest verified dev:** #170; 64 test files / 573 tests pass; production build boots without console errors.
 - **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
