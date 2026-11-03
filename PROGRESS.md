@@ -98,8 +98,10 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
   contention. Fixed 2026-11-03: goldens and `compare` unchanged; Midwest textbook/expert seeds 1–5 identical.
 - [ ] **PROCU/DELAY are class rows:** real Monitor III lists jobs, so STMxxxx under STCHI is visible in seconds. Add the
   top jobs per class (expandable rows or a job-level PROCU), from the sim's per-job batch state and address spaces.
-- [ ] **WFEX Speed says "No work" for CICS transaction classes** with work (since #147 their resource samples moved to
-  the AOR classes). Use the work-manager states (or the region classes) for their speed.
+- [x] **WFEX Speed says "No work" for CICS transaction classes** with work (since #147 their resource samples moved to
+  the AOR classes). Fixed 2026-11-03: their Speed is the serving region classes' workflow, marked "(regions)"
+  (SYSWKM shows the serving address spaces' using and velocity, SG24-6645 p.277–278; see docs/research.md).
+  Reporting only.
 - [ ] **SYSWKM: pinning a region's velocity pins the DELAY CPU-delay figure** instead (pin target mismatch).
 - [ ] **Monitor III history gap:** SYSSUM history went from 23:22 straight to 23:44 (check MINTIME snapshots and the
   history picker).
