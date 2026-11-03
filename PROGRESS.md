@@ -165,6 +165,10 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   (new Change Desk lever, SET_CICS `edsaLimitMb`), MXT down to what storage holds (fewer failures), route away.
   Not modelled: DSALIM/24-bit, and the doc's warning that a maximal EDSALIM hides a leak (a pre-emptive max EDSALIM
   is cheap insurance against this card; see Open questions).
+  Sweep (3 bots × 20 seeds, base dev vs head): balance-neutral. Mean days survived and score unchanged within ±0.1 d
+  and ±0.6 %, e.g. midwest textbook 24.3→24.4 d, revenue textbook 28.5→28.6 d; expert still 20/20 on both. Runs
+  drawing CICS_SOS are likewise unchanged. Speed: bench 0.83 vs 0.85 ms/tick (midwest), 0.79 vs 0.82 (revenue),
+  within noise; sweep wall time head +1–3 % with base and head sharing one machine.
 
 - [x] **Work at an equal DP should share CPU by ready units, not by demand.** (2026-11-02) Equal-DP work now
   shares max-min by ready units (`shareByUnits` in `src/sim/zos/dispatcher.ts`): address spaces count their
