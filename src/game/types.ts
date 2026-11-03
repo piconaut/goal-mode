@@ -100,6 +100,16 @@ export interface SmfHour {
   /** Hour of day at the start of the hour (0..23). */
   hourOfDay: number;
   workloads: Record<string, WorkloadHour>;
+  /** CICS storage manager statistics per AOR (absent in older saves). */
+  cicsStorage?: Record<string, CicsStorageHour>;
+}
+
+/** CICS storage manager statistics for one region over an hour. */
+export interface CicsStorageHour {
+  peakMb: number;
+  limitMb: number;
+  /** Seconds the region spent short on storage. */
+  sosSec: number;
 }
 
 /** One played day's capacity peaks (hourly averages), kept for the capacity planner. */
@@ -130,6 +140,7 @@ export interface HourAcc {
   /** Per LPAR: sum of CP engines consumed by importance rank 0–6 (see `importanceRank`). */
   cpByImportance?: Record<string, number[]>;
   lockIndexSum: number;
+  cicsStorage?: Record<string, CicsStorageHour>;
 }
 
 export interface Incident {

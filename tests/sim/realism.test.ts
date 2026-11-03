@@ -713,23 +713,33 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
-    const outside = (cmds: Parameters<typeof step>[1], part = 'outside') => {
+    const run = (cmds: Parameters<typeof step>[1], part = 'outside') => {
       let s = step(base, cmds, MIDWEST);
       let out = 0;
       let n = 0;
+      let failed = 0;
       for (let i = 0; i < 180; i++) {
         s = step(s, [], MIDWEST);
         const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
         out += w.parts[part] ?? 0;
         n += w.completions;
+        failed += w.failed;
       }
-      return (1000 * out) / Math.max(1, n);
+      return { waitMs: (1000 * out) / Math.max(1, n), failed };
     };
-    expect(outside([])).toBe(0);
-    expect(outside(card('CICS_SOS'))).toBeGreaterThan(5);
+    // The card's leak an hour in: EDSA (default EDSALIM) holds about 15 tasks per region.
+    const sos = (extra: Record<string, number> = {}) =>
+      ['CICSAOR2', 'CICSAOR4'].map((name) => ({ kind: 'SET_CICS' as const, name, leak: { startMb: 470, mbPerHour: 0 }, ...extra }));
+    expect(run([]).waitMs).toBe(0);
+    const sick = run(sos());
+    expect(sick.waitMs).toBeGreaterThan(5);
     // The slots are too few for the arrival rate even at unqueued service time, so RCA sees the limit's own queue.
-    expect(outside(card('CICS_SOS'), 'outsideRef')).toBeGreaterThan(0.5 * outside(card('CICS_SOS')));
-  }, 60_000);
+    expect(run(sos(), 'outsideRef').waitMs).toBeGreaterThan(0.5 * sick.waitMs);
+    // CICS Performance p.78: a higher MXT does not help SOS; MXT at what storage holds, or more EDSA, does.
+    expect(run(sos({ maxTasks: 2000 })).failed).toBeGreaterThanOrEqual(0.95 * sick.failed);
+    expect(run(sos({ maxTasks: 15 })).failed).toBeLessThan(0.8 * sick.failed);
+    expect(run(sos({ edsaLimitMb: 1200 })).waitMs).toBe(0);
+  }, 120_000);
 
   it('stored procedures losing zIIP eligibility move mobile CPU from zIIPs to general CPs', () => {
     const pools = (cmds: Parameters<typeof step>[1]) => {

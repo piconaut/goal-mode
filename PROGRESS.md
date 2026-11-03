@@ -158,13 +158,17 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   CICSAOR1; STCHI with misrouted STM batch named CICSAOR1). The own class competes with its other units, and a
   class's address spaces and running batch jobs compete by estimated CP engines (reporting only; `npm run compare`:
   sim/game/RMF identical, Monitor III Primary Reason values differ).
-- [ ] **NEXT: CICS_SOS rewards the wrong fix.** The card (loop 105) is modelled as an effective MXT cut, so raising
-  MXT on the PROD2 AORs clears it; real short-on-storage gets *worse* with a higher MXT (more concurrent tasks want
-  more DSA). This teaches the opposite of the real remedy. Minimum fix: while the card is active, a higher MXT raises
-  SOS severity (or MXT is locked with a clue saying why); proper fix: a small DSA/EDSA storage model per AOR
-  (DSALIM/EDSALIM, storage per task) so SOS, MXT and storage-limit levers interact. Needs symptoms/clues in the CICS
-  and SMF 110 views, at least two valid fixes (lower MXT/route work away, raise EDSALIM, fix the storage-hungry
-  transaction), a zos-docs check of the CICS SOS behaviour, a Codex entry, goldens and a sweep.
+- [x] **CICS_SOS rewards the wrong fix.** (2026-11-03) Replaced the MXT cut with an EDSA model per AOR
+  (`src/sim/subsys/cics.ts`, FICTIONAL sizes in `CICS_STORAGE`; IBM default EDSALIM 800 MB): the card starts a
+  storage leak; once in-flight tasks outgrow EDSALIM the region is SOS and thrashes, so raising MXT no longer helps.
+  Clues: SMF 110 region storage (EDSA peak / EDSALIM / SOS minutes, DFHSM0133). Fixes: recycle, raise EDSALIM
+  (new Change Desk lever, SET_CICS `edsaLimitMb`), MXT down to what storage holds (fewer failures), route away.
+  Not modelled: DSALIM/24-bit, and the doc's warning that a maximal EDSALIM hides a leak (a pre-emptive max EDSALIM
+  is cheap insurance against this card; see Open questions).
+  Sweep (3 bots × 20 seeds, base dev vs head): balance-neutral. Mean days survived and score unchanged within ±0.1 d
+  and ±0.6 %, e.g. midwest textbook 24.3→24.4 d, revenue textbook 28.5→28.6 d; expert still 20/20 on both. Runs
+  drawing CICS_SOS are likewise unchanged. Speed: bench 0.83 vs 0.85 ms/tick (midwest), 0.79 vs 0.82 (revenue),
+  within noise; sweep wall time head +1–3 % with base and head sharing one machine.
 
 - [x] **Work at an equal DP should share CPU by ready units, not by demand.** (2026-11-02) Equal-DP work now
   shares max-min by ready units (`shareByUnits` in `src/sim/zos/dispatcher.ts`): address spaces count their
@@ -295,7 +299,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
-- CICS_SOS: scheduled as the next M8.7 fix (see above); open detail is how much DSA model is needed.
+- CICS_SOS (2026-11-03): EDSALIM raised to the max before the card is cheap insurance; should a large EDSALIM carry a cost (real storage, or a later abend when a leak finally exhausts it)?
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
 - Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using
   (`missingGoal` in `src/sim/core/step.ts`, APPROX); item 11 settled only that it yields to goal work.

@@ -8,7 +8,7 @@ import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeDefinition, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
-import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
+import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
 import { deletePolicy, savePolicy, setSchedule } from '../game/policies';
@@ -476,7 +476,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (m.kind !== 'SMF113' && m.kind !== 'BATCH') run = noteReportOpened(run, `SMF:${m.kind}:${m.hour}`);
       const data: SmfData =
         m.kind === 'DB2' ? { kind: 'DB2', hour: m.hour, rows: db2Accounting(run, sc(), m.hour) }
-        : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, sc(), m.hour) }
+        : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, sc(), m.hour), storage: cicsStorageStats(run, m.hour) }
         : m.kind === 'BATCH' ? { kind: 'BATCH', night: batchNight(run) }
         : { kind: 'SMF113', rows: smf113(run) };
       post({ type: 'SMF', data });
