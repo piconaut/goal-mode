@@ -46,7 +46,7 @@ For each incident or alert that mattered, note:
 - [ ] Phone width: settings rows (known to scroll inside panels), Change Desk, reports. Anything unusable?
 - [ ] Keyboard controls, theme/contrast, sound: anything annoying or missing?
 - [ ] Autosave / reload: reload mid-day, press **Continue saved run** and confirm you resume within a few sim
-  minutes of where you were (the live day saves every few seconds).
+  minutes of where you were (the live day saves every 30 seconds).
 - [ ] At the end of the session press **⇩ export** and attach the run file to your notes (it replays headlessly).
 - [ ] Any error, frozen UI, or console error (F12) — note the sim clock.
 

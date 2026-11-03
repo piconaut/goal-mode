@@ -125,7 +125,7 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
   that offer, so a session that started a new run over an old save never saved mid-day again (likely the
   reported fallback). Restarting from the first briefing (scenario, difficulty, daily challenge) also dropped the
   older save at once and saved over it within 400 ms (a likely cause of the lost save). Now: an older save stays on
-  offer until the new run's first phase change (Start day asks first), the live day saves every 5 s real time (and
+  offer until the new run's first phase change (Start day asks first), the live day saves every 30 s real time (5 s at first; user request 2026-11-03) (and
   each sim hour, ≥2 s apart; a pagehide flush can't land because the worker dies first), actions save within 3 s
   in the live day; top-bar **⇩ export** / **⇧ import** of play-CLI run files; a Seed box on the first briefing
   and the new-run screen.
