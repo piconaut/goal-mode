@@ -30,6 +30,7 @@ import { policyAdjust } from '../wlm/adjust';
 import { classify } from '../wlm/classify';
 import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../workload/routing';
 import { ROUTING } from '../../content/routing';
+import { cicsTargets } from '../wlm/reporting';
 import { backlogCpSec, emptyScpTick, evaluateLpar, sliceSpec, type IoService, type LparEvalInput, type ScpTick, type SliceSpec } from '../wlm/evaluate';
 import { emptyBuckets } from '../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_STEAL_WEIGHT_BY_IMP, STORAGE_STEAL_WEIGHT_DISC, STORAGE_SWAP } from '../../content/wlm/tuning';
@@ -938,7 +939,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)) });
   }
   systems.push({ lparId: l.id, scps });
-  lparTicks.push(res.rcs ? { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, rcs: res.rcs } : { lparId: l.id, scps: res.scps, roleHealth: res.roleHealth });
+  const cics = regions?.targets;
+  lparTicks.push({ lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, ...(res.rcs ? { rcs: res.rcs } : {}), ...(cics ? { cics } : {}) });
 }
 
 /** Seconds after a played day's 06:00 start → wall-clock text. */
@@ -1315,7 +1317,8 @@ export function cicsRegions(
   }
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked } };
+  const transactionKeys = new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key));
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey) } };
 }
 
 /** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a

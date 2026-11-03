@@ -1,5 +1,6 @@
 // WLM runtime state: per-system service-class-period DPs and smoothed measurements.
 
+import { decayMoved, mergeWorkManager, type MovedSamples, type WorkManagerSamples } from './reporting';
 import { DP } from '../zos/dispatcher';
 import { emptyBuckets, performanceIndex } from './goals';
 import type { ScpTick } from './evaluate';
@@ -9,6 +10,10 @@ import { SYSOTHER, SYSSTC, SYSTEM, type Goal, type Importance, type ServiceDefin
 export const ACC_DECAY = 0.85;
 
 export interface ScpAcc {
+  /** Reporting only (Monitor III): the decayed part of using/delay/CPU that RMF reports with CICS region classes,
+   * and the CICS work manager states. */
+  moved?: MovedSamples;
+  workManager?: WorkManagerSamples;
   completions: number;
   rtSumSec: number;
   buckets: number[];
@@ -119,7 +124,7 @@ function decayBuckets(acc: readonly number[], add: readonly number[], d: number)
 
 export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
   const d = ACC_DECAY;
-  return {
+  const out: ScpAcc = {
     completions: acc.completions * d + t.completions,
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,
     buckets: decayBuckets(acc.buckets, t.buckets, d),
@@ -138,6 +143,13 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
       ? { srvUsing: (acc.srvUsing ?? 0) * d + (t.srvUsing ?? 0), srvDelay: (acc.srvDelay ?? 0) * d + (t.srvDelay ?? 0) }
       : {}),
   };
+  const moved = decayMoved(acc.moved, t.moved, d);
+  if (moved) out.moved = moved;
+  if (t.workManager || acc.workManager) {
+    const wm = mergeWorkManager(acc.workManager, t.workManager, d);
+    if (t.workManager || wm.active + wm.ready + wm.idle + wm.waitingIo + wm.waitingLock + wm.waitingProd + wm.waitingMisc > 1e-9) out.workManager = wm;
+  }
+  return out;
 }
 
 export function sumAcc(accs: readonly ScpAcc[]): ScpAcc {
@@ -147,6 +159,7 @@ export function sumAcc(accs: readonly ScpAcc[]): ScpAcc {
 }
 
 function addAccInto(out: ScpAcc, a: ScpAcc): void {
+  if (a.workManager) out.workManager = mergeWorkManager(out.workManager, a.workManager);
   out.completions += a.completions;
   out.rtSumSec += a.rtSumSec;
   for (let i = 0; i < a.buckets.length; i++) out.buckets[i] = (out.buckets[i] ?? 0) + a.buckets[i]!;

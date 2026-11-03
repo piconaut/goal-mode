@@ -11,6 +11,7 @@ import type { RngState } from './rng';
 import type { AddressSpaceDef, WorkloadDef } from '../workload/types';
 import type { BurstState } from '../workload/arrivals';
 import type { RoutingPolicy } from '../workload/routing';
+import type { CicsTargets } from '../wlm/reporting';
 import type { ReportClassTick, ScpTick } from '../wlm/evaluate';
 import type { WlmState } from '../wlm/runtime';
 
@@ -176,6 +177,8 @@ export interface LparTick {
   lparId: string;
   scps: ScpTick[];
   rcs?: ReportClassTick[];
+  /** Where RMF reports this image's CICS transaction samples (reporting.ts). */
+  cics?: CicsTargets;
   roleHealth: Record<string, { health: number; queueRatio: number }>;
 }
 

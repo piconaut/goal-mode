@@ -8,7 +8,7 @@ import type { Mon3Cpc, Mon3Row, Mon3View } from './mon3';
 
 /** What `addPin` reads from a Monitor III view: the full view (browser) or this trimmed one (CLI). */
 export interface Mon3PinView {
-  rows: Pick<Mon3Row, 'system' | 'scKey' | 'pi' | 'cpuEngines' | 'endedPerSec' | 'delay'>[];
+  rows: Pick<Mon3Row, 'system' | 'scKey' | 'pi' | 'cpuEngines' | 'endedPerSec' | 'delay' | 'resourceSamples'>[];
   cpc: Pick<Mon3Cpc, 'lparId' | 'prsmDelayPct' | 'cappedPct'>[];
 }
 
@@ -19,6 +19,7 @@ interface KeySet {
   /** [system, scKey] per row, and lparId per CPC row, in the order the entries' numbers follow. */
   rows: [string, string][];
   cpc: string[];
+  resources?: (boolean | undefined)[];
 }
 
 export interface Mon3PinHistory {
@@ -37,7 +38,7 @@ const round = (x: number) => Math.round(x * 1e4) / 1e4;
 export const emptyMon3PinHistory = (): Mon3PinHistory => ({ version: 1, keySets: [], entries: [] });
 
 export function recordMon3Pins(h: Mon3PinHistory, tick: number, view: Mon3View): Mon3PinHistory {
-  const keys: KeySet = { rows: view.rows.map((r) => [r.system, r.scKey]), cpc: view.cpc.map((c) => c.lparId) };
+  const keys: KeySet = { rows: view.rows.map((r) => [r.system, r.scKey]), cpc: view.cpc.map((c) => c.lparId), resources: view.rows.map((r) => r.resourceSamples) };
   let keySets = h.keySets;
   let k = keySets.length - 1;
   if (k < 0 || JSON.stringify(keySets[k]) !== JSON.stringify(keys)) {
@@ -63,7 +64,7 @@ export function mon3PinsAt(h: Mon3PinHistory, tick: number): { tick: number; vie
   const n = (i: number) => e!.r[i] ?? 0;
   const rows = keys.rows.map(([system, scKey], i) => {
     const o = i * ROW_NUMS;
-    return { system, scKey, pi: e!.r[o] ?? null, cpuEngines: n(o + 1), endedPerSec: n(o + 2), delay: { cpu: n(o + 3), ziip: n(o + 4), io: n(o + 5), stor: n(o + 6), cap: n(o + 7), other: n(o + 8) } };
+    return { system, scKey, ...(keys.resources?.[i] != null ? { resourceSamples: keys.resources[i] } : {}), pi: e!.r[o] ?? null, cpuEngines: n(o + 1), endedPerSec: n(o + 2), delay: { cpu: n(o + 3), ziip: n(o + 4), io: n(o + 5), stor: n(o + 6), cap: n(o + 7), other: n(o + 8) } };
   });
   const cpc = keys.cpc.map((lparId, i) => ({ lparId, prsmDelayPct: e!.c[2 * i]!, cappedPct: e!.c[2 * i + 1]! }));
   return { tick: e.tick, view: { rows, cpc } };

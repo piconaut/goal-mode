@@ -6,6 +6,9 @@ import { ms, n1, sameClass } from './shared';
 
 export function SysSum({ m, game }: { m: Mon3View; game: GameHandle | null }) {
   const rows = m.rows.filter((r) => r.system === '*PLEX');
+  // "Server" classes hold regions managed to the goals of the transaction classes they serve: RMF shows their
+  // velocity in dark blue, and N/A for the transaction classes (RMF Report Analysis p.237).
+  const servers = new Set((m.wkm ?? []).flatMap((w) => w.servers.filter((x) => x.mgmt === 'TRANSACTION').map((x) => x.serviceClass)));
   return (
     <table>
       <thead>
@@ -29,7 +32,9 @@ export function SysSum({ m, game }: { m: Mon3View; game: GameHandle | null }) {
             <td>{r.period}</td>
             <td>{r.importance ?? (r.goal === 'DISCRETIONARY' ? 'D' : '')}</td>
             <td className="num">{r.goalVelocity ?? (r.goal === 'system' ? 'N/A' : '')}</td>
-            <td className="num">{r.velocityAct === null ? (r.velocity === null ? '' : 'N/A') : r.velocityAct.toFixed(0)}</td>
+            <td className="num" style={servers.has(r.serviceClass) ? { color: 'var(--accent)' } : undefined} title={servers.has(r.serviceClass) ? 'Server class: its regions are managed to the goals of the CICS classes they serve, not to this goal' : r.workManager ? 'CICS transaction class: no address spaces of its own, so no velocity (see SYSWKM)' : undefined}>
+              {r.velocityAct === null ? (r.velocity === null && !r.workManager ? '' : 'N/A') : r.velocityAct.toFixed(0)}
+            </td>
             <td className="num">{r.goalRtMs === null ? (r.goal === 'system' ? 'N/A' : '') : ms(r.goalRtMs)}</td>
             <td>{r.goalRtMs === null ? '' : r.goalPct === null ? 'AVG' : `${r.goalPct}%`}</td>
             <td className="num">{r.goalRtMs === null ? '' : r.goalPct === null ? `${ms(r.avgRtMs)} AVG` : r.withinGoalPct === null ? '-' : `${r.withinGoalPct.toFixed(0)}%`}</td>

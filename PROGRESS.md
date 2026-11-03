@@ -92,11 +92,47 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   regions and Db2 at ONLHI's DP no longer share its shortage, so WLM finds no gain lifting a capped ONLHI over
   them (Midwest seed-7 capped test now asserts that); goldens regenerated; ~3 % slower per tick. CI sweep
   (Midwest, seeds 1–5): donothing day 15 / 0 wins, textbook day 27 / 0, expert day 40 / 4 of 5; all in band.
-- [ ] **CICS transaction classes report work manager states, not using and delay samples.** For CICS and IMS,
-  resource usage and state samples go with the regions' service classes; transaction classes get the work manager
-  section (ACTIVE, READY, IDLE, WAITING FOR…, BTE/EXE) (*WLM Planning* 3.1, p.113; *RMF Report Analysis* p.536–537).
-  The sim's WLMGL posts CPU using and delay on CICS transaction classes. Changing it moves the WLMGL report, the
-  DELAY_CPU pins and the hints that point at them (playtest finding R, 2026-10-28).
+- [x] **CICS transaction classes report work manager states, not using and delay samples.**
+  Reporting-only projection sends ordinary CICS resource usage/samples to AOR service/report classes;
+  transaction rows retain RT/PI/buckets and estimated EXE state percentages. Monitor III, stored pins,
+  evidence relevance and hints follow the attribution. Mixed classes retain non-CICS resource samples.
+  The zos-docs audit corrected ACTIVE vs total population, READY vs BCP waits, BTE meaning, and
+  mixed/BOTH velocity; it documents optional TRANS-APPL% accounting. Durable facts are in the research
+  ledger; PR-specific evidence belongs in the PR discussion.
+  APPROX: equal AOR allocation; combined ACTIVE SUB/APPL; READY from QR dispatch waits. TOR/BTE,
+  IDLE, EXE coverage and optional transaction processor accounting are not modeled. Management unchanged.
+  Merged with the alternative #148 after a side-by-side review (2026-11-02): WAITING FOR LOCK/PROD/MISC split
+  (Db2 locks, Db2/MQ/server waits and CF, rest) in the RMF column layout instead of one MISC bucket; all-REGION
+  mode leaves the breakdown to report classes; CICS event clues (access-path regression, retail, refund status,
+  the SMF-audit CPU/txn clues, XLOG) read CPU from STCHI or CICS monitoring, with a content test guarding them.
+  Follow-up after a zos-docs check (2026-11-02): Monitor III SYSWKM view (p.204–207) with the breakdown and serving
+  AORs (velocity, Proc/I/O-Usg, Capp; pins go to the region class row), so CICS CPU diagnosis in Monitor III goes
+  through the AORs; WLMGL SERVICE CLASSES BEING SERVED on region classes (p.525); MKTORD market-open and the
+  card-auth/account lock clues rewritten (READY, SYSWKM, WAITING FOR LOCK); wider clue test. Open: AORs on one system
+  show identical SYSWKM figures (CICS work is modelled per system, not per region); real WLMGL shows only non-zero
+  states, a BTE row with RESP TIME %, ACTIVE SUB/APPL split and state-switched samples (not modelled).
+  Simplified (2026-11-03): the parallel reporting projection (second tick list, second decayed accumulator per
+  period, stored resource-sample flag, old-save seeding) became a `moved` tag on CICS transaction ticks plus a decayed
+  `moved` in WLM's accumulator. WLMGL text and Monitor III views identical to the previous head in all three
+  scenarios (records equal to the last bit, ~1e-16); sim state minus reporting equal; −45 source and −57 test lines;
+  speed unchanged from the previous head (Midwest ~+8 %, Harbourline ~+8–10 % per tick vs dev, noisy).
+  Validation: typecheck + 533 tests / 60 files pass; production build passes; reporting goldens regenerated
+  and verified without update mode. Original PR-head CI sweep passed: donothing day 15 / 0 wins,
+  textbook day 27 / 0, expert day 40 / 4 of 5. Performance follow-up reruns CI; PR #147 stays open.
+  One-day seed-42 internal-state hashes matched dev in Midwest, Harbourline and Revenue after excluding
+  reporting data. Independent review covered source claims, migration, sample/metadata expiry and backlog.
+  Performance follow-up: Set transaction membership, sparse report ticks/history,
+  reuse immutable RT/buckets, and reuse sorted region keys instead of rebuilding Sets per merge.
+  Same-host medians of two interleaved seed-42 one-day runs (reverse order on trial 2), ms/tick:
+  Midwest dev 0.439 / reviewed head 0.707 / revised 0.474 (+7.9% vs dev; -32.9% vs reviewed head);
+  Harbourline 0.705 / 1.155 / 0.726 (+2.9%; -37.1%). Measurements ran without other CPU jobs.
+  The module-level region topology cache was later removed: cache on/off benched within noise (Midwest
+  0.89/1.06 vs 0.99/0.91 ms/tick; Harbourline 1.65/1.77 vs 1.74/1.55), same state hashes, and it relied on
+  the WLM definition never being edited in place.
+  Full-day hourly RMF/Monitor III report-value hashes match the reviewed head in all three scenarios;
+  management hashes match dev. Raw goldens change because redundant serialized history is removed.
+  Full check: 533 tests / 60 files pass; readonly goldens and the queue-reporting assertion pass; build passes.
+  Per-PR audit file removed; Codex agent guidance now keeps PR evidence on the PR.
 
 ### Active realism audit loop (2026-11-02)
 

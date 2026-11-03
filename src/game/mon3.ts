@@ -5,6 +5,7 @@
 // Samples here are time-average concurrency (average number of users in each state), so RMF's
 // group formulas ∑ samples ÷ (# samples × avg # address spaces) become state ÷ active users.
 
+import { mergeWorkManager, noResources, reportedAccs, reportedTicks, type WorkManagerSamples } from '../sim/wlm/reporting';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
 import { msuPerCp } from '../sim/hw/cpc';
@@ -19,6 +20,8 @@ import type { RunState } from './types';
 const NORM = 1 - ACC_DECAY;
 
 export interface Mon3Row {
+  workManager?: WorkManagerSamples;
+  resourceSamples?: boolean;
   system: string;
   scKey: string;
   serviceClass: string;
@@ -153,6 +156,39 @@ export interface Mon3Exception {
   text: string;
 }
 
+/** SYSWKM "Address Spaces Serving this Service Class" row (RMF Report Analysis p.206–207). */
+export interface Mon3Server {
+  jobname: string;
+  system: string;
+  /** How WLM manages the region (Manage Region Using Goals Of). */
+  mgmt: 'TRANSACTION' | 'REGION' | 'BOTH';
+  /** The region's own service class, and the matching Monitor III row on its system (pin target). */
+  serviceClass: string;
+  rowKey: string | null;
+  /** Share of the region's service given to the reported class, 0..100. */
+  servicePct: number;
+  velocity: number | null;
+  procUsgPct: number;
+  ioUsgPct: number;
+  cappPct: number;
+  /** Operator quiesce (RESET QUIESCE) is not modelled: always 0. */
+  quiescePct: number;
+}
+
+/** SYSWKM Work Manager Delays report, sysplex-wide, for one CICS transaction class period (p.204–207). */
+export interface Mon3Wkm {
+  scKey: string;
+  serviceClass: string;
+  period: number;
+  goal: string;
+  avgRtMs: number | null;
+  endedPerSec: number;
+  pi: number | null;
+  /** Response time breakdown, % of the EXE phase states. */
+  states: { active: number; ready: number; idle: number | null; lock: number; io: number; conv: number | null; prod: number; misc: number };
+  servers: Mon3Server[];
+}
+
 export interface Mon3View {
   rangeSec: number;
   policy: string;
@@ -166,6 +202,8 @@ export interface Mon3View {
   enclaves: Mon3Enclave[];
   speed: Mon3Speed[];
   exceptions: Mon3Exception[];
+  /** SYSWKM: CICS transaction classes with work manager data (absent in old pin snapshots). */
+  wkm?: Mon3Wkm[];
 }
 
 /** The resource behind DELAY's Primary Reason: the largest % Delayed for above 2%, capping included (p.110). */
@@ -200,7 +238,7 @@ export function withinGoalPct(buckets: readonly number[]): number | null {
   return (100 * within) / total;
 }
 
-function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: LastSplit, cicsTxn: ReadonlySet<string>): Mon3Row {
+function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: LastSplit): Mon3Row {
   const def = run.sim.wlm.definition;
   const g = goalInfo(def, scKey);
   const per = g ? def.classes.find((c) => c.id === g.serviceClass)?.periods[g.period] : undefined;
@@ -222,6 +260,8 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
   const cpuEngines = a.cpuEngines * NORM;
   const cpLast = last.cpEngines + last.iipcpEngines;
   return {
+    ...(a.workManager ? { workManager: mergeWorkManager(a.workManager, undefined, NORM) } : {}),
+    ...(a.workManager || a.moved ? { resourceSamples: !noResources(a) } : {}),
     system,
     scKey,
     serviceClass,
@@ -233,7 +273,7 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
     goalPct: goal?.kind === 'PCT' ? goal.pct : null,
     velocity: v,
     // Exec Vel Act is N/A where subsystem delay data replace it (CICS/IMS transaction classes).
-    velocityAct: cicsTxn.has(serviceClass) && rtGoal ? null : v,
+    velocityAct: a.workManager ? null : v,
     withinGoalPct: goal?.kind === 'PCT' ? withinGoalPct(a.buckets) : null,
     pi: g ? accPi(g.goal, a) : null,
     endedPerSec: (a.completions * NORM) / TICK_SEC,
@@ -263,23 +303,22 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   const sim = run.sim;
   const def = sim.wlm.definition;
   const workloads = allWorkloads(scenario, run);
-  // Transaction classes are managed (no velocity) while some AOR is a transaction server (Manage Region Using Goals Of).
-  const aorTxn = [...scenario.addressSpaces, ...sim.extraAddressSpaces].some(
-    (a) => a.role === 'CICS.AOR' && (classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).regionMode ?? def.cicsRegionMode ?? 'TRANSACTION') === 'TRANSACTION',
-  );
-  const cicsTxn = new Set(aorTxn ? workloads.filter((w) => w.subsystem === 'CICS').map((w) => classify(def, w.work).serviceClass) : []);
   const ddfClasses = new Set(workloads.filter((w) => w.subsystem === 'DDF').map((w) => classify(def, w.work).serviceClass));
   const lastBy = (lparId: string | null, scKey: string): LastSplit => {
     const o = noSplit();
-    for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of l.scps) if (t.scKey === scKey) addSplit(o, t);
+    for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of reportedTicks(l.scps, l.cics)) if (t.scKey === scKey) addSplit(o, t);
     return o;
   };
+  // CICS transaction samples shown with the region classes, as in WLMGL (reporting.ts).
+  const reported = Object.fromEntries(
+    sim.wlm.systems.map((s) => [s.lparId, reportedAccs(Object.fromEntries(s.scps.map((p) => [p.scKey, p.acc])), sim.last.lpars.find((l) => l.lparId === s.lparId)?.cics)]),
+  );
   const rows: Mon3Row[] = [];
-  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, p.acc, lastBy(s.lparId, p.scKey), cicsTxn));
+  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, reported[s.lparId]![p.scKey]!, lastBy(s.lparId, p.scKey)));
   // Sysplex rows, like Monitor III's sysplex-wide SYSSUM.
   const keys = [...new Set(rows.map((r) => r.scKey))].sort();
   for (const k of keys)
-    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => s.scps.filter((p) => p.scKey === k).map((p) => p.acc))), lastBy(null, k), cicsTxn));
+    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => (reported[s.lparId]![k] ? [reported[s.lparId]![k]!] : []))), lastBy(null, k)));
   primaryReasons(run, scenario, rows, ddfClasses);
 
   const cpcEngines = sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
@@ -417,6 +456,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     logicalToPhysicalByCpc: Object.fromEntries(sim.config.cpcs.map((c) => [c.id, c.engines.CP > 0 ? (logicalByCpc[c.id] ?? 0) / c.engines.CP : 0])),
     logicalToPhysical: cpcEngines > 0 ? totalLogical / cpcEngines : 0,
     enclaves,
+    wkm: wkmSection(run, scenario, rows),
     speed: speedSection(rows, systems),
     exceptions: exceptions(run, rows, systems, cpc, totalLogical, cpcEngines),
   };
@@ -566,4 +606,80 @@ export function explainWlmLog(line: string): string {
   const noNet = /(\S+) (\S+) PI=([\d.]+) BTLNK=(\S+) no action with net value/.exec(line);
   if (noNet) return `On ${noNet[1]}, ${noNet[2]} misses its goal (PI ${noNet[3]}) but every move WLM projected would hurt donors more than it helps. There isn't enough capacity to go round at this importance.`;
   return line;
+}
+
+/**
+ * SYSWKM per CICS transaction class: its response time breakdown and the AORs serving it. The sim models CICS work per
+ * workload and system, not per region, so the AORs on one system share that system's CICS samples equally (APPROX, as
+ * in the WLMGL attribution). Their samples are WLM's own view of the transactions (the management accumulators), split
+ * by the class's share of the system's CICS CPU for Service %.
+ */
+function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[]): Mon3Wkm[] {
+  const sim = run.sim;
+  const def = sim.wlm.definition;
+  const plex = rows.filter((r) => r.system === '*PLEX' && r.workManager);
+  if (plex.length === 0) return [];
+  const cicsKeys = new Set(plex.map((r) => r.scKey));
+  const aors = [...scenario.addressSpaces, ...sim.extraAddressSpaces].filter((a) => a.role === 'CICS.AOR');
+  // Per system: CICS samples (WLM's view) summed over the transaction classes, and each class's CPU.
+  const bySys: Record<string, { acc: ScpAcc; cpuByKey: Record<string, number>; cpu: number }> = {};
+  for (const s of sim.wlm.systems) {
+    const accs = s.scps.filter((p) => cicsKeys.has(p.scKey));
+    if (accs.length === 0) continue;
+    const cpuByKey: Record<string, number> = {};
+    let cpu = 0;
+    for (const p of accs) {
+      cpuByKey[p.scKey] = (cpuByKey[p.scKey] ?? 0) + p.acc.cpuEngines;
+      cpu += p.acc.cpuEngines;
+    }
+    bySys[s.lparId] = { acc: sumAcc(accs.map((p) => p.acc)), cpuByKey, cpu };
+  }
+  const servers = (scKey: string): Mon3Server[] => {
+    const out: Mon3Server[] = [];
+    for (const a of aors) {
+      const sys = bySys[a.lparId];
+      if (!sys || sys.cpuByKey[scKey] === undefined) continue;
+      const cls = classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId });
+      const acc = sys.acc;
+      const samples = acc.using + acc.delay + acc.delayOther;
+      const last = { usingCpu: 0, usingZiip: 0, usingIo: 0 };
+      for (const l of sim.last.lpars) if (l.lparId === a.lparId) for (const t of l.scps) if (cicsKeys.has(t.scKey)) {
+        last.usingCpu += t.usingCpu;
+        last.usingZiip += t.usingZiip;
+        last.usingIo += t.usingIo;
+      }
+      const usingAll = last.usingCpu + last.usingZiip + last.usingIo;
+      const usingFrac = samples > 0 ? acc.using / samples : 0;
+      out.push({
+        jobname: a.jobname,
+        system: a.lparId,
+        mgmt: cls.regionMode ?? def.cicsRegionMode ?? 'TRANSACTION',
+        serviceClass: cls.serviceClass,
+        rowKey: rows.find((r) => r.system === a.lparId && r.serviceClass === cls.serviceClass)?.scKey ?? null,
+        servicePct: sys.cpu > 1e-12 ? (100 * sys.cpuByKey[scKey]!) / sys.cpu : 100 / Math.max(1, Object.keys(sys.cpuByKey).length),
+        velocity: velocityOf(velUsing(acc), velDelay(acc)),
+        procUsgPct: 100 * usingFrac * ratio(last.usingCpu + last.usingZiip, usingAll),
+        ioUsgPct: 100 * usingFrac * ratio(last.usingIo, usingAll),
+        cappPct: samples > 0 ? (100 * acc.delayCap) / samples : 0,
+        quiescePct: 0,
+      });
+    }
+    return out.sort((x, y) => (x.system !== y.system ? (x.system < y.system ? -1 : 1) : x.jobname < y.jobname ? -1 : x.jobname > y.jobname ? 1 : 0));
+  };
+  return plex.map((r) => {
+    const w = r.workManager!;
+    const tot = w.active + w.ready + w.idle + w.waitingIo + w.waitingLock + w.waitingProd + w.waitingMisc;
+    const pct = (x: number) => (tot > 0 ? (100 * x) / tot : 0);
+    return {
+      scKey: r.scKey,
+      serviceClass: r.serviceClass,
+      period: r.period,
+      goal: r.goal,
+      avgRtMs: r.avgRtMs,
+      endedPerSec: r.endedPerSec,
+      pi: r.pi,
+      states: { active: pct(w.active), ready: pct(w.ready), idle: null, lock: pct(w.waitingLock), io: pct(w.waitingIo), conv: null, prod: pct(w.waitingProd), misc: pct(w.waitingMisc) },
+      servers: servers(r.scKey),
+    };
+  });
 }

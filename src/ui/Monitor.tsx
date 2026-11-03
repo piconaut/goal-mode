@@ -13,13 +13,14 @@ import { Mon3Charts } from './Mon3Charts';
 import { Cpc } from './monitor/Cpc';
 import { Wfex, WlmLog } from './monitor/Exceptions';
 import { SysInfo, SysSum } from './monitor/SystemViews';
-import { Delay, Enclave, Procu } from './monitor/WorkloadViews';
+import { Delay, Enclave, Procu, Wkm } from './monitor/WorkloadViews';
 import type { GameHandle } from './useGame';
 
-type View3 = 'SYSSUM' | 'SYSINFO' | 'DELAY' | 'PROCU' | 'ENCLAVE' | 'CPC' | 'WFEX' | 'WLM';
+type View3 = 'SYSSUM' | 'SYSWKM' | 'SYSINFO' | 'DELAY' | 'PROCU' | 'ENCLAVE' | 'CPC' | 'WFEX' | 'WLM';
 // Report contents follow z/OS RMF Report Analysis (SC34-2665), "Interactive performance analysis with Monitor III".
 const VIEWS: { id: View3; help: string }[] = [
   { id: 'SYSSUM', help: 'Sysplex Summary: goals versus actuals and the performance index for each service-class period, sysplex-wide. Percentile goals show the % of transactions that ended within the goal time.' },
+  { id: 'SYSWKM', help: 'Work Manager Delays: for each CICS transaction class, how its response time splits into work manager states, and the AORs serving it. CICS transactions have no address spaces of their own, so their CPU and delays show on the regions: a low velocity or capping on the serving AORs is where CPU trouble for CICS shows up. AORs on one system share its CICS work in this game, so they show the same figures.' },
   { id: 'SYSINFO', help: 'System Information: CPU utilisation (LPAR view and z/OS view), then per period the workflow, response time, rate and the average number of users using or delayed for each resource.' },
   { id: 'DELAY', help: 'Who is waiting, and for what: USG/DLY/UKN % of active samples, and % Delayed for each resource (PRC covers CPs and zIIPs). DLY % also counts WLM capping, which has no column: Primary Reason shows RG-Cap. Otherwise Primary Reason names the job using the processor most, the LCU, or the paging type. Rows are service-class summaries. Response-time work spends much of its time in subsystems (Db2, CF, locks, CICS), which RMF cannot see and shows as UKN; that is normal when the PI is fine. Look for what changed.' },
   { id: 'PROCU', help: 'Processor Usage by service-class period: Time on CP % (IIP = zIIP-eligible work that ran on CPs) and EAppl % (enclaves included). 100 = one engine.' },
@@ -83,6 +84,7 @@ export function Monitor({ v, game, openAnalytics }: { v: ViewModel; game: GameHa
       {!m && <div className="muted">That interval is no longer held (Monitor III keeps {MON3_HISTORY.retentionHours} hours).</div>}
       {m && <div style={{ overflowX: 'auto' }}>
         {view === 'SYSSUM' && <SysSum m={m} game={pins} />}
+        {view === 'SYSWKM' && <Wkm m={m} game={pins} />}
         {view === 'SYSINFO' && <SysInfo m={m} system={system} />}
         {view === 'DELAY' && <Delay rows={m.rows.filter((r) => r.system === system)} game={pins} />}
         {view === 'PROCU' && <Procu rows={m.rows.filter((r) => r.system === system)} game={pins} />}

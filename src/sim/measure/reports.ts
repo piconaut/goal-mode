@@ -71,7 +71,7 @@ const fmt = (x: number | null | undefined, d: number) => (x === null || x === un
 const cell = (c: Col, s: string) => (c.left ? padR(s, c.w) : pad(s, c.w)).slice(0, Math.max(c.w, s.length));
 
 function wlmRow(r: WlmRecord): string {
-  return WLM_COLS.map((c) => cell(c, c.v(r))).join(' ');
+  return WLM_COLS.map((c, i) => cell(c, r.resourceSamples === false && (i === 5 || i >= 9) ? '-' : c.v(r))).join(' ');
 }
 
 /** Two header lines whose labels sit over their columns; group labels are centred in dashes. */
@@ -116,7 +116,26 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
     out.push('', 'SERVICE CLASS PERIODS PER REPORT CLASS');
     for (const r of rcRows) out.push(`${padR(r.serviceClass, 9)} ${(r.members ?? []).join(', ')}`);
   }
+  for (const r of [...rows, ...rcRows]) if (r.workManager) out.push('', `${r.scKey}${r.reportClass ? ' (REPORT CLASS)' : ''}`, ...workManagerLines(r));
   return out.join('\n');
+}
+
+function workManagerLines(r: WlmRecord): string[] {
+  const w = r.workManager!;
+  const total = w.active + w.ready + w.idle + w.waitingIo + w.waitingLock + w.waitingProd + w.waitingMisc;
+  const pct = (n: number) => pad(total > 0 ? ((100 * n) / total).toFixed(1) : '-', 7);
+  // RMF Report Analysis p.536–537 column order; CONV, DIST, LOCAL, SYSPL, REMOT and TIMER are not modelled.
+  const cols = ['ACTIVE*', 'READY', 'IDLE', 'LOCK', 'I/O', 'CONV', 'PROD', 'MISC'];
+  const vals = [pct(w.active), pct(w.ready), pad('-', 7), pct(w.waitingLock), pct(w.waitingIo), pad('-', 7), pct(w.waitingProd), pct(w.waitingMisc)];
+  return [
+    'WORK MANAGER STATES: STATE SAMPLES BREAKDOWN (%) (ESTIMATED)',
+    `${''.padEnd(10)}${''.padEnd(24)}${'-'.repeat(14)}WAITING FOR${'-'.repeat(15)}`,
+    `${padR('SUB  TYPE', 10)}${cols.map((c) => pad(c, 7)).join(' ')}`,
+    `${padR('CICS EXE', 10)}${vals.join(' ')}`,
+    'CICS BTE (BEGIN-TO-END/TOR): NOT MODELLED; EXE RESPONSE-TIME COVERAGE NOT MODELLED',
+    '* ACTIVE COMBINES SUB/APPL; IDLE TASK POPULATIONS NOT MODELLED. READY ESTIMATES CICS QR DISPATCH WAITS.',
+    `RESOURCE USAGE AND USING/DELAY SAMPLES: REGION CLASSES ${w.regionKeys.join(', ')}`,
+  ];
 }
 
 export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'): string {
@@ -132,11 +151,17 @@ export function renderWlmDetail(iv: RmfInterval, scKey: string, system = '*PLEX'
   out.push('');
   out.push(`-TRANSACTIONS-   ENDED ${Math.round(r.ended)}   END/S ${r.endPerSec.toFixed(2)}   FAILED ${Math.round(r.failed)}`);
   out.push(`ACTUAL RESP ${r.avgRtSec === null ? '-' : r.avgRtSec.toFixed(4) + 's'}   EX VEL% ${f(r.execVelocity, 1, 0)}   PERF INDX ${f(r.pi, 2, 0)}`);
-  out.push(`APPL% CP ${r.applCpPct.toFixed(1)}  IIPCP ${r.applIipcpPct.toFixed(1)}  IIP ${r.applIipPct.toFixed(1)}`);
-  out.push(
-    `USING% CPU ${r.usingPct.cpu.toFixed(1)} IIP ${r.usingPct.ziip.toFixed(1)} I/O ${r.usingPct.io.toFixed(1)}   ` +
-      `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} QMPL ${(r.delayPct.queue ?? 0).toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
-  );
+  if (r.resourceSamples !== false) {
+    out.push(`APPL% CP ${r.applCpPct.toFixed(1)}  IIPCP ${r.applIipcpPct.toFixed(1)}  IIP ${r.applIipPct.toFixed(1)}`);
+    out.push(
+      `USING% CPU ${r.usingPct.cpu.toFixed(1)} IIP ${r.usingPct.ziip.toFixed(1)} I/O ${r.usingPct.io.toFixed(1)}   ` +
+        `DELAY% CPU ${r.delayPct.cpu.toFixed(1)} IIP ${r.delayPct.ziip.toFixed(1)} I/O ${r.delayPct.io.toFixed(1)} STO ${r.delayPct.storage.toFixed(1)} QMPL ${(r.delayPct.queue ?? 0).toFixed(1)} CAP ${r.delayPct.cap.toFixed(1)} UNK ${r.delayPct.other.toFixed(1)}`,
+    );
+  }
+  if (r.workManager) out.push(...workManagerLines(r));
+  // Region classes doing work for transactions classified elsewhere (RMF Report Analysis p.525, p.536).
+  const served = r.reportClass ? [] : iv.wlm.filter((x) => x.lparId === system && x.workManager?.regionKeys.includes(r.scKey)).map((x) => x.serviceClass);
+  if (served.length > 0) out.push('', `SERVICE CLASSES BEING SERVED: ${[...new Set(served)].sort().join(' ')}`);
   const total = r.buckets.reduce((a, b) => a + b, 0);
   if (total > 0 && r.goalText.includes('<')) {
     const goalSec = Number(/< ([\d.]+)s/.exec(r.goalText)?.[1] ?? 0);

@@ -51,6 +51,8 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const iv = sim.rmf.intervals[req.index];
       const w = iv?.wlm.find((x) => x.lparId === req.system && x.scKey === req.scKey);
       if (!iv || !w) return 'No such report row';
+      if (w.resourceSamples === false && (req.metric === 'APPL' || req.metric.startsWith('DELAY_')))
+        return `CICS resource samples are reported with the regions' classes: ${w.workManager?.regionKeys.join(', ') ?? 'see the region service classes'}`;
       const v: Partial<Record<EvidenceMetric, number | null>> = {
         PI: w.pi,
         APPL: w.applCpPct + w.applIipPct,
@@ -71,6 +73,8 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if (typeof m === 'string') return m;
       const r = m.view.rows.find((x) => x.system === req.system && x.scKey === req.scKey);
       if (!r) return 'No such Monitor III row';
+      if (r.resourceSamples === false && (req.metric === 'APPL' || req.metric.startsWith('DELAY_')))
+        return `CICS resource samples are reported with the regions' classes: see the region service classes`;
       const v: Partial<Record<EvidenceMetric, number | null>> = {
         PI: r.pi,
         APPL: 100 * r.cpuEngines,
@@ -196,6 +200,12 @@ export function judgeEvidence(run: RunState, scenario: Scenario, inc: Incident, 
   const batch = inc.workloadId === BATCH_INCIDENT ? batchSubjects(run, inc) : null;
   const classes = batch ? batch.classes : w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
   const lpars = batch ? batch.lpars : Object.keys(run.sim.routing[inc.workloadId] ?? w?.routing ?? {});
+  // Resource evidence on a CICS region class is evidence about its hosted transactions.
+  if (w?.subsystem === 'CICS') for (const a of [...scenario.addressSpaces, ...run.sim.extraAddressSpaces]) {
+    if (!lpars.includes(a.lparId) || (a.role !== 'CICS.AOR' && a.role !== 'CICS.TOR')) continue;
+    const sc = classify(run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;
+    if (sc && !classes.includes(sc)) classes.push(sc);
+  }
   const lo = inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR;
   const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
   return pins.map((p) => {

@@ -486,7 +486,8 @@ for importance in 1..5:
   importance, chosen in reverse order of receivers.
 - **Non-WLM-fixable bottlenecks** (lock contention, a starved dependency server, PR/SM delay,
   soft-cap delay) cannot be fixed by WLM. It flails, and RMF shows the receiver unhappy with
-  little CPU delay. *This is the key diagnostic pattern the player learns.* LPAR capping (soft or
+  little CPU delay (for CICS: little READY in its work manager breakdown, healthy serving AORs in SYSWKM).
+  *This is the key diagnostic pattern the player learns.* LPAR capping (soft or
   absolute) is the exception: it shows as CPU delay, with Partition Data WLM% (soft capping) or the
   ABS CAP flag as the clue; WLMGL CAP delay is resource-group and discretionary capping only
   (*RMF Report Analysis* p.401, p.540).
@@ -762,6 +763,35 @@ contents simplified):
 | SMF 110 | CICS monitoring (unlock) | Per-transaction CPU, wait-type breakdown |
 | SMF 30 | Job/step accounting | Batch job elapsed/CPU, initiator queue time |
 
+- **CICS reporting:** transaction service/report classes retain completions, response times, PI and
+  response-time buckets, with work manager states instead of resource using/delay samples. Resource
+  usage (APPL) and state samples are attributed to the AOR service/report classes on the same image.
+  Mixed classes retain resource samples from their non-CICS work. Monitor III and its evidence history
+  use the same attribution; CPU-delay evidence on a region class can support its hosted CICS incidents.
+  WLM's internal management measurements and dispatch decisions are independent of this reporting projection.
+  Implementation (`sim/wlm/reporting.ts`): each CICS transaction tick carries the samples RMF reports elsewhere
+  (`moved`) and its work manager states; the image's tick names the AOR targets (`cics`). RMF accumulation and
+  Monitor III apply the move (`reportedTicks`, `reportedAccs` over WLM's decayed accumulator, which keeps a decayed
+  `moved`); WLM manages from the unmoved ticks.
+  APPROX: transaction resources split equally across AORs; work manager concurrency is estimated from
+  existing response-time parts and normalized as estimated EXE state percentages. ACTIVE combines SUB/APPL
+  and includes BCP processor waits; READY estimates the CICS dispatchable queue from QR contention.
+  Monitor III SYSWKM (Report Analysis p.204–207): per CICS transaction class, the breakdown and the AORs serving it
+  (jobname, management mode, region class, Service %, velocity, Proc/I/O-Usg, Capp; Quies 0, not modelled); AOR
+  figures are WLM's own per-system CICS samples, equal for AORs on one system (APPROX); pins go to the region class row.
+  WLMGL detail on a region class lists SERVICE CLASSES BEING SERVED (p.525).
+  WAITING FOR states follow the RMF columns (Report Analysis p.536): I/O; Db2 lock waits LOCK; waits for
+  Db2, MQ or a slow server and Db2's CF requests PROD; the rest MISC. CONV, DIST, LOCAL, SYSPL, REMOT and TIMER
+  are not modelled. Event clues read CICS CPU from the region class (STCHI) against CICS END/S, or from CICS monitoring. These are analytic estimates,
+  not CICS notification data; the projection assumes transactions routed to AORs. No TOR timeline or idle task population is modeled: BTE (begin-to-end),
+  EXE response-time coverage and IDLE are unavailable, not zero measurements. MXT admission wait stays
+  outside WLM in the existing model. REGION-only suppresses service-class RT and the state breakdown per WLM p.123 (report classes keep both);
+  retaining reporting-only state estimates is a model choice independent of RT tracking.
+  Execution Velocity Actual is N/A whenever subsystem state data is available, including mixed classes
+  and BOTH mode (RMF p.237). The optional IWM4RPT/IWM4MNTF transaction processor accounting path
+  (TRANS-APPL%, RMF p.531) is not modeled; the region attribution here covers ordinary resource samples.
+  Sources: WLM Planning 3.1 p.113, p.123; RMF Report Analysis p.237, p.524, p.531, p.536–537;
+  CICS TS 6 Monitoring CICS p.55 and p.58.
 - **SMF overhead:** each enabled record family adds a small CPU cost (very small for 70–79,
   noticeable for 101 class 3 and 110 detail).
 - **Report rendering:** a faithful *Postprocessor-style* monospace text layout (with a chart
@@ -1530,7 +1560,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CICS QR TCB single-engine limit | **Real** | |
 | Db2 address space placement guidance | **Real (IBM)** | |
 | Machine capacity, MSU/CP, price tables | **Fictional** | Proportions plausible; no real LSPR numbers |
-| WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts |
+| WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts. CICS transaction classes report estimated EXE state percentages; ordinary resource samples/APPL belong to AOR classes (equal split, APPROX). ACTIVE combines SUB/APPL and BCP waits; READY estimates QR dispatch waits; WAITING FOR splits LOCK (Db2 locks), PROD (Db2/MQ/server waits, CF) and MISC. BTE/TOR, IDLE, EXE coverage and optional TRANS-APPL% accounting are not modeled. Reporting is independent of WLM management |
 | I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
 | CICS region management | **Simplified** | Per region on its STC/JES rule. CICS transactions on an image share the AORs' DP: most important served period (TRANSACTION, free ride) or the AOR class (REGION/BOTH). TRANSACTION regions' own CPU dispatches with the transactions; their samples are reported in the region class but left out of its goal-management PI, so a class holding only such regions is not managed. BOTH = REGION for dispatch; when every region is REGION, transaction completions go to report classes only (no service-class response time data). No per-region split of a workload's transactions: if any AOR on the image is TRANSACTION, all its CICS transactions ride the transaction DP. The wait for TRANSACTION regions is the transactions' CPU delay (all of it, APPROX) |
