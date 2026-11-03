@@ -87,6 +87,25 @@ describe('equal-DP work shares by ready units, not by demand (PROGRESS realism f
   });
 });
 
+describe('state samples are bounded by ready units (RMF Report Analysis p.52–53, p.540)', () => {
+  // Twelve batch jobs (one TCB each) at low DP on a 4-engine image that high-DP transactions nearly fill.
+  // Each job is sampled once: using or delayed, so delay samples cannot exceed the jobs not using a CP.
+  const r = evaluateLpar({
+    cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0,
+    slices: [txn({ key: 'ONL', scKey: 'ONLHI#1', cpEngines: 3.6 }), server({ key: 'BATCH', scKey: 'BATCHPRD#1', ioClass: 'SEQ', cpEngines: 12, units: 12 })],
+    backlog: {}, io: IO, pagingFrac: 0, dpOf: (k) => (k === 'ONLHI#1' ? 250 : 200),
+  });
+  const b = r.slices[1]!;
+  const samples = b.usingCpu + b.usingZiip + b.usingIo + b.delayCpu + b.delayZiip + b.delayIo + b.delayStorage + b.delayCap;
+  it('total samples ≤ running jobs, so Monitor III ACT cannot exceed the job count', () => {
+    expect(b.delayCpu).toBeGreaterThan(5);
+    expect(samples).toBeLessThanOrEqual(12 + 1e-9);
+  });
+  it('velocity is at least the CPU share per job', () => {
+    expect(b.usingCpu / (b.usingCpu + b.delayCpu)).toBeGreaterThanOrEqual(b.cpGranted / 12 - 1e-9);
+  });
+});
+
 describe('importance ordering under contention', () => {
   it('higher-DP work is served first', () => {
     const slices = [txn({ key: 'A', scKey: 'A#1', cpEngines: 3 }), txn({ key: 'B', scKey: 'B#1', cpEngines: 3 })];

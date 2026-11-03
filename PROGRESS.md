@@ -16,7 +16,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
   link"), rebuilt 2026-11-03 from `dev` at `232a5d1` (#149), the head of the 2026-11-03 milestone PR to `main`. Republish on request.
 - **Latest verified dev:** #149 (`232a5d1`); 61 test files / 538 tests pass; production build boots without console errors.
-- **Seed-42 one-day hashes (`232a5d1`):** Midwest `10f752818d6c8660`; Harbourline `8a846963e9c0263b`; Revenue `d55fd0a5a51ac138`.
+- **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
@@ -84,6 +84,18 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a
 “Behaviour change” note, re-sweeps, and the relevant SPEC §5/§17 updates.
 
+- [x] **WLM state samples bounded by dispatchable units** (2026-11-03, playtest finding). Processor delay of an
+  address-space slice is capped at its ready units minus its other states (RMF Report Analysis p.52–53, p.540).
+  Before, a saturated pool's queue ratio times granted CPU was added to the unmet demand: 12 BATCHPRD jobs on
+  3.4 engines showed 140 delay samples (velocity 3 %, Monitor III ACT 143); now velocity 38 %. Sweep (Normal,
+  `ccr-18f028ce` head): Midwest seeds 1–10 do-nothing day 18 / textbook 28 / expert 10/10; Harbourline 1–10:
+  10 / 29 / 6/10 (losses 1, 2, 4, 7); Revenue 1–5: 22 / 29 / 5/5. Revenue do-nothing was day 10 on dev (same
+  seeds): G1's daily EFILE CPU_PRIORITY/POLICY misses partly came from WLM feeding a falsely suffering
+  importance-4 batch class from WEBDDF. Follow-up below.
+- [ ] **Revenue retune after the sampling fix:** do-nothing survives to day 22 (band top). Restore G1's pressure
+  through content (compliance analytics load in WEBDDF, EFILE growth), not by reintroducing the inflated batch PI.
+- [ ] **Monitor III DELAY Primary Reason may name a job of the same class** (playtest: BATCHPRD named idle
+  CICSAOR1). Fix ready locally, reporting only; PR after the sampling fix merges.
 - [ ] **NEXT: CICS_SOS rewards the wrong fix.** The card (loop 105) is modelled as an effective MXT cut, so raising
   MXT on the PROD2 AORs clears it; real short-on-storage gets *worse* with a higher MXT (more concurrent tasks want
   more DSA). This teaches the opposite of the real remedy. Minimum fix: while the card is active, a higher MXT raises
@@ -216,6 +228,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Change Desk balance: trust and fail risk are paid per request, and the change request banner makes batching every
   edit into one request the default. Bots send commands directly, so sweeps can't see this; check in a playtest whether
   emergency trust costs now bite too little.
+- Playtest (expert, 2026-11-03): the monthly MLC bill is a long feedback loop. A player who stops by day 8 never
+  sees a bill, and a 40-day run leaves little room to correct overspending. Consider a weekly/rolling cost signal or
+  an earlier mid-month bill estimate. Also: no way to enter a seed (only random or the daily challenge).
 - Change Desk drafts don't notice a live value changing under them (e.g. a CF fails): the draft stays as typed. Add a
   "now X" check that drops drafts already satisfied, if playtests trip over it.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),

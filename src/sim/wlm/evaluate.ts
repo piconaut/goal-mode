@@ -663,6 +663,25 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const io = prio?.[s.ioClass]?.[i] ?? input.io[s.ioClass];
     const pg = pgBy[i]!;
     if (s.kind === 'AS') {
+      const usingIo = s.ioRate * ioUsingSec(io);
+      const delayIo = s.ioRate * io.delaySec;
+      const delayStorage = (cpUsing + ziipGranted) * pg;
+      // Each sampled dispatchable unit is in one state (RMF Report Analysis 3.1 p.540; Monitor III counts an
+      // address space once, p.52–53), so processor delay is bounded by the ready units not in another state.
+      // Without the bound a saturated pool's queue ratio (up to MAX_QUEUE_RATIO) on top of the unmet demand
+      // counts the same wait twice: 12 batch jobs on 3.4 engines showed 140 delay samples, velocity 3 %.
+      let delayCpu = cpUsing * qr + unmetCp;
+      let delayZiip = ziipGranted * zq + unmetZiip;
+      const units = sliceUnits[i];
+      if (units !== undefined) {
+        const room = Math.max(0, units - cpUsing - ziipGranted - usingIo - delayIo - delayStorage - capDelay);
+        const proc = delayCpu + delayZiip;
+        if (proc > room) {
+          const f = room / proc;
+          delayCpu *= f;
+          delayZiip *= f;
+        }
+      }
       results[i] = {
         key: s.key,
         scKey: s.scKey,
@@ -671,12 +690,12 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
         iipcpGranted,
         usingCpu: cpUsing,
         usingZiip: ziipGranted,
-        usingIo: s.ioRate * ioUsingSec(io),
-        delayCpu: cpUsing * qr + unmetCp,
-        delayZiip: ziipGranted * zq + unmetZiip,
-        delayIo: s.ioRate * io.delaySec,
+        usingIo,
+        delayCpu,
+        delayZiip,
+        delayIo,
         delayOther: 0,
-        delayStorage: (cpUsing + ziipGranted) * pg,
+        delayStorage,
         delayCap: capDelay,
         completions: 0,
         failed: 0,
