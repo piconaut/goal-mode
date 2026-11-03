@@ -223,10 +223,11 @@ already in docs/research.md).
   TSO#1 (27→29.6), also importance 2, got worse and the "PIs must end closer together" test failed. That test is for
   equal-importance *donors* (SG24-6472 p.60); here it vetoes on bystanders already far past goal, and the gain counts
   only the receiver, not the other transaction classes served by the same regions. WLM fell back to the weaker donor
-  move. IBM's WLM Services p.147 describes secondary donors with unchanged DP; its net-value rules and IBM's
-  2002 Intelligent Resource Director paper support evaluating donor harm and equal-importance convergence separately.
-  Co-served improvements are projected, but pooled credit cannot override that veto; no change made. The sim's
-  summed donor-harm comparison remains a separate fidelity question.
+  move. IBM's WLM Services p.147 describes secondary donors with unchanged DP, and its net-value rules (p.138) apply
+  to primary and secondary donors; with IBM's 2002 Intelligent Resource Director paper they support evaluating donor
+  harm and equal-importance convergence separately. Co-served improvements are projected, but pooled credit cannot
+  override that veto; no change made. The sim's summed donor-harm comparison remains a separate fidelity question;
+  co-served credit and equal-importance convergence for secondary donors are under "Open questions".
 - [ ] **Clue path for "why didn't WLM raise CICS".** The player read the WLM log correctly but couldn't see why there
   was no receiver raise. Consider logging the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal
   importance"), and showing on WLMGL/SYSWKM that a region class managed to transaction goals runs at the served classes'
@@ -405,6 +406,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
+- WLM net value with server topology (playtest round 2, #170): does a move that lifts CICS regions credit the other
+  transaction classes those regions serve (secondary receivers, WLM Services p.137, trace code PA_PRO_UNC_SEC_REC
+  p.708)? Net value is described as donor harm vs "projected improvement to the receiver" (p.138), and SG24-6472
+  p.63/p.81 call the co-served gain a "free ride" side effect, without saying whether it counts. Also unverified:
+  whether the equal-importance convergence rule (SG24-6472 p.60, stated for "the receiver and the donor") applies to
+  secondary donors. The sim credits only the receiver and applies convergence to every equal-importance period.
 - CICS_SOS (2026-11-03): EDSALIM raised to the max before the card is cheap insurance; should a large EDSALIM carry a cost (real storage, or a later abend when a leak finally exhausts it)?
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
 - Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using

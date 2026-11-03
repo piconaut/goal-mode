@@ -6,3 +6,4 @@ out/
 !.claude/agents/
 !.claude/skills/
 runs/
+__pycache__/
