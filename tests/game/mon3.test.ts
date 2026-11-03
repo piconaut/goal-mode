@@ -140,6 +140,29 @@ describe('Monitor III DELAY columns and Primary Reason', () => {
     expect(r.primaryReason).toBe('RG-Cap');
   });
 
+  it('batch delayed behind batch names another batch job, not an idle CICS region (playtest, daily 2026-11-03)', () => {
+    let night = startDay(newRun(MIDWEST, content, 355298, 'NORMAL'), content);
+    night = advance(night, MIDWEST, content, 16 * 360); // 22:00: the batch window, CICS quiet
+    const rows = buildMon3(night, MIDWEST).rows.filter((r) => r.scKey === 'BATCHPRD#1' && r.system !== '*PLEX' && r.primaryDelay === 'PRC');
+    expect(rows.length).toBeGreaterThan(0);
+    const jobs = new Set(night.sim.batch.jobs.filter((j) => j.status === 'RUNNING').map((j) => j.def.name));
+    for (const r of rows) expect(jobs.has(r.primaryReason ?? '')).toBe(true);
+  }, 60_000);
+
+  it('critical batch misrouted into the CICS region class is named, not the region (playtest, daily 2026-11-03)', () => {
+    // The player meant TN STM* → BATCHHI and wrote STCHI: the STM fan then runs at the AORs' importance.
+    let run = startDay(newRun(MIDWEST, content, 355298, 'NORMAL'), content);
+    const def = run.sim.wlm.definition;
+    const jes = def.subsystems.map((x) => (x.subsystem === 'JES' ? { ...x, rules: [{ qualifier: 'TN' as const, pattern: 'STM*', serviceClass: 'STCHI', reportClass: null, children: [] }, ...x.rules] } : x));
+    run = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition: { ...def, subsystems: jes } } } };
+    run = advance(run, MIDWEST, content, 18 * 360); // 00:00: the STM fan runs
+    const stm = new Set(run.sim.batch.jobs.filter((j) => j.status === 'RUNNING' && j.def.name.startsWith('STM')).map((j) => j.lparId));
+    expect(stm.size).toBeGreaterThan(0);
+    const rows = buildMon3(run, MIDWEST).rows.filter((r) => r.scKey === 'STCHI#1' && stm.has(r.system) && r.primaryDelay === 'PRC');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.primaryReason).toMatch(/^STM/);
+  }, 60_000);
+
   it('processor delay names the heaviest other user, not the resource', () => {
     const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
     const rows = buildMon3(hot, MIDWEST).rows.filter((r) => r.primaryDelay === 'PRC');

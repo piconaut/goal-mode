@@ -10,6 +10,7 @@ import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
 import { msuPerCp } from '../sim/hw/cpc';
 import { classify } from '../sim/wlm/classify';
+import { jobShape } from '../sim/subsys/batch';
 import { BUCKET_BOUNDS, goalText, velocityOf } from '../sim/wlm/goals';
 import { ACC_DECAY, accPi, goalInfo, sumAcc, velDelay, velUsing, type ScpAcc } from '../sim/wlm/runtime';
 import type { ScpTick } from '../sim/wlm/evaluate';
@@ -464,7 +465,9 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
 
 /** DELAY Primary Reason (RMF Report Analysis Table 20, p.110), filled in once all rows exist.
  * APPROX: rows are service-class period summaries, not jobs, so PRC names the main address space of the
- * class (other than this row) that used that processor most, DEV the LCU with the slowest response time in
+ * class that used that processor most. The row's own class competes with the share of its other units (n − 1 of
+ * n running jobs or address spaces): "the job that used the processor most while the reported job was delayed"
+ * is often another job of the same class, e.g. batch behind batch (p.110). DEV the LCU with the slowest response time in
  * the DASD report (real RMF gives the volser), and STR is always LOCL (the sim models paging only). */
 function primaryReasons(run: RunState, scenario: Scenario, rows: Mon3Row[], ddfClasses: ReadonlySet<string>): void {
   const sim = run.sim;
@@ -474,8 +477,14 @@ function primaryReasons(run: RunState, scenario: Scenario, rows: Mon3Row[], ddfC
   const spaces = [...scenario.addressSpaces, ...sim.extraAddressSpaces];
   const workloads = allWorkloads(scenario, run);
   const names = new Map<string, string | null>();
-  // The jobname RMF would show for a class's heaviest processor user on one system.
-  const jobOf = (system: string, serviceClass: string): string | null => {
+  const seqRtSec = sim.env.dasd?.classes?.SEQ?.rtSec ?? 0;
+  const hostRoles = new Set(workloads.map((w) => w.hostRole).filter((r): r is string => !!r));
+  // The jobname RMF would show for a class's heaviest processor user on one system. Transaction classes name
+  // their host (CICS AOR) or TSO user; otherwise the class's address spaces and running batch jobs compete by
+  // estimated CP engines: a space's base load (transaction servers also share the row's CPU not explained by
+  // the others, i.e. their hosted transactions), a job its unconstrained CP rate times its last pace.
+  // APPROX: estimates, not per-job measurements (rows are class summaries).
+  const jobOf = (system: string, serviceClass: string, rowCpu: number): string | null => {
     const k = `${system}|${serviceClass}`;
     if (names.has(k)) return names.get(k)!;
     let name: string | null = null;
@@ -489,16 +498,29 @@ function primaryReasons(run: RunState, scenario: Scenario, rows: Mon3Row[], ddfC
     }
     if (!name) {
       const own = spaces.filter((a) => a.lparId === system && classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: system }).serviceClass === serviceClass);
-      name = own.sort((a, b) => b.baseEnginesRef - a.baseEnginesRef || (a.jobname < b.jobname ? -1 : 1))[0]?.jobname ?? null;
-    }
-    if (!name) {
       const jobs = sim.batch.jobs.filter(
         (j) => j.status === 'RUNNING' && j.lparId === system && classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: system }).serviceClass === serviceClass,
       );
-      name = jobs.sort((a, b) => b.def.cpuSecRef - a.def.cpuSecRef || (a.def.name < b.def.name ? -1 : 1))[0]?.def.name ?? null;
+      const cands = [
+        ...own.map((a) => ({ name: a.jobname, engines: a.baseEnginesRef, server: a.role !== null && hostRoles.has(a.role) })),
+        ...jobs.map((j) => ({ name: j.def.name, engines: jobShape(j.def, 1, 1, seqRtSec).cpRate * (j.cpPace ?? 1), server: false })),
+      ];
+      const servers = cands.filter((c) => c.server);
+      const rest = Math.max(0, rowCpu - cands.reduce((a, c) => a + c.engines, 0));
+      for (const c of servers) c.engines += rest / servers.length;
+      name = cands.sort((a, b) => b.engines - a.engines || (a.name < b.name ? -1 : 1))[0]?.name ?? null;
     }
     names.set(k, name);
     return name;
+  };
+  // Running jobs and address spaces of a class on one system: the units another job of the same class can be.
+  const unitsOf = (system: string, serviceClass: string): number => {
+    if (ddfClasses.has(serviceClass)) return Infinity;
+    const jobs = sim.batch.jobs.filter(
+      (j) => j.status === 'RUNNING' && j.lparId === system && classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: system }).serviceClass === serviceClass,
+    ).length;
+    const own = spaces.filter((a) => a.lparId === system && classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: system }).serviceClass === serviceClass).length;
+    return jobs + own;
   };
   for (const r of rows) {
     if (r.primaryDelay === 'CAP') r.primaryReason = 'RG-Cap';
@@ -506,10 +528,15 @@ function primaryReasons(run: RunState, scenario: Scenario, rows: Mon3Row[], ddfC
     else if (r.primaryDelay === 'STR') r.primaryReason = 'LOCL';
     else if (r.primaryDelay === 'PRC') {
       const use = r.delay.ziip > r.delay.cpu ? (x: Mon3Row) => x.ziipEngines : (x: Mon3Row) => x.cpuEngines;
+      const others = (x: Mon3Row): number => {
+        if (x.scKey !== r.scKey) return use(x);
+        const n = unitsOf(x.system, x.serviceClass);
+        return n > 1 ? (use(x) * (n === Infinity ? 1 : n - 1)) / (n === Infinity ? 1 : n) : 0;
+      };
       const top = rows
-        .filter((x) => x.system !== '*PLEX' && (r.system === '*PLEX' || x.system === r.system) && x.scKey !== r.scKey && use(x) > 1e-6)
-        .reduce<Mon3Row | null>((b, x) => (!b || use(x) > use(b) ? x : b), null);
-      r.primaryReason = top ? jobOf(top.system, top.serviceClass) : null;
+        .filter((x) => x.system !== '*PLEX' && (r.system === '*PLEX' || x.system === r.system) && others(x) > 1e-6)
+        .reduce<Mon3Row | null>((b, x) => (!b || others(x) > others(b) ? x : b), null);
+      r.primaryReason = top ? jobOf(top.system, top.serviceClass, top.cpuEngines) : null;
     }
   }
 }
