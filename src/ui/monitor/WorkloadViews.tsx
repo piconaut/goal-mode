@@ -1,4 +1,5 @@
-import { type Mon3Row, type Mon3View } from '../../game/mon3';
+import { useState } from 'react';
+import { type Mon3ProcJob, type Mon3Row, type Mon3View } from '../../game/mon3';
 import { Empty } from '../Empty';
 import { PinButton } from '../Evidence';
 import type { GameHandle } from '../useGame';
@@ -54,10 +55,71 @@ export function Delay({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null
   );
 }
 
-export function Procu({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null }) {
-  const top = [...rows].filter((r) => r.cpuEngines + r.ziipEngines > 0.001).sort((a, b) => b.cpuEngines - a.cpuEngines || (a.scKey < b.scKey ? -1 : 1));
+/** PROCU lists jobs (RMF Report Analysis p.188); the class summary keeps the EAppl% pins. */
+export function Procu({ rows, jobs, game }: { rows: Mon3Row[]; jobs: Mon3ProcJob[] | null; game: GameHandle | null }) {
+  const [by, setBy] = useState<'jobs' | 'classes'>('jobs');
+  const [cls, setCls] = useState<string | null>(null);
   const p2 = (engines: number) => (engines * 100).toFixed(1);
+  const multi = new Set((jobs ?? []).map((j) => j.system)).size > 1;
+  const shown = (jobs ?? []).filter((j) => j.eapplCpEngines + j.eapplZiipEngines > 0.0005 && (cls === null || j.serviceClass === cls));
+  const toggle = (
+    <div className="form">
+      <button className={by === 'jobs' ? 'active' : ''} onClick={() => setBy('jobs')} disabled={!jobs}>
+        Jobs
+      </button>
+      <button className={by === 'classes' ? 'active' : ''} onClick={() => setBy('classes')}>
+        Service classes
+      </button>
+      {by === 'jobs' && cls !== null && (
+        <button onClick={() => setCls(null)} title="Show every job (PROCU without a class filter)">
+          ✕ only {cls}
+        </button>
+      )}
+    </div>
+  );
+  if (by === 'jobs' && jobs)
+    return (
+      <>
+        {toggle}
+        <table>
+          <thead>
+            <tr>
+              {multi && <th>System</th>}
+              <th>Jobname</th>
+              <th title="S started task · B batch · T TSO">CX</th>
+              <th>Service Class</th>
+              <th className="num">Time on CP % Total</th>
+              <th className="num">IIP</th>
+              <th className="num">EAppl % CP</th>
+              <th className="num">IIP</th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((j) => (
+              <tr key={`${j.system}|${j.jobname}`}>
+                {multi && <td>{j.system}</td>}
+                <td>{j.jobname}</td>
+                <td>{j.cx}</td>
+                <td>
+                  <button className="link" title={`Only ${j.serviceClass} (PROCU ,${j.serviceClass})`} onClick={() => setCls(j.serviceClass)}>
+                    {j.serviceClass}
+                  </button>
+                </td>
+                <td className="num">{p2(j.cpEngines)}</td>
+                <td className="num">{p2(j.iipcpEngines)}</td>
+                <td className="num">{p2(j.eapplCpEngines)}</td>
+                <td className="num">{p2(j.eapplZiipEngines)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {shown.length === 0 && <Empty>No job used a processor.</Empty>}
+      </>
+    );
+  const top = [...rows].filter((r) => r.cpuEngines + r.ziipEngines > 0.001).sort((a, b) => b.cpuEngines - a.cpuEngines || (a.scKey < b.scKey ? -1 : 1));
   return (
+    <>
+    {toggle}
     <table>
       <thead>
         <tr>
@@ -85,6 +147,7 @@ export function Procu({ rows, game }: { rows: Mon3Row[]; game: GameHandle | null
         ))}
       </tbody>
     </table>
+    </>
   );
 }
 

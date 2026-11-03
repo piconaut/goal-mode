@@ -430,8 +430,12 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
   if (sys && !systems.length && !cpc.length) return `No system ${opts.system}; systems: ${m.systems.map((x) => x.system).join(' ')}`;
   const when = run.phase === 'LIVE' ? `range ending ${clockText(run.sim.tick)}` : `snapshot from ${clockText(run.sim.tick)} (not live: phase ${run.phase})`;
   const head = `Monitor III, last ${m.rangeSec}s, ${when}. Policy ${m.policy}. CPC logical:physical CP ratio ${m.logicalToPhysical.toFixed(2)}.`;
-  if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...(m.wkm ?? []).map((x) => 'SYSWKM ' + JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
+  if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...(m.wkm ?? []).map((x) => 'SYSWKM ' + JSON.stringify(x)), ...pick(m.procJobs ?? [], (x) => x.system).map((x) => 'PROCU ' + JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
   const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', DELAY_HEAD, table(rows.filter((r) => r.resourceSamples !== false).map(delayRow))];
+  // PROCU lists jobs by EAppl % CP (RMF Report Analysis p.188); percentages are of one engine.
+  const procu = pick(m.procJobs ?? [], (x) => x.system).filter((j) => j.eapplCpEngines + j.eapplZiipEngines > 0.0005);
+  const p1 = (e: number) => Number((e * 100).toFixed(1));
+  out.push('', 'PROCU (top 15 jobs; shares of each class row are estimated)', table(procu.slice(0, 15).map((j) => ({ system: j.system, jobname: j.jobname, cx: j.cx, serviceClass: j.serviceClass, cpPct: p1(j.cpEngines), iipcpPct: p1(j.iipcpEngines), eapplCpPct: p1(j.eapplCpEngines), eapplIipPct: p1(j.eapplZiipEngines) }))));
   if (m.enclaves.length && !sys) out.push('', 'ENCLAVE', table(m.enclaves));
   // SYSWKM: CICS classes' work manager states and the AORs serving them (their CPU and delays live on those AORs).
   for (const w of m.wkm ?? []) {

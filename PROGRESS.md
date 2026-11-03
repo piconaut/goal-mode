@@ -20,7 +20,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
   **Held for the user** (write proposals, don't implement): the finance feedback loop, the full-day tutorial, M9.
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-  link"), rebuilt 2026-11-03 from `dev` at `8c0dd9e` (#160). Republish on request.
+  link"), rebuilt 2026-11-03 from `dev` at `2253b11` (#164). Republish on request.
 - **Latest verified dev:** #155; 61 test files / 543 tests pass; production build boots without console errors.
 - **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
@@ -97,8 +97,13 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
   DEPENDENCY/BATCH_OVERLAP: `triggerOf` (`src/game/sla.ts`) returns BATCH_OVERLAP whenever the Db2 lock index > 1,
   before POLICY. Without a card, CPU priority and dependency misses are the policy's; keep BATCH_OVERLAP for lock
   contention. Fixed 2026-11-03: goldens and `compare` unchanged; Midwest textbook/expert seeds 1–5 identical.
-- [ ] **PROCU/DELAY are class rows:** real Monitor III lists jobs, so STMxxxx under STCHI is visible in seconds. Add the
+- [x] **PROCU/DELAY are class rows:** real Monitor III lists jobs, so STMxxxx under STCHI is visible in seconds. Add the
   top jobs per class (expandable rows or a job-level PROCU), from the sim's per-job batch state and address spaces.
+  Done 2026-11-03: PROCU lists jobs by EAppl % CP (erbb500 p.188–189: Jobname, CX, Service Class, Time on CP %, EAppl %),
+  each system row's CPU shared among the class's address spaces and running jobs by estimated load (APPROX, the
+  estimate DELAY's Primary Reason already used); DDF enclave CPU in DIST's EAppl only; click a class to filter, or
+  switch to the class totals (which keep the EAppl% pins). Also in `play mon3`. DELAY stays class rows: the sim has no
+  per-job state samples to show.
 - [x] **WFEX Speed says "No work" for CICS transaction classes** with work (since #147 their resource samples moved to
   the AOR classes). Fixed 2026-11-03: their Speed is the serving region classes' workflow, marked "(regions)"
   (SYSWKM shows the serving address spaces' using and velocity, SG24-6645 p.277–278; see docs/research.md).
