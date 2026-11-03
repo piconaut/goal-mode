@@ -529,7 +529,7 @@ export function catalogText(file: PlayFile): string {
   out.push(`  workloads: ${iq.apps.map((a) => a.id).join(' ')}`);
   out.push('projects (project ID hours; engineer-hours spread over days):');
   for (const p of projectsView(file.run)) out.push(`  ${p.id}${p.done ? ' [done]' : ''}: ${p.name}, ${p.hoursDone}/${p.hours}h, max ${p.maxHoursPerDay}h/day. ${p.description}`);
-  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> [--at D2 10:40] | CPC <lparId> PRSM_DELAY|CAPPED [interval id, as in Partition Data | --at D2 10:40 for a past Monitor III range] | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
+  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> [jobname: a SYSWKM server, metric VELOCITY] [--at D2 10:40] | CPC <lparId> PRSM_DELAY|CAPPED [interval id, as in Partition Data | --at D2 10:40 for a past Monitor III range] | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
   out.push(`  metrics: ${Object.keys(EVIDENCE_METRICS).join(' ')}`);
   const cfg = file.run.sim.config;
   out.push('change targets (current config):');

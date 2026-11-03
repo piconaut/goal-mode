@@ -2,6 +2,7 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { EVIDENCE } from '../../src/content/evidence';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, judgeEvidence } from '../../src/game/evidence';
+import { buildMon3 } from '../../src/game/mon3';
 import { advance, newRun, startDay, submitRca } from '../../src/game/run';
 import type { Incident, RunState } from '../../src/game/types';
 
@@ -170,6 +171,18 @@ describe('CICS resource evidence on region classes', () => {
     expect(live.ok).toBe(false);
     const historical = addPin(regressed, MIDWEST, { source: 'MON3', system: '*PLEX', scKey: 'ONLHI#1', metric: 'DELAY_CPU', tick: regressed.sim.tick }, () => ({ tick: regressed.sim.tick, view: { rows: [{ system: '*PLEX', scKey: 'ONLHI#1', resourceSamples: false, pi: 2, cpuEngines: 0, endedPerSec: 100, delay: { cpu: 0, ziip: 0, io: 0, stor: 0, cap: 0, other: 0 } }], cpc: [] } }));
     expect(historical.ok).toBe(false);
+  });
+
+  it('a SYSWKM Veloc pin records the server\'s velocity, not a CPU delay (playtest round 1)', () => {
+    const m = buildMon3(regressed, MIDWEST);
+    const s = m.wkm!.find((w) => w.scKey === 'ONLHI#1')!.servers[0]!;
+    const r = pin(regressed, { source: 'MON3', system: s.system, scKey: 'ONLHI#1', jobname: s.jobname, metric: 'VELOCITY' });
+    const p = r.pins.at(-1)!;
+    expect([p.source, p.metric, p.subject, p.system]).toEqual(['SYSWKM', 'VELOCITY', s.jobname, s.system]);
+    expect(p.value).toBe(s.velocity);
+    expect(p.text).toContain(`${s.jobname} velocity`);
+    expect(judgeEvidence(r, MIDWEST, incident(r), [p])[0]!.relevance).toBe(0);
+    expect(addPin(regressed, MIDWEST, { source: 'MON3', system: s.system, scKey: 'ONLHI#1', jobname: 'NOSUCH', metric: 'VELOCITY' }).ok).toBe(false);
   });
 
   it('accepts cap delay on a hosted region class as relevant to the CICS incident', () => {

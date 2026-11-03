@@ -20,6 +20,7 @@ npm run -s play -- runs/a.json mon3 PRDA --at D1 09:40   # a past range from the
 npm run -s play -- runs/a.json rca INC3 CPU_PRIORITY POLICY [--evidence PIN1,PIN4]   (ids: INC incident, PIN pin, CHG planned change; bare numbers work too)
 npm run -s play -- runs/a.json pin WLMGL 312 '*PLEX' ONLHI#1 DELAY_CPU   # interval id; also MON3, CPC, DB2, CICS (see catalog)
 npm run -s play -- runs/a.json pin MON3 PRDA MKTORD DELAY_CPU --at D1 09:40   # MON3 and CPC pins from a past Monitor III range
+npm run -s play -- runs/a.json pin MON3 PROD1 ONLHI#1 VELOCITY CICSAOR1   # a SYSWKM server's velocity (current range only)
 npm run -s play -- runs/a.json ask CALENDAR       # ask around; APP_ENTRY/GROWTH take a workload id
 npm run -s play -- runs/a.json project SQL_TUNING 4   # spend engineer-hours on a multi-day project
 npm run -s play -- runs/a.json buy RMF_MON3
