@@ -116,9 +116,10 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
   change (emergency, or planned and failed at 06:00) hands its Change Desk changes back to the basket (a later
   draft of the same target wins) with a notice; policy activations keep going back to the pending policy; fixes
   and hardware orders aren't basket changes.
-- [ ] **Ops Console layout:** Batch Window above Operations Log; keep Incidents and Batch Window visible (the at-a-glance
+- [x] **Ops Console layout:** Batch Window above Operations Log; keep Incidents and Batch Window visible (the at-a-glance
   health panels) when the window is narrower than full desktop width or at phone width, instead of dropping them to the
-  bottom.
+  bottom. Done: below 1360 px the health panels lead the console (side by side when they fit), the log comes after;
+  at desktop width Incidents, Batch window and the log stack in the last column.
 - [x] **Saves during the live day, save export, seed entry** (2026-11-03). The live day already saved each sim hour,
   but only while no older save was on offer, and the phase-change save that replaced an older save never cleared
   that offer, so a session that started a new run over an old save never saved mid-day again (likely the
