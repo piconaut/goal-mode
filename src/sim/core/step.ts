@@ -20,9 +20,9 @@ import {
   startJobs,
   type JobRuntime,
 } from '../subsys/batch';
-import { qrTcb } from '../subsys/cics';
+import { edsaInUseMb, effectiveMxt, qrTcb, storageCapTasks } from '../subsys/cics';
 import { slotQueueStep } from '../subsys/slots';
-import { SLOT_QUEUE } from '../../content/subsys';
+import { CICS_STORAGE, SLOT_QUEUE } from '../../content/subsys';
 import { bpIoMultiplier, DB2 } from '../subsys/db2';
 import { baseRate, scheduledBurstMult, stepBurst, stepNoise } from '../workload/arrivals';
 import { buildSlices, honorsPriority, scKeyAtService, scKeyOf } from '../workload/slices';
@@ -59,6 +59,7 @@ import type {
   LparPoolRuntime,
   PoolType,
   LparRuntime,
+  CicsStorageTick,
   LparTick,
   SimState,
   WorkloadRuntime,
@@ -230,6 +231,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     lparTicks: [],
     onlineDb2Rate: 0,
     slotQueue: {},
+    cicsStorageBy: {},
   };
   for (const l of zosLpars) lparDemand(t, l);
   // Coupling facilities: request work from last tick; a shared CF without thin
@@ -384,6 +386,8 @@ interface TickCtx {
   onlineDb2Rate: number;
   /** Transactions queued for a task slot (MXT, MAXDBAT) per `lparId:kind`. */
   slotQueue: Record<string, number>;
+  /** CICS region storage per LPAR (reporting only). */
+  cicsStorageBy: Record<string, CicsStorageTick[]>;
 }
 
 /** Sums over all images, accumulated in image order. */
@@ -590,7 +594,23 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   }
   const meanQrFrac = aors.length ? aors.reduce((a, c) => a + c.qrFrac, 0) / aors.length : 0;
   const qr = qrTcb(aors.length ? (cicsQrCpu * meanQrFrac) / aors.length : 0);
-  const maxTasks = aors.reduce((a, c) => a + c.maxTasks, 0);
+  // Short on storage: a region whose EDSA cannot hold its in-flight tasks attaches fewer (CICS Performance p.76).
+  const offeredPerAor = aors.length ? cicsRtWeighted / aors.length : 0;
+  let maxTasks = 0;
+  const storage: CicsStorageTick[] = [];
+  for (const c of aors) {
+    const cap = storageCapTasks(c, prev.tick, TICK_SEC, CICS_STORAGE);
+    const eff = effectiveMxt(c.maxTasks, cap, offeredPerAor, CICS_STORAGE.sosThrashGamma);
+    maxTasks += eff;
+    const inFlight = Math.min(c.maxTasks, offeredPerAor);
+    storage.push({
+      region: c.name,
+      limitMb: c.edsaLimitMb ?? CICS_STORAGE.defaultEdsaLimitMb,
+      inUseMb: edsaInUseMb(c, inFlight, prev.tick, TICK_SEC, CICS_STORAGE),
+      sos: eff < c.maxTasks && inFlight > cap,
+    });
+  }
+  if (storage.length) t.cicsStorageBy[l.id] = storage;
   // Task-slot queues persist across ticks: offered load above MXT / MAXDBAT builds a backlog that only
   // drains at limit / hold time, and times out (MAXCONQW for DDF).
   const slotQ = (kind: 'MXT' | 'DBAT', on: boolean, rate: number, holdW: number, refW: number, limit: number, timeoutSec: number) => {
@@ -940,7 +960,8 @@ function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   }
   systems.push({ lparId: l.id, scps });
   const cics = regions?.targets;
-  lparTicks.push({ lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, ...(res.rcs ? { rcs: res.rcs } : {}), ...(cics ? { cics } : {}) });
+  const cicsStorage = t.cicsStorageBy[l.id];
+  lparTicks.push({ lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, ...(res.rcs ? { rcs: res.rcs } : {}), ...(cics ? { cics } : {}), ...(cicsStorage ? { cicsStorage } : {}) });
 }
 
 /** Seconds after a played day's 06:00 start → wall-clock text. */

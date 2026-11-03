@@ -2,6 +2,7 @@
 // state or a validation error. Commands are plain data so runs can be replayed.
 
 import { CF_FAILURE } from '../../content/cf';
+import { CICS_STORAGE } from '../../content/subsys';
 import { cfUsedGb, duplexSecondary, failCf, type CfStructureConfig } from '../cf/cf';
 import { startTfp, type TfpTerms } from '../cost/mlc';
 import { TICK_SEC } from './units';
@@ -27,7 +28,7 @@ export type Command =
   | { kind: 'SET_CPC_MEMORY'; cpcId: string; memoryGb: number }
   | { kind: 'SET_LPAR_MEMORY'; lparId: string; memoryGb: number }
   | { kind: 'SET_DB2'; ssid: string; bufferPoolGb?: number; maxDbat?: number }
-  | { kind: 'SET_CICS'; name: string; maxTasks?: number; qrFrac?: number }
+  | { kind: 'SET_CICS'; name: string; maxTasks?: number; qrFrac?: number; edsaLimitMb?: number; leak?: { startMb: number; mbPerHour: number } | null }
   | { kind: 'ADD_AOR'; lparId: string; name: string; maxTasks: number; qrFrac: number }
   | { kind: 'SET_JOB_CLASS'; jobClass: string; mode?: 'JES' | 'WLM'; initiators?: Record<string, number> }
   | { kind: 'SET_CF'; lparId: string; thinInterrupts?: boolean; degrade?: number }
@@ -183,11 +184,16 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       if (!s.config.cics.some((r) => r.name === cmd.name)) return fail(s, `No CICS region ${cmd.name}`);
       // CICS Performance p.89: MXT is 10–2000.
       if (cmd.maxTasks !== undefined && (!Number.isInteger(cmd.maxTasks) || cmd.maxTasks < 10 || cmd.maxTasks > 2000)) return fail(s, 'MXT must be 10–2000');
+      if (cmd.edsaLimitMb !== undefined && (!Number.isInteger(cmd.edsaLimitMb) || cmd.edsaLimitMb < CICS_STORAGE.minEdsaLimitMb || cmd.edsaLimitMb > CICS_STORAGE.maxEdsaLimitMb))
+        return fail(s, `EDSALIM must be ${CICS_STORAGE.minEdsaLimitMb}–${CICS_STORAGE.maxEdsaLimitMb} MB`);
       return ok(
         withConfig(s, (c) => {
           const r = c.cics.find((x) => x.name === cmd.name)!;
           if (cmd.maxTasks !== undefined) r.maxTasks = cmd.maxTasks;
           if (cmd.qrFrac !== undefined) r.qrFrac = cmd.qrFrac;
+          if (cmd.edsaLimitMb !== undefined) r.edsaLimitMb = cmd.edsaLimitMb;
+          if (cmd.leak === null) delete r.leak;
+          else if (cmd.leak) r.leak = { ...cmd.leak, sinceTick: s.tick };
         }),
         `${cmd.name} updated`,
       );

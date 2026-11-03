@@ -536,8 +536,10 @@ export const MIDWEST_EVENTS: EventDef[] = [
     clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures, or absorb it (cap, more CP).',
   },
   {
-    // A program storage leak drives both PROD2 AORs short on storage: CICS stops attaching new tasks until it recovers.
-    // APPROX: SOS modelled as an effective MXT cut (10 per region, MXT's floor), so queued tasks show as MXT wait.
+    // A program storage leak fills both PROD2 AORs' EDSA: once in-flight tasks no longer fit, CICS defers attaches
+    // (CICS Performance p.76) and the work queues for task slots. Model in sim/subsys/cics.ts.
+    // FICTIONAL: the leak starts 420 MB in (room for ~40 tasks under the default EDSALIM) and grows 40 MB an hour,
+    // so peak load hits SOS within about an hour and the cushion floor within two.
     id: 'CICS_SOS',
     name: 'CICS short on storage (PROD2 AORs)',
     category: 'SOFTWARE',
@@ -549,17 +551,17 @@ export const MIDWEST_EVENTS: EventDef[] = [
     startHour: [9, 14],
     durationHours: 4,
     begin: [
-      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 10 },
-      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 10 },
+      { kind: 'SET_CICS', name: 'CICSAOR2', leak: { startMb: 420, mbPerHour: 40 } },
+      { kind: 'SET_CICS', name: 'CICSAOR4', leak: { startMb: 420, mbPerHour: 40 } },
     ],
     end: [
-      { kind: 'SET_CICS', name: 'CICSAOR2', maxTasks: 200 },
-      { kind: 'SET_CICS', name: 'CICSAOR4', maxTasks: 200 },
+      { kind: 'SET_CICS', name: 'CICSAOR2', leak: null },
+      { kind: 'SET_CICS', name: 'CICSAOR4', leak: null },
     ],
     fix: 'RECYCLE_PROD2_AORS',
     forewarning: null,
     announcement: null,
-    clue: 'CICS report / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); DFHSM0131 SOS messages in the region logs. Fixes: recycle the PROD2 AORs, or route the CICS work (teller, online banking, card authorisation, payments) to PROD1.',
+    clue: 'SMF 110 / Mon III: MXT wait per transaction up on PROD2 regions only (CPU and QR wait normal); CICS region storage shows EDSA in use at EDSALIM and SOS on the PROD2 AORs (DFHSM0133 messages). Fixes: recycle the PROD2 AORs, raise EDSALIM, lower MXT to what storage holds, or route the CICS work (teller, online banking, card authorisation, payments) to PROD1.',
   },
   {
     id: 'CP_SPARING',

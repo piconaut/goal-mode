@@ -88,6 +88,10 @@ export interface CicsRegionConfig {
   maxTasks: number;
   /** Fraction of transaction CPU that must run on the single QR TCB (non-threadsafe). */
   qrFrac: number;
+  /** EDSALIM, MB (absent = content default). */
+  edsaLimitMb?: number;
+  /** A program storage leak (event): EDSA held = startMb + mbPerHour × hours since sinceTick. */
+  leak?: { startMb: number; mbPerHour: number; sinceTick: number };
 }
 
 export interface JobClassConfig {
@@ -173,12 +177,21 @@ export interface WorkloadTick {
   queueDepth?: Record<string, number>;
 }
 
+export interface CicsStorageTick {
+  region: string;
+  inUseMb: number;
+  limitMb: number;
+  sos: boolean;
+}
+
 export interface LparTick {
   lparId: string;
   scps: ScpTick[];
   rcs?: ReportClassTick[];
   /** Where RMF reports this image's CICS transaction samples (reporting.ts). */
   cics?: CicsTargets;
+  /** CICS AOR dynamic storage this tick (SOS = in-flight tasks no longer fit under EDSALIM). */
+  cicsStorage?: CicsStorageTick[];
   roleHealth: Record<string, { health: number; queueRatio: number }>;
 }
 
