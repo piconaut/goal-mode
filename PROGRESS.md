@@ -9,7 +9,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
-- **Next up (in order):** (1) human UI playtest of the republished build (M8.6; checklist in
+- **Next up (in order):** (1) continue the human playtest and work its findings ("Playtest round 1"; checklist in
   [docs/playtest-checklist.md](docs/playtest-checklist.md)); (2) **CICS_SOS realism fix** (M8.7 below); (3) **`step.ts`
   refactor** (Maintenance below); then a fresh 20-seed baseline sweep, and M9 shaped by the playtest.
   The 27-card event deck is complete; add events only if a playtest asks for them.
@@ -79,6 +79,39 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 - [ ] Expand career unlocks: scenarios, starting tools, cosmetic titles and further levels. Current career has
   seven levels, starting perks, and Report Class Hoarder at level 7; scenario unlocks remain open.
 
+### Playtest round 1 (2026-11-03, expert player, daily challenge 2026-11-03, Midwest Normal, days 1–2)
+
+Player profile: sysperf/capacity team lead at a major bank; played an earlier build to day 8. Checklist:
+[docs/playtest-checklist.md](docs/playtest-checklist.md). First incident (D2 23:44–04:12): the player's rule
+`JES TN STM* → STCHI` (meant BATCHHI) put the 11-job critical STM fan in the CICS AORs' importance-1 class, so CICS
+starved behind batch at its own DP and WLM found no donor. A legitimate player mistake, but the game hid it:
+- [x] Velocity/PI/ACT inflated by double-counted delay samples (velocity 1, PI 497, ACT 256) — #153.
+- [x] DELAY Primary Reason named a CICS region instead of the STM job (see M8.7).
+- [ ] **RCA trigger mislabel:** no card was active, yet the truth was CPU_PRIORITY/BATCH_OVERLAP and
+  DEPENDENCY/BATCH_OVERLAP: `triggerOf` (`src/game/sla.ts`) returns BATCH_OVERLAP whenever the Db2 lock index > 1,
+  before POLICY. Without a card, CPU priority and dependency misses are the policy's; keep BATCH_OVERLAP for lock
+  contention. Game-rule change: goldens/oracle-RCA sweep.
+- [ ] **PROCU/DELAY are class rows:** real Monitor III lists jobs, so STMxxxx under STCHI is visible in seconds. Add the
+  top jobs per class (expandable rows or a job-level PROCU), from the sim's per-job batch state and address spaces.
+- [ ] **WFEX Speed says "No work" for CICS transaction classes** with work (since #147 their resource samples moved to
+  the AOR classes). Use the work-manager states (or the region classes) for their speed.
+- [ ] **SYSWKM: pinning a region's velocity pins the DELAY CPU-delay figure** instead (pin target mismatch).
+- [ ] **Monitor III history gap:** SYSSUM history went from 23:22 straight to 23:44 (check MINTIME snapshots and the
+  history picker).
+- [ ] **Change Desk hint** when a JES rule routes jobs into a class that serves CICS regions or started tasks (warn,
+  don't block: it's a valid mistake to be able to make).
+- [ ] **Failed change requests:** a failed request should return its changes to the basket; the change list in the
+  failure notice is truncated, so a failed 9-change request was unrecoverable.
+- [ ] **Ops Console layout:** Batch Window above Operations Log; keep Incidents and Batch Window visible (the at-a-glance
+  health panels) when the window is narrower than full desktop width or at phone width, instead of dropping them to the
+  bottom.
+- [ ] **Save export** (button) so a playtest run can be replayed headlessly; there is no seed entry either (only random
+  or the daily challenge).
+- [ ] **Finance feedback loop:** the monthly MLC bill arrives too late (a player who stops by day 8 never sees one; 40
+  days leave little room to correct). Consider a weekly/rolling cost signal or a mid-month bill estimate.
+- [ ] **Tutorial:** a full guided day for non-experts (the expert knew where to look; others won't).
+- Positive: the batch critical-path estimate slipping on night 1 reads as a fair early warning of the day-27/28 wall.
+
 ### M8.7 Realism fixes
 
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a
@@ -94,8 +127,10 @@ Facts/citations: [docs/research.md](docs/research.md). Model changes require upd
   importance-4 batch class from WEBDDF. Follow-up below.
 - [ ] **Revenue retune after the sampling fix:** do-nothing survives to day 22 (band top). Restore G1's pressure
   through content (compliance analytics load in WEBDDF, EFILE growth), not by reintroducing the inflated batch PI.
-- [ ] **Monitor III DELAY Primary Reason may name a job of the same class** (playtest: BATCHPRD named idle
-  CICSAOR1). Fix ready locally, reporting only; PR after the sampling fix merges.
+- [x] **Monitor III DELAY Primary Reason may name a job of the same class** (playtest: BATCHPRD named idle
+  CICSAOR1; STCHI with misrouted STM batch named CICSAOR1). The own class competes with its other units, and a
+  class's address spaces and running batch jobs compete by estimated CP engines (reporting only; `npm run compare`:
+  sim/game/RMF identical, Monitor III Primary Reason values differ).
 - [ ] **NEXT: CICS_SOS rewards the wrong fix.** The card (loop 105) is modelled as an effective MXT cut, so raising
   MXT on the PROD2 AORs clears it; real short-on-storage gets *worse* with a higher MXT (more concurrent tasks want
   more DSA). This teaches the opposite of the real remedy. Minimum fix: while the card is active, a higher MXT raises
@@ -228,9 +263,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Change Desk balance: trust and fail risk are paid per request, and the change request banner makes batching every
   edit into one request the default. Bots send commands directly, so sweeps can't see this; check in a playtest whether
   emergency trust costs now bite too little.
-- Playtest (expert, 2026-11-03): the monthly MLC bill is a long feedback loop. A player who stops by day 8 never
-  sees a bill, and a 40-day run leaves little room to correct overspending. Consider a weekly/rolling cost signal or
-  an earlier mid-month bill estimate. Also: no way to enter a seed (only random or the daily challenge).
 - Change Desk drafts don't notice a live value changing under them (e.g. a CF fails): the draft stays as typed. Add a
   "now X" check that drops drafts already satisfied, if playtests trip over it.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
