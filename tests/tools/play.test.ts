@@ -135,6 +135,7 @@ describe('headless play interface', () => {
     expect(tickOfClock('D2 05:59')).toBe(2 * 8640 - 6);
     expect(tickOfClock('D0 10:00')).toBeNull();
     expect(tickOfClock('10:00')).toBeNull();
+    expect(tickOfClock('D2 23:30:00')).toBe(tickOfClock('D2 23:30')); // formatClock's own text (Monitor III Go to)
   });
 
   it('advance keeps a Monitor III history for mon3 --at and pin --at; paced advance keeps the same one', () => {

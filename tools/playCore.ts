@@ -13,7 +13,7 @@ import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
 import { MON3_HISTORY, TOOLS, type ToolFeature } from '../src/content/tools';
 import { applyReportClassAdvice } from '../src/game/rcAdvisor';
-import { clockAt, formatClock } from '../src/sim/core/clock';
+import { clockAt, formatClock, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads, runWorkItems } from '../src/game/workloads';
 import { decideTfp } from '../src/game/tfp';
 import { decodeRunJson, encodeRunJson } from '../src/game/runFile';
@@ -30,7 +30,7 @@ import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
-import { DAY_START_HOUR, TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
+import { TICK_SEC, TICKS_PER_HOUR } from '../src/sim/core/units';
 import { buildMon3, type Mon3Row } from '../src/game/mon3';
 import { emptyMon3PinHistory, mon3PinRange, mon3PinsAt, recordMon3Pins, type Mon3PinHistory } from '../src/game/mon3PinHistory';
 import type { SmfKind } from '../src/worker/protocol';
@@ -551,15 +551,7 @@ export function clockText(tick: number): string {
   const f = formatClock(tick);
   return `${f.slice(0, f.indexOf(' '))} ${WEEKDAYS[clockAt(tick).dayOfWeek]} ${f.slice(-8, -3)}`;
 }
-/** `D2 10:40` or `D2 Tue 10:40` (as clockText prints it) → tick; the small hours belong to the played day before. */
-export function tickOfClock(text: string): number | null {
-  const m = /^D(\d+)\s+(?:[A-Za-z]{3}\s+)?(\d{1,2}):(\d{2})$/i.exec(text.trim());
-  if (!m) return null;
-  const day = Number(m[1]) - 1, hh = Number(m[2]), mm = Number(m[3]);
-  if (day < 0 || hh > 23 || mm > 59) return null;
-  const sec = ((hh - DAY_START_HOUR + 24) % 24) * 3600 + mm * 60;
-  return day * TICKS_PER_DAY + Math.floor(sec / TICK_SEC);
-}
+export { tickOfClock };
 
 function mon3RangeText(file: PlayFile): string {
   const r = file.mon3 ? mon3PinRange(file.mon3) : null;
