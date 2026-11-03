@@ -70,9 +70,9 @@ let savedDesk: DeskState | null = null;
 const LIVE_SAVE_EVERY_TICKS = 360; // one sim hour
 let lastLiveSaveHour = -1;
 let liveSaveInFlight = false;
-/** Live-day saves: each sim hour, but at least every few real seconds (a reload or closed tab can't flush a save:
+/** Live-day saves: each sim hour, but at least every 30 real seconds (a reload or closed tab can't flush a save:
  * the worker is gone before IndexedDB commits) and not more often than every couple of seconds at high speed. */
-const LIVE_SAVE_MAX_MS = 5000;
+const LIVE_SAVE_MAX_MS = 30_000;
 const LIVE_SAVE_MIN_MS = 2000;
 let lastLiveSaveMs = 0;
 /** Mirror of the UI's change basket, so it can be saved with the run. */
@@ -187,7 +187,7 @@ function recordCareer() {
 }
 
 /** Save whenever the phase changes (end of day, game over) so a reload resumes there, and through the live day
- * (see LIVE_SAVE_MAX_MS) so a crash or reload costs a few seconds (and cannot replay the day from its briefing). */
+ * (see LIVE_SAVE_MAX_MS) so a crash or reload costs at most about 30 s of play (and cannot replay the day from its briefing). */
 function autosave() {
   if (spectating) return;
   if (run.phase !== lastPhase) {
