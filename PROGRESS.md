@@ -180,8 +180,8 @@ already in docs/research.md).
   artifact's file-save runtime capability, or add "Copy save to clipboard"; let ⇧ import take pasted text and strip
   stray backticks. Also: the save has no Monitor III history, so `mon3 --at` on an imported save shows nothing for
   past ranges (replay forward instead, or include the history).
-- [ ] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. Probably the worker request
-  loops fixed in #164; confirm with the player's symptoms before closing.
+- [x] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. The player confirmed it was
+  the worker request loops, fixed in #164.
 - [ ] **RCA evidence mark to check:** the PROCU pin "BATCHHI#1 APPL 442%" (D4 23:04) was marked "not about CARDAUTH",
   though batch at the CICS regions' DP on PROD2 was the CPU competitor. Check whether the evidence matcher should accept
   the competing class's CPU for CPU_PRIORITY.
