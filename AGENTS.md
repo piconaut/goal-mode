@@ -25,11 +25,6 @@ delegate a precise scope, working directory and validation expectations; review
 its diff before committing. Game-playing agents must not inspect scenario ground
 truth, even though implementation agents can.
 
-Keep PR-specific audit findings, review reports and validation evidence in the
-PR description or comments. Do not create or commit per-PR documents in the
-repository, such as `docs/reviews/pr-<number>.md`. Reusable facts belong in the
-existing research ledger, SPEC or PROGRESS tracker as appropriate.
-
 ## Host adaptations
 
 - Use the available Codex tools in place of Claude's Bash/Read/Write/Grep/Glob/

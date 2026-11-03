@@ -32,14 +32,6 @@ the three players on the same model and effort avoids introducing a model
 difference when comparing their strategies. The main agent reviews delegated
 changes and findings; difficult player diagnoses can be escalated to it.
 
-## Review output
-
-Put PR-specific audit findings, review reports and validation evidence in the PR
-description or comments, subject to the assignment's posting authorization. Do
-not create or commit per-PR documents in the repository, such as
-`docs/reviews/pr-<number>.md`. Record reusable facts in the existing research
-ledger, SPEC or PROGRESS tracker rather than creating a separate PR report.
-
 ## Loading and validation
 
 Open a fresh Codex session in this trusted repository after adding/changing the
