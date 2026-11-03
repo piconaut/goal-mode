@@ -15,7 +15,7 @@ npm run -s play -- runs/a.json restart SET016     # restart an abended batch job
 npm run -s play -- runs/a.json policy [pending]   # the WLM service definition, classification rules, LPAR CP/zIIP counts, CICS regions
 npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD; id from status
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
-npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables (needs the RMF_MON3 tool)
+npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables incl. PROCU jobs (needs the RMF_MON3 tool)
 npm run -s play -- runs/a.json mon3 PRDA --at D1 09:40   # a past range from the history (the values a pin reads; kept 48 h in runs/a.mon3.json)
 npm run -s play -- runs/a.json rca INC3 CPU_PRIORITY POLICY [--evidence PIN1,PIN4]   (ids: INC incident, PIN pin, CHG planned change; bare numbers work too)
 npm run -s play -- runs/a.json pin WLMGL 312 '*PLEX' ONLHI#1 DELAY_CPU   # interval id; also MON3, CPC, DB2, CICS (see catalog)

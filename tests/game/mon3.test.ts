@@ -233,3 +233,34 @@ it('marks CICS transaction classes and their server class for SYSSUM (RMF Report
   expect([onl.velocityAct, !!onl.workManager]).toEqual([null, true]);
   expect(m.wkm!.flatMap((w) => w.servers.filter((x) => x.mgmt === 'TRANSACTION').map((x) => x.serviceClass))).toContain('STCHI');
 });
+
+describe('Monitor III PROCU jobs (RMF Report Analysis p.188–189)', () => {
+  it('lists jobs whose CPU adds up to the class rows, DDF enclaves on DIST as EAppl only', () => {
+    const m = buildMon3(noon, MIDWEST);
+    for (const s of m.systems) {
+      const rows = m.rows.filter((r) => r.system === s.system).reduce((a, r) => a + r.cpuEngines, 0);
+      const jobs = m.procJobs!.filter((j) => j.system === s.system);
+      expect(jobs.reduce((a, j) => a + j.eapplCpEngines, 0)).toBeCloseTo(rows, 6);
+      for (const j of jobs) expect(j.eapplCpEngines).toBeGreaterThanOrEqual(j.cpEngines - 1e-9);
+    }
+    const dist = m.procJobs!.find((j) => j.jobname.endsWith('DIST'))!;
+    expect(dist.eapplCpEngines).toBeGreaterThan(dist.cpEngines);
+    const sorted = m.procJobs!.map((j) => j.eapplCpEngines);
+    expect(sorted).toEqual([...sorted].sort((a, b) => b - a));
+  });
+
+  it('batch misrouted into the CICS region class shows by name under STCHI (playtest round 1)', () => {
+    let run = startDay(newRun(MIDWEST, content, 355298, 'NORMAL'), content);
+    const def = run.sim.wlm.definition;
+    const jes = def.subsystems.map((x) => (x.subsystem === 'JES' ? { ...x, rules: [{ qualifier: 'TN' as const, pattern: 'STM*', serviceClass: 'STCHI', reportClass: null, children: [] }, ...x.rules] } : x));
+    run = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition: { ...def, subsystems: jes } } } };
+    run = advance(run, MIDWEST, content, 18 * 360);
+    const stm = buildMon3(run, MIDWEST).procJobs!.filter((j) => j.jobname.startsWith('STM'));
+    expect(stm.length).toBeGreaterThan(0);
+    for (const j of stm) {
+      expect(j.serviceClass).toBe('STCHI');
+      expect(j.cx).toBe('B');
+      expect(j.eapplCpEngines).toBeGreaterThan(0);
+    }
+  }, 60_000);
+});

@@ -207,6 +207,24 @@ export interface Mon3View {
   exceptions: Mon3Exception[];
   /** SYSWKM: CICS transaction classes with work manager data (absent in old pin snapshots). */
   wkm?: Mon3Wkm[];
+  /** PROCU: jobs using a processor, by descending EAppl % CP (absent in old pin snapshots). */
+  procJobs?: Mon3ProcJob[];
+}
+
+/** One PROCU line (RMF Report Analysis p.188–189). Engines: the report's percentages ÷ 100. */
+export interface Mon3ProcJob {
+  system: string;
+  jobname: string;
+  /** Job class: S started task, B batch, T TSO. */
+  cx: 'S' | 'B' | 'T';
+  serviceClass: string;
+  /** Time on CP % Total: TCB and SRB time of the address space, enclaves excluded. */
+  cpEngines: number;
+  /** Time on CP % IIP: zIIP-eligible work that ran on CPs (a subset of cpEngines). */
+  iipcpEngines: number;
+  /** EAppl % CP and IIP: enclave CPU included. */
+  eapplCpEngines: number;
+  eapplZiipEngines: number;
 }
 
 /** The resource behind DELAY's Primary Reason: the largest % Delayed for above 2%, capping included (p.110). */
@@ -323,6 +341,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   for (const k of keys)
     rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => (reported[s.lparId]![k] ? [reported[s.lparId]![k]!] : []))), lastBy(null, k)));
   primaryReasons(run, scenario, rows, ddfClasses);
+  const procJobs = procuJobs(run, scenario, rows, ddfClasses);
 
   const cpcEngines = sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
   let totalLogical = 0;
@@ -460,9 +479,86 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     logicalToPhysical: cpcEngines > 0 ? totalLogical / cpcEngines : 0,
     enclaves,
     wkm: wkmSection(run, scenario, rows),
+    procJobs,
     speed: speedSection(rows, systems),
     exceptions: exceptions(run, rows, systems, cpc, totalLogical, cpcEngines),
   };
+}
+
+interface ClassUnit {
+  name: string;
+  cx: 'S' | 'B';
+  engines: number;
+}
+
+const byEngines = (cands: ClassUnit[]): ClassUnit[] => cands.sort((a, b) => b.engines - a.engines || (a.name < b.name ? -1 : 1));
+
+/** The address spaces and running batch jobs of a service class on one system, each with its estimated CP engines:
+ * a space's base load (transaction servers also share the row's CPU not explained by the others, i.e. their hosted
+ * transactions), a job its unconstrained CP rate times its last pace. APPROX: estimates, not per-job measurements
+ * (the sim keeps class totals). */
+function classUnitsOf(run: RunState, scenario: Scenario): (system: string, serviceClass: string, rowCpu: number) => ClassUnit[] {
+  const sim = run.sim;
+  const def = sim.wlm.definition;
+  const spaces = [...scenario.addressSpaces, ...sim.extraAddressSpaces];
+  const seqRtSec = sim.env.dasd?.classes?.SEQ?.rtSec ?? 0;
+  const hostRoles = new Set(allWorkloads(scenario, run).map((w) => w.hostRole).filter((r): r is string => !!r));
+  return (system, serviceClass, rowCpu) => {
+    const own = spaces.filter((a) => a.lparId === system && classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: system }).serviceClass === serviceClass);
+    const jobs = sim.batch.jobs.filter(
+      (j) => j.status === 'RUNNING' && j.lparId === system && classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: system }).serviceClass === serviceClass,
+    );
+    const cands = [
+      ...own.map((a) => ({ name: a.jobname, cx: 'S' as const, engines: a.baseEnginesRef, server: a.role !== null && hostRoles.has(a.role) })),
+      ...jobs.map((j) => ({ name: j.def.name, cx: 'B' as const, engines: jobShape(j.def, 1, 1, seqRtSec).cpRate * (j.cpPace ?? 1), server: false })),
+    ];
+    const servers = cands.filter((c) => c.server);
+    const rest = Math.max(0, rowCpu - cands.reduce((a, c) => a + c.engines, 0));
+    for (const c of servers) c.engines += rest / servers.length;
+    return cands.map(({ name, cx, engines }) => ({ name, cx, engines }));
+  };
+}
+
+/** PROCU lists jobs, not classes (RMF Report Analysis p.188): each system row's CPU is shared among the class's
+ * address spaces and running batch jobs in proportion to their estimated engines (classUnitsOf); TSO classes show
+ * under their user id. DDF enclave CPU counts in the EAppl % of the Db2 DIST address space and not in its Time on
+ * CP % (p.189). Transaction classes carry no CPU of their own: it is in their regions' rows. APPROX: shares, not
+ * per-job measurements. */
+function procuJobs(run: RunState, scenario: Scenario, rows: Mon3Row[], ddfClasses: ReadonlySet<string>): Mon3ProcJob[] {
+  const def = run.sim.wlm.definition;
+  const spaces = [...scenario.addressSpaces, ...run.sim.extraAddressSpaces];
+  const workloads = allWorkloads(scenario, run);
+  const units = classUnitsOf(run, scenario);
+  const out = new Map<string, Mon3ProcJob>();
+  const add = (system: string, jobname: string, cx: Mon3ProcJob['cx'], serviceClass: string, cp: number, iipcp: number, eCp: number, eZiip: number) => {
+    const k = `${system}|${jobname}`;
+    const j = out.get(k) ?? { system, jobname, cx, serviceClass, cpEngines: 0, iipcpEngines: 0, eapplCpEngines: 0, eapplZiipEngines: 0 };
+    j.cpEngines += cp;
+    j.iipcpEngines += iipcp;
+    j.eapplCpEngines += eCp;
+    j.eapplZiipEngines += eZiip;
+    out.set(k, j);
+  };
+  for (const r of rows) {
+    if (r.system === '*PLEX' || r.cpuEngines + r.ziipEngines <= 1e-6) continue;
+    if (ddfClasses.has(r.serviceClass)) {
+      const dist = spaces.find((a) => a.lparId === r.system && a.role === 'DB2.DIST');
+      if (dist) add(r.system, dist.jobname, 'S', classify(def, { subsystem: dist.subsystem, TN: dist.jobname, SY: r.system }).serviceClass, 0, 0, r.cpuEngines, r.ziipEngines);
+      continue;
+    }
+    const cands = units(r.system, r.serviceClass, r.cpuEngines);
+    const total = cands.reduce((a, c) => a + c.engines, 0);
+    if (cands.length > 0) {
+      for (const c of cands) {
+        const f = total > 0 ? c.engines / total : 1 / cands.length;
+        add(r.system, c.name, c.cx, r.serviceClass, r.cpuEngines * f, r.iipcpEngines * f, r.cpuEngines * f, r.ziipEngines * f);
+      }
+      continue;
+    }
+    const tso = workloads.find((w) => w.work.UI && classify(def, { ...w.work, SY: r.system }).serviceClass === r.serviceClass);
+    add(r.system, tso?.work.UI ?? `*${r.serviceClass}`, tso ? 'T' : 'S', r.serviceClass, r.cpuEngines, r.iipcpEngines, r.cpuEngines, r.ziipEngines);
+  }
+  return [...out.values()].sort((a, b) => b.eapplCpEngines - a.eapplCpEngines || (a.system + a.jobname < b.system + b.jobname ? -1 : 1));
 }
 
 /** DELAY Primary Reason (RMF Report Analysis Table 20, p.110), filled in once all rows exist.
@@ -479,13 +575,10 @@ function primaryReasons(run: RunState, scenario: Scenario, rows: Mon3Row[], ddfC
   const spaces = [...scenario.addressSpaces, ...sim.extraAddressSpaces];
   const workloads = allWorkloads(scenario, run);
   const names = new Map<string, string | null>();
-  const seqRtSec = sim.env.dasd?.classes?.SEQ?.rtSec ?? 0;
-  const hostRoles = new Set(workloads.map((w) => w.hostRole).filter((r): r is string => !!r));
+  const units = classUnitsOf(run, scenario);
   // The jobname RMF would show for a class's heaviest processor user on one system. Transaction classes name
   // their host (CICS AOR) or TSO user; otherwise the class's address spaces and running batch jobs compete by
-  // estimated CP engines: a space's base load (transaction servers also share the row's CPU not explained by
-  // the others, i.e. their hosted transactions), a job its unconstrained CP rate times its last pace.
-  // APPROX: estimates, not per-job measurements (rows are class summaries).
+  // estimated CP engines (classUnitsOf).
   const jobOf = (system: string, serviceClass: string, rowCpu: number): string | null => {
     const k = `${system}|${serviceClass}`;
     if (names.has(k)) return names.get(k)!;
@@ -498,20 +591,7 @@ function primaryReasons(run: RunState, scenario: Scenario, rows: Mon3Row[], ddfC
       if (w.hostRole) name = spaces.filter((a) => a.lparId === system && a.role === w.hostRole).map((a) => a.jobname).sort()[0] ?? null;
       else if (w.work.UI) name = w.work.UI;
     }
-    if (!name) {
-      const own = spaces.filter((a) => a.lparId === system && classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: system }).serviceClass === serviceClass);
-      const jobs = sim.batch.jobs.filter(
-        (j) => j.status === 'RUNNING' && j.lparId === system && classify(def, { subsystem: 'JES', TN: j.def.name, TC: j.def.jobClass, SY: system }).serviceClass === serviceClass,
-      );
-      const cands = [
-        ...own.map((a) => ({ name: a.jobname, engines: a.baseEnginesRef, server: a.role !== null && hostRoles.has(a.role) })),
-        ...jobs.map((j) => ({ name: j.def.name, engines: jobShape(j.def, 1, 1, seqRtSec).cpRate * (j.cpPace ?? 1), server: false })),
-      ];
-      const servers = cands.filter((c) => c.server);
-      const rest = Math.max(0, rowCpu - cands.reduce((a, c) => a + c.engines, 0));
-      for (const c of servers) c.engines += rest / servers.length;
-      name = cands.sort((a, b) => b.engines - a.engines || (a.name < b.name ? -1 : 1))[0]?.name ?? null;
-    }
+    if (!name) name = byEngines(units(system, serviceClass, rowCpu))[0]?.name ?? null;
     names.set(k, name);
     return name;
   };

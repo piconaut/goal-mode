@@ -32,7 +32,7 @@ npm run lab -- a.json b.json   # realism lab: A/B runs from JSON specs, side by 
 npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
 npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
-npm run play -- runs/a.json mon3 [system] [--json] [--at D2 10:40]   # Monitor III now or past: SYSINFO, CPC, DELAY, ENCLAVE, SYSWKM, WFEX (text or --json); use it instead of ad-hoc scripts
+npm run play -- runs/a.json mon3 [system] [--json] [--at D2 10:40]   # Monitor III now or past: SYSINFO, CPC, DELAY, PROCU, ENCLAVE, SYSWKM, WFEX (text or --json); use it instead of ad-hoc scripts
 npm run compare -- [--base origin/dev] [--head <ref>] [--scenarios a,b] [--drop k1,k2]   # behaviour diff vs base: sim state (reporting excluded), game state, log, RMF report text/records, Monitor III views; exit 1 on any difference
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots

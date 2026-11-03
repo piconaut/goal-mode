@@ -23,7 +23,7 @@ const VIEWS: { id: View3; help: string }[] = [
   { id: 'SYSWKM', help: 'Work Manager Delays: for each CICS transaction class, how its response time splits into work manager states, and the AORs serving it. CICS transactions have no address spaces of their own, so their CPU and delays show on the regions: a low velocity or capping on the serving AORs is where CPU trouble for CICS shows up. AORs on one system share its CICS work in this game, so they show the same figures.' },
   { id: 'SYSINFO', help: 'System Information: CPU utilisation (LPAR view and z/OS view), then per period the workflow, response time, rate and the average number of users using or delayed for each resource.' },
   { id: 'DELAY', help: 'Who is waiting, and for what: USG/DLY/UKN % of active samples, and % Delayed for each resource (PRC covers CPs and zIIPs). DLY % also counts WLM capping, which has no column: Primary Reason shows RG-Cap. Otherwise Primary Reason names the job using the processor most, the LCU, or the paging type. Rows are service-class summaries. Response-time work spends much of its time in subsystems (Db2, CF, locks, CICS), which RMF cannot see and shows as UKN; that is normal when the PI is fine. Look for what changed.' },
-  { id: 'PROCU', help: 'Processor Usage by service-class period: Time on CP % (IIP = zIIP-eligible work that ran on CPs) and EAppl % (enclaves included). 100 = one engine.' },
+  { id: 'PROCU', help: 'Processor Usage: the jobs using a processor, heaviest first. Time on CP % (IIP = zIIP-eligible work that ran on CPs) and EAppl % (enclaves included, so DDF work shows on the Db2 DIST address space). 100 = one engine. Click a service class to list only its jobs; Service classes shows the class totals. The sim keeps CPU per class, so a job\'s share is estimated from its expected load.' },
   { id: 'ENCLAVE', help: 'DDF work runs as enclaves, managed by their own goals: CPU on CPs and zIIPs, and the enclave state samples.' },
   { id: 'CPC', help: 'CPC Capacity: MSU and capping for the partition, then logical and physical utilisation of every partition. Weight, polarity and PR/SM delay come from the Partition Data view.' },
   { id: 'WFEX', help: 'Workflow/Exceptions: speed of the system, processors, devices and each period, and the exceptions your criteria flag right now.' },
@@ -87,7 +87,7 @@ export function Monitor({ v, game, openAnalytics }: { v: ViewModel; game: GameHa
         {view === 'SYSWKM' && <Wkm m={m} game={pins} />}
         {view === 'SYSINFO' && <SysInfo m={m} system={system} />}
         {view === 'DELAY' && <Delay rows={m.rows.filter((r) => r.system === system)} game={pins} />}
-        {view === 'PROCU' && <Procu rows={m.rows.filter((r) => r.system === system)} game={pins} />}
+        {view === 'PROCU' && <Procu rows={m.rows.filter((r) => r.system === system)} jobs={m.procJobs ? m.procJobs.filter((j) => system === '*PLEX' || j.system === system) : null} game={pins} />}
         {view === 'ENCLAVE' && <Enclave m={m} system={system} />}
         {view === 'CPC' && <Cpc m={m} system={system} game={pins} />}
         {view === 'WFEX' && <Wfex m={m} system={system} />}
