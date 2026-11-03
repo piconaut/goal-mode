@@ -139,7 +139,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       .sort((a, b) => info[a]!.importance - info[b]!.importance || (piOf[b] ?? 0) - (piOf[a] ?? 0) || (a < b ? -1 : 1));
 
   const tried = new Set<string>();
-  const candidates = [...ordered(input.sysplexPi as Record<string, number | null>), ...ordered(localPi)].filter((k) => {
+  const global = ordered(input.sysplexPi as Record<string, number | null>);
+  const local = ordered(localPi);
+  const candidates = [1, 2, 3, 4, 5].flatMap((importance) => [
+    ...global.filter((k) => info[k]!.importance === importance),
+    ...local.filter((k) => info[k]!.importance === importance),
+  ]).filter((k) => {
     if (tried.has(k)) return false;
     tried.add(k);
     return true;

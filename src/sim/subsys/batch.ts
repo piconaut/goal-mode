@@ -186,6 +186,14 @@ export function jobShape(def: JobDef, cpSpeed: number, ziipSpeed: number, ioRtSe
   return { cpSec, zSec, ioSec, elapsed, cpRate: cpSec / elapsed, zRate: zSec / elapsed, ioRate: def.ioCount / elapsed };
 }
 
+/** Ready CPU demand; cross-pacing only applies when work uses separate processor pools. */
+export function jobCpuDemand(shape: ReturnType<typeof jobShape>, j: Pick<JobRuntime, 'cpPace' | 'ziipPace'>, hasZiips: boolean) {
+  return {
+    cp: shape.cpRate * (hasZiips ? (j.cpPace ?? 1) : 1),
+    ziip: shape.zRate * (hasZiips ? (j.ziipPace ?? 1) : 1),
+  };
+}
+
 export interface JobProgressInput {
   cpWanted: number;
   cpGot: number;

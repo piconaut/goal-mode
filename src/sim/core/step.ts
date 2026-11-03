@@ -14,6 +14,7 @@ import {
   advanceJob,
   closeNight,
   jobShape,
+  jobCpuDemand,
   projectCriticalEnd,
   promoteEligible,
   releaseNetwork,
@@ -671,6 +672,7 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
   const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb, (j) => jobServiceSu(j, jobShape(j.def, cpSp, zSp, seqRt), cpc));
   if (swapped.size > 0) swappedBy[l.id] = swapped;
   let runningJobs = 0;
+  const hasZiips = l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
   for (const j of running) {
     if (swapped.has(j)) continue;
     runningJobs++;
@@ -714,8 +716,9 @@ function lparDemand(t: TickCtx, l: LparConfig): void {
       };
       refs[refKey] = ref;
     }
-    const cpWant = shape.cpRate * (j.cpPace ?? 1) + cfCpu;
-    const ziWant = shape.zRate * (j.ziipPace ?? 1);
+    const demand = jobCpuDemand(shape, j, hasZiips);
+    const cpWant = demand.cp + cfCpu;
+    const ziWant = demand.ziip;
     ref.slice.cpEngines += cpWant;
     ref.slice.ziipEngines += ziWant;
     ref.slice.ioRate += shape.ioRate / Math.max(1, j.stretch);

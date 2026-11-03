@@ -156,21 +156,30 @@ priority of ONLCARD or STCHI. WLMGL 1074 PROD2: STCHI velocity 26.8%, PI 2.23; O
 > 0.4 s, FAILED 2528. Real behaviour, not a bug: regions managed to transaction goals run at the DP of the most important
 transaction class they serve (F4 here), not at STCHI's own FA, so STCHI is never a receiver (WLM Planning p.122–123,
 already in docs/research.md).
-- [ ] **WLM projection inconsistent between adjacent intervals (likely sim bug).** With the same DPs, BATCHPRD#1's
+- [x] **WLM projection inconsistent between adjacent intervals (sim bug, fixed).** With the same DPs, BATCHPRD#1's
   (importance 4) self-raise F2→F4 was projected at D5 22:22:50 to take ONLCARD's PI from 0.80 to 61.8 (rejected), and at
   22:23:00 to leave it at 0.80 (accepted). Batch then ties the CICS regions' DP on PROD2's 4 CPs; ONLCARD lowers it,
   BATCHHI (sysplex PI ≈0.8, taken as receiver on its local PI) lowers it again, and BATCHPRD raises itself back: a
   ~2.5-minute cycle in the WLM log, D4 23:00–23:22 (save) and again D5 22:20–22:36 (replay). BATCHHI also went F3→F5,
   above the importance-2 CICS classes, at D5 22:36:50. Find out why the projection base drops the CICS contention on
-  some intervals (instantaneous inputs? batch job state?), and add a realism test: less important work must not be
-  raised to or above the DP of more important work that is missing its goal on that system.
-- [ ] **Equal-importance veto from bystanders; co-served classes not credited (design gap, real rule not verified).**
+  some intervals. Cause: starvation cross-paced both CPU demands down on an image without zIIPs. CP-only images now
+  retain ready demand; a blanket importance-based DP ceiling would be too strict without CPU Critical. Receiver
+  candidates now follow global/local order within each importance tier (SG24-7621 pp.106–107). Separate-pool pacing
+  remains approximate and needs independent investigation. Save-inspired no-zIIP and receiver-order tests added.
+  Production replay from the uploaded save, D5 22:00–23:00: CARDAUTH 98.585% → 99.933% within SLA,
+  failures 3,512 → 0 and BATCHPRD self-raises 8 → 0; all 40 critical jobs finish, 70 seconds later at 01:56:10.
+  Validation: `npm run check` 553 tests passed; Midwest Normal CI sweep seeds 1–5 passed all bands (do-nothing
+  median day 16, textbook 27, expert 40 with 5/5 victories). Golden hashes changed with the intended model behavior.
+- [x] **Equal-importance veto from bystanders; co-served classes not credited (investigated).**
   At D5 22:21:00 ONLCARD's own raise F4→F6 (which lifts the CICS regions) was projected to take ONLCARD 61.8→0.80,
   ONLRBANK 82→0.5, ONLTELR 46→0.5 and ONLPAYMQ 13.9→0.17, but `passes()` rejected it because DDFMOB (68.7→74.7) and
   TSO#1 (27→29.6), also importance 2, got worse and the "PIs must end closer together" test failed. That test is for
   equal-importance *donors* (SG24-6472 p.60); here it vetoes on bystanders already far past goal, and the gain counts
   only the receiver, not the other transaction classes served by the same regions. WLM fell back to the weaker donor
-  move. Check with zos-docs how WLM values a server move that helps several served classes, then decide.
+  move. IBM's WLM Services p.147 describes secondary donors with unchanged DP; its net-value rules and IBM's
+  2002 Intelligent Resource Director paper support evaluating donor harm and equal-importance convergence separately.
+  Co-served improvements are projected, but pooled credit cannot override that veto; no change made. The sim's
+  summed donor-harm comparison remains a separate fidelity question.
 - [ ] **Clue path for "why didn't WLM raise CICS".** The player read the WLM log correctly but couldn't see why there
   was no receiver raise. Consider logging the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal
   importance"), and showing on WLMGL/SYSWKM that a region class managed to transaction goals runs at the served classes'

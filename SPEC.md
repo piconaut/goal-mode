@@ -468,8 +468,8 @@ Modelled on SG24-7621 §3.12–3.15 and the WLM patents:
 
 ```
 for importance in 1..5:
-    candidates = periods at this importance with sysplex PI > 1  (worst PI first)
-    if none: candidates = periods with local PI > 1 (second pass)
+    candidates = periods at this importance with sysplex PI > 1 (worst PI first),
+                 then remaining periods with local PI > 1 (worst PI first)
     for receiver in candidates:
         bottleneck = largest delay type of receiver (CPU, zIIP, I/O, storage, MPL/initiator, queue)
         if bottleneck is not WLM-fixable (capping, PR/SM delay, lock wait, dependency): record & continue
@@ -667,6 +667,9 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   (lock intensity), earliest start (time or predecessor), job class, critical flag, and
   restartability.
 - Job progress per tick = min(CPU granted rate, I/O completion rate, lock-wait factor).
+- On images without logical zIIPs, running jobs retain their unpaced CP and zIIP-eligible ready demand,
+  both dispatched on CPs. On separate pools, CP and zIIP demand is cross-paced by the prior tick's
+  starvation (APPROX); job progress still reflects the CPU actually granted.
 - **Initiators:** JES-managed (fixed count per class) or **WLM-managed** (`MODE=WLM`; WLM
   starts initiators per service class from queue delay, importance and capacity). Too few
   initiators → queue delay. Too many → thrash and lock contention.
@@ -1568,7 +1571,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
-| Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |
+| Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; CP-only images retain ready demand instead of feeding starvation back into their demand. Separate-pool cross-pacing remains approximate. Lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |
 
 Whenever a coefficient is invented, it lives in `content/` with a `// FICTIONAL:` comment and
 the shape it is meant to reproduce.

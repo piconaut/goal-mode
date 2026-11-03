@@ -165,7 +165,7 @@ describe('Monitor III DELAY columns and Primary Reason', () => {
     const def = run.sim.wlm.definition;
     const jes = def.subsystems.map((x) => (x.subsystem === 'JES' ? { ...x, rules: [{ qualifier: 'TN' as const, pattern: 'STM*', serviceClass: 'STCHI', reportClass: null, children: [] }, ...x.rules] } : x));
     run = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition: { ...def, subsystems: jes } } } };
-    run = advance(run, MIDWEST, content, 18 * 360); // 00:00: the STM fan runs
+    run = advance(run, MIDWEST, content, 18 * 360 + 90); // 00:15: the STM fan is CPU-delayed
     const stm = new Set(run.sim.batch.jobs.filter((j) => j.status === 'RUNNING' && j.def.name.startsWith('STM')).map((j) => j.lparId));
     expect(stm.size).toBeGreaterThan(0);
     const rows = buildMon3(run, MIDWEST).rows.filter((r) => r.scKey === 'STCHI#1' && stm.has(r.system) && r.primaryDelay === 'PRC');
