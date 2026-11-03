@@ -193,3 +193,10 @@ describe('SYSWKM work manager delays', () => {
     expect(m.wkm!.every((w) => m.rows.find((r) => r.system === '*PLEX' && r.scKey === w.scKey)?.workManager)).toBe(true);
   });
 });
+
+it('marks CICS transaction classes and their server class for SYSSUM (RMF Report Analysis p.237)', () => {
+  const m = buildMon3(noon, MIDWEST);
+  const onl = m.rows.find((r) => r.system === '*PLEX' && r.scKey === 'ONLHI#1')!;
+  expect([onl.velocityAct, !!onl.workManager]).toEqual([null, true]);
+  expect(m.wkm!.flatMap((w) => w.servers.filter((x) => x.mgmt === 'TRANSACTION').map((x) => x.serviceClass))).toContain('STCHI');
+});
