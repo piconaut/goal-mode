@@ -246,6 +246,16 @@ details.section[open] > summary { margin-bottom: 8px; }
 
 .page { display: flex; flex-direction: column; gap: 12px; }
 .stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* Ops Console: Incidents and Batch window are the at-a-glance health panels. At full desktop width (four columns)
+   they head the right-hand column above the Operations log; narrower, they come first and the log goes last. */
+.console-health { order: -1; grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); align-items: start; }
+.console-log-wide { display: none; }
+@media (min-width: 1360px) {
+  .console-health { order: 0; grid-column: auto; display: flex; }
+  .console-log-wide { display: block; }
+  .console-log-narrow { display: none; }
+}
+
 .empty { padding: 4px 0; }
 .linkbtn { padding: 0; border: none; background: none; color: var(--accent); text-decoration: underline; }
 .linkbtn:hover { border: none; }

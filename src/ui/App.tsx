@@ -314,7 +314,7 @@ function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
 
 function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
   return (
-    <div className="grid">
+    <div className="grid console-grid">
       <Capacity v={v} history={history} />
       <div className="panel">
         <h3>
@@ -423,7 +423,8 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
         </div>
       </div>
 
-      <div className="stack">
+      {/* Incidents and the batch window are the at-a-glance health panels: first on narrow screens (styles.css). */}
+      <div className="stack console-health">
         <div className="panel">
           <h3>Incidents</h3>
           {v.incidents.length === 0 && <Empty>No SLA breaches yet.</Empty>}
@@ -442,18 +443,6 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
               )}
             </div>
           ))}
-        </div>
-        <div className="panel">
-          <h3>Operations log</h3>
-          {v.log.length === 0 ? (
-            <Empty>Nothing logged yet today.</Empty>
-          ) : (
-            <div className="log">
-              {[...v.log].reverse().map((l, i) => (
-                <div key={i}>{l}</div>
-              ))}
-            </div>
-          )}
         </div>
         <div className="panel">
           <h3>Batch window</h3>
@@ -477,7 +466,26 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
             </div>
           ))}
         </div>
+        <OpsLog v={v} className="console-log-wide" />
       </div>
+      <OpsLog v={v} className="console-log-narrow" />
+    </div>
+  );
+}
+
+function OpsLog({ v, className }: { v: ViewModel; className: string }) {
+  return (
+    <div className={`panel ${className}`}>
+      <h3>Operations log</h3>
+      {v.log.length === 0 ? (
+        <Empty>Nothing logged yet today.</Empty>
+      ) : (
+        <div className="log">
+          {[...v.log].reverse().map((l, i) => (
+            <div key={i}>{l}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
