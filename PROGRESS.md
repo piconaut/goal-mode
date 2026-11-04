@@ -387,11 +387,14 @@ facts in docs/research.md). Ordered by impact:
   header's speed-button slot is empty during the briefing, so move them there.
 - [ ] **Export:** besides downloads being blocked, copying the save string from dev tools corrupted 12 escaped quotes in
   inbox text (`\\"`), so the D15 save needed repair before it parsed; another reason for an in-artifact export.
-- [ ] **`confirm()` is blocked in the published artifact** (sandbox without `allow-modals`; console: "Ignored call to
-  'confirm()'"). ⇧ import (`src/ui/App.tsx`), starting a new run over a saved one and Restart with planned changes
-  (`src/ui/Overlays.tsx`) all gate on `confirm()`, which returns false, so they silently do nothing. Replace with an
-  in-app confirmation dialog. Workaround used: patch the run in IndexedDB from dev tools (re-queue the lost event end
-  commands) and reload; the player confirmed RBANK CPU/txn and MOBILE zIIP recovered.
+- [x] **`confirm()` is blocked in the published artifact:** replaced 2026-11-04 with a shared in-app
+  confirmation dialog for save imports, the guarded new-run start and restarting with planned changes. It works
+  without sandbox `allow-modals`; Cancel/Escape leave the run and pending work intact, and explicit confirmation
+  performs the requested action. Import errors still retain the pasted/file text. The dialog traps focus,
+  defaults to Cancel and restores focus on close. No worker, save-format or simulation changes. Validation:
+  67 files / 650 tests, typecheck and production build pass; sandbox browser checks cover paste/file imports,
+  invalid input, Cancel/Escape, planned-change restart and the older-save start guard, with zero browser
+  `confirm()` calls or page errors. Default three-scenario comparison has no differences; no artifact republish.
 - [ ] **Starving "Internal" work is free (design gap: a lever with no cost).** TSO and ADHOC have stakeholder `Internal` and
   SLA `NONE` (no incidents, trust or score; `src/game/run.ts`, `src/game/sla.ts`); DEV batch is non-critical with
   `lockIntensity` 0, so a capped or discretionary job holds no locks and its lateness counts nowhere. The only cost today
