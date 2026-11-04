@@ -16,8 +16,10 @@ import type { GameHandle } from './useGame';
 import { CAREER_LEVELS } from '../content/career';
 import { DRAFT_OPTIONS } from '../content/draft';
 import { careerLevel, unlockedPerks } from '../game/career';
+import { useConfirmation } from './Confirmation';
 
 export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
+  const ask = useConfirmation();
   useEffect(() => {
     if (!open) return;
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
@@ -46,7 +48,13 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
               </button>{' '}
             </>
           )}
-          <button className={v.weekendDay ? '' : 'primary'} onClick={() => game.send({ type: 'START_DAY' })}>
+          <button
+          className={v.weekendDay ? '' : 'primary'}
+          onClick={async () => {
+            if (game.savedRunDay !== null && v.day === 0 && !(await ask(`Start this new run? Your saved run (day ${game.savedRunDay + 1}) is replaced at the end of today. Continue it or export it first to keep it.`, 'Start new run'))) return;
+            game.send({ type: 'START_DAY' });
+          }}
+        >
             {v.weekendDay ? 'Play it' : `Start day ${v.day + 1} (06:00)`}
           </button>{' '}
           <button onClick={() => setOpen(true)}>Briefing</button>
@@ -208,9 +216,22 @@ function EndReportView({ r }: { r: EndReport }) {
   );
 }
 
+/** A seed typed by the player (to replay a run or share one), else a random one. */
+const seedOr = (text: string) => (/^\d+$/.test(text.trim()) ? Number(text.trim()) : Math.floor(Math.random() * 1e6));
+
+function SeedInput({ value, onChange }: { value: string; onChange: (s: string) => void }) {
+  return (
+    <label title="Leave empty for a random seed; the same seed, scenario and difficulty give the same run">
+      Seed{' '}
+      <input inputMode="numeric" pattern="[0-9]*" size={8} placeholder="random" value={value} onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))} />
+    </label>
+  );
+}
+
 function NewRun({ game }: { game: GameHandle }) {
   const [difficulty, setDifficulty] = useState<DifficultyId>('NORMAL');
   const [scenario, setScenario] = useState('midwest');
+  const [seed, setSeed] = useState('');
   return (
     <>
       <div role="radiogroup" aria-label="Scenario">
@@ -228,7 +249,10 @@ function NewRun({ game }: { game: GameHandle }) {
           </label>
         ))}
       </div>
-      <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario })}>
+      <p>
+        <SeedInput value={seed} onChange={setSeed} />
+      </p>
+      <button className="primary" onClick={() => game.send({ type: 'NEW_RUN', seed: seedOr(seed), difficulty, scenario })}>
         New run
       </button>{' '}
       <button
@@ -293,14 +317,16 @@ function StartingPerk({ v, game }: { v: ViewModel; game: GameHandle }) {
 // A fresh page load starts on Midwest Mutual, Normal; until day 1 starts the player can restart on another
 // scenario or preset, or switch to today's daily challenge (which then stays daily across those restarts).
 function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const ask = useConfirmation();
   const plannedAny = v.changes.length > 0;
-  const restart = (scenario: string, difficulty: DifficultyId, daily: boolean) => {
-    if (plannedAny && !confirm('Restart? Planned changes are discarded.')) return;
+  const [seed, setSeed] = useState('');
+  const restart = async (scenario: string, difficulty: DifficultyId, daily: boolean, typed = '') => {
+    if (plannedAny && !(await ask('Restart? Planned changes are discarded.', 'Restart run'))) return;
     const today = new Date().toISOString().slice(0, 10);
     game.send(
       daily
         ? { type: 'NEW_RUN', seed: dailySeed(today), difficulty, daily: today, scenario }
-        : { type: 'NEW_RUN', seed: Math.floor(Math.random() * 1e6), difficulty, scenario },
+        : { type: 'NEW_RUN', seed: seedOr(typed), difficulty, scenario },
     );
   };
   const isDaily = v.daily !== null;
@@ -339,7 +365,14 @@ function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
         <button title="Same seed for everyone today (UTC)" onClick={() => restart(v.scenario.id, v.difficulty.id, true)}>
           Daily challenge
         </button>
-      )}
+      )}{' '}
+      <span className="muted" style={{ whiteSpace: 'nowrap' }}>seed {v.seed}</span>{' '}
+      <span style={{ whiteSpace: 'nowrap' }}>
+        <SeedInput value={seed} onChange={setSeed} />{' '}
+        <button disabled={seed === ''} onClick={() => restart(v.scenario.id, v.difficulty.id, false, seed)}>
+          Use seed
+        </button>
+      </span>
     </p>
   );
 }

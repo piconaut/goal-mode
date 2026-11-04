@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { DASD_REBALANCE } from '../../content/hardware-catalog';
+import { CICS_STORAGE } from '../../content/subsys';
 import { commandTarget, nextAorName, spareAfterBasket } from '../../game/changeDesk';
 import { cfUsedGb, duplexSecondary, type CfConfig, type CfStructureConfig } from '../../sim/cf/cf';
 import type { Command } from '../../sim/core/commands';
@@ -376,6 +377,7 @@ export function CicsSection({ desk }: { desk: Desk }) {
               <th>LPAR</th>
               <th className="num">QR share</th>
               <th>MXT</th>
+              <th>EDSALIM MB</th>
             </tr>
           </thead>
           <tbody>
@@ -397,6 +399,17 @@ export function CicsSection({ desk }: { desk: Desk }) {
                     validate={(n) => (Number.isInteger(n) && n >= 10 && n <= 2000 ? null : 'MXT is 10–2000')}
                   />
                 </td>
+                <td>
+                  <DraftNumber
+                    desk={desk}
+                    label={`${r.name} EDSALIM`}
+                    live={r.edsaLimitMb ?? CICS_STORAGE.defaultEdsaLimitMb}
+                    size={5}
+                    make={(n) => ({ kind: 'SET_CICS', name: r.name, edsaLimitMb: n })}
+                    read={(c) => (c.kind === 'SET_CICS' ? c.edsaLimitMb ?? r.edsaLimitMb ?? CICS_STORAGE.defaultEdsaLimitMb : r.edsaLimitMb ?? CICS_STORAGE.defaultEdsaLimitMb)}
+                    validate={(n) => (Number.isInteger(n) && n >= CICS_STORAGE.minEdsaLimitMb && n <= CICS_STORAGE.maxEdsaLimitMb ? null : `EDSALIM is ${CICS_STORAGE.minEdsaLimitMb}–${CICS_STORAGE.maxEdsaLimitMb} MB`)}
+                  />
+                </td>
               </tr>
             ))}
           </tbody>
@@ -404,7 +417,7 @@ export function CicsSection({ desk }: { desk: Desk }) {
       </div>
       <h4>New region</h4>
       <AddAor desk={desk} lpars={prodLpars} />
-      <div className="help">MXT limits concurrent tasks per region. The QR share is CPU that must run on the single QR TCB (non-threadsafe code), so one region tops out near one engine.</div>
+      <div className="help">MXT limits concurrent tasks per region; each task needs dynamic storage (EDSA), so a region whose in-flight tasks outgrow EDSALIM goes short on storage (SOS) and stops attaching new tasks. Raising EDSALIM takes region memory; lowering MXT below what storage holds avoids SOS thrashing but queues work. The QR share is CPU that must run on the single QR TCB (non-threadsafe code), so one region tops out near one engine.</div>
     </>
   );
 }

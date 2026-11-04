@@ -9,14 +9,18 @@ import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, rcaLeadI
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
+import { financeView } from '../src/game/finance';
+import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
+import { monthElapsedFrac } from '../src/sim/cost/mlc';
+import { msuPerCp } from '../src/sim/hw/cpc';
 import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
 import { MON3_HISTORY, TOOLS, type ToolFeature } from '../src/content/tools';
 import { applyReportClassAdvice } from '../src/game/rcAdvisor';
-import { clockAt, formatClock } from '../src/sim/core/clock';
+import { clockAt, formatClock, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads, runWorkItems } from '../src/game/workloads';
 import { decideTfp } from '../src/game/tfp';
-import { decodeRunJson, encodeRunJson } from '../src/game/runFile';
+import { decodeRunFileText, encodeRunJson } from '../src/game/runFile';
 import { idText } from '../src/game/ids';
 import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
@@ -25,12 +29,13 @@ import { EVIDENCE_METRICS } from '../src/content/evidence';
 import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, pendingBase, type WlmEdit } from '../src/game/wlmEdit';
+import { policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
-import { DAY_START_HOUR, TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
+import { TICK_SEC, TICKS_PER_HOUR } from '../src/sim/core/units';
 import { buildMon3, type Mon3Row } from '../src/game/mon3';
 import { emptyMon3PinHistory, mon3PinRange, mon3PinsAt, recordMon3Pins, type Mon3PinHistory } from '../src/game/mon3PinHistory';
 import type { SmfKind } from '../src/worker/protocol';
@@ -92,7 +97,7 @@ function needs(feature: ToolFeature, what: string): string {
 }
 
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
-export const decodePlayFile = (text: string): PlayFile => decodeRunJson<PlayFile>(text);
+export const decodePlayFile = (text: string): PlayFile => decodeRunFileText<PlayFile>(text);
 
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', scenario = 'midwest'): PlayFile {
   const pack = packOf(scenario);
@@ -238,7 +243,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(removePin(run, c.id), `Unpinned ${idText('pin', c.id)}.`);
     }
     case 'wlm': {
-      const res = applyWlmEdit(pendingBase(file.pendingPolicy, run.sim.wlm.definition), c.edit);
+      const res = applyWlmEdit(pendingBase(file.pendingPolicy, policyEditSource(run)), c.edit);
       if (typeof res === 'string') return fail(res);
       return done(run, `Pending policy ${res.policyName} updated. ${run.phase === 'REVIEW' ? "close the day (draft <id|none>), then activate at tomorrow's briefing to install it." : 'activate to install it.'}`, true, res);
     }
@@ -281,7 +286,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'rcadvice': {
       if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) return fail(needs('REPORT_CLASS_ADVISOR', 'Report class advice'));
-      const res = applyReportClassAdvice(pendingBase(file.pendingPolicy, run.sim.wlm.definition), runWorkItems(sc(run), run), c.workloadId || null);
+      const res = applyReportClassAdvice(pendingBase(file.pendingPolicy, policyEditSource(run)), runWorkItems(sc(run), run), c.workloadId || null);
       if (typeof res === 'string') return fail(res);
       if (!res.added.length) return fail('No report class advice left.');
       return done(run, `Report classes for ${res.added.join(' ')} staged in ${res.def.policyName}. ${run.phase === 'REVIEW' ? 'close the day (draft <id|none>), then activate at tomorrow\'s briefing (takes effect next day).' : 'activate to install (takes effect next day).'}`, true, res.def);
@@ -347,7 +352,9 @@ export function statusText(file: PlayFile): string {
   const out: string[] = [];
   out.push(`${v.phase}  day ${v.day + 1}/${v.maxDays} ${v.weekday}  ${clockText(run.sim.tick)}  difficulty ${v.difficulty.name}  seed ${v.seed}`);
   out.push(`trust ${v.trustOverall.toFixed(1)} (${Object.keys(v.trust).map((f) => `${f} ${v.trust[f]!.toFixed(0)}`).join(', ')})  score ${v.score}`);
-  out.push(`engineer-hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}  MLC month est $${Math.round(v.mlcEstimate).toLocaleString()} (billed on the month's peak R4HA so far, so a cap saves only if it lowers that peak) / opex budget $${Math.round(v.opexBudget).toLocaleString()}`);
+  out.push(`engineer-hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}`);
+  out.push(budgetLine(v.mlcEstimate, v.opexSpent, v.opexBudget), R4HA_BILLING_NOTE);
+  if (run.sim.cost.bills.length > run.billsSeen) out.push(BUDGET_MONTH_BOUNDARY_NOTE);
   out.push(`policy ${v.policyName}${file.pendingPolicy ? `  (pending policy edits in ${file.pendingPolicy.policyName}: activate in BRIEFING or LIVE)` : ''}  tools ${v.tools.filter((t) => t.owned).map((t) => (t.trialLastDay !== null ? `${t.id}(trial to day ${t.trialLastDay + 1})` : t.id)).join(' ') || 'none'}`);
   out.push(`CPC busy ${v.cpcBusyPct.toFixed(0)}%  ` + v.lpars.map((l) => `${l.id} ${l.cpBusyPct.toFixed(0)}%`).join('  '));
   if (v.phase === 'LIVE') {
@@ -430,8 +437,12 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
   if (sys && !systems.length && !cpc.length) return `No system ${opts.system}; systems: ${m.systems.map((x) => x.system).join(' ')}`;
   const when = run.phase === 'LIVE' ? `range ending ${clockText(run.sim.tick)}` : `snapshot from ${clockText(run.sim.tick)} (not live: phase ${run.phase})`;
   const head = `Monitor III, last ${m.rangeSec}s, ${when}. Policy ${m.policy}. CPC logical:physical CP ratio ${m.logicalToPhysical.toFixed(2)}.`;
-  if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...(m.wkm ?? []).map((x) => 'SYSWKM ' + JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
+  if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...(m.wkm ?? []).map((x) => 'SYSWKM ' + JSON.stringify(x)), ...pick(m.procJobs ?? [], (x) => x.system).map((x) => 'PROCU ' + JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
   const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', DELAY_HEAD, table(rows.filter((r) => r.resourceSamples !== false).map(delayRow))];
+  // PROCU lists jobs by EAppl % CP (RMF Report Analysis p.188); percentages are of one engine.
+  const procu = pick(m.procJobs ?? [], (x) => x.system).filter((j) => j.eapplCpEngines + j.eapplZiipEngines > 0.0005);
+  const p1 = (e: number) => Number((e * 100).toFixed(1));
+  out.push('', 'PROCU (top 15 jobs; shares of each class row are estimated)', table(procu.slice(0, 15).map((j) => ({ system: j.system, jobname: j.jobname, cx: j.cx, serviceClass: j.serviceClass, cpPct: p1(j.cpEngines), iipcpPct: p1(j.iipcpEngines), eapplCpPct: p1(j.eapplCpEngines), eapplIipPct: p1(j.eapplZiipEngines) }))));
   if (m.enclaves.length && !sys) out.push('', 'ENCLAVE', table(m.enclaves));
   // SYSWKM: CICS classes' work manager states and the AORs serving them (their CPU and delays live on those AORs).
   for (const w of m.wkm ?? []) {
@@ -482,6 +493,17 @@ function table(rows: object[], omit: string[] = []): string {
   return [line(cols), ...flat.map((o) => line(cols.map((c) => o[c] ?? '')))].join('\n');
 }
 
+/** The WLM activity log as the Monitor shows it (last 60 lines; live only with Monitor III, else after the day).
+ * system: lines for one LPAR; grep: lines containing that text (case-insensitive). */
+export function wlmLogText(file: PlayFile, opts: { system?: string; grep?: string } = {}): string {
+  const run = file.run;
+  const lines = buildView(run, sc(run)).wlmLog;
+  if (lines.length === 0) return run.phase === 'LIVE' ? 'The live WLM activity log needs the RMF_MON3 tool; without it the log is readable after the day.' : 'WLM activity log is empty.';
+  const g = opts.grep?.toLowerCase();
+  const shown = lines.filter((l) => (!opts.system || l.split(' ')[2] === opts.system) && (!g || l.toLowerCase().includes(g)));
+  return [`WLM activity log (last ${lines.length} lines${opts.system ? `, ${opts.system}` : ''}${g ? `, matching "${opts.grep}"` : ''}):`, ...(shown.length ? shown : ['(no matching lines)'])].join('\n');
+}
+
 /** The WLM service definition (active, or the pending edits) and the configuration it runs on. */
 export function policyText(file: PlayFile, pending: boolean): string {
   const run = file.run;
@@ -529,7 +551,7 @@ export function catalogText(file: PlayFile): string {
   out.push(`  workloads: ${iq.apps.map((a) => a.id).join(' ')}`);
   out.push('projects (project ID hours; engineer-hours spread over days):');
   for (const p of projectsView(file.run)) out.push(`  ${p.id}${p.done ? ' [done]' : ''}: ${p.name}, ${p.hoursDone}/${p.hours}h, max ${p.maxHoursPerDay}h/day. ${p.description}`);
-  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> [--at D2 10:40] | CPC <lparId> PRSM_DELAY|CAPPED [interval id, as in Partition Data | --at D2 10:40 for a past Monitor III range] | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
+  out.push('evidence pins (pin SOURCE ...; then rca INC MECH TRIG --evidence 1,2): sources WLMGL <interval id> <system> <scKey> <metric> | MON3 <system> <scKey> <metric> [jobname: a SYSWKM server, metric VELOCITY] [--at D2 10:40] | CPC <lparId> PRSM_DELAY|CAPPED [interval id, as in Partition Data | --at D2 10:40 for a past Monitor III range] | DB2|CICS <hour> <workloadId> <metric> | BATCH <day as labelled, e.g. D2> <JOB_* metric>');
   out.push(`  metrics: ${Object.keys(EVIDENCE_METRICS).join(' ')}`);
   const cfg = file.run.sim.config;
   out.push('change targets (current config):');
@@ -551,15 +573,7 @@ export function clockText(tick: number): string {
   const f = formatClock(tick);
   return `${f.slice(0, f.indexOf(' '))} ${WEEKDAYS[clockAt(tick).dayOfWeek]} ${f.slice(-8, -3)}`;
 }
-/** `D2 10:40` or `D2 Tue 10:40` (as clockText prints it) → tick; the small hours belong to the played day before. */
-export function tickOfClock(text: string): number | null {
-  const m = /^D(\d+)\s+(?:[A-Za-z]{3}\s+)?(\d{1,2}):(\d{2})$/i.exec(text.trim());
-  if (!m) return null;
-  const day = Number(m[1]) - 1, hh = Number(m[2]), mm = Number(m[3]);
-  if (day < 0 || hh > 23 || mm > 59) return null;
-  const sec = ((hh - DAY_START_HOUR + 24) % 24) * 3600 + mm * 60;
-  return day * TICKS_PER_DAY + Math.floor(sec / TICK_SEC);
-}
+export { tickOfClock };
 
 function mon3RangeText(file: PlayFile): string {
   const r = file.mon3 ? mon3PinRange(file.mon3) : null;
@@ -590,4 +604,117 @@ function resolveKey(key: string, keys: string[]): string {
 function rowKeys(iv: { wlm: { lparId: string; scKey: string }[] }, system: string): string {
   const keys = [...new Set(iv.wlm.filter((x) => x.lparId === system).map((x) => x.scKey))].sort();
   return keys.length ? `${system} rows: ${keys.join(' ')}` : `systems: ${[...new Set(iv.wlm.map((x) => x.lparId))].sort().join(' ')}`;
+}
+
+const usd = (x: number) => `$${Math.round(x).toLocaleString()}`;
+
+function budgetLine(software: number, cod: number, budget: number): string {
+  const total = software + cod;
+  return `Software + CoD estimate: ${usd(software)} + ${usd(cod)} = ${usd(total)} vs budget ${usd(budget)}; ${budgetDelta(total, budget).label}. At billing: over 25% ends the run.`;
+}
+
+/** Finance tab as text: the month's bill so far and, under TFP, pace against the prorated baseline per product. */
+export function financeText(file: PlayFile): string {
+  const run = file.run;
+  const scenario = sc(run);
+  const f = financeView(run, scenario);
+  const out = [`month ${f.month + 1}  pricing ${f.pricing}  month to date ${usd(f.monthToDate)}${f.cfoTarget !== null ? `  CFO target <= ${usd(f.cfoTarget)}` : ''}`];
+  out.push(budgetLine(f.monthToDate, f.opexSpent, f.opexBudget), R4HA_BILLING_NOTE, BUDGET_MONTH_BOUNDARY_NOTE);
+  if (f.offer) out.push(`TFP offer ${f.offer.status} (decide by day ${f.offer.untilDay + 1}): baseline ${usd(f.offer.baselineMonthly)}/month vs sub-capacity ${usd(f.offer.subcapMonthly)}/month, overage at ${Math.round(100 * f.offer.overageFrac)}% of price`);
+  const tfp = run.sim.cost.tfp;
+  if (f.tfp && tfp) {
+    // The baseline is prorated over the TFP part of the month; project consumption over that same part.
+    const tfpElapsed = monthElapsedFrac(run.sim.tick) - (1 - tfp.monthFrac);
+    const scale = tfpElapsed > 1e-6 ? tfp.monthFrac / tfpElapsed : null;
+    out.push('', `TFP: ${scale ? (100 / scale).toFixed(0) : 0}% of this month's TFP period elapsed. The baseline is paid in full, used or not; MSU-hours above it cost ${Math.round(100 * tfp.terms.overageFrac)}% of price. zIIP MSU is not counted.`);
+    out.push(
+      table(
+        f.tfp.map((p) => {
+          const price = tfp.terms.pricePerMsuHour[p.id] ?? 0;
+          const proj = scale ? p.msuHours * scale : null;
+          return {
+            product: p.id,
+            lpars: scenario.products.find((x) => x.id === p.id)?.lpars ?? [],
+            msuHours: Math.round(p.msuHours),
+            baselineMsuHours: Math.round(p.baselineMsuHours),
+            projectedMsuHours: proj === null ? null : Math.round(proj),
+            projectedVsBaselinePct: proj === null || p.baselineMsuHours <= 0 ? null : 100 * (proj / p.baselineMsuHours - 1),
+            pricePerMsuHour: price.toFixed(3),
+            overagePerMsuHour: (price * tfp.terms.overageFrac).toFixed(3),
+            chargeSoFar: usd(p.charge),
+          };
+        }),
+      ),
+    );
+    // One MSU-hour above the baseline on an image is charged by every product licensed there.
+    const lpars = [...new Set(scenario.products.flatMap((p) => p.lpars))].sort();
+    const perLpar = lpars.map((l) => `${l} ${scenario.products.filter((p) => p.lpars.includes(l)).reduce((a, p) => a + (tfp.terms.pricePerMsuHour[p.id] ?? 0) * tfp.terms.overageFrac, 0).toFixed(2)}`);
+    out.push('', `overage $ per MSU-hour by LPAR (all products licensed on it): ${perLpar.join('  ')}`);
+  } else {
+    out.push('', table(f.products.map((p) => ({ product: p.id, lpars: p.lpars, peakR4haMsu: Math.round(p.peakMsu), peakAt: p.peakAt, charge: usd(p.charge) }))));
+  }
+  if (f.bills.length) out.push('', 'closed months: ' + f.bills.map((b) => `month ${b.month + 1} ${usd(b.total)}`).join('  '));
+  return out.join('\n');
+}
+
+const CAPACITY_COMMANDS = new Set<string>(['ADD_CPC_ENGINES', 'SET_CPC_ENGINES', 'SET_CPC_CAPACITY', 'SET_CPC_MEMORY', 'SET_LOGICAL', 'SET_WEIGHT', 'SET_DEFINED_CAPACITY', 'SET_ABSOLUTE_CAP', 'SET_CAPACITY_GROUP', 'SET_LPAR_MEMORY', 'SET_JOB_CLASS']);
+
+/** Hardware view as text: CPC engines and MSU, LPAR definitions, and change-desk changes with their days. */
+export function capacityText(file: PlayFile): string {
+  const run = file.run;
+  const c = run.sim.config;
+  const out = c.cpcs.map((cpc) => `${cpc.id} ${cpc.generation} capacity setting ${cpc.capacitySetting}: CP ${cpc.engines.CP} x ${msuPerCp(cpc).toFixed(0)} MSU = ${Math.round(cpc.engines.CP * msuPerCp(cpc))} MSU, zIIP ${cpc.engines.ZIIP}, ICF ${cpc.engines.ICF}, memory ${cpc.memoryGb} GB`);
+  out.push(
+    '',
+    table(
+      c.lpars.map((l) => {
+        const cp = l.pools.find((p) => p.pool === (l.kind === 'CF' ? 'ICF' : 'CP'));
+        const zi = l.pools.find((p) => p.pool === 'ZIIP');
+        return { lpar: l.id, kind: l.kind, logicalCp: cp?.logical ?? 0, reservedCp: cp?.reserved ?? 0, weight: cp?.weight ?? 0, logicalZiip: zi?.logical ?? 0, ziipWeight: zi?.weight ?? 0, definedCapacityMsu: l.definedCapacityMsu, group: l.capacityGroup, memoryGb: l.memoryGb };
+      }),
+    ),
+  );
+  if (c.capacityGroups.length) out.push('', 'capacity groups: ' + c.capacityGroups.map((g) => `${g.id} ${g.limitMsu} MSU`).join('  '));
+  out.push('', 'job classes (initiators per LPAR): ' + c.jobClasses.map((j) => `${j.jobClass} ${j.mode} ${Object.entries(j.initiators).map(([l, n]) => `${l}:${n}`).join(',')}`).join('  '));
+  const changes = run.changes
+    .filter((ch) => ch.status !== 'FAILED' && ch.commands.some((x) => CAPACITY_COMMANDS.has(x.kind)))
+    .sort((a, b) => a.activateDay - b.activateDay || a.id - b.id);
+  if (changes.length) {
+    out.push('', 'capacity, LPAR and initiator changes from the change desk (temporary ones revert at the start of revertDay):');
+    out.push(table(changes.map((ch) => ({ id: idText('change', ch.id), status: ch.status, activateDay: `D${ch.activateDay + 1}`, revertDay: ch.revertDay === null ? null : `D${ch.revertDay + 1}`, label: ch.label, capex: usd(ch.capex), opexPerDay: usd(ch.opexPerDay) }))));
+  }
+  return out.join('\n');
+}
+
+/** The latest batch night from SMF 30, rolled up by stream (needs the same tool as smf BATCH). */
+export function batchStreamsText(file: PlayFile): string {
+  const run = file.run;
+  if (!hasFeature(run, SMF_FEATURE.BATCH)) return needs(SMF_FEATURE.BATCH, 'The batch view');
+  const n = batchNight(run);
+  if (!n) return 'No batch jobs have ended yet.';
+  const rows = [...new Set(n.jobs.map((j) => j.stream))].sort().map((s) => {
+    const js = n.jobs.filter((j) => j.stream === s);
+    const start = Math.min(...js.map((j) => j.startSec));
+    const end = Math.max(...js.map((j) => j.endSec));
+    return {
+      stream: s,
+      jobsEnded: js.length,
+      critical: js.some((j) => j.critical),
+      lpars: [...new Set(js.map((j) => j.lparId))].sort(),
+      firstStart: clockText(n.dayStartTick + Math.round(start / TICK_SEC)),
+      lastEnd: clockText(n.dayStartTick + Math.round(end / TICK_SEC)),
+      spanMin: (end - start) / 60,
+      maxQueuedMin: Math.max(...js.map((j) => j.queuedSec)) / 60,
+      maxStretch: Math.max(...js.map((j) => j.stretch)),
+    };
+  });
+  const share = n.critical?.delaySharePct;
+  return [
+    `batch night D${n.day + 1} (SMF 30, ended jobs only): last critical job ${n.criticalEnd ?? 'none'}`,
+    share ? `critical path delay share %: ${Object.entries(share).map(([k, v]) => `${k} ${v.toFixed(0)}`).join('  ')}` : '',
+    n.critical?.abended.length ? `critical abends: ${n.critical.abended.join(' ')}` : '',
+    table(rows),
+    '',
+    'smf BATCH has the per-job rows. maxQueuedMin: longest wait for an initiator; maxStretch: slowdown against running alone.',
+  ].filter(Boolean).join('\n');
 }

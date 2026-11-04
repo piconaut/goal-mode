@@ -87,6 +87,25 @@ describe('equal-DP work shares by ready units, not by demand (PROGRESS realism f
   });
 });
 
+describe('state samples are bounded by ready units (RMF Report Analysis p.52–53, p.540)', () => {
+  // Twelve batch jobs (one TCB each) at low DP on a 4-engine image that high-DP transactions nearly fill.
+  // Each job is sampled once: using or delayed, so delay samples cannot exceed the jobs not using a CP.
+  const r = evaluateLpar({
+    cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0,
+    slices: [txn({ key: 'ONL', scKey: 'ONLHI#1', cpEngines: 3.6 }), server({ key: 'BATCH', scKey: 'BATCHPRD#1', ioClass: 'SEQ', cpEngines: 12, units: 12 })],
+    backlog: {}, io: IO, pagingFrac: 0, dpOf: (k) => (k === 'ONLHI#1' ? 250 : 200),
+  });
+  const b = r.slices[1]!;
+  const samples = b.usingCpu + b.usingZiip + b.usingIo + b.delayCpu + b.delayZiip + b.delayIo + b.delayStorage + b.delayCap;
+  it('total samples ≤ running jobs, so Monitor III ACT cannot exceed the job count', () => {
+    expect(b.delayCpu).toBeGreaterThan(5);
+    expect(samples).toBeLessThanOrEqual(12 + 1e-9);
+  });
+  it('velocity is at least the CPU share per job', () => {
+    expect(b.usingCpu / (b.usingCpu + b.delayCpu)).toBeGreaterThanOrEqual(b.cpGranted / 12 - 1e-9);
+  });
+});
+
 describe('importance ordering under contention', () => {
   it('higher-DP work is served first', () => {
     const slices = [txn({ key: 'A', scKey: 'A#1', cpEngines: 3 }), txn({ key: 'B', scKey: 'B#1', cpEngines: 3 })];
@@ -694,23 +713,33 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
-    const outside = (cmds: Parameters<typeof step>[1], part = 'outside') => {
+    const run = (cmds: Parameters<typeof step>[1], part = 'outside') => {
       let s = step(base, cmds, MIDWEST);
       let out = 0;
       let n = 0;
+      let failed = 0;
       for (let i = 0; i < 180; i++) {
         s = step(s, [], MIDWEST);
         const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
         out += w.parts[part] ?? 0;
         n += w.completions;
+        failed += w.failed;
       }
-      return (1000 * out) / Math.max(1, n);
+      return { waitMs: (1000 * out) / Math.max(1, n), failed };
     };
-    expect(outside([])).toBe(0);
-    expect(outside(card('CICS_SOS'))).toBeGreaterThan(5);
+    // The card's leak an hour in: EDSA (default EDSALIM) holds about 15 tasks per region.
+    const sos = (extra: Record<string, number> = {}) =>
+      ['CICSAOR2', 'CICSAOR4'].map((name) => ({ kind: 'SET_CICS' as const, name, leak: { startMb: 470, mbPerHour: 0 }, ...extra }));
+    expect(run([]).waitMs).toBe(0);
+    const sick = run(sos());
+    expect(sick.waitMs).toBeGreaterThan(5);
     // The slots are too few for the arrival rate even at unqueued service time, so RCA sees the limit's own queue.
-    expect(outside(card('CICS_SOS'), 'outsideRef')).toBeGreaterThan(0.5 * outside(card('CICS_SOS')));
-  }, 60_000);
+    expect(run(sos(), 'outsideRef').waitMs).toBeGreaterThan(0.5 * sick.waitMs);
+    // CICS Performance p.78: a higher MXT does not help SOS; MXT at what storage holds, or more EDSA, does.
+    expect(run(sos({ maxTasks: 2000 })).failed).toBeGreaterThanOrEqual(0.95 * sick.failed);
+    expect(run(sos({ maxTasks: 15 })).failed).toBeLessThan(0.8 * sick.failed);
+    expect(run(sos({ edsaLimitMb: 1200 })).waitMs).toBe(0);
+  }, 120_000);
 
   it('stored procedures losing zIIP eligibility move mobile CPU from zIIPs to general CPs', () => {
     const pools = (cmds: Parameters<typeof step>[1]) => {

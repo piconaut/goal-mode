@@ -16,7 +16,8 @@
     "bench": "tsx tools/bench.ts",
     "compare": "tsx tools/compare.ts",
     "sweep": "tsx tools/sweep.ts",
-    "play": "tsx tools/play.ts"
+    "play": "tsx tools/play.ts",
+    "inspect": "tsx tools/inspect.ts"
   },
   "dependencies": {
     "react": "19.3.1",

@@ -2,7 +2,7 @@ import { PLANNER } from '../../content/planner';
 import { clockAt } from '../../sim/core/clock';
 import { streamRng } from '../../sim/core/rng';
 import type { Scenario } from '../../sim/core/scenario';
-import { TICKS_PER_HOUR } from '../../sim/core/units';
+import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
 import { classify } from '../../sim/wlm/classify';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
 import { addHour, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline } from '../sla';
@@ -70,6 +70,14 @@ export function accumulateHour(run: RunState): RunState {
     for (const x of lt.scps) acc[importanceRank(def, x.scKey)]! += x.cpEngines;
     cpByImportance[lt.lparId] = acc;
   }
+  let cicsStorage = h.cicsStorage;
+  for (const lt of run.sim.last.lpars) {
+    for (const x of lt.cicsStorage ?? []) {
+      cicsStorage = { ...cicsStorage };
+      const a = cicsStorage[x.region];
+      cicsStorage[x.region] = { peakMb: Math.max(a?.peakMb ?? 0, x.inUseMb), limitMb: x.limitMb, sosSec: (a?.sosSec ?? 0) + (x.sos ? TICK_SEC : 0) };
+    }
+  }
   return {
     ...run,
     hour: {
@@ -83,6 +91,7 @@ export function accumulateHour(run: RunState): RunState {
       lparBusyById,
       cpByImportance,
       lockIndexSum: h.lockIndexSum + run.sim.env.lockIndex,
+      ...(cicsStorage ? { cicsStorage } : {}),
     },
   };
 }
@@ -175,6 +184,6 @@ export function closeHour(run: RunState, scenario: Scenario): RunState {
   r = { ...r, capacityToday: hourPeaks(r, h) };
   const hourOfDay = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
   if (hourOfDay >= 18 || hourOfDay < 6) r = { ...r, nightHour: addHour(r.nightHour, h) };
-  const smfHours = [...(r.smfHours ?? []), { day: r.day, hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay), workloads: h.workloads }].slice(-SMF_HOURS_KEPT);
+  const smfHours = [...(r.smfHours ?? []), { day: r.day, hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay), workloads: h.workloads, ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}) }].slice(-SMF_HOURS_KEPT);
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }

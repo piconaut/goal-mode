@@ -16,7 +16,7 @@ import type { CareerState } from '../game/career';
 import type { WhatIfSummary } from '../game/whatif';
 import type { Command } from '../sim/core/commands';
 import type { ChartMarker, Mon3Sample } from '../game/mon3Charts';
-import type { BatchNight, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
+import type { BatchNight, CicsStorageRow, CicsTxnRow, Db2AcctRow, Smf113Row } from '../game/smf';
 import type { ChangeRequest } from '../game/run';
 import type { CicsGoalIssue, WlmEdit } from '../game/wlmEdit';
 import type { Mechanism, Trigger } from '../game/types';
@@ -43,7 +43,7 @@ export type SmfKind = 'DB2' | 'CICS' | 'BATCH' | 'SMF113';
 
 export type SmfData =
   | { kind: 'DB2'; hour: string; rows: Db2AcctRow[] }
-  | { kind: 'CICS'; hour: string; rows: CicsTxnRow[] }
+  | { kind: 'CICS'; hour: string; rows: CicsTxnRow[]; storage: CicsStorageRow[] }
   | { kind: 'BATCH'; night: BatchNight | null }
   | { kind: 'SMF113'; rows: Smf113Row[] };
 
@@ -74,6 +74,12 @@ export type ToWorker =
   | { type: 'SPECTATE'; text: string }
   /** Stop spectating and keep the watched run as this browser's own save. */
   | { type: 'SPECTATE_ADOPT' }
+  /** The page is being hidden or closed: save now (live day included). */
+  | { type: 'SAVE_NOW' }
+  /** Download the run as a play-CLI run file (`npm run play -- <file> status`). */
+  | { type: 'EXPORT_RUN' }
+  /** Replace the current run (and the save) with an exported run file. */
+  | { type: 'IMPORT_RUN'; text: string }
   /** The UI's change basket, mirrored so it is saved with the run. */
   | { type: 'SET_BASKET'; basket: Command[] }
   | { type: 'GET_RULES' }
@@ -115,6 +121,7 @@ export type FromWorker =
   | { type: 'MON3_CHARTS'; fromSample: number; fromMarker: number; samples: Mon3Sample[]; markers: ChartMarker[] }
   | { type: 'RULES'; active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null }
   | { type: 'REPORT'; text: string }
+  | { type: 'RUN_FILE'; name: string; text: string }
   | { type: 'POLICY'; json: string }
   /** Restore the change basket (continuing a saved run, new run). */
   | { type: 'BASKET'; basket: Command[] }

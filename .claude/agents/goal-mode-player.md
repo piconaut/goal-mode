@@ -23,11 +23,35 @@ one command; the run file is saved after every accepted command.
   BRIEFING. WLM and config changes take effect at the next day's start; emergency changes cost trust.
 - Engineer-hours, capex, the monthly opex budget (MLC) and Insight are all limited; every lever has a cost.
 - Diagnose before changing: name the symptom, the report that shows it and the cause before you act.
+- `finance` (bill, TFP pace per product, overage $ per MSU-hour by LPAR), `capacity` (CPC MSU, LPARs, initiators,
+  capacity changes) and `batch` (last night by stream) replace digging through status and smf rows.
+- Read WLM's own decisions with `wlmlog [system] [--grep RCVR]`: which receiver it picked, which donor, which DP
+  moved, and when it said "no action with net value" or "not WLM-fixable". If a class misses its goal while less
+  important work sits at or above its DP and WLM keeps doing nothing, write that down as a finding.
+- Check `*PLEX` numbers against the per-system rows (`report WLM_DETAIL <id> <scKey> <system>`, `mon3 <system>`)
+  before blaming a class: one LPAR (a capped test system, say) can drive a sysplex PI on its own.
+- Snapshot the run at the first sign of an incident (PI > 1 on an SLA class, a page, a new incident line):
+  `cp <runFile> <runFile without .json>.D<day>-<hhmm>.json` (and the `.mon3.json` beside it), so the state can be
+  replayed and debugged later. Note the snapshot path in the run log.
+- Evidence: before each `rca`, pin one to three data points that show the cause (`pin ...`; `catalog` lists the
+  sources), file the RCA with `--evidence`, and copy the game's verdict on each pin into the run log. A verdict you
+  think is wrong (a good pin scored 0, a reason that names the wrong workload) is a finding.
 
 ## Run log
-Before each change, RCA or purchase, record the reason with `npm run -s play -- <runFile> note "<one sentence>"` (spectators see it). Append one line per command to `<runFile>.log.md`: day, clock, command, and a one-sentence reason. At the
-end of every day add a short paragraph: what went wrong, what you changed and why.
+Before each change, RCA or purchase, record the reason with `npm run -s play -- <runFile> note "<one sentence>"` (spectators see it). Append one line per command to `<runFile>.log.md`: day, clock, command, and a one-sentence reason.
+
+For every incident or event that mattered, add this block (the human playtest checklist):
+- Name, sim clock when you noticed it, and what tipped you off (status, page, inbox, report).
+- First hypothesis, and the report and numbers that confirmed or killed it.
+- Fix, and the sim minutes until you could see it working.
+- RCA filed (mechanism, trigger, pins) and the game's truth and pin verdicts. Did the truth match your diagnosis?
+- Gotcha check: could you explain afterwards, from what the game showed, why it happened?
+- Other valid fixes you considered.
+
+At the end of every day add a short paragraph: what went wrong, what you changed and why, how many meaningful
+decisions the day had (target 3–6), engineer-hours left unspent, and any counter or number that doesn't add up.
 
 ## Report back
 When the run ends or you reach the requested day: the final `status` header (phase, day, trust, score), the
-key decisions, and anything in the game that seemed wrong or unexplainable from the data shown.
+key decisions, the incident blocks, pacing (dead days, overload), snapshot paths, and anything in the game that
+seemed wrong or unexplainable from the data shown, with the report, interval, system and value.

@@ -1,8 +1,9 @@
 import { generateMidwestNetwork } from '../../src/content/batch/midwest-batch';
 import { MIDWEST } from '../../src/content/scenarios';
 import { BASEPOL } from '../../src/content/wlm/basepol';
-import { diffRows, explainClassification, workItems } from '../../src/game/classifyExplain';
-import { applyWlmEdit } from '../../src/game/wlmEdit';
+import { diffRows, explainClassification, workItems, type WorkItem } from '../../src/game/classifyExplain';
+import { applyWlmEdit, pendingBase } from '../../src/game/wlmEdit';
+import { classify } from '../../src/sim/wlm/classify';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
 
 const items = workItems(MIDWEST.workloads, MIDWEST.addressSpaces, generateMidwestNetwork(1, 0, 10));
@@ -40,9 +41,56 @@ describe('explainClassification', () => {
     expect(ex2.sysother).toContain('ACQBANK');
     expect(ex2.subsystems.find((s) => s.subsystem === 'OMVS')!.defaultCatches).toContain('ACQBANK');
   });
+
+  it('shows every supported subsystem even with no policy entries or current work', () => {
+    const empty = explainClassification({ ...BASEPOL, subsystems: [] }, []);
+    expect(empty.subsystems.map((s) => s.subsystem)).toEqual(['STC', 'JES', 'CICS', 'DDF', 'TSO', 'MQ', 'OMVS']);
+    for (const panel of empty.subsystems) {
+      expect(panel).toEqual({
+        subsystem: panel.subsystem,
+        defaultServiceClass: panel.subsystem === 'STC' ? 'SYSSTC' : 'SYSOTHER',
+        builtInDefault: true,
+        rows: [],
+        defaultCatches: [],
+      });
+    }
+  });
+
+  it('retains explicit defaults on empty subsystem panels', () => {
+    let def = edit(BASEPOL, { op: 'SET_DEFAULT', subsystem: 'OMVS', serviceClass: 'DDFPRD' });
+    def = edit(def, { op: 'SET_DEFAULT', subsystem: 'STC', serviceClass: 'SYSSTC' });
+    const panels = explainClassification(def, []).subsystems;
+    expect(panels.find((s) => s.subsystem === 'OMVS')).toEqual({
+      subsystem: 'OMVS', defaultServiceClass: 'DDFPRD', builtInDefault: false, rows: [], defaultCatches: [],
+    });
+    expect(panels.find((s) => s.subsystem === 'STC')).toMatchObject({ defaultServiceClass: 'SYSSTC', builtInDefault: false });
+  });
 });
 
 describe('rule edits by path', () => {
+  it('prepares a first OMVS rule before acquisition work arrives without changing the active policy', () => {
+    const active = { ...BASEPOL, subsystems: BASEPOL.subsystems.filter((s) => s.subsystem !== 'OMVS') };
+    const before = explainClassification(active, items).subsystems.find((s) => s.subsystem === 'OMVS')!;
+    expect(before).toEqual({ subsystem: 'OMVS', defaultServiceClass: 'SYSOTHER', builtInDefault: true, rows: [], defaultCatches: [] });
+
+    const pending = edit(pendingBase(null, active), { op: 'ADD_RULE', subsystem: 'OMVS', qualifier: 'UI', pattern: 'ACQSVC', serviceClass: 'DDFPRD' });
+    const preview = explainClassification(pending, items).subsystems.find((s) => s.subsystem === 'OMVS')!;
+    expect(preview.rows).toHaveLength(1);
+    expect(preview.rows[0]).toMatchObject({ path: [0], qualifier: 'UI', pattern: 'ACQSVC', effectiveClass: 'DDFPRD', catches: [] });
+    expect(preview.defaultServiceClass).toBe('SYSOTHER');
+    expect(preview.builtInDefault).toBe(true);
+    expect(diffRows(before.rows, preview.rows)).toEqual({ changes: ['added'], removed: [] });
+    expect(explainClassification(active, items).subsystems.find((s) => s.subsystem === 'OMVS')).toEqual(before);
+    expect(active.subsystems.some((s) => s.subsystem === 'OMVS')).toBe(false);
+
+    const acquisition: WorkItem = { label: 'ACQBANK', kind: 'workload', work: { subsystem: 'OMVS', UI: 'ACQSVC' } };
+    expect(classify(active, acquisition.work).serviceClass).toBe('SYSOTHER');
+    expect(classify(pending, acquisition.work).serviceClass).toBe('DDFPRD');
+    const forthcoming = explainClassification(pending, [...items, acquisition]);
+    expect(forthcoming.subsystems.find((s) => s.subsystem === 'OMVS')!.rows[0]!.catches).toEqual(['ACQBANK']);
+    expect(forthcoming.sysother).not.toContain('ACQBANK');
+  });
+
   it('moves a rule and changes what it catches', () => {
     // Moving DB* above %%%%IRLM lets DB* catch IRLM too (a classic misclassification).
     const stcRules = BASEPOL.subsystems.find((s) => s.subsystem === 'STC')!.rules;

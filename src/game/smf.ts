@@ -128,6 +128,21 @@ export function cicsMonitoring(run: RunState, scenario: Scenario, key: string): 
     });
 }
 
+export interface CicsStorageRow {
+  region: string;
+  peakMb: number;
+  limitMb: number;
+  sosSec: number;
+}
+
+/** CICS storage manager statistics per AOR for an hour (EDSA peak against EDSALIM, time short on storage). */
+export function cicsStorageStats(run: RunState, key: string): CicsStorageRow[] {
+  const st = key === 'current' ? run.hour?.cicsStorage : run.smfHours.find((x) => `${x.day}:${x.hourOfDay}` === key)?.cicsStorage;
+  return Object.entries(st ?? {})
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([region, v]) => ({ region, ...v }));
+}
+
 export interface BatchJobRow {
   name: string;
   stream: string;

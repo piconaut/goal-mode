@@ -21,6 +21,8 @@ export interface GameHandle {
   adoptSpectated: () => void;
   report: string;
   policy: string;
+  runFile: { name: string; text: string } | null;
+  prepareRunFile: () => void;
   history: HistoryPoint[];
   savedRunDay: number | null;
   pending: PendingPolicyView | null;
@@ -50,6 +52,7 @@ export function useGame(): GameHandle {
   const [view, setView] = useState<ViewModel | null>(null);
   const [report, setReport] = useState('');
   const [policy, setPolicy] = useState('');
+  const [runFile, setRunFile] = useState<GameHandle['runFile']>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [savedRunDay, setSavedRunDay] = useState<number | null>(null);
   const [pending, setPending] = useState<PendingPolicyView | null>(null);
@@ -99,6 +102,7 @@ export function useGame(): GameHandle {
       else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds, advice: m.advice });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
+      else if (m.type === 'RUN_FILE') setRunFile({ name: m.name, text: m.text });
       else if (m.type === 'RESULT') {
         setToast({ ok: m.ok, message: m.message });
         setResults((r) => [...r, { ok: m.ok, message: m.message, clock: clockRef.current }].slice(-50));
@@ -108,7 +112,16 @@ export function useGame(): GameHandle {
     // Start at the player's last running speed (never paused: a reload shouldn't leave the clock stopped).
     const stored = Number(readPref(SPEED_KEY));
     if (stored > 0) w.postMessage({ type: 'SET_SPEED', speed: stored } satisfies ToWorker);
-    return () => w.terminate();
+    // Save when the tab is hidden or closed, so a reload mid-day resumes where the player left.
+    const flush = () => w.postMessage({ type: 'SAVE_NOW' } satisfies ToWorker);
+    const onHide = () => document.visibilityState === 'hidden' && flush();
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', flush);
+      w.terminate();
+    };
   }, []);
 
   const send = useCallback((m: ToWorker) => {
@@ -144,6 +157,11 @@ export function useGame(): GameHandle {
     return () => window.clearInterval(id);
   }, [spectateName]);
 
+  const prepareRunFile = useCallback(() => {
+    setRunFile(null);
+    worker.current?.postMessage({ type: 'EXPORT_RUN' } satisfies ToWorker);
+  }, []);
+
   // Keep the watched run: the worker saves it as an ordinary run and the page stops polling.
   const adoptSpectated = useCallback(() => {
     worker.current?.postMessage({ type: 'SPECTATE_ADOPT' } satisfies ToWorker);
@@ -154,7 +172,7 @@ export function useGame(): GameHandle {
     window.history.replaceState(null, '', url);
   }, []);
 
-  return { spectate, adoptSpectated, view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, mon3Range, mon3At, rules, toast, results, basket, setBasket, send };
+  return { spectate, adoptSpectated, view, report, policy, runFile, prepareRunFile, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, mon3Range, mon3At, rules, toast, results, basket, setBasket, send };
 }
 
 const SPEED_KEY = 'goalmode.speed';

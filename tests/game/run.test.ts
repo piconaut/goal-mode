@@ -41,6 +41,25 @@ describe('changes', () => {
     expect(failedPolicyToday({ ...r, changes: [{ ...change, status: 'APPLIED' }] })).toBeNull();
   });
 
+  it('restores only the latest policy attempt today, preserving a later success', () => {
+    let r = fresh();
+    for (const name of ['FIRST', 'SECOND']) {
+      const out = requestChange(r, content, { label: name, commands: [{ kind: 'ACTIVATE_POLICY', definition: { ...r.sim.wlm.definition, policyName: name } }] });
+      expect(out.ok).toBe(true);
+      r = out.run;
+    }
+    const [first, second] = r.changes;
+    const states = (a: 'FAILED' | 'APPLIED', b: 'FAILED' | 'APPLIED'): RunState => ({
+      ...r, changes: [{ ...first!, status: a }, { ...second!, status: b }],
+    });
+    expect(failedPolicyToday(states('FAILED', 'APPLIED'))).toBeNull();
+    expect(failedPolicyToday(states('APPLIED', 'FAILED'))?.policyName).toBe('SECOND');
+    expect(failedPolicyToday(states('FAILED', 'FAILED'))?.policyName).toBe('SECOND');
+    // A future-day or non-policy change must not hide today's last failed policy.
+    expect(failedPolicyToday({ ...r, changes: [{ ...first!, status: 'FAILED' }, { ...second!, status: 'APPLIED', activateDay: r.day + 1 }] })?.policyName).toBe('FIRST');
+    expect(failedPolicyToday({ ...r, changes: [{ ...first!, status: 'FAILED' }, { ...second!, status: 'APPLIED', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }] })?.policyName).toBe('FIRST');
+  });
+
   it('hardware orders spend capex and arrive after their lead time', () => {
     const out = requestChange(fresh(), content, { label: 'zIIP', hardwareId: 'ADD_ZIIP' });
     expect(out.ok).toBe(true);
@@ -185,6 +204,76 @@ describe('draft', () => {
 });
 
 describe('events', () => {
+  const activeCard = (defId: string): RunState => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
+    const r = fresh();
+    return {
+      ...r,
+      sim: applyCommands(r.sim, def.begin),
+      events: [{ uid: `${def.id}@0`, defId: def.id, name: def.name, startTick: 0, endTick: 100, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: true, ended: false }],
+    };
+  };
+
+  it.each(['REGRESSION', 'ZIIP_LOSS'])('a briefing fix restores %s on the first tick and stays restored past its natural end', (defId) => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
+    let r = activeCard(defId);
+    const expected = applyCommands(r.sim, def.end).mods;
+    r = requestChange(r, MIDWEST_GAME, { label: 'fix', fixId: def.fix! }).run;
+    // Other pending work and later planned commands must survive the fix, in order.
+    r = { ...r, pendingCommands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] };
+    r = requestChange(r, MIDWEST_GAME, { label: 'weight', commands: [{ kind: 'SET_WEIGHT', lparId: 'PROD1', pool: 'CP', weight: 565 }] }).run;
+    r = startDay(r, MIDWEST_GAME);
+    expect(r.changes.map((c) => c.status)).toEqual(['APPLIED', 'APPLIED']);
+    expect(r.pendingCommands).toEqual([{ kind: 'SET_RMF_INTERVAL', minutes: 15 }, ...def.end, { kind: 'SET_WEIGHT', lparId: 'PROD1', pool: 'CP', weight: 565 }]);
+    expect(r.events[0]!.ended).toBe(true);
+    r = advance(r, MIDWEST, MIDWEST_GAME, 1);
+    expect(r.sim.mods).toEqual(expected);
+    r = advance(r, MIDWEST, MIDWEST_GAME, 101);
+    expect(r.sim.mods).toEqual(expected);
+  });
+
+  it('a failed planned fix leaves the event active and does not restore its modifiers', () => {
+    const r = activeCard('REGRESSION');
+    const label = Array.from({ length: 1000 }, (_, i) => `fix${i}`).find((s) => streamRng(r.seed, 'activate', r.day, s, 0).chance(failRiskFor(r.fatigue, r.perks)))!;
+    const planned = requestChange(r, MIDWEST_GAME, { label, fixId: 'REBIND_REVERT' }).run;
+    const live = startDay(planned, MIDWEST_GAME);
+    expect(live.changes[0]!.status).toBe('FAILED');
+    expect(live.events[0]!.ended).toBe(false);
+    expect(live.pendingCommands).toEqual([]);
+    expect(advance(live, MIDWEST, MIDWEST_GAME, 1).sim.mods.cpu.RBANK).toBe(3);
+  });
+
+  it.each(['BRIEFING', 'LIVE'] as const)('a fix with no active target in %s is charged and reports no effect', (phase) => {
+    const base = activeCard('REGRESSION');
+    for (const event of [undefined, { ...base.events[0]!, started: false }, { ...base.events[0]!, ended: true }]) {
+      const r = { ...base, phase, events: event ? [event] : [] };
+      const out = requestChange(r, MIDWEST_GAME, { label: 'fix', fixId: 'REBIND_REVERT' });
+      // Accepted like a matching fix, so the Change Desk cannot be probed for hidden events.
+      expect(out.ok).toBe(true);
+      expect(out.run.hoursLeft).toBeLessThan(r.hoursLeft);
+      const after = phase === 'LIVE' ? out.run : startDay(out.run, MIDWEST_GAME);
+      const change = after.changes.at(-1)!;
+      if (change.status === 'APPLIED') expect(after.log.some((l) => l.includes('no active event matched'))).toBe(true);
+      if (phase === 'LIVE') expect(out.message).toMatch(/no effect/);
+      expect(after.pendingCommands).toEqual([]);
+    }
+  });
+
+  it('a matching and a non-matching fix are indistinguishable when requested', () => {
+    const r = activeCard('REGRESSION');
+    const fixIds = [...new Set(MIDWEST_GAME.events.flatMap((e) => (e.fix ? [e.fix] : [])))];
+    const outs = fixIds.map((fixId) => requestChange(r, MIDWEST_GAME, { label: 'probe', fixId }));
+    expect(outs.every((o) => o.ok)).toBe(true);
+  });
+
+  it('does not charge twice for the same planned fix', () => {
+    const r = requestChange(activeCard('REGRESSION'), MIDWEST_GAME, { label: 'fix', fixId: 'REBIND_REVERT' }).run;
+    const out = requestChange(r, MIDWEST_GAME, { label: 'fix again', fixId: 'REBIND_REVERT' });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/already planned/);
+    expect(out.run).toBe(r);
+  });
+
   it('fixes end persistent events', () => {
     const withEvents = MIDWEST_GAME;
     let r = startDay(newRun(MIDWEST, withEvents, 7), withEvents);

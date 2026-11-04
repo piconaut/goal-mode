@@ -20,7 +20,10 @@ export function Wfex({ m, system }: { m: Mon3View; system: string }) {
           {speed.map((s) => (
             <tr key={`${s.system}:${s.name}`}>
               {system === '*PLEX' && <td>{s.system}</td>}
-              <td>{s.name}</td>
+              <td title={s.servedBy ? `Transaction class: speed of its serving regions ${s.servedBy.join(', ')}` : undefined}>
+                {s.name}
+                {s.servedBy && <span className="muted"> (regions)</span>}
+              </td>
               <td className="num">{n1(s.activeUsers)}</td>
               <td className="num">{s.speed === null ? 'No work' : s.speed.toFixed(0)}</td>
             </tr>

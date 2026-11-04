@@ -3,7 +3,7 @@ import { packOf } from '../content/packs';
 import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
 import { cicsGoalIssues, cicsTransactionClasses, type CicsGoalIssue } from './wlmEdit';
-import type { ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
+import type { ResourceGroupDef, ServiceClassDef, ServiceDefinition } from '../sim/wlm/types';
 import type { RoutingPolicy } from '../sim/workload/routing';
 // View model: a compact, serialisable projection of RunState for the UI (posted from the
 // worker every frame). Applies the fog of war: what the player is allowed to see.
@@ -15,7 +15,7 @@ import { codexDiscovered } from './codex';
 import type { EvidencePin } from './evidence';
 import { projectsView } from './projects';
 import { endReport, type EndReport } from './endReport';
-import type { ScheduleEntry } from './policies';
+import { plannedPolicy, type ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, type Mon3View } from './mon3';
@@ -149,6 +149,8 @@ export interface ViewModel {
   insight: number;
   capexRemaining: number;
   opexBudget: number;
+  /** Temporary capacity charges booked so far this month, added to MLC at billing. */
+  opexSpent: number;
   mlcEstimate: number;
   score: number;
   perks: string[];
@@ -172,6 +174,7 @@ export interface ViewModel {
   /** Only once the run has ended. */
   endReport: EndReport | null;
   policyName: string;
+  plannedPolicy: ServiceDefinition | null;
   previewCtx: PreviewContext;
   config: ConfigView;
   /** Data the player's active analytics tools unlock (fog of war). */
@@ -311,6 +314,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     insight: run.insight,
     capexRemaining: run.capexRemaining,
     opexBudget: opexBudgetFor(run.opexBudgetMonthly, run.perks),
+    opexSpent: run.opexSpentThisMonth,
     mlcEstimate: estimateMonth(sim.cost, scenario.products),
     score: run.score,
     perks: run.perks,
@@ -333,6 +337,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     endReason: run.endReason,
     endReport: run.phase === 'GAMEOVER' || run.phase === 'VICTORY' ? endReport(run, overallTrust(run)) : null,
     policyName: def.policyName,
+    plannedPolicy: plannedPolicy(run),
     previewCtx: previewContext(run, packOf(run.scenarioId).game),
     features: [...feats].sort(),
     mon3: feats.has('MON3') ? buildMon3(run, scenario) : null,

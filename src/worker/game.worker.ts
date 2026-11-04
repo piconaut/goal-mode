@@ -8,10 +8,10 @@ import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeDefinition, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
-import { batchNight, cicsMonitoring, db2Accounting, smf113 } from '../game/smf';
+import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
-import { deletePolicy, savePolicy, setSchedule } from '../game/policies';
+import { deletePolicy, policyEditSource, savePolicy, setSchedule } from '../game/policies';
 import { addPin, removePin } from '../game/evidence';
 import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
@@ -24,7 +24,8 @@ import { buildView } from '../game/view';
 import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
-import { decodeRunJson } from '../game/runFile';
+import { decodeRunFileText, decodeRunJson, encodeRunJson } from '../game/runFile';
+import { basketAfterFailure } from '../game/changeDesk';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { buildMon3 } from '../game/mon3';
 import { emptyMon3History, mon3At, mon3HistoryRange, recordMon3History } from '../game/mon3History';
@@ -69,6 +70,11 @@ let savedDesk: DeskState | null = null;
 const LIVE_SAVE_EVERY_TICKS = 360; // one sim hour
 let lastLiveSaveHour = -1;
 let liveSaveInFlight = false;
+/** Live-day saves: each sim hour, but at least every 30 real seconds (a reload or closed tab can't flush a save:
+ * the worker is gone before IndexedDB commits) and not more often than every couple of seconds at high speed. */
+const LIVE_SAVE_MAX_MS = 30_000;
+const LIVE_SAVE_MIN_MS = 2000;
+let lastLiveSaveMs = 0;
 /** Mirror of the UI's change basket, so it can be saved with the run. */
 let basket: Command[] = [];
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -96,6 +102,16 @@ function pendingView(): PendingPolicyView | null {
 const currentItems = () => runWorkItems(sc(), run);
 
 /** Adopt an action's outcome and tell the player how it went. */
+/** Hand the changes of requests that just failed back to the Change Desk basket, and say so. */
+function returnFailed(before: RunState) {
+  const back = basketAfterFailure(before, run, basket);
+  if (!back) return;
+  const n = back.length - basket.length;
+  basket = back;
+  post({ type: 'BASKET', basket });
+  post({ type: 'RESULT', ok: false, message: `The failed change was backed out: ${n > 0 ? `${n} change${n === 1 ? ' is' : 's are'} back` : 'its changes are back'} in the change request, to retry or edit.` });
+}
+
 function settle(out: { run: RunState; ok: boolean; message: string }) {
   run = out.run;
   post({ type: 'RESULT', ok: out.ok, message: out.message });
@@ -103,11 +119,11 @@ function settle(out: { run: RunState; ok: boolean; message: string }) {
 
 function postRules() {
   const items = currentItems();
-  const def = pendingPolicy ?? run.sim.wlm.definition;
+  const def = pendingPolicy ?? policyEditSource(run);
   post({
     type: 'RULES',
     active: explainClassification(run.sim.wlm.definition, items),
-    pending: pendingPolicy ? explainClassification(pendingPolicy, items) : null,
+    pending: def !== run.sim.wlm.definition ? explainClassification(def, items) : null,
     classIds: ['SYSTEM', 'SYSSTC', 'SYSOTHER', ...def.classes.map((c) => c.id)],
     advice: hasFeature(run, 'REPORT_CLASS_ADVISOR') ? adviseReportClasses(def, items) : null,
   });
@@ -115,7 +131,7 @@ function postRules() {
 
 // Every policy change (edit, activation, discard) refreshes both the JSON and the rules view.
 const postPolicy = () => {
-  post({ type: 'POLICY', json: JSON.stringify(pendingPolicy ?? run.sim.wlm.definition, null, 2) });
+  post({ type: 'POLICY', json: JSON.stringify(pendingPolicy ?? policyEditSource(run), null, 2) });
   postRules();
 };
 
@@ -126,11 +142,11 @@ function activate(def: ServiceDefinition) {
     return;
   }
   const out = requestChange(run, pack().game, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
+  settle(out);
   if (out.ok) {
     pendingPolicy = null;
     postPolicy();
   }
-  settle(out);
 }
 
 const sendView = () => {
@@ -170,20 +186,28 @@ function recordCareer() {
   postCareer();
 }
 
-/** Save whenever the phase changes (end of day, game over) so a reload resumes there, and every sim hour of the
- * live day so a crash or reload costs at most an hour (and cannot replay the day from its briefing). */
+/** Save whenever the phase changes (end of day, game over) so a reload resumes there, and through the live day
+ * (see LIVE_SAVE_MAX_MS) so a crash or reload costs at most about 30 s of play (and cannot replay the day from its briefing). */
 function autosave() {
   if (spectating) return;
   if (run.phase !== lastPhase) {
     lastPhase = run.phase;
     recordCareer();
     lastLiveSaveHour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
-    if (run.phase !== 'LIVE' && storageReady) void saveRun(run, desk());
+    if (run.phase !== 'LIVE' && storageReady) {
+      // This run now replaces any older save still on offer, so stop offering it (and stop blocking saves).
+      saved = null;
+      savedDesk = null;
+      void saveRun(run, desk());
+    }
     return;
   }
   const hour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
-  if (run.phase === 'LIVE' && hour !== lastLiveSaveHour && storageReady && saved === null && !liveSaveInFlight) {
+  const now = performance.now();
+  const due = hour !== lastLiveSaveHour ? now - lastLiveSaveMs >= LIVE_SAVE_MIN_MS : now - lastLiveSaveMs >= LIVE_SAVE_MAX_MS;
+  if (run.phase === 'LIVE' && due && storageReady && saved === null && !liveSaveInFlight) {
     lastLiveSaveHour = hour;
+    lastLiveSaveMs = now;
     liveSaveInFlight = true;
     void saveRun(run, desk()).finally(() => (liveSaveInFlight = false));
   }
@@ -191,17 +215,53 @@ function autosave() {
 
 const desk = (): DeskState => ({ pendingPolicy, basket });
 
-/** Save soon after any action outside the live day (planned changes, purchases, project hours, the
- * basket and pending WLM edits), not just on phase changes. Never while an older save is still on offer:
- * it is only replaced once this run reaches a phase change, as before. */
+/** Save soon after any action (planned changes, purchases, project hours, the basket, pending WLM edits), live day
+ * included: outside it shortly after the last action, during it at most every few seconds. Never while an older save
+ * is still on offer: it is only replaced once this run reaches a phase change. */
+const LIVE_PERSIST_MS = 3000;
 function persistSoon() {
   if (spectating) return;
-  if (!storageReady || saved !== null || run.phase === 'LIVE') return;
-  if (persistTimer) clearTimeout(persistTimer);
+  if (!storageReady || saved !== null) return;
+  const live = run.phase === 'LIVE';
+  if (persistTimer) {
+    if (live) return;
+    clearTimeout(persistTimer);
+  }
   persistTimer = setTimeout(() => {
     persistTimer = null;
-    if (storageReady && saved === null && run.phase !== 'LIVE') void saveRun(run, desk());
-  }, 400);
+    saveNow();
+  }, live ? LIVE_PERSIST_MS : 400);
+}
+
+function saveNow() {
+  if (spectating || !storageReady || saved !== null) return;
+  if (run.phase === 'LIVE') lastLiveSaveHour = Math.floor(run.sim.tick / LIVE_SAVE_EVERY_TICKS);
+  void saveRun(run, desk());
+}
+
+/** Same shape as tools/playCore.ts PlayFile, so `npm run play -- <file> status` and spectator mode can read it. */
+function runFileText(): string {
+  return encodeRunJson({ version: 1, run, pendingPolicy, log: [{ cmd: 'note', text: `Exported from the browser on day ${run.day + 1}` }] });
+}
+
+function importRun(text: string) {
+  const f = decodeRunFileText<{ run?: RunState; pendingPolicy?: ServiceDefinition | null }>(text);
+  if (!f?.run?.sim || !f.run.scenarioId) throw new Error('Not a GOAL MODE run file');
+  run = normalizeRun(f.run, packOf(f.run.scenarioId).scenario);
+  lastPhase = run.phase;
+  speed = 0;
+  whatIf = null;
+  history = [];
+  mon3Hist = emptyMon3History();
+  if (run.phase === 'LIVE') history = [samplePoint(run)];
+  historyDirty = true;
+  saved = null;
+  savedDesk = null;
+  pendingPolicy = f.pendingPolicy ? normalizeDefinition(f.pendingPolicy) : null;
+  basket = [];
+  postPolicy();
+  post({ type: 'BASKET', basket });
+  saveNow();
 }
 
 void Promise.all([loadRun(), loadDesk(), loadCareer()]).then(([r, d, c]) => {
@@ -258,7 +318,7 @@ function whatIfChunk(token: number) {
 
 /** Spectator mode shows a run file another process plays; only reading messages get through. */
 let spectating = false;
-const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'SPECTATE_ADOPT', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'GET_MON3_AT', 'CLASSIFY', 'SET_BASKET']);
+const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'EXPORT_RUN', 'SPECTATE_ADOPT', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'GET_MON3_AT', 'CLASSIFY', 'SET_BASKET']);
 
 function spectate(text: string) {
   const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null }>(text);
@@ -306,7 +366,21 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       history = [];
       mon3Hist = emptyMon3History();
       historyDirty = true;
-      saved = null;
+      // An older save stays on offer (Continue saved run) until this run reaches a phase change.
+      break;
+    case 'SAVE_NOW':
+      saveNow();
+      break;
+    case 'EXPORT_RUN':
+      post({ type: 'RUN_FILE', name: `goal-mode-${run.scenarioId}-${run.seed}-day${run.day + 1}.json`, text: runFileText() });
+      break;
+    case 'IMPORT_RUN':
+      try {
+        importRun(m.text);
+        post({ type: 'RESULT', ok: true, message: `Loaded run: ${run.scenarioId}, seed ${run.seed}, day ${run.day + 1}` });
+      } catch (e) {
+        post({ type: 'RESULT', ok: false, message: `Import failed: ${(e as Error).message}` });
+      }
       break;
     case 'CONTINUE_SAVED':
       if (saved) {
@@ -402,7 +476,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (m.kind !== 'SMF113' && m.kind !== 'BATCH') run = noteReportOpened(run, `SMF:${m.kind}:${m.hour}`);
       const data: SmfData =
         m.kind === 'DB2' ? { kind: 'DB2', hour: m.hour, rows: db2Accounting(run, sc(), m.hour) }
-        : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, sc(), m.hour) }
+        : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, sc(), m.hour), storage: cicsStorageStats(run, m.hour) }
         : m.kind === 'BATCH' ? { kind: 'BATCH', night: batchNight(run) }
         : { kind: 'SMF113', rows: smf113(run) };
       post({ type: 'SMF', data });
@@ -419,7 +493,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (m.type === 'SAVE_POLICY') {
         const name = m.name.trim().toUpperCase();
         out = /^[A-Z][A-Z0-9#@$]{0,7}$/.test(name)
-          ? savePolicy(run, { ...(pendingPolicy ?? run.sim.wlm.definition), policyName: name })
+          ? savePolicy(run, { ...(pendingPolicy ?? policyEditSource(run)), policyName: name })
           : { run, ok: false, message: 'Policy names are 1–8 characters, starting with a letter' };
       } else if (m.type === 'DELETE_POLICY') out = deletePolicy(run, m.name);
       else out = setSchedule(run, m.schedule);
@@ -445,25 +519,29 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       const o = cancelChange(run, m.changeId);
       if (o.restoredPolicy && !pendingPolicy) pendingPolicy = o.restoredPolicy;
       settle(o);
+      postPolicy();
       break;
     }
     case 'GET_RULES':
       postRules();
       break;
     case 'CLASSIFY':
-      post({ type: 'CLASSIFIED', result: classify(pendingPolicy ?? run.sim.wlm.definition, m.work), pending: pendingPolicy !== null });
+      post({ type: 'CLASSIFIED', result: classify(pendingPolicy ?? policyEditSource(run), m.work), pending: pendingPolicy !== null || policyEditSource(run) !== run.sim.wlm.definition });
       break;
     case 'SET_STARTING_PERK':
       run = setStartingPerk(run, m.perkId, career.xp);
       break;
-    case 'START_DAY':
+    case 'START_DAY': {
+      const before = run;
       run = startDay(run, pack().game);
+      returnFailed(before);
       pendingPolicy ??= failedPolicyToday(run);
       if (m.auto && run.phase === 'LIVE') {
         if (speed !== AUTO_SPEED) speedBeforeAuto = speed > 0 ? speed : 1;
         speed = AUTO_SPEED;
       } else if (!m.auto && speed === AUTO_SPEED) speed = speedBeforeAuto;
       break;
+    }
     case 'SET_SPEED':
       if (m.speed <= 0 && !canPause()) {
         speed = IRONMAN_MIN_SPEED;
@@ -474,7 +552,9 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       }
       break;
     case 'CHANGE': {
+      const before = run;
       settle(requestChange(run, pack().game, m.req));
+      returnFailed(before);
       break;
     }
     case 'DRAFT':
@@ -492,8 +572,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = removePin(run, m.id);
       break;
     case 'WLM_EDIT': {
-      // Edits accumulate on a pending copy of the active policy until it is activated.
-      const base = pendingBase(pendingPolicy, run.sim.wlm.definition);
+      // After a briefing install, subsequent edits retain its queued changes.
+      const base = pendingBase(pendingPolicy, policyEditSource(run));
       const res = applyWlmEdit(base, m.edit);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else {
@@ -507,7 +587,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'RC_ADVICE_APPLY': {
       if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) break;
-      const res = applyReportClassAdvice(pendingBase(pendingPolicy, run.sim.wlm.definition), currentItems(), m.workloadId);
+      const res = applyReportClassAdvice(pendingBase(pendingPolicy, policyEditSource(run)), currentItems(), m.workloadId);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else if (res.added.length > 0) {
         const n = res.added.length;

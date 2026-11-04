@@ -3,7 +3,7 @@ import { generateMidwestNetwork } from '../../src/content/batch/midwest-batch';
 import { cfServiceForSystem, evaluateCf } from '../../src/sim/cf/cf';
 import { CF_DUPLEX } from '../../src/content/cf';
 import { evaluateDasd } from '../../src/sim/io/dasd';
-import { advanceJob, closeNight, emptyBatch, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobDef } from '../../src/sim/subsys/batch';
+import { advanceJob, closeNight, emptyBatch, jobCpuDemand, jobShape, projectCriticalEnd, promoteEligible, releaseNetwork, startJobs, type JobDef } from '../../src/sim/subsys/batch';
 import { qrTcb } from '../../src/sim/subsys/cics';
 import { slotQueueStep } from '../../src/sim/subsys/slots';
 import { bpIoMultiplier } from '../../src/sim/subsys/db2';
@@ -229,6 +229,13 @@ describe('batch', () => {
     advanceJob(j, shape, { cpWanted: shape.cpRate, cpGot: shape.cpRate, ziipWanted: shape.zRate, ziipGot: shape.zRate / 4, extraStretch: 1 }, 1);
     expect(j.ziipPace).toBeCloseTo(1);
     expect(j.cpPace).toBeLessThan(0.5);
+  });
+
+  it('retains ready demand on CP-only images but cross-paces separate pools', () => {
+    const shape = jobShape({ ...job('J'), ziipFrac: 0.1 }, 0.6, 0.86, 0.0004);
+    const paced = { cpPace: 0.0013, ziipPace: 0.00014 };
+    expect(jobCpuDemand(shape, paced, false)).toEqual({ cp: shape.cpRate, ziip: shape.zRate });
+    expect(jobCpuDemand(shape, paced, true)).toEqual({ cp: shape.cpRate * paced.cpPace, ziip: shape.zRate * paced.ziipPace });
   });
 
   it('accounts lost elapsed time by cause, and a missed night sums it for its critical jobs', () => {

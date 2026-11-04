@@ -23,6 +23,26 @@ export const emptyPolicyBook = (): PolicyBook => ({ saved: [], schedule: [] });
 
 type Out = { run: RunState; ok: boolean; message: string };
 
+/** Latest activation awaiting execution: today's briefing plan, or the live command queue. */
+export function plannedPolicy(run: RunState): ServiceDefinition | null {
+  let def: ServiceDefinition | null = null;
+  if (run.phase === 'LIVE') {
+    for (const cmd of run.pendingCommands) if (cmd.kind === 'ACTIVATE_POLICY') def = cmd.definition;
+    return def;
+  }
+  if (run.phase !== 'BRIEFING') return null;
+  for (const change of run.changes) {
+    if (change.status !== 'PLANNED' || change.activateDay !== run.day) continue;
+    for (const cmd of change.commands) if (cmd.kind === 'ACTIVATE_POLICY') def = cmd.definition;
+  }
+  return def;
+}
+
+/** The policy new edits and previews build on; a queued install is not active yet. */
+export function policyEditSource(run: RunState): ServiceDefinition {
+  return plannedPolicy(run) ?? run.sim.wlm.definition;
+}
+
 /** Save a policy under its name (replacing one with the same name). Free: it is just stored. */
 export function savePolicy(run: RunState, def: ServiceDefinition): Out {
   const book = run.policies ?? emptyPolicyBook();

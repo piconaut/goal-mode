@@ -23,9 +23,9 @@ import { deliverInquiries } from './inquiries';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
-import { failRisk, requestChange } from './run/changes';
+import { failRisk, NO_TARGET, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { drawEvents, endEventByFix, storyFor } from './run/events';
+import { drawEvents, endEventByFix, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
@@ -115,14 +115,13 @@ export function startDay(run: RunState, content: GameContent): RunState {
   if (run.phase !== 'BRIEFING') return run;
   let r = run;
   const changes: PlannedChange[] = [];
-  const pending: Command[] = [...r.pendingCommands];
   for (const c of r.changes) {
     if (c.status === 'PLANNED' && c.activateDay === r.day) {
       const attempt = changes.filter((x) => x.label === c.label).length;
       const failed = streamRng(r.seed, 'activate', r.day, c.label, attempt).chance(failRisk(r));
       if (failed) {
         changes.push({ ...c, status: 'FAILED' });
-        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? ' Its edits go back to the pending policy (unless newer edits are pending); activate to reschedule.' : '';
+        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? ' Its edits go back to the pending policy (unless newer edits are pending or a later activation succeeds); activate to reschedule.' : '';
         r = msg(
           r,
           'Change board',
@@ -131,16 +130,19 @@ export function startDay(run: RunState, content: GameContent): RunState {
         );
         continue;
       }
-      pending.push(...c.commands);
+      r = { ...r, pendingCommands: [...r.pendingCommands, ...c.commands] };
       changes.push({ ...c, status: 'APPLIED' });
-      r = logLine(r, `Planned change applied: ${c.label}`);
+      const noTarget = c.endsEvent !== null && !hasEventForFix(r, content, c.endsEvent);
+      r = logLine(r, `Planned change applied: ${c.label}${noTarget ? ` (${NO_TARGET})` : ''}`);
       if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
     } else {
-      if (c.status === 'APPLIED' && c.revertDay === r.day) pending.push(...c.revertCommands);
+      if (c.status === 'APPLIED' && c.revertDay === r.day) {
+        r = { ...r, pendingCommands: [...r.pendingCommands, ...c.revertCommands] };
+      }
       changes.push(c);
     }
   }
-  r = { ...r, changes, pendingCommands: pending, phase: 'LIVE', hour: newHour(r.sim.tick), mon3Charts: null };
+  r = { ...r, changes, phase: 'LIVE', hour: newHour(r.sim.tick), mon3Charts: null };
   // Today's chart history starts at 06:00 and shows the planned changes just applied.
   if (chartsActive(r)) r = { ...r, mon3Charts: { ...emptyCharts(r), logSeen: run.log.length } };
   return r;

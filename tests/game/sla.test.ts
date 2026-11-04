@@ -22,6 +22,13 @@ describe('triggerOf', () => {
     expect(triggerOf('RBANK', 'IO', [io], hour, false)).toBe('HARDWARE_FAULT');
   });
 
+  it('calls a lock clash batch overlap, but a CPU priority or dependency miss the policy, even with batch running', () => {
+    const night = { ...hour, ticks: 10, lockIndexSum: 30 };
+    expect(triggerOf('RBANK', 'LOCK_CONTENTION', [], night, false)).toBe('BATCH_OVERLAP');
+    expect(triggerOf('RBANK', 'CPU_PRIORITY', [], night, false)).toBe('POLICY');
+    expect(triggerOf('CARDAUTH', 'DEPENDENCY', [], night, false)).toBe('POLICY');
+  });
+
   it('ignores ended cards and cards for other workloads', () => {
     expect(triggerOf('RBANK', 'CPU_CAPACITY', [card({ ended: true }), card({ affects: ['MOBILE'] })], hour, false)).toBe('GROWTH');
   });

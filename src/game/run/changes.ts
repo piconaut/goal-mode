@@ -7,7 +7,7 @@ import {
   type PlannedChange,
   type RunState
 } from '../types';
-import { endEventByFix, fixIdsOf } from './events';
+import { endEventByFix, fixIdsOf, hasEventForFix } from './events';
 import type { GameContent } from './shared';
 import { clampTrust, FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
 
@@ -29,6 +29,8 @@ export interface ChangeOutcome {
   /** The policy a cancelled activation would have installed, so the caller can keep it as pending edits. */
   restoredPolicy?: ServiceDefinition;
 }
+
+export const NO_TARGET = 'no active event matched this fix';
 
 export function failRisk(run: RunState): number {
   return failRiskFor(run.fatigue, run.perks);
@@ -54,6 +56,13 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   const live = run.phase === 'LIVE';
   const preview = previewChange(previewContext(run, content), req);
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
+  // Only the player's own plan is checked here: refusing a fix because no event matches would let the Change Desk
+  // be probed for hidden events at no cost. A fix with no target is charged and reports "no effect" once it runs.
+  const plannedFix = req.fixId ? run.changes.find((c) => c.status === 'PLANNED' && c.endsEvent === req.fixId) : undefined;
+  if (plannedFix) {
+    const hint = live ? ` for day ${plannedFix.activateDay + 1}; cancel ${idText('change', plannedFix.id)} to apply it now` : '';
+    return { run, ok: false, message: `This fix is already planned${hint}; no hours or trust spent.` };
+  }
   const refused = !req.hardwareId && !req.fixId ? dryRunRefusal(run, req.commands ?? []) : null;
   if (refused) return { run, ok: false, message: refused };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
@@ -100,8 +109,11 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     if (change.activateDay === r.day) {
       r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
     } else r = { ...r, changes: [...r.changes, change] };
+    const noTarget = fix !== undefined && !hasEventForFix(r, content, fix.id);
     if (fix) r = endEventByFix(r, content, fix.id);
-    return { run: logLine(r, `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
+    const what = `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`;
+    if (noTarget) return { run: logLine(r, `${what} (${NO_TARGET})`), ok: true, message: `Applied with no effect: ${req.label}; ${NO_TARGET}` };
+    return { run: logLine(r, what), ok: true, message: `Applied: ${req.label}` };
   }
   return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned ${idText('change', change.id)} for day ${change.activateDay + 1}: ${req.label}` };
 }
@@ -133,20 +145,26 @@ function targetHint(s: RunState['sim'], cmd: Command): string {
 /** End every active event whose card names this fix. */
 /** Cancel a change that has not taken effect yet. Capex is refunded; hours only on the day they were spent. */
 export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
-  const c = run.changes.find((x) => x.id === changeId);
+  const index = run.changes.findIndex((x) => x.id === changeId);
+  const c = run.changes[index];
   if (!c) return { run, ok: false, message: `No planned change ${idText('change', changeId)} (already cancelled or applied?)` };
   if (c.status !== 'PLANNED') return { run, ok: false, message: `Already ${c.status.toLowerCase()}` };
   if (c.activateDay === run.day && run.phase !== 'BRIEFING') return { run, ok: false, message: 'It activates today and the day has started' };
   const refundHours = c.plannedDay === run.day ? c.hours : 0;
-  const activation = c.commands.find((x) => x.kind === 'ACTIVATE_POLICY');
+  const activation = policyOf(c);
+  let laterPolicy: ServiceDefinition | null = null;
+  if (activation) for (const later of run.changes.slice(index + 1)) {
+    if (later.activateDay === c.activateDay && (later.status === 'PLANNED' || later.status === 'APPLIED'))
+      laterPolicy = policyOf(later) ?? laterPolicy;
+  }
   return {
-    ...(activation?.kind === 'ACTIVATE_POLICY' ? { restoredPolicy: activation.definition } : {}),
+    ...(activation && !laterPolicy ? { restoredPolicy: activation } : {}),
     run: logLine(
       { ...run, changes: run.changes.filter((x) => x.id !== changeId), capexRemaining: run.capexRemaining + c.capex, hoursLeft: run.hoursLeft + refundHours },
       `Change cancelled: ${c.label}`,
     ),
     ok: true,
-    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}`,
+    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}${laterPolicy ? ` Later policy ${laterPolicy.policyName} keeps its current edits, including any copied from this request.` : ''}`,
   };
 }
 
@@ -156,12 +174,17 @@ function spendHours(run: RunState, hours: number): RunState {
   return { ...run, hoursLeft: left, fatigue: Math.min(100, run.fatigue + overtime * FATIGUE_PER_OVERTIME_HOUR) };
 }
 
-/** The policy of an activation that failed at this morning's start, so its edits can be pending again. */
+function policyOf(change: PlannedChange): ServiceDefinition | null {
+  for (const command of [...change.commands].reverse()) if (command.kind === 'ACTIVATE_POLICY') return command.definition;
+  return null;
+}
+
+/** Restore only the latest policy attempt today; an older failure must not replace a later success. */
 export function failedPolicyToday(run: RunState): ServiceDefinition | null {
   for (const c of [...run.changes].reverse()) {
-    if (c.status !== 'FAILED' || c.activateDay !== run.day) continue;
-    const a = c.commands.find((x) => x.kind === 'ACTIVATE_POLICY');
-    if (a?.kind === 'ACTIVATE_POLICY') return a.definition;
+    if ((c.status !== 'FAILED' && c.status !== 'APPLIED') || c.activateDay !== run.day) continue;
+    const policy = policyOf(c);
+    if (policy) return c.status === 'FAILED' ? policy : null;
   }
   return null;
 }

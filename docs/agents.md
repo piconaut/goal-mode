@@ -15,11 +15,16 @@ npm run -s play -- runs/a.json restart SET016     # restart an abended batch job
 npm run -s play -- runs/a.json policy [pending]   # the WLM service definition, classification rules, LPAR CP/zIIP counts, CICS regions
 npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD; id from status
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
-npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables (needs the RMF_MON3 tool)
+npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables incl. PROCU jobs (needs the RMF_MON3 tool)
 npm run -s play -- runs/a.json mon3 PRDA --at D1 09:40   # a past range from the history (the values a pin reads; kept 48 h in runs/a.mon3.json)
+npm run -s play -- runs/a.json wlmlog PROD1 --grep RCVR   # the Monitor's WLM activity log (last 60 lines; live only with RMF_MON3): receivers, donors, DP moves, "no action with net value"
+npm run -s play -- runs/a.json finance    # Finance tab: bill so far; under TFP, MSU-hours vs the prorated baseline, projection and overage $ per MSU-hour by LPAR
+npm run -s play -- runs/a.json capacity   # CPC engines and MSU, LPAR logical CPs/weights/defined capacity, job class initiators, capacity changes by day
+npm run -s play -- runs/a.json batch      # last batch night by stream (needs SMF30_BATCH, like smf BATCH): LPARs, start/end, queueing, stretch
 npm run -s play -- runs/a.json rca INC3 CPU_PRIORITY POLICY [--evidence PIN1,PIN4]   (ids: INC incident, PIN pin, CHG planned change; bare numbers work too)
 npm run -s play -- runs/a.json pin WLMGL 312 '*PLEX' ONLHI#1 DELAY_CPU   # interval id; also MON3, CPC, DB2, CICS (see catalog)
 npm run -s play -- runs/a.json pin MON3 PRDA MKTORD DELAY_CPU --at D1 09:40   # MON3 and CPC pins from a past Monitor III range
+npm run -s play -- runs/a.json pin MON3 PROD1 ONLHI#1 VELOCITY CICSAOR1   # a SYSWKM server's velocity (current range only)
 npm run -s play -- runs/a.json ask CALENDAR       # ask around; APP_ENTRY/GROWTH take a workload id
 npm run -s play -- runs/a.json project SQL_TUNING 4   # spend engineer-hours on a multi-day project
 npm run -s play -- runs/a.json buy RMF_MON3
@@ -90,6 +95,15 @@ new state the CLI writes.
 The banner's **Take over this run** button stops watching and keeps the run as the browser's own save
 (replacing any saved run), so a human can carry on from where the agent stopped.
 
+The other way round: the top bar's **⇩ export** button downloads the browser's run as a run file
+(`goal-mode-<scenario>-<seed>-day<N>.json`) that `npm run play -- <file> status` (and every other verb) reads, so a
+human playtest can be inspected or continued headlessly; **⇧ import** loads such a file back as the browser's run.
+Both also read a save whose backslashes were all doubled on its way to disk (seen on a browser export) and text pasted
+with its surrounding backticks.
+
+`npm run inspect -- <file> dp <system>` prints sim internals the game never shows (dispatching priorities per RMF
+interval) for developers checking a bug. Player agents must not use it: it is not something a player can see.
+
 ## What an agent can see
 
 Only what a player sees in the browser: the briefing and inbox, the status line, RMF reports, SMF and Monitor
@@ -106,11 +120,13 @@ Definitions live in `.claude/agents/`:
 | `goal-mode-player` | balanced analyst: diagnose, fix the planted flaws, buy tools, keep SLAs and cost in line |
 | `goal-mode-cautious-operator` | minimal, reversible changes; no emergency changes; keeps hours spare |
 | `goal-mode-cost-cutter` | keeps MLC under budget; capping and WLM tuning before capacity |
+| `goal-mode-firefighter` | emergency WLM edits (CPU Critical, importance, policy switch) and CoD during incidents; watches `wlmlog` for WLM going quiet |
 | `goal-mode-realism-auditor` | not a player: makes drastic changes in same-seed A/B runs, checks the results against IBM docs (zos-docs skill) and reports matches and mismatches; may read `src/` and writes only under `runs/lab/` |
 
 Launch one from Claude Code, for example: *"Use the goal-mode-player agent to play runs/p42.json, seed 42,
-normal, up to day 5."* Each keeps a log next to the run file (`runs/p42.json.log.md`), one line per command plus
-a paragraph per day. `runs/` is git-ignored.
+normal, up to day 5."* Each keeps a log next to the run file (`runs/p42.json.log.md`), one line per command, an incident block per
+incident (the human playtest checklist), and a paragraph per day with pacing notes; it snapshots the run file at
+the first sign of an incident (`runs/p42.D19-2200.json`) so the state can be replayed. `runs/` is git-ignored.
 
 ## Scores and comparison with the bots
 

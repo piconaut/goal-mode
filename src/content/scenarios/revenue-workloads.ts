@@ -136,9 +136,11 @@ export const REVENUE_WORKLOADS: WorkloadDef[] = [
     stakeholder: 'Internal',
     subsystem: 'DDF',
     work: { subsystem: 'DDF', UI: 'CMPUSER', CI: 'SASBI' },
-    peakRatePerSec: 0.3,
+    // FICTIONAL: heavy and growing (G1's pressure on e-filing in WEBDDF). Shape: do-nothing loses Taxpayers trust
+    // around day 19 while a split-off analytics class keeps e-filing healthy.
+    peakRatePerSec: 0.6,
     shape: { floor: 0.02, peaks: [{ hour: 10.5, height: 1, widthHours: 2 }, { hour: 15, height: 1, widthHours: 2 }], weekly: [1, 1, 1, 1, 0.9, 0.1, 0.05], payday: 1, monthEnd: 1.2 },
-    growthPerDay: 0.005,
+    growthPerDay: 0.02,
     noiseSigma: 0.25,
     noisePhi: 0.9,
     routing: { PROD2: 1 },

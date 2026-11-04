@@ -1,12 +1,15 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App';
+import { ConfirmationProvider } from './Confirmation';
 import './styles.css';
 
 const root = document.getElementById('root');
 if (root)
   createRoot(root).render(
     <StrictMode>
-      <App />
+      <ConfirmationProvider>
+        <App />
+      </ConfirmationProvider>
     </StrictMode>,
   );

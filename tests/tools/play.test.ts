@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
+import { startTfp } from '../../src/sim/cost/mlc';
+import { quoteTfp } from '../../src/game/tfp';
+import { scenarioFor } from '../../src/game/difficulty';
+import { packOf } from '../../src/content/packs';
+import { estimateMonth } from '../../src/sim/cost/mlc';
+import { dpText } from '../../tools/inspect';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   for (const c of cmds) {
@@ -40,6 +46,72 @@ describe('headless play interface', () => {
     const text = statusText(newPlayFile(7));
     expect(text).toContain('BRIEFING');
     expect(text).not.toMatch(/truth|mechanism/i);
+  });
+
+  it('wlmlog shows the Monitor WLM activity log, live only with Monitor III', () => {
+    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    expect(wlmLogText(f)).toContain('needs the RMF_MON3 tool');
+    f = { ...f, run: { ...f.run, sim: { ...f.run.sim, wlm: { ...f.run.sim.wlm, log: ['D1 06:10:00 PRDA RCVR=ONLHI#1 PI=1.20 BTLNK=CPU ONLHI#1 DP F4→F6', 'D1 06:10:00 PRDB ONLHI#1 PI=1.20 BTLNK=CPU no action with net value'] } } } };
+    f = { ...f, run: { ...f.run, insight: 50 } };
+    f = run(f, [{ cmd: 'buy', toolId: 'RMF_MON3' }]);
+    const all = wlmLogText(f);
+    expect(all).toContain('RCVR=ONLHI#1');
+    expect(wlmLogText(f, { system: 'PRDB' })).not.toContain('RCVR=');
+    expect(wlmLogText(f, { grep: 'rcvr' })).not.toContain('no action');
+    expect(wlmLogText(f, { system: 'NOSUCH' })).toContain('(no matching lines)');
+  });
+
+  it('finance shows the sub-capacity bill, then TFP pace and overage price per LPAR', () => {
+    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    expect(financeText(f)).toMatch(/pricing SUBCAP[\s\S]*peakR4haMsu/);
+    const terms = quoteTfp(f.run, scenarioFor(packOf('midwest').scenario, f.run.difficulty)).terms;
+    f = { ...f, run: { ...f.run, sim: { ...f.run.sim, cost: startTfp(f.run.sim.cost, terms, f.run.sim.tick) } } };
+    f = run(f, [{ cmd: 'advance', hours: 2 }]);
+    const t = financeText(f);
+    expect(t).toMatch(/pricing TFP/);
+    expect(t).toMatch(/^CICS\s+PROD1,PROD2\s+\d+\s+\d+\s+\d+/m);
+    // PROD1 carries all four Midwest products, SYSP only z/OS.
+    const per = Object.fromEntries([...t.matchAll(/(PROD1|SYSP) (\d+\.\d+)/g)].map((m) => [m[1], Number(m[2])]));
+    expect(per.PROD1).toBeGreaterThan(per.SYSP! * 2);
+  });
+
+  it('status and finance show the same combined software/CoD estimate and unrounded limit warning', () => {
+    const f = newPlayFile(7);
+    const products = packOf(f.run.scenarioId).scenario.products;
+    for (const peak of f.run.sim.cost.peaks) peak.peakMsu = 100;
+    f.run.sim.cost.priceMult = 780_000 / estimateMonth(f.run.sim.cost, products);
+    f.run.opexSpentThisMonth = 39_000;
+    f.run.opexBudgetMonthly = 780_000;
+    for (const render of [statusText, financeText]) {
+      expect(render(f)).toContain('$780,000 + $39,000 = $819,000 vs budget $780,000; +5.0% vs budget');
+      expect(render(f)).toContain("priced on the month's peak R4HA to date");
+    }
+    f.run.opexSpentThisMonth = 195_312; // total is 25.04% over, although the rounded display is 25.0%.
+    for (const render of [statusText, financeText]) expect(render(f)).toContain('+25.0% vs budget (over limit)');
+  });
+
+  it('finance documents month-boundary settlement and status warns when a closed bill awaits day close', () => {
+    const f = newPlayFile(7);
+    expect(financeText(f)).toContain('software cost resets at 00:00 but CoD settles at 06:00');
+    f.run.sim.cost.bills.push({ month: 0, lines: [], total: 0 });
+    expect(statusText(f)).toContain("that night's CoD fee is charged to the closing month");
+  });
+
+  it('capacity shows the CPC MSU, LPARs, initiators and capacity changes; batch is gated like smf BATCH', () => {
+    const f = newPlayFile(7);
+    const c = capacityText(f);
+    expect(c).toMatch(/^CPCA \S+ capacity setting \d+: CP \d+ x \d+ MSU = \d+ MSU/);
+    expect(c).toMatch(/^PROD1\s+ZOS\s+\d+/m);
+    expect(c).toContain('job classes (initiators per LPAR): A ');
+    expect(batchStreamsText(f)).toContain('SMF30_BATCH');
+  });
+
+  it('inspect dp lists dispatching priorities per RMF interval, highest first', () => {
+    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    const t = dpText(encodePlayFile(f), 'PROD1', { cls: 'SYS' });
+    const line = t.split('\n')[1]!;
+    expect(line).toMatch(/SYSTEM#1=FF SYSSTC#1=FE/);
+    expect(dpText(encodePlayFile(f), 'NOSUCH')).toContain('No system NOSUCH');
   });
 
   it('catalog lists orderable items; Monitor III shows once the tool is owned', () => {
@@ -111,6 +183,79 @@ describe('headless play interface', () => {
     expect(back.file.run.changes.at(-1)!.label).toBe(`Restart ${name}`);
   });
 
+  it('keeps both edits when two policies are installed in the same briefing', () => {
+    let f = newPlayFile(7);
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    f = run(f, [edit('ONLHI', 0.4), { cmd: 'activate' }]);
+    expect(f.pendingPolicy).toBeNull();
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL');
+    f = run(f, [edit('ONLMED', 0.6)]);
+    expect(f.pendingPolicy!.policyName).toBe('BASEPOL3');
+    expect(f.pendingPolicy!.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec: 0.4 });
+    // Persist/reload between installs, as in an interrupted browser session.
+    f = run(decodePlayFile(encodePlayFile(f)), [{ cmd: 'activate' }, { cmd: 'start' }, { cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.changes.filter((c) => c.status === 'APPLIED')).toHaveLength(2);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL3');
+    for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6]] as const) {
+      expect(f.run.sim.wlm.definition.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
+    }
+  });
+
+  it('keeps briefing and live installs when editing again before the next simulation tick', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    let f = run(newPlayFile(7), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }, { cmd: 'start' }]);
+    expect(f.run.sim.tick).toBe(0);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL');
+    f = run(decodePlayFile(encodePlayFile(f)), [edit('TSO', 3)]);
+    expect(f.pendingPolicy!.policyName).toBe('BASEPOL4');
+    f = run(f, [{ cmd: 'activate' }, edit('STCMED', 1)]);
+    expect(f.pendingPolicy!.policyName).toBe('BASEPOL5');
+    f = run(f, [{ cmd: 'activate' }, { cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL5');
+    expect(f.run.pendingCommands).toEqual([]);
+    for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6], ['TSO', 3], ['STCMED', 1]] as const) {
+      expect(f.run.sim.wlm.definition.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
+    }
+  });
+
+  it('does not restore a failed earlier install over a later successful policy', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    // Seed 43 fails BASEPOL2 at 06:00 but successfully queues BASEPOL3.
+    let f = run(newPlayFile(43), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }, { cmd: 'start' }]);
+    expect(f.run.changes.map((c) => c.status)).toEqual(['FAILED', 'APPLIED']);
+    expect(f.pendingPolicy).toBeNull();
+    f = run(f, [edit('TSO', 3)]);
+    expect(f.pendingPolicy!.policyName).toBe('BASEPOL4');
+    expect(f.pendingPolicy!.classes.find((c) => c.id === 'ONLMED')!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec: 0.6 });
+    f = run(f, [{ cmd: 'activate' }, { cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL4');
+    expect(f.run.sim.wlm.definition.classes.find((c) => c.id === 'ONLMED')!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec: 0.6 });
+  });
+
+  it('cancelling an earlier install keeps the later definition without restoring stale pending edits', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    let f = run(newPlayFile(7), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }]);
+    const out = applyPlayCommand(f, { cmd: 'cancel', changeId: f.run.changes[0]!.id });
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain('BASEPOL3');
+    expect(out.text).not.toContain('edits are pending again');
+    f = out.file;
+    expect(f.pendingPolicy).toBeNull();
+    f = run(f, [edit('TSO', 3), { cmd: 'activate' }, { cmd: 'start' }, { cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL4');
+    for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6], ['TSO', 3]] as const) {
+      expect(f.run.sim.wlm.definition.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
+    }
+  });
+
   it('policy shows the service definition, its rules and the processors it runs on', () => {
     const text = policyText(newPlayFile(7, 'NORMAL', 'harbourline'), false);
     expect(text).toMatch(/active policy \S+/);
@@ -135,6 +280,7 @@ describe('headless play interface', () => {
     expect(tickOfClock('D2 05:59')).toBe(2 * 8640 - 6);
     expect(tickOfClock('D0 10:00')).toBeNull();
     expect(tickOfClock('10:00')).toBeNull();
+    expect(tickOfClock('D2 23:30:00')).toBe(tickOfClock('D2 23:30')); // formatClock's own text (Monitor III Go to)
   });
 
   it('advance keeps a Monitor III history for mon3 --at and pin --at; paced advance keeps the same one', () => {

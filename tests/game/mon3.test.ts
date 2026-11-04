@@ -41,13 +41,26 @@ describe('Monitor III views', () => {
     expect(m.rows.some((r) => r.system === '*PLEX')).toBe(true);
   });
 
-  it('a CPU regression shows up as delay and a WFEX exception', () => {
-    const base = buildMon3(noon, MIDWEST);
-    const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
+  it('a CPU regression raises CP delay and worsens WFEX against a control at the same time', () => {
+    // Advance independent copies through the same ten minutes so ordinary WLM changes affect both.
+    const control = advance(structuredClone(noon), MIDWEST, content, 60);
+    const stressed = structuredClone(noon);
+    stressed.pendingCommands.push({ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 });
+    const hot = advance(stressed, MIDWEST, content, 60);
+    expect(control.sim.tick).toBe(noon.sim.tick + 60);
+    expect(hot.sim.tick).toBe(control.sim.tick);
+    const base = buildMon3(control, MIDWEST);
     const m = buildMon3(hot, MIDWEST);
-    const cpuDelay = (mm: typeof m) => mm.rows.filter((r) => r.system !== '*PLEX').reduce((a, r) => a + r.delay.cpu * r.cpuEngines, 0);
-    expect(cpuDelay(m)).toBeGreaterThan(cpuDelay(base));
-    expect(m.exceptions.length).toBeGreaterThan(base.exceptions.length);
+    const affected = (mm: typeof m) => mm.rows.find((r) => r.system === 'PROD2' && r.scKey === 'DDFPRD#2')!;
+    const before = affected(base), after = affected(m);
+    expect(after.delay.cpu).toBeGreaterThan(before.delay.cpu);
+    expect(after.avgUsers.delayProc).toBeGreaterThan(before.avgUsers.delayProc);
+    expect(after.pi!).toBeGreaterThan(before.pi!);
+    expect(after.velocity!).toBeLessThan(before.velocity!);
+    // Check the affected period even if other classes enter or leave exception at the same time.
+    const wfex = m.exceptions.find((e) => e.where === 'PROD2 DDFPRD#2')!;
+    expect(wfex.reason).toMatch(/WFL%/);
+    expect(parseFloat(wfex.value)).toBeLessThan(before.velocity!);
   });
 });
 
@@ -115,6 +128,16 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
     expect(m.logicalToPhysicalByCpc.CPCA).toBeCloseTo(m.logicalToPhysical, 9);
   });
 
+  it('WFEX Speed of a CICS transaction class comes from its serving regions, not "No work"', () => {
+    const m = buildMon3(noon, MIDWEST);
+    const tx = m.rows.find((r) => r.system !== '*PLEX' && r.workManager && r.resourceSamples === false && r.workManager.active > 0)!;
+    expect(tx).toBeDefined();
+    const s = m.speed.find((x) => x.system === tx.system && x.name === tx.scKey)!;
+    expect(s.servedBy).toEqual(tx.workManager!.regionKeys.filter((k) => m.rows.some((r) => r.system === tx.system && r.scKey === k)));
+    expect(s.speed).not.toBeNull();
+    expect(s.speed!).toBeGreaterThan(0);
+  });
+
   it('WFEX exceptions carry an RMF-style reason and critical value', () => {
     const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
     const m = buildMon3(hot, MIDWEST);
@@ -139,6 +162,29 @@ describe('Monitor III DELAY columns and Primary Reason', () => {
     expect(r.delayFrac).toBeGreaterThan(columns(r.delay) + 0.05);
     expect(r.primaryReason).toBe('RG-Cap');
   });
+
+  it('batch delayed behind batch names another batch job, not an idle CICS region (playtest, daily 2026-11-03)', () => {
+    let night = startDay(newRun(MIDWEST, content, 355298, 'NORMAL'), content);
+    night = advance(night, MIDWEST, content, 16 * 360); // 22:00: the batch window, CICS quiet
+    const rows = buildMon3(night, MIDWEST).rows.filter((r) => r.scKey === 'BATCHPRD#1' && r.system !== '*PLEX' && r.primaryDelay === 'PRC');
+    expect(rows.length).toBeGreaterThan(0);
+    const jobs = new Set(night.sim.batch.jobs.filter((j) => j.status === 'RUNNING').map((j) => j.def.name));
+    for (const r of rows) expect(jobs.has(r.primaryReason ?? '')).toBe(true);
+  }, 60_000);
+
+  it('critical batch misrouted into the CICS region class is named, not the region (playtest, daily 2026-11-03)', () => {
+    // The player meant TN STM* → BATCHHI and wrote STCHI: the STM fan then runs at the AORs' importance.
+    let run = startDay(newRun(MIDWEST, content, 355298, 'NORMAL'), content);
+    const def = run.sim.wlm.definition;
+    const jes = def.subsystems.map((x) => (x.subsystem === 'JES' ? { ...x, rules: [{ qualifier: 'TN' as const, pattern: 'STM*', serviceClass: 'STCHI', reportClass: null, children: [] }, ...x.rules] } : x));
+    run = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition: { ...def, subsystems: jes } } } };
+    run = advance(run, MIDWEST, content, 18 * 360 + 90); // 00:15: the STM fan is CPU-delayed
+    const stm = new Set(run.sim.batch.jobs.filter((j) => j.status === 'RUNNING' && j.def.name.startsWith('STM')).map((j) => j.lparId));
+    expect(stm.size).toBeGreaterThan(0);
+    const rows = buildMon3(run, MIDWEST).rows.filter((r) => r.scKey === 'STCHI#1' && stm.has(r.system) && r.primaryDelay === 'PRC');
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.primaryReason).toMatch(/^STM/);
+  }, 60_000);
 
   it('processor delay names the heaviest other user, not the resource', () => {
     const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
@@ -199,4 +245,35 @@ it('marks CICS transaction classes and their server class for SYSSUM (RMF Report
   const onl = m.rows.find((r) => r.system === '*PLEX' && r.scKey === 'ONLHI#1')!;
   expect([onl.velocityAct, !!onl.workManager]).toEqual([null, true]);
   expect(m.wkm!.flatMap((w) => w.servers.filter((x) => x.mgmt === 'TRANSACTION').map((x) => x.serviceClass))).toContain('STCHI');
+});
+
+describe('Monitor III PROCU jobs (RMF Report Analysis p.188–189)', () => {
+  it('lists jobs whose CPU adds up to the class rows, DDF enclaves on DIST as EAppl only', () => {
+    const m = buildMon3(noon, MIDWEST);
+    for (const s of m.systems) {
+      const rows = m.rows.filter((r) => r.system === s.system).reduce((a, r) => a + r.cpuEngines, 0);
+      const jobs = m.procJobs!.filter((j) => j.system === s.system);
+      expect(jobs.reduce((a, j) => a + j.eapplCpEngines, 0)).toBeCloseTo(rows, 6);
+      for (const j of jobs) expect(j.eapplCpEngines).toBeGreaterThanOrEqual(j.cpEngines - 1e-9);
+    }
+    const dist = m.procJobs!.find((j) => j.jobname.endsWith('DIST'))!;
+    expect(dist.eapplCpEngines).toBeGreaterThan(dist.cpEngines);
+    const sorted = m.procJobs!.map((j) => j.eapplCpEngines);
+    expect(sorted).toEqual([...sorted].sort((a, b) => b - a));
+  });
+
+  it('batch misrouted into the CICS region class shows by name under STCHI (playtest round 1)', () => {
+    let run = startDay(newRun(MIDWEST, content, 355298, 'NORMAL'), content);
+    const def = run.sim.wlm.definition;
+    const jes = def.subsystems.map((x) => (x.subsystem === 'JES' ? { ...x, rules: [{ qualifier: 'TN' as const, pattern: 'STM*', serviceClass: 'STCHI', reportClass: null, children: [] }, ...x.rules] } : x));
+    run = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition: { ...def, subsystems: jes } } } };
+    run = advance(run, MIDWEST, content, 18 * 360);
+    const stm = buildMon3(run, MIDWEST).procJobs!.filter((j) => j.jobname.startsWith('STM'));
+    expect(stm.length).toBeGreaterThan(0);
+    for (const j of stm) {
+      expect(j.serviceClass).toBe('STCHI');
+      expect(j.cx).toBe('B');
+      expect(j.eapplCpEngines).toBeGreaterThan(0);
+    }
+  }, 60_000);
 });

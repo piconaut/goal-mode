@@ -22,6 +22,8 @@ import { AUTO_SPEED } from '../worker/protocol';
 import { hourTick, pagerChime } from './sound';
 import { idText } from '../game/ids';
 import { Empty } from './Empty';
+import { RunFileButtons } from './RunFiles';
+import { OpexBudget } from './OpexBudget';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
@@ -142,12 +144,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="stat">
         Fatigue <b>{v.fatigue.toFixed(0)}</b>
       </span>
-      <span className="stat" title="Month's bill so far: priced on the month's peak R4HA to date, so a cap or saving lowers it only once it lowers that peak">
-        MLC est <b>${Math.round(v.mlcEstimate / 1000)}k</b>
-      </span>
-      <span className="stat">
-        Budget <b>${Math.round(v.opexBudget / 1000)}k</b>
-      </span>
+      <OpexBudget mlc={v.mlcEstimate} cod={v.opexSpent} budget={v.opexBudget} compact />
       <span className="stat">
         Capex <b>${Math.round(v.capexRemaining / 1000)}k</b>
       </span>
@@ -155,6 +152,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
         Score <b>{v.score}</b>
       </span>
       <SoundToggle v={v} />
+      <RunFileButtons game={game} />
       <ThemeToggle />
     </div>
   );
@@ -285,7 +283,7 @@ function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
 
 function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
   return (
-    <div className="grid">
+    <div className="grid console-grid">
       <Capacity v={v} history={history} />
       <div className="panel">
         <h3>
@@ -394,7 +392,8 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
         </div>
       </div>
 
-      <div className="stack">
+      {/* Incidents and the batch window are the at-a-glance health panels: first on narrow screens (styles.css). */}
+      <div className="stack console-health">
         <div className="panel">
           <h3>Incidents</h3>
           {v.incidents.length === 0 && <Empty>No SLA breaches yet.</Empty>}
@@ -413,18 +412,6 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
               )}
             </div>
           ))}
-        </div>
-        <div className="panel">
-          <h3>Operations log</h3>
-          {v.log.length === 0 ? (
-            <Empty>Nothing logged yet today.</Empty>
-          ) : (
-            <div className="log">
-              {[...v.log].reverse().map((l, i) => (
-                <div key={i}>{l}</div>
-              ))}
-            </div>
-          )}
         </div>
         <div className="panel">
           <h3>Batch window</h3>
@@ -448,7 +435,26 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
             </div>
           ))}
         </div>
+        <OpsLog v={v} className="console-log-wide" />
       </div>
+      <OpsLog v={v} className="console-log-narrow" />
+    </div>
+  );
+}
+
+function OpsLog({ v, className }: { v: ViewModel; className: string }) {
+  return (
+    <div className={`panel ${className}`}>
+      <h3>Operations log</h3>
+      {v.log.length === 0 ? (
+        <Empty>Nothing logged yet today.</Empty>
+      ) : (
+        <div className="log">
+          {[...v.log].reverse().map((l, i) => (
+            <div key={i}>{l}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

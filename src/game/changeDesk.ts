@@ -1,6 +1,8 @@
+import { CICS_STORAGE } from '../content/subsys';
 import type { Command } from '../sim/core/commands';
 import type { RoutingPolicy } from '../sim/workload/routing';
 import type { ConfigView } from './view';
+import type { RunState } from './types';
 
 /** Pure helpers behind the Change Desk: validation, "now → new" descriptions and the change basket. */
 
@@ -94,6 +96,7 @@ export function describeCommand(cmd: Command, cfg: ConfigView): string {
       const parts: string[] = [];
       if (cmd.maxTasks !== undefined) parts.push(`MXT ${r?.maxTasks ?? '?'} → ${cmd.maxTasks}`);
       if (cmd.qrFrac !== undefined) parts.push(`QR share ${r ? pct(r.qrFrac) : '?'} → ${pct(cmd.qrFrac)}`);
+      if (cmd.edsaLimitMb !== undefined) parts.push(`EDSALIM ${r?.edsaLimitMb ?? CICS_STORAGE.defaultEdsaLimitMb} → ${cmd.edsaLimitMb} MB`);
       return `${cmd.name} ${parts.join(', ')}`;
     }
     case 'ADD_AOR':
@@ -177,7 +180,7 @@ export function commandTarget(cmd: Command): string {
     case 'SET_DB2':
       return `${cmd.kind}:${cmd.ssid}:${cmd.bufferPoolGb !== undefined ? 'bp' : ''}${cmd.maxDbat !== undefined ? 'dbat' : ''}`;
     case 'SET_CICS':
-      return `${cmd.kind}:${cmd.name}:${cmd.maxTasks !== undefined ? 'mxt' : ''}${cmd.qrFrac !== undefined ? 'qr' : ''}`;
+      return `${cmd.kind}:${cmd.name}:${cmd.maxTasks !== undefined ? 'mxt' : ''}${cmd.qrFrac !== undefined ? 'qr' : ''}${cmd.edsaLimitMb !== undefined ? 'edsa' : ''}`;
     case 'SET_JOB_CLASS':
       return `${cmd.kind}:${cmd.jobClass}`;
     case 'SET_ROUTING':
@@ -238,4 +241,18 @@ export function spareAfterBasket(cfg: ConfigView, basket: readonly Command[], ex
 export function orderBasket(cfg: ConfigView, basket: readonly Command[]): Command[] {
   const freed = (c: Command) => (c.kind === 'SET_LCU' && c.aliases !== undefined ? (cfg.dasd.lcus.find((l) => l.id === c.lcuId)?.aliases ?? 0) - c.aliases : 0);
   return [...basket].sort((a, b) => (freed(b) > 0 ? 1 : 0) - (freed(a) > 0 ? 1 : 0));
+}
+
+/** The basket after a step that can fail changes (an emergency request, or 06:00 activation of planned ones): the
+ * Change Desk changes of every change that newly failed are handed back, ahead of anything drafted since so a later
+ * draft of the same target wins; null when none did. A failed change is backed out, so its edits would otherwise
+ * be lost with it. Policy activations already go back to the pending policy; fixes and hardware orders (capex,
+ * opex or a timed revert) are not basket changes. */
+export function basketAfterFailure(before: RunState, after: RunState, basket: readonly Command[]): Command[] | null {
+  const was = new Map(before.changes.map((c) => [c.id, c.status]));
+  const back = after.changes
+    .filter((c) => c.status === 'FAILED' && was.get(c.id) !== 'FAILED')
+    .filter((c) => !c.endsEvent && c.capex === 0 && c.opexPerDay === 0 && c.revertDay === null && !c.commands.some((x) => x.kind === 'ACTIVATE_POLICY'))
+    .flatMap((c) => c.commands);
+  return back.length > 0 ? addToBasket(back, basket) : null;
 }

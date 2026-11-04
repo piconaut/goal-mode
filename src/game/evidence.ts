@@ -31,7 +31,8 @@ export interface EvidencePin {
 export type PinRequest =
   | { source: 'WLMGL'; index: number; system: string; scKey: string; metric: EvidenceMetric }
   /** tick: a past Monitor III range (the one ending at or before it, from the history); without it, now. */
-  | { source: 'MON3'; system: string; scKey: string; metric: EvidenceMetric; tick?: number }
+  /** jobname: a SYSWKM server row ("Address Spaces Serving this Service Class" of transaction class scKey). */
+  | { source: 'MON3'; system: string; scKey: string; metric: EvidenceMetric; tick?: number; jobname?: string }
   /** index: an RMF interval (Partition Data); without it, the Monitor III CPC view (now, or at `tick`). */
   | { source: 'CPC'; lparId: string; metric: 'PRSM_DELAY' | 'CAPPED'; index?: number; tick?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
@@ -71,6 +72,12 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
     case 'MON3': {
       const m = mon3(req.tick);
       if (typeof m === 'string') return m;
+      if (req.jobname !== undefined) {
+        const s = m.view.wkm?.find((w) => w.scKey === req.scKey)?.servers.find((x) => x.system === req.system && x.jobname === req.jobname);
+        if (!s) return 'No such SYSWKM server';
+        if (req.metric !== 'VELOCITY' || s.velocity === null) return 'That metric is not in this view';
+        return { source: 'SYSWKM', metric: 'VELOCITY', subject: s.jobname, system: req.system, tick: m.tick, value: s.velocity };
+      }
       const r = m.view.rows.find((x) => x.system === req.system && x.scKey === req.scKey);
       if (!r) return 'No such Monitor III row';
       if (r.resourceSamples === false && (req.metric === 'APPL' || req.metric.startsWith('DELAY_')))
