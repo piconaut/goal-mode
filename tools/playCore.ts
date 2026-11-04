@@ -9,6 +9,9 @@ import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, rcaLeadI
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
+import { financeView } from '../src/game/finance';
+import { monthElapsedFrac } from '../src/sim/cost/mlc';
+import { msuPerCp } from '../src/sim/hw/cpc';
 import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
 import { MON3_HISTORY, TOOLS, type ToolFeature } from '../src/content/tools';
@@ -16,7 +19,7 @@ import { applyReportClassAdvice } from '../src/game/rcAdvisor';
 import { clockAt, formatClock, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads, runWorkItems } from '../src/game/workloads';
 import { decideTfp } from '../src/game/tfp';
-import { decodeRunJson, encodeRunJson } from '../src/game/runFile';
+import { decodeRunFileText, encodeRunJson } from '../src/game/runFile';
 import { idText } from '../src/game/ids';
 import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
@@ -92,7 +95,7 @@ function needs(feature: ToolFeature, what: string): string {
 }
 
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
-export const decodePlayFile = (text: string): PlayFile => decodeRunJson<PlayFile>(text);
+export const decodePlayFile = (text: string): PlayFile => decodeRunFileText<PlayFile>(text);
 
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', scenario = 'midwest'): PlayFile {
   const pack = packOf(scenario);
@@ -597,4 +600,111 @@ function resolveKey(key: string, keys: string[]): string {
 function rowKeys(iv: { wlm: { lparId: string; scKey: string }[] }, system: string): string {
   const keys = [...new Set(iv.wlm.filter((x) => x.lparId === system).map((x) => x.scKey))].sort();
   return keys.length ? `${system} rows: ${keys.join(' ')}` : `systems: ${[...new Set(iv.wlm.map((x) => x.lparId))].sort().join(' ')}`;
+}
+
+const usd = (x: number) => `$${Math.round(x).toLocaleString()}`;
+
+/** Finance tab as text: the month's bill so far and, under TFP, pace against the prorated baseline per product. */
+export function financeText(file: PlayFile): string {
+  const run = file.run;
+  const scenario = sc(run);
+  const f = financeView(run, scenario);
+  const out = [`month ${f.month + 1}  pricing ${f.pricing}  month to date ${usd(f.monthToDate)}  opex ${usd(f.opexSpent)} of ${usd(f.opexBudget)}${f.cfoTarget !== null ? `  CFO target <= ${usd(f.cfoTarget)}` : ''}`];
+  if (f.offer) out.push(`TFP offer ${f.offer.status} (decide by day ${f.offer.untilDay + 1}): baseline ${usd(f.offer.baselineMonthly)}/month vs sub-capacity ${usd(f.offer.subcapMonthly)}/month, overage at ${Math.round(100 * f.offer.overageFrac)}% of price`);
+  const tfp = run.sim.cost.tfp;
+  if (f.tfp && tfp) {
+    // The baseline is prorated over the TFP part of the month; project consumption over that same part.
+    const tfpElapsed = monthElapsedFrac(run.sim.tick) - (1 - tfp.monthFrac);
+    const scale = tfpElapsed > 1e-6 ? tfp.monthFrac / tfpElapsed : null;
+    out.push('', `TFP: ${scale ? (100 / scale).toFixed(0) : 0}% of this month's TFP period elapsed. The baseline is paid in full, used or not; MSU-hours above it cost ${Math.round(100 * tfp.terms.overageFrac)}% of price. zIIP MSU is not counted.`);
+    out.push(
+      table(
+        f.tfp.map((p) => {
+          const price = tfp.terms.pricePerMsuHour[p.id] ?? 0;
+          const proj = scale ? p.msuHours * scale : null;
+          return {
+            product: p.id,
+            lpars: scenario.products.find((x) => x.id === p.id)?.lpars ?? [],
+            msuHours: Math.round(p.msuHours),
+            baselineMsuHours: Math.round(p.baselineMsuHours),
+            projectedMsuHours: proj === null ? null : Math.round(proj),
+            projectedVsBaselinePct: proj === null || p.baselineMsuHours <= 0 ? null : 100 * (proj / p.baselineMsuHours - 1),
+            pricePerMsuHour: price.toFixed(3),
+            overagePerMsuHour: (price * tfp.terms.overageFrac).toFixed(3),
+            chargeSoFar: usd(p.charge),
+          };
+        }),
+      ),
+    );
+    // One MSU-hour above the baseline on an image is charged by every product licensed there.
+    const lpars = [...new Set(scenario.products.flatMap((p) => p.lpars))].sort();
+    const perLpar = lpars.map((l) => `${l} ${scenario.products.filter((p) => p.lpars.includes(l)).reduce((a, p) => a + (tfp.terms.pricePerMsuHour[p.id] ?? 0) * tfp.terms.overageFrac, 0).toFixed(2)}`);
+    out.push('', `overage $ per MSU-hour by LPAR (all products licensed on it): ${perLpar.join('  ')}`);
+  } else {
+    out.push('', table(f.products.map((p) => ({ product: p.id, lpars: p.lpars, peakR4haMsu: Math.round(p.peakMsu), peakAt: p.peakAt, charge: usd(p.charge) }))));
+  }
+  if (f.bills.length) out.push('', 'closed months: ' + f.bills.map((b) => `month ${b.month + 1} ${usd(b.total)}`).join('  '));
+  return out.join('\n');
+}
+
+const CAPACITY_COMMANDS = new Set<string>(['ADD_CPC_ENGINES', 'SET_CPC_ENGINES', 'SET_CPC_CAPACITY', 'SET_CPC_MEMORY', 'SET_LOGICAL', 'SET_WEIGHT', 'SET_DEFINED_CAPACITY', 'SET_ABSOLUTE_CAP', 'SET_CAPACITY_GROUP', 'SET_LPAR_MEMORY', 'SET_JOB_CLASS']);
+
+/** Hardware view as text: CPC engines and MSU, LPAR definitions, and change-desk changes with their days. */
+export function capacityText(file: PlayFile): string {
+  const run = file.run;
+  const c = run.sim.config;
+  const out = c.cpcs.map((cpc) => `${cpc.id} ${cpc.generation} capacity setting ${cpc.capacitySetting}: CP ${cpc.engines.CP} x ${msuPerCp(cpc).toFixed(0)} MSU = ${Math.round(cpc.engines.CP * msuPerCp(cpc))} MSU, zIIP ${cpc.engines.ZIIP}, ICF ${cpc.engines.ICF}, memory ${cpc.memoryGb} GB`);
+  out.push(
+    '',
+    table(
+      c.lpars.map((l) => {
+        const cp = l.pools.find((p) => p.pool === (l.kind === 'CF' ? 'ICF' : 'CP'));
+        const zi = l.pools.find((p) => p.pool === 'ZIIP');
+        return { lpar: l.id, kind: l.kind, logicalCp: cp?.logical ?? 0, reservedCp: cp?.reserved ?? 0, weight: cp?.weight ?? 0, logicalZiip: zi?.logical ?? 0, ziipWeight: zi?.weight ?? 0, definedCapacityMsu: l.definedCapacityMsu, group: l.capacityGroup, memoryGb: l.memoryGb };
+      }),
+    ),
+  );
+  if (c.capacityGroups.length) out.push('', 'capacity groups: ' + c.capacityGroups.map((g) => `${g.id} ${g.limitMsu} MSU`).join('  '));
+  out.push('', 'job classes (initiators per LPAR): ' + c.jobClasses.map((j) => `${j.jobClass} ${j.mode} ${Object.entries(j.initiators).map(([l, n]) => `${l}:${n}`).join(',')}`).join('  '));
+  const changes = run.changes
+    .filter((ch) => ch.status !== 'FAILED' && ch.commands.some((x) => CAPACITY_COMMANDS.has(x.kind)))
+    .sort((a, b) => a.activateDay - b.activateDay || a.id - b.id);
+  if (changes.length) {
+    out.push('', 'capacity, LPAR and initiator changes from the change desk (temporary ones revert at the start of revertDay):');
+    out.push(table(changes.map((ch) => ({ id: idText('change', ch.id), status: ch.status, activateDay: `D${ch.activateDay + 1}`, revertDay: ch.revertDay === null ? null : `D${ch.revertDay + 1}`, label: ch.label, capex: usd(ch.capex), opexPerDay: usd(ch.opexPerDay) }))));
+  }
+  return out.join('\n');
+}
+
+/** The latest batch night from SMF 30, rolled up by stream (needs the same tool as smf BATCH). */
+export function batchStreamsText(file: PlayFile): string {
+  const run = file.run;
+  if (!hasFeature(run, SMF_FEATURE.BATCH)) return needs(SMF_FEATURE.BATCH, 'The batch view');
+  const n = batchNight(run);
+  if (!n) return 'No batch jobs have ended yet.';
+  const rows = [...new Set(n.jobs.map((j) => j.stream))].sort().map((s) => {
+    const js = n.jobs.filter((j) => j.stream === s);
+    const start = Math.min(...js.map((j) => j.startSec));
+    const end = Math.max(...js.map((j) => j.endSec));
+    return {
+      stream: s,
+      jobsEnded: js.length,
+      critical: js.some((j) => j.critical),
+      lpars: [...new Set(js.map((j) => j.lparId))].sort(),
+      firstStart: clockText(n.dayStartTick + Math.round(start / TICK_SEC)),
+      lastEnd: clockText(n.dayStartTick + Math.round(end / TICK_SEC)),
+      spanMin: (end - start) / 60,
+      maxQueuedMin: Math.max(...js.map((j) => j.queuedSec)) / 60,
+      maxStretch: Math.max(...js.map((j) => j.stretch)),
+    };
+  });
+  const share = n.critical?.delaySharePct;
+  return [
+    `batch night D${n.day + 1} (SMF 30, ended jobs only): last critical job ${n.criticalEnd ?? 'none'}`,
+    share ? `critical path delay share %: ${Object.entries(share).map(([k, v]) => `${k} ${v.toFixed(0)}`).join('  ')}` : '',
+    n.critical?.abended.length ? `critical abends: ${n.critical.abended.join(' ')}` : '',
+    table(rows),
+    '',
+    'smf BATCH has the per-job rows. maxQueuedMin: longest wait for an initiator; maxStretch: slowdown against running alone.',
+  ].filter(Boolean).join('\n');
 }

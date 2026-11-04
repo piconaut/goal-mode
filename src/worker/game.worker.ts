@@ -24,7 +24,7 @@ import { buildView } from '../game/view';
 import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
-import { decodeRunJson, encodeRunJson } from '../game/runFile';
+import { decodeRunFileText, decodeRunJson, encodeRunJson } from '../game/runFile';
 import { basketAfterFailure } from '../game/changeDesk';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { buildMon3 } from '../game/mon3';
@@ -245,7 +245,7 @@ function runFileText(): string {
 }
 
 function importRun(text: string) {
-  const f = decodeRunJson<{ run?: RunState; pendingPolicy?: ServiceDefinition | null }>(text);
+  const f = decodeRunFileText<{ run?: RunState; pendingPolicy?: ServiceDefinition | null }>(text);
   if (!f?.run?.sim || !f.run.scenarioId) throw new Error('Not a GOAL MODE run file');
   run = normalizeRun(f.run, packOf(f.run.scenarioId).scenario);
   lastPhase = run.phase;

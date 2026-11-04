@@ -1,7 +1,7 @@
 // Headless play CLI for agents (PROGRESS M8.9). Each call loads the run file, applies one command, saves it.
 // Usage:
 //   npm run play -- runs/a.json new 42 [normal|story|hard|ironman] [midwest|revenue|harbourline]
-//   npm run play -- runs/a.json status | catalog | policy [pending] | wlmlog [system] [--grep RCVR] | mon3 [system] [--at D2 10:40] [--json] | smf DB2|CICS|BATCH|SMF113 [hour|D8 12] [--json]
+//   npm run play -- runs/a.json status | catalog | finance | capacity | batch | policy [pending] | wlmlog [system] [--grep RCVR] | mon3 [system] [--at D2 10:40] [--json] | smf DB2|CICS|BATCH|SMF113 [hour|D8 12] [--json]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json rca INC<n> <MECHANISM> <TRIGGER> --evidence PIN<n>,PIN<n>   (bare numbers work too)
@@ -27,7 +27,7 @@ import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { writeSpectateFile } from './spectateFile';
 import { decodeRunJson } from '../src/game/runFile';
 import type { Mon3PinHistory } from '../src/game/mon3PinHistory';
-import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, policyText, statusText, wlmLogText, type PlayCommand } from './playCore';
+import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, decodePlayFile, mon3Text, policyText, statusText, wlmLogText, type PlayCommand } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
@@ -74,7 +74,7 @@ function wlmLogOpts(a: string[]): { system?: string; grep?: string } {
   return { ...(system ? { system } : {}), ...(grep ? { grep } : {}) };
 }
 
-type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy' | 'wlmlog';
+type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy' | 'wlmlog' | 'finance' | 'capacity' | 'batch';
 function parse(): PlayCommand | ReadOnly {
   switch (verb) {
     case 'status': return 'status';
@@ -82,6 +82,9 @@ function parse(): PlayCommand | ReadOnly {
     case 'mon3': return 'mon3';
     case 'policy': return 'policy';
     case 'wlmlog': return 'wlmlog';
+    case 'finance': return 'finance';
+    case 'capacity': return 'capacity';
+    case 'batch': return 'batch';
     case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, ...(rest.length > 1 ? { hour: rest.slice(1).join(' ') } : {}), ...(json ? { json } : {}) };
     case 'new': {
       const seed = Number(rest[0] ?? 42), difficulty = (rest[1] ?? 'normal').toUpperCase(), scenario = rest[2];
@@ -130,7 +133,16 @@ let file = isNew ? null : decodePlayFile(readFileSync(path, 'utf8'));
 const mon3Loaded = file && existsSync(mon3Path) ? decodeRunJson<Mon3PinHistory>(readFileSync(mon3Path, 'utf8')) : undefined;
 if (file && mon3Loaded) file = { ...file, mon3: mon3Loaded };
 if (typeof c === 'string') {
-  console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : c === 'policy' ? policyText(file!, rest[0] === 'pending') : c === 'wlmlog' ? wlmLogText(file!, wlmLogOpts(rest)) : mon3Text(file!, { system: rest[0], json, at }));
+  const readOnly: Record<Exclude<ReadOnly, 'mon3'>, () => string> = {
+    status: () => statusText(file!),
+    catalog: () => catalogText(file!),
+    policy: () => policyText(file!, rest[0] === 'pending'),
+    wlmlog: () => wlmLogText(file!, wlmLogOpts(rest)),
+    finance: () => financeText(file!),
+    capacity: () => capacityText(file!),
+    batch: () => batchStreamsText(file!),
+  };
+  console.log(c === 'mon3' ? mon3Text(file!, { system: rest[0], json, at }) : readOnly[c]());
 } else {
   // --pace: advance one hour at a time, saving after each so a spectator sees every step (same end state).
   const steps: PlayCommand[] = paceMs > 0 && c.cmd === 'advance' ? Array.from({ length: Math.max(1, Math.min(24, Math.floor(c.hours))) }, () => ({ cmd: 'advance', hours: 1 })) : [c];
