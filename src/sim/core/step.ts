@@ -22,7 +22,7 @@ import { TICK_SEC, TICKS_PER_DAY } from './units';
 import { CRITICAL_PROJECTION_EVERY, DEFAULT_IO, type TickCtx, type TickSums } from './tick/ctx';
 import { adjustPolicies, prsm, softCap, stepCapping, stepCost, stepRmf } from './tick/control';
 import { lparDemand, planLpar } from './tick/demand';
-import { dispatchLpar } from './tick/dispatch';
+import { dispatchLpar, reserveOverflow } from './tick/dispatch';
 import { byIdOf, effectiveAddressSpaces, effectiveWorkloads, updateRouting } from './tick/helpers';
 
 export type { Command } from './commands';
@@ -195,6 +195,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     }
   }
 
+  if (reserveOverflow(t, zosLpars)) {
+    t.lpars.length = 0;
+    softCap(t);
+    prsm(t);
+  }
   const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0, cfRequestsBy: {} };
   for (const l of zosLpars) dispatchLpar(t, l, sums);
   const { randomIops, seqIops, cfRequests } = sums;

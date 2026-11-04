@@ -286,7 +286,9 @@ facts in docs/research.md). Ordered by impact:
   sleeping slices gate both normal and zIIP-eligible work; without online zIIPs both count toward the CP maximum.
   Type 1 budgets include backlog-only members across images; type 2 uses the current configuration's entitlement.
   Busy/MSU consumption uses dispatched CPU rather than unused PR/SM offers, including the batch initiator's
-  previous-tick busy input. Withheld work keeps its CP/zIIP pool in the backlog. IBM: WLM Planning 3.1 p.60 notes
+  previous-tick busy input. Overflow is reserved across the CPC before execution; actual dispatch and WLM
+  priority trials share the reserved grants, so counterfactual per-image availability cannot overcommit the CPC.
+  Withheld work keeps its CP/zIIP pool in the backlog. IBM: WLM Planning 3.1 p.60 notes
   4–5, RMF Report Analysis 3.1 p.389 and p.98 (ledger and SPEC updated). APPROX: continuous awake fractions;
   1/256 granularity and recovery boost not modelled. Regressions cover all three maximum types on PROD2,
   eligible CP overflow, backlog-only caps, pool accounting and discretionary planning. Goldens regenerated

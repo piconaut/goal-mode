@@ -278,6 +278,10 @@ entitlement_L (in engines) = weight_L / Σ weight(active LPARs in pool) × physi
 - Weights matter only under contention. Unused entitlement is redistributed ("white space")
   to LPARs with demand and spare logical processors, in proportion to weight.
 - An LPAR can never use more than `logicalCPs_L` engines' worth.
+- Actual dispatch on each image is limited to its jointly allocated CP and zIIP grants. After the
+  initial pool allocation, a side-effect-free dispatch probe requests CP help for unserved eligible
+  work; PR/SM then reserves that help before execution. WLM priority trials use the same reserved
+  capacity as current dispatch. Counterfactual per-image availability is used only to plan overflow.
 - **Initial capping** (hard cap to weight share) and **absolute capping** (cap in engines × 100)
   are supported.
 

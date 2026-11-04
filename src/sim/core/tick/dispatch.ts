@@ -3,17 +3,15 @@ import { addJobDelay, advanceJob, jobShape } from '../../subsys/batch';
 import { DB2 } from '../../subsys/db2';
 import { scKeyAtService } from '../../workload/slices';
 import { classify } from '../../wlm/classify';
-import { emptyScpTick, evaluateLpar, type LparEvalInput } from '../../wlm/evaluate';
+import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../../wlm/evaluate';
 import { decayInto, emptyAcc, initialDp, type ScpState } from '../../wlm/runtime';
 import type { LparConfig } from '../types';
 import { TICK_SEC } from '../units';
 import { type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
 import { addParts, cicsHonorPriority, cicsRegions, idleScpTick, jobServiceSu, rgMin, rgSysplexShares, wlLparKey } from './helpers';
 
-/** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
-export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
-  const { prev, def, env, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, batchRefsBy, swappedBy, queuedWlmBy, pagingFrac } = t;
-  const { storageCritical, pagingWeight, evalInputs, backlog, ziipBacklog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
+function lparEvalInput(t: TickCtx, l: LparConfig): LparEvalInput {
+  const { prev, def, config, cpcOf, workloadById, addressSpaces, io, lpars, slicesBy, pagingFrac, storageCritical, pagingWeight } = t;
   const rt = lpars.find((x) => x.id === l.id)!;
   const cpRt = rt.pools.find((p) => p.pool === 'CP');
   const ziRt = rt.pools.find((p) => p.pool === 'ZIIP');
@@ -37,9 +35,9 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
   // Every optional field is always present so all evaluator inputs share one shape.
   const evalInput: LparEvalInput = {
-    cpCapacityEngines: cpRt?.availableEffectiveEngines ?? 0,
+    cpCapacityEngines: cpRt?.effectiveEngines ?? 0,
     cpServers: servers(cpRt, cpCfg?.logical ?? 0, l.hiperDispatch),
-    ziipCapacityEngines: ziRt?.availableEffectiveEngines ?? 0,
+    ziipCapacityEngines: ziRt?.effectiveEngines ?? 0,
     ziipServers: servers(ziRt, ziCfg?.logical ?? 0, l.hiperDispatch),
     eligibleOnCp: (ziCfg?.logical ?? 0) === 0,
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
@@ -59,10 +57,52 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     promotionShareFrac: sysCfg?.blwltrpctFrac ?? 0.005,
     scpsOnly: false,
   };
+  return evalInput;
+}
+
+/** Reserve CP help for the work left after jointly allocated zIIP grants. The probe uses the image's
+ * counterfactual CP availability; actual execution below stays inside the final PR/SM grants. */
+export function reserveOverflow(t: TickCtx, lpars: readonly LparConfig[]): boolean {
+  let changed = false;
+  for (const l of lpars) {
+    if (!l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0)) continue;
+    const input = lparEvalInput(t, l);
+    if (!input.slices.some((s) => s.mayOverflow && (s.ziipEngines > 0 || (t.prev.ziipBacklog?.[s.key] ?? 0) > 0))) continue;
+    input.prepared = prepareLpar(input);
+    t.evalInputs[l.id] = input;
+    const rt = t.lpars.find((r) => r.id === l.id)!;
+    const zi = rt.pools.find((p) => p.pool === 'ZIIP');
+    if (input.prepared.aggZi.reduce((a, b) => a + b, 0) <= (zi?.effectiveEngines ?? 0)) continue;
+    const cp = rt.pools.find((p) => p.pool === 'CP');
+    const probe = evaluateLpar({ ...input, cpCapacityEngines: cp?.availableEffectiveEngines ?? 0, scpsOnly: true });
+    const overflow = probe.slices.reduce((sum, s) => sum + s.iipcpGranted, 0);
+    if (overflow <= 1e-9) continue;
+    const ratio = cp && cp.deliveredEngines > 1e-9 ? cp.effectiveEngines / cp.deliveredEngines : cp && cp.availableEngines > 0 ? cp.availableEffectiveEngines / cp.availableEngines : 1;
+    const demand = t.demands.find((d) => d.lparId === l.id && d.pool === 'CP');
+    if (demand && ratio > 0) {
+      demand.demandEngines += overflow / ratio;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
+export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
+  const { prev, def, env, cpcOf, workloadById, io, lpars, slicesBy, batchRefsBy, swappedBy, queuedWlmBy } = t;
+  const { evalInputs, backlog, ziipBacklog, failedBy, wlTick, rtByWorkloadLpar, holdByWorkloadLpar, failByWorkloadLpar, systems, lparTicks } = t;
+  const rt = lpars.find((x) => x.id === l.id)!;
+  const cpRt = rt.pools.find((p) => p.pool === 'CP');
+  const prevSys = prev.wlm.systems.find((s) => s.lparId === l.id);
+  const slices = slicesBy[l.id] ?? [];
+  const cpc = cpcOf[l.cpcId]!;
+  const evalInput = lparEvalInput(t, l);
+  evalInput.prepared = evalInputs[l.id]?.prepared;
   evalInputs[l.id] = evalInput;
+  const { dpOf, regions } = evalInput;
   const res = evaluateLpar(evalInput);
   // Only dispatched cycles consume CPU/MSU. An unused PR/SM offer is WAIT, not busy
-  // (RMF Report Analysis 3.1 p.389, p.98). Keep availability for WLM trials separate from consumption.
+  // (RMF Report Analysis 3.1 p.389, p.98). PR/SM availability remains separate from consumption.
   for (const pool of rt.pools) {
     if (pool.pool !== 'CP' && pool.pool !== 'ZIIP') continue;
     const used = res.slices.reduce((sum, s) => sum + (pool.pool === 'CP' ? s.cpGranted + s.iipcpGranted : s.ziipGranted), 0);

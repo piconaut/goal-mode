@@ -1,6 +1,7 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { applyCommands } from '../../src/sim/core/commands';
 import { initState } from '../../src/sim/core/init';
+import type { Scenario } from '../../src/sim/core/scenario';
 import { discretionaryCaps, resourceGroupCaps, rgSysplexShares, step } from '../../src/sim/core/step';
 import { planLpar } from '../../src/sim/core/tick/demand';
 import type { TickCtx } from '../../src/sim/core/tick/ctx';
@@ -13,6 +14,32 @@ const slice = sliceSpec({ key: 'T', scKey: 'DDFADHOC#1', kind: 'TXN', cpEngines:
 const input = { slices: [slice], backlog: { T: 20 }, ziipBacklog: { T: 15 }, cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 4, ziipServers: 4, cpPrsmDelayFrac: 0, io: { RANDOM: { rtSec: 0, delaySec: 0 }, SEQ: { rtSec: 0, delaySec: 0 } }, pagingFrac: 0, dpOf: () => 240 };
 
 describe('resource group dispatchability', () => {
+  it.each([false, true])('joint CP/zIIP reservations bound actual consumption (both eligible: %s)', (bothEligible) => {
+    const world = structuredClone(MIDWEST.world);
+    const cpc = { ...world.cpcs[0]!, engines: { CP: 4, ZIIP: 1, ICF: 0 } };
+    const template = world.lpars.find((l) => l.kind === 'ZOS')!;
+    const lpars = ['A', 'B'].map((id) => ({ ...template, id, cpcId: cpc.id, hiperDispatch: false, pools: [{ ...template.pools.find((p) => p.pool === 'CP')!, logical: 4, weight: 100 }, { ...template.pools.find((p) => p.pool === 'ZIIP')!, logical: 1, weight: 100 }] }));
+    const scenario: Scenario = {
+      ...MIDWEST,
+      world: { ...world, cpcs: [cpc], lpars, systems: lpars.map((l) => ({ ...world.systems[0]!, lparId: l.id, iipHonorPriority: true })), cfs: [], cfStructures: [], db2: [], cics: [], capacityGroups: [], jobClasses: [] },
+      workloads: [],
+      addressSpaces: lpars.map((l) => ({ jobname: l.id, lparId: l.id, role: null, subsystem: 'STC', baseEnginesRef: 100, ziipFrac: bothEligible || l.id === 'B' ? 1 : 0 })),
+      memory: { ...MIDWEST.memory, osBaseGb: { A: 1, B: 1 }, db2WorkingSetGb: {} },
+      cfBaseEngines: {}, products: [], batchNetwork: () => [],
+    };
+    let state = initState(42, scenario);
+    for (let i = 0; i < 12; i++) {
+      state = step(state, [], scenario);
+      for (const pool of ['CP', 'ZIIP'] as const) {
+        const total = state.lpars.reduce((sum, l) => sum + (l.pools.find((p) => p.pool === pool)?.deliveredEngines ?? 0), 0);
+        expect(total).toBeLessThanOrEqual(cpc.engines[pool] + 1e-8);
+      }
+      expect(state.lpars.find((l) => l.id === 'B')!.pools.find((p) => p.pool === 'CP')!.deliveredEngines).toBeGreaterThan(0);
+    }
+    const noHelp = applyCommands(state, [{ kind: 'SET_IEAOPT', lparId: 'B', changes: { iipHonorPriority: false } }]);
+    expect(step(noHelp, [], scenario).lpars.find((l) => l.id === 'B')!.pools.find((p) => p.pool === 'CP')!.deliveredEngines).toBe(0);
+  });
+
   it('uses one awake fraction for both pools and their backlogs', () => {
     expect(dispatchableDemand(slice, input.backlog, input.ziipBacklog)).toEqual({ cp: 1.5, zi: 4.5, cut: 0, ziCut: 0 });
     expect(dispatchableDemand(slice, input.backlog, input.ziipBacklog, () => 0.75)).toEqual({ cp: 0.75, zi: 2.25, cut: 3, ziCut: 2.25 });
