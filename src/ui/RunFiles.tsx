@@ -1,7 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { GameHandle } from './useGame';
+import { useConfirmation } from './Confirmation';
 
 export function RunFileButtons({ game }: { game: GameHandle }) {
+  const ask = useConfirmation();
   const dialog = useRef<HTMLDialogElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const exportText = useRef<HTMLTextAreaElement>(null);
@@ -70,12 +72,13 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
     }
   };
 
-  const load = (saveText: string, name: string) => {
+  const load = async (saveText: string, name: string) => {
     if (!saveText.trim()) {
       setNotice('The save text is empty. Paste save text or choose another file.');
       return;
     }
-    if (!confirm(`Load ${name}? It replaces the current run and the saved run.`)) return;
+    const opened = session.current;
+    if (!(await ask(`Load ${name}? It replaces the current run and the saved run.`, 'Load save')) || opened !== session.current) return;
     submittedToast.current = toast;
     setNotice('');
     setLoading(true);
@@ -124,7 +127,7 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
               <textarea rows={10} style={{ width: '100%' }} value={text} onChange={(e) => setText(e.target.value)} disabled={loading || reading} />
             </label>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
-              <button disabled={!text.trim() || loading || reading} onClick={() => load(text, 'pasted save')}>{loading ? 'Loading…' : 'Load pasted save'}</button>
+              <button disabled={!text.trim() || loading || reading} onClick={() => void load(text, 'pasted save')}>{loading ? 'Loading…' : 'Load pasted save'}</button>
               <button disabled={loading || reading} onClick={() => fileInput.current?.click()}>{reading ? 'Reading file…' : 'Choose file'}</button>
             </div>
           </>
@@ -147,7 +150,7 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
             const fileText = await file.text();
             if (opened !== session.current) return;
             setText(fileText);
-            load(fileText, file.name);
+            await load(fileText, file.name);
           } catch (error) {
             if (opened === session.current) setNotice(`Could not read ${file.name}: ${String(error)}`);
           } finally {
