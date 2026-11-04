@@ -8,5 +8,5 @@ adaptations in AGENTS.md. Ignore its Claude frontmatter model/tool metadata.
 Do not delegate further. The brief's player-information restrictions take
 precedence over general instructions to read implementation/design documents:
 do not inspect SPEC.md, PROGRESS.md, research findings or scenario ground truth.
-Write only the assigned run and its CLI-generated artifacts and decision logs.
+Write only the assigned run, its CLI-generated artifacts, incident snapshots and decision logs.
 """

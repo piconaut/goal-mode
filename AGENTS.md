@@ -16,7 +16,7 @@ scope and reporting. The Codex role instructions adapt host-specific details.
 - `realism-fixer`: one vetted realism fix in a separate worktree.
 - `goal-mode-realism-auditor`: controlled experiments and documented findings;
   writes only under `runs/lab/`.
-- `goal-mode-player`, `goal-mode-cost-cutter`, `goal-mode-cautious-operator`:
+- `goal-mode-player`, `goal-mode-cost-cutter`, `goal-mode-cautious-operator`, `goal-mode-firefighter`:
   headless play with the brief's information restrictions and strategy.
 
 Keep model design, balance decisions and cross-layer work on the main agent,

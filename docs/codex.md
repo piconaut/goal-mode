@@ -26,9 +26,10 @@ are behavioural constraints, not filesystem sandbox boundaries.
 | `goal-mode-player` | `gpt-6-luna` | `high` | Repeated CLI play with explicit rules; extra reasoning for diagnosis and resource trade-offs. |
 | `goal-mode-cost-cutter` | `gpt-6-luna` | `high` | The same play task with a cost-focused strategy. |
 | `goal-mode-cautious-operator` | `gpt-6-luna` | `high` | The same play task with a conservative strategy. |
+| `goal-mode-firefighter` | `gpt-6-luna` | `high` | The same play task with emergency changes during incidents. |
 
 These are task-based starting defaults, not measured quality guarantees. Keeping
-the three players on the same model and effort avoids introducing a model
+the four players on the same model and effort avoids introducing a model
 difference when comparing their strategies. The main agent reviews delegated
 changes and findings; difficult player diagnoses can be escalated to it.
 

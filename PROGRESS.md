@@ -366,6 +366,62 @@ facts in docs/research.md). Ordered by impact:
   escalation when TSO/ADHOC response degrades), capped work holding Db2 locks or ENQs (lock-holder starvation, WLM
   enqueue promotion), and sysprog TSO on the production images during an incident.
 
+**D16–D20 (build `d8ada51`; INC79 D19 22:00 and INC97 D20 21:00, both CPU_PRIORITY/POLICY, RCAs filed).**
+
+- [ ] **CPU Critical freezes WLM when the protection is already broken (sim bug, high).** `violatesCpuCritical` in
+  `src/sim/wlm/adjust.ts` tests the whole trial DP set, so when the current DPs already break protection every trial
+  fails and the LPAR logs "no action with net value" for everything. Player's BASEPO10 (D20 06:00: STCHI, STCMED and
+  every transaction class CPU Critical): ONLRBANK (CPU Critical, imp 2) rested at F4 below BATCHHI/BATCHPRD (imp 3/5,
+  F9–FB); ONLCARD (CPU Critical) FA below BATCHPRD FB (RMF intervals ending D20 21:00). D20 21:15 "PROD1 ONLCARD#1
+  PI=4.00 no action with net value"; the first move after BASEPO12 (21:18) is ONLCARD FA→FC, one of the few trials that
+  clears the conflict. Real: less important work never gets an equal or higher DP than CPU-protected work (WLM Planning
+  p.120); WLM enforces it, it doesn't stop managing. Also find how batch periods reach those DPs (DP held from before
+  the period had work?). Still possible under BASEPO12: PROD2 ONLCARD (CPU Critical) FB = BATCHHI FB, D20 22:00–23:00.
+- [ ] **Two-receiver budget starves the CICS transaction classes (sim bug / APPROX).** `adjust.ts:160` assesses at most
+  two fixable receivers per interval. D19 22:00–22:27 both slots went to importance 1: STCMED (sysplex PI 1.9–2.5, all
+  of it from DEVT's Db2 at PI 21.19 and 97 % CPU delay under DEVT's cap; PI 0.40–0.49 on PROD1/PROD2, so no move had
+  net value) and STCHI (CICS region class: raising its DP FA→FC does not move TRANSACTION-managed regions, which run at
+  the served classes' DP). ONLCARD and ONLRBANK sat at PI 4.0 with the regions at FA (PROD1) and FB level with BATCHHI
+  (PROD2, BATCHHI raised F9→FB at 22:00) until ONLPAYMQ got a slot at 22:30 (F4→FC/FB; STCHI PROD2 PI 4.1 → 1.3). Real:
+  if no receiver is selected WLM goes on at the next importance (SG24-7621 p.105); a per-interval limit is not
+  verified. Option: stop counting a receiver whose projection found nothing against the budget, or cap by time.
+- [ ] **Open question: a region class whose regions are transaction servers as a receiver.** In the sim STCHI's PI includes
+  the CICS AORs' samples and WLM spends a receiver slot on it, but its DP doesn't reach the regions. WLM Planning p.111:
+  servers "are managed according to the goals of the served transactions". How real WLM treats the region class's own
+  PI is not verified.
+- [ ] **RCA evidence: the work ahead in the queue doesn't count (design gap).** PROCU "BATCHHI#1 APPL 662%" (D19 22:30)
+  scored 0 ("not about RBANK"): APPL counts only for CPU_CAPACITY (`src/content/evidence.ts`) and only on the victim's
+  own classes (`judgeEvidence`). The inbox hint asks "Who was ahead of it in the queue?"; a lower-importance class at an
+  equal or higher DP with high APPL should count for CPU_PRIORITY. Same class of report as the D4 item above.
+- [ ] **RCA verdict text for grouped incidents (UI bug).** A CARDAUTH pin on the RBANK group was marked "not about RBANK"
+  although it was also judged against CARDAUTH: `submitRca` (`src/game/run/rca.ts:28`) keeps the first incident's verdict
+  when every one scores 0. Show the best verdict's own reason, or one per workload.
+- [ ] **No clue path from a sysplex PI to the LPAR behind it (design gap).** The D19–D20 STCMED alerts and "STCMED still
+  suffering at 06:00" were DEVT's test Db2 (`TN=DB*` → STCMED, imp 1) under DEVT's cap; Monitor III DELAY named a PROD
+  batch job (STM009) as STCMED's primary reason. Realistic (sysplex PI first, SG24-7621 p.105–106), but the UI should
+  make the per-system split easy to find (WLMGL per system, a SYSSUM by system).
+- [ ] **Batch counter sums unfinished nights (UI gap).** "running 4 · queued 71 · held 41 · done 1204" (D18 06:00) with
+  165 jobs a night: DEV jobs on DEVT (discretionary, capped LPAR) never finish, so nights never prune
+  (`src/sim/subsys/batch.ts:310`) and the view counts all of them (D15 save: a DEV job from the D10 night still running,
+  51 DEV jobs queued or held from D10–D14). Show tonight and the backlog separately. Starving DEV batch has no cost
+  (see "Starving Internal work is free").
+- [ ] **Automation misfire wording.** "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
+  MISFIRE), not a false trigger; say so in the Automation panel.
+- [ ] **Pacing (player).** D17: running out of things to spend engineer-hours on; add projects. D19: system well tuned,
+  little to do; CP sparing and the degraded CF link needed no action. Consider dynamic difficulty.
+- [x] **Checked, realistic:** On/Off CoD CPs revert at the start of the revert day and stop billing (D15 save: 9 CPs =
+  8 + 1 permanent). Capacity 1845 MSU = 9 × 205 at setting 7; the MP effect is applied as extra CPU per transaction
+  (`slices.ts:86`), not to the capacity line, unlike SPEC §6's formula (design note). DB81ADIST PROCU 0.9 % Time on CP vs
+  66.2 % EAppl % CP: DDF enclave CPU counts in EAppl only (RMF Report Analysis p.189, cited in `mon3.ts`). BATCHPRD
+  "RG-Cap" with no resource groups: discretionary goal management (velocity ≤ 30, PI < 0.71, discretionary work waiting).
+  CPU Critical on a region's STC class doesn't protect TRANSACTION-managed regions; set it on the transaction class
+  (matches WLM Planning p.100, p.111).
+- [x] **Playtest agents updated from this round:** new `wlmlog [system] [--grep]` play verb (the Monitor's WLM activity
+  log); player briefs now pin evidence, compare `*PLEX` with per-system rows, snapshot the run at incident onset and log
+  the human incident checklist and pacing; new `goal-mode-firefighter` persona (emergency WLM edits, watches WLM's
+  response); realism-auditor ideas from this round. Still to do: the lab harness should log which test rejected each
+  WLM trial (needed to diagnose "no action with net value" without patching `adjust.ts`).
+
 ### M8.7 Realism fixes
 
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a
