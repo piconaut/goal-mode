@@ -611,6 +611,37 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - [ ] Balance: bots in simplified mode (bundles only) reach roughly the textbook bot's results
 - [ ] Tutorial for simplified mode; Codex entries linked from each bundle
 
+### PR review follow-ups (open items from the hourly reviews of #178–#183, 2026-11-04)
+
+Non-blocking findings the reviewer left open; each was still present on `dev` at 7fbeffa. Items fixed by a later PR
+(06:00 queued-install gap → #179, restored-policy edit loss → #180, screenshot timeout and native dialog close → #183)
+are not listed.
+
+WLM policy editing (game/worker/CLI):
+- [ ] **Scheduled activation overrides a queued install** (#179 review): `advance` pushes the policy-schedule
+  activation after `pendingCommands` in the same tick (`src/game/run.ts` `scheduledActivation`), so if the game is
+  paused on an hour with a schedule entry (06:00 at day start included) the scheduled policy replaces the player's
+  queued install while the editor still says "Queued for next tick: X". Show the scheduled entry in `plannedPolicy`,
+  or apply the schedule before player commands.
+- [ ] **Cancel message missing separator** (#180): `src/game/run/changes.ts` cancel message appends
+  "Later policy … keeps its current edits" with no `. ` before it ("(1.5h back) Later policy …").
+- [ ] **Cancel B then A leaves A's edit pending silently** (#180): A's edit stays in the pending policy and A's cancel
+  message doesn't say so (also true before #180; the edits are uninstalled and visible).
+- [ ] **Suppressed failure is silent** (#180): when a later install succeeds after an earlier one failed at day start,
+  the play CLI day-start text and the mail don't say that the earlier install's edits went live through the later one.
+- [ ] **Planned-policy labels** (#178): CLASSIFY flags the planned policy only as `pending` (`src/worker/game.worker.ts`
+  CLASSIFIED); the play CLI `status` and `policy` output don't show the planned (queued/briefing) policy at all.
+
+Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
+- [ ] **Import result read from toast wording** (#181): the dialog matches `Loaded run:` / `Import failed:` toast text;
+  give the worker an explicit import-result message instead.
+- [ ] **Closing during an in-flight import still replaces the run** (#181; the player already confirmed).
+- [ ] **`.modal { position: relative }`** (`src/ui/styles.css`, #181): the open modal dialog computes to
+  position absolute and scrolls with the page instead of staying fixed.
+- [ ] **One unstyled frame on programmatic close** (#183): the `modal` class drops when state resets but `el.close()`
+  runs in a passive `useEffect`; `useLayoutEffect` would avoid the frame. `close()` also runs twice on cancel (harmless).
+- [ ] **No automated test for the dialog lifecycle** (#181/#183 were verified manually with Playwright).
+
 ## Active decisions and conventions
 
 - Architecture, deterministic simulation rules, units, validation, and contribution workflow are in
