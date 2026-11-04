@@ -180,7 +180,7 @@ starved behind batch at its own DP and WLM found no donor. A legitimate player m
 - [ ] **Tutorial:** a full guided day for non-experts (the expert knew where to look; others won't).
 - Positive: the batch critical-path estimate slipping on night 1 reads as a fair early warning of the day-27/28 wall.
 
-### Playtest round 2 (2026-11-04, expert player, daily challenge 2026-11-04, Midwest Normal, seed 467203; in progress)
+### Playtest round 2 (2026-11-04, expert player, daily challenge 2026-11-04, Midwest Normal, seed 467203)
 
 Same player as round 1. Run started on `8c0dd9e` (#160), which became unplayable through a UI problem; continued on the
 published `2253b11` (#164), where the incident below happened. Player policy differs from the default in the way that
@@ -197,65 +197,6 @@ priority of ONLCARD or STCHI. WLMGL 1074 PROD2: STCHI velocity 26.8%, PI 2.23; O
 > 0.4 s, FAILED 2528. Real behaviour, not a bug: regions managed to transaction goals run at the DP of the most important
 transaction class they serve (F4 here), not at STCHI's own FA, so STCHI is never a receiver (WLM Planning p.122–123,
 already in docs/research.md).
-- [x] **WLM projection inconsistent between adjacent intervals (sim bug, fixed).** With the same DPs, BATCHPRD#1's
-  (importance 4) self-raise F2→F4 was projected at D5 22:22:50 to take ONLCARD's PI from 0.80 to 61.8 (rejected), and at
-  22:23:00 to leave it at 0.80 (accepted). Batch then ties the CICS regions' DP on PROD2's 4 CPs; ONLCARD lowers it,
-  BATCHHI (sysplex PI ≈0.8, taken as receiver on its local PI) lowers it again, and BATCHPRD raises itself back: a
-  ~2.5-minute cycle in the WLM log, D4 23:00–23:22 (save) and again D5 22:20–22:36 (replay). BATCHHI also went F3→F5,
-  above the importance-2 CICS classes, at D5 22:36:50. Find out why the projection base drops the CICS contention on
-  some intervals. Cause: starvation cross-paced both CPU demands down on an image without zIIPs. CP-only images now
-  retain ready demand; a blanket importance-based DP ceiling would be too strict without CPU Critical. Receiver
-  candidates now follow global/local order within each importance tier (SG24-7621 pp.106–107). Separate-pool trials
-  now follow a conservative envelope of demand already enabled by this tick's grants or restored by projected
-  CPU grants, using execution's pacing
-  formula. Every intermediate distribution must pass net value; unsettled trials are rejected at a bounded
-  iteration limit. This remains an approximation, with I/O rates/backlogs and capacities held at the snapshot.
-  Regressions cover recovery in either direction, CP help enabled/disabled, CP caps with spare zIIPs, a safe raise
-  with headroom, and exhausted projection budgets. Save-inspired no-zIIP and receiver-order tests remain.
-  Production replay from the uploaded save, D5 22:00–23:00: CARDAUTH 98.585% → 99.933% within SLA,
-  failures 3,512 → 0 and BATCHPRD self-raises 8 → 0; all 40 critical jobs finish, 70 seconds later at 01:56:10.
-  Validation: `npm run check` 553 tests passed; Midwest Normal CI sweep seeds 1–5 passed all bands (do-nothing
-  median day 16, textbook 27, expert 40 with 5/5 victories). Golden hashes changed with the intended model behavior.
-  Separate-pool follow-up: `npm run check` 573 tests passed (10 coupled-projection regressions); the final
-  seed 1–5 sweep passes the same bands and 5/5 expert victories. Replaying the uploaded save through the final
-  code preserves 99.933% attainment, zero card failures/self-raises, and all critical jobs on time. Isolated
-  bench 3.27 s/day (0.38 ms/tick), versus 3.20 s/day before the extension; day-1 hash and existing goldens unchanged.
-- [x] **Equal-importance veto from bystanders; co-served classes not credited (investigated).**
-  At D5 22:21:00 ONLCARD's own raise F4→F6 (which lifts the CICS regions) was projected to take ONLCARD 61.8→0.80,
-  ONLRBANK 82→0.5, ONLTELR 46→0.5 and ONLPAYMQ 13.9→0.17, but `passes()` rejected it because DDFMOB (68.7→74.7) and
-  TSO#1 (27→29.6), also importance 2, got worse and the "PIs must end closer together" test failed. That test is for
-  equal-importance *donors* (SG24-6472 p.60); here it vetoes on bystanders already far past goal, and the gain counts
-  only the receiver, not the other transaction classes served by the same regions. WLM fell back to the weaker donor
-  move. IBM's WLM Services p.147 describes secondary donors with unchanged DP, and its net-value rules (p.138) apply
-  to primary and secondary donors; with IBM's 2002 Intelligent Resource Director paper they support evaluating donor
-  harm and equal-importance convergence separately. Co-served improvements are projected, but pooled credit cannot
-  override that veto; no change made. The sim's summed donor-harm comparison remains a separate fidelity question;
-  co-served credit and equal-importance convergence for secondary donors are under "Open questions".
-- [ ] **Clue path for "why didn't WLM raise CICS".** The player read the WLM log correctly but couldn't see why there
-  was no receiver raise. Consider logging the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal
-  importance"), and showing on WLMGL/SYSWKM that a region class managed to transaction goals runs at the served classes'
-  DP (its own PI is reported, not managed to).
-- [x] **⇩ export does nothing in the published artifact:** text transfer added 2026-11-04. Export opens a
-  dialog with "Copy save to clipboard", a selectable save-text field for manual copying when clipboard access
-  is blocked, and an explicit file download. Import accepts pasted save text as well as files, using the existing
-  backtick-tolerant decoder. Failed imports keep their text and report an error; replacing the current run/save
-  requires confirmation. No serialization or save-format changes. Validation: 67 files / 650 tests,
-  typecheck and production build pass; browser copy/fallback, file and backtick-paste round-trips, invalid
-  import and mobile checks pass. A download-blocked iframe with no clipboard still exposes selectable save
-  text. Default three-scenario comparison has no differences; the artifact has not been republished.
-  Dialog lifecycle follow-up from #181 review (2026-11-04): closed save dialogs no longer match `.modal`,
-  restoring the documented screenshot flow. Native close events now reset the dialog state so Export and Import
-  can reopen; delayed close events are ignored after reopening. Save transfer and its format are unchanged.
-  Validation: 67 files / 650 tests and production build pass; native-close/reopen, Escape/focus and delayed-event
-  browser checks pass. The unchanged screenshot tool completes with no errors or mobile overflow; default
-  three-scenario comparison has no differences.
-- [ ] **Imported saves lack Monitor III history:** `mon3 --at` on an imported save shows nothing for past
-  ranges (replay forward instead, or include the history).
-- [x] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. The player confirmed it was
-  the worker request loops, fixed in #164.
-- [ ] **RCA evidence mark to check:** the PROCU pin "BATCHHI#1 APPL 442%" (D4 23:04) was marked "not about CARDAUTH",
-  though batch at the CICS regions' DP on PROD2 was the CPU competitor. Check whether the evidence matcher should accept
-  the competing class's CPU for CPU_PRIORITY.
 - Positive: DELAY Primary Reason named the right job; DELAY and WLMGL CPU-delay pins were marked "points at the cause".
 
 **Days 5–15 on `d8ada51`** (#170; the player continued the same save). Incidents and events as the player reported them;
@@ -283,8 +224,70 @@ investigation results are folded into the items below as they land.
 - TFP offer: signed without enough data; a real decision needs $/MSU under R4HA and TFP and a cost estimate from history
   (a what-if tool might cover it).
 
-Investigation (2026-11-04; three subagents on `dev` = `d8ada51` + docs, the player's D15 12:45 save and seed replays; IBM
-facts in docs/research.md). Ordered by impact:
+Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in docs/research.md. Findings by category, open items first:
+
+#### Sim and game-logic bugs
+
+- [ ] **zIIP purchase with nowhere to go (bug + design gap).** Midwest PROD1 has 2 logical zIIPs and 0 reserved, PROD2 no zIIP
+  pool; ADD_ZIIP has no headroom check. The UI (`validateLogical`) forbids a PROD2 zIIP while the sim's `SET_LOGICAL`
+  creates one (bots and the Story starting fix rely on it), so SPEC F7 can't be fixed in the browser. Fix: PROD2 0 online
+  + 1 reserved zIIP (also makes its IIPCP reporting legitimate), `SET_LOGICAL` enforces reserved, warn on ADD_ZIIP.
+- [ ] **CPU Critical freezes WLM when the protection is already broken (sim bug, high).** `violatesCpuCritical` in
+  `src/sim/wlm/adjust.ts` tests the whole trial DP set, so when the current DPs already break protection every trial
+  fails and the LPAR logs "no action with net value" for everything. Player's BASEPO10 (D20 06:00: STCHI, STCMED and
+  every transaction class CPU Critical): ONLRBANK (CPU Critical, imp 2) rested at F4 below BATCHHI/BATCHPRD (imp 3/5,
+  F9–FB); ONLCARD (CPU Critical) FA below BATCHPRD FB (RMF intervals ending D20 21:00). D20 21:15 "PROD1 ONLCARD#1
+  PI=4.00 no action with net value"; the first move after BASEPO12 (21:18) is ONLCARD FA→FC, one of the few trials that
+  clears the conflict. Real: less important work never gets an equal or higher DP than CPU-protected work (WLM Planning
+  p.120); WLM enforces it, it doesn't stop managing. Also find how batch periods reach those DPs (DP held from before
+  the period had work?). Still possible under BASEPO12: PROD2 ONLCARD (CPU Critical) FB = BATCHHI FB, D20 22:00–23:00.
+- [ ] **Two-receiver budget starves the CICS transaction classes (sim bug / APPROX).** `adjust.ts:160` assesses at most
+  two fixable receivers per interval. D19 22:00–22:27 both slots went to importance 1: STCMED (sysplex PI 1.9–2.5, all
+  of it from DEVT's Db2 at PI 21.19 and 97 % CPU delay under DEVT's cap; PI 0.40–0.49 on PROD1/PROD2, so no move had
+  net value) and STCHI (CICS region class: raising its DP FA→FC does not move TRANSACTION-managed regions, which run at
+  the served classes' DP). ONLCARD and ONLRBANK sat at PI 4.0 with the regions at FA (PROD1) and FB level with BATCHHI
+  (PROD2, BATCHHI raised F9→FB at 22:00) until ONLPAYMQ got a slot at 22:30 (F4→FC/FB; STCHI PROD2 PI 4.1 → 1.3). Real:
+  if no receiver is selected WLM goes on at the next importance (SG24-7621 p.105); a per-interval limit is not
+  verified. Option: stop counting a receiver whose projection found nothing against the budget, or cap by time.
+- [ ] **Db2 batch starts on an LPAR without Db2 (sim bug, high).** `startJobs` (`src/sim/subsys/batch.ts:153`) puts a
+  job without SYSAFF on any LPAR with a free initiator for its class and never checks `usesDb2`. With class A
+  initiators on SYSP (no Db2), RPT, DWH, GLF and STM would run there faster than on PROD (`depStretch` reads SYSP's
+  Db2 roles, none, so 1; `lockStretch` reads SYSP's online Db2 rate, 0, so 1; `src/sim/core/tick/dispatch.ts:135–162`).
+  Real: the batch attachments (CAF, RRSAF, TSO attach) connect only to a Db2 subsystem on the same image; with none,
+  the job fails at connect (-923 or an attach error; not verified against the books). Fix: such a job starts and
+  fails at connect with a JES/SMF 30 clue and needs a rerun (symptom + clue + fix), rather than a silent refusal.
+- [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
+  products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Mostly moot once the job fails at connect;
+  check that nothing else can run Db2 work on an image outside the Db2 product's LPAR list.
+- [ ] **A repeat XLOG_LOOP burns no CPU (bug, high).** The card's end sets `asCpu[CICSXLOG] = 0` and nothing resets it,
+  so after the first occurrence every later loop adds a CICSXLOG address space at zero CPU (the D40 save has three
+  CICSXLOG entries in `extraAddressSpaces` and `asCpu {CICSXLOG: 0}`). D39: PROD1 STCHI APPL 163 % at 11:00, 192 % at
+  13:00, the normal midday curve (D37 has the same shape), no one-engine step at 11:22. The alert and the incident
+  still fired, so the cancel looked like it did nothing. Fix: end removes the address space (or begin resets the
+  modifier); same for any card that adds an address space and zeroes it on end.
+- [x] **WLM projection inconsistent between adjacent intervals (sim bug, fixed).** With the same DPs, BATCHPRD#1's
+  (importance 4) self-raise F2→F4 was projected at D5 22:22:50 to take ONLCARD's PI from 0.80 to 61.8 (rejected), and at
+  22:23:00 to leave it at 0.80 (accepted). Batch then ties the CICS regions' DP on PROD2's 4 CPs; ONLCARD lowers it,
+  BATCHHI (sysplex PI ≈0.8, taken as receiver on its local PI) lowers it again, and BATCHPRD raises itself back: a
+  ~2.5-minute cycle in the WLM log, D4 23:00–23:22 (save) and again D5 22:20–22:36 (replay). BATCHHI also went F3→F5,
+  above the importance-2 CICS classes, at D5 22:36:50. Find out why the projection base drops the CICS contention on
+  some intervals. Cause: starvation cross-paced both CPU demands down on an image without zIIPs. CP-only images now
+  retain ready demand; a blanket importance-based DP ceiling would be too strict without CPU Critical. Receiver
+  candidates now follow global/local order within each importance tier (SG24-7621 pp.106–107). Separate-pool trials
+  now follow a conservative envelope of demand already enabled by this tick's grants or restored by projected
+  CPU grants, using execution's pacing
+  formula. Every intermediate distribution must pass net value; unsettled trials are rejected at a bounded
+  iteration limit. This remains an approximation, with I/O rates/backlogs and capacities held at the snapshot.
+  Regressions cover recovery in either direction, CP help enabled/disabled, CP caps with spare zIIPs, a safe raise
+  with headroom, and exhausted projection budgets. Save-inspired no-zIIP and receiver-order tests remain.
+  Production replay from the uploaded save, D5 22:00–23:00: CARDAUTH 98.585% → 99.933% within SLA,
+  failures 3,512 → 0 and BATCHPRD self-raises 8 → 0; all 40 critical jobs finish, 70 seconds later at 01:56:10.
+  Validation: `npm run check` 553 tests passed; Midwest Normal CI sweep seeds 1–5 passed all bands (do-nothing
+  median day 16, textbook 27, expert 40 with 5/5 victories). Golden hashes changed with the intended model behavior.
+  Separate-pool follow-up: `npm run check` 573 tests passed (10 coupled-projection regressions); the final
+  seed 1–5 sweep passes the same bands and 5/5 expert victories. Replaying the uploaded save through the final
+  code preserves 99.933% attainment, zero card failures/self-raises, and all critical jobs on time. Isolated
+  bench 3.27 s/day (0.38 ms/tick), versus 3.20 s/day before the extension; day-1 hash and existing goldens unchanged.
 - [x] **A planned fix makes its event permanent (bug, high).** Fixed 2026-11-03: `startDay` now keeps one command
   queue, including the restoration commands appended by each successful event fix. Previously its final assignment
   discarded those commands after marking the event ended, leaving its modifiers permanent and skipping natural expiry.
@@ -309,19 +312,6 @@ facts in docs/research.md). Ordered by impact:
   batch-projection and WLM tests pass; the PR records full-suite, benchmark and bot regression evidence.
   The Monitor III CPU regression compares independent control/stressed runs at the same simulated time,
   checking CP-specific delay, processor-delayed users, PI, velocity and the affected WFEX result.
-- [ ] **Power-cap RCA is a gotcha (content/design gap).** INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth
-  CPU_PRIORITY/HARDWARE_FAULT (2 points); INC53 CARDAUTH: truth CPU_PRIORITY/POLICY (5 points). CPU_CAPACITY needs CPC
-  ≥ 90 % (or LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`; thresholds hard-coded, not in
-  content/); CPCA was 70.9–82 % physical, so priority. The card lowers the capacity setting by one (slower CPs, same
-  count); its affected workloads are only MOBILE and RBANK, so CARDAUTH falls back to POLICY although the drop is CPC-wide.
-  The rule appears in no Codex entry or RCA form tooltip. Fix: affected workloads of capacity-drop cards = everything on
-  the throttled CPC; Codex "RCA vocabulary" + form tooltips; explain after scoring ("CPC 81 % busy, below the 90 %
-  capacity line"); show a capacity-adjustment clue (SMF70CAI/CCR, MVS SMF p.589) in CPC/Partition Data. CoD helps only a
-  little; the card's cheaper fixes are capping DEVT, deferring discretionary work and protecting importance 1.
-- [ ] **Silent events leak through the Operations Log (design bug).** `src/game/run.ts` logs "EVENT start/end: <name>" for
-  every card; mail goes out only with an announcement; `src/game/mon3Charts.ts` turns the lines into named chart
-  markers. The TSO model-training card has no announcement. Fix: log only announced cards, in their wording; keep
-  silent ones out of the log and chart markers until revealed or the RCA is filed (run log changes → goldens).
 - [x] **Two policy installs in one briefing: the second drops the first (bug).** Fixed 2026-11-04:
   browser and CLI edits build on the latest planned activation due at today's 06:00, retaining earlier installs'
   goals, classification and resource groups. The briefing editor shows "Planned for 06:00: X" and its settings;
@@ -341,90 +331,21 @@ facts in docs/research.md). Ordered by impact:
   suppress restoration. Regression replays cover both paths and verify the later edits survive further installs.
   Validation: 67 files / 650 tests, typecheck, production build and both browser replays pass; default
   three-scenario comparison has no differences and goldens are unchanged.
-- [ ] **WLM goal edit without an Install option: not reproduced.** New run (live and briefing) and the player's save: the
-  button enabled ("Install & activate BASEPOL8"); #164 is not the cause. Likely: the "Add P2 after P1" row uses the same
-  widgets and labels as P1, and typing there does nothing until "Add period" is pressed (matches the add/remove
-  workaround); typed goals commit only on blur/Enter with no unsent cue; a disabled reason shows only as a tooltip. Fix:
-  distinct add-period form, commit on change or show "unsent", visible disabled reason. Ask the player for exact steps.
-- [ ] **Activate a saved policy (design gap):** saved policies can only be scheduled; real `V WLM,POLICY=` exists. Add
-  "Activate now" (an ordinary activation; emergency when live) and "Load into editor".
-- [ ] **Hardware and On/Off CoD (design gap).** Every live change is an emergency (−1.5 trust per stakeholder, fail roll),
-  including lead-time items (CP/zIIP/ICF, 4 days) that arrive later anyway; no "plan for tomorrow" while live. CoD: $9k/day
-  for 3 days per order (player's two D12 orders ≈ $54k + 2× emergency trust), no early end. Fix: plan-for-tomorrow during
-  the live day without trust cost, or exempt lead-time items; "Deactivate CoD" from the next day (real early deactivation
-  not verified).
-- [ ] **zIIP purchase with nowhere to go (bug + design gap).** Midwest PROD1 has 2 logical zIIPs and 0 reserved, PROD2 no zIIP
-  pool; ADD_ZIIP has no headroom check. The UI (`validateLogical`) forbids a PROD2 zIIP while the sim's `SET_LOGICAL`
-  creates one (bots and the Story starting fix rely on it), so SPEC F7 can't be fixed in the browser. Fix: PROD2 0 online
-  + 1 reserved zIIP (also makes its IIPCP reporting legitimate), `SET_LOGICAL` enforces reserved, warn on ADD_ZIIP.
-- [ ] **IIPCP on an image without zIIPs (realism).** With PROJECTCPU=NO (default) and no zIIP configured, real RMF reports
-  no IIPCP (Init & Tuning p.434); the sim always does. Moot if PROD2 gets a reserved zIIP.
-- [ ] **D8 DDFADHOC was no event.** Normal Monday ad hoc peaks (APPL CP 36–46 % / IIPCP 18–24 % 10:00–16:30; 5.1/2.6 by
-  19:30). "Cancel the runaway DDF thread" matched nothing, gave no feedback and cost 0.5 h (see the no-match item above).
-  The routing editor lists only multi-target workloads, so ADHOC can't move to PROD1. Player read: fair, but needs feedback.
-- [ ] **SMF 101 "vs base" moves retroactively (design gap).** `src/game/smf.ts` divides past hours by today's baseline, an
-  EWMA (0.8/h) learned from every SLA-met hour, so a regression is absorbed in ~3 h: at the D7 briefing the D6 08:00 row
-  read 1.00 instead of ≈2.8. Fix: freeze each hour's ratio when it closes; learn the baseline only from hours without an
-  active event of that mechanism, or a slow decay / same-hour-last-week reference. The Db2-team mail is the
-  DB2_WHISPERER perk tip, sent at event start (not pin-driven); tag it "(Db2 Whisperer)".
-- [ ] **MLC vs opex budget (UI gap).** At each monthly bill MLC + CoD is compared with the budget: Finance trust
-  −over %, > 25 % over ends the run (`src/game/run.ts`). The player's $819k vs $780k ≈ 5 % → −5 Finance, not a loss. The
-  Finance card calls the opex line "CoD and other temporary charges" and the header shows MLC est and budget unsummed.
-  Fix: "MLC + CoD = X vs budget (+N %; over 25 % ends the run)" in header and Finance card.
-- [ ] **TFP offer lacks the numbers (design gap).** Shows baseline $/month, sub-capacity bill at the peak and overage %;
-  the per-product terms are stripped from the view and nothing projects TFP vs sub-capacity from history. Fix: per-product
-  table (peak MSU and $/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection.
-- [ ] **Monitor III CPC and charts.** CPC has CP rows only (real: per-type groups with *CP/*ICF/*IIP and PHYSICAL lines,
-  RMF Report Analysis p.97–98). "CP busy per system" plots % of logical CPs per LPAR and % of physical for the CPC line:
-  relabel, add a "% of CPC" toggle. A CPU-by-service-class chart is feasible (per-class engines already sampled), with a
-  chart toggle.
-- [ ] **CPC busy forecast:** 10-day log-linear fit of daily peak busy as % of installed CPs; weekends (47 %, 34 %) and capacity
-  added pull it down. Fit weekdays (or a weekday term) and forecast MSU demand against capacity; mark capacity changes.
-- [ ] **Resource group units:** SU/s only. 1 MSU = 277.8 SU/s; SU/s per CP in `src/sim/hw/cpc.ts`. Show "≈ N MSU ≈ M CPs" in
-  the editor and the Codex entry.
-- [ ] **Codex:** no SMF 101 or SMF 110 entry (only a mention in the SMF-volume entry); add both, linked from the SMF tab.
-- [ ] **Layout:** Start day / Briefing sit in a fixed bottom-right box shared with result toasts (they can overlap); the
-  header's speed-button slot is empty during the briefing, so move them there.
-- [ ] **Export:** besides downloads being blocked, copying the save string from dev tools corrupted 12 escaped quotes in
-  inbox text (`\\"`), so the D15 save needed repair before it parsed; another reason for an in-artifact export.
-- [x] **`confirm()` is blocked in the published artifact:** replaced 2026-11-04 with a shared in-app
-  confirmation dialog for save imports, the guarded new-run start and restarting with planned changes. It works
-  without sandbox `allow-modals`; Cancel/Escape leave the run and pending work intact, and explicit confirmation
-  performs the requested action. Import errors still retain the pasted/file text. The dialog traps focus,
-  defaults to Cancel and restores focus on close. No worker, save-format or simulation changes. Validation:
-  67 files / 650 tests, typecheck and production build pass; sandbox browser checks cover paste/file imports,
-  invalid input, Cancel/Escape, planned-change restart and the older-save start guard, with zero browser
-  `confirm()` calls or page errors. Default three-scenario comparison has no differences; no artifact republish.
-- [ ] **Starving "Internal" work is free (design gap: a lever with no cost).** TSO and ADHOC have stakeholder `Internal` and
-  SLA `NONE` (no incidents, trust or score; `src/game/run.ts`, `src/game/sla.ts`); DEV batch is non-critical with
-  `lockIntensity` 0, so a capped or discretionary job holds no locks and its lateness counts nowhere. The only cost today
-  is the RG phantom-busy bug. Real costs to consider: developer/BI complaints (an Internal trust facet or an inbox
-  escalation when TSO/ADHOC response degrades), capped work holding Db2 locks or ENQs (lock-holder starvation, WLM
-  enqueue promotion), and sysprog TSO on the production images during an incident.
 
-**D16–D20 (build `d8ada51`; INC79 D19 22:00 and INC97 D20 21:00, both CPU_PRIORITY/POLICY, RCAs filed).**
+#### Incident truth, RCA and evidence
 
-- [ ] **CPU Critical freezes WLM when the protection is already broken (sim bug, high).** `violatesCpuCritical` in
-  `src/sim/wlm/adjust.ts` tests the whole trial DP set, so when the current DPs already break protection every trial
-  fails and the LPAR logs "no action with net value" for everything. Player's BASEPO10 (D20 06:00: STCHI, STCMED and
-  every transaction class CPU Critical): ONLRBANK (CPU Critical, imp 2) rested at F4 below BATCHHI/BATCHPRD (imp 3/5,
-  F9–FB); ONLCARD (CPU Critical) FA below BATCHPRD FB (RMF intervals ending D20 21:00). D20 21:15 "PROD1 ONLCARD#1
-  PI=4.00 no action with net value"; the first move after BASEPO12 (21:18) is ONLCARD FA→FC, one of the few trials that
-  clears the conflict. Real: less important work never gets an equal or higher DP than CPU-protected work (WLM Planning
-  p.120); WLM enforces it, it doesn't stop managing. Also find how batch periods reach those DPs (DP held from before
-  the period had work?). Still possible under BASEPO12: PROD2 ONLCARD (CPU Critical) FB = BATCHHI FB, D20 22:00–23:00.
-- [ ] **Two-receiver budget starves the CICS transaction classes (sim bug / APPROX).** `adjust.ts:160` assesses at most
-  two fixable receivers per interval. D19 22:00–22:27 both slots went to importance 1: STCMED (sysplex PI 1.9–2.5, all
-  of it from DEVT's Db2 at PI 21.19 and 97 % CPU delay under DEVT's cap; PI 0.40–0.49 on PROD1/PROD2, so no move had
-  net value) and STCHI (CICS region class: raising its DP FA→FC does not move TRANSACTION-managed regions, which run at
-  the served classes' DP). ONLCARD and ONLRBANK sat at PI 4.0 with the regions at FA (PROD1) and FB level with BATCHHI
-  (PROD2, BATCHHI raised F9→FB at 22:00) until ONLPAYMQ got a slot at 22:30 (F4→FC/FB; STCHI PROD2 PI 4.1 → 1.3). Real:
-  if no receiver is selected WLM goes on at the next importance (SG24-7621 p.105); a per-interval limit is not
-  verified. Option: stop counting a receiver whose projection found nothing against the budget, or cap by time.
-- [ ] **Open question: a region class whose regions are transaction servers as a receiver.** In the sim STCHI's PI includes
-  the CICS AORs' samples and WLM spends a receiver slot on it, but its DP doesn't reach the regions. WLM Planning p.111:
-  servers "are managed according to the goals of the served transactions". How real WLM treats the region class's own
-  PI is not verified.
+- [ ] **RCA evidence mark to check:** the PROCU pin "BATCHHI#1 APPL 442%" (D4 23:04) was marked "not about CARDAUTH",
+  though batch at the CICS regions' DP on PROD2 was the CPU competitor. Check whether the evidence matcher should accept
+  the competing class's CPU for CPU_PRIORITY.
+- [ ] **Power-cap RCA is a gotcha (content/design gap).** INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth
+  CPU_PRIORITY/HARDWARE_FAULT (2 points); INC53 CARDAUTH: truth CPU_PRIORITY/POLICY (5 points). CPU_CAPACITY needs CPC
+  ≥ 90 % (or LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`; thresholds hard-coded, not in
+  content/); CPCA was 70.9–82 % physical, so priority. The card lowers the capacity setting by one (slower CPs, same
+  count); its affected workloads are only MOBILE and RBANK, so CARDAUTH falls back to POLICY although the drop is CPC-wide.
+  The rule appears in no Codex entry or RCA form tooltip. Fix: affected workloads of capacity-drop cards = everything on
+  the throttled CPC; Codex "RCA vocabulary" + form tooltips; explain after scoring ("CPC 81 % busy, below the 90 %
+  capacity line"); show a capacity-adjustment clue (SMF70CAI/CCR, MVS SMF p.589) in CPC/Partition Data. CoD helps only a
+  little; the card's cheaper fixes are capping DEVT, deferring discretionary work and protecting importance 1.
 - [ ] **RCA evidence: the work ahead in the queue doesn't count (design gap).** PROCU "BATCHHI#1 APPL 662%" (D19 22:30)
   scored 0 ("not about RBANK"): APPL counts only for CPU_CAPACITY (`src/content/evidence.ts`) and only on the victim's
   own classes (`judgeEvidence`). The inbox hint asks "Who was ahead of it in the queue?"; a lower-importance class at an
@@ -432,92 +353,6 @@ facts in docs/research.md). Ordered by impact:
 - [ ] **RCA verdict text for grouped incidents (UI bug).** A CARDAUTH pin on the RBANK group was marked "not about RBANK"
   although it was also judged against CARDAUTH: `submitRca` (`src/game/run/rca.ts:28`) keeps the first incident's verdict
   when every one scores 0. Show the best verdict's own reason, or one per workload.
-- [ ] **No clue path from a sysplex PI to the LPAR behind it (design gap).** The D19–D20 STCMED alerts and "STCMED still
-  suffering at 06:00" were DEVT's test Db2 (`TN=DB*` → STCMED, imp 1) under DEVT's cap; Monitor III DELAY named a PROD
-  batch job (STM009) as STCMED's primary reason. Realistic (sysplex PI first, SG24-7621 p.105–106), but the UI should
-  make the per-system split easy to find (WLMGL per system, a SYSSUM by system).
-- [ ] **Batch counter sums unfinished nights (UI gap).** "running 4 · queued 71 · held 41 · done 1204" (D18 06:00) with
-  165 jobs a night: DEV jobs on DEVT (discretionary, capped LPAR) never finish, so nights never prune
-  (`src/sim/subsys/batch.ts:310`) and the view counts all of them (D15 save: a DEV job from the D10 night still running,
-  51 DEV jobs queued or held from D10–D14). Show tonight and the backlog separately. Starving DEV batch has no cost
-  (see "Starving Internal work is free").
-- [ ] **Automation misfire wording.** "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
-  MISFIRE), not a false trigger; say so in the Automation panel.
-- [ ] **Pacing (player).** D17: running out of things to spend engineer-hours on; add projects. D19: system well tuned,
-  little to do; CP sparing and the degraded CF link needed no action. Consider dynamic difficulty.
-- [x] **Checked, realistic:** On/Off CoD CPs revert at the start of the revert day and stop billing (D15 save: 9 CPs =
-  8 + 1 permanent). Capacity 1845 MSU = 9 × 205 at setting 7; the MP effect is applied as extra CPU per transaction
-  (`slices.ts:86`), not to the capacity line, unlike SPEC §6's formula (design note). DB81ADIST PROCU 0.9 % Time on CP vs
-  66.2 % EAppl % CP: DDF enclave CPU counts in EAppl only (RMF Report Analysis p.189, cited in `mon3.ts`). BATCHPRD
-  "RG-Cap" with no resource groups: discretionary goal management (velocity ≤ 30, PI < 0.71, discretionary work waiting).
-  CPU Critical on a region's STC class doesn't protect TRANSACTION-managed regions; set it on the transaction class
-  (matches WLM Planning p.100, p.111).
-- [x] **Playtest agents updated from this round:** new `wlmlog [system] [--grep]` play verb (the Monitor's WLM activity
-  log); player briefs now pin evidence, compare `*PLEX` with per-system rows, snapshot the run at incident onset and log
-  the human incident checklist and pacing; new `goal-mode-firefighter` persona (emergency WLM edits, watches WLM's
-  response); realism-auditor ideas from this round. Still to do: the lab harness should log which test rejected each
-  WLM trial (needed to diagnose "no action with net value" without patching `adjust.ts`).
-
-**D20 follow-ups (TFP levers, classification, batch placement).**
-
-- [ ] **Change desk "catches" column ignores `SY=` rules (UI bug).** The player's `SY=DEVT` rule under subsystem STC
-  (→ STCDEV) shows "catches nothing", though PROCU shows DEVT's STCs in STCDEV. Classification itself uses `SY: lparId`
-  everywhere in the sim; `workItems` in `src/game/classifyExplain.ts` builds one item per jobname without the system,
-  so no `SY=` rule can match. Build items per (jobname, system).
-- [ ] **Db2 batch starts on an LPAR without Db2 (sim bug, high).** `startJobs` (`src/sim/subsys/batch.ts:153`) puts a
-  job without SYSAFF on any LPAR with a free initiator for its class and never checks `usesDb2`. With class A
-  initiators on SYSP (no Db2), RPT, DWH, GLF and STM would run there faster than on PROD (`depStretch` reads SYSP's
-  Db2 roles, none, so 1; `lockStretch` reads SYSP's online Db2 rate, 0, so 1; `src/sim/core/tick/dispatch.ts:135–162`).
-  Real: the batch attachments (CAF, RRSAF, TSO attach) connect only to a Db2 subsystem on the same image; with none,
-  the job fails at connect (-923 or an attach error; not verified against the books). Fix: such a job starts and
-  fails at connect with a JES/SMF 30 clue and needs a rerun (symptom + clue + fix), rather than a silent refusal.
-- [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
-  products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Mostly moot once the job fails at connect;
-  check that nothing else can run Db2 work on an image outside the Db2 product's LPAR list.
-- [ ] **One job class for every stream (design gap).** All Midwest production streams are class A, so the honest move
-  (non-Db2 BKP and HSK on SYSP, cheaper under TFP) can't be made without also sending Db2 streams there. Player
-  proposal, simpler than modelling SCHENV: finer job classes (e.g. Db2 production, non-Db2 utilities, reports), each
-  with initiators per LPAR; reclassing a stream is a change desk JCL change with lead time and a small failure risk.
-  Information in tiers: SMF 30 shows class and program (IKJEFT01 with a DSN command, or DSNTEP2, shows Db2 use); ask
-  in inbox answers per stream (count, class, Db2, SYSAFF), not one job; the batch analysis unlock shows the network
-  (streams, class, Db2 use, SYSAFF, predecessors, critical path and slack). SCHENV can come later.
-- [ ] **Exported saves arrive with every backslash doubled (open question).** The player's D20 export
-  (`goal-mode-midwest-467203-day20.json`) was invalid JSON: all 20 escaped quotes (inbox bodies quoting the change
-  board) were `\\"`. Halving every backslash gives byte-for-byte what `encodeRunJson` writes, so the game's
-  `JSON.stringify` is fine and something on the artifact's download path doubled them (not verified). Import (browser
-  and play CLI) now repairs it, and also text pasted inside backticks (the D4 save). If it recurs, look at how the
-  artifact host saves a Blob download.
-- [x] **Play CLI for playtest investigations:** `finance` (bill; under TFP, MSU-hours vs the prorated baseline,
-  projection and overage $ per MSU-hour by LPAR), `capacity` (CPC MSU, LPARs, initiators, capacity changes by day),
-  `batch` (last night by stream); `npm run inspect -- <file> dp <system>` for the DPs per RMF interval (sim internals,
-  never for player agents). These replace the one-off scripts used for the D10–D20 questions.
-- [ ] **Playtest companion skill and investigator subagent (proposal).** A `playtest-companion` skill holding the
-  standing rules and setup, and an optional `playtest-investigator` subagent for deep code dives that returns
-  only the finding in the report format and filters spoilers in its own context. Not built yet.
-- [ ] **A forewarned fix planned ahead is silently wasted (design gap).** D24 (build `d8ada51`): the inbox forewarned a
-  stored procedure redeploy; the player planned "Redeploy as native SQL procedures" in the briefing. It applied at 06:00
-  (`src/game/run.ts:133–137`), the event card started later that morning, `endEventByFix` found nothing started and
-  the fix was spent (2 h) with the event still running. The build gave no warning; dev now logs "no active event
-  matched this fix" but still discards it. A fix the player could see coming should either arm against the
-  forewarned card (end it when it starts that day) or be refused at planning time with the reason, and the hours
-  refunded if it found no target. Same card twice in this run (D11, D24), so the fix also isn't lasting: if the
-  redeploy reintroduces COBOL procedures, say so in the card's clue.
-
-**D24 onward (build `d8ada51`).**
-
-- [ ] **No way to add the first rule for a subsystem with no rules (UI bug, high).** The acquisition hint ("runs under
-  USS (subsystem OMVS) as userid ACQSVC … Change Desk › WLM › Classification rules shows where it would go today")
-  sends the player to a panel that doesn't exist: `classifyExplain` skips a subsystem with no rules and no work
-  defaulting into it today (`src/game/classifyExplain.ts:129`), and the rules view only renders those panels, so OMVS
-  has none until ACQSVC is already live in SYSOTHER. Still on dev. Workaround: add the OMVS entry by hand in Review
-  policy JSON. Fix: always show every subsystem's panel (empty, with its default) and let the player add the first
-  rule; the Classify test form already offers OMVS.
-- [ ] **A repeat XLOG_LOOP burns no CPU (bug, high).** The card's end sets `asCpu[CICSXLOG] = 0` and nothing resets it,
-  so after the first occurrence every later loop adds a CICSXLOG address space at zero CPU (the D40 save has three
-  CICSXLOG entries in `extraAddressSpaces` and `asCpu {CICSXLOG: 0}`). D39: PROD1 STCHI APPL 163 % at 11:00, 192 % at
-  13:00, the normal midday curve (D37 has the same shape), no one-engine step at 11:22. The alert and the incident
-  still fired, so the cancel looked like it did nothing. Fix: end removes the address space (or begin resets the
-  modifier); same for any card that adds an address space and zeroes it on end.
 - [ ] **Incident truth only sees cards still running at hour end (bug, high).** INC157 MOBILE (D33): RETRY_STORM ran
   12:48–13:15 and the player's 13:15 MOBILE_BACKOFF ended it, so `triggerOf` found no card and fell back to
   CPU_PRIORITY → POLICY. Fixing fast costs RCA points. Fix: any card active during the incident's window counts.
@@ -536,6 +371,26 @@ facts in docs/research.md). Ordered by impact:
 - [ ] **CICS SOS is labelled POLICY / THREAD_LIMIT (design gap).** The card has trigger POLICY and mechanism
   THREAD_LIMIT; the player's STORAGE (INC168) is the better answer for a storage leak. Give the card a storage or
   software-defect label, and define each trigger/mechanism in the RCA form (the player asked what "policy" means).
+
+#### Clue paths and realism
+
+- [ ] **Clue path for "why didn't WLM raise CICS".** The player read the WLM log correctly but couldn't see why there
+  was no receiver raise. Consider logging the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal
+  importance"), and showing on WLMGL/SYSWKM that a region class managed to transaction goals runs at the served classes'
+  DP (its own PI is reported, not managed to).
+- [ ] **IIPCP on an image without zIIPs (realism).** With PROJECTCPU=NO (default) and no zIIP configured, real RMF reports
+  no IIPCP (Init & Tuning p.434); the sim always does. Moot if PROD2 gets a reserved zIIP.
+- [ ] **D8 DDFADHOC was no event.** Normal Monday ad hoc peaks (APPL CP 36–46 % / IIPCP 18–24 % 10:00–16:30; 5.1/2.6 by
+  19:30). "Cancel the runaway DDF thread" matched nothing, gave no feedback and cost 0.5 h (see the no-match item above).
+  The routing editor lists only multi-target workloads, so ADHOC can't move to PROD1. Player read: fair, but needs feedback.
+- [ ] **Open question: a region class whose regions are transaction servers as a receiver.** In the sim STCHI's PI includes
+  the CICS AORs' samples and WLM spends a receiver slot on it, but its DP doesn't reach the regions. WLM Planning p.111:
+  servers "are managed according to the goals of the served transactions". How real WLM treats the region class's own
+  PI is not verified.
+- [ ] **No clue path from a sysplex PI to the LPAR behind it (design gap).** The D19–D20 STCMED alerts and "STCMED still
+  suffering at 06:00" were DEVT's test Db2 (`TN=DB*` → STCMED, imp 1) under DEVT's cap; Monitor III DELAY named a PROD
+  batch job (STM009) as STCMED's primary reason. Realistic (sysplex PI first, SG24-7621 p.105–106), but the UI should
+  make the per-system split easy to find (WLMGL per system, a SYSSUM by system).
 - [ ] **SOS doesn't move PI or alerts (realism OK, design gap).** Response times are for ended transactions only; a
   delay shows only once the transaction ends (RMF Report Analysis 3.1 p.148, GROUP report), and response-time goals
   need enough completions (SG24-6472 p.190). So PI looking fine while transactions stall is real. The game has no
@@ -544,6 +399,39 @@ facts in docs/research.md). Ordered by impact:
   lock held by someone else) and "False Contention %" (hash) (RMF Report Analysis 3.1 p.85). The sim's lock index
   raises Db2 lock wait but the CF report doesn't show contention, so the player looked at service time (normal, which
   is right) and found nothing. Add contention % from the lock index.
+- [x] **Equal-importance veto from bystanders; co-served classes not credited (investigated).**
+  At D5 22:21:00 ONLCARD's own raise F4→F6 (which lifts the CICS regions) was projected to take ONLCARD 61.8→0.80,
+  ONLRBANK 82→0.5, ONLTELR 46→0.5 and ONLPAYMQ 13.9→0.17, but `passes()` rejected it because DDFMOB (68.7→74.7) and
+  TSO#1 (27→29.6), also importance 2, got worse and the "PIs must end closer together" test failed. That test is for
+  equal-importance *donors* (SG24-6472 p.60); here it vetoes on bystanders already far past goal, and the gain counts
+  only the receiver, not the other transaction classes served by the same regions. WLM fell back to the weaker donor
+  move. IBM's WLM Services p.147 describes secondary donors with unchanged DP, and its net-value rules (p.138) apply
+  to primary and secondary donors; with IBM's 2002 Intelligent Resource Director paper they support evaluating donor
+  harm and equal-importance convergence separately. Co-served improvements are projected, but pooled credit cannot
+  override that veto; no change made. The sim's summed donor-harm comparison remains a separate fidelity question;
+  co-served credit and equal-importance convergence for secondary donors are under "Open questions".
+- [x] **Checked, realistic:** On/Off CoD CPs revert at the start of the revert day and stop billing (D15 save: 9 CPs =
+  8 + 1 permanent). Capacity 1845 MSU = 9 × 205 at setting 7; the MP effect is applied as extra CPU per transaction
+  (`slices.ts:86`), not to the capacity line, unlike SPEC §6's formula (design note). DB81ADIST PROCU 0.9 % Time on CP vs
+  66.2 % EAppl % CP: DDF enclave CPU counts in EAppl only (RMF Report Analysis p.189, cited in `mon3.ts`). BATCHPRD
+  "RG-Cap" with no resource groups: discretionary goal management (velocity ≤ 30, PI < 0.71, discretionary work waiting).
+  CPU Critical on a region's STC class doesn't protect TRANSACTION-managed regions; set it on the transaction class
+  (matches WLM Planning p.100, p.111).
+
+#### Events and operations design
+
+- [ ] **Silent events leak through the Operations Log (design bug).** `src/game/run.ts` logs "EVENT start/end: <name>" for
+  every card; mail goes out only with an announcement; `src/game/mon3Charts.ts` turns the lines into named chart
+  markers. The TSO model-training card has no announcement. Fix: log only announced cards, in their wording; keep
+  silent ones out of the log and chart markers until revealed or the RCA is filed (run log changes → goldens).
+- [ ] **A forewarned fix planned ahead is silently wasted (design gap).** D24 (build `d8ada51`): the inbox forewarned a
+  stored procedure redeploy; the player planned "Redeploy as native SQL procedures" in the briefing. It applied at 06:00
+  (`src/game/run.ts:133–137`), the event card started later that morning, `endEventByFix` found nothing started and
+  the fix was spent (2 h) with the event still running. The build gave no warning; dev now logs "no active event
+  matched this fix" but still discards it. A fix the player could see coming should either arm against the
+  forewarned card (end it when it starts that day) or be refused at planning time with the reason, and the hours
+  refunded if it found no target. Same card twice in this run (D11, D24), so the fix also isn't lasting: if the
+  redeploy reintroduces COBOL procedures, say so in the card's clue.
 - [ ] **LOCK_ESCALATION has no lever (design gap).** `fix: null`; lock wait is `lockWaitSecPerIndex × (sum of running
   jobs' lockIntensity + 6)` for 3 h. Buffer pools, LCUs and compression don't touch it, and running batch can't be
   cancelled. Only fewer concurrent lock-heavy jobs helps. Offer fixes: commit more often in the settlement job, lower
@@ -551,17 +439,9 @@ facts in docs/research.md). Ordered by impact:
 - [ ] **Retry storm needs a non-log clue (design).** The clue is WLMGL MOBILE END/S ×2.5 at unchanged CPU per
   transaction; the player found it only from the Operations log. Add a gateway view (retries / duplicate request IDs)
   or a codex line on reading END/S against yesterday.
-- [ ] **Capacity planner says "deadline 06:00" after DEADLINE_0500 (UI bug).** The line uses `batchDeadlineSec`, but
-  the label is hard-coded (`src/game/planner.ts:74`).
 - [ ] **Inbox change notices are always bad news (design).** By D26 the player rolls back any announced change on
   sight (Db2 REBIND, monitoring agent). Add changes that help (better access path, cheaper agent) so impact has to be
   judged.
-- [ ] **Late-game engineer hours (design).** The player found "ask if anything could hit the system" the only good
-  use of hours late on (and liked it). Give hours more late-game sinks.
-- [ ] **HMC: show physical engines per type (UI).** Totals are only implied by the logical:physical ratio.
-- [ ] **Automation "8 % misfire" is unclear (UI).** It means a triggered action fails 8 % of the time
-  (`AUTOMATION.misfireFrac`), not false alerts. Say so in the tool text.
-- [ ] **Grade S (100) felt generous (balance, check).** The player doubted it; check the grade's inputs and caps.
 - [ ] **Operations list spoils events not yet seen (design, high).** Fixes for events that haven't happened in this run
   are offered already (e.g. "Agree a narrower encryption scope" before any encryption mandate). Show an event-specific
   operation only once its event (or its forewarning) has occurred in the playthrough.
@@ -570,6 +450,135 @@ facts in docs/research.md). Ordered by impact:
   rather than "Recycle the PROD2 CICS AORs: restart CICSAOR2 and CICSAOR4 one at a time…". Each event must register
   a general operation that fixes it (e.g. CICS_SOS ends when its leaking regions are recycled), so `endEventByFix`
   matches on effect, not on a card-specific fix id.
+
+#### Levers, economy and pacing
+
+- [ ] **Activate a saved policy (design gap):** saved policies can only be scheduled; real `V WLM,POLICY=` exists. Add
+  "Activate now" (an ordinary activation; emergency when live) and "Load into editor".
+- [ ] **Hardware and On/Off CoD (design gap).** Every live change is an emergency (−1.5 trust per stakeholder, fail roll),
+  including lead-time items (CP/zIIP/ICF, 4 days) that arrive later anyway; no "plan for tomorrow" while live. CoD: $9k/day
+  for 3 days per order (player's two D12 orders ≈ $54k + 2× emergency trust), no early end. Fix: plan-for-tomorrow during
+  the live day without trust cost, or exempt lead-time items; "Deactivate CoD" from the next day (real early deactivation
+  not verified).
+- [ ] **MLC vs opex budget (UI gap).** At each monthly bill MLC + CoD is compared with the budget: Finance trust
+  −over %, > 25 % over ends the run (`src/game/run.ts`). The player's $819k vs $780k ≈ 5 % → −5 Finance, not a loss. The
+  Finance card calls the opex line "CoD and other temporary charges" and the header shows MLC est and budget unsummed.
+  Fix: "MLC + CoD = X vs budget (+N %; over 25 % ends the run)" in header and Finance card.
+- [ ] **TFP offer lacks the numbers (design gap).** Shows baseline $/month, sub-capacity bill at the peak and overage %;
+  the per-product terms are stripped from the view and nothing projects TFP vs sub-capacity from history. Fix: per-product
+  table (peak MSU and $/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection.
+- [ ] **Starving "Internal" work is free (design gap: a lever with no cost).** TSO and ADHOC have stakeholder `Internal` and
+  SLA `NONE` (no incidents, trust or score; `src/game/run.ts`, `src/game/sla.ts`); DEV batch is non-critical with
+  `lockIntensity` 0, so a capped or discretionary job holds no locks and its lateness counts nowhere. The only cost today
+  is the RG phantom-busy bug. Real costs to consider: developer/BI complaints (an Internal trust facet or an inbox
+  escalation when TSO/ADHOC response degrades), capped work holding Db2 locks or ENQs (lock-holder starvation, WLM
+  enqueue promotion), and sysprog TSO on the production images during an incident.
+- [ ] **Pacing (player).** D17: running out of things to spend engineer-hours on; add projects. D19: system well tuned,
+  little to do; CP sparing and the degraded CF link needed no action. Consider dynamic difficulty.
+- [ ] **One job class for every stream (design gap).** All Midwest production streams are class A, so the honest move
+  (non-Db2 BKP and HSK on SYSP, cheaper under TFP) can't be made without also sending Db2 streams there. Player
+  proposal, simpler than modelling SCHENV: finer job classes (e.g. Db2 production, non-Db2 utilities, reports), each
+  with initiators per LPAR; reclassing a stream is a change desk JCL change with lead time and a small failure risk.
+  Information in tiers: SMF 30 shows class and program (IKJEFT01 with a DSN command, or DSNTEP2, shows Db2 use); ask
+  in inbox answers per stream (count, class, Db2, SYSAFF), not one job; the batch analysis unlock shows the network
+  (streams, class, Db2 use, SYSAFF, predecessors, critical path and slack). SCHENV can come later.
+- [ ] **Late-game engineer hours (design).** The player found "ask if anything could hit the system" the only good
+  use of hours late on (and liked it). Give hours more late-game sinks.
+- [ ] **Grade S (100) felt generous (balance, check).** The player doubted it; check the grade's inputs and caps.
+
+#### UI and reports
+
+- [ ] **WLM goal edit without an Install option: not reproduced.** New run (live and briefing) and the player's save: the
+  button enabled ("Install & activate BASEPOL8"); #164 is not the cause. Likely: the "Add P2 after P1" row uses the same
+  widgets and labels as P1, and typing there does nothing until "Add period" is pressed (matches the add/remove
+  workaround); typed goals commit only on blur/Enter with no unsent cue; a disabled reason shows only as a tooltip. Fix:
+  distinct add-period form, commit on change or show "unsent", visible disabled reason. Ask the player for exact steps.
+- [ ] **SMF 101 "vs base" moves retroactively (design gap).** `src/game/smf.ts` divides past hours by today's baseline, an
+  EWMA (0.8/h) learned from every SLA-met hour, so a regression is absorbed in ~3 h: at the D7 briefing the D6 08:00 row
+  read 1.00 instead of ≈2.8. Fix: freeze each hour's ratio when it closes; learn the baseline only from hours without an
+  active event of that mechanism, or a slow decay / same-hour-last-week reference. The Db2-team mail is the
+  DB2_WHISPERER perk tip, sent at event start (not pin-driven); tag it "(Db2 Whisperer)".
+- [ ] **Monitor III CPC and charts.** CPC has CP rows only (real: per-type groups with *CP/*ICF/*IIP and PHYSICAL lines,
+  RMF Report Analysis p.97–98). "CP busy per system" plots % of logical CPs per LPAR and % of physical for the CPC line:
+  relabel, add a "% of CPC" toggle. A CPU-by-service-class chart is feasible (per-class engines already sampled), with a
+  chart toggle.
+- [ ] **CPC busy forecast:** 10-day log-linear fit of daily peak busy as % of installed CPs; weekends (47 %, 34 %) and capacity
+  added pull it down. Fit weekdays (or a weekday term) and forecast MSU demand against capacity; mark capacity changes.
+- [ ] **Resource group units:** SU/s only. 1 MSU = 277.8 SU/s; SU/s per CP in `src/sim/hw/cpc.ts`. Show "≈ N MSU ≈ M CPs" in
+  the editor and the Codex entry.
+- [ ] **Codex:** no SMF 101 or SMF 110 entry (only a mention in the SMF-volume entry); add both, linked from the SMF tab.
+- [ ] **Layout:** Start day / Briefing sit in a fixed bottom-right box shared with result toasts (they can overlap); the
+  header's speed-button slot is empty during the briefing, so move them there.
+- [ ] **Batch counter sums unfinished nights (UI gap).** "running 4 · queued 71 · held 41 · done 1204" (D18 06:00) with
+  165 jobs a night: DEV jobs on DEVT (discretionary, capped LPAR) never finish, so nights never prune
+  (`src/sim/subsys/batch.ts:310`) and the view counts all of them (D15 save: a DEV job from the D10 night still running,
+  51 DEV jobs queued or held from D10–D14). Show tonight and the backlog separately. Starving DEV batch has no cost
+  (see "Starving Internal work is free").
+- [ ] **Automation misfire wording.** "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
+  MISFIRE), not a false trigger; say so in the Automation panel.
+- [ ] **Change desk "catches" column ignores `SY=` rules (UI bug).** The player's `SY=DEVT` rule under subsystem STC
+  (→ STCDEV) shows "catches nothing", though PROCU shows DEVT's STCs in STCDEV. Classification itself uses `SY: lparId`
+  everywhere in the sim; `workItems` in `src/game/classifyExplain.ts` builds one item per jobname without the system,
+  so no `SY=` rule can match. Build items per (jobname, system).
+- [ ] **No way to add the first rule for a subsystem with no rules (UI bug, high).** The acquisition hint ("runs under
+  USS (subsystem OMVS) as userid ACQSVC … Change Desk › WLM › Classification rules shows where it would go today")
+  sends the player to a panel that doesn't exist: `classifyExplain` skips a subsystem with no rules and no work
+  defaulting into it today (`src/game/classifyExplain.ts:129`), and the rules view only renders those panels, so OMVS
+  has none until ACQSVC is already live in SYSOTHER. Still on dev. Workaround: add the OMVS entry by hand in Review
+  policy JSON. Fix: always show every subsystem's panel (empty, with its default) and let the player add the first
+  rule; the Classify test form already offers OMVS.
+- [ ] **Capacity planner says "deadline 06:00" after DEADLINE_0500 (UI bug).** The line uses `batchDeadlineSec`, but
+  the label is hard-coded (`src/game/planner.ts:74`).
+- [ ] **HMC: show physical engines per type (UI).** Totals are only implied by the logical:physical ratio.
+- [x] **⇩ export does nothing in the published artifact:** text transfer added 2026-11-04. Export opens a
+  dialog with "Copy save to clipboard", a selectable save-text field for manual copying when clipboard access
+  is blocked, and an explicit file download. Import accepts pasted save text as well as files, using the existing
+  backtick-tolerant decoder. Failed imports keep their text and report an error; replacing the current run/save
+  requires confirmation. No serialization or save-format changes. Validation: 67 files / 650 tests,
+  typecheck and production build pass; browser copy/fallback, file and backtick-paste round-trips, invalid
+  import and mobile checks pass. A download-blocked iframe with no clipboard still exposes selectable save
+  text. Default three-scenario comparison has no differences; the artifact has not been republished.
+  Dialog lifecycle follow-up from #181 review (2026-11-04): closed save dialogs no longer match `.modal`,
+  restoring the documented screenshot flow. Native close events now reset the dialog state so Export and Import
+  can reopen; delayed close events are ignored after reopening. Save transfer and its format are unchanged.
+  Validation: 67 files / 650 tests and production build pass; native-close/reopen, Escape/focus and delayed-event
+  browser checks pass. The unchanged screenshot tool completes with no errors or mobile overflow; default
+  three-scenario comparison has no differences.
+- [x] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. The player confirmed it was
+  the worker request loops, fixed in #164.
+- [x] **`confirm()` is blocked in the published artifact:** replaced 2026-11-04 with a shared in-app
+  confirmation dialog for save imports, the guarded new-run start and restarting with planned changes. It works
+  without sandbox `allow-modals`; Cancel/Escape leave the run and pending work intact, and explicit confirmation
+  performs the requested action. Import errors still retain the pasted/file text. The dialog traps focus,
+  defaults to Cancel and restores focus on close. No worker, save-format or simulation changes. Validation:
+  67 files / 650 tests, typecheck and production build pass; sandbox browser checks cover paste/file imports,
+  invalid input, Cancel/Escape, planned-change restart and the older-save start guard, with zero browser
+  `confirm()` calls or page errors. Default three-scenario comparison has no differences; no artifact republish.
+
+#### Saves, export and tooling
+
+- [ ] **Imported saves lack Monitor III history:** `mon3 --at` on an imported save shows nothing for past
+  ranges (replay forward instead, or include the history).
+- [ ] **Export:** besides downloads being blocked, copying the save string from dev tools corrupted 12 escaped quotes in
+  inbox text (`\\"`), so the D15 save needed repair before it parsed; another reason for an in-artifact export.
+- [ ] **Exported saves arrive with every backslash doubled (open question).** The player's D20 export
+  (`goal-mode-midwest-467203-day20.json`) was invalid JSON: all 20 escaped quotes (inbox bodies quoting the change
+  board) were `\\"`. Halving every backslash gives byte-for-byte what `encodeRunJson` writes, so the game's
+  `JSON.stringify` is fine and something on the artifact's download path doubled them (not verified). Import (browser
+  and play CLI) now repairs it, and also text pasted inside backticks (the D4 save). If it recurs, look at how the
+  artifact host saves a Blob download.
+- [ ] **Playtest companion skill and investigator subagent (proposal).** A `playtest-companion` skill holding the
+  standing rules and setup, and an optional `playtest-investigator` subagent for deep code dives that returns
+  only the finding in the report format and filters spoilers in its own context. Not built yet.
+- [x] **Playtest agents updated from this round:** new `wlmlog [system] [--grep]` play verb (the Monitor's WLM activity
+  log); player briefs now pin evidence, compare `*PLEX` with per-system rows, snapshot the run at incident onset and log
+  the human incident checklist and pacing; new `goal-mode-firefighter` persona (emergency WLM edits, watches WLM's
+  response); realism-auditor ideas from this round. Still to do: the lab harness should log which test rejected each
+  WLM trial (needed to diagnose "no action with net value" without patching `adjust.ts`).
+- [x] **Play CLI for playtest investigations:** `finance` (bill; under TFP, MSU-hours vs the prorated baseline,
+  projection and overage $ per MSU-hour by LPAR), `capacity` (CPC MSU, LPARs, initiators, capacity changes by day),
+  `batch` (last night by stream); `npm run inspect -- <file> dp <system>` for the DPs per RMF interval (sim internals,
+  never for player agents). These replace the one-off scripts used for the D10–D20 questions.
 
 ### M8.7 Realism fixes
 
