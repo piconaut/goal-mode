@@ -10,6 +10,7 @@ import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
 import { financeView } from '../src/game/finance';
+import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
 import { monthElapsedFrac } from '../src/sim/cost/mlc';
 import { msuPerCp } from '../src/sim/hw/cpc';
 import { FIXES } from '../src/game/catalog';
@@ -351,7 +352,9 @@ export function statusText(file: PlayFile): string {
   const out: string[] = [];
   out.push(`${v.phase}  day ${v.day + 1}/${v.maxDays} ${v.weekday}  ${clockText(run.sim.tick)}  difficulty ${v.difficulty.name}  seed ${v.seed}`);
   out.push(`trust ${v.trustOverall.toFixed(1)} (${Object.keys(v.trust).map((f) => `${f} ${v.trust[f]!.toFixed(0)}`).join(', ')})  score ${v.score}`);
-  out.push(`engineer-hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}  MLC month est $${Math.round(v.mlcEstimate).toLocaleString()} (billed on the month's peak R4HA so far, so a cap saves only if it lowers that peak) / opex budget $${Math.round(v.opexBudget).toLocaleString()}`);
+  out.push(`engineer-hours left ${v.hoursLeft}  insight ${v.insight}  capex $${Math.round(v.capexRemaining).toLocaleString()}`);
+  out.push(budgetLine(v.mlcEstimate, v.opexSpent, v.opexBudget), R4HA_BILLING_NOTE);
+  if (run.sim.cost.bills.length > run.billsSeen) out.push(BUDGET_MONTH_BOUNDARY_NOTE);
   out.push(`policy ${v.policyName}${file.pendingPolicy ? `  (pending policy edits in ${file.pendingPolicy.policyName}: activate in BRIEFING or LIVE)` : ''}  tools ${v.tools.filter((t) => t.owned).map((t) => (t.trialLastDay !== null ? `${t.id}(trial to day ${t.trialLastDay + 1})` : t.id)).join(' ') || 'none'}`);
   out.push(`CPC busy ${v.cpcBusyPct.toFixed(0)}%  ` + v.lpars.map((l) => `${l.id} ${l.cpBusyPct.toFixed(0)}%`).join('  '));
   if (v.phase === 'LIVE') {
@@ -605,12 +608,18 @@ function rowKeys(iv: { wlm: { lparId: string; scKey: string }[] }, system: strin
 
 const usd = (x: number) => `$${Math.round(x).toLocaleString()}`;
 
+function budgetLine(software: number, cod: number, budget: number): string {
+  const total = software + cod;
+  return `Software + CoD estimate: ${usd(software)} + ${usd(cod)} = ${usd(total)} vs budget ${usd(budget)}; ${budgetDelta(total, budget).label}. At billing: over 25% ends the run.`;
+}
+
 /** Finance tab as text: the month's bill so far and, under TFP, pace against the prorated baseline per product. */
 export function financeText(file: PlayFile): string {
   const run = file.run;
   const scenario = sc(run);
   const f = financeView(run, scenario);
-  const out = [`month ${f.month + 1}  pricing ${f.pricing}  month to date ${usd(f.monthToDate)}  opex ${usd(f.opexSpent)} of ${usd(f.opexBudget)}${f.cfoTarget !== null ? `  CFO target <= ${usd(f.cfoTarget)}` : ''}`];
+  const out = [`month ${f.month + 1}  pricing ${f.pricing}  month to date ${usd(f.monthToDate)}${f.cfoTarget !== null ? `  CFO target <= ${usd(f.cfoTarget)}` : ''}`];
+  out.push(budgetLine(f.monthToDate, f.opexSpent, f.opexBudget), R4HA_BILLING_NOTE, BUDGET_MONTH_BOUNDARY_NOTE);
   if (f.offer) out.push(`TFP offer ${f.offer.status} (decide by day ${f.offer.untilDay + 1}): baseline ${usd(f.offer.baselineMonthly)}/month vs sub-capacity ${usd(f.offer.subcapMonthly)}/month, overage at ${Math.round(100 * f.offer.overageFrac)}% of price`);
   const tfp = run.sim.cost.tfp;
   if (f.tfp && tfp) {

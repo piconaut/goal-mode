@@ -23,6 +23,7 @@ import { hourTick, pagerChime } from './sound';
 import { idText } from '../game/ids';
 import { Empty } from './Empty';
 import { RunFileButtons } from './RunFiles';
+import { OpexBudget } from './OpexBudget';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
@@ -143,12 +144,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       <span className="stat">
         Fatigue <b>{v.fatigue.toFixed(0)}</b>
       </span>
-      <span className="stat" title="Month's bill so far: priced on the month's peak R4HA to date, so a cap or saving lowers it only once it lowers that peak">
-        MLC est <b>${Math.round(v.mlcEstimate / 1000)}k</b>
-      </span>
-      <span className="stat">
-        Budget <b>${Math.round(v.opexBudget / 1000)}k</b>
-      </span>
+      <OpexBudget mlc={v.mlcEstimate} cod={v.opexSpent} budget={v.opexBudget} compact />
       <span className="stat">
         Capex <b>${Math.round(v.capexRemaining / 1000)}k</b>
       </span>

@@ -460,10 +460,16 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   for 3 days per order (player's two D12 orders ≈ $54k + 2× emergency trust), no early end. Fix: plan-for-tomorrow during
   the live day without trust cost, or exempt lead-time items; "Deactivate CoD" from the next day (real early deactivation
   not verified).
-- [ ] **MLC vs opex budget (UI gap).** At each monthly bill MLC + CoD is compared with the budget: Finance trust
-  −over %, > 25 % over ends the run (`src/game/run.ts`). The player's $819k vs $780k ≈ 5 % → −5 Finance, not a loss. The
-  Finance card calls the opex line "CoD and other temporary charges" and the header shows MLC est and budget unsummed.
-  Fix: "MLC + CoD = X vs budget (+N %; over 25 % ends the run)" in header and Finance card.
+- [x] **MLC vs opex budget (UI gap).** Completion takes effect on merge: the header, Finance card and
+  headless `status`/`finance` commands share the combined software estimate + CoD accrued total, budget and
+  signed percentage difference. Finance breaks down the components and explains Finance trust penalties
+  (up to 40 points); strictly over 25% at monthly billing ends the run. $819k vs $780k reads +5.0%.
+  First-review follow-up restores the peak-R4HA clue, uses generic software labels for TFP, flags the
+  unrounded over-limit comparison (including 25.04%), and keeps the header to three lines. Billing help
+  documents the existing 00:00 software reset / 06:00 CoD settlement window and closing-month nightly fee.
+  Billing rules, estimate timing and the held finance-feedback proposal are unchanged. Boundary/CLI tests
+  cover the shared reporting helper; production build, project checks, browser fixtures and default
+  three-scenario behaviour comparison validate the change. Run-specific evidence is in the PR.
 - [ ] **TFP offer lacks the numbers (design gap).** Shows baseline $/month, sub-capacity bill at the peak and overage %;
   the per-product terms are stripped from the view and nothing projects TFP vs sub-capacity from history. Fix: per-product
   table (peak MSU and $/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection.

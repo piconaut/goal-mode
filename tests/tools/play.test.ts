@@ -5,6 +5,7 @@ import { startTfp } from '../../src/sim/cost/mlc';
 import { quoteTfp } from '../../src/game/tfp';
 import { scenarioFor } from '../../src/game/difficulty';
 import { packOf } from '../../src/content/packs';
+import { estimateMonth } from '../../src/sim/cost/mlc';
 import { dpText } from '../../tools/inspect';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
@@ -72,6 +73,28 @@ describe('headless play interface', () => {
     // PROD1 carries all four Midwest products, SYSP only z/OS.
     const per = Object.fromEntries([...t.matchAll(/(PROD1|SYSP) (\d+\.\d+)/g)].map((m) => [m[1], Number(m[2])]));
     expect(per.PROD1).toBeGreaterThan(per.SYSP! * 2);
+  });
+
+  it('status and finance show the same combined software/CoD estimate and unrounded limit warning', () => {
+    const f = newPlayFile(7);
+    const products = packOf(f.run.scenarioId).scenario.products;
+    for (const peak of f.run.sim.cost.peaks) peak.peakMsu = 100;
+    f.run.sim.cost.priceMult = 780_000 / estimateMonth(f.run.sim.cost, products);
+    f.run.opexSpentThisMonth = 39_000;
+    f.run.opexBudgetMonthly = 780_000;
+    for (const render of [statusText, financeText]) {
+      expect(render(f)).toContain('$780,000 + $39,000 = $819,000 vs budget $780,000; +5.0% vs budget');
+      expect(render(f)).toContain("priced on the month's peak R4HA to date");
+    }
+    f.run.opexSpentThisMonth = 195_312; // total is 25.04% over, although the rounded display is 25.0%.
+    for (const render of [statusText, financeText]) expect(render(f)).toContain('+25.0% vs budget (over limit)');
+  });
+
+  it('finance documents month-boundary settlement and status warns when a closed bill awaits day close', () => {
+    const f = newPlayFile(7);
+    expect(financeText(f)).toContain('software cost resets at 00:00 but CoD settles at 06:00');
+    f.run.sim.cost.bills.push({ month: 0, lines: [], total: 0 });
+    expect(statusText(f)).toContain("that night's CoD fee is charged to the closing month");
   });
 
   it('capacity shows the CPC MSU, LPARs, initiators and capacity changes; batch is gated like smf BATCH', () => {

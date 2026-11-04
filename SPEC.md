@@ -895,6 +895,19 @@ one live day, so its fix could otherwise only be bought as an emergency change.
 | **Capex budget** (quarterly) | Hardware purchases | Quarterly; CFO events | Upgrades, memory, zIIPs, DASD |
 | **Insight** | Research currency for analytics tools | Running diagnostics, correct RCAs, studying reports | Unlocking tools/skills |
 
+The header, Finance card and headless `status`/`finance` commands compare the current software estimate plus
+CoD charges already accrued with the monthly opex budget, showing the combined total and percentage difference.
+The Finance card also shows each
+component. These are estimates at current pricing/peaks plus booked charges; future usage and charges may
+raise the bill. At monthly billing, positive overage percentage reduces Finance trust (up to 40 points), and
+strictly more than 25% over budget ends the run. The over-limit marker uses the unrounded billing comparison,
+even when the displayed percentage rounds to 25.0%. The compact header uses three lines; billing help retains
+the clue that sub-capacity MLC depends on the month's peak R4HA, while TFP uses its committed baseline.
+
+Month-boundary timing is unchanged: software cost resets at 00:00 and CoD settles at 06:00. During that
+window the displayed sum combines the new month's software estimate with the closing month's CoD. The
+nightly CoD fee is charged to the closing month. Finance help and CLI output explain this limitation.
+
 Trust also has **stakeholder facets**: Retail, Cards, Digital, Finance, Regulator. Each SLA
 maps to a stakeholder, and their mood shows as portraits in the briefing. Finance doesn't care
 about SLAs but hates bill overruns; the Regulator cares only about batch deadlines and audit
