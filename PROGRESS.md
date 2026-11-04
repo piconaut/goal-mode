@@ -460,15 +460,16 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   for 3 days per order (player's two D12 orders ≈ $54k + 2× emergency trust), no early end. Fix: plan-for-tomorrow during
   the live day without trust cost, or exempt lead-time items; "Deactivate CoD" from the next day (real early deactivation
   not verified).
-- [x] **MLC vs opex budget (UI gap).** Fixed 2026-11-04: the header and Finance card share the combined
-  MLC estimate + CoD accrued total, budget and signed percentage difference. The Finance card breaks down the
-  two components and explains the budget penalty: at monthly billing, positive overage percentage costs Finance
-  trust (up to 40 points); strictly over 25% ends the run. Both show the billing threshold, so $819k vs $780k
-  reads +5.0%, rather than an immediate loss. This displays existing estimates/charges; billing rules, estimate
-  timing and the held finance-feedback proposal are unchanged. Validation: 67 files / 650 tests, typecheck
-  and production build pass; worker-backed browser fixtures agree in both locations at 0%, 5%, 25% and 26%
-  over, with zero-charge/unavailable-budget cases, no page errors and no mobile overflow. Default three-scenario
-  comparison has no differences; no artifact republish.
+- [x] **MLC vs opex budget (UI gap).** Completion takes effect on merge: the header, Finance card and
+  headless `status`/`finance` commands share the combined software estimate + CoD accrued total, budget and
+  signed percentage difference. Finance breaks down the components and explains Finance trust penalties
+  (up to 40 points); strictly over 25% at monthly billing ends the run. $819k vs $780k reads +5.0%.
+  First-review follow-up restores the peak-R4HA clue, uses generic software labels for TFP, flags the
+  unrounded over-limit comparison (including 25.04%), and keeps the header to three lines. Billing help
+  documents the existing 00:00 software reset / 06:00 CoD settlement window and closing-month nightly fee.
+  Billing rules, estimate timing and the held finance-feedback proposal are unchanged. Boundary/CLI tests
+  cover the shared reporting helper; production build, project checks, browser fixtures and default
+  three-scenario behaviour comparison validate the change. Run-specific evidence is in the PR.
 - [ ] **TFP offer lacks the numbers (design gap).** Shows baseline $/month, sub-capacity bill at the peak and overage %;
   the per-product terms are stripped from the view and nothing projects TFP vs sub-capacity from history. Fix: per-product
   table (peak MSU and $/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection.
