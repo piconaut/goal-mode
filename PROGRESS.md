@@ -503,6 +503,56 @@ facts in docs/research.md). Ordered by impact:
   has none until ACQSVC is already live in SYSOTHER. Still on dev. Workaround: add the OMVS entry by hand in Review
   policy JSON. Fix: always show every subsystem's panel (empty, with its default) and let the player add the first
   rule; the Classify test form already offers OMVS.
+- [ ] **A repeat XLOG_LOOP burns no CPU (bug, high).** The card's end sets `asCpu[CICSXLOG] = 0` and nothing resets it,
+  so after the first occurrence every later loop adds a CICSXLOG address space at zero CPU (the D40 save has three
+  CICSXLOG entries in `extraAddressSpaces` and `asCpu {CICSXLOG: 0}`). D39: PROD1 STCHI APPL 163 % at 11:00, 192 % at
+  13:00, the normal midday curve (D37 has the same shape), no one-engine step at 11:22. The alert and the incident
+  still fired, so the cancel looked like it did nothing. Fix: end removes the address space (or begin resets the
+  modifier); same for any card that adds an address space and zeroes it on end.
+- [ ] **Incident truth only sees cards still running at hour end (bug, high).** INC157 MOBILE (D33): RETRY_STORM ran
+  12:48–13:15 and the player's 13:15 MOBILE_BACKOFF ended it, so `triggerOf` found no card and fell back to
+  CPU_PRIORITY → POLICY. Fixing fast costs RCA points. Fix: any card active during the incident's window counts.
+- [ ] **New workloads stay "NEW_WORKLOAD" forever (bug).** `isNew` checks `sim.extraWorkloads`, which never expires,
+  so INC126 (D29) and INC177 (D36) on ACQBANK, live since D27, got NEW_WORKLOAD as truth. Fix: new for a few days
+  after go-live only.
+- [ ] **POWER_CAP only blames MOBILE and RBANK (bug).** A power cap slows every LPAR, but `affects` is static, so
+  INC177 ACQBANK (D36) and INC183/185 CARDAUTH/PAYMQ (D38) fall back to other truths while the cap was the cause.
+  Fix: hardware cards affect every workload on the CPC.
+- [ ] **zIIP delay pins are judged against the wrong mechanism (bug).** DELAY_ZIIP maps only to CPU_CAPACITY in
+  `EVIDENCE_METRICS`, while `mechanismOf` labels zIIP delay CPU_PRIORITY, so INC157's two zIIP pins said "points
+  elsewhere". Make the two agree.
+- [ ] **Pins on a CICS region don't count for its workload (bug / UX).** A SYSWKM pin's subject is the region jobname
+  (CICSAOR1); relatedness only knows workloads, classes and LPARs, so INC133 CARDAUTH said "not about CARDAUTH".
+  Fix: map region jobnames to the workloads they serve.
+- [ ] **CICS SOS is labelled POLICY / THREAD_LIMIT (design gap).** The card has trigger POLICY and mechanism
+  THREAD_LIMIT; the player's STORAGE (INC168) is the better answer for a storage leak. Give the card a storage or
+  software-defect label, and define each trigger/mechanism in the RCA form (the player asked what "policy" means).
+- [ ] **SOS doesn't move PI or alerts (realism OK, design gap).** Response times are for ended transactions only; a
+  delay shows only once the transaction ends (RMF Report Analysis 3.1 p.148, GROUP report), and response-time goals
+  need enough completions (SG24-6472 p.190). So PI looking fine while transactions stall is real. The game has no
+  alert on what does show it (ended rate drop, SOS time, MXT waits); add one as an Analytics/automation rule.
+- [ ] **No CF lock contention % (realism gap).** CFACT shows per lock structure "Contention %" (requests delayed by a
+  lock held by someone else) and "False Contention %" (hash) (RMF Report Analysis 3.1 p.85). The sim's lock index
+  raises Db2 lock wait but the CF report doesn't show contention, so the player looked at service time (normal, which
+  is right) and found nothing. Add contention % from the lock index.
+- [ ] **LOCK_ESCALATION has no lever (design gap).** `fix: null`; lock wait is `lockWaitSecPerIndex × (sum of running
+  jobs' lockIntensity + 6)` for 3 h. Buffer pools, LCUs and compression don't touch it, and running batch can't be
+  cancelled. Only fewer concurrent lock-heavy jobs helps. Offer fixes: commit more often in the settlement job, lower
+  LOCKMAX escalation (Db2 change), hold the job class.
+- [ ] **Retry storm needs a non-log clue (design).** The clue is WLMGL MOBILE END/S ×2.5 at unchanged CPU per
+  transaction; the player found it only from the Operations log. Add a gateway view (retries / duplicate request IDs)
+  or a codex line on reading END/S against yesterday.
+- [ ] **Capacity planner says "deadline 06:00" after DEADLINE_0500 (UI bug).** The line uses `batchDeadlineSec`, but
+  the label is hard-coded (`src/game/planner.ts:74`).
+- [ ] **Inbox change notices are always bad news (design).** By D26 the player rolls back any announced change on
+  sight (Db2 REBIND, monitoring agent). Add changes that help (better access path, cheaper agent) so impact has to be
+  judged.
+- [ ] **Late-game engineer hours (design).** The player found "ask if anything could hit the system" the only good
+  use of hours late on (and liked it). Give hours more late-game sinks.
+- [ ] **HMC: show physical engines per type (UI).** Totals are only implied by the logical:physical ratio.
+- [ ] **Automation "8 % misfire" is unclear (UI).** It means a triggered action fails 8 % of the time
+  (`AUTOMATION.misfireFrac`), not false alerts. Say so in the tool text.
+- [ ] **Grade S (100) felt generous (balance, check).** The player doubted it; check the grade's inputs and caps.
 
 ### M8.7 Realism fixes
 
