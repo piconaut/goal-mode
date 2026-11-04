@@ -160,6 +160,26 @@ describe('headless play interface', () => {
     expect(back.file.run.changes.at(-1)!.label).toBe(`Restart ${name}`);
   });
 
+  it('keeps both edits when two policies are installed in the same briefing', () => {
+    let f = newPlayFile(7);
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    f = run(f, [edit('ONLHI', 0.4), { cmd: 'activate' }]);
+    expect(f.pendingPolicy).toBeNull();
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL');
+    f = run(f, [edit('ONLMED', 0.6)]);
+    expect(f.pendingPolicy!.policyName).toBe('BASEPOL3');
+    expect(f.pendingPolicy!.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec: 0.4 });
+    // Persist/reload between installs, as in an interrupted browser session.
+    f = run(decodePlayFile(encodePlayFile(f)), [{ cmd: 'activate' }, { cmd: 'start' }, { cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.changes.filter((c) => c.status === 'APPLIED')).toHaveLength(2);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL3');
+    for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6]] as const) {
+      expect(f.run.sim.wlm.definition.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
+    }
+  });
+
   it('policy shows the service definition, its rules and the processors it runs on', () => {
     const text = policyText(newPlayFile(7, 'NORMAL', 'harbourline'), false);
     expect(text).toMatch(/active policy \S+/);

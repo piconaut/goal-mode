@@ -11,7 +11,7 @@ import { buyTool, noteReportOpened, normalizeDefinition, normalizeRun, REPORT_FE
 import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
-import { deletePolicy, savePolicy, setSchedule } from '../game/policies';
+import { deletePolicy, policyEditSource, savePolicy, setSchedule } from '../game/policies';
 import { addPin, removePin } from '../game/evidence';
 import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
@@ -119,11 +119,11 @@ function settle(out: { run: RunState; ok: boolean; message: string }) {
 
 function postRules() {
   const items = currentItems();
-  const def = pendingPolicy ?? run.sim.wlm.definition;
+  const def = pendingPolicy ?? policyEditSource(run);
   post({
     type: 'RULES',
     active: explainClassification(run.sim.wlm.definition, items),
-    pending: pendingPolicy ? explainClassification(pendingPolicy, items) : null,
+    pending: def !== run.sim.wlm.definition ? explainClassification(def, items) : null,
     classIds: ['SYSTEM', 'SYSSTC', 'SYSOTHER', ...def.classes.map((c) => c.id)],
     advice: hasFeature(run, 'REPORT_CLASS_ADVISOR') ? adviseReportClasses(def, items) : null,
   });
@@ -131,7 +131,7 @@ function postRules() {
 
 // Every policy change (edit, activation, discard) refreshes both the JSON and the rules view.
 const postPolicy = () => {
-  post({ type: 'POLICY', json: JSON.stringify(pendingPolicy ?? run.sim.wlm.definition, null, 2) });
+  post({ type: 'POLICY', json: JSON.stringify(pendingPolicy ?? policyEditSource(run), null, 2) });
   postRules();
 };
 
@@ -142,11 +142,11 @@ function activate(def: ServiceDefinition) {
     return;
   }
   const out = requestChange(run, pack().game, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
+  settle(out);
   if (out.ok) {
     pendingPolicy = null;
     postPolicy();
   }
-  settle(out);
 }
 
 const sendView = () => {
@@ -493,7 +493,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (m.type === 'SAVE_POLICY') {
         const name = m.name.trim().toUpperCase();
         out = /^[A-Z][A-Z0-9#@$]{0,7}$/.test(name)
-          ? savePolicy(run, { ...(pendingPolicy ?? run.sim.wlm.definition), policyName: name })
+          ? savePolicy(run, { ...(pendingPolicy ?? policyEditSource(run)), policyName: name })
           : { run, ok: false, message: 'Policy names are 1–8 characters, starting with a letter' };
       } else if (m.type === 'DELETE_POLICY') out = deletePolicy(run, m.name);
       else out = setSchedule(run, m.schedule);
@@ -519,13 +519,14 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       const o = cancelChange(run, m.changeId);
       if (o.restoredPolicy && !pendingPolicy) pendingPolicy = o.restoredPolicy;
       settle(o);
+      postPolicy();
       break;
     }
     case 'GET_RULES':
       postRules();
       break;
     case 'CLASSIFY':
-      post({ type: 'CLASSIFIED', result: classify(pendingPolicy ?? run.sim.wlm.definition, m.work), pending: pendingPolicy !== null });
+      post({ type: 'CLASSIFIED', result: classify(pendingPolicy ?? policyEditSource(run), m.work), pending: pendingPolicy !== null || policyEditSource(run) !== run.sim.wlm.definition });
       break;
     case 'SET_STARTING_PERK':
       run = setStartingPerk(run, m.perkId, career.xp);
@@ -571,8 +572,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = removePin(run, m.id);
       break;
     case 'WLM_EDIT': {
-      // Edits accumulate on a pending copy of the active policy until it is activated.
-      const base = pendingBase(pendingPolicy, run.sim.wlm.definition);
+      // After a briefing install, subsequent edits retain its queued changes.
+      const base = pendingBase(pendingPolicy, policyEditSource(run));
       const res = applyWlmEdit(base, m.edit);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else {
@@ -586,7 +587,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'RC_ADVICE_APPLY': {
       if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) break;
-      const res = applyReportClassAdvice(pendingBase(pendingPolicy, run.sim.wlm.definition), currentItems(), m.workloadId);
+      const res = applyReportClassAdvice(pendingBase(pendingPolicy, policyEditSource(run)), currentItems(), m.workloadId);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else if (res.added.length > 0) {
         const n = res.added.length;

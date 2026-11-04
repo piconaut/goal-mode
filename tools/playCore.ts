@@ -28,6 +28,7 @@ import { EVIDENCE_METRICS } from '../src/content/evidence';
 import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, pendingBase, type WlmEdit } from '../src/game/wlmEdit';
+import { policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
@@ -241,7 +242,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(removePin(run, c.id), `Unpinned ${idText('pin', c.id)}.`);
     }
     case 'wlm': {
-      const res = applyWlmEdit(pendingBase(file.pendingPolicy, run.sim.wlm.definition), c.edit);
+      const res = applyWlmEdit(pendingBase(file.pendingPolicy, policyEditSource(run)), c.edit);
       if (typeof res === 'string') return fail(res);
       return done(run, `Pending policy ${res.policyName} updated. ${run.phase === 'REVIEW' ? "close the day (draft <id|none>), then activate at tomorrow's briefing to install it." : 'activate to install it.'}`, true, res);
     }
@@ -284,7 +285,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     }
     case 'rcadvice': {
       if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) return fail(needs('REPORT_CLASS_ADVISOR', 'Report class advice'));
-      const res = applyReportClassAdvice(pendingBase(file.pendingPolicy, run.sim.wlm.definition), runWorkItems(sc(run), run), c.workloadId || null);
+      const res = applyReportClassAdvice(pendingBase(file.pendingPolicy, policyEditSource(run)), runWorkItems(sc(run), run), c.workloadId || null);
       if (typeof res === 'string') return fail(res);
       if (!res.added.length) return fail('No report class advice left.');
       return done(run, `Report classes for ${res.added.join(' ')} staged in ${res.def.policyName}. ${run.phase === 'REVIEW' ? 'close the day (draft <id|none>), then activate at tomorrow\'s briefing (takes effect next day).' : 'activate to install (takes effect next day).'}`, true, res.def);
