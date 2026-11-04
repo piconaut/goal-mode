@@ -856,7 +856,9 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 During the briefing, further WLM edits build on the latest planned policy activation due at that day's
 06:00, so installing a second edit retains the first. The editor names and previews that planned policy;
 the live policy and its reports change only when the activation executes. Uninstalled pending edits take
-precedence over the planned policy as the editing base.
+precedence over the planned policy as the editing base. After Start day and between live ticks, edits and
+previews use the latest activation in the pending command queue until it executes. The editor labels it
+"Queued for next tick"; this also preserves consecutive live installs while paused.
 
 **Change windows & CAB.** Planned changes submitted in the morning briefing are normal changes
 and cost no trust. Changes during the live day are **emergency changes**: they cost
