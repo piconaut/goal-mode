@@ -21,7 +21,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
   the user" in Remaining work; none is implemented.
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-  link"), rebuilt 2026-11-03 from `dev` at `d8ada51` (#170). Republish on request.
+  link"), rebuilt 2026-11-04 from `main` at `17e2448` (milestone merge #192). Republish on request.
 - **Latest verified dev:** #170; 64 test files / 573 tests pass; production build boots without console errors.
 - **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
   Host timings vary; use adjacent comparisons rather than old absolute timings.
@@ -520,7 +520,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   (`src/sim/subsys/batch.ts:310`) and the view counts all of them (D15 save: a DEV job from the D10 night still running,
   51 DEV jobs queued or held from D10–D14). Show tonight and the backlog separately. Starving DEV batch has no cost
   (see "Starving Internal work is free").
-- [ ] **Automation misfire wording.** "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
+- [x] **Automation misfire wording** (fixed 2026-11-04). "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
   MISFIRE), not a false trigger; say so in the Automation panel.
 - [ ] **Change desk "catches" column ignores `SY=` rules (UI bug).** The player's `SY=DEVT` rule under subsystem STC
   (→ STCDEV) shows "catches nothing", though PROCU shows DEVT's STCs in STCDEV. Classification itself uses `SY: lparId`
@@ -533,7 +533,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   through the acquisition hint's Change Desk path. Classification mechanics and policy activation are unchanged.
   Regression coverage checks empty panels/defaults and adding the first rule before work arrives; browser
   validation exercises the editor and pending/activation flow. Run-specific validation evidence is in the PR.
-- [ ] **Capacity planner says "deadline 06:00" after DEADLINE_0500 (UI bug).** The line uses `batchDeadlineSec`, but
+- [x] **Capacity planner says "deadline 06:00" after DEADLINE_0500 (UI bug)** (fixed 2026-11-04, label from `instanceClock`). The line uses `batchDeadlineSec`, but
   the label is hard-coded (`src/game/planner.ts:74`).
 - [ ] **HMC: show physical engines per type (UI).** Totals are only implied by the logical:physical ratio.
 - [x] **⇩ export does nothing in the published artifact:** text transfer added 2026-11-04. Export opens a
@@ -709,7 +709,7 @@ WLM policy editing (game/worker/CLI):
   paused on an hour with a schedule entry (06:00 at day start included) the scheduled policy replaces the player's
   queued install while the editor still says "Queued for next tick: X". Show the scheduled entry in `plannedPolicy`,
   or apply the schedule before player commands.
-- [ ] **Cancel message missing separator** (#180): `src/game/run/changes.ts` cancel message appends
+- [x] **Cancel message missing separator** (#180, fixed 2026-11-04): `src/game/run/changes.ts` cancel message appends
   "Later policy … keeps its current edits" with no `. ` before it ("(1.5h back) Later policy …").
 - [ ] **Cancel B then A leaves A's edit pending silently** (#180): A's edit stays in the pending policy and A's cancel
   message doesn't say so (also true before #180; the edits are uninstalled and visible).

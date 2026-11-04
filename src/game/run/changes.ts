@@ -164,7 +164,7 @@ export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
       `Change cancelled: ${c.label}`,
     ),
     ok: true,
-    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}${laterPolicy ? ` Later policy ${laterPolicy.policyName} keeps its current edits, including any copied from this request.` : ''}`,
+    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}${laterPolicy ? `. Later policy ${laterPolicy.policyName} keeps its current edits, including any copied from this request.` : ''}`,
   };
 }
 
