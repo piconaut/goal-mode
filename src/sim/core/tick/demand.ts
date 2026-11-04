@@ -1,21 +1,22 @@
-import { cpSpeed, ziipSpeed } from '../../hw/cpc';
+import { cpSpeed, suPerCpuSecOf, ziipSpeed } from '../../hw/cpc';
+import { poolEntitlement } from '../../hw/pools';
 import { jobCpuDemand, jobShape } from '../../subsys/batch';
 import { edsaInUseMb, effectiveMxt, qrTcb, storageCapTasks } from '../../subsys/cics';
 import { slotQueueStep } from '../../subsys/slots';
 import { CICS_STORAGE, SLOT_QUEUE } from '../../../content/subsys';
 import { bpIoMultiplier, DB2 } from '../../subsys/db2';
 import { buildSlices, honorsPriority, scKeyAtService } from '../../workload/slices';
-import { backlogCpSec, sliceSpec } from '../../wlm/evaluate';
+import { dispatchableDemand, sliceSpec } from '../../wlm/evaluate';
 import { pagingDelayFrac } from '../../zos/storage';
 import type { LparConfig, CicsStorageTick } from '../types';
 import { TICK_SEC } from '../units';
 import { type BatchSliceRef, DEFAULT_EFF_RATIO, type TickCtx, usesDb2 } from './ctx';
-import { applyCpuModifiers, cicsRegionCount, classifyJob, jobServiceSu, queuedMsgGb, swapOut, wlLparKey, workloadScope } from './helpers';
+import { applyCpuModifiers, cicsRegionCount, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
 
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
 export function lparDemand(t: TickCtx, l: LparConfig): void {
   const { prev, scenario, def, env, config, clock, cpcOf, workloads, workloadById, addressSpaces, rates, io } = t;
-  const { cfStallSec, db2FailFrac, mqFailFrac, runningBy, slicesBy, batchRefsBy, swappedBy, pagingFrac, demands } = t;
+  const { cfStallSec, db2FailFrac, mqFailFrac, runningBy, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
   const cpc = cpcOf[l.cpcId]!;
   // This system's own CF service (link distance, its own sync→async conversion); plex average before the first CF tick.
   const cfSys = prev.env.cfBySystem?.[l.id];
@@ -218,21 +219,30 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
 
   const memDemand = fixedGb + runningJobs * scenario.memory.batchJobGb;
   pagingFrac[l.id] = pagingDelayFrac(memDemand, l.memoryGb);
+}
 
+/** After every image's slices exist, offer only dispatchable work (including its awake backlog) to PR/SM. */
+export function planLpar(t: TickCtx, l: LparConfig): void {
+  const { prev, def, config, cpcOf, workloadById, slicesBy, demands } = t;
+  const cpc = cpcOf[l.cpcId]!;
+  const all = slicesBy[l.id] ?? [];
+  const hasZiip = l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
+  const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
+  const cpShare = { entitlementEngines: poolEntitlement(cpc, config.lpars, l.id, 'CP') };
+  const capOf = combineCaps(resourceGroupCaps(def, all, cpShare, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}, !hasZiip), discretionaryCaps(def, all, prev.wlm.systems.find((s) => s.lparId === l.id)?.scps ?? []));
+  t.capOfBy[l.id] = capOf;
   let cp = 0;
   let zi = 0;
   for (const s of all) {
-    const bl = prev.backlog[s.key] ?? 0;
-    const blCp = backlogCpSec(s, prev.backlog, prev.ziipBacklog ?? {});
-    cp += s.cpEngines + blCp / TICK_SEC;
-    zi += s.ziipEngines + (bl - blCp) / TICK_SEC;
+    const demand = dispatchableDemand(s, prev.backlog, prev.ziipBacklog ?? {}, capOf, !hasZiip);
+    cp += demand.cp;
+    zi += demand.zi;
   }
   const prevRt = prev.lpars.find((x) => x.id === l.id);
   const ratio = (pool: 'CP' | 'ZIIP') => {
     const r = prevRt?.pools.find((p) => p.pool === pool);
     return r && r.deliveredEngines > 1e-6 ? Math.max(0.5, r.effectiveEngines / r.deliveredEngines) : DEFAULT_EFF_RATIO;
   };
-  const hasZiip = l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
   // Without zIIPs every eligible cycle runs on CPs.
   if (!hasZiip) {
     cp += zi;

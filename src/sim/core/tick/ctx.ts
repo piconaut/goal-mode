@@ -60,6 +60,7 @@ export interface TickCtx {
   runningBy: Record<string, JobRuntime[]>;
   queuedWlmBy: Record<string, JobRuntime[]>;
   slicesBy: Record<string, SliceSpec[]>;
+  capOfBy: Record<string, LparEvalInput['capOf']>;
   batchRefsBy: Record<string, BatchSliceRef[]>;
   swappedBy: Record<string, Set<JobRuntime>>;
   pagingFrac: Record<string, number>;

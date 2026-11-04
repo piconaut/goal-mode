@@ -1,4 +1,4 @@
-import { cpSpeed, suPerCpuSecOf, ziipSpeed } from '../../hw/cpc';
+import { cpSpeed, msuPerCp, suPerCpuSecOf, ziipSpeed } from '../../hw/cpc';
 import { addJobDelay, advanceJob, jobShape } from '../../subsys/batch';
 import { DB2 } from '../../subsys/db2';
 import { scKeyAtService } from '../../workload/slices';
@@ -8,7 +8,7 @@ import { decayInto, emptyAcc, initialDp, type ScpState } from '../../wlm/runtime
 import type { LparConfig } from '../types';
 import { TICK_SEC } from '../units';
 import { type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
-import { addParts, cicsHonorPriority, cicsRegions, combineCaps, discretionaryCaps, idleScpTick, jobServiceSu, resourceGroupCaps, rgMin, rgSysplexShares, wlLparKey } from './helpers';
+import { addParts, cicsHonorPriority, cicsRegions, idleScpTick, jobServiceSu, rgMin, rgSysplexShares, wlLparKey } from './helpers';
 
 /** 7–12a. One z/OS image's dispatch, response times, batch progress and WLM measurement. */
 export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
@@ -32,7 +32,7 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const dpMap: Record<string, number> = {};
   for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
   const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
-  const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id);
+  const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
   const regions = cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions;
   const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
   // Every optional field is always present so all evaluator inputs share one shape.
@@ -41,12 +41,13 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     cpServers: servers(cpRt, cpCfg?.logical ?? 0, l.hiperDispatch),
     ziipCapacityEngines: ziRt?.availableEffectiveEngines ?? 0,
     ziipServers: servers(ziRt, ziCfg?.logical ?? 0, l.hiperDispatch),
+    eligibleOnCp: (ziCfg?.logical ?? 0) === 0,
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
     slices: sysCfg && !sysCfg.iipHonorPriority ? overflowSlices.map((s) => ({ ...s, mayOverflow: false })) : overflowSlices,
     backlog: prev.backlog,
     ziipBacklog: prev.ziipBacklog ?? {},
     dpOf,
-    capOf: combineCaps(resourceGroupCaps(def, slices, cpRt, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}), discretionaryCaps(def, slices, prevSys?.scps ?? [])),
+    capOf: t.capOfBy[l.id],
     ...rgMin(def, slices, prevSys?.scps ?? [], cpRt, suPerCpuSecOf(cpc), plexShare),
     regions,
     io,
@@ -60,6 +61,16 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   };
   evalInputs[l.id] = evalInput;
   const res = evaluateLpar(evalInput);
+  // Only dispatched cycles consume CPU/MSU. An unused PR/SM offer is WAIT, not busy
+  // (RMF Report Analysis 3.1 p.389, p.98). Keep availability for WLM trials separate from consumption.
+  for (const pool of rt.pools) {
+    if (pool.pool !== 'CP' && pool.pool !== 'ZIIP') continue;
+    const used = res.slices.reduce((sum, s) => sum + (pool.pool === 'CP' ? s.cpGranted + s.iipcpGranted : s.ziipGranted), 0);
+    const efficiency = pool.deliveredEngines > 1e-9 ? pool.effectiveEngines / pool.deliveredEngines : pool.availableEngines > 0 ? pool.availableEffectiveEngines / pool.availableEngines : 1;
+    pool.deliveredEngines = efficiency > 0 ? used / efficiency : 0;
+    pool.effectiveEngines = used;
+  }
+  rt.msuRate = (cpRt?.deliveredEngines ?? 0) * msuPerCp(cpc);
   // Swapped-out jobs are ready but not in storage: swap/MPL delay for their class (RMF reports it
   // with the storage delays; APPROX: one delayed sample per swapped job).
   for (const j of swappedBy[l.id] ?? []) {

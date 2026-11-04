@@ -122,7 +122,7 @@ export interface LparPoolRuntime {
   pool: PoolType;
   entitlementEngines: number;
   demandEngines: number;
-  /** Physical engine capacity delivered by PR/SM this tick. */
+  /** Consumed physical capacity (PR/SM's offer until z/OS dispatch has run). */
   deliveredEngines: number;
   /** Consumed capacity usable by the OS after polarity efficiency and LPAR overhead. */
   effectiveEngines: number;

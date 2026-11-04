@@ -137,6 +137,8 @@ export interface LparEvalInput {
   cpServers: number;
   ziipCapacityEngines: number;
   ziipServers: number;
+  /** No online zIIPs: eligible work counts against the CP maximum. Absent: infer from ziipServers. */
+  eligibleOnCp?: boolean;
   cpPrsmDelayFrac: number;
   slices: readonly SliceSpec[];
   /** Backlogged work per slice key, engine-seconds (CP + zIIP). */
@@ -367,8 +369,9 @@ const baseKey = (id: string) => (id.endsWith(SRV) ? id.slice(0, -SRV.length) : i
 export interface PreparedLpar {
   sliceCp: number[];
   sliceZi: number[];
-  /** CP demand withheld by a resource group maximum or discretionary goal management cap. */
+  /** CP + zIIP demand withheld by a resource group or discretionary cap. */
   sliceCut: number[];
+  sliceZiCut: number[];
   /** Index of each slice's dispatch aggregate in `order`. */
   sliceAgg: number[];
   /** Dispatch identities: service-class periods, plus `<scKey>~srv` for transaction-server regions.
@@ -398,6 +401,21 @@ export function backlogCpSec(s: SliceSpec, backlog: Readonly<Record<string, numb
   return bl * (tot > 0 ? s.cpEngines / tot : 1);
 }
 
+/** RG time slices make work non-dispatchable on both pools, even when only CP service counts toward
+ * the limit (WLM Planning 3.1 p.60 notes 4–5). The fluid model uses the same awake fraction on each pool. */
+export function dispatchableDemand(s: SliceSpec, backlog: Readonly<Record<string, number>>, ziipBacklog?: Readonly<Record<string, number>>, capOf?: (s: SliceSpec) => number, eligibleOnCp = false): { cp: number; zi: number; cut: number; ziCut: number } {
+  const bl = backlog[s.key] ?? 0;
+  const blCp = backlogCpSec(s, backlog, ziipBacklog);
+  const cpWant = s.cpEngines + blCp / TICK_SEC;
+  const ziWant = s.ziipEngines + (bl - blCp) / TICK_SEC;
+  const counted = cpWant + (eligibleOnCp ? ziWant : 0);
+  const awakeFrac = capOf && counted > 0 ? Math.max(0, Math.min(1, capOf(s) / counted)) : 1;
+  const cp = cpWant * awakeFrac;
+  const zi = ziWant * awakeFrac;
+  const ziCut = ziWant - zi;
+  return { cp, zi, cut: cpWant - cp + ziCut, ziCut };
+}
+
 export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
   const { slices, backlog, ziipBacklog } = input;
   const n = slices.length;
@@ -407,6 +425,7 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
   const sliceCp = new Array<number>(n);
   const sliceZi = new Array<number>(n);
   const sliceCut = new Array<number>(n);
+  const sliceZiCut = new Array<number>(n);
   const sliceAgg = new Array<number>(n);
   const aggIdx: Record<string, number> = {};
   let mixedIdx: Record<string, number> | undefined;
@@ -418,12 +437,9 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
   const servers = input.regions?.servers;
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
-    const bl = backlog[s.key] ?? 0;
-    const blCp = backlogCpSec(s, backlog, ziipBacklog);
-    const uncapped = s.cpEngines + blCp / TICK_SEC;
-    const cp = capOf ? Math.min(uncapped, capOf(s)) : uncapped;
-    sliceCut[i] = uncapped - cp;
-    const zi = s.ziipEngines + (bl - blCp) / TICK_SEC;
+    const { cp, zi, cut, ziCut } = dispatchableDemand(s, backlog, ziipBacklog, capOf, input.eligibleOnCp ?? input.ziipServers <= 0);
+    sliceCut[i] = cut;
+    sliceZiCut[i] = ziCut;
     sliceCp[i] = cp;
     sliceZi[i] = zi;
     const id = servers !== undefined && s.kind === 'AS' && servers.includes(s.key) ? `${s.scKey}${SRV}` : s.scKey;
@@ -480,7 +496,7 @@ export function prepareLpar(input: Omit<LparEvalInput, 'dpOf'>): PreparedLpar {
     for (let a = 0; a < order.length; a++) cpById[order[a]!] = (cpById[order[a]!] ?? 0) + aggCp[a]!;
     cpShares = aggCp.map((cp, a) => cpById[order[a]!]! > 0 ? cp / cpById[order[a]!]! : 0);
   }
-  return { sliceCp, sliceZi, sliceCut, sliceAgg, order, dispatchIds, cpShares, aggCp, aggZi, aggOverflow, sliceUnits, aggUnits, aggSlices };
+  return { sliceCp, sliceZi, sliceCut, sliceZiCut, sliceAgg, order, dispatchIds, cpShares, aggCp, aggZi, aggOverflow, sliceUnits, aggUnits, aggSlices };
 }
 
 export function evaluateLpar(input: LparEvalInput): LparEvalResult {
@@ -488,7 +504,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const n = slices.length;
   const scpsOnly = input.scpsOnly === true;
   const bucketsFor = scpsOnly ? input.bucketsFor : undefined;
-  const { sliceCp, sliceZi, sliceCut, sliceAgg, order, dispatchIds, cpShares, aggCp, aggZi, aggOverflow, sliceUnits, aggUnits, aggSlices } = input.prepared ?? prepareLpar(input);
+  const { sliceCp, sliceZi, sliceCut, sliceZiCut, sliceAgg, order, dispatchIds, cpShares, aggCp, aggZi, aggOverflow, sliceUnits, aggUnits, aggSlices } = input.prepared ?? prepareLpar(input);
   const reg = input.regions;
   // Transaction-server regions run at the DP of the most important transaction class they serve.
   const txnDp = reg ? Math.max(...reg.keys.map((k) => input.dpOf(k))) : 0;
@@ -617,6 +633,14 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     }
   }
 
+  // Eligible work that overflows from a configured zIIP still consumes the group's CP budget.
+  // APPROX: unused overflow grants wait until the next tick instead of rerunning shared-pool allocation.
+  const overflowCut = input.capOf && !(input.eligibleOnCp ?? input.ziipServers <= 0) ? slices.map((s, i) => {
+    const before = iipcpG[i]!;
+    iipcpG[i] = Math.min(before, Math.max(0, input.capOf!(s) - cpG[i]!));
+    return before - iipcpG[i]!;
+  }) : undefined;
+
   // First pass: address spaces → server health by role.
   const roleHealth: Record<string, { health: number; queueRatio: number }> = {};
   const srvRoles: Record<string, true> = {};
@@ -624,11 +648,11 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const s = slices[i]!;
     const a = sliceAgg[i]!;
     const r = dres[a]!;
-    want[i] = sliceCp[i]! + sliceZi[i]!;
+    want[i] = sliceCp[i]! + sliceZi[i]! - (overflowCut?.[i] ?? 0);
     got[i] = cpG[i]! + ziG[i]! + iipcpG[i]!;
     // Capped demand is still wanted: a resource group max makes the region non-dispatchable, so its
     // dependents wait on it (WLM Planning p.57, p.60 note 4).
-    const wantAll = want[i]! + sliceCut[i]!;
+    const wantAll = want[i]! + sliceCut[i]! + (overflowCut?.[i] ?? 0);
     health[i] = wantAll > 1e-12 ? Math.min(1, got[i]! / wantAll) : 1;
     queueRatio[i] = Math.min(MAX_QUEUE_RATIO, r.cpQueueRatio + r.prsmDelayRatio);
     if (s.kind === 'AS' && s.role) {
@@ -656,7 +680,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     // LPAR capping (soft or absolute) shows as CPU delay; CAP delay is resource-group and discretionary
     // capping only, "not part of the CPU delay" (RMF Report Analysis p.540).
     const unmetCp = cpUnmetS[i]!;
-    const cut = sliceCut[i]!;
+    const cut = sliceCut[i]! + (overflowCut?.[i] ?? 0);
     const capDelay = cut;
     const unmetZiip = ziUnmetS[i]!;
 
@@ -717,7 +741,7 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
     const gotSec = got[i]! * TICK_SEC;
     let newBacklog = Math.max(0, wantSec - gotSec);
     const rawBacklog = newBacklog;
-    const rawZiipBacklog = Math.min(rawBacklog, Math.max(0, sliceZi[i]! - ziG[i]! - iipcpG[i]!) * TICK_SEC);
+    const rawZiipBacklog = Math.min(rawBacklog, Math.max(0, sliceZi[i]! + sliceZiCut[i]! - ziG[i]! - iipcpG[i]!) * TICK_SEC);
     const gotRate = Math.max(got[i]!, 1e-9);
     let waitSec = newBacklog / gotRate;
     const workPerTxn = s.cpuSecPerTxn + s.ziipSecPerTxn;

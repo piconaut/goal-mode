@@ -84,6 +84,16 @@ function poolPlans(cpc: CpcConfig, lpars: readonly LparConfig[]): PoolPlan[] {
   return plans;
 }
 
+/** Configuration-only entitlement, using the same pool plan as PR/SM (before any work is dispatched). */
+export function poolEntitlement(cpc: CpcConfig, lpars: readonly LparConfig[], lparId: string, pool: PoolType): number {
+  const plan = poolPlans(cpc, lpars).find((p) => p.pool === pool);
+  if (!plan) return 0;
+  const dedicated = plan.dedicated.find((m) => m.lpar.id === lparId);
+  if (dedicated) return dedicated.pc.logical;
+  const index = plan.shared.findIndex((m) => m.lpar.id === lparId);
+  return plan.ent[index] ?? 0;
+}
+
 /** Resolve PR/SM for every LPAR on one CPC. Returns runtime keyed by `${lparId}:${pool}`. */
 export function resolveCpc(
   cpc: CpcConfig,

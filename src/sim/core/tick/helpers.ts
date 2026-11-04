@@ -268,7 +268,7 @@ export function idleScpTick(scKey: string, dp: number): ScpTick {
 export function resolveRgCapEngines(
   type: 1 | 2 | 3,
   max: number,
-  cpRt: LparPoolRuntime | undefined,
+  cpRt: Pick<LparPoolRuntime, 'entitlementEngines'> | undefined,
   suPerSec: number,
   plexShareFrac: number,
 ): number {
@@ -286,27 +286,41 @@ export function rgSysplexShares(
   lpars: readonly LparConfig[],
   cpcOf: Readonly<Record<string, CpcConfig>>,
   lparId: string,
+  backlog: Readonly<Record<string, number>> = {},
+  ziipBacklog?: Readonly<Record<string, number>>,
 ): Record<string, number> {
   const out: Record<string, number> = {};
   if (!def.resourceGroups.some((g) => g.type === 1)) return out;
   const total: Record<string, number> = {};
   const here: Record<string, number> = {};
+  const potential: Record<string, number> = {};
+  const herePotential: Record<string, number> = {};
   for (const l of lpars) {
     const slices = slicesBy[l.id];
     if (!slices) continue;
     const suPerSec = suPerCpuSecOf(cpcOf[l.cpcId]!);
+    const eligibleOnCp = !l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
     for (const s of slices) {
       const rg = goalInfo(def, s.scKey)?.resourceGroup;
       if (!rg) continue;
-      const su = s.cpEngines * suPerSec;
+      const bl = backlog[s.key] ?? 0;
+      const blCp = backlogCpSec(s, backlog, ziipBacklog);
+      const zi = s.ziipEngines + (bl - blCp) / TICK_SEC;
+      const cp = s.cpEngines + blCp / TICK_SEC + (eligibleOnCp ? zi : 0);
+      const su = cp * suPerSec;
+      const allSu = (s.cpEngines + blCp / TICK_SEC + zi) * suPerSec;
       total[rg] = (total[rg] ?? 0) + su;
+      potential[rg] = (potential[rg] ?? 0) + allSu;
       if (l.id === lparId) here[rg] = (here[rg] ?? 0) + su;
+      if (l.id === lparId) herePotential[rg] = (herePotential[rg] ?? 0) + allSu;
     }
   }
   for (const g of def.resourceGroups) {
     if (g.type !== 1) continue;
     const t = total[g.id] ?? 0;
-    out[g.id] = t > 0 ? (here[g.id] ?? 0) / t : 1;
+    // With only eligible work left, reserve one sysplex CP budget for possible overflow.
+    const p = potential[g.id] ?? 0;
+    out[g.id] = t > 0 ? (here[g.id] ?? 0) / t : p > 0 ? (herePotential[g.id] ?? 0) / p : 1;
   }
   return out;
 }
@@ -457,12 +471,13 @@ export function rgMin(
 export function resourceGroupCaps(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
-  cpRt: LparPoolRuntime | undefined,
+  cpRt: Pick<LparPoolRuntime, 'entitlementEngines'> | undefined,
   suPerSec: number,
   plexShare: Readonly<Record<string, number>>,
   workloadById: Readonly<Record<string, WorkloadDef>>,
   backlog: Readonly<Record<string, number>>,
   ziipBacklog?: Readonly<Record<string, number>>,
+  eligibleOnCp = false,
 ): ((s: SliceSpec) => number) | undefined {
   const groups = def.resourceGroups.filter((g) => g.max !== null);
   if (groups.length === 0) return undefined;
@@ -484,23 +499,33 @@ export function resourceGroupCaps(
     return tot > 0 ? (hostInGroup[role!]?.[rg] ?? 0) / tot : 0;
   };
   const capBySlice: Record<string, number> = {};
+  const cpWant = (s: SliceSpec) => {
+    const bl = backlog[s.key] ?? 0;
+    const blCp = backlogCpSec(s, backlog, ziipBacklog);
+    return s.cpEngines + blCp / TICK_SEC + (eligibleOnCp ? s.ziipEngines + (bl - blCp) / TICK_SEC : 0);
+  };
   for (const g of groups) {
     const members: { s: SliceSpec; frac: number }[] = [];
     for (const s of slices) {
       const frac = goalInfo(def, s.scKey)?.resourceGroup === g.id ? 1 : hostShare(s, g.id);
       if (frac > 0) members.push({ s, frac });
     }
-    const demand = members.reduce((a, m) => a + m.frac * m.s.cpEngines, 0);
+    let weightOf = cpWant;
+    let demand = members.reduce((a, m) => a + m.frac * weightOf(m.s), 0);
+    if (demand <= 0) {
+      weightOf = (s) => s.ziipEngines + Math.max(0, (backlog[s.key] ?? 0) - backlogCpSec(s, backlog, ziipBacklog)) / TICK_SEC;
+      demand = members.reduce((a, m) => a + m.frac * weightOf(m.s), 0);
+    }
     if (demand <= 0) continue;
     const cap = resolveRgCapEngines(g.type, g.max!, cpRt, suPerSec, plexShare[g.id] ?? 1);
     for (const { s, frac } of members) {
-      const capped = (cap * frac * s.cpEngines) / demand;
+      const capped = (cap * frac * weightOf(s)) / demand;
       if (frac >= 1) {
         capBySlice[s.key] = capped;
         continue;
       }
       // The part of the slice running outside the group's regions stays uncapped (same demand as evaluateLpar).
-      const uncapped = s.cpEngines + backlogCpSec(s, backlog, ziipBacklog) / TICK_SEC;
+      const uncapped = cpWant(s);
       capBySlice[s.key] = capped + (1 - frac) * uncapped;
     }
   }
