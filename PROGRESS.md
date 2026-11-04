@@ -271,16 +271,14 @@ investigation results are folded into the items below as they land.
 
 Investigation (2026-11-04; three subagents on `dev` = `d8ada51` + docs, the player's D15 12:45 save and seed replays; IBM
 facts in docs/research.md). Ordered by impact:
-- [ ] **A planned fix makes its event permanent (bug, high).** `startDay` (`src/game/run.ts`) copies `r.pendingCommands`
-  into `pending` before its loop; `endEventByFix` (`src/game/run/events.ts`) marks the event ended and appends its end
-  commands to `r.pendingCommands`; the final `pendingCommands: pending` drops them. The event's modifiers stay and its
-  natural end is skipped; a later emergency fix finds no active event, does nothing, and still reports "Applied" and
-  costs hours and trust. Player's D15 save still holds `cpu.RBANK` ×3 and `ziipEligMult.MOBILE` 0.3. Replays: planned
-  REBIND D7 06:00 → RBANK 6.16 ms CPU/txn all day vs 2.19 ms from D7 13:30 with no action; planned native-SQL fix D12 →
-  DDFMOB PROD1 CP 103.3 / IIP 15.6, identical to no fix (emergency fix at D11 10:00: IIP share 44 % vs 13 %). Fix: collect
-  the end commands into `pending`; unit test (plan a fix during the briefing for an active event → modifier restored);
-  load-time repair re-applying end commands of events ended by fix (they set absolute values); goldens/bots that plan
-  fixes will change. Also: a fix that matches no active event should say so and not charge trust.
+- [x] **A planned fix makes its event permanent (bug, high).** Fixed 2026-11-03: `startDay` now keeps one command
+  queue, including the restoration commands appended by each successful event fix. Previously its final assignment
+  discarded those commands after marking the event ended, leaving its modifiers permanent and skipping natural expiry.
+  A duplicate planned fix is refused at no cost; a fix with no active event is charged and logs "no active event
+  matched this fix" when it runs (a free refusal would let the Change Desk probe for hidden events; PR review). Regression tests
+  cover all 37 fix cards in all three scenarios (planned and live), job restarts, project completion and
+  temporary-change reversion together, command ordering, natural expiry, failed fixes and no-match requests.
+  Old saves are not repaired (user request). Goldens and the default no-action scenario comparisons are unchanged.
 - [ ] **Resource-group cap creates phantom LPAR busy and MSU (sim bug, high).** The player's `RGDDFADH` (type 1, max 100
   SU/s; TSO, DEVBAT, DDFADHOC). D1 repro on PROD2 (4 CPs): busy 59–73 % → 100 %, MSU 339–418 → 574, EAppl unchanged at
   2.6–2.9 engines; type 2 (5 %) the same; removing the group restores it. Player's D15 save with the group re-added:
