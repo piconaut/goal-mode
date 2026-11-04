@@ -318,6 +318,12 @@ facts in docs/research.md). Ordered by impact:
   until day start. Regression coverage includes two installs across a save/reload, cancellation and ignoring
   failed/applied/future-day changes. Validation: 67 files / 643 tests and production build pass; browser
   two-install/day-start check passes with no page errors; default three-scenario comparison has no differences.
+  Follow-up from #178 review (2026-11-04): after Start day, briefing activations wait in the live command
+  queue until the first tick. Edits and previews now retain that queue's latest activation, including successive
+  live installs while paused; the editor labels it "Queued for next tick". Regression covers save/reload in
+  that gap, two live installs and all earlier goals surviving execution. Validation: 67 files / 646 tests,
+  typecheck, production build and paused-browser check pass; default three-scenario comparison has no
+  differences. Failure/cancellation restoration is a separate follow-up.
 - [ ] **WLM goal edit without an Install option: not reproduced.** New run (live and briefing) and the player's save: the
   button enabled ("Install & activate BASEPOL8"); #164 is not the cause. Likely: the "Add P2 after P1" row uses the same
   widgets and labels as P1, and typing there does nothing until "Add period" is pressed (matches the add/remove

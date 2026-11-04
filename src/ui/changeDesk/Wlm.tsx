@@ -64,7 +64,7 @@ export function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: G
   } : v;
   return (
     <>
-      {planned && <div className="tag warn">Planned for 06:00: {planned.policyName}. Further edits build on this policy.</div>}
+      {planned && <div className="tag warn">{v.phase === 'LIVE' ? 'Queued for next tick' : 'Planned for 06:00'}: {planned.policyName}. Further edits build on this policy.</div>}
       {game.pending && <div className="tag warn">editing pending {game.pending.policyName} (not active)</div>}
       <h4>Service classes</h4>
       <ServiceClasses v={editorView} game={game} />
@@ -139,7 +139,7 @@ export function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) 
         }}
       >
         <label>
-          Save {game.pending ? `pending ${game.pending.policyName}` : v.plannedPolicy ? `planned ${v.plannedPolicy.policyName}` : `active ${v.policyName}`} as{' '}
+          Save {game.pending ? `pending ${game.pending.policyName}` : v.plannedPolicy ? `${v.phase === 'LIVE' ? 'queued' : 'planned'} ${v.plannedPolicy.policyName}` : `active ${v.policyName}`} as{' '}
           <input value={name} onChange={(e) => setName(e.target.value.toUpperCase())} placeholder="e.g. NIGHTPOL" size={9} />
         </label>
         <button type="submit" disabled={!name || nameErr !== null}>

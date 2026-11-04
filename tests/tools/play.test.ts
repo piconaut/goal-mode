@@ -180,6 +180,25 @@ describe('headless play interface', () => {
     }
   });
 
+  it('keeps briefing and live installs when editing again before the next simulation tick', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    let f = run(newPlayFile(7), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }, { cmd: 'start' }]);
+    expect(f.run.sim.tick).toBe(0);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL');
+    f = run(decodePlayFile(encodePlayFile(f)), [edit('TSO', 3)]);
+    expect(f.pendingPolicy!.policyName).toBe('BASEPOL4');
+    f = run(f, [{ cmd: 'activate' }, edit('STCMED', 1)]);
+    expect(f.pendingPolicy!.policyName).toBe('BASEPOL5');
+    f = run(f, [{ cmd: 'activate' }, { cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL5');
+    expect(f.run.pendingCommands).toEqual([]);
+    for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6], ['TSO', 3], ['STCMED', 1]] as const) {
+      expect(f.run.sim.wlm.definition.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
+    }
+  });
+
   it('policy shows the service definition, its rules and the processors it runs on', () => {
     const text = policyText(newPlayFile(7, 'NORMAL', 'harbourline'), false);
     expect(text).toMatch(/active policy \S+/);
