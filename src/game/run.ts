@@ -121,7 +121,7 @@ export function startDay(run: RunState, content: GameContent): RunState {
       const failed = streamRng(r.seed, 'activate', r.day, c.label, attempt).chance(failRisk(r));
       if (failed) {
         changes.push({ ...c, status: 'FAILED' });
-        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? ' Its edits go back to the pending policy (unless newer edits are pending); activate to reschedule.' : '';
+        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? ' Its edits go back to the pending policy (unless newer edits are pending or a later activation succeeds); activate to reschedule.' : '';
         r = msg(
           r,
           'Change board',

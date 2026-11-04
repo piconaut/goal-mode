@@ -323,7 +323,13 @@ facts in docs/research.md). Ordered by impact:
   live installs while paused; the editor labels it "Queued for next tick". Regression covers save/reload in
   that gap, two live installs and all earlier goals surviving execution. Validation: 67 files / 646 tests,
   typecheck, production build and paused-browser check pass; default three-scenario comparison has no
-  differences. Failure/cancellation restoration is a separate follow-up.
+  differences. Restoration follow-up (2026-11-04): a failed earlier install is no longer returned as pending
+  over a later successful activation that day. Cancelling an earlier install likewise keeps the later planned
+  definition without restoring stale edits, and explains that copied edits remain in the later policy.
+  Latest failed/cancelled installs still return their edits; future-day installs and non-policy changes do not
+  suppress restoration. Regression replays cover both paths and verify the later edits survive further installs.
+  Validation: 67 files / 650 tests, typecheck, production build and both browser replays pass; default
+  three-scenario comparison has no differences and goldens are unchanged.
 - [ ] **WLM goal edit without an Install option: not reproduced.** New run (live and briefing) and the player's save: the
   button enabled ("Install & activate BASEPOL8"); #164 is not the cause. Likely: the "Add P2 after P1" row uses the same
   widgets and labels as P1, and typing there does nothing until "Add period" is pressed (matches the add/remove
