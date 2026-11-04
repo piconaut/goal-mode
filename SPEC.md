@@ -1486,6 +1486,8 @@ keyboard-first.
   Run transfer supports file downloads/uploads and copy/paste of the same run-file text. Export offers manual
   selection when clipboard access is denied, so sandboxed embeds can still transfer saves without downloads.
   Import confirms replacement of the current run and saved run and reports failures without discarding the input.
+  Save replacement and planned-change restart confirmations use in-app dialogs, so they work in embeds that
+  block browser `confirm()`. Cancel or Escape preserves the existing run/work; only explicit confirmation proceeds.
   Pasted text uses the same tolerant decoder as uploaded files, including surrounding backticks.
 
 ```

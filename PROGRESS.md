@@ -243,6 +243,12 @@ already in docs/research.md).
   typecheck and production build pass; browser copy/fallback, file and backtick-paste round-trips, invalid
   import and mobile checks pass. A download-blocked iframe with no clipboard still exposes selectable save
   text. Default three-scenario comparison has no differences; the artifact has not been republished.
+  Dialog lifecycle follow-up from #181 review (2026-11-04): closed save dialogs no longer match `.modal`,
+  restoring the documented screenshot flow. Native close events now reset the dialog state so Export and Import
+  can reopen; delayed close events are ignored after reopening. Save transfer and its format are unchanged.
+  Validation: 67 files / 650 tests and production build pass; native-close/reopen, Escape/focus and delayed-event
+  browser checks pass. The unchanged screenshot tool completes with no errors or mobile overflow; default
+  three-scenario comparison has no differences.
 - [ ] **Imported saves lack Monitor III history:** `mon3 --at` on an imported save shows nothing for past
   ranges (replay forward instead, or include the history).
 - [x] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. The player confirmed it was
@@ -381,11 +387,14 @@ facts in docs/research.md). Ordered by impact:
   header's speed-button slot is empty during the briefing, so move them there.
 - [ ] **Export:** besides downloads being blocked, copying the save string from dev tools corrupted 12 escaped quotes in
   inbox text (`\\"`), so the D15 save needed repair before it parsed; another reason for an in-artifact export.
-- [ ] **`confirm()` is blocked in the published artifact** (sandbox without `allow-modals`; console: "Ignored call to
-  'confirm()'"). ⇧ import (`src/ui/App.tsx`), starting a new run over a saved one and Restart with planned changes
-  (`src/ui/Overlays.tsx`) all gate on `confirm()`, which returns false, so they silently do nothing. Replace with an
-  in-app confirmation dialog. Workaround used: patch the run in IndexedDB from dev tools (re-queue the lost event end
-  commands) and reload; the player confirmed RBANK CPU/txn and MOBILE zIIP recovered.
+- [x] **`confirm()` is blocked in the published artifact:** replaced 2026-11-04 with a shared in-app
+  confirmation dialog for save imports, the guarded new-run start and restarting with planned changes. It works
+  without sandbox `allow-modals`; Cancel/Escape leave the run and pending work intact, and explicit confirmation
+  performs the requested action. Import errors still retain the pasted/file text. The dialog traps focus,
+  defaults to Cancel and restores focus on close. No worker, save-format or simulation changes. Validation:
+  67 files / 650 tests, typecheck and production build pass; sandbox browser checks cover paste/file imports,
+  invalid input, Cancel/Escape, planned-change restart and the older-save start guard, with zero browser
+  `confirm()` calls or page errors. Default three-scenario comparison has no differences; no artifact republish.
 - [ ] **Starving "Internal" work is free (design gap: a lever with no cost).** TSO and ADHOC have stakeholder `Internal` and
   SLA `NONE` (no incidents, trust or score; `src/game/run.ts`, `src/game/sla.ts`); DEV batch is non-critical with
   `lockIntensity` 0, so a capped or discretionary job holds no locks and its lateness counts nowhere. The only cost today
@@ -672,6 +681,42 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - [ ] Diagnosis stays the gameplay: symptoms → suggested bundles (more than one valid fix), not auto-fixes
 - [ ] Balance: bots in simplified mode (bundles only) reach roughly the textbook bot's results
 - [ ] Tutorial for simplified mode; Codex entries linked from each bundle
+
+### PR review follow-ups (open items from the hourly reviews of #178–#185, 2026-11-04)
+
+Non-blocking findings the reviewer left open; each was still present on `dev` at 7fbeffa. Items fixed by a later PR
+(06:00 queued-install gap → #179, restored-policy edit loss → #180, screenshot timeout and native dialog close → #183)
+are not listed.
+
+WLM policy editing (game/worker/CLI):
+- [ ] **Scheduled activation overrides a queued install** (#179 review): `advance` pushes the policy-schedule
+  activation after `pendingCommands` in the same tick (`src/game/run.ts` `scheduledActivation`), so if the game is
+  paused on an hour with a schedule entry (06:00 at day start included) the scheduled policy replaces the player's
+  queued install while the editor still says "Queued for next tick: X". Show the scheduled entry in `plannedPolicy`,
+  or apply the schedule before player commands.
+- [ ] **Cancel message missing separator** (#180): `src/game/run/changes.ts` cancel message appends
+  "Later policy … keeps its current edits" with no `. ` before it ("(1.5h back) Later policy …").
+- [ ] **Cancel B then A leaves A's edit pending silently** (#180): A's edit stays in the pending policy and A's cancel
+  message doesn't say so (also true before #180; the edits are uninstalled and visible).
+- [ ] **Suppressed failure is silent** (#180): when a later install succeeds after an earlier one failed at day start,
+  the play CLI day-start text and the mail don't say that the earlier install's edits went live through the later one.
+- [ ] **Planned-policy labels** (#178): CLASSIFY flags the planned policy only as `pending` (`src/worker/game.worker.ts`
+  CLASSIFIED); the play CLI `status` and `policy` output don't show the planned (queued/briefing) policy at all.
+
+Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
+- [ ] **Import result read from toast wording** (#181): the dialog matches `Loaded run:` / `Import failed:` toast text;
+  give the worker an explicit import-result message instead. Since #185, `submittedToast.current = toast`
+  (RunFiles.tsx, after the confirmation wait) stores the toast from before the prompt opened; harmless only because
+  results are matched by prefix. The explicit message fixes both.
+- [ ] **Closing during an in-flight import still replaces the run** (#181; the player already confirmed).
+- [ ] **`.modal { position: relative }`** (`src/ui/styles.css`, #181): the open modal dialog computes to
+  position absolute and scrolls with the page instead of staying fixed.
+- [ ] **One unstyled frame on programmatic close** (#183): the `modal` class drops when state resets but `el.close()`
+  runs in a passive `useEffect`; `useLayoutEffect` would avoid the frame. `close()` also runs twice on cancel (harmless).
+- [ ] **No automated test for the dialog lifecycle** (#181/#183/#185 were verified manually with Playwright); now
+  also covers the in-app confirmation (`src/ui/Confirmation.tsx`, #185).
+- [ ] **Confirmation polish** (#185): during a file import the button still reads "Reading file…" while the prompt is
+  open; the confirm button has no primary/danger styling.
 
 ## Active decisions and conventions
 

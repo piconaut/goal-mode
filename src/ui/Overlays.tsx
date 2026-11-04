@@ -16,8 +16,10 @@ import type { GameHandle } from './useGame';
 import { CAREER_LEVELS } from '../content/career';
 import { DRAFT_OPTIONS } from '../content/draft';
 import { careerLevel, unlockedPerks } from '../game/career';
+import { useConfirmation } from './Confirmation';
 
 export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
+  const ask = useConfirmation();
   useEffect(() => {
     if (!open) return;
     const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
@@ -48,8 +50,8 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
           )}
           <button
           className={v.weekendDay ? '' : 'primary'}
-          onClick={() => {
-            if (game.savedRunDay !== null && v.day === 0 && !confirm(`Start this new run? Your saved run (day ${game.savedRunDay + 1}) is replaced at the end of today. Continue it or export it first to keep it.`)) return;
+          onClick={async () => {
+            if (game.savedRunDay !== null && v.day === 0 && !(await ask(`Start this new run? Your saved run (day ${game.savedRunDay + 1}) is replaced at the end of today. Continue it or export it first to keep it.`, 'Start new run'))) return;
             game.send({ type: 'START_DAY' });
           }}
         >
@@ -315,10 +317,11 @@ function StartingPerk({ v, game }: { v: ViewModel; game: GameHandle }) {
 // A fresh page load starts on Midwest Mutual, Normal; until day 1 starts the player can restart on another
 // scenario or preset, or switch to today's daily challenge (which then stays daily across those restarts).
 function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
+  const ask = useConfirmation();
   const plannedAny = v.changes.length > 0;
   const [seed, setSeed] = useState('');
-  const restart = (scenario: string, difficulty: DifficultyId, daily: boolean, typed = '') => {
-    if (plannedAny && !confirm('Restart? Planned changes are discarded.')) return;
+  const restart = async (scenario: string, difficulty: DifficultyId, daily: boolean, typed = '') => {
+    if (plannedAny && !(await ask('Restart? Planned changes are discarded.', 'Restart run'))) return;
     const today = new Date().toISOString().slice(0, 10);
     game.send(
       daily
