@@ -3,6 +3,7 @@
 // hidden growth rates or tomorrow's events.
 
 import { PLANNER } from '../content/planner';
+import { instanceClock } from '../sim/core/step';
 import type { RunState } from './types';
 
 export interface ForecastPoint {
@@ -71,7 +72,7 @@ export function capacityForecasts(run: RunState): Forecast[] {
       'h',
       days.filter((d) => d.criticalEndSec !== null).map((d) => ({ day: d.day, value: d.criticalEndSec! / 3600 })),
       run.batchDeadlineSec / 3600,
-      'deadline 06:00',
+      `deadline ${instanceClock(run.batchDeadlineSec)}`,
     ),
   );
   return out.filter((f): f is Forecast => f !== null);
