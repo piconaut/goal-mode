@@ -428,6 +428,43 @@ facts in docs/research.md). Ordered by impact:
   response); realism-auditor ideas from this round. Still to do: the lab harness should log which test rejected each
   WLM trial (needed to diagnose "no action with net value" without patching `adjust.ts`).
 
+**D20 follow-ups (TFP levers, classification, batch placement).**
+
+- [ ] **Change desk "catches" column ignores `SY=` rules (UI bug).** The player's `SY=DEVT` rule under subsystem STC
+  (→ STCDEV) shows "catches nothing", though PROCU shows DEVT's STCs in STCDEV. Classification itself uses `SY: lparId`
+  everywhere in the sim; `workItems` in `src/game/classifyExplain.ts` builds one item per jobname without the system,
+  so no `SY=` rule can match. Build items per (jobname, system).
+- [ ] **Db2 batch starts on an LPAR without Db2 (sim bug, high).** `startJobs` (`src/sim/subsys/batch.ts:153`) puts a
+  job without SYSAFF on any LPAR with a free initiator for its class and never checks `usesDb2`. With class A
+  initiators on SYSP (no Db2), RPT, DWH, GLF and STM would run there faster than on PROD (`depStretch` reads SYSP's
+  Db2 roles, none, so 1; `lockStretch` reads SYSP's online Db2 rate, 0, so 1; `src/sim/core/tick/dispatch.ts:135–162`).
+  Real: the batch attachments (CAF, RRSAF, TSO attach) connect only to a Db2 subsystem on the same image; with none,
+  the job fails at connect (-923 or an attach error; not verified against the books). Fix: such a job starts and
+  fails at connect with a JES/SMF 30 clue and needs a rerun (symptom + clue + fix), rather than a silent refusal.
+- [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
+  products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Mostly moot once the job fails at connect;
+  check that nothing else can run Db2 work on an image outside the Db2 product's LPAR list.
+- [ ] **One job class for every stream (design gap).** All Midwest production streams are class A, so the honest move
+  (non-Db2 BKP and HSK on SYSP, cheaper under TFP) can't be made without also sending Db2 streams there. Player
+  proposal, simpler than modelling SCHENV: finer job classes (e.g. Db2 production, non-Db2 utilities, reports), each
+  with initiators per LPAR; reclassing a stream is a change desk JCL change with lead time and a small failure risk.
+  Information in tiers: SMF 30 shows class and program (IKJEFT01 with a DSN command, or DSNTEP2, shows Db2 use); ask
+  in inbox answers per stream (count, class, Db2, SYSAFF), not one job; the batch analysis unlock shows the network
+  (streams, class, Db2 use, SYSAFF, predecessors, critical path and slack). SCHENV can come later.
+- [ ] **Exported saves arrive with every backslash doubled (open question).** The player's D20 export
+  (`goal-mode-midwest-467203-day20.json`) was invalid JSON: all 20 escaped quotes (inbox bodies quoting the change
+  board) were `\\"`. Halving every backslash gives byte-for-byte what `encodeRunJson` writes, so the game's
+  `JSON.stringify` is fine and something on the artifact's download path doubled them (not verified). Import (browser
+  and play CLI) now repairs it, and also text pasted inside backticks (the D4 save). If it recurs, look at how the
+  artifact host saves a Blob download.
+- [x] **Play CLI for playtest investigations:** `finance` (bill; under TFP, MSU-hours vs the prorated baseline,
+  projection and overage $ per MSU-hour by LPAR), `capacity` (CPC MSU, LPARs, initiators, capacity changes by day),
+  `batch` (last night by stream); `npm run inspect -- <file> dp <system>` for the DPs per RMF interval (sim internals,
+  never for player agents). These replace the one-off scripts used for the D10–D20 questions.
+- [ ] **Playtest companion skill and investigator subagent (proposal).** A `playtest-companion` skill holding the
+  standing rules and setup, and an optional `playtest-investigator` subagent for deep code dives that returns
+  only the finding in the report format and filters spoilers in its own context. Not built yet.
+
 ### M8.7 Realism fixes
 
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a

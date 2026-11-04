@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
+import { startTfp } from '../../src/sim/cost/mlc';
+import { quoteTfp } from '../../src/game/tfp';
+import { scenarioFor } from '../../src/game/difficulty';
+import { packOf } from '../../src/content/packs';
+import { dpText } from '../../tools/inspect';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   for (const c of cmds) {
@@ -53,6 +58,37 @@ describe('headless play interface', () => {
     expect(wlmLogText(f, { system: 'PRDB' })).not.toContain('RCVR=');
     expect(wlmLogText(f, { grep: 'rcvr' })).not.toContain('no action');
     expect(wlmLogText(f, { system: 'NOSUCH' })).toContain('(no matching lines)');
+  });
+
+  it('finance shows the sub-capacity bill, then TFP pace and overage price per LPAR', () => {
+    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    expect(financeText(f)).toMatch(/pricing SUBCAP[\s\S]*peakR4haMsu/);
+    const terms = quoteTfp(f.run, scenarioFor(packOf('midwest').scenario, f.run.difficulty)).terms;
+    f = { ...f, run: { ...f.run, sim: { ...f.run.sim, cost: startTfp(f.run.sim.cost, terms, f.run.sim.tick) } } };
+    f = run(f, [{ cmd: 'advance', hours: 2 }]);
+    const t = financeText(f);
+    expect(t).toMatch(/pricing TFP/);
+    expect(t).toMatch(/^CICS\s+PROD1,PROD2\s+\d+\s+\d+\s+\d+/m);
+    // PROD1 carries all four Midwest products, SYSP only z/OS.
+    const per = Object.fromEntries([...t.matchAll(/(PROD1|SYSP) (\d+\.\d+)/g)].map((m) => [m[1], Number(m[2])]));
+    expect(per.PROD1).toBeGreaterThan(per.SYSP! * 2);
+  });
+
+  it('capacity shows the CPC MSU, LPARs, initiators and capacity changes; batch is gated like smf BATCH', () => {
+    const f = newPlayFile(7);
+    const c = capacityText(f);
+    expect(c).toMatch(/^CPCA \S+ capacity setting \d+: CP \d+ x \d+ MSU = \d+ MSU/);
+    expect(c).toMatch(/^PROD1\s+ZOS\s+\d+/m);
+    expect(c).toContain('job classes (initiators per LPAR): A ');
+    expect(batchStreamsText(f)).toContain('SMF30_BATCH');
+  });
+
+  it('inspect dp lists dispatching priorities per RMF interval, highest first', () => {
+    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    const t = dpText(encodePlayFile(f), 'PROD1', { cls: 'SYS' });
+    const line = t.split('\n')[1]!;
+    expect(line).toMatch(/SYSTEM#1=FF SYSSTC#1=FE/);
+    expect(dpText(encodePlayFile(f), 'NOSUCH')).toContain('No system NOSUCH');
   });
 
   it('catalog lists orderable items; Monitor III shows once the tool is owned', () => {
