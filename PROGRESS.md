@@ -244,6 +244,50 @@ already in docs/research.md).
   the competing class's CPU for CPU_PRIORITY.
 - Positive: DELAY Primary Reason named the right job; DELAY and WLMGL CPU-delay pins were marked "points at the cause".
 
+**Days 5–15 on `d8ada51`** (#170; the player continued the same save). Incidents and events as the player reported them;
+investigation results are folded into the items below as they land.
+- D6 08:03 **Db2 REBIND access-path regression:** start-of-day mail said a rebind ran overnight; the player saw ×2.30 vs
+  base in SMF 101 (purchased tool), pinned it, then got a Db2-team mail explaining the access-path change. Fix D7 06:00:
+  REBIND with APREUSE / switch back (no open incident). Accounting didn't show clearly whether it helped.
+- D8 10:55 **DDFADHOC runaway on PROD2:** spotted as IIPCP in the Monitor III charts (MOBILE is routed to PROD1, so IIPCP is
+  normally low); PROCU confirmed DDFADHOC hot on PROD2 (no zIIPs). Discretionary, so "should be fine"? Emergency "Cancel the
+  runaway DDF thread" D8 14:25 showed no effect by 15:22; it died down by 18:51.
+- D9 06:00–07:20 **PROD2 to 100% after a strict resource-group maximum** (TSO, DEVBAT, DDFADHOC discretionary, one RG,
+  ~100 SU/s; DEVT defined capacity 25 MSU the same morning). Monitor III CPC: PROD2 98.2% logical effective / 100% total
+  on 4 CPs, while PROCU summed to under one engine of EAppl. Taking the classes out of the RG fixed it at once.
+- D10 Mobile promotion: handled by the existing setup. Positive: a well-prepared configuration absorbs an event.
+- D11 **Mobile API stored procedures redeployed as new COBOL versions:** the player predicted zIIP loss and confirmed it on
+  WLMGL detail (D11 09:00–09:30 vs the day before). "Redeploy as native SQL procedures" applied D12 06:00 (planned) and
+  again D13 08:35 (emergency); D15 12:45 WLMGL still shows DDFMOB mostly zIIP-ineligible CP.
+- D12 13:32 **Data-centre power cap:** noticed via WLM PI flashing red and the Capacity Today line dropping; On/Off CoD +1 CP
+  at 13:47 (and again 13:50); SLAs back by 14:02. RCA for RBANK and CARDAUTH (same evidence: WLMGL STCHI CPU delay 45.7%,
+  DELAY STCHI CPU delay 84.6%, SYSSUM STCHI PI 10.9): player CPU_CAPACITY/HARDWARE_FAULT for both; truth RBANK
+  CPU_PRIORITY/HARDWARE_FAULT, CARDAUTH CPU_PRIORITY/POLICY. Partial credit; the player calls it a gotcha (lost engines,
+  yet CPU_CAPACITY isn't valid, and one cause gets two triggers), and finds "buy CoD to survive a power cap" odd.
+- D13 13:33 **Unapproved model training on TSO:** seen only because the Operations Log printed "EVENT start"; no inbox mail.
+  Stopped at once from Operations. The log gives a subtle event away.
+- TFP offer: signed without enough data; a real decision needs $/MSU under R4HA and TFP and a cost estimate from history
+  (a what-if tool might cover it).
+
+Player feedback, not yet investigated or decided (one item each):
+- [ ] **WLM editor:** changing a response-time goal doesn't offer to install the pending policy (workaround: add then remove
+  a period); suspected regression from #164's request-loop fix. Also: activate a saved policy directly, not only via the
+  daily schedule.
+- [ ] **Hardware orders as emergency changes** make no sense; queue them for the next day even when bought mid-day.
+  On/Off CoD: allow early removal to save money (e.g. once a power event is over).
+- [ ] **Reserved engines:** a zIIP bought D5 couldn't be brought online anywhere (no LPAR had a reserved zIIP), so it was
+  wasted. Give every scenario's LPARs enough reserved engines for a few purchases, or warn before buying.
+- [ ] **No way out for DDFADHOC IIPCP on PROD2:** can't route it to PROD1, can't add zIIPs to PROD2.
+- [ ] **Monitor III CPC has no zIIP rows.** The "CP busy per system" chart plots logical util % while RMF CPC shows physical;
+  label it. Wanted: a CPs-by-service-class chart, with a toggle for which charts are shown.
+- [ ] **Resource group maximum in SU/s:** show the MSU equivalent.
+- [ ] **CPC busy forecast** trends down with weekends and the CP upgrade; forecast MSU against capacity instead.
+- [ ] **MLC vs opex budget:** by D8 the MLC estimate was above the opex budget. Does MLC count against it, and is a loss then
+  inevitable? Make it explicit in the UI.
+- [ ] **SMF 101:** is there a Codex entry? The "vs base" for a past interval (D6 07:00–08:00) shrank when revisited later;
+  what triggers the Db2 team's explanation mail (the player's pin, or always)?
+- [ ] **Layout:** move Start day / briefing buttons to the header next to the speed buttons.
+
 ### M8.7 Realism fixes
 
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a
