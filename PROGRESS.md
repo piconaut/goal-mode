@@ -494,6 +494,16 @@ facts in docs/research.md). Ordered by impact:
   refunded if it found no target. Same card twice in this run (D11, D24), so the fix also isn't lasting: if the
   redeploy reintroduces COBOL procedures, say so in the card's clue.
 
+**D24 onward (build `d8ada51`).**
+
+- [ ] **No way to add the first rule for a subsystem with no rules (UI bug, high).** The acquisition hint ("runs under
+  USS (subsystem OMVS) as userid ACQSVC … Change Desk › WLM › Classification rules shows where it would go today")
+  sends the player to a panel that doesn't exist: `classifyExplain` skips a subsystem with no rules and no work
+  defaulting into it today (`src/game/classifyExplain.ts:129`), and the rules view only renders those panels, so OMVS
+  has none until ACQSVC is already live in SYSOTHER. Still on dev. Workaround: add the OMVS entry by hand in Review
+  policy JSON. Fix: always show every subsystem's panel (empty, with its default) and let the player add the first
+  rule; the Classify test form already offers OMVS.
+
 ### M8.7 Realism fixes
 
 Facts/citations: [docs/research.md](docs/research.md). Model changes require updated goldens with a
