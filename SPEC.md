@@ -1483,6 +1483,10 @@ keyboard-first.
   wall-clock in the sim. State is plain serialisable data. `step(state, commands, rng) → state`.
   Same seed + same command log ⇒ identical run (replays, daily seeds, bug repro, what-if forks).
 - **Save system:** state snapshot at each phase change and every sim hour of the live day (crash-safe: a reload resumes mid-day, so a day cannot be replayed from its briefing), plus a command log; IndexedDB.
+  Run transfer supports file downloads/uploads and copy/paste of the same run-file text. Export offers manual
+  selection when clipboard access is denied, so sandboxed embeds can still transfer saves without downloads.
+  Import confirms replacement of the current run and saved run and reports failures without discarding the input.
+  Pasted text uses the same tolerant decoder as uploaded files, including surrounding backticks.
 
 ```
 src/
