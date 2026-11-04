@@ -614,7 +614,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - [ ] Balance: bots in simplified mode (bundles only) reach roughly the textbook bot's results
 - [ ] Tutorial for simplified mode; Codex entries linked from each bundle
 
-### PR review follow-ups (open items from the hourly reviews of #178–#183, 2026-11-04)
+### PR review follow-ups (open items from the hourly reviews of #178–#185, 2026-11-04)
 
 Non-blocking findings the reviewer left open; each was still present on `dev` at 7fbeffa. Items fixed by a later PR
 (06:00 queued-install gap → #179, restored-policy edit loss → #180, screenshot timeout and native dialog close → #183)
@@ -637,13 +637,18 @@ WLM policy editing (game/worker/CLI):
 
 Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
 - [ ] **Import result read from toast wording** (#181): the dialog matches `Loaded run:` / `Import failed:` toast text;
-  give the worker an explicit import-result message instead.
+  give the worker an explicit import-result message instead. Since #185, `submittedToast.current = toast`
+  (RunFiles.tsx, after the confirmation wait) stores the toast from before the prompt opened; harmless only because
+  results are matched by prefix. The explicit message fixes both.
 - [ ] **Closing during an in-flight import still replaces the run** (#181; the player already confirmed).
 - [ ] **`.modal { position: relative }`** (`src/ui/styles.css`, #181): the open modal dialog computes to
   position absolute and scrolls with the page instead of staying fixed.
 - [ ] **One unstyled frame on programmatic close** (#183): the `modal` class drops when state resets but `el.close()`
   runs in a passive `useEffect`; `useLayoutEffect` would avoid the frame. `close()` also runs twice on cancel (harmless).
-- [ ] **No automated test for the dialog lifecycle** (#181/#183 were verified manually with Playwright).
+- [ ] **No automated test for the dialog lifecycle** (#181/#183/#185 were verified manually with Playwright); now
+  also covers the in-app confirmation (`src/ui/Confirmation.tsx`, #185).
+- [ ] **Confirmation polish** (#185): during a file import the button still reads "Reading file…" while the prompt is
+  open; the confirm button has no primary/danger styling.
 
 ## Active decisions and conventions
 
