@@ -235,11 +235,16 @@ already in docs/research.md).
   was no receiver raise. Consider logging the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal
   importance"), and showing on WLMGL/SYSWKM that a region class managed to transaction goals runs at the served classes'
   DP (its own PI is reported, not managed to).
-- [ ] **⇩ export does nothing in the published artifact:** the claude.ai artifact sandbox blocks downloads. The player
-  exported with a dev-tools IndexedDB script and "Copy string contents" (the JSON arrived wrapped in backticks). Use the
-  artifact's file-save runtime capability, or add "Copy save to clipboard"; let ⇧ import take pasted text and strip
-  stray backticks. Also: the save has no Monitor III history, so `mon3 --at` on an imported save shows nothing for
-  past ranges (replay forward instead, or include the history).
+- [x] **⇩ export does nothing in the published artifact:** text transfer added 2026-11-04. Export opens a
+  dialog with "Copy save to clipboard", a selectable save-text field for manual copying when clipboard access
+  is blocked, and an explicit file download. Import accepts pasted save text as well as files, using the existing
+  backtick-tolerant decoder. Failed imports keep their text and report an error; replacing the current run/save
+  requires confirmation. No serialization or save-format changes. Validation: 67 files / 650 tests,
+  typecheck and production build pass; browser copy/fallback, file and backtick-paste round-trips, invalid
+  import and mobile checks pass. A download-blocked iframe with no clipboard still exposes selectable save
+  text. Default three-scenario comparison has no differences; the artifact has not been republished.
+- [ ] **Imported saves lack Monitor III history:** `mon3 --at` on an imported save shows nothing for past
+  ranges (replay forward instead, or include the history).
 - [x] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. The player confirmed it was
   the worker request loops, fixed in #164.
 - [ ] **RCA evidence mark to check:** the PROCU pin "BATCHHI#1 APPL 442%" (D4 23:04) was marked "not about CARDAUTH",

@@ -21,6 +21,8 @@ export interface GameHandle {
   adoptSpectated: () => void;
   report: string;
   policy: string;
+  runFile: { name: string; text: string } | null;
+  prepareRunFile: () => void;
   history: HistoryPoint[];
   savedRunDay: number | null;
   pending: PendingPolicyView | null;
@@ -50,6 +52,7 @@ export function useGame(): GameHandle {
   const [view, setView] = useState<ViewModel | null>(null);
   const [report, setReport] = useState('');
   const [policy, setPolicy] = useState('');
+  const [runFile, setRunFile] = useState<GameHandle['runFile']>(null);
   const [history, setHistory] = useState<HistoryPoint[]>([]);
   const [savedRunDay, setSavedRunDay] = useState<number | null>(null);
   const [pending, setPending] = useState<PendingPolicyView | null>(null);
@@ -99,7 +102,7 @@ export function useGame(): GameHandle {
       else if (m.type === 'RULES') setRules({ active: m.active, pending: m.pending, classIds: m.classIds, advice: m.advice });
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
-      else if (m.type === 'RUN_FILE') downloadText(m.name, m.text);
+      else if (m.type === 'RUN_FILE') setRunFile({ name: m.name, text: m.text });
       else if (m.type === 'RESULT') {
         setToast({ ok: m.ok, message: m.message });
         setResults((r) => [...r, { ok: m.ok, message: m.message, clock: clockRef.current }].slice(-50));
@@ -154,6 +157,11 @@ export function useGame(): GameHandle {
     return () => window.clearInterval(id);
   }, [spectateName]);
 
+  const prepareRunFile = useCallback(() => {
+    setRunFile(null);
+    worker.current?.postMessage({ type: 'EXPORT_RUN' } satisfies ToWorker);
+  }, []);
+
   // Keep the watched run: the worker saves it as an ordinary run and the page stops polling.
   const adoptSpectated = useCallback(() => {
     worker.current?.postMessage({ type: 'SPECTATE_ADOPT' } satisfies ToWorker);
@@ -164,7 +172,7 @@ export function useGame(): GameHandle {
     window.history.replaceState(null, '', url);
   }, []);
 
-  return { spectate, adoptSpectated, view, report, policy, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, mon3Range, mon3At, rules, toast, results, basket, setBasket, send };
+  return { spectate, adoptSpectated, view, report, policy, runFile, prepareRunFile, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, mon3Range, mon3At, rules, toast, results, basket, setBasket, send };
 }
 
 const SPEED_KEY = 'goalmode.speed';
@@ -183,12 +191,3 @@ const writePref = (key: string, value: string) => {
     // Storage blocked: the speed just isn't remembered.
   }
 };
-
-function downloadText(name: string, text: string) {
-  const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
