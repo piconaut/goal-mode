@@ -11,13 +11,17 @@ rely on memory of an earlier tick.
 
 Only PRs with base `dev`. The `dev` → `main` milestone PR is the user's; leave it alone.
 
+Skip draft PRs (user request 2026-11-04): don't review, merge or comment on a PR while `draft` is true. It joins the
+next tick after it is marked ready for review, as **new** or per its latest marker. List them in the report as
+`draft - skipped`.
+
 Models (user request 2026-11-04): the scheduled task runs this coordinating session on Sonnet; the review itself
 stays on Opus through the `pr-reviewer` agent's `model: opus`. Don't pass a `model` override when spawning it, and
 don't review diffs yourself: your job is bookkeeping, merging and the PROGRESS.md docs PR.
 
 ## 1. Gather state
 
-For each open PR into `dev` (`mcp__github__list_pull_requests`, base `dev`, state open):
+For each open, non-draft PR into `dev` (`mcp__github__list_pull_requests`, base `dev`, state open; drop `draft: true`):
 
 - head SHA, `mergeable_state`, title, body;
 - the PR's issue comments (`mcp__github__pull_request_read` method `get_comments`, all pages). Find the **latest
