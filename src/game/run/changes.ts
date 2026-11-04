@@ -7,7 +7,7 @@ import {
   type PlannedChange,
   type RunState
 } from '../types';
-import { endEventByFix, fixIdsOf } from './events';
+import { endEventByFix, fixIdsOf, hasEventForFix } from './events';
 import type { GameContent } from './shared';
 import { clampTrust, FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
 
@@ -29,6 +29,8 @@ export interface ChangeOutcome {
   /** The policy a cancelled activation would have installed, so the caller can keep it as pending edits. */
   restoredPolicy?: ServiceDefinition;
 }
+
+export const NO_TARGET = 'no active event matched this fix';
 
 export function failRisk(run: RunState): number {
   return failRiskFor(run.fatigue, run.perks);
@@ -54,6 +56,13 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   const live = run.phase === 'LIVE';
   const preview = previewChange(previewContext(run, content), req);
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
+  // Only the player's own plan is checked here: refusing a fix because no event matches would let the Change Desk
+  // be probed for hidden events at no cost. A fix with no target is charged and reports "no effect" once it runs.
+  const plannedFix = req.fixId ? run.changes.find((c) => c.status === 'PLANNED' && c.endsEvent === req.fixId) : undefined;
+  if (plannedFix) {
+    const hint = live ? ` for day ${plannedFix.activateDay + 1}; cancel ${idText('change', plannedFix.id)} to apply it now` : '';
+    return { run, ok: false, message: `This fix is already planned${hint}; no hours or trust spent.` };
+  }
   const refused = !req.hardwareId && !req.fixId ? dryRunRefusal(run, req.commands ?? []) : null;
   if (refused) return { run, ok: false, message: refused };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;
@@ -100,8 +109,11 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     if (change.activateDay === r.day) {
       r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
     } else r = { ...r, changes: [...r.changes, change] };
+    const noTarget = fix !== undefined && !hasEventForFix(r, content, fix.id);
     if (fix) r = endEventByFix(r, content, fix.id);
-    return { run: logLine(r, `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`), ok: true, message: `Applied: ${req.label}` };
+    const what = `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`;
+    if (noTarget) return { run: logLine(r, `${what} (${NO_TARGET})`), ok: true, message: `Applied with no effect: ${req.label}; ${NO_TARGET}` };
+    return { run: logLine(r, what), ok: true, message: `Applied: ${req.label}` };
   }
   return { run: { ...r, changes: [...r.changes, change] }, ok: true, message: `Planned ${idText('change', change.id)} for day ${change.activateDay + 1}: ${req.label}` };
 }

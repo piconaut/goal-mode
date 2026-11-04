@@ -89,6 +89,9 @@ export function storyFor(run: RunState, content: GameContent, day: number): RunS
 /** Fixes the scenario's event cards call for: the Change Desk offers and accepts only these. */
 export const fixIdsOf = (content: GameContent): string[] => [...new Set(content.events.flatMap((e) => (e.fix ? [e.fix] : [])))].sort();
 
+export const hasEventForFix = (run: RunState, content: GameContent, fixId: string): boolean =>
+  run.events.some((e) => e.started && !e.ended && content.events.some((d) => d.id === e.defId && d.fix === fixId));
+
 export function endEventByFix(run: RunState, content: GameContent, fixId: string): RunState {
   const tick = run.sim.tick;
   let r = run;

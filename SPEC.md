@@ -858,6 +858,11 @@ Trust ×(1 if an incident is active, ×3 otherwise). Every change has a small **
 (scaled by complexity and by "Team Fatigue"): a mistyped classification rule, a policy
 that doesn't validate, a weight change that fails on the HMC. A **validation** tool (unlock)
 reduces the risk.
+Planned event fixes queue their restoration commands at 06:00 along with the other planned changes;
+the event ends only when that fix succeeds. A fix already planned is refused without spending
+engineer-hours or trust (it reveals only the player's own plan). A fix with no active target is accepted
+and charged like any other, and its log line says "no active event matched this fix" once it runs (06:00
+for a planned fix, at once for a live one), so the Change Desk can't be probed for hidden events.
 Event fixes that are operator or DBA commands under the incident procedure (`-CANCEL THREAD`,
 `-TERM UTILITY`, cancelling a job, `HOLD RECALL`) are not changes: during the live day they cost their
 engineer-hours and their own facet trust, but no change-board trust. A runaway query only ever runs inside
