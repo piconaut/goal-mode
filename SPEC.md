@@ -409,7 +409,9 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   PN (plan), TC (job class), SPM, SY (system), nested rules. Default class per subsystem.
   Patterns use WLM syntax: `%` masks one character (trailing `%` may match none), `*` is a
   wildcard only last or alone and a literal elsewhere (WLM Planning p.104).
-  Anything unmatched in a non-STC subsystem goes to **SYSOTHER** (discretionary).
+  Anything unmatched in a non-STC subsystem goes to **SYSOTHER** (discretionary). The classification
+  editor shows every supported subsystem, including empty panels with their defaults, so the first
+  rule can be prepared before new work arrives.
 - **Report classes** (pure reporting, cost nothing) — required for granular RMF views.
 - CICS/IMS region management: "Manage Region Using Goals Of TRANSACTION | REGION | BOTH" on each STC/JES
   classification rule (inherited by sub-rules; WLM Planning p.122, p.211). TRANSACTION regions are transaction

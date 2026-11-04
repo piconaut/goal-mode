@@ -126,7 +126,6 @@ export function explainClassification(def: ServiceDefinition, items: readonly Wo
       });
     if (ss) walk(ss.rules, []);
     const catches = defaults[subsystem] ?? [];
-    if (!ss && catches.length === 0) continue;
     subsystems.push({
       subsystem,
       defaultServiceClass: ss?.defaultServiceClass ?? fallback,
