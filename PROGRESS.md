@@ -296,6 +296,8 @@ facts in docs/research.md). Ordered by impact:
   eligible CP overflow, backlog-only caps, pool accounting and discretionary planning. Goldens regenerated
   because actual dispatch changes recorded CPU/MSU and subsequent game decisions. Targeted cap, physical-pool,
   batch-projection and WLM tests pass; the PR records full-suite, benchmark and bot regression evidence.
+  The Monitor III CPU regression compares independent control/stressed runs at the same simulated time,
+  checking CP-specific delay, processor-delayed users, PI, velocity and the affected WFEX result.
 - [ ] **Power-cap RCA is a gotcha (content/design gap).** INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth
   CPU_PRIORITY/HARDWARE_FAULT (2 points); INC53 CARDAUTH: truth CPU_PRIORITY/POLICY (5 points). CPU_CAPACITY needs CPC
   ≥ 90 % (or LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`; thresholds hard-coded, not in
