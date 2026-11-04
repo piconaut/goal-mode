@@ -243,6 +243,12 @@ already in docs/research.md).
   typecheck and production build pass; browser copy/fallback, file and backtick-paste round-trips, invalid
   import and mobile checks pass. A download-blocked iframe with no clipboard still exposes selectable save
   text. Default three-scenario comparison has no differences; the artifact has not been republished.
+  Dialog lifecycle follow-up from #181 review (2026-11-04): closed save dialogs no longer match `.modal`,
+  restoring the documented screenshot flow. Native close events now reset the dialog state so Export and Import
+  can reopen; delayed close events are ignored after reopening. Save transfer and its format are unchanged.
+  Validation: 67 files / 650 tests and production build pass; native-close/reopen, Escape/focus and delayed-event
+  browser checks pass. The unchanged screenshot tool completes with no errors or mobile overflow; default
+  three-scenario comparison has no differences.
 - [ ] **Imported saves lack Monitor III history:** `mon3 --at` on an imported save shows nothing for past
   ranges (replay forward instead, or include the history).
 - [x] **Unplayable UI on `8c0dd9e`** (#160): the player's run stopped being playable there. The player confirmed it was
