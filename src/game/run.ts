@@ -23,9 +23,9 @@ import { deliverInquiries } from './inquiries';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
-import { failRisk, requestChange } from './run/changes';
+import { failRisk, NO_TARGET, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { drawEvents, endEventByFix, storyFor } from './run/events';
+import { drawEvents, endEventByFix, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
@@ -132,10 +132,13 @@ export function startDay(run: RunState, content: GameContent): RunState {
       }
       r = { ...r, pendingCommands: [...r.pendingCommands, ...c.commands] };
       changes.push({ ...c, status: 'APPLIED' });
-      r = logLine(r, `Planned change applied: ${c.label}`);
+      const noTarget = c.endsEvent !== null && !hasEventForFix(r, content, c.endsEvent);
+      r = logLine(r, `Planned change applied: ${c.label}${noTarget ? ` (${NO_TARGET})` : ''}`);
       if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
     } else {
-      if (c.status === 'APPLIED' && c.revertDay === r.day) r = { ...r, pendingCommands: [...r.pendingCommands, ...c.revertCommands] };
+      if (c.status === 'APPLIED' && c.revertDay === r.day) {
+        r = { ...r, pendingCommands: [...r.pendingCommands, ...c.revertCommands] };
+      }
       changes.push(c);
     }
   }

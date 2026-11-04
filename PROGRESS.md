@@ -274,7 +274,8 @@ facts in docs/research.md). Ordered by impact:
 - [x] **A planned fix makes its event permanent (bug, high).** Fixed 2026-11-03: `startDay` now keeps one command
   queue, including the restoration commands appended by each successful event fix. Previously its final assignment
   discarded those commands after marking the event ended, leaving its modifiers permanent and skipping natural expiry.
-  No-match and duplicate planned fixes return an explicit refusal without spending hours or trust. Regression tests
+  A duplicate planned fix is refused at no cost; a fix with no active event is charged and logs "no active event
+  matched this fix" when it runs (a free refusal would let the Change Desk probe for hidden events; PR review). Regression tests
   cover all 37 fix cards in all three scenarios (planned and live), job restarts, project completion and
   temporary-change reversion together, command ordering, natural expiry, failed fixes and no-match requests.
   Old saves are not repaired (user request). Goldens and the default no-action scenario comparisons are unchanged.

@@ -224,15 +224,27 @@ describe('events', () => {
     expect(advance(live, MIDWEST, MIDWEST_GAME, 1).sim.mods.cpu.RBANK).toBe(3);
   });
 
-  it.each(['BRIEFING', 'LIVE'] as const)('a fix with no active target in %s spends nothing', (phase) => {
+  it.each(['BRIEFING', 'LIVE'] as const)('a fix with no active target in %s is charged and reports no effect', (phase) => {
     const base = activeCard('REGRESSION');
     for (const event of [undefined, { ...base.events[0]!, started: false }, { ...base.events[0]!, ended: true }]) {
       const r = { ...base, phase, events: event ? [event] : [] };
       const out = requestChange(r, MIDWEST_GAME, { label: 'fix', fixId: 'REBIND_REVERT' });
-      expect(out.ok).toBe(false);
-      expect(out.message).toMatch(/No active event/);
-      expect(out.run).toBe(r);
+      // Accepted like a matching fix, so the Change Desk cannot be probed for hidden events.
+      expect(out.ok).toBe(true);
+      expect(out.run.hoursLeft).toBeLessThan(r.hoursLeft);
+      const after = phase === 'LIVE' ? out.run : startDay(out.run, MIDWEST_GAME);
+      const change = after.changes.at(-1)!;
+      if (change.status === 'APPLIED') expect(after.log.some((l) => l.includes('no active event matched'))).toBe(true);
+      if (phase === 'LIVE') expect(out.message).toMatch(/no effect/);
+      expect(after.pendingCommands).toEqual([]);
     }
+  });
+
+  it('a matching and a non-matching fix are indistinguishable when requested', () => {
+    const r = activeCard('REGRESSION');
+    const fixIds = [...new Set(MIDWEST_GAME.events.flatMap((e) => (e.fix ? [e.fix] : [])))];
+    const outs = fixIds.map((fixId) => requestChange(r, MIDWEST_GAME, { label: 'probe', fixId }));
+    expect(outs.every((o) => o.ok)).toBe(true);
   });
 
   it('does not charge twice for the same planned fix', () => {
