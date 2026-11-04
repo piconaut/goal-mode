@@ -112,6 +112,35 @@ Notes: <non-blocking nits, unmentioned changes, untested edge cases>
 Comment: <url> | not posted (error)
 ```
 
+## Review-loop mode
+
+When the brief says "review-loop mode" (the hourly `pr-review-loop` skill), also:
+
+- Give every finding an ID and a class. **Blocking** (`B1`, `B2`, …) is anything that earns DON'T MERGE below,
+  including a merge conflict with the base. **Non-blocking** (`N1`, `N2`, …) is every other problem or note that
+  asks for a change (nits, missing tests, wording, edge cases). Observations that need no change are not findings.
+- On a follow-up pass the brief gives the previous lists. Report each previous ID as fixed / not fixed with
+  evidence, then list new findings with new IDs (continue the numbering, don't reuse).
+- Put the findings in the "Problems" and "Notes" lines as usual, prefixed with their IDs.
+- End the posted comment with this marker, after the footer, so the next tick can read it:
+
+```
+<!-- pr-review-loop
+head: <full head SHA you reviewed>
+pass: first | followup
+outcome: MERGE | HOLD
+blocking:
+- B1: <one line, open items only>
+nonblocking:
+- N1: <one line, open items only>
+-->
+```
+
+  `outcome` follows the loop's policy, not your verdict line. **First pass:** MERGE only with no open findings
+  at all. **Follow-up:** MERGE when every previous item is fixed and there is no new blocking finding; new
+  non-blocking findings are allowed. On a follow-up MERGE, list the new non-blocking items under `nonblocking`
+  so the caller can log them. Write `- none` under an empty list.
+
 Pick DON'T MERGE for a red or missing required check, failing check, a non-deterministic hash, an
 unexplained hash change, a perf PR that changes a hash, a broken rule, a false claim, or a blocking
 problem from the adversarial read.

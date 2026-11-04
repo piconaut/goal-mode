@@ -743,6 +743,11 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
 - Realism audit loop: paced audit → main-agent vetting → isolated fix → scenario sweeps; one golden-changing
   PR at a time. Agents/host adaptations: [AGENTS.md](AGENTS.md), [docs/codex.md](docs/codex.md), `.claude/agents/`.
 
+- Hourly PR review (user request 2026-11-04): a scheduled task starts a fresh session each hour that runs
+  `.claude/skills/pr-review-loop/`. First pass merges only a PR with no findings at all; a held PR merges once a
+  follow-up review shows every earlier finding fixed and nothing new blocking; second-pass non-blocking leftovers
+  go to "PR review follow-ups" above. State is the hidden `pr-review-loop` marker in each review comment.
+
 ## Branch workflow
 
 - **Playtest fix loop (user request 2026-11-04):** one iteration per hour: one new discrete playtest fix or
