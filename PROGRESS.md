@@ -485,6 +485,14 @@ facts in docs/research.md). Ordered by impact:
 - [ ] **Playtest companion skill and investigator subagent (proposal).** A `playtest-companion` skill holding the
   standing rules and setup, and an optional `playtest-investigator` subagent for deep code dives that returns
   only the finding in the report format and filters spoilers in its own context. Not built yet.
+- [ ] **A forewarned fix planned ahead is silently wasted (design gap).** D24 (build `d8ada51`): the inbox forewarned a
+  stored procedure redeploy; the player planned "Redeploy as native SQL procedures" in the briefing. It applied at 06:00
+  (`src/game/run.ts:133–137`), the event card started later that morning, `endEventByFix` found nothing started and
+  the fix was spent (2 h) with the event still running. The build gave no warning; dev now logs "no active event
+  matched this fix" but still discards it. A fix the player could see coming should either arm against the
+  forewarned card (end it when it starts that day) or be refused at planning time with the reason, and the hours
+  refunded if it found no target. Same card twice in this run (D11, D24), so the fix also isn't lasting: if the
+  redeploy reintroduces COBOL procedures, say so in the card's clue.
 
 ### M8.7 Realism fixes
 
