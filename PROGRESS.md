@@ -360,7 +360,7 @@ facts in docs/research.md). Ordered by impact:
   'confirm()'"). ⇧ import (`src/ui/App.tsx`), starting a new run over a saved one and Restart with planned changes
   (`src/ui/Overlays.tsx`) all gate on `confirm()`, which returns false, so they silently do nothing. Replace with an
   in-app confirmation dialog. Workaround used: patch the run in IndexedDB from dev tools (re-queue the lost event end
-  commands) and reload.
+  commands) and reload; the player confirmed RBANK CPU/txn and MOBILE zIIP recovered.
 
 ### M8.7 Realism fixes
 
