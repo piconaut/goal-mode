@@ -526,13 +526,13 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   (→ STCDEV) shows "catches nothing", though PROCU shows DEVT's STCs in STCDEV. Classification itself uses `SY: lparId`
   everywhere in the sim; `workItems` in `src/game/classifyExplain.ts` builds one item per jobname without the system,
   so no `SY=` rule can match. Build items per (jobname, system).
-- [ ] **No way to add the first rule for a subsystem with no rules (UI bug, high).** The acquisition hint ("runs under
-  USS (subsystem OMVS) as userid ACQSVC … Change Desk › WLM › Classification rules shows where it would go today")
-  sends the player to a panel that doesn't exist: `classifyExplain` skips a subsystem with no rules and no work
-  defaulting into it today (`src/game/classifyExplain.ts:129`), and the rules view only renders those panels, so OMVS
-  has none until ACQSVC is already live in SYSOTHER. Still on dev. Workaround: add the OMVS entry by hand in Review
-  policy JSON. Fix: always show every subsystem's panel (empty, with its default) and let the player add the first
-  rule; the Classify test form already offers OMVS.
+- [x] **No way to add the first rule for a subsystem with no rules (UI bug, high).** Completion takes effect
+  on merge: classification previews always include every supported subsystem, even without a policy entry or
+  current work. Empty panels show their built-in default (STC → SYSSTC, others → SYSOTHER) or explicit default
+  and expose the existing Add rule form. An OMVS userid rule can therefore be prepared before ACQSVC arrives,
+  through the acquisition hint's Change Desk path. Classification mechanics and policy activation are unchanged.
+  Regression coverage checks empty panels/defaults and adding the first rule before work arrives; browser
+  validation exercises the editor and pending/activation flow. Run-specific validation evidence is in the PR.
 - [ ] **Capacity planner says "deadline 06:00" after DEADLINE_0500 (UI bug).** The line uses `batchDeadlineSec`, but
   the label is hard-coded (`src/game/planner.ts:74`).
 - [ ] **HMC: show physical engines per type (UI).** Totals are only implied by the logical:physical ratio.
