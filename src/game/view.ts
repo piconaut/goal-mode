@@ -149,6 +149,8 @@ export interface ViewModel {
   insight: number;
   capexRemaining: number;
   opexBudget: number;
+  /** Temporary capacity charges booked so far this month, added to MLC at billing. */
+  opexSpent: number;
   mlcEstimate: number;
   score: number;
   perks: string[];
@@ -312,6 +314,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     insight: run.insight,
     capexRemaining: run.capexRemaining,
     opexBudget: opexBudgetFor(run.opexBudgetMonthly, run.perks),
+    opexSpent: run.opexSpentThisMonth,
     mlcEstimate: estimateMonth(sim.cost, scenario.products),
     score: run.score,
     perks: run.perks,

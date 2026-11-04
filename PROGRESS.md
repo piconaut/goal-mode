@@ -460,10 +460,15 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   for 3 days per order (player's two D12 orders ≈ $54k + 2× emergency trust), no early end. Fix: plan-for-tomorrow during
   the live day without trust cost, or exempt lead-time items; "Deactivate CoD" from the next day (real early deactivation
   not verified).
-- [ ] **MLC vs opex budget (UI gap).** At each monthly bill MLC + CoD is compared with the budget: Finance trust
-  −over %, > 25 % over ends the run (`src/game/run.ts`). The player's $819k vs $780k ≈ 5 % → −5 Finance, not a loss. The
-  Finance card calls the opex line "CoD and other temporary charges" and the header shows MLC est and budget unsummed.
-  Fix: "MLC + CoD = X vs budget (+N %; over 25 % ends the run)" in header and Finance card.
+- [x] **MLC vs opex budget (UI gap).** Fixed 2026-11-04: the header and Finance card share the combined
+  MLC estimate + CoD accrued total, budget and signed percentage difference. The Finance card breaks down the
+  two components and explains the budget penalty: at monthly billing, positive overage percentage costs Finance
+  trust (up to 40 points); strictly over 25% ends the run. Both show the billing threshold, so $819k vs $780k
+  reads +5.0%, rather than an immediate loss. This displays existing estimates/charges; billing rules, estimate
+  timing and the held finance-feedback proposal are unchanged. Validation: 67 files / 650 tests, typecheck
+  and production build pass; worker-backed browser fixtures agree in both locations at 0%, 5%, 25% and 26%
+  over, with zero-charge/unavailable-budget cases, no page errors and no mobile overflow. Default three-scenario
+  comparison has no differences; no artifact republish.
 - [ ] **TFP offer lacks the numbers (design gap).** Shows baseline $/month, sub-capacity bill at the peak and overage %;
   the per-product terms are stripped from the view and nothing projects TFP vs sub-capacity from history. Fix: per-product
   table (peak MSU and $/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection.

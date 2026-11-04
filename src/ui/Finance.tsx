@@ -4,6 +4,7 @@ import type { ViewModel } from '../game/view';
 import { LineChart, type Series } from './LineChart';
 import type { GameHandle } from './useGame';
 import { Empty } from './Empty';
+import { OpexBudget } from './OpexBudget';
 
 const k$ = (x: number) => `$${Math.round(x / 1000).toLocaleString()}k`;
 
@@ -65,13 +66,7 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
               <div className={`tag ${overTarget ? 'bad' : 'good'}`}>{overTarget ? `over by ${k$(f.monthToDate - f.cfoTarget)}` : 'on track'}</div>
             </div>
           )}
-          <div className="card" style={{ cursor: 'default' }}>
-            <div className="muted">Opex this month</div>
-            <div style={{ fontSize: 22, fontFamily: 'var(--mono)' }}>
-              {k$(f.opexSpent)} <span className="muted" style={{ fontSize: 13 }}>of {k$(f.opexBudget)}</span>
-            </div>
-            <div className="muted" style={{ fontSize: 12 }}>CoD and other temporary charges</div>
-          </div>
+          <OpexBudget mlc={f.monthToDate} cod={f.opexSpent} budget={f.opexBudget} />
         </div>
         {f.tfp && (
           <div style={{ overflowX: 'auto' }}>

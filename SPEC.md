@@ -895,6 +895,12 @@ one live day, so its fix could otherwise only be bought as an emergency change.
 | **Capex budget** (quarterly) | Hardware purchases | Quarterly; CFO events | Upgrades, memory, zIIPs, DASD |
 | **Insight** | Research currency for analytics tools | Running diagnostics, correct RCAs, studying reports | Unlocking tools/skills |
 
+The header and Finance card compare the current software estimate plus CoD charges already accrued with the
+monthly opex budget, showing the combined total and percentage difference. The Finance card also shows each
+component. These are estimates at current pricing/peaks plus booked charges; future usage and charges may
+raise the bill. At monthly billing, positive overage percentage reduces Finance trust (up to 40 points), and
+strictly more than 25% over budget ends the run.
+
 Trust also has **stakeholder facets**: Retail, Cards, Digital, Finance, Regulator. Each SLA
 maps to a stakeholder, and their mood shows as portraits in the briefing. Finance doesn't care
 about SLAs but hates bill overruns; the Regulator cares only about batch deadlines and audit
