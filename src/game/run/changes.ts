@@ -7,7 +7,7 @@ import {
   type PlannedChange,
   type RunState
 } from '../types';
-import { endEventByFix, fixIdsOf } from './events';
+import { endEventByFix, fixIdsOf, hasEventForFix } from './events';
 import type { GameContent } from './shared';
 import { clampTrust, FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
 
@@ -54,6 +54,8 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   const live = run.phase === 'LIVE';
   const preview = previewChange(previewContext(run, content), req);
   if (!preview.ok) return { run, ok: false, message: preview.reason ?? 'Change not allowed' };
+  if (req.fixId && !hasEventForFix(run, content, req.fixId)) return { run, ok: false, message: 'No active event matches this fix; no hours or trust spent.' };
+  if (req.fixId && run.changes.some((c) => c.status === 'PLANNED' && c.endsEvent === req.fixId)) return { run, ok: false, message: 'This fix is already planned; no hours or trust spent.' };
   const refused = !req.hardwareId && !req.fixId ? dryRunRefusal(run, req.commands ?? []) : null;
   if (refused) return { run, ok: false, message: refused };
   const hw = req.hardwareId ? hardwareItem(req.hardwareId) : undefined;

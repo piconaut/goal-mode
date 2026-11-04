@@ -115,7 +115,6 @@ export function startDay(run: RunState, content: GameContent): RunState {
   if (run.phase !== 'BRIEFING') return run;
   let r = run;
   const changes: PlannedChange[] = [];
-  const pending: Command[] = [...r.pendingCommands];
   for (const c of r.changes) {
     if (c.status === 'PLANNED' && c.activateDay === r.day) {
       const attempt = changes.filter((x) => x.label === c.label).length;
@@ -131,16 +130,16 @@ export function startDay(run: RunState, content: GameContent): RunState {
         );
         continue;
       }
-      pending.push(...c.commands);
+      r = { ...r, pendingCommands: [...r.pendingCommands, ...c.commands] };
       changes.push({ ...c, status: 'APPLIED' });
       r = logLine(r, `Planned change applied: ${c.label}`);
       if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
     } else {
-      if (c.status === 'APPLIED' && c.revertDay === r.day) pending.push(...c.revertCommands);
+      if (c.status === 'APPLIED' && c.revertDay === r.day) r = { ...r, pendingCommands: [...r.pendingCommands, ...c.revertCommands] };
       changes.push(c);
     }
   }
-  r = { ...r, changes, pendingCommands: pending, phase: 'LIVE', hour: newHour(r.sim.tick), mon3Charts: null };
+  r = { ...r, changes, phase: 'LIVE', hour: newHour(r.sim.tick), mon3Charts: null };
   // Today's chart history starts at 06:00 and shows the planned changes just applied.
   if (chartsActive(r)) r = { ...r, mon3Charts: { ...emptyCharts(r), logSeen: run.log.length } };
   return r;
