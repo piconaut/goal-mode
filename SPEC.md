@@ -278,6 +278,11 @@ entitlement_L (in engines) = weight_L / Σ weight(active LPARs in pool) × physi
 - Weights matter only under contention. Unused entitlement is redistributed ("white space")
   to LPARs with demand and spare logical processors, in proportion to weight.
 - An LPAR can never use more than `logicalCPs_L` engines' worth.
+- Actual dispatch on each image is limited to its jointly allocated CP and zIIP grants. After the
+  initial pool allocation, a side-effect-free dispatch probe requests CP help for unserved eligible
+  work; PR/SM then reserves that help before execution. Execution grants and queueing service capacity
+  are separate: queueing uses available capacity, so requesting a fraction of an idle CPC does not imply
+  saturation. WLM priority trials use the same grant bounds and service capacity as current dispatch.
 - **Initial capping** (hard cap to weight share) and **absolute capping** (cap in engines × 100)
   are supported.
 
@@ -513,6 +518,15 @@ receiver candidate.
   scope.
 - **Maximum** is always enforced (cap). **Minimum** is honoured only while the group's work
   misses goals, even if that hurts more important work (SG24-7621 §4.16–4.19).
+- Capped work is non-dispatchable during sleeping slices (*WLM Planning* 3.1 p.60 notes 4–5).
+  PR/SM planning and z/OS dispatch share one cap calculation, including queued work. The fluid model
+  applies the CP awake fraction to zIIP-eligible demand too; without online zIIPs, eligible work counts
+  toward the CP maximum. Overflow from saturated online zIIPs also stays within that CP budget
+  (APPROX: unused overflow grants wait for the next tick rather than reallocating capacity).
+  Type 1's sysplex demand split includes backlog. Discretionary caps use the same path.
+  LPAR busy and MSU consumption count dispatched cycles, including modeled overhead, rather than unused
+  capacity offered by PR/SM (*RMF Report Analysis* 3.1 p.389, p.98); MVS busy excludes sleeping demand.
+  APPROX: continuous awake fractions, without the real 1/256 slice granularity or recovery-boost exceptions.
 - Max 32 per definition; one per service class.
 - **Region groups cap their transactions.** CICS transaction CPU is consumed in the AORs, so a group on the AOR
   class caps the transactions (*WLM Planning* p.60 note 1). A workload's `hostRole` names its host region role; its
@@ -1544,7 +1558,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH (0–999 999 999); messages already queued above a lowered MAXDEPTH stay and drain (MQ 9.4 Administration Reference p.463); depth adds memory; no MQ SMF 115/116 |
 | WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved), on or off: NO sets I/O priority = DP (WLM Planning p.115). NO leaves I/O using/delay samples out of velocity (and velocity PI) only; WLMGL, WLM_DETAIL and Monitor III still report them (p.70, p.115). APPROX: YES (goal-based I/O priorities) also uses DP |
 | Discretionary goal management | **Simplified** | Eligibility per WLM Planning (velocity ≤ 30 or RT > 1 min, no resource group); small consumers skipped; other SG24-7621 Fig. 4-22 conditions not modelled. Starts at PI < 0.71 and stays capped below 0.81 (WLM's band); the cap grows with the distance below 0.81 (gain and 50 % floor FICTIONAL) |
-| Resource group types 1/2/3 semantics | **Real** | MVS Planning: WLM ch. 7. CP only (specialty consumption excluded, the default). Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals; a discretionary member's share sits just below goal work, so it only takes capacity no goal period wants (WLM Planning p.59; APPROX: not limited to periods meeting their goals). Type 1 is a sysplex SU/s budget split across systems by this tick's member demand (APPROX). A group on a region class caps the transactions hosted there (by host-region CPU share, APPROX) and slows the region's dependents |
+| Resource group types 1/2/3 semantics | **Real mechanics, fluid approximation** | MVS Planning: WLM ch. 7. CP service counts toward the cap; both pools honour its awake fraction (3.1 p.60 notes 4–5). Without zIIPs, eligible work counts on CPs. Planning and dispatch share the cap, including backlog; sleeping work consumes no CPU/MSU. Continuous awake fractions omit 1/256 granularity and recovery boost. Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals; a discretionary member's share sits just below goal work, so it only takes capacity no goal period wants (WLM Planning p.59; APPROX: not limited to periods meeting their goals). Type 1 is a sysplex SU/s budget split across systems by member demand including backlog (APPROX). A group on a region class caps the transactions hosted there (by host-region CPU share, APPROX) and slows the region's dependents |
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
 | HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM confirmed (PR #9); a soft cap lowers E for polarity (WLM Planning p.46) | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |
@@ -1587,6 +1601,13 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
 | Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; CP-only images retain ready demand. Separate-pool WLM trials check a conservative demand-recovery envelope using the execution cross-pacing formula; unsettled trials are rejected. Pacing and recovery remain approximations. Lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |
 
+Additional dispatch approximations:
+
+- A transaction hosted partly outside a resource group shares one slice with its capped hosts. Its outside
+  CP demand stays uncapped, but its outside zIIP overflow can still be clipped by the slice's CP limit.
+- Converting effective execution to physical CPU consumption retains the full PR/SM grant's efficiency.
+  With HiperDispatch this can overstate busy/MSU if the unused portion would have run on less efficient VM/VLs.
+
 Whenever a coefficient is invented, it lives in `content/` with a `// FICTIONAL:` comment and
 the shape it is meant to reproduce.
 
@@ -1613,6 +1634,8 @@ Primary IBM sources:
   cap pattern and phantom weight), group capacity shares, long-term CPU protection, Honor Priority (no CP help
   for discretionary work), CICS/IMS region management.
   https://www.ibm.com/docs/en/SSLTBW_2.5.0/pdf/ieaw100_v2r5.pdf
+  Version 3.1 p.60 notes 4–5: resource-group awake slices and zIIP dispatchability.
+  https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=60
   Version 3.1 p.121–122: Honor Priority for transaction-server CICS/IMS regions and enclave servers;
   all served transaction classes must be NO to prevent a shared region's overflow.
   https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122

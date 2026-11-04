@@ -46,15 +46,14 @@ export function prsm(t: TickCtx): void {
   const { config, demands, lpars } = t;
   for (const cpc of config.cpcs) {
     const res = resolveCpc(cpc, config.lpars, demands);
-    const msuCp = msuPerCp(cpc);
     for (const l of config.lpars) {
       if (l.cpcId !== cpc.id) continue;
       const pools = l.pools.flatMap((p) => {
         const r = res[poolKey(l.id, p.pool)];
         return r ? [r] : [];
       });
-      const cpRt = pools.find((p) => p.pool === 'CP');
-      lpars.push({ id: l.id, pools, msuRate: l.kind === 'ZOS' ? (cpRt?.deliveredEngines ?? 0) * msuCp : 0 });
+      // z/OS dispatch fills consumption after it has used the PR/SM offer.
+      lpars.push({ id: l.id, pools, msuRate: 0 });
     }
   }
 }

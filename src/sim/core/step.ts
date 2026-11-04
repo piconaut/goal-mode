@@ -21,8 +21,8 @@ import type { CpcConfig, EnvState, SimState, WorkloadRuntime } from './types';
 import { TICK_SEC, TICKS_PER_DAY } from './units';
 import { CRITICAL_PROJECTION_EVERY, DEFAULT_IO, type TickCtx, type TickSums } from './tick/ctx';
 import { adjustPolicies, prsm, softCap, stepCapping, stepCost, stepRmf } from './tick/control';
-import { lparDemand } from './tick/demand';
-import { dispatchLpar } from './tick/dispatch';
+import { lparDemand, planLpar } from './tick/demand';
+import { dispatchLpar, reserveOverflow } from './tick/dispatch';
 import { byIdOf, effectiveAddressSpaces, effectiveWorkloads, updateRouting } from './tick/helpers';
 
 export type { Command } from './commands';
@@ -142,6 +142,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     runningBy,
     queuedWlmBy,
     slicesBy: {},
+    capOfBy: {},
     batchRefsBy: {},
     swappedBy: {},
     pagingFrac,
@@ -164,6 +165,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     cicsStorageBy: {},
   };
   for (const l of zosLpars) lparDemand(t, l);
+  for (const l of zosLpars) planLpar(t, l);
   // Coupling facilities: request work from last tick; a shared CF without thin
   // interrupts polls, consuming its whole logical engine share.
   for (const l of config.lpars.filter((x) => x.kind === 'CF')) {
@@ -193,6 +195,11 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     }
   }
 
+  if (reserveOverflow(t, zosLpars)) {
+    t.lpars.length = 0;
+    softCap(t);
+    prsm(t);
+  }
   const sums: TickSums = { randomIops: 0, seqIops: 0, cfRequests: 0, cfRequestsBy: {} };
   for (const l of zosLpars) dispatchLpar(t, l, sums);
   const { randomIops, seqIops, cfRequests } = sums;

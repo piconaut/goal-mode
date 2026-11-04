@@ -88,6 +88,9 @@ level or a separate toggle.
   closure for Midwest and ~47% for Harbourline. The older revision also slowed on this host, so the reported
   doubling is not all attributable to code. Profiles show distributed growth, including RMF.
 - Runner fixes landed: available-parallelism sweep defaults (#138), hourly diagnostics only on demand (#139).
+- PR/SM pool plans already cache configuration-only work, including entitlement, by CPC and LPAR-array identity.
+  A separate entitlement index showed no consistent day-level speedup across all three scenarios and was
+  discarded. Configuration edits must replace those objects; in-place mutation can leave cached plans stale.
   Shared preparation is the first conditional simulation prototype; no full LPAR plan yet. Numeric-kernel work
   requires measured ≥15% end-to-end savings and removal of the old production path in the same milestone.
   Bot bundling (~0.18 s startup/run) is deferred; `advanceBatch` stays shelved.
@@ -279,19 +282,22 @@ facts in docs/research.md). Ordered by impact:
   cover all 37 fix cards in all three scenarios (planned and live), job restarts, project completion and
   temporary-change reversion together, command ordering, natural expiry, failed fixes and no-match requests.
   Old saves are not repaired (user request). Goldens and the default no-action scenario comparisons are unchanged.
-- [ ] **Resource-group cap creates phantom LPAR busy and MSU (sim bug, high).** The player's `RGDDFADH` (type 1, max 100
-  SU/s; TSO, DEVBAT, DDFADHOC). D1 repro on PROD2 (4 CPs): busy 59–73 % → 100 %, MSU 339–418 → 574, EAppl unchanged at
-  2.6–2.9 engines; type 2 (5 %) the same; removing the group restores it. Player's D15 save with the group re-added:
-  PROD2 61 → 100 %, MSU 627 → 1,025, CPC 69 → 91 %. Cause: `planLpar` (`src/sim/core/step.ts`) gives PR/SM the uncapped
-  demand plus a capped backlog that never drains (321 → 485 CPU-s), the cap (`capOf`) is applied only in `prepareLpar`
-  (`src/sim/wlm/evaluate.ts`); LPAR/MVS busy, `msuRate` (R4HA, bill) and batch `lparBusy` count delivered, not dispatched,
-  CPU. `discretionaryCaps` shares the flaw. Second leak: only `sliceCp` is capped; DDFADHOC's zIIP-eligible 60 % overflows
-  onto CPs uncapped on zIIP-less PROD2 (0.12–0.28 engines against a ~0.0025-engine cap). Real: capped work is
-  non-dispatchable and a CP without ready work waits (WLM Planning p.60; RMF Report Analysis p.389, p.98). Fix: one cap
-  helper used by both `planLpar` and `prepareLpar`; busy/MSU from dispatched CPU; cap zIIP-eligible demand by the same
-  awake fraction; realism test "an RG maximum never raises LPAR busy or MSU". The player's "PROCU under one engine" was not
-  reproduced (2.6–2.9 engines), but the gap to 100 % busy is the same effect. 100 SU/s ≈ 0.25 % of one CP: starving the
-  work is correct.
+- [x] **Resource-group cap creates phantom LPAR busy and MSU (sim bug, high).** Fixed 2026-11-03: PR/SM
+  planning and dispatch share `dispatchableDemand`, including backlog and discretionary caps. Resource-group
+  sleeping slices gate both normal and zIIP-eligible work; without online zIIPs both count toward the CP maximum.
+  Type 1 budgets include backlog-only members across images; type 2 uses the current configuration's entitlement.
+  Busy/MSU consumption uses dispatched CPU rather than unused PR/SM offers, including the batch initiator's
+  previous-tick busy input. Overflow is reserved across the CPC before execution; actual dispatch and WLM
+  priority trials share the reserved grants; queueing still uses available service capacity, so an idle CPC
+  is not falsely saturated and counterfactual per-image availability cannot overcommit execution.
+  Withheld work keeps its CP/zIIP pool in the backlog. IBM: WLM Planning 3.1 p.60 notes
+  4–5, RMF Report Analysis 3.1 p.389 and p.98 (ledger and SPEC updated). APPROX: continuous awake fractions;
+  1/256 granularity and recovery boost not modelled. Regressions cover all three maximum types on PROD2,
+  eligible CP overflow, backlog-only caps, pool accounting and discretionary planning. Goldens regenerated
+  because actual dispatch changes recorded CPU/MSU and subsequent game decisions. Targeted cap, physical-pool,
+  batch-projection and WLM tests pass; the PR records full-suite, benchmark and bot regression evidence.
+  The Monitor III CPU regression compares independent control/stressed runs at the same simulated time,
+  checking CP-specific delay, processor-delayed users, PI, velocity and the affected WFEX result.
 - [ ] **Power-cap RCA is a gotcha (content/design gap).** INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth
   CPU_PRIORITY/HARDWARE_FAULT (2 points); INC53 CARDAUTH: truth CPU_PRIORITY/POLICY (5 points). CPU_CAPACITY needs CPC
   ≥ 90 % (or LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`; thresholds hard-coded, not in
@@ -612,6 +618,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Known approximations and risks
 
 - Per-AOR QR busy is not shown in SMF 110 (QR is per LPAR); policy overrides are whole-policy swaps.
+- Dispatch approximations: partially hosted resource-group slices can over-restrict outside-group zIIP overflow;
+  conversion from effective execution to physical busy/MSU retains the full grant's efficiency (SPEC §17).
 - Discretionary capping ignores recent receiver/donor status; TSO users are not swappable address spaces;
   homogeneous report classes are not split into periods; TFP unused baseline has no rollover.
 - Modeling/reporting limitations and researched facts belong in SPEC §17 and docs/research.md.

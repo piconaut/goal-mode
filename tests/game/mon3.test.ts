@@ -41,13 +41,26 @@ describe('Monitor III views', () => {
     expect(m.rows.some((r) => r.system === '*PLEX')).toBe(true);
   });
 
-  it('a CPU regression shows up as delay and a WFEX exception', () => {
-    const base = buildMon3(noon, MIDWEST);
-    const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
+  it('a CPU regression raises CP delay and worsens WFEX against a control at the same time', () => {
+    // Advance independent copies through the same ten minutes so ordinary WLM changes affect both.
+    const control = advance(structuredClone(noon), MIDWEST, content, 60);
+    const stressed = structuredClone(noon);
+    stressed.pendingCommands.push({ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 });
+    const hot = advance(stressed, MIDWEST, content, 60);
+    expect(control.sim.tick).toBe(noon.sim.tick + 60);
+    expect(hot.sim.tick).toBe(control.sim.tick);
+    const base = buildMon3(control, MIDWEST);
     const m = buildMon3(hot, MIDWEST);
-    const cpuDelay = (mm: typeof m) => mm.rows.filter((r) => r.system !== '*PLEX').reduce((a, r) => a + r.delay.cpu * r.cpuEngines, 0);
-    expect(cpuDelay(m)).toBeGreaterThan(cpuDelay(base));
-    expect(m.exceptions.length).toBeGreaterThan(base.exceptions.length);
+    const affected = (mm: typeof m) => mm.rows.find((r) => r.system === 'PROD2' && r.scKey === 'DDFPRD#2')!;
+    const before = affected(base), after = affected(m);
+    expect(after.delay.cpu).toBeGreaterThan(before.delay.cpu);
+    expect(after.avgUsers.delayProc).toBeGreaterThan(before.avgUsers.delayProc);
+    expect(after.pi!).toBeGreaterThan(before.pi!);
+    expect(after.velocity!).toBeLessThan(before.velocity!);
+    // Check the affected period even if other classes enter or leave exception at the same time.
+    const wfex = m.exceptions.find((e) => e.where === 'PROD2 DDFPRD#2')!;
+    expect(wfex.reason).toMatch(/WFL%/);
+    expect(parseFloat(wfex.value)).toBeLessThan(before.velocity!);
   });
 });
 

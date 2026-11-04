@@ -32,9 +32,13 @@ export interface DispatchDemand {
 }
 
 export interface DispatchInput {
+  /** Service capacity used for queueing estimates, including available white space. */
   cpCapacityEngines: number;
+  /** Joint PR/SM reservation: bounds execution without changing the service capacity. */
+  cpAllocatedEngines?: number;
   cpServers: number;
   ziipCapacityEngines: number;
+  ziipAllocatedEngines?: number;
   ziipServers: number;
   /** Short-engine PR/SM delay fraction for CPs (cannot be fixed by WLM). */
   cpPrsmDelayFrac: number;
@@ -139,8 +143,9 @@ function allocateByPriority(
   units: readonly (number | undefined)[],
   granted: number[],
   queueRatio: number[],
+  allocatedEngines = capacity,
 ): void {
-  let remaining = Math.max(0, capacity);
+  let remaining = Math.max(0, Math.min(capacity, allocatedEngines));
   let usedAbove = 0;
   for (let start = 0; start < order.length; ) {
     const dp = demands[order[start]!]!.dp;
@@ -171,7 +176,7 @@ export function dispatch(input: DispatchInput): DispatchResult[] {
   const zGranted = new Array<number>(n).fill(0);
   const zQueue = new Array<number>(n).fill(0);
   const units = demands.map((d) => d.units);
-  allocateByPriority(input.ziipCapacityEngines, input.ziipServers, demands, order, zWant, units, zGranted, zQueue);
+  allocateByPriority(input.ziipCapacityEngines, input.ziipServers, demands, order, zWant, units, zGranted, zQueue, input.ziipAllocatedEngines);
 
   // zIIP-eligible work that could not get a zIIP overflows to CPs at the same DP (IIPHONORPRIORITY=YES,
   // the default); with no zIIPs online it simply runs on CPs (MVS Init & Tuning Ref, IEAOPTxx).
@@ -185,7 +190,7 @@ export function dispatch(input: DispatchInput): DispatchResult[] {
   }
   const cGranted = new Array<number>(n).fill(0);
   const cQueue = new Array<number>(n).fill(0);
-  allocateByPriority(input.cpCapacityEngines, input.cpServers, demands, order, cWant, units, cGranted, cQueue);
+  allocateByPriority(input.cpCapacityEngines, input.cpServers, demands, order, cWant, units, cGranted, cQueue, input.cpAllocatedEngines);
 
   const prsmDelayRatio = input.cpPrsmDelayFrac / Math.max(1e-6, 1 - input.cpPrsmDelayFrac);
   const noZiip = input.ziipServers === 0;
