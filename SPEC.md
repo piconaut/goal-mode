@@ -859,6 +859,10 @@ the live policy and its reports change only when the activation executes. Uninst
 precedence over the planned policy as the editing base. After Start day and between live ticks, edits and
 previews use the latest activation in the pending command queue until it executes. The editor labels it
 "Queued for next tick"; this also preserves consecutive live installs while paused.
+Failed activations return their definition to pending edits only when no later policy activation that day
+succeeded. Cancelling an earlier activation does not restore its older definition over a later retained
+activation for the same day; the notice explains that edits already copied into the later policy remain.
+The last failed or cancelled activation can still return its edits, and uninstalled player edits take precedence.
 
 **Change windows & CAB.** Planned changes submitted in the morning briefing are normal changes
 and cost no trust. Changes during the live day are **emergency changes**: they cost

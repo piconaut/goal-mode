@@ -41,6 +41,25 @@ describe('changes', () => {
     expect(failedPolicyToday({ ...r, changes: [{ ...change, status: 'APPLIED' }] })).toBeNull();
   });
 
+  it('restores only the latest policy attempt today, preserving a later success', () => {
+    let r = fresh();
+    for (const name of ['FIRST', 'SECOND']) {
+      const out = requestChange(r, content, { label: name, commands: [{ kind: 'ACTIVATE_POLICY', definition: { ...r.sim.wlm.definition, policyName: name } }] });
+      expect(out.ok).toBe(true);
+      r = out.run;
+    }
+    const [first, second] = r.changes;
+    const states = (a: 'FAILED' | 'APPLIED', b: 'FAILED' | 'APPLIED'): RunState => ({
+      ...r, changes: [{ ...first!, status: a }, { ...second!, status: b }],
+    });
+    expect(failedPolicyToday(states('FAILED', 'APPLIED'))).toBeNull();
+    expect(failedPolicyToday(states('APPLIED', 'FAILED'))?.policyName).toBe('SECOND');
+    expect(failedPolicyToday(states('FAILED', 'FAILED'))?.policyName).toBe('SECOND');
+    // A future-day or non-policy change must not hide today's last failed policy.
+    expect(failedPolicyToday({ ...r, changes: [{ ...first!, status: 'FAILED' }, { ...second!, status: 'APPLIED', activateDay: r.day + 1 }] })?.policyName).toBe('FIRST');
+    expect(failedPolicyToday({ ...r, changes: [{ ...first!, status: 'FAILED' }, { ...second!, status: 'APPLIED', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }] })?.policyName).toBe('FIRST');
+  });
+
   it('hardware orders spend capex and arrive after their lead time', () => {
     const out = requestChange(fresh(), content, { label: 'zIIP', hardwareId: 'ADD_ZIIP' });
     expect(out.ok).toBe(true);

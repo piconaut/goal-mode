@@ -83,6 +83,27 @@ describe('cancel', () => {
     expect(again.message).toContain(`CHG${id}`);
   });
 
+  it('does not restore an older policy when a later activation for the same day is kept', () => {
+    let r = fresh();
+    for (const name of ['FIRST', 'SECOND']) {
+      r = requestChange(r, content, { label: name, commands: [{ kind: 'ACTIVATE_POLICY', definition: { ...r.sim.wlm.definition, policyName: name } }] }).run;
+    }
+    const first = r.changes[0]!;
+    const second = r.changes[1]!;
+    const cancelled = cancelChange(r, first.id);
+    expect(cancelled.ok).toBe(true);
+    expect(cancelled.restoredPolicy).toBeUndefined();
+    expect(cancelled.message).toContain('Later policy SECOND keeps its current edits');
+    expect(cancelled.run.changes).toEqual([second]);
+    expect(cancelled.run.hoursLeft).toBe(r.hoursLeft + first.hours);
+    // Cancelling the last install still returns its policy, even if an earlier one remains.
+    expect(cancelChange(r, second.id).restoredPolicy?.policyName).toBe('SECOND');
+    // A later failed or future-day activation doesn't supersede this day's cancelled policy.
+    for (const later of [{ ...second, status: 'FAILED' as const }, { ...second, activateDay: r.day + 1 }]) {
+      expect(cancelChange({ ...r, changes: [first, later] }, first.id).restoredPolicy?.policyName).toBe('FIRST');
+    }
+  });
+
   it('cannot cancel a change once its day has started', () => {
     let r = requestChange(fresh(), content, { label: 'w', commands: [weight(500)] }).run;
     r = startDay(r, content);

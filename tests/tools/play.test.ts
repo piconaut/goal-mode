@@ -199,6 +199,40 @@ describe('headless play interface', () => {
     }
   });
 
+  it('does not restore a failed earlier install over a later successful policy', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    // Seed 43 fails BASEPOL2 at 06:00 but successfully queues BASEPOL3.
+    let f = run(newPlayFile(43), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }, { cmd: 'start' }]);
+    expect(f.run.changes.map((c) => c.status)).toEqual(['FAILED', 'APPLIED']);
+    expect(f.pendingPolicy).toBeNull();
+    f = run(f, [edit('TSO', 3)]);
+    expect(f.pendingPolicy!.policyName).toBe('BASEPOL4');
+    expect(f.pendingPolicy!.classes.find((c) => c.id === 'ONLMED')!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec: 0.6 });
+    f = run(f, [{ cmd: 'activate' }, { cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL4');
+    expect(f.run.sim.wlm.definition.classes.find((c) => c.id === 'ONLMED')!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec: 0.6 });
+  });
+
+  it('cancelling an earlier install keeps the later definition without restoring stale pending edits', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    let f = run(newPlayFile(7), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }]);
+    const out = applyPlayCommand(f, { cmd: 'cancel', changeId: f.run.changes[0]!.id });
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain('BASEPOL3');
+    expect(out.text).not.toContain('edits are pending again');
+    f = out.file;
+    expect(f.pendingPolicy).toBeNull();
+    f = run(f, [edit('TSO', 3), { cmd: 'activate' }, { cmd: 'start' }, { cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL4');
+    for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6], ['TSO', 3]] as const) {
+      expect(f.run.sim.wlm.definition.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
+    }
+  });
+
   it('policy shows the service definition, its rules and the processors it runs on', () => {
     const text = policyText(newPlayFile(7, 'NORMAL', 'harbourline'), false);
     expect(text).toMatch(/active policy \S+/);
