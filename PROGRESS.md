@@ -356,6 +356,17 @@ facts in docs/research.md). Ordered by impact:
   header's speed-button slot is empty during the briefing, so move them there.
 - [ ] **Export:** besides downloads being blocked, copying the save string from dev tools corrupted 12 escaped quotes in
   inbox text (`\\"`), so the D15 save needed repair before it parsed; another reason for an in-artifact export.
+- [ ] **`confirm()` is blocked in the published artifact** (sandbox without `allow-modals`; console: "Ignored call to
+  'confirm()'"). ⇧ import (`src/ui/App.tsx`), starting a new run over a saved one and Restart with planned changes
+  (`src/ui/Overlays.tsx`) all gate on `confirm()`, which returns false, so they silently do nothing. Replace with an
+  in-app confirmation dialog. Workaround used: patch the run in IndexedDB from dev tools (re-queue the lost event end
+  commands) and reload; the player confirmed RBANK CPU/txn and MOBILE zIIP recovered.
+- [ ] **Starving "Internal" work is free (design gap: a lever with no cost).** TSO and ADHOC have stakeholder `Internal` and
+  SLA `NONE` (no incidents, trust or score; `src/game/run.ts`, `src/game/sla.ts`); DEV batch is non-critical with
+  `lockIntensity` 0, so a capped or discretionary job holds no locks and its lateness counts nowhere. The only cost today
+  is the RG phantom-busy bug. Real costs to consider: developer/BI complaints (an Internal trust facet or an inbox
+  escalation when TSO/ADHOC response degrades), capped work holding Db2 locks or ENQs (lock-holder starvation, WLM
+  enqueue promotion), and sysprog TSO on the production images during an incident.
 
 ### M8.7 Realism fixes
 
