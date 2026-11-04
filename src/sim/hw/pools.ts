@@ -84,7 +84,10 @@ function poolPlans(cpc: CpcConfig, lpars: readonly LparConfig[]): PoolPlan[] {
   return plans;
 }
 
-/** Configuration-only entitlement, using the same pool plan as PR/SM (before any work is dispatched). */
+/** Configuration-only entitlement, using the same pool plan as PR/SM (before any work is dispatched).
+ * poolPlans already caches the entitlement calculation by CPC/LPAR-list identity; only pool/image lookups
+ * remain here. An extra per-image index showed no consistent speedup in current scenario benchmarks.
+ * Config edits must replace the CPC or LPAR list, as withConfig does, to invalidate the cache. */
 export function poolEntitlement(cpc: CpcConfig, lpars: readonly LparConfig[], lparId: string, pool: PoolType): number {
   const plan = poolPlans(cpc, lpars).find((p) => p.pool === pool);
   if (!plan) return 0;

@@ -88,6 +88,9 @@ level or a separate toggle.
   closure for Midwest and ~47% for Harbourline. The older revision also slowed on this host, so the reported
   doubling is not all attributable to code. Profiles show distributed growth, including RMF.
 - Runner fixes landed: available-parallelism sweep defaults (#138), hourly diagnostics only on demand (#139).
+- PR/SM pool plans already cache configuration-only work, including entitlement, by CPC and LPAR-array identity.
+  A separate entitlement index showed no consistent day-level speedup across all three scenarios and was
+  discarded. Configuration edits must replace those objects; in-place mutation can leave cached plans stale.
   Shared preparation is the first conditional simulation prototype; no full LPAR plan yet. Numeric-kernel work
   requires measured ≥15% end-to-end savings and removal of the old production path in the same milestone.
   Bot bundling (~0.18 s startup/run) is deferred; `advanceBatch` stays shelved.
@@ -557,6 +560,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Known approximations and risks
 
 - Per-AOR QR busy is not shown in SMF 110 (QR is per LPAR); policy overrides are whole-policy swaps.
+- Dispatch approximations: partially hosted resource-group slices can over-restrict outside-group zIIP overflow;
+  conversion from effective execution to physical busy/MSU retains the full grant's efficiency (SPEC §17).
 - Discretionary capping ignores recent receiver/donor status; TSO users are not swappable address spaces;
   homogeneous report classes are not split into periods; TFP unused baseline has no rollover.
 - Modeling/reporting limitations and researched facts belong in SPEC §17 and docs/research.md.

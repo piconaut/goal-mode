@@ -1601,6 +1601,13 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
 | Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; CP-only images retain ready demand. Separate-pool WLM trials check a conservative demand-recovery envelope using the execution cross-pacing formula; unsettled trials are rejected. Pacing and recovery remain approximations. Lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |
 
+Additional dispatch approximations:
+
+- A transaction hosted partly outside a resource group shares one slice with its capped hosts. Its outside
+  CP demand stays uncapped, but its outside zIIP overflow can still be clipped by the slice's CP limit.
+- Converting effective execution to physical CPU consumption retains the full PR/SM grant's efficiency.
+  With HiperDispatch this can overstate busy/MSU if the unused portion would have run on less efficient VM/VLs.
+
 Whenever a coefficient is invented, it lives in `content/` with a `// FICTIONAL:` comment and
 the shape it is meant to reproduce.
 

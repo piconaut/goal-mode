@@ -639,6 +639,8 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
 
   // Eligible work that overflows from a configured zIIP still consumes the group's CP budget.
   // APPROX: unused overflow grants wait until the next tick instead of rerunning shared-pool allocation.
+  // APPROX: for a transaction hosted partly outside the group, capOf includes that share's CP demand
+  // but not its eligible overflow; the shared slice can therefore over-restrict the outside share.
   const overflowCut = input.capOf && !(input.eligibleOnCp ?? input.ziipServers <= 0) ? slices.map((s, i) => {
     const before = iipcpG[i]!;
     iipcpG[i] = Math.min(before, Math.max(0, input.capOf!(s) - cpG[i]!));

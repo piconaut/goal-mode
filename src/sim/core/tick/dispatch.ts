@@ -108,6 +108,8 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   for (const pool of rt.pools) {
     if (pool.pool !== 'CP' && pool.pool !== 'ZIIP') continue;
     const used = res.slices.reduce((sum, s) => sum + (pool.pool === 'CP' ? s.cpGranted + s.iipcpGranted : s.ziipGranted), 0);
+    // APPROX: retain the full grant's efficiency instead of recomputing its VH/VM/VL mix for used.
+    // With HiperDispatch, this can overstate busy/MSU when the unused portion would run on less efficient VM/VLs.
     const efficiency = pool.deliveredEngines > 1e-9 ? pool.effectiveEngines / pool.deliveredEngines : pool.availableEngines > 0 ? pool.availableEffectiveEngines / pool.availableEngines : 1;
     pool.deliveredEngines = efficiency > 0 ? used / efficiency : 0;
     pool.effectiveEngines = used;
