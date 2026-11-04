@@ -136,7 +136,9 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
   brief) and `log-reader` (digest bot/sweep logs, test failures, long reports), and Opus `pr-reviewer` (user request
   2026-11-02; check out a PR in a worktree, run check, bench hashes and a sweep for milestones, verify its claims,
-  post its report on the PR, return a merge verdict; the main agent merges). Keep sim model changes,
+  post its report on the PR, return a merge verdict; the main agent merges). An hourly scheduled task runs the
+  `pr-review-loop` skill (user request 2026-11-04): it holds a PR on any finding, merges after a follow-up review
+  shows the findings fixed, and keeps its state in markers in the review comments. Keep sim model changes,
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
   Exception (user request 2026-10-30): in the `audit-loop` skill (`.claude/skills/audit-loop/`), vetted realism fixes
   go to the Opus `realism-fixer` subagent and balance sweeps to Sonnet worker sessions; vetting and balance calls stay
