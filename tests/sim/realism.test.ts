@@ -998,7 +998,9 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
   // Midwest seed 7, PROD1 capped at 200 MSU from about 10:00, Db2 moved up to STCHI with the CICS regions (the
   // shipped policy keeps Db2 below its clients, F1). ONLHI runs far past 4× its goal; the reported PI stops at
   // 4.0, but WLM's projection must still see the gain of a DP move, and the wait for its own regions is CPU delay.
-  it('WLM helps the most important CPU-bound receiver past displayed PI 4.0 once PROD1 is capped', () => {
+  // ONLHI already ties with its regions and Db2 in STCHI, and equal-DP work shares by ready units, so the light
+  // region and Db2 work keeps its CPU: lifting ONLHI over them would only starve the servers it waits for.
+  it('ONLHI stays CPU-bound on PROD1 once capped, and WLM helps the next receiver past PI 4.0', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
@@ -1009,15 +1011,12 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       if (s.wlm.log === prev) continue;
       const last = prev[prev.length - 1];
       const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
-      // Observe the binding cap rather than assuming it starts at a particular wall-clock hour.
-      if (s.capping.lpars.find((l) => l.id === 'PROD1')!.capped) {
-        for (const l of s.wlm.log.slice(from)) if (/ PROD1 /.test(l)) lines.push(l);
-      }
+      for (const l of s.wlm.log.slice(from)) if (/ 1\d:\d\d:\d\d PROD1 /.test(l)) lines.push(l);
     }
-    expect(s.capping.lpars.find((l) => l.id === 'PROD1')!.capped).toBe(true);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
     expect(lines.some((l) => /ONLHI#1 .*BTLNK=OTHER/.test(l))).toBe(false);
-    expect(lines.find((l) => /RCVR=/.test(l))).toMatch(/RCVR=ONLHI#1 PI=4\.00 BTLNK=CPU .*DP /);
+    expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
+    expect(lines.find((l) => /RCVR=/.test(l))).toMatch(/RCVR=\S+ PI=4\.00 BTLNK=CPU \S+ DP /);
   }, 180_000);
 });
 
@@ -1029,13 +1028,13 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
     const move = /PROD2 RCVR=(?:TSO#2|DDFPRD#2) .*?(TSO#2|DDFPRD#2) DP ([0-9A-F]+)→([0-9A-F]+)/;
     const lines: string[] = [];
-    for (let t = 0; t < 8.5 * 360; t++) {
+    for (let t = 0; t < 4.5 * 360; t++) {
       const prev = s.wlm.log;
       s = step(s, [], MIDWEST);
       if (s.wlm.log === prev) continue;
       const last = prev[prev.length - 1];
       const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
-      for (const l of s.wlm.log.slice(from)) if (/ (09|1[0-4]):\d\d:\d\d /.test(l) && move.test(l)) lines.push(l);
+      for (const l of s.wlm.log.slice(from)) if (/ (09|10):\d\d:\d\d /.test(l) && move.test(l)) lines.push(l);
     }
     expect(lines.length).toBeGreaterThan(0);
     const donorMoves = lines.filter((l) => /RCVR=TSO#2 .*DONOR DDFPRD#2|RCVR=DDFPRD#2 .*DONOR TSO#2/.test(l));

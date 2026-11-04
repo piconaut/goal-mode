@@ -14,6 +14,29 @@ const slice = sliceSpec({ key: 'T', scKey: 'DDFADHOC#1', kind: 'TXN', cpEngines:
 const input = { slices: [slice], backlog: { T: 20 }, ziipBacklog: { T: 15 }, cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 4, ziipServers: 4, cpPrsmDelayFrac: 0, io: { RANDOM: { rtSec: 0, delaySec: 0 }, SEQ: { rtSec: 0, delaySec: 0 } }, pagingFrac: 0, dpOf: () => 240 };
 
 describe('resource group dispatchability', () => {
+  it('does not treat a small execution reservation as saturated service capacity', () => {
+    const s = sliceSpec({ key: 'idle', scKey: 'STCHI#1', kind: 'AS', cpEngines: 0.5, ziipEngines: 0.25 });
+    const base = { ...input, slices: [s], backlog: {}, ziipBacklog: {} };
+    const free = evaluateLpar(base).slices[0]!;
+    const reserved = evaluateLpar({ ...base, cpAllocatedEngines: 0.5, ziipAllocatedEngines: 0.25 }).slices[0]!;
+    expect(reserved.cpGranted).toBe(0.5);
+    expect(reserved.ziipGranted).toBe(0.25);
+    expect(reserved.delayCpu).toBeCloseTo(free.delayCpu, 10);
+    expect(reserved.delayZiip).toBeCloseTo(free.delayZiip, 10);
+    expect(reserved.delayCpu).toBeLessThan(0.01);
+    expect(reserved.delayZiip).toBeLessThan(0.01);
+  });
+
+  it('keeps low-load CPU delay small on an uncontended CPC', () => {
+    let state = initState(42, MIDWEST);
+    for (let i = 0; i < 12; i++) state = step(state, [], MIDWEST);
+    const cp = state.lpars.find((l) => l.id === 'PROD1')!.pools.find((p) => p.pool === 'CP')!;
+    const ddf = state.wlm.systems.find((s) => s.lparId === 'PROD1')!.scps.find((s) => s.scKey === 'DDFPRD#1')!;
+    expect(cp.availableEffectiveEngines).toBeGreaterThan(4 * cp.effectiveEngines);
+    expect(ddf.acc.using).toBeGreaterThan(0);
+    expect(ddf.acc.delayCpu).toBeLessThan(0.05 * ddf.acc.using);
+  });
+
   it.each([false, true])('joint CP/zIIP reservations bound actual consumption (both eligible: %s)', (bothEligible) => {
     const world = structuredClone(MIDWEST.world);
     const cpc = { ...world.cpcs[0]!, engines: { CP: 4, ZIIP: 1, ICF: 0 } };

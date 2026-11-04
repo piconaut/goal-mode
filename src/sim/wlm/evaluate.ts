@@ -134,8 +134,10 @@ export interface RtParts {
 
 export interface LparEvalInput {
   cpCapacityEngines: number;
+  cpAllocatedEngines?: number;
   cpServers: number;
   ziipCapacityEngines: number;
+  ziipAllocatedEngines?: number;
   ziipServers: number;
   /** No online zIIPs: eligible work counts against the CP maximum. Absent: infer from ziipServers. */
   eligibleOnCp?: boolean;
@@ -561,8 +563,10 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
 
   const dres = dispatch({
     cpCapacityEngines: input.cpCapacityEngines,
+    cpAllocatedEngines: input.cpAllocatedEngines,
     cpServers: input.cpServers,
     ziipCapacityEngines: input.ziipCapacityEngines,
+    ziipAllocatedEngines: input.ziipAllocatedEngines,
     ziipServers: input.ziipServers,
     cpPrsmDelayFrac: input.cpPrsmDelayFrac,
     demands,

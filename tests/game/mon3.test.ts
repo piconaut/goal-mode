@@ -45,14 +45,14 @@ describe('Monitor III views', () => {
     const base = buildMon3(noon, MIDWEST);
     const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
     const m = buildMon3(hot, MIDWEST);
-    const cpuDelay = (mm: typeof m) => mm.rows.filter((r) => r.system !== '*PLEX').reduce((a, r) => a + r.delay.cpu * r.avgUsers.active, 0);
-    expect(cpuDelay(m)).toBeGreaterThan(cpuDelay(base));
-    // A class already in exception can get worse without adding a new exception row.
-    const before = base.exceptions.find((e) => e.where === 'PROD2 DDFPRD#2')!;
-    const after = m.exceptions.find((e) => e.where === before.where)!;
-    expect(before.reason).toMatch(/WFL%/);
-    expect(after.reason).toBe(before.reason);
-    expect(parseFloat(after.value)).toBeLessThan(parseFloat(before.value));
+    const affected = (mm: typeof m) => mm.rows.find((r) => r.system === 'PROD2' && r.scKey === 'DDFPRD#2')!;
+    const before = affected(base), after = affected(m);
+    expect(after.avgUsers.delayProc).toBeGreaterThan(before.avgUsers.delayProc);
+    expect(after.pi!).toBeGreaterThan(before.pi!);
+    // Check the affected period even if other classes enter or leave exception at the same time.
+    const wfex = m.exceptions.find((e) => e.where === 'PROD2 DDFPRD#2')!;
+    expect(wfex.reason).toMatch(/WFL%/);
+    expect(parseFloat(wfex.value)).toBeLessThan(before.velocity!);
   });
 });
 

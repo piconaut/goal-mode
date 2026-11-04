@@ -280,8 +280,9 @@ entitlement_L (in engines) = weight_L / Σ weight(active LPARs in pool) × physi
 - An LPAR can never use more than `logicalCPs_L` engines' worth.
 - Actual dispatch on each image is limited to its jointly allocated CP and zIIP grants. After the
   initial pool allocation, a side-effect-free dispatch probe requests CP help for unserved eligible
-  work; PR/SM then reserves that help before execution. WLM priority trials use the same reserved
-  capacity as current dispatch. Counterfactual per-image availability is used only to plan overflow.
+  work; PR/SM then reserves that help before execution. Execution grants and queueing service capacity
+  are separate: queueing uses available capacity, so requesting a fraction of an idle CPC does not imply
+  saturation. WLM priority trials use the same grant bounds and service capacity as current dispatch.
 - **Initial capping** (hard cap to weight share) and **absolute capping** (cap in engines × 100)
   are supported.
 

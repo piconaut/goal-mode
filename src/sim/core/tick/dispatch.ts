@@ -35,9 +35,11 @@ function lparEvalInput(t: TickCtx, l: LparConfig): LparEvalInput {
   const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
   // Every optional field is always present so all evaluator inputs share one shape.
   const evalInput: LparEvalInput = {
-    cpCapacityEngines: cpRt?.effectiveEngines ?? 0,
+    cpCapacityEngines: cpRt?.availableEffectiveEngines ?? 0,
+    cpAllocatedEngines: cpRt?.effectiveEngines ?? 0,
     cpServers: servers(cpRt, cpCfg?.logical ?? 0, l.hiperDispatch),
-    ziipCapacityEngines: ziRt?.effectiveEngines ?? 0,
+    ziipCapacityEngines: ziRt?.availableEffectiveEngines ?? 0,
+    ziipAllocatedEngines: ziRt?.effectiveEngines ?? 0,
     ziipServers: servers(ziRt, ziCfg?.logical ?? 0, l.hiperDispatch),
     eligibleOnCp: (ziCfg?.logical ?? 0) === 0,
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
@@ -74,7 +76,7 @@ export function reserveOverflow(t: TickCtx, lpars: readonly LparConfig[]): boole
     const zi = rt.pools.find((p) => p.pool === 'ZIIP');
     if (input.prepared.aggZi.reduce((a, b) => a + b, 0) <= (zi?.effectiveEngines ?? 0)) continue;
     const cp = rt.pools.find((p) => p.pool === 'CP');
-    const probe = evaluateLpar({ ...input, cpCapacityEngines: cp?.availableEffectiveEngines ?? 0, scpsOnly: true });
+    const probe = evaluateLpar({ ...input, cpAllocatedEngines: cp?.availableEffectiveEngines ?? 0, scpsOnly: true });
     const overflow = probe.slices.reduce((sum, s) => sum + s.iipcpGranted, 0);
     if (overflow <= 1e-9) continue;
     const ratio = cp && cp.deliveredEngines > 1e-9 ? cp.effectiveEngines / cp.deliveredEngines : cp && cp.availableEngines > 0 ? cp.availableEffectiveEngines / cp.availableEngines : 1;

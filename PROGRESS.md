@@ -285,7 +285,8 @@ facts in docs/research.md). Ordered by impact:
   Type 1 budgets include backlog-only members across images; type 2 uses the current configuration's entitlement.
   Busy/MSU consumption uses dispatched CPU rather than unused PR/SM offers, including the batch initiator's
   previous-tick busy input. Overflow is reserved across the CPC before execution; actual dispatch and WLM
-  priority trials share the reserved grants, so counterfactual per-image availability cannot overcommit the CPC.
+  priority trials share the reserved grants; queueing still uses available service capacity, so an idle CPC
+  is not falsely saturated and counterfactual per-image availability cannot overcommit execution.
   Withheld work keeps its CP/zIIP pool in the backlog. IBM: WLM Planning 3.1 p.60 notes
   4–5, RMF Report Analysis 3.1 p.389 and p.98 (ledger and SPEC updated). APPROX: continuous awake fractions;
   1/256 granularity and recovery boost not modelled. Regressions cover all three maximum types on PROD2,
