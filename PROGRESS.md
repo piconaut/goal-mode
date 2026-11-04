@@ -362,9 +362,11 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 - [ ] **POWER_CAP only blames MOBILE and RBANK (bug).** A power cap slows every LPAR, but `affects` is static, so
   INC177 ACQBANK (D36) and INC183/185 CARDAUTH/PAYMQ (D38) fall back to other truths while the cap was the cause.
   Fix: hardware cards affect every workload on the CPC.
-- [ ] **zIIP delay pins are judged against the wrong mechanism (bug).** DELAY_ZIIP maps only to CPU_CAPACITY in
-  `EVIDENCE_METRICS`, while `mechanismOf` labels zIIP delay CPU_PRIORITY, so INC157's two zIIP pins said "points
-  elsewhere". Make the two agree.
+- [x] **zIIP delay pins are judged against the wrong mechanism (bug).** Completion takes effect on merge:
+  `DELAY_ZIIP` supports CPU_PRIORITY as well as CPU_CAPACITY, matching the existing `mechanismOf` CPU split;
+  INC157-style zIIP pins now count toward the RCA's evidence award. Subject, time-window and notability guards
+  remain in place. Regressions cover two-pin scoring and strong-evidence Insight, wrong answers, unrelated
+  subjects/mechanisms, low values, both window edges, and zIIP queue growth producing either CPU mechanism.
 - [ ] **Pins on a CICS region don't count for its workload (bug / UX).** A SYSWKM pin's subject is the region jobname
   (CICSAOR1); relatedness only knows workloads, classes and LPARs, so INC133 CARDAUTH said "not about CARDAUTH".
   Fix: map region jobnames to the workloads they serve.

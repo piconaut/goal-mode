@@ -81,6 +81,12 @@ describe('mechanismOf CPU split', () => {
     expect(mechanismOf(cpu, {}, at(0.7, [10, 200, 300, 0, 0, 0, 0]), host(2))).toBe('CPU_PRIORITY');
   });
 
+  it('uses the same CPU split when zIIP queue growth dominates the incident', () => {
+    const ziip = { ziipQueue: 1, cpuQueue: 0.01, io: 0.02 };
+    expect(mechanismOf(ziip, { ziipQueue: 0.1 }, at(0.7, [10, 200, 300, 0, 0, 0, 0]), host(2))).toBe('CPU_PRIORITY');
+    expect(mechanismOf(ziip, { ziipQueue: 0.1 }, at(0.93, [10, 200, 300, 5, 0, 0, 2]), host(2))).toBe('CPU_CAPACITY');
+  });
+
   it('is capacity when the image used all the CP it could get, even with room on its CPC', () => {
     expect(mechanismOf(cpu, {}, at(0.86, [10, 200, 300, 5, 0, 0, 2], {}, 0.97), host(2))).toBe('CPU_CAPACITY');
   });

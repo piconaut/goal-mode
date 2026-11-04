@@ -102,6 +102,43 @@ describe('evidence pins', () => {
     const wrong = submitRca(withInc, 999, 'LOCK_CONTENTION', 'ACCESS_PATH_REGRESSION', MIDWEST, ids);
     expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
   });
+
+  it.each(['CPU_PRIORITY', 'CPU_CAPACITY'] as const)('awards two zIIP pins for a %s incident', (mechanism) => {
+    const pins = ['WLMGL', 'DELAY'].map((source, i) => ({
+      id: 1000 + i, source, metric: 'DELAY_ZIIP' as const, subject: `DDFPRD#${i + 1}`,
+      system: '*PLEX', tick: regressed.sim.tick, value: 10 + i, text: 'zIIP delay',
+    }));
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism, trigger: 'POLICY' } });
+    const r = { ...regressed, pins, incidents: [inc] };
+    expect(judgeEvidence(r, MIDWEST, inc, pins).map((v) => [v.relevance, v.why]))
+      .toEqual([[1, 'points at the cause'], [1, 'points at the cause']]);
+    const ids = pins.map((p) => p.id);
+    const right = submitRca(r, inc.id, mechanism, 'POLICY', MIDWEST, ids);
+    expect(right.incidents[0]!.rca!.evidencePoints).toBe(2);
+    expect(right.incidents[0]!.rca!.points).toBe(7);
+    expect(right.insight - r.insight).toBe(7 + EVIDENCE.strongInsight);
+    const wrong = submitRca(r, inc.id, 'IO', 'POLICY', MIDWEST, ids);
+    expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
+  });
+
+  it.each([
+    { pin: { subject: 'DEVONLY#1' }, truth: 'CPU_PRIORITY', why: 'not about MOBILE' },
+    { pin: { value: 9.9 }, truth: 'CPU_PRIORITY', why: 'value is unremarkable' },
+    { pin: { tick: -2 * HOUR - 1 }, truth: 'CPU_PRIORITY', why: 'outside the incident window' },
+    { pin: { tick: HOUR + 1 }, truth: 'CPU_PRIORITY', why: 'outside the incident window' },
+    { pin: {}, truth: 'IO', why: 'points elsewhere' },
+    { pin: {}, truth: 'CAPPING', why: 'points elsewhere' },
+  ] as const)('rejects a zIIP pin: $why ($truth, $pin)', ({ pin: over, truth: mechanism, why }) => {
+    const p = {
+      id: 1000, source: 'DELAY', metric: 'DELAY_ZIIP' as const, subject: 'DDFPRD#1',
+      system: '*PLEX', tick: regressed.sim.tick, value: 20, text: 'zIIP delay', ...over,
+    };
+    if (over.tick !== undefined) p.tick += regressed.sim.tick;
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism, trigger: 'POLICY' } });
+    const r = { ...regressed, pins: [p], incidents: [inc] };
+    expect(judgeEvidence(r, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 0, why });
+    expect(submitRca(r, inc.id, mechanism, 'POLICY', MIDWEST, [p.id]).incidents[0]!.rca!.evidencePoints).toBe(0);
+  });
 });
 
 describe('evidence pins on a missed batch night', () => {
