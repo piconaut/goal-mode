@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { applyPlayCommand, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
@@ -40,6 +40,19 @@ describe('headless play interface', () => {
     const text = statusText(newPlayFile(7));
     expect(text).toContain('BRIEFING');
     expect(text).not.toMatch(/truth|mechanism/i);
+  });
+
+  it('wlmlog shows the Monitor WLM activity log, live only with Monitor III', () => {
+    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    expect(wlmLogText(f)).toContain('needs the RMF_MON3 tool');
+    f = { ...f, run: { ...f.run, sim: { ...f.run.sim, wlm: { ...f.run.sim.wlm, log: ['D1 06:10:00 PRDA RCVR=ONLHI#1 PI=1.20 BTLNK=CPU ONLHI#1 DP F4→F6', 'D1 06:10:00 PRDB ONLHI#1 PI=1.20 BTLNK=CPU no action with net value'] } } } };
+    f = { ...f, run: { ...f.run, insight: 50 } };
+    f = run(f, [{ cmd: 'buy', toolId: 'RMF_MON3' }]);
+    const all = wlmLogText(f);
+    expect(all).toContain('RCVR=ONLHI#1');
+    expect(wlmLogText(f, { system: 'PRDB' })).not.toContain('RCVR=');
+    expect(wlmLogText(f, { grep: 'rcvr' })).not.toContain('no action');
+    expect(wlmLogText(f, { system: 'NOSUCH' })).toContain('(no matching lines)');
   });
 
   it('catalog lists orderable items; Monitor III shows once the tool is owned', () => {

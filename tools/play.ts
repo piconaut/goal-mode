@@ -1,7 +1,7 @@
 // Headless play CLI for agents (PROGRESS M8.9). Each call loads the run file, applies one command, saves it.
 // Usage:
 //   npm run play -- runs/a.json new 42 [normal|story|hard|ironman] [midwest|revenue|harbourline]
-//   npm run play -- runs/a.json status | catalog | policy [pending] | mon3 [system] [--at D2 10:40] [--json] | smf DB2|CICS|BATCH|SMF113 [hour|D8 12] [--json]
+//   npm run play -- runs/a.json status | catalog | policy [pending] | wlmlog [system] [--grep RCVR] | mon3 [system] [--at D2 10:40] [--json] | smf DB2|CICS|BATCH|SMF113 [hour|D8 12] [--json]
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json rca INC<n> <MECHANISM> <TRIGGER> --evidence PIN<n>,PIN<n>   (bare numbers work too)
@@ -27,7 +27,7 @@ import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { writeSpectateFile } from './spectateFile';
 import { decodeRunJson } from '../src/game/runFile';
 import type { Mon3PinHistory } from '../src/game/mon3PinHistory';
-import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, policyText, statusText, type PlayCommand } from './playCore';
+import { applyPlayCommand, catalogText, decodePlayFile, mon3Text, policyText, statusText, wlmLogText, type PlayCommand } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
@@ -66,13 +66,22 @@ function pinRequest(a: string[]): PinRequest {
   throw new Error('pin source: WLMGL | MON3 | CPC | DB2 | CICS | BATCH');
 }
 
-type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy';
+/** wlmlog [system] [--grep text] */
+function wlmLogOpts(a: string[]): { system?: string; grep?: string } {
+  const gi = a.indexOf('--grep');
+  const grep = gi >= 0 ? a.slice(gi + 1).join(' ') : undefined;
+  const system = a[0] && a[0] !== '--grep' ? a[0] : undefined;
+  return { ...(system ? { system } : {}), ...(grep ? { grep } : {}) };
+}
+
+type ReadOnly = 'status' | 'catalog' | 'mon3' | 'policy' | 'wlmlog';
 function parse(): PlayCommand | ReadOnly {
   switch (verb) {
     case 'status': return 'status';
     case 'catalog': return 'catalog';
     case 'mon3': return 'mon3';
     case 'policy': return 'policy';
+    case 'wlmlog': return 'wlmlog';
     case 'smf': return { cmd: 'smf', kind: (rest[0] ?? 'DB2').toUpperCase() as SmfKind, ...(rest.length > 1 ? { hour: rest.slice(1).join(' ') } : {}), ...(json ? { json } : {}) };
     case 'new': {
       const seed = Number(rest[0] ?? 42), difficulty = (rest[1] ?? 'normal').toUpperCase(), scenario = rest[2];
@@ -121,7 +130,7 @@ let file = isNew ? null : decodePlayFile(readFileSync(path, 'utf8'));
 const mon3Loaded = file && existsSync(mon3Path) ? decodeRunJson<Mon3PinHistory>(readFileSync(mon3Path, 'utf8')) : undefined;
 if (file && mon3Loaded) file = { ...file, mon3: mon3Loaded };
 if (typeof c === 'string') {
-  console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : c === 'policy' ? policyText(file!, rest[0] === 'pending') : mon3Text(file!, { system: rest[0], json, at }));
+  console.log(c === 'status' ? statusText(file!) : c === 'catalog' ? catalogText(file!) : c === 'policy' ? policyText(file!, rest[0] === 'pending') : c === 'wlmlog' ? wlmLogText(file!, wlmLogOpts(rest)) : mon3Text(file!, { system: rest[0], json, at }));
 } else {
   // --pace: advance one hour at a time, saving after each so a spectator sees every step (same end state).
   const steps: PlayCommand[] = paceMs > 0 && c.cmd === 'advance' ? Array.from({ length: Math.max(1, Math.min(24, Math.floor(c.hours))) }, () => ({ cmd: 'advance', hours: 1 })) : [c];

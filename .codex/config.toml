@@ -32,3 +32,7 @@ config_file = "agents/goal-mode-cost-cutter.toml"
 [agents.goal-mode-cautious-operator]
 description = "Play headlessly with cautious reversible changes and player-visible evidence only."
 config_file = "agents/goal-mode-cautious-operator.toml"
+
+[agents.goal-mode-firefighter]
+description = "Play headlessly with emergency WLM and capacity changes during incidents, watching WLM's response; player-visible evidence only."
+config_file = "agents/goal-mode-firefighter.toml"

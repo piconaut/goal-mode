@@ -486,6 +486,17 @@ function table(rows: object[], omit: string[] = []): string {
   return [line(cols), ...flat.map((o) => line(cols.map((c) => o[c] ?? '')))].join('\n');
 }
 
+/** The WLM activity log as the Monitor shows it (last 60 lines; live only with Monitor III, else after the day).
+ * system: lines for one LPAR; grep: lines containing that text (case-insensitive). */
+export function wlmLogText(file: PlayFile, opts: { system?: string; grep?: string } = {}): string {
+  const run = file.run;
+  const lines = buildView(run, sc(run)).wlmLog;
+  if (lines.length === 0) return run.phase === 'LIVE' ? 'The live WLM activity log needs the RMF_MON3 tool; without it the log is readable after the day.' : 'WLM activity log is empty.';
+  const g = opts.grep?.toLowerCase();
+  const shown = lines.filter((l) => (!opts.system || l.split(' ')[2] === opts.system) && (!g || l.toLowerCase().includes(g)));
+  return [`WLM activity log (last ${lines.length} lines${opts.system ? `, ${opts.system}` : ''}${g ? `, matching "${opts.grep}"` : ''}):`, ...(shown.length ? shown : ['(no matching lines)'])].join('\n');
+}
+
 /** The WLM service definition (active, or the pending edits) and the configuration it runs on. */
 export function policyText(file: PlayFile, pending: boolean): string {
   const run = file.run;

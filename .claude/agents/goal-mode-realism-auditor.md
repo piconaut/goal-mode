@@ -69,9 +69,16 @@ outcome is well documented. Ideas, not a checklist:
 - **WLM:** discretionary vs importance-5 goals, an unreachable velocity goal, period switching on duration,
   CPU critical, a resource group min, I/O priority management off, classification that falls through to
   SYSOTHER, BLWLINTHD and blocked-workload promotion, IIPHONORPRIORITY=NO with the zIIPs saturated.
+  From the 2026-11-04 human playtest: CPU Critical on several classes while less important work already sits at or
+  above their DP (does WLM keep moving, and does it restore the protection?); an importance-1 class whose sysplex
+  PI comes from one capped LPAR (does it crowd out importance-2 receivers?); raising the DP of a CICS region class
+  whose regions are managed to transaction goals (does it change the regions' DP?). Read the per-system rows, not
+  only `*PLEX`. When WLM says "no action with net value", read `passes()` in `src/sim/wlm/adjust.ts` to work out
+  which test rejects the trials, and say in the report if you could not tell (the harness doesn't log rejections yet).
 - **PR/SM and HiperDispatch:** weights under contention vs no contention, logical CPs far above the share
   (vertical low parking, PR/SM overhead), polarity changes with weight.
-- **Reporting:** does the RMF report show what the real one would for the situation you created (PI, velocity,
+- **Reporting:** Monitor III Primary Reason under discretionary goal management capping (no resource group); PROCU
+  Time on CP vs EAppl for DDF enclave work. Does the RMF report show what the real one would for the situation you created (PI, velocity,
   delay states, LPAR busy vs MVS busy, CF sync/async counts)?
 
 Prefer fewer experiments done properly over many done loosely. Five to ten is a good audit.
