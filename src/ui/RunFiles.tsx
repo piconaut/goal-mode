@@ -88,7 +88,17 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
       {!game.spectate && (
         <button title="Load an exported save (replaces the current run and the save)" onClick={() => open('import')}>⇧ import</button>
       )}
-      <dialog ref={dialog} className="modal" aria-labelledby={titleId} style={{ maxHeight: '90vh', overflow: 'auto', color: 'var(--text)' }} onCancel={close}>
+      <dialog
+        ref={dialog}
+        className={mode ? 'modal' : undefined}
+        aria-labelledby={titleId}
+        style={{ maxHeight: '90vh', overflow: 'auto', color: 'var(--text)' }}
+        onCancel={close}
+        onClose={() => {
+          // A queued close event can arrive after the dialog has reopened.
+          if (!dialog.current?.open) close();
+        }}
+      >
         <h2 id={titleId}>{mode === 'export' ? 'Export run' : 'Import run'}</h2>
         <button className="modal-close" onClick={close}>Close</button>
         {mode === 'export' && (
