@@ -269,24 +269,93 @@ investigation results are folded into the items below as they land.
 - TFP offer: signed without enough data; a real decision needs $/MSU under R4HA and TFP and a cost estimate from history
   (a what-if tool might cover it).
 
-Player feedback, not yet investigated or decided (one item each):
-- [ ] **WLM editor:** changing a response-time goal doesn't offer to install the pending policy (workaround: add then remove
-  a period); suspected regression from #164's request-loop fix. Also: activate a saved policy directly, not only via the
-  daily schedule.
-- [ ] **Hardware orders as emergency changes** make no sense; queue them for the next day even when bought mid-day.
-  On/Off CoD: allow early removal to save money (e.g. once a power event is over).
-- [ ] **Reserved engines:** a zIIP bought D5 couldn't be brought online anywhere (no LPAR had a reserved zIIP), so it was
-  wasted. Give every scenario's LPARs enough reserved engines for a few purchases, or warn before buying.
-- [ ] **No way out for DDFADHOC IIPCP on PROD2:** can't route it to PROD1, can't add zIIPs to PROD2.
-- [ ] **Monitor III CPC has no zIIP rows.** The "CP busy per system" chart plots logical util % while RMF CPC shows physical;
-  label it. Wanted: a CPs-by-service-class chart, with a toggle for which charts are shown.
-- [ ] **Resource group maximum in SU/s:** show the MSU equivalent.
-- [ ] **CPC busy forecast** trends down with weekends and the CP upgrade; forecast MSU against capacity instead.
-- [ ] **MLC vs opex budget:** by D8 the MLC estimate was above the opex budget. Does MLC count against it, and is a loss then
-  inevitable? Make it explicit in the UI.
-- [ ] **SMF 101:** is there a Codex entry? The "vs base" for a past interval (D6 07:00–08:00) shrank when revisited later;
-  what triggers the Db2 team's explanation mail (the player's pin, or always)?
-- [ ] **Layout:** move Start day / briefing buttons to the header next to the speed buttons.
+Investigation (2026-11-04; three subagents on `dev` = `d8ada51` + docs, the player's D15 12:45 save and seed replays; IBM
+facts in docs/research.md). Ordered by impact:
+- [ ] **A planned fix makes its event permanent (bug, high).** `startDay` (`src/game/run.ts`) copies `r.pendingCommands`
+  into `pending` before its loop; `endEventByFix` (`src/game/run/events.ts`) marks the event ended and appends its end
+  commands to `r.pendingCommands`; the final `pendingCommands: pending` drops them. The event's modifiers stay and its
+  natural end is skipped; a later emergency fix finds no active event, does nothing, and still reports "Applied" and
+  costs hours and trust. Player's D15 save still holds `cpu.RBANK` ×3 and `ziipEligMult.MOBILE` 0.3. Replays: planned
+  REBIND D7 06:00 → RBANK 6.16 ms CPU/txn all day vs 2.19 ms from D7 13:30 with no action; planned native-SQL fix D12 →
+  DDFMOB PROD1 CP 103.3 / IIP 15.6, identical to no fix (emergency fix at D11 10:00: IIP share 44 % vs 13 %). Fix: collect
+  the end commands into `pending`; unit test (plan a fix during the briefing for an active event → modifier restored);
+  load-time repair re-applying end commands of events ended by fix (they set absolute values); goldens/bots that plan
+  fixes will change. Also: a fix that matches no active event should say so and not charge trust.
+- [ ] **Resource-group cap creates phantom LPAR busy and MSU (sim bug, high).** The player's `RGDDFADH` (type 1, max 100
+  SU/s; TSO, DEVBAT, DDFADHOC). D1 repro on PROD2 (4 CPs): busy 59–73 % → 100 %, MSU 339–418 → 574, EAppl unchanged at
+  2.6–2.9 engines; type 2 (5 %) the same; removing the group restores it. Player's D15 save with the group re-added:
+  PROD2 61 → 100 %, MSU 627 → 1,025, CPC 69 → 91 %. Cause: `planLpar` (`src/sim/core/step.ts`) gives PR/SM the uncapped
+  demand plus a capped backlog that never drains (321 → 485 CPU-s), the cap (`capOf`) is applied only in `prepareLpar`
+  (`src/sim/wlm/evaluate.ts`); LPAR/MVS busy, `msuRate` (R4HA, bill) and batch `lparBusy` count delivered, not dispatched,
+  CPU. `discretionaryCaps` shares the flaw. Second leak: only `sliceCp` is capped; DDFADHOC's zIIP-eligible 60 % overflows
+  onto CPs uncapped on zIIP-less PROD2 (0.12–0.28 engines against a ~0.0025-engine cap). Real: capped work is
+  non-dispatchable and a CP without ready work waits (WLM Planning p.60; RMF Report Analysis p.389, p.98). Fix: one cap
+  helper used by both `planLpar` and `prepareLpar`; busy/MSU from dispatched CPU; cap zIIP-eligible demand by the same
+  awake fraction; realism test "an RG maximum never raises LPAR busy or MSU". The player's "PROCU under one engine" was not
+  reproduced (2.6–2.9 engines), but the gap to 100 % busy is the same effect. 100 SU/s ≈ 0.25 % of one CP: starving the
+  work is correct.
+- [ ] **Power-cap RCA is a gotcha (content/design gap).** INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth
+  CPU_PRIORITY/HARDWARE_FAULT (2 points); INC53 CARDAUTH: truth CPU_PRIORITY/POLICY (5 points). CPU_CAPACITY needs CPC
+  ≥ 90 % (or LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`; thresholds hard-coded, not in
+  content/); CPCA was 70.9–82 % physical, so priority. The card lowers the capacity setting by one (slower CPs, same
+  count); its affected workloads are only MOBILE and RBANK, so CARDAUTH falls back to POLICY although the drop is CPC-wide.
+  The rule appears in no Codex entry or RCA form tooltip. Fix: affected workloads of capacity-drop cards = everything on
+  the throttled CPC; Codex "RCA vocabulary" + form tooltips; explain after scoring ("CPC 81 % busy, below the 90 %
+  capacity line"); show a capacity-adjustment clue (SMF70CAI/CCR, MVS SMF p.589) in CPC/Partition Data. CoD helps only a
+  little; the card's cheaper fixes are capping DEVT, deferring discretionary work and protecting importance 1.
+- [ ] **Silent events leak through the Operations Log (design bug).** `src/game/run.ts` logs "EVENT start/end: <name>" for
+  every card; mail goes out only with an announcement; `src/game/mon3Charts.ts` turns the lines into named chart
+  markers. The TSO model-training card has no announcement. Fix: log only announced cards, in their wording; keep
+  silent ones out of the log and chart markers until revealed or the RCA is filed (run log changes → goldens).
+- [ ] **Two policy installs in one briefing: the second drops the first (bug).** The pending policy is always built from
+  the active policy, not the one planned for 06:00. Headless repro: edit ONLHI, activate, edit ONLMED, activate, start →
+  ONLMED 0.6 s but ONLHI back at 0.250 s. Fix: build on the day's latest planned activation; show "planned for 06:00: X".
+- [ ] **WLM goal edit without an Install option: not reproduced.** New run (live and briefing) and the player's save: the
+  button enabled ("Install & activate BASEPOL8"); #164 is not the cause. Likely: the "Add P2 after P1" row uses the same
+  widgets and labels as P1, and typing there does nothing until "Add period" is pressed (matches the add/remove
+  workaround); typed goals commit only on blur/Enter with no unsent cue; a disabled reason shows only as a tooltip. Fix:
+  distinct add-period form, commit on change or show "unsent", visible disabled reason. Ask the player for exact steps.
+- [ ] **Activate a saved policy (design gap):** saved policies can only be scheduled; real `V WLM,POLICY=` exists. Add
+  "Activate now" (an ordinary activation; emergency when live) and "Load into editor".
+- [ ] **Hardware and On/Off CoD (design gap).** Every live change is an emergency (−1.5 trust per stakeholder, fail roll),
+  including lead-time items (CP/zIIP/ICF, 4 days) that arrive later anyway; no "plan for tomorrow" while live. CoD: $9k/day
+  for 3 days per order (player's two D12 orders ≈ $54k + 2× emergency trust), no early end. Fix: plan-for-tomorrow during
+  the live day without trust cost, or exempt lead-time items; "Deactivate CoD" from the next day (real early deactivation
+  not verified).
+- [ ] **zIIP purchase with nowhere to go (bug + design gap).** Midwest PROD1 has 2 logical zIIPs and 0 reserved, PROD2 no zIIP
+  pool; ADD_ZIIP has no headroom check. The UI (`validateLogical`) forbids a PROD2 zIIP while the sim's `SET_LOGICAL`
+  creates one (bots and the Story starting fix rely on it), so SPEC F7 can't be fixed in the browser. Fix: PROD2 0 online
+  + 1 reserved zIIP (also makes its IIPCP reporting legitimate), `SET_LOGICAL` enforces reserved, warn on ADD_ZIIP.
+- [ ] **IIPCP on an image without zIIPs (realism).** With PROJECTCPU=NO (default) and no zIIP configured, real RMF reports
+  no IIPCP (Init & Tuning p.434); the sim always does. Moot if PROD2 gets a reserved zIIP.
+- [ ] **D8 DDFADHOC was no event.** Normal Monday ad hoc peaks (APPL CP 36–46 % / IIPCP 18–24 % 10:00–16:30; 5.1/2.6 by
+  19:30). "Cancel the runaway DDF thread" matched nothing, gave no feedback and cost 0.5 h (see the no-match item above).
+  The routing editor lists only multi-target workloads, so ADHOC can't move to PROD1. Player read: fair, but needs feedback.
+- [ ] **SMF 101 "vs base" moves retroactively (design gap).** `src/game/smf.ts` divides past hours by today's baseline, an
+  EWMA (0.8/h) learned from every SLA-met hour, so a regression is absorbed in ~3 h: at the D7 briefing the D6 08:00 row
+  read 1.00 instead of ≈2.8. Fix: freeze each hour's ratio when it closes; learn the baseline only from hours without an
+  active event of that mechanism, or a slow decay / same-hour-last-week reference. The Db2-team mail is the
+  DB2_WHISPERER perk tip, sent at event start (not pin-driven); tag it "(Db2 Whisperer)".
+- [ ] **MLC vs opex budget (UI gap).** At each monthly bill MLC + CoD is compared with the budget: Finance trust
+  −over %, > 25 % over ends the run (`src/game/run.ts`). The player's $819k vs $780k ≈ 5 % → −5 Finance, not a loss. The
+  Finance card calls the opex line "CoD and other temporary charges" and the header shows MLC est and budget unsummed.
+  Fix: "MLC + CoD = X vs budget (+N %; over 25 % ends the run)" in header and Finance card.
+- [ ] **TFP offer lacks the numbers (design gap).** Shows baseline $/month, sub-capacity bill at the peak and overage %;
+  the per-product terms are stripped from the view and nothing projects TFP vs sub-capacity from history. Fix: per-product
+  table (peak MSU and $/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection.
+- [ ] **Monitor III CPC and charts.** CPC has CP rows only (real: per-type groups with *CP/*ICF/*IIP and PHYSICAL lines,
+  RMF Report Analysis p.97–98). "CP busy per system" plots % of logical CPs per LPAR and % of physical for the CPC line:
+  relabel, add a "% of CPC" toggle. A CPU-by-service-class chart is feasible (per-class engines already sampled), with a
+  chart toggle.
+- [ ] **CPC busy forecast:** 10-day log-linear fit of daily peak busy as % of installed CPs; weekends (47 %, 34 %) and capacity
+  added pull it down. Fit weekdays (or a weekday term) and forecast MSU demand against capacity; mark capacity changes.
+- [ ] **Resource group units:** SU/s only. 1 MSU = 277.8 SU/s; SU/s per CP in `src/sim/hw/cpc.ts`. Show "≈ N MSU ≈ M CPs" in
+  the editor and the Codex entry.
+- [ ] **Codex:** no SMF 101 or SMF 110 entry (only a mention in the SMF-volume entry); add both, linked from the SMF tab.
+- [ ] **Layout:** Start day / Briefing sit in a fixed bottom-right box shared with result toasts (they can overlap); the
+  header's speed-button slot is empty during the briefing, so move them there.
+- [ ] **Export:** besides downloads being blocked, copying the save string from dev tools corrupted 12 escaped quotes in
+  inbox text (`\\"`), so the D15 save needed repair before it parsed; another reason for an in-artifact export.
 
 ### M8.7 Realism fixes
 
