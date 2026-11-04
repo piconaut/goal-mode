@@ -290,7 +290,8 @@ facts in docs/research.md). Ordered by impact:
   4–5, RMF Report Analysis 3.1 p.389 and p.98 (ledger and SPEC updated). APPROX: continuous awake fractions;
   1/256 granularity and recovery boost not modelled. Regressions cover all three maximum types on PROD2,
   eligible CP overflow, backlog-only caps, pool accounting and discretionary planning. Goldens regenerated
-  because actual dispatch changes recorded CPU/MSU and subsequent game decisions. Validation results pending.
+  because actual dispatch changes recorded CPU/MSU and subsequent game decisions. Targeted cap, physical-pool,
+  batch-projection and WLM tests pass; the PR records full-suite, benchmark and bot regression evidence.
 - [ ] **Power-cap RCA is a gotcha (content/design gap).** INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth
   CPU_PRIORITY/HARDWARE_FAULT (2 points); INC53 CARDAUTH: truth CPU_PRIORITY/POLICY (5 points). CPU_CAPACITY needs CPC
   ≥ 90 % (or LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`; thresholds hard-coded, not in

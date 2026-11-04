@@ -41,13 +41,18 @@ describe('Monitor III views', () => {
     expect(m.rows.some((r) => r.system === '*PLEX')).toBe(true);
   });
 
-  it('a CPU regression shows up as delay and a WFEX exception', () => {
+  it('a CPU regression raises delayed users and worsens the affected WFEX row', () => {
     const base = buildMon3(noon, MIDWEST);
     const hot = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 12 }] }, MIDWEST, content, 60);
     const m = buildMon3(hot, MIDWEST);
-    const cpuDelay = (mm: typeof m) => mm.rows.filter((r) => r.system !== '*PLEX').reduce((a, r) => a + r.delay.cpu * r.cpuEngines, 0);
+    const cpuDelay = (mm: typeof m) => mm.rows.filter((r) => r.system !== '*PLEX').reduce((a, r) => a + r.delay.cpu * r.avgUsers.active, 0);
     expect(cpuDelay(m)).toBeGreaterThan(cpuDelay(base));
-    expect(m.exceptions.length).toBeGreaterThan(base.exceptions.length);
+    // A class already in exception can get worse without adding a new exception row.
+    const before = base.exceptions.find((e) => e.where === 'PROD2 DDFPRD#2')!;
+    const after = m.exceptions.find((e) => e.where === before.where)!;
+    expect(before.reason).toMatch(/WFL%/);
+    expect(after.reason).toBe(before.reason);
+    expect(parseFloat(after.value)).toBeLessThan(parseFloat(before.value));
   });
 });
 
