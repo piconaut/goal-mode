@@ -553,6 +553,14 @@ facts in docs/research.md). Ordered by impact:
 - [ ] **Automation "8 % misfire" is unclear (UI).** It means a triggered action fails 8 % of the time
   (`AUTOMATION.misfireFrac`), not false alerts. Say so in the tool text.
 - [ ] **Grade S (100) felt generous (balance, check).** The player doubted it; check the grade's inputs and caps.
+- [ ] **Operations list spoils events not yet seen (design, high).** Fixes for events that haven't happened in this run
+  are offered already (e.g. "Agree a narrower encryption scope" before any encryption mandate). Show an event-specific
+  operation only once its event (or its forewarning) has occurred in the playthrough.
+- [ ] **General-purpose operations instead of per-event ones (design).** Add operations for common fixes that aren't
+  tied to one event, and generalise event-specific ones where possible: e.g. "Recycle CICS AORs" (choose regions)
+  rather than "Recycle the PROD2 CICS AORs: restart CICSAOR2 and CICSAOR4 one at a time…". Each event must register
+  a general operation that fixes it (e.g. CICS_SOS ends when its leaking regions are recycled), so `endEventByFix`
+  matches on effect, not on a card-specific fix id.
 
 ### M8.7 Realism fixes
 
