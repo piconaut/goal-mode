@@ -311,9 +311,13 @@ facts in docs/research.md). Ordered by impact:
   every card; mail goes out only with an announcement; `src/game/mon3Charts.ts` turns the lines into named chart
   markers. The TSO model-training card has no announcement. Fix: log only announced cards, in their wording; keep
   silent ones out of the log and chart markers until revealed or the RCA is filed (run log changes → goldens).
-- [ ] **Two policy installs in one briefing: the second drops the first (bug).** The pending policy is always built from
-  the active policy, not the one planned for 06:00. Headless repro: edit ONLHI, activate, edit ONLMED, activate, start →
-  ONLMED 0.6 s but ONLHI back at 0.250 s. Fix: build on the day's latest planned activation; show "planned for 06:00: X".
+- [x] **Two policy installs in one briefing: the second drops the first (bug).** Fixed 2026-11-04:
+  browser and CLI edits build on the latest planned activation due at today's 06:00, retaining earlier installs'
+  goals, classification and resource groups. The briefing editor shows "Planned for 06:00: X" and its settings;
+  JSON, classification previews and saving a named policy use that same base. The active policy stays unchanged
+  until day start. Regression coverage includes two installs across a save/reload, cancellation and ignoring
+  failed/applied/future-day changes. Validation: 67 files / 643 tests and production build pass; browser
+  two-install/day-start check passes with no page errors; default three-scenario comparison has no differences.
 - [ ] **WLM goal edit without an Install option: not reproduced.** New run (live and briefing) and the player's save: the
   button enabled ("Install & activate BASEPOL8"); #164 is not the cause. Likely: the "Add P2 after P1" row uses the same
   widgets and labels as P1, and typing there does nothing until "Add period" is pressed (matches the add/remove
@@ -593,6 +597,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   PR at a time. Agents/host adaptations: [AGENTS.md](AGENTS.md), [docs/codex.md](docs/codex.md), `.claude/agents/`.
 
 ## Branch workflow
+
+- **Playtest fix loop (user request 2026-11-04):** one iteration per hour: one new discrete playtest fix or
+  one follow-up for its existing PR (review feedback, CI or conflicts). Pick simple/high-priority findings first,
+  then simple/low, complex/high, complex/low; explicit design holds still apply. Keep at most one open
+  `playtest-fix/` PR into `dev`. Another session reviews and squash-merges: this loop must not merge or enable
+  auto-merge. While awaiting review without actionable feedback, wait for the next iteration. After merge,
+  start a fresh branch from fetched `origin/dev`; never build on the pre-squash branch. Rebase only unmerged
+  fixes when `dev` advances, reverify, and push with `--force-with-lease`. Preserve other sessions' worktrees.
 
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for

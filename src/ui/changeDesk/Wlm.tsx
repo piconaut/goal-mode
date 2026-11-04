@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ViewModel } from '../../game/view';
 import type { Qualifier, SubsystemType, WorkAttributes } from '../../sim/wlm/types';
+import { cicsGoalIssues, cicsTransactionClasses } from '../../game/wlmEdit';
 import { CodexHints } from '../CodexHint';
 import { ServiceClasses } from '../ServiceClassEditor';
 import type { GameHandle } from '../useGame';
@@ -52,13 +53,23 @@ export function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: G
   }, [game.send, v.policyName, v.day]);
   const jsonEdited = json !== '' && json !== game.policy;
   const p = preview(v, { commands: ACTIVATE_PREVIEW });
+  const planned = v.plannedPolicy;
+  const editorView = planned ? {
+    ...v,
+    classDefs: planned.classes,
+    resourceGroups: planned.resourceGroups,
+    cicsClasses: cicsTransactionClasses(planned),
+    cicsIssues: cicsGoalIssues(planned),
+    ioPriorityManagement: planned.ioPriorityManagement !== false,
+  } : v;
   return (
     <>
+      {planned && <div className="tag warn">Planned for 06:00: {planned.policyName}. Further edits build on this policy.</div>}
       {game.pending && <div className="tag warn">editing pending {game.pending.policyName} (not active)</div>}
       <h4>Service classes</h4>
-      <ServiceClasses v={v} game={game} />
+      <ServiceClasses v={editorView} game={game} />
       <h4>Policy options</h4>
-      <IoPriorityToggle v={v} game={game} />
+      <IoPriorityToggle v={editorView} game={game} />
       <h4>Classification</h4>
       <div className="form">
         <button aria-expanded={rulesOpen} aria-controls="classification-rules" className={rulesOpen ? 'active' : ''} onClick={toggleRules}>
@@ -128,7 +139,7 @@ export function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) 
         }}
       >
         <label>
-          Save {game.pending ? `pending ${game.pending.policyName}` : `active ${v.policyName}`} as{' '}
+          Save {game.pending ? `pending ${game.pending.policyName}` : v.plannedPolicy ? `planned ${v.plannedPolicy.policyName}` : `active ${v.policyName}`} as{' '}
           <input value={name} onChange={(e) => setName(e.target.value.toUpperCase())} placeholder="e.g. NIGHTPOL" size={9} />
         </label>
         <button type="submit" disabled={!name || nameErr !== null}>

@@ -853,6 +853,11 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 | Analytics | Buy/enable tools (§8) | varies | varies | |
 | Ops | Take an IPL (in a change window) | weekend/night | 2 | Needed for some changes; brief LPAR outage |
 
+During the briefing, further WLM edits build on the latest planned policy activation due at that day's
+06:00, so installing a second edit retains the first. The editor names and previews that planned policy;
+the live policy and its reports change only when the activation executes. Uninstalled pending edits take
+precedence over the planned policy as the editing base.
+
 **Change windows & CAB.** Planned changes submitted in the morning briefing are normal changes
 and cost no trust. Changes during the live day are **emergency changes**: they cost
 Trust ×(1 if an incident is active, ×3 otherwise). Every change has a small **failure risk**
