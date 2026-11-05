@@ -43,6 +43,32 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 
 ## Remaining work
 
+### Design directions (user, 2026-11-05; not scheduled, still being thought through; don't implement)
+
+**D1. Targeted fixes unlocked by a correct RCA.** Make analysis somewhat easier, but don't offer an event's quick
+operations fix until the player has pinned an accurate RCA. Example: Db2 retry storm. If an unannounced event has
+been running for a while, inbox hints arrive that start vague and get more specific (the app team notices many
+duplicate request IDs). "Turn on retry backoff in the API gateway" (`MOBILE_BACKOFF`) becomes available only once the
+player has pinned evidence that identifies a retry storm, such as a transaction rate metric. There may be a better
+form of proof that isn't in the game yet.
+Notes from discussion:
+- **Prerequisite: RCA judging must be trustworthy first.** In the user's playthroughs it has been flaky and often
+  unfair (see "Incident truth, RCA and evidence" under Playtest round 2). Gating fixes on it would turn every judging
+  bug into a blocked fix, so that list (and a general review of `judgeEvidence` / incident truth) comes first.
+- Proof should be a mechanism, not a single pin. A rate pin alone can't tell a retry storm from a demand surge. The
+  discriminator is END/S up at unchanged CPU per transaction, so the unlock might take a rate pin plus a pin that
+  rules out a surge, judged by the existing evidence matcher (`src/content/evidence.ts`).
+- Only the targeted, cheap fix is gated. Generic levers (capacity, capping, WLM changes, "protect and ride it out")
+  stay open, so the choice is between paying to mitigate now and diagnosing to get the cheap fix.
+- Wrong guesses need a cost (Trust/Insight per wrong draft, or limited drafts per incident), or players will
+  brute-force the RCA form to unlock fixes.
+- The hint ladder interacts with difficulty (Story/Normal/Hard hint clarity) and the Mentor perk. A clue source must
+  not be too generous (2026-11-05: no gateway retries view).
+- Bots apply fixes directly today, so textbook and expert bots would need to diagnose first, and the balance bands
+  would move.
+- When settled, this rewrites SPEC §10 (RCA mini-game) and parts of §9 (events); move it to its own design doc if it
+  grows.
+
 ### Proposals awaiting the user (written 2026-11-03; not implemented)
 
 **P1. Finance feedback loop.** Problem: the first MLC bill closes at month end, so a player who stops by day 8 never
