@@ -1,6 +1,6 @@
 ---
 name: pr-review-loop
-description: One tick of the hourly GOAL MODE PR review (user request 2026-11-04) - review every open PR into dev with the pr-reviewer subagent, hold PRs with any finding, re-check held PRs after updates and merge when the earlier findings are fixed, and log second-pass leftovers in PROGRESS.md. State lives in hidden markers in the review comments, so each tick can run in a fresh session. Usage - /pr-review-loop (fired hourly by a scheduled task).
+description: One tick of the GOAL MODE PR review (user request 2026-11-04) - review every open PR into dev with the pr-reviewer subagent, hold PRs with any finding, re-check held PRs after updates and merge when the earlier findings are fixed, and log second-pass leftovers in PROGRESS.md. State lives in hidden markers in the review comments, so each tick can run in a fresh session. Usage - /pr-review-loop (fired by a scheduled task).
 ---
 
 # PR review loop (one tick)
