@@ -754,6 +754,10 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
   follow-up review shows every earlier finding fixed and nothing new blocking; second-pass non-blocking leftovers
   go to "PR review follow-ups" above. State is the hidden `pr-review-loop` marker in each review comment.
 
+- Manage Region Using Goals Of is fixed at TRANSACTION for the player (user decision 2026-11-05): the sim keeps
+  REGION/BOTH (lab, tests); the Rules view drops the column and `playerWlmEditError` refuses `SET_RULE_REGION_MODE`
+  in the worker and play CLI. All three scenarios start at TRANSACTION (`tests/game/scenarioRegionMode.test.ts`).
+
 ## Branch workflow
 
 - **Playtest fix loop (user request 2026-11-04):** one iteration per hour: one new discrete playtest fix or

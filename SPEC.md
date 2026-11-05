@@ -421,6 +421,9 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   can't manage those classes; BOTH (meant for TORs) keeps tracking them (WLM Planning p.123). A transaction's
   wait for TRANSACTION regions counts as its CPU delay, so a starved region makes its transaction class a CPU
   receiver (SG24-7621 p.81, p.126); a wait for REGION/BOTH regions stays a dependency (OTHER) delay.
+  **Not a player lever** (user decision 2026-11-05, game simplicity): the sim models all three, but the policy
+  editor and play CLI refuse setting a rule's mode (clearing one back to the default is allowed, for old saves);
+  every scenario ships with all regions at TRANSACTION. The realism lab and tests still drive REGION/BOTH.
 - CICS transaction classes (any class a CICS rule or the CICS default points at) take one period with a
   response-time goal. The editor warns on velocity, discretionary or multi-period goals ("not supported",
   WLM Planning ch. 9–10) and refuses a resource group on such a class, the one case IBM documents the ISPF
