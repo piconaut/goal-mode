@@ -47,14 +47,22 @@ export interface ClassificationExplain {
 
 const SUBSYSTEMS: SubsystemType[] = ['STC', 'JES', 'CICS', 'DDF', 'TSO', 'MQ', 'OMVS'];
 
-/** Work items for a scenario: workloads, address spaces (one per jobname), batch streams. */
+/** Work items for a scenario: workloads, address spaces (one per jobname/system), batch streams. */
 export function workItems(workloads: readonly WorkloadDef[], addressSpaces: readonly AddressSpaceDef[], jobs: readonly { name: string; jobClass: string; stream: string }[]): WorkItem[] {
   const items: WorkItem[] = workloads.map((w) => ({ label: w.id, kind: 'workload', work: w.work }));
+  const systemsByJobname = new Map<string, Set<string>>();
+  for (const a of addressSpaces) {
+    let systems = systemsByJobname.get(a.jobname);
+    if (!systems) systemsByJobname.set(a.jobname, (systems = new Set()));
+    systems.add(a.lparId);
+  }
   const seen = new Set<string>();
   for (const a of addressSpaces) {
-    if (seen.has(a.jobname)) continue;
-    seen.add(a.jobname);
-    items.push({ label: a.jobname, kind: 'address space', work: { subsystem: a.subsystem, TN: a.jobname } });
+    const key = `${a.jobname}/${a.lparId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const label = systemsByJobname.get(a.jobname)!.size > 1 ? `${a.jobname} (${a.lparId})` : a.jobname;
+    items.push({ label, kind: 'address space', work: { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId } });
   }
   // One item per batch stream (jobs in a stream share their naming pattern and class).
   const streams: Record<string, { first: string; last: string; jobClass: string; n: number }> = {};

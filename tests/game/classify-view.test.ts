@@ -4,6 +4,7 @@ import { BASEPOL } from '../../src/content/wlm/basepol';
 import { diffRows, explainClassification, workItems, type WorkItem } from '../../src/game/classifyExplain';
 import { applyWlmEdit, pendingBase } from '../../src/game/wlmEdit';
 import { classify } from '../../src/sim/wlm/classify';
+import type { AddressSpaceDef } from '../../src/sim/workload/types';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
 
 const items = workItems(MIDWEST.workloads, MIDWEST.addressSpaces, generateMidwestNetwork(1, 0, 10));
@@ -12,6 +13,43 @@ const edit = (def: ServiceDefinition, e: Parameters<typeof applyWlmEdit>[1]) => 
   if (typeof r === 'string') throw new Error(r);
   return r;
 };
+
+describe('address-space work items', () => {
+  const space = (jobname: string, lparId: string): AddressSpaceDef => ({ jobname, lparId, subsystem: 'STC', role: null, baseEnginesRef: 0.1, ziipFrac: 0 });
+  const spaces = [space('HSM', 'PROD1'), space('HSM', 'DEVT'), space('HSM', 'DEVT'), space('DEVONLY', 'DEVT'), space('XCFAS', 'DEVT')];
+  const previewItems = workItems([], spaces, []);
+
+  it('keeps one item per jobname/system and identifies shared jobnames', () => {
+    expect(previewItems).toEqual([
+      { label: 'HSM (PROD1)', kind: 'address space', work: { subsystem: 'STC', TN: 'HSM', SY: 'PROD1' } },
+      { label: 'HSM (DEVT)', kind: 'address space', work: { subsystem: 'STC', TN: 'HSM', SY: 'DEVT' } },
+      { label: 'DEVONLY', kind: 'address space', work: { subsystem: 'STC', TN: 'DEVONLY', SY: 'DEVT' } },
+      { label: 'XCFAS', kind: 'address space', work: { subsystem: 'STC', TN: 'XCFAS', SY: 'DEVT' } },
+    ]);
+  });
+
+  it('shows DEVT address spaces caught by a system rule, preserving defaults and forced SYSTEM', () => {
+    const pending = edit(BASEPOL, { op: 'ADD_RULE', subsystem: 'STC', qualifier: 'SY', pattern: 'DEVT', serviceClass: 'STCHI', at: [0] });
+    const preview = explainClassification(pending, previewItems);
+    const stc = preview.subsystems.find((s) => s.subsystem === 'STC')!;
+    expect(stc.rows[0]).toMatchObject({ qualifier: 'SY', pattern: 'DEVT', effectiveClass: 'STCHI', catches: ['HSM (DEVT)', 'DEVONLY'] });
+    expect(stc.defaultCatches).toEqual(['HSM (PROD1)']);
+    expect(preview.forcedSystem).toEqual(['XCFAS']);
+    expect(explainClassification(BASEPOL, previewItems).subsystems.find((s) => s.subsystem === 'STC')!.defaultCatches).toEqual(['HSM (PROD1)', 'HSM (DEVT)', 'DEVONLY']);
+  });
+
+  it('refines a jobname match by system without losing the other system', () => {
+    let pending = edit(BASEPOL, { op: 'ADD_RULE', subsystem: 'STC', qualifier: 'TN', pattern: 'HSM', serviceClass: 'STCHI', at: [0] });
+    pending = edit(pending, { op: 'ADD_RULE', subsystem: 'STC', qualifier: 'SY', pattern: 'DEVT', serviceClass: 'STCLO', at: [0, 0] });
+    const rows = explainClassification(pending, previewItems).subsystems.find((s) => s.subsystem === 'STC')!.rows;
+    expect(rows[0]).toMatchObject({ effectiveClass: 'STCHI', catches: ['HSM (PROD1)'] });
+    expect(rows[1]).toMatchObject({ effectiveClass: 'STCLO', catches: ['HSM (DEVT)'] });
+    for (const item of previewItems.filter((it) => it.work.TN === 'HSM')) {
+      const result = classify(pending, item.work);
+      expect(rows.find((row) => row.catches.includes(item.label))!.effectiveClass).toBe(result.serviceClass);
+    }
+  });
+});
 
 describe('explainClassification', () => {
   const ex = explainClassification(BASEPOL, items);
@@ -25,7 +63,9 @@ describe('explainClassification', () => {
   });
 
   it('lists forced-SYSTEM address spaces and the STC default', () => {
-    expect(ex.forcedSystem).toEqual(expect.arrayContaining(['XCFAS', 'GRS', '*MASTER*']));
+    for (const system of ['PROD1', 'PROD2', 'DEVT', 'SYSP']) {
+      expect(ex.forcedSystem).toEqual(expect.arrayContaining([`XCFAS (${system})`, `GRS (${system})`, `*MASTER* (${system})`]));
+    }
     expect(stc.defaultServiceClass).toBe('STCLO');
     expect(stc.builtInDefault).toBe(false);
   });

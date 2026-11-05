@@ -558,10 +558,14 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   (see "Starving Internal work is free").
 - [x] **Automation misfire wording** (fixed 2026-11-04). "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
   MISFIRE), not a false trigger; say so in the Automation panel.
-- [ ] **Change desk "catches" column ignores `SY=` rules (UI bug).** The player's `SY=DEVT` rule under subsystem STC
-  (→ STCDEV) shows "catches nothing", though PROCU shows DEVT's STCs in STCDEV. Classification itself uses `SY: lparId`
-  everywhere in the sim; `workItems` in `src/game/classifyExplain.ts` builds one item per jobname without the system,
-  so no `SY=` rule can match. Build items per (jobname, system).
+- [x] **Change desk "catches" column ignores `SY=` rules (UI bug).** Completion takes effect on merge:
+  address-space previews now carry `SY: lparId` and retain one item per (jobname, system). Shared jobnames show
+  their system in the label; unique jobnames keep their existing labels. Top-level and nested `SY=DEVT` rules
+  therefore show the same address-space classification as the sim, with forced SYSTEM and default paths retained.
+  Regression tests cover duplicate definitions and names shared across systems. Validation: typecheck and all
+  74 files / 735 tests pass; production build passes; the three-scenario comparison against `origin/dev` finds no
+  sim/game state, run-log, RMF or Monitor III differences. STC system-name semantics verified in z/OS 3.1
+  [MVS Planning: Workload Management, p.92](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=92).
 - [x] **No way to add the first rule for a subsystem with no rules (UI bug, high).** Completion takes effect
   on merge: classification previews always include every supported subsystem, even without a policy entry or
   current work. Empty panels show their built-in default (STC → SYSSTC, others → SYSOTHER) or explicit default
