@@ -61,9 +61,14 @@ export function scaleEventCommands(cmds: readonly Command[], mult: number): Comm
   });
 }
 
+/** The day a story beat runs at this difficulty, or null when the difficulty skips it (SPEC §11.2). */
+export function storyBeatDay(beat: ScriptedBeat, difficulty: DifficultyId | undefined): number | null {
+  const d = difficultyOf(difficulty);
+  if (beat.constraint && d.skipConstraints.includes(beat.constraint)) return null;
+  return beat.constraint ? Math.max(1, beat.day + d.constraintDayShift) : beat.day;
+}
+
 /** The story beats due on a day at this difficulty: constraint beats shift or drop out (SPEC §11.2). */
 export function storyBeatsFor(story: readonly ScriptedBeat[], difficulty: DifficultyId | undefined, day: number): ScriptedBeat[] {
-  const d = difficultyOf(difficulty);
-  const beatDay = (b: ScriptedBeat) => (b.constraint ? Math.max(1, b.day + d.constraintDayShift) : b.day);
-  return story.filter((b) => beatDay(b) === day && !(b.constraint && d.skipConstraints.includes(b.constraint)));
+  return story.filter((b) => storyBeatDay(b, difficulty) === day);
 }

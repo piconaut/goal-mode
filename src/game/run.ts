@@ -208,7 +208,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       r = accumulateMon3(r);
       if ((tick + 1) % MON3_CHARTS.sampleTicks === 0) r = recordMon3(r, scenario);
     }
-    if ((tick + 1) % TICKS_PER_HOUR === 0) r = deliverInquiries(closeHour(r, scenario), scenario, content);
+    if ((tick + 1) % TICKS_PER_HOUR === 0) r = deliverInquiries(closeHour(r, scenario, content), scenario, content);
     if ((tick + 1) % TICKS_PER_DAY === 0) r = endDay(r, scenario, content);
   }
   return r;
