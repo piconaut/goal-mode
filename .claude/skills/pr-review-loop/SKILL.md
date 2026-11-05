@@ -16,8 +16,10 @@ next tick after it is marked ready for review, as **new** or per its latest mark
 `draft - skipped`.
 
 Models (user request 2026-11-04): the scheduled task runs this coordinating session on Sonnet; the review itself
-stays on Opus through the `pr-reviewer` agent's `model: opus`. Don't pass a `model` override when spawning it, and
-don't review diffs yourself: your job is bookkeeping, merging and the PROGRESS.md docs PR.
+stays on Opus through the `pr-reviewer` agent's `model: opus`. Exception (user request 2026-11-05): a follow-up
+whose previous marker lists no blocking findings (only non-blocking ones) is reviewed on Sonnet, by passing
+`model: "sonnet"` when spawning it. Every other review passes no `model` override. Don't review diffs yourself:
+your job is bookkeeping, merging and the PROGRESS.md docs PR.
 
 ## 1. Gather state
 
@@ -69,6 +71,9 @@ spawn them all in one message and wait for every hand-back before deciding). Bri
 - "Review-loop mode: classify every finding as blocking or non-blocking, give them IDs, and end the posted comment
   with the review-loop marker (see your agent file)." A merge conflict with `dev` is a blocking finding.
 - **First pass:** `pass: first`.
+- **Model:** spawn with `model: "sonnet"` only for a follow-up where the previous blocking list is empty (the
+  re-check is just "were the non-blocking items fixed, and is anything new blocking"). Follow-ups after any blocking
+  finding, first passes and stale approvals with blocking items stay on the agent's Opus default.
 - **Follow-up:** `pass: followup`, plus the previous blocking and non-blocking lists verbatim. "For each previous
   item, say fixed / not fixed with evidence. List NEW findings separately with new IDs (continue the numbering)."
 
