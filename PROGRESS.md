@@ -439,8 +439,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   cancelled. Only fewer concurrent lock-heavy jobs helps. Offer fixes: commit more often in the settlement job, lower
   LOCKMAX escalation (Db2 change), hold the job class.
 - [ ] **Retry storm needs a non-log clue (design).** The clue is WLMGL MOBILE END/S ×2.5 at unchanged CPU per
-  transaction; the player found it only from the Operations log. Add a gateway view (retries / duplicate request IDs)
-  or a codex line on reading END/S against yesterday.
+  transaction; the player found it only from the Operations log. Add a codex line on reading END/S against yesterday.
 - [ ] **Inbox change notices are always bad news (design).** By D26 the player rolls back any announced change on
   sight (Db2 REBIND, monitoring agent). Add changes that help (better access path, cheaper agent) so impact has to be
   judged.
