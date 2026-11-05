@@ -4,7 +4,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import type { Scenario } from '../sim/core/scenario';
 import type { WorkloadDef } from '../sim/workload/types';
 import { workItems, type WorkItem } from './classifyExplain';
-import { difficultyOf, storyBeatsFor } from './difficulty';
+import { storyBeatDay } from './difficulty';
 import type { GameContent } from './run/shared';
 import type { RunState } from './types';
 
@@ -22,8 +22,8 @@ export function isNewWorkload(run: RunState, content: GameContent, workloadId: s
     .filter((e) => e.started && addsWorkload(content.events.find((d) => d.id === e.defId)?.begin ?? []))
     .map((e) => e.startTick);
   for (const b of content.story) {
-    const day = b.constraint ? Math.max(1, b.day + difficultyOf(run.difficulty).constraintDayShift) : b.day;
-    if (addsWorkload(b.commands ?? []) && storyBeatsFor([b], run.difficulty, day).length > 0) starts.push(day * TICKS_PER_DAY);
+    const day = storyBeatDay(b, run.difficulty);
+    if (day !== null && addsWorkload(b.commands ?? [])) starts.push(day * TICKS_PER_DAY);
   }
   const startTick = Math.min(...starts);
   const hourStart = hourIndex * TICKS_PER_HOUR;

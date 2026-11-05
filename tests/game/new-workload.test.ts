@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { ACQUIRED_APP, BOOKING_APP } from '../../src/content/events/midwest-events';
+import { PREFILL_APP, REVENUE_STORY } from '../../src/content/events/revenue-events';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { NEW_WORKLOAD_DAYS } from '../../src/content/sla';
+import { storyBeatsFor } from '../../src/game/difficulty';
 import { advance, newRun, startDay } from '../../src/game/run';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import type { ActiveEvent, RunState } from '../../src/game/types';
@@ -34,6 +36,34 @@ function breach(w: WorkloadDef, hourStart: number, events: ActiveEvent[] = []): 
 const truth = (r: RunState) => closeHour(r, MIDWEST, MIDWEST_GAME).incidents.at(-1)!.truth;
 
 describe('new-workload incident window', () => {
+  it.each(['STORY', 'NORMAL', 'HARD', 'IRONMAN'] as const)(
+    'recovers the Revenue PREFILL story go-live window on %s', (difficulty) => {
+      const run = { ...breach(PREFILL_APP, 22 * TICKS_PER_DAY), difficulty };
+      const content = { ...MIDWEST_GAME, events: [], story: REVENUE_STORY };
+      for (const day of [21, 22, 23, 24]) {
+        expect(isNewWorkload(run, content, PREFILL_APP.id, day * 24)).toBe(day === 22 || day === 23);
+      }
+    },
+  );
+
+  it.each([
+    ['NORMAL', 10, 'DEADLINE_0500', 10],
+    ['STORY', 10, 'DEADLINE_0500', 13],
+    ['HARD', 10, 'DEADLINE_0500', 6],
+    ['IRONMAN', 2, 'DEADLINE_0500', 1],
+    ['STORY', 10, 'CFO_MANDATE', null],
+  ] as const)('uses the scheduled story workload day on %s (day %i, %s)', (difficulty, day, constraint, effectiveDay) => {
+    const run = { ...breach(ACQUIRED_APP, 0), difficulty };
+    const beat = { ...MIDWEST_GAME.story.find((b) => b.id === 'MERGER')!, day, constraint };
+    const content = { ...MIDWEST_GAME, events: [], story: [beat] };
+    const scheduledDays = Array.from({ length: 20 }, (_, d) => d).filter((d) => storyBeatsFor([beat], difficulty, d).length > 0);
+    expect(scheduledDays).toEqual(effectiveDay === null ? [] : [effectiveDay]);
+    for (let d = 0; d < 20; d++) {
+      expect(isNewWorkload(run, content, ACQUIRED_APP.id, d * 24))
+        .toBe(effectiveDay !== null && d >= effectiveDay && d < effectiveDay + NEW_WORKLOAD_DAYS);
+    }
+  });
+
   it.each([0, windowTicks - TICKS_PER_HOUR, windowTicks, windowTicks + TICKS_PER_DAY])(
     'uses the scripted go-live age at offset %i, including the exact expiry boundary', (age) => {
       expect(truth(breach(ACQUIRED_APP, storyStart + age))).toEqual({
