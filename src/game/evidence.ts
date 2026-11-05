@@ -19,7 +19,7 @@ export interface EvidencePin {
   /** Where it came from, in report terms (WLMGL, DELAY, CPC, Db2 101, CICS 110, SMF 30). */
   source: string;
   metric: EvidenceMetric;
-  /** Service-class period, workload or LPAR the value belongs to. */
+  /** Service-class period, workload, LPAR or SYSWKM server jobname the value belongs to. */
   subject: string;
   system: string;
   /** End of the measurement window the value describes. */
@@ -211,9 +211,11 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
   const batch = inc.workloadId === BATCH_INCIDENT ? batchSubjects(run, inc) : null;
   const classes = batch ? batch.classes : w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
   const lpars = batch ? batch.lpars : Object.keys(run.sim.routing[inc.workloadId] ?? w?.routing ?? {});
+  const servers: { jobname: string; lparId: string }[] = [];
   // Resource evidence on a CICS region class is evidence about its hosted transactions.
   if (w?.subsystem === 'CICS') for (const a of [...scenario.addressSpaces, ...run.sim.extraAddressSpaces]) {
     if (!lpars.includes(a.lparId) || (a.role !== 'CICS.AOR' && a.role !== 'CICS.TOR')) continue;
+    if (a.role === 'CICS.AOR') servers.push(a);
     const sc = classify(run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;
     if (sc && !classes.includes(sc)) classes.push(sc);
   }
@@ -228,6 +230,7 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
     const related =
       d.anySubject ||
       p.subject === inc.workloadId ||
+      (p.source === 'SYSWKM' && servers.some((a) => p.subject === a.jobname && p.system === a.lparId)) ||
       classes.some((sc) => p.subject === sc || p.subject.startsWith(`${sc}#`)) ||
       lpars.includes(p.subject) ||
       p.subject === '*PLEX';
