@@ -228,7 +228,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 
 #### Sim and game-logic bugs
 
-- [ ] **zIIP purchase with nowhere to go (bug + design gap).** Midwest PROD1 has 2 logical zIIPs and 0 reserved, PROD2 no zIIP
+- [x] **zIIP purchase with nowhere to go (bug + design gap).** FIXED: every Prod LPAR in all scenarios starts with ≥1 reserved CP and ≥1 reserved zIIP (Midwest PROD2: 0 online + 1 reserved zIIP, so SET_LOGICAL/F7 fix works in the UI); `SET_LOGICAL` refuses a pool the LPAR lacks; ADD_ZIIP shows a warning when no z/OS LPAR on the CPC has a reserved zIIP. Goldens regenerated (config change). Original note: Midwest PROD1 has 2 logical zIIPs and 0 reserved, PROD2 no zIIP
   pool; ADD_ZIIP has no headroom check. The UI (`validateLogical`) forbids a PROD2 zIIP while the sim's `SET_LOGICAL`
   creates one (bots and the Story starting fix rely on it), so SPEC F7 can't be fixed in the browser. Fix: PROD2 0 online
   + 1 reserved zIIP (also makes its IIPCP reporting legitimate), `SET_LOGICAL` enforces reserved, warn on ADD_ZIIP.

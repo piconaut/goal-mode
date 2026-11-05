@@ -219,6 +219,9 @@ export function Hardware({ v, game }: { v: ViewModel; game: GameHandle }) {
                 {h.opexPerDay > 0 ? ` $${Math.round(h.opexPerDay / 1000)}k/day while active.` : ''}
               </div>
               {p.reason && <div className="err">{p.reason}</div>}
+              {h.id === 'ADD_ZIIP' && !p.reason && !v.config.lpars.some((l) => l.kind === 'ZOS' && (target ?? cpcs[0]?.id) === l.cpcId && l.ziipReserved > 0) && (
+                <div className="err">No z/OS LPAR on this CPC has a reserved zIIP: a new engine can only be used after an image profile change and IPL.</div>
+              )}
             </span>
             <button disabled={!p.ok} title={p.reason ?? costText(p)} onClick={() => game.send({ type: 'CHANGE', req: { label, hardwareId: h.id, ...(target ? { cpcId: target } : {}) } })}>
               {p.capex > 0 ? `$${Math.round(p.capex / 1000)}k` : `$${Math.round(h.opexPerDay / 1000)}k/day`} · {p.hours}h

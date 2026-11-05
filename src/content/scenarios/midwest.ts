@@ -12,7 +12,7 @@ const cp = (logical: number, weight: number, extra: Partial<LparPoolConfig> = {}
   absoluteCapEngines: null,
   ...extra,
 });
-const ziip = (logical: number, weight: number): LparPoolConfig => ({ ...cp(logical, weight), pool: 'ZIIP' });
+const ziip = (logical: number, weight: number, extra: Partial<LparPoolConfig> = {}): LparPoolConfig => ({ ...cp(logical, weight, extra), pool: 'ZIIP' });
 const icf = (logical: number, weight: number, dedicated: boolean): LparPoolConfig => ({
   ...cp(logical, weight),
   pool: 'ICF',
@@ -35,9 +35,9 @@ const PROD_CFS = ['CF01', 'CF02'];
 export const MIDWEST_WORLD: WorldConfig = {
   cpcs: [{ id: 'CPCA', generation: 'M1', capacitySetting: 6, engines: { CP: 8, ZIIP: 2, ICF: 2 }, memoryGb: 768 }],
   lpars: [
-    zos('PROD1', [cp(6, 500, { reserved: 2 }), ziip(2, 500)], 160),
-    // F7: PROD2 has no zIIPs online although DDF is routed here.
-    zos('PROD2', [cp(6, 350, { reserved: 2 })], 140),
+    zos('PROD1', [cp(6, 500, { reserved: 2 }), ziip(2, 500, { reserved: 1 })], 160),
+    // F7: PROD2 has no zIIPs online (1 reserved) although DDF is routed here.
+    zos('PROD2', [cp(6, 350, { reserved: 2 }), ziip(0, 350, { reserved: 1 })], 140),
     // F9: DEVT has 4 logicals at weight 100 (E≈0.8): VL-heavy and uncapped.
     zos('DEVT', [cp(4, 100)], 64),
     zos('SYSP', [cp(2, 50)], 24),

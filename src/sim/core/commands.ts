@@ -85,6 +85,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       if (!l) return fail(s, `No LPAR ${cmd.lparId}`);
       const p = l.pools.find((x) => x.pool === cmd.pool);
       const max = p ? p.logical + p.reserved : 0;
+      if (!p) return fail(s, `${cmd.lparId} has no ${cmd.pool} pool defined; adding one needs an image profile change and IPL`);
       if (cmd.logical < 0) return fail(s, 'Logical count must be ≥ 0');
       if (p && cmd.logical > max) return fail(s, `Only ${max} logical ${cmd.pool}s defined (online + reserved); more needs an image profile change and IPL`);
       return ok(
