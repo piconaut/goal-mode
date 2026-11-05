@@ -215,8 +215,10 @@ export const MIDWEST_EVENTS: EventDef[] = [
     startHour: [8, 16],
     durationHours: 6, // the on-call eventually notices and cancels it
     // A loop in a single-TCB program burns at most one engine (APPROX: exactly ~0.9 reference engines).
-    begin: [{ kind: 'ADD_ADDRESS_SPACE', addressSpace: { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC', baseEnginesRef: 0.9, ziipFrac: 0 } }],
-    end: [mod('asCpu', 'CICSXLOG', 0)],
+    // Clear the stopped-job modifier left in older saves before starting a fresh occurrence.
+    begin: [mod('asCpu', 'CICSXLOG', 1), { kind: 'ADD_ADDRESS_SPACE', addressSpace: { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC', baseEnginesRef: 0.9, ziipFrac: 0 } }],
+    // CANCEL ends the started task (z/OS 3.1 MVS System Commands, PDF p.188); APPROX: immediate cleanup.
+    end: [{ kind: 'REMOVE_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' }],
     fix: 'CANCEL_XLOG',
     forewarning: null,
     announcement: null,
