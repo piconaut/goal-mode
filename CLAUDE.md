@@ -77,6 +77,11 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 
 ## Realism policy
 
+- **Check real behaviour with the `zos-docs` skill** (`.claude/skills/zos-docs/`; needs a clone of
+  `piconaut/ibm-zos-books`) whenever you add, change or review anything that states or models z/OS behaviour or
+  RMF/SMF/Monitor III report content (sim mechanics, report fields, Codex text, event clues). Cite book and page.
+  Agents and subagents included: briefs for such work must say so. If the books aren't available, mark the claim
+  unverified; don't guess.
 - The *mechanics* should behave like real z/OS. The *numbers* are fictional but plausible.
 - When modelling a behaviour, cite the source (IBM doc, Redbook, or expert publication) in a
   comment or in SPEC §18. Prefer IBM docs, then established practitioners (Watson & Walker

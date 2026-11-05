@@ -737,6 +737,9 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
 
 ## Active decisions and conventions
 
+- Realism checks (user request 2026-11-05): work and reviews touching z/OS behaviour or report content use the
+  `zos-docs` skill and cite book + page (CLAUDE.md "Realism policy"; `pr-reviewer`/`realism-fixer` have the Skill tool;
+  PR template has a "Realism check" section).
 - Architecture, deterministic simulation rules, units, validation, and contribution workflow are in
   [CLAUDE.md](CLAUDE.md); design and modeling details belong in SPEC and docs/research.md.
 - Real z/OS mechanics with fictional tunable numbers; no real LSPR/MSU/pricing data. Tick = 10 sim-seconds;
