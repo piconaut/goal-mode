@@ -1,5 +1,6 @@
 // Hourly SLA accounting, incident detection and ground-truth causes (SPEC §10, §12).
 
+import { TICKS_PER_HOUR } from '../sim/core/units';
 import type { NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
@@ -117,7 +118,18 @@ export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: read
 }
 
 export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
-  const ev = events.find((e) => e.started && !e.ended && e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)));
+  const startTick = hour.hourIndex * TICKS_PER_HOUR;
+  const endTick = startTick + TICKS_PER_HOUR;
+  // A fix or natural expiry before hour close must not erase the card that caused the breach.
+  const overlapTicks = (e: ActiveEvent) => Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick);
+  const activeAtClose = (e: ActiveEvent) => e.endTick === null || e.endTick > endTick;
+  const ev = events.filter((e) =>
+    e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
+    e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)),
+  ).sort((a, b) =>
+    Number(activeAtClose(b)) - Number(activeAtClose(a)) || overlapTicks(b) - overlapTicks(a) ||
+    (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0),
+  )[0];
   if (ev) return ev.trigger;
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;

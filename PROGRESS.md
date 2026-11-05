@@ -353,9 +353,12 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 - [ ] **RCA verdict text for grouped incidents (UI bug).** A CARDAUTH pin on the RBANK group was marked "not about RBANK"
   although it was also judged against CARDAUTH: `submitRca` (`src/game/run/rca.ts:28`) keeps the first incident's verdict
   when every one scores 0. Show the best verdict's own reason, or one per workload.
-- [ ] **Incident truth only sees cards still running at hour end (bug, high).** INC157 MOBILE (D33): RETRY_STORM ran
-  12:48–13:15 and the player's 13:15 MOBILE_BACKOFF ended it, so `triggerOf` found no card and fell back to
-  CPU_PRIORITY → POLICY. Fixing fast costs RCA points. Fix: any card active during the incident's window counts.
+- [x] **Incident truth only sees cards still running at hour end (bug, high).** Completion takes effect on merge:
+  `triggerOf` uses retained card start/end ticks to match any activity during the opening SLA hour, including cards
+  ended by expiry or remediation before hour close. This preserves RETRY_STORM → DEMAND_SURGE after MOBILE_BACKOFF
+  instead of falling back to POLICY (INC157 MOBILE, D33). Half-open window guards exclude cards ending at the hour's
+  start or starting at its end; workload/mechanism matching, fallbacks and player-visible data stay unchanged.
+  Regressions cover 13:15 and hour-boundary fixes, expiry on the last tick, full RCA points and non-overlapping cards.
 - [ ] **New workloads stay "NEW_WORKLOAD" forever (bug).** `isNew` checks `sim.extraWorkloads`, which never expires,
   so INC126 (D29) and INC177 (D36) on ACQBANK, live since D27, got NEW_WORKLOAD as truth. Fix: new for a few days
   after go-live only.

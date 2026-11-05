@@ -5,6 +5,7 @@ import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { NightSummary } from '../../src/sim/subsys/batch';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
 import type { ActiveEvent, HourAcc } from '../../src/game/types';
+import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const hour = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cpcBusySum: 0, lockIndexSum: 0 } as HourAcc;
 const card = (over: Partial<ActiveEvent>): ActiveEvent => ({
@@ -29,8 +30,67 @@ describe('triggerOf', () => {
     expect(triggerOf('CARDAUTH', 'DEPENDENCY', [], night, false)).toBe('POLICY');
   });
 
-  it('ignores ended cards and cards for other workloads', () => {
-    expect(triggerOf('RBANK', 'CPU_CAPACITY', [card({ ended: true }), card({ affects: ['MOBILE'] })], hour, false)).toBe('GROWTH');
+  it('keeps cards that ended within the opening SLA hour, including at its end', () => {
+    const h = { ...hour, hourIndex: 1 };
+    for (const endTick of [TICKS_PER_HOUR + 1, 2 * TICKS_PER_HOUR]) {
+      expect(triggerOf('RBANK', 'CPU_PRIORITY', [card({ startTick: TICKS_PER_HOUR - 5, endTick, ended: true })], h, false)).toBe('DEMAND_SURGE');
+    }
+    expect(triggerOf('RBANK', 'CPU_PRIORITY', [card({ startTick: TICKS_PER_HOUR + 1, endTick: null })], h, false)).toBe('DEMAND_SURGE');
+  });
+
+  it('ignores cards outside the opening SLA hour, including touching boundaries', () => {
+    const h = { ...hour, hourIndex: 1 };
+    for (const over of [
+      { endTick: TICKS_PER_HOUR - 1, ended: true },
+      { endTick: TICKS_PER_HOUR, ended: true },
+      { startTick: 2 * TICKS_PER_HOUR, endTick: null },
+      { startTick: 2 * TICKS_PER_HOUR + 1, endTick: null },
+      { startTick: TICKS_PER_HOUR, endTick: TICKS_PER_HOUR, ended: true },
+      { startTick: TICKS_PER_HOUR, endTick: null, started: false },
+    ]) {
+      expect(triggerOf('RBANK', 'CPU_PRIORITY', [card(over)], h, false)).toBe('POLICY');
+    }
+  });
+
+  it('still filters ended overlapping cards by workload and mechanism', () => {
+    const ended = card({ ended: true });
+    expect(triggerOf('RBANK', 'CPU_CAPACITY', [{ ...ended, affects: ['MOBILE'] }], hour, false)).toBe('GROWTH');
+    expect(triggerOf('RBANK', 'CPU_CAPACITY', [{ ...ended, mechanisms: ['IO'] }], hour, false)).toBe('GROWTH');
+    expect(triggerOf('RBANK', 'IO', [{ ...ended, mechanisms: ['IO'] }], hour, false)).toBe('DEMAND_SURGE');
+  });
+
+  it('prefers a card still active at hour close over an ended card regardless of list order or overlap length', () => {
+    const h = { ...hour, hourIndex: 1 };
+    const active = card({ uid: 'Z_ACTIVE@1', startTick: 2 * TICKS_PER_HOUR - 1, endTick: null });
+    for (const endTick of [TICKS_PER_HOUR + 1, 2 * TICKS_PER_HOUR]) {
+      const ended = card({ uid: 'A_ENDED@1', endTick, ended: true, trigger: 'HARDWARE_FAULT' });
+      for (const events of [[ended, active], [active, ended]]) {
+        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
+      }
+    }
+  });
+
+  it('prefers the longest opening-hour overlap within the same activity status', () => {
+    const h = { ...hour, hourIndex: 1 };
+    for (const endTick of [2 * TICKS_PER_HOUR, 3 * TICKS_PER_HOUR, null]) {
+      const longer = card({ uid: 'Z_LONG@1', startTick: 0, endTick, ended: endTick === 2 * TICKS_PER_HOUR });
+      const shorter = card({ ...longer, uid: 'A_SHORT@1', startTick: TICKS_PER_HOUR + 1, trigger: 'HARDWARE_FAULT' });
+      for (const events of [[shorter, longer], [longer, shorter]]) {
+        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
+      }
+    }
+  });
+
+  it('breaks equal activity and overlap ties by ascending card uid, without changing the event list', () => {
+    for (const endTick of [10, null]) {
+      const first = card({ uid: 'A@1', endTick, ended: endTick !== null });
+      const second = card({ ...first, uid: 'B@1', trigger: 'HARDWARE_FAULT' });
+      for (const events of [[second, first], [first, second]]) {
+        const original = [...events];
+        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, hour, false)).toBe('DEMAND_SURGE');
+        expect(events).toEqual(original);
+      }
+    }
   });
 });
 
