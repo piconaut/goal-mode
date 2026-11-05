@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BASEPOL } from '../../src/content/wlm/basepol';
-import { applyWlmEdit, goalError } from '../../src/game/wlmEdit';
+import { applyWlmEdit, goalError, playerWlmEditError } from '../../src/game/wlmEdit';
 
 const refused = (r: unknown) => expect(typeof r).toBe('string');
 const accepted = (r: unknown) => expect(typeof r).not.toBe('string');
@@ -17,6 +17,12 @@ describe('WLM edit validation (WLM Planning p.67, p.84, p.99, p.102, p.120)', ()
     refused(applyWlmEdit(BASEPOL, { op: 'SET_PERIOD', classId: 'STCHI', period: 0, goal: { kind: 'VEL', velocity: 50 }, importance: 9 as never }));
     refused(applyWlmEdit(BASEPOL, { op: 'SET_PERIOD', classId: 'TSO', period: 0, goal: { kind: 'AVG', rtSec: 1 }, importance: 2, durationSu: -5 }));
     refused(applyWlmEdit(BASEPOL, { op: 'SET_PERIOD', classId: 'TSO', period: 0, goal: { kind: 'AVG', rtSec: 1 }, importance: 2, durationSu: null }));
+  });
+
+  it('keeps Manage Region Using Goals Of out of the player\'s hands (fixed at TRANSACTION)', () => {
+    for (const mode of ['TRANSACTION', 'REGION', 'BOTH'] as const) expect(playerWlmEditError({ op: 'SET_RULE_REGION_MODE', subsystem: 'STC', path: [0], mode })).toMatch(/TRANSACTION/);
+    expect(playerWlmEditError({ op: 'SET_RULE_REGION_MODE', subsystem: 'STC', path: [0], mode: null })).toBeNull();
+    expect(playerWlmEditError({ op: 'SET_IO_PRIORITY', on: false })).toBeNull();
   });
 
   it('sets Manage Region Using Goals Of only on STC and JES rules (WLM Planning p.122)', () => {

@@ -21,7 +21,7 @@ import { askAround } from '../game/inquiries';
 import { adviseReportClasses, applyReportClassAdvice } from '../game/rcAdvisor';
 import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
-import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase } from '../game/wlmEdit';
+import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase, playerWlmEditError } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
 import { decodeRunFileText, decodeRunJson, encodeRunJson } from '../game/runFile';
@@ -574,7 +574,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'WLM_EDIT': {
       // After a briefing install, subsequent edits retain its queued changes.
       const base = pendingBase(pendingPolicy, policyEditSource(run));
-      const res = applyWlmEdit(base, m.edit);
+      const res = playerWlmEditError(m.edit) ?? applyWlmEdit(base, m.edit);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else {
         const had = new Set(cicsGoalIssues(base).map((i) => i.message));

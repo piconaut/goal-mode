@@ -28,7 +28,7 @@ import { addPin, removePin, type PinRequest } from '../src/game/evidence';
 import { EVIDENCE_METRICS } from '../src/content/evidence';
 import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
-import { applyWlmEdit, pendingBase, type WlmEdit } from '../src/game/wlmEdit';
+import { applyWlmEdit, pendingBase, playerWlmEditError, type WlmEdit } from '../src/game/wlmEdit';
 import { policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
@@ -243,7 +243,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(removePin(run, c.id), `Unpinned ${idText('pin', c.id)}.`);
     }
     case 'wlm': {
-      const res = applyWlmEdit(pendingBase(file.pendingPolicy, policyEditSource(run)), c.edit);
+      const res = playerWlmEditError(c.edit) ?? applyWlmEdit(pendingBase(file.pendingPolicy, policyEditSource(run)), c.edit);
       if (typeof res === 'string') return fail(res);
       return done(run, `Pending policy ${res.policyName} updated. ${run.phase === 'REVIEW' ? "close the day (draft <id|none>), then activate at tomorrow's briefing to install it." : 'activate to install it.'}`, true, res);
     }
