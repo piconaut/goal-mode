@@ -11,7 +11,7 @@ import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const games = { midwest: MIDWEST_GAME, revenue: REVENUE_GAME, harbourline: HARBOURLINE_GAME };
 
-function startCap(id: keyof typeof games, commands: Command[] = []) {
+function startCap(id: keyof typeof games, commands: Command[] = [], pendingCommands: Command[] = []) {
   const scenario = SCENARIOS[id]!;
   const game = games[id];
   const def = game.events.find((e) => e.id === 'POWER_CAP')!;
@@ -19,6 +19,7 @@ function startCap(id: keyof typeof games, commands: Command[] = []) {
   return advance({
     ...run,
     sim: applyCommands(run.sim, commands),
+    pendingCommands: [...run.pendingCommands, ...pendingCommands],
     events: [{
       uid: 'POWER_CAP@0', defId: def.id, name: def.name, startTick: 0, endTick: 6 * TICKS_PER_HOUR,
       trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false,
@@ -72,5 +73,24 @@ describe('power-cap RCA scope', () => {
       expect(triggerOf(workload, 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('POLICY');
     }
     expect(triggerOf('MOBILE', 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('HARDWARE_FAULT');
+  });
+
+  it('uses pending routing changes applied on the cap-start tick', () => {
+    const run = startCap('harbourline', [
+      { kind: 'SET_CPC_CAPACITY', cpcId: 'CPC2', capacitySetting: 4 },
+      { kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'STATIC' } },
+      { kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PRDC: 1 } },
+      { kind: 'SET_ROUTING_POLICY', workloadId: 'CARDS', policy: { method: 'STATIC' } },
+      { kind: 'SET_ROUTING', workloadId: 'CARDS', routing: { PRDA: 1 } },
+    ], [
+      { kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PRDA: 1 } },
+      { kind: 'SET_ROUTING', workloadId: 'CARDS', routing: { PRDC: 1 } },
+    ]);
+    expect(run.sim.routing.MOBILE).toEqual({ PRDA: 1 });
+    expect(run.sim.routing.CARDS).toEqual({ PRDC: 1 });
+    expect(run.events[0]!.affects).toContain('MOBILE');
+    expect(run.events[0]!.affects).not.toContain('CARDS');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('CARDS', 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('POLICY');
   });
 });
