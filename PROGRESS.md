@@ -859,6 +859,10 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
   capping, cost, RMF), `demand` (3–4), `dispatch` (7–12a), `helpers` (routing, caps, CICS regions; public helpers are
   re-exported from `step.ts`). Bench hashes unchanged on all three scenarios. `src/sim/wlm/evaluate.ts` (~910) is the
   next candidate.
+- [ ] **Midwest should use the shared `pool()` helper.** `src/content/scenarios/midwest.ts` defines its own `cp`, `ziip`
+  and `icf` constructors; Revenue and Harbourline use `pool()` from `scenarios/pool.ts`. Switch Midwest to `pool()` and
+  delete the local helpers (`icf` also needs its `dedicated` flag via `extra`). Pure refactor: `npm run compare` must
+  show no difference.
 - Stale remote branches (`claude/*`, `ccr-d83b42c6-*`, Oct 21–29) hold only already squash-merged work; delete
   when convenient.
 
