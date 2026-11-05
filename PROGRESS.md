@@ -385,9 +385,6 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   DP (its own PI is reported, not managed to).
 - [ ] **IIPCP on an image without zIIPs (realism).** With PROJECTCPU=NO (default) and no zIIP configured, real RMF reports
   no IIPCP (Init & Tuning p.434); the sim always does. Moot if PROD2 gets a reserved zIIP.
-- [ ] **D8 DDFADHOC was no event.** Normal Monday ad hoc peaks (APPL CP 36–46 % / IIPCP 18–24 % 10:00–16:30; 5.1/2.6 by
-  19:30). "Cancel the runaway DDF thread" matched nothing, gave no feedback and cost 0.5 h (see the no-match item above).
-  The routing editor lists only multi-target workloads, so ADHOC can't move to PROD1. Player read: fair, but needs feedback.
 - [ ] **Open question: a region class whose regions are transaction servers as a receiver.** In the sim STCHI's PI includes
   the CICS AORs' samples and WLM spends a receiver slot on it, but its DP doesn't reach the regions. WLM Planning p.111:
   servers "are managed according to the goals of the served transactions". How real WLM treats the region class's own
