@@ -64,8 +64,8 @@ For each PR to review, spawn the `pr-reviewer` subagent (in the background; seve
 spawn them all in one message and wait for every hand-back before deciding). Brief:
 
 - PR number, title, head branch and SHA, base `dev`, and a scratchpad directory.
-- "Check z/OS behaviour claims against IBM docs with the zos-docs skill where applicable (cite pages); say n/a
-  when there are none."
+- "Check z/OS behaviour claims against IBM docs with the zos-docs skill (Skill tool; cite pages); a z/OS behaviour
+  or report change with no checked citation is a blocking finding; say n/a when there are none."
 - "Review-loop mode: classify every finding as blocking or non-blocking, give them IDs, and end the posted comment
   with the review-loop marker (see your agent file)." A merge conflict with `dev` is a blocking finding.
 - **First pass:** `pass: first`.

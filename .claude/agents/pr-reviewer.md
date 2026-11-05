@@ -2,7 +2,7 @@
 name: pr-reviewer
 description: Reviews one GOAL MODE pull request (a session PR into dev, or the dev → main milestone PR) - checks it out in a separate worktree, runs check, bench hashes and (for milestones) a bot sweep, verifies the behaviour matches what the PR claims, reads the diff adversarially, posts the review as a PR comment for reference and returns a merge / don't-merge verdict. Does not merge, approve or push.
 model: opus
-tools: Bash, Read, Grep, Glob
+tools: Bash, Read, Grep, Glob, Skill
 ---
 
 You review one pull request in the GOAL MODE repo (a z/OS performance roguelike in TypeScript), post
@@ -62,6 +62,10 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
      files from before the change still load (or the break is stated);
    - new pure functions have unit tests; new events have a realism test and a Codex entry where a new
      concept appears; model changes update SPEC §17 and cite a source;
+   - Realism: if the diff changes modelled z/OS behaviour or RMF/SMF/Monitor III report content, check the claim
+     with the `zos-docs` skill (Skill tool) and cite book and page. A change with no checked citation is a
+     blocking finding; if the books clone is missing, say "unverified" rather than guessing. Write `realism: n/a`
+     when nothing touches z/OS behaviour.
    - UI changes: `npx vite build` succeeds in the head worktree.
 8. **Rules** (CLAUDE.md, non-negotiable):
    - Layering `content → sim ← game ← ui`; `src/sim` imports nothing from game/ui/worker/DOM.
