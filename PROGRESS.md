@@ -391,9 +391,17 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   NEW_WORKLOAD expires two simulated days after go-live, including persistent go-live cards. Existing event history
   and scripted-beat dates recover the start without new save fields; unknown origins fall back to the current cause.
   Regression coverage checks new work, expiry boundaries, saved runs and unaffected event/policy/growth/lock triggers.
-- [ ] **POWER_CAP only blames MOBILE and RBANK (bug).** A power cap slows every LPAR, but `affects` is static, so
-  INC177 ACQBANK (D36) and INC183/185 CARDAUTH/PAYMQ (D38) fall back to other truths while the cap was the cause.
-  Fix: hardware cards affect every workload on the CPC.
+- [x] **POWER_CAP only blames MOBILE and RBANK (bug).** Completion takes effect on merge:
+  the card resolves `affects` at start from the tick's effective routing, including pending changes and added
+  workloads, to every CPC whose capacity it reduces. Workloads solely on a CPC already at the minimum setting
+  are excluded; the existing site-wide capacity drop and restoration stay unchanged. Regressions cover all three
+  scenarios, ACQBANK, retained expiry attribution, routing overrides (including pending changes when the cap starts)
+  and the unaffected-CPC boundary. The shared card (including Revenue/Harbourline adaptations) only matches
+  CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY; I/O, lock, CF and storage incidents cannot be blamed on
+  this cap. Regressions cover the mechanism filter and an I/O incident during the cap in all three scenarios.
+  Known limitation: `affects` is a start-time snapshot, retained for expired-card attribution. Routing changes
+  and workloads added after the cap starts do not refresh its RCA scope; mid-cap moves can leave stale attribution
+  or miss newly exposed workloads. This follow-up remains outside this fix.
 - [x] **zIIP delay pins are judged against the wrong mechanism (bug).** Completion takes effect on merge:
   `DELAY_ZIIP` supports CPU_PRIORITY as well as CPU_CAPACITY, matching the existing `mechanismOf` CPU split;
   INC157-style zIIP pins now count toward the RCA's evidence award. Subject, time-window and notability guards

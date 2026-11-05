@@ -164,6 +164,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     }
     let events = r.events;
     const resolvedEnd = new Map<string, Command[]>();
+    const resolvedCpcs = new Map<string, Set<string>>();
     for (const e of events) {
       const def = content.events.find((d) => d.id === e.defId);
       if (!e.started && e.startTick <= tick) {
@@ -171,12 +172,15 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         if (def?.capacityDrop) {
           // A site power cap throttles every CPC on the floor; the end restores each one's setting.
           const restore: Command[] = [];
+          const affectedCpcs = new Set<string>();
           for (const cpc of r.sim.config.cpcs) {
             const to = Math.max(4, cpc.capacitySetting - def.capacityDrop) as 4 | 5 | 6 | 7;
+            if (to < cpc.capacitySetting) affectedCpcs.add(cpc.id);
             cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to });
             restore.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting });
           }
           resolvedEnd.set(e.uid, restore);
+          resolvedCpcs.set(e.uid, affectedCpcs);
         }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
         if (def?.perkTip && r.perks.includes(def.perkTip.perk)) r = msg(r, def.perkTip.from, def.name, def.perkTip.text);
@@ -187,13 +191,22 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         r = logLine(r, `EVENT end: ${e.name}`);
       }
     }
+    const sim = step(r.sim, cmds, scenario);
+    const resolvedAffects = new Map<string, string[]>();
+    for (const [uid, cpcs] of resolvedCpcs) {
+      // Pending commands and dynamic routing have now chosen the hosts used by this tick.
+      const affectedLpars = new Set(sim.config.lpars.filter((l) => cpcs.has(l.cpcId)).map((l) => l.id));
+      resolvedAffects.set(uid, allWorkloads(scenario, { ...r, sim })
+        .filter((w) => Object.entries(sim.routing[w.id] ?? w.routing).some(([id, share]) => share > 0 && affectedLpars.has(id)))
+        .map((w) => w.id));
+    }
     events = events.map((e) => ({
       ...e,
+      affects: resolvedAffects.get(e.uid) ?? e.affects,
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || e.startTick <= tick,
       ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
     }));
-    const sim = step(r.sim, cmds, scenario);
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);
     if ((tick + 1) % ALERTS.evalTicks === 0) {

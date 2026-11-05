@@ -481,6 +481,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 0.8,
     trigger: 'HARDWARE_FAULT',
     affects: ['MOBILE', 'RBANK'],
+    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY'],
     startHour: [12, 16],
     durationHours: 6,
     capacityDrop: 1,
