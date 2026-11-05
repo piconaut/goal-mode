@@ -22,12 +22,36 @@ function startCap(id: keyof typeof games, commands: Command[] = [], pendingComma
     pendingCommands: [...run.pendingCommands, ...pendingCommands],
     events: [{
       uid: 'POWER_CAP@0', defId: def.id, name: def.name, startTick: 0, endTick: 6 * TICKS_PER_HOUR,
-      trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false,
+      trigger: def.trigger, affects: def.affects, mechanisms: def.mechanisms,
+      endCommands: def.end, started: false, ended: false,
     }],
   }, scenario, game, 1);
 }
 
 describe('power-cap RCA scope', () => {
+  it.each(['midwest', 'revenue', 'harbourline'] as const)('only attributes CPU-side incidents in %s to the cap', (id) => {
+    const run = startCap(id);
+    const workload = SCENARIOS[id]!.workloads[0]!.id;
+    for (const mechanism of ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY'] as const) {
+      expect(triggerOf(workload, mechanism, run.events, newHour(0), false)).toBe('HARDWARE_FAULT');
+    }
+    for (const mechanism of ['IO', 'LOCK_CONTENTION', 'CF_SERVICE', 'STORAGE'] as const) {
+      expect(triggerOf(workload, mechanism, run.events, newHour(0), false)).toBe('GROWTH');
+    }
+    const closed = closeHour({
+      ...run,
+      sim: { ...run.sim, tick: TICKS_PER_HOUR },
+      hour: {
+        ...newHour(0), ticks: TICKS_PER_HOUR,
+        workloads: { [workload]: {
+          completions: 1000, failed: 0, withinSla: 0, rtSumSec: 10_000, parts: { io: 10_000 },
+        } },
+      },
+    }, SCENARIOS[id]!, games[id]);
+    expect(closed.incidents.find((i) => i.workloadId === workload)?.truth)
+      .toEqual({ mechanism: 'IO', trigger: 'GROWTH' });
+  });
+
   it.each([
     ['midwest', ['CARDAUTH', 'PAYMQ']],
     ['revenue', ['REFSTAT', 'AGENTS', 'EMPLOYER']],
