@@ -152,7 +152,7 @@ end-of-day report card is the summary. The day is simulated in full, so seeds an
                          │ ICF: 2 (CF engines)            Memory: 768 GB            │
                          │                                                           │
   Sysplex PLEXP1         │  PROD1  w=500 LCP=6 zIIP=2   (CICS AORs, Db2 DB1A, MQ)  │
-                         │  PROD2  w=350 LCP=6 zIIP=0   (CICS AORs, Db2 DB1B, DDF) │
+                         │  PROD2  w=350 LCP=6 zIIP=0+1r  (CICS AORs, Db2 DB1B, DDF) │
                          │  DEVT   w=100 LCP=4          (dev/test, TSO, test Db2)  │
                          │  SYSP   w=50  LCP=2          (sysprog sandbox)          │
                          │  CF01   dedicated ICF        (lock, GBP primary, XCF)  │
@@ -1272,7 +1272,7 @@ Each flaw has a discoverable symptom.
 No report classes beyond service classes (**F6: poor granularity**).
 
 ### 13.2 Starting PR/SM & hardware
-- **F7:** PROD2 has **no zIIPs online**, while DDF (zIIP-eligible) is routed 60% to PROD2.
+- **F7:** PROD2 has **no zIIPs online** (1 reserved, so it can be varied online without an IPL), while DDF (zIIP-eligible) is routed 60% to PROD2.
 - **F8:** CF02 on a **shared ICF** with low weight and no thin interrupts → async conversion,
   CPU burn on z/OS.
 - **F9:** DEVT has **4 logical CPs at weight 100** (entitlement ≈ 0.8 CP): VL-heavy, raises the

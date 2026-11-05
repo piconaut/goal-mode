@@ -228,7 +228,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 
 #### Sim and game-logic bugs
 
-- [ ] **zIIP purchase with nowhere to go (bug + design gap).** Midwest PROD1 has 2 logical zIIPs and 0 reserved, PROD2 no zIIP
+- [x] **zIIP purchase with nowhere to go (bug + design gap).** FIXED: every Prod LPAR in all scenarios starts with ≥1 reserved CP and ≥1 reserved zIIP (Midwest PROD2: 0 online + 1 reserved zIIP, so SET_LOGICAL/F7 fix works in the UI); `SET_LOGICAL` refuses a pool the LPAR lacks; ADD_ZIIP shows a warning when no z/OS LPAR on the CPC has a reserved zIIP. Goldens regenerated (config change). Original note: Midwest PROD1 has 2 logical zIIPs and 0 reserved, PROD2 no zIIP
   pool; ADD_ZIIP has no headroom check. The UI (`validateLogical`) forbids a PROD2 zIIP while the sim's `SET_LOGICAL`
   creates one (bots and the Story starting fix rely on it), so SPEC F7 can't be fixed in the browser. Fix: PROD2 0 online
   + 1 reserved zIIP (also makes its IIPCP reporting legitimate), `SET_LOGICAL` enforces reserved, warn on ADD_ZIIP.
@@ -854,6 +854,10 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
   capping, cost, RMF), `demand` (3–4), `dispatch` (7–12a), `helpers` (routing, caps, CICS regions; public helpers are
   re-exported from `step.ts`). Bench hashes unchanged on all three scenarios. `src/sim/wlm/evaluate.ts` (~910) is the
   next candidate.
+- [ ] **Midwest should use the shared `pool()` helper.** `src/content/scenarios/midwest.ts` defines its own `cp`, `ziip`
+  and `icf` constructors; Revenue and Harbourline use `pool()` from `scenarios/pool.ts`. Switch Midwest to `pool()` and
+  delete the local helpers (`icf` also needs its `dedicated` flag via `extra`). Pure refactor: `npm run compare` must
+  show no difference.
 - Stale remote branches (`claude/*`, `ccr-d83b42c6-*`, Oct 21–29) hold only already squash-merged work; delete
   when convenient.
 
