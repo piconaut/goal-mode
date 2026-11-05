@@ -35,7 +35,32 @@ describe('address-space work items', () => {
     expect(stc.rows[0]).toMatchObject({ qualifier: 'SY', pattern: 'DEVT', effectiveClass: 'STCHI', catches: ['HSM (DEVT)', 'DEVONLY'] });
     expect(stc.defaultCatches).toEqual(['HSM (PROD1)']);
     expect(preview.forcedSystem).toEqual(['XCFAS']);
-    expect(explainClassification(BASEPOL, previewItems).subsystems.find((s) => s.subsystem === 'STC')!.defaultCatches).toEqual(['HSM (PROD1)', 'HSM (DEVT)', 'DEVONLY']);
+    expect(explainClassification(BASEPOL, previewItems).subsystems.find((s) => s.subsystem === 'STC')!.defaultCatches).toEqual(['HSM', 'DEVONLY']);
+  });
+
+  it('collapses shared names when all systems reach the same rule, including a system rule', () => {
+    for (const [qualifier, pattern] of [['TN', 'HSM'], ['SY', '*']] as const) {
+      const pending = edit(BASEPOL, { op: 'ADD_RULE', subsystem: 'STC', qualifier, pattern, serviceClass: 'STCHI', at: [0] });
+      const stc = explainClassification(pending, previewItems).subsystems.find((s) => s.subsystem === 'STC')!;
+      expect(stc.rows[0]!.catches).toEqual(qualifier === 'TN' ? ['HSM'] : ['HSM', 'DEVONLY']);
+    }
+  });
+
+  it('keeps systems on distinct rule paths even when both paths assign the same class', () => {
+    let pending = edit(BASEPOL, { op: 'ADD_RULE', subsystem: 'STC', qualifier: 'TN', pattern: 'HSM', serviceClass: 'STCHI', at: [0] });
+    pending = edit(pending, { op: 'ADD_RULE', subsystem: 'STC', qualifier: 'SY', pattern: 'DEVT', serviceClass: 'STCHI', at: [0, 0] });
+    const rows = explainClassification(pending, previewItems).subsystems.find((s) => s.subsystem === 'STC')!.rows;
+    expect(rows[0]).toMatchObject({ effectiveClass: 'STCHI', catches: ['HSM (PROD1)'] });
+    expect(rows[1]).toMatchObject({ effectiveClass: 'STCHI', catches: ['HSM (DEVT)'] });
+  });
+
+  it('collapses shared defaults consistently in the SYSOTHER summary without merging workloads', () => {
+    const def = edit(BASEPOL, { op: 'SET_DEFAULT', subsystem: 'STC', serviceClass: 'SYSOTHER' });
+    const workload: WorkItem = { label: 'HSM', kind: 'workload', work: { subsystem: 'OMVS', UI: 'HSM' } };
+    const preview = explainClassification(def, [...previewItems, workload]);
+    expect(preview.subsystems.find((s) => s.subsystem === 'STC')!.defaultCatches).toEqual(['HSM', 'DEVONLY']);
+    expect(preview.sysother).toEqual(['HSM', 'DEVONLY', 'HSM']);
+    expect(preview.subsystems.find((s) => s.subsystem === 'OMVS')!.defaultCatches).toEqual(['HSM']);
   });
 
   it('refines a jobname match by system without losing the other system', () => {
@@ -63,11 +88,16 @@ describe('explainClassification', () => {
   });
 
   it('lists forced-SYSTEM address spaces and the STC default', () => {
-    for (const system of ['PROD1', 'PROD2', 'DEVT', 'SYSP']) {
-      expect(ex.forcedSystem).toEqual(expect.arrayContaining([`XCFAS (${system})`, `GRS (${system})`, `*MASTER* (${system})`]));
-    }
+    expect(ex.forcedSystem).toEqual(['*MASTER*', 'XCFAS', 'GRS', 'CATALOG', 'SMF']);
     expect(stc.defaultServiceClass).toBe('STCLO');
     expect(stc.builtInDefault).toBe(false);
+  });
+
+  it('shows one catch per shared system STC under BASEPOL', () => {
+    for (const pattern of ['JES2', 'VTAM', 'TCPIP', 'RRS', 'RMF*', 'MON*']) {
+      expect(row(pattern).catches).toHaveLength(1);
+      expect(row(pattern).catches[0]).not.toMatch(/\(/);
+    }
   });
 
   it('puts every critical and non-critical batch stream in BATCHPRD under BASEPOL (flaw F4)', () => {

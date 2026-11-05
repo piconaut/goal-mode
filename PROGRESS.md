@@ -559,11 +559,13 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 - [x] **Automation misfire wording** (fixed 2026-11-04). "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
   MISFIRE), not a false trigger; say so in the Automation panel.
 - [x] **Change desk "catches" column ignores `SY=` rules (UI bug).** Completion takes effect on merge:
-  address-space previews now carry `SY: lparId` and retain one item per (jobname, system). Shared jobnames show
-  their system in the label; unique jobnames keep their existing labels. Top-level and nested `SY=DEVT` rules
+  address-space previews now carry `SY: lparId` and retain one item per (jobname, system). Shared jobnames collapse
+  to one catch when every system reaches the same rule, default or forced-SYSTEM list; split destinations retain
+  system labels, including distinct rule paths that assign the same class. Top-level and nested `SY=DEVT` rules
   therefore show the same address-space classification as the sim, with forced SYSTEM and default paths retained.
-  Regression tests cover duplicate definitions and names shared across systems. Validation: typecheck and all
-  74 files / 735 tests pass; production build passes; the three-scenario comparison against `origin/dev` finds no
+  Regression tests cover duplicate definitions, shared names, compact BASEPOL rows/forced lists and consistent
+  SYSOTHER summaries. Validation: typecheck and all 74 files / 739 tests pass (single test worker); production
+  build passes; the three-scenario comparison against `origin/dev` finds no
   sim/game state, run-log, RMF or Monitor III differences. STC system-name semantics verified in z/OS 3.1
   [MVS Planning: Workload Management, p.92](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=92).
 - [x] **No way to add the first rule for a subsystem with no rules (UI bug, high).** Completion takes effect
