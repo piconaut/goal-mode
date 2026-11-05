@@ -24,6 +24,7 @@ Books referred to below:
 | Short name | Book |
 |---|---|
 | WLM Planning | *z/OS MVS Planning: Workload Management* (ieaw100), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf) |
+| MVS System Commands | *z/OS 3.1 MVS System Commands* (ieag100), SA38-0666-60, [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag100_v3r1.pdf) |
 | Init & Tuning | *z/OS MVS Initialization and Tuning Reference* (ieae200), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieae200_v3r1.pdf) |
 | RMF Report Analysis | *z/OS RMF Report Analysis* (erbb500), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf) |
 | SCRT | *SCRT: Using the Sub-Capacity Reporting Tool* (e0zs100, z/OS 3.2 library), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.2.0/pdf/e0zs100.pdf) |
@@ -38,6 +39,12 @@ Books referred to below:
 | SG24-7621 | Redbook *ABCs of z/OS System Programming Vol. 12* (WLM), SG24-7621-00, Jan 2010, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf) |
 | SG24-6472 | Redbook *System Programmer's Guide to: Workload Manager*, SG24-6472-03, Mar 2008, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf) |
 | SG24-7817 | Redbook *System z Parallel Sysplex Best Practices*, SG24-7817-00, Jan 2011, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg247817.pdf) |
+
+## Started tasks and cancellation
+
+| Fact | Source | Checked | Sim status |
+|---|---|---|---|
+| START creates an address space for a started task. CANCEL ends an active started task; the cancellation ABEND is asynchronous and additional CANCEL commands can be needed to end the job completely | [MVS System Commands p.50](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag100_v3r1.pdf#page=50), [p.188](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag100_v3r1.pdf#page=188) | Checked 2026-11-05 | Approx: `XLOG_LOOP` expiry and operator cancellation remove its extra address space; a later occurrence restarts at base demand, clearing old-save duplicates and zero-CPU modifiers (`src/sim/core/commands.ts`, `src/content/events/midwest-events.ts`). Immediate cleanup on the command tick assumes cancellation succeeds; asynchronous termination and repeated cancellation are not modelled |
 
 ## WLM goals and the performance index
 
