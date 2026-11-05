@@ -399,9 +399,12 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   INC157-style zIIP pins now count toward the RCA's evidence award. Subject, time-window and notability guards
   remain in place. Regressions cover two-pin scoring and strong-evidence Insight, wrong answers, unrelated
   subjects/mechanisms, low values, both window edges, and zIIP queue growth producing either CPU mechanism.
-- [ ] **Pins on a CICS region don't count for its workload (bug / UX).** A SYSWKM pin's subject is the region jobname
-  (CICSAOR1); relatedness only knows workloads, classes and LPARs, so INC133 CARDAUTH said "not about CARDAUTH".
-  Fix: map region jobnames to the workloads they serve.
+- [x] **Pins on a CICS region don't count for its workload (bug / UX).** Completion takes effect on merge:
+  SYSWKM server jobnames map to CICS workloads through the existing AOR address spaces and positive routing shares,
+  including added regions. Matching requires the server's system; unrelated names, systems and non-CICS workloads
+  remain excluded. Velocity still scores zero as a symptom, with that verdict instead of "not about CARDAUTH"
+  (INC133). Regressions cover shared workloads, added regions, routing, saved pins and the incident window;
+  no evidence weights, save fields or simulation mechanics change.
 - [ ] **CICS SOS is labelled POLICY / THREAD_LIMIT (design gap).** The card has trigger POLICY and mechanism
   THREAD_LIMIT; the player's STORAGE (INC168) is the better answer for a storage leak. Give the card a storage or
   software-defect label, and define each trigger/mechanism in the RCA form (the player asked what "policy" means).

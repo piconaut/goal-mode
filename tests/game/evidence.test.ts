@@ -121,6 +121,22 @@ describe('evidence pins', () => {
     expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
   });
 
+  it('excludes zero-share AORs without changing existing LPAR or class matching', () => {
+    const r = { ...regressed, sim: { ...regressed.sim,
+      routing: { ...regressed.sim.routing, CARDAUTH: { PROD1: 0, PROD2: 1 } },
+    } };
+    const inc = incident(r, { workloadId: 'CARDAUTH' });
+    const p = { id: 1000, source: 'SYSWKM', metric: 'VELOCITY' as const, subject: 'CICSAOR1',
+      system: 'PROD1', tick: r.sim.tick, value: 10, text: '' };
+    expect(judgeEvidence(r, MIDWEST, inc, [p])[0])
+      .toMatchObject({ relevance: 0, why: 'not about CARDAUTH' });
+    for (const subject of ['PROD1', 'STCHI#1']) {
+      expect(judgeEvidence(r, MIDWEST, inc, [{ ...p, subject }])[0]!.why).toBe('a symptom, not a cause');
+    }
+    expect(judgeEvidence(r, MIDWEST, inc, [{ ...p, subject: 'CICSAOR2', system: 'PROD2' }])[0]!.why)
+      .toBe('a symptom, not a cause');
+  });
+
   it.each([
     { pin: { subject: 'DEVONLY#1' }, truth: 'CPU_PRIORITY', why: 'not about MOBILE' },
     { pin: { value: 9.9 }, truth: 'CPU_PRIORITY', why: 'value is unremarkable' },
@@ -219,7 +235,48 @@ describe('CICS resource evidence on region classes', () => {
     expect(p.value).toBe(s.velocity);
     expect(p.text).toContain(`${s.jobname} velocity`);
     expect(judgeEvidence(r, MIDWEST, incident(r), [p])[0]!.relevance).toBe(0);
+    for (const workloadId of ['RBANK', 'CARDAUTH']) {
+      expect(judgeEvidence(r, MIDWEST, incident(r, { workloadId }), [p])[0])
+        .toMatchObject({ relevance: 0, why: 'a symptom, not a cause' });
+    }
     expect(addPin(regressed, MIDWEST, { source: 'MON3', system: s.system, scKey: 'ONLHI#1', jobname: 'NOSUCH', metric: 'VELOCITY' }).ok).toBe(false);
+  });
+
+  it('relates added AORs using current workload routing without changing saved pins', () => {
+    const aor = { ...MIDWEST.addressSpaces.find((a) => a.role === 'CICS.AOR')!, jobname: 'EXTRAAOR', lparId: 'DEVT' };
+    const r = { ...regressed, sim: { ...regressed.sim,
+      extraAddressSpaces: [...regressed.sim.extraAddressSpaces, aor],
+      routing: { ...regressed.sim.routing, CARDAUTH: { DEVT: 1 } },
+    } };
+    const p = { id: 1000, source: 'SYSWKM', metric: 'VELOCITY' as const, subject: aor.jobname,
+      system: aor.lparId, tick: r.sim.tick, value: 10, text: 'Saved region velocity' };
+    const saved = JSON.stringify(p);
+    const inc = incident(r, { workloadId: 'CARDAUTH' });
+    expect(judgeEvidence(r, MIDWEST, inc, [JSON.parse(saved) as typeof p])[0])
+      .toMatchObject({ relevance: 0, why: 'a symptom, not a cause' });
+    expect(judgeEvidence(regressed, MIDWEST, inc, [p])[0]!.why).toBe('not about CARDAUTH');
+    expect(judgeEvidence(r, MIDWEST, inc, [{ ...p, subject: 'CICSAOR1', system: 'PROD1' }])[0]!.why)
+      .toBe('not about CARDAUTH');
+    expect(JSON.stringify(p)).toBe(saved);
+  });
+
+  it.each([
+    { subject: 'NOSUCH', system: 'PROD1', source: 'SYSWKM', workloadId: 'CARDAUTH' },
+    { subject: 'CICSAOR1', system: 'PROD2', source: 'SYSWKM', workloadId: 'CARDAUTH' },
+    { subject: 'CICSTOR1', system: 'PROD1', source: 'SYSWKM', workloadId: 'CARDAUTH' },
+    { subject: 'CICSAOR1', system: 'PROD1', source: 'SYSINFO', workloadId: 'CARDAUTH' },
+    { subject: 'CICSAOR1', system: 'PROD1', source: 'SYSWKM', workloadId: 'MOBILE' },
+  ])('rejects unrelated server subjects: $subject/$system/$source/$workloadId', ({ workloadId, ...subject }) => {
+    const p = { id: 1000, metric: 'VELOCITY' as const, tick: regressed.sim.tick, value: 10, text: '', ...subject };
+    expect(judgeEvidence(regressed, MIDWEST, incident(regressed, { workloadId }), [p])[0])
+      .toMatchObject({ relevance: 0, why: `not about ${workloadId}` });
+  });
+
+  it('keeps the incident window guard for a related server', () => {
+    const p = { id: 1000, source: 'SYSWKM', metric: 'VELOCITY' as const, subject: 'CICSAOR1',
+      system: 'PROD1', tick: regressed.sim.tick + HOUR + 1, value: 10, text: '' };
+    expect(judgeEvidence(regressed, MIDWEST, incident(regressed, { workloadId: 'CARDAUTH' }), [p])[0])
+      .toMatchObject({ relevance: 0, why: 'outside the incident window' });
   });
 
   it('accepts cap delay on a hosted region class as relevant to the CICS incident', () => {
