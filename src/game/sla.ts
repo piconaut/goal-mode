@@ -121,10 +121,15 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
   const startTick = hour.hourIndex * TICKS_PER_HOUR;
   const endTick = startTick + TICKS_PER_HOUR;
   // A fix or natural expiry before hour close must not erase the card that caused the breach.
-  const ev = events.find((e) =>
+  const overlapTicks = (e: ActiveEvent) => Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick);
+  const activeAtClose = (e: ActiveEvent) => e.endTick === null || e.endTick > endTick;
+  const ev = events.filter((e) =>
     e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
     e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)),
-  );
+  ).sort((a, b) =>
+    Number(activeAtClose(b)) - Number(activeAtClose(a)) || overlapTicks(b) - overlapTicks(a) ||
+    (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0),
+  )[0];
   if (ev) return ev.trigger;
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;

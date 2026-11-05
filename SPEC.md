@@ -1075,6 +1075,8 @@ the hurt workload, provided the card's declared
 growth. APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
 Card activity and the SLA hour are half-open intervals: a card ending at the hour's start or starting at its end
 does not overlap. Expiry or remediation during the hour (including remediation at its end) does not erase its trigger.
+When several cards qualify, prefer a card still active at hour close, then the longest overlap with the opening
+hour, then the ascending card `uid` as a deterministic tie-breaker independent of event-list order.
 
 Ground truth for the mechanism: the response-time component group that grew most against the workload's healthy
 baseline. Queueing for MXT or DBATs also grows when something slowed the tasks, since slower tasks hold their slot longer

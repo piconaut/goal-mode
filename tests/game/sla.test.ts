@@ -58,6 +58,40 @@ describe('triggerOf', () => {
     expect(triggerOf('RBANK', 'CPU_CAPACITY', [{ ...ended, mechanisms: ['IO'] }], hour, false)).toBe('GROWTH');
     expect(triggerOf('RBANK', 'IO', [{ ...ended, mechanisms: ['IO'] }], hour, false)).toBe('DEMAND_SURGE');
   });
+
+  it('prefers a card still active at hour close over an ended card regardless of list order or overlap length', () => {
+    const h = { ...hour, hourIndex: 1 };
+    const active = card({ uid: 'Z_ACTIVE@1', startTick: 2 * TICKS_PER_HOUR - 1, endTick: null });
+    for (const endTick of [TICKS_PER_HOUR + 1, 2 * TICKS_PER_HOUR]) {
+      const ended = card({ uid: 'A_ENDED@1', endTick, ended: true, trigger: 'HARDWARE_FAULT' });
+      for (const events of [[ended, active], [active, ended]]) {
+        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
+      }
+    }
+  });
+
+  it('prefers the longest opening-hour overlap within the same activity status', () => {
+    const h = { ...hour, hourIndex: 1 };
+    for (const endTick of [2 * TICKS_PER_HOUR, 3 * TICKS_PER_HOUR, null]) {
+      const longer = card({ uid: 'Z_LONG@1', startTick: 0, endTick, ended: endTick === 2 * TICKS_PER_HOUR });
+      const shorter = card({ ...longer, uid: 'A_SHORT@1', startTick: TICKS_PER_HOUR + 1, trigger: 'HARDWARE_FAULT' });
+      for (const events of [[shorter, longer], [longer, shorter]]) {
+        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
+      }
+    }
+  });
+
+  it('breaks equal activity and overlap ties by ascending card uid, without changing the event list', () => {
+    for (const endTick of [10, null]) {
+      const first = card({ uid: 'A@1', endTick, ended: endTick !== null });
+      const second = card({ ...first, uid: 'B@1', trigger: 'HARDWARE_FAULT' });
+      for (const events of [[second, first], [first, second]]) {
+        const original = [...events];
+        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, hour, false)).toBe('DEMAND_SURGE');
+        expect(events).toEqual(original);
+      }
+    }
+  });
 });
 
 describe('failureMechanismOf', () => {
