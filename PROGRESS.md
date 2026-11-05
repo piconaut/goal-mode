@@ -778,6 +778,8 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
   `.claude/skills/pr-review-loop/`. First pass merges only a PR with no findings at all; a held PR merges once a
   follow-up review shows every earlier finding fixed and nothing new blocking; second-pass non-blocking leftovers
   go to "PR review follow-ups" above. State is the hidden `pr-review-loop` marker in each review comment.
+  A follow-up whose earlier findings were all non-blocking is reviewed on Sonnet instead of Opus (user request
+  2026-11-05).
 
 - Manage Region Using Goals Of is fixed at TRANSACTION for the player (user decision 2026-11-05): the sim keeps
   REGION/BOTH (lab, tests); the Rules view drops the column and `playerWlmEditError` refuses `SET_RULE_REGION_MODE`
