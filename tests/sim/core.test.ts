@@ -61,3 +61,20 @@ describe('LCU alias assignment', () => {
     expect(applyCommand(many, { kind: 'SET_LCU', lcuId: '21', aliases: 57 }).message).toMatch(/56 aliases at most/);
   });
 });
+
+describe('temporary address spaces', () => {
+  it('replaces and removes only the named extra address space on its LPAR', async () => {
+    const { MIDWEST } = await import('../../src/content/scenarios');
+    const { initState } = await import('../../src/sim/core/init');
+    const { applyCommands } = await import('../../src/sim/core/commands');
+    const a = { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC' as const, baseEnginesRef: 0.9, ziipFrac: 0 };
+    const others = [{ ...a, lparId: 'PROD2' }, { ...a, jobname: 'OTHER' }];
+    const s = { ...initState(1, MIDWEST), extraAddressSpaces: [a, a, ...others] };
+    const started = applyCommands(s, [{ kind: 'ADD_ADDRESS_SPACE', addressSpace: a }]);
+    expect(started.extraAddressSpaces).toEqual([...others, a]);
+    const stop = [{ kind: 'REMOVE_ADDRESS_SPACE' as const, jobname: a.jobname, lparId: a.lparId }];
+    expect(applyCommands(started, stop).extraAddressSpaces).toEqual(others);
+    expect(applyCommands(applyCommands(started, stop), stop).extraAddressSpaces).toEqual(others);
+    expect(s.extraAddressSpaces).toHaveLength(4);
+  });
+});

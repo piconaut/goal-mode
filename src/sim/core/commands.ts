@@ -43,6 +43,7 @@ export type Command =
   | { kind: 'SET_LOCK_BOOST'; value: number }
   | { kind: 'ADD_WORKLOAD'; workload: WorkloadDef }
   | { kind: 'ADD_ADDRESS_SPACE'; addressSpace: AddressSpaceDef }
+  | { kind: 'REMOVE_ADDRESS_SPACE'; jobname: string; lparId: string }
   | { kind: 'ABEND_JOB'; critical: boolean }
   | { kind: 'RESTART_JOB'; day: number; name: string }
   | { kind: 'SET_PRICING'; tfp: TfpTerms }
@@ -365,7 +366,10 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       return ok({ ...s, extraWorkloads: [...s.extraWorkloads, cmd.workload], workloads: [...s.workloads, { id: cmd.workload.id, noise: 0, retryRate: 0, lastRtSec: 0 }] }, `Workload ${cmd.workload.id} went live`);
 
     case 'ADD_ADDRESS_SPACE':
-      return ok({ ...s, extraAddressSpaces: [...s.extraAddressSpaces, cmd.addressSpace] }, `${cmd.addressSpace.jobname} started`);
+      return ok({ ...s, extraAddressSpaces: [...s.extraAddressSpaces.filter((a) => a.jobname !== cmd.addressSpace.jobname || a.lparId !== cmd.addressSpace.lparId), cmd.addressSpace] }, `${cmd.addressSpace.jobname} started`);
+
+    case 'REMOVE_ADDRESS_SPACE':
+      return ok({ ...s, extraAddressSpaces: s.extraAddressSpaces.filter((a) => a.jobname !== cmd.jobname || a.lparId !== cmd.lparId) }, `${cmd.jobname} ended on ${cmd.lparId}`);
 
     case 'ABEND_JOB': {
       const jobs = s.batch.jobs.map((j) => ({ ...j }));

@@ -285,12 +285,12 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 - [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
   products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Mostly moot once the job fails at connect;
   check that nothing else can run Db2 work on an image outside the Db2 product's LPAR list.
-- [ ] **A repeat XLOG_LOOP burns no CPU (bug, high).** The card's end sets `asCpu[CICSXLOG] = 0` and nothing resets it,
-  so after the first occurrence every later loop adds a CICSXLOG address space at zero CPU (the D40 save has three
-  CICSXLOG entries in `extraAddressSpaces` and `asCpu {CICSXLOG: 0}`). D39: PROD1 STCHI APPL 163 % at 11:00, 192 % at
-  13:00, the normal midday curve (D37 has the same shape), no one-engine step at 11:22. The alert and the incident
-  still fired, so the cancel looked like it did nothing. Fix: end removes the address space (or begin resets the
-  modifier); same for any card that adds an address space and zeroes it on end.
+- [x] **A repeat XLOG_LOOP burns no CPU (bug, fixed).** Expiry and cancellation now remove CICSXLOG from PROD1
+  instead of leaving a zero-CPU address space. Each start clears the old zero modifier and replaces any duplicate
+  extra address spaces with the same jobname and LPAR, so older saves recover on the next occurrence. The Revenue
+  adaptation inherits the fix; no other card adds temporary address spaces. Regression tests cover first expiry,
+  repeated CPU load, live cancellation, old-save cleanup and LPAR-scoped removal. Cancellation ends a started task
+  (z/OS 3.1 MVS System Commands, PDF p.188; immediate cleanup remains an approximation).
 - [x] **WLM projection inconsistent between adjacent intervals (sim bug, fixed).** With the same DPs, BATCHPRD#1's
   (importance 4) self-raise F2→F4 was projected at D5 22:22:50 to take ONLCARD's PI from 0.80 to 61.8 (rejected), and at
   22:23:00 to leave it at 0.80 (accepted). Batch then ties the CICS regions' DP on PROD2's 4 CPs; ONLCARD lowers it,
