@@ -499,11 +499,6 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 
 #### UI and reports
 
-- [ ] **WLM goal edit without an Install option: not reproduced.** New run (live and briefing) and the player's save: the
-  button enabled ("Install & activate BASEPOL8"); #164 is not the cause. Likely: the "Add P2 after P1" row uses the same
-  widgets and labels as P1, and typing there does nothing until "Add period" is pressed (matches the add/remove
-  workaround); typed goals commit only on blur/Enter with no unsent cue; a disabled reason shows only as a tooltip. Fix:
-  distinct add-period form, commit on change or show "unsent", visible disabled reason. Ask the player for exact steps.
 - [ ] **SMF 101 "vs base" moves retroactively (design gap).** `src/game/smf.ts` divides past hours by today's baseline, an
   EWMA (0.8/h) learned from every SLA-met hour, so a regression is absorbed in ~3 h: at the D7 briefing the D6 08:00 row
   read 1.00 instead of ≈2.8. Fix: freeze each hour's ratio when it closes; learn the baseline only from hours without an
