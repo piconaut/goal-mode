@@ -35,7 +35,7 @@ describe('incident trigger history', () => {
     const fixed = requestChange(breachAt(tick), MIDWEST_GAME, { label: 'Mobile backoff', fixId: 'MOBILE_BACKOFF' });
     expect(fixed.ok).toBe(true);
     expect(fixed.run.events[0]).toMatchObject({ ended: true, endTick: tick });
-    const closed = closeHour({ ...fixed.run, sim: { ...fixed.run.sim, tick: hourEnd } }, MIDWEST);
+    const closed = closeHour({ ...fixed.run, sim: { ...fixed.run.sim, tick: hourEnd } }, MIDWEST, MIDWEST_GAME);
     const inc = closed.incidents.find((i) => i.workloadId === 'MOBILE')!;
     expect(inc.startTick).toBe(hourStart);
     expect(inc.truth).toEqual({ mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' });

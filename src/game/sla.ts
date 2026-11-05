@@ -1,6 +1,7 @@
 // Hourly SLA accounting, incident detection and ground-truth causes (SPEC §10, §12).
 
-import { TICKS_PER_HOUR } from '../sim/core/units';
+import { NEW_WORKLOAD_DAYS } from '../content/sla';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import type { NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
@@ -125,6 +126,7 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
   const activeAtClose = (e: ActiveEvent) => e.endTick === null || e.endTick > endTick;
   const ev = events.filter((e) =>
     e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
+    (e.trigger !== 'NEW_WORKLOAD' || startTick < e.startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY) &&
     e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)),
   ).sort((a, b) =>
     Number(activeAtClose(b)) - Number(activeAtClose(a)) || overlapTicks(b) - overlapTicks(a) ||

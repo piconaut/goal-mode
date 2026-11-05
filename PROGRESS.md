@@ -385,9 +385,10 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   instead of falling back to POLICY (INC157 MOBILE, D33). Half-open window guards exclude cards ending at the hour's
   start or starting at its end; workload/mechanism matching, fallbacks and player-visible data stay unchanged.
   Regressions cover 13:15 and hour-boundary fixes, expiry on the last tick, full RCA points and non-overlapping cards.
-- [ ] **New workloads stay "NEW_WORKLOAD" forever (bug).** `isNew` checks `sim.extraWorkloads`, which never expires,
-  so INC126 (D29) and INC177 (D36) on ACQBANK, live since D27, got NEW_WORKLOAD as truth. Fix: new for a few days
-  after go-live only.
+- [x] **New workloads stay "NEW_WORKLOAD" forever (bug).** Completion takes effect on merge:
+  NEW_WORKLOAD expires two simulated days after go-live, including persistent go-live cards. Existing event history
+  and scripted-beat dates recover the start without new save fields; unknown origins fall back to the current cause.
+  Regression coverage checks new work, expiry boundaries, saved runs and unaffected event/policy/growth/lock triggers.
 - [ ] **POWER_CAP only blames MOBILE and RBANK (bug).** A power cap slows every LPAR, but `affects` is static, so
   INC177 ACQBANK (D36) and INC183/185 CARDAUTH/PAYMQ (D38) fall back to other truths while the cap was the cause.
   Fix: hardware cards affect every workload on the CPC.
