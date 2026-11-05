@@ -376,9 +376,11 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   scored 0 ("not about RBANK"): APPL counts only for CPU_CAPACITY (`src/content/evidence.ts`) and only on the victim's
   own classes (`judgeEvidence`). The inbox hint asks "Who was ahead of it in the queue?"; a lower-importance class at an
   equal or higher DP with high APPL should count for CPU_PRIORITY. Same class of report as the D4 item above.
-- [ ] **RCA verdict text for grouped incidents (UI bug).** A CARDAUTH pin on the RBANK group was marked "not about RBANK"
-  although it was also judged against CARDAUTH: `submitRca` (`src/game/run/rca.ts:28`) keeps the first incident's verdict
-  when every one scores 0. Show the best verdict's own reason, or one per workload.
+- [ ] **RCA verdict text for grouped incidents (UI bug).** Completion takes effect on merge: grouped evidence keeps
+  the highest relevance per pin, then prefers the verdict that passed more evidence checks; exact ties keep the first
+  incident. A CARDAUTH pin on the RBANK group now shows its own symptom, size or cause rejection instead of "not about
+  RBANK" when every incident scores 0. Regression tests cover zero-score reasons, window/subject precedence, stable
+  ties and group-wide scoring/rewards; no simulation or evidence-scoring rules change.
 - [x] **Incident truth only sees cards still running at hour end (bug, high).** Completion takes effect on merge:
   `triggerOf` uses retained card start/end ticks to match any activity during the opening SLA hour, including cards
   ended by expiry or remediation before hour close. This preserves RETRY_STORM → DEMAND_SURGE after MOBILE_BACKOFF
