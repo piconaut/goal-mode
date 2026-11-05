@@ -121,6 +121,22 @@ describe('evidence pins', () => {
     expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
   });
 
+  it('excludes zero-share AORs without changing existing LPAR or class matching', () => {
+    const r = { ...regressed, sim: { ...regressed.sim,
+      routing: { ...regressed.sim.routing, CARDAUTH: { PROD1: 0, PROD2: 1 } },
+    } };
+    const inc = incident(r, { workloadId: 'CARDAUTH' });
+    const p = { id: 1000, source: 'SYSWKM', metric: 'VELOCITY' as const, subject: 'CICSAOR1',
+      system: 'PROD1', tick: r.sim.tick, value: 10, text: '' };
+    expect(judgeEvidence(r, MIDWEST, inc, [p])[0])
+      .toMatchObject({ relevance: 0, why: 'not about CARDAUTH' });
+    for (const subject of ['PROD1', 'STCHI#1']) {
+      expect(judgeEvidence(r, MIDWEST, inc, [{ ...p, subject }])[0]!.why).toBe('a symptom, not a cause');
+    }
+    expect(judgeEvidence(r, MIDWEST, inc, [{ ...p, subject: 'CICSAOR2', system: 'PROD2' }])[0]!.why)
+      .toBe('a symptom, not a cause');
+  });
+
   it.each([
     { pin: { subject: 'DEVONLY#1' }, truth: 'CPU_PRIORITY', why: 'not about MOBILE' },
     { pin: { value: 9.9 }, truth: 'CPU_PRIORITY', why: 'value is unremarkable' },

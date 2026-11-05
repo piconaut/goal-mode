@@ -210,12 +210,13 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
   const w = allWorkloads(scenario, run).find((x) => x.id === inc.workloadId);
   const batch = inc.workloadId === BATCH_INCIDENT ? batchSubjects(run, inc) : null;
   const classes = batch ? batch.classes : w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
-  const lpars = batch ? batch.lpars : Object.keys(run.sim.routing[inc.workloadId] ?? w?.routing ?? {});
+  const routing = run.sim.routing[inc.workloadId] ?? w?.routing ?? {};
+  const lpars = batch ? batch.lpars : Object.keys(routing);
   const servers: { jobname: string; lparId: string }[] = [];
   // Resource evidence on a CICS region class is evidence about its hosted transactions.
   if (w?.subsystem === 'CICS') for (const a of [...scenario.addressSpaces, ...run.sim.extraAddressSpaces]) {
     if (!lpars.includes(a.lparId) || (a.role !== 'CICS.AOR' && a.role !== 'CICS.TOR')) continue;
-    if (a.role === 'CICS.AOR') servers.push(a);
+    if (a.role === 'CICS.AOR' && (routing[a.lparId] ?? 0) > 0) servers.push(a);
     const sc = classify(run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;
     if (sc && !classes.includes(sc)) classes.push(sc);
   }
