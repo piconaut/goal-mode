@@ -102,16 +102,8 @@ push to, or close someone else's PR.
 
 ## 4. Log second-pass leftovers
 
-After merging a PR on a follow-up pass with NEW non-blocking findings, add them to the "PR review follow-ups"
-section of PROGRESS.md: one unticked line each, tagged with the PR number, with file paths. Skip any item already
-listed. Collect all of this tick's items into one docs-only PR:
-
-- branch: this session's designated branch if it has one, else `review-loop/followups-<YYYYMMDD-HHMM>`, cut from
-  the latest `origin/dev`;
-- PR into `dev` following `.github/pull_request_template.md` ("## Behaviour change" → "None."), auto-merge (squash);
-- don't wait for it: the next tick reviews it like any other PR. It is a docs-only PR, so a clean review merges it.
-
-Also tick any follow-up item in that section that a PR merged this tick fixed, when the reviewer says so.
+After merging a PR on a follow-up pass with NEW non-blocking findings, list them in a new "PR review follow-ups"
+comment on that PR. Do not change PROGRESS.md or open your own PR.
 
 ## 5. Report
 
