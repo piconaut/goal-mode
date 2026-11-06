@@ -1,0 +1,140 @@
+# Remote balance sweep (user request 2026-11-06): run `npm run sweep` on GitHub's runners instead of a session's
+# cores, split by seed range across parallel jobs. No PR needed.
+#   - push to a `sweep/**` branch: arguments from the head commit's `Sweep-Args:` / `Sweep-Shards:` trailers
+#     (`npm run sweep:remote` makes that commit and branch and fetches the result); the branch is deleted afterwards.
+#   - workflow_dispatch (Actions tab, once this file is on dev): pick the branch and type the arguments.
+# Result: artifact `sweep-result` (sweep.csv, summary.md, partial.jsonl) and the run's job summary.
+name: Sweep
+
+on:
+  push:
+    branches: ['sweep/**']
+  workflow_dispatch:
+    inputs:
+      args:
+        description: 'npm run sweep arguments (--bots --seeds --days --difficulty --scenario --reader)'
+        default: '--bots donothing,textbook,expert --seeds 1-20'
+      shards:
+        description: 'Parallel jobs (default: one per 5 seeds, at most 10)'
+        default: ''
+
+permissions:
+  contents: write # only to delete the sweep/** branch when done
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      args: ${{ steps.plan.outputs.args }}
+      seeds: ${{ steps.plan.outputs.seeds }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+      raw: ${{ steps.plan.outputs.raw }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+          IN_ARGS: ${{ inputs.args }}
+          IN_SHARDS: ${{ inputs.shards }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            raw=$(printf '%s\n' "$HEAD_MSG" | sed -n 's/^Sweep-Args: *//p' | head -1)
+            shards=$(printf '%s\n' "$HEAD_MSG" | sed -n 's/^Sweep-Shards: *//p' | head -1)
+          else
+            raw="$IN_ARGS"; shards="$IN_SHARDS"
+          fi
+          node --experimental-strip-types --no-warnings tools/ci/sweepPlan.ts "$raw" "$shards" | tee -a "$GITHUB_OUTPUT"
+          echo "raw=$raw" >> "$GITHUB_OUTPUT"
+
+  shard:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        seeds: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # ARGS is validated by sweepPlan.ts (known flags, [A-Za-z0-9,._-] values) and split on spaces on purpose.
+      - run: npm run sweep -- $ARGS --seeds "$SEEDS" --out runs/shard.csv
+        env:
+          ARGS: ${{ needs.plan.outputs.args }}
+          SEEDS: ${{ matrix.seeds }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shard-${{ matrix.seeds }}
+          path: runs/shard.csv.partial.jsonl
+          retention-days: 3
+
+  merge:
+    needs: [plan, shard]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: shard-*
+          path: runs/shards
+      # --resume reads every shard's finished runs, reruns any a shard lost, and prints one summary for the lot.
+      - name: Merge shards
+        env:
+          ARGS: ${{ needs.plan.outputs.args }}
+          SEEDS: ${{ needs.plan.outputs.seeds }}
+          RAW: ${{ needs.plan.outputs.raw }}
+        run: |
+          mkdir -p runs/result
+          cat runs/shards/*/shard.csv.partial.jsonl > runs/result/sweep.csv.partial.jsonl 2>/dev/null || true
+          npm run --silent sweep -- $ARGS --seeds "$SEEDS" --resume --out runs/result/sweep.csv > runs/result/summary.txt
+          {
+            echo "### Sweep: \`${RAW:-default}\`"
+            echo
+            echo "Ref \`$GITHUB_REF_NAME\`, commit \`$GITHUB_SHA\`, run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo '```'
+            cat runs/result/summary.txt
+            echo '```'
+          } > runs/result/summary.md
+          # The balance bands are tuned for Normal; skip the gate for other difficulties.
+          if ! printf '%s' " $ARGS " | grep -Eq -- '--difficulty (story|hard|ironman) '; then
+            scenario=$(printf '%s' " $ARGS " | sed -n 's/.*--scenario \([^ ]*\).*/\1/p')
+            lo=${SEEDS%-*}; hi=${SEEDS#*-}
+            echo >> runs/result/summary.md
+            env -u GITHUB_STEP_SUMMARY npx tsx tools/ci/balanceGate.ts runs/result/sweep.csv $((hi - lo + 1)) ${scenario:-midwest} >> runs/result/summary.md \
+              && echo 'gate=pass' >> runs/result/summary.md || echo 'gate=fail (reference only; the run still succeeds)' >> runs/result/summary.md
+          fi
+          cat runs/result/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sweep-result
+          path: runs/result/
+          retention-days: 14
+
+  cleanup:
+    needs: [merge]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$GITHUB_REF_NAME" || true
+        env:
+          GH_TOKEN: ${{ github.token }}

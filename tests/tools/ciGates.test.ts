@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { behaviourNote } from '../../tools/ci/behaviourNote';
 import { checkBands, parseSweepCsv } from '../../tools/ci/balanceGate';
+import { DEFAULT_ARGS, planSweep } from '../../tools/ci/sweepPlan';
 
 describe('behaviourNote', () => {
   it('returns the section text up to the next heading', () => {
@@ -43,5 +44,29 @@ describe('balance gate', () => {
   it('scales the victory band with the number of seeds', () => {
     const rows = parseSweepCsv(csv(Array.from({ length: 10 }, (_, i) => `expert,${i + 1},${i < 9 ? 'VICTORY,victory,40' : 'LOST,opex,30'},3000,80`)));
     expect(checkBands(rows, 10, { expert: { dayMedian: [28, 40], victoryFrac: [0.6, 1] } }).failures).toEqual([]);
+  });
+});
+
+describe('remote sweep plan', () => {
+  it('defaults to the three band bots over seeds 1-20 in shards of five', () => {
+    expect(planSweep('')).toEqual({ args: '--bots donothing,textbook,expert', seeds: '1-20', shards: ['1-5', '6-10', '11-15', '16-20'] });
+    expect(planSweep(DEFAULT_ARGS)).toEqual(planSweep(''));
+  });
+
+  it('keeps the other flags for every shard and spreads uneven seed counts', () => {
+    const p = planSweep('--bots expert --difficulty hard --reader --seeds 3-9', 3);
+    expect(p.args).toBe('--bots expert --difficulty hard --reader');
+    expect(p.shards).toEqual(['3-5', '6-7', '8-9']);
+    expect(planSweep('--seeds 7').shards).toEqual(['7-7']);
+    expect(planSweep('--seeds 1-3', 8).shards).toEqual(['1-1', '2-2', '3-3']);
+  });
+
+  it('rejects flags the workflow owns and values that could reach a shell', () => {
+    expect(() => planSweep('--out x.csv')).toThrow(/not allowed/);
+    expect(() => planSweep('--jobs 2')).toThrow(/not allowed/);
+    expect(() => planSweep('--bots expert;rm')).toThrow(/bad value/);
+    expect(() => planSweep('--bots $(id)')).toThrow(/bad value/);
+    expect(() => planSweep('--seeds 5-1')).toThrow(/seeds/);
+    expect(() => planSweep('--seeds 1-500')).toThrow(/seeds/);
   });
 });

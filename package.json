@@ -16,6 +16,7 @@
     "bench": "tsx tools/bench.ts",
     "compare": "tsx tools/compare.ts",
     "sweep": "tsx tools/sweep.ts",
+    "sweep:remote": "tsx tools/sweepRemote.ts",
     "play": "tsx tools/play.ts",
     "inspect": "tsx tools/inspect.ts"
   },
