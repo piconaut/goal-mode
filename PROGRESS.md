@@ -551,11 +551,6 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 - [ ] **Codex:** no SMF 101 or SMF 110 entry (only a mention in the SMF-volume entry); add both, linked from the SMF tab.
 - [ ] **Layout:** Start day / Briefing sit in a fixed bottom-right box shared with result toasts (they can overlap); the
   header's speed-button slot is empty during the briefing, so move them there.
-- [ ] **Batch counter sums unfinished nights (UI gap).** "running 4 · queued 71 · held 41 · done 1204" (D18 06:00) with
-  165 jobs a night: DEV jobs on DEVT (discretionary, capped LPAR) never finish, so nights never prune
-  (`src/sim/subsys/batch.ts:310`) and the view counts all of them (D15 save: a DEV job from the D10 night still running,
-  51 DEV jobs queued or held from D10–D14). Show tonight and the backlog separately. Starving DEV batch has no cost
-  (see "Starving Internal work is free").
 - [x] **Automation misfire wording** (fixed 2026-11-04). "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
   MISFIRE), not a false trigger; say so in the Automation panel.
 - [x] **Change desk "catches" column ignores `SY=` rules (UI bug).** Completion takes effect on merge:
