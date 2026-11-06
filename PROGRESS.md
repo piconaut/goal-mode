@@ -549,7 +549,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 - [ ] **Resource group units:** SU/s only. 1 MSU = 277.8 SU/s; SU/s per CP in `src/sim/hw/cpc.ts`. Show "≈ N MSU ≈ M CPs" in
   the editor and the Codex entry.
 - [ ] **Codex:** no SMF 101 or SMF 110 entry (only a mention in the SMF-volume entry); add both, linked from the SMF tab.
-- [ ] **Layout:** Start day / Briefing sit in a fixed bottom-right box shared with result toasts (they can overlap); the
+- [x] **Layout:** (done 2026-11-06: now `PhaseActions` in the header) Start day / Briefing sit in a fixed bottom-right box shared with result toasts (they can overlap); the
   header's speed-button slot is empty during the briefing, so move them there.
 - [x] **Automation misfire wording** (fixed 2026-11-04). "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
   MISFIRE), not a false trigger; say so in the Automation panel.

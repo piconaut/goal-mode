@@ -18,29 +18,21 @@ import { DRAFT_OPTIONS } from '../content/draft';
 import { careerLevel, unlockedPerks } from '../game/career';
 import { useConfirmation } from './Confirmation';
 
-export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
+/** Review / briefing shortcuts shown in the header's speed-button slot while the overlay is closed. */
+export function PhaseActions({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
   const ask = useConfirmation();
-  useEffect(() => {
-    if (!open) return;
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [open, setOpen]);
-  const ended = v.phase === 'GAMEOVER' || v.phase === 'VICTORY';
-  // Mid-day the overlay is just the last report card, opened from the tab bar.
-  if (v.phase === 'LIVE' && (!open || !v.lastReport)) return null;
   return (
     <>
       {!open && v.phase === 'REVIEW' && (
-        <div className="toast">
-          Day {v.day + 1} review: pin evidence from Reports or Monitor III, then come back.{' '}
+        <span className="phase-actions">
+          <span className="muted" title="Pin evidence from Reports or Monitor III, then come back">Day {v.day + 1} review</span>
           <button className="primary" onClick={() => setOpen(true)}>
             Back to the review
           </button>
-        </div>
+        </span>
       )}
       {!open && v.phase === 'BRIEFING' && (
-        <div className="toast">
+        <span className="phase-actions">
           {v.weekendDay && (
             <>
               <button className="primary" title="Run the weekend day at full speed; the report card is the summary" onClick={() => game.send({ type: 'START_DAY', auto: true })}>
@@ -58,8 +50,24 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
             {v.weekendDay ? 'Play it' : `Start day ${v.day + 1} (06:00)`}
           </button>{' '}
           <button onClick={() => setOpen(true)}>Briefing</button>
-        </div>
+        </span>
       )}
+    </>
+  );
+}
+
+export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [open, setOpen]);
+  const ended = v.phase === 'GAMEOVER' || v.phase === 'VICTORY';
+  // Mid-day the overlay is just the last report card, opened from the tab bar.
+  if (v.phase === 'LIVE' && (!open || !v.lastReport)) return null;
+  return (
+    <>
       {/* Kept mounted while hidden so half-filled RCA forms survive flipping back and forth. */}
       <div className="overlay" style={open || ended ? undefined : { display: 'none' }}>
         <div className="modal">
