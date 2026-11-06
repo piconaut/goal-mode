@@ -794,6 +794,14 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
   isn't in the goldens; determinism double-run; timing), the 10-seed review sweep (CI runs seeds 1–5 on the merge
   ref), `vite build`, and `pr-fixer`'s pre-push `npm run check` (guards pushes to someone else's branch).
 
+- Remote sweeps (user request 2026-11-06): `.github/workflows/sweep.yml` runs `npm run sweep` on GitHub's runners,
+  sharded by seed range (default 2 seeds per job, at most 10 jobs; free for a public repo), on a push to `sweep/**` or
+  by workflow_dispatch. `npm run sweep:remote` (any agent or human with `gh`) pushes a throwaway commit (the swept
+  commit's tree plus the current sweep workflow, args in a `Sweep-Args:` trailer), waits and downloads `sweep-result` to
+  `runs/remote/<sha7>/`; the workflow deletes the branch afterwards. Arguments are whitelisted (`tools/ci/sweepPlan.ts`).
+  `audit-loop` balance sweeps use it instead of Sonnet worker sessions. Why: a 20-seed sweep takes ~30 min on a
+  session's 4 cores and starves other work (measured: 20 seeds × 3 bots of `dev` 1ec5957 in 17 min with 4 shards of 5 seeds and 8 min with 10 shards of 2, identical results both ways, every bot inside its band); a worker session costs tokens just to start and report.
+
 - Review-and-fix loop (user request 2026-11-06): `.claude/skills/pr-fix-loop/` with the Opus `pr-fixer` agent, as a
   cheaper alternative to `pr-review-loop` (no author round trip, no second full review). Gate before fixing: 1–5
   findings, all mechanical (tests, docs, citations, local bugs, conflicts); anything that changes the PR's intent,
