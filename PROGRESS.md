@@ -9,15 +9,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
-- **Next up (in order; user-approved overnight plan 2026-11-03):**
-  1. **Playtest round 1 fixes** (section below), one PR each, in this order: save during the live day + save export +
-     seed entry; WFEX "No work" for CICS transaction classes; SYSWKM pin target; Monitor III history gap; failed change
-     request returns its changes to the basket; Ops Console layout; job-level PROCU/DELAY rows.
-     (Change Desk JES-rule hint dropped by the user, 2026-11-03.)
-  2. ~~CICS_SOS realism fix~~ (#166) and ~~Revenue retune~~ (M8.7) done.
-  3. ~~`step.ts` split~~ done (#168, hash-neutral: Midwest/Harbourline/Revenue bench hashes unchanged).
-  4. ~~Republish the artifact from `dev`~~ done (#168 build). Overnight plan complete; loop stopped.
-  **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
+- **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
   the user" in Remaining work; none is implemented.
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
@@ -108,12 +100,11 @@ level or a separate toggle.
 
 ### M8.1 Performance
 
-- Worker budget remains ≤ 4 ms/tick; the former ≤ 2 s/headless-day target is closed (user, 2026-10-27).
-- Full-quarter sweeps run daily (user clarification, 2026-11-02). Revisit performance when measured sweep cost warrants it.
+- Worker budget is ≤ 4 ms/tick.
+- Revisit performance when measured sweep cost warrants it.
 - Same-host, reverse-order three-day comparisons across five revisions found current totals ~28% above M8.1
   closure for Midwest and ~47% for Harbourline. The older revision also slowed on this host, so the reported
   doubling is not all attributable to code. Profiles show distributed growth, including RMF.
-- Runner fixes landed: available-parallelism sweep defaults (#138), hourly diagnostics only on demand (#139).
 - PR/SM pool plans already cache configuration-only work, including entitlement, by CPC and LPAR-array identity.
   A separate entitlement index showed no consistent day-level speedup across all three scenarios and was
   discarded. Configuration edits must replace those objects; in-place mutation can leave cached plans stale.
