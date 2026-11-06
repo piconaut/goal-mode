@@ -161,6 +161,6 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   so there's no need to poll or guess with timed wakeups.
 - Sweeps of more than a few seeds go to `npm run sweep:remote` (user request 2026-11-06): GitHub's runners do the work in
   parallel shards, so the session's cores stay free and no worker session is needed. It sweeps the committed HEAD,
-  pushed or not, through a throwaway `sweep/*` branch the workflow deletes. Start it with `run_in_background` (10–20 min);
+  pushed or not, through a throwaway `sweep/*` branch the workflow deletes. Start it with `run_in_background` (~10 min for 20 seeds);
   the summary prints when it finishes. Local `npm run sweep` stays for quick checks and offline work.
 - After publishing an artifact, unwatch it.

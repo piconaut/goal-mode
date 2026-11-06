@@ -48,8 +48,9 @@ describe('balance gate', () => {
 });
 
 describe('remote sweep plan', () => {
-  it('defaults to the three band bots over seeds 1-20 in shards of five', () => {
-    expect(planSweep('')).toEqual({ args: '--bots donothing,textbook,expert', seeds: '1-20', shards: ['1-5', '6-10', '11-15', '16-20'] });
+  it('defaults to the three band bots over seeds 1-20 in shards of two', () => {
+    expect(planSweep('')).toEqual({ args: '--bots donothing,textbook,expert', seeds: '1-20', shards: ['1-2', '3-4', '5-6', '7-8', '9-10', '11-12', '13-14', '15-16', '17-18', '19-20'] });
+    expect(planSweep('--seeds 1-40').shards).toHaveLength(10);
     expect(planSweep(DEFAULT_ARGS)).toEqual(planSweep(''));
   });
 

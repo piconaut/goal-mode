@@ -8,7 +8,8 @@ const VALUE_FLAGS = ['bots', 'seeds', 'days', 'difficulty', 'scenario'];
 const BOOL_FLAGS = ['reader'];
 const VALUE = /^[A-Za-z0-9,._-]+$/;
 export const DEFAULT_ARGS = '--bots donothing,textbook,expert --seeds 1-20';
-const SEEDS_PER_SHARD = 5;
+// A 4-vCPU runner does 3 bots × 5 seeds in ~16 min; 2 seeds (6 runs) per job keeps a 20-seed sweep near 8 min.
+const SEEDS_PER_SHARD = 2;
 const MAX_SHARDS = 10;
 const MAX_SEEDS = 200;
 

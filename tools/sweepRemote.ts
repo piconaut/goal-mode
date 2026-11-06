@@ -10,7 +10,7 @@
 // It makes a throwaway commit on top of the ref (its tree + the overlay, `Sweep-Args:` trailer) and pushes it to `sweep/<label>-<sha7>`;
 // the workflow deletes that branch when done. Result: runs/remote/<sha7>/ (summary.md, sweep.csv, partial.jsonl),
 // summary.md printed. Exit 0 when the run succeeded (the balance gate line is reference only), 1 otherwise.
-// Needs `gh` authenticated for the repo (cloud sessions have it). Waiting takes ~10–20 min: in Claude Code, start it
+// Needs `gh` authenticated for the repo (cloud sessions have it). Waiting takes ~10 min for 20 seeds: in Claude Code, start it
 // with run_in_background.
 
 import { execFileSync } from 'node:child_process';

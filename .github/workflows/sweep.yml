@@ -15,7 +15,7 @@ on:
         description: 'npm run sweep arguments (--bots --seeds --days --difficulty --scenario --reader)'
         default: '--bots donothing,textbook,expert --seeds 1-20'
       shards:
-        description: 'Parallel jobs (default: one per 5 seeds, at most 10)'
+        description: 'Parallel jobs (default: one per 2 seeds, at most 10)'
         default: ''
 
 permissions:
