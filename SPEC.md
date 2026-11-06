@@ -1537,10 +1537,12 @@ src/
   ui/                  # React app, screens, components, rmf text renderers
   worker/              # sim worker host & message protocol
 tools/
-  headless.ts          # run N days with a scripted/autopilot policy → CSV/JSON
-  balance/             # strategy bots, sweeps
-  play.ts              # text play interface for AI agents (planned, PROGRESS M8.9)
-.claude/agents/        # game-playing agent definitions (planned, PROGRESS M8.9)
+  headless.ts          # run N days with a scripted/autopilot policy → text RMF reports (`npm run sim`)
+  bot.ts, strategies.ts, sweep.ts   # strategy bots and balance sweeps
+  bench.ts, compare.ts, lab.ts      # timing + hash, behaviour diff vs base, realism A/B lab
+  ci/                  # CI gates (balanceGate.ts, behaviourNote.ts)
+  play.ts              # text play interface for AI agents (PROGRESS M8.9)
+.claude/agents/        # game-playing agent definitions (PROGRESS M8.9)
 docs/agents.md         # how to run the agents
 tests/
   sim/…                # unit + "realism" property tests
@@ -1572,7 +1574,7 @@ never touches the DOM.
     ~day 28–32.
   - *Spend-to-win*: buys CoD every day → wins on SLA but trips the opex loss condition.
   - *Expert*: scripted good play → wins with grade A on Normal.
-- **Agent players** (planned, PROGRESS M8.9): AI agents play full runs through a headless text interface
+- **Agent players** (implemented, PROGRESS M8.9): AI agents play full runs through a headless text interface
   (`tools/play.ts`): it prints the briefing, inbox, incidents and requested reports as text and accepts the
   same actions the UI offers (Change Desk requests, WLM edits, RCAs, tool purchases, advance N hours).
   Agents see only what a player sees; no hidden ground truth. Runs are deterministic (seed + command log),

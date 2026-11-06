@@ -29,7 +29,7 @@ npm run check        # typecheck + tests (no lint script yet)
 npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
 npm run lab -- a.json b.json   # realism lab: A/B runs from JSON specs, side by side per RMF interval (format in tools/lab.ts)
-npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
+npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard|ironman] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
 npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
 npm run play -- runs/a.json mon3 [system] [--json] [--at D2 10:40]   # Monitor III now or past: SYSINFO, CPC, DELAY, PROCU, ENCLAVE, SYSWKM, WFEX (text or --json); use it instead of ad-hoc scripts
@@ -100,7 +100,7 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 
 - **Unit tests** for every pure model function (Erlang-C, polarity, PI, buckets, R4HA,
   capping, MLC, dependency health, classification matching).
-- **Realism tests** (`tests/sim/realism/*`): behavioural assertions from SPEC §16, e.g.
+- **Realism tests** (`tests/sim/realism.test.ts`): behavioural assertions from SPEC §16, e.g.
   "Db2 MSTR starvation raises DDF response time without raising DDF CPU delay".
 - **Golden runs** (`tests/golden/`): seeded scripted runs hashed per day. If you change model
   behaviour intentionally, regenerate the goldens in the same commit and explain why in the
@@ -118,7 +118,7 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   design.
 - Anything a player can see must be explainable from data the game exposes. No hidden "gotcha"
   without a clue path.
-- New z/OS concepts get a Codex entry (`content/codex/`) with a short explanation and a source
+- New z/OS concepts get a Codex entry (`src/content/codex/`) with a short explanation and a source
   link.
 
 ## Working process
@@ -143,7 +143,7 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
   brief) and `log-reader` (digest bot/sweep logs, test failures, long reports), and Opus `pr-reviewer` (user request
   2026-11-02; check out a PR in a worktree, read CI rather than rerun `npm run check`, run bench hashes and a sweep
-  for milestones, verify its claims, post its report on the PR, return a merge verdict; the main agent merges). An hourly scheduled task runs the
+  for milestones, verify its claims, post its report on the PR, return a merge verdict; the main agent merges). A scheduled task (no longer strictly hourly) runs the
   `pr-review-loop` skill (user request 2026-11-04): it holds a PR on any finding, merges after a follow-up review
   shows the findings fixed, and keeps its state in markers in the review comments. The `pr-fix-loop` skill (user
   request 2026-11-06) is the alternative the scheduled task can run instead: the Opus `pr-fixer` reviews a PR and
