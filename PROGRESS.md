@@ -376,7 +376,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   scored 0 ("not about RBANK"): APPL counts only for CPU_CAPACITY (`src/content/evidence.ts`) and only on the victim's
   own classes (`judgeEvidence`). The inbox hint asks "Who was ahead of it in the queue?"; a lower-importance class at an
   equal or higher DP with high APPL should count for CPU_PRIORITY. Same class of report as the D4 item above.
-- [ ] **RCA verdict text for grouped incidents (UI bug).** Completion takes effect on merge: grouped evidence keeps
+- [x] **RCA verdict text for grouped incidents (UI bug).** Completion takes effect on merge: grouped evidence keeps
   the highest relevance per pin, then prefers the verdict that passed more evidence checks; exact ties keep the first
   incident. A CARDAUTH pin on the RBANK group now shows its own symptom, size or cause rejection instead of "not about
   RBANK" when every incident scores 0. Regression tests cover zero-score reasons, window/subject precedence, stable
