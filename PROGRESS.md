@@ -14,9 +14,10 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
   link"), rebuilt 2026-11-06 from `dev` at `474ae40`. Republish on request.
-- **Latest verified dev:** #170; 64 test files / 573 tests pass; production build boots without console errors.
-- **Seed-42 one-day hashes (sampling fix):** Midwest `36b802653ffc3bbe`; Harbourline `6a9e3bcac18e138e`; Revenue `059401413bd9c8a3`.
-  Host timings vary; use adjacent comparisons rather than old absolute timings.
+- **Latest verified dev:** `a6a2d61` (#217); 74 test files / 739 tests pass (`npm run check`, 2026-11-06).
+- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `a6a2d61`, 2026-11-06):** Midwest `367cefafb775e701`;
+  Harbourline `bf830a86c1da1510`; Revenue `197ded14fdeb9946`. Host timings vary; use adjacent comparisons rather than
+  old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
 
@@ -29,7 +30,7 @@ Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/rese
 | M8.1–M8.3 | Bench/sweep harnesses, difficulty presets, hints, weekends, endless/daily modes, end reports, career XP and starting unlocks. Performance and balance targets closed by user decision; regression checks remain. |
 | M8.4 | Midwest, Revenue, and Harbourline scenarios with flaws/story beats; 27-card Midwest deck, scenario adaptations, draft options, 11 perks and 2 pacts. |
 | M8.5–M8.6 | Tutorial, accessibility/themes/contrast, keyboard controls, sound, autosave, agent playtests and CLI fixes, draft-based Change Desk, multi-CPC views. Human/phone follow-ups remain below. |
-| M8.7 | Completed researched realism fixes are recorded in SPEC §17 and docs/research.md; CICS_SOS is the next open fix below. |
+| M8.7 | Completed researched realism fixes are recorded in SPEC §17 and docs/research.md, including the CICS_SOS EDSA storage model (#166). |
 | M8.9 | Headless play CLI, three player personas, deterministic command logs, spectator mode and take-over saves. |
 | Maintenance | Shared storage/content/CLI helpers (#131–#136); modular Change Desk (#137), run lifecycle (#141), Monitor III (#142); circular UI imports removed (#143). |
 
@@ -780,8 +781,8 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
 - Realism audit loop: paced audit → main-agent vetting → isolated fix → scenario sweeps; one golden-changing
   PR at a time. Agents/host adaptations: [AGENTS.md](AGENTS.md), [docs/codex.md](docs/codex.md), `.claude/agents/`.
 
-- Hourly PR review (user request 2026-11-04): a scheduled task starts a fresh session each hour that runs
-  `.claude/skills/pr-review-loop/`. First pass merges only a PR with no findings at all; a held PR merges once a
+- PR review (user request 2026-11-04): a scheduled task starts a fresh session per tick (no longer strictly hourly,
+  commit 6040718) that runs `.claude/skills/pr-review-loop/`. First pass merges only a PR with no findings at all; a held PR merges once a
   follow-up review shows every earlier finding fixed and nothing new blocking; second-pass non-blocking leftovers
   go to "PR review follow-ups" above. State is the hidden `pr-review-loop` marker in each review comment.
   A follow-up whose earlier findings were all non-blocking is reviewed on Sonnet instead of Opus (user request
@@ -897,10 +898,10 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
 
 ## Latest maintenance
 
-- [x] **Split `src/sim/core/step.ts`** (1,458 → 270 lines): `step()` stays the SPEC §5.1 orchestrator; stage bodies
+- [x] **Split `src/sim/core/step.ts`** (1,458 → 278 lines at #217): `step()` stays the SPEC §5.1 orchestrator; stage bodies
   moved verbatim to `src/sim/core/tick/` — `ctx` (TickCtx, constants), `control` (soft cap, PR/SM, policy adjust,
   capping, cost, RMF), `demand` (3–4), `dispatch` (7–12a), `helpers` (routing, caps, CICS regions; public helpers are
-  re-exported from `step.ts`). Bench hashes unchanged on all three scenarios. `src/sim/wlm/evaluate.ts` (~910) is the
+  re-exported from `step.ts`). Bench hashes unchanged on all three scenarios. `src/sim/wlm/evaluate.ts` (959 lines at #217) is the
   next candidate.
 - [ ] **Midwest should use the shared `pool()` helper.** `src/content/scenarios/midwest.ts` defines its own `cp`, `ziip`
   and `icf` constructors; Revenue and Harbourline use `pool()` from `scenarios/pool.ts`. Switch Midwest to `pool()` and

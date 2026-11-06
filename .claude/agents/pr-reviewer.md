@@ -48,7 +48,8 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
    model behaviour on purpose, regenerates `tests/golden/hashes.json`, and says why in its
    "## Behaviour change" section. A PR labelled `perf` or titled "perf…" must not change either hash.
    Compare the timing lines too (the cloud box is noisy, ±10–20 %): flag a head that is clearly slower
-   or a Midwest day over the 2 s budget that the base meets.
+   or a Midwest day that is clearly slower than the base's. The old 2 s/day target is not a gate
+   (CLAUDE.md performance budget, user decision 2026-10-27).
 5. **Behaviour as claimed.** For each concrete claim in the description (a fix, a new report, a balance
    effect), find the code that does it and show it working where cheap: the relevant
    `npx vitest run <path>`, a short `npm run sim`, `npm run bot -- --bot <b> --seed 42`, or

@@ -75,7 +75,7 @@ reports. The full unions are in `src/sim/core/commands.ts` and `src/game/wlmEdit
 
 The run file holds the same serialised `RunState` the browser saves, the pending WLM policy and the command
 log. Seed + command log replays the run exactly (the sim is deterministic), and the file round-trips through
-JSON bit-identically (tested in `tests/tools/play.test.ts`). A full simulated day takes about 10 s.
+JSON bit-identically (tested in `tests/tools/play.test.ts`). A full simulated day takes about 6 s on the cloud host (new, start, advance 24; 2026-11-06).
 
 ## Watching an agent play (spectator mode)
 
@@ -138,4 +138,4 @@ npm run sweep -- --bots donothing,textbook,expert --seeds 1-20
 ```
 
 Bots take the first draft option and play by script; their results per seed are the baseline an agent should
-beat (PROGRESS.md "Balance" records current numbers).
+beat (PROGRESS.md M8.2 records current numbers).

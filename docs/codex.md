@@ -3,7 +3,7 @@
 `AGENTS.md` is the Codex entry point. It references `CLAUDE.md` so architecture,
 conventions and workflow stay shared. Native named roles are registered under
 `[agents.<name>]` in `.codex/config.toml`; each `config_file` is resolved relative
-to that file. The eight `.codex/agents/*.toml` files load the corresponding
+to that file. The nine `.codex/agents/*.toml` files load the corresponding
 `.claude/agents/*.md` brief and adapt host-specific instructions. Edit the existing
 brief for shared role changes, and the TOML wrapper for Codex-only changes.
 

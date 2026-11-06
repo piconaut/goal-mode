@@ -13,8 +13,10 @@ scope and reporting. The Codex role instructions adapt host-specific details.
 - `implementer`: precise content/data, existing-function tests and small UI tasks.
 - `log-reader`: concise analysis of long logs and failures; read-only.
 - `pr-reviewer`: independent review in disposable worktrees; the main agent merges.
-- `pr-fixer` (`pr-fix-loop` skill): may push review fixes to your PR branch. Pull before pushing again, and
-  don't redo fixes listed in its "Automated pr-fixer report" comment; fix only items it left open.
+- `pr-fixer` (`pr-fix-loop` skill): has no `.codex/agents` wrapper, so it is not a registered native role. Use
+  `.claude/agents/pr-fixer.md` through the fallback below if a Codex host needs it. When it has pushed fixes to your
+  PR branch, pull before pushing again, and don't redo fixes listed in its "Automated pr-fixer report" comment; fix
+  only items it left open.
 - `realism-fixer`: one vetted realism fix in a separate worktree.
 - `goal-mode-realism-auditor`: controlled experiments and documented findings;
   writes only under `runs/lab/`.

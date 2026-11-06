@@ -20,7 +20,7 @@ Do the fix:
 - Change the model the smallest way that makes it behave as documented. Follow CLAUDE.md: layering,
   determinism, units in names, tunables in `src/content/` with `// FICTIONAL:` / `// APPROX:` and a source cite.
 - Add a test that fails before and passes after: a unit test for a pure function, or a realism test in
-  `tests/sim/realism/` stating the documented behaviour.
+  `tests/sim/realism.test.ts` stating the documented behaviour.
 - Re-run the reproduction and note the after numbers.
 - If the fix needs a design call the brief doesn't settle (a lever loses its cost, a clue path disappears, a
   scenario's puzzle stops working), stop and report instead of guessing.
