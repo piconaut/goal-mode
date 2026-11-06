@@ -787,6 +787,14 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
   A follow-up whose earlier findings were all non-blocking is reviewed on Sonnet instead of Opus (user request
   2026-11-05).
 
+- Review-and-fix loop (user request 2026-11-06): `.claude/skills/pr-fix-loop/` with the Opus `pr-fixer` agent, as a
+  cheaper alternative to `pr-review-loop` (no author round trip, no second full review). Gate before fixing: 1–5
+  findings, all mechanical (tests, docs, citations, local bugs, conflicts); anything that changes the PR's intent,
+  balance, bench hashes or needs a design call holds the PR for its author with no partial fixes. Fixes must keep the
+  PR head's bench hashes. A Sonnet fix-check of the fix commits replaces the second review; fixes over 150 lines
+  get a full Sonnet review instead. Two failed fix-checks hold the PR. Label a PR `no-autofix` to keep it out.
+  Open: compare cost per merged PR against `pr-review-loop` over a week before retiring it.
+
 - Manage Region Using Goals Of is fixed at TRANSACTION for the player (user decision 2026-11-05): the sim keeps
   REGION/BOTH (lab, tests); the Rules view drops the column and `playerWlmEditError` refuses `SET_RULE_REGION_MODE`
   in the worker and play CLI. All three scenarios start at TRANSACTION (`tests/game/scenarioRegionMode.test.ts`).
