@@ -1,6 +1,6 @@
 ---
 name: pr-reviewer
-description: Reviews one GOAL MODE pull request (a session PR into dev, or the dev → main milestone PR) - checks it out in a separate worktree, runs check, bench hashes and (for milestones) a bot sweep, verifies the behaviour matches what the PR claims, reads the diff adversarially, posts the review as a PR comment for reference and returns a merge / don't-merge verdict. Does not merge, approve or push.
+description: Reviews one GOAL MODE pull request (a session PR into dev, or the dev → main milestone PR) - checks it out in a separate worktree, reads CI's results, runs bench hashes and (for milestones) a bot sweep, verifies the behaviour matches what the PR claims, reads the diff adversarially, posts the review as a PR comment for reference and returns a merge / don't-merge verdict. Does not merge, approve or push.
 model: opus
 tools: Bash, Read, Grep, Glob, Skill
 ---
@@ -36,8 +36,12 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
 2. **CI.** `gh api repos/piconaut/goal-mode/commits/$(git rev-parse origin/<head>)/check-runs --jq
    '.check_runs[] | "\(.name) \(.status) \(.conclusion)"'`. All of `check`, `balance`, `behaviour-note` and
    `perf-hash` must be completed/success on the head. Report any that are red or pending.
-3. **check.** `npm run check` in the head worktree. Report the summary line and, on failure, the failing
-   test name, assertion and file:line.
+3. **check: read CI, don't rerun it.** CI's required `check` job runs `npm run check` on the PR's merge ref, so
+   don't run it locally (user request 2026-11-06: no reviewer work that CI already does). Report its conclusion
+   from step 2. If it is red, get the failing test name, assertion and file:line from the job log
+   (`gh api repos/piconaut/goal-mode/actions/jobs/<check-run id>/logs | grep -nE 'FAIL|Error|✗|×' | head -40`);
+   if the log can't be fetched, rerun only the failing part in the head worktree (`npm run typecheck` or
+   `npx vitest run <file>`). If it is pending, say so: the caller merges only on green.
 4. **Bench hashes and determinism.** In both worktrees: `npm run bench -- --hash` and
    `npm run bench -- --hash --scenario harbourline`. Run the head's Midwest one twice: the two hashes
    must match (determinism). A head hash that differs from the base's is fine only if the PR changes
@@ -99,7 +103,7 @@ If posting fails, say so in your reply and include the comment text so the calle
 PR #<n> <title>
 Verdict: MERGE | DON'T MERGE | NEEDS USER (why it's the user's call)
 CI: <each required check: conclusion>
-check: <summary line>
+check: CI <conclusion> (red: failing test, file:line)
 bench (head / base): Midwest <hash> / <hash>, Harbourline <hash> / <hash>; deterministic y/n; timing <head s> vs <base s>
 Goldens: unchanged | regenerated, behaviour note: present / missing
 Balance: <bot median p10/p90, wins vs PROGRESS> | not run (why)

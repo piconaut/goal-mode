@@ -142,8 +142,8 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 - Delegation (to save usage): hand well-scoped tasks to the subagents in `.claude/agents/` — Sonnet
   `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
   brief) and `log-reader` (digest bot/sweep logs, test failures, long reports), and Opus `pr-reviewer` (user request
-  2026-11-02; check out a PR in a worktree, run check, bench hashes and a sweep for milestones, verify its claims,
-  post its report on the PR, return a merge verdict; the main agent merges). An hourly scheduled task runs the
+  2026-11-02; check out a PR in a worktree, read CI rather than rerun `npm run check`, run bench hashes and a sweep
+  for milestones, verify its claims, post its report on the PR, return a merge verdict; the main agent merges). An hourly scheduled task runs the
   `pr-review-loop` skill (user request 2026-11-04): it holds a PR on any finding, merges after a follow-up review
   shows the findings fixed, and keeps its state in markers in the review comments. The `pr-fix-loop` skill (user
   request 2026-11-06) is the alternative the scheduled task can run instead: the Opus `pr-fixer` reviews a PR and

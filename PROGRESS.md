@@ -787,6 +787,12 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
   A follow-up whose earlier findings were all non-blocking is reviewed on Sonnet instead of Opus (user request
   2026-11-05).
 
+- Reviewers don't repeat CI (user request 2026-11-06): `pr-reviewer` (and `pr-fixer`, which follows its checks)
+  no longer runs `npm run check` while reviewing; CI's required `check` job runs it on the merge ref, so the review
+  reads that result and the failing lines from its log. Kept because CI doesn't cover them: bench hashes (Harbourline
+  isn't in the goldens; determinism double-run; timing), the 10-seed review sweep (CI runs seeds 1–5 on the merge
+  ref), `vite build`, and `pr-fixer`'s pre-push `npm run check` (guards pushes to someone else's branch).
+
 - Review-and-fix loop (user request 2026-11-06): `.claude/skills/pr-fix-loop/` with the Opus `pr-fixer` agent, as a
   cheaper alternative to `pr-review-loop` (no author round trip, no second full review). Gate before fixing: 1–5
   findings, all mechanical (tests, docs, citations, local bugs, conflicts); anything that changes the PR's intent,
