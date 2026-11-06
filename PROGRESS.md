@@ -800,7 +800,7 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
   commit's tree plus the current sweep workflow, args in a `Sweep-Args:` trailer), waits and downloads `sweep-result` to
   `runs/remote/<sha7>/`; the workflow deletes the branch afterwards. Arguments are whitelisted (`tools/ci/sweepPlan.ts`).
   `audit-loop` balance sweeps use it instead of Sonnet worker sessions. Why: a 20-seed sweep takes ~30 min on a
-  session's 4 cores and starves other work (measured: 20 seeds × 3 bots of `dev` 1ec5957 in 17 min with 4 shards of 5 seeds, every bot inside its band); a worker session costs tokens just to start and report.
+  session's 4 cores and starves other work (measured: 20 seeds × 3 bots of `dev` 1ec5957 in 17 min with 4 shards of 5 seeds and 8 min with 10 shards of 2, identical results both ways, every bot inside its band); a worker session costs tokens just to start and report.
 
 - Review-and-fix loop (user request 2026-11-06): `.claude/skills/pr-fix-loop/` with the Opus `pr-fixer` agent, as a
   cheaper alternative to `pr-review-loop` (no author round trip, no second full review). Gate before fixing: 1–5
