@@ -153,3 +153,4 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 - Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
   `nohup … &` inside another command: tracked tasks show up for the user and notify on exit,
   so there's no need to poll or guess with timed wakeups.
+- After publishing an artifact, unwatch it.
