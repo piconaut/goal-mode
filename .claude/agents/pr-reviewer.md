@@ -145,3 +145,25 @@ problem from the adversarial read.
 Pick NEEDS USER when the change touches something the caller marks as a pending user decision, or
 changes balance or design in a way the PR doesn't justify with sweep results (including a bot median
 moving beyond the thresholds in check 6).
+
+## Fix-check mode
+
+When the brief says "fix-check mode" (the `pr-fix-loop` skill, after `pr-fixer` pushed fixes to a PR), you check
+someone else's fixes, not the whole PR. The brief gives the reviewed SHA, the fix head SHA, and the finding list
+with the commit that claims to fix each one.
+
+- No worktrees, no `npm ci`, no check or bench runs (CI and the fixer ran them): read
+  `git diff <reviewed>..<fix head>` and `git log --format='%h %s' <reviewed>..<fix head>` after
+  `git fetch origin <head>`. Read the surrounding code where a hunk needs it.
+- For each finding: fixed / not fixed, with the hunk as evidence. Then look for problems the fixes introduce
+  (a weakened or skipped test, scope beyond the finding, a behaviour change, a broken CLAUDE.md rule, a realism claim
+  with no checked citation). Pre-existing problems outside the fix diff are not yours to report here.
+- Don't post on the PR. Return only:
+
+```
+Fix-check PR #<n>: PASS | FAIL
+<ID>: fixed | not fixed - <evidence>
+New: <F1: file:line - problem> | none
+```
+
+PASS means every finding is fixed and nothing new is wrong.
