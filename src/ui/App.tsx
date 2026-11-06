@@ -11,7 +11,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { Finance } from './Finance';
 import { LineChart } from './LineChart';
 import { Monitor } from './Monitor';
-import { Overlays } from './Overlays';
+import { Overlays, PhaseActions } from './Overlays';
 import { Reports } from './Reports';
 import { Smf } from './Smf';
 import { EvidenceBoard } from './Evidence';
@@ -39,7 +39,7 @@ export function App() {
   if (!v) return <div className="app">Starting the sysplex…</div>;
   return (
     <div className="app">
-      <TopBar v={v} game={game} />
+      <TopBar v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
       {game.spectate && (
         <div className="spectate-banner" role="status">
           Spectating <b>{game.spectate.name}</b> (read-only){game.spectate.error ? ` · cannot read the run file: ${game.spectate.error}` : game.spectate.last ? ` · last command ${game.spectate.last}` : ''}
@@ -90,7 +90,7 @@ export function App() {
   );
 }
 
-function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
+function TopBar({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
   const speed = game.speed;
   const set = (s: number) => game.send({ type: 'SET_SPEED', speed: s });
   const progress = (100 * v.tickOfDay) / v.ticksPerDay;
@@ -127,6 +127,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
           )}
         </span>
       )}
+      <PhaseActions v={v} game={game} open={open} setOpen={setOpen} />
       <span className="stat">
         Trust <b style={{ color: trustColor(v.trustOverall) }}>{v.trustOverall.toFixed(0)}</b>
       </span>
