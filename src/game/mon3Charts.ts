@@ -119,7 +119,7 @@ function newMarkers(run: RunState, st: Mon3ChartState): { markers: ChartMarker[]
   const out: ChartMarker[] = [];
   const wlm = run.sim.wlm.log;
   const from = st.lastWlmLine === null ? 0 : wlm.lastIndexOf(st.lastWlmLine) + 1;
-  for (const l of wlm.slice(from)) if (l.includes('RCVR=')) out.push({ tick, kind: 'WLM', text: l });
+  for (const l of wlm.slice(from)) if (l.includes('RCVR=') || l.includes('CPU PROTECTION')) out.push({ tick, kind: 'WLM', text: l });
   for (const l of run.log.slice(st.logSeen)) {
     if (l.includes('change') || l.includes('Change') || l.includes('WLM policy')) out.push({ tick, kind: 'CHANGE', text: l });
     else if (l.startsWith('EVENT') || l.startsWith('INCIDENT')) out.push({ tick, kind: 'EVENT', text: l });

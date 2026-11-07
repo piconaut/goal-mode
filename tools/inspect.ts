@@ -70,7 +70,8 @@ function candidateLines(c: WlmCandidateTrace, n: number): string[] {
 export function traceText(t: WlmAdjustTrace, cls?: string): string[] {
   const shown = t.candidates.map((c, i) => [c, i + 1] as const).filter(([c]) => !cls || c.scKey.toUpperCase().includes(cls));
   const action = t.action ? t.action.slice(t.action.indexOf('RCVR=')) : 'no DP change';
-  return [`${t.clockText} ${t.lparId}  → ${action}`, ...(t.candidates.length === 0 ? ['  no candidate (every goal period meets its goal)'] : shown.flatMap(([c, n]) => candidateLines(c, n)))];
+  const prot = t.protection.length > 0 ? [`  CPU protection restored first: ${t.protection.join(', ')}`] : [];
+  return [`${t.clockText} ${t.lparId}  → ${action}`, ...prot, ...(t.candidates.length === 0 ? ['  no candidate (every goal period meets its goal)'] : shown.flatMap(([c, n]) => candidateLines(c, n)))];
 }
 
 const scOf = (run: RunState) => scenarioFor(packOf(run.scenarioId).scenario, run.difficulty);
