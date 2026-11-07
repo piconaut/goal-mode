@@ -592,6 +592,14 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 
 #### Saves, export and tooling
 
+- [ ] **Browser saves can't be traced into the past (tooling gap).** `inspect wlm` replays a play-CLI file from seed +
+  log, but a browser save holds only the current state, so a question about an earlier moment (INC126 D29, asked
+  from the D40 save) can't be answered. Option: keep the live day's start-of-day state and its commands in the save
+  (check the size cost first).
+- [x] **WLM decision trace (2026-11-07):** `npm run inspect -- <file> wlm <system> --at 'D19 22:00'` prints, per policy
+  adjustment, the receiver candidates in order, each trial move and why it was accepted or rejected, and candidates
+  skipped as not fixable or over the two-receiver budget. A trace sink in `src/sim/wlm/adjust.ts` that the game never
+  sets (no state, no decision change; `npm run compare` clean). The realism auditor's brief points to it.
 - [ ] **Imported saves lack Monitor III history:** `mon3 --at` on an imported save shows nothing for past
   ranges (replay forward instead, or include the history).
 - [ ] **Export:** besides downloads being blocked, copying the save string from dev tools corrupted 12 escaped quotes in
@@ -602,9 +610,10 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   `JSON.stringify` is fine and something on the artifact's download path doubled them (not verified). Import (browser
   and play CLI) now repairs it, and also text pasted inside backticks (the D4 save). If it recurs, look at how the
   artifact host saves a Blob download.
-- [ ] **Playtest companion skill and investigator subagent (proposal).** A `playtest-companion` skill holding the
-  standing rules and setup, and an optional `playtest-investigator` subagent for deep code dives that returns
-  only the finding in the report format and filters spoilers in its own context. Not built yet.
+- [x] **Playtest companion skill (2026-11-07):** `.claude/skills/playtest-companion/` holds the standing rules, setup,
+  toolbox, report format and logging; WLM questions go to the new `wlm-why` skill (`.claude/skills/wlm-why/`:
+  find the moment, `inspect wlm`, read the verdicts against the documented rules, call it). No investigator
+  subagent: with `inspect wlm` a WLM question takes a few tool calls.
 - [x] **Playtest agents updated from this round:** new `wlmlog [system] [--grep]` play verb (the Monitor's WLM activity
   log); player briefs now pin evidence, compare `*PLEX` with per-system rows, snapshot the run at incident onset and log
   the human incident checklist and pacing; new `goal-mode-firefighter` persona (emergency WLM edits, watches WLM's

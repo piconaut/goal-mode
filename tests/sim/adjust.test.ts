@@ -1,5 +1,5 @@
 import { BASEPOL } from '../../src/content/wlm/basepol';
-import { policyAdjust } from '../../src/sim/wlm/adjust';
+import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
@@ -138,5 +138,26 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
     const { dps, out } = run(0.4);
     expect(out.dps).toEqual(dps);
     expect(out.log).toContain('no action');
+  });
+
+  it('the investigation trace names why each trial failed and changes no decision', () => {
+    const traces: WlmAdjustTrace[] = [];
+    const plain = [run(0.4).out, run(0.02).out];
+    setWlmTraceSink((t) => traces.push(t));
+    let traced;
+    try {
+      traced = [run(0.4).out, run(0.02).out];
+    } finally {
+      setWlmTraceSink(null);
+    }
+    expect(traced).toEqual(plain);
+    const [rejected, accepted] = traces;
+    const recv = rejected!.candidates.find((c) => c.scKey === 'ONLMED#1')!;
+    expect(recv.outcome).toBe('ASSESSED');
+    expect(recv.trials.map((t) => t.verdict)).toContain('EQUAL_DISPARITY');
+    expect(recv.trials.every((t) => t.verdict !== 'ACCEPTED')).toBe(true);
+    expect(rejected!.action).toBeNull();
+    expect(accepted!.candidates[0]!.trials.at(-1)!.verdict).toBe('ACCEPTED');
+    expect(accepted!.action).toContain('RCVR=ONLMED#1');
   });
 });

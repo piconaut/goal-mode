@@ -6,7 +6,7 @@ import { quoteTfp } from '../../src/game/tfp';
 import { scenarioFor } from '../../src/game/difficulty';
 import { packOf } from '../../src/content/packs';
 import { estimateMonth } from '../../src/sim/cost/mlc';
-import { dpText } from '../../tools/inspect';
+import { dpText, wlmText } from '../../tools/inspect';
 
 function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   for (const c of cmds) {
@@ -112,6 +112,17 @@ describe('headless play interface', () => {
     const line = t.split('\n')[1]!;
     expect(line).toMatch(/SYSTEM#1=FF SYSSTC#1=FE/);
     expect(dpText(encodePlayFile(f), 'NOSUCH')).toContain('No system NOSUCH');
+  });
+
+  it('inspect wlm replays a play log to a past time and traces each policy adjustment there', () => {
+    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const t = wlmText(encodePlayFile(f), 'PROD1', { at: 'D1 06:30', ticks: 2 }).split('\n');
+    expect(t[0]).toContain('replayed from seed + log');
+    expect(t.filter((l) => /^D1 06:30:(00|10) PROD1  → /.test(l))).toHaveLength(2);
+    // Without a log (a browser save) it can only trace forward from the saved moment.
+    const browser = encodePlayFile({ ...f, log: [] });
+    expect(wlmText(browser, 'PROD1', { at: 'D1 06:30' })).toContain('traced forward');
+    expect(wlmText(browser, 'PROD1', { at: 'D1 08:00', ticks: 1 }).split('\n')[0]).toContain('forward from the saved moment');
   });
 
   it('catalog lists orderable items; Monitor III shows once the tool is owned', () => {

@@ -45,6 +45,51 @@ export interface AdjustOutput {
   log: string | null;
 }
 
+/** Why a trial DP move was accepted or rejected (investigation trace only). */
+export type WlmTrialVerdict =
+  | 'ACCEPTED'
+  | 'CPU_CRITICAL' // a less important period would reach a CPU-protected period's DP
+  | 'NO_RECEIVER_GAIN' // projected receiver PI does not improve
+  | 'SMALL_GAIN' // improves by less than the receiver value threshold
+  | 'MORE_IMPORTANT_HARMED' // a more important period would be pushed past its goal
+  | 'EQUAL_DISPARITY' // an equal-importance period is harmed and the PIs don't get closer
+  | 'NO_NET_VALUE'; // equal-importance harm outweighs the receiver's gain
+
+export interface WlmTrialTrace {
+  move: string;
+  verdict: WlmTrialVerdict;
+  /** Receiver PI before → projected after (unclamped, as judged). */
+  receiverPi?: [number | null, number | null];
+  detail?: string;
+}
+
+export interface WlmCandidateTrace {
+  scKey: string;
+  importance: number;
+  sysplexPi: number | null;
+  localPi: number | null;
+  dp: number;
+  bottleneck: Bottleneck | null;
+  /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: two receivers were already assessed; ASSESSED: trials below. */
+  outcome: 'NOT_FIXABLE' | 'BUDGET' | 'ASSESSED';
+  trials: WlmTrialTrace[];
+}
+
+export interface WlmAdjustTrace {
+  clockText: string;
+  lparId: string;
+  dps: Record<string, number>;
+  candidates: WlmCandidateTrace[];
+  action: string | null;
+}
+
+// Investigation tooling only (tools/inspect.ts): never set by the game, never part of state, and it doesn't change
+// what policyAdjust decides.
+let traceSink: ((t: WlmAdjustTrace) => void) | null = null;
+export function setWlmTraceSink(sink: ((t: WlmAdjustTrace) => void) | null): void {
+  traceSink = sink;
+}
+
 const RECEIVER_VALUE_FRAC = 0.1;
 const DONOR_CREDIT_FLOOR = 0.9;
 
@@ -99,23 +144,33 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   // CCIMP extends it to first or only periods up to that importance (Init & Tuning p.428). APPROX: no
   // System Recovery Boost in the sim, so CCIMPBOOST never applies.
   const ccImp = input.ccImp ?? 0;
-  const violatesCpuCritical = (trial: Record<string, number>) => {
+  const violatesCpuCritical = (trial: Record<string, number>): string | null => {
     for (const [k, g] of Object.entries(info)) {
       if (!g.cpuCritical && !(g.period === 0 && g.importance <= ccImp)) continue;
       for (const [k2, g2] of Object.entries(info)) {
-        if (g2.importance > g.importance && (trial[k2] ?? 0) >= (trial[k] ?? 0)) return true;
+        if (g2.importance > g.importance && (trial[k2] ?? 0) >= (trial[k] ?? 0)) return `${k2} (imp ${g2.importance}) ${hex(trial[k2] ?? 0)} ≥ ${k} (imp ${g.importance}) ${hex(trial[k] ?? 0)}`;
       }
     }
-    return false;
+    return null;
   };
 
+  const tracing = traceSink !== null;
+  let why: WlmTrialTrace | null = null;
+  const reject = (verdict: WlmTrialVerdict, r: [number | null, number | null], detail?: string) => {
+    if (tracing) why = { move: '', verdict, receiverPi: r, ...(detail ? { detail } : {}) };
+    return false;
+  };
   const passes = (receiver: string, trial: Record<string, number>): boolean => {
-    if (violatesCpuCritical(trial)) return false;
+    const cc = violatesCpuCritical(trial);
+    if (cc) {
+      if (tracing) why = { move: '', verdict: 'CPU_CRITICAL', detail: cc };
+      return false;
+    }
     return project(trial, (after) => {
       const r0 = before[receiver];
       const r1 = after[receiver];
-      if (r0 == null || r1 == null || r1 >= r0) return false;
-      if (r0 - r1 < RECEIVER_VALUE_FRAC * (r0 - 1)) return false;
+      if (r0 == null || r1 == null || r1 >= r0) return reject('NO_RECEIVER_GAIN', [r0 ?? null, r1 ?? null]);
+      if (r0 - r1 < RECEIVER_VALUE_FRAC * (r0 - 1)) return reject('SMALL_GAIN', [r0, r1], `needs ≥ ${(RECEIVER_VALUE_FRAC * (r0 - 1)).toFixed(2)}`);
       const rImp = info[receiver]!.importance;
       const gain = Math.max(0, r0 - Math.max(r1, DONOR_CREDIT_FLOOR));
       let equalHarm = 0;
@@ -125,15 +180,16 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         const p1 = after[k];
         if (p0 == null || p1 == null) continue;
         const harm = Math.max(0, p1 - Math.max(p0, DONOR_CREDIT_FLOOR));
-        if (g.importance < rImp && p1 > 1 && harm > 0.02) return false;
+        if (g.importance < rImp && p1 > 1 && harm > 0.02) return reject('MORE_IMPORTANT_HARMED', [r0, r1], `${k} (imp ${g.importance}) PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
         if (g.importance === rImp) {
           // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,
           // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
-          if (harm > 0 && Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return false;
+          if (harm > 0 && Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return reject('EQUAL_DISPARITY', [r0, r1], `${k} PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
           equalHarm += harm;
         }
       }
-      return gain > equalHarm;
+      if (gain > equalHarm) return true;
+      return reject('NO_NET_VALUE', [r0, r1], `gain ${gain.toFixed(2)} ≤ equal-importance harm ${equalHarm.toFixed(2)}`);
     });
   };
 
@@ -155,18 +211,34 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   });
 
   const notes: string[] = [];
+  const traced: WlmCandidateTrace[] = [];
+  const traceOf = (k: string, bottleneck: Bottleneck | null, outcome: WlmCandidateTrace['outcome']): WlmCandidateTrace => {
+    const c = { scKey: k, importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, outcome, trials: [] };
+    traced.push(c);
+    return c;
+  };
+  const finish = (out: AdjustOutput): AdjustOutput => {
+    if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null });
+    return out;
+  };
   let projected = 0;
   for (const receiver of candidates) {
     // Projection is the expensive part: assess at most two fixable receivers per interval.
-    if (projected >= 2) break;
+    if (projected >= 2) {
+      if (!tracing) break;
+      traceOf(receiver, null, 'BUDGET');
+      continue;
+    }
     const scState = system.scps.find((s) => s.scKey === receiver)!;
     // With I/O priority management off, I/O samples are outside velocity and WLM doesn't manage I/O (WLM Planning p.115).
     const btl = bottleneckOf({ ...scState.acc, delayIo: scState.acc.delayIo - (scState.acc.delayIoNoVel ?? 0) });
     const pi = (input.sysplexPi[receiver] ?? localPi[receiver] ?? 0).toFixed(2);
     if (btl !== 'CPU' && btl !== 'ZIIP') {
       notes.push(`${receiver} PI=${pi} BTLNK=${btl} not WLM-fixable`);
+      if (tracing) traceOf(receiver, btl, 'NOT_FIXABLE');
       continue;
     }
+    const ct = tracing ? traceOf(receiver, btl, 'ASSESSED') : null;
     projected++;
     const rdp = dps[receiver]!;
     const rImp = info[receiver]!.importance;
@@ -206,19 +278,22 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     }
 
     for (const tr of trials) {
-      if (passes(receiver, tr.trial)) {
-        return {
+      why = null;
+      const ok = passes(receiver, tr.trial);
+      if (ct) ct.trials.push(ok ? { move: tr.text, verdict: 'ACCEPTED' } : { ...(why ?? { verdict: 'NO_RECEIVER_GAIN' as const }), move: tr.text });
+      if (ok) {
+        return finish({
           dps: tr.trial,
           log: `${input.clockText} ${system.lparId} RCVR=${receiver} PI=${pi} BTLNK=${btl} ${tr.text}`,
-        };
+        });
       }
     }
     notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value`);
   }
-  return {
+  return finish({
     dps,
     log: notes.length > 0 ? `${input.clockText} ${system.lparId} ${notes[0]}` : null,
-  };
+  });
 }
 
 const hex = (n: number) => n.toString(16).toUpperCase();
