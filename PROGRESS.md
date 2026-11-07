@@ -610,9 +610,10 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   `JSON.stringify` is fine and something on the artifact's download path doubled them (not verified). Import (browser
   and play CLI) now repairs it, and also text pasted inside backticks (the D4 save). If it recurs, look at how the
   artifact host saves a Blob download.
-- [ ] **Playtest companion skill and investigator subagent (proposal).** A `playtest-companion` skill holding the
-  standing rules and setup, and an optional `playtest-investigator` subagent for deep code dives that returns
-  only the finding in the report format and filters spoilers in its own context. Not built yet.
+- [x] **Playtest companion skill (2026-11-07):** `.claude/skills/playtest-companion/` holds the standing rules, setup,
+  toolbox, report format and logging; WLM questions go to the new `wlm-why` skill (`.claude/skills/wlm-why/`:
+  find the moment, `inspect wlm`, read the verdicts against the documented rules, call it). No investigator
+  subagent: with `inspect wlm` a WLM question takes a few tool calls.
 - [x] **Playtest agents updated from this round:** new `wlmlog [system] [--grep]` play verb (the Monitor's WLM activity
   log); player briefs now pin evidence, compare `*PLEX` with per-system rows, snapshot the run at incident onset and log
   the human incident checklist and pacing; new `goal-mode-firefighter` persona (emergency WLM edits, watches WLM's
