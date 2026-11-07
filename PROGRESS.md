@@ -467,10 +467,16 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 
 #### Events and operations design
 
-- [ ] **Silent events leak through the Operations Log (design bug).** `src/game/run.ts` logs "EVENT start/end: <name>" for
-  every card; mail goes out only with an announcement; `src/game/mon3Charts.ts` turns the lines into named chart
-  markers. The TSO model-training card has no announcement. Fix: log only announced cards, in their wording; keep
-  silent ones out of the log and chart markers until revealed or the RCA is filed (run log changes → goldens).
+- [x] **Silent events leak through the Operations Log (design bug).** `src/game/run.ts` logged "EVENT start/end: <name>"
+  for every card; mail goes out only with an announcement; `src/game/mon3Charts.ts` turned the lines into named chart
+  markers, so the TSO model-training card (no announcement, no forewarning) gave itself away. `eventStartLog` /
+  `eventEndLog` (`src/game/run/events.ts`) now log only a card the player was told about, in that wording: an
+  announcement, an owned perk's tip-off, or an Ask Around rumour that has been revealed. A forewarning alone is not
+  enough: the card name can give the diagnosis away (e.g. "Stored procedures lose zIIP offload" after "procedures were
+  redeployed overnight"), so silent cards stay out of the log and chart markers. Event lines are classified before
+  CHANGE so an announcement containing "Change board" is not mislabelled. Run log changed → goldens regenerated. The
+  review screen's day report still lists every started card, so the day's silent cards become visible after the fact
+  (the RCA is filed there); logging them retroactively in the live console would be misleading.
 - [ ] **A forewarned fix planned ahead is silently wasted (design gap).** D24 (build `d8ada51`): the inbox forewarned a
   stored procedure redeploy; the player planned "Redeploy as native SQL procedures" in the briefing. It applied at 06:00
   (`src/game/run.ts:133–137`), the event card started later that morning, `endEventByFix` found nothing started and

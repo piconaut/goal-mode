@@ -995,6 +995,10 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 *diagnostic clues* (which report shows what), *valid fixes*, duration, and *forecastability*
 (seen on the calendar ahead, fogged, or surprise).
 
+Silent cards (no announcement) never appear in the Operations log or its Monitor III chart markers: only cards the
+player was told about — an announcement, an owned perk's tip-off, or a revealed Ask Around rumour — are logged, in
+that wording. A forewarning is a day-before planning note and does not name the card.
+
 ### 9.1 Workload events
 | Event | Hidden mechanic | Where the clues are |
 |---|---|---|

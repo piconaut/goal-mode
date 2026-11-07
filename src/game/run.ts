@@ -25,7 +25,7 @@ import { emptyPolicyBook, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
 import { failRisk, NO_TARGET, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { drawEvents, endEventByFix, hasEventForFix, storyFor } from './run/events';
+import { drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
@@ -184,11 +184,14 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
         if (def?.perkTip && r.perks.includes(def.perkTip.perk)) r = msg(r, def.perkTip.from, def.name, def.perkTip.text);
-        r = logLine(r, `EVENT start: ${e.name}`);
+        // Only cards the player was told about may appear in the log (and its chart markers).
+        const line = def ? eventStartLog(r, def, e.uid) : null;
+        if (line) r = logLine(r, line);
       }
       if (e.started && !e.ended && e.endTick !== null && e.endTick <= tick) {
         cmds.push(...e.endCommands);
-        r = logLine(r, `EVENT end: ${e.name}`);
+        const line = def ? eventEndLog(r, def, e.uid) : null;
+        if (line) r = logLine(r, line);
       }
     }
     const sim = step(r.sim, cmds, scenario);
