@@ -388,6 +388,10 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       j.status = 'QUEUED';
       j.progress = j.progress * 0.5; // restart from the last checkpoint
       j.queuedTick = s.tick;
+      // The old failure belongs to the abandoned attempt: a successful restart must not leave its code on the job
+      // (otherwise the night's RCA could blame the wrong cause).
+      delete j.failCode;
+      delete j.failTick;
       return ok({ ...s, batch: { ...s.batch, jobs } }, `${cmd.name} restarted from checkpoint`);
     }
 

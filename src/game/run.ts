@@ -230,11 +230,11 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
 
 /** JES2 job log of a Db2 job that started on an image without Db2 (TSO DSN under IKJEFT01, Db2 13 Messages p.140). */
 function logConnectFailures(r: RunState, sim: RunState['sim']): RunState {
-  let was: Set<string> | null = null;
   for (const j of sim.batch.jobs) {
     if (j.status !== 'ABENDED' || j.failCode !== DB2_CONNECT_FAIL) continue;
-    was ??= new Set(r.sim.batch.jobs.filter((x) => x.status === 'ABENDED').map((x) => `${x.day}:${x.def.name}`));
-    if (was.has(`${j.day}:${j.def.name}`)) continue;
+    // A restarted job can go ABENDED → QUEUED → ABENDED within one tick, so compare the failure tick rather than
+    // the previous ABENDED set: each attempt gets its own line.
+    if (j.failTick !== r.sim.tick) continue;
     r = logLine(r, `${j.def.name} on ${j.lparId}: ${DB2_CONNECT_FAIL} NOT OPERATIONAL, RETRY COUNT IS ZERO (no Db2 subsystem on ${j.lparId})`);
   }
   return r;

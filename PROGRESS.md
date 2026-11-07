@@ -281,7 +281,11 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   ZERO", Db2 13 Messages p.140), its initiator freed, held for a restart. Clues: Operations log line naming job and
   system, Batch view tag `FAILED <job> DSNE100I on SYSP`, SMF 30 night ABEND list with codes, Codex entry. A missed
   night caused by it is JOB_FAILURE / POLICY in RCA. Fixes: take the class's initiators off the image, then restart.
-  APPROX: no DSN RETRY wait; any Db2 on the image counts (a test Db2 is really another subsystem name).
+  APPROX: no DSN RETRY wait; any Db2 on the image counts (a test Db2 is really another subsystem name); an image with
+  no Db2 defined may not return exactly DSNE100I, which the book documents for a named ssid that is not active.
+  Follow-up (2026-11-07): every connect attempt gets its own Operations log line (a restart that fails again in the
+  same tick is no longer missed), and a restart clears the abandoned attempt's `failCode` so a successful rerun cannot
+  leave a stale DSNE100I on the night's RCA.
 - [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
   products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Moot for batch since 2026-11-07 (the job
   fails at connect and uses no CPU);
