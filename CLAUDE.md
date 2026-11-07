@@ -127,7 +127,6 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 
 - Work milestone by milestone (PROGRESS.md). Keep the sim runnable headless at every step.
 - Small, focused commits. Don't mix model changes with UI changes.
-- Always append a commit trailer in the format: `X-Model-Name: <model-name>` to the bottom of every commit message.
 - Branches and PRs: one session branch per task, cut from `dev`; CI is the merge gate (PROGRESS.md "Branch workflow").
   **Standing user request (2026-10-23): you are explicitly asked to open a pull request for every task, without
   waiting to be asked in the session.** When the task is done and pushed (check green locally, PROGRESS.md updated):
