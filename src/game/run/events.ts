@@ -1,5 +1,6 @@
 import { type EventDef } from '../../content/events/midwest-events';
 import { STORY_BEAT_HINTS } from '../../content/hints';
+import { EVENT_RUMOURS } from '../../content/inquiries';
 import { Rng, streamRng } from '../../sim/core/rng';
 import { TICK_SEC, TICKS_PER_DAY } from '../../sim/core/units';
 import { difficultyOf, storyBeatsFor } from '../difficulty';
@@ -83,6 +84,31 @@ export function storyFor(run: RunState, content: GameContent, day: number): RunS
     }
   }
   return r;
+}
+
+/**
+ * What the log may say about a card: the wording the player was given, or null for a silent one. The card's
+ * name can give the diagnosis away (e.g. "Stored procedures lose zIIP offload" after a vague forewarning), so a
+ * forewarning alone is not enough. An announcement, an owned perk's tip-off and a revealed Ask Around rumour are
+ * explicit reveals; only the first two reveal the name too (the inbox subject). A silent card stays out of the
+ * log and its chart markers.
+ */
+function eventLogText(run: RunState, def: EventDef, uid: string): { text: string; named: boolean } | null {
+  if (def.announcement !== null) return { text: def.announcement, named: true };
+  if (def.perkTip && run.perks.includes(def.perkTip.perk)) return { text: def.perkTip.text, named: true };
+  const rumour = EVENT_RUMOURS[def.id];
+  if (rumour && (run.inquiries?.revealed ?? []).includes(`ev:${uid}`)) return { text: rumour, named: false };
+  return null;
+}
+
+export function eventStartLog(run: RunState, def: EventDef, uid: string): string | null {
+  const t = eventLogText(run, def, uid);
+  return t === null ? null : `EVENT start: ${t.named ? `${def.name} — ` : ''}${t.text}`;
+}
+
+export function eventEndLog(run: RunState, def: EventDef, uid: string): string | null {
+  const t = eventLogText(run, def, uid);
+  return t === null ? null : `EVENT end: ${t.named ? def.name : t.text}`;
 }
 
 /** Context for previewChange from the current run. */
