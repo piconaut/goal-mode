@@ -906,6 +906,7 @@ Save transfer dialog (`src/ui/RunFiles.tsx`, UI only):
 
 ## Latest maintenance
 
+- 2026-11-06: Added five IBM Redbooks/Redpaper entries to the `zos-docs` catalog after checking their IBM publication pages and PDF title pages; ingested their PDFs and caches with `books.py`.
 - [x] **Split `src/sim/core/step.ts`** (1,458 → 278 lines at #217): `step()` stays the SPEC §5.1 orchestrator; stage bodies
   moved verbatim to `src/sim/core/tick/` — `ctx` (TickCtx, constants), `control` (soft cap, PR/SM, policy adjust,
   capping, cost, RMF), `demand` (3–4), `dispatch` (7–12a), `helpers` (routing, caps, CICS regions; public helpers are
