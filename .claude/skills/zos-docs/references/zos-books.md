@@ -192,6 +192,19 @@ Every ID below was seen as a real Redbooks URL in a search.
 | IBM Z Time Synchronization Implementation Guide | `sg248480` |
 | Getting Started with Business Continuity on IBM Z | `sg248446` |
 
+**Security, cryptography, and compliance**
+| Redbook | ID |
+|---|---|
+| Getting Started with z/OS Data Set Encryption | `sg248410` |
+| Keeping Up With Security and Compliance on IBM Z | `sg248540` |
+
+**AI and application modernization**
+| Redbook | ID |
+|---|---|
+| Mainframe Application Modernization Patterns for Hybrid Cloud | `sg248532` |
+| Turning Data into Insight with Machine Learning for IBM z/OS | `sg248552` |
+| AI on IBM Z: Applications and Examples | `redp5758` |
+
 **Db2 for z/OS**
 | Redbook | ID |
 |---|---|

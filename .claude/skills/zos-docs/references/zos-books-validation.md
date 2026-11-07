@@ -121,7 +121,8 @@ All table rows marked “ID not independently verified on current IBM release”
 
 ## Redbooks and Redpapers
 
-All 37 existing IDs and added `sg247621` match IBM abstract page titles/forms.
+The entries below match IBM abstract page titles/forms. The five entries added on
+2026-11-06 were checked against their downloaded PDF title pages with `pdf_find.py`.
 
 | ID | IBM page title | Form | Page publication / update date | Primary evidence |
 |---|---|---|---|---|
@@ -148,6 +149,11 @@ All 37 existing IDs and added `sg247621` match IBM abstract page titles/forms.
 | `sg245444` | IBM Z Connectivity Handbook | SG24-5444-24 | 07 July 2026, updated 09 July 2026 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg245444.html) |
 | `sg248480` | IBM Z Time Synchronization Implementation Guide | SG24-8480-02 | 05 September 2025, updated 25 August 2026 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248480.html) |
 | `sg248446` | Getting Started with Business Continuity on IBM Z | SG24-8446-01 | 24 August 2026, updated 26 August 2026 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248446.html) |
+| `sg248410` | Getting Started with z/OS Data Set Encryption | SG24-8410-02 | 23 March 2026 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248410.html) |
+| `sg248532` | Mainframe Application Modernization Patterns for Hybrid Cloud | SG24-8532-00 | 27 June 2023, updated 30 June 2023 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248532.html) |
+| `sg248540` | Keeping Up With Security and Compliance on IBM Z | SG24-8540-00 | 23 June 2023 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248540.html) |
+| `sg248552` | Turning Data into Insight with Machine Learning for IBM z/OS | SG24-8552-01 | 09 April 2026, updated 03 June 2026 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248552.html) |
+| `redp5758` | AI on IBM Z: Applications and Examples | REDP-5758-00 | 02 March 2026, updated 10 September 2026 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/redp5758.html) |
 | `sg248536` | IBM Db2 13 for z/OS Performance Topics | SG24-8536-00 | 27 January 2023, updated 07 September 2023 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248536.html) |
 | `sg248527` | IBM Db2 13 for z/OS and More | SG24-8527-00 | 31 May 2022, updated 20 June 2022 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248527.html) |
 | `sg248222` | IBM DB2 11 for z/OS Performance Topics | SG24-8222-00 | 25 July 2014, updated 11 August 2014 | [IBM abstract](https://www.redbooks.ibm.com/abstracts/sg248222.html) |
