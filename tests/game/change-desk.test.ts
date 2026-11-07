@@ -39,9 +39,10 @@ describe('change preview', () => {
       ...r,
       events: [{ uid: 'CICS_SOS@0', defId: sos.id, name: sos.name, startTick: 0, endTick: null, trigger: sos.trigger, affects: sos.affects, endCommands: sos.end, started: true, ended: false }],
     };
+    const drawn = { ...started, events: started.events.map((e) => ({ ...e, started: false })) };
     expect(buildView(started, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
-    // Not started and not forewarned: the Operations list must not spoil the card.
-    expect(buildView(r, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS');
+    // Drawn for today but not started and not forewarned: the Operations list must not spoil the card.
+    expect(buildView(drawn, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS');
     expect(buildView(started, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS_REV');
     expect(previewChange(previewContext(started, MIDWEST_GAME), { fixId: 'RECYCLE_PROD2_AORS' }).ok).toBe(true);
     expect(requestChange(r, MIDWEST_GAME, { label: 'x', fixId: 'RECYCLE_PROD2_AORS_REV' }).ok).toBe(false);
