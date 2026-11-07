@@ -112,8 +112,24 @@ export function eventEndLog(run: RunState, def: EventDef, uid: string): string |
 }
 
 /** Context for previewChange from the current run. */
-/** Fixes the scenario's event cards call for: the Change Desk offers and accepts only these. */
+/** Fixes the scenario's event cards call for: the Change Desk accepts only these (the offered list is a subset). */
 export const fixIdsOf = (content: GameContent): string[] => [...new Set(content.events.flatMap((e) => (e.fix ? [e.fix] : [])))].sort();
+
+/**
+ * Fixes the player may see: cards that have started in this run, were forewarned (the inbox names the change),
+ * or whose Ask Around rumour has been revealed. Unseen cards stay hidden so the Operations list cannot spoil an
+ * event that has not happened yet. Validation keeps using `fixIdsOf`, so a fix id guessed for an unseen card is
+ * still accepted and charged (the Change Desk cannot be probed for hidden events).
+ */
+export function visibleFixIds(run: RunState, content: GameContent): string[] {
+  const out = new Set<string>();
+  for (const e of run.events) {
+    const def = content.events.find((d) => d.id === e.defId);
+    const rumoured = (run.inquiries?.revealed ?? []).includes(`ev:${e.uid}`);
+    if (def?.fix && (e.started || def.forewarning !== null || rumoured)) out.add(def.fix);
+  }
+  return [...out].sort();
+}
 
 export const hasEventForFix = (run: RunState, content: GameContent, fixId: string): boolean =>
   run.events.some((e) => e.started && !e.ended && content.events.some((d) => d.id === e.defId && d.fix === fixId));

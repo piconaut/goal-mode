@@ -32,7 +32,7 @@ import { opexBudgetFor, type PreviewContext } from './catalog';
 import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import type { LcuConfig } from '../sim/io/dasd';
-import { allWorkloads, fixIdsOf, overallTrust, previewContext } from './run';
+import { allWorkloads, overallTrust, previewContext, visibleFixIds } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
 import { idText } from './ids';
@@ -134,7 +134,7 @@ export interface ViewModel {
   daily: string | null;
   difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
   scenario: { id: string; name: string };
-  /** Event fixes this scenario's deck can call for (the Ops list shows only these). */
+  /** Event fixes the Ops list may show: this scenario's cards that have started or been forewarned in this run. */
   fixIds: string[];
   clock: string;
   hourOfDay: number;
@@ -301,7 +301,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
     scenario: { id: packOf(run.scenarioId).id, name: packOf(run.scenarioId).name },
-    fixIds: fixIdsOf(packOf(run.scenarioId).game),
+    fixIds: visibleFixIds(run, packOf(run.scenarioId).game),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,

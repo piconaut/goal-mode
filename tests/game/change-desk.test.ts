@@ -32,12 +32,39 @@ describe('change preview', () => {
     expect(previewChange(previewContext(live), { commands: [] }).reason).toBe('Nothing to change');
   });
 
-  it("offers and accepts only the fixes this scenario's event cards call for", () => {
+  it("offers only fixes whose card this run has revealed, and accepts only the scenario's fixes", () => {
     const r = newRun(MIDWEST, MIDWEST_GAME, 7);
-    expect(buildView(r, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
-    expect(buildView(r, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS_REV');
-    expect(previewChange(previewContext(r, MIDWEST_GAME), { fixId: 'RECYCLE_PROD2_AORS' }).ok).toBe(true);
+    const sos = MIDWEST_GAME.events.find((e) => e.id === 'CICS_SOS')!;
+    const started = {
+      ...r,
+      events: [{ uid: 'CICS_SOS@0', defId: sos.id, name: sos.name, startTick: 0, endTick: null, trigger: sos.trigger, affects: sos.affects, endCommands: sos.end, started: true, ended: false }],
+    };
+    const drawn = { ...started, events: started.events.map((e) => ({ ...e, started: false })) };
+    expect(buildView(started, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
+    // Drawn for today but not started and not forewarned: the Operations list must not spoil the card.
+    expect(buildView(drawn, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS');
+    expect(buildView(started, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS_REV');
+    expect(previewChange(previewContext(started, MIDWEST_GAME), { fixId: 'RECYCLE_PROD2_AORS' }).ok).toBe(true);
     expect(requestChange(r, MIDWEST_GAME, { label: 'x', fixId: 'RECYCLE_PROD2_AORS_REV' }).ok).toBe(false);
+  });
+
+  it('reveals a fix when the card was only forewarned', () => {
+    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
+    const enc = MIDWEST_GAME.events.find((e) => e.id === 'ENCRYPTION_MANDATE')!;
+    const forewarned = {
+      ...r,
+      events: [{ uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, endCommands: enc.end, started: false, ended: false }],
+    };
+    expect(buildView(r, MIDWEST).fixIds).not.toContain('SCOPE_ENCRYPTION');
+    expect(buildView(forewarned, MIDWEST).fixIds).toContain('SCOPE_ENCRYPTION');
+  });
+
+  it('reveals a fix when the card was only rumoured through Ask Around', () => {
+    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
+    const enc = MIDWEST_GAME.events.find((e) => e.id === 'ENCRYPTION_MANDATE')!;
+    const card = { uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, endCommands: enc.end, started: false, ended: false };
+    const rumoured = { ...r, events: [card], inquiries: { pending: [], revealed: [`ev:${card.uid}`] } };
+    expect(buildView(rumoured, MIDWEST).fixIds).toContain('SCOPE_ENCRYPTION');
   });
 
   it('an operator command during the live day skips the change-board trust cost but still takes hours', () => {
