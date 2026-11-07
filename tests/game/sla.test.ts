@@ -186,6 +186,12 @@ describe('missed batch window truth', () => {
     expect(batchMissTrigger('IO', [abend], hour, 50)).toBe('GROWTH');
   });
 
+  it('reads a Db2 connect failure (DSNE100I) without a card as policy: the initiator setup sent the job there', () => {
+    const night = { day: 0, jobs: 1, done: 0, criticalJobs: 1, criticalDone: 0, criticalEndSec: null, missedDeadline: true, criticalAbended: ['GLF01'], criticalFailCodes: { GLF01: 'DSNE100I' } };
+    expect(batchMissTrigger('JOB_FAILURE', [], hour, 50, night)).toBe('POLICY');
+    expect(batchMissTrigger('JOB_FAILURE', [], hour, 50, { ...night, criticalFailCodes: { GLF01: 'S0C7' } })).not.toBe('POLICY');
+  });
+
   it('reads an S0C7 abend as an application error, not policy', () => {
     expect(MIDWEST_EVENTS.find((e) => e.id === 'JOB_ABEND')?.trigger).toBe('APPLICATION_ERROR');
   });

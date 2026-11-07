@@ -47,6 +47,8 @@ export interface JobRuntime {
   delaySec?: JobDelaySec;
   /** The job ABENDed at least once this night (it keeps the flag after a restart). */
   abended?: boolean;
+  /** Code of the last failure: an ABEND code (S0C7) or a Db2 attach message (DSNE100I). */
+  failCode?: string;
 }
 
 export interface JobDelaySec {
@@ -78,6 +80,8 @@ export interface NightSummary {
   criticalDelaySec?: JobDelaySec & { init: number };
   /** Critical jobs that ABENDed this night. */
   criticalAbended?: string[];
+  /** Last failure code of each critical job that failed this night (absent when none did). */
+  criticalFailCodes?: Record<string, string>;
   /** Images the critical jobs ran on, each with its first critical job by name (to classify it). */
   criticalHosts?: { lparId: string; name: string; jobClass: string }[];
 }
@@ -137,9 +141,17 @@ export interface InitiatorContext {
   jobClasses: readonly JobClassConfig[];
   /** CP busy fraction of each LPAR last tick (for WLM-managed initiator decisions). */
   lparBusy: Readonly<Record<string, number>>;
+  /** Images with a Db2 subsystem (a DB2.MSTR address space). Absent = every image (unit tests). */
+  db2Lpars?: ReadonlySet<string>;
 }
 
-/** Start queued jobs on free initiators. Critical jobs are selected first (JES priority), then FIFO. */
+/** TSO DSN found no Db2 on the image: "DSNE100I ssid NOT OPERATIONAL, RETRY COUNT IS ZERO" (Db2 13 Messages p.140). */
+export const DB2_CONNECT_FAIL = 'DSNE100I';
+
+/** Start queued jobs on free initiators. Critical jobs are selected first (JES priority), then FIFO.
+ * JES picks the initiator without knowing what the job attaches to: a Db2 job that starts on an image without Db2
+ * fails at connect at once, frees its initiator and waits for a restart (the batch attachments connect only to a
+ * subsystem on the same image). */
 export function startJobs(jobs: JobRuntime[], tick: number, ctx: InitiatorContext): void {
   const running: Record<string, number> = {};
   for (const j of jobs) if (j.status === 'RUNNING' && j.lparId) running[`${j.def.jobClass}@${j.lparId}`] = (running[`${j.def.jobClass}@${j.lparId}`] ?? 0) + 1;
@@ -172,8 +184,14 @@ export function startJobs(jobs: JobRuntime[], tick: number, ctx: InitiatorContex
     j.status = 'RUNNING';
     j.lparId = best;
     j.startTick = tick;
-    running[`${jc.jobClass}@${best}`] = (running[`${jc.jobClass}@${best}`] ?? 0) + 1;
     if (jc.mode === 'WLM') wlmStartsThisTick = { ...wlmStartsThisTick, [best]: (wlmStartsThisTick[best] ?? 0) + 1 };
+    if (j.def.usesDb2 && ctx.db2Lpars && !ctx.db2Lpars.has(best)) {
+      j.status = 'ABENDED';
+      j.abended = true;
+      j.failCode = DB2_CONNECT_FAIL;
+      continue;
+    }
+    running[`${jc.jobClass}@${best}`] = (running[`${jc.jobClass}@${best}`] ?? 0) + 1;
   }
 }
 
@@ -323,6 +341,7 @@ export function closeNight(state: BatchState, day: number, tick: number): BatchS
     missedDeadline: crit.some((j) => j.status !== 'DONE' || secSinceInstance(j.endTick ?? 0, day) > j.def.deadlineSec),
     criticalDelaySec: delay,
     criticalAbended: crit.filter((j) => j.abended).map((j) => j.def.name),
+    ...(crit.some((j) => j.failCode) ? { criticalFailCodes: Object.fromEntries(crit.filter((j) => j.failCode).map((j) => [j.def.name, j.failCode!])) } : {}),
     criticalHosts: criticalHosts(crit),
   };
   return {

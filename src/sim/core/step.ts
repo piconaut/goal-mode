@@ -71,7 +71,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const cp = l.pools.find((p) => p.pool === 'CP');
     if (cp && cp.availableEngines > 0) lparBusy[l.id] = cp.deliveredEngines / cp.availableEngines;
   }
-  startJobs(batch.jobs, prev.tick, { jobClasses: config.jobClasses, lparBusy });
+  const db2Lpars = new Set(addressSpaces.filter((a) => a.role === 'DB2.MSTR').map((a) => a.lparId));
+  startJobs(batch.jobs, prev.tick, { jobClasses: config.jobClasses, lparBusy, db2Lpars });
   const runningBy: Record<string, JobRuntime[]> = {};
   for (const j of batch.jobs) if (j.status === 'RUNNING' && j.lparId !== null) (runningBy[j.lparId] ??= []).push(j);
   // Jobs waiting for an initiator in a WLM-managed class are initiation delay for their service class

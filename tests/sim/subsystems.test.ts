@@ -206,6 +206,26 @@ describe('batch', () => {
     void b;
   });
 
+  it('a Db2 job that starts on an image without Db2 fails at connect and frees its initiator', () => {
+    const b = releaseNetwork(emptyBatch(), 0, [job('D1', [], { usesDb2: true }), job('N1'), job('D2', [], { usesDb2: true })]);
+    promoteEligible(b.jobs, 0);
+    const cls = [{ jobClass: 'A', mode: 'JES' as const, initiators: { SYSP: 2, L1: 2 } }];
+    startJobs(b.jobs, 0, { jobClasses: cls, lparBusy: {}, db2Lpars: new Set(['L1']) });
+    const [d1, n1, d2] = b.jobs;
+    expect(d1).toMatchObject({ status: 'ABENDED', lparId: 'SYSP', failCode: 'DSNE100I', abended: true });
+    // JES picks by free initiators, not by Db2: the failed jobs' initiator is free again, so D2 fails there too and
+    // N1 (no Db2) runs there.
+    expect(d2).toMatchObject({ status: 'ABENDED', lparId: 'SYSP', failCode: 'DSNE100I' });
+    expect(n1).toMatchObject({ status: 'RUNNING', lparId: 'SYSP' });
+    // A Db2 job that lands where Db2 is runs.
+    const c = releaseNetwork(emptyBatch(), 0, [job('D3', [], { usesDb2: true })]);
+    promoteEligible(c.jobs, 0);
+    startJobs(c.jobs, 0, { jobClasses: [{ jobClass: 'A', mode: 'JES' as const, initiators: { SYSP: 1, L1: 2 } }], lparBusy: {}, db2Lpars: new Set(['L1']) });
+    expect(c.jobs[0]).toMatchObject({ status: 'RUNNING', lparId: 'L1' });
+    const night = closeNight(b, 0, 10).nights[0]!;
+    expect(night.criticalFailCodes).toEqual({ D1: 'DSNE100I', D2: 'DSNE100I' });
+  });
+
   it('unconstrained elapsed = cpu + io, and CPU starvation stretches it', () => {
     const shape = jobShape(job('J'), 0.6, 0.86, 0.0004);
     expect(shape.elapsed).toBeCloseTo(600 / 0.6 + 100_000 * 0.0004);

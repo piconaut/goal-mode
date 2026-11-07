@@ -12,7 +12,7 @@ import type { Scenario } from '../sim/core/scenario';
 import { step } from '../sim/core/step';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
-import type { NightSummary } from '../sim/subsys/batch';
+import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import { classify } from '../sim/wlm/classify';
 import { emptyAlerts, evaluateAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
@@ -192,6 +192,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       }
     }
     const sim = step(r.sim, cmds, scenario);
+    r = logConnectFailures(r, sim);
     const resolvedAffects = new Map<string, string[]>();
     for (const [uid, cpcs] of resolvedCpcs) {
       // Pending commands and dynamic routing have now chosen the hosts used by this tick.
@@ -227,6 +228,18 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   return r;
 }
 
+/** JES2 job log of a Db2 job that started on an image without Db2 (TSO DSN under IKJEFT01, Db2 13 Messages p.140). */
+function logConnectFailures(r: RunState, sim: RunState['sim']): RunState {
+  let was: Set<string> | null = null;
+  for (const j of sim.batch.jobs) {
+    if (j.status !== 'ABENDED' || j.failCode !== DB2_CONNECT_FAIL) continue;
+    was ??= new Set(r.sim.batch.jobs.filter((x) => x.status === 'ABENDED').map((x) => `${x.day}:${x.def.name}`));
+    if (was.has(`${j.day}:${j.def.name}`)) continue;
+    r = logLine(r, `${j.def.name} on ${j.lparId}: ${DB2_CONNECT_FAIL} NOT OPERATIONAL, RETRY COUNT IS ZERO (no Db2 subsystem on ${j.lparId})`);
+  }
+  return r;
+}
+
 /** A missed batch window opens an incident for the night, so it can get an RCA like an online SLA miss. */
 function batchMissIncident(r: RunState, night: NightSummary, trustLost: number): RunState {
   const hosts = (night.criticalHosts ?? []).map((j) => {
@@ -236,7 +249,7 @@ function batchMissIncident(r: RunState, night: NightSummary, trustLost: number):
   const nightStartTick = r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
   const nightHour = r.nightHour ?? newHour(nightStartTick);
   const mechanism = batchMissMechanism(night, nightHour, hosts);
-  const truth = { mechanism, trigger: batchMissTrigger(mechanism, r.events, nightHour, nightStartTick) };
+  const truth = { mechanism, trigger: batchMissTrigger(mechanism, r.events, nightHour, nightStartTick, night) };
   const lead = r.incidents.find((i) => i.day === r.day && i.rcaGroup === undefined && i.truth.mechanism === truth.mechanism && i.truth.trigger === truth.trigger);
   const inc: Incident = {
     id: r.nextId,

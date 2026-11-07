@@ -79,7 +79,7 @@ export interface BatchView {
   queued: number;
   held: number;
   done: number;
-  abended: { name: string; day: number; stream: string; critical: boolean }[];
+  abended: { name: string; day: number; stream: string; critical: boolean; lparId: string | null; failCode: string | null }[];
   total: number;
   projectedCriticalEnd: string | null;
   deadline: string;
@@ -278,7 +278,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     queued: jobs.filter((j) => j.status === 'QUEUED').length,
     held: jobs.filter((j) => j.status === 'HELD').length,
     done: jobs.filter((j) => j.status === 'DONE').length,
-    abended: jobs.filter((j) => j.status === 'ABENDED').map((j) => ({ name: j.def.name, day: j.day, stream: j.def.stream, critical: j.def.critical })),
+    abended: jobs.filter((j) => j.status === 'ABENDED').map((j) => ({ name: j.def.name, day: j.day, stream: j.def.stream, critical: j.def.critical, lparId: j.lparId, failCode: j.failCode ?? null })),
     total: jobs.length,
     projectedCriticalEnd: proj !== null ? instanceClock(proj) : null,
     deadline: instanceClock(run.batchDeadlineSec),

@@ -1051,3 +1051,15 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
     expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(1);
   }, 120_000);
 });
+
+describe('Db2 batch on an image without Db2', () => {
+  it('a Db2 job JES starts on SYSP fails at connect (DSNE100I) and uses no CPU there', () => {
+    let s = initState(5, MIDWEST);
+    s = step(s, [{ kind: 'SET_JOB_CLASS', jobClass: 'A', initiators: { PROD1: 12, PROD2: 10, SYSP: 20 } }], MIDWEST);
+    for (let i = 0; i < 16 * 360; i++) s = step(s, [], MIDWEST); // to 22:00, the night's batch under way
+    const failed = s.batch.jobs.filter((j) => j.failCode === 'DSNE100I');
+    expect(failed.length).toBeGreaterThan(0);
+    expect(failed.every((j) => j.lparId === 'SYSP' && j.def.usesDb2 && j.status === 'ABENDED')).toBe(true);
+    expect(s.batch.jobs.some((j) => j.status === 'RUNNING' && j.lparId === 'SYSP' && j.def.usesDb2)).toBe(false);
+  });
+});
