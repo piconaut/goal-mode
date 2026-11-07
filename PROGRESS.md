@@ -494,9 +494,15 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 - [ ] **Inbox change notices are always bad news (design).** By D26 the player rolls back any announced change on
   sight (Db2 REBIND, monitoring agent). Add changes that help (better access path, cheaper agent) so impact has to be
   judged.
-- [ ] **Operations list spoils events not yet seen (design, high).** Fixes for events that haven't happened in this run
-  are offered already (e.g. "Agree a narrower encryption scope" before any encryption mandate). Show an event-specific
-  operation only once its event (or its forewarning) has occurred in the playthrough.
+- [x] **Operations list spoils events not yet seen (design, high; fixed 2026-11-07).** Fixes for events that hadn't
+  happened in the run were offered already (e.g. "Agree a narrower encryption scope" before any encryption mandate).
+  The view now lists a card's fix only once the card has started, its forewarning has arrived, or its Ask Around
+  rumour has been revealed (`visibleFixIds` in `src/game/run/events.ts`; the Operations list and the play CLI's
+  `fixes` both read `View.fixIds`). Validation still
+  accepts every fix the scenario's deck can call for (`fixIdsOf`), so a guessed fix id is charged like a no-target fix
+  and the Change Desk still can't be probed for hidden events. SPEC §6 records the visibility rule. Tests cover a
+  started card, a forewarned card, an unseen card and a foreign fix id. View-only: no simulation, report or golden
+  change.
 - [ ] **General-purpose operations instead of per-event ones (design).** Add operations for common fixes that aren't
   tied to one event, and generalise event-specific ones where possible: e.g. "Recycle CICS AORs" (choose regions)
   rather than "Recycle the PROD2 CICS AORs: restart CICSAOR2 and CICSAOR4 one at a time…". Each event must register

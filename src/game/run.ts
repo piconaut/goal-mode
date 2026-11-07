@@ -497,7 +497,7 @@ export type { ChangeRequest } from './run/changes';
 
 export type { ChangeOutcome } from './run/changes';
 
-export { fixIdsOf } from './run/events';
+export { fixIdsOf, visibleFixIds } from './run/events';
 
 export { previewContext } from './run/changes';
 
