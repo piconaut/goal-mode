@@ -377,6 +377,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       if (!victim) return fail(s, 'No running job to abend');
       victim.status = 'ABENDED';
       victim.abended = true;
+      victim.failCode = 'S0C7';
       return ok({ ...s, batch: { ...s.batch, jobs } }, `${victim.def.name} ABEND S0C7 on ${victim.lparId}`);
     }
 

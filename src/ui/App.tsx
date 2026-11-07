@@ -426,7 +426,11 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
           </div>
           {v.batch.abended.map((a) => (
             <div className="row" key={`${a.day}:${a.name}`}>
-              <span className="tag bad">ABEND {a.name}</span>
+              <span className="tag bad">
+                {a.failCode?.startsWith('DSN') ? 'FAILED' : 'ABEND'} {a.name}
+                {a.failCode ? ` ${a.failCode}` : ''}
+                {a.lparId ? ` on ${a.lparId}` : ''}
+              </span>
               <span className="muted">restart from the Change Desk</span>
             </div>
           ))}

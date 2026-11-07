@@ -21,7 +21,7 @@ const PAICE_WLM: CodexSource = { label: 'Colin Paice, One Minute MVS performance
 const IEAOPT: CodexSource = { label: 'IBM docs: IEAOPTxx parameters', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieae200/spi.htm' };
 const GROUP_CAP: CodexSource = { label: 'IBM docs: Group capacity', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieaw100/grcap.htm' };
 /** Run milestones that reveal entries (not events or tools). */
-export type CodexFlag = 'TFP_OFFER';
+export type CodexFlag = 'TFP_OFFER' | 'DB2_CONNECT_FAIL';
 
 const MLC_CAPPING: CodexSource = { label: 'IntelliMagic (John Baker), MLC Capping 101', url: 'https://www.intellimagic.com/?p=7302' };
 const HORNE: CodexSource = {
@@ -394,6 +394,14 @@ export const CODEX: CodexEntry[] = [
     body: 'A system completion code 0C7 is a program check for a data exception: a decimal instruction met a field that is not valid packed decimal, usually bad input data or an uninitialised field in the program. No WLM policy, capping or capacity change prevents it. The job has to be fixed or the bad record bypassed, then restarted; while it is down its successors are held, so a critical one can miss the batch window. In an RCA the trigger is APPLICATION_ERROR and the mechanism JOB_FAILURE.',
     sources: [{ label: 'IBM docs: z/OS MVS System Codes (0C7)', url: 'https://www.ibm.com/docs/en/zos/2.5.0?topic=codes-0c7' }],
     discover: { events: ['JOB_ABEND'] },
+  },
+  {
+    id: 'DB2_CONNECT_DSNE100I',
+    title: 'DSNE100I: a Db2 job on an image without Db2',
+    category: 'Subsystems',
+    body: 'A batch job running TSO DSN under IKJEFT01 connects to a Db2 subsystem on the z/OS image where it runs. A job without system affinity starts wherever an initiator for its class is free, and nothing in that choice checks for Db2. If the image has no Db2, DSN reports DSNE100I ssid NOT OPERATIONAL, RETRY COUNT IS ZERO and makes no more attempts: the job ends without doing its work, its successors stay held, and it needs a rerun. The clue is in the Operations log: which job, on which system. Fix: take that job class\'s initiators off the image without Db2, then restart the job. In an RCA the mechanism is JOB_FAILURE and the trigger POLICY (the initiator setup sent it there).',
+    sources: [{ label: 'IBM Db2 13 for z/OS Messages, DSNE100I (p.140)', url: 'https://www.ibm.com/docs/en/db2-for-zos/13?topic=messages-dsne100i' }],
+    discover: { flags: ['DB2_CONNECT_FAIL'] },
   },
 ];
 

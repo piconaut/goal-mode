@@ -2,7 +2,7 @@
 
 import { NEW_WORKLOAD_DAYS } from '../content/sla';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
-import type { NightSummary } from '../sim/subsys/batch';
+import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
 import type { ActiveEvent, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
@@ -184,9 +184,11 @@ export function batchMissMechanism(night: NightSummary, nightHour: HourAcc, host
 }
 
 /** A card blamed for a missed night: one that affects BATCH, causes this mechanism and ran during the night. */
-export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEvent[], nightHour: HourAcc, nightStartTick: number): Trigger {
+export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEvent[], nightHour: HourAcc, nightStartTick: number, night?: NightSummary): Trigger {
   const ev = events.find((e) => e.started && e.affects.includes(BATCH_INCIDENT) && (!e.mechanisms || e.mechanisms.includes(mechanism)) && (!e.ended || (e.endTick ?? 0) >= nightStartTick));
   if (ev) return ev.trigger;
+  // A Db2 job failing to connect was sent to an image without Db2 by the initiator setup.
+  if (mechanism === 'JOB_FAILURE' && Object.values(night?.criticalFailCodes ?? {}).includes(DB2_CONNECT_FAIL)) return 'POLICY';
   return triggerOf(BATCH_INCIDENT, mechanism, [], nightHour, false);
 }
 

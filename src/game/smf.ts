@@ -165,7 +165,7 @@ export interface BatchNight {
   /** Critical path (longest chain of critical jobs ending last), by job name. */
   criticalEnd: string | null;
   /** Critical jobs' lost-time breakdown; absent until the night's report exists (after its day ends). */
-  critical?: { delaySharePct?: Record<'cpu' | 'io' | 'lock' | 'db2' | 'swap' | 'init', number>; abended: string[] };
+  critical?: { delaySharePct?: Record<'cpu' | 'io' | 'lock' | 'db2' | 'swap' | 'init', number>; abended: string[]; failCodes?: Record<string, string> };
 }
 
 /** SMF 30-style job records for the most recent night with completed jobs. */
@@ -193,6 +193,7 @@ export function batchNight(run: RunState): BatchNight | null {
     out.critical = {
       ...(d && total > 0 ? { delaySharePct: { cpu: (100 * d.cpu) / total, io: (100 * d.io) / total, lock: (100 * d.lock) / total, db2: (100 * d.db2) / total, swap: (100 * d.swap) / total, init: (100 * d.init) / total } } : {}),
       abended: nb.criticalAbended ?? [],
+      ...(nb.criticalFailCodes ? { failCodes: nb.criticalFailCodes } : {}),
     };
   }
   return out;

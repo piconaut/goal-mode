@@ -275,15 +275,16 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   (PROD2, BATCHHI raised F9→FB at 22:00) until ONLPAYMQ got a slot at 22:30 (F4→FC/FB; STCHI PROD2 PI 4.1 → 1.3). Real:
   if no receiver is selected WLM goes on at the next importance (SG24-7621 p.105); a per-interval limit is not
   verified. Option: stop counting a receiver whose projection found nothing against the budget, or cap by time.
-- [ ] **Db2 batch starts on an LPAR without Db2 (sim bug, high).** `startJobs` (`src/sim/subsys/batch.ts:153`) puts a
-  job without SYSAFF on any LPAR with a free initiator for its class and never checks `usesDb2`. With class A
-  initiators on SYSP (no Db2), RPT, DWH, GLF and STM would run there faster than on PROD (`depStretch` reads SYSP's
-  Db2 roles, none, so 1; `lockStretch` reads SYSP's online Db2 rate, 0, so 1; `src/sim/core/tick/dispatch.ts:135–162`).
-  Real: the batch attachments (CAF, RRSAF, TSO attach) connect only to a Db2 subsystem on the same image; with none,
-  the job fails at connect (-923 or an attach error; not verified against the books). Fix: such a job starts and
-  fails at connect with a JES/SMF 30 clue and needs a rerun (symptom + clue + fix), rather than a silent refusal.
+- [x] **Db2 batch starts on an LPAR without Db2 (sim bug, high; fixed 2026-11-07).** `startJobs` still lets JES pick
+  any image with a free initiator, but a `usesDb2` job that lands on an image without a DB2.MSTR address space now
+  fails at connect at once: status ABENDED with `failCode` DSNE100I (TSO DSN: "ssid NOT OPERATIONAL, RETRY COUNT IS
+  ZERO", Db2 13 Messages p.140), its initiator freed, held for a restart. Clues: Operations log line naming job and
+  system, Batch view tag `FAILED <job> DSNE100I on SYSP`, SMF 30 night ABEND list with codes, Codex entry. A missed
+  night caused by it is JOB_FAILURE / POLICY in RCA. Fixes: take the class's initiators off the image, then restart.
+  APPROX: no DSN RETRY wait; any Db2 on the image counts (a test Db2 is really another subsystem name).
 - [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
-  products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Mostly moot once the job fails at connect;
+  products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Moot for batch since 2026-11-07 (the job
+  fails at connect and uses no CPU);
   check that nothing else can run Db2 work on an image outside the Db2 product's LPAR list.
 - [x] **A repeat XLOG_LOOP burns no CPU (bug, fixed).** Expiry and cancellation now remove CICSXLOG from PROD1
   instead of leaving a zero-CPU address space. Each start clears the old zero modifier and replaces any duplicate
