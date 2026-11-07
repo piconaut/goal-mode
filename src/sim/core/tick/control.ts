@@ -83,6 +83,10 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
         }),
       })) : undefined,
     });
+    if (out.protect) {
+      if (log === prev.wlm.log) log = [...log];
+      log.push(out.protect);
+    }
     if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
       if (log === prev.wlm.log) log = [...log];
       log.push(out.log);

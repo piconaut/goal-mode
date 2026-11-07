@@ -250,7 +250,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   pool; ADD_ZIIP has no headroom check. The UI (`validateLogical`) forbids a PROD2 zIIP while the sim's `SET_LOGICAL`
   creates one (bots and the Story starting fix rely on it), so SPEC F7 can't be fixed in the browser. Fix: PROD2 0 online
   + 1 reserved zIIP (also makes its IIPCP reporting legitimate), `SET_LOGICAL` enforces reserved, warn on ADD_ZIIP.
-- [ ] **CPU Critical freezes WLM when the protection is already broken (sim bug, high).** `violatesCpuCritical` in
+- [x] **CPU Critical freezes WLM when the protection is already broken (sim bug, high).** `violatesCpuCritical` in
   `src/sim/wlm/adjust.ts` tests the whole trial DP set, so when the current DPs already break protection every trial
   fails and the LPAR logs "no action with net value" for everything. Player's BASEPO10 (D20 06:00: STCHI, STCMED and
   every transaction class CPU Critical): ONLRBANK (CPU Critical, imp 2) rested at F4 below BATCHHI/BATCHPRD (imp 3/5,
@@ -259,6 +259,14 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   clears the conflict. Real: less important work never gets an equal or higher DP than CPU-protected work (WLM Planning
   p.120); WLM enforces it, it doesn't stop managing. Also find how batch periods reach those DPs (DP held from before
   the period had work?). Still possible under BASEPO12: PROD2 ONLCARD (CPU Critical) FB = BATCHHI FB, D20 22:00–23:00.
+  **Fixed (2026-11-07):** `enforceCpuProtection` (`adjust.ts`) runs before receivers are assessed and lowers every
+  period less important than a protected one to just below its DP (floor F0), logged as `CPU PROTECTION <period> DP
+  x→y` (Monitor III explains it; `inspect wlm` shows it). Trials are then judged from DPs that keep the protection; a
+  pair it can't separate (protected period at the floor) only rejects trials that widen it. How batch got there: DPs
+  carry over by period across policy activations (`dispatch.ts` `dpMap`), so a policy that newly sets CPU Critical
+  starts from DPs batch earned under the old policy; adjustment itself never created the inversion. APPROX: WLM lowers
+  the less important work rather than raising the protected class (which way real WLM restores it is not documented).
+  `npm run compare` vs dev: no differences (no scripted scenario sets CPU Critical); goldens unchanged.
 - [ ] **Two-receiver budget starves the CICS transaction classes (sim bug / APPROX).** `adjust.ts:160` assesses at most
   two fixable receivers per interval. D19 22:00–22:27 both slots went to importance 1: STCMED (sysplex PI 1.9–2.5, all
   of it from DEVT's Db2 at PI 21.19 and 97 % CPU delay under DEVT's cap; PI 0.40–0.49 on PROD1/PROD2, so no move had

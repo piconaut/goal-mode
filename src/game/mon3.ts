@@ -721,6 +721,9 @@ export function explainWlmLog(line: string): string {
     if (up) return `${why} WLM raised its dispatch priority from ${up[1]} to ${up[2]}; the projection said the receiver gains more than donors lose.`;
     return why;
   }
+  const prot = /(\S+) CPU PROTECTION (.*)$/.exec(line);
+  if (prot)
+    return `On ${prot[1]}, less important work held a dispatch priority equal to or above a CPU-protected period (CPU Critical or IEAOPT CCIMP), so WLM lowered it: ${prot[2]}. CPU protection is enforced before WLM helps any receiver.`;
   const notFix = /(\S+) (\S+) PI=([\d.]+) BTLNK=(\S+) not WLM-fixable/.exec(line);
   if (notFix)
     return `On ${notFix[1]}, ${notFix[2]} misses its goal (PI ${notFix[3]}) but is mostly ${BTLNK_TEXT[notFix[4]!] ?? notFix[4]}: dispatching priority can't fix that, so WLM skips it. Look at the delay's real cause.`;
