@@ -101,7 +101,13 @@ Both also read a save whose backslashes were all doubled on its way to disk (see
 with its surrounding backticks.
 
 `npm run inspect -- <file> dp <system>` prints sim internals the game never shows (dispatching priorities per RMF
-interval) for developers checking a bug. Player agents must not use it: it is not something a player can see.
+interval) for developers checking a bug. `npm run inspect -- <file> wlm <system> --at 'D19 22:00' [--ticks 6]
+[--class ONL]` explains WLM's decisions there: per policy adjustment, the receiver candidates in assessment order
+(importance, sysplex and local PI, DP, bottleneck), each trial move and its verdict (`ACCEPTED`, `CPU_CRITICAL`,
+`NO_RECEIVER_GAIN`, `SMALL_GAIN`, `MORE_IMPORTANT_HARMED`, `EQUAL_DISPARITY`, `NO_NET_VALUE`) with the projected PIs
+behind it, and candidates skipped as not CPU/zIIP-fixable or over the two-receivers-per-interval budget. A play-CLI
+file replays from its seed and log to any past time; a browser save has no log, so it is traced forward from the
+saved moment. Player agents must not use either verb: neither is something a player can see.
 
 ## What an agent can see
 

@@ -592,6 +592,14 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 
 #### Saves, export and tooling
 
+- [ ] **Browser saves can't be traced into the past (tooling gap).** `inspect wlm` replays a play-CLI file from seed +
+  log, but a browser save holds only the current state, so a question about an earlier moment (INC126 D29, asked
+  from the D40 save) can't be answered. Option: keep the live day's start-of-day state and its commands in the save
+  (check the size cost first).
+- [x] **WLM decision trace (2026-11-07):** `npm run inspect -- <file> wlm <system> --at 'D19 22:00'` prints, per policy
+  adjustment, the receiver candidates in order, each trial move and why it was accepted or rejected, and candidates
+  skipped as not fixable or over the two-receiver budget. A trace sink in `src/sim/wlm/adjust.ts` that the game never
+  sets (no state, no decision change; `npm run compare` clean). The realism auditor's brief points to it.
 - [ ] **Imported saves lack Monitor III history:** `mon3 --at` on an imported save shows nothing for past
   ranges (replay forward instead, or include the history).
 - [ ] **Export:** besides downloads being blocked, copying the save string from dev tools corrupted 12 escaped quotes in
