@@ -270,6 +270,7 @@ function Gantt({ n, game }: { n: BatchNight; game: GameHandle }) {
           })}
           <span style={{ marginLeft: 10 }}>
             ABENDs: {n.critical.abended.length}
+            {n.critical.abended.length > 0 && <span className="muted"> ({n.critical.abended.map((a) => (n.critical!.failCodes?.[a] ? `${a} ${n.critical!.failCodes[a]}` : a)).join(', ')})</span>}
             <PinButton game={game} req={{ source: 'BATCH', day: n.day, metric: 'JOB_ABEND' }} label="critical job ABENDs" />
           </span>
         </div>
