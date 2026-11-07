@@ -505,3 +505,30 @@ describe('draft perks', () => {
     expect(opexBudgetFor(r.opexBudgetMonthly, r.perks)).toBeCloseTo(base.opexBudgetMonthly * 0.9);
   });
 });
+
+describe('Db2 connect failures in the Operations log', () => {
+  it('logs every attempt, including a job that fails again right after a restart', () => {
+    let r = startDay(newRun(MIDWEST, content, 5), content);
+    r = { ...r, pendingCommands: [{ kind: 'SET_JOB_CLASS', jobClass: 'A', initiators: { PROD1: 12, PROD2: 10, SYSP: 20 } }] };
+    r = advance(r, MIDWEST, content, 16 * 360); // 22:00, the night's batch under way
+    const failed = r.sim.batch.jobs.find((j) => j.status === 'ABENDED' && j.failCode === 'DSNE100I')!;
+    expect(failed).toBeDefined();
+    const name = failed.def.name;
+    const lines = () => r.log.filter((l) => l.startsWith(`${name} on `) && l.includes('DSNE100I NOT OPERATIONAL')).length;
+    expect(lines()).toBe(1);
+    // Restart it and keep class A on the Db2-less image: it goes ABENDED → QUEUED → ABENDED within the tick.
+    r = advance(
+      {
+        ...r,
+        pendingCommands: [
+          { kind: 'SET_JOB_CLASS', jobClass: 'A', initiators: { SYSP: 100 } },
+          { kind: 'RESTART_JOB', day: failed.day, name },
+        ],
+      },
+      MIDWEST,
+      content,
+      1,
+    );
+    expect(lines()).toBe(2);
+  }, 120_000);
+});

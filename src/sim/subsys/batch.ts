@@ -49,6 +49,8 @@ export interface JobRuntime {
   abended?: boolean;
   /** Code of the last failure: an ABEND code (S0C7) or a Db2 attach message (DSNE100I). */
   failCode?: string;
+  /** Tick of the last Db2 connect failure (so a job that fails again after a restart is logged again). */
+  failTick?: number;
 }
 
 export interface JobDelaySec {
@@ -189,6 +191,7 @@ export function startJobs(jobs: JobRuntime[], tick: number, ctx: InitiatorContex
       j.status = 'ABENDED';
       j.abended = true;
       j.failCode = DB2_CONNECT_FAIL;
+      j.failTick = tick;
       continue;
     }
     running[`${jc.jobClass}@${best}`] = (running[`${jc.jobClass}@${best}`] ?? 0) + 1;
