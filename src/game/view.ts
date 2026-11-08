@@ -108,6 +108,8 @@ export interface ConfigView {
     memoryGb: number;
     definedCapacity: number | null;
   }[];
+  /** Installed physical engines per CPC (HMC totals by pool). */
+  cpcs: { id: string; engines: { CP: number; ZIIP: number; ICF: number } }[];
   cpcMemoryGb: number;
   unassignedMemoryGb: number;
   db2: Db2MemberConfig[];
@@ -157,8 +159,6 @@ export interface ViewModel {
   constraints: string[];
   lpars: LparView[];
   cpcBusyPct: number;
-  /** Physical engines per pool on the (first) CPC, for HMC previews. */
-  cpcEngines: { CP: number; ZIIP: number; ICF: number };
   piHeat: PiCell[];
   sla: SlaTicker[];
   batch: BatchView;
@@ -321,7 +321,6 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     constraints: run.constraints,
     lpars,
     cpcBusyPct: cpEngines > 0 ? (100 * delivered) / cpEngines : 0,
-    cpcEngines: { ...sim.config.cpcs[0]!.engines },
     piHeat,
     sla,
     batch,
@@ -409,6 +408,7 @@ function configView(run: RunState, scenario: Scenario): ConfigView {
         definedCapacity: l.definedCapacityMsu,
       };
     }),
+    cpcs: c.cpcs.map((x) => ({ id: x.id, engines: { ...x.engines } })),
     cpcMemoryGb: cpc.memoryGb,
     unassignedMemoryGb: cpc.memoryGb - assigned,
     db2: c.db2,
