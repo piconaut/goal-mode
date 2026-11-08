@@ -406,10 +406,10 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 3,
     begin: [{ kind: 'SET_LOCK_BOOST', value: 6 }],
     end: [{ kind: 'SET_LOCK_BOOST', value: 0 }],
-    fix: null,
+    fix: 'COMMIT_SETTLEMENT_OFTEN',
     forewarning: null,
     announcement: null,
-    clue: 'Card auth response time up with little READY time; its work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running.',
+    clue: 'Card auth response time up with little READY time; its work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running. Fixes: commit more often in the settlement job, or keep online work off the locked tables until its step ends.',
   },
   {
     // A data-science team runs model training from TSO. On DEVT (uncapped, F9) it steals CPC capacity from PROD
