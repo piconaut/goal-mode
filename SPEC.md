@@ -1086,7 +1086,7 @@ the hurt workload, provided the card's declared
 `mechanisms` (if any) include the incident's mechanism; otherwise new work, batch overlap (lock index), policy or
 growth. New work (including a persistent go-live card) counts for the first two simulated days after go-live
 (`content/sla.ts`), judged at the opening SLA hour; later incidents use the remaining fallback rules.
-APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
+APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception, a CICS program leaking EDSA storage). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
 POWER_CAP matches CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY only. Its workload scope is resolved
 from effective routing when the cap starts, including same-tick commands and added workloads, to CPCs whose
 capacity actually drops. The scope is retained after expiry; later routing changes and workload additions do

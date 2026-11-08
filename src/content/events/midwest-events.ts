@@ -540,7 +540,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
   },
   {
     // A program storage leak fills both PROD2 AORs' EDSA: once in-flight tasks no longer fit, CICS defers attaches
-    // (CICS Performance p.76) and the work queues for task slots. Model in sim/subsys/cics.ts.
+    // (CICS Performance p.76) and the work queues for task slots. Model in sim/subsys/cics.ts. A deployed program's
+    // leak is a software defect, not a policy choice, so the trigger is APPLICATION_ERROR (playtest INC168).
     // FICTIONAL: the leak starts 420 MB in (room for ~40 tasks under the default EDSALIM) and grows 40 MB an hour,
     // so peak load hits SOS within about an hour and the cushion floor within two.
     id: 'CICS_SOS',
@@ -548,7 +549,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     category: 'SOFTWARE',
     minDay: 5,
     weight: 1,
-    trigger: 'POLICY',
+    trigger: 'APPLICATION_ERROR',
     affects: ['TELLER', 'RBANK', 'CARDAUTH', 'PAYMQ'],
     mechanisms: ['THREAD_LIMIT'],
     startHour: [9, 14],
