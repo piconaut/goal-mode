@@ -26,5 +26,12 @@ describe('resource-group unit conversions', () => {
     expect(fmtSuRate(1.2)).toBe('1.2');
     expect(fmtSuRate(12.4)).toBe('12');
     expect(fmtSuRate(232)).toBe('232');
+    expect(fmtSuRate(0.001)).toBe('0.001');
+    expect(fmtSuRate(1e-8)).toBe('0.00000001');
+  });
+
+  it('never renders tiny limits in exponent notation', () => {
+    expect(rgLimitEquiv(0.001, CPCS)).not.toMatch(/e/);
+    expect(rgLimitEquiv(0.001, CPCS)).toBe('≈ 0.0000036 MSU ≈ 0.000000016 CP (CPC1) / 0.000000037 CP (CPC2)');
   });
 });

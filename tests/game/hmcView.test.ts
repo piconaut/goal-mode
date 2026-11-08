@@ -27,7 +27,7 @@ describe('HMC physical engines', () => {
     const v = view('midwest');
     const cpc = v.config.cpcs[0]!;
     expect(cpc.suPerCpuSec).toBeGreaterThan(0);
-    // 1 MSU is 277.8 SU/s at the CPC's capacity setting.
+    // SU/s per CP ÷ 277.8 SU/s per MSU gives the CP's MSU rating (143.5 here).
     expect(cpc.suPerCpuSec / 277.7778).toBeCloseTo(143.5, 1);
   });
 });

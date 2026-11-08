@@ -6,11 +6,12 @@ export interface CpcSpeed {
   suPerCpuSec: number;
 }
 
-/** Two significant digits, without trailing zeros, for the fractions a resource-group limit produces. */
+/** Two significant digits below 1, without trailing zeros and without exponent notation. */
 export function fmtSuRate(x: number): string {
   if (!Number.isFinite(x) || x < 0) return '-';
   if (x === 0) return '0';
-  const s = x >= 10 ? x.toFixed(0) : x >= 1 ? x.toFixed(2) : x.toPrecision(2);
+  const dp = x >= 10 ? 0 : x >= 1 ? 2 : 1 - Math.floor(Math.log10(x));
+  const s = x.toFixed(dp);
   return s.includes('.') ? s.replace(/\.?0+$/, '') : s;
 }
 
