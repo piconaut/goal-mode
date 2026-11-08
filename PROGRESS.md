@@ -451,10 +451,14 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   delay shows only once the transaction ends (RMF Report Analysis 3.1 p.148, GROUP report), and response-time goals
   need enough completions (SG24-6472 p.190). So PI looking fine while transactions stall is real. The game has no
   alert on what does show it (ended rate drop, SOS time, MXT waits); add one as an Analytics/automation rule.
-- [ ] **No CF lock contention % (realism gap).** CFACT shows per lock structure "Contention %" (requests delayed by a
+- [x] **No CF lock contention % (realism gap).** CFACT shows per lock structure "Contention %" (requests delayed by a
   lock held by someone else) and "False Contention %" (hash) (RMF Report Analysis 3.1 p.85). The sim's lock index
   raises Db2 lock wait but the CF report doesn't show contention, so the player looked at service time (normal, which
-  is right) and found nothing. Add contention % from the lock index.
+  is right) and found nothing. Done 2026-11-08: the RMF interval records the interval's average lock index and
+  STRUCTURE SUMMARY shows CONTENTION % for the lock structure, with `CF_LOCK_CONTENTION` mapping 5 % per index unit,
+  capped at 90 % (FICTIONAL, per the p.85 definition). Serialized LIST structures and false contention are not
+  modelled (APPROX, recorded in SPEC §5.9/§17 and the research ledger). Reporting only: management and workload
+  output are unchanged, but the stored interval gained `lockIndex`/`contention` figures, so goldens were regenerated.
 - [x] **Equal-importance veto from bystanders; co-served classes not credited (investigated).**
   At D5 22:21:00 ONLCARD's own raise F4→F6 (which lifts the CICS regions) was projected to take ONLCARD 61.8→0.80,
   ONLRBANK 82→0.5, ONLTELR 46→0.5 and ONLPAYMQ 13.9→0.17, but `passes()` rejected it because DDFMOB (68.7→74.7) and
