@@ -595,7 +595,10 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   validation exercises the editor and pending/activation flow. Run-specific validation evidence is in the PR.
 - [x] **Capacity planner says "deadline 06:00" after DEADLINE_0500 (UI bug)** (fixed 2026-11-04, label from `instanceClock`). The line uses `batchDeadlineSec`, but
   the label is hard-coded (`src/game/planner.ts:74`).
-- [ ] **HMC: show physical engines per type (UI).** Totals are only implied by the logical:physical ratio.
+- [x] **HMC: show physical engines per type (UI).** Fixed 2026-11-08: the section shows the selected LPAR's CPC physical
+  engines (CP, zIIP and ICF) above the image profile, and the HiperDispatch preview now computes its entitlements and
+  logical:physical ratio for that CPC only, so the CPC2 images no longer compare against CPC1's CP count. View/UI only:
+  no simulation, report or golden change.
 - [x] **⇩ export does nothing in the published artifact:** text transfer added 2026-11-04. Export opens a
   dialog with "Copy save to clipboard", a selectable save-text field for manual copying when clipboard access
   is blocked, and an explicit file download. Import accepts pasted save text as well as files, using the existing
