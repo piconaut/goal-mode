@@ -365,9 +365,9 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
 
 #### Incident truth, RCA and evidence
 
-- [ ] **RCA evidence mark to check:** the PROCU pin "BATCHHI#1 APPL 442%" (D4 23:04) was marked "not about CARDAUTH",
-  though batch at the CICS regions' DP on PROD2 was the CPU competitor. Check whether the evidence matcher should accept
-  the competing class's CPU for CPU_PRIORITY.
+- [x] **RCA evidence mark to check:** the PROCU pin "BATCHHI#1 APPL 442%" (D4 23:04) was marked "not about CARDAUTH",
+  though batch at the CICS regions' DP on PROD2 was the CPU competitor. Done 2026-11-08 with the D19 item below: APPL now
+  counts for CPU_PRIORITY and on any subject.
 - [ ] **Power-cap RCA is a gotcha (content/design gap).** INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth
   CPU_PRIORITY/HARDWARE_FAULT (2 points); INC53 CARDAUTH: truth CPU_PRIORITY/POLICY (5 points). CPU_CAPACITY needs CPC
   ≥ 90 % (or LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`; thresholds hard-coded, not in
@@ -377,10 +377,13 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   the throttled CPC; Codex "RCA vocabulary" + form tooltips; explain after scoring ("CPC 81 % busy, below the 90 %
   capacity line"); show a capacity-adjustment clue (SMF70CAI/CCR, MVS SMF p.589) in CPC/Partition Data. CoD helps only a
   little; the card's cheaper fixes are capping DEVT, deferring discretionary work and protecting importance 1.
-- [ ] **RCA evidence: the work ahead in the queue doesn't count (design gap).** PROCU "BATCHHI#1 APPL 662%" (D19 22:30)
-  scored 0 ("not about RBANK"): APPL counts only for CPU_CAPACITY (`src/content/evidence.ts`) and only on the victim's
+- [x] **RCA evidence: the work ahead in the queue doesn't count (design gap).** PROCU "BATCHHI#1 APPL 662%" (D19 22:30)
+  scored 0 ("not about RBANK"): APPL counted only for CPU_CAPACITY (`src/content/evidence.ts`) and only on the victim's
   own classes (`judgeEvidence`). The inbox hint asks "Who was ahead of it in the queue?"; a lower-importance class at an
-  equal or higher DP with high APPL should count for CPU_PRIORITY. Same class of report as the D4 item above.
+  equal or higher DP with high APPL should count for CPU_PRIORITY. Done 2026-11-08: APPL now lists CPU_PRIORITY and is
+  accepted on any subject, at half weight because it proves work existed, not that it was ahead. A regression test
+  covers a competing class's APPL for CPU_PRIORITY (0.5), an unrelated mechanism (0) and the window guard. Scoring
+  only: no simulation, report or golden change; typecheck and the full suite pass.
 - [x] **RCA verdict text for grouped incidents (UI bug).** Completion takes effect on merge: grouped evidence keeps
   the highest relevance per pin, then prefers the verdict that passed more evidence checks; exact ties keep the first
   incident. A CARDAUTH pin on the RBANK group now shows its own symptom, size or cause rejection instead of "not about
