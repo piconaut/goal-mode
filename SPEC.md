@@ -1685,6 +1685,10 @@ Primary IBM sources:
   https://www.ibm.com/docs/en/SSEPEK_12.0.0/perf/src/tpc/db2z_determinevelocitygoals.html
 - IBM Db2 12: *Configuring zIIPs for Db2*.
   https://www.ibm.com/docs/SSEPEK_12.0.0/perf/src/tpc/db2z_ibmziip.html
+- IBM, *Db2 13 for z/OS Managing Performance*: accounting classes 1–3, package accounting and DBAT queueing
+  (SMF 101). https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf
+- IBM, *CICS TS 6 Monitoring CICS*: performance class records (SMF 110), transaction timing, QR/MXT waits.
+  https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf
 - IBM, *z/OS MVS Planning: Workload Management* (V2R5, "MVS Planning: WLM" in code comments): velocity
   formula (connect = I/O using; IOSQ, pending, CU queue = I/O delay; storage delays incl. paging, swap, MPL),
   service units for period switching (CPU + SRB only since V2R5), resource group types 1–4 and minimum/maximum

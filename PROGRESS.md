@@ -565,7 +565,13 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   added pull it down. Fit weekdays (or a weekday term) and forecast MSU demand against capacity; mark capacity changes.
 - [ ] **Resource group units:** SU/s only. 1 MSU = 277.8 SU/s; SU/s per CP in `src/sim/hw/cpc.ts`. Show "≈ N MSU ≈ M CPs" in
   the editor and the Codex entry.
-- [ ] **Codex:** no SMF 101 or SMF 110 entry (only a mention in the SMF-volume entry); add both, linked from the SMF tab.
+- [x] **Codex:** no SMF 101 or SMF 110 entry (only a mention in the SMF-volume entry); add both, linked from the SMF tab.
+  Added 2026-11-07: SMF 101 explains class 1/2/3, not-accounted/not-in-Db2, package trace classes and the
+  DBAT queue wait; SMF 110 explains the performance class record, response/dispatch/CPU/suspend times,
+  QRMODDLY, MXTDELAY, USRDISPT−USRCPUT and the abend fields. Each is discovered with its tool and the SMF tab
+  shows the entry for the selected view. Sources: z/OS 3.1 MVS SMF p.1133/p.1183, Db2 13 Managing Performance
+  pp.143, 476, 660, 703, 709, 726, 729–731, CICS TS 6 Monitoring CICS pp.19, 25, 251–254, 280, 287, 290,
+  295–296; research ledger row and SPEC §18 updated. Content-only: no sim, report or golden change.
 - [x] **Layout:** (done 2026-11-06: now `PhaseActions` in the header) Start day / Briefing sit in a fixed bottom-right box shared with result toasts (they can overlap); the
   header's speed-button slot is empty during the briefing, so move them there.
 - [x] **Automation misfire wording** (fixed 2026-11-04). "8 % misfire" is a failed action (the rule fires, the change doesn't happen, logged
