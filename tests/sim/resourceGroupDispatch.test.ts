@@ -5,7 +5,7 @@ import type { Scenario } from '../../src/sim/core/scenario';
 import { discretionaryCaps, resourceGroupCaps, rgSysplexShares, step } from '../../src/sim/core/step';
 import { planLpar } from '../../src/sim/core/tick/demand';
 import type { TickCtx } from '../../src/sim/core/tick/ctx';
-import { msuPerCp, suPerCpuSecOf } from '../../src/sim/hw/cpc';
+import { msuPerCp, SU_PER_SEC_PER_MSU, suPerCpuSecOf } from '../../src/sim/hw/cpc';
 import { poolEntitlement } from '../../src/sim/hw/pools';
 import { dispatchableDemand, evaluateLpar, prepareLpar, sliceSpec } from '../../src/sim/wlm/evaluate';
 import { ACC_DECAY, emptyAcc } from '../../src/sim/wlm/runtime';
@@ -14,6 +14,10 @@ const slice = sliceSpec({ key: 'T', scKey: 'DDFADHOC#1', kind: 'TXN', cpEngines:
 const input = { slices: [slice], backlog: { T: 20 }, ziipBacklog: { T: 15 }, cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 4, ziipServers: 4, cpPrsmDelayFrac: 0, io: { RANDOM: { rtSec: 0, delaySec: 0 }, SEQ: { rtSec: 0, delaySec: 0 } }, pagingFrac: 0, dpOf: () => 240 };
 
 describe('resource group dispatchability', () => {
+  it('converts MSU to SU/s at the documented rate', () => {
+    expect(SU_PER_SEC_PER_MSU).toBeCloseTo(277.8, 1);
+  });
+
   it('does not treat a small execution reservation as saturated service capacity', () => {
     const s = sliceSpec({ key: 'idle', scKey: 'STCHI#1', kind: 'AS', cpEngines: 0.5, ziipEngines: 0.25 });
     const base = { ...input, slices: [s], backlog: {}, ziipBacklog: {} };

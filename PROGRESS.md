@@ -584,8 +584,11 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   chart toggle.
 - [ ] **CPC busy forecast:** 10-day log-linear fit of daily peak busy as % of installed CPs; weekends (47 %, 34 %) and capacity
   added pull it down. Fit weekdays (or a weekday term) and forecast MSU demand against capacity; mark capacity changes.
-- [ ] **Resource group units:** SU/s only. 1 MSU = 277.8 SU/s; SU/s per CP in `src/sim/hw/cpc.ts`. Show "≈ N MSU ≈ M CPs" in
-  the editor and the Codex entry.
+- [x] **Resource group units:** SU/s only. 1 MSU = 277.8 SU/s; SU/s per CP in `src/sim/hw/cpc.ts`. Show "≈ N MSU ≈ M CPs" in
+  the editor and the Codex entry. Completion takes effect on merge: type 1 limits show their MSU value and the CP equivalent
+  at each CPC's speed under the min and max fields (existing groups and the new-group form), with the conversion note under
+  the table; the Codex entry explains the units and 1 MSU = 277.8 SU/s. The view exposes each CPC's SU/s per CP so the
+  browser uses the same `suPerCpuSecOf` conversion as the sim. UI/content only: no simulation, report or golden change.
 - [x] **Codex:** no SMF 101 or SMF 110 entry (only a mention in the SMF-volume entry); add both, linked from the SMF tab.
   Added 2026-11-07: SMF 101 explains class 1/2/3, not-accounted/not-in-Db2, package trace classes and the
   DBAT queue wait; SMF 110 explains the performance class record, response/dispatch/CPU/suspend times,
