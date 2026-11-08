@@ -259,7 +259,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const nextTick = prev.tick + 1;
   const { cappingLpars, cappingGroups, msuBy, r4haBy } = stepCapping(t, zosLpars);
   const cost = stepCost(t, zosLpars, msuBy, r4haBy, nextTick);
-  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, nextTick, cfBySystem);
+  const rmf = stepRmf(t, batch, dasd, cf, r4haBy, nextTick, cfBySystem, lockIndex);
   return {
     ...prev,
     tick: prev.tick + 1,

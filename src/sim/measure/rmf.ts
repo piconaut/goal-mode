@@ -51,6 +51,8 @@ export interface RcIntervalAcc extends ScpIntervalAcc {
 export interface RmfAcc {
   startTick: number;
   ticks: number;
+  /** Sum of the sysplex lock index over the interval, for CFACT lock contention. */
+  lockIndexSum: number;
   scps: Record<string, ScpIntervalAcc>;
   lpars: Record<string, LparIntervalAcc>;
   dasd: { ticks: number; iops: number; rtRandom: number; iosq: number; pend: number; disc: number; conn: number; rtSeq: number };
@@ -154,6 +156,8 @@ export interface RmfInterval {
   endTick: number;
   intervalSec: number;
   policy: string;
+  /** Average sysplex lock index over the interval (running batch lock intensity); CFACT lock contention. */
+  lockIndex?: number;
   cpu: CpuRecord[];
   cpcBusy: { cpcId: string; pool: string; physicalBusyPct: number }[];
   wlm: WlmRecord[];
@@ -174,6 +178,7 @@ export interface RmfInterval {
 export const newRmfAcc = (startTick: number): RmfAcc => ({
   startTick,
   ticks: 0,
+  lockIndexSum: 0,
   scps: {},
   lpars: {},
   dasd: { ticks: 0, iops: 0, rtRandom: 0, iosq: 0, pend: 0, disc: 0, conn: 0, rtSeq: 0 },
@@ -195,6 +200,8 @@ export function accumulateTick(
   dasd: DasdResult | null,
   cf: readonly CfResult[],
   cfSys?: Readonly<Record<string, CfSystemResult>>,
+  /** Sysplex lock index this tick (running batch lock intensity), for CFACT lock contention. */
+  lockIndex = 0,
 ): RmfAcc {
   const scps = { ...acc.scps };
   let rcs = acc.rcs;
@@ -317,7 +324,7 @@ export function accumulateTick(
       }
     }
   }
-  return { ...acc, ticks: acc.ticks + 1, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(sy ? { cfSystems: sy } : {}), ...(ss ? { cfStructSystems: ss } : {}), ...(rcs ? { rcs } : {}) };
+  return { ...acc, ticks: acc.ticks + 1, lockIndexSum: (acc.lockIndexSum ?? 0) + lockIndex, scps, lpars: la, dasd: d, lcus: lc, cf: c, cfStructures: cs, ...(sy ? { cfSystems: sy } : {}), ...(ss ? { cfStructSystems: ss } : {}), ...(rcs ? { rcs } : {}) };
 }
 
 // `${lparId}|${scKey}` without building a new string every tick.
@@ -528,6 +535,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
     endTick: ctx.endTick,
     intervalSec: acc.ticks * TICK_SEC,
     policy: ctx.def.policyName,
+    lockIndex: acc.ticks > 0 ? (acc.lockIndexSum ?? 0) / acc.ticks : 0,
     cpu,
     cpcBusy,
     wlm,

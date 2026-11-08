@@ -2,6 +2,7 @@
 // WLMGL / CPU Activity / Partition Data / CF / DASD reports without copying them exactly.
 
 import type { ProductDef } from '../../content/pricing';
+import { CF_LOCK_CONTENTION } from '../../content/cf';
 import { billLines, type CostState } from '../cost/mlc';
 import { clockAt } from '../core/clock';
 import { BUCKET_BOUNDS } from '../wlm/goals';
@@ -230,10 +231,13 @@ export function renderCfActivity(iv: RmfInterval): string {
   }
   if ((iv.cfStructures ?? []).length) {
     // Usage Summary lists every structure copy; synchronously duplexed pairs are marked PRIM/SEC (RMF Report Analysis p.365).
+    // CONTENTION % is RMF's delayed-request share for serialized LIST and LOCK structures (p.85); the sim maps the
+    // sysplex lock index to it and has no serialized LIST model, so only the LOCK structure reports a value.
     out.push('', 'STRUCTURE SUMMARY');
-    out.push('STRUCTURE NAME     TYPE   STATUS  CF        REQ/SEC   SYNC %   SYNC SERV(us)   AVG SERV(us)');
+    out.push('STRUCTURE NAME     TYPE   STATUS  CF        REQ/SEC   SYNC %   SYNC SERV(us)   AVG SERV(us)  CONTENTION %');
+    const lockContention = iv.lockIndex === undefined ? null : Math.min(CF_LOCK_CONTENTION.capPct, CF_LOCK_CONTENTION.pctPerIndex * iv.lockIndex);
     for (const st of iv.cfStructures) {
-      out.push(`${padR(st.name, 18)} ${padR(st.type, 6)} ${padR(st.role ?? '', 7)} ${padR(st.cfLparId, 8)} ${f(st.reqPerSec, 0, 8)} ${f(st.syncPct, 1, 8)} ${f(st.syncUs, 1, 15)} ${f(st.serviceUs, 1, 14)}`);
+      out.push(`${padR(st.name, 18)} ${padR(st.type, 6)} ${padR(st.role ?? '', 7)} ${padR(st.cfLparId, 8)} ${f(st.reqPerSec, 0, 8)} ${f(st.syncPct, 1, 8)} ${f(st.syncUs, 1, 15)} ${f(st.serviceUs, 1, 14)} ${f(st.type === 'LOCK' ? lockContention : null, 1, 14)}`);
     }
   }
   if ((iv.cfStructSystems ?? []).length) {

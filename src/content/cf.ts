@@ -31,3 +31,13 @@ export const CF_ASYNC_THRESHOLD_MULT: Record<'LOCK' | 'LIST' | 'CACHE', number> 
 /** Signal round trip per km of CF link: RMF estimates link distance as round-trip µs ÷ 10 µs/km
  *  (RMF Report Analysis p.376, p.378). */
 export const CF_LINK_ROUND_TRIP_SEC_PER_KM = 10e-6;
+
+// FICTIONAL: lock-structure contention as RMF reports it (percentage of external requests delayed by a lock held
+// by another system, RMF Report Analysis p.85). The sim has no per-request lock model, so it maps the sysplex lock
+// index (running batch lock intensity, the same input as Db2 lock wait) to contention. Shape: a few running
+// lock-heavy jobs show a few percent, a batch overlap (index 6-10) shows a third to half of the lock requests
+// delayed; the cap keeps an extreme burst from claiming every request.
+export const CF_LOCK_CONTENTION = {
+  pctPerIndex: 5,
+  capPct: 90,
+};
