@@ -173,8 +173,11 @@ export const CODEX: CodexEntry[] = [
     id: 'resource-groups',
     title: 'Resource groups (minimum and maximum)',
     category: 'WLM',
-    body: 'A resource group limits or protects the CPU of the service classes in it. The maximum is always enforced, so work above it waits (capping delay) even when the CPC is idle. The minimum is honoured only while the group’s work misses its goals, and then even at the expense of more important work. Type 1 is service units per second across the sysplex, type 2 a percentage of the LPAR’s share, type 3 a number of CPs × 100.',
-    sources: [ABCS_WLM],
+    body: 'A resource group limits or protects the CPU of the service classes in it. The maximum is always enforced, so work above it waits (capping delay) even when the CPC is idle. The minimum is honoured only while the group’s work misses its goals, and then even at the expense of more important work. Type 1 is service units per second across the sysplex, type 2 a percentage of the LPAR’s share, type 3 a number of CPs × 100. Service units are hard to judge: one MSU is a million service units per hour, about 277.8 SU/s, and a general CP delivers its MSU rating × 277.8 SU/s. A 100-MSU CP therefore provides about 27,800 SU/s, so a 100 SU/s limit is only ≈ 0.36 MSU, a fraction of one CP; the editor shows the MSU and per-CPC CP equivalents for type 1 limits.',
+    sources: [
+      ABCS_WLM,
+      { label: 'IBM, z/OS 3.1 MVS Planning: Workload Management, p.251', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=251' },
+    ],
     discover: { start: true },
   },
   {

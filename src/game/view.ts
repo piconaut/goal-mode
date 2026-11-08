@@ -32,6 +32,7 @@ import { opexBudgetFor, type PreviewContext } from './catalog';
 import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import type { LcuConfig } from '../sim/io/dasd';
+import { suPerCpuSecOf } from '../sim/hw/cpc';
 import { allWorkloads, overallTrust, previewContext, visibleFixIds } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
@@ -109,7 +110,7 @@ export interface ConfigView {
     definedCapacity: number | null;
   }[];
   /** Installed physical engines per CPC (HMC totals by pool). */
-  cpcs: { id: string; engines: { CP: number; ZIIP: number; ICF: number } }[];
+  cpcs: { id: string; engines: { CP: number; ZIIP: number; ICF: number }; suPerCpuSec: number }[];
   cpcMemoryGb: number;
   unassignedMemoryGb: number;
   db2: Db2MemberConfig[];
@@ -408,7 +409,7 @@ function configView(run: RunState, scenario: Scenario): ConfigView {
         definedCapacity: l.definedCapacityMsu,
       };
     }),
-    cpcs: c.cpcs.map((x) => ({ id: x.id, engines: { ...x.engines } })),
+    cpcs: c.cpcs.map((x) => ({ id: x.id, engines: { ...x.engines }, suPerCpuSec: suPerCpuSecOf(x) })),
     cpcMemoryGb: cpc.memoryGb,
     unassignedMemoryGb: cpc.memoryGb - assigned,
     db2: c.db2,

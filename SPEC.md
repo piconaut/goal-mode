@@ -522,7 +522,8 @@ receiver candidate.
 
 - **Type 1:** service units/second, sysplex scope. **Type 2:** % of LPAR share, system scope
   (LPAR share = min(weight share, LP cap, defined capacity)). **Type 3:** CPs × 100, system
-  scope.
+  scope. The editor converts a type 1 limit to MSU (277.8 SU/s per MSU) and to CPs at each CPC's
+  speed (`suPerCpuSecOf`); type 4 (MSU) is not modelled.
 - **Maximum** is always enforced (cap). **Minimum** is honoured only while the group's work
   misses goals, even if that hurts more important work (SG24-7621 §4.16–4.19).
 - Capped work is non-dispatchable during sleeping slices (*WLM Planning* 3.1 p.60 notes 4–5).
