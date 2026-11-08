@@ -45,6 +45,7 @@ describe('Codex', () => {
     expect(codexDiscovered({ ...r, tools: ['DB2_ACCT'] })).toContain('smf101');
     expect(codexDiscovered({ ...r, tools: ['CICS_MON'] })).toContain('smf110');
     expect(codexDiscovered(noteReportOpened(r, 'CF:3'))).toContain('cf-sync-async');
+    expect(codexDiscovered(noteReportOpened(r, 'WLM_SUMMARY'))).toContain('end-rate');
     const withEvent = { ...r, events: [{ ...({} as (typeof r.events)[number]), defId: 'DASD_DEGRADED', started: true }] };
     expect(codexDiscovered(withEvent)).toContain('hyperpav');
   });

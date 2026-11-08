@@ -412,6 +412,14 @@ export const CODEX: CodexEntry[] = [
     discover: { events: ['MARKET_OPEN_SURGE'] },
   },
   {
+    id: 'end-rate',
+    title: 'END/S: reading the transaction rate',
+    category: 'Measurement',
+    body: 'END/S is the number of transactions that ended per second in the interval; ENDED is the count, reported per service-class period. Neither number says whether the work is healthy: read END/S against the same hour on an earlier day and against what each transaction costs. CPU per transaction is APPL% CP divided by END/S, then by 100 for seconds (CICS transaction rows report resource usage with their region classes, so use those rows or CICS monitoring). A higher END/S at the same CPU per transaction means more transactions arriving at the same cost each: real demand growth, or clients resending requests that timed out, since each retry is another ended transaction. The same rate at more CPU per transaction means each request does more work, such as a changed access path. A falling rate while CPU stays high means work is waiting, not going away. A 15-30 minute interval averages a short burst away; Monitor III\'s short range shows the spike.',
+    sources: [{ label: 'IBM z/OS RMF Report Analysis (SC34-2665): WLMGL field descriptions', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=530' }],
+    discover: { reports: ['WLM_SUMMARY'] },
+  },
+  {
     id: 'ABEND_S0C7',
     title: 'S0C7: a data exception, not a tuning problem',
     category: 'Subsystems',
