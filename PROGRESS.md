@@ -491,10 +491,13 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   forewarned card (end it when it starts that day) or be refused at planning time with the reason, and the hours
   refunded if it found no target. Same card twice in this run (D11, D24), so the fix also isn't lasting: if the
   redeploy reintroduces COBOL procedures, say so in the card's clue.
-- [ ] **LOCK_ESCALATION has no lever (design gap).** `fix: null`; lock wait is `lockWaitSecPerIndex × (sum of running
+- [x] **LOCK_ESCALATION has no lever (design gap).** `fix: null`; lock wait is `lockWaitSecPerIndex × (sum of running
   jobs' lockIntensity + 6)` for 3 h. Buffer pools, LCUs and compression don't touch it, and running batch can't be
-  cancelled. Only fewer concurrent lock-heavy jobs helps. Offer fixes: commit more often in the settlement job, lower
-  LOCKMAX escalation (Db2 change), hold the job class.
+  cancelled. Only fewer concurrent lock-heavy jobs helps. Done 2026-11-08: the card now offers "Commit more often in
+  the batch programs" (1 h, Finance −1; also on Revenue's adapted refund-batch card), a code-level fix that ends the
+  escalation early through the card's existing `SET_LOCK_BOOST 0` restoration. The clue names the lever. Content only:
+  no simulation or golden change; `tests/game/operations.test.ts` covers the planned and live application of every
+  card fix, and the full suite and typecheck pass.
 - [x] **Retry storm needs a non-log clue (design).** The clue is WLMGL MOBILE END/S ×2.5 at unchanged CPU per
   transaction; the player found it only from the Operations log. Added 2026-11-07: Codex entry "END/S: reading the
   transaction rate" (discovered with the Workload Activity report, `src/content/codex/entries.ts`) explains reading
