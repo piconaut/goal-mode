@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PACKS } from '../content/packs';
 import { DIFFICULTIES, type DifficultyId } from '../content/difficulty';
 import { EVIDENCE } from '../content/evidence';
+import { MECHANISM_HELP, TRIGGER_HELP } from '../content/rca';
 import type { Hypothesis } from '../game/aiops';
 import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
@@ -472,6 +473,7 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
             Today&apos;s RMF data is now in the Reports tab. Name where the time went and what set it off, and attach up to {EVIDENCE.perRca} pinned
             data points that prove it. Correct answers earn trust and Insight; evidence that points at the real cause earns more.
           </p>
+          <RcaVocabulary />
           <div className="form">
             <button onClick={investigate}>Investigate (pin evidence)</button>
             <span className="muted">{v.pins.length} pinned</span>
@@ -519,6 +521,36 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
 const windowText = (i: { startTick: number; hours: number }) =>
   `breached ${formatClock(i.startTick).slice(-8, -3)}–${formatClock(i.startTick + i.hours * TICKS_PER_HOUR).slice(-8, -3)}`;
 
+/** Plain-language definitions for the RCA selectors (content/rca.ts), opened once above the incidents. */
+function RcaVocabulary() {
+  return (
+    <details style={{ fontSize: 12, marginBottom: 8 }}>
+      <summary className="muted">What do the mechanism and trigger mean?</summary>
+      <p className="muted" style={{ margin: '4px 0' }}>
+        Mechanism: where the time went. Trigger: what set it off.
+      </p>
+      <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <b>Mechanism</b>
+          {MECHANISMS.map((x) => (
+            <div key={x} style={{ margin: '2px 0' }}>
+              <span className="tag">{x}</span> <span className="muted">{MECHANISM_HELP[x]}</span>
+            </div>
+          ))}
+        </div>
+        <div>
+          <b>Trigger</b>
+          {TRIGGERS.map((x) => (
+            <div key={x} style={{ margin: '2px 0' }}>
+              <span className="tag">{x}</span> <span className="muted">{TRIGGER_HELP[x]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; label: string; hypotheses: Hypothesis[]; v: ViewModel; game: GameHandle }) {
   const [m, setM] = useState<Mechanism>('CPU_PRIORITY');
   const [t, setT] = useState<Trigger>('POLICY');
@@ -539,6 +571,14 @@ function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; l
           ))}
         </select>
         <button onClick={() => game.send({ type: 'RCA', incidentId, mechanism: m, trigger: t, evidenceIds: ev })}>Submit{ev.length ? ` with ${ev.length} evidence` : ''}</button>
+      </div>
+      <div className="muted" style={{ fontSize: 11, paddingLeft: 12 }}>
+        <div>
+          <b>{m}</b>: {MECHANISM_HELP[m]}
+        </div>
+        <div>
+          <b>{t}</b>: {TRIGGER_HELP[t]}
+        </div>
       </div>
       {hypotheses.length > 0 && (
         <div style={{ fontSize: 12, paddingLeft: 12 }}>

@@ -418,9 +418,15 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   remain excluded. Velocity still scores zero as a symptom, with that verdict instead of "not about CARDAUTH"
   (INC133). Regressions cover shared workloads, added regions, routing, saved pins and the incident window;
   no evidence weights, save fields or simulation mechanics change.
-- [ ] **CICS SOS is labelled POLICY / THREAD_LIMIT (design gap).** The card has trigger POLICY and mechanism
-  THREAD_LIMIT; the player's STORAGE (INC168) is the better answer for a storage leak. Give the card a storage or
-  software-defect label, and define each trigger/mechanism in the RCA form (the player asked what "policy" means).
+- [x] **CICS SOS is labelled POLICY / THREAD_LIMIT (design gap).** The card had trigger POLICY and mechanism
+  THREAD_LIMIT; the player's STORAGE (INC168) is the better answer for a storage leak. Done 2026-11-08: the trigger is
+  now APPLICATION_ERROR, because a deployed program's leak is a software defect rather than a policy choice; the
+  mechanism stays THREAD_LIMIT because the modelled wait is MXT/task-slot queueing (what the SMF 110 and Monitor III
+  clues show), not paging. The RCA form now opens a vocabulary defining every mechanism and trigger
+  (`src/content/rca.ts`) and spells out the definitions of the current selection under the selects. SPEC §10 records
+  the card. A regression test covers vocabulary completeness and the card label. No simulation or golden change: the
+  deck entry is only read after day 5, outside the two-day goldens; 762 tests and typecheck pass, and the production
+  build succeeds.
 
 #### Clue paths and realism
 
