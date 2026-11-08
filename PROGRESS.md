@@ -286,10 +286,18 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   Follow-up (2026-11-07): every connect attempt gets its own Operations log line (a restart that fails again in the
   same tick is no longer missed), and a restart clears the abandoned attempt's `failCode` so a successful rerun cannot
   leave a stale DSNE100I on the night's RCA.
-- [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
-  products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Moot for batch since 2026-11-07 (the job
-  fails at connect and uses no CPU);
-  check that nothing else can run Db2 work on an image outside the Db2 product's LPAR list.
+- [x] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug, closed 2026-11-08).** Same case: the job's CPU
+  lands only on the products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Moot for batch since
+  2026-11-07 (the job fails at connect and uses no CPU). Checked 2026-11-08: batch is blocked by the DSNE100I connect
+  failure above, and online Db2 work routes only to images where a DB2.MSTR runs in every shipped scenario: the
+  scenario workloads plus the event-added BOOKING, ACQBANK and PREFILL apps; the routing editor offers only a
+  workload's existing shares. Invariant test "Db2 work runs only where Db2 is licensed" (`tests/sim/realism.test.ts`)
+  pins each scenario's Db2 product list to its DB2.MSTR images, every Db2-using workload's routing keys to those
+  images, and pinned Db2 batch to them too. One code-only gap remains: `SET_ROUTING` names a workload but the sim
+  state holds no definitions for the scenario's own workloads, so `applyCommand` cannot tell which of them use Db2; a
+  programmatic command could route Db2 work to a Db2-less image, where the DB2 server CPU is dropped rather than
+  billed. No shipped content, UI control, event or CLI path does this. Work on a Db2-less image is intentionally not
+  billed to Db2: no Db2 can run there, and SCRT bills a product on the LPARs where it executes.
 - [x] **A repeat XLOG_LOOP burns no CPU (bug, fixed).** Expiry and cancellation now remove CICSXLOG from PROD1
   instead of leaving a zero-CPU address space. Each start clears the old zero modifier and replaces any duplicate
   extra address spaces with the same jobname and LPAR, so older saves recover on the next occurrence. The Revenue

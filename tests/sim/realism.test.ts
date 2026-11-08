@@ -1,9 +1,11 @@
 // Behavioural "realism" tests from SPEC §16.
 
-import { HARBOURLINE, MIDWEST } from '../../src/content/scenarios';
+import { HARBOURLINE, MIDWEST, SCENARIOS } from '../../src/content/scenarios';
 import { MIDWEST_WORLD } from '../../src/content/scenarios/midwest';
 import { resolveCpc } from '../../src/sim/hw/pools';
-import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
+import { ACQUIRED_APP, BOOKING_APP, MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
+import { PREFILL_APP } from '../../src/content/events/revenue-events';
+import type { WorkloadDef } from '../../src/sim/workload/types';
 import { initState } from '../../src/sim/core/init';
 import { cicsRegions, discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
 import { MIDWEST_ADDRESS_SPACES } from '../../src/content/scenarios/midwest-workloads';
@@ -1062,4 +1064,37 @@ describe('Db2 batch on an image without Db2', () => {
     expect(failed.every((j) => j.lparId === 'SYSP' && j.def.usesDb2 && j.status === 'ABENDED')).toBe(true);
     expect(s.batch.jobs.some((j) => j.status === 'RUNNING' && j.lparId === 'SYSP' && j.def.usesDb2)).toBe(false);
   });
+});
+
+describe('Db2 work runs only where Db2 is licensed', () => {
+  // Workloads that events add during a run: they are not in Scenario.workloads, but they run all the same.
+  const eventWorkloads: Record<string, WorkloadDef[]> = {
+    midwest: [BOOKING_APP, ACQUIRED_APP],
+    revenue: [PREFILL_APP],
+  };
+  const isDb2Work = (w: WorkloadDef) => w.servers.some((s) => s.role.startsWith('DB2.'));
+
+  for (const sc of Object.values(SCENARIOS)) {
+    const db2Images = new Set(sc.addressSpaces.filter((a) => a.role === 'DB2.MSTR').map((a) => a.lparId));
+    const db2Product = sc.products.find((p) => p.id === 'DB2')!;
+
+    it(`${sc.id}: the Db2 product is billed on exactly the images that run Db2`, () => {
+      expect([...db2Product.lpars].sort()).toEqual([...db2Images].sort());
+    });
+
+    it(`${sc.id}: every Db2-using workload (scenario and event-added) routes only to images that run Db2`, () => {
+      const db2Workloads = [...sc.workloads, ...(eventWorkloads[sc.id] ?? [])].filter(isDb2Work);
+      expect(db2Workloads.length).toBeGreaterThan(0);
+      for (const w of db2Workloads) {
+        expect(Object.keys(w.routing).length, `${w.id} has no routing`).toBeGreaterThan(0);
+        for (const lparId of Object.keys(w.routing)) expect(db2Images.has(lparId), `${w.id} routes to ${lparId}`).toBe(true);
+      }
+    });
+
+    it(`${sc.id}: Db2 batch with a system affinity is pinned only to images that run Db2`, () => {
+      const pinned = sc.batchNetwork(42, 0, 1).filter((j) => j.usesDb2 && j.sysaff !== null);
+      expect(pinned.length).toBeGreaterThan(0);
+      for (const j of pinned) expect(db2Images.has(j.sysaff!), `${j.name} pinned to ${j.sysaff}`).toBe(true);
+    });
+  }
 });
