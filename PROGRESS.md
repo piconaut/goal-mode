@@ -286,10 +286,16 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   Follow-up (2026-11-07): every connect attempt gets its own Operations log line (a restart that fails again in the
   same tick is no longer missed), and a restart clears the abandoned attempt's `failCode` so a successful rerun cannot
   leave a stale DSNE100I on the night's RCA.
-- [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
-  products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Moot for batch since 2026-11-07 (the job
-  fails at connect and uses no CPU);
-  check that nothing else can run Db2 work on an image outside the Db2 product's LPAR list.
+- [x] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug, closed 2026-11-08).** Same case: the job's CPU
+  lands only on the products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Moot for batch since
+  2026-11-07 (the job fails at connect and uses no CPU). Checked 2026-11-08: nothing else reaches it. Online Db2
+  workloads route only to images in the Db2 product's list (Midwest, Revenue, Harbourline); the routing editor offers
+  only existing shares; event-added workloads route to Db2 images; the play CLI takes no raw commands. One gap remains
+  in code only: `SET_ROUTING` accepts any LPAR, and `applyCommand` has no scenario to tell which workloads use Db2, so a
+  Db2 workload routed to a Db2-less image would have its Db2 server CPU dropped (no address space to land on), not
+  billed. Kept off by the invariant test "Db2 work runs only where Db2 is licensed" (tests/sim/realism.test.ts) for each
+  shipped scenario: the Db2 product list equals the images with a DB2.MSTR, Db2-using workloads route only there, and
+  pinned Db2 batch runs only there. Work on a Db2-less image is not billed to Db2 on purpose: no Db2 can run there.
 - [x] **A repeat XLOG_LOOP burns no CPU (bug, fixed).** Expiry and cancellation now remove CICSXLOG from PROD1
   instead of leaving a zero-CPU address space. Each start clears the old zero modifier and replaces any duplicate
   extra address spaces with the same jobname and LPAR, so older saves recover on the next occurrence. The Revenue
