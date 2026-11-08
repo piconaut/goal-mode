@@ -103,6 +103,15 @@ describe('evidence pins', () => {
     expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
   });
 
+  it('counts a competing class\'s CPU as evidence for CPU_PRIORITY (playtest D4/D19)', () => {
+    const p = { id: 1000, source: 'WLMGL', metric: 'APPL' as const, subject: 'BATCHHI#1', system: '*PLEX', tick: regressed.sim.tick, value: 442, text: 'BATCHHI#1 APPL 442%' };
+    const inc = incident(regressed, { workloadId: 'CARDAUTH', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
+    expect(judgeEvidence(regressed, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 0.5, why: 'consistent with the cause (but not specific)' });
+    // Still nothing for a mechanism where high APPL is not the cause, and still inside the window.
+    expect(judgeEvidence(regressed, MIDWEST, incident(regressed, { truth: { mechanism: 'IO', trigger: 'POLICY' } }), [p])[0]!.why).toBe('points elsewhere');
+    expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...p, tick: regressed.sim.tick + 10 * HOUR }])[0]!.why).toMatch(/window/);
+  });
+
   it.each(['CPU_PRIORITY', 'CPU_CAPACITY'] as const)('awards two zIIP pins for a %s incident', (mechanism) => {
     const pins = ['WLMGL', 'DELAY'].map((source, i) => ({
       id: 1000 + i, source, metric: 'DELAY_ZIIP' as const, subject: `DDFPRD#${i + 1}`,
