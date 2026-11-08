@@ -489,8 +489,13 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   jobs' lockIntensity + 6)` for 3 h. Buffer pools, LCUs and compression don't touch it, and running batch can't be
   cancelled. Only fewer concurrent lock-heavy jobs helps. Offer fixes: commit more often in the settlement job, lower
   LOCKMAX escalation (Db2 change), hold the job class.
-- [ ] **Retry storm needs a non-log clue (design).** The clue is WLMGL MOBILE END/S ×2.5 at unchanged CPU per
-  transaction; the player found it only from the Operations log. Add a codex line on reading END/S against yesterday.
+- [x] **Retry storm needs a non-log clue (design).** The clue is WLMGL MOBILE END/S ×2.5 at unchanged CPU per
+  transaction; the player found it only from the Operations log. Added 2026-11-07: Codex entry "END/S: reading the
+  transaction rate" (discovered with the Workload Activity report, `src/content/codex/entries.ts`) explains reading
+  END/S against the same hour on an earlier day and CPU per transaction (APPL% CP ÷ END/S), so a higher rate at
+  unchanged cost per transaction reads as arrivals or client retries rather than heavier work. The RMF Postprocessor
+  header links it. With #227 keeping silent cards out of the log, the clue is now a report-reading skill a player can
+  learn before the card. Content/UI only: no simulation, report or golden change.
 - [ ] **Inbox change notices are always bad news (design).** By D26 the player rolls back any announced change on
   sight (Db2 REBIND, monitoring agent). Add changes that help (better access path, cheaper agent) so impact has to be
   judged.

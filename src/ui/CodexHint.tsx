@@ -45,6 +45,7 @@ const HINT_LABEL: Record<string, string> = {
   'storm-drain': 'storm drain',
   'absolute-capping': 'absolute capping',
   'arrival-bursts': 'bursts',
+  'end-rate': 'END/S',
 };
 
 /** "? label" next to a panel title: the Codex entry for the concept, shown in place (SPEC §11.3). */
