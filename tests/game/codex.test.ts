@@ -42,6 +42,8 @@ describe('Codex', () => {
     expect(start).toContain('perf-index');
     expect(start).not.toContain('hiperdispatch');
     expect(codexDiscovered({ ...r, tools: ['PARTITION_DATA'] })).toContain('hiperdispatch');
+    expect(codexDiscovered({ ...r, tools: ['DB2_ACCT'] })).toContain('smf101');
+    expect(codexDiscovered({ ...r, tools: ['CICS_MON'] })).toContain('smf110');
     expect(codexDiscovered(noteReportOpened(r, 'CF:3'))).toContain('cf-sync-async');
     const withEvent = { ...r, events: [{ ...({} as (typeof r.events)[number]), defId: 'DASD_DEGRADED', started: true }] };
     expect(codexDiscovered(withEvent)).toContain('hyperpav');

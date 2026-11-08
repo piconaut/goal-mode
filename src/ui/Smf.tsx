@@ -44,7 +44,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
     <div className="panel">
       <h3>
         SMF analytics
-        <CodexHints ids={['smf113']} />
+        <CodexHints ids={k === 'DB2' ? ['smf101'] : k === 'CICS' ? ['smf110'] : k === 'SMF113' ? ['smf113'] : []} />
       </h3>
       <div className="form">
         {owned.map((o) => (

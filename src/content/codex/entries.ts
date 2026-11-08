@@ -334,6 +334,30 @@ export const CODEX: CodexEntry[] = [
     discover: { events: ['SMF_AUDIT'] },
   },
   {
+    id: 'smf101',
+    title: 'Db2 accounting (SMF 101)',
+    category: 'Measurement',
+    body: 'Db2 writes a type 101 accounting record when a transaction\'s processing completes, so it times each thread rather than the WLM service class. Class 1 elapsed is the whole accounting interval (application time, including the front end and Db2); class 2 elapsed is time spent in the Db2 thread; class 3 suspensions split out the waits inside Db2 for locks and latches, synchronous database and log I/O, and other I/O. Class 2 not accounted is class 2 elapsed minus class 2 CPU and class 3; not-in-Db2 is class 1 minus class 2. A rising CPU per transaction against a healthy baseline points at an access-path change, while growing lock or I/O suspension points at concurrency or I/O. Package rows need accounting trace classes 7 and 8 (class 10 adds detail at more CPU and SMF volume). A request queued for a database access thread (DBAT) waits before the thread exists, so that wait is not in the accounting record (Db2 reports the queue count in IFCID 73); RMF enclave queue time does include it.',
+    sources: [
+      { label: 'IBM z/OS 3.1 MVS SMF p.1133: record type 101 (Db2 accounting)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=1133' },
+      { label: 'IBM Db2 13 for z/OS Managing Performance pp.709, 726, 729–731: class 1/2/3 times', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=729' },
+      { label: 'IBM Db2 13 for z/OS Managing Performance pp.143, 476, 660, 703: DBAT queue and package accounting', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=143' },
+    ],
+    discover: { tools: ['DB2_ACCT'] },
+  },
+  {
+    id: 'smf110',
+    title: 'CICS monitoring (SMF 110)',
+    category: 'Measurement',
+    body: 'CICS writes performance class records to SMF type 110, at least one per transaction and normally covering attach to detach; the record is built at event monitoring points and passed to SMF. Response time is stop time minus start time. Dispatch time is the time the task was dispatched, CPU time is the part of it using processor cycles, and suspend time covers first dispatch delay (including MXT and transaction-class limits), dispatch wait, and I/O or other waits. QRMODDLY is the redispatch wait on the QR TCB, MXTDELAY is the part of first dispatch delay caused by MXT, and USRDISPT minus USRCPUT is time dispatched but not on a CP. The table compares CPU per transaction with a healthy baseline and shows those QR, MXT and DISP−CPU waits plus the failed share (transactions that ended with an abend; the record carries the original and current abend codes). A CICS class can meet its WLM goal while transactions stall, because response times are for ended transactions.',
+    sources: [
+      { label: 'IBM CICS TS 6 Monitoring CICS pp.19, 25: performance class records and SMF', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=19' },
+      { label: 'IBM CICS TS 6 Monitoring CICS pp.251–254, 280, 287, 290, 295–296: response, dispatch, QR, MXT and abend fields', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=251' },
+      { label: 'IBM z/OS 3.1 MVS SMF p.1183: record type 110 (CICS TS)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=1183' },
+    ],
+    discover: { tools: ['CICS_MON'] },
+  },
+  {
     id: 'smf113',
     title: 'CPU MF counters (SMF 113), RNI and LSPR categories',
     category: 'Measurement',
