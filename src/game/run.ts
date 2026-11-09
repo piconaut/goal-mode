@@ -215,13 +215,20 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     const sim = step(r.sim, cmds, scenario);
     r = logConnectFailures(r, sim);
     const resolvedAffects = new Map<string, string[]>();
-    for (const [uid, cpcs] of resolvedCpcs) {
-      // Pending commands and dynamic routing have now chosen the hosts used by this tick.
+    // The workloads whose effective routing (pending commands and dynamic routing already applied for this tick)
+    // puts them on these CPCs.
+    const scopeOf = (cpcs: ReadonlySet<string>): string[] => {
       const affectedLpars = new Set(sim.config.lpars.filter((l) => cpcs.has(l.cpcId)).map((l) => l.id));
-      resolvedAffects.set(uid, allWorkloads(scenario, { ...r, sim })
+      return allWorkloads(scenario, { ...r, sim })
         .filter((w) => Object.entries(sim.routing[w.id] ?? w.routing).some(([id, share]) => share > 0 && affectedLpars.has(id)))
-        .map((w) => w.id));
-    }
+        .map((w) => w.id);
+    };
+    for (const [uid, cpcs] of resolvedCpcs) resolvedAffects.set(uid, scopeOf(cpcs));
+    // A running power cap re-resolves its scope every tick: a mid-cap routing change, or a workload added during
+    // the cap, is attributed. The last scope is kept when the cap ends, for the hour it was capped (PT-04).
+    const running = (e: RunState['events'][number]) =>
+      (e.started || e.startTick <= tick) && !e.ended && !armedEnded.has(e.uid) && (e.endTick === null || e.endTick > tick);
+    for (const e of events) if (e.capacityCpcs && running(e)) resolvedAffects.set(e.uid, scopeOf(new Set(e.capacityCpcs)));
     events = events.map((e) => ({
       ...e,
       affects: resolvedAffects.get(e.uid) ?? e.affects,
@@ -229,6 +236,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       started: e.started || e.startTick <= tick,
       ended: e.ended || armedEnded.has(e.uid) || (e.started && e.endTick !== null && e.endTick <= tick),
       ...(armedEnded.has(e.uid) ? { endTick: tick } : {}),
+      ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!] } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);

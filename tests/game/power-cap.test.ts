@@ -99,6 +99,35 @@ describe('power-cap RCA scope', () => {
     expect(triggerOf('MOBILE', 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('HARDWARE_FAULT');
   });
 
+  it('follows a routing change made during the cap', () => {
+    // Harbourline: the cap drops CPC1; PRDA is on it, PRDC on CPC2 (already at the floor, so it cannot drop).
+    const run = startCap('harbourline', [
+      { kind: 'SET_CPC_CAPACITY', cpcId: 'CPC2', capacitySetting: 4 },
+      { kind: 'SET_ROUTING_POLICY', workloadId: 'CARDS', policy: { method: 'STATIC' } },
+      { kind: 'SET_ROUTING', workloadId: 'CARDS', routing: { PRDC: 1 } },
+      { kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'STATIC' } },
+      { kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PRDA: 1 } },
+    ]);
+    expect(run.events[0]!.affects).toContain('MOBILE');
+    expect(run.events[0]!.affects).not.toContain('CARDS');
+    // Two hours in, swap them: the card's earlier attribution must not stay frozen.
+    const moved = advance({ ...run, pendingCommands: [
+      { kind: 'SET_ROUTING', workloadId: 'CARDS', routing: { PRDA: 1 } },
+      { kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PRDC: 1 } },
+    ] }, SCENARIOS.harbourline!, HARBOURLINE_GAME, 1);
+    expect(moved.events[0]!.affects).toContain('CARDS');
+    expect(moved.events[0]!.affects).not.toContain('MOBILE');
+    expect(triggerOf('CARDS', 'CPU_PRIORITY', moved.events, newHour(0), false)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', moved.events, newHour(0), false)).toBe('POLICY');
+  });
+
+  it('picks up a workload added during the cap', () => {
+    const run = startCap('midwest');
+    expect(run.events[0]!.affects).not.toContain('ACQBANK');
+    const added = advance({ ...run, pendingCommands: [{ kind: 'ADD_WORKLOAD', workload: ACQUIRED_APP }] }, SCENARIOS.midwest!, MIDWEST_GAME, 1);
+    expect(added.events[0]!.affects).toContain('ACQBANK');
+  });
+
   it('uses pending routing changes applied on the cap-start tick', () => {
     const run = startCap('harbourline', [
       { kind: 'SET_CPC_CAPACITY', cpcId: 'CPC2', capacitySetting: 4 },
