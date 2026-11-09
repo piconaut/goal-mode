@@ -21,7 +21,7 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 - **Latest verified dev:** `e2a66ca` (#242, merged to main as `12214d2`); 77 test files / 786 tests pass
   (`npm run check`, 2026-11-09).
 - **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `e2a66ca`, 2026-11-09):** Midwest `752603840465408b`;
-  Harbourline `f110fc2de59aa7f3`. Host timings vary; use adjacent comparisons rather than
+  Harbourline `f110fc2de59aa7f3`; Revenue `5181b5fa96813685`. Host timings vary; use adjacent comparisons rather than
   old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
