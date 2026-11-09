@@ -414,6 +414,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: PT-05: the WLM activity log names a rejected move and its reason ("ONLCARD#1 DP F4→F6 rejected: harms
+  DDFMOB#1, equal importance") on that receiver's own line, and WLMGL/SYSWKM mark a CICS region managed to the
+  transactions' goals (TRANSACTION mode only; REGION/BOTH manage it to its own class's goal) — the region class's own
+  goal is not used (WLM Planning p.120, p.122–123). No decision changes: goldens regenerate for the log text and the
+  new interval flag, compare differs only in the log and report text.
 - 2026-11-09: PT-03: the CPU_CAPACITY lines moved to `src/content/incidents.ts`; an RCA now says which line the
   incident hour missed ("CPC CPCA averaged 81 % busy, below the 90 % capacity line"), from figures recorded on the
   incident when its truth is decided; a capacity reduction keeps its normal setting and shows a CPU-Activity-style
