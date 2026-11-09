@@ -48,6 +48,18 @@ describe('vs base (PT-13)', () => {
     for (const id of frozen) expect(db2Accounting(r, MIDWEST, key).find((x) => x.workloadId === id)!.cpuVsBaseline).toBe(shown.get(id)!);
   });
 
+  it('a closed hour with no baseline in force for a workload shows no ratio, not the live one', () => {
+    const r = advance(noon, MIDWEST, content, HOUR);
+    const last = r.smfHours.at(-1)!;
+    const key = `${last.day}:${last.hourOfDay}`;
+    const id = db2Accounting(r, MIDWEST, key).find((x) => x.cpuVsBaseline !== null)?.workloadId;
+    expect(id).toBeDefined();
+    const { [id!]: _dropped, ...rest } = last.cpuVsBase!;
+    const unbased = { ...r, smfHours: [...r.smfHours.slice(0, -1), { ...last, cpuVsBase: rest }] };
+    expect(r.baselines[id!]?.cpu).toBeGreaterThan(0);
+    expect(db2Accounting(unbased, MIDWEST, key).find((x) => x.workloadId === id)!.cpuVsBaseline).toBeNull();
+  });
+
   it('does not learn the healthy baseline from an hour a card disturbed', () => {
     const base = startDay(newRun(MIDWEST, content, 7), content);
     const card: RunState['events'][number] = { uid: 'REGRESSION@0', defId: 'REGRESSION', name: 'REGRESSION', startTick: 0, endTick: 100_000, trigger: 'ACCESS_PATH_REGRESSION', affects: ['RBANK'], endCommands: [], started: true, ended: false };

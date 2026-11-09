@@ -30,9 +30,10 @@ function hourData(run: RunState, key: string): { workloads: Record<string, Workl
   return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}) } : null;
 }
 
-/** A closed hour's frozen ratio; the open hour (and saves from before the freeze) divide by the live baseline. */
+/** A closed hour's frozen ratio (none if the workload had no baseline yet then, e.g. a new workload's first hour);
+ * the open hour, and closed hours from before the freeze, divide by the live baseline. */
 const ratioVsBase = (d: { cpuVsBase?: Record<string, number> }, id: string, cpuMs: number, base: Record<string, number> | undefined): number | null =>
-  d.cpuVsBase?.[id] ?? (base?.cpu ? cpuMs / (1000 * base.cpu) : null);
+  d.cpuVsBase ? (d.cpuVsBase[id] ?? null) : base?.cpu ? cpuMs / (1000 * base.cpu) : null;
 
 const usesDb2 = (w: WorkloadDef) => w.servers.some((s) => s.role.startsWith('DB2.'));
 const perTxnMs = (h: WorkloadHour, k: string) => (h.completions > 0 ? (1000 * (h.parts[k] ?? 0)) / h.completions : 0);
