@@ -1,10 +1,10 @@
 // Behavioural "realism" tests from SPEC §16.
 
+import { PACKS } from '../../src/content/packs';
 import { HARBOURLINE, MIDWEST, SCENARIOS } from '../../src/content/scenarios';
 import { MIDWEST_WORLD } from '../../src/content/scenarios/midwest';
 import { resolveCpc } from '../../src/sim/hw/pools';
-import { ACQUIRED_APP, BOOKING_APP, MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
-import { PREFILL_APP } from '../../src/content/events/revenue-events';
+import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { WorkloadDef } from '../../src/sim/workload/types';
 import { initState } from '../../src/sim/core/init';
 import { cicsRegions, discretionaryCaps, resourceGroupCaps, rgMin, step, swapOut } from '../../src/sim/core/step';
@@ -1067,12 +1067,21 @@ describe('Db2 batch on an image without Db2', () => {
 });
 
 describe('Db2 work runs only where Db2 is licensed', () => {
-  // Workloads that events add during a run: they are not in Scenario.workloads, but they run all the same.
-  const eventWorkloads: Record<string, WorkloadDef[]> = {
-    midwest: [BOOKING_APP, ACQUIRED_APP],
-    revenue: [PREFILL_APP],
-  };
   const isDb2Work = (w: WorkloadDef) => w.servers.some((s) => s.role.startsWith('DB2.'));
+
+  // Workloads that the scenario's own content adds during a run (events, story beats, starting fixes): they are
+  // not in Scenario.workloads, but they run all the same. Derive them so a future ADD_WORKLOAD cannot slip past.
+  const addedWorkloads = (scenarioId: string): WorkloadDef[] => {
+    const game = PACKS[scenarioId]!.game;
+    const commands = [
+      ...game.events.flatMap((e) => [...e.begin, ...e.end]),
+      ...game.story.flatMap((b) => b.commands ?? []),
+      ...Object.values(game.startingFixes ?? {}).flatMap((fixes) => fixes.flatMap((f) => f.commands)),
+    ];
+    const byId = new Map<string, WorkloadDef>();
+    for (const cmd of commands) if (cmd.kind === 'ADD_WORKLOAD') byId.set(cmd.workload.id, cmd.workload);
+    return [...byId.values()];
+  };
 
   for (const sc of Object.values(SCENARIOS)) {
     const db2Images = new Set(sc.addressSpaces.filter((a) => a.role === 'DB2.MSTR').map((a) => a.lparId));
@@ -1083,7 +1092,7 @@ describe('Db2 work runs only where Db2 is licensed', () => {
     });
 
     it(`${sc.id}: every Db2-using workload (scenario and event-added) routes only to images that run Db2`, () => {
-      const db2Workloads = [...sc.workloads, ...(eventWorkloads[sc.id] ?? [])].filter(isDb2Work);
+      const db2Workloads = [...sc.workloads, ...addedWorkloads(sc.id)].filter(isDb2Work);
       expect(db2Workloads.length).toBeGreaterThan(0);
       for (const w of db2Workloads) {
         expect(Object.keys(w.routing).length, `${w.id} has no routing`).toBeGreaterThan(0);
@@ -1092,9 +1101,11 @@ describe('Db2 work runs only where Db2 is licensed', () => {
     });
 
     it(`${sc.id}: Db2 batch with a system affinity is pinned only to images that run Db2`, () => {
-      const pinned = sc.batchNetwork(42, 0, 1).filter((j) => j.usesDb2 && j.sysaff !== null);
-      expect(pinned.length).toBeGreaterThan(0);
-      for (const j of pinned) expect(db2Images.has(j.sysaff!), `${j.name} pinned to ${j.sysaff}`).toBe(true);
+      for (const dayOfMonth of [1, 30]) {
+        const pinned = sc.batchNetwork(42, 0, dayOfMonth).filter((j) => j.usesDb2 && j.sysaff !== null);
+        expect(pinned.length).toBeGreaterThan(0);
+        for (const j of pinned) expect(db2Images.has(j.sysaff!), `${j.name} pinned to ${j.sysaff} on day ${dayOfMonth}`).toBe(true);
+      }
     });
   }
 });

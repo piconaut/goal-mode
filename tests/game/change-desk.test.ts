@@ -152,6 +152,31 @@ describe('cancel', () => {
   });
 });
 
+describe('routing placement', () => {
+  const route = (routing: Record<string, number>): Command => ({ kind: 'SET_ROUTING', workloadId: 'MOBILE', routing });
+
+  it('refuses to put Db2 work on an LPAR that does not run Db2, and charges nothing', () => {
+    const r = fresh();
+    const out = requestChange(r, content, { label: 'MOBILE to SYSP', commands: [route({ SYSP: 1 })] });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/MOBILE needs .*DB2.* on SYSP/);
+    expect(out.run.hoursLeft).toBe(r.hoursLeft);
+    expect(out.run.changes).toHaveLength(0);
+    expect(requestChange(r, content, { label: 'MOBILE split', commands: [route({ PROD1: 0.5, PROD2: 0.5 })] }).ok).toBe(true);
+  });
+
+  it('refuses unknown LPARs in a routing change', () => {
+    expect(requestChange(fresh(), content, { label: 'MOBILE to nowhere', commands: [route({ PRDQ: 1 })] }).message).toMatch(/No LPAR PRDQ/);
+  });
+
+  it('applies the same check to a workload added during the run', () => {
+    const mobile = MIDWEST.workloads.find((w) => w.id === 'MOBILE')!;
+    const out = requestChange(fresh(), content, { label: 'new app', commands: [{ kind: 'ADD_WORKLOAD', workload: { ...mobile, id: 'NEWAPP', routing: { SYSP: 1 } } }] });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/NEWAPP needs .*DB2.* on SYSP/);
+  });
+});
+
 describe('change desk helpers', () => {
   const cfg = buildView(fresh(), MIDWEST).config;
   const prod1 = cfg.lpars.find((l) => l.id === 'PROD1')!;

@@ -287,17 +287,22 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   same tick is no longer missed), and a restart clears the abandoned attempt's `failCode` so a successful rerun cannot
   leave a stale DSNE100I on the night's RCA.
 - [x] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug, closed 2026-11-08).** Same case: the job's CPU
-  lands only on the products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Moot for batch since
-  2026-11-07 (the job fails at connect and uses no CPU). Checked 2026-11-08: batch is blocked by the DSNE100I connect
-  failure above, and online Db2 work routes only to images where a DB2.MSTR runs in every shipped scenario: the
-  scenario workloads plus the event-added BOOKING, ACQBANK and PREFILL apps; the routing editor offers only a
-  workload's existing shares. Invariant test "Db2 work runs only where Db2 is licensed" (`tests/sim/realism.test.ts`)
-  pins each scenario's Db2 product list to its DB2.MSTR images, every Db2-using workload's routing keys to those
-  images, and pinned Db2 batch to them too. One code-only gap remains: `SET_ROUTING` names a workload but the sim
-  state holds no definitions for the scenario's own workloads, so `applyCommand` cannot tell which of them use Db2; a
-  programmatic command could route Db2 work to a Db2-less image, where the DB2 server CPU is dropped rather than
-  billed. No shipped content, UI control, event or CLI path does this. Work on a Db2-less image is intentionally not
-  billed to Db2: no Db2 can run there, and SCRT bills a product on the LPARs where it executes.
+  lands only on the products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Checked and guarded
+  2026-11-08:
+  - Batch is blocked by the DSNE100I connect failure above: a Db2 job that starts on a Db2-less image uses no CPU there.
+  - Every shipped Db2-using workload routes only to images where a DB2.MSTR runs, including the workloads that events,
+    story beats and starting fixes add. The invariant test derives that list from each scenario's own content, so a
+    future ADD_WORKLOAD cannot slip past.
+  - The game layer now refuses a routing change that would put work on an LPAR without the address spaces its server
+    roles and host region need (`game/workloads.ts` `placementRefusal`, called from `dryRunRefusal`). The Change Desk
+    and the play CLI's documented `json change` path therefore reject e.g. MOBILE→SYSP and charge nothing; change-desk
+    tests cover both SET_ROUTING and ADD_WORKLOAD.
+  Invariant test "Db2 work runs only where Db2 is licensed" (`tests/sim/realism.test.ts`) pins each scenario's Db2
+  product list to its DB2.MSTR images, every Db2-using workload's routing keys to those images, and pinned Db2 batch
+  to them (day 1 and month-end day 30). Work on a Db2-less image is deliberately not billed to Db2: no Db2 can run
+  there, and SCRT bills a product on the LPARs where it executes. Residual: the raw `SET_ROUTING` sim command still
+  accepts any map when called directly on the sim, which has no scenario, but no game, UI, event or CLI path reaches
+  it that way.
 - [x] **A repeat XLOG_LOOP burns no CPU (bug, fixed).** Expiry and cancellation now remove CICSXLOG from PROD1
   instead of leaving a zero-CPU address space. Each start clears the old zero modifier and replaces any duplicate
   extra address spaces with the same jobname and LPAR, so older saves recover on the next occurrence. The Revenue
