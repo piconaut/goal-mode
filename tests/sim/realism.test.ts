@@ -138,6 +138,26 @@ describe('zIIP offload flaw F7', () => {
     expect(ddf('PROD2').ziipEngines).toBe(0);
     expect(ddf('PROD2').iipcpEngines).toBeGreaterThan(0);
   });
+
+  it('reports IIPCP only where a zIIP is defined (no zIIP at all is plain CP)', () => {
+    let s = initState(7, MIDWEST);
+    for (let i = 0; i < 6 * 360; i++) s = step(s, [], MIDWEST); // to midday
+    const lt = (lpar: string) => s.last.lpars.find((l) => l.lparId === lpar)!;
+    const sum = (list: readonly { cpEngines: number; iipcpEngines: number }[], f: 'cpEngines' | 'iipcpEngines') => list.reduce((a, t) => a + t[f], 0);
+    // DEVT has no zIIP defined (online or reserved): its eligible time on CPs is plain CP work, not IIPCP.
+    expect(lt('DEVT').iipcpReported).toBe(false);
+    expect(sum(lt('DEVT').scps, 'iipcpEngines')).toBeGreaterThan(0); // the model still runs it as zIIP-eligible
+    const devt = reportedTicks(lt('DEVT').scps, lt('DEVT').cics, false, lt('DEVT').iipcpReported);
+    expect(sum(devt, 'iipcpEngines')).toBe(0);
+    expect(sum(devt, 'cpEngines')).toBeCloseTo(sum(lt('DEVT').scps, 'cpEngines') + sum(lt('DEVT').scps, 'iipcpEngines'));
+    // PROD2 has no zIIP online but one defined (reserved), so RMF reports it for planning (Init & Tuning p.431).
+    expect(lt('PROD2').iipcpReported).toBe(true);
+    expect(sum(reportedTicks(lt('PROD2').scps, lt('PROD2').cics, false, lt('PROD2').iipcpReported), 'iipcpEngines')).toBeGreaterThan(0);
+    // The closed RMF interval rows show the same thing.
+    const rows = s.rmf.intervals.flatMap((iv) => Object.values(iv.wlm));
+    expect(rows.filter((r) => r.lparId === 'DEVT').reduce((a, r) => a + r.applIipcpPct, 0)).toBe(0);
+    expect(rows.filter((r) => r.lparId === 'PROD2').reduce((a, r) => a + r.applIipcpPct, 0)).toBeGreaterThan(0);
+  });
 });
 
 describe('determinism', () => {

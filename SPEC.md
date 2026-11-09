@@ -379,7 +379,10 @@ Algorithm per pool:
    the mix. CICS and DDF slices sharing a service class keep separate overflow permissions but
    one service-class goal/report row. No per-region transaction assignment is modelled.
    If the LPAR has no zIIPs, *all* eligible work runs on CP. That costs MSU and software
-   dollars, a planted flaw in the starting scenario.
+   dollars, a planted flaw in the starting scenario. IIPCP is reported only where a zIIP is defined
+   to the image, online or reserved; with none, the eligible time on CPs is plain CP work and APPL% IIPCP
+   is 0 (*Init & Tuning* 3.1 p.431; PROJECTCPU defaults NO, p.434). PROD2's reserved-only zIIP keeps its
+   IIPCP reporting for planning (p.431).
 5. **Blocked workload support:** periods that got 0 CPU for longer than `BLWLINTHD` (default
    20 s) get a trickle of promotion, capped at `BLWLTRPCT` (default 0.5%) of LPAR capacity.
    This matters for priority inversion (§5.6). It does not apply to zIIPs
