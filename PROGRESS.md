@@ -49,10 +49,24 @@ been running for a while, inbox hints arrive that start vague and get more speci
 duplicate request IDs). "Turn on retry backoff in the API gateway" (`MOBILE_BACKOFF`) becomes available only once the
 player has pinned evidence that identifies a retry storm, such as a transaction rate metric. There may be a better
 form of proof that isn't in the game yet.
+Design draft: [docs/rca-design.md](docs/rca-design.md) §5 (unlock recipes per card, cost of a wrong diagnosis, hint
+ladder, open levers, bots), on top of the truth model it proposes in §4.
 Notes from discussion:
-- **Prerequisite: RCA judging must be trustworthy first.** In the user's playthroughs it has been flaky and often
-  unfair (see "Incident truth, RCA and evidence" under Playtest round 2). Gating fixes on it would turn every judging
-  bug into a blocked fix, so that list (and a general review of `judgeEvidence` / incident truth) comes first.
+- **Prerequisite: RCA judging must be trustworthy first. Reviewed 2026-11-09; what remains:** the whole chain was
+  audited (docs/rca-design.md §2 truth inventory for every card and flaw, §3 fourteen rule findings with repros). It
+  is not yet trustworthy, for structural reasons: one label where two answers are defensible, blame through
+  hand-written `affects` lists (collateral victims get `POLICY`/`GROWTH`), long-running cards and an alphabetical
+  tie-break, a capacity/priority test that takes the policy's importances as given, and evidence that does not
+  discriminate. Before D1 can gate anything:
+  1. the ready fixes BACKLOG PT-25 … PT-30, PT-46, PT-47 (a mid-hour fix erasing the mechanism, cards without
+     `mechanisms`, capping by one tick, pins from unrelated systems, evidence judged against today's classification,
+     missing pin sources);
+  2. the user's answers to docs/rca-design.md §7 Q1–Q7, which unblock the truth model: accepted answer sets (PT-31),
+     pin relations and proof recipes (PT-33, PT-34), grouping by cause (PT-35), card footprints (PT-36);
+  3. then D1 itself (Q8, Q9): problem records (PT-43) and proof-gated fixes (PT-45). The retry storm, D1's example,
+     cannot be proven with any data the game has (it is identical to a campaign in every report); PT-44 researches a
+     discriminator and until then its fix stays ungated.
+  The primary-label changes (PT-37 … PT-42) improve fairness but D1 does not depend on them.
 - Proof should be a mechanism, not a single pin. A rate pin alone can't tell a retry storm from a demand surge. The
   discriminator is END/S up at unchanged CPU per transaction, so the unlock might take a rate pin plus a pin that
   rules out a surge, judged by the existing evidence matcher (`src/content/evidence.ts`).
@@ -386,7 +400,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Exported saves arriving with every backslash doubled (playtest round 2, D20 export): halving them gives exactly what
   `encodeRunJson` writes, so something on the artifact host's download path doubled them (not verified). Import
   (browser and play CLI) repairs it. If it recurs, look at how the artifact host saves a Blob download.
-- Waiting on the user: nothing open; #111 Q1–Q3 are decided.
+- Retry storm against real demand (RCA audit 2026-11-09): what does an analyst read to tell client retries from a
+  campaign? Candidates are rolled-back or abnormally ended DDF threads in Db2 accounting or statistics and connection
+  timeouts; a first search of Db2 13 Managing Performance did not confirm a field. BACKLOG PT-44.
+- Resource-group capping as an RCA mechanism: WLMGL CAP delay is resource-group and discretionary capping (RMF Report
+  Analysis p.540), so should a class held by a resource-group maximum be judged `CAPPING` (docs/rca-design.md §4.3
+  proposes yes, with the help text widened from "the image" to "the image or the class")?
+- zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
+  under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
+  policy); no IBM source decides it.
+- Waiting on the user: docs/rca-design.md §7 Q1–Q10 (RCA truth model and D1). #111 Q1–Q3 are decided.
 
 ## Known approximations and risks
 
@@ -414,6 +437,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: RCA judging and incident truth audited end to end (design only; no sim or game code changed, goldens
+  unchanged). [docs/rca-design.md](docs/rca-design.md) has the truth inventory for all 27 Midwest cards, the
+  Harbourline and Revenue cards and the scenario flaws, fourteen rule findings with repros (replays on Midwest,
+  Harbourline and Revenue seed 42 with cards injected as `tests/game/power-cap.test.ts` does, plus direct calls to
+  `triggerOf`/`mechanismOf`/`judgeEvidence`), a proposed truth model and a D1 draft. BACKLOG: PT-25 … PT-30, PT-46,
+  PT-47 and RF-02 are ready; PT-31 … PT-45 wait for the user's answers to its §7. Ledger: two Db2 rows (the wait for
+  a thread at MAXDBAT is not traced; QDSTQDBT via `-DISPLAY DDF DETAIL`), and the WLMGL CAP-delay row now says the
+  report matches. Next: the user's decisions on §7; the ready entries can go to `dev-loop` now.
 - 2026-11-09: PT-06: RMF and Monitor III report IIPCP only where a zIIP is defined to the image (online or
   reserved; *Init & Tuning* 3.1 p.431, p.434 with PROJECTCPU default NO). On an image with none (Midwest DEVT/SYSP,
   harbourline DEV1) the eligible time on CPs stays plain CP work: `reportedTicks` folds it into APPL% CP and IIPCP
