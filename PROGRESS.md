@@ -300,9 +300,23 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   Invariant test "Db2 work runs only where Db2 is licensed" (`tests/sim/realism.test.ts`) pins each scenario's Db2
   product list to its DB2.MSTR images, every Db2-using workload's routing keys to those images, and pinned Db2 batch
   to them (day 1 and month-end day 30). Work on a Db2-less image is deliberately not billed to Db2: no Db2 can run
-  there, and SCRT bills a product on the LPARs where it executes. Residual: the raw `SET_ROUTING` sim command still
-  accepts any map when called directly on the sim, which has no scenario. No player-facing path reaches it that way;
-  the dev realism lab (`npm run lab`) still sends raw commands straight to the sim.
+  there, and SCRT bills a product on the LPARs where it executes. Residual: the placement check runs only in
+  `dryRunRefusal`, which a change with a `fixId` skips, so a `json change` carrying a fix id plus a `SET_ROUTING` can
+  still put MOBILE on SYSP. That belongs to the item below. The dev realism lab (`npm run lab`) also sends raw
+  commands straight to the sim, which has no scenario.
+- [ ] **A player change can carry any sim command (bug, found 2026-11-09 in review of piconaut/goal-mode#238).** The
+  play CLI's `json change` takes `req.commands` from the client as-is:
+  - Event-only kinds plan like any change, at the 0.5 h default: `ADD_CPC_ENGINES` (free engines), `SET_MLC_PRICE`,
+    `SET_MODIFIER`, `ADD_WORKLOAD`, and `REMOVE_ADDRESS_SPACE` (ends XLOG_LOOP without its fix, or removes an AOR that
+    work is routed to).
+  - A request with a `fixId` skips `dryRunRefusal` but still applies its commands, and any fix id is accepted with
+    no event active. On a live day, `CANCEL_RUNAWAY` plus `ADD_CPC_ENGINES` took CPCA from 8 to 12 CPs for 0.5 h and
+    no capex.
+  - Allowed kinds carry event-only fields: `SET_CF degrade`, `SET_LCU extraIops` and `SET_CICS leak` end their
+    events without diagnosis. `SET_LCU hotSkew` has no limit through JSON, unlike the UI.
+  Suggested fix: allow only the kinds with an engineer-hours cost (`HOURS` in `game/catalog.ts`), refuse commands
+  alongside a `fixId` or `hardwareId`, and check event-only fields. A tested allowlist was written and then reverted
+  out of #238 as out of scope (commit f4a8dec).
 - [x] **A repeat XLOG_LOOP burns no CPU (bug, fixed).** Expiry and cancellation now remove CICSXLOG from PROD1
   instead of leaving a zero-CPU address space. Each start clears the old zero modifier and replaces any duplicate
   extra address spaces with the same jobname and LPAR, so older saves recover on the next occurrence. The Revenue
