@@ -33,10 +33,6 @@ const HOURS: Partial<Record<Command['kind'], number>> = {
   RESTART_JOB: 0.5,
 };
 
-/** The commands a player change may carry: the ones with an engineer-hours cost. Everything else (engines,
- * prices, modifiers, address spaces, workloads, CF failures) is for events, hardware orders and the game itself. */
-export const CHANGE_DESK_KINDS: ReadonlySet<Command['kind']> = new Set(Object.keys(HOURS) as Command['kind'][]);
-
 const PRSM_KINDS: ReadonlySet<Command['kind']> = new Set(['SET_WEIGHT', 'SET_LOGICAL', 'SET_DEFINED_CAPACITY', 'SET_CAPACITY_GROUP', 'SET_ABSOLUTE_CAP']);
 
 export function hoursFor(commands: readonly Command[], perks: readonly string[]): number {

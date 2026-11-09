@@ -296,12 +296,7 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   - The game layer now refuses a routing change that would put work on an LPAR without the address spaces its server
     roles and host region need (`game/workloads.ts` `placementRefusal`, called from `dryRunRefusal`). The Change Desk
     and the play CLI's documented `json change` path therefore reject e.g. MOBILE→SYSP and charge nothing; change-desk
-    tests cover SET_ROUTING.
-  - A player change may carry only change-desk commands, the kinds with an engineer-hours cost
-    (`game/catalog.ts` `CHANGE_DESK_KINDS`). Before this, `json change` accepted any `Command`: `ADD_CPC_ENGINES`
-    (free engines), `SET_MLC_PRICE`, `SET_MODIFIER`, `ADD_WORKLOAD` and `REMOVE_ADDRESS_SPACE` (cancel CICSXLOG
-    without the fix, or remove an AOR that work is routed to) all planned at 0.5 h. Hardware orders and fixes keep
-    their own paths.
+    tests cover both SET_ROUTING and ADD_WORKLOAD.
   Invariant test "Db2 work runs only where Db2 is licensed" (`tests/sim/realism.test.ts`) pins each scenario's Db2
   product list to its DB2.MSTR images, every Db2-using workload's routing keys to those images, and pinned Db2 batch
   to them (day 1 and month-end day 30). Work on a Db2-less image is deliberately not billed to Db2: no Db2 can run
