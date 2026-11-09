@@ -72,7 +72,8 @@ export interface WlmCandidateTrace {
   localPi: number | null;
   dp: number;
   bottleneck: Bottleneck | null;
-  /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: two receivers were already assessed; ASSESSED: trials below. */
+  /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: two receivers were already assessed at this importance;
+   * ASSESSED: trials below. */
   outcome: 'NOT_FIXABLE' | 'BUDGET' | 'ASSESSED';
   trials: WlmTrialTrace[];
 }
@@ -130,6 +131,10 @@ export function enforceCpuProtection(
 
 const RECEIVER_VALUE_FRAC = 0.1;
 const DONOR_CREDIT_FLOOR = 0.9;
+/** Projections are the expensive part, so the search assesses at most this many fixable receivers per importance
+ * level, then goes on at the next importance (SG24-7621 p.105–106: the search moves down the importances when no
+ * receiver can be selected). A receiver whose trials find no move of net value does not keep lower importances out. */
+const RECEIVERS_PER_IMPORTANCE = 2;
 
 export function policyAdjust(input: AdjustInput): AdjustOutput {
   const { def, system } = input;
@@ -267,11 +272,17 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     return out;
   };
   let projected = 0;
+  let projectedImp = -1;
   for (const receiver of candidates) {
-    // Projection is the expensive part: assess at most two fixable receivers per interval.
-    if (projected >= 2) {
-      if (!tracing) break;
-      traceOf(receiver, null, 'BUDGET');
+    const impOf = info[receiver]!.importance;
+    // Projection is the expensive part: assess at most two fixable receivers per importance, then move on.
+    if (impOf !== projectedImp) {
+      projectedImp = impOf;
+      projected = 0;
+    }
+    if (projected >= RECEIVERS_PER_IMPORTANCE) {
+      // Skip, don't stop: lower importances still get their own budget, traced or not.
+      if (tracing) traceOf(receiver, null, 'BUDGET');
       continue;
     }
     const scState = system.scps.find((s) => s.scKey === receiver)!;
@@ -286,7 +297,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const ct = tracing ? traceOf(receiver, btl, 'ASSESSED') : null;
     projected++;
     const rdp = dps[receiver]!;
-    const rImp = info[receiver]!.importance;
+    const rImp = impOf;
     const trials: { trial: Record<string, number>; text: string }[] = [];
 
     const levelsAbove = [...new Set(Object.keys(info).map((k) => dps[k]!))]

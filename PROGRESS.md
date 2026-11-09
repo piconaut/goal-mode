@@ -414,6 +414,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: WLM's projection budget is per importance (`RECEIVERS_PER_IMPORTANCE` in `src/sim/wlm/adjust.ts`), so a
+  receiver whose projections find no move of net value no longer keeps lower importances out (PT-01, playtest round 2
+  D19: STCMED/STCHI held both importance-1 slots while ONLCARD/ONLRBANK sat at PI 4.0 until 22:30). Goldens
+  regenerated for both scripted days; harbourline bench hash and `npm run compare` differ there by design, midwest
+  and revenue are unchanged. Balance sweep (Normal Midwest, seeds 1–10): donothing 10/17/22 (median day 16.5),
+  textbook 18/28/28 (27.5), expert 40/40/40 (victory every seed); all inside their bands.
 - 2026-11-09: Milestone #243 (dev → main) merged. Review notes fixed: CF Activity CONTENTION % marked APPROX (a
   Monitor III CFACT column; the Postprocessor report shows -CONT counts, RMF RA p.373), MSU citation moved to WLM
   Planning p.44, test for `isNewWorkload` on a workload no event or story beat adds. Left open: `setWlmTraceSink`

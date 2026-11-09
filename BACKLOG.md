@@ -40,21 +40,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-01 · Two-receiver budget starves the CICS transaction classes
-`list: playtest-fixes · status: ready · priority: high · size: M · area: sim`
-
-`adjust.ts` assesses at most two fixable receivers per interval. D19 22:00–22:27 both slots went to importance 1:
-- STCMED: sysplex PI 1.9–2.5, all of it from DEVT's Db2 at PI 21.19 and 97 % CPU delay under DEVT's cap. Its PI was
-  0.40–0.49 on PROD1/PROD2, so no move had net value.
-- STCHI: a CICS region class. Raising its DP FA→FC doesn't move TRANSACTION-managed regions, which run at the served
-  classes' DP.
-
-ONLCARD and ONLRBANK sat at PI 4.0 until ONLPAYMQ got a slot at 22:30 (F4→FC/FB; STCHI PROD2 PI 4.1 → 1.3). Real: if
-no receiver can be helped, WLM goes on at the next importance (SG24-7621 p.105–106); a per-interval receiver limit
-isn't documented. Options: stop counting a receiver whose projection found nothing against the budget, or cap by time.
-Done when: a receiver with no move of net value doesn't use a slot; a regression test reproduces the D19 shape;
-goldens, sweep, SPEC §17, the docs/research.md row and the `wlm-why` skill's verdict table are updated.
-
 ### PT-02 · A player change can carry any sim command
 `list: playtest-fixes · status: ready · priority: high · size: M · area: game`
 

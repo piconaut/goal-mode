@@ -1018,7 +1018,9 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
     expect(lines.some((l) => /ONLHI#1 .*BTLNK=OTHER/.test(l))).toBe(false);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
-    expect(lines.find((l) => /RCVR=/.test(l))).toMatch(/RCVR=\S+ PI=4\.00 BTLNK=CPU \S+ DP /);
+    // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106),
+    // so the first accepted move need not be another PI-4 class: it is a CPU fix with a DP move.
+    expect(lines.find((l) => /RCVR=/.test(l))).toMatch(/RCVR=\S+ PI=[\d.]+ BTLNK=CPU \S+ DP /);
   }, 180_000);
 });
 
