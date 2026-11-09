@@ -35,6 +35,7 @@ export function periodTicks(
   const rcMap: Record<string, ReportClassTick> = {};
   const rcs: ReportClassTick[] = [];
   const cics = scpsOnly ? undefined : reg?.targets;
+  const managedToTxn = reg?.managedToTxn ?? false;
   for (let i = 0; i < n; i++) {
     const s = slices[i]!;
     const r = results[i]!;
@@ -48,12 +49,12 @@ export function periodTicks(
       }
       if (!rt.members.includes(s.scKey)) rt.members.push(s.scKey);
       addSliceTo(rt, s, r, true);
-      if (cicsTxn) tagCicsSlice(rt, s, r, cics.regionKeys);
+      if (cicsTxn) tagCicsSlice(rt, s, r, cics.regionKeys, true, managedToTxn);
     }
     const t = scps[scpOfAgg[sliceAgg[i]!]!]!;
     const untracked = reg !== undefined && reg.rtTracked === false && s.kind === 'TXN' && reg.keys.includes(s.scKey);
     addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey), !untracked);
-    if (cicsTxn) tagCicsSlice(t, s, r, cics.regionKeys, !untracked);
+    if (cicsTxn) tagCicsSlice(t, s, r, cics.regionKeys, !untracked, managedToTxn);
     if (order[sliceAgg[i]!] !== s.scKey) {
       // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).
       t.srvUsing = (t.srvUsing ?? 0) + r.usingCpu + r.usingZiip + (input.ioPriority === false ? 0 : r.usingIo);

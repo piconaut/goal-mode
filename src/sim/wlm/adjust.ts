@@ -206,7 +206,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
 
   const tracing = traceSink !== null;
   let why: WlmTrialTrace | null = null;
-  // Recorded even without the trace sink: the player-visible log names the best rejected move and why.
+  // Recorded even without the trace sink: the player-visible log names a rejected move and why.
   const reject = (verdict: WlmTrialVerdict, r: [number | null, number | null], detail?: string) => {
     why = { move: '', verdict, receiverPi: r, ...(detail ? { detail } : {}) };
     return false;
@@ -274,8 +274,6 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   };
   let projected = 0;
   let projectedImp = -1;
-  /** The first move tried against the first receiver that could not be helped: the best clue for the log. */
-  let firstReject: { move: string; why: WlmTrialTrace } | null = null;
   for (const receiver of candidates) {
     const impOf = info[receiver]!.importance;
     // Projection is the expensive part: assess at most two fixable receivers per importance, then move on.
@@ -298,6 +296,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       continue;
     }
     const ct = tracing ? traceOf(receiver, btl, 'ASSESSED') : null;
+    /** The first move tried against this receiver: the clue the log gives when none of them paid off. */
+    let firstReject: { move: string; why: WlmTrialTrace } | null = null;
     projected++;
     const rdp = dps[receiver]!;
     const rImp = impOf;
@@ -349,13 +349,13 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       }
       if (!firstReject && why) firstReject = { move: tr.text, why };
     }
-    notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value`);
+    // No move taken: say what this receiver's first move would have done, so the log answers "why not?".
+    const whyNot = firstReject ? ` (${firstReject.move} rejected: ${playerReason(firstReject.why)})` : '';
+    notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}`);
   }
-  // No move taken: say what the first hopeless receiver's move would have done, so the log answers "why not?".
-  const whyNot = firstReject ? ` (${firstReject.move} rejected: ${playerReason(firstReject.why)})` : '';
   return finish({
     dps,
-    log: notes.length > 0 ? `${input.clockText} ${system.lparId} ${notes[0]}${whyNot}` : null,
+    log: notes.length > 0 ? `${input.clockText} ${system.lparId} ${notes[0]}` : null,
     protect,
   });
 }

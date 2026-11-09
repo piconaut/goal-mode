@@ -513,11 +513,11 @@ for importance in 1..5:
   less important transactions in the same region a "free ride").
 - A *WLM Activity* log (unlocked by Monitor III) shows each decision:
   `10:41:20 SYS1 RCVR=DDFMOB P1 PI=1.84 BTLNK=CPU DONOR=BATCHPRD DP F3→F1`.
-  With no move taken it names the best move it projected and why it failed, so "why didn't WLM raise it?" is answered
+  With no move taken it names the first move it tried and why it failed, so "why didn't WLM raise it?" is answered
   from the log alone: `… ONLCARD#1 PI=4.00 BTLNK=CPU no action with net value (ONLCARD#1 DP F4→F6 rejected: harms
-  DDFMOB#1, equal importance)`. On WLMGL and SYSWKM a CICS transaction class is marked as managed through the regions
-  that serve it: the regions run at the served classes' DP, and the class's own PI is reported, not managed to
-  (WLM Planning p.111, p.122–123).
+  DDFMOB#1, equal importance)`. On WLMGL and SYSWKM a CICS region managed to the transactions' goals (Manage Region
+  Using Goals Of = TRANSACTION) is marked as managed that way: its own service class's goal is not used, while under
+  REGION or BOTH the region is managed to its own class's goal and nothing is said (WLM Planning p.120, p.122–123).
 
 #### 5.5.5 Discretionary goal management
 

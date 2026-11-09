@@ -97,6 +97,24 @@ describe('CICS shared-region Honor Priority', () => {
     expect(slices.filter((s) => s.role === 'CICS.AOR' || s.role === 'CICS.TOR').every((s) => !s.mayOverflow)).toBe(true);
   });
 
+  it.each([['TRANSACTION', true], ['REGION', undefined], ['BOTH', undefined]] as const)(
+    'marks the image %s-managed only when every region is (PT-05 B2; WLM Planning p.122)',
+    (mode, expected) => {
+      const i = input(policy(false, mode));
+      const reg = cicsRegions(i.def, buildSlices(i), byId, i.addressSpaces, i.lpar.id).regions!;
+      expect(reg.managedToTxn).toBe(expected);
+    },
+  );
+
+  it('a mixed image is not marked as TRANSACTION-managed', () => {
+    const i = input();
+    i.def.subsystems.find((ss) => ss.subsystem === 'STC')!.rules.unshift(
+      { qualifier: 'TN', pattern: 'CICSTOR1', serviceClass: 'STCHI', reportClass: null, children: [], regionMode: 'BOTH' },
+    );
+    const reg = cicsRegions(i.def, buildSlices(i), byId, i.addressSpaces, i.lpar.id).regions!;
+    expect(reg.managedToTxn).toBeUndefined();
+  });
+
   it('changes only TRANSACTION address spaces when AOR/TOR modes differ on one image', () => {
     const i = input();
     const stc = i.def.subsystems.find((ss) => ss.subsystem === 'STC')!;

@@ -1,6 +1,6 @@
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { enforceCpuProtection, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
-import { evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
+import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
@@ -144,6 +144,26 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
     const { out } = run(0.4);
     expect(out.log).toMatch(/no action with net value \(.+\)/);
     expect(out.log).toMatch(/rejected: harms DDFPRD#1, equal importance/);
+  });
+
+  it("keeps the rejected move on its own receiver's line, not another class's note (PT-05 B3)", () => {
+    // An importance-1 class is I/O-bound (not WLM-fixable) and is assessed first; the equal-importance pair that
+    // cannot be helped comes after. Its clue must not be glued to the earlier class's note.
+    const def = structuredClone(BASEPOL);
+    def.classes.push({ ...structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!), id: 'IONOW', periods: [{ goal: { kind: 'VEL' as const, velocity: 10 }, importance: 1, durationSu: null }] });
+    const slices = [slice('A', 'ONLMED#1', 2.5, 0.5), { ...slice('B', 'DDFPRD#1', 1, 0.5), baseLatencySec: 0.4 }];
+    const evalInput = { cpCapacityEngines: 3.5, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = { 'ONLMED#1': 230, 'DDFPRD#1': 240, 'IONOW#1': 0xf0 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = {
+      lparId: 'SYS1',
+      scps: [...cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+        { scKey: 'IONOW#1', dp: 0xf0, starvedSec: 0, acc: { ...emptyAcc(), using: 0.01, delay: 5, delayIo: 5 } }],
+    };
+    const ionow = { ...emptyScpTick('IONOW#1', 0xf0), usingIo: 5, delayIo: 5 };
+    const out = policyAdjust({ def, system, evalInput, current: [...cur.scps, ionow], sysplexPi: {}, clockText: 'T' });
+    expect(out.log).toMatch(/IONOW#1 PI=\S+ BTLNK=IO not WLM-fixable$/);
+    expect(out.log).not.toContain('rejected:');
   });
 
   it('the investigation trace names why each trial failed and changes no decision', () => {

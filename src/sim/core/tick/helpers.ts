@@ -389,6 +389,10 @@ export function cicsRegions(
   const servers: string[] = [];
   let txnMode: 'TRANSACTION' | 'REGION' = 'REGION';
   let rtTracked = false;
+  // Every serving region managed to the served transactions' goals: only then is the region class's own goal
+  // unused (WLM Planning p.120, p.122; REGION and BOTH manage the region to its own class's goal).
+  let anyServer = false;
+  let managedToTxn = true;
   for (const s of slices) {
     if (s.kind !== 'AS' || (s.role !== 'CICS.AOR' && s.role !== 'CICS.TOR')) continue;
     const a = addressSpaces.find((x) => x.lparId === lparId && x.jobname === s.jobname);
@@ -396,14 +400,18 @@ export function cicsRegions(
     // REGION: "Transaction response times reported by these regions is not reported in any service class";
     // TRANSACTION and BOTH track the completions (WLM Planning 3.1 p.102-103).
     if (m !== 'REGION') rtTracked = true;
-    if (m !== 'TRANSACTION') continue;
+    anyServer = true;
+    if (m !== 'TRANSACTION') {
+      managedToTxn = false;
+      continue;
+    }
     servers.push(s.key);
     if (s.role === 'CICS.AOR') txnMode = 'TRANSACTION';
   }
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   const transactionKeys = new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key));
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey) } };
+  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey), ...(anyServer && managedToTxn ? { managedToTxn } : {}) } };
 }
 
 /** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a

@@ -731,7 +731,7 @@ export function explainWlmLog(line: string): string {
     return `On ${notFix[1]}, ${notFix[2]} misses its goal (PI ${notFix[3]}) but is mostly ${BTLNK_TEXT[notFix[4]!] ?? notFix[4]}: dispatching priority can't fix that, so WLM skips it. Look at the delay's real cause.`;
   const noNet = /(\S+) (\S+) PI=([\d.]+) BTLNK=(\S+) no action with net value(?: \((.+) rejected: (.+)\))?/.exec(line);
   if (noNet) {
-    const tried = noNet[5] ? ` Best move tried: ${noNet[5]}, rejected ${noNet[6]}.` : '';
+    const tried = noNet[5] ? ` First move tried: ${noNet[5]}, rejected ${noNet[6]}.` : '';
     return `On ${noNet[1]}, ${noNet[2]} misses its goal (PI ${noNet[3]}) but every move WLM projected would hurt donors more than it helps.${tried} There isn't enough capacity to go round at this importance.`;
   }
   return line;
@@ -810,8 +810,8 @@ function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[])
       pi: r.pi,
       states: { active: pct(w.active), ready: pct(w.ready), idle: null, lock: pct(w.waitingLock), io: pct(w.waitingIo), conv: null, prod: pct(w.waitingProd), misc: pct(w.waitingMisc) },
       servers: srv,
-      ...(srv.some((x) => x.mgmt === 'TRANSACTION')
-        ? { note: "The AORs run at this class's DP (TRANSACTION mode): this PI is reported, not managed to; WLM manages the regions to the goals they serve (WLM Planning p.111, p.122-123)." }
+      ...(w.managedToTxn
+        ? { note: "The AORs serving this class are managed to its goal (TRANSACTION mode); their region class's own goal is not used (WLM Planning p.120, p.122)." }
         : {}),
     };
   });

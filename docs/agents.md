@@ -17,7 +17,7 @@ npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
 npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables incl. PROCU jobs (needs the RMF_MON3 tool)
 npm run -s play -- runs/a.json mon3 PRDA --at D1 09:40   # a past range from the history (the values a pin reads; kept 48 h in runs/a.mon3.json)
-npm run -s play -- runs/a.json wlmlog PROD1 --grep RCVR   # the Monitor's WLM activity log (last 60 lines; live only with RMF_MON3): receivers, donors, DP moves, and for "no action with net value" the best move it tried and why it was rejected
+npm run -s play -- runs/a.json wlmlog PROD1 --grep RCVR   # the Monitor's WLM activity log (last 60 lines; live only with RMF_MON3): receivers, donors, DP moves, and for "no action with net value" the first move it tried and why it was rejected
 npm run -s play -- runs/a.json finance    # Finance tab: bill so far; under TFP, MSU-hours vs the prorated baseline, projection and overage $ per MSU-hour by LPAR
 npm run -s play -- runs/a.json capacity   # CPC engines and MSU, LPAR logical CPs/weights/defined capacity, job class initiators, capacity changes by day
 npm run -s play -- runs/a.json batch      # last batch night by stream (needs SMF30_BATCH, like smf BATCH): LPARs, start/end, queueing, stretch

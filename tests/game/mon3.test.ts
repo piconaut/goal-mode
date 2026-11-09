@@ -71,10 +71,10 @@ describe('WLM log explanations', () => {
     expect(explainWlmLog('D1 12:00:10 PROD2 DDFPRD#1 PI=2.10 BTLNK=OTHER not WLM-fixable')).toMatch(/can't fix that/);
   });
 
-  it('repeats the best rejected move and why (PT-05)', () => {
+  it('repeats the first rejected move and why (PT-05)', () => {
     const text = explainWlmLog('D1 12:00:10 PROD1 ONLCARD#1 PI=4.00 BTLNK=CPU no action with net value (ONLCARD#1 DP F4→F6 rejected: harms DDFMOB#1, equal importance)');
-    expect(text).toMatch(/Best move tried: ONLCARD#1 DP F4→F6, rejected harms DDFMOB#1, equal importance\./);
-    expect(explainWlmLog('D1 12:00:10 PROD1 ONLCARD#1 PI=4.00 BTLNK=CPU no action with net value')).not.toMatch(/Best move tried/);
+    expect(text).toMatch(/First move tried: ONLCARD#1 DP F4→F6, rejected harms DDFMOB#1, equal importance\./);
+    expect(explainWlmLog('D1 12:00:10 PROD1 ONLCARD#1 PI=4.00 BTLNK=CPU no action with net value')).not.toMatch(/First move tried/);
   });
 });
 
