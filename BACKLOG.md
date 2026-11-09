@@ -340,10 +340,3 @@ None open. Completed fixes are in SPEC §17 and docs/research.md.
 959 lines at #217; the next candidate after the `step.ts` split (#217), done the same way: stage bodies moved verbatim
 into modules, public helpers re-exported. Done when: bench hashes on all three scenarios and `npm run compare` are
 unchanged.
-
-### CL-03 · Lab harness: say which test rejected each WLM trial
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Left from the playtest agents' update (round 2): `npm run lab` should log which test rejected each WLM trial, to
-diagnose "no action with net value" without patching `adjust.ts`. First check whether `npm run inspect -- <file> wlm`
-(added 2026-11-07) already covers the need; if so, delete this entry and point the realism auditor's brief at it.
