@@ -492,7 +492,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: null,
     forewarning: null,
     announcement: 'Facilities: "Cooling fault on the raised floor; the CPC is running at reduced capacity until the chiller is fixed."',
-    clue: 'SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEVT, defer discretionary batch, protect importance-1 work.',
+    clue: 'Partition Data: CHANGE REASON=MACHINE on the CPC line; SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEVT, defer discretionary batch, protect importance-1 work.',
   },
   {
     // A month-old HSM migration policy change makes hundreds of users' data sets recall from ML2 at once.

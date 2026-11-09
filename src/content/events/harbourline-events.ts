@@ -115,7 +115,7 @@ const HB_CARDS: EventDef[] = [
   adapt('MONITOR_CREEP', { affects: ['MOBILE', 'RETAIL'] }),
   adapt('POWER_CAP', {
     affects: ['MKTORD', 'CARDS'],
-    clue: 'SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEV1 and TST1, defer discretionary batch, protect importance-1 work.',
+    clue: 'Partition Data: CHANGE REASON=MACHINE on the CPC line; SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEV1 and TST1, defer discretionary batch, protect importance-1 work.',
   }),
   adapt('HSM_RECALL_STORM', { affects: ALL_ONLINE }),
   adapt('GREEN_IT_COD', {

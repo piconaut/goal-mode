@@ -22,6 +22,11 @@ export interface CpcConfig {
   id: string;
   generation: string;          // key into content hardware generations
   capacitySetting: 4 | 5 | 6 | 7;
+  /** The capacity setting before a reduction (temporary capacity loss or an operator downgrade), so the
+   * reports can show SMF70CAI. Absent while the machine runs at its normal setting. */
+  peakCapacitySetting?: 4 | 5 | 6 | 7;
+  /** SMF70CCR for that reduction: 1 = operator, 2 = external (e.g. a site power cap). */
+  capacityReasonCode?: number;
   /** Active physical engines per pool (shared + dedicated). */
   engines: Record<PoolType, number>;
   memoryGb: number;

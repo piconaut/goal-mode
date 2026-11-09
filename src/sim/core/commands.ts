@@ -2,6 +2,7 @@
 // state or a validation error. Commands are plain data so runs can be replayed.
 
 import { CF_FAILURE } from '../../content/cf';
+import { CAPACITY_SETTING_FRAC } from '../../content/hardware';
 import { CICS_STORAGE } from '../../content/subsys';
 import { cfUsedGb, duplexSecondary, failCf, type CfStructureConfig } from '../cf/cf';
 import { startTfp, type TfpTerms } from '../cost/mlc';
@@ -24,7 +25,7 @@ export type Command =
   | { kind: 'SET_CPC_ENGINES'; cpcId: string; pool: PoolType; engines: number }
   /** Relative, so overlapping temporary capacity and its reverts compose in any order. */
   | { kind: 'ADD_CPC_ENGINES'; cpcId: string; pool: PoolType; delta: number }
-  | { kind: 'SET_CPC_CAPACITY'; cpcId: string; capacitySetting: 4 | 5 | 6 | 7; generation?: string }
+  | { kind: 'SET_CPC_CAPACITY'; cpcId: string; capacitySetting: 4 | 5 | 6 | 7; generation?: string; /** SMF70CCR for a reduction: 1 = operator (default), 2 = external. */ reason?: number }
   | { kind: 'SET_CPC_MEMORY'; cpcId: string; memoryGb: number }
   | { kind: 'SET_LPAR_MEMORY'; lparId: string; memoryGb: number }
   | { kind: 'SET_DB2'; ssid: string; bufferPoolGb?: number; maxDbat?: number }
@@ -152,7 +153,19 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       return ok(
         withConfig(s, (c) => {
           const cpc = c.cpcs.find((x) => x.id === cmd.cpcId)!;
+          // A reduction leaves a capacity adjustment the reports show as SMF70CAI/SMF70CCR until the
+          // machine is back at the setting it had (MVS SMF p.589: 1–99, 100 = normal).
+          if (CAPACITY_SETTING_FRAC[cmd.capacitySetting] < CAPACITY_SETTING_FRAC[cpc.capacitySetting]) {
+            if (cpc.peakCapacitySetting === undefined) {
+              cpc.peakCapacitySetting = cpc.capacitySetting;
+              cpc.capacityReasonCode = cmd.reason ?? 1;
+            }
+          }
           cpc.capacitySetting = cmd.capacitySetting;
+          if (cpc.peakCapacitySetting !== undefined && cmd.capacitySetting >= cpc.peakCapacitySetting) {
+            cpc.peakCapacitySetting = undefined;
+            cpc.capacityReasonCode = undefined;
+          }
           if (cmd.generation) cpc.generation = cmd.generation;
         }),
         `${cmd.cpcId} capacity setting ${cmd.capacitySetting}${cmd.generation ? ` (${cmd.generation})` : ''}`,

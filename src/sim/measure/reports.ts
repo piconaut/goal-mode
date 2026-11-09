@@ -193,7 +193,14 @@ function hms(sec: number): string {
 
 export function renderPartitionData(iv: RmfInterval): string {
   const out = header('PARTITION DATA REPORT', iv);
-  for (const c of iv.cpcBusy) out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
+  for (const c of iv.cpcBusy) {
+    // A capacity change shows as CHANGE REASON on the CPU Activity header (RMF Report Analysis p.391–392);
+    // this sim renders it on Partition Data instead (APPROX, SPEC §17). SMF70CCR: 1 = operator, >1 = external.
+    const adj = c.capacityReasonCode !== undefined && c.pool === 'CP'
+      ? `   CHANGE REASON=${c.capacityReasonCode === 1 ? 'POWERSAVE (initiated by the user)' : 'MACHINE (initiated by the machine)'}`
+      : '';
+    out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%${adj}`);
+  }
   out.push('');
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
   out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG LPAR BUSY%  MVS BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');

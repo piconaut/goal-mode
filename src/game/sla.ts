@@ -5,16 +5,10 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
-import type { ActiveEvent, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
+import { CPU_CAPACITY } from '../content/incidents';
+import type { ActiveEvent, CapacityBasis, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
 
 export const BASELINE_DECAY = 0.8;
-/** FICTIONAL: hour-average busy of a host CPC's general CPs from which a CPU incident can be capacity. */
-export const CPU_CAPACITY_BUSY_FRAC = 0.9;
-/** FICTIONAL: hour-average share of its available CP (online logical CPs, entitlement plus white space) an image
- * used from which it was full on its own, whatever its CPC shows: PR/SM can't give it more. */
-export const CPU_CAPACITY_LPAR_BUSY_FRAC = 0.95;
-/** FICTIONAL: below this share of the image's CP going to less important work, WLM had nothing left to donate. */
-export const CPU_CAPACITY_DONOR_FRAC = 0.1;
 
 /** Importance rank of a service class period for donor accounting: SYSTEM/SYSSTC 0, goal classes 1–5,
  * discretionary and SYSOTHER 6. APPROX: less important work is where policy adjustment finds CPU donors. */
@@ -100,15 +94,32 @@ export function mechanismOf(
   // Capacity only when an image was full (its CPC was, as PR/SM shares engines only within one machine, or
   // the image used all the CP it could get, e.g. every online logical CP) and WLM had little less-important
   // work there to take CPU from; otherwise the policy (importance, goals, weights) could have served this work.
-  const full = hosts.some((h) => {
-    const avg = (sum: number | undefined) => (hour.ticks > 0 ? (sum ?? 0) / hour.ticks : 0);
-    const busy = avg(hour.cpcBusyById?.[h.cpcId]) >= CPU_CAPACITY_BUSY_FRAC || avg(hour.lparBusyById?.[h.lparId]) >= CPU_CAPACITY_LPAR_BUSY_FRAC;
+  return capacityBasis(hour, hosts)?.full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
+}
+
+export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[]): CapacityBasis | null {
+  const avg = (sum: number | undefined) => (hour.ticks > 0 ? (sum ?? 0) / hour.ticks : 0);
+  let best: CapacityBasis | null = null;
+  for (const h of hosts) {
+    const cpc = avg(hour.cpcBusyById?.[h.cpcId]);
+    const lpar = avg(hour.lparBusyById?.[h.lparId]);
     const byImp = hour.cpByImportance?.[h.lparId] ?? [];
     const total = byImp.reduce((a, x) => a + x, 0);
     const donor = byImp.slice(h.importance + 1).reduce((a, x) => a + x, 0);
-    return busy && (total <= 0 || donor / total < CPU_CAPACITY_DONOR_FRAC);
-  });
-  return full ? 'CPU_CAPACITY' : 'CPU_PRIORITY';
+    const donorFrac = total > 0 ? donor / total : 0;
+    const busy = cpc >= CPU_CAPACITY.cpcBusyFrac || lpar >= CPU_CAPACITY.lparBusyFrac;
+    const b: CapacityBasis = {
+      lparId: h.lparId,
+      cpcId: h.cpcId,
+      cpcBusyPct: 100 * cpc,
+      lparBusyPct: 100 * lpar,
+      donorPct: 100 * donorFrac,
+      full: busy && (total <= 0 || donorFrac < CPU_CAPACITY.donorFrac),
+    };
+    // A host that made the verdict capacity wins; otherwise the busiest CPC explains the policy verdict best.
+    if (!best || (b.full && !best.full) || (b.full === best.full && b.cpcBusyPct > best.cpcBusyPct)) best = b;
+  }
+  return best;
 }
 
 /** An incident whose hour failed its SLA only through failures (with none it would have met it) gets the

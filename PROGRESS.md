@@ -414,6 +414,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: PT-03: the CPU_CAPACITY lines moved to `src/content/incidents.ts`; an RCA now says which line the
+  incident hour missed ("CPC CPCA averaged 81 % busy, below the 90 % capacity line"), from figures recorded on the
+  incident when its truth is decided; a capacity reduction keeps its normal setting and shows a CPU-Activity-style
+  `CHANGE REASON=` line on Partition Data (SMF70CCR; SMF70CAI kept for tooling). Scoring and goldens unchanged.
 - 2026-11-09: A player change carries only change-desk commands (`CHANGE_DESK_KINDS` in `src/game/catalog.ts`); a
   fix or hardware order can no longer carry commands, and event-only fields (CF degrade, LCU extra I/O, CICS leak)
   plus an over-large hot-skew rebalance are refused at no cost (PT-02).

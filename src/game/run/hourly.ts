@@ -5,7 +5,7 @@ import type { Scenario } from '../../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
 import { classify } from '../../sim/wlm/classify';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
-import { addHour, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline } from '../sla';
+import { addHour, capacityBasis, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline } from '../sla';
 import {
   type CapacityDay,
   type HourAcc,
@@ -154,6 +154,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
       const mechanism = failureMechanismOf(w, wh, r.events) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
+      const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(h, hosts) : null;
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
       const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
       let aiops: Hypothesis[] | undefined;
@@ -172,6 +173,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           hours: 1,
           worstAttainmentPct: att.attainmentPct,
           truth,
+          ...(basis ? { basis } : {}),
           ...(aiops ? { aiops } : {}),
           rca: lead?.rca ?? null,
           trustLost: loss,
