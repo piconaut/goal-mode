@@ -71,8 +71,8 @@ behaviour that isn't there yet. Say "not verified" otherwise.
 - **Real z/OS behaviour** (the player's policy or knowledge): say which rule and why their policy hit it, and what
   would have changed the outcome (importance, goal, CPU Critical, routing, capacity). This teaches something.
 - **Sim gap**: the verdict follows code that differs from the documentation. Give `file:line`, the doc citation and
-  the numbers; it becomes a PROGRESS item (realism fix or bug), never a silent fix.
+  the numbers; it becomes a BACKLOG.md entry (`realism-fixes` or `playtest-fixes`), never a silent fix.
 - **Design gap**: real behaviour, but the game gives the player no clue path to see it (e.g. the WLM log hides the
-  reason). That's a PROGRESS item too.
+  reason). That's a BACKLOG.md entry too.
 
 Report as: what was seen → what the sim did (numbers from the trace) → real z/OS (source) → verdict.
