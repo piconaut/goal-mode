@@ -178,12 +178,24 @@ CPC lists CP rows only. Real Monitor III CPC has per-type groups with *CP / *ICF
 Analysis p.97–98; check the Monitor III CPC page with zos-docs). Done when: the browser and `play mon3 CPC` show the
 groups.
 
-### PT-15 · Monitor III charts: CP busy labels and CPU by service class
+### PT-15 · Monitor III charts: choose which charts to show, fix CP busy labels, add CPU by service class
 `list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
 
-"CP busy per system" plots % of logical CPs per LPAR but % of physical for the CPC line. Relabel it and add a "% of
-CPC" toggle. Add a CPU-by-service-class chart (per-class engines are already sampled) behind a chart toggle.
-Done when: both are in the Monitor III charts.
+Three changes to the Monitor III charts panel (`src/ui/Mon3Charts.tsx`):
+- **Chart picker.** The player chooses which charts to show and which to hide, across **every** chart in the panel:
+  PI, CP busy, delay breakdown, PR/SM delay, % capped, response time, arrivals, DDF engines, and the new chart below.
+  Use one control in the panel header, like the existing class pickers. Remember the choice per viewer in
+  localStorage, the way the panel's open/closed state is (`OPEN_KEY`; `useStored` for the pattern), and survive
+  blocked storage. The default is today's set. Hidden charts leave no gap in the layout, including at phone width.
+- **CP busy labels.** "CP busy per system" plots % of logical CPs per LPAR but % of physical CPs for the CPC line.
+  Relabel it so each line says which it is, and add a "% of CPC" option that plots every LPAR against the CPC's
+  physical CPs.
+- **CPU by service class.** A new chart of CPU engines per service class (per-class engines are already sampled). It
+  is an ordinary chart in the picker, hidden by default.
+
+Done when: each chart can be hidden and shown again, the choice survives a reload (and falls back to the default when
+storage is blocked), the CP busy chart says what each line is measured against, and the new chart is in the picker.
+UI only: `npm run compare` shows no difference.
 
 ### PT-16 · CPC busy forecast ignores weekends and capacity changes
 `list: playtest-fixes · status: ready · priority: low · size: S · area: game`
