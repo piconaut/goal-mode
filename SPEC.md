@@ -1109,10 +1109,12 @@ the hurt workload, provided the card's declared
 growth. New work (including a persistent go-live card) counts for the first two simulated days after go-live
 (`content/sla.ts`), judged at the opening SLA hour; later incidents use the remaining fallback rules.
 APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception, a CICS program leaking EDSA storage). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
-POWER_CAP matches CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY only. Its workload scope is resolved
-from effective routing when the cap starts, including same-tick commands and added workloads, to CPCs whose
-capacity actually drops. The scope is retained after expiry; later routing changes and workload additions do
-not refresh it (a known RCA limitation).
+POWER_CAP matches CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY only. Its workload scope is the workloads whose
+effective routing puts them on the CPCs whose capacity actually drops (same-tick commands and workloads added at the
+start included). It is re-resolved every tick while the cap runs, and each hour keeps the union of the scopes seen in
+it: a workload routed onto a capped CPC or added during the hour is attributed for that hour, and one moved off loses
+the cap from the next hour, so remediation during the hour (including on its last tick) does not erase its trigger.
+The last hour's scope is retained after expiry.
 Card activity and the SLA hour are half-open intervals: a card ending at the hour's start or starting at its end
 does not overlap. Expiry or remediation during the hour (including remediation at its end) does not erase its trigger.
 When several cards qualify, prefer a card still active at hour close, then the longest overlap with the opening

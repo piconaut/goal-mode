@@ -40,14 +40,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-04 · POWER_CAP's RCA scope is a start-time snapshot
-`list: playtest-fixes · status: ready · priority: low · size: S · area: game`
-
-Known limitation left by the POWER_CAP fix: `affects` is resolved when the card starts and kept for expired-card
-attribution. Routing changes and workloads added during the cap don't refresh it, so mid-cap moves can leave stale
-attribution or miss newly exposed workloads. Done when: attribution follows the routing in effect during the
-incident's hour; a regression test covers a mid-cap routing change.
-
 ### PT-06 · IIPCP reported on an image with no online zIIP
 `list: playtest-fixes · status: ready · priority: low · size: S · area: sim`
 
