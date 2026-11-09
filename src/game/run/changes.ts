@@ -2,6 +2,7 @@ import { packOf } from '../../content/packs';
 import { applyCommand, type Command } from '../../sim/core/commands';
 import { streamRng } from '../../sim/core/rng';
 import type { Scenario } from '../../sim/core/scenario';
+import { effectiveAddressSpaces } from '../../sim/core/tick/helpers';
 import type { SimState } from '../../sim/core/types';
 import type { ServiceDefinition } from '../../sim/wlm/types';
 import { failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
@@ -141,7 +142,7 @@ export function dryRunRefusal(run: RunState, commands: readonly Command[]): stri
 /** Placement checks the sim command cannot make: the sim state has no scenario, so it cannot look up a
  * scenario workload's server roles nor the scenario's address spaces. */
 function placementOf(scenario: Scenario, s: SimState, cmd: Command): string | null {
-  const addressSpaces = [...scenario.addressSpaces, ...s.extraAddressSpaces];
+  const addressSpaces = effectiveAddressSpaces(scenario, s);
   if (cmd.kind === 'ADD_WORKLOAD') return placementRefusal(scenario, addressSpaces, cmd.workload, cmd.workload.routing);
   if (cmd.kind !== 'SET_ROUTING') return null;
   const workload = [...scenario.workloads, ...s.extraWorkloads].find((w) => w.id === cmd.workloadId);

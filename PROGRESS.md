@@ -301,8 +301,8 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   product list to its DB2.MSTR images, every Db2-using workload's routing keys to those images, and pinned Db2 batch
   to them (day 1 and month-end day 30). Work on a Db2-less image is deliberately not billed to Db2: no Db2 can run
   there, and SCRT bills a product on the LPARs where it executes. Residual: the raw `SET_ROUTING` sim command still
-  accepts any map when called directly on the sim, which has no scenario, but no game, UI, event or CLI path reaches
-  it that way.
+  accepts any map when called directly on the sim, which has no scenario. No player-facing path reaches it that way;
+  the dev realism lab (`npm run lab`) still sends raw commands straight to the sim.
 - [x] **A repeat XLOG_LOOP burns no CPU (bug, fixed).** Expiry and cancellation now remove CICSXLOG from PROD1
   instead of leaving a zero-CPU address space. Each start clears the old zero modifier and replaces any duplicate
   extra address spaces with the same jobname and LPAR, so older saves recover on the next occurrence. The Revenue
