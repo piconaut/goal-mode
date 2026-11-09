@@ -286,10 +286,37 @@ Builds: D1–D4 on `2253b11`, D5 onward on `d8ada51`. Investigation facts in doc
   Follow-up (2026-11-07): every connect attempt gets its own Operations log line (a restart that fails again in the
   same tick is no longer missed), and a restart clears the abandoned attempt's `failCode` so a successful rerun cannot
   leave a stale DSNE100I on the night's RCA.
-- [ ] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug).** Same case: the job's CPU lands only on the
-  products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Moot for batch since 2026-11-07 (the job
-  fails at connect and uses no CPU);
-  check that nothing else can run Db2 work on an image outside the Db2 product's LPAR list.
+- [x] **Db2 work on an LPAR without Db2 isn't billed to Db2 (sim bug, closed 2026-11-08).** Same case: the job's CPU
+  lands only on the products licensed on SYSP (z/OS), dodging Db2, CICS and MQ under TFP. Checked and guarded
+  2026-11-08:
+  - Batch is blocked by the DSNE100I connect failure above: a Db2 job that starts on a Db2-less image uses no CPU there.
+  - Every shipped Db2-using workload routes only to images where a DB2.MSTR runs, including the workloads that events,
+    story beats and starting fixes add. The invariant test derives that list from each scenario's own content, so a
+    future ADD_WORKLOAD cannot slip past.
+  - The game layer now refuses a routing change that would put work on an LPAR without the address spaces its server
+    roles and host region need (`game/workloads.ts` `placementRefusal`, called from `dryRunRefusal`). The Change Desk
+    and the play CLI's documented `json change` path therefore reject e.g. MOBILE→SYSP and charge nothing; change-desk
+    tests cover both SET_ROUTING and ADD_WORKLOAD.
+  Invariant test "Db2 work runs only where Db2 is licensed" (`tests/sim/realism.test.ts`) pins each scenario's Db2
+  product list to its DB2.MSTR images, every Db2-using workload's routing keys to those images, and pinned Db2 batch
+  to them (day 1 and month-end day 30). Work on a Db2-less image is deliberately not billed to Db2: no Db2 can run
+  there, and SCRT bills a product on the LPARs where it executes. Residual: the placement check runs only in
+  `dryRunRefusal`, which a change with a `fixId` skips, so a `json change` carrying a fix id plus a `SET_ROUTING` can
+  still put MOBILE on SYSP. That belongs to the item below. The dev realism lab (`npm run lab`) also sends raw
+  commands straight to the sim, which has no scenario.
+- [ ] **A player change can carry any sim command (bug, found 2026-11-09 in review of piconaut/goal-mode#238).** The
+  play CLI's `json change` takes `req.commands` from the client as-is:
+  - Event-only kinds plan like any change, at the 0.5 h default: `ADD_CPC_ENGINES` (free engines), `SET_MLC_PRICE`,
+    `SET_MODIFIER`, `ADD_WORKLOAD`, and `REMOVE_ADDRESS_SPACE` (ends XLOG_LOOP without its fix, or removes an AOR that
+    work is routed to).
+  - A request with a `fixId` skips `dryRunRefusal` but still applies its commands, and any fix id is accepted with
+    no event active. On a live day, `CANCEL_RUNAWAY` plus `ADD_CPC_ENGINES` took CPCA from 8 to 12 CPs for 0.5 h and
+    no capex.
+  - Allowed kinds carry event-only fields: `SET_CF degrade`, `SET_LCU extraIops` and `SET_CICS leak` end their
+    events without diagnosis. `SET_LCU hotSkew` has no limit through JSON, unlike the UI.
+  Suggested fix: allow only the kinds with an engineer-hours cost (`HOURS` in `game/catalog.ts`), refuse commands
+  alongside a `fixId` or `hardwareId`, and check event-only fields. A tested allowlist was written and then reverted
+  out of #238 as out of scope (commit f4a8dec).
 - [x] **A repeat XLOG_LOOP burns no CPU (bug, fixed).** Expiry and cancellation now remove CICSXLOG from PROD1
   instead of leaving a zero-CPU address space. Each start clears the old zero modifier and replaces any duplicate
   extra address spaces with the same jobname and LPAR, so older saves recover on the next occurrence. The Revenue
