@@ -140,6 +140,12 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
     expect(out.log).toContain('no action');
   });
 
+  it('names the rejected move and why in the player-visible log (PT-05)', () => {
+    const { out } = run(0.4);
+    expect(out.log).toMatch(/no action with net value \(.+\)/);
+    expect(out.log).toMatch(/rejected: harms DDFPRD#1, equal importance/);
+  });
+
   it('the investigation trace names why each trial failed and changes no decision', () => {
     const traces: WlmAdjustTrace[] = [];
     const plain = [run(0.4).out, run(0.02).out];

@@ -206,14 +206,15 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
 
   const tracing = traceSink !== null;
   let why: WlmTrialTrace | null = null;
+  // Recorded even without the trace sink: the player-visible log names the best rejected move and why.
   const reject = (verdict: WlmTrialVerdict, r: [number | null, number | null], detail?: string) => {
-    if (tracing) why = { move: '', verdict, receiverPi: r, ...(detail ? { detail } : {}) };
+    why = { move: '', verdict, receiverPi: r, ...(detail ? { detail } : {}) };
     return false;
   };
   const passes = (receiver: string, trial: Record<string, number>): boolean => {
     const cc = violatesCpuCritical(trial);
     if (cc) {
-      if (tracing) why = { move: '', verdict: 'CPU_CRITICAL', detail: cc };
+      why = { move: '', verdict: 'CPU_CRITICAL', detail: cc };
       return false;
     }
     return project(trial, (after) => {
@@ -273,6 +274,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   };
   let projected = 0;
   let projectedImp = -1;
+  /** The first move tried against the first receiver that could not be helped: the best clue for the log. */
+  let firstReject: { move: string; why: WlmTrialTrace } | null = null;
   for (const receiver of candidates) {
     const impOf = info[receiver]!.importance;
     // Projection is the expensive part: assess at most two fixable receivers per importance, then move on.
@@ -344,14 +347,31 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
           protect,
         });
       }
+      if (!firstReject && why) firstReject = { move: tr.text, why };
     }
     notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value`);
   }
+  // No move taken: say what the first hopeless receiver's move would have done, so the log answers "why not?".
+  const whyNot = firstReject ? ` (${firstReject.move} rejected: ${playerReason(firstReject.why)})` : '';
   return finish({
     dps,
-    log: notes.length > 0 ? `${input.clockText} ${system.lparId} ${notes[0]}` : null,
+    log: notes.length > 0 ? `${input.clockText} ${system.lparId} ${notes[0]}${whyNot}` : null,
     protect,
   });
+}
+
+/** The WLM log's wording for a rejected trial: short, and in the player's terms rather than the trace's. */
+function playerReason(w: WlmTrialTrace): string {
+  const name = w.detail?.split(' ')[0];
+  switch (w.verdict) {
+    case 'NO_RECEIVER_GAIN': return 'no gain for the receiver';
+    case 'SMALL_GAIN': return 'gain too small';
+    case 'MORE_IMPORTANT_HARMED': return `harms ${name ?? 'more important work'}, more important`;
+    case 'EQUAL_DISPARITY': return `harms ${name ?? 'equal-importance work'}, equal importance`;
+    case 'NO_NET_VALUE': return 'equal-importance harm outweighs the gain';
+    case 'CPU_CRITICAL': return 'would breach CPU protection';
+    default: return 'no net value';
+  }
 }
 
 const hex = (n: number) => n.toString(16).toUpperCase();

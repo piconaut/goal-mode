@@ -450,6 +450,7 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
     const st = w.states;
     const f = (x: number | null) => (x === null ? '-' : x.toFixed(0));
     out.push('', `SYSWKM ${w.serviceClass} period ${w.period}: ${w.goal}, avg ${w.avgRtMs === null ? '-' : w.avgRtMs.toFixed(0)} ms, ${w.endedPerSec.toFixed(1)}/s, PI ${w.pi === null ? '-' : w.pi.toFixed(2)}`,
+      ...(w.note ? [`  ${w.note}`] : []),
       `  CICS EXE %: ACTIVE ${f(st.active)} READY ${f(st.ready)} IDLE ${f(st.idle)} LOCK ${f(st.lock)} I/O ${f(st.io)} CONV ${f(st.conv)} PROD ${f(st.prod)} MISC ${f(st.misc)}`,
       table(w.servers.filter((x) => !sys || x.system.toUpperCase() === sys).map((x) => ({ jobname: x.jobname, mgmt: x.mgmt, system: x.system, serviceClass: x.serviceClass, servicePct: x.servicePct, velocity: x.velocity, procUsgPct: x.procUsgPct, ioUsgPct: x.ioUsgPct, cappPct: x.cappPct }))));
   }

@@ -109,6 +109,18 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
   out.push('');
   out.push(...wlmHeader('SERVICE'));
   for (const r of rows) out.push(wlmRow(r));
+  // A CICS transaction class is managed through the regions that serve it: the region class's own PI is
+  // reported but not managed to, because its work runs at the served class's DP (WLM Planning p.111, p.122–123).
+  const servedBy = new Map<string, Set<string>>();
+  for (const r of rows) for (const k of r.workManager?.regionKeys ?? []) {
+    const set = servedBy.get(k) ?? new Set<string>();
+    set.add(r.scKey);
+    servedBy.set(k, set);
+  }
+  for (const [region, served] of servedBy) {
+    if (!rows.some((r) => r.scKey === region)) continue;
+    out.push('', `${region} RUNS IN CICS REGIONS MANAGED TO TRANSACTION GOALS: THE REGIONS RUN AT THE SERVED CLASSES' DP (${[...served].join(', ')}), AND THIS CLASS'S OWN PI IS REPORTED, NOT MANAGED TO (WLM PLANNING p.111, p.122-123).`);
+  }
   const rcRows = (iv.wlmRc ?? []).filter((r) => r.lparId === system).sort((a, b) => a.scKey.localeCompare(b.scKey));
   if (rcRows.length > 0) {
     out.push('', `REPORT BY: SYSTEM=${system}   (REPORT CLASSES; GOAL AND PI ONLY FOR HOMOGENEOUS CLASSES)`, '');

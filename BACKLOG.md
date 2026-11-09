@@ -48,16 +48,6 @@ attribution. Routing changes and workloads added during the cap don't refresh it
 attribution or miss newly exposed workloads. Done when: attribution follows the routing in effect during the
 incident's hour; a regression test covers a mid-cap routing change.
 
-### PT-05 · Clue path for "why didn't WLM raise CICS"
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-The player read the WLM log correctly but couldn't see why there was no receiver raise. Add to the player-visible WLM
-log the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal importance"). On WLMGL/SYSWKM, say
-that a region class managed to transaction goals runs at the served classes' DP (its own PI is reported, not managed
-to; WLM Planning p.111, p.122–123). The `inspect wlm` trace sink in `adjust.ts` already has the verdicts.
-Done when: both clues show in the browser and in `play wlmlog` / `play mon3`; no decision changes (`npm run compare`
-differs only in the log/report text).
-
 ### PT-06 · IIPCP reported on an image with no online zIIP
 `list: playtest-fixes · status: ready · priority: low · size: S · area: sim`
 
