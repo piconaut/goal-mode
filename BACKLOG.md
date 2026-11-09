@@ -40,25 +40,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-02 · A player change can carry any sim command
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-Found 2026-11-09 in review of piconaut/goal-mode#238. The play CLI's `json change` takes `req.commands` from the client
-as-is:
-- Event-only kinds plan like any change, at the 0.5 h default: `ADD_CPC_ENGINES` (free engines), `SET_MLC_PRICE`,
-  `SET_MODIFIER`, `ADD_WORKLOAD`, and `REMOVE_ADDRESS_SPACE`. The last one ends XLOG_LOOP without its fix, or removes
-  an AOR that work is routed to.
-- A request with a `fixId` skips `dryRunRefusal` but still applies its commands, and any fix id is accepted with no
-  event active. On a live day, `CANCEL_RUNAWAY` plus `ADD_CPC_ENGINES` took CPCA from 8 to 12 CPs for 0.5 h and no
-  capex. The same path can put MOBILE on SYSP past `placementRefusal`.
-- Allowed kinds carry event-only fields: `SET_CF degrade`, `SET_LCU extraIops` and `SET_CICS leak` end their events
-  without diagnosis. `SET_LCU hotSkew` has no limit through JSON, unlike the UI.
-
-Fix: allow only the kinds with an engineer-hours cost (`HOURS` in `game/catalog.ts`), refuse commands alongside a
-`fixId` or `hardwareId`, and check event-only fields. A tested allowlist was written and then reverted out of #238
-(commit f4a8dec), so start from that.
-Done when: each case above is refused at no cost, with tests; the UI and bots are unaffected (`npm run compare`).
-
 ### PT-03 · Power-cap RCA is a gotcha (remaining parts)
 `list: playtest-fixes · status: ready · priority: high · size: M · area: game`
 
