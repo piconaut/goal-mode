@@ -893,6 +893,11 @@ for a planned fix, at once for a live one), so the Change Desk can't be probed f
 The Operations list offers a card's fix only once the player has seen the card: it has started, its
 forewarning has arrived in the inbox, or an Ask Around rumour about it has been revealed. Unseen cards
 stay out of the list, so it cannot spoil an event that has not happened yet.
+A change may carry only the **change-desk commands**: the kinds with an engineer-hours cost (`HOURS` in
+`game/catalog.ts`). The sim also uses commands no change desk can do — adding engines, the MLC price, modifiers,
+address spaces, workloads — and those are refused before anything is charged, as is a fix or hardware order that
+also carries commands (the fix's hours must not pay for them). Event-only fields (`SET_CF` degrade, `SET_LCU`
+extra I/O, `SET_CICS` leak) are refused, and a hot-skew rebalance must be one Change Desk step, as the UI does.
 Event fixes that are operator or DBA commands under the incident procedure (`-CANCEL THREAD`,
 `-TERM UTILITY`, cancelling a job, `HOLD RECALL`) are not changes: during the live day they cost their
 engineer-hours and their own facet trust, but no change-board trust. A runaway query only ever runs inside

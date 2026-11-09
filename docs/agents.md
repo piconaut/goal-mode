@@ -58,6 +58,9 @@ Change Desk (`json '{"cmd":"change","req":{"label":"…","commands":[…]}}'`), 
 {"kind":"SET_RMF_INTERVAL","minutes":15}
 ```
 
+A change may carry only the change-desk kinds above and their siblings (those with an engineer-hours cost); other
+`Command` kinds, a `fixId`/`hardwareId` combined with commands, and event-only fields are refused at no cost.
+
 WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy until `activate`). Goals are
 `{"kind":"AVG","rtSec":0.5}`, `{"kind":"PCT","rtSec":0.5,"pct":90}`, `{"kind":"VEL","velocity":40}` or
 `{"kind":"DISC"}`; importance 1–5; `period` is 0-based (0 = the first period, RMF row `ONLHI#1`); qualifiers TN UI TC PK CI SY; subsystems STC JES CICS DDF TSO MQ OMVS.

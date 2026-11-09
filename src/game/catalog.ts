@@ -35,6 +35,10 @@ const HOURS: Partial<Record<Command['kind'], number>> = {
 
 const PRSM_KINDS: ReadonlySet<Command['kind']> = new Set(['SET_WEIGHT', 'SET_LOGICAL', 'SET_DEFINED_CAPACITY', 'SET_CAPACITY_GROUP', 'SET_ABSOLUTE_CAP']);
 
+/** The commands a player change may carry: the ones with an engineer-hours cost. Everything else (engines,
+ * prices, modifiers, address spaces, workloads, CF failures) is for events, hardware orders and the game itself. */
+export const CHANGE_DESK_KINDS: ReadonlySet<Command['kind']> = new Set(Object.keys(HOURS) as Command['kind'][]);
+
 export function hoursFor(commands: readonly Command[], perks: readonly string[]): number {
   let h = 0;
   for (const c of commands) {
@@ -157,6 +161,9 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   if (!live && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
   if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
   if (req.fixId && (!fix || (ctx.fixIds && !ctx.fixIds.includes(fix.id)))) return no(`Unknown fix ${req.fixId}`);
+  // A fix or a hardware order is a self-contained action: picture the fix on a live day that also sneaks in
+  // ADD_CPC_ENGINES, and the commands ride along on the fix's hours, past the change-desk allowlist.
+  if ((req.fixId || req.hardwareId) && (req.commands ?? []).length > 0) return no('A fix or hardware order cannot also carry change commands');
   const target = hw?.perCpc && ctx.cpcs ? (req.cpcId ? ctx.cpcs.find((c) => c.id === req.cpcId) : ctx.cpcs[0]) : undefined;
   if (hw?.perCpc && ctx.cpcs && !target) return no(`Unknown CPC ${req.cpcId}`);
   const pointless = target && hw?.unavailable?.(target);

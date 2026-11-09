@@ -1,5 +1,6 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
+import { DASD_REBALANCE } from '../../src/content/hardware-catalog';
 import { previewChange } from '../../src/game/catalog';
 import { addToBasket, basketAfterFailure, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../../src/game/changeDesk';
 import { cancelChange, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
@@ -169,11 +170,65 @@ describe('routing placement', () => {
     expect(requestChange(fresh(), content, { label: 'MOBILE to nowhere', commands: [route({ PRDQ: 1 })] }).message).toMatch(/No LPAR PRDQ/);
   });
 
-  it('applies the same check to a workload added during the run', () => {
-    const mobile = MIDWEST.workloads.find((w) => w.id === 'MOBILE')!;
-    const out = requestChange(fresh(), content, { label: 'new app', commands: [{ kind: 'ADD_WORKLOAD', workload: { ...mobile, id: 'NEWAPP', routing: { SYSP: 1 } } }] });
+});
+
+describe('a player change carries only change-desk commands', () => {
+  const mobile = MIDWEST.workloads.find((w) => w.id === 'MOBILE')!;
+
+  /** Request one command and return the message; asserts it was refused with nothing spent. */
+  const refuse = (cmd: Command): string => {
+    const r = fresh();
+    const out = requestChange(r, content, { label: cmd.kind, commands: [cmd] });
+    expect(out.ok, cmd.kind).toBe(false);
+    expect(out.run.hoursLeft, cmd.kind).toBe(r.hoursLeft);
+    expect(out.run.changes, cmd.kind).toHaveLength(0);
+    return out.message;
+  };
+
+  it('refuses the event, hardware and game commands that used to plan at 0.5 h', () => {
+    expect(refuse({ kind: 'ADD_CPC_ENGINES', cpcId: 'CPCA', pool: 'CP', delta: 4 })).toMatch(/ADD_CPC_ENGINES is not a change-desk command/);
+    expect(refuse({ kind: 'SET_MLC_PRICE', mult: 0.1 })).toMatch(/not a change-desk command/);
+    expect(refuse({ kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 2 })).toMatch(/not a change-desk command/);
+    expect(refuse({ kind: 'ADD_WORKLOAD', workload: { ...mobile, id: 'NEWAPP', routing: { SYSP: 1 } } })).toMatch(/not a change-desk command/);
+    expect(refuse({ kind: 'REMOVE_ADDRESS_SPACE', jobname: 'CICSAOR1', lparId: 'PROD1' })).toMatch(/not a change-desk command/);
+  });
+
+  it('refuses commands riding along with a fix, so they cannot skip the checks', () => {
+    const live = startDay(fresh(), content);
+    const out = requestChange(live, MIDWEST_GAME, {
+      label: 'cancel + engines',
+      fixId: 'CANCEL_RUNAWAY',
+      commands: [{ kind: 'ADD_CPC_ENGINES', cpcId: 'CPCA', pool: 'CP', delta: 4 }],
+    });
     expect(out.ok).toBe(false);
-    expect(out.message).toMatch(/NEWAPP needs .*DB2.* on SYSP/);
+    expect(out.message).toMatch(/A fix or hardware order cannot also carry change commands/);
+    expect(out.run.hoursLeft).toBe(live.hoursLeft);
+    expect(out.run.sim.config.cpcs).toEqual(live.sim.config.cpcs);
+  });
+
+  it('refuses commands riding along with a hardware order', () => {
+    const live = startDay(fresh(), content);
+    const out = requestChange(live, content, { label: 'ziip + weight', hardwareId: 'ADD_ZIIP', commands: [weight(500)] });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/A fix or hardware order cannot also carry change commands/);
+    expect(out.run.capexRemaining).toBe(live.capexRemaining);
+    expect(out.run.hoursLeft).toBe(live.hoursLeft);
+  });
+
+  it('refuses the event-only fields that start or end a failure', () => {
+    expect(refuse({ kind: 'SET_CF', lparId: 'CF01', degrade: 0.5 })).toMatch(/CF degradation is raised by an event/);
+    expect(refuse({ kind: 'SET_LCU', lcuId: '10', extraIops: { RANDOM: 500 } })).toMatch(/Extra LCU I.O is raised by an event/);
+    expect(refuse({ kind: 'SET_CICS', name: 'CICSAOR1', leak: { startMb: 100, mbPerHour: 10 } })).toMatch(/A storage leak is raised by an event/);
+  });
+
+  it('bounds a hot-skew rebalance to one Change Desk step', () => {
+    const r = fresh();
+    const lcu = r.sim.config.dasd.lcus.find((l) => l.id === '10')!;
+    const floor = Math.max(DASD_REBALANCE.minSkew, lcu.hotSkew * DASD_REBALANCE.skewFactor);
+    expect(refuse({ kind: 'SET_LCU', lcuId: '10', hotSkew: 0.05 })).toMatch(/moves 30 % of the hot skew at most/);
+    expect(refuse({ kind: 'SET_LCU', lcuId: '10', hotSkew: lcu.hotSkew })).toMatch(/must reduce it/);
+    const ok = requestChange(r, content, { label: 'balance LCU 10', commands: [{ kind: 'SET_LCU', lcuId: '10', hotSkew: floor }] });
+    expect(ok.ok).toBe(true);
   });
 });
 

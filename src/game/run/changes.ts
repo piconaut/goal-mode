@@ -5,7 +5,8 @@ import type { Scenario } from '../../sim/core/scenario';
 import { effectiveAddressSpaces } from '../../sim/core/tick/helpers';
 import type { SimState } from '../../sim/core/types';
 import type { ServiceDefinition } from '../../sim/wlm/types';
-import { failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
+import { DASD_REBALANCE } from '../../content/hardware-catalog';
+import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
 import { placementRefusal } from '../workloads';
 import { idText } from '../ids';
 import {
@@ -130,6 +131,10 @@ export function dryRunRefusal(run: RunState, commands: readonly Command[]): stri
   let s = run.sim;
   for (const c of run.changes) if (c.status === 'PLANNED') for (const cmd of c.commands) s = applyCommand(s, cmd).state;
   for (const cmd of commands) {
+    // Only player commands: the JSON change path accepts any Command shape, including event-only ones.
+    if (!CHANGE_DESK_KINDS.has(cmd.kind)) return `${cmd.kind} is not a change-desk command; hardware, fixes and events keep their own paths`;
+    const field = eventOnlyField(cmd) ?? hotSkewRefusal(s, cmd);
+    if (field) return field;
     const placement = placementOf(scenario, s, cmd);
     if (placement) return `${placement}${targetHint(s, cmd)}`;
     const res = applyCommand(s, cmd);
@@ -139,11 +144,30 @@ export function dryRunRefusal(run: RunState, commands: readonly Command[]): stri
   return null;
 }
 
+/** Fields an event card sets to start or end a failure the player must diagnose; a change may not. */
+function eventOnlyField(cmd: Command): string | null {
+  if (cmd.kind === 'SET_CF' && cmd.degrade !== undefined) return 'A CF degradation is raised by an event, not by a change';
+  if (cmd.kind === 'SET_LCU' && cmd.extraIops !== undefined) return 'Extra LCU I/O is raised by an event, not by a change';
+  if (cmd.kind === 'SET_CICS' && cmd.leak !== undefined) return 'A storage leak is raised by an event, not by a change';
+  return null;
+}
+
+/** A rebalance moves the hottest data sets one step, as the Change Desk offers: it must reduce the LCU's skew and
+ * no further than `DASD_REBALANCE`. The raw command clamps to 0.05–1, which would balance a whole LCU at once. */
+function hotSkewRefusal(s: SimState, cmd: Command): string | null {
+  if (cmd.kind !== 'SET_LCU' || cmd.hotSkew === undefined) return null;
+  const lcu = s.config.dasd.lcus.find((x) => x.id === cmd.lcuId);
+  if (!lcu) return `No LCU ${cmd.lcuId}`;
+  const floor = Math.max(DASD_REBALANCE.minSkew, lcu.hotSkew * DASD_REBALANCE.skewFactor);
+  if (cmd.hotSkew >= lcu.hotSkew) return `LCU ${lcu.id} hot skew is ${lcu.hotSkew}; a rebalance must reduce it`;
+  if (cmd.hotSkew < floor - 1e-9) return `One rebalance moves ${Math.round((1 - DASD_REBALANCE.skewFactor) * 100)} % of the hot skew at most: LCU ${lcu.id} needs ${floor.toFixed(2)} or more`;
+  return null;
+}
+
 /** Placement checks the sim command cannot make: the sim state has no scenario, so it cannot look up a
  * scenario workload's server roles nor the scenario's address spaces. */
 function placementOf(scenario: Scenario, s: SimState, cmd: Command): string | null {
   const addressSpaces = effectiveAddressSpaces(scenario, s);
-  if (cmd.kind === 'ADD_WORKLOAD') return placementRefusal(scenario, addressSpaces, cmd.workload, cmd.workload.routing);
   if (cmd.kind !== 'SET_ROUTING') return null;
   const workload = [...scenario.workloads, ...s.extraWorkloads].find((w) => w.id === cmd.workloadId);
   return workload ? placementRefusal(scenario, addressSpaces, workload, cmd.routing) : `Unknown workload ${cmd.workloadId}`;
