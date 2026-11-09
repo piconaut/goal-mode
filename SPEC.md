@@ -1135,7 +1135,12 @@ Both thresholds are FICTIONAL.
 The healthy baseline is an EWMA (×0.8 per hour) folded only from closed hours in which the workload met its SLA
 *and* no card affected it: a card's own effect must not become the new normal, or a regression is absorbed within a
 few hours. The SMF 101/110 "vs base" ratio is frozen when its hour closes, against the baseline in force during that
-hour, so a past row keeps its ratio however later hours move the baseline.
+hour, so a past row keeps its ratio however later hours move the baseline. That matches the records it is read
+from: CICS completes a task's performance class data when the task terminates (*CICS TS 6 Monitoring CICS*, p.19,
+https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=19) and Db2 writes the accounting record
+at thread termination (*Db2 13 for z/OS Managing Performance*, p.144,
+https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=144), so a written hour's figures don't change
+afterwards. The baseline and its learning rule are game rules, not IBM behaviour.
 
 A miss caused by failures alone (with no failed transactions the hour would have met its SLA) has no delay group to
 point at, so a running card that affects the workload names the mechanism (`failureMechanism`). SICK_AOR names

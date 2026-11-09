@@ -128,7 +128,8 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   const hourEnd = r.sim.tick;
   const workloads = allWorkloads(scenario, r);
   // "vs base" is frozen now, against the baseline that was in force during this hour: later clean hours move the
-  // EWMA, and a past row's ratio must not move with it (PT-13).
+  // EWMA, and a past row's ratio must not move with it (PT-13). SMF 110 performance data is completed at task end
+  // (CICS TS 6 Monitoring CICS p.19) and SMF 101 accounting written at thread end (Db2 13 Managing Performance p.144).
   const cpuVsBase: Record<string, number> = {};
   for (const w of workloads) {
     const wh = h.workloads[w.id];
