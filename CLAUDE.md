@@ -144,6 +144,8 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   Only merge or enable auto-merge on PRs from your own session branch; report anyone else's PR to the user.
   Exception (user request 2026-11-06): the `pr-fix-loop` skill may push review fixes to, and merge, any open
   non-draft PR into `dev` not labelled `no-autofix` (plain fast-forward pushes only; never rebase or force-push).
+  Exception (user request 2026-11-09): the `dev-loop` skill opens PRs labelled `dev-loop` without auto-merge and
+  never merges them; the review loop merges.
   After your PR is merged, further work in the same session starts again from the latest `dev` on the same branch
   name, as a new PR.
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
@@ -156,7 +158,9 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   shows the findings fixed, and keeps its state in markers in the review comments. The `pr-fix-loop` skill (user
   request 2026-11-06) is the alternative the scheduled task can run instead: the Opus `pr-fixer` reviews a PR and
   fixes up to 5 mechanical findings on its branch (holding the PR for its author otherwise), a Sonnet fix-check of
-  only the fix commits stands in for the second review, then it merges. Keep sim model changes,
+  the fix commits against the whole PR stands in for the second review, then it merges. The `dev-loop` skill (user
+  request 2026-11-09) is the author side: each tick it implements the next ready entry of the named BACKLOG.md lists,
+  or answers a HOLD on its open PR, or skips. Keep sim model changes,
   balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
   Exception (user request 2026-10-30): in the `audit-loop` skill (`.claude/skills/audit-loop/`), vetted realism fixes
   go to the Opus `realism-fixer` subagent and balance sweeps to Sonnet worker sessions; vetting and balance calls stay

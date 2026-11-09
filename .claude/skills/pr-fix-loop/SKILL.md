@@ -16,6 +16,11 @@ Scope: open, non-draft PRs with base `dev`. Leave alone: the `dev` → `main` mi
 `draft - skipped`), and PRs labelled `no-autofix` (report `no-autofix - skipped`; the user or author wants them
 reviewed by hand or by `pr-review-loop`). Never push to a PR outside this scope.
 
+PRs labelled `dev-loop` come from the `dev-loop` skill, the author-side loop. Treat them like any other PR: when
+you HOLD one, `dev-loop` answers on its next tick by pushing fixes and a `<!-- dev-loop-response` comment, which
+is your **held, updated** case (the comment is an author comment, not a loop comment). Skip a `dev-loop` PR labelled
+`needs-user` (report `needs-user - skipped`). The backlog rule (pr-reviewer check 10) applies to these PRs.
+
 Models: you (the coordinator) run on Sonnet and do bookkeeping, spawning and merging only; never review or edit
 diffs yourself. `pr-fixer` runs on its Opus default. Checks of fixes use `pr-reviewer` with `model: "sonnet"`.
 
@@ -57,17 +62,20 @@ Read its marker from the hand-back (or from the posted comment if the hand-back 
 In the same tick, as soon as a `pr-fixer` returns FIXED:
 
 - `fixlines` ≤ 150: spawn `pr-reviewer` with `model: "sonnet"` in **fix-check mode**: PR number, head branch,
-  reviewed SHA, fix head SHA, and the `fixed` list with each commit from the report's `Fixes:` line.
+  base `dev`, reviewed SHA, fix head SHA, and the `fixed` list with each commit from the report's `Fixes:` line. It
+  reads the fix commits against the whole PR at the fix head (user request 2026-11-09), because the same agent found,
+  triaged and fixed the problems.
 - `fixlines` > 150 (the fixes grew past the estimate): spawn `pr-reviewer` with `model: "sonnet"` in **review-loop
   mode**, pass first, on the whole PR at the fix head. Its blocking and non-blocking findings count as new
   findings; it posts its own comment. Treat outcome MERGE as PASS; anything else as FAIL.
 
 Post the result as a PR comment starting with `<!-- pr-fix-loop-check head: <fix head SHA> result: PASS|FAIL -->`,
-then "Fix check (Sonnet): PASS|FAIL", the reviewer's lines, and the footer. Then:
+then "Fix check (Sonnet): PASS|FAIL", the reviewer's lines, and the footer. Non-blocking `Missed:` items don't block
+the merge: after merging, add each one to BACKLOG.md list `pr-followups` as an entry, in a small docs PR. Then:
 
 - PASS → merge (step 4).
 - FAIL → the PR becomes **fix-check failed**; the next tick sends it back to `pr-fixer` (attempt +1; `pr-fixer`
-  holds at attempt 3).
+  holds at attempt 3). Its open items include the check's not-fixed, `New:` and blocking `Missed:` items.
 
 ## 4. Merge
 

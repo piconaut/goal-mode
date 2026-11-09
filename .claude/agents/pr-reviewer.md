@@ -82,6 +82,18 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
    - No model identifiers in commits, comments or docs.
 9. **Risk.** Anything the PR changes that its description doesn't mention; secrets, network calls, new
    dependencies, edits to `.claude/`, `.github/` or tooling that widen what runs or what CI checks.
+10. **Backlog rule (PRs labelled `dev-loop` only; user request 2026-11-09).** The body's `Backlog:` line must name
+    exactly one entry, and `git show origin/<base>:BACKLOG.md` must list it as `status: ready` in a list. Check the
+    base, not the head, because the PR deletes the entry. The PR must be one of:
+    - a fix of that entry that deletes it from BACKLOG.md (or rewrites it to what remains), and changes nothing
+      beyond what the entry asks for and its "Done when";
+    - `Backlog: <ID> (blocked)`: a change to BACKLOG.md only, setting that entry to `blocked: <reason>` with the
+      question stated;
+    - a change to BACKLOG.md only, deleting an entry that an already-merged commit fixed (the body names the commit;
+      check it).
+    Anything else is a blocking finding titled **backlog rule**: no `Backlog:` line, an unknown or non-ready entry,
+    an entry another open PR already claims, or scope well beyond the entry. The `dev-loop` skill closes a PR held
+    on this finding, so name the exact reason. Other PRs are not subject to this rule.
 
 Keep long outputs out of your reply and the comment: grep or tail logs, quote exact lines and numbers.
 
@@ -157,18 +169,32 @@ When the brief says "fix-check mode" (the `pr-fix-loop` skill, after `pr-fixer` 
 someone else's fixes, not the whole PR. The brief gives the reviewed SHA, the fix head SHA, and the finding list
 with the commit that claims to fix each one.
 
-- No worktrees, no `npm ci`, no check or bench runs (CI and the fixer ran them): read
-  `git diff <reviewed>..<fix head>` and `git log --format='%h %s' <reviewed>..<fix head>` after
-  `git fetch origin <head>`. Read the surrounding code where a hunk needs it.
-- For each finding: fixed / not fixed, with the hunk as evidence. Then look for problems the fixes introduce
-  (a weakened or skipped test, scope beyond the finding, a behaviour change, a broken CLAUDE.md rule, a realism claim
-  with no checked citation). Pre-existing problems outside the fix diff are not yours to report here.
+- No worktrees, no `npm ci`, no check or bench runs (CI and the fixer ran them). After
+  `git fetch origin <base> <head>`, read three things:
+  - the fix commits: `git log --format='%h %s' <reviewed>..<fix head>` and `git diff <reviewed>..<fix head>`;
+  - **the whole PR as it now stands**: `git diff origin/<base>...<fix head>`;
+  - the surrounding code, where a hunk needs it.
+  Why the whole PR (user request 2026-11-09): the fixes were written and triaged by the same agent that found the
+  problems, so a fix that breaks another part of the PR, or hides a symptom instead of curing it, only shows
+  against the full diff.
+- For each finding: fixed / not fixed, with the hunk as evidence. Check that each fix cures the cause the finding
+  names. A test edited to match the code, an assertion loosened, or a guard that hides the case doesn't count:
+  report it as not fixed.
+- Then look for problems the fixes introduce anywhere in the PR at the fix head: a weakened or skipped test, scope
+  beyond the finding, a behaviour change, an interaction with the PR's own code, a broken CLAUDE.md rule, a realism
+  claim with no checked citation.
+- Check the triage: each fixed finding must be on `pr-fixer`'s "mechanical" list (`.claude/agents/pr-fixer.md`
+  step 2). A fix that changed what the PR does, or needed a design call, is a new finding.
+- Problems in the PR's own code that the first review missed and the fixes didn't touch go under `Missed:`. They
+  don't fail the check, but the caller lists them.
 - Don't post on the PR. Return only:
 
 ```
 Fix-check PR #<n>: PASS | FAIL
 <ID>: fixed | not fixed - <evidence>
 New: <F1: file:line - problem> | none
+Missed: <M1: file:line - problem in the PR's own code, untouched by the fixes> | none
 ```
 
-PASS means every finding is fixed and nothing new is wrong.
+PASS means every finding is fixed at its cause, the triage held, and the fixes introduce nothing new. A blocking
+`Missed:` item (one that would earn DON'T MERGE in a full review) also fails the check.
