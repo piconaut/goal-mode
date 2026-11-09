@@ -137,10 +137,18 @@ function plus(t: ScpTick, m: MovedSamples, share: number): void {
   if (m.usingIoNoVel !== undefined) for (const f of NOVEL_FIELDS) t[f] = (t[f] ?? 0) + (m[f] ?? 0) * share;
 }
 
-/** One image's ticks as RMF reports them: CICS transaction samples moved to the region classes. Pure; ticks
- * without moved samples are returned as they are. */
-export function reportedTicks<T extends ScpTick>(ticks: readonly T[], targets: CicsTargets | undefined, reportClasses = false): T[] {
-  if (!targets || !ticks.some((t) => t.moved)) return ticks as T[];
+/** IIPCP on an image with no zIIP defined: the time is plain CP work, so it moves to APPL% CP and IIPCP is zero
+ * (Init & Tuning p.431: reported only when a zIIP is defined, online or reserved; p.434: PROJECTCPU defaults NO). */
+function withoutIipcp<T extends ScpTick>(t: T): T {
+  if ((t.iipcpEngines ?? 0) === 0) return t;
+  return { ...t, cpEngines: t.cpEngines + t.iipcpEngines, iipcpEngines: 0 };
+}
+
+/** One image's ticks as RMF reports them: CICS transaction samples moved to the region classes, and IIPCP folded
+ * into CP time on an image with no zIIP defined. Pure; ticks without moved samples are returned as they are. */
+export function reportedTicks<T extends ScpTick>(ticks: readonly T[], targets: CicsTargets | undefined, reportClasses = false, iipcpReported = true): T[] {
+  const fold = (list: T[]): T[] => (iipcpReported ? list : list.map(withoutIipcp));
+  if (!targets || !ticks.some((t) => t.moved)) return fold(ticks as T[]);
   const out = ticks.map((t) => (t.moved ? (minus(t, t.moved) as T) : t));
   const at: Record<string, number> = {};
   out.forEach((t, i) => (at[t.scKey] = i));
@@ -158,7 +166,7 @@ export function reportedTicks<T extends ScpTick>(ticks: readonly T[], targets: C
       plus(out[i]!, t.moved, r.share);
     }
   }
-  return out;
+  return fold(out);
 }
 
 /** Decays the moved part kept in WLM's accumulator; drops it once nothing is left. */

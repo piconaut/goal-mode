@@ -207,10 +207,10 @@ export function accumulateTick(
   const scps = { ...acc.scps };
   let rcs = acc.rcs;
   for (const lt of lparTicks) {
-    for (const t of reportedTicks(lt.scps, lt.cics)) addScp(scps, lt.lparId, t);
+    for (const t of reportedTicks(lt.scps, lt.cics, false, lt.iipcpReported ?? true)) addScp(scps, lt.lparId, t);
     if (lt.rcs) {
       rcs = rcs ? { ...rcs } : {};
-      for (const t of reportedTicks(lt.rcs, lt.cics, true)) {
+      for (const t of reportedTicks(lt.rcs, lt.cics, true, lt.iipcpReported ?? true)) {
         const k = accKey(lt.lparId, t.scKey);
         const prevMembers = rcs[k]?.members ?? [];
         addScp(rcs, lt.lparId, t);

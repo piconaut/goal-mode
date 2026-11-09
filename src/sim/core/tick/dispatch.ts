@@ -252,6 +252,18 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   systems.push({ lparId: l.id, scps });
   const cics = regions?.targets;
   const cicsStorage = t.cicsStorageBy[l.id];
-  lparTicks.push({ lparId: l.id, scps: res.scps, roleHealth: res.roleHealth, ...(res.rcs ? { rcs: res.rcs } : {}), ...(cics ? { cics } : {}), ...(cicsStorage ? { cicsStorage } : {}) });
+  const ziCfg = l.pools.find((p) => p.pool === 'ZIIP');
+  lparTicks.push({
+    lparId: l.id,
+    scps: res.scps,
+    roleHealth: res.roleHealth,
+    // RMF projects IIPCP only where a zIIP is defined to the image (online or reserved): Init & Tuning p.434
+    // (PROJECTCPU default NO reports nothing on an LPAR with no zIIP at all) and p.431 (defined but offline is
+    // still reported for planning). With none, the overflow is plain CP work.
+    iipcpReported: ziCfg !== undefined && ziCfg.logical + ziCfg.reserved > 0,
+    ...(res.rcs ? { rcs: res.rcs } : {}),
+    ...(cics ? { cics } : {}),
+    ...(cicsStorage ? { cicsStorage } : {}),
+  });
 }
 

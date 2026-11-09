@@ -40,13 +40,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-06 · IIPCP reported on an image with no online zIIP
-`list: playtest-fixes · status: ready · priority: low · size: S · area: sim`
-
-With PROJECTCPU=NO (the default) and no zIIP configured, real RMF reports no IIPCP (Init & Tuning p.434; re-check with
-zos-docs). The sim always reports it. Midwest PROD2 now has 0 online + 1 reserved zIIP, so it still shows there.
-Done when: IIPCP is zero on an image with no online zIIP (reporting only), with a test and a docs/research.md row.
-
 ### PT-08 · No alert for CICS short-on-storage stalls
 `list: playtest-fixes · status: ready · priority: low · size: M · area: content`
 

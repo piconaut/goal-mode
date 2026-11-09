@@ -329,7 +329,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   const ddfClasses = new Set(workloads.filter((w) => w.subsystem === 'DDF').map((w) => classify(def, w.work).serviceClass));
   const lastBy = (lparId: string | null, scKey: string): LastSplit => {
     const o = noSplit();
-    for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of reportedTicks(l.scps, l.cics)) if (t.scKey === scKey) addSplit(o, t);
+    for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of reportedTicks(l.scps, l.cics, false, l.iipcpReported ?? true)) if (t.scKey === scKey) addSplit(o, t);
     return o;
   };
   // CICS transaction samples shown with the region classes, as in WLMGL (reporting.ts).

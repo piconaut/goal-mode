@@ -195,6 +195,9 @@ export interface LparTick {
   rcs?: ReportClassTick[];
   /** Where RMF reports this image's CICS transaction samples (reporting.ts). */
   cics?: CicsTargets;
+  /** RMF reports IIPCP on this image: a zIIP is defined to the LPAR (online or reserved). Without one, eligible
+   * time on CPs is plain CP work and the reports show no IIPCP (Init & Tuning p.431, p.434). Absent: reported. */
+  iipcpReported?: boolean;
   /** CICS AOR dynamic storage this tick (SOS = in-flight tasks no longer fit under EDSALIM). */
   cicsStorage?: CicsStorageTick[];
   roleHealth: Record<string, { health: number; queueRatio: number }>;

@@ -414,6 +414,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: PT-06: RMF and Monitor III report IIPCP only where a zIIP is defined to the image (online or
+  reserved; *Init & Tuning* 3.1 p.431, p.434 with PROJECTCPU default NO). On an image with none (Midwest DEVT/SYSP,
+  harbourline DEV1) the eligible time on CPs stays plain CP work: `reportedTicks` folds it into APPL% CP and IIPCP
+  is 0, so Monitor III's CP/IIPCP split and the RMF/SMF 72.3 rows agree. PROD2's reserved-only zIIP keeps IIPCP.
+  Reporting only: `npm run compare -- --drop iipcpReported` leaves sim state, game state and the run log identical;
+  the goldens are regenerated for the report values and the per-image `iipcpReported` fact.
 - 2026-11-09: PT-04: a power cap's workload scope (`affects`) is re-resolved from the effective routing every tick
   while it runs, and each hour keeps the union of the scopes seen in it: work routed onto a capped CPC (or added)
   during the hour is attributed for that hour, and work moved off it loses the cap from the next hour, so remediation
