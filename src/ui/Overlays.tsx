@@ -496,6 +496,11 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
                 +{i.rca!.points} (was {i.truth.mechanism}/{i.truth.trigger})
               </span>
             </div>
+            {i.rca!.explain && (
+              <div className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
+                {i.rca!.explain}
+              </div>
+            )}
             {(i.rca!.evidence ?? []).map((e) => (
               <div key={e.pinId} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
                 {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}

@@ -154,7 +154,8 @@ export interface Incident {
   truth: { mechanism: Mechanism; trigger: Trigger };
   /** AIOps hypotheses when the incident opened (tool AIOPS), best first. */
   aiops?: Hypothesis[];
-  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number } | null;
+  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). */
+  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; explain?: string } | null;
   trustLost: number;
   /** Id of the first incident that day with the same root cause: one RCA covers the group, scored once (SPEC §10). */
   rcaGroup?: number;

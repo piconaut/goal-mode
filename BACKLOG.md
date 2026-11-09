@@ -40,18 +40,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-03 · Power-cap RCA is a gotcha (remaining parts)
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth CPU_PRIORITY/HARDWARE_FAULT. CPU_CAPACITY needs CPC ≥ 90 % (or
-LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`); CPCA was 70.9–82 % physical. Already fixed:
-the card's affected workloads (POWER_CAP resolves every workload on the throttled CPC) and the RCA vocabulary in the
-form. Remaining:
-- move the CPU_CAPACITY thresholds out of `sla.ts` into `src/content/` (CLAUDE.md data-driven rule);
-- explain the verdict after scoring ("CPC 81 % busy, below the 90 % capacity line");
-- show a capacity-adjustment clue in CPC / Partition Data (SMF70CAI/SMF70CCR, MVS SMF p.589; check with zos-docs).
-Done when: all three are in, with tests; the scoring itself is unchanged (goldens unchanged).
-
 ### PT-04 · POWER_CAP's RCA scope is a start-time snapshot
 `list: playtest-fixes · status: ready · priority: low · size: S · area: game`
 

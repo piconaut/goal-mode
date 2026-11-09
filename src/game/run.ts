@@ -176,7 +176,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
           for (const cpc of r.sim.config.cpcs) {
             const to = Math.max(4, cpc.capacitySetting - def.capacityDrop) as 4 | 5 | 6 | 7;
             if (to < cpc.capacitySetting) affectedCpcs.add(cpc.id);
-            cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to });
+            cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to, reason: 2 });
             restore.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting });
           }
           resolvedEnd.set(e.uid, restore);

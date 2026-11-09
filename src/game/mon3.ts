@@ -9,6 +9,7 @@ import { mergeWorkManager, noResources, reportedAccs, reportedTicks, type WorkMa
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
 import { msuPerCp } from '../sim/hw/cpc';
+import { CAPACITY_SETTING_FRAC } from '../content/hardware';
 import { classify } from '../sim/wlm/classify';
 import { jobShape } from '../sim/subsys/batch';
 import { BUCKET_BOUNDS, goalText, velocityOf } from '../sim/wlm/goals';
@@ -114,6 +115,8 @@ export interface Mon3CpcHeader {
   lparId: string;
   cpcId: string;
   cpcCapacityMsu: number;
+  /** SMF70CAI while the CPC runs below its normal capacity setting (absent = 100, no adjustment). */
+  capacityAdjustmentPct?: number;
   imageCapacityMsu: number;
   wlmCappingPct: number;
   r4haMsu: number;
@@ -397,6 +400,9 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
         lparId: l.id,
         cpcId: l.cpcId,
         cpcCapacityMsu: box.engines.CP * msuCp,
+        ...(box.peakCapacitySetting !== undefined && CAPACITY_SETTING_FRAC[box.capacitySetting] < CAPACITY_SETTING_FRAC[box.peakCapacitySetting]
+          ? { capacityAdjustmentPct: Math.max(1, Math.round((100 * CAPACITY_SETTING_FRAC[box.capacitySetting]) / CAPACITY_SETTING_FRAC[box.peakCapacitySetting])) }
+          : {}),
         imageCapacityMsu: Math.min(...limits),
         wlmCappingPct: 100 * (sim.lpars.find((x) => x.id === l.id)?.pools.find((p) => p.pool === 'CP')?.softCappedFrac ?? 0),
         r4haMsu: r4?.r4ha ?? 0,

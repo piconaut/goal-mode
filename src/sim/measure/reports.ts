@@ -193,7 +193,11 @@ function hms(sec: number): string {
 
 export function renderPartitionData(iv: RmfInterval): string {
   const out = header('PARTITION DATA REPORT', iv);
-  for (const c of iv.cpcBusy) out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
+  for (const c of iv.cpcBusy) {
+    // SMF 70: a capacity reduction shows as CAI 1–99 with the reason in CCR (MVS SMF p.589).
+    const adj = c.capacityAdjustmentPct !== undefined ? `   CAPACITY ADJUSTMENT ${c.capacityAdjustmentPct}% (SMF70CAI; reason ${c.capacityReasonCode} = ${c.capacityReasonCode === 1 ? 'operator' : 'external'})` : '';
+    out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%${adj}`);
+  }
   out.push('');
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
   out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG LPAR BUSY%  MVS BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');
