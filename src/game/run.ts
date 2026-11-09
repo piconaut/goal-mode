@@ -224,11 +224,20 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         .map((w) => w.id);
     };
     for (const [uid, cpcs] of resolvedCpcs) resolvedAffects.set(uid, scopeOf(cpcs));
-    // A running power cap re-resolves its scope every tick: a mid-cap routing change, or a workload added during
-    // the cap, is attributed. The last scope is kept when the cap ends, for the hour it was capped (PT-04).
+    // A running power cap re-resolves its scope every tick, and the hour keeps the union of the scopes seen in it:
+    // work routed onto a capped CPC (or added) during the hour is attributed for that hour, while work moved off
+    // it loses the cap from the next hour — remediation during the hour does not erase its trigger (PT-04;
+    // SPEC §10). The last hour's union is kept when the cap ends.
+    const hourStartTick = tick - (tick % TICKS_PER_HOUR);
+    const affectsHour = new Map<string, number>();
     const running = (e: RunState['events'][number]) =>
       (e.started || e.startTick <= tick) && !e.ended && !armedEnded.has(e.uid) && (e.endTick === null || e.endTick > tick);
-    for (const e of events) if (e.capacityCpcs && running(e)) resolvedAffects.set(e.uid, scopeOf(new Set(e.capacityCpcs)));
+    for (const e of events) {
+      if (!e.capacityCpcs || !running(e)) continue;
+      const now = scopeOf(new Set(e.capacityCpcs));
+      resolvedAffects.set(e.uid, e.affectsHour === hourStartTick ? [...new Set([...e.affects, ...now])] : now);
+      affectsHour.set(e.uid, hourStartTick);
+    }
     events = events.map((e) => ({
       ...e,
       affects: resolvedAffects.get(e.uid) ?? e.affects,
@@ -236,7 +245,8 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       started: e.started || e.startTick <= tick,
       ended: e.ended || armedEnded.has(e.uid) || (e.started && e.endTick !== null && e.endTick <= tick),
       ...(armedEnded.has(e.uid) ? { endTick: tick } : {}),
-      ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!] } : {}),
+      ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!], affectsHour: hourStartTick } : {}),
+      ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);

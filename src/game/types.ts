@@ -86,8 +86,11 @@ export interface ActiveEvent {
   /** Hardware items refused while the card runs (copied from the card). */
   blocksHardware?: string[];
   /** A power cap: the CPCs whose capacity it dropped. Their workloads (the card's `affects`) are re-resolved
-   * from the effective routing every tick while the cap runs, so a mid-cap move or added workload is attributed. */
+   * from the effective routing every tick while the cap runs, and each hour keeps the union of the scopes seen
+   * in it, so a mid-cap move or added workload is attributed for that hour. */
   capacityCpcs?: string[];
+  /** Start tick of the hour whose union `affects` holds (a power cap's scope follows the routing). */
+  affectsHour?: number;
   endCommands: Command[];
   started: boolean;
   ended: boolean;

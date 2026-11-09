@@ -415,8 +415,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 ## Latest maintenance
 
 - 2026-11-09: PT-04: a power cap's workload scope (`affects`) is re-resolved from the effective routing every tick
-  while it runs, so a mid-cap routing change or a workload added during the cap is attributed by the hour's close;
-  the CPC set is kept on the event as `capacityCpcs`, and the last scope is retained after expiry. `npm run compare`
+  while it runs, and each hour keeps the union of the scopes seen in it: work routed onto a capped CPC (or added)
+  during the hour is attributed for that hour, and work moved off it loses the cap from the next hour, so remediation
+  during the hour (including on its last tick) does not erase its trigger. The CPC set is kept on the event as
+  `capacityCpcs` and the union's hour as `affectsHour`; the last hour's scope survives expiry. `npm run compare`
   shows no differences on the scripted runs and the goldens are unchanged.
 - 2026-11-09: PT-13: SMF 101/110 "vs base" is frozen per closed hour (`cpuVsBase` on `SmfHour`) against the
   baseline in force during that hour, so a past row no longer moves with the EWMA; the baseline learns only from

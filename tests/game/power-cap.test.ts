@@ -110,15 +110,33 @@ describe('power-cap RCA scope', () => {
     ]);
     expect(run.events[0]!.affects).toContain('MOBILE');
     expect(run.events[0]!.affects).not.toContain('CARDS');
-    // Two hours in, swap them: the card's earlier attribution must not stay frozen.
-    const moved = advance({ ...run, pendingCommands: [
+    // Play two hours with that routing, then swap them on the first tick of hour 2: the card's earlier
+    // attribution must not stay frozen, and the next hour follows the new routing.
+    const before = advance(run, SCENARIOS.harbourline!, HARBOURLINE_GAME, 2 * TICKS_PER_HOUR - 1);
+    const moved = advance({ ...before, pendingCommands: [
       { kind: 'SET_ROUTING', workloadId: 'CARDS', routing: { PRDA: 1 } },
       { kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PRDC: 1 } },
     ] }, SCENARIOS.harbourline!, HARBOURLINE_GAME, 1);
     expect(moved.events[0]!.affects).toContain('CARDS');
     expect(moved.events[0]!.affects).not.toContain('MOBILE');
-    expect(triggerOf('CARDS', 'CPU_PRIORITY', moved.events, newHour(0), false)).toBe('HARDWARE_FAULT');
-    expect(triggerOf('MOBILE', 'CPU_PRIORITY', moved.events, newHour(0), false)).toBe('POLICY');
+    expect(triggerOf('CARDS', 'CPU_PRIORITY', moved.events, newHour(2 * TICKS_PER_HOUR), false)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', moved.events, newHour(2 * TICKS_PER_HOUR), false)).toBe('POLICY');
+  });
+
+  it('keeps the cap on work moved off a capped CPC during the hour', () => {
+    const run = startCap('harbourline', [
+      { kind: 'SET_CPC_CAPACITY', cpcId: 'CPC2', capacitySetting: 4 },
+      { kind: 'SET_ROUTING_POLICY', workloadId: 'MOBILE', policy: { method: 'STATIC' } },
+      { kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PRDA: 1 } },
+    ]);
+    // Move the mobile work off the throttled image on the hour's last tick.
+    const beforeClose = advance(run, SCENARIOS.harbourline!, HARBOURLINE_GAME, TICKS_PER_HOUR - 2);
+    const moved = advance({ ...beforeClose, pendingCommands: [{ kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PRDC: 1 } }] }, SCENARIOS.harbourline!, HARBOURLINE_GAME, 1);
+    expect(moved.events[0]!.affects).toContain('MOBILE');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', moved.events, newHour(0), false)).toBe('HARDWARE_FAULT');
+    // From the next hour it is not the cap's work any more.
+    const next = advance(moved, SCENARIOS.harbourline!, HARBOURLINE_GAME, 1);
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', next.events, newHour(TICKS_PER_HOUR), false)).toBe('POLICY');
   });
 
   it('picks up a workload added during the cap', () => {
