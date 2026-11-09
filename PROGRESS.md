@@ -414,6 +414,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: A player change carries only change-desk commands (`CHANGE_DESK_KINDS` in `src/game/catalog.ts`); a
+  fix or hardware order can no longer carry commands, and event-only fields (CF degrade, LCU extra I/O, CICS leak)
+  plus an over-large hot-skew rebalance are refused at no cost (PT-02).
 - 2026-11-09: WLM's projection budget is per importance (`RECEIVERS_PER_IMPORTANCE` in `src/sim/wlm/adjust.ts`), so a
   receiver whose projections find no move of net value no longer keeps lower importances out (PT-01, playtest round 2
   D19: STCMED/STCHI held both importance-1 slots while ONLCARD/ONLRBANK sat at PI 4.0 until 22:30). Goldens
