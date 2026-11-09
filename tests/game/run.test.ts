@@ -314,6 +314,21 @@ describe('events', () => {
     expect(r.log.some((l) => l.includes('no active event matched this fix'))).toBe(true);
   });
 
+  it('a planned fix arms against an unforewarned card once its Ask Around rumour is revealed', () => {
+    // RETRY_STORM has no forewarning: only the revealed rumour lets the player see it coming.
+    const hidden = pendingCard('RETRY_STORM', fresh(), 2);
+    const uid = hidden.events[0]!.uid;
+    const r0 = { ...hidden, inquiries: { pending: [], revealed: [`ev:${uid}`] } };
+    const label = labelThatApplies(r0);
+    let r = startDay(requestChange(r0, MIDWEST_GAME, { label, fixId: 'MOBILE_BACKOFF' }).run, MIDWEST_GAME);
+    expect(r.changes.at(-1)!.armedEvents).toEqual([uid]);
+    r = advance(r, MIDWEST, MIDWEST_GAME, 2 * TICKS_PER_HOUR + 1);
+    expect(r.events[0]).toMatchObject({ started: true, ended: true });
+    // The same plan without the reveal arms nothing.
+    const unseen = startDay(requestChange(hidden, MIDWEST_GAME, { label, fixId: 'MOBILE_BACKOFF' }).run, MIDWEST_GAME);
+    expect(unseen.changes.at(-1)!.armedEvents).toBeUndefined();
+  });
+
   it('a matching and a non-matching fix are indistinguishable when requested', () => {
     const r = activeCard('REGRESSION');
     const fixIds = [...new Set(MIDWEST_GAME.events.flatMap((e) => (e.fix ? [e.fix] : [])))];
