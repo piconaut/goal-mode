@@ -231,8 +231,10 @@ export function renderCfActivity(iv: RmfInterval): string {
   }
   if ((iv.cfStructures ?? []).length) {
     // Usage Summary lists every structure copy; synchronously duplexed pairs are marked PRIM/SEC (RMF Report Analysis p.365).
-    // CONTENTION % is RMF's delayed-request share for serialized LIST and LOCK structures (p.85); the sim maps the
-    // sysplex lock index to it and has no serialized LIST model, so only the LOCK structure reports a value.
+    // APPROX: CONTENTION % is a Monitor III CFACT field (delayed-request share for serialized LIST and LOCK
+    // structures, p.85). The Postprocessor CF Activity report imitated here shows lock contention as request counts
+    // instead (REQ TOTAL / REQ DEFERRED / -CONT / -FALSE CONT, p.373); the column is borrowed from CFACT for
+    // readability. The sim maps the sysplex lock index to it and has no serialized LIST model, so only LOCK reports.
     out.push('', 'STRUCTURE SUMMARY');
     out.push('STRUCTURE NAME     TYPE   STATUS  CF        REQ/SEC   SYNC %   SYNC SERV(us)   AVG SERV(us)  CONTENTION %');
     const lockContention = iv.lockIndex === undefined ? null : Math.min(CF_LOCK_CONTENTION.capPct, CF_LOCK_CONTENTION.pctPerIndex * iv.lockIndex);

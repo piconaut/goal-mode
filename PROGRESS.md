@@ -410,6 +410,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: Milestone #243 (dev → main) merged. Review notes fixed: CF Activity CONTENTION % marked APPROX (a
+  Monitor III CFACT column; the Postprocessor report shows -CONT counts, RMF RA p.373), MSU citation moved to WLM
+  Planning p.44, test for `isNewWorkload` on a workload no event or story beat adds. Left open: `setWlmTraceSink`
+  is module-level mutable state in `src/sim/wlm/adjust.ts` (inspect-only, decision-neutral).
 - 2026-11-06: Added five IBM Redbooks/Redpaper entries to the `zos-docs` catalog after checking their IBM publication pages and PDF title pages; ingested their PDFs and caches with `books.py`.
 - Split `src/sim/core/step.ts` (1,458 → 278 lines at #217) into `src/sim/core/tick/`; bench hashes unchanged.
   Further refactors (`evaluate.ts`, Midwest `pool()`) are in BACKLOG.md `cleanup`.
