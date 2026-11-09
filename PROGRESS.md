@@ -414,6 +414,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: PT-09: a fix planned from a forewarning no longer goes to waste when the card starts after 06:00.
+  A fix that finds no active target but whose card the player can see (inbox forewarning or revealed rumour) and
+  that starts later that day is stored as `armedEvents` on the applied change; the card's begin and end apply in
+  the same tick when it starts, and the log names the armed change. A guessed fix on an unseen card is still
+  charged with "no active event matched this fix", so the Change Desk cannot be probed. The ZIIP-loss clue now
+  says a later redeploy can bring the COBOL versions back.
 - 2026-11-09: PT-05: the WLM activity log names a rejected move and its reason ("ONLCARD#1 DP F4→F6 rejected: harms
   DDFMOB#1, equal importance") on that receiver's own line, and WLMGL/SYSWKM mark a CICS region managed to the
   transactions' goals (TRANSACTION mode only; REGION/BOTH manage it to its own class's goal) — the region class's own

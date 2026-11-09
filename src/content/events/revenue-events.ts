@@ -54,7 +54,7 @@ const AGENCY_CARDS: EventDef[] = [
   adapt('ZIIP_LOSS', {
     fix: 'NATIVE_SQL_PROCS_REV',
     forewarning: 'Change board: "E-filing stored procedures were redeployed overnight (new COBOL versions)."',
-    clue: 'WLMGL: WEBDDF (or e-filing\'s own class) APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures (Taxpayers trust), or absorb it (cap, more CP).',
+    clue: 'WLMGL: WEBDDF (or e-filing\'s own class) APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures (Taxpayers trust; the next redeploy can bring the COBOL versions back), or absorb it (cap, more CP).',
   }, { MOBILE: 'EFILE' }),
   adapt('XLOG_LOOP', { affects: ['ACCOUNT', 'AGENTS'] }),
   adapt('CF_LINK', { affects: ALL_ONLINE }),

@@ -13,7 +13,7 @@ import {
   type PlannedChange,
   type RunState
 } from '../types';
-import { endEventByFix, fixIdsOf, hasEventForFix } from './events';
+import { armableEvents, endEventByFix, fixIdsOf, hasEventForFix } from './events';
 import type { GameContent } from './shared';
 import { clampTrust, FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
 
@@ -37,6 +37,8 @@ export interface ChangeOutcome {
 }
 
 export const NO_TARGET = 'no active event matched this fix';
+/** A fix whose forewarned card has not started yet: it ends when the card starts. */
+export const ARMED = 'armed against the forewarned change; it ends when it lands';
 
 export function failRisk(run: RunState): number {
   return failRiskFor(run.fatigue, run.perks);
@@ -112,12 +114,15 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
         message: `${req.automated ? 'Automation misfired' : 'Change failed during implementation'} (risk ${(100 * risk).toFixed(0)}%): ${req.label}`,
       };
     }
-    if (change.activateDay === r.day) {
-      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
-    } else r = { ...r, changes: [...r.changes, change] };
     const noTarget = fix !== undefined && !hasEventForFix(r, content, fix.id);
+    // The forewarned card has not started yet: the fix is ready and ends it when it lands that day.
+    const arms = fix !== undefined && noTarget ? armableEvents(r, content, fix.id, r.day) : [];
+    if (change.activateDay === r.day) {
+      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED', ...(arms.length > 0 ? { armedEvents: arms } : {}) }] };
+    } else r = { ...r, changes: [...r.changes, change] };
     if (fix) r = endEventByFix(r, content, fix.id);
     const what = `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`;
+    if (arms.length > 0) return { run: logLine(r, `${what} (${ARMED})`), ok: true, message: `Applied: ${req.label}; ${ARMED}` };
     if (noTarget) return { run: logLine(r, `${what} (${NO_TARGET})`), ok: true, message: `Applied with no effect: ${req.label}; ${NO_TARGET}` };
     return { run: logLine(r, what), ok: true, message: `Applied: ${req.label}` };
   }

@@ -134,6 +134,24 @@ export function visibleFixIds(run: RunState, content: GameContent): string[] {
 export const hasEventForFix = (run: RunState, content: GameContent, fixId: string): boolean =>
   run.events.some((e) => e.started && !e.ended && content.events.some((d) => d.id === e.defId && d.fix === fixId));
 
+/**
+ * Cards of `fixId` that have not started, start on `day`, and that the player can see: the inbox forewarned the
+ * change or an Ask Around rumour about it was revealed. A guessed fix on an unseen card stays a no-target charge,
+ * so arming never turns the Change Desk into a probe for hidden events.
+ */
+export function armableEvents(run: RunState, content: GameContent, fixId: string, day: number): string[] {
+  const from = day * TICKS_PER_DAY;
+  const to = from + TICKS_PER_DAY;
+  return run.events
+    .filter((e) => {
+      if (e.started || e.ended || e.startTick < from || e.startTick >= to) return false;
+      const def = content.events.find((d) => d.id === e.defId);
+      if (!def || def.fix !== fixId) return false;
+      return def.forewarning !== null || (run.inquiries?.revealed ?? []).includes(`ev:${e.uid}`);
+    })
+    .map((e) => e.uid);
+}
+
 export function endEventByFix(run: RunState, content: GameContent, fixId: string): RunState {
   const tick = run.sim.tick;
   let r = run;

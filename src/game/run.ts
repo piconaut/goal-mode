@@ -23,9 +23,9 @@ import { deliverInquiries } from './inquiries';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
-import { failRisk, NO_TARGET, requestChange } from './run/changes';
+import { ARMED, failRisk, NO_TARGET, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
+import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
@@ -131,9 +131,12 @@ export function startDay(run: RunState, content: GameContent): RunState {
         continue;
       }
       r = { ...r, pendingCommands: [...r.pendingCommands, ...c.commands] };
-      changes.push({ ...c, status: 'APPLIED' });
       const noTarget = c.endsEvent !== null && !hasEventForFix(r, content, c.endsEvent);
-      r = logLine(r, `Planned change applied: ${c.label}${noTarget ? ` (${NO_TARGET})` : ''}`);
+      // A forewarned card that has not started yet: the fix arms against it and ends it when it lands that day.
+      const arms = noTarget ? armableEvents(r, content, c.endsEvent!, r.day) : [];
+      changes.push({ ...c, status: 'APPLIED', ...(arms.length > 0 ? { armedEvents: arms } : {}) });
+      const why = arms.length > 0 ? ` (${ARMED})` : noTarget ? ` (${NO_TARGET})` : '';
+      r = logLine(r, `Planned change applied: ${c.label}${why}`);
       if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
     } else {
       if (c.status === 'APPLIED' && c.revertDay === r.day) {
@@ -163,6 +166,10 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       r = logLine(r, `V WLM,POLICY=${switchTo.kind === 'ACTIVATE_POLICY' ? switchTo.definition.policyName : ''} (scheduled)`);
     }
     let events = r.events;
+    // Fixes applied earlier today whose forewarned card had not started yet: they end the card when it starts.
+    const armed = new Map<string, string>();
+    for (const c of r.changes) if (c.status === 'APPLIED' && c.armedEvents) for (const uid of c.armedEvents) armed.set(uid, c.label);
+    const armedEnded = new Set<string>();
     const resolvedEnd = new Map<string, Command[]>();
     const resolvedCpcs = new Map<string, Set<string>>();
     for (const e of events) {
@@ -187,6 +194,13 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         // Only cards the player was told about may appear in the log (and its chart markers).
         const line = def ? eventStartLog(r, def, e.uid) : null;
         if (line) r = logLine(r, line);
+        const armedLabel = armed.get(e.uid);
+        if (armedLabel !== undefined) {
+          // The fix was ready before the card landed: begin and end apply in the same tick, so it never takes hold.
+          cmds.push(...(resolvedEnd.get(e.uid) ?? e.endCommands));
+          armedEnded.add(e.uid);
+          r = logLine(r, `Armed change ${armedLabel}: the forewarned change has been backed out`);
+        }
       }
       if (e.started && !e.ended && e.endTick !== null && e.endTick <= tick) {
         cmds.push(...e.endCommands);
@@ -209,7 +223,8 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       affects: resolvedAffects.get(e.uid) ?? e.affects,
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || e.startTick <= tick,
-      ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
+      ended: e.ended || armedEnded.has(e.uid) || (e.started && e.endTick !== null && e.endTick <= tick),
+      ...(armedEnded.has(e.uid) ? { endTick: tick } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);
