@@ -85,15 +85,6 @@ from the view, and nothing projects TFP against sub-capacity from history. Add a
 $/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection. Done when: the offer shows both,
 in the browser and `play finance`.
 
-### PT-13 · SMF 101 "vs base" moves retroactively
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-`src/game/smf.ts` divides past hours by today's baseline, an EWMA (0.8/h) learned from every SLA-met hour, so a
-regression is absorbed in ~3 h: at the D7 briefing the D6 08:00 row read 1.00 instead of ≈2.8. Fix: freeze each hour's
-ratio when it closes, and learn the baseline only from hours without an active event of that mechanism (or a slow
-decay, or same hour last week). Also tag the Db2-team mail "(Db2 Whisperer)": it is the perk's tip, sent at event
-start. Done when: a past row keeps its ratio across days, with a test.
-
 ### PT-14 · Monitor III CPC report: per-type groups
 `list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
 

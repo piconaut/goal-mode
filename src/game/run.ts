@@ -190,7 +190,11 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
           resolvedCpcs.set(e.uid, affectedCpcs);
         }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
-        if (def?.perkTip && r.perks.includes(def.perkTip.perk)) r = msg(r, def.perkTip.from, def.name, def.perkTip.text);
+        if (def?.perkTip && r.perks.includes(def.perkTip.perk)) {
+          // The tip is the perk's: tag the sender so the player knows where it came from (PT-13).
+          const perk = DRAFT_OPTIONS.find((o) => o.id === def.perkTip!.perk)?.title.replace(/^Perk: /, '');
+          r = msg(r, perk ? `${def.perkTip.from} (${perk})` : def.perkTip.from, def.name, def.perkTip.text);
+        }
         // Only cards the player was told about may appear in the log (and its chart markers).
         const line = def ? eventStartLog(r, def, e.uid) : null;
         if (line) r = logLine(r, line);
