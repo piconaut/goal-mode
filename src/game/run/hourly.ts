@@ -11,7 +11,8 @@ import {
   type HourAcc,
   type RunState
 } from '../types';
-import { allWorkloads } from '../workloads';
+import { allWorkloads, isNewWorkload } from '../workloads';
+import type { GameContent } from './shared';
 import { toolOn } from './shared';
 import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
 
@@ -116,7 +117,7 @@ function hourPeaks(r: RunState, h: HourAcc): CapacityDay {
 /** Hours of per-workload SMF detail kept in the run (two played days). */
 const SMF_HOURS_KEPT = 48;
 
-export function closeHour(run: RunState, scenario: Scenario): RunState {
+export function closeHour(run: RunState, scenario: Scenario, content: GameContent): RunState {
   const h = run.hour;
   if (!h) return run;
   let r = run;
@@ -153,7 +154,7 @@ export function closeHour(run: RunState, scenario: Scenario): RunState {
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
       const mechanism = failureMechanismOf(w, wh, r.events) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
-      const isNew = r.sim.extraWorkloads.some((x) => x.id === w.id);
+      const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
       const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
       let aiops: Hypothesis[] | undefined;
       if (toolOn(r, 'AIOPS')) {

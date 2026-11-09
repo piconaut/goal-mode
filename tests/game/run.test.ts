@@ -3,6 +3,7 @@ import { buyTool, expireToolTrials, trialTool } from '../../src/game/tools';
 import { failRiskFor, hardwareItem, hoursFor, opexBudgetFor } from '../../src/game/catalog';
 import { endReport } from '../../src/game/endReport';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
+import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
 import { advance, chooseDraft, continueEndless, drawEvents, failedPolicyToday, newRun, overallTrust, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
@@ -368,6 +369,52 @@ describe('event cards resolved at start', () => {
   });
 });
 
+describe('event log disclosure', () => {
+  const sc = SCENARIOS.midwest!;
+  const card = (defId: string, opts: { perks?: string[]; revealed?: string[]; charts?: boolean } = {}): RunState => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
+    const base = newRun(sc, MIDWEST_GAME, 3);
+    let r = startDay(opts.charts ? { ...base, tools: [...base.tools, 'RMF_MON3', 'MON3_CHARTS'] } : base, MIDWEST_GAME);
+    r = {
+      ...r,
+      events: [{ uid: `${defId}@0`, defId, name: def.name, startTick: r.sim.tick, endTick: r.sim.tick + 2, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false }],
+      ...(opts.perks ? { perks: opts.perks } : {}),
+      ...(opts.revealed ? { inquiries: { pending: [], revealed: opts.revealed } } : {}),
+    };
+    return r;
+  };
+  const eventLines = (r: RunState) => r.log.filter((l) => l.startsWith('EVENT'));
+
+  it('keeps a silent card out of the log and the chart markers', () => {
+    const r = advance(card('SHADOW_IT', { charts: true }), sc, MIDWEST_GAME, 6);
+    expect(r.events[0]!.started).toBe(true);
+    expect(eventLines(r)).toEqual([]);
+    expect(r.mon3Charts!.markers.filter((m) => m.kind === 'EVENT')).toEqual([]);
+  });
+
+  it('logs an announced card in its announcement wording, start and end', () => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === 'CF_LINK')!;
+    const r = advance(card('CF_LINK', { charts: true }), sc, MIDWEST_GAME, 6);
+    expect(eventLines(r)).toEqual([`EVENT start: ${def.name} — ${def.announcement}`, `EVENT end: ${def.name}`]);
+    expect(r.mon3Charts!.markers.some((m) => m.kind === 'EVENT' && m.text.includes(def.announcement!))).toBe(true);
+  });
+
+  it('does not treat a forewarning as a reveal', () => {
+    // ZIIP_LOSS's forewarning says the procedures were redeployed; the card name would give the zIIP diagnosis away.
+    expect(eventLines(advance(card('ZIIP_LOSS'), sc, MIDWEST_GAME, 1))).toEqual([]);
+  });
+
+  it('logs a card a perk tipped off, and one an Ask Around rumour revealed', () => {
+    const reg = MIDWEST_GAME.events.find((e) => e.id === 'REGRESSION')!;
+    expect(eventLines(advance(card('REGRESSION'), sc, MIDWEST_GAME, 1))).toEqual([]);
+    const tip = advance(card('REGRESSION', { perks: ['DB2_WHISPERER'] }), sc, MIDWEST_GAME, 1);
+    expect(eventLines(tip)).toEqual([`EVENT start: ${reg.name} — ${reg.perkTip!.text}`]);
+    // A rumour reveals the card without naming it, so only the rumour wording is logged.
+    const rumoured = advance(card('SHADOW_IT', { revealed: ['ev:SHADOW_IT@0'] }), sc, MIDWEST_GAME, 1);
+    expect(eventLines(rumoured)).toEqual([`EVENT start: ${EVENT_RUMOURS.SHADOW_IT}`]);
+  });
+});
+
 describe('regulator audit of unclassified work', () => {
   const sc = SCENARIOS.midwest!;
   const row = (lparId: string, serviceClass: string, applCpPct: number) => ({ lparId, serviceClass, scKey: `${serviceClass}.1`, applCpPct }) as WlmRecord;
@@ -504,4 +551,31 @@ describe('draft perks', () => {
     expect(r.capexRemaining).toBe(base.capexRemaining + 500_000);
     expect(opexBudgetFor(r.opexBudgetMonthly, r.perks)).toBeCloseTo(base.opexBudgetMonthly * 0.9);
   });
+});
+
+describe('Db2 connect failures in the Operations log', () => {
+  it('logs every attempt, including a job that fails again right after a restart', () => {
+    let r = startDay(newRun(MIDWEST, content, 5), content);
+    r = { ...r, pendingCommands: [{ kind: 'SET_JOB_CLASS', jobClass: 'A', initiators: { PROD1: 12, PROD2: 10, SYSP: 20 } }] };
+    r = advance(r, MIDWEST, content, 16 * 360); // 22:00, the night's batch under way
+    const failed = r.sim.batch.jobs.find((j) => j.status === 'ABENDED' && j.failCode === 'DSNE100I')!;
+    expect(failed).toBeDefined();
+    const name = failed.def.name;
+    const lines = () => r.log.filter((l) => l.startsWith(`${name} on `) && l.includes('DSNE100I NOT OPERATIONAL')).length;
+    expect(lines()).toBe(1);
+    // Restart it and keep class A on the Db2-less image: it goes ABENDED → QUEUED → ABENDED within the tick.
+    r = advance(
+      {
+        ...r,
+        pendingCommands: [
+          { kind: 'SET_JOB_CLASS', jobClass: 'A', initiators: { SYSP: 100 } },
+          { kind: 'RESTART_JOB', day: failed.day, name },
+        ],
+      },
+      MIDWEST,
+      content,
+      1,
+    );
+    expect(lines()).toBe(2);
+  }, 120_000);
 });

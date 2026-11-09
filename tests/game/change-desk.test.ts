@@ -32,12 +32,39 @@ describe('change preview', () => {
     expect(previewChange(previewContext(live), { commands: [] }).reason).toBe('Nothing to change');
   });
 
-  it("offers and accepts only the fixes this scenario's event cards call for", () => {
+  it("offers only fixes whose card this run has revealed, and accepts only the scenario's fixes", () => {
     const r = newRun(MIDWEST, MIDWEST_GAME, 7);
-    expect(buildView(r, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
-    expect(buildView(r, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS_REV');
-    expect(previewChange(previewContext(r, MIDWEST_GAME), { fixId: 'RECYCLE_PROD2_AORS' }).ok).toBe(true);
+    const sos = MIDWEST_GAME.events.find((e) => e.id === 'CICS_SOS')!;
+    const started = {
+      ...r,
+      events: [{ uid: 'CICS_SOS@0', defId: sos.id, name: sos.name, startTick: 0, endTick: null, trigger: sos.trigger, affects: sos.affects, endCommands: sos.end, started: true, ended: false }],
+    };
+    const drawn = { ...started, events: started.events.map((e) => ({ ...e, started: false })) };
+    expect(buildView(started, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
+    // Drawn for today but not started and not forewarned: the Operations list must not spoil the card.
+    expect(buildView(drawn, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS');
+    expect(buildView(started, MIDWEST).fixIds).not.toContain('RECYCLE_PROD2_AORS_REV');
+    expect(previewChange(previewContext(started, MIDWEST_GAME), { fixId: 'RECYCLE_PROD2_AORS' }).ok).toBe(true);
     expect(requestChange(r, MIDWEST_GAME, { label: 'x', fixId: 'RECYCLE_PROD2_AORS_REV' }).ok).toBe(false);
+  });
+
+  it('reveals a fix when the card was only forewarned', () => {
+    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
+    const enc = MIDWEST_GAME.events.find((e) => e.id === 'ENCRYPTION_MANDATE')!;
+    const forewarned = {
+      ...r,
+      events: [{ uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, endCommands: enc.end, started: false, ended: false }],
+    };
+    expect(buildView(r, MIDWEST).fixIds).not.toContain('SCOPE_ENCRYPTION');
+    expect(buildView(forewarned, MIDWEST).fixIds).toContain('SCOPE_ENCRYPTION');
+  });
+
+  it('reveals a fix when the card was only rumoured through Ask Around', () => {
+    const r = newRun(MIDWEST, MIDWEST_GAME, 7);
+    const enc = MIDWEST_GAME.events.find((e) => e.id === 'ENCRYPTION_MANDATE')!;
+    const card = { uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, endCommands: enc.end, started: false, ended: false };
+    const rumoured = { ...r, events: [card], inquiries: { pending: [], revealed: [`ev:${card.uid}`] } };
+    expect(buildView(rumoured, MIDWEST).fixIds).toContain('SCOPE_ENCRYPTION');
   });
 
   it('an operator command during the live day skips the change-board trust cost but still takes hours', () => {
@@ -122,6 +149,31 @@ describe('cancel', () => {
   it('accepts a command on a region added by a change already planned', () => {
     const r = requestChange(fresh(), content, { label: 'aor', commands: [{ kind: 'ADD_AOR', lparId: 'PROD1', name: 'CICSNEW', maxTasks: 100, qrFrac: 0.5 }] }).run;
     expect(requestChange(r, content, { label: 'mxt', commands: [{ kind: 'SET_CICS', name: 'CICSNEW', maxTasks: 200 }] }).ok).toBe(true);
+  });
+});
+
+describe('routing placement', () => {
+  const route = (routing: Record<string, number>): Command => ({ kind: 'SET_ROUTING', workloadId: 'MOBILE', routing });
+
+  it('refuses to put Db2 work on an LPAR that does not run Db2, and charges nothing', () => {
+    const r = fresh();
+    const out = requestChange(r, content, { label: 'MOBILE to SYSP', commands: [route({ SYSP: 1 })] });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/MOBILE needs .*DB2.* on SYSP/);
+    expect(out.run.hoursLeft).toBe(r.hoursLeft);
+    expect(out.run.changes).toHaveLength(0);
+    expect(requestChange(r, content, { label: 'MOBILE split', commands: [route({ PROD1: 0.5, PROD2: 0.5 })] }).ok).toBe(true);
+  });
+
+  it('refuses unknown LPARs in a routing change', () => {
+    expect(requestChange(fresh(), content, { label: 'MOBILE to nowhere', commands: [route({ PRDQ: 1 })] }).message).toMatch(/No LPAR PRDQ/);
+  });
+
+  it('applies the same check to a workload added during the run', () => {
+    const mobile = MIDWEST.workloads.find((w) => w.id === 'MOBILE')!;
+    const out = requestChange(fresh(), content, { label: 'new app', commands: [{ kind: 'ADD_WORKLOAD', workload: { ...mobile, id: 'NEWAPP', routing: { SYSP: 1 } } }] });
+    expect(out.ok).toBe(false);
+    expect(out.message).toMatch(/NEWAPP needs .*DB2.* on SYSP/);
   });
 });
 

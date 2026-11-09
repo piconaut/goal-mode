@@ -152,7 +152,7 @@ end-of-day report card is the summary. The day is simulated in full, so seeds an
                          │ ICF: 2 (CF engines)            Memory: 768 GB            │
                          │                                                           │
   Sysplex PLEXP1         │  PROD1  w=500 LCP=6 zIIP=2   (CICS AORs, Db2 DB1A, MQ)  │
-                         │  PROD2  w=350 LCP=6 zIIP=0   (CICS AORs, Db2 DB1B, DDF) │
+                         │  PROD2  w=350 LCP=6 zIIP=0+1r  (CICS AORs, Db2 DB1B, DDF) │
                          │  DEVT   w=100 LCP=4          (dev/test, TSO, test Db2)  │
                          │  SYSP   w=50  LCP=2          (sysprog sandbox)          │
                          │  CF01   dedicated ICF        (lock, GBP primary, XCF)  │
@@ -387,7 +387,9 @@ Algorithm per pool:
 6. **Resource group caps/minimums** (§5.5.6) and **discretionary capping** (§5.5.5) are applied
    as constraints during allocation.
 7. **CPU Critical** periods: lower-importance work may never be assigned a DP ≥ theirs. It does
-   *not* protect them from equal or higher importance work.
+   *not* protect them from equal or higher importance work. When the DPs break it (a policy activation
+   that newly sets CPU Critical keeps the old DPs), policy adjustment first lowers the less important
+   periods below the protected DP, then assesses receivers as usual.
 
 Outputs per period: `cpuUsingFrac`, `cpuDelayFrac` (split into *dispatch delay* and *PR/SM
 delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
@@ -421,6 +423,9 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   can't manage those classes; BOTH (meant for TORs) keeps tracking them (WLM Planning p.123). A transaction's
   wait for TRANSACTION regions counts as its CPU delay, so a starved region makes its transaction class a CPU
   receiver (SG24-7621 p.81, p.126); a wait for REGION/BOTH regions stays a dependency (OTHER) delay.
+  **Not a player lever** (user decision 2026-11-05, game simplicity): the sim models all three, but the policy
+  editor and play CLI refuse setting a rule's mode (clearing one back to the default is allowed, for old saves);
+  every scenario ships with all regions at TRANSACTION. The realism lab and tests still drive REGION/BOTH.
 - CICS transaction classes (any class a CICS rule or the CICS default points at) take one period with a
   response-time goal. The editor warns on velocity, discretionary or multi-period goals ("not supported",
   WLM Planning ch. 9–10) and refuses a resource group on such a class, the one case IBM documents the ISPF
@@ -517,7 +522,8 @@ receiver candidate.
 
 - **Type 1:** service units/second, sysplex scope. **Type 2:** % of LPAR share, system scope
   (LPAR share = min(weight share, LP cap, defined capacity)). **Type 3:** CPs × 100, system
-  scope.
+  scope. The editor converts a type 1 limit to MSU (277.8 SU/s per MSU) and to CPs at each CPC's
+  speed (`suPerCpuSecOf`); type 4 (MSU) is not modelled.
 - **Maximum** is always enforced (cap). **Minimum** is honoured only while the group's work
   misses goals, even if that hurts more important work (SG24-7621 §4.16–4.19).
 - Capped work is non-dispatchable during sleeping slices (*WLM Planning* 3.1 p.60 notes 4–5).
@@ -633,8 +639,11 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   (player toggle).
 - Sync requests **spin on the z/OS CP**, so slow CF responses *burn z/OS CPU*. That is a hidden
   MSU cost the player discovers with CF Activity reports.
-- **Lock structure:** global lock contention and false contention rise with update intensity
-  and with batch overlapping online.
+- **Lock structure:** global lock contention rises with update intensity and with batch overlapping
+  online. STRUCTURE SUMMARY shows it as CONTENTION % on the lock structure, from the same sysplex
+  lock index that drives Db2 lock wait (RMF Report Analysis p.85; FICTIONAL mapping: 5 % per index
+  unit, capped at 90 %). APPROX: serialized LIST structures report none, and false contention (hash
+  collisions) is not modelled.
 - **Structure duplexing** (opt-in resilience) doubles some traffic and adds cost.
 - CF link failure event: CF requests reroute or slow down. Losing a CF forces a structure
   rebuild on the surviving CF, which needs white space.
@@ -877,6 +886,9 @@ the event ends only when that fix succeeds. A fix already planned is refused wit
 engineer-hours or trust (it reveals only the player's own plan). A fix with no active target is accepted
 and charged like any other, and its log line says "no active event matched this fix" once it runs (06:00
 for a planned fix, at once for a live one), so the Change Desk can't be probed for hidden events.
+The Operations list offers a card's fix only once the player has seen the card: it has started, its
+forewarning has arrived in the inbox, or an Ask Around rumour about it has been revealed. Unseen cards
+stay out of the list, so it cannot spoil an event that has not happened yet.
 Event fixes that are operator or DBA commands under the incident procedure (`-CANCEL THREAD`,
 `-TERM UTILITY`, cancelling a job, `HOLD RECALL`) are not changes: during the live day they cost their
 engineer-hours and their own facet trust, but no change-board trust. A runaway query only ever runs inside
@@ -990,6 +1002,10 @@ Events are drawn each day from weighted decks whose intensity scales with run pr
 *diagnostic clues* (which report shows what), *valid fixes*, duration, and *forecastability*
 (seen on the calendar ahead, fogged, or surprise).
 
+Silent cards (no announcement) never appear in the Operations log or its Monitor III chart markers: only cards the
+player was told about — an announcement, an owned perk's tip-off, or a revealed Ask Around rumour — are logged, in
+that wording. A forewarning is a day-before planning note and does not name the card.
+
 ### 9.1 Workload events
 | Event | Hidden mechanic | Where the clues are |
 |---|---|---|
@@ -1069,9 +1085,20 @@ At end of day, each **incident** (an SLA breach episode) can be investigated wit
    CPU delay 38%*). Evidence is scored for relevance against the event's hidden "clue set".
 4. Propose a **remediation** (it links to a change on the calendar).
 
-Ground truth for the trigger: an active event card that lists the hurt workload, provided the card's declared
+Ground truth for the trigger: an event card active at any time during the incident's opening SLA hour that lists
+the hurt workload, provided the card's declared
 `mechanisms` (if any) include the incident's mechanism; otherwise new work, batch overlap (lock index), policy or
-growth. APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
+growth. New work (including a persistent go-live card) counts for the first two simulated days after go-live
+(`content/sla.ts`), judged at the opening SLA hour; later incidents use the remaining fallback rules.
+APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception, a CICS program leaking EDSA storage). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
+POWER_CAP matches CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY only. Its workload scope is resolved
+from effective routing when the cap starts, including same-tick commands and added workloads, to CPCs whose
+capacity actually drops. The scope is retained after expiry; later routing changes and workload additions do
+not refresh it (a known RCA limitation).
+Card activity and the SLA hour are half-open intervals: a card ending at the hour's start or starting at its end
+does not overlap. Expiry or remediation during the hour (including remediation at its end) does not erase its trigger.
+When several cards qualify, prefer a card still active at hour close, then the longest overlap with the opening
+hour, then the ascending card `uid` as a deterministic tie-breaker independent of event-list order.
 
 Ground truth for the mechanism: the response-time component group that grew most against the workload's healthy
 baseline. Queueing for MXT or DBATs also grows when something slowed the tasks, since slower tasks hold their slot longer
@@ -1267,7 +1294,7 @@ Each flaw has a discoverable symptom.
 No report classes beyond service classes (**F6: poor granularity**).
 
 ### 13.2 Starting PR/SM & hardware
-- **F7:** PROD2 has **no zIIPs online**, while DDF (zIIP-eligible) is routed 60% to PROD2.
+- **F7:** PROD2 has **no zIIPs online** (1 reserved, so it can be varied online without an IPL), while DDF (zIIP-eligible) is routed 60% to PROD2.
 - **F8:** CF02 on a **shared ICF** with low weight and no thin interrupts → async conversion,
   CPU burn on z/OS.
 - **F9:** DEVT has **4 logical CPs at weight 100** (entitlement ≈ 0.8 CP): VL-heavy, raises the
@@ -1523,10 +1550,12 @@ src/
   ui/                  # React app, screens, components, rmf text renderers
   worker/              # sim worker host & message protocol
 tools/
-  headless.ts          # run N days with a scripted/autopilot policy → CSV/JSON
-  balance/             # strategy bots, sweeps
-  play.ts              # text play interface for AI agents (planned, PROGRESS M8.9)
-.claude/agents/        # game-playing agent definitions (planned, PROGRESS M8.9)
+  headless.ts          # run N days with a scripted/autopilot policy → text RMF reports (`npm run sim`)
+  bot.ts, strategies.ts, sweep.ts   # strategy bots and balance sweeps
+  bench.ts, compare.ts, lab.ts      # timing + hash, behaviour diff vs base, realism A/B lab
+  ci/                  # CI gates (balanceGate.ts, behaviourNote.ts)
+  play.ts              # text play interface for AI agents (PROGRESS M8.9)
+.claude/agents/        # game-playing agent definitions (PROGRESS M8.9)
 docs/agents.md         # how to run the agents
 tests/
   sim/…                # unit + "realism" property tests
@@ -1558,7 +1587,7 @@ never touches the DOM.
     ~day 28–32.
   - *Spend-to-win*: buys CoD every day → wins on SLA but trips the opex loss condition.
   - *Expert*: scripted good play → wins with grade A on Normal.
-- **Agent players** (planned, PROGRESS M8.9): AI agents play full runs through a headless text interface
+- **Agent players** (implemented, PROGRESS M8.9): AI agents play full runs through a headless text interface
   (`tools/play.ts`): it prints the briefing, inbox, incidents and requested reports as text and accepts the
   same actions the UI offers (Change Desk requests, WLM edits, RCAs, tool purchases, advance N hours).
   Agents see only what a player sees; no hidden ground truth. Runs are deterministic (seed + command log),
@@ -1579,10 +1608,12 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 |---|---|---|
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
 | Classification masks and wildcards (`%`, trailing `*`) | **Real** | WLM Planning p.104; `*` mid-pattern is a literal |
+| Temporary started-task lifecycle (`XLOG_LOOP`) | **Approximation** | Start creates an extra address space; expiry or cancellation removes it, and a later occurrence starts at its base CPU demand. MVS System Commands 3.1, PDF p.50, p.188. APPROX: cleanup on the command tick assumes cancellation succeeds; real cancellation issues an asynchronous ABEND and can require repeated CANCEL commands. Old-save duplicates and zero-CPU modifiers are cleared on the next start |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents. Between equal-importance periods a move must gain more than it harms and leave the projected PIs closer together (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52) |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
+| CFACT lock contention | **Approximation** | STRUCTURE SUMMARY shows CONTENTION % on the lock structure from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
 | Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |
 | CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast; QR TCB overload and timeouts count as slow, so only a genuinely abending region storm-drains), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
 | Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |
@@ -1598,7 +1629,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | LPAR BUSY vs MVS BUSY | **Matches** | Partition Data shows both: LPAR BUSY = dispatched / online time; MVS BUSY = ready-or-running demand / unparked online logical CPs (parked VLs leave the time range), so ready work PR/SM does not dispatch counts only in MVS BUSY and a starved low-weight LPAR reads near 100 % (RMF Report Analysis p.389). Monitor III MVS Util% uses the same value. Interval average of per-tick values |
 | Batch initiation delay (WLM-managed job classes) | **Plausible model** | Jobs queued for an initiator add one delay sample per tick to their service class (WLMGL QMPL), so velocity sees the miss; JES-managed queues stay invisible (WLM Planning p.70). APPROX: counted on the first eligible system; WLM still starts at most 2 initiators per interval below 92 % busy |
 | Storage Critical (paging protection) | **Plausible model** | Image paging is one over-commitment fraction; protected periods page nothing and their share moves to unprotected work in proportion to activity × steal weight (importance 5 and discretionary most), so total paging stays the same (WLM Planning p.119). APPROX: CP+zIIP activity stands in for frames held |
-| CPU protection (CPU Critical, IEAOPT CCIMP) | **Plausible model** | Policy adjustment rejects any DP set where less important work reaches a protected period's DP; CCIMP (0–2, absent = 0) adds first or only periods up to that importance (Init & Tuning p.428). Scenarios run pre-3.1 (CCIMP 0); the player can set it per system. APPROX: no System Recovery Boost, so CCIMPBOOST is not modelled |
+| CPU protection (CPU Critical, IEAOPT CCIMP) | **Plausible model** | Policy adjustment rejects any DP set where less important work reaches a protected period's DP, and restores the protection first when current DPs break it (lowers the less important periods; APPROX: direction); CCIMP (0–2, absent = 0) adds first or only periods up to that importance (Init & Tuning p.428). Scenarios run pre-3.1 (CCIMP 0); the player can set it per system. APPROX: no System Recovery Boost, so CCIMPBOOST is not modelled |
 | CP and zIIP backlog under a CP cap or shortage | **Plausible model** | Transaction backlog carried per pool (CP work left unserved stays on the CPs); a batch job's CP and zIIP demand follow the pace the other pool allows (phases are sequential). APPROX: a transaction's zIIP part is not held back by its CP part |
 | zIIP-eligible work with no zIIP online | **Matches** | Runs on CPs as plain CP work and queues with the CP queue ratio, not a saturated zIIP pool (Init & Tuning p.431) |
 | CICS shared-region Honor Priority | **Faithful simplification** | Any participating DEFAULT CICS transaction class permits TRANSACTION regions' overflow; all NO blocks it (WLM Planning 3.1 p.121–122). Existing topology approximation: transactions share all AORs on an image; if any AOR is TRANSACTION the mix applies to all CICS transaction slices, plus each TRANSACTION AOR/TOR's own CPU. Participation includes arrivals and both pools' backlog, recomputed each tick; no transaction work reverts the address space to its own class. Other images, DDF and REGION/BOTH address spaces keep independent settings; discretionary and system-wide NO protection remain |
@@ -1631,7 +1662,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |
-| Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; CP-only images retain ready demand. Separate-pool WLM trials check a conservative demand-recovery envelope using the execution cross-pacing formula; unsettled trials are rejected. Pacing and recovery remain approximations. Lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth |
+| Batch | **Discrete jobs, fluid CPU** | Single-threaded elapsed = CPU + I/O, stretched by CPU/zIIP starvation, Db2 health, lock contention; CP-only images retain ready demand. Separate-pool WLM trials check a conservative demand-recovery envelope using the execution cross-pacing formula; unsettled trials are rejected. Pacing and recovery remain approximations. Lost elapsed time accounted by cause per job (APPROX: the extra stretch splits between lock and Db2 health by log share) for a missed night's incident truth. A Db2 job started on an image without Db2 fails at connect (APPROX: modelled as DSNE100I, Db2 13 Messages p.140) and needs a restart; RCA truth JOB_FAILURE / POLICY when no card explains it |
 
 Additional dispatch approximations:
 
@@ -1659,6 +1690,10 @@ Primary IBM sources:
   https://www.ibm.com/docs/en/SSEPEK_12.0.0/perf/src/tpc/db2z_determinevelocitygoals.html
 - IBM Db2 12: *Configuring zIIPs for Db2*.
   https://www.ibm.com/docs/SSEPEK_12.0.0/perf/src/tpc/db2z_ibmziip.html
+- IBM, *Db2 13 for z/OS Managing Performance*: accounting classes 1–3, package accounting and DBAT queueing
+  (SMF 101). https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf
+- IBM, *CICS TS 6 Monitoring CICS*: performance class records (SMF 110), transaction timing, QR/MXT waits.
+  https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf
 - IBM, *z/OS MVS Planning: Workload Management* (V2R5, "MVS Planning: WLM" in code comments): velocity
   formula (connect = I/O using; IOSQ, pending, CU queue = I/O delay; storage delays incl. paging, swap, MPL),
   service units for period switching (CPU + SRB only since V2R5), resource group types 1–4 and minimum/maximum

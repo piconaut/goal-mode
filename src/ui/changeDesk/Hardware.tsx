@@ -12,6 +12,8 @@ export function Prsm({ desk }: { desk: Desk }) {
   const zos = desk.cfg.lpars.filter((l) => l.kind === 'ZOS');
   const cpcIds = [...new Set(zos.map((x) => x.cpcId))];
   const [lpar, setLpar] = useState(zos[0]?.id ?? '');
+  const current = zos.find((x) => x.id === lpar);
+  const engines = desk.cfg.cpcs.find((x) => x.id === current?.cpcId)?.engines;
   return (
     <>
       <div className="form">
@@ -31,6 +33,11 @@ export function Prsm({ desk }: { desk: Desk }) {
         </label>
         <span className="muted">{desk.v.lpars.find((x) => x.id === lpar)?.polarity}</span>
       </div>
+      {current && engines && (
+        <div className="muted" style={{ fontSize: 12 }}>
+          CPC {current.cpcId} physical engines: CP {engines.CP} · zIIP {engines.ZIIP} · ICF {engines.ICF}
+        </div>
+      )}
       <LparProfile key={`${lpar}:${JSON.stringify(desk.cfg.lpars.find((x) => x.id === lpar))}`} desk={desk} lparId={lpar} />
       <div className="help">
         Weight shares the shared pool under contention; HiperDispatch polarity follows entitlement. Logical CPs beyond online + reserved need an IPL. Defined capacity soft-caps the
@@ -47,9 +54,10 @@ function LparProfile({ desk, lparId }: { desk: Desk; lparId: string }) {
   const draftLogical = draftFor(desk, `SET_LOGICAL:${lparId}:CP`);
   const weight = draftWeight?.kind === 'SET_WEIGHT' ? draftWeight.weight : l.weight;
   const logical = draftLogical?.kind === 'SET_LOGICAL' ? draftLogical.logical : l.cpLogical;
+  const cpEngines = desk.cfg.cpcs.find((x) => x.id === l.cpcId)?.engines.CP ?? 0;
   return (
     <>
-      <PolarityPreview v={desk.v} lpar={lparId} weight={weight} logical={logical} />
+      <PolarityPreview v={desk.v} cpcId={l.cpcId} cpEngines={cpEngines} lpar={lparId} weight={weight} logical={logical} />
       <div style={{ overflowX: 'auto' }}>
         <table>
           <tbody>
@@ -141,16 +149,17 @@ function LparProfile({ desk, lparId }: { desk: Desk; lparId: string }) {
 }
 
 /** Live HiperDispatch preview while editing a weight or logical count (SPEC §5.3.3). */
-function PolarityPreview({ v, lpar, weight, logical }: { v: ViewModel; lpar: string; weight: number; logical: number }) {
-  const shared = v.lpars.filter((l) => l.kind === 'ZOS');
+function PolarityPreview({ v, cpcId, cpEngines, lpar, weight, logical }: { v: ViewModel; cpcId: string; cpEngines: number; lpar: string; weight: number; logical: number }) {
+  const shared = v.lpars.filter((l) => l.kind === 'ZOS' && l.cpcId === cpcId);
   const claims = shared.map((l) => ({
     weight: l.id === lpar ? weight : l.weight,
     logical: l.id === lpar ? logical : l.logicalCps,
     demandEngines: 0,
     capEngines: Infinity,
   }));
-  const ents = entitlements(claims, v.cpcEngines.CP);
+  const ents = entitlements(claims, cpEngines);
   const totalLogical = claims.reduce((a, c) => a + c.logical, 0);
+  const ltoP = cpEngines > 0 ? totalLogical / cpEngines : 0;
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{ margin: '6px 0' }}>
@@ -179,8 +188,8 @@ function PolarityPreview({ v, lpar, weight, logical }: { v: ViewModel; lpar: str
           })}
           <tr>
             <td colSpan={4} className="muted" style={{ fontSize: 12 }}>
-              Logical:physical {totalLogical}:{v.cpcEngines.CP} = {(totalLogical / v.cpcEngines.CP).toFixed(2)}
-              {totalLogical / v.cpcEngines.CP > 2 ? ' (above the 2:1 rule of thumb)' : ''}
+              Logical:physical {totalLogical}:{cpEngines} = {cpEngines > 0 ? ltoP.toFixed(2) : 'n/a'}
+              {ltoP > 2 ? ' (above the 2:1 rule of thumb)' : ''}
             </td>
           </tr>
         </tbody>
@@ -219,6 +228,9 @@ export function Hardware({ v, game }: { v: ViewModel; game: GameHandle }) {
                 {h.opexPerDay > 0 ? ` $${Math.round(h.opexPerDay / 1000)}k/day while active.` : ''}
               </div>
               {p.reason && <div className="err">{p.reason}</div>}
+              {h.id === 'ADD_ZIIP' && !p.reason && !v.config.lpars.some((l) => l.kind === 'ZOS' && (target ?? cpcs[0]?.id) === l.cpcId && l.ziipReserved > 0) && (
+                <div className="err">No z/OS LPAR on this CPC has a reserved zIIP: a new engine can only be used after an image profile change and IPL.</div>
+              )}
             </span>
             <button disabled={!p.ok} title={p.reason ?? costText(p)} onClick={() => game.send({ type: 'CHANGE', req: { label, hardwareId: h.id, ...(target ? { cpcId: target } : {}) } })}>
               {p.capex > 0 ? `$${Math.round(p.capex / 1000)}k` : `$${Math.round(h.opexPerDay / 1000)}k/day`} · {p.hours}h

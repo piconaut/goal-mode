@@ -120,7 +120,7 @@ textarea { font-family: var(--mono); font-size: 12px; width: 100%; }
 .clock { font-family: var(--mono); font-size: 18px; }
 .stat { display: flex; flex-direction: column; font-size: 12px; color: var(--muted); }
 .stat b { color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; }
-.speed { display: flex; gap: 4px; }
+.speed, .phase-actions { display: flex; gap: 4px; align-items: center; }
 .tabs { display: flex; gap: 6px; margin: 12px 0; flex-wrap: wrap; }
 .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
 .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 12px; min-width: 0; }

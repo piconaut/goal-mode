@@ -1,6 +1,6 @@
 import { EVIDENCE } from '../../content/evidence';
 import type { Scenario } from '../../sim/core/scenario';
-import { judgeEvidence } from '../evidence';
+import { judgeGroupEvidence } from '../evidence';
 import { scoreRca } from '../sla';
 import {
   type Incident,
@@ -25,7 +25,7 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const pins = (run.pins ?? []).filter((p) => evidenceIds.includes(p.id)).slice(0, EVIDENCE.perRca);
   // A pin counts if it is evidence for any incident in the group (each has its own workload and window).
   const verdicts = scenario
-    ? group.map((g) => judgeEvidence(run, scenario, g, pins)).reduce((best, vs) => best.map((b, k) => (vs[k]!.relevance > b.relevance ? vs[k]! : b)))
+    ? judgeGroupEvidence(run, scenario, group, pins)
     : [];
   const relevance = verdicts.reduce((a, v) => a + v.relevance, 0);
   // Evidence only earns points when it supports the right mechanism (SPEC §10).

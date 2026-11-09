@@ -67,7 +67,6 @@ WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy u
 {"op":"ADD_CLASS","classId":"MOBILE","description":"Mobile API","goal":{"kind":"AVG","rtSec":0.4},"importance":2,"cpuCritical":false}
 {"op":"ADD_RULE","subsystem":"DDF","qualifier":"UI","pattern":"MOB*","serviceClass":"MOBILE","reportClass":"RMOBILE"}
 {"op":"SET_RULE_TARGET","subsystem":"DDF","path":[0],"serviceClass":null,"reportClass":"RMOBILE"}
-{"op":"SET_RULE_REGION_MODE","subsystem":"STC","path":[7],"mode":"BOTH"}   # Manage Region Using Goals Of (STC/JES rules; null inherits)
 {"op":"SET_RESOURCE_GROUP","classId":"BATLO","group":{"id":"RGBAT","type":2,"min":null,"max":30}}
 ```
 
@@ -76,7 +75,7 @@ reports. The full unions are in `src/sim/core/commands.ts` and `src/game/wlmEdit
 
 The run file holds the same serialised `RunState` the browser saves, the pending WLM policy and the command
 log. Seed + command log replays the run exactly (the sim is deterministic), and the file round-trips through
-JSON bit-identically (tested in `tests/tools/play.test.ts`). A full simulated day takes about 10 s.
+JSON bit-identically (tested in `tests/tools/play.test.ts`). A full simulated day takes about 6 s on the cloud host (new, start, advance 24; 2026-11-06).
 
 ## Watching an agent play (spectator mode)
 
@@ -102,7 +101,13 @@ Both also read a save whose backslashes were all doubled on its way to disk (see
 with its surrounding backticks.
 
 `npm run inspect -- <file> dp <system>` prints sim internals the game never shows (dispatching priorities per RMF
-interval) for developers checking a bug. Player agents must not use it: it is not something a player can see.
+interval) for developers checking a bug. `npm run inspect -- <file> wlm <system> --at 'D19 22:00' [--ticks 6]
+[--class ONL]` explains WLM's decisions there: per policy adjustment, the receiver candidates in assessment order
+(importance, sysplex and local PI, DP, bottleneck), each trial move and its verdict (`ACCEPTED`, `CPU_CRITICAL`,
+`NO_RECEIVER_GAIN`, `SMALL_GAIN`, `MORE_IMPORTANT_HARMED`, `EQUAL_DISPARITY`, `NO_NET_VALUE`) with the projected PIs
+behind it, and candidates skipped as not CPU/zIIP-fixable or over the two-receivers-per-interval budget. A play-CLI
+file replays from its seed and log to any past time; a browser save has no log, so it is traced forward from the
+saved moment. Player agents must not use either verb: neither is something a player can see.
 
 ## What an agent can see
 
@@ -139,4 +144,4 @@ npm run sweep -- --bots donothing,textbook,expert --seeds 1-20
 ```
 
 Bots take the first draft option and play by script; their results per seed are the baseline an agent should
-beat (PROGRESS.md "Balance" records current numbers).
+beat (PROGRESS.md M8.2 records current numbers).

@@ -4,7 +4,7 @@ import { CodexHints } from './CodexHint';
 import { diffRows, type RowChange, type RuleRow, type SubsystemExplain } from '../game/classifyExplain';
 import type { ViewModel } from '../game/view';
 import type { RulePath } from '../game/wlmEdit';
-import type { Qualifier, RegionMode, SubsystemType } from '../sim/wlm/types';
+import type { Qualifier, SubsystemType } from '../sim/wlm/types';
 import type { GameHandle } from './useGame';
 
 const QUALIFIERS: { q: Qualifier; label: string }[] = [
@@ -59,7 +59,6 @@ export function RulesView({ v, game, onClose }: { v: ViewModel; game: GameHandle
               <Subsystem
                 key={ss.subsystem}
                 ss={ss}
-                regionModeDefault={shown.regionModeDefault}
                 active={r.pending ? r.active.subsystems.find((x) => x.subsystem === ss.subsystem) : undefined}
                 classIds={r.classIds}
                 game={game}
@@ -78,14 +77,13 @@ const MARK: Record<RowChange, { label: string; cls: string } | null> = {
   same: null,
 };
 
-const REGION_MODES: RegionMode[] = ['TRANSACTION', 'REGION', 'BOTH'];
-
-function Subsystem({ ss, active, classIds, regionModeDefault, game }: { ss: SubsystemExplain; active: SubsystemExplain | undefined; classIds: string[]; regionModeDefault: RegionMode; game: GameHandle }) {
+function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; active: SubsystemExplain | undefined; classIds: string[]; game: GameHandle }) {
   const diff = active ? diffRows(active.rows, ss.rows) : null;
   const edit = (e: Parameters<GameHandle['send']>[0]) => game.send(e);
   const sub = ss.subsystem;
-  // "Manage Region Using Goals Of" exists only on STC and JES rules (WLM Planning p.211).
-  const regions = sub === 'STC' || sub === 'JES';
+  // "Manage Region Using Goals Of" exists only on STC and JES rules (WLM Planning p.211). The game fixes it at
+  // TRANSACTION (not a player lever); the column only appears for old saves whose rules set something else.
+  const regions = (sub === 'STC' || sub === 'JES') && ss.rows.some((r) => r.regionMode && r.regionMode !== 'TRANSACTION');
   return (
     <div className="subsys">
       <h4>Subsystem {sub}</h4>
@@ -141,20 +139,7 @@ function Subsystem({ ss, active, classIds, regionModeDefault, game }: { ss: Subs
                       onSet={(rc) => edit({ type: 'WLM_EDIT', edit: { op: 'SET_RULE_TARGET', subsystem: sub, path: row.path, serviceClass: row.serviceClass, reportClass: rc } })}
                     />
                   </td>
-                  {regions && (
-                    <td>
-                      <select
-                        aria-label={`Manage region using goals of, rule ${row.qualifier}=${row.pattern}`}
-                        value={row.regionMode ?? ''}
-                        onChange={(e) => edit({ type: 'WLM_EDIT', edit: { op: 'SET_RULE_REGION_MODE', subsystem: sub, path: row.path, mode: (e.target.value || null) as RegionMode | null } })}
-                      >
-                        <option value="">{row.depth > 0 ? '(inherit)' : `(default ${regionModeDefault})`}</option>
-                        {REGION_MODES.map((m) => (
-                          <option key={m}>{m}</option>
-                        ))}
-                      </select>
-                    </td>
-                  )}
+                  {regions && <td>{row.regionMode ?? ''}</td>}
                   <td style={{ fontSize: 12, minWidth: 160 }}>{row.catches.length ? row.catches.join(', ') : <span className="muted">nothing today</span>}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>
                     <RowActions sub={sub} row={row} edit={edit} />

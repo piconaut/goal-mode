@@ -1,5 +1,5 @@
 import { BASEPOL } from '../../src/content/wlm/basepol';
-import { policyAdjust } from '../../src/sim/wlm/adjust';
+import { enforceCpuProtection, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
@@ -138,5 +138,61 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
     const { dps, out } = run(0.4);
     expect(out.dps).toEqual(dps);
     expect(out.log).toContain('no action');
+  });
+
+  it('the investigation trace names why each trial failed and changes no decision', () => {
+    const traces: WlmAdjustTrace[] = [];
+    const plain = [run(0.4).out, run(0.02).out];
+    setWlmTraceSink((t) => traces.push(t));
+    let traced;
+    try {
+      traced = [run(0.4).out, run(0.02).out];
+    } finally {
+      setWlmTraceSink(null);
+    }
+    expect(traced).toEqual(plain);
+    const [rejected, accepted] = traces;
+    const recv = rejected!.candidates.find((c) => c.scKey === 'ONLMED#1')!;
+    expect(recv.outcome).toBe('ASSESSED');
+    expect(recv.trials.map((t) => t.verdict)).toContain('EQUAL_DISPARITY');
+    expect(recv.trials.every((t) => t.verdict !== 'ACCEPTED')).toBe(true);
+    expect(rejected!.action).toBeNull();
+    expect(accepted!.candidates[0]!.trials.at(-1)!.verdict).toBe('ACCEPTED');
+    expect(accepted!.action).toContain('RCVR=ONLMED#1');
+  });
+});
+
+describe('long-term CPU protection is enforced, not a reason to stop managing (WLM Planning p.120)', () => {
+  const info = {
+    'ONLRBANK#1': { cpuCritical: true, period: 0, importance: 2 },
+    'BATCHHI#1': { cpuCritical: false, period: 0, importance: 3 },
+    'BATCHPRD#1': { cpuCritical: false, period: 0, importance: 5 },
+    'ONLHI#1': { cpuCritical: false, period: 0, importance: 1 },
+  } as const;
+
+  it('lowers less important periods below the protected DP and leaves more important ones alone', () => {
+    const out = enforceCpuProtection({ 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf9, 'BATCHPRD#1': 0xfb, 'ONLHI#1': 0xfc }, info, 0);
+    expect(out.dps).toEqual({ 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf3, 'BATCHPRD#1': 0xf3, 'ONLHI#1': 0xfc });
+    expect(out.moves).toEqual(['BATCHHI#1 DP F9→F3', 'BATCHPRD#1 DP FB→F3']);
+  });
+
+  it('changes nothing when protection already holds, and CCIMP protects first periods up to that importance', () => {
+    expect(enforceCpuProtection({ 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf2, 'BATCHPRD#1': 0xf0, 'ONLHI#1': 0xfc }, info, 0).moves).toEqual([]);
+    const cc = enforceCpuProtection({ 'ONLRBANK#1': 0xfa, 'BATCHHI#1': 0xf2, 'BATCHPRD#1': 0xf0, 'ONLHI#1': 0xf0 }, info, 1);
+    expect(cc.dps['ONLRBANK#1']).toBe(0xef);
+  });
+
+  it('a protected class below batch is still helped (playtest BASEPO10, D20 21:15)', () => {
+    const def = structuredClone(BASEPOL);
+    def.classes.push({ ...structuredClone(def.classes.find((c) => c.id === 'ONLHI')!), id: 'ONLCARD', cpuCritical: true, periods: [{ goal: { kind: 'PCT', pct: 95, rtSec: 0.1 }, importance: 2, durationSu: null }] });
+    const slices = [slice('card', 'ONLCARD#1', 2.5, 0.1), slice('batch', 'BATCHPRD#1', 3, null)];
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = { 'ONLCARD#1': 0xf4, 'BATCHPRD#1': 0xfb };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
+    expect(out.protect).toBe('T SYS1 CPU PROTECTION BATCHPRD#1 DP FB→F3');
+    expect(out.dps['BATCHPRD#1']!).toBeLessThan(out.dps['ONLCARD#1']!);
+    expect(out.log ?? '').not.toContain('no action with net value');
   });
 });

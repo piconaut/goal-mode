@@ -47,14 +47,22 @@ export interface ClassificationExplain {
 
 const SUBSYSTEMS: SubsystemType[] = ['STC', 'JES', 'CICS', 'DDF', 'TSO', 'MQ', 'OMVS'];
 
-/** Work items for a scenario: workloads, address spaces (one per jobname), batch streams. */
+/** Work items for a scenario: workloads, address spaces (one per jobname/system), batch streams. */
 export function workItems(workloads: readonly WorkloadDef[], addressSpaces: readonly AddressSpaceDef[], jobs: readonly { name: string; jobClass: string; stream: string }[]): WorkItem[] {
   const items: WorkItem[] = workloads.map((w) => ({ label: w.id, kind: 'workload', work: w.work }));
+  const systemsByJobname = new Map<string, Set<string>>();
+  for (const a of addressSpaces) {
+    let systems = systemsByJobname.get(a.jobname);
+    if (!systems) systemsByJobname.set(a.jobname, (systems = new Set()));
+    systems.add(a.lparId);
+  }
   const seen = new Set<string>();
   for (const a of addressSpaces) {
-    if (seen.has(a.jobname)) continue;
-    seen.add(a.jobname);
-    items.push({ label: a.jobname, kind: 'address space', work: { subsystem: a.subsystem, TN: a.jobname } });
+    const key = `${a.jobname}/${a.lparId}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const label = systemsByJobname.get(a.jobname)!.size > 1 ? `${a.jobname} (${a.lparId})` : a.jobname;
+    items.push({ label, kind: 'address space', work: { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId } });
   }
   // One item per batch stream (jobs in a stream share their naming pattern and class).
   const streams: Record<string, { first: string; last: string; jobClass: string; n: number }> = {};
@@ -87,20 +95,39 @@ export function explainClassification(def: ServiceDefinition, items: readonly Wo
   const byKey: Record<string, { catches: string[]; cls: string }> = {};
   const defaults: Record<string, string[]> = {};
 
-  for (const it of items) {
+  const destinationsByJobname = new Map<string, Set<string>>();
+  const classified = items.map((it) => {
     const res = classify(def, it.work);
-    if (res.serviceClass === SYSOTHER) sysother.push(it.label);
-    if (it.work.subsystem === 'STC' && it.work.TN && FORCED_SYSTEM_JOBNAMES.includes(it.work.TN.toUpperCase())) {
-      forcedSystem.push(it.label);
+    const forced = it.work.subsystem === 'STC' && !!it.work.TN && FORCED_SYSTEM_JOBNAMES.includes(it.work.TN.toUpperCase());
+    const ss = def.subsystems.find((x) => x.subsystem === it.work.subsystem);
+    const path = !forced && ss ? matchPath(ss.rules, it.work, []) : null;
+    const destination = forced ? 'forced' : `${it.work.subsystem}|${path?.join('.') ?? 'default'}`;
+    if (it.kind === 'address space' && it.work.TN) {
+      let destinations = destinationsByJobname.get(it.work.TN);
+      if (!destinations) destinationsByJobname.set(it.work.TN, (destinations = new Set()));
+      destinations.add(destination);
+    }
+    return { it, res, forced, path };
+  });
+  const collapsed = new Set<string>();
+  for (const { it, res, forced, path } of classified) {
+    let label = it.label;
+    // Keep systems visible when their final rule paths differ, even if the class is the same.
+    if (it.kind === 'address space' && it.work.TN && destinationsByJobname.get(it.work.TN)!.size === 1) {
+      if (collapsed.has(it.work.TN)) continue;
+      collapsed.add(it.work.TN);
+      label = it.work.TN;
+    }
+    if (res.serviceClass === SYSOTHER) sysother.push(label);
+    if (forced) {
+      forcedSystem.push(label);
       continue;
     }
-    const ss = def.subsystems.find((x) => x.subsystem === it.work.subsystem);
-    const path = ss ? matchPath(ss.rules, it.work, []) : null;
     if (path) {
       const k = `${it.work.subsystem}|${path.join('.')}`;
       const e = (byKey[k] ??= { catches: [], cls: res.serviceClass });
-      e.catches.push(it.label);
-    } else (defaults[it.work.subsystem] ??= []).push(it.label);
+      e.catches.push(label);
+    } else (defaults[it.work.subsystem] ??= []).push(label);
   }
 
   for (const subsystem of SUBSYSTEMS) {

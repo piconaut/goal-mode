@@ -1,6 +1,8 @@
 // Hourly SLA accounting, incident detection and ground-truth causes (SPEC §10, §12).
 
-import type { NightSummary } from '../sim/subsys/batch';
+import { NEW_WORKLOAD_DAYS } from '../content/sla';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
+import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
 import type { ActiveEvent, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
@@ -117,7 +119,19 @@ export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: read
 }
 
 export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
-  const ev = events.find((e) => e.started && !e.ended && e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)));
+  const startTick = hour.hourIndex * TICKS_PER_HOUR;
+  const endTick = startTick + TICKS_PER_HOUR;
+  // A fix or natural expiry before hour close must not erase the card that caused the breach.
+  const overlapTicks = (e: ActiveEvent) => Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick);
+  const activeAtClose = (e: ActiveEvent) => e.endTick === null || e.endTick > endTick;
+  const ev = events.filter((e) =>
+    e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
+    (e.trigger !== 'NEW_WORKLOAD' || startTick < e.startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY) &&
+    e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)),
+  ).sort((a, b) =>
+    Number(activeAtClose(b)) - Number(activeAtClose(a)) || overlapTicks(b) - overlapTicks(a) ||
+    (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0),
+  )[0];
   if (ev) return ev.trigger;
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;
@@ -170,9 +184,11 @@ export function batchMissMechanism(night: NightSummary, nightHour: HourAcc, host
 }
 
 /** A card blamed for a missed night: one that affects BATCH, causes this mechanism and ran during the night. */
-export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEvent[], nightHour: HourAcc, nightStartTick: number): Trigger {
+export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEvent[], nightHour: HourAcc, nightStartTick: number, night?: NightSummary): Trigger {
   const ev = events.find((e) => e.started && e.affects.includes(BATCH_INCIDENT) && (!e.mechanisms || e.mechanisms.includes(mechanism)) && (!e.ended || (e.endTick ?? 0) >= nightStartTick));
   if (ev) return ev.trigger;
+  // A Db2 job failing to connect was sent to an image without Db2 by the initiator setup.
+  if (mechanism === 'JOB_FAILURE' && Object.values(night?.criticalFailCodes ?? {}).includes(DB2_CONNECT_FAIL)) return 'POLICY';
   return triggerOf(BATCH_INCIDENT, mechanism, [], nightHour, false);
 }
 

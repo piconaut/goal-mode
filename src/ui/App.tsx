@@ -11,7 +11,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import { Finance } from './Finance';
 import { LineChart } from './LineChart';
 import { Monitor } from './Monitor';
-import { Overlays } from './Overlays';
+import { Overlays, PhaseActions } from './Overlays';
 import { Reports } from './Reports';
 import { Smf } from './Smf';
 import { EvidenceBoard } from './Evidence';
@@ -23,7 +23,6 @@ import { hourTick, pagerChime } from './sound';
 import { idText } from '../game/ids';
 import { Empty } from './Empty';
 import { RunFileButtons } from './RunFiles';
-import { OpexBudget } from './OpexBudget';
 
 type Tab = 'console' | 'monitor' | 'reports' | 'changes' | 'finance' | 'analytics' | 'codex' | 'inbox';
 
@@ -39,7 +38,7 @@ export function App() {
   if (!v) return <div className="app">Starting the sysplex…</div>;
   return (
     <div className="app">
-      <TopBar v={v} game={game} />
+      <TopBar v={v} game={game} open={overlayOpen} setOpen={setOverlayOpen} />
       {game.spectate && (
         <div className="spectate-banner" role="status">
           Spectating <b>{game.spectate.name}</b> (read-only){game.spectate.error ? ` · cannot read the run file: ${game.spectate.error}` : game.spectate.last ? ` · last command ${game.spectate.last}` : ''}
@@ -90,7 +89,7 @@ export function App() {
   );
 }
 
-function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
+function TopBar({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
   const speed = game.speed;
   const set = (s: number) => game.send({ type: 'SET_SPEED', speed: s });
   const progress = (100 * v.tickOfDay) / v.ticksPerDay;
@@ -127,6 +126,7 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
           )}
         </span>
       )}
+      <PhaseActions v={v} game={game} open={open} setOpen={setOpen} />
       <span className="stat">
         Trust <b style={{ color: trustColor(v.trustOverall) }}>{v.trustOverall.toFixed(0)}</b>
       </span>
@@ -143,10 +143,6 @@ function TopBar({ v, game }: { v: ViewModel; game: GameHandle }) {
       </span>
       <span className="stat">
         Fatigue <b>{v.fatigue.toFixed(0)}</b>
-      </span>
-      <OpexBudget mlc={v.mlcEstimate} cod={v.opexSpent} budget={v.opexBudget} compact />
-      <span className="stat">
-        Capex <b>${Math.round(v.capexRemaining / 1000)}k</b>
       </span>
       <span className="stat">
         Score <b>{v.score}</b>
@@ -430,7 +426,11 @@ function Console({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
           </div>
           {v.batch.abended.map((a) => (
             <div className="row" key={`${a.day}:${a.name}`}>
-              <span className="tag bad">ABEND {a.name}</span>
+              <span className="tag bad">
+                {a.failCode?.startsWith('DSN') ? 'FAILED' : 'ABEND'} {a.name}
+                {a.failCode ? ` ${a.failCode}` : ''}
+                {a.lparId ? ` on ${a.lparId}` : ''}
+              </span>
               <span className="muted">restart from the Change Desk</span>
             </div>
           ))}

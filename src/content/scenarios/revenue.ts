@@ -25,8 +25,8 @@ export const REVENUE_WORLD: WorldConfig = {
   ...MIDWEST_WORLD,
   cpcs: [{ id: 'CPCA', generation: 'M1', capacitySetting: 6, engines: { CP: 8, ZIIP: 2, ICF: 2 }, memoryGb: 768 }],
   lpars: [
-    zos('PROD1', [pool('CP', 5, 480, { reserved: 2 }), pool('ZIIP', 1, 500)], 160, REVENUE_PROD1_DC_MSU),
-    zos('PROD2', [pool('CP', 5, 400, { reserved: 2 }), pool('ZIIP', 1, 500)], 140),
+    zos('PROD1', [pool('CP', 5, 480, { reserved: 2 }), pool('ZIIP', 1, 500, { reserved: 1 })], 160, REVENUE_PROD1_DC_MSU),
+    zos('PROD2', [pool('CP', 5, 400, { reserved: 2 }), pool('ZIIP', 1, 500, { reserved: 1 })], 140),
     zos('DEVT', [pool('CP', 2, 80)], 64),
     zos('SYSP', [pool('CP', 1, 40)], 24),
     cf('CF01'),

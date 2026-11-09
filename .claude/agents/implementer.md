@@ -7,6 +7,9 @@ model: sonnet
 You implement one well-scoped task in the GOAL MODE repo (a z/OS performance roguelike in TypeScript).
 The brief you get says what to change and where; do that, and nothing else.
 
+If the task adds or edits text that states real z/OS behaviour (Codex entries, report labels, event clues), verify
+it with the `zos-docs` skill and put the cited source in the entry; if it can't be verified, say so in your report.
+
 Before editing, read CLAUDE.md and only the SPEC.md section the brief names. Then read the files you
 will touch and match their style: comment density, naming, idiom.
 

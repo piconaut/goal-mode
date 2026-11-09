@@ -37,7 +37,7 @@ export function Automation({ v, game }: { v: ViewModel; game: GameHandle }) {
         Automation ({a.rules.length}/{AUTOMATION.maxRules})
       </h3>
       <div className="help">
-        Actions run as pre-approved standard changes: no engineer-hours and no emergency trust cost, but each can misfire ({Math.round(AUTOMATION.misfireFrac * 100)}%). On/Off CoD
+        Actions run as pre-approved standard changes: no engineer-hours and no emergency trust cost, but each action can misfire ({Math.round(AUTOMATION.misfireFrac * 100)}% of the time: the rule fires, the change does not happen, and the log says MISFIRE). On/Off CoD
         still costs opex per day, and Capacity Provisioning refuses to act while any LPAR is hard-capped.
       </div>
       <ul className="diff">

@@ -12,7 +12,7 @@ import type { Scenario } from '../sim/core/scenario';
 import { step } from '../sim/core/step';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
-import type { NightSummary } from '../sim/subsys/batch';
+import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import { classify } from '../sim/wlm/classify';
 import { emptyAlerts, evaluateAlerts } from './alerts';
 import { emptyAutomation, runAutomation } from './automation';
@@ -25,7 +25,7 @@ import { emptyPolicyBook, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
 import { failRisk, NO_TARGET, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { drawEvents, endEventByFix, hasEventForFix, storyFor } from './run/events';
+import { drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
@@ -164,6 +164,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     }
     let events = r.events;
     const resolvedEnd = new Map<string, Command[]>();
+    const resolvedCpcs = new Map<string, Set<string>>();
     for (const e of events) {
       const def = content.events.find((d) => d.id === e.defId);
       if (!e.started && e.startTick <= tick) {
@@ -171,29 +172,45 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
         if (def?.capacityDrop) {
           // A site power cap throttles every CPC on the floor; the end restores each one's setting.
           const restore: Command[] = [];
+          const affectedCpcs = new Set<string>();
           for (const cpc of r.sim.config.cpcs) {
             const to = Math.max(4, cpc.capacitySetting - def.capacityDrop) as 4 | 5 | 6 | 7;
+            if (to < cpc.capacitySetting) affectedCpcs.add(cpc.id);
             cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to });
             restore.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting });
           }
           resolvedEnd.set(e.uid, restore);
+          resolvedCpcs.set(e.uid, affectedCpcs);
         }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
         if (def?.perkTip && r.perks.includes(def.perkTip.perk)) r = msg(r, def.perkTip.from, def.name, def.perkTip.text);
-        r = logLine(r, `EVENT start: ${e.name}`);
+        // Only cards the player was told about may appear in the log (and its chart markers).
+        const line = def ? eventStartLog(r, def, e.uid) : null;
+        if (line) r = logLine(r, line);
       }
       if (e.started && !e.ended && e.endTick !== null && e.endTick <= tick) {
         cmds.push(...e.endCommands);
-        r = logLine(r, `EVENT end: ${e.name}`);
+        const line = def ? eventEndLog(r, def, e.uid) : null;
+        if (line) r = logLine(r, line);
       }
+    }
+    const sim = step(r.sim, cmds, scenario);
+    r = logConnectFailures(r, sim);
+    const resolvedAffects = new Map<string, string[]>();
+    for (const [uid, cpcs] of resolvedCpcs) {
+      // Pending commands and dynamic routing have now chosen the hosts used by this tick.
+      const affectedLpars = new Set(sim.config.lpars.filter((l) => cpcs.has(l.cpcId)).map((l) => l.id));
+      resolvedAffects.set(uid, allWorkloads(scenario, { ...r, sim })
+        .filter((w) => Object.entries(sim.routing[w.id] ?? w.routing).some(([id, share]) => share > 0 && affectedLpars.has(id)))
+        .map((w) => w.id));
     }
     events = events.map((e) => ({
       ...e,
+      affects: resolvedAffects.get(e.uid) ?? e.affects,
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || e.startTick <= tick,
       ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
     }));
-    const sim = step(r.sim, cmds, scenario);
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);
     if ((tick + 1) % ALERTS.evalTicks === 0) {
@@ -208,8 +225,20 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       r = accumulateMon3(r);
       if ((tick + 1) % MON3_CHARTS.sampleTicks === 0) r = recordMon3(r, scenario);
     }
-    if ((tick + 1) % TICKS_PER_HOUR === 0) r = deliverInquiries(closeHour(r, scenario), scenario, content);
+    if ((tick + 1) % TICKS_PER_HOUR === 0) r = deliverInquiries(closeHour(r, scenario, content), scenario, content);
     if ((tick + 1) % TICKS_PER_DAY === 0) r = endDay(r, scenario, content);
+  }
+  return r;
+}
+
+/** JES2 job log of a Db2 job that started on an image without Db2 (TSO DSN under IKJEFT01, Db2 13 Messages p.140). */
+function logConnectFailures(r: RunState, sim: RunState['sim']): RunState {
+  for (const j of sim.batch.jobs) {
+    if (j.status !== 'ABENDED' || j.failCode !== DB2_CONNECT_FAIL) continue;
+    // A restarted job can go ABENDED → QUEUED → ABENDED within one tick, so compare the failure tick rather than
+    // the previous ABENDED set: each attempt gets its own line.
+    if (j.failTick !== r.sim.tick) continue;
+    r = logLine(r, `${j.def.name} on ${j.lparId}: ${DB2_CONNECT_FAIL} NOT OPERATIONAL, RETRY COUNT IS ZERO (no Db2 subsystem on ${j.lparId})`);
   }
   return r;
 }
@@ -223,7 +252,7 @@ function batchMissIncident(r: RunState, night: NightSummary, trustLost: number):
   const nightStartTick = r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
   const nightHour = r.nightHour ?? newHour(nightStartTick);
   const mechanism = batchMissMechanism(night, nightHour, hosts);
-  const truth = { mechanism, trigger: batchMissTrigger(mechanism, r.events, nightHour, nightStartTick) };
+  const truth = { mechanism, trigger: batchMissTrigger(mechanism, r.events, nightHour, nightStartTick, night) };
   const lead = r.incidents.find((i) => i.day === r.day && i.rcaGroup === undefined && i.truth.mechanism === truth.mechanism && i.truth.trigger === truth.trigger);
   const inc: Incident = {
     id: r.nextId,
@@ -468,7 +497,7 @@ export type { ChangeRequest } from './run/changes';
 
 export type { ChangeOutcome } from './run/changes';
 
-export { fixIdsOf } from './run/events';
+export { fixIdsOf, visibleFixIds } from './run/events';
 
 export { previewContext } from './run/changes';
 

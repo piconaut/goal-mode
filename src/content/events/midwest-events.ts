@@ -215,8 +215,10 @@ export const MIDWEST_EVENTS: EventDef[] = [
     startHour: [8, 16],
     durationHours: 6, // the on-call eventually notices and cancels it
     // A loop in a single-TCB program burns at most one engine (APPROX: exactly ~0.9 reference engines).
-    begin: [{ kind: 'ADD_ADDRESS_SPACE', addressSpace: { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC', baseEnginesRef: 0.9, ziipFrac: 0 } }],
-    end: [mod('asCpu', 'CICSXLOG', 0)],
+    // Clear the stopped-job modifier left in older saves before starting a fresh occurrence.
+    begin: [mod('asCpu', 'CICSXLOG', 1), { kind: 'ADD_ADDRESS_SPACE', addressSpace: { jobname: 'CICSXLOG', lparId: 'PROD1', role: null, subsystem: 'STC', baseEnginesRef: 0.9, ziipFrac: 0 } }],
+    // CANCEL ends the started task (z/OS 3.1 MVS System Commands, PDF p.188); APPROX: immediate cleanup.
+    end: [{ kind: 'REMOVE_ADDRESS_SPACE', jobname: 'CICSXLOG', lparId: 'PROD1' }],
     fix: 'CANCEL_XLOG',
     forewarning: null,
     announcement: null,
@@ -404,10 +406,10 @@ export const MIDWEST_EVENTS: EventDef[] = [
     durationHours: 3,
     begin: [{ kind: 'SET_LOCK_BOOST', value: 6 }],
     end: [{ kind: 'SET_LOCK_BOOST', value: 0 }],
-    fix: null,
+    fix: 'COMMIT_SETTLEMENT_OFTEN',
     forewarning: null,
     announcement: null,
-    clue: 'Card auth response time up with little READY time; its work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running.',
+    clue: 'Card auth response time up with little READY time; its work manager breakdown (WLMGL, Mon III SYSWKM) shows WAITING FOR LOCK up; IRLM healthy; batch running. Fixes: commit more often in the settlement job, or keep online work off the locked tables until its step ends.',
   },
   {
     // A data-science team runs model training from TSO. On DEVT (uncapped, F9) it steals CPC capacity from PROD
@@ -481,6 +483,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 0.8,
     trigger: 'HARDWARE_FAULT',
     affects: ['MOBILE', 'RBANK'],
+    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY'],
     startHour: [12, 16],
     durationHours: 6,
     capacityDrop: 1,
@@ -537,7 +540,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
   },
   {
     // A program storage leak fills both PROD2 AORs' EDSA: once in-flight tasks no longer fit, CICS defers attaches
-    // (CICS Performance p.76) and the work queues for task slots. Model in sim/subsys/cics.ts.
+    // (CICS Performance p.76) and the work queues for task slots. Model in sim/subsys/cics.ts. A deployed program's
+    // leak is a software defect, not a policy choice, so the trigger is APPLICATION_ERROR (playtest INC168).
     // FICTIONAL: the leak starts 420 MB in (room for ~40 tasks under the default EDSALIM) and grows 40 MB an hour,
     // so peak load hits SOS within about an hour and the cushion floor within two.
     id: 'CICS_SOS',
@@ -545,7 +549,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     category: 'SOFTWARE',
     minDay: 5,
     weight: 1,
-    trigger: 'POLICY',
+    trigger: 'APPLICATION_ERROR',
     affects: ['TELLER', 'RBANK', 'CARDAUTH', 'PAYMQ'],
     mechanisms: ['THREAD_LIMIT'],
     startHour: [9, 14],

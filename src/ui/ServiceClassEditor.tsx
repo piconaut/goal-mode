@@ -3,9 +3,11 @@ import type { ViewModel } from '../game/view';
 import { goalText } from '../sim/wlm/goals';
 import type { Goal, Importance, PeriodDef, ResourceGroupDef, ServiceClassDef } from '../sim/wlm/types';
 import type { CicsGoalIssue } from '../game/wlmEdit';
+import { SU_PER_SEC_PER_MSU } from '../sim/hw/cpc';
 import { CodexHints } from './CodexHint';
 import { Empty } from './Empty';
 import type { GameHandle } from './useGame';
+import { rgLimitEquiv, type CpcSpeed } from './units';
 
 const IMPS: Importance[] = [1, 2, 3, 4, 5];
 const RG_TYPES: { type: 1 | 2 | 3; label: string; unit: string }[] = [
@@ -24,6 +26,7 @@ export function ServiceClasses({ v, game }: { v: ViewModel; game: GameHandle }) 
   const groups = game.pending?.resourceGroups ?? v.resourceGroups;
   const cicsClasses = game.pending?.cicsClasses ?? v.cicsClasses;
   const cicsIssues = game.pending?.cicsIssues ?? v.cicsIssues;
+  const cpcs = v.config.cpcs;
   const [sel, setSel] = useState<string | null>(null);
   const selected = defs.find((c) => c.id === sel) ?? null;
   const send = (e: Edit) => game.send(e);
@@ -78,9 +81,9 @@ export function ServiceClasses({ v, game }: { v: ViewModel; game: GameHandle }) 
         {selected ? 'Edits go to the pending policy.' : 'Click a class to edit its periods, flags and resource group.'}
       </div>
       <CicsIssues issues={cicsIssues} />
-      {selected && <ClassEditor key={`${selected.id}:${JSON.stringify(selected)}`} c={selected} groups={groups} cics={cicsClasses.includes(selected.id)} send={send} />}
+      {selected && <ClassEditor key={`${selected.id}:${JSON.stringify(selected)}`} c={selected} groups={groups} cics={cicsClasses.includes(selected.id)} cpcs={cpcs} send={send} />}
       <NewClass taken={defs.map((c) => c.id)} send={send} />
-      <ResourceGroups groups={groups} defs={defs} send={send} />
+      <ResourceGroups groups={groups} defs={defs} cpcs={cpcs} send={send} />
     </>
   );
 }
@@ -214,7 +217,7 @@ function CicsIssues({ issues }: { issues: CicsGoalIssue[] }) {
   );
 }
 
-function ClassEditor({ c, groups, cics, send }: { c: ServiceClassDef; groups: ResourceGroupDef[]; cics: boolean; send: (e: Edit) => void }) {
+function ClassEditor({ c, groups, cics, cpcs, send }: { c: ServiceClassDef; groups: ResourceGroupDef[]; cics: boolean; cpcs: readonly CpcSpeed[]; send: (e: Edit) => void }) {
   const add = useGoalState();
   const last = c.periods[c.periods.length - 1]!;
   const [prevDur, setPrevDur] = useState('2000');
@@ -225,6 +228,8 @@ function ClassEditor({ c, groups, cics, send }: { c: ServiceClassDef; groups: Re
   const [rgMin, setRgMin] = useState('');
   const [rgMax, setRgMax] = useState('');
   const n = (x: string) => (x.trim() === '' ? null : Number(x));
+  const minEq = rgType === 1 && rgMin.trim() !== '' ? rgLimitEquiv(Number(rgMin), cpcs) : null;
+  const maxEq = rgType === 1 && rgMax.trim() !== '' ? rgLimitEquiv(Number(rgMax), cpcs) : null;
   const flag = (k: 'cpuCritical' | 'storageCritical', on: boolean) => send({ type: 'WLM_EDIT', edit: { op: 'SET_FLAGS', classId: c.id, [k]: on } });
   const assign = () => {
     if (rg === '') send({ type: 'WLM_EDIT', edit: { op: 'SET_RESOURCE_GROUP', classId: c.id, group: null } });
@@ -308,6 +313,11 @@ function ClassEditor({ c, groups, cics, send }: { c: ServiceClassDef; groups: Re
             <label>
               max <input aria-label="Resource group maximum" value={rgMax} onChange={(e) => setRgMax(e.target.value)} size={6} placeholder="none" />
             </label>
+            {(minEq || maxEq) && (
+              <div className="muted" style={{ fontSize: 11, flexBasis: '100%' }}>
+                {[minEq && `min ${minEq}`, maxEq && `max ${maxEq}`].filter(Boolean).join(' · ')}
+              </div>
+            )}
           </>
         )}
         <button type="button" disabled={rg === (c.resourceGroup ?? '')} onClick={assign}>
@@ -347,7 +357,7 @@ function NewClass({ taken, send }: { taken: string[]; send: (e: Edit) => void })
   );
 }
 
-function ResourceGroups({ groups, defs, send }: { groups: ResourceGroupDef[]; defs: ServiceClassDef[]; send: (e: Edit) => void }) {
+function ResourceGroups({ groups, defs, cpcs, send }: { groups: ResourceGroupDef[]; defs: ServiceClassDef[]; cpcs: readonly CpcSpeed[]; send: (e: Edit) => void }) {
   if (groups.length === 0) return <Empty>No resource groups. Create one from a class&apos;s editor (Resource group › new group…).</Empty>;
   return (
     <>
@@ -365,21 +375,26 @@ function ResourceGroups({ groups, defs, send }: { groups: ResourceGroupDef[]; de
           </thead>
           <tbody>
             {groups.map((g) => (
-              <RgRow key={`${g.id}:${g.type}:${g.min}:${g.max}`} g={g} members={defs.filter((c) => c.resourceGroup === g.id).map((c) => c.id)} send={send} />
+              <RgRow key={`${g.id}:${g.type}:${g.min}:${g.max}`} g={g} members={defs.filter((c) => c.resourceGroup === g.id).map((c) => c.id)} cpcs={cpcs} send={send} />
             ))}
           </tbody>
         </table>
       </div>
-      <div className="muted" style={{ fontSize: 12 }}>Max is always enforced (CAP delay). Min is guaranteed only while the group misses its goals, even ahead of more important work.</div>
+      <div className="muted" style={{ fontSize: 12 }}>
+        Max is always enforced (CAP delay). Min is guaranteed only while the group misses its goals, even ahead of more important work. Type 1 is SU/s: 1 MSU ={' '}
+        {SU_PER_SEC_PER_MSU.toFixed(1)} SU/s, so the ≈ line shows the MSU value and the CP equivalent at each CPC&apos;s speed.
+      </div>
     </>
   );
 }
 
-function RgRow({ g, members, send }: { g: ResourceGroupDef; members: string[]; send: (e: Edit) => void }) {
+function RgRow({ g, members, cpcs, send }: { g: ResourceGroupDef; members: string[]; cpcs: readonly CpcSpeed[]; send: (e: Edit) => void }) {
   const [type, setType] = useState(g.type);
   const [min, setMin] = useState(g.min === null ? '' : String(g.min));
   const [max, setMax] = useState(g.max === null ? '' : String(g.max));
   const n = (x: string) => (x.trim() === '' ? null : Number(x));
+  const minEq = type === 1 ? rgLimitEquiv(n(min), cpcs) : null;
+  const maxEq = type === 1 ? rgLimitEquiv(n(max), cpcs) : null;
   // Like periods: a type change, or leaving a limit field, edits the pending policy.
   const commit = (t = type) => {
     const changed = t !== g.type || n(min) !== g.min || n(max) !== g.max;
@@ -418,9 +433,19 @@ function RgRow({ g, members, send }: { g: ResourceGroupDef; members: string[]; s
       </td>
       <td>
         <input aria-label={`${g.id} minimum`} value={min} onChange={(e) => setMin(e.target.value)} onBlur={() => commit()} onKeyDown={onKey} size={6} placeholder="none" /> <span className="muted">{rgUnit(type)}</span>
+        {minEq && (
+          <div className="muted" style={{ fontSize: 11 }}>
+            {minEq}
+          </div>
+        )}
       </td>
       <td>
         <input aria-label={`${g.id} maximum`} value={max} onChange={(e) => setMax(e.target.value)} onBlur={() => commit()} onKeyDown={onKey} size={6} placeholder="none" /> <span className="muted">{rgUnit(type)}</span>
+        {maxEq && (
+          <div className="muted" style={{ fontSize: 11 }}>
+            {maxEq}
+          </div>
+        )}
       </td>
       <td style={{ fontSize: 12 }}>{members.join(', ')}</td>
     </tr>

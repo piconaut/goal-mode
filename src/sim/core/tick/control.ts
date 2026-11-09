@@ -83,6 +83,10 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
         }),
       })) : undefined,
     });
+    if (out.protect) {
+      if (log === prev.wlm.log) log = [...log];
+      log.push(out.protect);
+    }
     if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
       if (log === prev.wlm.log) log = [...log];
       log.push(out.log);
@@ -138,6 +142,7 @@ export function stepRmf(
   r4haBy: Record<string, number>,
   nextTick: number,
   cfBySystem: Record<string, CfSystemResult>,
+  lockIndex = 0,
 ): SimState['rmf'] {
   const { prev, def, config, lparTicks, lpars } = t;
   const jobsEnded: JobEndRecord[] = [];
@@ -154,7 +159,7 @@ export function stepRmf(
       stretch: j.stretch,
     });
   }
-  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf, cfBySystem);
+  let acc = accumulateTick(prev.rmf.acc, lparTicks, lpars, dasd, cf, cfBySystem, lockIndex);
   let jobsThisInterval = jobsEnded.length ? [...prev.rmf.jobsThisInterval, ...jobsEnded] : prev.rmf.jobsThisInterval;
   let intervals = prev.rmf.intervals;
   const intervalTicks = Math.max(1, Math.round((config.rmfIntervalMin * 60) / TICK_SEC));

@@ -40,6 +40,13 @@ purpose, watch what happens, and check whether real z/OS (as IBM documents it) w
      harness; if it lacks something you need, write a small `runs/lab/*.ts` on the same pattern and say in your
      report what the harness should gain. `npm run sim -- --days 1 --seed 42 --hourly --dc PROD2=420` is the
      quickest way to try capping.
+   - **WLM decisions** (`npm run -s inspect -- runs/lab/<name>.json wlm <system> --at 'D3 22:00' [--ticks 6]
+     [--class ONL]`, on a play-CLI file): when WLM did or didn't move a period and you need to know why, this prints
+     each policy adjustment's receiver candidates in order, every trial move and its verdict (e.g.
+     `MORE_IMPORTANT_HARMED STCHI#1 (imp 1) PI 0.40→1.20`, `CPU_CRITICAL`, or skipped over the two-receiver budget)
+     with the projected PIs. `inspect -- <file> dp <system>` gives the DPs per RMF interval to find the moment.
+     Compare the verdicts with the documented receiver and donor rules (SG24-6472, WLM Planning, `docs/research.md`)
+     before calling a WLM behaviour a mismatch. Both verbs are sim internals: cite them as such, not as a report.
 4. **Observe** the way an analyst would first (RMF Postprocessor reports: WLM_SUMMARY/WLM_DETAIL, PARTITION,
    CF, DASD; SMF; Monitor III), then confirm with internal state if needed. Record the actual numbers for
    control and treatment, and the interval or hour they come from.
@@ -94,8 +101,8 @@ Then one short section per experiment: the claim with its source (book, section,
 commands or script, the numbers, the code that produced them (`file:line`), and for every **Mismatch**:
 - why it matters to a player (would an expert misdiagnose because of it?),
 - a proposed fix in one or two sentences,
-- a draft row for `docs/research.md` (fact, page link, sim status) and, if the sim should change, a draft line for
-  PROGRESS.md "M8.7 Realism fixes". Draft only; the main agent decides what goes in.
+- a draft row for `docs/research.md` (fact, page link, sim status) and, if the sim should change, a draft entry for
+  BACKLOG.md list `realism-fixes` (format at the top of BACKLOG.md). Draft only; the main agent decides what goes in.
 
 Be exact: quote report lines and numbers instead of paraphrasing, give units, and say how sure you are. If the
 documentation is silent or ambiguous, say so instead of guessing.

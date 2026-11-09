@@ -44,7 +44,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
     <div className="panel">
       <h3>
         SMF analytics
-        <CodexHints ids={['smf113']} />
+        <CodexHints ids={k === 'DB2' ? ['smf101'] : k === 'CICS' ? ['smf110'] : k === 'SMF113' ? ['smf113'] : []} />
       </h3>
       <div className="form">
         {owned.map((o) => (
@@ -270,6 +270,7 @@ function Gantt({ n, game }: { n: BatchNight; game: GameHandle }) {
           })}
           <span style={{ marginLeft: 10 }}>
             ABENDs: {n.critical.abended.length}
+            {n.critical.abended.length > 0 && <span className="muted"> ({n.critical.abended.map((a) => (n.critical!.failCodes?.[a] ? `${a} ${n.critical!.failCodes[a]}` : a)).join(', ')})</span>}
             <PinButton game={game} req={{ source: 'BATCH', day: n.day, metric: 'JOB_ABEND' }} label="critical job ABENDs" />
           </span>
         </div>

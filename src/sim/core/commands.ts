@@ -43,6 +43,7 @@ export type Command =
   | { kind: 'SET_LOCK_BOOST'; value: number }
   | { kind: 'ADD_WORKLOAD'; workload: WorkloadDef }
   | { kind: 'ADD_ADDRESS_SPACE'; addressSpace: AddressSpaceDef }
+  | { kind: 'REMOVE_ADDRESS_SPACE'; jobname: string; lparId: string }
   | { kind: 'ABEND_JOB'; critical: boolean }
   | { kind: 'RESTART_JOB'; day: number; name: string }
   | { kind: 'SET_PRICING'; tfp: TfpTerms }
@@ -85,6 +86,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       if (!l) return fail(s, `No LPAR ${cmd.lparId}`);
       const p = l.pools.find((x) => x.pool === cmd.pool);
       const max = p ? p.logical + p.reserved : 0;
+      if (!p) return fail(s, `${cmd.lparId} has no ${cmd.pool} pool defined; adding one needs an image profile change and IPL`);
       if (cmd.logical < 0) return fail(s, 'Logical count must be ≥ 0');
       if (p && cmd.logical > max) return fail(s, `Only ${max} logical ${cmd.pool}s defined (online + reserved); more needs an image profile change and IPL`);
       return ok(
@@ -364,7 +366,10 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       return ok({ ...s, extraWorkloads: [...s.extraWorkloads, cmd.workload], workloads: [...s.workloads, { id: cmd.workload.id, noise: 0, retryRate: 0, lastRtSec: 0 }] }, `Workload ${cmd.workload.id} went live`);
 
     case 'ADD_ADDRESS_SPACE':
-      return ok({ ...s, extraAddressSpaces: [...s.extraAddressSpaces, cmd.addressSpace] }, `${cmd.addressSpace.jobname} started`);
+      return ok({ ...s, extraAddressSpaces: [...s.extraAddressSpaces.filter((a) => a.jobname !== cmd.addressSpace.jobname || a.lparId !== cmd.addressSpace.lparId), cmd.addressSpace] }, `${cmd.addressSpace.jobname} started`);
+
+    case 'REMOVE_ADDRESS_SPACE':
+      return ok({ ...s, extraAddressSpaces: s.extraAddressSpaces.filter((a) => a.jobname !== cmd.jobname || a.lparId !== cmd.lparId) }, `${cmd.jobname} ended on ${cmd.lparId}`);
 
     case 'ABEND_JOB': {
       const jobs = s.batch.jobs.map((j) => ({ ...j }));
@@ -372,6 +377,7 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       if (!victim) return fail(s, 'No running job to abend');
       victim.status = 'ABENDED';
       victim.abended = true;
+      victim.failCode = 'S0C7';
       return ok({ ...s, batch: { ...s.batch, jobs } }, `${victim.def.name} ABEND S0C7 on ${victim.lparId}`);
     }
 
@@ -382,6 +388,10 @@ export function applyCommand(s: SimState, cmd: Command): CommandResult {
       j.status = 'QUEUED';
       j.progress = j.progress * 0.5; // restart from the last checkpoint
       j.queuedTick = s.tick;
+      // The old failure belongs to the abandoned attempt: a successful restart must not leave its code on the job
+      // (otherwise the night's RCA could blame the wrong cause).
+      delete j.failCode;
+      delete j.failTick;
       return ok({ ...s, batch: { ...s.batch, jobs } }, `${cmd.name} restarted from checkpoint`);
     }
 

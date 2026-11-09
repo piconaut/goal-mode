@@ -44,7 +44,7 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
     <div className="panel">
       <h3>
         RMF Postprocessor
-        <CodexHints ids={['rmf']} />
+        <CodexHints ids={['rmf', 'end-rate']} />
       </h3>
       <div className="form">
         <select value={sel ?? ''} onChange={(e) => setIdx(Number(e.target.value))}>

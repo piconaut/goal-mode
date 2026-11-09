@@ -19,7 +19,7 @@ export interface EvidencePin {
   /** Where it came from, in report terms (WLMGL, DELAY, CPC, Db2 101, CICS 110, SMF 30). */
   source: string;
   metric: EvidenceMetric;
-  /** Service-class period, workload or LPAR the value belongs to. */
+  /** Service-class period, workload, LPAR or SYSWKM server jobname the value belongs to. */
   subject: string;
   system: string;
   /** End of the measurement window the value describes. */
@@ -201,15 +201,22 @@ export interface PinVerdict {
   why: string;
 }
 
-/** Score pins against an incident's truth. Pure; used by submitRca and shown after the RCA. */
-export function judgeEvidence(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): PinVerdict[] {
+interface RankedVerdict {
+  verdict: PinVerdict;
+  checksPassed: number;
+}
+
+function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): RankedVerdict[] {
   const w = allWorkloads(scenario, run).find((x) => x.id === inc.workloadId);
   const batch = inc.workloadId === BATCH_INCIDENT ? batchSubjects(run, inc) : null;
   const classes = batch ? batch.classes : w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
-  const lpars = batch ? batch.lpars : Object.keys(run.sim.routing[inc.workloadId] ?? w?.routing ?? {});
+  const routing = run.sim.routing[inc.workloadId] ?? w?.routing ?? {};
+  const lpars = batch ? batch.lpars : Object.keys(routing);
+  const servers: { jobname: string; lparId: string }[] = [];
   // Resource evidence on a CICS region class is evidence about its hosted transactions.
   if (w?.subsystem === 'CICS') for (const a of [...scenario.addressSpaces, ...run.sim.extraAddressSpaces]) {
     if (!lpars.includes(a.lparId) || (a.role !== 'CICS.AOR' && a.role !== 'CICS.TOR')) continue;
+    if (a.role === 'CICS.AOR' && (routing[a.lparId] ?? 0) > 0) servers.push(a);
     const sc = classify(run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;
     if (sc && !classes.includes(sc)) classes.push(sc);
   }
@@ -217,18 +224,36 @@ export function judgeEvidence(run: RunState, scenario: Scenario, inc: Incident, 
   const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
   return pins.map((p) => {
     const d = EVIDENCE_METRICS[p.metric];
-    const base = { pinId: p.id, text: p.text };
-    if (p.tick < lo || p.tick > hi) return { ...base, relevance: 0, why: 'outside the incident window' };
+    const result = (relevance: number, why: string, checksPassed: number): RankedVerdict => ({
+      verdict: { pinId: p.id, text: p.text, relevance, why }, checksPassed,
+    });
+    if (p.tick < lo || p.tick > hi) return result(0, 'outside the incident window', 0);
     const related =
       d.anySubject ||
       p.subject === inc.workloadId ||
+      (p.source === 'SYSWKM' && servers.some((a) => p.subject === a.jobname && p.system === a.lparId)) ||
       classes.some((sc) => p.subject === sc || p.subject.startsWith(`${sc}#`)) ||
       lpars.includes(p.subject) ||
       p.subject === '*PLEX';
-    if (!related) return { ...base, relevance: 0, why: `not about ${inc.workloadId}` };
-    if (d.weight === 0) return { ...base, relevance: 0, why: 'a symptom, not a cause' };
-    if (Math.abs(p.value) < d.notableAt) return { ...base, relevance: 0, why: 'value is unremarkable' };
+    if (!related) return result(0, `not about ${inc.workloadId}`, 1);
+    if (d.weight === 0) return result(0, 'a symptom, not a cause', 2);
+    if (Math.abs(p.value) < d.notableAt) return result(0, 'value is unremarkable', 3);
     const hit = d.mechanisms.includes(inc.truth.mechanism) || d.triggers.includes(inc.truth.trigger);
-    return hit ? { ...base, relevance: d.weight, why: d.weight < 1 ? 'consistent with the cause (but not specific)' : 'points at the cause' } : { ...base, relevance: 0, why: 'points elsewhere' };
+    return result(hit ? d.weight : 0, hit ? (d.weight < 1 ? 'consistent with the cause (but not specific)' : 'points at the cause') : 'points elsewhere', 4);
   });
+}
+
+/** Score pins against an incident's truth. Pure; shown after the RCA. */
+export function judgeEvidence(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): PinVerdict[] {
+  return judgeEvidenceRanked(run, scenario, inc, pins).map((v) => v.verdict);
+}
+
+/** Highest relevance per pin; on ties, prefer the most informative failure, then the first incident. */
+export function judgeGroupEvidence(run: RunState, scenario: Scenario, group: readonly Incident[], pins: readonly EvidencePin[]): PinVerdict[] {
+  return group.map((inc) => judgeEvidenceRanked(run, scenario, inc, pins)).reduce<RankedVerdict[]>((best, verdicts) =>
+    verdicts.map((v, k) => {
+      const b = best[k];
+      return !b || v.verdict.relevance > b.verdict.relevance ||
+        (v.verdict.relevance === b.verdict.relevance && v.checksPassed > b.checksPassed) ? v : b;
+    }), []).map((v) => v.verdict);
 }

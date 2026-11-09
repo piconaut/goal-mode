@@ -1,6 +1,6 @@
 ---
 name: pr-review-loop
-description: One tick of the hourly GOAL MODE PR review (user request 2026-11-04) - review every open PR into dev with the pr-reviewer subagent, hold PRs with any finding, re-check held PRs after updates and merge when the earlier findings are fixed, and log second-pass leftovers in PROGRESS.md. State lives in hidden markers in the review comments, so each tick can run in a fresh session. Usage - /pr-review-loop (fired hourly by a scheduled task).
+description: One tick of the GOAL MODE PR review (user request 2026-11-04) - review every open PR into dev with the pr-reviewer subagent, hold PRs with any finding, re-check held PRs after updates and merge when the earlier findings are fixed, and log second-pass leftovers in PROGRESS.md. State lives in hidden markers in the review comments, so each tick can run in a fresh session. Usage - /pr-review-loop (fired by a scheduled task).
 ---
 
 # PR review loop (one tick)
@@ -11,13 +11,19 @@ rely on memory of an earlier tick.
 
 Only PRs with base `dev`. The `dev` → `main` milestone PR is the user's; leave it alone.
 
+Skip draft PRs (user request 2026-11-04): don't review, merge or comment on a PR while `draft` is true. It joins the
+next tick after it is marked ready for review, as **new** or per its latest marker. List them in the report as
+`draft - skipped`.
+
 Models (user request 2026-11-04): the scheduled task runs this coordinating session on Sonnet; the review itself
-stays on Opus through the `pr-reviewer` agent's `model: opus`. Don't pass a `model` override when spawning it, and
-don't review diffs yourself: your job is bookkeeping, merging and the PROGRESS.md docs PR.
+stays on Opus through the `pr-reviewer` agent's `model: opus`. Exception (user request 2026-11-05): a follow-up
+whose previous marker lists no blocking findings (only non-blocking ones) is reviewed on Sonnet, by passing
+`model: "sonnet"` when spawning it. Every other review passes no `model` override. Don't review diffs yourself:
+your job is bookkeeping, merging and the PROGRESS.md docs PR.
 
 ## 1. Gather state
 
-For each open PR into `dev` (`mcp__github__list_pull_requests`, base `dev`, state open):
+For each open, non-draft PR into `dev` (`mcp__github__list_pull_requests`, base `dev`, state open; drop `draft: true`):
 
 - head SHA, `mergeable_state`, title, body;
 - the PR's issue comments (`mcp__github__pull_request_read` method `get_comments`, all pages). Find the **latest
@@ -60,11 +66,14 @@ For each PR to review, spawn the `pr-reviewer` subagent (in the background; seve
 spawn them all in one message and wait for every hand-back before deciding). Brief:
 
 - PR number, title, head branch and SHA, base `dev`, and a scratchpad directory.
-- "Check z/OS behaviour claims against IBM docs with the zos-docs skill where applicable (cite pages); say n/a
-  when there are none."
+- "Check z/OS behaviour claims against IBM docs with the zos-docs skill (Skill tool; cite pages); a z/OS behaviour
+  or report change with no checked citation is a blocking finding; say n/a when there are none."
 - "Review-loop mode: classify every finding as blocking or non-blocking, give them IDs, and end the posted comment
   with the review-loop marker (see your agent file)." A merge conflict with `dev` is a blocking finding.
 - **First pass:** `pass: first`.
+- **Model:** spawn with `model: "sonnet"` only for a follow-up where the previous blocking list is empty (the
+  re-check is just "were the non-blocking items fixed, and is anything new blocking"). Follow-ups after any blocking
+  finding, first passes and stale approvals with blocking items stay on the agent's Opus default.
 - **Follow-up:** `pass: followup`, plus the previous blocking and non-blocking lists verbatim. "For each previous
   item, say fixed / not fixed with evidence. List NEW findings separately with new IDs (continue the numbering)."
 
@@ -93,29 +102,11 @@ push to, or close someone else's PR.
 
 ## 4. Log second-pass leftovers
 
-After merging a PR on a follow-up pass with NEW non-blocking findings, add them to the "PR review follow-ups"
-section of PROGRESS.md: one unticked line each, tagged with the PR number, with file paths. Skip any item already
-listed. Collect all of this tick's items into one docs-only PR:
-
-- branch: this session's designated branch if it has one, else `review-loop/followups-<YYYYMMDD-HHMM>`, cut from
-  the latest `origin/dev`;
-- PR into `dev` following `.github/pull_request_template.md` ("## Behaviour change" → "None."), auto-merge (squash);
-- don't wait for it: the next tick reviews it like any other PR. It is a docs-only PR, so a clean review merges it.
-
-Also tick any follow-up item in that section that a PR merged this tick fixed, when the reviewer says so.
+After merging a PR on a follow-up pass with NEW non-blocking findings, list them in a new "PR review follow-ups"
+comment on that PR. Do not change PROGRESS.md or open your own PR.
 
 ## 5. Report
 
 End with a terse summary, one line per open PR: `#<n> <new|follow-up|unchanged|approved> - <findings: B open/fixed,
 N open/fixed> - <merged | auto-merge on | held | skipped>`, plus the docs PR link if you opened one. If nothing
 was open, say so in one line. Don't re-explain the policy.
-
-## Comment footer
-
-Every comment this loop posts ends with:
-
-```
-
----
-_Generated by [Claude Code](https://claude.ai/code)_
-```

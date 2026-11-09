@@ -1,5 +1,6 @@
 import { type EventDef } from '../../content/events/midwest-events';
 import { STORY_BEAT_HINTS } from '../../content/hints';
+import { EVENT_RUMOURS } from '../../content/inquiries';
 import { Rng, streamRng } from '../../sim/core/rng';
 import { TICK_SEC, TICKS_PER_DAY } from '../../sim/core/units';
 import { difficultyOf, storyBeatsFor } from '../difficulty';
@@ -85,9 +86,50 @@ export function storyFor(run: RunState, content: GameContent, day: number): RunS
   return r;
 }
 
+/**
+ * What the log may say about a card: the wording the player was given, or null for a silent one. The card's
+ * name can give the diagnosis away (e.g. "Stored procedures lose zIIP offload" after a vague forewarning), so a
+ * forewarning alone is not enough. An announcement, an owned perk's tip-off and a revealed Ask Around rumour are
+ * explicit reveals; only the first two reveal the name too (the inbox subject). A silent card stays out of the
+ * log and its chart markers.
+ */
+function eventLogText(run: RunState, def: EventDef, uid: string): { text: string; named: boolean } | null {
+  if (def.announcement !== null) return { text: def.announcement, named: true };
+  if (def.perkTip && run.perks.includes(def.perkTip.perk)) return { text: def.perkTip.text, named: true };
+  const rumour = EVENT_RUMOURS[def.id];
+  if (rumour && (run.inquiries?.revealed ?? []).includes(`ev:${uid}`)) return { text: rumour, named: false };
+  return null;
+}
+
+export function eventStartLog(run: RunState, def: EventDef, uid: string): string | null {
+  const t = eventLogText(run, def, uid);
+  return t === null ? null : `EVENT start: ${t.named ? `${def.name} — ` : ''}${t.text}`;
+}
+
+export function eventEndLog(run: RunState, def: EventDef, uid: string): string | null {
+  const t = eventLogText(run, def, uid);
+  return t === null ? null : `EVENT end: ${t.named ? def.name : t.text}`;
+}
+
 /** Context for previewChange from the current run. */
-/** Fixes the scenario's event cards call for: the Change Desk offers and accepts only these. */
+/** Fixes the scenario's event cards call for: the Change Desk accepts only these (the offered list is a subset). */
 export const fixIdsOf = (content: GameContent): string[] => [...new Set(content.events.flatMap((e) => (e.fix ? [e.fix] : [])))].sort();
+
+/**
+ * Fixes the player may see: cards that have started in this run, were forewarned (the inbox names the change),
+ * or whose Ask Around rumour has been revealed. Unseen cards stay hidden so the Operations list cannot spoil an
+ * event that has not happened yet. Validation keeps using `fixIdsOf`, so a fix id guessed for an unseen card is
+ * still accepted and charged (the Change Desk cannot be probed for hidden events).
+ */
+export function visibleFixIds(run: RunState, content: GameContent): string[] {
+  const out = new Set<string>();
+  for (const e of run.events) {
+    const def = content.events.find((d) => d.id === e.defId);
+    const rumoured = (run.inquiries?.revealed ?? []).includes(`ev:${e.uid}`);
+    if (def?.fix && (e.started || def.forewarning !== null || rumoured)) out.add(def.fix);
+  }
+  return [...out].sort();
+}
 
 export const hasEventForFix = (run: RunState, content: GameContent, fixId: string): boolean =>
   run.events.some((e) => e.started && !e.ended && content.events.some((d) => d.id === e.defId && d.fix === fixId));

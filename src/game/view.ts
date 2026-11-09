@@ -32,7 +32,8 @@ import { opexBudgetFor, type PreviewContext } from './catalog';
 import type { CicsRegionConfig, Db2MemberConfig, JobClassConfig, ZosSystemConfig } from '../sim/core/types';
 import type { CfConfig, CfStructureConfig } from '../sim/cf/cf';
 import type { LcuConfig } from '../sim/io/dasd';
-import { allWorkloads, fixIdsOf, overallTrust, previewContext } from './run';
+import { suPerCpuSecOf } from '../sim/hw/cpc';
+import { allWorkloads, overallTrust, previewContext, visibleFixIds } from './run';
 import { hourAttainment } from './sla';
 import { FACETS, type DayReport, type DraftOption, type Facet, type Incident, type Message, type Phase, type PlannedChange, type RunState } from './types';
 import { idText } from './ids';
@@ -79,7 +80,7 @@ export interface BatchView {
   queued: number;
   held: number;
   done: number;
-  abended: { name: string; day: number; stream: string; critical: boolean }[];
+  abended: { name: string; day: number; stream: string; critical: boolean; lparId: string | null; failCode: string | null }[];
   total: number;
   projectedCriticalEnd: string | null;
   deadline: string;
@@ -108,6 +109,8 @@ export interface ConfigView {
     memoryGb: number;
     definedCapacity: number | null;
   }[];
+  /** Installed physical engines per CPC (HMC totals by pool). */
+  cpcs: { id: string; engines: { CP: number; ZIIP: number; ICF: number }; suPerCpuSec: number }[];
   cpcMemoryGb: number;
   unassignedMemoryGb: number;
   db2: Db2MemberConfig[];
@@ -134,7 +137,7 @@ export interface ViewModel {
   daily: string | null;
   difficulty: { id: DifficultyId; name: string; pauseAllowed: boolean };
   scenario: { id: string; name: string };
-  /** Event fixes this scenario's deck can call for (the Ops list shows only these). */
+  /** Event fixes the Ops list may show: this scenario's cards that have started or been forewarned in this run. */
   fixIds: string[];
   clock: string;
   hourOfDay: number;
@@ -157,8 +160,6 @@ export interface ViewModel {
   constraints: string[];
   lpars: LparView[];
   cpcBusyPct: number;
-  /** Physical engines per pool on the (first) CPC, for HMC previews. */
-  cpcEngines: { CP: number; ZIIP: number; ICF: number };
   piHeat: PiCell[];
   sla: SlaTicker[];
   batch: BatchView;
@@ -278,7 +279,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     queued: jobs.filter((j) => j.status === 'QUEUED').length,
     held: jobs.filter((j) => j.status === 'HELD').length,
     done: jobs.filter((j) => j.status === 'DONE').length,
-    abended: jobs.filter((j) => j.status === 'ABENDED').map((j) => ({ name: j.def.name, day: j.day, stream: j.def.stream, critical: j.def.critical })),
+    abended: jobs.filter((j) => j.status === 'ABENDED').map((j) => ({ name: j.def.name, day: j.day, stream: j.def.stream, critical: j.def.critical, lparId: j.lparId, failCode: j.failCode ?? null })),
     total: jobs.length,
     projectedCriticalEnd: proj !== null ? instanceClock(proj) : null,
     deadline: instanceClock(run.batchDeadlineSec),
@@ -301,7 +302,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     daily: run.daily ?? null,
     difficulty: (({ id, name, pauseAllowed }) => ({ id, name, pauseAllowed }))(difficultyOf(run.difficulty)),
     scenario: { id: packOf(run.scenarioId).id, name: packOf(run.scenarioId).name },
-    fixIds: fixIdsOf(packOf(run.scenarioId).game),
+    fixIds: visibleFixIds(run, packOf(run.scenarioId).game),
     clock: formatClock(sim.tick),
     hourOfDay: c.hourOfDay,
     tickOfDay,
@@ -321,7 +322,6 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     constraints: run.constraints,
     lpars,
     cpcBusyPct: cpEngines > 0 ? (100 * delivered) / cpEngines : 0,
-    cpcEngines: { ...sim.config.cpcs[0]!.engines },
     piHeat,
     sla,
     batch,
@@ -409,6 +409,7 @@ function configView(run: RunState, scenario: Scenario): ConfigView {
         definedCapacity: l.definedCapacityMsu,
       };
     }),
+    cpcs: c.cpcs.map((x) => ({ id: x.id, engines: { ...x.engines }, suPerCpuSec: suPerCpuSecOf(x) })),
     cpcMemoryGb: cpc.memoryGb,
     unassignedMemoryGb: cpc.memoryGb - assigned,
     db2: c.db2,

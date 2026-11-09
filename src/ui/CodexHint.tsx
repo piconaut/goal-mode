@@ -37,12 +37,15 @@ const HINT_LABEL: Record<string, string> = {
   'db2-velocity': 'Db2 goals',
   rmf: 'RMF',
   'smf-volume': 'SMF volume',
+  smf101: 'SMF 101',
+  smf110: 'SMF 110',
   smf113: 'SMF 113',
   'sd-wlm-weights': 'SD weights',
   'cpsm-routing': 'CPSM routing',
   'storm-drain': 'storm drain',
   'absolute-capping': 'absolute capping',
   'arrival-bursts': 'bursts',
+  'end-rate': 'END/S',
 };
 
 /** "? label" next to a panel title: the Codex entry for the concept, shown in place (SPEC §11.3). */

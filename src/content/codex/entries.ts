@@ -21,7 +21,7 @@ const PAICE_WLM: CodexSource = { label: 'Colin Paice, One Minute MVS performance
 const IEAOPT: CodexSource = { label: 'IBM docs: IEAOPTxx parameters', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieae200/spi.htm' };
 const GROUP_CAP: CodexSource = { label: 'IBM docs: Group capacity', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieaw100/grcap.htm' };
 /** Run milestones that reveal entries (not events or tools). */
-export type CodexFlag = 'TFP_OFFER';
+export type CodexFlag = 'TFP_OFFER' | 'DB2_CONNECT_FAIL';
 
 const MLC_CAPPING: CodexSource = { label: 'IntelliMagic (John Baker), MLC Capping 101', url: 'https://www.intellimagic.com/?p=7302' };
 const HORNE: CodexSource = {
@@ -122,7 +122,7 @@ export const CODEX: CodexEntry[] = [
     id: 'cics-region-mode',
     title: 'Manage Region Using Goals Of (TRANSACTION, REGION, BOTH)',
     category: 'Subsystems',
-    body: 'CICS transactions are classified into service classes, but they run inside region address spaces, and WLM can only set a region’s dispatching priority. “Manage Region Using Goals Of” is a column of the STC and JES classification rules that catch the regions, so each region can have its own setting. TRANSACTION (the default): the region is a transaction server, managed to the goals of the transaction classes it serves. It runs at the priority the most demanding of them needs, so less important transactions in the same region get a “free ride”, and the region’s own service class is still reported but not used to manage it. Time a transaction spends waiting for a starved TRANSACTION region shows as its own CPU delay, so WLM helps the transaction class. REGION: the region is managed to its own service class goal, like any started task, and its transactions run at that priority; their response times are no longer reported in any service class (only in report classes), so WLM can’t manage the transaction classes. BOTH: managed to its own goal like REGION, but transaction completions are still tracked so the transaction classes keep their response-time management; IBM: “Option BOTH should be used only for CICS TORs. All AORs should remain at the default TRANSACTION.” IBM warns that using this option “limits WLM’s ability to manage the system” and may reduce overall throughput. Separating important and less important work into different regions is the usual fix for the free ride.',
+    body: 'CICS transactions are classified into service classes, but they run inside region address spaces, and WLM can only set a region’s dispatching priority. “Manage Region Using Goals Of” is a column of the STC and JES classification rules that catch the regions, so each region can have its own setting. TRANSACTION (the default): the region is a transaction server, managed to the goals of the transaction classes it serves. It runs at the priority the most demanding of them needs, so less important transactions in the same region get a “free ride”, and the region’s own service class is still reported but not used to manage it. Time a transaction spends waiting for a starved TRANSACTION region shows as its own CPU delay, so WLM helps the transaction class. REGION: the region is managed to its own service class goal, like any started task, and its transactions run at that priority; their response times are no longer reported in any service class (only in report classes), so WLM can’t manage the transaction classes. BOTH: managed to its own goal like REGION, but transaction completions are still tracked so the transaction classes keep their response-time management; IBM: “Option BOTH should be used only for CICS TORs. All AORs should remain at the default TRANSACTION.” IBM warns that using this option “limits WLM’s ability to manage the system” and may reduce overall throughput. Separating important and less important work into different regions is the usual fix for the free ride. In GOAL MODE every region is managed to TRANSACTION goals; the setting isn’t one of your levers.',
     sources: [{ label: 'IBM z/OS MVS Planning: Workload Management, “Manage Region Using Goals Of” (pp. 102, 191)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122' }, { label: 'IBM Redbook SG24-7621, §3.31 CICS/IMS address space server topology (p. 126)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=138' }],
     discover: { start: true },
   },
@@ -173,8 +173,11 @@ export const CODEX: CodexEntry[] = [
     id: 'resource-groups',
     title: 'Resource groups (minimum and maximum)',
     category: 'WLM',
-    body: 'A resource group limits or protects the CPU of the service classes in it. The maximum is always enforced, so work above it waits (capping delay) even when the CPC is idle. The minimum is honoured only while the group’s work misses its goals, and then even at the expense of more important work. Type 1 is service units per second across the sysplex, type 2 a percentage of the LPAR’s share, type 3 a number of CPs × 100.',
-    sources: [ABCS_WLM],
+    body: 'A resource group limits or protects the CPU of the service classes in it. The maximum is always enforced, so work above it waits (capping delay) even when the CPC is idle. The minimum is honoured only while the group’s work misses its goals, and then even at the expense of more important work. Type 1 is service units per second across the sysplex, type 2 a percentage of the LPAR’s share, type 3 a number of CPs × 100. Service units are hard to judge: one MSU is a million service units per hour, about 277.8 SU/s, and a general CP delivers its MSU rating × 277.8 SU/s. A 100-MSU CP therefore provides about 27,800 SU/s, so a 100 SU/s limit is only ≈ 0.36 MSU, a fraction of one CP; the editor shows the MSU and per-CPC CP equivalents for type 1 limits.',
+    sources: [
+      ABCS_WLM,
+      { label: 'IBM, z/OS 3.1 MVS Planning: Workload Management, p.251', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=251' },
+    ],
     discover: { start: true },
   },
   {
@@ -334,6 +337,30 @@ export const CODEX: CodexEntry[] = [
     discover: { events: ['SMF_AUDIT'] },
   },
   {
+    id: 'smf101',
+    title: 'Db2 accounting (SMF 101)',
+    category: 'Measurement',
+    body: 'Db2 writes a type 101 accounting record when a transaction\'s processing completes, so it times each thread rather than the WLM service class. Class 1 elapsed is the whole accounting interval (application time, including the front end and Db2); class 2 elapsed is time spent in the Db2 thread; class 3 suspensions split out the waits inside Db2 for locks and latches, synchronous database and log I/O, and other I/O. Class 2 not accounted is class 2 elapsed minus class 2 CPU and class 3; not-in-Db2 is class 1 minus class 2. A rising CPU per transaction against a healthy baseline points at an access-path change, while growing lock or I/O suspension points at concurrency or I/O. Package rows need accounting trace classes 7 and 8 (class 10 adds detail at more CPU and SMF volume). A request queued for a database access thread (DBAT) waits before the thread exists, so that wait is not in the accounting record (Db2 reports the queue count in IFCID 73); RMF enclave queue time does include it.',
+    sources: [
+      { label: 'IBM z/OS 3.1 MVS SMF p.1133: record type 101 (Db2 accounting)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=1133' },
+      { label: 'IBM Db2 13 for z/OS Managing Performance pp.709, 726, 729–731: class 1/2/3 times', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=729' },
+      { label: 'IBM Db2 13 for z/OS Managing Performance pp.143, 476, 660, 703: DBAT queue and package accounting', url: 'https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=143' },
+    ],
+    discover: { tools: ['DB2_ACCT'] },
+  },
+  {
+    id: 'smf110',
+    title: 'CICS monitoring (SMF 110)',
+    category: 'Measurement',
+    body: 'CICS writes performance class records to SMF type 110, at least one per transaction and normally covering attach to detach; the record is built at event monitoring points and passed to SMF. Response time is stop time minus start time. Dispatch time is the time the task was dispatched, CPU time is the part of it using processor cycles, and suspend time covers first dispatch delay (including MXT and transaction-class limits), dispatch wait, and I/O or other waits. QRMODDLY is the redispatch wait on the QR TCB, MXTDELAY is the part of first dispatch delay caused by MXT, and USRDISPT minus USRCPUT is time dispatched but not on a CP. The table compares CPU per transaction with a healthy baseline and shows those QR, MXT and DISP−CPU waits plus the failed share (transactions that ended with an abend; the record carries the original and current abend codes). A CICS class can meet its WLM goal while transactions stall, because response times are for ended transactions.',
+    sources: [
+      { label: 'IBM CICS TS 6 Monitoring CICS pp.19, 25: performance class records and SMF', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=19' },
+      { label: 'IBM CICS TS 6 Monitoring CICS pp.251–254, 280, 287, 290, 295–296: response, dispatch, QR, MXT and abend fields', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=251' },
+      { label: 'IBM z/OS 3.1 MVS SMF p.1183: record type 110 (CICS TS)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=1183' },
+    ],
+    discover: { tools: ['CICS_MON'] },
+  },
+  {
     id: 'smf113',
     title: 'CPU MF counters (SMF 113), RNI and LSPR categories',
     category: 'Measurement',
@@ -388,12 +415,28 @@ export const CODEX: CodexEntry[] = [
     discover: { events: ['MARKET_OPEN_SURGE'] },
   },
   {
+    id: 'end-rate',
+    title: 'END/S: reading the transaction rate',
+    category: 'Measurement',
+    body: 'END/S is the number of transactions that ended per second in the interval; ENDED is the count, reported per service-class period. Neither number says whether the work is healthy: read END/S against the same hour on an earlier day and against what each transaction costs. CPU per transaction is APPL% CP divided by END/S, then by 100 for seconds (CICS transaction rows report resource usage with their region classes, so use those rows or CICS monitoring). A higher END/S at the same CPU per transaction means more transactions arriving at the same cost each: real demand growth, or clients resending requests that timed out, since each retry is another ended transaction. The same rate at more CPU per transaction means each request does more work, such as a changed access path. A falling rate while CPU stays high means work is waiting, not going away. A 15-30 minute interval averages a short burst away; Monitor III\'s short range shows the spike.',
+    sources: [{ label: 'IBM z/OS RMF Report Analysis (SC34-2665): WLMGL field descriptions', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=530' }],
+    discover: { reports: ['WLM_SUMMARY'] },
+  },
+  {
     id: 'ABEND_S0C7',
     title: 'S0C7: a data exception, not a tuning problem',
     category: 'Subsystems',
     body: 'A system completion code 0C7 is a program check for a data exception: a decimal instruction met a field that is not valid packed decimal, usually bad input data or an uninitialised field in the program. No WLM policy, capping or capacity change prevents it. The job has to be fixed or the bad record bypassed, then restarted; while it is down its successors are held, so a critical one can miss the batch window. In an RCA the trigger is APPLICATION_ERROR and the mechanism JOB_FAILURE.',
     sources: [{ label: 'IBM docs: z/OS MVS System Codes (0C7)', url: 'https://www.ibm.com/docs/en/zos/2.5.0?topic=codes-0c7' }],
     discover: { events: ['JOB_ABEND'] },
+  },
+  {
+    id: 'DB2_CONNECT_DSNE100I',
+    title: 'DSNE100I: a Db2 job on an image without Db2',
+    category: 'Subsystems',
+    body: 'A batch job running TSO DSN under IKJEFT01 connects to a Db2 subsystem on the z/OS image where it runs. A job without system affinity starts wherever an initiator for its class is free, and nothing in that choice checks for Db2. If the image has no Db2, DSN has no subsystem to attach to: the connect fails and makes no more attempts (modelled as DSNE100I ssid NOT OPERATIONAL, RETRY COUNT IS ZERO, the message the book documents for a named ssid that is not active; APPROX, because an image with no Db2 defined may report a slightly different connect error). The job ends without doing its work, its successors stay held, and it needs a rerun. The clue is in the Operations log: which job, on which system. Fix: take that job class\'s initiators off the image without Db2, then restart the job. In an RCA the mechanism is JOB_FAILURE and the trigger POLICY (the initiator setup sent it there).',
+    sources: [{ label: 'IBM Db2 13 for z/OS Messages, DSNE100I (p.140)', url: 'https://www.ibm.com/docs/en/db2-for-zos/13?topic=messages-dsne100i' }],
+    discover: { flags: ['DB2_CONNECT_FAIL'] },
   },
 ];
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { PACKS } from '../content/packs';
 import { DIFFICULTIES, type DifficultyId } from '../content/difficulty';
 import { EVIDENCE } from '../content/evidence';
+import { MECHANISM_HELP, TRIGGER_HELP } from '../content/rca';
 import type { Hypothesis } from '../game/aiops';
 import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
@@ -18,29 +19,21 @@ import { DRAFT_OPTIONS } from '../content/draft';
 import { careerLevel, unlockedPerks } from '../game/career';
 import { useConfirmation } from './Confirmation';
 
-export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
+/** Review / briefing shortcuts shown in the header's speed-button slot while the overlay is closed. */
+export function PhaseActions({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
   const ask = useConfirmation();
-  useEffect(() => {
-    if (!open) return;
-    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
-    document.addEventListener('keydown', esc);
-    return () => document.removeEventListener('keydown', esc);
-  }, [open, setOpen]);
-  const ended = v.phase === 'GAMEOVER' || v.phase === 'VICTORY';
-  // Mid-day the overlay is just the last report card, opened from the tab bar.
-  if (v.phase === 'LIVE' && (!open || !v.lastReport)) return null;
   return (
     <>
       {!open && v.phase === 'REVIEW' && (
-        <div className="toast">
-          Day {v.day + 1} review: pin evidence from Reports or Monitor III, then come back.{' '}
+        <span className="phase-actions">
+          <span className="muted" title="Pin evidence from Reports or Monitor III, then come back">Day {v.day + 1} review</span>
           <button className="primary" onClick={() => setOpen(true)}>
             Back to the review
           </button>
-        </div>
+        </span>
       )}
       {!open && v.phase === 'BRIEFING' && (
-        <div className="toast">
+        <span className="phase-actions">
           {v.weekendDay && (
             <>
               <button className="primary" title="Run the weekend day at full speed; the report card is the summary" onClick={() => game.send({ type: 'START_DAY', auto: true })}>
@@ -58,8 +51,24 @@ export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameH
             {v.weekendDay ? 'Play it' : `Start day ${v.day + 1} (06:00)`}
           </button>{' '}
           <button onClick={() => setOpen(true)}>Briefing</button>
-        </div>
+        </span>
       )}
+    </>
+  );
+}
+
+export function Overlays({ v, game, open, setOpen }: { v: ViewModel; game: GameHandle; open: boolean; setOpen: (o: boolean) => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    document.addEventListener('keydown', esc);
+    return () => document.removeEventListener('keydown', esc);
+  }, [open, setOpen]);
+  const ended = v.phase === 'GAMEOVER' || v.phase === 'VICTORY';
+  // Mid-day the overlay is just the last report card, opened from the tab bar.
+  if (v.phase === 'LIVE' && (!open || !v.lastReport)) return null;
+  return (
+    <>
       {/* Kept mounted while hidden so half-filled RCA forms survive flipping back and forth. */}
       <div className="overlay" style={open || ended ? undefined : { display: 'none' }}>
         <div className="modal">
@@ -464,6 +473,7 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
             Today&apos;s RMF data is now in the Reports tab. Name where the time went and what set it off, and attach up to {EVIDENCE.perRca} pinned
             data points that prove it. Correct answers earn trust and Insight; evidence that points at the real cause earns more.
           </p>
+          <RcaVocabulary />
           <div className="form">
             <button onClick={investigate}>Investigate (pin evidence)</button>
             <span className="muted">{v.pins.length} pinned</span>
@@ -511,6 +521,36 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
 const windowText = (i: { startTick: number; hours: number }) =>
   `breached ${formatClock(i.startTick).slice(-8, -3)}–${formatClock(i.startTick + i.hours * TICKS_PER_HOUR).slice(-8, -3)}`;
 
+/** Plain-language definitions for the RCA selectors (content/rca.ts), opened once above the incidents. */
+function RcaVocabulary() {
+  return (
+    <details style={{ fontSize: 12, marginBottom: 8 }}>
+      <summary className="muted">What do the mechanism and trigger mean?</summary>
+      <p className="muted" style={{ margin: '4px 0' }}>
+        Mechanism: where the time went. Trigger: what set it off.
+      </p>
+      <div className="row" style={{ alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <b>Mechanism</b>
+          {MECHANISMS.map((x) => (
+            <div key={x} style={{ margin: '2px 0' }}>
+              <span className="tag">{x}</span> <span className="muted">{MECHANISM_HELP[x]}</span>
+            </div>
+          ))}
+        </div>
+        <div>
+          <b>Trigger</b>
+          {TRIGGERS.map((x) => (
+            <div key={x} style={{ margin: '2px 0' }}>
+              <span className="tag">{x}</span> <span className="muted">{TRIGGER_HELP[x]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </details>
+  );
+}
+
 function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; label: string; hypotheses: Hypothesis[]; v: ViewModel; game: GameHandle }) {
   const [m, setM] = useState<Mechanism>('CPU_PRIORITY');
   const [t, setT] = useState<Trigger>('POLICY');
@@ -531,6 +571,14 @@ function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; l
           ))}
         </select>
         <button onClick={() => game.send({ type: 'RCA', incidentId, mechanism: m, trigger: t, evidenceIds: ev })}>Submit{ev.length ? ` with ${ev.length} evidence` : ''}</button>
+      </div>
+      <div className="muted" style={{ fontSize: 11, paddingLeft: 12 }}>
+        <div>
+          <b>{m}</b>: {MECHANISM_HELP[m]}
+        </div>
+        <div>
+          <b>{t}</b>: {TRIGGER_HELP[t]}
+        </div>
       </div>
       {hypotheses.length > 0 && (
         <div style={{ fontSize: 12, paddingLeft: 12 }}>

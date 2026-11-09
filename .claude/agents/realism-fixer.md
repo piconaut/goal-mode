@@ -15,10 +15,12 @@ Setup (you run in a git worktree):
 Do the fix:
 - Reproduce the finding first (the brief's command, or `npm run -s lab -- <control.json> <treatment.json>` with the
   audit's specs; format in `tools/lab.ts`) and note the before numbers. Re-run the same specs for the after numbers.
+- Before changing code, re-verify the brief's IBM citation with the `zos-docs` skill (Skill tool) and quote the page
+  in `docs/research.md` and the code comment. If it doesn't hold up, or the books clone is missing, stop and report.
 - Change the model the smallest way that makes it behave as documented. Follow CLAUDE.md: layering,
   determinism, units in names, tunables in `src/content/` with `// FICTIONAL:` / `// APPROX:` and a source cite.
 - Add a test that fails before and passes after: a unit test for a pure function, or a realism test in
-  `tests/sim/realism/` stating the documented behaviour.
+  `tests/sim/realism.test.ts` stating the documented behaviour.
 - Re-run the reproduction and note the after numbers.
 - If the fix needs a design call the brief doesn't settle (a lever loses its cost, a clue path disappears, a
   scenario's puzzle stops working), stop and report instead of guessing.
