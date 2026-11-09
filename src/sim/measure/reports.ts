@@ -194,8 +194,11 @@ function hms(sec: number): string {
 export function renderPartitionData(iv: RmfInterval): string {
   const out = header('PARTITION DATA REPORT', iv);
   for (const c of iv.cpcBusy) {
-    // SMF 70: a capacity reduction shows as CAI 1–99 with the reason in CCR (MVS SMF p.589).
-    const adj = c.capacityAdjustmentPct !== undefined ? `   CAPACITY ADJUSTMENT ${c.capacityAdjustmentPct}% (SMF70CAI; reason ${c.capacityReasonCode} = ${c.capacityReasonCode === 1 ? 'operator' : 'external'})` : '';
+    // A capacity change shows as CHANGE REASON on the CPU Activity header (RMF Report Analysis p.391–392);
+    // this sim renders it on Partition Data instead (APPROX, SPEC §17). SMF70CCR: 1 = operator, >1 = external.
+    const adj = c.capacityReasonCode !== undefined && c.pool === 'CP'
+      ? `   CHANGE REASON=${c.capacityReasonCode === 1 ? 'POWERSAVE (initiated by the user)' : 'MACHINE (initiated by the machine)'}`
+      : '';
     out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%${adj}`);
   }
   out.push('');

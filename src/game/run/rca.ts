@@ -36,7 +36,7 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
   const trust = mapTrust(run, (t) => t + facetTrust / 2);
   const total = points + evidencePoints;
-  const explain = mechanismExplanation(run, inc);
+  const explain = mechanismExplanation(inc);
   const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(explain ? { explain } : {}) };
   return {
     ...run,

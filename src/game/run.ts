@@ -29,7 +29,7 @@ import { drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, 
 import { accumulateHour, closeHour, newHour } from './run/hourly';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
-import { BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, importanceRank } from './sla';
+import { BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank } from './sla';
 import { tfpAtDayEnd } from './tfp';
 import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
@@ -252,6 +252,7 @@ function batchMissIncident(r: RunState, night: NightSummary, trustLost: number):
   const nightStartTick = r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
   const nightHour = r.nightHour ?? newHour(nightStartTick);
   const mechanism = batchMissMechanism(night, nightHour, hosts);
+  const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(nightHour, hosts) : null;
   const truth = { mechanism, trigger: batchMissTrigger(mechanism, r.events, nightHour, nightStartTick, night) };
   const lead = r.incidents.find((i) => i.day === r.day && i.rcaGroup === undefined && i.truth.mechanism === truth.mechanism && i.truth.trigger === truth.trigger);
   const inc: Incident = {
@@ -263,6 +264,7 @@ function batchMissIncident(r: RunState, night: NightSummary, trustLost: number):
     hours: 12,
     worstAttainmentPct: 0,
     truth,
+    ...(basis ? { basis } : {}),
     rca: lead?.rca ?? null,
     trustLost,
     ...(lead ? { rcaGroup: lead.id } : {}),

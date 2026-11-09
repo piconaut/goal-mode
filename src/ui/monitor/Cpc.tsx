@@ -30,7 +30,6 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
         <thead>
           <tr>
             <th>Partition</th>
-            <th className="num">CAI %</th>
             <th className="num">CPC Capacity</th>
             <th className="num">Image Capacity</th>
             <th className="num">WLM Capping %</th>
@@ -44,9 +43,6 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
           {heads.map((h) => (
             <tr key={h.lparId}>
               <td>{h.lparId}</td>
-              <td className="num" title={h.capacityAdjustmentPct !== undefined ? `SMF70CAI ${h.capacityAdjustmentPct}%: the CPC is running below its normal capacity setting (100 = normal)` : 'No capacity adjustment'}>
-                {h.capacityAdjustmentPct ?? 100}
-              </td>
               <td className="num">{h.cpcCapacityMsu.toFixed(0)}</td>
               <td className="num">{h.imageCapacityMsu.toFixed(0)}</td>
               <td className="num">{n1(h.wlmCappingPct)}</td>

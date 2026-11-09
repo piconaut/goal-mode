@@ -284,7 +284,15 @@ no primary/danger styling.
 
 ## realism-fixes
 
-None open. Completed fixes are in SPEC §17 and docs/research.md.
+### RF-01 · CPU Activity report with the CHANGE REASON header
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
+
+The sim has no CPU Activity report, so the capacity-change clue (SMF70CCR) is shown as a `CHANGE REASON=` line on
+Partition Data instead. Real RMF puts it in the CPU Activity report header (`NONE | POWERSAVE (initiated by the
+user) | MACHINE (cycle steering, initiated by the machine) | N/A`, RMF Report Analysis p.391–392), and the Monitor
+III CPC Capacity report has no capacity-adjustment column (p.97–98). Done when: a CPU Activity report renders with
+that header, Partition Data drops the line, the clue paths that name Partition Data name the new report instead, and
+SPEC §17 and the `docs/research.md` SMF 70 row stop marking it APPROX.
 
 ## cleanup
 
