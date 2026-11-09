@@ -12,7 +12,13 @@ keep SLAs green and software cost down while workload grows and events pile up.
 - **`SPEC.md`** is the design source of truth. Read the relevant section before implementing
   anything. If you deviate, update SPEC.md in the same change and log why in PROGRESS.md.
 - **`PROGRESS.md`** tracks milestones, status, decisions and open questions. Update it at the
-  end of every working session: tick boxes, add decisions, note what's next.
+  end of every working session: add decisions, note what's next.
+- **`BACKLOG.md`** is the only list of work to pick up (user request 2026-11-09): scoped entries in named lists
+  (`playtest-fixes`, `pr-followups`, `realism-fixes`, `cleanup`), each with a status. Implement only `status: ready`
+  entries, and only from a list you were given; a vague request ("work through PROGRESS") isn't a list, so ask.
+  Nothing in PROGRESS.md (design directions, proposals, roadmap, open questions) is a task until it is scoped into a
+  BACKLOG entry. The PR that fixes an entry names it (`Backlog: PT-07`) and deletes it. New findings go into
+  BACKLOG.md as entries (rules at its top).
 
 ## Stack (planned; see SPEC §15)
 
@@ -95,8 +101,8 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   guessing silently. Pick a reasonable model, mark it `// APPROX:` and move on.
 - Update SPEC §17 (fidelity table) when you add or change a model.
 - Confirmed facts go in `docs/research.md` (fact, page-linked source, sim status); check it before modelling
-  something, and add a row when research settles a question. When the sim differs, also add an unticked item to
-  PROGRESS.md "Realism fixes"; update the ledger row and SPEC §17/§18 in the PR that changes the model.
+  something, and add a row when research settles a question. When the sim differs, also add an entry to
+  BACKLOG.md list `realism-fixes`; update the ledger row and SPEC §17/§18 in the PR that changes the model.
 
 ## Testing expectations
 
@@ -125,7 +131,7 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 
 ## Working process
 
-- Work milestone by milestone (PROGRESS.md). Keep the sim runnable headless at every step.
+- Work milestone by milestone (PROGRESS.md), picking tasks from BACKLOG.md. Keep the sim runnable headless at every step.
 - Small, focused commits. Don't mix model changes with UI changes.
 - Branches and PRs: one session branch per task, cut from `dev`; CI is the merge gate (PROGRESS.md "Branch workflow").
   **Standing user request (2026-10-23): you are explicitly asked to open a pull request for every task, without

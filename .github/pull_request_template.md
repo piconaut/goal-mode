@@ -1,6 +1,8 @@
 ## Summary
 <!-- What this PR does, in a few lines. -->
 
+Backlog: <!-- BACKLOG.md entry IDs this PR fixes and deletes (e.g. PT-07), or "none". -->
+
 ## Behaviour change
 <!-- Required by CI when tests/golden/hashes.json changes: what the sim now does differently and why
      (cite the source for a realism change). Write "None." when the goldens are unchanged. -->

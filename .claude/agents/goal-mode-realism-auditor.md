@@ -101,8 +101,8 @@ Then one short section per experiment: the claim with its source (book, section,
 commands or script, the numbers, the code that produced them (`file:line`), and for every **Mismatch**:
 - why it matters to a player (would an expert misdiagnose because of it?),
 - a proposed fix in one or two sentences,
-- a draft row for `docs/research.md` (fact, page link, sim status) and, if the sim should change, a draft line for
-  PROGRESS.md "M8.7 Realism fixes". Draft only; the main agent decides what goes in.
+- a draft row for `docs/research.md` (fact, page link, sim status) and, if the sim should change, a draft entry for
+  BACKLOG.md list `realism-fixes` (format at the top of BACKLOG.md). Draft only; the main agent decides what goes in.
 
 Be exact: quote report lines and numbers instead of paraphrasing, give units, and say how sure you are. If the
 documentation is silent or ambiguous, say so instead of guessing.

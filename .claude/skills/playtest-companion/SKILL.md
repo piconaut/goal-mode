@@ -18,7 +18,7 @@ answer is either a gap in the sim or something new about the real platform. Both
 - **Be careful with dev:** `git fetch` before comparing; use a worktree for the build they play.
 - **Realism claims:** check `docs/research.md` first, verify with the `zos-docs` skill when it matters, otherwise
   say "not verified".
-- **Short replies while they play.** Model fixes go into PROGRESS.md as items, not code, unless asked.
+- **Short replies while they play.** Model fixes go into BACKLOG.md as entries, not code, unless asked.
 
 ## Setup
 
@@ -55,8 +55,8 @@ What the player saw → what the sim did (numbers, with the interval or tick) �
 
 ## Log findings
 
-When asked (or at the end of a playtest round): add items to PROGRESS.md under the current playtest round, in its
-category (Sim and game-logic bugs · Incident truth, RCA and evidence · Clue paths and realism · Events and
-operations design · Levers, economy and pacing · UI and reports · Saves, export and tooling), open items first.
-Items, not code. Commit on the session branch and open the PR into `dev` per CLAUDE.md, unless the user says to
+When asked (or at the end of a playtest round): add each open finding to BACKLOG.md as an entry in list
+`playtest-fixes` (format and rules at the top of BACKLOG.md; source = the round). Mark it `blocked: design` when it
+needs a design call rather than a fix, and set "Done when". Put the round's narrative (player, build, incidents) in
+PROGRESS.md under a new "Playtest round N" heading, and research verdicts in docs/research.md. Entries, not code. Commit on the session branch and open the PR into `dev` per CLAUDE.md, unless the user says to
 hold the PR or not to auto-merge it.

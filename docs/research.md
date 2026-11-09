@@ -6,7 +6,7 @@ new finding.
 
 - **SPEC §17** rates each model's fidelity and points here for the facts behind it. **SPEC §18** is the
   bibliography. **PROGRESS.md "Open questions"** holds only what is still unsettled; once a question is settled,
-  its finding moves here. **PROGRESS.md "M8.7 Realism fixes"** holds the model changes queued by entries below.
+  its finding moves here. **BACKLOG.md list `realism-fixes`** holds the model changes queued by entries below.
 - Page links use the PDF page index (`#page=N`), which can differ from the printed page number. Books are the z/OS
   3.1 editions unless noted. Redbooks are point-in-time snapshots by their authors; the edition date is given, and
   the z/OS book wins where both cover a fact.
@@ -16,7 +16,7 @@ new finding.
 Sim status:
 - **Matches**: the sim does what the source says.
 - **Approx**: same mechanism, simplified; the difference is stated. Code carries `// APPROX:`.
-- **Fix queued**: the sim differs and a change is queued in PROGRESS.md "M8.7 Realism fixes".
+- **Fix queued**: the sim differs and a change is queued in BACKLOG.md list `realism-fixes`.
 - **Not modelled**: real behaviour the sim leaves out, on purpose.
 
 Books referred to below:
@@ -190,5 +190,4 @@ Books referred to below:
 ## Adding an entry
 
 Verify the fact on the book page (the `zos-docs` skill finds and reads it), add a row with the PDF page link and the
-sim status, and mark it Checked. If the sim differs, also add an unticked item to PROGRESS.md "M8.7 Realism fixes"
-(or the current milestone's realism list). When the fix lands, change the status here and update SPEC §17.
+sim status, and mark it Checked. If the sim differs, also add an entry to BACKLOG.md list `realism-fixes`. When the fix lands, change the status here and update SPEC §17.
