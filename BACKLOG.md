@@ -334,9 +334,4 @@ None open. Completed fixes are in SPEC §17 and docs/research.md.
 
 ## cleanup
 
-### CL-02 · Split `src/sim/wlm/evaluate.ts`
-`list: cleanup · status: ready · priority: low · size: L · area: sim`
-
-959 lines at #217; the next candidate after the `step.ts` split (#217), done the same way: stage bodies moved verbatim
-into modules, public helpers re-exported. Done when: bench hashes on all three scenarios and `npm run compare` are
-unchanged.
+None open.

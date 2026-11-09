@@ -164,7 +164,7 @@ GC took only 3–4%; object construction can cost CPU outside GC, but GC itself 
 not the main bottleneck.
 
 The cleanest small experiment is sharing `PreparedLpar`: the normal path prepares
-it in `evaluate.ts`, and the first trial prepares it again in `adjust.ts:89`.
+it in `src/sim/wlm/eval/prepare.ts`, and the first trial prepares it again in `adjust.ts:89`.
 Trials already reuse their preparation. Share it with the normal evaluation
 without a cross-tick invalidation scheme, then measure the result. Preparation is
 only a few percent of total cost, so expect modest savings.

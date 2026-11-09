@@ -420,7 +420,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   is module-level mutable state in `src/sim/wlm/adjust.ts` (inspect-only, decision-neutral).
 - 2026-11-06: Added five IBM Redbooks/Redpaper entries to the `zos-docs` catalog after checking their IBM publication pages and PDF title pages; ingested their PDFs and caches with `books.py`.
 - Split `src/sim/core/step.ts` (1,458 → 278 lines at #217) into `src/sim/core/tick/`; bench hashes unchanged.
-  Further refactors (`evaluate.ts`, Midwest `pool()`) are in BACKLOG.md `cleanup`.
+- 2026-11-09: Split `src/sim/wlm/evaluate.ts` (959 → 56 lines) into `src/sim/wlm/eval/` (types, prepare, grants,
+  results, accounting, io, paging) with the public surface re-exported; bench hashes on Midwest, Harbourline and
+  Revenue and `npm run compare` unchanged. Midwest now builds its topology with the shared `pool()` helper (#246),
+  which closes the `cleanup` list.
 - Stale remote branches (`claude/*`, `ccr-d83b42c6-*`, Oct 21–29) hold only already squash-merged work; delete
   when convenient.
 
