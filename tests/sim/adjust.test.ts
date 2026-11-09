@@ -227,6 +227,45 @@ describe('a hopeless receiver does not stop the search at the next importance (S
     const b = traces[0]!.candidates.filter((c) => c.outcome === 'BUDGET').map((c) => c.scKey);
     expect(b).toEqual(['OLD3#1']);
   });
+
+  it('skips past a spent budget to the next importance whether traced or not', () => {
+    // Three CPU-fixable importance-1 receivers that find nothing spend the importance-1 budget; the importance-2
+    // class behind them must still be helped in the untraced (production) path, not only when the trace is on.
+    const wide = structuredClone(BASEPOL);
+    wide.classes.push(cls('OLD1', 5, 1), cls('OLD2', 5, 1), cls('OLD3', 5, 1), cls('ONLCARD', 95, 2));
+    const bat = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
+    bat.id = 'BAT';
+    bat.periods = [{ goal: { kind: 'VEL', velocity: 10 }, importance: 5, durationSu: null }];
+    wide.classes.push(bat);
+    const sl = [
+      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 1, units: 4 }),
+      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 1, units: 4 }),
+      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 1, units: 4 }),
+      sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 1.5, units: 8 }),
+      sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
+    ];
+    const input = { ...evalInput, slices: sl };
+    const d: Record<string, number> = { 'OLD1#1': 0xf4, 'OLD2#1': 0xf3, 'OLD3#1': 0xf2, 'BAT#1': 0xf0, 'ONLCARD#1': 0xe6 };
+    const c = evaluateLpar({ ...input, dpOf: (k) => d[k]! });
+    const sys: WlmSystemState = {
+      lparId: 'SYS1',
+      scps: c.scps.map((t) => ({ scKey: t.scKey, dp: d[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+    };
+    const run = () => policyAdjust({ def: wide, system: sys, evalInput: input, current: c.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T' });
+    const plain = run();
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    let traced;
+    try {
+      traced = run();
+    } finally {
+      setWlmTraceSink(null);
+    }
+    expect(traces[0]!.candidates.find((x) => x.scKey === 'OLD3#1')!.outcome).toBe('BUDGET');
+    expect(plain.log).toMatch(/RCVR=ONLCARD#1 /);
+    expect(plain.log).toBe(traced.log);
+    expect(plain.dps).toEqual(traced.dps);
+  });
 });
 
 describe('long-term CPU protection is enforced, not a reason to stop managing (WLM Planning p.120)', () => {

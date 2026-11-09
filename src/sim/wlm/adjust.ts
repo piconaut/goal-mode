@@ -281,8 +281,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       projected = 0;
     }
     if (projected >= RECEIVERS_PER_IMPORTANCE) {
-      if (!tracing) break;
-      traceOf(receiver, null, 'BUDGET');
+      // Skip, don't stop: lower importances still get their own budget, traced or not.
+      if (tracing) traceOf(receiver, null, 'BUDGET');
       continue;
     }
     const scState = system.scps.find((s) => s.scKey === receiver)!;
