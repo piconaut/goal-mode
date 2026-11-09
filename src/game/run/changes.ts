@@ -5,7 +5,7 @@ import type { Scenario } from '../../sim/core/scenario';
 import { effectiveAddressSpaces } from '../../sim/core/tick/helpers';
 import type { SimState } from '../../sim/core/types';
 import type { ServiceDefinition } from '../../sim/wlm/types';
-import { failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
+import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
 import { placementRefusal } from '../workloads';
 import { idText } from '../ids';
 import {
@@ -130,6 +130,8 @@ export function dryRunRefusal(run: RunState, commands: readonly Command[]): stri
   let s = run.sim;
   for (const c of run.changes) if (c.status === 'PLANNED') for (const cmd of c.commands) s = applyCommand(s, cmd).state;
   for (const cmd of commands) {
+    // Only player commands: the JSON change path accepts any Command shape, including event-only ones.
+    if (!CHANGE_DESK_KINDS.has(cmd.kind)) return `${cmd.kind} is not a change-desk command`;
     const placement = placementOf(scenario, s, cmd);
     if (placement) return `${placement}${targetHint(s, cmd)}`;
     const res = applyCommand(s, cmd);
@@ -143,7 +145,6 @@ export function dryRunRefusal(run: RunState, commands: readonly Command[]): stri
  * scenario workload's server roles nor the scenario's address spaces. */
 function placementOf(scenario: Scenario, s: SimState, cmd: Command): string | null {
   const addressSpaces = effectiveAddressSpaces(scenario, s);
-  if (cmd.kind === 'ADD_WORKLOAD') return placementRefusal(scenario, addressSpaces, cmd.workload, cmd.workload.routing);
   if (cmd.kind !== 'SET_ROUTING') return null;
   const workload = [...scenario.workloads, ...s.extraWorkloads].find((w) => w.id === cmd.workloadId);
   return workload ? placementRefusal(scenario, addressSpaces, workload, cmd.routing) : `Unknown workload ${cmd.workloadId}`;

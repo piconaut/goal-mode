@@ -169,11 +169,26 @@ describe('routing placement', () => {
     expect(requestChange(fresh(), content, { label: 'MOBILE to nowhere', commands: [route({ PRDQ: 1 })] }).message).toMatch(/No LPAR PRDQ/);
   });
 
-  it('applies the same check to a workload added during the run', () => {
+  it('refuses commands that are not change-desk commands', () => {
     const mobile = MIDWEST.workloads.find((w) => w.id === 'MOBILE')!;
-    const out = requestChange(fresh(), content, { label: 'new app', commands: [{ kind: 'ADD_WORKLOAD', workload: { ...mobile, id: 'NEWAPP', routing: { SYSP: 1 } } }] });
-    expect(out.ok).toBe(false);
-    expect(out.message).toMatch(/NEWAPP needs .*DB2.* on SYSP/);
+    const r = fresh();
+    const cases: Command[] = [
+      { kind: 'ADD_WORKLOAD', workload: { ...mobile, id: 'NEWAPP', routing: { SYSP: 1 } } },
+      { kind: 'REMOVE_ADDRESS_SPACE', jobname: 'CICSAOR1', lparId: 'PROD1' },
+      { kind: 'ADD_CPC_ENGINES', cpcId: 'CPCA', pool: 'CP', delta: 4 },
+      { kind: 'SET_MLC_PRICE', mult: 0.1 },
+    ];
+    for (const cmd of cases) {
+      const out = requestChange(r, content, { label: cmd.kind, commands: [cmd] });
+      expect(out.ok, cmd.kind).toBe(false);
+      expect(out.message).toMatch(new RegExp(`${cmd.kind} is not a change-desk command`));
+      expect(out.run.hoursLeft).toBe(r.hoursLeft);
+      expect(out.run.changes).toHaveLength(0);
+    }
+  });
+
+  it('still lets the game add an AOR through a change', () => {
+    expect(requestChange(fresh(), content, { label: 'AOR', commands: [{ kind: 'ADD_AOR', lparId: 'PROD1', name: 'CICSAOR9', maxTasks: 200, qrFrac: 0.6 }] }).ok).toBe(true);
   });
 });
 
