@@ -295,6 +295,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   PR head's bench hashes. A Sonnet fix-check of the fix commits replaces the second review; fixes over 150 lines
   get a full Sonnet review instead. Two failed fix-checks hold the PR. Label a PR `no-autofix` to keep it out.
   Open: compare cost per merged PR against `pr-review-loop` over a week before retiring it.
+  Fix-check widened (user request 2026-11-09): it reads the fix commits against the whole PR diff at the fix head,
+  checks each fix cures the cause (not a test bent to fit) and that the triage held, and reports blocking `Missed:`
+  items as a FAIL. Why: the same agent finds, triages and fixes, so the fixes got the weakest review.
+
+- Dev loop and review loop take turns (user request 2026-11-09). On a `dev-loop` PR, the latest review marker
+  decides who acts. No marker, MERGE, FIXED, or a fix-check under way: the review loop's turn. HOLD: dev-loop's turn,
+  until it pushes or posts a `dev-loop-response` comment. pr-fix-loop still fixes mechanical findings on `dev-loop` PRs
+  itself, so only HOLDs make the round trip. Both push fast-forward only, so a rare overlap fails one push and that
+  side retries next tick. Reviewers reject a `dev-loop` PR that doesn't fix a ready BACKLOG entry (pr-reviewer check
+  10, the backlog rule), and dev-loop closes a PR held on it.
 
 - Manage Region Using Goals Of is fixed at TRANSACTION for the player (user decision 2026-11-05): the sim keeps
   REGION/BOTH (lab, tests); the Rules view drops the column and `playerWlmEditError` refuses `SET_RULE_REGION_MODE`
@@ -302,13 +312,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Branch workflow
 
-- **Playtest fix loop (user request 2026-11-04):** one iteration per hour: one new entry from BACKLOG.md list
-  `playtest-fixes`, or one follow-up for its existing PR (review feedback, CI or conflicts). Pick order and claiming
-  are in BACKLOG.md "Rules"; only `status: ready` entries. Keep at most one open `playtest-fix/` PR into `dev`.
-  Another session reviews and squash-merges: this loop must not merge or enable auto-merge. While awaiting review
-  without actionable feedback, wait for the next iteration. After merge, start a fresh branch from fetched
-  `origin/dev`; never build on the pre-squash branch. Rebase only unmerged fixes when `dev` advances, reverify, and
-  push with `--force-with-lease`. Preserve other sessions' worktrees. When the list has no ready entry, stop.
+- **Dev loop (user request 2026-11-09; replaces the 2026-11-04 playtest fix loop):** a scheduled task runs
+  `/dev-loop <list>` (`.claude/skills/dev-loop/`). Each tick does one of three things: it implements the next ready
+  entry of the named BACKLOG.md list(s) and opens a PR labelled `dev-loop`; it answers the review loop's HOLD on that
+  PR; or it skips. One `dev-loop` PR is open at a time (`needs-user` ones aren't counted). Branches are
+  `dev-loop/<ID>-<slug>`. It never merges, enables auto-merge or force-pushes; the review loop merges. When the lists
+  have no ready, unclaimed entry left, it disables its scheduled task. An invalid or missing list does nothing.
 
 - **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
   milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for

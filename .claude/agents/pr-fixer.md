@@ -38,7 +38,8 @@ add (cite book and page); a missing `// FICTIONAL:` / `// APPROX:` comment or mo
 `initState` field); a layering or determinism violation with a local fix; a merge conflict with `dev` you can
 resolve without guessing intent; a failing test caused by any of these; UI build errors.
 
-Out of scope (hold it): anything that changes what the PR is meant to do; a false claim about the PR's main feature;
+Out of scope (hold it): the **backlog rule** finding on a `dev-loop` PR (pr-reviewer check 10; the author closes
+it); anything that changes what the PR is meant to do; a false claim about the PR's main feature;
 a model or balance change that needs a sweep or a design call; NEEDS USER items; a fix that would change the bench
 hashes of the PR head; a conflict whose resolution needs a decision; anything needing more than ~5 changed files of
 new code; red CI you can't reproduce or explain.
