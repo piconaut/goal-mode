@@ -334,13 +334,6 @@ None open. Completed fixes are in SPEC §17 and docs/research.md.
 
 ## cleanup
 
-### CL-01 · Midwest should use the shared `pool()` helper
-`list: cleanup · status: ready · priority: low · size: S · area: content`
-
-`src/content/scenarios/midwest.ts` defines its own `cp`, `ziip` and `icf` constructors; Revenue and Harbourline use
-`pool()` from `scenarios/pool.ts`. Switch Midwest to `pool()` and delete the local helpers (`icf` needs its
-`dedicated` flag via `extra`). Done when: `npm run compare` shows no difference.
-
 ### CL-02 · Split `src/sim/wlm/evaluate.ts`
 `list: cleanup · status: ready · priority: low · size: L · area: sim`
 
