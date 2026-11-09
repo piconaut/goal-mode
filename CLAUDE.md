@@ -134,43 +134,41 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 - Work milestone by milestone (PROGRESS.md), picking tasks from BACKLOG.md. Keep the sim runnable headless at every step.
 - Small, focused commits. Don't mix model changes with UI changes.
 - Branches and PRs: one session branch per task, cut from `dev`; CI is the merge gate (PROGRESS.md "Branch workflow").
-  **Standing user request (2026-10-23): you are explicitly asked to open a pull request for every task, without
-  waiting to be asked in the session.** When the task is done and pushed (check green locally, PROGRESS.md updated):
-  1. Open a PR from the session branch into `dev` (never `main`; `dev` → `main` is the milestone PR above), with the
-     body following `.github/pull_request_template.md`. Fill in "Behaviour change" whenever goldens change; label
-     pure optimisations `perf`.
-  2. Enable auto-merge (squash). If GitHub refuses because the checks already passed, merge it (squash) directly.
-  3. Subscribe to the PR's activity and drive it to merged: fix red checks and push again.
-  Only merge or enable auto-merge on PRs from your own session branch; report anyone else's PR to the user.
-  Exception (user request 2026-11-06): the `pr-fix-loop` skill may push review fixes to, and merge, any open
-  non-draft PR into `dev` not labelled `no-autofix` (plain fast-forward pushes only; never rebase or force-push).
-  Exception (user request 2026-11-09): the `dev-loop` skill opens PRs labelled `dev-loop` without auto-merge and
-  never merges them; the review loop merges.
+  Open a pull request for every task without waiting to be asked. When the task is done and pushed (check green
+  locally, PROGRESS.md updated):
+  1. Open a PR from the session branch into `dev` (never `main`; `dev` → `main` is the milestone PR in PROGRESS.md),
+     with the body following `.github/pull_request_template.md`. Fill in "Behaviour change" whenever goldens change;
+     label pure optimisations `perf`.
+  2. Don't merge it or enable auto-merge: the review loop (below) reviews and merges PRs into `dev`. Open it as a
+     draft when it isn't ready for review yet. (The `dev` → `main` milestone PR follows PROGRESS.md.)
+  3. Subscribe to the PR's activity and keep CI green: fix red checks and review findings, and push again.
+  Don't push to or merge anyone else's PR; report it to the user. The `pr-fix-loop` skill is the exception: it may push
+  review fixes to, and merge, any open non-draft PR into `dev` not labelled `no-autofix` (plain fast-forward pushes
+  only; never rebase or force-push).
   After your PR is merged, further work in the same session starts again from the latest `dev` on the same branch
   name, as a new PR.
 - Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
-- Delegation (to save usage): hand well-scoped tasks to the subagents in `.claude/agents/` — Sonnet
-  `implementer` (content/data entries, tests for existing pure functions, small UI changes, from a precise
-  brief) and `log-reader` (digest bot/sweep logs, test failures, long reports), and Opus `pr-reviewer` (user request
-  2026-11-02; check out a PR in a worktree, read CI rather than rerun `npm run check`, run bench hashes and a sweep
-  for milestones, verify its claims, post its report on the PR, return a merge verdict; the main agent merges). A scheduled task (no longer strictly hourly) runs the
-  `pr-review-loop` skill (user request 2026-11-04): it holds a PR on any finding, merges after a follow-up review
-  shows the findings fixed, and keeps its state in markers in the review comments. The `pr-fix-loop` skill (user
-  request 2026-11-06) is the alternative the scheduled task can run instead: the Opus `pr-fixer` reviews a PR and
-  fixes up to 5 mechanical findings on its branch (holding the PR for its author otherwise), a Sonnet fix-check of
-  the fix commits against the whole PR stands in for the second review, then it merges. The `dev-loop` skill (user
-  request 2026-11-09) is the author side: each tick it implements the next ready entry of the named BACKLOG.md lists,
-  or answers a HOLD on its open PR, or skips. Keep sim model changes,
-  balance decisions and cross-layer work on the main agent, and review every subagent diff before committing.
-  Exception (user request 2026-10-30): in the `audit-loop` skill (`.claude/skills/audit-loop/`), vetted realism fixes
-  go to the Opus `realism-fixer` subagent and balance sweeps to Sonnet worker sessions; vetting and balance calls stay
-  on the main agent.
+- Delegation (to save usage): hand well-scoped tasks to the subagents in `.claude/agents/`:
+  - Sonnet `implementer`: content/data entries, tests for existing pure functions, small UI changes, from a precise
+    brief.
+  - Sonnet `log-reader`: digests bot/sweep logs, test failures, long reports.
+  - Opus `pr-reviewer`: checks out a PR in a worktree, reads CI rather than rerunning `npm run check`, runs bench
+    hashes (and a sweep for milestones), verifies the PR's claims, posts its report and returns a merge verdict.
+  Keep sim model changes, balance decisions and cross-layer work on the main agent, and review every subagent diff
+  before committing. In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent;
+  vetting and balance calls stay on the main agent.
+- Loops (each tick of a scheduled task runs one skill, with its state in PR comment markers):
+  - Review: `pr-fix-loop` (the Opus `pr-fixer` reviews each PR, fixes up to 5 mechanical findings itself or holds the
+    PR for its author, then a Sonnet fix-check of the fixes against the whole PR, then it merges), or the older
+    `pr-review-loop` (holds a PR on any finding, merges after a follow-up review shows them fixed).
+  - Author: `dev-loop` implements the next ready entry of the named BACKLOG.md lists, answers a HOLD on its open PR,
+    or skips.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
 - Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
   `nohup … &` inside another command: tracked tasks show up for the user and notify on exit,
   so there's no need to poll or guess with timed wakeups.
-- Sweeps of more than a few seeds go to `npm run sweep:remote` (user request 2026-11-06): GitHub's runners do the work in
+- Sweeps of more than a few seeds go to `npm run sweep:remote`: GitHub's runners do the work in
   parallel shards, so the session's cores stay free and no worker session is needed. It sweeps the committed HEAD,
   pushed or not, through a throwaway `sweep/*` branch the workflow deletes. Start it with `run_in_background` (~10 min for 20 seeds);
   the summary prints when it finishes. Local `npm run sweep` stays for quick checks and offline work.

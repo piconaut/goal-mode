@@ -105,9 +105,10 @@ Link it from the BACKLOG.md entry and from the Finish report. Don't subscribe to
 3. Push, open the PR into `dev` per `.github/pull_request_template.md` (Behaviour change filled when goldens
    change), `subscribe_pr_activity`, keep CI green. If goldens changed, open it as a **draft** and go to Balance; it
    stays a draft until the sweeps are judged and any follow-up fixes are pushed to it. If goldens didn't change (no
-   sweep needed), open it ready and enable squash auto-merge.
+   sweep needed), open it ready for review.
 4. After Balance passes: push the sweep numbers into the PR's PROGRESS.md decision row, mark it ready for review
-   (`update_pull_request` `draft: false`), enable squash auto-merge, drive it to merged.
+   (`update_pull_request` `draft: false`), and keep CI green until the review loop merges it. Don't merge it or
+   enable auto-merge yourself.
 5. The next fix waits until this one merges. Fixers already done wait as local branches.
 
 ## Balance
@@ -126,7 +127,7 @@ expert seeds that did not end in victory). A non-zero exit with no summary is an
 
 When a sweep finishes, compare with the last recorded sweep for that scenario in PROGRESS.md. Gate red or expert down by ≥ 2 victories: diagnose (bot gap like #107, or the fix itself), push the cure
 to the same draft PR and re-sweep the affected scenarios on the new head. When every scenario's sweep is judged
-fine, finish Land step 4 (ready + auto-merge).
+fine, finish Land step 4 (ready for review).
 
 ## Finish
 

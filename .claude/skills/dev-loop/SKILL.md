@@ -13,8 +13,8 @@ You are the author. The review loop (`pr-fix-loop`, or `pr-review-loop` if the s
 reviews and merges. The two take turns through the review loop's markers, so only one of you ever pushes to a PR
 branch at a time (step 2).
 
-Overrides of CLAUDE.md's standing PR request, for this loop only: **never merge, never enable auto-merge, and don't
-subscribe to PR activity**; the review loop merges, and the next tick is your follow-up. This skill authorises you
+**Never merge, never enable auto-merge, and don't subscribe to PR activity**: the review loop merges, and the next
+tick is your follow-up. This skill authorises you
 to push to `dev-loop/*` branches, whatever branch the session was started with.
 
 ## 0. Check the arguments (do nothing unless they're valid)

@@ -330,7 +330,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   (not squash, so `dev` and `main` keep shared history); otherwise fix or comment. No human approval is needed (user
   decision 2026-10-26). NEEDS USER verdicts go to the user.
 - **Branch workflow (user request 2026-10-23):** each session works on its own branch cut from `dev`, opens a PR into
-  `dev` with auto-merge, and CI merges it when green. CI (`.github/workflows/`): `check` (typecheck + all tests,
+  `dev`, and the review loop merges it once reviewed and green (no auto-merge by default, user request 2026-11-09). CI (`.github/workflows/`): `check` (typecheck + all tests,
   goldens included); `behaviour-note` (a PR that changes `tests/golden/hashes.json` needs a filled-in
   "## Behaviour change" section, see the PR template); `perf-hash` (a PR labelled `perf` or titled "perf…" must keep
   the Midwest and Harbourline 1-day bench hashes of its base); `balance` (when goldens change: donothing/textbook/expert
