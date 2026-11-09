@@ -55,14 +55,6 @@ With PROJECTCPU=NO (the default) and no zIIP configured, real RMF reports no IIP
 zos-docs). The sim always reports it. Midwest PROD2 now has 0 online + 1 reserved zIIP, so it still shows there.
 Done when: IIPCP is zero on an image with no online zIIP (reporting only), with a test and a docs/research.md row.
 
-### PT-07 · No clue path from a sysplex PI to the LPAR behind it
-`list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
-
-The D19–D20 STCMED alerts were DEVT's test Db2 (`TN=DB*` → STCMED, importance 1) under DEVT's cap; Monitor III DELAY
-named a PROD batch job as STCMED's primary reason. Sysplex PI first is real (SG24-7621 p.105–106), but the per-system
-split should be easy to find. Done when: the alert and SYSSUM link to the per-system rows (WLMGL by system, or a
-by-system SYSSUM toggle).
-
 ### PT-08 · No alert for CICS short-on-storage stalls
 `list: playtest-fixes · status: ready · priority: low · size: M · area: content`
 
