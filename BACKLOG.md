@@ -62,19 +62,6 @@ Response times are for ended transactions only, so PI looking fine while transac
 Analysis 3.1 p.148; SG24-6472 p.190). The game has no alert on what does show it: ended-rate drop, SOS time, MXT waits.
 Done when: an Analytics/automation alert rule for it exists in `src/content/`, with a test and a Codex mention.
 
-### PT-09 · A forewarned fix planned ahead is silently wasted
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-D24: the inbox forewarned a stored-procedure redeploy and the player planned "Redeploy as native SQL procedures" in the
-briefing. It applied at 06:00, the card started later that morning, `endEventByFix` found nothing and the 2 h were
-spent. Dev now logs "no active event matched this fix" but still discards it. Pick one:
-- the fix arms against the forewarned card and ends it when it starts that day;
-- or it is refused at planning time with the reason, and the hours are refunded if it found no target.
-
-A free refusal must not let the Change Desk probe for hidden events, which is why no-target fixes are charged today.
-Also, the same card came twice in that run (D11, D24): if a redeploy reintroduces COBOL procedures, say so in the
-card's clue. Done when: the chosen behaviour has tests and the SPEC §6 visibility rule is updated.
-
 ### PT-10 · Activate a saved policy now
 `list: playtest-fixes · status: ready · priority: low · size: M · area: game`
 

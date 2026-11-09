@@ -892,9 +892,13 @@ that doesn't validate, a weight change that fails on the HMC. A **validation** t
 reduces the risk.
 Planned event fixes queue their restoration commands at 06:00 along with the other planned changes;
 the event ends only when that fix succeeds. A fix already planned is refused without spending
-engineer-hours or trust (it reveals only the player's own plan). A fix with no active target is accepted
-and charged like any other, and its log line says "no active event matched this fix" once it runs (06:00
-for a planned fix, at once for a live one), so the Change Desk can't be probed for hidden events.
+engineer-hours or trust (it reveals only the player's own plan). A fix that finds no active target is
+accepted and charged like any other, so the Change Desk can't be probed for hidden events. When its card is
+one the player can see (a forewarning in the inbox, or an Ask Around rumour just revealed) and the card has not
+started yet but starts later that day, the fix arms instead: the log says it is armed (at 06:00 for a planned
+fix, at once for a live one), and when the card starts its begin and end apply in the same tick — the forewarned
+change never takes hold — with a log line naming the armed change. Otherwise the log line says "no active event
+matched this fix" once it runs.
 The Operations list offers a card's fix only once the player has seen the card: it has started, its
 forewarning has arrived in the inbox, or an Ask Around rumour about it has been revealed. Unseen cards
 stay out of the list, so it cannot spoil an event that has not happened yet.

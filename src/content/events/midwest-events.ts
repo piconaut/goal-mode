@@ -536,7 +536,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'NATIVE_SQL_PROCS',
     forewarning: 'Change board: "Mobile API stored procedures were redeployed overnight (new COBOL versions)."',
     announcement: null,
-    clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures, or absorb it (cap, more CP).',
+    clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures (the team\'s next redeploy can bring the COBOL versions back), or absorb it (cap, more CP).',
   },
   {
     // A program storage leak fills both PROD2 AORs' EDSA: once in-flight tasks no longer fit, CICS defers attaches

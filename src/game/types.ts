@@ -65,6 +65,9 @@ export interface PlannedChange {
   revertCommands: Command[];
   /** Game-level fix that ends an active event (e.g. cancel a runaway query). */
   endsEvent: string | null;
+  /** Applied fixes only: cards of this fix that the player could see and that had not started yet when the fix
+   * applied. They end when they start that day (a forewarned change met by the fix already in place). */
+  armedEvents?: string[];
 }
 
 export interface ActiveEvent {
