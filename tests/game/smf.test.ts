@@ -35,6 +35,29 @@ describe('SMF hours', () => {
   });
 });
 
+describe('vs base (PT-13)', () => {
+  it('a closed hour keeps its ratio when later hours move the baseline', () => {
+    let r = advance(noon, MIDWEST, content, HOUR);
+    const last = r.smfHours.at(-1)!;
+    const key = `${last.day}:${last.hourOfDay}`;
+    const frozen = Object.keys(last.cpuVsBase ?? {});
+    expect(frozen.length).toBeGreaterThan(0);
+    const shown = new Map(db2Accounting(r, MIDWEST, key).map((x) => [x.workloadId, x.cpuVsBaseline]));
+    // Six hours of a 3x CPU regression: the EWMA moves, the closed hour's row must not.
+    r = advance({ ...r, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 3 }] }, MIDWEST, content, 6 * HOUR);
+    for (const id of frozen) expect(db2Accounting(r, MIDWEST, key).find((x) => x.workloadId === id)!.cpuVsBaseline).toBe(shown.get(id)!);
+  });
+
+  it('does not learn the healthy baseline from an hour a card disturbed', () => {
+    const base = startDay(newRun(MIDWEST, content, 7), content);
+    const card: RunState['events'][number] = { uid: 'REGRESSION@0', defId: 'REGRESSION', name: 'REGRESSION', startTick: 0, endTick: 100_000, trigger: 'ACCESS_PATH_REGRESSION', affects: ['RBANK'], endCommands: [], started: true, ended: false };
+    const quiet = advance(base, MIDWEST, content, HOUR);
+    const disturbed = advance({ ...base, events: [card] }, MIDWEST, content, HOUR);
+    expect(quiet.baselines.RBANK).toBeDefined();
+    expect(disturbed.baselines.RBANK).toBeUndefined();
+  });
+});
+
 describe('Db2 accounting', () => {
   it('points an access-path regression at the package', () => {
     const r = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 3 }] }, MIDWEST, content, HOUR);

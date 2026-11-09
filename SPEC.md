@@ -1132,6 +1132,11 @@ can't reach — *and* less than 10 % of that image's CP went to work less import
 workload's service class (WLM had no donors left), otherwise CPU_PRIORITY: the policy could have served it.
 Both thresholds are FICTIONAL.
 
+The healthy baseline is an EWMA (×0.8 per hour) folded only from closed hours in which the workload met its SLA
+*and* no card affected it: a card's own effect must not become the new normal, or a regression is absorbed within a
+few hours. The SMF 101/110 "vs base" ratio is frozen when its hour closes, against the baseline in force during that
+hour, so a past row keeps its ratio however later hours move the baseline.
+
 A miss caused by failures alone (with no failed transactions the hour would have met its SLA) has no delay group to
 point at, so a running card that affects the workload names the mechanism (`failureMechanism`). SICK_AOR names
 ROUTING: CICSPlex SM keeps routing to a region that fails transactions fast, because without abend thresholds a

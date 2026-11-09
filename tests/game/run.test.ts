@@ -382,10 +382,11 @@ describe('event cards resolved at start', () => {
     return { ...r, events: [ev] };
   };
 
-  it('Db2 Whisperer turns the silent REBIND regression into a DBA tip', () => {
-    const tip = (perks: string[]) => advance({ ...withCard('REGRESSION', 7), perks }, sc, MIDWEST_GAME, 1).inbox.some((m) => m.from === 'DBA team');
-    expect(tip([])).toBe(false);
-    expect(tip(['DB2_WHISPERER'])).toBe(true);
+  it('Db2 Whisperer turns the silent REBIND regression into a DBA tip tagged with the perk', () => {
+    const tip = (perks: string[]) => advance({ ...withCard('REGRESSION', 7), perks }, sc, MIDWEST_GAME, 1).inbox.find((m) => m.from.startsWith('DBA team'));
+    expect(tip([])).toBeUndefined();
+    // It is the perk's tip: the sender says so, so the player knows where it came from (PT-13).
+    expect(tip(['DB2_WHISPERER'])!.from).toBe('DBA team (Db2 Whisperer)');
   });
 
   it('a power cap drops one setting from the current one and restores that setting, not a fixed one', () => {

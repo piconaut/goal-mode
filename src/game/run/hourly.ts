@@ -124,7 +124,23 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   const trust = { ...r.trust };
   let incidents = [...r.incidents];
   const baselines = { ...r.baselines };
-  for (const w of allWorkloads(scenario, r)) {
+  const hourStart = r.sim.tick - TICKS_PER_HOUR;
+  const hourEnd = r.sim.tick;
+  const workloads = allWorkloads(scenario, r);
+  // "vs base" is frozen now, against the baseline that was in force during this hour: later clean hours move the
+  // EWMA, and a past row's ratio must not move with it (PT-13).
+  const cpuVsBase: Record<string, number> = {};
+  for (const w of workloads) {
+    const wh = h.workloads[w.id];
+    const base = baselines[w.id]?.cpu ?? 0;
+    if (!wh || wh.completions <= 0 || base <= 0) continue;
+    cpuVsBase[w.id] = (perTxnParts(wh).cpu ?? 0) / base;
+  }
+  // A card running in the hour disturbs its workloads' response-time parts, so that hour teaches nothing about
+  // the healthy baseline; otherwise the EWMA absorbs a regression as the new normal within a few hours (PT-13).
+  const disturbed = (workloadId: string) =>
+    r.events.some((e) => e.started && e.startTick < hourEnd && (e.endTick === null || e.endTick > hourStart) && e.affects.includes(workloadId));
+  for (const w of workloads) {
     const wh = h.workloads[w.id];
     if (!wh) continue;
     const att = hourAttainment(w, wh);
@@ -132,11 +148,10 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     const parts = perTxnParts(wh);
     // Incidents are per played day (the day's SLA report and RCA count them): one still open at
     // 06:00 is closed there, and a breach that carries on opens a new incident for the new day.
-    const hourStart = r.sim.tick - TICKS_PER_HOUR;
     incidents = incidents.map((i) => (i.workloadId === w.id && i.endTick === null && i.day !== r.day ? { ...i, endTick: hourStart } : i));
     const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
     if (att.met) {
-      baselines[w.id] = updateBaseline(baselines[w.id], parts);
+      if (!disturbed(w.id)) baselines[w.id] = updateBaseline(baselines[w.id], parts);
       if (openIdx >= 0) incidents[openIdx] = { ...incidents[openIdx]!, endTick: r.sim.tick };
       continue;
     }
@@ -187,6 +202,12 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   r = { ...r, capacityToday: hourPeaks(r, h) };
   const hourOfDay = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
   if (hourOfDay >= 18 || hourOfDay < 6) r = { ...r, nightHour: addHour(r.nightHour, h) };
-  const smfHours = [...(r.smfHours ?? []), { day: r.day, hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay), workloads: h.workloads, ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}) }].slice(-SMF_HOURS_KEPT);
+  const smfHours = [...(r.smfHours ?? []), {
+    day: r.day,
+    hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay),
+    workloads: h.workloads,
+    ...(Object.keys(cpuVsBase).length > 0 ? { cpuVsBase } : {}),
+    ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}),
+  }].slice(-SMF_HOURS_KEPT);
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }

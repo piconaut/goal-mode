@@ -103,6 +103,9 @@ export interface SmfHour {
   /** Hour of day at the start of the hour (0..23). */
   hourOfDay: number;
   workloads: Record<string, WorkloadHour>;
+  /** Per workload, CPU per transaction ÷ the healthy baseline in force at close. Frozen when the hour closes so
+   * a past row keeps its "vs base" ratio however later hours move the EWMA (absent in older saves). */
+  cpuVsBase?: Record<string, number>;
   /** CICS storage manager statistics per AOR (absent in older saves). */
   cicsStorage?: Record<string, CicsStorageHour>;
 }

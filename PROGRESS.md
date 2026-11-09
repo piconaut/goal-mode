@@ -414,6 +414,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: PT-13: SMF 101/110 "vs base" is frozen per closed hour (`cpuVsBase` on `SmfHour`) against the
+  baseline in force during that hour, so a past row no longer moves with the EWMA; the baseline learns only from
+  closed hours in which no card affected the workload, so a regression is not absorbed as the new normal. The Db2
+  Whisperer tip now comes from "DBA team (Db2 Whisperer)". Scripted runs' run log and sim state are unchanged; game
+  state differs only by the new frozen field (`compare --drop smfHours`: no differences).
 - 2026-11-09: PT-09: a fix planned from a forewarning no longer goes to waste when the card starts after 06:00.
   A fix that finds no active target but whose card the player can see (inbox forewarning or revealed rumour) and
   that starts later that day is stored as `armedEvents` on the applied change; the card's begin and end apply in
