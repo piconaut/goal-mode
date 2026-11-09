@@ -162,6 +162,73 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
   });
 });
 
+describe('a hopeless receiver does not stop the search at the next importance (SG24-7621 p.105–106)', () => {
+  // Playtest round 2, D19 22:00–22:27: the two importance-1 slots went to receivers whose projections found no
+  // move of net value (STCMED's sysplex PI came from another system; STCHI's DP cannot reach the transaction-managed
+  // regions it hosts), so ONLCARD/ONLRBANK at importance 2 waited until 22:30. Shape here: two importance-1
+  // receivers that are CPU-fixable but locally at their goal, and a helpable importance-2 class on a saturated image.
+  const def = structuredClone(BASEPOL);
+  const cls = (id: string, velocity: number, importance: 1 | 2) => ({
+    ...structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!),
+    id,
+    periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }],
+  });
+  def.classes.push(cls('OLD1', 5, 1), cls('OLD2', 5, 1), cls('ONLCARD', 95, 2));
+  const slices = [
+    sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 2.5, units: 8 }),
+    sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 2.5, units: 8 }),
+    sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 2, units: 8 }),
+  ];
+  const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+  const dps: Record<string, number> = { 'OLD1#1': 0xf4, 'OLD2#1': 0xf3, 'ONLCARD#1': 0xe6 };
+  const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+  const system: WlmSystemState = {
+    lparId: 'SYS1',
+    scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+  };
+
+  it('goes on to the importance-2 receiver after the importance-1 receivers find nothing', () => {
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    let out;
+    try {
+      out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7 }, clockText: 'T' });
+    } finally {
+      setWlmTraceSink(null);
+    }
+    const assessed = traces[0]!.candidates.filter((c) => c.outcome === 'ASSESSED').map((c) => c.scKey);
+    expect(assessed).toEqual(['OLD1#1', 'OLD2#1', 'ONLCARD#1']);
+    // The two importance-1 receivers found nothing: their projections reject every trial.
+    for (const k of ['OLD1#1', 'OLD2#1']) expect(traces[0]!.candidates.find((c) => c.scKey === k)!.trials.some((t) => t.verdict === 'ACCEPTED')).toBe(false);
+    expect(traces[0]!.candidates.find((c) => c.scKey === 'ONLCARD#1')!.trials.length).toBeGreaterThan(0);
+    expect(out.log).not.toContain('RCVR=');
+  });
+
+  it('still assesses at most two receivers per importance', () => {
+    const third = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
+    third.id = 'OLD3';
+    third.periods = [{ goal: { kind: 'VEL', velocity: 5 }, importance: 1, durationSu: null }];
+    const wide = structuredClone(def);
+    wide.classes.push(third);
+    const slices3 = [...slices, sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 1, units: 4 })];
+    const input3 = { ...evalInput, slices: slices3 };
+    const cur3 = evaluateLpar({ ...input3, dpOf: (k) => dps[k] ?? 0xee });
+    const system3: WlmSystemState = {
+      lparId: 'SYS1',
+      scps: cur3.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey] ?? 0xee, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+    };
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      policyAdjust({ def: wide, system: system3, evalInput: input3, current: cur3.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T' });
+    } finally {
+      setWlmTraceSink(null);
+    }
+    const b = traces[0]!.candidates.filter((c) => c.outcome === 'BUDGET').map((c) => c.scKey);
+    expect(b).toEqual(['OLD3#1']);
+  });
+});
+
 describe('long-term CPU protection is enforced, not a reason to stop managing (WLM Planning p.120)', () => {
   const info = {
     'ONLRBANK#1': { cpuCritical: true, period: 0, importance: 2 },

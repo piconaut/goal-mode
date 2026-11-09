@@ -495,6 +495,9 @@ for importance in 1..5:
     // at most ONE receiver helped per interval per system
 ```
 
+- **Projection budget.** Each projection re-runs §5.4, so the search assesses at most two fixable
+  receivers per importance level per interval, then goes on at the next importance. A receiver that
+  finds no move of net value does not keep lower importances out (SG24-7621 p.105–106).
 - Donors are preferably *happy* (PI < 1) *heavy users of the bottleneck resource*, of lower
   importance, chosen in reverse order of receivers.
 - **Non-WLM-fixable bottlenecks** (lock contention, a starved dependency server, PR/SM delay,
@@ -1611,7 +1614,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Classification masks and wildcards (`%`, trailing `*`) | **Real** | WLM Planning p.104; `*` mid-pattern is a literal |
 | Temporary started-task lifecycle (`XLOG_LOOP`) | **Approximation** | Start creates an extra address space; expiry or cancellation removes it, and a later occurrence starts at its base CPU demand. MVS System Commands 3.1, PDF p.50, p.188. APPROX: cleanup on the command tick assumes cancellation succeeds; real cancellation issues an asynchronous ABEND and can require repeated CANCEL commands. Old-save duplicates and zero-CPU modifiers are cleared on the next start |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
-| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents. Between equal-importance periods a move must gain more than it harms and leave the projected PIs closer together (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52) |
+| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents. Between equal-importance periods a move must gain more than it harms and leave the projected PIs closer together (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Projections stop at two fixable receivers per importance per interval, then the search moves on as SG24-7621 p.105–106 describes |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | CFACT lock contention | **Approximation** | STRUCTURE SUMMARY in the Postprocessor-style CF Activity report shows CONTENTION % on the lock structure, a column borrowed from Monitor III CFACT (the real Postprocessor report shows -CONT / -FALSE CONT request counts instead, RMF Report Analysis p.373) from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
