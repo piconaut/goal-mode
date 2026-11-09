@@ -28,7 +28,7 @@ export function mpFactor(engines: number, k: number): number {
   return Math.max(0.5, 1 - k * Math.log(engines));
 }
 
-/** One MSU is a million service units per hour, i.e. 277.8 SU/s (WLM Planning p.251). */
+/** One MSU is a million service units per hour, i.e. 277.8 SU/s (WLM Planning p.44). */
 export const SU_PER_SEC_PER_MSU = 1e6 / 3600;
 
 /** Service units per engine-second: MSU = millions of SU per hour. */

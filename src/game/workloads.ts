@@ -47,6 +47,7 @@ export function isNewWorkload(run: RunState, content: GameContent, workloadId: s
     const day = storyBeatDay(b, run.difficulty);
     if (day !== null && addsWorkload(b.commands ?? [])) starts.push(day * TICKS_PER_DAY);
   }
+  // No event or story beat adds it (a player-added workload, or an old save): Math.min() of [] is Infinity, so never new.
   const startTick = Math.min(...starts);
   const hourStart = hourIndex * TICKS_PER_HOUR;
   return hourStart + TICKS_PER_HOUR > startTick && hourStart < startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY;

@@ -114,6 +114,12 @@ describe('new-workload incident window', () => {
     expect(truth(r).trigger).toBe('POLICY');
   });
 
+  it('never counts a player-added workload as new when no event or story beat adds it', () => {
+    const r = breach(BOOKING_APP, eventStart - 72);
+    const content = { ...MIDWEST_GAME, events: [], story: [] };
+    for (let d = 0; d < 20; d++) expect(isNewWorkload({ ...r, events: [] }, content, BOOKING_APP.id, d * 24)).toBe(false);
+  });
+
   it('preserves other card precedence and policy, growth and batch-lock fallbacks after expiry', () => {
     const r = breach(ACQUIRED_APP, storyStart + windowTicks);
     const other = { ...event, uid: 'CURRENT', defId: 'CURRENT', startTick: r.hour!.hourIndex * TICKS_PER_HOUR,
