@@ -67,7 +67,11 @@ export interface WlmTrialTrace {
   detail?: string;
 }
 
-/** Delay shares a bottleneck was chosen from: each delay / (using + total delay). */
+/**
+ * Delay shares a bottleneck was chosen from: each delay component over `using + delay`. The denominator keeps the
+ * storage and queue delay that have no numerator of their own, and `IO` is the velocity share (delay I/O priority
+ * management cannot see is subtracted), so the five do not sum to 1.
+ */
 export type WlmDelayShares = Record<Exclude<Bottleneck, 'NONE'>, number>;
 
 export interface WlmCandidateTrace {
@@ -77,7 +81,10 @@ export interface WlmCandidateTrace {
   localPi: number | null;
   dp: number;
   bottleneck: Bottleneck | null;
-  /** The shares `bottleneckOf` saw for this period (zero when it used and lost no time). */
+  /**
+   * The shares `bottleneckOf` saw for this period (zero when it used and lost no time). On a `BUDGET` candidate the
+   * bottleneck was never chosen; the shares are still recorded so a consumer always has the period's accounting.
+   */
   delayShares: WlmDelayShares;
   /** Donor periods in the order their trials were built (assessed receivers; empty when none qualified). */
   donors?: string[];
@@ -222,7 +229,11 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       why = { move: '', verdict: 'CPU_CRITICAL', detail: cc };
       return false;
     }
-    return project(trial, (after) => {
+    // The pair is only recorded once the whole projection accepts: `project` can still refuse after every accept
+    // callback said yes (a batch recovery that never settles runs out of rounds), and a trace must not call that move
+    // accepted.
+    let acceptedPi: [number | null, number | null] | null = null;
+    const ok = project(trial, (after) => {
       const r0 = before[receiver];
       const r1 = after[receiver];
       if (r0 == null || r1 == null || r1 >= r0) return reject('NO_RECEIVER_GAIN', [r0 ?? null, r1 ?? null]);
@@ -245,12 +256,14 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         }
       }
       if (gain > equalHarm) {
-        // An accepted trial records the receiver's PI pair too, so a trace can show what the move bought.
-        why = { move: '', verdict: 'ACCEPTED', receiverPi: [r0, r1] };
+        acceptedPi = [r0, r1];
         return true;
       }
       return reject('NO_NET_VALUE', [r0, r1], `gain ${gain.toFixed(2)} ≤ equal-importance harm ${equalHarm.toFixed(2)}`);
     });
+    // An accepted trial records the receiver's PI pair like a rejected one, so a trace can show what the move bought.
+    if (ok) why = { move: '', verdict: 'ACCEPTED', receiverPi: acceptedPi ?? [null, null] };
+    return ok;
   };
 
   const ordered = (piOf: Record<string, number | null>) =>

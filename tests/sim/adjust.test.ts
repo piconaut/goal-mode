@@ -206,12 +206,14 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
     expect(acceptedTrial.verdict).toBe('ACCEPTED');
     expect(acceptedTrial.receiverPi![0]!).toBeGreaterThan(acceptedTrial.receiverPi![1]!);
 
-    // The shares are the numbers the bottleneck was chosen from, so the bottleneck's own share leads the rest.
+    // The shares are the numbers the bottleneck was chosen from, so the bottleneck's own share leads the rest; a
+    // rejected candidate carries them too.
     const c = accepted.candidates[0]!;
     expect(c.bottleneck).toBe('CPU');
     expect(c.delayShares.CPU).toBeGreaterThan(0);
     expect(c.delayShares.CPU).toBeLessThanOrEqual(1);
     expect(c.delayShares.CPU).toBeGreaterThan(c.delayShares.ZIIP + c.delayShares.IO + c.delayShares.CAP + c.delayShares.OTHER);
+    expect(rejected.candidates.find((x) => x.scKey === 'ONLMED#1')!.delayShares.CPU).toBeGreaterThan(0);
 
     // The donor list is what the DONOR trials were built from, in the same order.
     const candidates = traces.flatMap((t) => t.candidates);
