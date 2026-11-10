@@ -63,7 +63,8 @@ Notes from discussion:
   1. RT-00 … RT-15, committed: bot fix lookup by card (RT-00), bugs and missing pin sources, the counterfactual validator (RT-06), accepted answer
      sets (RT-07), wording (RT-09), pin relations and proof recipes (RT-12, RT-13), card footprints (RT-14),
      grouping by cause (RT-15);
-  2. a human playtest when `dev-loop rca-truth` reports the list finished;
+  2. a human playtest when RT-15 is merged. RT-14 waits for the `wlm-truth` core (WT-04 … WT-10; docs/wlm-design.md
+     §7), so run `dev-loop rca-truth,wlm-truth`: `rca-truth` alone "finishes" at RT-14;
   3. RT-16 … RT-21 parked until that playtest (CPU split first; hour-of-day baselines deferred);
   4. then D1 itself (Q8a/Q8b, Q9, PT-20): problem records (RT-22) and proof-gated fixes (RT-24). The retry storm,
      D1's example, cannot be proven with any data the game has (it is identical to a campaign in every report);
@@ -81,6 +82,18 @@ Notes from discussion:
   would move.
 - When settled, this rewrites SPEC §10 (RCA mini-game) and parts of §9 (events); move it to its own design doc if it
   grows.
+
+### WLM policy adjustment audit (2026-11-10; design only, nothing implemented)
+
+[docs/wlm-design.md](docs/wlm-design.md) checks the whole adjustment loop (`src/sim/wlm/adjust.ts` and what feeds
+it) against IBM's description, step by step, and proposes one target model. Fifteen findings with seed-42 repros;
+the four structural ones: receivers are chosen on the smoothed PI but every trial is judged on one tick's PI (W1);
+the DP ladder only climbs and collapses at the top of the managed range within a day or two on a stressed image
+(W2); each served CICS class owns a DP and only the highest counts (W3); donors are picked by importance and CPU
+use, not by goal achievement (W4). The work is BACKLOG.md list `wlm-truth` (WT-01 … WT-15): WT-01 … WT-03 are
+ready (tooling and SPEC text, no behaviour change), and WT-12. User decisions on §8 (2026-11-10): all as
+recommended, and the core (WT-04 … WT-10) lands after RT-06 and before RT-14, so RCA footprints and balance are
+built once on the new WLM; the RT-15 playtest follows the core (§7).
 
 ### Proposals awaiting the user (written 2026-11-03; not implemented)
 
@@ -377,33 +390,24 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - CICS transaction classes with velocity or multiple periods: the editor now warns (WLM Planning says "not supported"),
   but the sim still splits such work like DDF. IBM documents no runtime behaviour for this case; model it if a source turns up.
 
-- WLM net value with server topology (playtest round 2, #170): does a move that lifts CICS regions credit the other
-  transaction classes those regions serve (secondary receivers, WLM Services p.137, trace code PA_PRO_UNC_SEC_REC
-  p.708)? Net value is described as donor harm vs "projected improvement to the receiver" (p.138), and SG24-6472
-  p.63/p.81 call the co-served gain a "free ride" side effect, without saying whether it counts. Also unverified:
-  whether the equal-importance convergence rule (SG24-6472 p.60, stated for "the receiver and the donor") applies to
-  secondary donors. The sim credits only the receiver and applies convergence to every equal-importance period.
 - CICS_SOS (2026-11-03): EDSALIM raised to the max before the card is cheap insurance; should a large EDSALIM carry a cost (real storage, or a later abend when a leak finally exhausts it)?
-- Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX).
-- Resource group minimum for discretionary members: what counts as "missing goals" for DISC work? Still delay > using
-  (`missingGoal` in `src/sim/core/tick/helpers.ts`, APPROX); item 11 settled only that it yields to goal work.
+- Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX). Looked for in
+  WLM Planning on 2026-11-10 ("normaliz", specialty processor service units) and not found; still open.
+- WLM audit 2026-11-10: the questions on secondary receivers and donors, a region class as receiver, equal-DP
+  sharing, percentile PI with few completions, the discretionary minimum and backlog in projections are settled in
+  docs/research.md ("WLM policy adjustment and dispatching") and docs/wlm-design.md §4 W15; their fixes are WT entries.
+- WLM audit, still unverified: the numbers behind receiver value, the net value rule by importance and the 0.90
+  credit come from IBM's 1994 patent (read through a summarising fetch, not page-checked) and Peter Enrico's slides;
+  IBM's books state the tests without numbers. The skip clock's length, where the unbunched ladder sits in the
+  managed range, and the priorities assigned at IPL or policy activation are not documented anywhere found.
+- WLM audit: the dispatching priority table differs between SG24-7621 (252–208 managed) and SG24-6472 (247–203 as of
+  z/OS 1.8); no z/OS book gives numbers (docs/wlm-design.md W12, §8 Q5).
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
-- Policy-adjust projections don't model backlog/DBAT feedback, so WLM sometimes places batch above
-  DDF while DDF is happy and then can't undo it quickly. Realistic in spirit, but watch in balancing.
-- Percentile PI edge cases: how exactly does WLM handle periods with very few completions
-  (minimum-sample rules)? Currently an EWMA with a variable horizon. Check *MVS Planning: WLM*.
 - TFP details (baseline commitment, overage pricing) are left deliberately abstract; is
   that enough for the strategic choice to feel real?
 - Tuning target for "fun density": how many meaningful decisions per live day? (Target: 3–6
   alerts that matter, 1–2 incidents in Act II+.)
-- Equal-DP sharing by ready units: real dispatch is a time slice per ready unit; our units are time-averaged
-  estimates (one per engine of new transaction work, role counts for address spaces). Check IBM's dispatcher
-  description (MVS Diagnosis / SG24-7621 §3.14) for how equal-priority TCBs/SRBs rotate, then add a ledger row.
-- A region class whose regions are transaction servers, as a WLM receiver (playtest round 2): in the sim STCHI's PI
-  includes the CICS AORs' samples and WLM spends a receiver slot on it, but its DP doesn't reach the regions. WLM
-  Planning p.111: servers "are managed according to the goals of the served transactions". How real WLM treats the
-  region class's own PI is not verified (see BACKLOG.md PT-01).
 - Exported saves arriving with every backslash doubled (playtest round 2, D20 export): halving them gives exactly what
   `encodeRunJson` writes, so something on the artifact host's download path doubled them (not verified). Import
   (browser and play CLI) repairs it. If it recurs, look at how the artifact host saves a Blob download.
@@ -416,7 +420,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: docs/rca-design.md §7 Q7, Q8a, Q8b, Q9 (after the RT-15 playtest). #111 Q1–Q3 are decided.
+- Waiting on the user: docs/rca-design.md §7 Q7, Q8a, Q8b, Q9 (after the RT-15 playtest); docs/wlm-design.md §8
+  Q1–Q9 are decided (2026-11-10). #111 Q1–Q3 are decided.
 
 ## Known approximations and risks
 
@@ -444,6 +449,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-10: WLM policy adjustment audit and target model (design only, PR #265): docs/wlm-design.md, BACKLOG list
+  `wlm-truth`, 21 docs/research.md rows. No file under `src/`, `tests/` or `tools/` changed. Repro harness and
+  outputs are under `runs/wlm-audit/` (ignored); WT-01 turns the harness into `inspect … wlm-stats`.
 - 2026-11-10: RT-00: the textbook/expert "obvious" rule (`obviousHourly`, `tools/strategies.ts`) looks up the fix
   by card from a frozen card-id set (RUNAWAY, REGRESSION, XLOG_LOOP, RUNAWAY_COMPLIANCE, EFILE_REGRESSION) instead
   of by the incident's trigger, so RT-09's relabelling can't change the bots' fix choice. One intended bot change

@@ -1,0 +1,1179 @@
+# WLM policy adjustment: audit and target model
+
+Status: **design, decided by the user** (2026-11-10). Nothing here is implemented. The work it leads to is in
+[BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
+is the WLM counterpart of [rca-design.md](rca-design.md).
+
+Scope: one policy adjustment interval, end to end, on `dev` at `c0b065f`: `src/sim/wlm/adjust.ts`, `evaluate.ts`,
+`eval/`, `goals.ts`, `runtime.ts`, `src/sim/zos/dispatcher.ts` and `src/sim/core/tick/`. Out of scope: WLM-managed
+initiators, MPL and storage targets, I/O priority, routing recommendations, capping by defined capacity.
+
+## 1. Scope and method
+
+**What was checked.** Every step the code takes between two ticks to decide dispatching priorities (§2), against
+what IBM documents about the same step (§3). The algorithm was built one realism fix at a time; this is the first
+check of the whole, and most findings (§4) are interactions between steps that are each defensible alone.
+
+**Sources**, in the order they were used:
+
+| Short name | Source | Tier |
+|---|---|---|
+| WLM Planning | *z/OS 3.1 MVS Planning: Workload Management* (ieaw100), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf) | IBM book, page-checked |
+| WLM Services | *z/OS 3.1 MVS Programming: Workload Management Services* (ieaw200), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf): ch. 11 "Using SMF record type 99" and Appendix A (trace codes). The most detailed product documentation of the algorithm | IBM book, page-checked |
+| SG24-6472 | Redbook *System Programmer's Guide to: Workload Manager*, SG24-6472-03, Mar 2008, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf) | IBM Redbook, page-checked |
+| SG24-7621 | Redbook *ABCs of z/OS System Programming Vol. 12*, SG24-7621-00, Jan 2010, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf) | IBM Redbook, page-checked |
+| Patent | US 5,473,773, *Apparatus and method for managing a data processing system workload according to two or more distinct processing goals*, Aman et al., IBM, filed 1994. <https://patents.google.com/patent/US5473773A/en>, accessed 2026-11-10 | **Patent (1994).** IBM's original design, not product documentation: it shows how WLM was designed, not how z/OS 3.1 behaves. Read through a fetch tool that returns summaries and short quotes, so the wording is not page-checked. It describes the 1994 design: no sysplex PI, no CPU Critical, no zIIP |
+| Enrico | Peter Enrico, *How WLM Works* (slides), Enterprise Performance Strategies. <https://www.epstrategies.com/library/content/Enrico.WLM032-WLMHowWLMWorks.pdf>, accessed 2026-11-10; the PDF text was extracted and read | **Practitioner** |
+
+Page numbers are PDF page indexes (`#page=N`), as in [research.md](research.md). Where the two Redbooks or a Redbook
+and a z/OS book disagree, §3 says so and prefers the z/OS book. A claim backed only by the patent or by Enrico is
+labelled where it is used. Anything not found is marked *unverified*; nothing is filled in from memory.
+
+**Repros.** All on seed 42, Normal difficulty, no player actions, through the play CLI's own code path:
+
+- **Traces (R-n).** A play-CLI file and `npm run inspect -- <file> wlm <system> --at <time> --ticks <n>`. The file
+  is made with `npm run -s play -- <file> new 42 [normal <scenario>]`, then per day `start`, `advance 24` (repeat
+  until the day ends), `draft none`. Times are sim clock; "D2" is the second played day.
+- **Statistics (S-n).** A scratch harness (`runs/wlm-audit/stats.ts`, not committed; WT-01 turns it into
+  `inspect … wlm-stats`) that plays the same commands through `applyPlayCommand` with `setWlmTraceSink` installed
+  and counts, over every policy adjustment of every system: candidates by outcome, trials by verdict, accepted
+  moves, a DP move reversed by the next move of the same period, receivers assessed without a move 30 intervals
+  running, and the DP ladder at chosen times.
+- **Code reading (C-n).** Where no seed-42 replay hits the case, the finding says "by code reading" and gives the
+  smallest input that would show it; that input is the regression test of its fix.
+
+| Id | Run | What it shows |
+|---|---|---|
+| R-1 | Midwest, PROD2, D1 12:19:00–12:23:00 (`--at 'D1 12:19' --ticks 26`) | W1, W8: one period moved down, up, down, up in 3.5 minutes; receivers assessed on a PI they no longer have |
+| R-2 | Midwest, PROD2, D2 10:21:00–10:23:10 | W2, W3: the region class as a receiver; five classes within two priorities of the top after 28 hours |
+| R-3 | Revenue, PROD2, D1 10:41:50–10:44:30 | W6, W9: a zIIP-bound receiver re-assessed every interval; receiver value of 0.01 |
+| R-4 | Harbourline, PRDD, D1 14:17:40 (and PRDC 15:39:20) | W2, W6, W7: an importance-4 period at the top managed priority on day 1 while the importance-2 period of the same class, local PI 4.0, is skipped by the budget |
+| S-1 | Midwest, days 1–2 (69 120 adjustments on 4 systems) | counts below |
+| S-2 | Revenue, days 1–3 (103 680 adjustments) | counts below |
+| S-3 | Harbourline, days 1–3 (155 520 adjustments) | counts below |
+| S-4 | Midwest, days 1–8, DP ladder of PROD1 and PROD2 at 12:00 each day | W2 |
+
+| | S-1 Midwest | S-2 Revenue | S-3 Harbourline |
+|---|---|---|---|
+| Adjustments with no candidate (every goal met) | 67 101 | 97 719 | 144 888 |
+| Candidates assessed (trials run) | 1 609 | 3 046 | 5 939 |
+| Candidates not assessed: bottleneck OTHER / I/O | 481 / 0 | 2 999 / 0 | 5 291 / 4 208 |
+| Candidates not assessed: budget | 0 | 0 | 4 |
+| Trials (projections) | 5 934 | 8 456 | 18 690 |
+| … accepted (= DP moves) | 36 | 46 | 117 |
+| … `MORE_IMPORTANT_HARMED` | 3 447 | 278 | 7 873 |
+| … `SMALL_GAIN` / `NO_RECEIVER_GAIN` | 1 096 / 755 | 2 498 / 5 342 | 4 548 / 3 502 |
+| … `NO_NET_VALUE` / `EQUAL_DISPARITY` | 465 / 135 | 291 / 1 | 2 336 / 314 |
+| Rejected trials whose receiver's own-tick PI was ≤ 0.9 | 793 | 383 | 5 188 |
+| A period's move reversed by its next move | 12 | 22 | 44 |
+| Receiver assessed 30 intervals running without a move (episodes) | 7 | 4 | 20 |
+
+The numbers are from the harness on `c0b065f`; they will differ on another commit.
+
+## 2. The algorithm as built
+
+One tick is 10 sim-seconds. The WLM-relevant part of the tick pipeline (SPEC §5.1), per z/OS image:
+
+```
+lparDemand → planLpar → prsm/softCap → dispatchLpar (evaluateLpar, measurement) → adjustPolicies (policyAdjust)
+```
+
+### 2.1 Work, slices and periods
+
+- `buildSlices` (`src/sim/workload/slices.ts`) makes one **slice** per workload × image × service class period
+  (kind `TXN`) and one per address space (kind `AS`). Batch gets one `AS` slice per period of running jobs
+  (`lparDemand`, `src/sim/core/tick/demand.ts`). A slice's demand is engines of CP and of zIIP-eligible CPU.
+- **Period switching.** Transactions are split over a class's periods analytically by their service distribution
+  (`splitPeriods`, `src/sim/workload/periods.ts`); a running batch job sits in the period its consumed service has
+  reached (`scKeyAtService`, `jobServiceSu` in `tick/helpers.ts`: progress × (CP + zIIP seconds) × SU/s, zIIP time not
+  normalised); a long-running address space sits in the last period.
+- A **service class period** is the unit WLM manages. Its key is `CLASS#n`. SYSTEM and SYSSTC have no goal and fixed
+  DPs 255 and 254; discretionary periods (and SYSOTHER) are fixed at DP 196 (`initialDp`, `runtime.ts`; `dpOf` default
+  in `tick/dispatch.ts`). They never enter policy adjustment (`policyAdjust` builds `info` without them).
+
+### 2.2 State
+
+`WlmSystemState.scps[]` per image (`runtime.ts`): for each period `dp`, `starvedSec` (for blocked-workload promotion)
+and one accumulator `acc` (`ScpAcc`): completions, response-time sum, the 14 response-time buckets, using and delay
+"samples" (total and by CPU, zIIP, I/O, cap, other), CPU engines, and the parts left out of velocity (I/O with I/O
+priority management off; transaction-server regions' samples). There is no other WLM memory: no history rows, no
+record of past receivers or donors, no skip clocks.
+
+### 2.3 Sampling
+
+Every tick `evaluateLpar` (`evaluate.ts`) dispatches the image and returns one `ScpTick` per period
+(`eval/accounting.ts` `periodTicks`): time-average concurrency in each state, standing in for 250 ms samples
+(`eval/results.ts` `sliceResults`). `decayInto` (`runtime.ts`) folds the tick into the accumulator:
+`acc = acc × 0.85 + tick` (`ACC_DECAY`), a fixed exponential window of about 67 s. A period with no work this tick
+decays toward empty (`idleScpTick`).
+
+- Using = CPU (CP, IIPCP), zIIP, DASD connect. Delay in velocity = CPU, zIIP, I/O, storage, cap, initiator queue.
+  `delayOther` (dependency, lock, CF, QR TCB waits) is kept for the bottleneck choice but is not in velocity.
+- An address space's processor delay is bounded by its ready units (`results.ts`).
+- A transaction's wait for regions managed to its goals counts as its own CPU delay (`srvCpuSec`).
+
+### 2.4 Performance index
+
+`performanceIndex` (`goals.ts`):
+
+- **Velocity:** goal ÷ (using ÷ (using + delay) × 100), capped at 99; `null` with no samples.
+- **Average response time:** (response-time sum ÷ completions) ÷ goal; `null` with no completions.
+- **Percentile:** the bound of the first bucket at which the cumulative share reaches the goal percentile, so
+  0.5 … 4.0 (`percentilePi`). Buckets are filled each tick from a log-normal around the tick's mean response time
+  (`addToBuckets`), so a tick with half a completion still spreads a full distribution.
+- **Discretionary:** 0.81.
+- **Multiple periods:** each period has its own accumulator, PI and DP; nothing links the periods of one class.
+
+Three PIs are in use, and §4 W1 turns on the difference:
+
+| Name here | Computed from | Used for |
+|---|---|---|
+| local PI | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list, donor "happy" test, resource-group minimum (`missingGoal`), discretionary capping |
+| sysplex PI | the accumulators of all images summed, then one PI (`sysplexPis`) | receiver list (first), the log's `PI=` |
+| tick PI | **this tick only** (`tickPi`; percentile goals through `projectedPercentilePi`, which extends past 4.0 from the mean response time) | every projection: receiver value, donor harm, net value (`instPi` in `policyAdjust`) |
+
+Address-space work never reports completions, so a response-time goal on a batch or started-task class has a
+`null` PI in all three (C-1).
+
+### 2.5 Receiver selection and order
+
+`policyAdjust` (`adjust.ts`), per image, after CPU protection (§2.12):
+
+1. Candidates are goal periods with a tick this interval and PI > 1.
+2. Order: importance 1 … 5; within an importance, first those with **sysplex PI** > 1, worst first, then those with
+   **local PI** > 1, worst first; ties by key. A period is listed once.
+3. Per importance at most `RECEIVERS_PER_IMPORTANCE` (2, `src/content/wlm/tuning.ts`) candidates are **assessed**
+   (trials run). Later ones at that importance are skipped (`BUDGET`); the next importance gets its own two.
+   A candidate whose bottleneck is not fixable (§2.6) does not use the budget.
+4. The first candidate with an accepted trial ends the search: one DP change per image per interval.
+
+Nothing excludes a candidate that was assessed and rejected on the previous interval, and a period meeting its goal
+is never a receiver.
+
+### 2.6 Bottleneck
+
+`bottleneckOf` takes the largest of the accumulator's CPU, zIIP, I/O (without the part outside velocity), cap and
+other delay. Only `CPU` and `ZIIP` lead to trials; anything else logs "not WLM-fixable" and the search goes on to
+the next candidate. Storage and queue delay are not candidates. A second bottleneck is never tried.
+
+### 2.7 Trials
+
+For a receiver at DP `r`, in this order (`policyAdjust`):
+
+1. **Receiver up:** for each of the (up to three) nearest occupied DP levels above `r`, a trial with the receiver at
+   that level **+ 1**, capped at 252. With no level above and `r` < 252: `r + 1`.
+2. **Donor down:** for each of up to three donors (§2.8), a trial with that donor at `r − 1` (not below 208).
+
+Each trial changes exactly one period's DP. Trials are independent: none builds on another, and no other period is
+moved along.
+
+### 2.8 Donors
+
+A donor is a goal period other than the receiver that (a) has DP ≥ `r`, (b) is **less important** than the receiver,
+at any PI, or **equally important with local PI < 1**, and (c) used more than 0.0001 engines of CP (CP + IIPCP) this
+tick. Order: least important first, then most CP used this tick, then key; the first three. A more important period
+is never a donor candidate. The filter and the order use CP even when the bottleneck is zIIP (C-2).
+
+### 2.9 Projection
+
+`project` re-runs `evaluateLpar` on **this tick's input** with the trial DPs (`scpsOnly`, buckets only for
+percentile periods, prepared demand shared). The input is this tick's arrivals plus the whole backlog carried in
+(`prepareLpar`: demand = new work + backlog ÷ 10 s), this tick's caps, I/O and paging. On images with zIIPs,
+`batchRecoveryAccepts` (`batchProjection.ts`) repeats the evaluation while batch jobs' cross-pool demand settles
+(up to 8 rounds) and requires every round to pass. The result is the tick PI of every period under the trial.
+
+### 2.10 Receiver value, net value, convergence
+
+`passes` in `policyAdjust`, with `r0`, `r1` the receiver's tick PI now and projected, `p0`, `p1` another period's:
+
+1. `CPU_CRITICAL`: reject a trial that puts a less important period at or above a CPU-protected one (§2.12).
+2. `NO_RECEIVER_GAIN`: reject if `r0` or `r1` is `null`, or `r1 ≥ r0`.
+3. `SMALL_GAIN` (receiver value): reject if `r0 − r1 < 0.1 × (r0 − 1)` (`RECEIVER_VALUE_FRAC`).
+4. For every other goal period, `harm = max(0, p1 − max(p0, 0.9))` (`DONOR_CREDIT_FLOOR`):
+   - **more important** than the receiver: reject (`MORE_IMPORTANT_HARMED`) if `p1 > 1` and `harm > 0.02`;
+   - **equally important:** reject (`EQUAL_DISPARITY`) if `harm > 0` and `|r1 − p1| ≥ |r0 − p0|`; otherwise add
+     `harm` to `equalHarm`;
+   - **less important:** no test.
+5. `gain = max(0, r0 − max(r1, 0.9))`. Accept if `gain > equalHarm`, else `NO_NET_VALUE`.
+
+Every period on the image is tested, whichever way its DP relates to the move. Only the receiver's gain is
+credited. The first accepted trial is applied.
+
+### 2.11 Server topology (CICS)
+
+- `cicsRegions` (`tick/helpers.ts`) finds, per image, the CICS transaction classes (`keys`), the regions whose rule
+  says TRANSACTION (`servers`) and the region class key.
+- **Dispatch** (`evaluateLpar`): TRANSACTION regions and, if any AOR is TRANSACTION, every CICS transaction slice run
+  at `txnDp` = the **highest DP among the transaction classes served on the image**. Each transaction class still
+  owns a DP of its own; only the highest has any effect. REGION/BOTH regions and their transactions run at the
+  region class's DP.
+- **Samples:** TRANSACTION regions' samples are reported in the region class but left out of its local and sysplex
+  PI (`srvUsing`/`srvDelay`, `goalPi`). The region class stays a goal period with a DP and is a receiver for
+  whatever else is classified into it.
+- **Policy adjustment** knows none of this. A transaction class is an ordinary receiver or donor; a trial moves that
+  class's own DP, and the projection shows an effect only if the move changes the maximum.
+- **Enclaves (DDF):** `TXN` slices in their own class at their own DP; Db2's address spaces are `AS` slices in an STC
+  class. A transaction's wait for a starved Db2 is `delayOther`.
+
+### 2.12 CPU protection
+
+`enforceCpuProtection` runs first: every period less important than a CPU-protected period (CPU Critical, or a
+first period at or above IEAOPT CCIMP) is lowered below it. `violatesCpuCritical` then rejects trials that would
+break it.
+
+### 2.13 Dispatching priority assignment
+
+- Start (and any period seen for the first time): `initialDp` = 250, 244, 238, 232, 226 for importance 1 … 5.
+- DPs carry over a policy activation by period key.
+- After that a DP changes only through an accepted trial or CPU protection. Nothing remaps, spreads or lowers DPs
+  when goals are met; the small-consumer priority (253) is defined in `dispatcher.ts` and never assigned.
+
+### 2.14 Equal-DP sharing in the dispatcher
+
+`dispatch` (`zos/dispatcher.ts`) serves DP levels from the top, zIIP pool first, then CPs with zIIP overflow. Within
+a level, `shareByUnits` gives every ready unit an equal turn (max-min fair): units are an address space's
+TCB/SRB count (`DISPATCH_UNITS`), one per running batch job, and for transactions one per engine of new work
+(backlog adds demand, not units; `prepareLpar`). CPU queueing delay at a level is Erlang-C at the utilisation of
+that level and above.
+
+### 2.15 Resource groups and discretionary capping
+
+- **Maximum:** `resourceGroupCaps` (`tick/helpers.ts`) turns a group's limit into a per-slice cap applied before
+  dispatch (`dispatchableDemand`); the cut is CAP delay. A receiver whose largest delay is CAP is not fixable.
+- **Minimum:** `rgMin` gives a group's member periods a share while any member "misses its goal" (`missingGoal`:
+  local PI > 1; for a discretionary member, delay > using). `grantDispatch` (`eval/grants.ts`) dispatches that share
+  as a separate demand at `RG_MIN_DP` = 252, or 207 for a discretionary member.
+- **Discretionary goal management:** `discretionaryCaps` caps periods with loose goals and local PI < 0.71 while
+  discretionary work is waiting.
+- **Blocked workload:** a period with CPU delay and under 1 % CPU for `BLWLINTHD` gets a share at DP 253.
+
+### 2.16 What the player sees
+
+One log line per accepted move (`RCVR=… BTLNK=… DP F4→F6`), and every 30th tick the first note of an interval with
+no move, naming the first rejected trial and its reason (`playerReason`). `inspect wlm` shows the full trace.
+
+## 3. Real WLM, step by step
+
+The same steps as IBM describes them. "Silent" means none of the sources in §1 says; the best other evidence is then
+given with its tier. Section numbers match §2.
+
+### 3.1 Work and periods
+
+- All dispatchable units of a service class period have the same base dispatching priority; WLM manages the period,
+  not the address space or enclave ([SG24-6472 p.62][r62], [p.66][r66]; [WLM Services p.139][ws139]).
+- Period switching counts accumulated service units against the period's duration ([WLM Planning p.69][wp69]).
+  Whether zIIP service is normalised to CP speed for the duration: **not found** (searched WLM Planning for
+  "normaliz" and "specialty … service units"); stays an open question.
+- Work that takes a response-time goal "should have at least three transaction completions per 20 minutes of elapsed
+  time"; for batch a transaction is a job ([WLM Planning p.71][wp71]). SG24-6472 [p.29][r29] and [p.190][r190] say ten
+  in 20 minutes. The z/OS book wins: three.
+
+### 3.2 State
+
+- WLM keeps "a certain amount of historical data" and learned plots relating a resource to its effect (MPL delay,
+  swap delay, paging rate, proportional aggregate speed, I/O delay, queue delay) ([SG24-6472 p.58][r58],
+  [p.62][r62]; [WLM Services p.140–143][ws140]).
+- A **skip clock** per period: "If a receiver is assessed and all actions to help it are rejected, a skip clock
+  (counter) is set and the service class period will not be selected as a receiver again until the skip clock
+  expires" ([WLM Services p.145][ws145]). Its length is not given. *Practitioner:* Enrico slide 53 describes a skip
+  counter set when a period was chosen as a receiver and help was given.
+- *Practitioner:* histories are rows covering the last 10 s, 30 s, 60 s, 5 min, 15 min and the 15 min before, so
+  WLM can go back far enough for representative data (Enrico slide 29). *Patent (1994):* the patent takes response-time
+  data for "thirty seconds or … ten samples", velocity data for at least thirty seconds and five hundred non-idle
+  samples, and weights the last 10 seconds twice. IBM's books give no numbers.
+
+### 3.3 Sampling
+
+- States are sampled every 250 ms and summarised every 10 s with measured data such as CPU service and transaction
+  ends ([SG24-6472 p.58][r58]; [SG24-7621 p.105][a105]).
+- CPU, I/O and paging delay samples are counted per dispatchable unit; swap and MPL delays per address space
+  ([SG24-6472 p.64][r64]).
+- A potential receiver is skipped when it "hasn't accumulated any state samples that show it was delayed for any
+  resource SRM manages during the last policy interval" (the "needs help" indicator, [WLM Services p.144][ws144]).
+
+### 3.4 Performance index
+
+- Formulas as in §2.4; percentile PI from 14 buckets, 0.5 … 4.0; discretionary 0.81 ([SG24-6472 p.54–58][r54];
+  [WLM Services p.138][ws138]).
+- Each period has a local PI per system and a sysplex PI; systems exchange response-time and using/delay data so
+  each can compute the sysplex PI ([SG24-6472 p.54][r54]). "The sysplex performance index is the primary criteria
+  used for selecting receivers and donors and assessing changes" ([WLM Services p.138][ws138]).
+- How a PI behaves with few completions: only the planning guidance of §3.1; too few completions give "highly
+  variable performance indexes" ([SG24-6472 p.60][r60]).
+- Transactions served by CICS/IMS regions have no using or delay states of their own. The regions' samples are
+  apportioned to the served classes by the time the regions spent serving each, giving a **proportional aggregate
+  speed** per served class; a plot of PI against that speed is how a change to the regions is projected onto the
+  served class ([WLM Services p.142][ws142]; [SG24-6472 p.62–64][r62]).
+
+### 3.5 Receiver selection and order
+
+- "SRM helps only one receiver during each policy interval, although it may assess multiple receivers before finding
+  one to help" ([WLM Services p.137][ws137]). One change means the access of a *set* of periods is changed to help
+  one ([SG24-6472 p.68][r68]).
+- Order ([SG24-6472 p.63][r63]): (1) a period missing its goal in a resource group below its minimum, by amount
+  below the minimum, then importance, then PI; (2) a period missing its goal, by importance, then PI; (3) a
+  discretionary period in a resource group below its minimum; (4) **a period meeting its goal, by largest PI**.
+- Within an importance, sysplex PI first, then local PI, then the next importance ([SG24-6472 p.55][r55], [p.59][r59];
+  [SG24-7621 p.106–107][a106]). Some resources are addressed only on the sysplex pass (trace code
+  `PA_NA_SYSPLEX_ONLY`, [WLM Services p.705][ws705]); which ones is not said.
+- Skipped: no managed delay in the last interval (§3.3) and an unexpired skip clock (§3.2).
+- No limit on the number of receivers assessed is documented. Responsiveness is the stated reason to keep active
+  periods to 25–35 ([SG24-6472 p.60][r60]).
+
+### 3.6 Bottleneck
+
+- The receiver's delays are examined for the resources WLM manages: processor, swap-in, MPL, I/O, server address
+  space, paging. Delay by capping, locks, enqueue or operator cannot be helped; the algorithm then takes another
+  receiver ([SG24-6472 p.63–64][r63]).
+- The largest delay is worked on first, then the next: the SMF 99 example goes swap delay (no receiver value), then
+  processor (no donor), then MPL, which is taken ([WLM Services p.148][ws148]; flow in [SG24-6472 p.59][r59]
+  Figure 2-3, "Are there other bottlenecks?").
+- For a served class, the regions' delay samples are apportioned to it, the largest delay is found, and the region
+  set with that delay is what the fix routines get ([SG24-6472 p.64][r64]).
+
+### 3.7 Trials: the shape of a CPU change
+
+- WLM "logically moves the service class to higher dispatch priority and then projects the change of CPU
+  consumption, demand, and delays for all service classes at a lower and the same new dispatch priority"; if that is
+  not enough it looks at moving others down, "and does the same calculations", until the receiver gains enough and no
+  more important work is badly affected, or nothing is possible ([SG24-6472 p.66][r66]; [SG24-7621 p.111][a111]).
+- The change is **composite**. In the Redbooks' example ([SG24-6472 p.67–68][r67], [SG24-7621 p.112–113][a112]) the
+  receiver I moves up; H, at I's old priority, has to move up too "because otherwise no overall value" (a
+  *secondary receiver*); then donors are moved down one at a time (C passes net value, B fails and stays, A passes);
+  then I moves up again and now has receiver value. If nothing works, "all intermediate calculations are set back".
+- Trace codes confirm the pieces: assess moving a secondary receiver up (`PA_PMU_SEC_REC`), a secondary donor down
+  (`PA_PMD_SEC_DON`), a donor up as secondary receiver (`PA_PMU_DON_SEC_REC`), and "unchanged" donors, receivers and
+  secondary donors and receivers whose access changes although their priority does not (`PA_PRO_UNC_*`)
+  ([WLM Services p.707–708][ws707]).
+- *Patent (1994):* moves alternate between raising the receiver and lowering the donor.
+
+### 3.8 Donors
+
+- A donor uses the resource the receiver is delayed for ([SG24-7621 p.105][a105]). For CPU: periods "running at a
+  dispatching priority higher than or equal to the receiver's" ([WLM Services p.147][ws147]).
+- Order: "Donors are selected in the reverse order of receivers" ([WLM Services p.138][ws138]). In the SMF 99
+  example the first donor is the period with "the best performance index" among those at or above the receiver's
+  priority, and it has the receiver's importance ([p.147][ws147]). SG24-6472 [p.59][r59]: discretionary work first,
+  then "from the lowest to the highest PI of 'happy' service class periods. Importance does not contribute to the
+  algorithm when the service class periods are 'happy'". Read with the receiver order of §3.5, these agree: happy
+  periods by lowest PI whatever their importance, then periods missing goals from the least important up.
+  *Patent (1994)* and *practitioner* (Enrico slide 38) say the same.
+- A more important period can donate to a less important one when it overachieves and is projected still to meet
+  its goal easily ([SG24-6472 p.60][r60]).
+- A small processor consumer is not selected as a donor (`PA_SDO_DONFAIL_SPC`, [WLM Services p.708][ws708]).
+
+### 3.9 Projection
+
+- From samples and service WLM knows each period's CPU use and the use of all work at each priority. **Maximum
+  demand** is "the theoretical maximum percentage of total system processor time the address spaces in a service
+  class period would consume if they were suffering no processor delays"; **achievable maximum demand** is what
+  they are projected to use given the maximum demand of all work at higher priorities ([WLM Services p.144][ws144];
+  [SG24-6472 p.66][r66]).
+- The projected change in use and delay is turned into a projected PI: through velocity for unserved work, through
+  the proportional aggregate speed plot for served classes (§3.4).
+- A period blocked by CPU delay and getting no service is projected from its "projected response time dist only"
+  (trace codes `PA_CA2_BLKD_PER_NS`, `_CM`, [WLM Services p.727][ws727]); nothing more is said.
+- Silent: how a backlog of unserved transactions enters demand. Maximum demand is a rate from samples, so it is
+  bounded by the units that were ready, not by how much work is queued behind them (inference from the definition).
+
+### 3.10 Receiver value, net value, convergence
+
+- **Receiver value:** "a minimum performance index improvement, a minimum group service increase, or other minimum
+  criteria designed to reject very small improvements" ([WLM Services p.138][ws138]). *Patent (1994):* for
+  example 10 % of the difference between the receiver's PI and 1.00. *Practitioner (Enrico slide 50):* the larger of
+  10 % of the PI change needed to meet the goal and 0.05, or a cut in delay samples of at least half the largest
+  delay.
+- **Net value:** a receiver is helped by a donor only if that does not result "in more projected harm to the donor
+  than projected improvement to the receiver. If so, the condition is traced, and another donor is selected." It
+  "considers all external service policy specifications (resource group capacity minimums and maximums, importance,
+  and goals) for both primary and secondary donors", and SRM "may decide not to help a receiver due to minimal net
+  value for either a primary or secondary donor" ([WLM Services p.137–138][ws137]).
+- The rule by importance is not in IBM's books beyond "no service classes with a higher importance are badly
+  affected" ([SG24-6472 p.66][r66]). *Patent (1994):* donor projected to meet its goal and receiver missing: net
+  value; both missing: net value if and only if the receiver is more important; equal importance, or both meeting:
+  net value if the PI gain exceeds the PI loss, counting only the part of each PI above 0.90; and if the receiver
+  would end with a lower PI than the donor, the two must end closer than they were. *Practitioner (Enrico slide
+  52):* receiver more important: move if the receiver misses its goal; receiver less important: never if the donor
+  misses or is projected to miss; equal: benefit above loss *and* less disparity.
+- **Equal importance, both missing:** WLM "will try to bring the goal achievement of both closer together"
+  ([SG24-6472 p.60][r60]).
+- **Secondary receivers' gain** is never said to count toward net value: the test is donor harm against "projected
+  improvement to the receiver". A period that fails the test because of the move is handled by moving it too (§3.7),
+  not by crediting others.
+
+### 3.11 Server topology
+
+- Regions found serving the same set of transaction service classes (and in the same resource group) form a
+  **dynamic internal service class period** (`$SRMSnnn`), rebuilt up to once a minute. It is the unit that holds the
+  dispatching priority and collects the regions' samples ([SG24-6472 p.86–88][r86]; [WLM Services p.136–137][ws136]).
+- The served class is the **goal receiver or donor**; the internal period is the **resource receiver or donor**: "SRM
+  adjusts resources for the resource receiver/donor to affect the performance of the goal receiver/donor"
+  ([WLM Services p.138][ws138]; trace codes `PA_GREC_CAND`, `PA_RREC_CAND`, `PA_PRO_SERVED_GREC`, `_GDON`,
+  [p.705][ws705], [p.708][ws708]). Net value rejections are traced for goal donors and goal receivers
+  (`PA_PMD_GDON_NETVAL`, `PA_PMU_GREC_NETVAL`, [p.707][ws707]).
+- The regions' priority follows "the most important and most unhappy" transactions they serve; less important
+  transactions in the same regions get a free ride ([SG24-6472 p.62–63][r62]).
+- "The external service class of a server is ignored" unless the region is managed to its own goal by its
+  classification rule, or is serving no transactions ([SG24-6472 p.89][r89]; [WLM Planning p.122][wp122]).
+- Enclaves are managed as work of their own class; no topology ([SG24-6472 p.86][r86]).
+
+### 3.12 CPU protection
+
+Less important work "will generally have a lower dispatch priority" than CPU-critical work ([WLM Planning
+p.120][wp120]). WLM enforces it by moving the less important ("blocker") period: `PA_CPC_MOVE_DOWN`, "period is moved
+down to make room for CPU critical period", and `PA_PCC_BLKR_MOVED` ([WLM Services p.705][ws705]).
+
+### 3.13 Dispatching priority assignment
+
+- The two Redbooks give different tables. SG24-7621 (2010) [p.110–111][a110]: 253 small consumer, 252–208 managed,
+  207–202 unused, 201–192 discretionary, 191 quiesced. SG24-6472 (2008) [p.65][r65] gives that as "prior to z/OS
+  1.8" and, "as of z/OS 1.8": 254 SYSSTC and SYSSTC1–5, 253–249 reserved, **248 small consumer, 247–203 managed**,
+  202 unused, 201–192 discretionary, 191 quiesce. *Practitioner:* Enrico slide 49 shows the 1.8 table. The z/OS books
+  give no numbers. The dated statement in SG24-6472 is preferred; the sim has the older table (W12).
+- **Unbunching:** "After a dispatching priority change, service class periods may be remapped to different
+  dispatching priorities such that there is an unoccupied priority between each occupied priority"
+  ([WLM Services p.139][ws139]; housekeeping code `HSK_UNBUNCH_PRTY`, [p.705][ws705]).
+- **Small consumers** are "assigned a relatively high dispatching priority and not assessed for dispatching priority
+  changes" ([WLM Services p.138][ws138]); housekeeping moves periods to and from that priority (`HSK_TO_SPC_DP`,
+  `HSK_FROM_SPC_DP`).
+- Discretionary work runs at 192–201 under a mean-time-to-wait algorithm, I/O-bound work higher
+  ([SG24-6472 p.66][r66]).
+- Silent: the priorities a period gets at IPL or policy activation.
+
+### 3.14 Equal priority in the dispatcher
+
+"The dispatching order of all dispatchable units with the same dispatching priority in the same or in different
+service class periods are periodically rotated" ([SG24-6472 p.66][r66]; "naturally rotated", [SG24-7621 p.111][a111]).
+A CPU delay is being ready but not dispatched "because of active work at the same or higher dispatching priority"
+([SG24-6472 p.53][r53]). No z/OS book describes the rotation further.
+
+### 3.15 Resource groups and discretionary work
+
+- A maximum is enforced by cap slices during which the group's work is not dispatchable; granularity 1/256 since
+  z/OS 2.1 ([WLM Planning p.60][wp60]; WLM Services [p.140][ws140] still says 1/64).
+- A minimum is "an overriding mechanism to circumvent the normal rules of importance": if the group's work is not
+  meeting its goals, WLM "attempts to provide the defined minimum" ([WLM Planning p.57][wp57]). It works through
+  receiver selection (§3.5, cases 1 and 3), and net value takes minimums and maximums into account (§3.10).
+- For a discretionary member the trigger is service below the minimum (§3.5 case 3), after every period missing a
+  goal and before periods meeting theirs. With a minimum, a discretionary goal "can be used as a sort of throughput
+  goal" ([SG24-6472 p.68][r68]).
+- Discretionary goal management: conditions as in research.md ([SG24-6472 p.68][r68]).
+
+[wp57]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=57
+[wp60]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=60
+[wp69]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=69
+[wp71]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=71
+[wp120]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=120
+[wp122]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122
+[ws136]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=136
+[ws137]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=137
+[ws138]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=138
+[ws139]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=139
+[ws140]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=140
+[ws142]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=142
+[ws144]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=144
+[ws145]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=145
+[ws147]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=147
+[ws148]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=148
+[ws705]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=705
+[ws707]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=707
+[ws708]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=708
+[ws727]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=727
+[r29]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=29
+[r53]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=53
+[r54]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=54
+[r55]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=55
+[r58]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=58
+[r59]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=59
+[r60]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=60
+[r62]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=62
+[r63]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=63
+[r64]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=64
+[r65]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=65
+[r66]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66
+[r67]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=67
+[r68]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=68
+[r86]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=86
+[r89]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=89
+[r190]: https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=190
+[a105]: https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=105
+[a106]: https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=106
+[a110]: https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=110
+[a111]: https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=111
+[a112]: https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=112
+
+## 4. Findings
+
+Severity: **high** = WLM reaches a wrong system-level result that a player meets in ordinary play; **medium** = wrong
+in a situation that needs a particular policy or load; **low** = a difference with little effect, or documentation.
+None crashes or corrupts state. W1–W4 are the structural ones; fixing them is the target model of §5.
+
+Trace lines are `inspect … wlm` output, shortened. `rcvr PI a→b` is the receiver's tick PI before and projected.
+
+### W1. Receivers are chosen on one PI and judged on another (high)
+
+**Sim.** The receiver list uses the smoothed local and sysplex PI (§2.5). Every test of a trial uses the PI of the
+current tick alone (§2.10). The two differ whenever load changes within a minute, which is whenever WLM has
+something to do.
+
+**Real.** One basis: the sysplex PI "is the primary criteria used for selecting receivers and donors and assessing
+changes" ([WLM Services p.138][ws138]); projections are deltas from sampled history (§3.9).
+
+**Repro R-1** (Midwest, PROD2, D1):
+
+```
+12:19:30 → RCVR=DDFPRD#1 PI=1.20 BTLNK=CPU DONOR DDFPRD#2 DP F5→F3
+12:19:40 → no DP change
+  1. DDFPRD#1 imp 2 PI 0.90 (local 2.00) DP F4 BTLNK CPU
+       DDFPRD#1 DP F4→F6          NO_RECEIVER_GAIN  rcvr PI 0.50→0.50      (and four more trials, the same)
+  2. DDFPRD#2 imp 4 PI 2.20 (local 2.20) DP F3 BTLNK CPU
+       DDFPRD#2 DP F3→F5          MORE_IMPORTANT_HARMED  rcvr PI 10.14→0.47  DDFPRD#1 (imp 2) PI 0.50→4.36
+  3. TSO#2 imp 4 PI 0.41 (local 1.20) DP F5 BTLNK CPU
+       TSO#2 DP F5→FB             NO_NET_VALUE  rcvr PI 0.25→0.22  gain 0.00 ≤ equal-importance harm 0.00
+12:20:20   DDFPRD#2 DP F3→F5      MORE_IMPORTANT_HARMED  rcvr PI 10.23→0.48  DDFPRD#1 (imp 2) PI 0.50→4.00
+12:20:30 → RCVR=DDFPRD#2 PI=7.09 BTLNK=CPU DDFPRD#2 DP F3→F5        (the same move, accepted)
+12:21:10   DDFPRD#2 F5→F3      12:22:50   DDFPRD#2 F3→F5            (S-1 "reversed by its next move")
+```
+
+Three effects, all visible here:
+
+1. **Wasted assessments.** A receiver whose tick PI is already 0.50 is assessed for three more intervals on a
+   smoothed PI of 2.00, 1.40, 1.10; all five trials can only fail. Across S-1 … S-3, 13 %, 5 % and 28 % of rejected
+   trials had a receiver whose own-tick PI was ≤ 0.9. In Harbourline (R-4, PRDC from D1 12:51:50) MKTDDF#1 holds a
+   local PI of 4.00 against a tick PI of 0.50 for more than 30 intervals, and is assessed in every one.
+2. **A misleading reason.** `gain 0.00 ≤ equal-importance harm 0.00` is logged as "equal-importance harm outweighs
+   the gain" when there was no harm and the receiver was fine. The same happens with a `null` tick PI (no
+   completions this tick): `NO_RECEIVER_GAIN`, 10 times in S-3.
+3. **A move accepted on one quiet tick.** DDFPRD#2 moving above DDFPRD#1 is rejected for five intervals because it
+   would take DDFPRD#1 from 0.50 to 4.00, then accepted in the one interval whose tick shows no harm, and undone 40
+   seconds later. Four reversals in 3.5 minutes; 12, 22 and 44 reversals in S-1 … S-3.
+
+**Play.** The player sees DPs flapping in the WLM log and a PI that swings between 0.5 and 4.0 for the first period
+of a class whose second period keeps overtaking it. The log's reason for the quiet intervals is wrong (2). The clue
+path explains none of it: nothing the game exposes says that the test used a different PI from the one shown.
+
+### W2. The priority ladder only climbs, then collapses at the top (high)
+
+**Sim.** A receiver moves to an occupied level **+ 1** (§2.7); a donor moves to just below the receiver; nothing
+ever spreads the ladder or brings it down (§2.13). Each episode on a busy image leaves the periods involved one or
+two steps higher, and the top is 252.
+
+**Real.** After a change the occupied priorities are remapped so that one unoccupied priority lies between each pair
+(unbunching), and small consumers are parked above the managed range ([WLM Services p.138–139][ws139]). A receiver
+can be a period that meets its goal when nobody misses (§3.5 case 4), so the order keeps being tuned.
+
+**Repro S-4** (Midwest, PROD2, 12:00 each day; PROD1 has no misses and never changes):
+
+```
+D1  ONLHI#1=FA STCHI#1=FA DDFPRD#2=F5 STCMED#1=F5 DDFPRD#1=F4 ONLMED#1=F4 TSO#1=F4 TSO#2=EB
+D2  ONLHI#1=FC STCHI#1=FC DDFPRD#2=FB STCMED#1=FB TSO#2=FB DDFPRD#1=FA TSO#1=FA ONLMED#1=F4 BATCHPRD#1=E8
+D4  DDFPRD#2=FC ONLHI#1=FC STCHI#1=FC STCMED#1=FC TSO#1=FC DDFPRD#1=FB TSO#2=F9 ONLMED#1=F4 BATCHPRD#1=E8
+D8  ONLHI#1=FC STCHI#1=FC DDFPRD#1=FB STCMED#1=FB TSO#1=FB TSO#2=FB DDFPRD#2=FA ONLMED#1=F4 BATCHPRD#1=E8
+```
+
+From day 2, seven goal periods of importance 1 to 4 sit on three adjacent levels, and on day 4 five of them,
+including the importance-4 second period of DDFPRD, share 252. **R-4** (Harbourline, PRDD, D1 14:17:40):
+`MKTDDF#2=FC STCHI#1=FB MKTORD#1=FA MKTDDF#1=F9 …`: an importance-4 period at the top managed priority eight hours
+into the run.
+
+Consequences that follow from the collapse, not from any one rule:
+
+- At one level CPU is shared by ready units (§2.14), so among the periods at 252 importance and goals no longer
+  matter. WLM's only remaining move for a receiver at 252 is a donor move, one period per interval.
+- A receiver at 252 with nothing above it and no eligible donor has no trial at all ("no move to try").
+- The resource-group minimum is dispatched at 252 too (W10).
+- The order frozen at the end of an episode stays until the next miss: on D1 from 12:23 to the next morning the
+  importance-4 periods DDFPRD#2 and TSO#2 run above the importance-2 periods (`inspect … dp PROD2`, D1 13:30 to
+  05:30: `DDFPRD#2=F5 STCMED#1=F5 TSO#2=F5 DDFPRD#1=F4 ONLMED#1=F4 TSO#1=F4`). That part is real WLM behaviour while
+  goals are met; the climb and the collapse are not.
+
+**Play.** `inspect dp`, the WLM log and Monitor III show nearly everything at FA–FC after a day or two. A player who
+knows WLM reads that as "the policy cannot separate this work" and looks for a policy flaw that is not there.
+Importance, the game's main policy lever, loses force on exactly the images under stress.
+
+### W3. Served transaction classes each own a priority; only the highest counts (high)
+
+**Sim.** §2.11: the regions and all CICS transactions on an image run at the maximum of the served classes' DPs. The
+adjustment loop moves one class's DP at a time and does not know which one the regions follow.
+
+**Real.** The priority belongs to the internal server period; the served classes are goal receivers and donors
+without a priority of their own, and the region's own class is ignored (§3.11).
+
+**Repro R-2** (Midwest, PROD2, D2):
+
+```
+10:21:00  STCHI#1 imp 1 PI 0.82 (local 1.01) DP FA BTLNK CPU      STCHI#1 DP FA→FC   ACCEPTED
+10:22:40  ONLHI#1 imp 1 PI 1.00 (local 1.30) DP FA BTLNK CPU      ONLHI#1 DP FA→FC   ACCEPTED
+10:22:50  ONLHI#1 imp 1 PI 0.90 (local 1.30) DP FC BTLNK CPU      DONOR STCHI#1 DP FC→FB  NO_RECEIVER_GAIN 0.60→0.60
+   ladder: ONLHI#1=FC STCHI#1=FC DDFPRD#2=FB TSO#2=FB STCMED#1=FB DDFPRD#1=FA TSO#1=FA ONLMED#1=F4
+```
+
+- The region class STCHI is a receiver in its own right (for the members that are not transaction servers) and
+  takes the top priority; this is the open question from playtest round 2. Its DP does not reach the regions.
+- ONLMED#1 stays at F4 for eight days (S-4) while its transactions run at ONLHI's FC: the F4 shown in every report is
+  not where the work runs.
+- By code reading (C-3): with ONLHI at FC and ONLMED at F4, (a) a trial that raises ONLMED to anything up to FC
+  changes nothing and fails `NO_RECEIVER_GAIN`, so ONLMED as a receiver can be helped only by a jump above ONLHI;
+  (b) ONLMED as a donor candidate passes the CP-use filter (its tick carries its transactions' CPU) and a trial
+  lowering it changes nothing, using a donor slot; (c) lowering ONLHI by one drops every CICS transaction and region
+  on the image to F4, a cliff of eight levels, because the maximum falls to the next class's stale DP.
+
+**Play.** A CICS class's DP in the log and in `inspect dp` cannot be trusted, and the free ride (less important
+transactions lifted by the regions' priority) is invisible in priorities although it is the documented behaviour
+players are meant to learn. PT-01's "two hopeless importance-1 receivers" was this finding plus W6.
+
+### W4. Donors are picked by importance and CPU use, not by goal achievement (high)
+
+**Sim.** §2.8. Less important periods are donors whatever their PI, least important first, heaviest CP user first;
+equal importance only if happy; more important never.
+
+**Real.** §3.8: happy periods first, best PI first, importance ignored among them; then periods missing their goals
+from the least important up. A more important period that overachieves can donate. The donor must use the delayed
+resource.
+
+Differences that matter:
+
+1. A less important period that is **missing its goal** is taken before a happy one. The net value test allows it
+   (the receiver is more important), so the sim pushes down work that is already suffering while an over-achiever
+   at the receiver's own importance, or above it, keeps its place.
+2. An over-achieving **more important** period is never moved down. The receiver can only go above it (a receiver-up
+   trial), which also puts the receiver above everything between them.
+3. For a zIIP bottleneck the donors are still filtered and ordered by CP use (C-2: a period using 2 zIIP engines
+   and no CP is not a donor; one using 0.2 CP and no zIIP is).
+4. The "happy" test is the local PI only; IBM names the sysplex PI as the primary criterion.
+
+**Repro.** R-1 12:19:40 lists `DONOR TSO#2`, `DONOR STCMED#1`, `DONOR ONLMED#1` for DDFPRD#1 (importance 2): the
+order is importance 4, 3, 2, and STCMED is Db2, whose own trial shows the receiver going 0.50→4.00 if it is lowered.
+Under IBM's order the first candidate is the happy period with the lowest PI. No seed-42 replay isolates point 3
+(Revenue's zIIP-bound receivers have no donor above them, R-3); it is by code reading.
+
+**Play.** "WLM takes from the least important work first" is what the sim teaches, and it is not how WLM chooses
+donors. A player who gives batch a loose goal expecting it to donate before a struggling importance-4 class sees the
+reverse.
+
+### W5. A change is one move of one period (medium)
+
+**Sim.** §2.7: each trial moves one DP; any equally or more important period the move would harm rejects it.
+
+**Real.** §3.7: the receiver's move, the co-moves of periods that would otherwise be harmed (secondary receivers)
+and the donors' moves are built up and judged together; a donor that fails net value is left where it is and the
+next one is tried.
+
+**Evidence.** `MORE_IMPORTANT_HARMED` is 58 % of all trials in S-1 and 42 % in S-3. Each is a receiver-up or donor
+move that real WLM would follow by trying to carry the harmed period along. How many would then pass cannot be
+known without implementing it; R-1 12:19:40 is the pattern (DDFPRD#2 above DDFPRD#1 harms DDFPRD#1, and no trial
+moves both).
+
+**Play.** A less important period behind a more important one at the same or the next level is stuck until the
+more important one is happy on the tick of the test (W1.3). Players see "harms X, more important" for hours.
+
+### W6. No skip clock and no "needs help" test; a budget instead (medium)
+
+**Sim.** Every candidate is assessed again every 10 s. The projection cost is bounded by assessing two per
+importance (§2.5).
+
+**Real.** §3.2, §3.3: a rejected receiver is skipped until its skip clock expires; a period with no managed delay in
+the last interval is not assessed; no limit per importance is documented.
+
+**Repro.** S-2: WEBDDF#1 on Revenue PROD2 is assessed 2 846 times in three days for a zIIP bottleneck that no
+priority can fix (R-3: `E8→EF SMALL_GAIN 1.80→1.80`, `E8→FB MORE_IMPORTANT_HARMED … STCHI#1 0.63→1.59`).
+"Assessed 30 intervals running without a move" happens 7, 4 and 20 times in S-1 … S-3. R-4: on PRDD at D1 14:17:40
+MKTDDF#1 (importance 2, local PI 4.00) is `BUDGET`: two other importance-2 candidates were assessed first and
+neither could be helped. The budget bit only 4 times in S-3, so today it is rare; it is the same defect PT-01
+fixed across importances, left in place within one.
+
+**Play.** A class can sit at PI 4 with "not assessed" in the trace and nothing in the log. Rare, but it is the
+"why didn't WLM help X" question with no clue path.
+
+### W7. One bottleneck, chosen among delays WLM does not manage (medium)
+
+**Sim.** §2.6: the largest of CPU, zIIP, I/O, cap and other; if it is not CPU or zIIP the receiver is dropped.
+
+**Real.** §3.6: only managed delays are considered, largest first, and the next one is tried when the first cannot
+be fixed.
+
+**Evidence.** S-3: 9 499 candidates dropped as not fixable (5 291 `OTHER`, 4 208 `IO`) against 5 939 assessed. A
+candidate with 45 % other delay (lock, CF, a slow server) and 40 % CPU delay is never given a CPU trial. `OTHER` is
+not a WLM delay state at all; it wins the comparison because the sim keeps it in the same list.
+
+**Play.** For the planted lesson (work waiting on a starved Db2 shows little CPU delay; WLM cannot help) this is
+right and stays. It is wrong when CPU delay is a close second: the log says "BTLNK=OTHER not WLM-fixable" for a
+class a DP move would help.
+
+### W8. Projections drain the whole backlog in one interval (medium)
+
+**Sim.** §2.9: projected demand is this tick's arrivals plus the entire backlog. A backlogged receiver moved up is
+projected to take everything until the backlog is gone.
+
+**Real.** §3.9: demand is a rate from samples; IBM is silent on backlog.
+
+**Repro.** R-1 12:19:40: moving DDFPRD#2 (tick PI 10.14, a backlog) one level above DDFPRD#1 is projected to take
+DDFPRD#1 from 0.50 to 4.36 while DDFPRD#2 itself drops to 0.47. The projection is true of the sim's next tick and
+false of the minute after it. Verdicts become all-or-nothing, which feeds W1.3 and W5. This is the PROGRESS open
+question "projections ignore backlog and DBAT feedback" seen from the other side: the backlog is modelled in the
+projection, as a one-tick spike. Slot-queue (MXT, DBAT) feedback is outside the projection and stays so (APPROX).
+
+**Play.** A class that has fallen behind cannot be raised past equal or more important work until it has caught up
+by itself, which is when it no longer needs to be.
+
+### W9. Receiver value has no floor (low)
+
+`SMALL_GAIN` needs 10 % of the distance to the goal. Near the goal that is nothing: R-3 10:42:00 `needs ≥ 0.01`.
+*Practitioner:* Enrico slide 50 gives the larger of that and 0.05. Small moves near PI 1 add to the churn of W1.
+
+### W10. The resource-group minimum is dispatched inside the managed range (medium)
+
+`RG_MIN_DP` is 252 with the comment "above every goal-managed period", and 252 is `DP.MANAGED_MAX`
+(`eval/grants.ts`, `zos/dispatcher.ts`). Once a period reaches 252 (W2: day 2 on Midwest PROD2) the guaranteed share
+competes with it by ready units. By code reading (C-4); no shipped policy has a minimum.
+
+For a discretionary member the sim serves the minimum from capacity no goal period wants (DP 207) and decides
+"missing" by delay > using. Real WLM makes such a period a receiver when its group is below the minimum, after
+periods missing goals and before happy ones (§3.15), so happy goal work does give way. The lever "discretionary
+batch with a minimum as a throughput goal" ([SG24-6472 p.68][r68]) is weaker in the sim than in z/OS.
+
+### W11. A response-time goal on batch or started tasks is never managed (medium)
+
+By code reading (C-1): address-space slices report no completions (`sliceResults`), so an average or percentile
+goal on a batch or STC class has no PI: never a receiver, never "missing" for a minimum, no PI in WLMGL. IBM allows
+response-time goals for batch with at least three completions per 20 minutes ([WLM Planning p.71][wp71]). The policy
+editor accepts such a goal without comment.
+
+### W12. Dispatching priorities use the table from before z/OS 1.8 (low)
+
+§3.13: 253 small consumer and 252–208 managed against 248 and 247–203. The two Redbooks conflict; the dated
+statement and the practitioner source agree on the newer table. Cosmetic, but DPs are shown in hex in the WLM log
+and `inspect`, and an expert knows F7 as the top managed priority. §8 Q5.
+
+### W13. Small consumers and mean-time-to-wait are not modelled (low)
+
+Every discretionary period runs at 196 (C4); SPEC §5.4 says 201–192 by mean time to wait. No period is ever a small
+consumer. Effects are small: discretionary work at one level shares by ready units, which already favours work that
+wants little.
+
+### W14. SPEC and code disagree about the PI window (low, documentation)
+
+SPEC §5.5.3 says the sysplex PI is "a completion-weighted average of local PIs" and that the PI uses "an EWMA whose
+horizon grows when completions are sparse". The code sums the systems' accumulators and uses a fixed decay of 0.85
+per tick. Because completions are fractional and each tick spreads a full distribution over the buckets (§2.4), a
+period with one completion a minute has a smooth PI: the variable PIs IBM warns about with few completions (§3.4)
+cannot happen. That is a deliberate property of a fluid, deterministic model; the open question "percentile PI with
+few completions" is settled as *not modelled*.
+
+### W15. Settled without a change
+
+| Question (PROGRESS.md) | Answer | Source |
+|---|---|---|
+| Does net value credit other classes the regions serve (secondary receivers)? | No documented credit: the test is donor harm against the receiver's improvement. Served classes are checked as goal donors when their regions are moved down | [WLM Services p.137–138][ws137], [p.707][ws707] |
+| Does equal-importance convergence apply to secondary donors? | Net value is assessed "for both primary and secondary donors"; convergence is part of the net value rule for equal importance (*patent (1994)* only; SG24-6472 p.60 states convergence for "the receiver and the donor"). **Probably yes, unverified** for z/OS 3.1 | [WLM Services p.138][ws138] |
+| How do equal-priority units share a CPU? | Their dispatching order is rotated. The sim's equal turn per ready unit is a fluid form of that | [SG24-6472 p.66][r66], [SG24-7621 p.111][a111] |
+| CPU protection: lower the less important period or raise the protected one? | The less important one is moved down. The sim's direction is IBM's, not an approximation | [WLM Services p.705][ws705] |
+| A region class as a receiver | Its goal is ignored for regions managed as servers; see W3 | [SG24-6472 p.89][r89] |
+| Resource-group minimum for discretionary work: what is "missing"? | Group service below the minimum; see W10 | [SG24-6472 p.63][r63] |
+| zIIP time in period switching | Not found; stays open | — |
+
+### Interactions
+
+The findings feed each other, which is why §5 is one model and not fifteen patches:
+
+- W1 (a lucky tick) + W5 (single moves) + W8 (backlog cliff) produce the oscillation of R-1.
+- W2 (the climb) is driven by W1 and W5: each oscillation and each jump "above" costs a level that is never given
+  back.
+- W3 (stale DPs of served classes) makes W2 worse: ONLHI and STCHI race to 252 because neither move does what the
+  projection of the other assumed.
+- W6 (reassess every interval) multiplies the cost of W1 (assessing the recovered) and hides fixable receivers
+  behind unfixable ones.
+
+## 5. Target model
+
+One loop, the same shape as IBM's (§3), sized for the sim. What stays: the 10 s interval, one receiver per image per
+interval, receiver order, projection by re-running the dispatcher model, the 0.9 credit floor, CPU protection,
+resource-group caps, the dispatcher. What changes: one PI basis per decision (W1), a priority ladder that is an order
+and nothing else (W2), a server period that owns the regions' priority (W3), IBM's donor order (W4), a change built
+from several moves (W5), skip clocks instead of a per-importance budget (W6), managed bottlenecks in turn (W7) and
+sustained demand in projections (W8).
+
+### 5.1 Terms and state
+
+- **Goal period**: a service class period with a goal that is not discretionary. It has PIs.
+- **Holder**: what owns a dispatching priority. Every goal period is its own holder, except CICS transaction
+  periods: their holder is the image's **server period** `$SRMS001` when any AOR on the image is managed to
+  TRANSACTION goals, else the region class's period (REGION/BOTH, as today). The server period holds the TRANSACTION
+  regions and the CICS transactions; it has no goal and no PI. APPROX: one server period per image, because the sim
+  does not split a workload's transactions between regions (IBM: one per set of regions serving the same classes).
+- **Ladder**: the holders of an image grouped into **levels**, highest first. Only the order matters to dispatch.
+
+State (all plain, serialised in key order):
+
+| Field | Where | New? | Meaning |
+|---|---|---|---|
+| `dp` | `ScpState` | no | The DP of the period's holder. Written from the ladder every interval, so reports and saves keep their shape |
+| `acc` | `ScpState` | adds `demandCp`, `demandZi`, `ziipEngines` | Decayed sums like the rest: the period's arriving demand in engines (without backlog), and zIIP engines used |
+| `skipUntilTick` | `ScpState` | yes | The period is not assessed as a receiver before this tick. Absent = 0 |
+| `servers` | `WlmSystemState` | yes | `[{ key: '$SRMS001', dp }]`, sorted by key. Absent in an old save: created with the highest DP among the served periods, which is what runs today |
+
+### 5.2 Two PIs, each with one job
+
+| | **Management PI** `m` | **Projected PI** `p` |
+|---|---|---|
+| From | the accumulators (`goalPi`): `mLocal` from this image, `mPlex` from all images summed | `evaluateLpar` on the projection input (§5.4) at a given ladder; percentile goals through `projectedPercentilePi` |
+| Used for | who is a receiver candidate and in what order; whether a donor is happy; the resource-group minimum; reports | everything a plan is judged on: `base = p(current ladder)`, `after = p(trial ladder)` |
+
+No test mixes them. A candidate whose `base` is ≤ 1 is recovering by itself and gets no plan.
+
+### 5.3 The loop
+
+```
+policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
+  info    ← goal periods of sys: goal, importance, cpuCritical, holder
+  L       ← ladderOf(sys)                                  // holders by level, from stored DPs
+  L       ← enforceCpuProtection(L, info, ccImp)           // unchanged rule; logs CPU PROTECTION
+  mLocal  ← { k: goalPi(goal_k, acc_k) };  mPlex ← { k: goalPi(goal_k, plexAcc_k) }
+  budget  ← C.maxProjectionsPerInterval
+  base    ← not computed yet
+
+  for r in receiverOrder(info, mPlex, mLocal):             // §2.5 order, unchanged: importance; sysplex then local; worst first; key
+      if skipUntilTick[r] > nowTick:              trace SKIP_CLOCK;        continue
+      if managedDelayFrac(acc_r) < C.needsHelpDelayFrac:
+                                                  trace NO_MANAGED_DELAY;  continue
+      if base not computed: P ← projectionInput(tickInput, sys); base ← p(evaluate(P, L))
+      if base[r] is null or base[r] ≤ 1:          trace RECOVERING;        continue
+      tried ← false
+      for b in fixableBottlenecks(acc_r, C):      // §5.7
+          if budget ≤ 0:                          trace BUDGET;            goto done     // no skip clock: first in line next time
+          plan ← buildPlan(r, b, L, base, P, info, budget, C);  tried ← true
+          if plan.accepted:
+              L ← plan.ladder
+              log "RCVR=r PI=… BTLNK=b" + plan.moves;                      goto done     // one change per interval
+      if tried: skipUntilTick[r] ← nowTick + C.rejectedSkipTicks; note the first rejected step and its reason
+      else:     note "r PI=… BTLNK=<largest delay> not WLM-fixable"
+  done:
+  L ← canonical(L)                                         // §5.6
+  write every period's dp from its holder's level; return dps, skip clocks, log, trace
+```
+
+```
+buildPlan(r, b, L0, base, P, info, budget, C):             // a change is a set of moves judged together (§3.7)
+  H ← holder(r);  L ← L0;  moves ← [];  upBlocked ← false;  cur ← base[r]      // cur: r's projected PI under L
+  donors ← donorOrder(r, b, L0, info, C);  d ← 0
+  repeat at most C.maxPlanSteps times, while budget > 0:
+      // A. receiver one step up
+      if not upBlocked and H is not alone on the top level:
+          T ← raiseOneStep(L, H)                           // §5.6: to the free slot above its level, else join the next level
+          (ok, why, after) ← assess(r, T);  budget −= 1
+          if not ok and why names a period k that T leaves at or below H and that is not less important than r:
+              T ← T with holder(k) placed on H's level     // secondary receiver: carried along
+              (ok, why, after) ← assess(r, T);  budget −= 1
+          if ok: L ← T; moves += T's moves; cur ← after[r]                // kept even without gain: the next level may give it
+                 if receiverValue(base[r], cur, C): return accepted(L, moves)
+          else:  upBlocked ← true;  remember (T, why) as the first rejection if none yet
+      // B. next donor down
+      else if d < donors.length:
+          D ← donors[d];  d += 1
+          T ← L with D moved to H's level, or to the free slot just below it if D is already there
+          (ok, why, after) ← assess(r, T);  budget −= 1
+          if ok and after[r] < cur:                                       // a donor move is kept only if it helps r
+                 L ← T; moves += "DONOR D …"; cur ← after[r]; upBlocked ← false   // room may have opened above
+                 if receiverValue(base[r], cur, C): return accepted(L, moves)
+          else:  remember (T, why or NO_RECEIVER_GAIN) as the first rejection if none yet   // this donor stays
+      else: break
+  return rejected(first rejection)                          // all intermediate moves are set back
+
+assess(r, T):
+  if violatesCpuCritical(T): return (false, CPU_CRITICAL)
+  after ← p(evaluateWithBatchRecovery(P, T))               // as batchRecoveryAccepts today: every round must pass
+  return netValue(r, base, after, info, C)
+
+receiverValue(b0, a1, C):  a1 < b0  and  b0 − a1 ≥ max(C.receiverValueFrac × (b0 − 1), C.receiverValueMinPi)
+
+netValue(r, base, after, info, C):
+  if after[r] is null or after[r] > base[r]: return (false, NO_RECEIVER_GAIN)
+  gain ← max(base[r], C.creditFloor) − max(after[r], C.creditFloor);  equalHarm ← 0
+  for k ≠ r in key order, with base[k] and after[k] not null:
+      harm ← max(0, after[k] − max(base[k], C.creditFloor))
+      if harm ≤ C.harmEps: continue
+      if importance(k) < importance(r):                     // more important
+          if after[k] > 1: return (false, MORE_IMPORTANT_HARMED k)
+      else if importance(k) = importance(r):
+          if |after[r] − after[k]| ≥ |base[r] − base[k]|: return (false, EQUAL_DISPARITY k)
+          equalHarm += harm
+      // less important: no test. base[r] > 1 is guaranteed, and a receiver missing its goal may take from them
+  if gain ≤ equalHarm and equalHarm > 0: return (false, NO_NET_VALUE)
+  return (true, –, after)
+```
+
+Receiver value is judged on the whole plan against `base`, so a step that passes net value but gains too little is
+kept and built on, as in IBM's example. A plan with no receiver value at the end is discarded whole. Net value is
+judged on the whole plan too: `assess` always compares the trial ladder with `base`, never with the previous step.
+
+### 5.4 Projection input: sustained demand
+
+```
+projectionInput(tickInput, sys):
+  for each period k with slices this tick:
+      arrive   ← Σ over k's slices of (cpEngines + ziipEngines)                       // this tick, no backlog
+      sustained← (acc_k.demandCp + acc_k.demandZi) × (1 − ACC_DECAY)                  // decayed sum → engines
+      f        ← clamp(sustained / arrive, 1, C.demandUpliftMax)                      // never below the tick
+      every slice of k: rate, cpEngines, ziipEngines, ioRate × f
+  for each transaction slice s: backlog'[s] ← min(backlog[s], C.backlogBoostFrac × (cpEngines_s + ziipEngines_s) × TICK_SEC)
+                                 ziipBacklog'[s] scaled by the same ratio
+  everything else (caps, I/O, paging, promotion, capacity) as this tick
+```
+
+- A quiet tick no longer hides a period's normal load (W1.3): its demand is lifted to its smoothed level. A rising
+  load is believed at once, because `f ≥ 1`.
+- A backlog adds at most `backlogBoostFrac` of a period's sustained demand (W8): a class that has fallen behind is
+  projected to want somewhat more than its rate, not everything.
+- `evaluate(P, current ladder)` is the `base`. It costs one evaluation and is only made when a candidate has passed
+  the skip clock and the delay test.
+
+### 5.5 Donors
+
+```
+donorOrder(r, b, L, info, C):
+  pool ← holders X ≠ holder(r) with level(X) ≥ level(holder(r))
+           and smoothed use of b's processor ≥ C.donorMinEngines        // CP + IIPCP for CPU, zIIP engines for ZIIP
+  worst(X) ← max over X's goal periods g of max(mPlex[g], mLocal[g])    // a server period: the classes it serves
+  imp(X)   ← the most important of X's goal periods
+  drop X with worst(X) > 1 and imp(X) more important than r             // net value could only reject it
+  order: happy holders (worst < 1) by worst ascending, importance ignored;
+         then the rest by imp descending (5 first), then worst ascending; ties by key
+  return the first C.donorsPerReceiver
+```
+
+Discretionary periods are fixed below the managed range and hold nothing a priority move could free, so they are
+not in the pool (they are IBM's "universal donor" for storage and through capping).
+
+### 5.6 The ladder
+
+```
+canonical(L):      level i from the top (i = 0, 1, …) gets DP = DP.MANAGED_MAX − 1 − 2·i
+                   // one free priority between occupied ones (unbunching); MANAGED_MAX itself is never occupied
+raiseOneStep(L, H): if H shares its level → H alone on a new level directly above it
+                    else                   → H joins the next level above        (alone on the top level: no step)
+first ladder:      one level per importance present, importance 1 on top
+a period seen for the first time: the level of the lowest period of its importance; if there is none, a new level
+                   directly below the lowest level that holds a more important period (the top if there is none)
+```
+
+With 45 managed priorities the canonical form holds 22 levels; if an image ever has more, the two lowest merge
+(APPROX; no shipped policy has 22 active goal periods on an image). DPs become a function of the order alone, so two
+runs that reach the same order have the same DPs, and the climb of W2 cannot occur. `MANAGED_MAX` stays free for the
+resource-group minimum's share and 253 for blocked-workload promotion, which closes W10's collision.
+
+### 5.7 Bottlenecks
+
+```
+managed delays: CPU, ZIIP, IO (the part in velocity), STORAGE, QUEUE.      CAP is reported, not managed.
+managedDelayFrac(acc) ← Σ managed delays ÷ (using + delay in velocity)
+fixableBottlenecks(acc, C) ← [CPU, ZIIP] ordered by delay, largest first, keeping those ≥ C.bottleneckMinFrac × Σ managed delays
+```
+
+`delayOther` (waits for locks, servers, the CF, the QR TCB) is not a delay state and takes no part. A period that is
+mostly waiting has little managed delay: either `NO_MANAGED_DELAY`, or a CPU plan that finds no receiver value and
+sets the skip clock. The no-action note then reads `… mostly waiting, CPU delay 6 %: not WLM-fixable`, which keeps
+the planted clue for a starved server (SPEC §5.5.4).
+
+### 5.8 Server periods, minimums, batch response times
+
+- **Dispatch:** `evaluateLpar` takes the TRANSACTION regions' and CICS transactions' DP from the server period
+  instead of the maximum over served classes. A served class as receiver moves its holder. The log names both:
+  `RCVR=ONLMED#1 (regions $SRMS001) …`. Served classes report their holder's DP, so the free ride shows.
+- **Region class:** unchanged PI (without server regions' samples). With only server regions in it, it has no PI and
+  is never a candidate.
+- **Resource-group minimum:** a group is *below its minimum and wanting* when its smoothed CP service is under the
+  minimum and a member has CPU delay. Goal members: as today, while a member's `mLocal` > 1. A discretionary member:
+  its share is dispatched at `MANAGED_MAX` while no goal period outside the group has `mLocal` > 1, else just below
+  the managed range as today (IBM's order: after periods missing goals, before happy ones).
+- **Batch response-time goals:** a job's end adds one completion with response time = queue + elapsed to its
+  period's accumulator and buckets. The PI then exists for as long as the decayed completion count lasts (about 20
+  minutes), and varies with single jobs, which is the behaviour behind IBM's "three completions per 20 minutes".
+
+### 5.9 Invariants and their tests
+
+Each is a named test in `tests/sim/wlm-invariants.test.ts` (property tests over generated inputs, seeded with the
+sim's RNG) or `tests/sim/realism.test.ts` (scenario assertions, SPEC §16 style). "Generated input" = 2–12 goal
+periods with random goals, importances, demands and backlog on a 2–8 engine image.
+
+| # | Invariant | Test |
+|---|---|---|
+| I1 | **Determinism.** Same state and input ⇒ same ladder, skip clocks, log and trace. No result depends on the order of `scps`, of slices within a period, or of object keys | Property: shuffle `scps` and the slice array; output identical after sorting. Golden runs |
+| I2 | **One change per interval.** At most one receiver is helped per image per interval; all DP changes of an interval belong to its plan or to CPU protection | Property: diff of ladders before and after ⊆ plan moves ∪ protection moves |
+| I3 | **Receiver order.** A candidate is assessed before every candidate of lower importance, and at equal importance sysplex-missing before local-only, worse PI first | Property on the trace order |
+| I4 | **Receiver value.** An accepted plan has `base[r] − after[r] ≥ max(frac × (base[r] − 1), minPi)` | Property: recompute from the trace |
+| I5 | **No harm to more important work.** No accepted plan takes a more important period from `base ≤ 1` to `after > 1`, or worsens one already above 1 by more than `harmEps` | Property. Realism: importance-1 class at its goal next to a starving importance-3 class keeps PI ≤ 1 for an hour |
+| I6 | **Equal-importance convergence.** When an accepted plan harms an equally important period, the two projected PIs are closer than before and the receiver gains more than the sum of such harms | Property. Realism: two equal classes on a saturated image end within 0.3 PI of each other and stop moving |
+| I7 | **Donor order.** The n-th donor tried is the n-th of `donorOrder`; a happy holder is tried before any unhappy one; a zIIP bottleneck never selects a donor with no zIIP use | Property on the trace; unit test C-2 |
+| I8 | **One basis.** No plan is built for a receiver with `base ≤ 1`; every accept or reject compares `base` with `after` only | Property: every assessed candidate has `base > 1`. Unit: the tick-PI helper is gone from `policyAdjust` |
+| I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism (S-4): Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels (today seven periods on three), and nothing is at `MANAGED_MAX` |
+| I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
+| I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
+| I12 | **Skip clock, no starvation.** A receiver whose plans were all rejected is not assessed again before its clock expires; every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 100 intervals with five unfixable and one fixable candidate at one importance (R-4's shape): the fixable one is helped |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals, and no period's move is reversed by its next move | Realism: R-1 replayed (Midwest 42, PROD2, D1 12:19–12:23) has no reversal; S-1 … S-3 "reversed by its next move" fall by at least 80 % |
+| I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
+| I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
+| I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
+| I17 | **Projection is honest at rest.** With `f = 1` for every period and no backlog, `base` equals this tick's PIs | Unit (keeps today's "projection = execution" property) |
+
+### 5.10 Coefficients and approximations
+
+Every number moves to `src/content/wlm/tuning.ts` as one object `POLICY_ADJUST`, each with a `// FICTIONAL:` note of
+the shape it should produce. IBM publishes none of them; the origin of a starting value is given, not a claim that
+IBM uses it.
+
+| Name | Start | Shape | Origin |
+|---|---|---|---|
+| `accDecay` (moves from `runtime.ts` `ACC_DECAY`) | 0.85 | PI looks back about a minute | existing |
+| `receiverValueFrac` (from `adjust.ts`) | 0.1 | a plan must close a tenth of the gap to the goal | patent's example (*patent (1994)*, unverified for z/OS) |
+| `receiverValueMinPi` | 0.05 | … and never less than this, so nothing moves for a hair | Enrico slide 50 (*practitioner*) |
+| `creditFloor` (from `adjust.ts`) | 0.9 | PI below 0.9 earns and costs nothing | *patent (1994)*, unverified for z/OS |
+| `harmEps` (from `adjust.ts`, 0.02) | 0.02 | projection noise is not harm | existing |
+| `needsHelpDelayFrac` | 0.02 | a period with no managed delay is not assessed | IBM's rule is "no delay samples"; a fluid model never has exactly none |
+| `bottleneckMinFrac` | 0.15 | a second bottleneck is tried only if it is a real share of the delay | invented |
+| `rejectedSkipTicks` | 6 | a hopeless receiver is looked at once a minute, not every 10 s | IBM gives no length |
+| `donorsPerReceiver` | 3 | bounds a plan's cost | existing |
+| `donorMinEngines` | 0.01 | a holder using almost none of the processor is no donor | IBM: small consumers are not donors |
+| `maxPlanSteps` | 6 | a plan is a handful of moves | invented |
+| `maxProjectionsPerInterval` | 12 | the tick budget (replaces `RECEIVERS_PER_IMPORTANCE`, which is deleted) | invented |
+| `demandUpliftMax` | 2 | a quiet tick is lifted to at most twice its demand | invented |
+| `backlogBoostFrac` | 0.5 | work that fell behind wants up to 1.5 × its rate | invented |
+
+Approximations, each marked `// APPROX:` where it is coded:
+
+1. `m` is one exponential window, not rows of history; no small-sample variability for transactions (W14).
+2. Projection re-runs the sim's dispatcher at sustained demand; WLM projects from demand, achievable demand and
+   learned plots.
+3. A backlog's demand is a fixed boost; slot-queue (MXT, DBAT) feedback is not projected.
+4. One server period per image; all region wait of a served transaction counts as its CPU delay (existing).
+5. Only CPU and zIIP are fixed by policy adjustment. No I/O priority, MPL or storage targets; no receiver that
+   meets its goal (§3.5 case 4); no small-consumer priority; discretionary work at one priority (§8 Q3, Q6).
+6. Where the canonical ladder sits in the managed range; IBM only says occupied priorities are spaced.
+7. Equal-importance harm is summed over all such periods as well as tested per period (IBM: per donor).
+8. A discretionary minimum yields to any goal period missing its goal on the image, not to a receiver search.
+9. `needsHelpDelayFrac`, `rejectedSkipTicks`, `maxPlanSteps` stand in for rules IBM does not quantify.
+
+### 5.11 Cost
+
+`evaluateLpar` is linear in slices and is the whole cost. Today's worst case per image per tick is 5 importances × 2
+receivers × 6 trials × up to 9 batch-recovery rounds = 540 evaluations; the measured average is far lower (S-3: 0.12
+projections per adjustment). The target is bounded by I16: 13 projections, 117 evaluations with batch recovery, and
+zero on an interval where every candidate is on its skip clock.
+
+Steps whose cost grows with the number of service class periods `n`: `netValue` (O(n) per projection),
+`donorOrder` and `canonical` (O(n log n) per interval), `projectionInput` (O(slices) per assessed interval). None
+grows with trials beyond the budget. The entries that touch the loop record `npm run bench` before and after; the
+≤ 4 ms tick budget (SPEC §15) is their gate.
+
+## 6. Effects on play and balance
+
+None of this is measured: the model is not implemented. Directions are reasoned from §4's repros; each `sim` entry
+in the list carries its own three-scenario sweep.
+
+### 6.1 What changes for players
+
+| Lever | Today | With the target model | Cost or trade-off that remains |
+|---|---|---|---|
+| **Importance** | Decides the receiver order, then fades: on a stressed image everything ends on two or three levels (W2) | Holds under stress: the ladder is an order, more important work is never pushed past its goal for less important work, and a struggling less important class is no longer the first donor | Raising a class's importance exposes everything below it; one change per 10 s still limits how fast many classes are sorted |
+| **Goal value** | Mostly decides whether a class is a receiver | Also decides who gives: the happiest period at or above the receiver donates first, whatever its importance (W4) | A goal that is easy to beat makes a class the first donor. A goal that cannot be met makes it a permanent receiver that blocks less important receivers from taking from it, and is revisited once a minute |
+| **CPU Critical** | Protects against less important work | Same, and now also the way to stop an over-achieving important class from donating to less important work | It still removes WLM's freedom to trade; less important work waits longer |
+| **Splitting CICS classes** (a critical-path class) | The new class's DP is one of several, only the highest counts (W3) | The regions follow the most important unhappy class they serve; the free ride of the other classes is visible as their shared DP | The free ride is real: a critical class lifts everything in the same regions. Separating work for real needs separate regions (not a lever in the game) |
+| **The region class's goal and importance** (STCHI) | Looks like a lever, moves the top of the ladder, does not reach the regions | Ignored for regions managed to transaction goals, and it shows | None: it stops being a trap |
+| **Resource-group minimum on discretionary batch** | Only capacity nobody wants | Served ahead of work that meets its goals | It takes from happy work and slows it toward its goal |
+| **Response-time goal on batch** | Silently unmanaged | Managed, with a PI that jumps with single jobs | IBM's own advice: too few completions make it erratic; velocity is steadier |
+| **Number of active periods** | More periods, slower convergence | The same, softened by skip clocks | Unchanged |
+
+**What the log and `wlm-why` say.** One line per interval with a change, listing the plan:
+`12:19:30 PROD2 RCVR=DDFPRD#1 PI=1.84 BTLNK=CPU DDFPRD#1 UP; DONOR TSO#2 DOWN` with the DPs in hex. Without a
+change, the first rejected step and its reason, in the same words as now, plus three new ones: `already recovering`
+(projected PI at or under 1), `mostly waiting, CPU delay n %: not WLM-fixable`, and `next look hh:mm:ss` (skip
+clock). `inspect wlm` adds the outcomes `SKIP_CLOCK`, `NO_MANAGED_DELAY`, `RECOVERING` and prints each plan step with
+`base → after` for the receiver and the period that rejected it. The `wlm-why` skill's verdict table is rewritten
+with these (WT-15). Every reason a player reads is then stated on the PI the log shows, which is not true today
+(W1).
+
+### 6.2 Bots and the balance bands
+
+Bands (SPEC §16; latest numbers PROGRESS.md M8.2): do-nothing loses day 12–18, textbook reaches day 28–32, expert
+wins.
+
+| Bot | Expected direction | Rough size | Why |
+|---|---|---|---|
+| do-nothing | Two opposite effects. **Later:** importance-1 and -2 online work keeps its place on stressed images. **Earlier:** Db2 in STCMED (flaw F1) no longer rides up to FB/FC with everything else (S-4 shows it there from day 2), so the planted flaw bites as designed | ± 3 days on the median; Harbourline (median 9.5, the collapse starts on day 1) moves most | W2, W4 |
+| textbook | Slightly later: it fixes the policy flaws, after which WLM's quality only matters near the capacity wall | 0 to + 2 days | W1, W5 |
+| expert | Harbourline up from 5/10: one accepted loss was "Db2 crowded out at equal dispatch priority", which the canonical ladder removes. Midwest and Revenue stay 10/10 | + 1 to + 3 victories of 10 on Harbourline | W2 |
+| spend-to-win | None: it removes the contention WLM arbitrates | 0 | |
+| oraclerca | Same incidents as do-nothing with different labels: fewer incidents on important work, more `CPU_PRIORITY` on importance-4 and -5 work | no band | RT-16 judges these |
+
+If a median leaves its band after the core entries, the fix is scenario pressure (growth, event severity, flaw
+size) in the `balance` list, not a WLM coefficient chosen to hit a band (§8 Q2). BL-01 and BL-02 tune numbers this
+list moves, so they should follow WT-09.
+
+### 6.3 Guardrails
+
+- **Every lever keeps a cost** (table above). The two that lose force (the region class's goal, a low-importance
+  class as the automatic donor) were not trade-offs but traps or defaults.
+- **Explainable from exposed data.** The three PIs of today collapse to the one in WLMGL and the log; the server
+  period and its DP appear in the log and the Codex; skip clocks are named in the log. New Codex entries: *server
+  topology and the free ride*, *donors and net value*, *skip clock*, *dispatching priorities and unbunching*.
+- **Diagnosis stays the gameplay.** The planted pattern "missing its goal with little CPU delay: WLM cannot help"
+  keeps its log clue (§5.7) and its realism test (I14).
+
+## 7. Order of work
+
+The list is BACKLOG.md `wlm-truth`, numbered in dependency order.
+
+1. **Ready now, no behaviour change (WT-01 … WT-03).** The statistics verb on `inspect` (the acceptance tests of
+   everything after it), the trace fields the tests need, and the SPEC text that already disagrees with the code.
+2. **The core, after RT-06 and before RT-14 (WT-04 … WT-09),** strictly in this order, one PR and one sweep each:
+   - WT-04 the PI basis and sustained demand. First, because every later rule is judged through projections, and a
+     projection that changes its mind with one tick makes the other fixes unmeasurable.
+   - WT-05 skip clocks, the delay test and the per-interval budget. Needs WT-04's `RECOVERING` outcome.
+   - WT-06 the canonical ladder. Before the plan, because plan steps are steps on the ladder.
+   - WT-07 donor order. Small, and the plan needs it.
+   - WT-08 the plan (receiver up, secondary receivers, donors) and net value on the whole plan.
+   - WT-09 server periods. Last of the core: it changes who holds a priority, which touches every piece above.
+3. **Independent of each other, after the piece they build on (WT-10 … WT-12):** bottlenecks, the minimum for
+   discretionary work, batch response times.
+4. **WT-15**: Codex, SPEC, the skill, and the closing sweep.
+
+**WT-04 and WT-08 are too coupled to split or delegate.** WT-04 changes what every test compares; WT-08 replaces
+the receiver/donor/net-value core in one piece (a half-built plan with the old single-move tests is not a state
+worth merging). The main agent implements both. WT-09 is cross-layer (dispatch, measurement, reporting, adjustment)
+and stays on the main agent too.
+
+**Against `rca-truth`** (user decision on §8 Q1, 2026-11-10). W3 and W4 change which work is hurt when something
+goes wrong, and §6.2 expects more `CPU_PRIORITY` incidents on importance-4 and -5 work. That is what RT-14 (card
+footprints) and RT-15 (grouping by cause) measure, and what BL-01/BL-02 tune. Building them on today's WLM and then
+landing the core would redo footprints and balance. So:
+
+1. `rca-truth` RT-00 … RT-13 go first. They are mostly game-layer and do not depend on WLM; RT-06 (the counterfactual
+   validator) must be merged before WT-04, so the core lands under a check that incident truths move only where
+   expected. Its baseline numbers change once, deliberately, with each WT entry; each WT PR reports the validator's
+   differences.
+2. The core WT-04 … WT-09, and WT-10 (bottlenecks change which receivers are helped): `blocked: after RT-06` for
+   WT-04, then in the order above.
+3. RT-14 (`blocked: after … WT-09, WT-10`), RT-15, then BL-01/BL-02 once.
+4. The human playtest that gates RT-16 … RT-21, on the WLM players will keep. RT-16 and RT-19 read the server-period
+   signals of WT-09 (cross-notes on both).
+
+The playtest moves out by the core's six entries either way; this order builds footprints and balance once.
+
+## 8. Questions for the user
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q1 | The playtest after RT-15 gates RT-16 … RT-21. Play it before or after the WLM core (WT-04 … WT-09)? And RT-16/RT-19 before or after WT-09? | **After.** One playtest on the WLM players will keep; RT-16 and RT-19 after WT-09, so the CPU split is built on the server-period signals. Cost: the playtest moves out by six entries |
+| Q2 | If the core moves do-nothing or textbook out of its band, tune scenario content (the `balance` list) or WLM coefficients? | **Content.** The coefficients of §5.10 are chosen for behaviour (I13 settles, I16 cost). BL-01 and BL-02 then follow WT-09 |
+| Q3 | Model receivers that meet their goals (IBM's case 4) so the order keeps improving when nobody misses? | **Not now** (WT-14 parked). It doubles the projections on quiet intervals for an effect players rarely see; revisit if a playtest finds a stale order hurting the next morning's ramp |
+| Q4 | Show the server period (`$SRMS001`) by name in the WLM log and Codex? In z/OS it is visible only in SMF 99 | **Yes** in the log and Codex (the log is the game's SMF 99 view); RMF-style reports stay as they are and show the served classes at the regions' DP |
+| Q5 | Renumber dispatching priorities to the z/OS 1.8 table (managed 247–203, small consumer 248) (W12)? | **Yes, inside WT-06,** which changes every DP in the goldens anyway. Otherwise WT-13 does it alone later with a second golden change |
+| Q6 | Batch response-time goals (W11): model job completions, or only warn in the editor? | **Model** (WT-12, small), plus a Codex line with IBM's three-completions advice |
+| Q7 | May the single-rule entries (WT-05, WT-07, WT-10, WT-11, WT-12) go to the Opus `realism-fixer` subagent? BACKLOG's rule keeps `sim` entries on the main agent | **Yes for those five,** with the main agent reviewing and running the sweep; never WT-04, WT-08, WT-09 |
+| Q8 | Small consumers and mean-time-to-wait (W13): leave unmodelled and correct SPEC §5.4? | **Yes** (WT-03 corrects the text) |
+| Q9 | `rejectedSkipTicks` is invented (IBM gives no length). One minute, or longer on Hard as a difficulty knob? | **One minute everywhere.** WLM's behaviour should not vary by difficulty |
+
+**User decisions (2026-11-10).** Q2–Q9 as recommended. Q1: the playtest after the core, and RT-16/RT-19 after
+WT-09, as recommended; in addition the core lands **before RT-14**, not after RT-15 (§7). Effects in BACKLOG.md:
+WT-04 waits only for RT-06; RT-14 waits for WT-09 and WT-10; WT-13 is folded into WT-06 (Q5); WT-12 is ready (Q6,
+no shipped policy affected); WT-14 is parked for a playtest (Q3, Q8); the single-rule entries may go to the
+`realism-fixer` subagent (Q7).
