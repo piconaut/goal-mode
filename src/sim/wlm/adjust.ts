@@ -235,6 +235,22 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       return false;
     }
     const before = basePis();
+    // A less important receiver never takes from more important work that is missing its goal (the 1994 patent:
+    // both missing and the donor more important → no net value; Enrico, slide 52: "never … if donor is missing
+    // goal"). The donors of a receiver-up move are the periods it passes or joins, whatever the projection says:
+    // a period already at the floor of the queueing model (saturated pool) shows no further projected harm.
+    const rImp0 = info[receiver]!.importance;
+    const r0dp = dps[receiver]!;
+    const r1dp = trial[receiver] ?? r0dp;
+    if (r1dp > r0dp) {
+      for (const k of infoKeys) {
+        const g = info[k]!;
+        const p0 = before[k];
+        if (k === receiver || g.importance >= rImp0 || p0 == null || p0 <= 1) continue;
+        const kdp = trial[k] ?? dps[k]!;
+        if (kdp >= r0dp && kdp <= r1dp) return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) PI ${p0.toFixed(2)} is missing its goal and would be passed`);
+      }
+    }
     return project(trial, (after) => {
       const r0 = before[receiver];
       const r1 = after[receiver];
