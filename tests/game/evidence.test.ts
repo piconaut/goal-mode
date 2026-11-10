@@ -1,7 +1,7 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { EVIDENCE } from '../../src/content/evidence';
 import { MIDWEST } from '../../src/content/scenarios';
-import { addPin, judgeEvidence } from '../../src/game/evidence';
+import { addPin, judgeEvidence, type EvidencePin } from '../../src/game/evidence';
 import { buildMon3 } from '../../src/game/mon3';
 import { advance, newRun, startDay, submitRca } from '../../src/game/run';
 import type { Incident, RunState } from '../../src/game/types';
@@ -110,6 +110,60 @@ describe('evidence pins', () => {
     // Still nothing for a mechanism where high APPL is not the cause, and still inside the window.
     expect(judgeEvidence(regressed, MIDWEST, incident(regressed, { truth: { mechanism: 'IO', trigger: 'POLICY' } }), [p])[0]!.why).toBe('points elsewhere');
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...p, tick: regressed.sim.tick + 10 * HOUR }])[0]!.why).toMatch(/window/);
+  });
+
+  it('scores the R-16 pins: a foreign image and a small row fail, the hurt image scores (A9, RT-03)', () => {
+    const pinOf = (over: Partial<EvidencePin>): EvidencePin => ({
+      id: 1000, source: 'WLMGL', metric: 'DELAY_CPU', subject: 'X', system: '*PLEX',
+      tick: regressed.sim.tick, value: 20, text: '', ...over,
+    });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' } });
+    const pins = [
+      pinOf({ subject: 'TSO#1', system: 'PROD2', value: 19.7 }),
+      pinOf({ id: 1001, subject: 'SYSTEM#1', system: 'SYSP', metric: 'APPL', value: 3.4 }),
+      pinOf({ id: 1002, subject: 'DDFPRD#1', system: 'PROD1', value: 8.2 }),
+      pinOf({ id: 1003, subject: 'DDFPRD#1', system: 'PROD1', metric: 'ENDED_RATE', value: 222 }),
+    ];
+    const v = judgeEvidence(regressed, MIDWEST, inc, pins);
+    expect(v.map((x) => [x.relevance, x.why])).toEqual([
+      [1, 'points at the cause'],
+      [0, 'not on a system MOBILE runs on'],
+      [0, 'value is unremarkable'],
+      [0.5, 'consistent with the cause (but not specific)'],
+    ]);
+  });
+
+  it('keeps a competing class on a host image scoring, and needs 5 % of APPL', () => {
+    const pinOf = (over: Partial<EvidencePin>): EvidencePin => ({
+      id: 1000, source: 'WLMGL', metric: 'APPL', subject: 'BATCHHI#1', system: 'PROD2',
+      tick: regressed.sim.tick, value: 442, text: '', ...over,
+    });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
+    expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({})])[0]).toMatchObject({ relevance: 0.5, why: 'consistent with the cause (but not specific)' });
+    expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ value: 3.4 })])[0]!.why).toBe('value is unremarkable');
+    // A sysplex-wide row has no image to check, and a test image's row is still not about production work.
+    expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ system: '*PLEX' })])[0]!.relevance).toBe(0.5);
+    expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ system: 'DEVT' })])[0]!.why).toBe('not on a system MOBILE runs on');
+    // The full-weight metrics are under the same image test, not just the half-weight APPL row.
+    expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ metric: 'DELAY_CPU', system: 'DEVT', value: 25 })])[0]!.why)
+      .toBe('not on a system MOBILE runs on');
+    // R-16's TSO#1 row is the "competing class on a host image" case the entry keeps: PROD2 hosts MOBILE, so the pin
+    // keeps its full weight. The two R-16 pins that must score 0 are the foreign image and the unremarkable value.
+    expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ metric: 'DELAY_CPU', subject: 'TSO#1', value: 19.7 })])[0])
+      .toMatchObject({ relevance: 1, why: 'points at the cause' });
+  });
+
+  it('does not treat an image the work was routed away from as a host image', () => {
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
+    // SET_ROUTING keeps the zero weight, so PROD2 is still a key in the routing table but hosts no MOBILE work.
+    const r = { ...regressed, sim: { ...regressed.sim, routing: { ...regressed.sim.routing, MOBILE: { PROD1: 1, PROD2: 0 } } } };
+    const pinOn = (system: string): EvidencePin => ({
+      id: 1000, source: 'WLMGL', metric: 'DELAY_CPU', subject: 'TSO#1', system,
+      tick: regressed.sim.tick, value: 25, text: '',
+    });
+    expect(judgeEvidence(r, MIDWEST, inc, [pinOn('PROD2')])[0])
+      .toMatchObject({ relevance: 0, why: 'not on a system MOBILE runs on' });
+    expect(judgeEvidence(r, MIDWEST, inc, [pinOn('PROD1')])[0]!.relevance).toBe(1);
   });
 
   it.each(['CPU_PRIORITY', 'CPU_CAPACITY'] as const)('awards two zIIP pins for a %s incident', (mechanism) => {

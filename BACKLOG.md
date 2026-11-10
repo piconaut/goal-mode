@@ -180,17 +180,8 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
-- Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 path; the replacing entry deletes the interim code path.
-
-### RT-03 · Pins from systems the hurt work does not run on count as evidence
-`list: rca-truth · status: ready · priority: high · size: S · area: game`
-
-`anySubject` metrics (`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`) skip the "about the hurt workload" test, so WLMGL
-SYSP SYSTEM#1 APPL 3.4 % and PROD2 TSO#1 CPU delay score for a MOBILE incident (A9, R-16). In
-`judgeEvidenceRanked` an `anySubject` pin must still come from an image the incident's work runs on (`p.system` in
-the incident's LPARs, or `*PLEX`); otherwise "not on a system MOBILE runs on". Give `APPL` a notable line of 5 %
-(`content/evidence.ts`). Interim: RT-12 replaces the test with pin relations and removes it. Done when: `tests/game/evidence.test.ts` has the two R-16 pins
-scoring 0 and a competing class on a host image still scoring.
+- Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 `anySubject` image test;
+  the replacing entry deletes the interim code path.
 
 ### RT-04 · Evidence is judged against today's classification and routing
 `list: rca-truth · status: ready · priority: high · size: M · area: game`
@@ -297,7 +288,9 @@ p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §
 User decision on Q3, 2026-11-10: yes. After RT-04. Each pin gets a relation to the incident (`self`, `server`, `competitor`, `host`) from the incident's
 `subjects`; each metric says which relations it accepts; `anySubject` is removed; pins store the baseline beside the
 value so a predicate can ask for "normal". Done when: R-16's table comes out as §4.6 describes and the existing
-evidence tests are ported.
+evidence tests are ported. That includes the residual RT-03 leaves: a competing class's `DELAY_CPU` row on a host
+image (R-16's TSO#1 on PROD2) still scores full weight from the image test alone, and only the relation plus §4.6's
+discriminator can say whether that class was ahead of the hurt work.
 
 ### RT-13 · Proof recipes: evidence as a discriminating pair
 `list: rca-truth · status: blocked: after RT-05, RT-07, RT-12 · priority: high · size: L · area: game`
