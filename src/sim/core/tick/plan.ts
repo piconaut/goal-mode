@@ -92,6 +92,12 @@ function buildPlan(config: WorldConfig, workloads: readonly WorkloadDef[], addre
   return { images, byLparId };
 }
 
+/** `arr[i]` when it is the entry `ok` wants (the plan's order holds while config is unchanged), else a search. */
+export function atOrFind<T>(arr: readonly T[], i: number, ok: (x: T) => boolean): T | undefined {
+  const x = arr[i];
+  return x !== undefined && ok(x) ? x : arr.find(ok);
+}
+
 interface Node {
   next: WeakMap<object, Node>;
   plan?: LparPlan;

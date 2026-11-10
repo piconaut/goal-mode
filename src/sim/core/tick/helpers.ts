@@ -40,22 +40,9 @@ export function byIdOf(workloads: readonly WorkloadDef[]): Record<string, Worklo
   return m;
 }
 
-// `${workloadId}@${lparId}` without building a new string every tick.
-export const wlLparKeys: Record<string, Record<string, string>> = {};
+/** `${workloadId}@${lparId}`; the tick stages read prebuilt ones from the plan (`ImagePlan.wlKey`). */
 export function wlLparKey(workloadId: string, lparId: string): string {
-  const m = (wlLparKeys[workloadId] ??= {});
-  return (m[lparId] ??= `${workloadId}@${lparId}`);
-}
-
-export const regionCountCache = new WeakMap<readonly AddressSpaceDef[], Record<string, number>>();
-export function cicsRegionCount(addressSpaces: readonly AddressSpaceDef[], lparId: string): number {
-  let m = regionCountCache.get(addressSpaces);
-  if (!m) {
-    m = {};
-    for (const a of addressSpaces) if (a.role?.startsWith('CICS.')) m[a.lparId] = (m[a.lparId] ?? 0) + 1;
-    regionCountCache.set(addressSpaces, m);
-  }
-  return m[lparId] ?? 0;
+  return `${workloadId}@${lparId}`;
 }
 
 /** Service a running job has consumed so far: CPU (incl. zIIP) seconds × SU per second, as the

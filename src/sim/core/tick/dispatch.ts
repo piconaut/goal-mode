@@ -7,13 +7,7 @@ import type { LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
 import { addParts, cicsHonorPriority, cicsRegions, classifyJob, idleScpTick, jobServiceSu, rgMin, rgSysplexShares, wlLparKey } from './helpers';
-import type { ImagePlan } from './plan';
-
-/** `arr[i]` when it is the entry `ok` wants (the plan's order holds while config is unchanged), else a search. */
-function atOrFind<T>(arr: readonly T[], i: number, ok: (x: T) => boolean): T | undefined {
-  const x = arr[i];
-  return x !== undefined && ok(x) ? x : arr.find(ok);
-}
+import { atOrFind, type ImagePlan } from './plan';
 
 /** This tick's PR/SM outcome for the image (`t.lpars` is in the plan's `rtIdx` order). */
 function runtimeOf(t: TickCtx, img: ImagePlan): LparRuntime {
