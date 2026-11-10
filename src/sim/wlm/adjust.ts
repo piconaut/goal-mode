@@ -3,7 +3,7 @@
 // (receiver up, donors down); accept the first move with receiver value and net value.
 // At most one receiver is helped per interval.
 
-import { PCT_PROJECTION_SIGMA } from '../../content/wlm/tuning';
+import { PCT_PROJECTION_SIGMA, RECEIVERS_PER_IMPORTANCE as DEFAULT_RECEIVERS_PER_IMPORTANCE } from '../../content/wlm/tuning';
 import { DP } from '../zos/dispatcher';
 import { prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
@@ -36,6 +36,8 @@ export interface AdjustInput {
   clockText: string;
   /** IEAOPT CCIMP on this system. */
   ccImp?: number;
+  /** How many fixable receivers the search assesses at one importance before going on (WLM content tunable). */
+  receiversPerImportance?: number;
   /** Measured demand and next-tick demand already enabled by execution's grants. */
   batch?: readonly BatchProjectionSlice[];
 }
@@ -72,7 +74,7 @@ export interface WlmCandidateTrace {
   localPi: number | null;
   dp: number;
   bottleneck: Bottleneck | null;
-  /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: two receivers were already assessed at this importance;
+  /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: receiversPerImportance receivers were already assessed at this importance;
    * ASSESSED: trials below. */
   outcome: 'NOT_FIXABLE' | 'BUDGET' | 'ASSESSED';
   trials: WlmTrialTrace[];
@@ -131,10 +133,6 @@ export function enforceCpuProtection(
 
 const RECEIVER_VALUE_FRAC = 0.1;
 const DONOR_CREDIT_FLOOR = 0.9;
-/** Projections are the expensive part, so the search assesses at most this many fixable receivers per importance
- * level, then goes on at the next importance (SG24-7621 p.105–106: the search moves down the importances when no
- * receiver can be selected). A receiver whose trials find no move of net value does not keep lower importances out. */
-const RECEIVERS_PER_IMPORTANCE = 2;
 
 export function policyAdjust(input: AdjustInput): AdjustOutput {
   const { def, system } = input;
@@ -272,16 +270,17 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null, protection });
     return out;
   };
+  const receiversPerImportance = Math.max(1, input.receiversPerImportance ?? DEFAULT_RECEIVERS_PER_IMPORTANCE);
   let projected = 0;
   let projectedImp = -1;
   for (const receiver of candidates) {
     const impOf = info[receiver]!.importance;
-    // Projection is the expensive part: assess at most two fixable receivers per importance, then move on.
+    // Projection is the expensive part: assess at most receiversPerImportance fixable receivers per importance, then move on.
     if (impOf !== projectedImp) {
       projectedImp = impOf;
       projected = 0;
     }
-    if (projected >= RECEIVERS_PER_IMPORTANCE) {
+    if (projected >= receiversPerImportance) {
       // Skip, don't stop: lower importances still get their own budget, traced or not.
       if (tracing) traceOf(receiver, null, 'BUDGET');
       continue;

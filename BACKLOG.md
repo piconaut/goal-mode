@@ -566,12 +566,3 @@ M8.2 follow-ups) belong here too. Decide whether the spread is wanted; if not, t
 week. Done when: a 20-seed three-bot Revenue sweep and the decision are recorded in PROGRESS.md M8.2.
 
 ## cleanup
-
-### CL-04 · WLM's receivers-per-importance limit lives in content
-`list: cleanup · status: ready · priority: low · size: S · area: sim`
-
-`RECEIVERS_PER_IMPORTANCE = 2` is a tunable hard-coded in `src/sim/wlm/adjust.ts:137`, against the CLAUDE.md rule
-that tunables live in `src/content/`. Move it to the WLM content with a `// FICTIONAL:` comment (the shape: how many
-fixable receivers the search assesses at one importance before going on to the next; SG24-7621 p.105–106 for the
-search order), and pass it through the adjust input like the other coefficients. Source: #260 milestone review,
-note N3. Done when: `npm run compare` and the bench hashes show no difference.

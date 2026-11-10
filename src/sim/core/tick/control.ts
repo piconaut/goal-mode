@@ -5,6 +5,7 @@ import { accumulateTick, closeInterval, newRmfAcc, type JobEndRecord } from '../
 import { msuPerCp } from '../../hw/cpc';
 import { poolKey, resolveCpc } from '../../hw/pools';
 import { policyAdjust } from '../../wlm/adjust';
+import { RECEIVERS_PER_IMPORTANCE } from '../../../content/wlm/tuning';
 import { jobCpuDemand } from '../../subsys/batch';
 import { sysplexPis, type WlmSystemState } from '../../wlm/runtime';
 import { clockAt } from '../clock';
@@ -75,6 +76,7 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
       sysplexPi: spPi,
       clockText,
       ccImp: config.systems.find((c) => c.lparId === sys.lparId)?.ccImp,
+      receiversPerImportance: RECEIVERS_PER_IMPORTANCE,
       batch: evalInput.ziipServers > 0 ? t.batchRefsBy[sys.lparId]?.map((r) => ({
         key: r.slice.key,
         jobs: r.jobs.map((j) => {

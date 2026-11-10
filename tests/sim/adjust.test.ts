@@ -230,7 +230,7 @@ describe('a hopeless receiver does not stop the search at the next importance (S
     expect(out.log).not.toContain('RCVR=');
   });
 
-  it('still assesses at most two receivers per importance', () => {
+  it('still assesses at most receiversPerImportance (default two) receivers per importance', () => {
     const third = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
     third.id = 'OLD3';
     third.periods = [{ goal: { kind: 'VEL', velocity: 5 }, importance: 1, durationSu: null }];
@@ -252,6 +252,17 @@ describe('a hopeless receiver does not stop the search at the next importance (S
     }
     const b = traces[0]!.candidates.filter((c) => c.outcome === 'BUDGET').map((c) => c.scKey);
     expect(b).toEqual(['OLD3#1']);
+    // The limit comes from the adjust input; a limit below 1 is clamped to 1.
+    for (const [limit, budget] of [[1, ['OLD2#1', 'OLD3#1']], [0, ['OLD2#1', 'OLD3#1']], [3, []]] as const) {
+      const tr: WlmAdjustTrace[] = [];
+      setWlmTraceSink((t) => tr.push(t));
+      try {
+        policyAdjust({ def: wide, system: system3, evalInput: input3, current: cur3.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T', receiversPerImportance: limit });
+      } finally {
+        setWlmTraceSink(null);
+      }
+      expect(tr[0]!.candidates.filter((c) => c.outcome === 'BUDGET').map((c) => c.scKey)).toEqual(budget);
+    }
   });
 
   it('skips past a spent budget to the next importance whether traced or not', () => {

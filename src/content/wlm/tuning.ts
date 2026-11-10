@@ -51,3 +51,9 @@ export const PCT_PROJECTION_SIGMA = 0.5;
 // larger of current demand and demand enabled by the grants. Unsettled trials are rejected, never accepted
 // using the final, possibly optimistic estimate. Tolerance is engines per job, not an IBM WLM threshold.
 export const BATCH_PROJECTION = { maxRecoveryRounds: 8, demandToleranceEngines: 1e-8 };
+
+// FICTIONAL: how many fixable receivers the search assesses at one importance before going on to the next.
+// Shape: at most this many receivers per importance level get their trials run; the rest are skipped (BUDGET)
+// and lower importances still get their own budget. A receiver whose trials find no move of net value does
+// not keep lower importances out. SG24-7621 p.105-106 for the search order.
+export const RECEIVERS_PER_IMPORTANCE = 2;
