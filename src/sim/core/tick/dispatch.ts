@@ -6,8 +6,8 @@ import { decayInto, emptyAcc, initialDp, type ScpState } from '../../wlm/runtime
 import type { LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
-import { addParts, cicsHonorPriority, cicsRegions, classifyJob, idleScpTick, jobServiceSu, rgMin, rgSysplexShares, wlLparKey } from './helpers';
-import { atOrFind, type ImagePlan } from './plan';
+import { addParts, cicsHonorPriority, classifyJob, idleScpTick, jobServiceSu, rgMin, rgSysplexShares, wlLparKey } from './helpers';
+import { atOrFind, type ImagePlan, regionsOf } from './plan';
 
 /** This tick's PR/SM outcome for the image (`t.lpars` is in the plan's `rtIdx` order). */
 function runtimeOf(t: TickCtx, img: ImagePlan): LparRuntime {
@@ -35,7 +35,7 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
   for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
   const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
-  const regions = cicsRegions(def, slices, workloadById, addressSpaces, l.id).regions;
+  const regions = regionsOf(img, def, slices, workloadById, addressSpaces).regions;
   const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
   const out: ImageEvalInput = {
     prevSys,

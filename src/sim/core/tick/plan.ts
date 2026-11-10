@@ -10,7 +10,10 @@ import { cpSpeed, msuPerCp, suPerCpuSecOf, ziipSpeed } from '../../hw/cpc';
 import type { ServiceDefinition } from '../../wlm/types';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
 import type { Scenario } from '../scenario';
-import type { CicsRegionConfig, CpcConfig, Db2MemberConfig, LparConfig, LparPoolConfig, WorldConfig, ZosSystemConfig } from '../types';
+import type { SliceSpec } from '../../wlm/evaluate';
+import type { CfConfig } from '../../cf/cf';
+import type { CapacityGroupConfig, CicsRegionConfig, CpcConfig, Db2MemberConfig, JobClassConfig, LparConfig, LparPoolConfig, WorldConfig, ZosSystemConfig } from '../types';
+import { cicsRegions } from './helpers';
 
 /** One z/OS image. Everything here is read from `config`, `workloads` or `addressSpaces`. */
 export interface ImagePlan {
@@ -43,12 +46,45 @@ export interface ImagePlan {
   /** Task-slot queue keys `${lparId}:MXT` and `${lparId}:DBAT`. */
   mxtKey: string;
   dbatKey: string;
+  /**
+   * `cicsRegions` for the image, filled on first use (`regionsOf`). It reads only template fields of the image's
+   * slices (kind, role, key, jobname, scKey, reportClass), which the plan's keys fix; batch slices carry none of the
+   * CICS roles. Per-tick region state (WT-09's server periods' DPs, rates, backlogs) stays out of it.
+   */
+  cicsRegions?: ReturnType<typeof cicsRegions>;
+}
+
+/** A coupling facility image, with its CF and ICF pool definitions. */
+export interface CfImagePlan {
+  lpar: LparConfig;
+  cf: CfConfig | undefined;
+  icf: LparPoolConfig | undefined;
 }
 
 export interface LparPlan {
   /** z/OS images in config.lpars order. */
   images: ImagePlan[];
   byLparId: Record<string, ImagePlan>;
+  /** z/OS image configs in config order (`images.map((i) => i.lpar)`). */
+  zosLpars: LparConfig[];
+  /** CF images in config.lpars order. */
+  cfImages: CfImagePlan[];
+  /** Every LPAR config by id (first one, as `.find()`), and the CPC it runs on. */
+  lparById: Record<string, LparConfig>;
+  cpcOf: Record<string, CpcConfig>;
+  /** CPC site position of each LPAR's CPC, km (0 when unknown). */
+  siteKmOf: Record<string, number>;
+  /** Images with a Db2 subsystem (a DB2.MSTR address space). */
+  db2Lpars: ReadonlySet<string>;
+  /** CF structure request share by structure name (first one, as `.find()`). */
+  structureShareOf: Record<string, number>;
+  /** Job class config by name (first one, as `.find()`), and where its WLM-managed queued jobs count. */
+  jobClassOf: Record<string, JobClassConfig>;
+  /** WLM mode: first eligible image in name order (initiators > 0). */
+  wlmHomeOf: Record<string, string | undefined>;
+  /** Capacity group config by id, and its member LPAR configs (config order). */
+  groupOf: Record<string, CapacityGroupConfig>;
+  groupMembers: Record<string, LparConfig[]>;
 }
 
 export function buildLparPlan(config: WorldConfig, workloads: readonly WorkloadDef[], addressSpaces: readonly AddressSpaceDef[]): LparPlan {
@@ -89,10 +125,57 @@ export function buildLparPlan(config: WorldConfig, workloads: readonly WorkloadD
     images.push(image);
     byLparId[l.id] = image;
   }
-  return { images, byLparId };
+  const lparById: Record<string, LparConfig> = {};
+  for (const l of config.lpars) lparById[l.id] ??= l;
+  // Same construction as step's per-tick record (the last CPC with an id wins).
+  const cpcOf: Record<string, CpcConfig> = {};
+  for (const c of config.cpcs) cpcOf[c.id] = c;
+  const siteKmOf: Record<string, number> = {};
+  for (const l of config.lpars) siteKmOf[l.id] ??= cpcOf[l.cpcId]?.siteKm ?? 0;
+  const structureShareOf: Record<string, number> = {};
+  for (const x of config.cfStructures) structureShareOf[x.name] ??= x.requestShare;
+  const jobClassOf: Record<string, JobClassConfig> = {};
+  const wlmHomeOf: Record<string, string | undefined> = {};
+  for (const jc of config.jobClasses) {
+    if (jobClassOf[jc.jobClass]) continue;
+    jobClassOf[jc.jobClass] = jc;
+    wlmHomeOf[jc.jobClass] = Object.keys(jc.initiators).filter((l) => (jc.initiators[l] ?? 0) > 0).sort()[0];
+  }
+  const groupOf: Record<string, CapacityGroupConfig> = {};
+  const groupMembers: Record<string, LparConfig[]> = {};
+  for (const g of config.capacityGroups) {
+    groupOf[g.id] ??= g;
+    groupMembers[g.id] ??= config.lpars.filter((x) => x.capacityGroup === g.id);
+  }
+  return {
+    images,
+    byLparId,
+    zosLpars: images.map((i) => i.lpar),
+    cfImages: config.lpars.filter((l) => l.kind === 'CF').map((l) => ({ lpar: l, cf: config.cfs.find((c) => c.lparId === l.id), icf: l.pools.find((p) => p.pool === 'ICF') })),
+    lparById,
+    cpcOf,
+    siteKmOf,
+    db2Lpars: new Set(addressSpaces.filter((a) => a.role === 'DB2.MSTR').map((a) => a.lparId)),
+    structureShareOf,
+    jobClassOf,
+    wlmHomeOf,
+    groupOf,
+    groupMembers,
+  };
 }
 
 /** `arr[i]` when it is the entry `ok` wants (the plan's order holds while config is unchanged), else a search. */
+/** The image's CICS region topology (`cicsRegions`), computed once per plan from this tick's slices. */
+export function regionsOf(
+  img: ImagePlan,
+  def: ServiceDefinition,
+  slices: readonly SliceSpec[],
+  byId: Record<string, WorkloadDef>,
+  addressSpaces: readonly AddressSpaceDef[],
+): ReturnType<typeof cicsRegions> {
+  return (img.cicsRegions ??= cicsRegions(def, slices, byId, addressSpaces, img.lpar.id));
+}
+
 export function atOrFind<T>(arr: readonly T[], i: number, ok: (x: T) => boolean): T | undefined {
   const x = arr[i];
   return x !== undefined && ok(x) ? x : arr.find(ok);
