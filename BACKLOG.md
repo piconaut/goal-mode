@@ -288,13 +288,25 @@ that is at least 5 % of the hour's ticks; keep `cappedByLpar` readable for old s
 (`addHour`) sums ticks. Put the 5 % in `content/incidents.ts`. Done when: a test with one capped tick in an hour
 gets the CPU split, one capped for 10 % of the hour gets CAPPING, and a sweep shows the bands hold.
 
-### RT-09 · Trigger and mechanism wording: "Change regression", "Policy or configuration"
-`list: rca-truth · status: blocked: after RT-00 · priority: low · size: S · area: content`
+### RT-09 · Trigger and mechanism wording: "Change regression" (renamed id), "Policy or configuration"
+`list: rca-truth · status: blocked: after RT-00 · priority: low · size: M · area: content`
 
-User decision on Q2, 2026-11-10: yes. Labels and help text only (ids unchanged): §4.4(5). Move ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS
-and SMF_AUDIT to `ACCESS_PATH_REGRESSION` (shown as "Change regression"); widen STORAGE's and CAPPING's help. Changes
-those cards' truth trigger, so the bots' fix matching (`obviousHourly`) needs a sweep. Done when:
-`tests/game/rcaVocabulary.test.ts` covers the new texts and the Codex entries agree.
+User decision on Q2, 2026-11-10: yes, and rename the trigger id (user, 2026-11-10): `ACCESS_PATH_REGRESSION` becomes
+`CHANGE_REGRESSION`, shown as "Change regression", because once other cards move to it the old id is a misnomer
+that agents type in the play CLI and read in `--json` output. Other entries and docs that say
+`ACCESS_PATH_REGRESSION` mean this trigger; this PR updates every mention (code, BACKLOG.md, docs/rca-design.md,
+SPEC, Codex). §4.4(5):
+- Rename the id everywhere in `src/`, `tools/` and `tests/`. Saves map the old id on load (incidents, filed RCAs,
+  active cards). The play CLI's `rca` argument and command-log replay accept the old id as an alias, so older play
+  files replay unchanged.
+- Move ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT to `CHANGE_REGRESSION`. `POLICY` is
+  shown as "Policy or configuration" (label only). Widen STORAGE's and CAPPING's help.
+- This changes those cards' truth trigger, so goldens are regenerated with a Behaviour note and a three-scenario
+  sweep is run (RT-00 keeps the bots' fix choice independent of the label).
+
+Done when: `tests/game/rcaVocabulary.test.ts` covers the new texts, the Codex entries agree, a test loads a save and
+replays a play file written with the old id and gets the same state, and no `ACCESS_PATH_REGRESSION` remains outside
+the aliases.
 
 ### RT-10 · Pin CF Activity and DASD Activity rows
 `list: rca-truth · status: ready · priority: low · size: M · area: game`
