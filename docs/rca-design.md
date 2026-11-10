@@ -357,13 +357,16 @@ surge against a regression or bot traffic, and `CPU_VS_BASE` near ×1.0 (or ×0.
 ### A10. Evidence is judged against the present, not the incident
 
 `judgeEvidenceRanked` classifies the workload with the current service definition and reads the current routing.
-R-16, same pins, after two remediations a player would plausibly make before the review:
+R-16, same pins, after three remediations a player would plausibly make before the review:
 
 - MOBILE moved to its own class DDFMOB: the DDFPRD#1 ended/s pin becomes "not about MOBILE".
 - MOBILE routed to PROD2 only: the Partition Data pin on PROD1 becomes "not about MOBILE".
-- MOBILE routed to PROD2 only, and the TSO#1 CPU-delay pin from PROD2: RT-03's image test reads the same live
-  routing, so this pin also becomes "not on a system MOBILE runs on". That is the A9 image rule applied to the
-  present, and RT-04 fixes both by storing the incident's subjects when it opens.
+- MOBILE routed away from PROD2 (`SET_ROUTING { PROD1: 1, PROD2: 0 }`, which keeps the zero weight): the PROD2
+  TSO#1 CPU-delay pin becomes "not on a system MOBILE runs on", because RT-03's image test counts only host images
+  with a positive routing weight. Routing the work *to* PROD2 is not what flips the pin.
+
+All three punish the player for fixing the incident before the review; RT-04 fixes them by storing the incident's
+classes, hosts and serving regions when it opens and judging against that snapshot.
 
 ### A11. What cannot be pinned
 

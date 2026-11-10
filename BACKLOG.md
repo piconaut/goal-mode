@@ -288,7 +288,9 @@ p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §
 User decision on Q3, 2026-11-10: yes. After RT-04. Each pin gets a relation to the incident (`self`, `server`, `competitor`, `host`) from the incident's
 `subjects`; each metric says which relations it accepts; `anySubject` is removed; pins store the baseline beside the
 value so a predicate can ask for "normal". Done when: R-16's table comes out as §4.6 describes and the existing
-evidence tests are ported.
+evidence tests are ported. That includes the residual RT-03 leaves: a competing class's `DELAY_CPU` row on a host
+image (R-16's TSO#1 on PROD2) still scores full weight from the image test alone, and only the relation plus §4.6's
+discriminator can say whether that class was ahead of the hurt work.
 
 ### RT-13 · Proof recipes: evidence as a discriminating pair
 `list: rca-truth · status: blocked: after RT-05, RT-07, RT-12 · priority: high · size: L · area: game`
