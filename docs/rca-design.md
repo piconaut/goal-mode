@@ -348,8 +348,8 @@ also gives `APPL` a 5 % notable line, so a row that is not a contender does not 
 
 What remains open: any two CPU-delay rows from *different* images the work runs on still reach "strong evidence"
 (relevance ≥ 2, +5 Insight) for any CPU or dependency incident, because nothing checks that the pins, taken together,
-separate the cause from its look-alikes. RT-04 (judge against the incident's own subjects) and RT-12 (pin relations)
-narrow this further, and RT-05/RT-14 add the images' own busy and capacity evidence.
+separate the cause from its look-alikes. RT-12 (pin relations) narrows this further, and RT-05/RT-14 add the
+images' own busy and capacity evidence.
 
 The reverse also holds: a ruling-out pin cannot count. "CPU per transaction unchanged" is the discriminator for a
 surge against a regression or bot traffic, and `CPU_VS_BASE` near ×1.0 (or ×0.4 for bots) is below `notableAt`.
@@ -369,7 +369,9 @@ All three punished the player for fixing the incident before the review. RT-04 s
 (and the positive-weight hosts the `anySubject` image test needs) and serving regions when it opens, and judges
 against that snapshot; incidents from old saves still derive them from the present. `tests/game/evidence.test.ts`
 pins a class row, reclassifies the workload and reroutes it, and gets the pre-edit verdicts from the recorded
-subjects (and the old defect from the live values).
+subjects (and the old defect from the live values). The snapshot is taken at the hour's close, so a change made
+during the breaching hour is already in it, and rows from a later hour of a still-open incident sit under the new
+class and no longer match — the price of a stable subject for the hour that opened the incident.
 
 ### A11. What cannot be pinned
 

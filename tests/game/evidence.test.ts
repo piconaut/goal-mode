@@ -1,7 +1,7 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { EVIDENCE } from '../../src/content/evidence';
 import { MIDWEST } from '../../src/content/scenarios';
-import { addPin, incidentSubjects, judgeEvidence, type EvidencePin } from '../../src/game/evidence';
+import { addPin, incidentSubjects, judgeEvidence, judgeGroupEvidence, type EvidencePin } from '../../src/game/evidence';
 import { buildMon3 } from '../../src/game/mon3';
 import { advance, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
 import type { Incident, RunState } from '../../src/game/types';
@@ -403,6 +403,13 @@ describe("evidence against the incident's own subjects (RT-04, A10)", () => {
     expect(verdicts(edited, { subjects })).toEqual([[1, 'points at the cause'], [1, 'points at the cause']]);
     // Judged against today's values (an incident from an old save has no subjects): the A10 defect.
     expect(verdicts(edited, {})).toEqual([[0, 'not about MOBILE'], [0, 'not on a system MOBILE runs on']]);
+  });
+
+  it('a group whose incidents recorded different subjects picks the best verdict per pin', () => {
+    const pin = { id: 1000, source: 'WLMGL', metric: 'DELAY_ZIIP' as const, subject: 'DDFPRD#1', system: '*PLEX', tick: regressed.sim.tick, value: 20, text: '' };
+    const mobile = incident(regressed, { id: 1, workloadId: 'MOBILE', truth: MOBILE_TRUTH, subjects: incidentSubjects(regressed, MIDWEST, 'MOBILE', regressed.day) });
+    const card = incident(regressed, { id: 2, workloadId: 'CARDAUTH', truth: MOBILE_TRUTH, subjects: incidentSubjects(regressed, MIDWEST, 'CARDAUTH', regressed.day) });
+    expect(judgeGroupEvidence(regressed, MIDWEST, [card, mobile], [pin])[0]).toMatchObject({ pinId: 1000, relevance: 1, why: 'points at the cause' });
   });
 
   it("a missed night records the critical jobs' classes and images", () => {

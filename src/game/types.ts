@@ -177,9 +177,9 @@ export interface CapacityBasis {
  * that was good when the incident opened into "not about X". */
 export interface IncidentSubjects {
   classes: string[];
-  /** Host images: every routing key, as the subject test reads it. */
+  /** Routing-table images: every routing key, including a zero weight, as the subject test reads it. */
   lpars: string[];
-  /** Images the work runs on: routing keys with a positive share (the `anySubject` image test). */
+  /** Images the work actually runs on: routing keys with a positive share (the `anySubject` image test). */
   hosts: string[];
   /** CICS regions (AOR/TOR) serving the transactions, by jobname and image. */
   servers: { jobname: string; lparId: string }[];
