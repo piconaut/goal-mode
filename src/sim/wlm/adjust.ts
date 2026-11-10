@@ -270,6 +270,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null, protection });
     return out;
   };
+  const receiversPerImportance = Math.max(1, input.receiversPerImportance ?? DEFAULT_RECEIVERS_PER_IMPORTANCE);
   let projected = 0;
   let projectedImp = -1;
   for (const receiver of candidates) {
@@ -279,7 +280,6 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       projectedImp = impOf;
       projected = 0;
     }
-    const receiversPerImportance = Math.max(1, input.receiversPerImportance ?? DEFAULT_RECEIVERS_PER_IMPORTANCE);
     if (projected >= receiversPerImportance) {
       // Skip, don't stop: lower importances still get their own budget, traced or not.
       if (tracing) traceOf(receiver, null, 'BUDGET');
