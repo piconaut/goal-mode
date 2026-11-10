@@ -64,13 +64,22 @@ export function textbookPolicy(): ServiceDefinition {
   return def;
 }
 
-const FIX_BY_TRIGGER: Partial<Record<string, string>> = {
-  RUNAWAY_WORK: 'CANCEL_RUNAWAY',
-  ACCESS_PATH_REGRESSION: 'REBIND_REVERT',
-};
-
-/** Agency cards whose fix differs from the one their trigger implies (the trigger map stays Midwest's). */
-const FIX_BY_AGENCY_CARD: Partial<Record<string, string>> = { EFILE_REGRESSION: 'EFILE_REBIND_REVERT' };
+// Frozen set of card ids the textbook/expert "obvious" rule fixes. Membership is pinned to the cards whose
+// trigger is RUNAWAY_WORK or ACCESS_PATH_REGRESSION as of 2026-11-10 (RUNAWAY, REGRESSION, XLOG_LOOP and their
+// deck adaptations RUNAWAY_COMPLIANCE, EFILE_REGRESSION), so RT-09's trigger relabelling (which moves
+// ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT onto ACCESS_PATH_REGRESSION) does not
+// silently pull those cards into the bots' fix path. Each card's own `fix` is taken from its definition, so the
+// agency exception (EFILE_REGRESSION -> EFILE_REBIND_REVERT) needs no special map. Do not regenerate this set
+// from triggers; that would undo the freeze.
+// XLOG_LOOP is the one intended change: the old trigger map sent CANCEL_RUNAWAY for it, which ends no XLOG_LOOP
+// card; the bots now request its own CANCEL_XLOG (user decision 2026-11-10, PR #264).
+const OBVIOUS_FIX_CARD_IDS = new Set([
+  'RUNAWAY',
+  'REGRESSION',
+  'XLOG_LOOP',
+  'RUNAWAY_COMPLIANCE',
+  'EFILE_REGRESSION',
+]);
 
 /** Work that arrives with no classification rule and lands in SYSOTHER (the MERGER story beat, the
  * NEW_APP_GOLIVE card): give each its own goal class, all in one policy change so neither overwrites the other. */
@@ -214,8 +223,8 @@ function obviousHourly(r: RunState, c: GameContent): RunState {
     run = requestChange(run, c, { label: `Restart ${j.def.name}`, commands: [{ kind: 'RESTART_JOB', day: j.day, name: j.def.name }] }).run;
   }
   for (const inc of run.incidents.filter((i) => i.endTick === null)) {
-    const active = run.events.filter((e) => e.started && !e.ended && e.trigger === inc.truth.trigger);
-    const fixId = active.map((e) => FIX_BY_AGENCY_CARD[e.defId]).find((f) => f) ?? FIX_BY_TRIGGER[inc.truth.trigger];
+    const active = run.events.filter((e) => e.started && !e.ended && e.trigger === inc.truth.trigger && OBVIOUS_FIX_CARD_IDS.has(e.defId));
+    const fixId = active.map((e) => c.events.find((d) => d.id === e.defId)?.fix ?? null).find((f) => f) ?? null;
     if (fixId && active.length > 0) run = requestChange(run, c, { label: `Fix ${fixId}`, fixId }).run;
   }
   return run;

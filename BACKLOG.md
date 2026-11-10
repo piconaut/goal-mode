@@ -179,20 +179,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-01 is replaced by RT-20 and RT-03 by RT-12; the replacing entry deletes the interim code path.
 
-### RT-00 · Bots look up a card's fix by card, not by the incident's trigger
-`list: rca-truth · status: ready · priority: high · size: S · area: tooling`
-
-`obviousHourly` (`tools/strategies.ts`) applies a fix when a running card's trigger equals the incident's and takes
-the fix from `FIX_BY_TRIGGER` (`RUNAWAY_WORK` → `CANCEL_RUNAWAY`, `ACCESS_PATH_REGRESSION` → `REBIND_REVERT`), plus
-the `FIX_BY_AGENCY_CARD` exception. Bot behaviour then depends on trigger labels: once RT-09 moves
-ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT to `ACCESS_PATH_REGRESSION`, the bots would
-request `REBIND_REVERT` while those cards run, a fix that ends none of them. Replace both maps with an explicit set
-of the card ids the textbook/expert "obvious" rule fixes today (every card, in all three decks and adaptations,
-whose trigger is `RUNAWAY_WORK` or `ACCESS_PATH_REGRESSION`), taking each card's own `fix` from its definition. Source:
-review of what RT changes do to the bots (2026-11-10). Done when: the set is listed in the code with a comment on
-why it is frozen, `npm run compare` shows no difference on the three scenarios, and a three-scenario sweep (seeds
-1–10) matches the 2026-11-10 reference in PROGRESS.md M8.2 exactly.
-
 ### RT-01 · A card fixed or expired inside the hour loses its `failureMechanism`
 `list: rca-truth · status: ready · priority: high · size: S · area: game`
 
