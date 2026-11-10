@@ -15,13 +15,14 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published builds** (republish on request):
   - **Release (main):** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-    link"), "GOAL MODE (release · main 12214d2)", rebuilt 2026-11-09 from `main` at `12214d2` (merge of #243).
+    link"), "GOAL MODE (release · main 0008a76)", rebuilt 2026-11-10 from `main` at `0008a76` (merge of #260).
   - **Preview (dev):** [artifact](https://claude.ai/artifact/MbFdETzQXwuj87CvtiQyNW) (private until shared),
-    "GOAL MODE (preview · dev e2a66ca)", built 2026-11-09 from `dev` at `e2a66ca`.
-- **Latest verified dev:** `e2a66ca` (#242, merged to main as `12214d2`); 77 test files / 786 tests pass
-  (`npm run check`, 2026-11-09).
-- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `e2a66ca`, 2026-11-09):** Midwest `752603840465408b`;
-  Harbourline `f110fc2de59aa7f3`; Revenue `5181b5fa96813685`. Host timings vary; use adjacent comparisons rather than
+    "GOAL MODE (preview · dev ab5d1ff)", built 2026-11-10 from `dev` at `ab5d1ff` (#259; the same game as the
+    release, since #259 changed docs only).
+- **Latest verified dev:** `1300e69` (#258, merged to main as `0008a76`); 79 test files / 832 tests pass
+  (`npm run check`, 2026-11-10).
+- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `1300e69`, 2026-11-10):** Midwest `bde6d147471ece9f`;
+  Harbourline `ec94548d8283d76c`; Revenue `fb563b38750d988f`. Host timings vary; use adjacent comparisons rather than
   old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
