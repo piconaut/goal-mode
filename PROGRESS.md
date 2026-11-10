@@ -444,6 +444,15 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-10: RT-00: the textbook/expert "obvious" rule (`obviousHourly`, `tools/strategies.ts`) looks up the fix
+  by card from a frozen card-id set (RUNAWAY, REGRESSION, XLOG_LOOP, RUNAWAY_COMPLIANCE, EFILE_REGRESSION) instead
+  of by the incident's trigger, so RT-09's relabelling can't change the bots' fix choice. One intended bot change
+  (user decision 2026-11-10, PR #264): during XLOG_LOOP the bots used to request CANCEL_RUNAWAY, which ends no
+  XLOG_LOOP card; they now request its own CANCEL_XLOG (ends the card, costs 1 Regulator trust). Textbook Midwest
+  seed 3 splits from day 24 (score 1675 → 1679); seeds 1–2 identical. The entry's "matches the reference exactly"
+  goal holds for the sweep medians in M8.2 (unchanged), not run by run. Scripted runs: `npm run compare` shows no
+  differences, goldens unchanged.
+
 - 2026-11-09: RCA judging and incident truth audited end to end (design only; no sim or game code changed, goldens
   unchanged). [docs/rca-design.md](docs/rca-design.md) has the truth inventory for all 27 Midwest cards, the
   Harbourline and Revenue cards and the scenario flaws, fourteen rule findings with repros (replays on Midwest,

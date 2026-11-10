@@ -71,6 +71,8 @@ export function textbookPolicy(): ServiceDefinition {
 // silently pull those cards into the bots' fix path. Each card's own `fix` is taken from its definition, so the
 // agency exception (EFILE_REGRESSION -> EFILE_REBIND_REVERT) needs no special map. Do not regenerate this set
 // from triggers; that would undo the freeze.
+// XLOG_LOOP is the one intended change: the old trigger map sent CANCEL_RUNAWAY for it, which ends no XLOG_LOOP
+// card; the bots now request its own CANCEL_XLOG (user decision 2026-11-10, PR #264).
 const OBVIOUS_FIX_CARD_IDS = new Set([
   'RUNAWAY',
   'REGRESSION',
