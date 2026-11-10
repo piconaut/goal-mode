@@ -138,16 +138,22 @@ level or a separate toggle.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
-- Latest accepted model-change sweep: Normal, seeds 1–10, `b8d835e` (2026-11-02, #111 fix 15):
+- Latest sweep: Normal, seeds 1–10, `dev` `1300e69` (2026-11-10, remote, for the `dev` → `main` release #260):
 
 | Scenario | Do-nothing median day | Textbook median day | Expert victories |
 | --- | ---: | ---: | ---: |
-| Midwest | 16.5 | 27 | 8/10 (seeds 1, 2: trust) |
-| Harbourline | 9 | 29 | 6/10 (seeds 1, 2, 7, 9: trust) |
-| Revenue | 8.5 | 28 | 10/10 |
+| Midwest | 16.5 | 27.5 | 10/10 |
+| Harbourline | 9.5 | 29 | 5/10 (seeds 1, 2, 4, 7, 9: trust) |
+| Revenue | 19 | 27 | 10/10 |
 
-- Harbourline's expert drop from 8/10 to 6/10 was accepted by the user: seed 1 is marginal; seed 9 crowds Db2
-  out at equal dispatch priority (at the time of that sweep), and the expert bot never moves Db2 above CICS.
+- Changes against the previous reference (`b8d835e`, 2026-11-02: Midwest 16.5 / 27 / 8 of 10, Harbourline 9 / 29 /
+  6 of 10, Revenue 8.5 / 28 / 10 of 10):
+  - Revenue do-nothing 8.5 → 19 comes from #167 (2026-11-03, compliance analytics restoring G1's pressure; its own
+    sweep gave 19).
+  - Harbourline expert 6/10 → 5/10: seed 4 is a new trust loss on day 38 (Markets). This is awaiting the user's call;
+    Harbourline is gated against Midwest's bands for reference only.
+  - The earlier 6/10 was accepted by the user: seed 1 is marginal; seed 9 crowded Db2 out at equal dispatch priority
+    (at the time of that sweep), and the expert bot never moves Db2 above CICS.
 - Historical 20-seed Normal reference (2026-10-27): expert victories Midwest 19/20, Revenue 20/20,
   Harbourline 16/20. These predate later model changes; full difficulty distributions are in Git history.
 - Nonblocking follow-ups: Revenue textbook day-22 PREFILL losses; Hard Harbourline expert has no victories
