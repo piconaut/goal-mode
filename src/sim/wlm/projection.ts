@@ -1,7 +1,7 @@
 // The input WLM projects with (docs/wlm-design.md §5.4): this tick's evaluation input at *sustained* demand.
-// A quiet tick is lifted to the period's smoothed demand, a backlog adds a bounded boost instead of
-// draining whole in one interval, and no transaction times out: a wait clamped at the timeout makes the
-// projected PI flat, which hides both the gain of a move and the harm it does to work that is already failing. APPROX: real WLM projects from maximum demand and achievable demand taken
+// A quiet tick is lifted to the period's smoothed demand, and a backlog adds a bounded boost instead of
+// draining whole in one interval. Timeouts stay as in execution: without them a response-time PI has no upper
+// scale and outweighs any velocity PI in an equal-importance trade. APPROX: real WLM projects from maximum demand and achievable demand taken
 // from sampled history (WLM Services p.144); this is the sim's equivalent on its own dispatcher model.
 
 import { TICK_SEC } from '../core/units';
@@ -39,7 +39,7 @@ export function demandUplift(
 
 /**
  * `fixedKeys`: slices whose demand is discrete and already exact (running batch jobs); never lifted.
- * Everything but demand, backlog and timeouts (caps, I/O, paging, promotion, capacity) stays as this tick.
+ * Everything but demand and backlog (caps, I/O, paging, promotion, capacity) stays as this tick.
  */
 export function projectionInput<T extends Omit<LparEvalInput, 'dpOf'>>(input: T, scps: readonly Pick<ScpState, 'scKey' | 'acc'>[], C: ProjectionTuning, fixedKeys?: ReadonlySet<string>): T {
   const uplift = demandUplift(input.slices, scps, C, fixedKeys);
@@ -49,10 +49,9 @@ export function projectionInput<T extends Omit<LparEvalInput, 'dpOf'>>(input: T,
   for (let i = 0; i < input.slices.length; i++) {
     const s = input.slices[i]!;
     const f = fixedKeys?.has(s.key) ? 1 : (uplift[s.scKey] ?? 1);
-    const timesOut = s.kind === 'TXN' && s.timeoutSec !== Infinity;
-    if (f !== 1 || timesOut) {
+    if (f !== 1) {
       slices ??= [...input.slices];
-      slices[i] = { ...s, rate: s.rate * f, cpEngines: s.cpEngines * f, ziipEngines: s.ziipEngines * f, ioRate: s.ioRate * f, timeoutSec: s.kind === 'TXN' ? Infinity : s.timeoutSec };
+      slices[i] = { ...s, rate: s.rate * f, cpEngines: s.cpEngines * f, ziipEngines: s.ziipEngines * f, ioRate: s.ioRate * f };
     }
     const bl = input.backlog[s.key];
     if (s.kind !== 'TXN' || bl === undefined || !(bl > 0)) continue;

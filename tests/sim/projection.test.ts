@@ -42,11 +42,10 @@ describe('WLM projection input: sustained demand (docs/wlm-design.md §5.4)', ()
     expect(projectionInput(base(slices, { a: bound / 2 }), [scp('A#1', 1, 1)], POLICY_ADJUST).backlog.a).toBe(bound / 2);
   });
 
-  it('projects without timeouts, so a starved class still shows gain and harm', () => {
+  it('keeps the transaction timeout, as execution does (a PI without it has no upper scale)', () => {
     const slices = [txn('a', 'A#1', 1, 0, 30)];
-    const p = projectionInput(base(slices), [scp('A#1', 1)], POLICY_ADJUST);
-    expect(p.slices[0]!.timeoutSec).toBe(Infinity);
-    expect(slices[0]!.timeoutSec).toBe(30);
+    const p = projectionInput(base(slices), [scp('A#1', 2)], POLICY_ADJUST);
+    expect(p.slices[0]!.timeoutSec).toBe(30);
   });
 
   it('never lifts fixed (batch) slices and leaves caps, I/O, paging and capacity untouched', () => {

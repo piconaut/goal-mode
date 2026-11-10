@@ -12,7 +12,7 @@ import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './e
 import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
 import { projectedPercentilePi } from './goals';
-import { goalPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
+import { ACC_DECAY, goalPi, goalInfo, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -219,6 +219,14 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     return null;
   };
 
+  /** Processor use of a period, engines: the larger of this tick and the smoothed accumulator (CP and zIIP). */
+  const accOf: Record<string, ScpState> = {};
+  for (const s of system.scps) accOf[s.scKey] = s;
+  const usedEngines = (k: string): number => {
+    const t = tickOf[k];
+    const now = t ? t.cpEngines + t.iipcpEngines + t.ziipEngines : 0;
+    return Math.max(now, (accOf[k]?.acc.cpuEngines ?? 0) * (1 - ACC_DECAY));
+  };
   const tracing = traceSink !== null;
   let why: WlmTrialTrace | null = null;
   /** The accepted trial's receiver PIs (trace only). */
@@ -237,8 +245,9 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const before = basePis();
     // A less important receiver never takes from more important work that is missing its goal (the 1994 patent:
     // both missing and the donor more important → no net value; Enrico, slide 52: "never … if donor is missing
-    // goal"). The donors of a receiver-up move are the periods it passes or joins, whatever the projection says:
-    // a period already at the floor of the queueing model (saturated pool) shows no further projected harm.
+    // goal"). The donors of a receiver-up move are the periods it passes or joins that use the processor, whatever
+    // the projection says: a period already at the floor of the queueing model (saturated pool) shows no further
+    // projected harm. A passed period that gets no CPU has nothing to lose and is left to the projection.
     const rImp0 = info[receiver]!.importance;
     const r0dp = dps[receiver]!;
     const r1dp = trial[receiver] ?? r0dp;
@@ -252,6 +261,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         const worst = Math.max(p0 ?? 0, localPi[k] ?? 0, input.sysplexPi[k] ?? 0);
         if (worst <= 1) continue;
         const kdp = trial[k] ?? dps[k]!;
+        if (usedEngines(k) < POLICY_ADJUST.donorMinEngines) continue;
         if (kdp >= r0dp && kdp <= r1dp) return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) PI ${worst.toFixed(2)} is missing its goal and would be passed`);
       }
     }
