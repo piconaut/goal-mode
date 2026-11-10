@@ -2,12 +2,13 @@
 
 import { decayMoved, mergeWorkManager, type MovedSamples, type WorkManagerSamples } from './reporting';
 import { DP } from '../zos/dispatcher';
+import { POLICY_ADJUST } from '../../content/wlm/tuning';
 import { emptyBuckets, performanceIndex } from './goals';
 import type { ScpTick } from './evaluate';
 import { SYSOTHER, SYSSTC, SYSTEM, type Goal, type Importance, type ServiceDefinition } from './types';
 
-/** Per-tick decay of the smoothed PI accumulators (APPROX: WLM looks back a few minutes). */
-export const ACC_DECAY = 0.85;
+/** Per-tick decay of the smoothed PI accumulators (APPROX: one exponential window, not WLM's rows of history). */
+export const ACC_DECAY = POLICY_ADJUST.accDecay;
 
 export interface ScpAcc {
   /** Reporting only (Monitor III): the decayed part of using/delay/CPU that RMF reports with CICS region classes,
@@ -25,6 +26,10 @@ export interface ScpAcc {
   delayOther: number;
   delayCap: number;
   cpuEngines: number;
+  /** Decayed arriving demand, engines, without backlog: × (1 − ACC_DECAY) is the sustained demand WLM projects
+   * with (docs/wlm-design.md §5.4). Absent in a period's first tick and in old saves: seeded at steady state. */
+  demandCp?: number;
+  demandZi?: number;
   /** Parts of using / delay left out of velocity (I/O priority management off); absent when none. */
   usingIoNoVel?: number;
   delayIoNoVel?: number;
@@ -136,6 +141,8 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
     delayOther: acc.delayOther * d + t.delayOther,
     delayCap: acc.delayCap * d + t.delayCap,
     cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
+    demandCp: acc.demandCp === undefined ? (t.demandCp ?? 0) / (1 - d) : acc.demandCp * d + (t.demandCp ?? 0),
+    demandZi: acc.demandZi === undefined ? (t.demandZi ?? 0) / (1 - d) : acc.demandZi * d + (t.demandZi ?? 0),
     ...(acc.usingIoNoVel !== undefined || t.usingIoNoVel !== undefined
       ? { usingIoNoVel: (acc.usingIoNoVel ?? 0) * d + (t.usingIoNoVel ?? 0), delayIoNoVel: (acc.delayIoNoVel ?? 0) * d + (t.delayIoNoVel ?? 0) }
       : {}),

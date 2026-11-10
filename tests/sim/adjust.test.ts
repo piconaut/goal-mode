@@ -222,22 +222,26 @@ describe('a hopeless receiver does not stop the search at the next importance (S
     } finally {
       setWlmTraceSink(null);
     }
-    const assessed = traces[0]!.candidates.filter((c) => c.outcome === 'ASSESSED').map((c) => c.scKey);
-    expect(assessed).toEqual(['OLD1#1', 'OLD2#1', 'ONLCARD#1']);
-    // The two importance-1 receivers found nothing: their projections reject every trial.
-    for (const k of ['OLD1#1', 'OLD2#1']) expect(traces[0]!.candidates.find((c) => c.scKey === k)!.trials.some((t) => t.verdict === 'ACCEPTED')).toBe(false);
+    // One basis (docs/wlm-design.md §5.2): the importance-1 receivers are at their goal on this system (only the
+    // sysplex PI is over 1), so their projected PI is ≤ 1 and they get no trials and use no budget.
+    const outcomes = traces[0]!.candidates.map((c) => [c.scKey, c.outcome]);
+    expect(outcomes).toEqual([['OLD1#1', 'RECOVERING'], ['OLD2#1', 'RECOVERING'], ['ONLCARD#1', 'ASSESSED']]);
+    for (const k of ['OLD1#1', 'OLD2#1']) expect(traces[0]!.candidates.find((c) => c.scKey === k)!.basePi).toBeLessThanOrEqual(1);
     expect(traces[0]!.candidates.find((c) => c.scKey === 'ONLCARD#1')!.trials.length).toBeGreaterThan(0);
     expect(out.log).not.toContain('RCVR=');
   });
 
   it('still assesses at most receiversPerImportance (default two) receivers per importance', () => {
-    const third = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
-    third.id = 'OLD3';
-    third.periods = [{ goal: { kind: 'VEL', velocity: 5 }, importance: 1, durationSu: null }];
-    const wide = structuredClone(def);
-    wide.classes.push(third);
-    const slices3 = [...slices, sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 1, units: 4 })];
-    const input3 = { ...evalInput, slices: slices3 };
+    // Receivers that miss their goal on this system and that no DP move helps: their CPU delay is PR/SM delay.
+    const wide = structuredClone(BASEPOL);
+    wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
+    const slices3 = [
+      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 2, units: 8 }),
+    ];
+    const input3 = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: slices3 };
     const cur3 = evaluateLpar({ ...input3, dpOf: (k) => dps[k] ?? 0xee });
     const system3: WlmSystemState = {
       lparId: 'SYS1',
@@ -266,22 +270,23 @@ describe('a hopeless receiver does not stop the search at the next importance (S
   });
 
   it('skips past a spent budget to the next importance whether traced or not', () => {
-    // Three CPU-fixable importance-1 receivers that find nothing spend the importance-1 budget; the importance-2
-    // class behind them must still be helped in the untraced (production) path, not only when the trace is on.
+    // Three importance-1 receivers that find nothing (PR/SM delay: no DP move helps) spend the importance-1 budget;
+    // the importance-2 class behind them must still be helped in the untraced (production) path, not only when
+    // the trace is on.
     const wide = structuredClone(BASEPOL);
-    wide.classes.push(cls('OLD1', 5, 1), cls('OLD2', 5, 1), cls('OLD3', 5, 1), cls('ONLCARD', 95, 2));
+    wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
     const bat = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
     bat.id = 'BAT';
     bat.periods = [{ goal: { kind: 'VEL', velocity: 10 }, importance: 5, durationSu: null }];
     wide.classes.push(bat);
     const sl = [
-      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 1, units: 4 }),
-      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 1, units: 4 }),
-      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 1, units: 4 }),
+      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
       sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 1.5, units: 8 }),
       sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
     ];
-    const input = { ...evalInput, slices: sl };
+    const input = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: sl };
     const d: Record<string, number> = { 'OLD1#1': 0xf4, 'OLD2#1': 0xf3, 'OLD3#1': 0xf2, 'BAT#1': 0xf0, 'ONLCARD#1': 0xe6 };
     const c = evaluateLpar({ ...input, dpOf: (k) => d[k]! });
     const sys: WlmSystemState = {

@@ -230,6 +230,9 @@ export interface ScpTick {
   delayCap: number;
   /** Batch jobs queued for an initiator in a WLM-managed job class (WLMGL QMPL). */
   delayQueue?: number;
+  /** Arriving demand this tick, engines, without backlog: feeds WLM's sustained demand. */
+  demandCp?: number;
+  demandZi?: number;
   /** The part of usingIo / delayIo left out of velocity (I/O priority management off). */
   usingIoNoVel?: number;
   delayIoNoVel?: number;

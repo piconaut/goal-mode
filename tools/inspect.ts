@@ -50,6 +50,7 @@ const piText = (p: number | null | undefined) => (p == null ? '-' : p.toFixed(2)
 const OUTCOME_TEXT: Record<WlmCandidateTrace['outcome'], string> = {
   NOT_FIXABLE: 'not assessed: bottleneck is not CPU/zIIP',
   BUDGET: 'not assessed: two receivers already assessed at this importance',
+  RECOVERING: 'not assessed: projected PI at sustained demand is already ≤ 1 (recovering by itself)',
   ASSESSED: '',
 };
 
