@@ -182,16 +182,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 path; the replacing entry deletes the interim code path.
 
-### RT-03 · Pins from systems the hurt work does not run on count as evidence
-`list: rca-truth · status: ready · priority: high · size: S · area: game`
-
-`anySubject` metrics (`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`) skip the "about the hurt workload" test, so WLMGL
-SYSP SYSTEM#1 APPL 3.4 % and PROD2 TSO#1 CPU delay score for a MOBILE incident (A9, R-16). In
-`judgeEvidenceRanked` an `anySubject` pin must still come from an image the incident's work runs on (`p.system` in
-the incident's LPARs, or `*PLEX`); otherwise "not on a system MOBILE runs on". Give `APPL` a notable line of 5 %
-(`content/evidence.ts`). Interim: RT-12 replaces the test with pin relations and removes it. Done when: `tests/game/evidence.test.ts` has the two R-16 pins
-scoring 0 and a competing class on a host image still scoring.
-
 ### RT-04 · Evidence is judged against today's classification and routing
 `list: rca-truth · status: ready · priority: high · size: M · area: game`
 

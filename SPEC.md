@@ -1164,8 +1164,9 @@ such a card the delay groups decide as above.
 
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident window (± 1 h), concerns the
-hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
-trigger (`content/evidence.ts`). PI is a symptom and never counts. Evidence points need the right mechanism.
+hurt workload (or is a server-side clue, which must still be pinned from an image the hurt work runs on or a
+sysplex-wide `*PLEX` row), is notable, and its metric is evidence for the true mechanism or trigger
+(`content/evidence.ts`). PI is a symptom and never counts. Evidence points need the right mechanism.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one

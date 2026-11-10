@@ -330,16 +330,20 @@ A pin scores when its metric lists the true mechanism **or** the true trigger. F
 (`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), which skips the "about the hurt workload" test entirely. R-16, for a
 MOBILE incident on PROD1/PROD2:
 
-| Pin | Verdict |
-|---|---|
-| WLMGL PROD2 **TSO#1** CPU delay 19.7 % | 1.0, "points at the cause" |
-| WLMGL **SYSP SYSTEM#1** APPL 3.4 % | 0.5, "consistent with the cause" |
-| WLMGL PROD1 DDFPRD#1 CPU delay 8.2 % (the hurt class, on the image that was fine) | 0, "value is unremarkable" |
-| WLMGL PROD1 DDFPRD#1 ended/s 222 | 0.5 |
+| Pin | Verdict before RT-03 | Verdict now |
+|---|---|---|
+| WLMGL PROD2 **TSO#1** CPU delay 19.7 % | 1.0, "points at the cause" | 1.0, unchanged (PROD2 is a MOBILE image) |
+| WLMGL **SYSP SYSTEM#1** APPL 3.4 % | 0.5, "consistent with the cause" | 0, "not on a system MOBILE runs on" |
+| WLMGL PROD1 DDFPRD#1 CPU delay 8.2 % (the hurt class, on the image that was fine) | 0, "value is unremarkable" | 0, unchanged |
+| WLMGL PROD1 DDFPRD#1 ended/s 222 | 0.5 | 0.5, unchanged |
 
-Any two CPU-delay rows from anywhere in the sysplex reach "strong evidence" (relevance ≥ 2, +5 Insight) for any CPU
-or dependency incident. `APPL` has `notableAt: 0`, so every APPL row qualifies. Nothing checks that the pins, taken
-together, separate the cause from its look-alikes.
+RT-03 makes an `anySubject` pin keep its subject freedom but takes away its image freedom: `p.system` must be one of
+the incident's LPARs or `*PLEX`, so a TSO or SYSTEM row on another image no longer reaches a production incident. It
+also gives `APPL` a 5 % notable line, so a row that is not a contender does not count. What remains open: any two
+CPU-delay rows from *different* images the work runs on still reach "strong evidence" (relevance ≥ 2, +5 Insight) for
+any CPU or dependency incident, because nothing checks that the pins, taken together, separate the cause from its
+look-alikes. RT-04 (judge against the incident's own subjects) and RT-12 (pin relations) narrow this further, and
+RT-05/RT-14 add the images' own busy and capacity evidence.
 
 The reverse also holds: a ruling-out pin cannot count. "CPU per transaction unchanged" is the discriminator for a
 surge against a regression or bot traffic, and `CPU_VS_BASE` near ×1.0 (or ×0.4 for bots) is below `notableAt`.
