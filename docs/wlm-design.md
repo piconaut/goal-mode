@@ -501,3 +501,284 @@ A CPU delay is being ready but not dispatched "because of active work at the sam
 [a110]: https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=110
 [a111]: https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=111
 [a112]: https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=112
+
+## 4. Findings
+
+Severity: **high** = WLM reaches a wrong system-level result that a player meets in ordinary play; **medium** = wrong
+in a situation that needs a particular policy or load; **low** = a difference with little effect, or documentation.
+None crashes or corrupts state. W1–W4 are the structural ones; fixing them is the target model of §5.
+
+Trace lines are `inspect … wlm` output, shortened. `rcvr PI a→b` is the receiver's tick PI before and projected.
+
+### W1. Receivers are chosen on one PI and judged on another (high)
+
+**Sim.** The receiver list uses the smoothed local and sysplex PI (§2.5). Every test of a trial uses the PI of the
+current tick alone (§2.10). The two differ whenever load changes within a minute, which is whenever WLM has
+something to do.
+
+**Real.** One basis: the sysplex PI "is the primary criteria used for selecting receivers and donors and assessing
+changes" ([WLM Services p.138][ws138]); projections are deltas from sampled history (§3.9).
+
+**Repro R-1** (Midwest, PROD2, D1):
+
+```
+12:19:30 → RCVR=DDFPRD#1 PI=1.20 BTLNK=CPU DONOR DDFPRD#2 DP F5→F3
+12:19:40 → no DP change
+  1. DDFPRD#1 imp 2 PI 0.90 (local 2.00) DP F4 BTLNK CPU
+       DDFPRD#1 DP F4→F6          NO_RECEIVER_GAIN  rcvr PI 0.50→0.50      (and four more trials, the same)
+  2. DDFPRD#2 imp 4 PI 2.20 (local 2.20) DP F3 BTLNK CPU
+       DDFPRD#2 DP F3→F5          MORE_IMPORTANT_HARMED  rcvr PI 10.14→0.47  DDFPRD#1 (imp 2) PI 0.50→4.36
+  3. TSO#2 imp 4 PI 0.41 (local 1.20) DP F5 BTLNK CPU
+       TSO#2 DP F5→FB             NO_NET_VALUE  rcvr PI 0.25→0.22  gain 0.00 ≤ equal-importance harm 0.00
+12:20:20   DDFPRD#2 DP F3→F5      MORE_IMPORTANT_HARMED  rcvr PI 10.23→0.48  DDFPRD#1 (imp 2) PI 0.50→4.00
+12:20:30 → RCVR=DDFPRD#2 PI=7.09 BTLNK=CPU DDFPRD#2 DP F3→F5        (the same move, accepted)
+12:21:10   DDFPRD#2 F5→F3      12:22:50   DDFPRD#2 F3→F5            (S-1 "reversed by its next move")
+```
+
+Three effects, all visible here:
+
+1. **Wasted assessments.** A receiver whose tick PI is already 0.50 is assessed for three more intervals on a
+   smoothed PI of 2.00, 1.40, 1.10; all five trials can only fail. Across S-1 … S-3, 13 %, 5 % and 28 % of rejected
+   trials had a receiver whose own-tick PI was ≤ 0.9. In Harbourline (R-4, PRDC from D1 12:51:50) MKTDDF#1 holds a
+   local PI of 4.00 against a tick PI of 0.50 for more than 30 intervals, and is assessed in every one.
+2. **A misleading reason.** `gain 0.00 ≤ equal-importance harm 0.00` is logged as "equal-importance harm outweighs
+   the gain" when there was no harm and the receiver was fine. The same happens with a `null` tick PI (no
+   completions this tick): `NO_RECEIVER_GAIN`, 10 times in S-3.
+3. **A move accepted on one quiet tick.** DDFPRD#2 moving above DDFPRD#1 is rejected for five intervals because it
+   would take DDFPRD#1 from 0.50 to 4.00, then accepted in the one interval whose tick shows no harm, and undone 40
+   seconds later. Four reversals in 3.5 minutes; 12, 22 and 44 reversals in S-1 … S-3.
+
+**Play.** The player sees DPs flapping in the WLM log and a PI that swings between 0.5 and 4.0 for the first period
+of a class whose second period keeps overtaking it. The log's reason for the quiet intervals is wrong (2). The clue
+path explains none of it: nothing the game exposes says that the test used a different PI from the one shown.
+
+### W2. The priority ladder only climbs, then collapses at the top (high)
+
+**Sim.** A receiver moves to an occupied level **+ 1** (§2.7); a donor moves to just below the receiver; nothing
+ever spreads the ladder or brings it down (§2.13). Each episode on a busy image leaves the periods involved one or
+two steps higher, and the top is 252.
+
+**Real.** After a change the occupied priorities are remapped so that one unoccupied priority lies between each pair
+(unbunching), and small consumers are parked above the managed range ([WLM Services p.138–139][ws139]). A receiver
+can be a period that meets its goal when nobody misses (§3.5 case 4), so the order keeps being tuned.
+
+**Repro S-4** (Midwest, PROD2, 12:00 each day; PROD1 has no misses and never changes):
+
+```
+D1  ONLHI#1=FA STCHI#1=FA DDFPRD#2=F5 STCMED#1=F5 DDFPRD#1=F4 ONLMED#1=F4 TSO#1=F4 TSO#2=EB
+D2  ONLHI#1=FC STCHI#1=FC DDFPRD#2=FB STCMED#1=FB TSO#2=FB DDFPRD#1=FA TSO#1=FA ONLMED#1=F4 BATCHPRD#1=E8
+D4  DDFPRD#2=FC ONLHI#1=FC STCHI#1=FC STCMED#1=FC TSO#1=FC DDFPRD#1=FB TSO#2=F9 ONLMED#1=F4 BATCHPRD#1=E8
+D8  ONLHI#1=FC STCHI#1=FC DDFPRD#1=FB STCMED#1=FB TSO#1=FB TSO#2=FB DDFPRD#2=FA ONLMED#1=F4 BATCHPRD#1=E8
+```
+
+From day 2, seven goal periods of importance 1 to 4 sit on three adjacent levels, and on day 4 five of them,
+including the importance-4 second period of DDFPRD, share 252. **R-4** (Harbourline, PRDD, D1 14:17:40):
+`MKTDDF#2=FC STCHI#1=FB MKTORD#1=FA MKTDDF#1=F9 …`: an importance-4 period at the top managed priority eight hours
+into the run.
+
+Consequences that follow from the collapse, not from any one rule:
+
+- At one level CPU is shared by ready units (§2.14), so among the periods at 252 importance and goals no longer
+  matter. WLM's only remaining move for a receiver at 252 is a donor move, one period per interval.
+- A receiver at 252 with nothing above it and no eligible donor has no trial at all ("no move to try").
+- The resource-group minimum is dispatched at 252 too (W10).
+- The order frozen at the end of an episode stays until the next miss: on D1 from 12:23 to the next morning the
+  importance-4 periods DDFPRD#2 and TSO#2 run above the importance-2 periods (§S-4, D1 row). That part is real WLM
+  behaviour while goals are met; the climb and the collapse are not.
+
+**Play.** `inspect dp`, the WLM log and Monitor III show nearly everything at FA–FC after a day or two. A player who
+knows WLM reads that as "the policy cannot separate this work" and looks for a policy flaw that is not there.
+Importance, the game's main policy lever, loses force on exactly the images under stress.
+
+### W3. Served transaction classes each own a priority; only the highest counts (high)
+
+**Sim.** §2.11: the regions and all CICS transactions on an image run at the maximum of the served classes' DPs. The
+adjustment loop moves one class's DP at a time and does not know which one the regions follow.
+
+**Real.** The priority belongs to the internal server period; the served classes are goal receivers and donors
+without a priority of their own, and the region's own class is ignored (§3.11).
+
+**Repro R-2** (Midwest, PROD2, D2):
+
+```
+10:21:00  STCHI#1 imp 1 PI 0.82 (local 1.01) DP FA BTLNK CPU      STCHI#1 DP FA→FC   ACCEPTED
+10:22:40  ONLHI#1 imp 1 PI 1.00 (local 1.30) DP FA BTLNK CPU      ONLHI#1 DP FA→FC   ACCEPTED
+10:22:50  ONLHI#1 imp 1 PI 0.90 (local 1.30) DP FC BTLNK CPU      DONOR STCHI#1 DP FC→FB  NO_RECEIVER_GAIN 0.60→0.60
+   ladder: ONLHI#1=FC STCHI#1=FC DDFPRD#2=FB TSO#2=FB STCMED#1=FB DDFPRD#1=FA TSO#1=FA ONLMED#1=F4
+```
+
+- The region class STCHI is a receiver in its own right (for the members that are not transaction servers) and
+  takes the top priority; this is the open question from playtest round 2. Its DP does not reach the regions.
+- ONLMED#1 stays at F4 for eight days (S-4) while its transactions run at ONLHI's FC: the F4 shown in every report is
+  not where the work runs.
+- By code reading (C-3): with ONLHI at FC and ONLMED at F4, (a) a trial that raises ONLMED to anything up to FC
+  changes nothing and fails `NO_RECEIVER_GAIN`, so ONLMED as a receiver can be helped only by a jump above ONLHI;
+  (b) ONLMED as a donor candidate passes the CP-use filter (its tick carries its transactions' CPU) and a trial
+  lowering it changes nothing, using a donor slot; (c) lowering ONLHI by one drops every CICS transaction and region
+  on the image to F4, a cliff of eight levels, because the maximum falls to the next class's stale DP.
+
+**Play.** A CICS class's DP in the log and in `inspect dp` cannot be trusted, and the free ride (less important
+transactions lifted by the regions' priority) is invisible in priorities although it is the documented behaviour
+players are meant to learn. PT-01's "two hopeless importance-1 receivers" was this finding plus W6.
+
+### W4. Donors are picked by importance and CPU use, not by goal achievement (high)
+
+**Sim.** §2.8. Less important periods are donors whatever their PI, least important first, heaviest CP user first;
+equal importance only if happy; more important never.
+
+**Real.** §3.8: happy periods first, best PI first, importance ignored among them; then periods missing their goals
+from the least important up. A more important period that overachieves can donate. The donor must use the delayed
+resource.
+
+Differences that matter:
+
+1. A less important period that is **missing its goal** is taken before a happy one. The net value test allows it
+   (the receiver is more important), so the sim pushes down work that is already suffering while an over-achiever
+   at the receiver's own importance, or above it, keeps its place.
+2. An over-achieving **more important** period is never moved down. The receiver can only go above it (a receiver-up
+   trial), which also puts the receiver above everything between them.
+3. For a zIIP bottleneck the donors are still filtered and ordered by CP use (C-2: a period using 2 zIIP engines
+   and no CP is not a donor; one using 0.2 CP and no zIIP is).
+4. The "happy" test is the local PI only; IBM names the sysplex PI as the primary criterion.
+
+**Repro.** R-1 12:19:40 lists `DONOR TSO#2`, `DONOR STCMED#1`, `DONOR ONLMED#1` for DDFPRD#1 (importance 2): the
+order is importance 4, 3, 2, and STCMED is Db2, whose own trial shows the receiver going 0.50→4.00 if it is lowered.
+Under IBM's order the first candidate is the happy period with the lowest PI. No seed-42 replay isolates point 3
+(Revenue's zIIP-bound receivers have no donor above them, R-3); it is by code reading.
+
+**Play.** "WLM takes from the least important work first" is what the sim teaches, and it is not how WLM chooses
+donors. A player who gives batch a loose goal expecting it to donate before a struggling importance-4 class sees the
+reverse.
+
+### W5. A change is one move of one period (medium)
+
+**Sim.** §2.7: each trial moves one DP; any equally or more important period the move would harm rejects it.
+
+**Real.** §3.7: the receiver's move, the co-moves of periods that would otherwise be harmed (secondary receivers)
+and the donors' moves are built up and judged together; a donor that fails net value is left where it is and the
+next one is tried.
+
+**Evidence.** `MORE_IMPORTANT_HARMED` is 58 % of all trials in S-1 and 42 % in S-3. Each is a receiver-up or donor
+move that real WLM would follow by trying to carry the harmed period along. How many would then pass cannot be
+known without implementing it; R-1 12:19:40 is the pattern (DDFPRD#2 above DDFPRD#1 harms DDFPRD#1, and no trial
+moves both).
+
+**Play.** A less important period behind a more important one at the same or the next level is stuck until the
+more important one is happy on the tick of the test (W1.3). Players see "harms X, more important" for hours.
+
+### W6. No skip clock and no "needs help" test; a budget instead (medium)
+
+**Sim.** Every candidate is assessed again every 10 s. The projection cost is bounded by assessing two per
+importance (§2.5).
+
+**Real.** §3.2, §3.3: a rejected receiver is skipped until its skip clock expires; a period with no managed delay in
+the last interval is not assessed; no limit per importance is documented.
+
+**Repro.** S-2: WEBDDF#1 on Revenue PROD2 is assessed 2 846 times in three days for a zIIP bottleneck that no
+priority can fix (R-3: `E8→EF SMALL_GAIN 1.80→1.80`, `E8→FB MORE_IMPORTANT_HARMED … STCHI#1 0.63→1.59`).
+"Assessed 30 intervals running without a move" happens 7, 4 and 20 times in S-1 … S-3. R-4: on PRDD at D1 14:17:40
+MKTDDF#1 (importance 2, local PI 4.00) is `BUDGET`: two other importance-2 candidates were assessed first and
+neither could be helped. The budget bit only 4 times in S-3, so today it is rare; it is the same defect PT-01
+fixed across importances, left in place within one.
+
+**Play.** A class can sit at PI 4 with "not assessed" in the trace and nothing in the log. Rare, but it is the
+"why didn't WLM help X" question with no clue path.
+
+### W7. One bottleneck, chosen among delays WLM does not manage (medium)
+
+**Sim.** §2.6: the largest of CPU, zIIP, I/O, cap and other; if it is not CPU or zIIP the receiver is dropped.
+
+**Real.** §3.6: only managed delays are considered, largest first, and the next one is tried when the first cannot
+be fixed.
+
+**Evidence.** S-3: 9 499 candidates dropped as not fixable (5 291 `OTHER`, 4 208 `IO`) against 5 939 assessed. A
+candidate with 45 % other delay (lock, CF, a slow server) and 40 % CPU delay is never given a CPU trial. `OTHER` is
+not a WLM delay state at all; it wins the comparison because the sim keeps it in the same list.
+
+**Play.** For the planted lesson (work waiting on a starved Db2 shows little CPU delay; WLM cannot help) this is
+right and stays. It is wrong when CPU delay is a close second: the log says "BTLNK=OTHER not WLM-fixable" for a
+class a DP move would help.
+
+### W8. Projections drain the whole backlog in one interval (medium)
+
+**Sim.** §2.9: projected demand is this tick's arrivals plus the entire backlog. A backlogged receiver moved up is
+projected to take everything until the backlog is gone.
+
+**Real.** §3.9: demand is a rate from samples; IBM is silent on backlog.
+
+**Repro.** R-1 12:19:40: moving DDFPRD#2 (tick PI 10.14, a backlog) one level above DDFPRD#1 is projected to take
+DDFPRD#1 from 0.50 to 4.36 while DDFPRD#2 itself drops to 0.47. The projection is true of the sim's next tick and
+false of the minute after it. Verdicts become all-or-nothing, which feeds W1.3 and W5. This is the PROGRESS open
+question "projections ignore backlog and DBAT feedback" seen from the other side: the backlog is modelled in the
+projection, as a one-tick spike. Slot-queue (MXT, DBAT) feedback is outside the projection and stays so (APPROX).
+
+**Play.** A class that has fallen behind cannot be raised past equal or more important work until it has caught up
+by itself, which is when it no longer needs to be.
+
+### W9. Receiver value has no floor (low)
+
+`SMALL_GAIN` needs 10 % of the distance to the goal. Near the goal that is nothing: R-3 10:42:00 `needs ≥ 0.01`.
+*Practitioner:* Enrico slide 50 gives the larger of that and 0.05. Small moves near PI 1 add to the churn of W1.
+
+### W10. The resource-group minimum is dispatched inside the managed range (medium)
+
+`RG_MIN_DP` is 252 with the comment "above every goal-managed period", and 252 is `DP.MANAGED_MAX`
+(`eval/grants.ts`, `zos/dispatcher.ts`). Once a period reaches 252 (W2: day 2 on Midwest PROD2) the guaranteed share
+competes with it by ready units. By code reading (C-4); no shipped policy has a minimum.
+
+For a discretionary member the sim serves the minimum from capacity no goal period wants (DP 207) and decides
+"missing" by delay > using. Real WLM makes such a period a receiver when its group is below the minimum, after
+periods missing goals and before happy ones (§3.15), so happy goal work does give way. The lever "discretionary
+batch with a minimum as a throughput goal" ([SG24-6472 p.68][r68]) is weaker in the sim than in z/OS.
+
+### W11. A response-time goal on batch or started tasks is never managed (medium)
+
+By code reading (C-1): address-space slices report no completions (`sliceResults`), so an average or percentile
+goal on a batch or STC class has no PI: never a receiver, never "missing" for a minimum, no PI in WLMGL. IBM allows
+response-time goals for batch with at least three completions per 20 minutes ([WLM Planning p.71][wp71]). The policy
+editor accepts such a goal without comment.
+
+### W12. Dispatching priorities use the table from before z/OS 1.8 (low)
+
+§3.13: 253 small consumer and 252–208 managed against 248 and 247–203. The two Redbooks conflict; the dated
+statement and the practitioner source agree on the newer table. Cosmetic, but DPs are shown in hex in the WLM log
+and `inspect`, and an expert knows F7 as the top managed priority. §8 Q5.
+
+### W13. Small consumers and mean-time-to-wait are not modelled (low)
+
+Every discretionary period runs at 196 (C4); SPEC §5.4 says 201–192 by mean time to wait. No period is ever a small
+consumer. Effects are small: discretionary work at one level shares by ready units, which already favours work that
+wants little.
+
+### W14. SPEC and code disagree about the PI window (low, documentation)
+
+SPEC §5.5.3 says the sysplex PI is "a completion-weighted average of local PIs" and that the PI uses "an EWMA whose
+horizon grows when completions are sparse". The code sums the systems' accumulators and uses a fixed decay of 0.85
+per tick. Because completions are fractional and each tick spreads a full distribution over the buckets (§2.4), a
+period with one completion a minute has a smooth PI: the variable PIs IBM warns about with few completions (§3.4)
+cannot happen. That is a deliberate property of a fluid, deterministic model; the open question "percentile PI with
+few completions" is settled as *not modelled*.
+
+### W15. Settled without a change
+
+| Question (PROGRESS.md) | Answer | Source |
+|---|---|---|
+| Does net value credit other classes the regions serve (secondary receivers)? | No documented credit: the test is donor harm against the receiver's improvement. Served classes are checked as goal donors when their regions are moved down | [WLM Services p.137–138][ws137], [p.707][ws707] |
+| Does equal-importance convergence apply to secondary donors? | Net value is assessed "for both primary and secondary donors"; convergence is part of the net value rule for equal importance (*IBM web*, patent). So yes | [WLM Services p.138][ws138] |
+| How do equal-priority units share a CPU? | Their dispatching order is rotated. The sim's equal turn per ready unit is a fluid form of that | [SG24-6472 p.66][r66], [SG24-7621 p.111][a111] |
+| CPU protection: lower the less important period or raise the protected one? | The less important one is moved down. The sim's direction is IBM's, not an approximation | [WLM Services p.705][ws705] |
+| A region class as a receiver | Its goal is ignored for regions managed as servers; see W3 | [SG24-6472 p.89][r89] |
+| Resource-group minimum for discretionary work: what is "missing"? | Group service below the minimum; see W10 | [SG24-6472 p.63][r63] |
+| zIIP time in period switching | Not found; stays open | — |
+
+### Interactions
+
+The findings feed each other, which is why §5 is one model and not fifteen patches:
+
+- W1 (a lucky tick) + W5 (single moves) + W8 (backlog cliff) produce the oscillation of R-1.
+- W2 (the climb) is driven by W1 and W5: each oscillation and each jump "above" costs a level that is never given
+  back.
+- W3 (stale DPs of served classes) makes W2 worse: ONLHI and STCHI race to 252 because neither move does what the
+  projection of the other assumed.
+- W6 (reassess every interval) multiplies the cost of W1 (assessing the recovered) and hides fixable receivers
+  behind unfixable ones.
