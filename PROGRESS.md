@@ -151,6 +151,9 @@ level or a separate toggle.
   config, hash-neutral) is scoped as BACKLOG `cleanup` CL-05 (profile, dispatch and demand; with a stop rule) and
   CL-06 (step, policy adjustment, RMF), 2026-11-10. It should land before the `wlm-truth` core changes the hot path.
   Option 2 (mutable engine, in-place accumulators) waits for a user decision; option 3 for a re-profile.
+- CL-05 (2026-11-10): lookup plan `src/sim/core/tick/plan.ts`; dispatch and demand by index; image evaluator inputs
+  built once per tick. Hash-neutral. Same-host paired 3-day medians: Harbourline −6.3 % (11 pairs), Midwest −6.6 %,
+  Revenue −13.8 % (5 pairs); passes the 5 % stop rule, so CL-06 is ready. Results in docs/headless-performance-options.md.
 - Evidence and current proposal: [docs/headless-performance.md](docs/headless-performance.md), raw results in
   [docs/performance/](docs/performance/). Preserve pure snapshots and exact hashes for optimizations.
 

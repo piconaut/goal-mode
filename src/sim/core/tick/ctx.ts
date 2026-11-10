@@ -6,6 +6,7 @@ import type { WlmSystemState } from '../../wlm/runtime';
 import { clockAt } from '../clock';
 import type { Scenario } from '../scenario';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
+import type { LparPlan } from './plan';
 import type { CpcConfig, EnvState, LparPoolRuntime, LparRuntime, CicsStorageTick, LparTick, SimState, WorkloadTick } from '../types';
 
 export const WLM_LOG_MAX = 400;
@@ -41,6 +42,8 @@ export interface BatchSliceRef {
 export interface TickCtx {
   prev: SimState;
   scenario: Scenario;
+  /** Configuration-derived lookups for this tick (./plan). */
+  plan: LparPlan;
   def: SimState['wlm']['definition'];
   env: EnvState;
   config: SimState['config'];
@@ -70,6 +73,8 @@ export interface TickCtx {
   /** Per-period share of the storage that storage-critical work keeps (only filled when some class is protected). */
   pagingWeight: Record<string, number>;
   evalInputs: Record<string, LparEvalInput>;
+  /** Per image, the evaluator inputs that PR/SM's grants don't change, built once per tick (overflow probe and dispatch). */
+  imageInputs: Record<string, ImageEvalInput>;
   backlog: Record<string, number>;
   ziipBacklog: Record<string, number>;
   failedBy: Record<string, number>;
@@ -86,6 +91,17 @@ export interface TickCtx {
   slotQueue: Record<string, number>;
   /** CICS region storage per LPAR (reporting only). */
   cicsStorageBy: Record<string, CicsStorageTick[]>;
+}
+
+/** The part of an image's evaluator input that only depends on last tick's state and this tick's slices. Per-tick
+ * scratch, never kept across ticks. */
+export interface ImageEvalInput {
+  prevSys: WlmSystemState | undefined;
+  slices: LparEvalInput['slices'];
+  dpOf: LparEvalInput['dpOf'];
+  promoted: Set<string>;
+  plexShare: Record<string, number>;
+  regions: LparEvalInput['regions'];
 }
 
 /** Sums over all images, accumulated in image order. */
