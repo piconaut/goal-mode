@@ -583,8 +583,9 @@ Consequences that follow from the collapse, not from any one rule:
 - A receiver at 252 with nothing above it and no eligible donor has no trial at all ("no move to try").
 - The resource-group minimum is dispatched at 252 too (W10).
 - The order frozen at the end of an episode stays until the next miss: on D1 from 12:23 to the next morning the
-  importance-4 periods DDFPRD#2 and TSO#2 run above the importance-2 periods (§S-4, D1 row). That part is real WLM
-  behaviour while goals are met; the climb and the collapse are not.
+  importance-4 periods DDFPRD#2 and TSO#2 run above the importance-2 periods (`inspect … dp PROD2`, D1 13:30 to
+  05:30: `DDFPRD#2=F5 STCMED#1=F5 TSO#2=F5 DDFPRD#1=F4 ONLMED#1=F4 TSO#1=F4`). That part is real WLM behaviour while
+  goals are met; the climb and the collapse are not.
 
 **Play.** `inspect dp`, the WLM log and Monitor III show nearly everything at FA–FC after a day or two. A player who
 knows WLM reads that as "the policy cannot separate this work" and looks for a policy flaw that is not there.
