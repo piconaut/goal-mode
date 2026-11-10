@@ -279,7 +279,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       projectedImp = impOf;
       projected = 0;
     }
-    const receiversPerImportance = input.receiversPerImportance ?? DEFAULT_RECEIVERS_PER_IMPORTANCE;
+    const receiversPerImportance = Math.max(1, input.receiversPerImportance ?? DEFAULT_RECEIVERS_PER_IMPORTANCE);
     if (projected >= receiversPerImportance) {
       // Skip, don't stop: lower importances still get their own budget, traced or not.
       if (tracing) traceOf(receiver, null, 'BUDGET');
