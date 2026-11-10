@@ -1111,9 +1111,11 @@ the hurt workload and whose declared `mechanisms` include the incident's mechani
 (lock index), policy or growth. Every card with a non-empty `affects` must declare `mechanisms` (a content test
 enforces it; a card with empty `affects`, such as SMF_AUDIT, has nothing to blame): demand and CPU-per-transaction
 cards name the CPU family and THREAD_LIMIT, CF cards name CF_SERVICE/LOCK_CONTENTION, SICK_AOR names ROUTING, and
-NEW_APP_GOLIVE can be blamed for every mechanism except JOB_FAILURE. New work (including a persistent go-live card) counts for the first two simulated days after go-live
-(`content/sla.ts`), judged at the opening SLA hour; later incidents use the remaining fallback rules.
-APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception, a CICS program leaking EDSA storage). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
+NEW_APP_GOLIVE can be blamed for every mechanism except JOB_FAILURE. New work (including a persistent go-live
+card) counts for the first two simulated days after go-live (`content/sla.ts`), judged at the opening SLA hour; later
+incidents use the remaining fallback rules. APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND,
+an S0C7 data exception, a CICS program leaking EDSA storage). Without the mechanism check an I/O card could take the
+blame for an unrelated CPU meltdown.
 POWER_CAP matches CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY only. Its workload scope is the workloads whose
 effective routing puts them on the CPCs whose capacity actually drops (same-tick commands and workloads added at the
 start included). It is re-resolved every tick while the cap runs, and each hour keeps the union of the scopes seen in

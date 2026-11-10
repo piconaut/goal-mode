@@ -218,22 +218,27 @@ still has the list. Consequences:
 - Healthy-baseline learning uses the same list (`disturbed`), so collateral work's degraded-but-passing hours are
   folded into its baseline (A6).
 
-### A3. Long-running cards without `mechanisms`, and the tie-break
+### A3. Long-running cards without `mechanisms`, and the tie-break (fixed, RT-02)
 
-A card with no `mechanisms` qualifies for any mechanism. Ranking is: active at hour close, then longest overlap with
-the hour, then ascending `uid`. A card that has run for hours always has the full overlap, so it beats a card that
-started inside the hour, and two full-hour cards are ordered by name.
+A card with no `mechanisms` used to qualify for any mechanism. Ranking is: active at hour close, then longest overlap
+with the hour, then ascending `uid`. A card that has run for hours always has the full overlap, so it beats a card
+that started inside the hour, and two full-hour cards are ordered by name. RT-02 declares `mechanisms` on every card
+with a non-empty `affects` (a content test enforces it), so the tie-break now only decides between cards that can
+each legitimately cause the mechanism.
 
 - U-1: `triggerOf('CARDAUTH','CPU_PRIORITY',[POWER_CAP covering the hour, ENCRYPTION_MANDATE permanent])` → `POLICY`.
   Live: R-8, CARDAUTH and PAYMQ `DEPENDENCY/POLICY`; without the mandate (R-7) CARDAUTH is `…/HARDWARE_FAULT`.
 - U-2: RBANK `IO` incident, DASD_DEGRADED starting 20 minutes into the hour, REGRESSION since 07:00 →
-  `ACCESS_PATH_REGRESSION`. (No live repro: day 12 on seed 42 raised no I/O incident.)
+  `HARDWARE_FAULT` (the DASD card; REGRESSION no longer names IO). (No live repro: day 12 on seed 42 raised no I/O
+  incident.)
 - U-3: MOBILE `CPU_PRIORITY`, CAMPAIGN starting 20 minutes in, MONITOR_CREEP since 06:00 → `POLICY`.
-- U-4: MOBILE `LOCK_CONTENTION` during a RETRY_STORM → `DEMAND_SURGE`.
+- U-4: MOBILE `LOCK_CONTENTION` during a RETRY_STORM → the fallback (`GROWTH`, or `BATCH_OVERLAP` with a lock
+  index), not `DEMAND_SURGE`; RETRY_STORM does not name LOCK_CONTENTION.
 
-Unfiltered cards with `affects`: CAMPAIGN, RUNAWAY, REGRESSION (30 h), BOT_ATTACK, RETRY_STORM, XLOG_LOOP,
-ENCRYPTION_MANDATE (permanent), CF_FAILURE, MONITOR_CREEP (48 h), SHADOW_IT, NEW_APP_GOLIVE, SICK_AOR,
-MARKET_OPEN_SURGE, HOLIDAY_CARD_SPIKE. SMF_AUDIT has the opposite defect: `mechanisms` but empty `affects`.
+The cards that were unfiltered (CAMPAIGN, RUNAWAY, REGRESSION, BOT_ATTACK, RETRY_STORM, XLOG_LOOP,
+ENCRYPTION_MANDATE, CF_FAILURE, MONITOR_CREEP, SHADOW_IT, NEW_APP_GOLIVE, SICK_AOR, MARKET_OPEN_SURGE,
+HOLIDAY_CARD_SPIKE) now declare mechanisms. SMF_AUDIT keeps `mechanisms` but has an empty `affects`, so it blames
+nothing.
 
 ### A4. The donor test takes the policy under judgement as given
 

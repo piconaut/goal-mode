@@ -1,10 +1,10 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
+import { HARBOURLINE_GAME } from '../../src/content/game-harbourline';
+import { REVENUE_GAME } from '../../src/content/game-revenue';
 import { MIDWEST } from '../../src/content/scenarios';
 import { advance, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import { triggerOf } from '../../src/game/sla';
-import { HARBOURLINE_GAME } from '../../src/content/game-harbourline';
-import { REVENUE_GAME } from '../../src/content/game-revenue';
 import type { ActiveEvent, HourAcc, RunState } from '../../src/game/types';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
@@ -12,7 +12,9 @@ const content = { ...MIDWEST_GAME, events: [] };
 const hourStart = 7 * TICKS_PER_HOUR; // 13:00 on the first played day
 const hourEnd = hourStart + TICKS_PER_HOUR;
 
-/** A CPU-delayed MOBILE breach accumulated over 13:00–14:00, independent of sim tuning. */
+/** A CPU-delayed MOBILE breach accumulated over 13:00–14:00, independent of sim tuning. The RETRY_STORM card is
+ * built without `mechanisms` on purpose: this fixture models the pre-RT-02 lenient path, so the trigger history
+ * tests stay about the hour overlap rather than the card's declared mechanisms. */
 function breachAt(tick: number): RunState {
   const run = startDay(newRun(MIDWEST, content, 7), content);
   const storm = MIDWEST_GAME.events.find((e) => e.id === 'RETRY_STORM')!;
@@ -78,7 +80,9 @@ describe('card mechanisms', () => {
 
   it('every card in the three decks with non-empty affects declares its mechanisms', () => {
     const decks = [MIDWEST_GAME, HARBOURLINE_GAME, REVENUE_GAME];
-    const missing = decks.flatMap((d) => d.events.filter((e) => e.affects.length > 0 && !e.mechanisms).map((e) => e.id));
+    const missing = decks.flatMap((d) => d.events
+      .filter((e) => e.affects.length > 0 && (!e.mechanisms || e.mechanisms.length === 0))
+      .map((e) => e.id));
     expect(missing).toEqual([]);
   });
 });
