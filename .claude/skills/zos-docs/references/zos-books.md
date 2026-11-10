@@ -227,6 +227,23 @@ Every ID below was seen as a real Redbooks URL in a search.
 | IBM CICS Performance Series: Effective Monitoring for CICS Performance Benchmarks | `redp5170` |
 | IBM CICS Performance Series: CICS TS V5.3 Benchmark on IBM z13 | `redp5320` |
 
+## Patents
+Stored as `patents/{id}.pdf`; ID = patent number lowercased (`us5473773`). Patents have no
+release, so `books.py locate us5473773` takes no `--release`. Their `patentimages` PDF URLs
+contain an opaque hash, so use the Google Patents page for identity and the linked PDF URL
+(with `#page=N`) for page citations. A patent is a point-in-time design disclosure (claims and
+embodiments), not product documentation: prefer the z/OS book when both cover a fact, and say
+when the source is a patent rather than the product library.
+
+| Patent | ID | PDF |
+|---|---|---|
+| Apparatus and method for managing a data processing system workload according to two or more distinct processing goals — US 5,473,773, filed 4 Apr 1994, issued 5 Dec 1995 (IBM: Aman, Eilert, King, Pierce, Yocom) | `us5473773` | [US5473773.pdf](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf) |
+
+This is the original WLM design patent: goal types and importance, performance index,
+receiver-class selection, bottleneck identification and control-element adjustment. Its
+[Google Patents page](https://patents.google.com/patent/US5473773A/en) confirms the number,
+title and dates; the PDF table link is the page target for citations.
+
 ## Other IBM products
 Stored in the repo as `products/{product}/{version}/{IBM PDF file name}`. The **book ID is
 IBM's PDF file name without `.pdf`**: `books.py locate db2z_13_msgsbook`. Ingest with

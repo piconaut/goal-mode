@@ -46,12 +46,21 @@ point-in-time snapshot by its authors, not product documentation, so:
 
 Redbooks have no release: `books.py locate sg246472` (the `--release` flag is ignored).
 Known ones are listed in `references/zos-books.md`.
+Patents likewise: `books.py locate us5473773`. Their `patentimages` PDF URLs can't be built
+from the patent number, so a missing patent prints the Google Patents page to download from
+instead of being fetched automatically.
 
 **Other products** (Db2, CICS, IMS, MQ, OMEGAMON, Z Performance and Capacity Analytics)
 are listed in the same file. Their book ID is IBM's PDF file name without `.pdf`
 (`db2z_13_msgsbook`, `sit-reference_pdf`, `IMS_15.5_System_Definition`, `mq94.plan`), and
 the table gives the URL and the `--product`/`--version` to use. Pick the version the user runs;
 if they haven't said, use the newest one listed and say so.
+
+**Patents** are stored as `patents/{id}.pdf` (ID = patent number lowercased, e.g. `us5473773`).
+They record how a mechanism was designed at filing time — useful for internals and rationale,
+not for current product behaviour. Cite the Google Patents page for identity and the PDF it
+links to for page citations, and prefer the z/OS book when both cover a fact. Known ones are
+listed in `references/zos-books.md`.
 
 ## 2. Get the book
 
@@ -132,6 +141,10 @@ number when the table or the title page has one; the URL is the table's URL plus
 Redbook citation:
 
 `[IBM Redbook SG24-6472-03, System Programmer's Guide to: Workload Manager (Mar 2008), p.40 — Chapter 3 > …](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=40)`
+
+Patent citation (Google Patents page for identity, or its PDF with `#page=N` for a page):
+
+`[US 5,473,773 (IBM, issued 5 Dec 1995), p.2 — …](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=2)`
 
 The page number and section breadcrumb come straight from `pdf_find.py` (`== p.N | …`);
 `#page=N` uses that same PDF page index. Form numbers are in the book table.
