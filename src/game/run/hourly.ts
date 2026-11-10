@@ -169,7 +169,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
-      const mechanism = failureMechanismOf(w, wh, r.events) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
+      const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
       const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(h, hosts) : null;
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
       const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };

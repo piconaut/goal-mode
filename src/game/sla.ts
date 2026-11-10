@@ -123,10 +123,17 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[]): Ca
 }
 
 /** An incident whose hour failed its SLA only through failures (with none it would have met it) gets the
- * mechanism a running card affecting the workload declares for its failures; no delay grew to point at one. */
-export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: readonly ActiveEvent[]): Mechanism | null {
+ * mechanism a card affecting the workload declares for its failures; no delay grew to point at one. The card must
+ * overlap the incident's opening SLA hour (half-open, like triggerOf): a card fixed or expired inside the hour still
+ * names it, while one that ended at the hour's start does not. */
+export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: readonly ActiveEvent[], hour: HourAcc): Mechanism | null {
   if (h.failed <= 0 || !hourAttainment(w, { ...h, failed: 0 })?.met) return null;
-  return events.find((e) => e.started && !e.ended && e.failureMechanism && e.affects.includes(w.id))?.failureMechanism ?? null;
+  const startTick = hour.hourIndex * TICKS_PER_HOUR;
+  const endTick = startTick + TICKS_PER_HOUR;
+  return events.find((e) =>
+    e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
+    e.failureMechanism && e.affects.includes(w.id),
+  )?.failureMechanism ?? null;
 }
 
 export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
