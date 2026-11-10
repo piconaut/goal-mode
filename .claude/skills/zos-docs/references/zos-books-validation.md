@@ -287,3 +287,9 @@ Bibliography evidence (IBM PDF, p.185 onward): https://www.ibm.com/docs/SSPNK7_3
 
 The SSPNK7_3.1.0 product code is corroborated by exact indexed C2832131 and C2832111 PDFs and IBM Support product metadata. The observed exact C2832131 PDF URL omits /en; do not assume the /en variant is successfully fetched.
 
+
+## Patent addendum (2026-11-10)
+
+| ID | Finding | Evidence level |
+|---|---|---|
+| `us5473773` | US 5,473,773, **Apparatus and method for managing a data processing system workload according to two or more distinct processing goals**; IBM; inventors Jeffrey D. Aman, Catherine K. Eilert, Gary M. King, Bernard R. Pierce, Peter B. Yocom; filed 1994-04-04, published 1995-12-05 | [Google Patents](https://patents.google.com/patent/US5473773A/en) and the stored PDF's title page agree on title, inventors and dates. The 24-page PDF has an OCR text layer but no bookmarks. |
