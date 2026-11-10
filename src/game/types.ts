@@ -171,6 +171,20 @@ export interface CapacityBasis {
   full: boolean;
 }
 
+/** What the evidence judge derived when the incident opened (RT-04): the hurt work's service classes (including the
+ * classes of its CICS regions), the images it ran on (and, separately, the images it actually runs on), and the
+ * region jobnames serving it. Judging against these means a later reclassification or rerouting cannot turn a pin
+ * that was good when the incident opened into "not about X". */
+export interface IncidentSubjects {
+  classes: string[];
+  /** Routing-table images: every routing key, including a zero weight, as the subject test reads it. */
+  lpars: string[];
+  /** Images the work actually runs on: routing keys with a positive share (the `anySubject` image test). */
+  hosts: string[];
+  /** CICS regions (AOR/TOR) serving the transactions, by jobname and image. */
+  servers: { jobname: string; lparId: string }[];
+}
+
 export interface Incident {
   id: number;
   workloadId: string;
@@ -185,6 +199,8 @@ export interface Incident {
   basis?: CapacityBasis;
   /** AIOps hypotheses when the incident opened (tool AIOPS), best first. */
   aiops?: Hypothesis[];
+  /** Classes, images and serving regions as they were when the incident opened (RT-04; absent in old saves). */
+  subjects?: IncidentSubjects;
   /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). */
   rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; explain?: string } | null;
   trustLost: number;

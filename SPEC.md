@@ -1165,10 +1165,16 @@ such a card the delay groups decide as above.
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
-trigger (`content/evidence.ts`). For an `anySubject` metric (`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), whose
-subject may be another class, the pin must still come from an image the incident's work runs on or a sysplex-wide
-`*PLEX` row; a server-side clue (`SYSWKM`) instead needs the exact serving image. PI is a symptom and never counts.
-Evidence points need the right mechanism.
+trigger (`content/evidence.ts`). Evidence is judged against the incident's own subjects — the service classes
+(including its CICS region classes), images and serving regions recorded when it opened (`closeHour`,
+`batchMissIncident`) — so a policy activation or a routing change made after it opened cannot turn a pin that was
+good at the time into "not about" the work; incidents from old saves derive the subjects from the present. The
+record is taken at the hour's close, so a change applied during that same hour is already in it, and a later hour
+of a still-open incident keeps the subjects it opened with.
+For an `anySubject` metric (`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), whose subject may be another class, the
+pin must still come from an image the incident's work runs on or a sysplex-wide `*PLEX` row; a server-side clue
+(`SYSWKM`) instead needs the exact serving image. PI is a symptom and never counts. Evidence points need the right
+mechanism.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one

@@ -183,17 +183,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 `anySubject` image test;
   the replacing entry deletes the interim code path.
 
-### RT-04 · Evidence is judged against today's classification and routing
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-`judgeEvidenceRanked` classifies the workload with the current service definition and reads the current routing, so
-moving the hurt work to its own class or another image before the review turns good pins into "not about X" (A10,
-R-16). When an incident opens (`closeHour`, `batchMissIncident`), store what the judge derives today (service
-classes including region classes, host LPARs, serving AOR jobnames) on the incident as `subjects`, and judge against
-that; fall back to the live values for incidents without it (old saves). Done when: a test pins a class row, applies
-`ADD_CLASS` + `ADD_RULE` for the workload and a `SET_ROUTING`, and gets the same verdicts as before the edits; SPEC §10
-says evidence is judged against the incident's own subjects.
-
 ### RT-05 · Pin CPC busy, image busy, the capacity change and the CP/zIIP split
 `list: rca-truth · status: ready · priority: high · size: M · area: game`
 
@@ -283,11 +272,12 @@ lock → LOCK_CONTENTION; `WM_READY` → CPU_PRIORITY, CPU_CAPACITY, QR_TCB at h
 p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §10.
 
 ### RT-12 · Pin relations instead of `anySubject`
-`list: rca-truth · status: blocked: after RT-04 · priority: high · size: M · area: game`
+`list: rca-truth · status: ready · priority: high · size: M · area: game`
 
 User decision on Q3, 2026-11-10: yes. After RT-04. Each pin gets a relation to the incident (`self`, `server`, `competitor`, `host`) from the incident's
 `subjects`; each metric says which relations it accepts; `anySubject` is removed; pins store the baseline beside the
-value so a predicate can ask for "normal". Done when: R-16's table comes out as §4.6 describes and the existing
+value so a predicate can ask for "normal". RT-04's snapshot holds a server's jobname and image only: widen it if a
+relation needs the region's role or subsystem. Done when: R-16's table comes out as §4.6 describes and the existing
 evidence tests are ported. That includes the residual RT-03 leaves: a competing class's `DELAY_CPU` row on a host
 image (R-16's TSO#1 on PROD2) still scores full weight from the image test alone, and only the relation plus §4.6's
 discriminator can say whether that class was ahead of the hurt work.

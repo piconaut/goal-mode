@@ -149,6 +149,10 @@ describe('incidents and RCA', () => {
     expect(r.reports.at(-1)!.batchMissed).toBe(true);
     const inc = r.incidents.find((i) => i.workloadId === 'BATCH')!;
     expect(inc.truth.mechanism).toBe('JOB_FAILURE');
+    // RT-04: the incident records the night's critical jobs' classes and images when it opens, before the day's
+    // report exists (the caller passes the night summary).
+    expect(inc.subjects).toBeDefined();
+    expect(inc.subjects!.hosts).toEqual(inc.subjects!.lpars);
     expect(inc.trustLost).toBeGreaterThanOrEqual(20);
     expect(r.nightHour).toBeNull();
     const after = submitRca(r, inc.id, 'JOB_FAILURE', inc.truth.trigger);
