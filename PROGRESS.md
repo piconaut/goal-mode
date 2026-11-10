@@ -49,10 +49,24 @@ been running for a while, inbox hints arrive that start vague and get more speci
 duplicate request IDs). "Turn on retry backoff in the API gateway" (`MOBILE_BACKOFF`) becomes available only once the
 player has pinned evidence that identifies a retry storm, such as a transaction rate metric. There may be a better
 form of proof that isn't in the game yet.
+Design draft: [docs/rca-design.md](docs/rca-design.md) §5 (unlock recipes per card, cost of a wrong diagnosis, hint
+ladder, open levers, bots), on top of the truth model it proposes in §4.
 Notes from discussion:
-- **Prerequisite: RCA judging must be trustworthy first.** In the user's playthroughs it has been flaky and often
-  unfair (see "Incident truth, RCA and evidence" under Playtest round 2). Gating fixes on it would turn every judging
-  bug into a blocked fix, so that list (and a general review of `judgeEvidence` / incident truth) comes first.
+- **Prerequisite: RCA judging must be trustworthy first. Reviewed 2026-11-09; what remains:** the whole chain was
+  audited (docs/rca-design.md §2 truth inventory for every card and flaw, §3 fourteen rule findings with repros). It
+  is not yet trustworthy, for structural reasons: one label where two answers are defensible, blame through
+  hand-written `affects` lists (collateral victims get `POLICY`/`GROWTH`), long-running cards and an alphabetical
+  tie-break, a capacity/priority test that takes the policy's importances as given, and evidence that does not
+  discriminate. The work is BACKLOG.md list `rca-truth` (user decisions on §7 Q1–Q5 and Q10, 2026-11-10, recorded
+  in docs/rca-design.md §7):
+  1. RT-00 … RT-15, committed: bot fix lookup by card (RT-00), bugs and missing pin sources, the counterfactual validator (RT-06), accepted answer
+     sets (RT-07), wording (RT-09), pin relations and proof recipes (RT-12, RT-13), card footprints (RT-14),
+     grouping by cause (RT-15);
+  2. a human playtest when `dev-loop rca-truth` reports the list finished;
+  3. RT-16 … RT-21 parked until that playtest (CPU split first; hour-of-day baselines deferred);
+  4. then D1 itself (Q8a/Q8b, Q9, PT-20): problem records (RT-22) and proof-gated fixes (RT-24). The retry storm,
+     D1's example, cannot be proven with any data the game has (it is identical to a campaign in every report);
+     RT-23 researches a discriminator and until then its fix stays ungated.
 - Proof should be a mechanism, not a single pin. A rate pin alone can't tell a retry storm from a demand surge. The
   discriminator is END/S up at unchanged CPU per transaction, so the unlock might take a rate pin plus a pin that
   rules out a surge, judged by the existing evidence matcher (`src/content/evidence.ts`).
@@ -124,16 +138,22 @@ level or a separate toggle.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
-- Latest accepted model-change sweep: Normal, seeds 1–10, `b8d835e` (2026-11-02, #111 fix 15):
+- Latest sweep: Normal, seeds 1–10, `dev` `1300e69` (2026-11-10, remote, for the `dev` → `main` release #260):
 
 | Scenario | Do-nothing median day | Textbook median day | Expert victories |
 | --- | ---: | ---: | ---: |
-| Midwest | 16.5 | 27 | 8/10 (seeds 1, 2: trust) |
-| Harbourline | 9 | 29 | 6/10 (seeds 1, 2, 7, 9: trust) |
-| Revenue | 8.5 | 28 | 10/10 |
+| Midwest | 16.5 | 27.5 | 10/10 |
+| Harbourline | 9.5 | 29 | 5/10 (seeds 1, 2, 4, 7, 9: trust) |
+| Revenue | 19 | 27 | 10/10 |
 
-- Harbourline's expert drop from 8/10 to 6/10 was accepted by the user: seed 1 is marginal; seed 9 crowds Db2
-  out at equal dispatch priority (at the time of that sweep), and the expert bot never moves Db2 above CICS.
+- Changes against the previous reference (`b8d835e`, 2026-11-02: Midwest 16.5 / 27 / 8 of 10, Harbourline 9 / 29 /
+  6 of 10, Revenue 8.5 / 28 / 10 of 10):
+  - Revenue do-nothing 8.5 → 19 comes from #167 (2026-11-03, compliance analytics restoring G1's pressure; its own
+    sweep gave 19).
+  - Harbourline expert 6/10 → 5/10: seed 4 is a new trust loss on day 38 (Markets). This is awaiting the user's call;
+    Harbourline is gated against Midwest's bands for reference only.
+  - The earlier 6/10 was accepted by the user: seed 1 is marginal; seed 9 crowded Db2 out at equal dispatch priority
+    (at the time of that sweep), and the expert bot never moves Db2 above CICS.
 - Historical 20-seed Normal reference (2026-10-27): expert victories Midwest 19/20, Revenue 20/20,
   Harbourline 16/20. These predate later model changes; full difficulty distributions are in Git history.
 - Nonblocking follow-ups: Revenue textbook day-22 PREFILL losses; Hard Harbourline expert has no victories
@@ -386,7 +406,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Exported saves arriving with every backslash doubled (playtest round 2, D20 export): halving them gives exactly what
   `encodeRunJson` writes, so something on the artifact host's download path doubled them (not verified). Import
   (browser and play CLI) repairs it. If it recurs, look at how the artifact host saves a Blob download.
-- Waiting on the user: nothing open; #111 Q1–Q3 are decided.
+- Retry storm against real demand (RCA audit 2026-11-09): what does an analyst read to tell client retries from a
+  campaign? Candidates are rolled-back or abnormally ended DDF threads in Db2 accounting or statistics and connection
+  timeouts; a first search of Db2 13 Managing Performance did not confirm a field. BACKLOG RT-23.
+- Resource-group capping as an RCA mechanism: WLMGL CAP delay is resource-group and discretionary capping (RMF Report
+  Analysis p.540), so should a class held by a resource-group maximum be judged `CAPPING` (docs/rca-design.md §4.3
+  proposes yes, with the help text widened from "the image" to "the image or the class")?
+- zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
+  under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
+  policy); no IBM source decides it.
+- Waiting on the user: docs/rca-design.md §7 Q7, Q8a, Q8b, Q9 (after the RT-15 playtest). #111 Q1–Q3 are decided.
 
 ## Known approximations and risks
 
@@ -414,6 +443,17 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: RCA judging and incident truth audited end to end (design only; no sim or game code changed, goldens
+  unchanged). [docs/rca-design.md](docs/rca-design.md) has the truth inventory for all 27 Midwest cards, the
+  Harbourline and Revenue cards and the scenario flaws, fourteen rule findings with repros (replays on Midwest,
+  Harbourline and Revenue seed 42 with cards injected as `tests/game/power-cap.test.ts` does, plus direct calls to
+  `triggerOf`/`mechanismOf`/`judgeEvidence`), a proposed truth model and a D1 draft. BACKLOG list `rca-truth`
+  (RT-01 … RT-24, numbered in dependency order, gated with the new `blocked: after <ID>` status) and RF-02. User
+  decisions 2026-11-10: Q1 (no family credit), Q2, Q3 (tier-0/1 recipe paths), Q4 (card causes group across the
+  day; after footprints), Q5 yes; Q6 deferred; Q8 split; Q10 moved earlier as RT-06. Why a separate list: pick order
+  ignores "After" notes, and the list finishing marks the playtest checkpoint. Ledger: two Db2 rows (the wait for
+  a thread at MAXDBAT is not traced; QDSTQDBT via `-DISPLAY DDF DETAIL`), and the WLMGL CAP-delay row now says the
+  report matches. Next: `/dev-loop rca-truth`.
 - 2026-11-09: PT-06: RMF and Monitor III report IIPCP only where a zIIP is defined to the image (online or
   reserved; *Init & Tuning* 3.1 p.431, p.434 with PROJECTCPU default NO). On an image with none (Midwest DEVT/SYSP,
   harbourline DEV1) the eligible time on CPs stays plain CP work: `reportedTicks` folds it into APPL% CP and IIPCP
