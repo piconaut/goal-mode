@@ -230,6 +230,8 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
     if (p.tick < lo || p.tick > hi) return result(0, 'outside the incident window', 0);
     // An `anySubject` metric may name another class, but it must still come from an image the hurt work runs on (or a
     // sysplex-wide row): a TSO or SYSTEM row on a test image says nothing about an incident on the production images.
+    // `*PLEX` has to stay open here (it is a roll-up of every image, and the report views default to it), so the hole
+    // that remains is a `*PLEX` row for a class that only runs elsewhere; RT-12's pin relations replace this test.
     const onImage = p.system === '*PLEX' || lpars.includes(p.system);
     const related = d.anySubject
       ? onImage
@@ -238,7 +240,8 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
         classes.some((sc) => p.subject === sc || p.subject.startsWith(`${sc}#`)) ||
         lpars.includes(p.subject) ||
         p.subject === '*PLEX';
-    if (!related) return result(0, d.anySubject ? `not on a system ${inc.workloadId} runs on` : `not about ${inc.workloadId}`, 1);
+    if (!related)
+      return result(0, d.anySubject ? `not on a system ${inc.workloadId} runs on` : `not about ${inc.workloadId}`, 1);
     if (d.weight === 0) return result(0, 'a symptom, not a cause', 2);
     if (Math.abs(p.value) < d.notableAt) return result(0, 'value is unremarkable', 3);
     const hit = d.mechanisms.includes(inc.truth.mechanism) || d.triggers.includes(inc.truth.trigger);

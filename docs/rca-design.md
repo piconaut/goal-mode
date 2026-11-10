@@ -339,11 +339,17 @@ MOBILE incident on PROD1/PROD2:
 
 RT-03 makes an `anySubject` pin keep its subject freedom but takes away its image freedom: `p.system` must be one of
 the incident's LPARs or `*PLEX`, so a TSO or SYSTEM row on another image no longer reaches a production incident. It
-also gives `APPL` a 5 % notable line, so a row that is not a contender does not count. What remains open: any two
-CPU-delay rows from *different* images the work runs on still reach "strong evidence" (relevance ≥ 2, +5 Insight) for
-any CPU or dependency incident, because nothing checks that the pins, taken together, separate the cause from its
-look-alikes. RT-04 (judge against the incident's own subjects) and RT-12 (pin relations) narrow this further, and
-RT-05/RT-14 add the images' own busy and capacity evidence.
+also gives `APPL` a 5 % notable line, so a row that is not a contender does not count. Two limits of that rule:
+
+- `*PLEX` has to stay open: it is the roll-up of every image and the report views' default filter, so a `*PLEX` row
+  for a class that only runs on some other image still scores. RT-12's relations close that.
+- `LOCK_WAIT` and `CF_WAIT` are only ever pinned from Db2 101, which is sysplex-wide, so the image test is a no-op for
+  them; the visible effect is on `APPL` and `DELAY_CPU`.
+
+What remains open: any two CPU-delay rows from *different* images the work runs on still reach "strong evidence"
+(relevance ≥ 2, +5 Insight) for any CPU or dependency incident, because nothing checks that the pins, taken together,
+separate the cause from its look-alikes. RT-04 (judge against the incident's own subjects) and RT-12 (pin relations)
+narrow this further, and RT-05/RT-14 add the images' own busy and capacity evidence.
 
 The reverse also holds: a ruling-out pin cannot count. "CPU per transaction unchanged" is the discriminator for a
 surge against a regression or bot traffic, and `CPU_VS_BASE` near ×1.0 (or ×0.4 for bots) is below `notableAt`.
@@ -355,6 +361,9 @@ R-16, same pins, after two remediations a player would plausibly make before the
 
 - MOBILE moved to its own class DDFMOB: the DDFPRD#1 ended/s pin becomes "not about MOBILE".
 - MOBILE routed to PROD2 only: the Partition Data pin on PROD1 becomes "not about MOBILE".
+- MOBILE routed to PROD2 only, and the TSO#1 CPU-delay pin from PROD2: RT-03's image test reads the same live
+  routing, so this pin also becomes "not on a system MOBILE runs on". That is the A9 image rule applied to the
+  present, and RT-04 fixes both by storing the incident's subjects when it opens.
 
 ### A11. What cannot be pinned
 

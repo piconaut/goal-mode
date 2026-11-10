@@ -144,6 +144,9 @@ describe('evidence pins', () => {
     // A sysplex-wide row has no image to check, and a test image's row is still not about production work.
     expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ system: '*PLEX' })])[0]!.relevance).toBe(0.5);
     expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ system: 'DEVT' })])[0]!.why).toBe('not on a system MOBILE runs on');
+    // The full-weight metrics are under the same image test, not just the half-weight APPL row.
+    expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ metric: 'DELAY_CPU', system: 'DEVT', value: 25 })])[0]!.why)
+      .toBe('not on a system MOBILE runs on');
   });
 
   it.each(['CPU_PRIORITY', 'CPU_CAPACITY'] as const)('awards two zIIP pins for a %s incident', (mechanism) => {

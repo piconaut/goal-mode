@@ -180,7 +180,8 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
-- Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 path; the replacing entry deletes the interim code path.
+- Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 `anySubject` image test;
+  the replacing entry deletes the interim code path.
 
 ### RT-04 · Evidence is judged against today's classification and routing
 `list: rca-truth · status: ready · priority: high · size: M · area: game`
