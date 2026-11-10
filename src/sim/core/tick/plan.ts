@@ -51,7 +51,7 @@ export interface LparPlan {
   byLparId: Record<string, ImagePlan>;
 }
 
-function buildPlan(config: WorldConfig, workloads: readonly WorkloadDef[], addressSpaces: readonly AddressSpaceDef[]): LparPlan {
+export function buildLparPlan(config: WorldConfig, workloads: readonly WorkloadDef[], addressSpaces: readonly AddressSpaceDef[]): LparPlan {
   const rtOrder: Record<string, number> = {};
   let n = 0;
   for (const cpc of config.cpcs) for (const l of config.lpars) if (l.cpcId === cpc.id) rtOrder[l.id] = n++;
@@ -118,5 +118,5 @@ export function lparPlan(scenario: Scenario, config: WorldConfig, def: ServiceDe
     if (!child) node.next.set(k, (child = { next: new WeakMap() }));
     node = child;
   }
-  return (node.plan ??= buildPlan(config, workloads, addressSpaces));
+  return (node.plan ??= buildLparPlan(config, workloads, addressSpaces));
 }
