@@ -180,17 +180,7 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
-- Interim fixes: RT-01 is replaced by RT-20 and RT-03 by RT-12; the replacing entry deletes the interim code path.
-
-### RT-01 · A card fixed or expired inside the hour loses its `failureMechanism`
-`list: rca-truth · status: ready · priority: high · size: S · area: game`
-
-`failureMechanismOf` (`src/game/sla.ts`) needs the card `started && !ended` at hour close, so a storm drain recycled
-at 10:48 is judged `QR_TCB/POLICY` instead of `ROUTING/POLICY` (A7, U-8, R-11). Give it the hour and use the same
-half-open overlap test `triggerOf` uses (active at any time during the opening SLA hour). Update SPEC §10. Done when:
-a test builds a SICK_AOR ended 50 minutes into the hour and gets ROUTING, one ending exactly at the hour's start
-gets `null`, and a card that expired inside the hour is covered too. Interim: RT-20 replaces `failureMechanism`
-with failure sources and deletes this path.
+- Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 path; the replacing entry deletes the interim code path.
 
 ### RT-02 · Every card that can be blamed declares its `mechanisms`
 `list: rca-truth · status: ready · priority: high · size: S · area: content`

@@ -185,7 +185,7 @@ Direct calls (the SLA hour is `[t, t+1h)`; cards are built from their definition
 | U-5 | `triggerOf('CARDAUTH', m, [REGRESSION t−3h…t+27h])` for `m` = CPU_PRIORITY, CPU_CAPACITY | `POLICY`, `GROWTH` |
 | U-6 | `triggerOf('MOBILE', m, [ZIIP_LOSS])` for `m` = CPU_PRIORITY, CAPPING | `POLICY` both (the fallback, not the card) |
 | U-7 | `triggerOf(w, m, [])` for each mechanism | CPU_CAPACITY, IO, STORAGE, CF_SERVICE, LOCK_CONTENTION (lock index ≤ 1) → `GROWTH`; the rest → `POLICY` |
-| U-8 | `failureMechanismOf` for a failure-only hour, SICK_AOR running at close; the same with `ended: true` at t+50min | `ROUTING`; `null`, then `mechanismOf({}, {})` → `CPU_PRIORITY`, trigger `POLICY` |
+| U-8 | `failureMechanismOf` for a failure-only hour, SICK_AOR running at close; the same with `ended: true` at t+50min | `ROUTING` both (RT-01: the card overlaps the opening hour) |
 | U-9 | `mechanismOf({cpuQueue: 1}, {}, hour with cappedByLpar {PROD2: 0.06}, hosts PROD1 and PROD2)` | `CAPPING` |
 | U-10 | `mechanismOf`, CPC 99 % busy, CP by importance 0…6 = 0.2, 1.0, 1.5, 0.35, 0, 0, 0 engines, victim importance 2 | `CPU_PRIORITY` (donors 11.5 %) |
 | U-11 | as U-10 with 0.2, 0.5, 3.2, 0.1, 0, 0, 0 | `CPU_CAPACITY` (80 % of the CP at the victim's importance) |
@@ -297,12 +297,13 @@ after filing; it did not make them less arbitrary.
   `dependency` (`results.ts`, `srvCpuSec`) while the reports show it as the region class's CPU delay. `DELAY_CPU`
   lists DEPENDENCY among its mechanisms to compensate, which is why the same pin "points at the cause" for both.
 
-### A7. `failureMechanism` is lost when the card ends inside the hour (bug)
+### A7. `failureMechanism` is lost when the card ends inside the hour (fixed, RT-01)
 
-`failureMechanismOf` requires `e.started && !e.ended` when the hour closes, unlike `triggerOf`, which PT-04 taught
-to use the hour overlap. U-8: SICK_AOR fixed 50 minutes into the hour → `null` → the delay groups decide. R-11:
-`QR_TCB/POLICY` (QR +4.1 ms) instead of R-10's `ROUTING/POLICY`. A player who fixes the storm drain fast is judged
-on a mechanism that was never there. The same hole exists for a card that expires inside the hour.
+`failureMechanismOf` used to require `e.started && !e.ended` when the hour closes, unlike `triggerOf`, which PT-04
+taught to use the hour overlap. U-8: SICK_AOR fixed 50 minutes into the hour → `null` → the delay groups decide.
+R-11: `QR_TCB/POLICY` (QR +4.1 ms) instead of R-10's `ROUTING/POLICY`. A player who fixes the storm drain fast was
+judged on a mechanism that was never there. The same hole existed for a card that expires inside the hour. RT-01
+gives `failureMechanismOf` the hour and the same half-open overlap test, so both now name the card's mechanism.
 
 ### A8. Fallback triggers and the vocabulary
 
@@ -456,7 +457,7 @@ Sources of accepted answers:
 4. **Failure-only misses.** The sim knows why it failed each transaction (slot-queue timeout, region abend, Db2 or
    MQ unavailable, backlog timeout). Record failures by source per workload (reporting-only state), and map: queue
    timeout → THREAD_LIMIT, region abend → ROUTING, Db2/MQ → DEPENDENCY, backlog timeout → the CPU family. This
-   replaces `failureMechanism` on the card and closes A7 and U-12. Until it exists, A7 is fixed on its own (RT-01).
+   replaces `failureMechanism` on the card and closes U-12. A7 is fixed on its own (RT-01, merged).
 5. **Over the incident, not only its first hour.** Keep the opening hour as the primary (the player is paged then),
    and add to the accepted set whatever the same rules give for the hour with the worst attainment. Truth is then
    final when the incident closes; an RCA filed while it is open is judged when it closes.

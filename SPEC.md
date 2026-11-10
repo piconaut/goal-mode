@@ -1148,7 +1148,9 @@ https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=144), so
 afterwards. The baseline and its learning rule are game rules, not IBM behaviour.
 
 A miss caused by failures alone (with no failed transactions the hour would have met its SLA) has no delay group to
-point at, so a running card that affects the workload names the mechanism (`failureMechanism`). SICK_AOR names
+point at, so a card that affects the workload and overlaps the incident's opening SLA hour (the same half-open test
+as the trigger: a card fixed or expired during the hour still names it, one that ended at its start does not) names
+the mechanism (`failureMechanism`). SICK_AOR names
 ROUTING: CICSPlex SM keeps routing to a region that fails transactions fast, because without abend thresholds a
 fast failure looks like a fast response (CPSM uses ABENDTHRESH/ABENDCRIT and region health to choose a target;
 CICS TS 6 CICSPlex SM Managing Workloads p.34). Its evidence is the CICS 110 failed share (FAIL_PCT). Without

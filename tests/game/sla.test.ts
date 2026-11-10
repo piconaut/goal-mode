@@ -100,14 +100,22 @@ describe('failureMechanismOf', () => {
   const wh = (rtSec: number, failed: number) => ({ completions: 1000, withinSla: 0, failed, rtSumSec: 1000 * rtSec, parts: {} });
 
   it("names the card's mechanism when failures alone missed the SLA", () => {
-    expect(failureMechanismOf(w, wh(0.1, 300), [sick])).toBe('ROUTING');
+    expect(failureMechanismOf(w, wh(0.1, 300), [sick], hour)).toBe('ROUTING');
   });
 
   it('leaves a slow hour, a clean hour or a card without one to the delay groups', () => {
-    expect(failureMechanismOf(w, wh(0.9, 300), [sick])).toBeNull();
-    expect(failureMechanismOf(w, wh(0.1, 0), [sick])).toBeNull();
-    expect(failureMechanismOf(w, wh(0.1, 300), [card({})])).toBeNull();
-    expect(failureMechanismOf(w, wh(0.1, 300), [{ ...sick, ended: true }])).toBeNull();
+    expect(failureMechanismOf(w, wh(0.9, 300), [sick], hour)).toBeNull();
+    expect(failureMechanismOf(w, wh(0.1, 0), [sick], hour)).toBeNull();
+    expect(failureMechanismOf(w, wh(0.1, 300), [card({})], hour)).toBeNull();
+  });
+
+  it('keeps a card fixed or expired inside the opening hour, but not one that ended at its start', () => {
+    // SICK_AOR recycled 50 minutes into the hour (300 of 360 ticks) still names ROUTING.
+    expect(failureMechanismOf(w, wh(0.1, 300), [{ ...sick, startTick: 0, endTick: 300, ended: true }], hour)).toBe('ROUTING');
+    // A card that expired at the hour's end still covers it (half-open).
+    expect(failureMechanismOf(w, wh(0.1, 300), [{ ...sick, endTick: TICKS_PER_HOUR, ended: true }], hour)).toBe('ROUTING');
+    // One that ended exactly at the hour's start does not overlap.
+    expect(failureMechanismOf(w, wh(0.1, 300), [{ ...sick, endTick: 0, ended: true }], hour)).toBeNull();
   });
 });
 
