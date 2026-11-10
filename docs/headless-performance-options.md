@@ -1,6 +1,6 @@
 # Headless performance: options for a significant speed-up
 
-Analysed 2026-11-04 on `dev` at `1eaa7e7`. Nothing below is implemented yet. Speed-up figures are estimates
+Analysed 2026-11-04 on `dev` at `1eaa7e7`. Options are described as analysed; the results of what has landed are in "Results" below. Speed-up figures are estimates
 from profile shares, not measurements. Builds on [docs/headless-performance.md](https://github.com/piconaut/goal-mode/blob/dev/docs/headless-performance.md).
 
 **Summary:** the cost is mostly glue code, not physics. Time goes to building fresh objects every tick and to
@@ -122,6 +122,62 @@ would cut wall time roughly in proportion to the number of jobs.
 2. User decision on option 2, then a prototype on RMF accumulation first (the clearest copying cost), validated
    with `npm run compare` and snapshot-isolation tests.
 3. Option 3 only if the re-profile still shows the evaluator as the largest remaining share.
+
+## Results: option 1, step 1 (CL-05, 2026-11-10)
+
+What landed: `src/sim/core/tick/plan.ts` (`lparPlan`, memoised on scenario, config, WLM definition and the effective
+workload and address-space lists, which carry routing and run additions). It holds per-image indices, IEAOPT, pool,
+Db2 and CICS configs, CPU speeds, workload@system and slot-queue keys and the CICS region count. `dispatchLpar`,
+`reserveOverflow`, `lparDemand` and `planLpar` read it, and look up runtime arrays by index with a check
+(`atOrFind`). The evaluator inputs that PR/SM's grants don't change (`cicsRegions`, `cicsHonorPriority`, DP map,
+promotion set, RG sysplex shares) are built once per image per tick (`TickCtx.imageInputs`). Before, the zIIP
+overflow probe built them and dispatch built them again. Hash-neutral: 3-day hashes (seed 42) unchanged, Midwest
+`c79b2b893f2ff1ec`, Harbourline `0f4993768dbab687`, Revenue `513f4775588e15ee`. `npm run compare` reports no
+differences.
+
+Correction to the identity measurement above: `config` and the definition keep their identity, but Harbourline's
+CPSM goal routing replaces `routing` about every 8 ticks (246 of 2,000 ticks), so the plan is rebuilt then. It's the
+same cadence the slice-template cache already pays, and the rebuild is 0.2 % of the profile.
+
+Timing: cloud host, 4 CPUs, Node 22.23, esbuild bundles of `tools/bench.ts` from `dev` (`2f8a631`) and the
+candidate, 3 days, seed 42, run alternately with nothing else running (raw:
+[performance/cl05-timing-2026-11-10.csv](performance/cl05-timing-2026-11-10.csv)). Medians:
+
+| | Harbourline (11 pairs) | Midwest (5 pairs) | Revenue (5 pairs) |
+|---|---:|---:|---:|
+| 3-day total, ref → candidate | 28.97 → 27.56 s | 12.81 → 12.22 s | 12.55 → 11.34 s |
+| Paired change (range) | −6.3 % (−10.4 … +0.4) | −6.6 % (−11.7 … −0.1) | −13.8 % (−14.1 … −7.0) |
+| Day 1 | 10.43 → 9.63 s | 5.15 → 4.85 s | 5.23 → 4.54 s |
+| Days 2–3, ms per tick | 1.061 → 1.021 | 0.450 → 0.428 | 0.424 → 0.389 |
+| Peak RSS | 209 → 211 MB | 128 → 122 MB | 129 → 128 MB |
+
+The first 5 Harbourline pairs gave a −2.0 % median, the next 6 gave −7.9 % (range −10.4 … −5.0). Host noise is
+of the same order as the gain, so read the 11-pair median, not either batch. Every tick stays far inside the UI's
+4 ms budget (about 1 ms on Harbourline).
+
+CPU profile, 3-day bench, inclusive shares (nested rows overlap). Profiled totals were Harbourline 31.8 → 28.4 s and
+Midwest 14.8 → 12.6 s:
+
+| Stage | Harbourline before | after | Midwest before | after |
+|---|---:|---:|---:|---:|
+| `dispatchLpar` | 34.4 % | 30.8 % | 35.1 % | 34.6 % |
+| `lparEvalInput` (+ `imageInput` after) | 9.4 % | 0.8 + 5.0 % | 7.3 % | 3.2 + 5.3 % |
+| `cicsRegions` | 5.2 % | 3.0 % | 4.4 % | 3.3 % |
+| `reserveOverflow` | 11.8 % | 12.4 % | 6.0 % | 6.4 % |
+| `lparDemand` | 7.3 % | 7.8 % | 6.2 % | 5.5 % |
+| `evaluateLpar` | 22.5 % | 23.5 % | 24.3 % | 25.9 % |
+| `stepRmf` / `accumulateTick` | 12.3 / 11.2 % | 13.8 / 12.5 % | 12.7 / 11.1 % | 12.8 / 11.1 % |
+| `adjustPolicies` | 8.5 % | 9.0 % | 11.8 % | 12.0 % |
+
+Textbook bot, Harbourline, 5 days, seed 42, one profiled run each: 48.6 → 48.3 s with identical output. Shares
+moved the same way as the bench (`lparEvalInput`+`imageInput` 8.5 → 5.6 %, `cicsRegions` 5.0 → 2.9 %), but one
+run can't show a gain this size against host noise.
+
+What didn't help, or hardly: the `.find()` replacements themselves. The config arrays are a few entries long, and
+the self time of those lookups was well under 1 %. Most of the gain comes from not building the image inputs twice.
+`cicsRegions` is still about 3 % (CL-06 moves it into the plan). The other large remaining costs are the per-tick
+record work in `accumulateTick` and the `step` body (copying and rebuilding state), which is option 2's territory,
+and the evaluator.
 
 ## Reproduction
 

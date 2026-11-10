@@ -500,6 +500,8 @@ S-2's WEBDDF#1 is assessed at most once a minute while it cannot be helped (2 84
 days), "assessed 30 intervals running without a move" is 0 in S-1 … S-3, and R-4's MKTDDF#1 (PRDD, D1 14:17:40) is
 assessed. Bots: none expected beyond WT-04. docs/research.md row "skip clock" → Modelled; SPEC §5.5.4 "Projection
 budget" rewritten; `wlm-why` skill table updated for the new outcomes.
+Since CL-05: the carry-over is `dispatchLpar`'s 12a loop, which matches last tick's period by position when the order
+is unchanged (else by key); `skipUntilTick` is per-tick state and stays out of the lookup plan (`tick/plan.ts`).
 
 ### WT-06 · The canonical ladder: priorities are an order (W2, W10)
 `list: wlm-truth · status: blocked: after WT-05 · priority: high · size: M · area: sim`
@@ -524,6 +526,8 @@ level on day 1) needs a logged plan that put it there. Bots: this is the entry t
 do-nothing ± 3 days, Harbourline most; expert Harbourline up. Record the sweep; an out-of-band median is a `balance`
 entry, not a reason to change the ladder. SPEC §5.4 (DP table), §5.5.4, §17 "DP ranges" updated; research.md rows
 "unbunching" and "dispatch priorities" updated.
+Since CL-05: the first-seen path is the `dpOf` fallback in `imageInput` (`tick/dispatch.ts`), built once per image per
+tick; DPs are per-tick state, so `placeNew` belongs there, outside the lookup plan.
 
 ### WT-07 · Donors in IBM's order, by the processor that is short (W4)
 `list: wlm-truth · status: blocked: after WT-06 · priority: high · size: S · area: sim`
@@ -765,44 +769,15 @@ Cross-note: as BL-01, tune after WT-09 (docs/wlm-design.md §6.2, §8 Q2).
 
 ## cleanup
 
-### CL-05 · Lookup plan per config: profile, then dispatch and demand by index
-`list: cleanup · status: ready · priority: high · size: M · area: sim`
-
-Not a model change: pure optimisation, label `perf`. Source: docs/headless-performance-options.md option 1 (user
-request 2026-11-10 to scope it). Its 15–25 % is an estimate from profile shares, and an earlier entitlement cache
-gave no consistent gain (docs/headless-performance.md), so this entry measures before the series goes on.
-- **Profile first** on current `dev`: Harbourline and Midwest, `tools/bench.ts` bundled with esbuild, 3 days, seed
-  42, `node --cpu-prof` (reproduction in docs/headless-performance-options.md). Record the inclusive shares of
-  `dispatchLpar`, `lparDemand`, `evaluateLpar`, `accumulateTick`, `adjustPolicies` and the self time of the
-  lookups named below.
-- **Plan module** `src/sim/core/tick/plan.ts` (pure): `lparPlan(scenario, config, def, routing)` memoised in a
-  `WeakMap` on those objects (identity; the doc measured 0 replacements in 8 640 ticks without commands). It holds
-  integer indices for systems, pools and service class periods; prebuilt workload×system keys (replacing the
-  module-level `wlLparKeys` record in `tick/helpers.ts`); workload and job-class classification results; CPU speeds;
-  CF structures by name. Reuse the existing caches (`usesDb2`, `byIdOf`, `classifyJob`, `cicsRegionCount`, pool and
-  slice-template caches); don't duplicate them, fold them in only where that removes a lookup.
-- **Use it** in `dispatchLpar` (`tick/dispatch.ts`, 17 `.find()` calls today) and `lparDemand` (`tick/demand.ts`):
-  index lookups instead of `.find()` and per-slice key building.
-- **Not in scope:** persisted state. No change to the shape or key order of `SimState` (accumulators stay records;
-  turning them into arrays changes the end-state hash and is option 2, which needs a user decision). No in-place
-  mutation of state.
-- **Invalidation test:** a unit test that every command which edits config, the WLM definition or routing returns a
-  new object for it (the plan's only invalidation), and that a plan built before the command is not returned after.
-
-Done when: bench hashes unchanged for Midwest, Harbourline and Revenue (`npm run bench -- --hash`, take the current
-ones first); `npm run compare -- --base origin/dev` reports no differences; `npm run check` green; timing as
-docs/headless-performance.md "Validation" asks (≥ 5 alternating reference/candidate pairs per scenario, same host,
-nothing else running), with the profile shares before and after in the PR and in docs/headless-performance-options.md.
-**Stop rule:** if Harbourline's 3-day time falls by less than 5 %, merge only if it also simplifies the code,
-record the numbers, and set CL-06 to `blocked: user` with them.
-
 ### CL-06 · Lookup plan in step, policy adjustment and RMF
-`list: cleanup · status: blocked: after CL-05 · priority: high · size: M · area: sim`
+`list: cleanup · status: ready · priority: high · size: M · area: sim`
 
 Not a model change: pure optimisation, label `perf`. The rest of option 1 on CL-05's plan: the `.find()` lookups and
 string keys in `src/sim/core/step.ts` (11), `tick/control.ts` (`adjustPolicies`, 10), `tick/helpers.ts` (8,
 including `cicsRegions` rebuilt every tick) and `src/sim/measure/rmf.ts` (6). `decayInto` and the per-tick record
 rebuilds in `accumulateTick` stay as they are where removing them would mutate persisted state (option 2). Same
-"not in scope", tests and "Done when" as CL-05, profile against CL-05's numbers. Finish with a re-profile: if
+"not in scope", tests and "Done when" as CL-05 (merged: the plan, its invalidation test `tests/sim/plan.test.ts`, the
+5 % stop rule and the ≥ 5-pair timing protocol), profile against CL-05's numbers (docs/headless-performance-options.md
+"Results"). Finish with a re-profile: if
 `evaluateLpar` is now the largest remaining share, say so in docs/headless-performance-options.md (option 3's
 trigger); option 2 still needs the user.
