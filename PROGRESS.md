@@ -64,7 +64,9 @@ Notes from discussion:
      sets (RT-07), wording (RT-09), pin relations and proof recipes (RT-12, RT-13), card footprints (RT-14),
      grouping by cause (RT-15);
   2. a human playtest when RT-15 is merged. RT-14 waits for the `wlm-truth` core (WT-04 … WT-10; docs/wlm-design.md
-     §7), so run `dev-loop rca-truth,wlm-truth`: `rca-truth` alone "finishes" at RT-14;
+     §7), so run `dev-loop rca-truth,wlm-truth`: `rca-truth` alone "finishes" at RT-14. WT-04, WT-08 and WT-09 are
+     gated for attended sessions (`blocked: user`), so the loop stops before them and "both lists finished" means
+     WT-04's turn;
   3. RT-16 … RT-21 parked until that playtest (CPU split first; hour-of-day baselines deferred);
   4. then D1 itself (Q8a/Q8b, Q9, PT-20): problem records (RT-22) and proof-gated fixes (RT-24). The retry storm,
      D1's example, cannot be proven with any data the game has (it is identical to a campaign in every report);
@@ -145,6 +147,10 @@ level or a separate toggle.
   Shared preparation is the first conditional simulation prototype; no full LPAR plan yet. Numeric-kernel work
   requires measured ≥15% end-to-end savings and removal of the old production path in the same milestone.
   Bot bundling (~0.18 s startup/run) is deferred; `advanceBatch` stays shelved.
+- Option 1 of [docs/headless-performance-options.md](docs/headless-performance-options.md) (a lookup plan per
+  config, hash-neutral) is scoped as BACKLOG `cleanup` CL-05 (profile, dispatch and demand; with a stop rule) and
+  CL-06 (step, policy adjustment, RMF), 2026-11-10. It should land before the `wlm-truth` core changes the hot path.
+  Option 2 (mutable engine, in-place accumulators) waits for a user decision; option 3 for a re-profile.
 - Evidence and current proposal: [docs/headless-performance.md](docs/headless-performance.md), raw results in
   [docs/performance/](docs/performance/). Preserve pure snapshots and exact hashes for optimizations.
 

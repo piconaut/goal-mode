@@ -426,6 +426,10 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
   cross-layer and stays on the main agent too. The single-rule entries (WT-05, WT-07, WT-10, WT-11, WT-12) may go to
   the Opus `realism-fixer` subagent, with the main agent reviewing and running the sweep (user decision on §8 Q7,
   2026-11-10; an exception to the rule that `sim` entries stay on the main agent).
+- **Attended sessions** (user decision 2026-11-10): WT-04, WT-08 and WT-09 are not for `dev-loop`. Each is done in
+  a session the user watches; that session sets the entry to `ready` when it starts. Their `after` dependencies
+  still hold. With them gated, `dev-loop rca-truth,wlm-truth` reporting both lists finished means "WT-04's turn",
+  not the playtest cue.
 - **Coefficients** go to `src/content/wlm/tuning.ts` `POLICY_ADJUST` with `// FICTIONAL:` notes (names and starting
   values in §5.10); approximations get `// APPROX:` (§5.10 list). Do not tune a coefficient to move a balance band
   (§8 Q2).
@@ -469,7 +473,7 @@ PIs in use today (docs/wlm-design.md §2.4). SPEC §17: add rows "PI window" and
 (Not modelled). No code. Done when: the four places are corrected and cite docs/research.md.
 
 ### WT-04 · One PI basis: projections at sustained demand, `base` against `after` (W1, W8, W9)
-`list: wlm-truth · status: blocked: after RT-06 · priority: high · size: L · area: sim`
+`list: wlm-truth · status: blocked: user (attended session, after RT-06; start from proto/wlm-wt04) · priority: high · size: L · area: sim`
 
 **Coupled core; main agent only.** Implements §5.2, §5.4 and the `receiverValue`/`netValue` tests of §5.3 on the
 *existing* single-move trials (the plan is WT-08).
@@ -557,7 +561,7 @@ PI and does not include Db2's class while it is missing its goal. Bots: small; i
 less, over-achieving work more. research.md row "donor order" → Modelled.
 
 ### WT-08 · A change is a plan: receiver up, secondary receivers, donors down, judged together (W5)
-`list: wlm-truth · status: blocked: after WT-07 · priority: high · size: L · area: sim`
+`list: wlm-truth · status: blocked: user (attended session, after WT-07) · priority: high · size: L · area: sim`
 
 **Coupled core; main agent only.** Implements `buildPlan`, `assess` and whole-plan `netValue`/`receiverValue` of
 §5.3 in `src/sim/wlm/adjust.ts`, replacing the trial list. A plan alternates receiver steps (one ladder step; on a
@@ -578,7 +582,7 @@ days, others small. SPEC §5.5.4 pseudocode replaced by §5.3's; §17 "Policy ad
 rows "CPU move is projected for every class…", "secondary receivers" updated.
 
 ### WT-09 · Server periods hold the regions' priority (W3)
-`list: wlm-truth · status: blocked: after WT-08 · priority: high · size: L · area: sim`
+`list: wlm-truth · status: blocked: user (attended session, after WT-08) · priority: high · size: L · area: sim`
 
 **Main agent (cross-layer).** Implements §5.1 holders and §5.8. `WlmSystemState.servers` (`runtime.ts`);
 `cicsRegions` (`tick/helpers.ts`) returns `serverKey` (`$SRMS001`) when any AOR on the image is TRANSACTION;
@@ -781,3 +785,45 @@ week. Done when: a 20-seed three-bot Revenue sweep and the decision are recorded
 Cross-note: as BL-01, tune after WT-09 (docs/wlm-design.md §6.2, §8 Q2).
 
 ## cleanup
+
+### CL-05 · Lookup plan per config: profile, then dispatch and demand by index
+`list: cleanup · status: ready · priority: high · size: M · area: sim`
+
+Not a model change: pure optimisation, label `perf`. Source: docs/headless-performance-options.md option 1 (user
+request 2026-11-10 to scope it). Its 15–25 % is an estimate from profile shares, and an earlier entitlement cache
+gave no consistent gain (docs/headless-performance.md), so this entry measures before the series goes on.
+- **Profile first** on current `dev`: Harbourline and Midwest, `tools/bench.ts` bundled with esbuild, 3 days, seed
+  42, `node --cpu-prof` (reproduction in docs/headless-performance-options.md). Record the inclusive shares of
+  `dispatchLpar`, `lparDemand`, `evaluateLpar`, `accumulateTick`, `adjustPolicies` and the self time of the
+  lookups named below.
+- **Plan module** `src/sim/core/tick/plan.ts` (pure): `lparPlan(scenario, config, def, routing)` memoised in a
+  `WeakMap` on those objects (identity; the doc measured 0 replacements in 8 640 ticks without commands). It holds
+  integer indices for systems, pools and service class periods; prebuilt workload×system keys (replacing the
+  module-level `wlLparKeys` record in `tick/helpers.ts`); workload and job-class classification results; CPU speeds;
+  CF structures by name. Reuse the existing caches (`usesDb2`, `byIdOf`, `classifyJob`, `cicsRegionCount`, pool and
+  slice-template caches); don't duplicate them, fold them in only where that removes a lookup.
+- **Use it** in `dispatchLpar` (`tick/dispatch.ts`, 17 `.find()` calls today) and `lparDemand` (`tick/demand.ts`):
+  index lookups instead of `.find()` and per-slice key building.
+- **Not in scope:** persisted state. No change to the shape or key order of `SimState` (accumulators stay records;
+  turning them into arrays changes the end-state hash and is option 2, which needs a user decision). No in-place
+  mutation of state.
+- **Invalidation test:** a unit test that every command which edits config, the WLM definition or routing returns a
+  new object for it (the plan's only invalidation), and that a plan built before the command is not returned after.
+
+Done when: bench hashes unchanged for Midwest, Harbourline and Revenue (`npm run bench -- --hash`, take the current
+ones first); `npm run compare -- --base origin/dev` reports no differences; `npm run check` green; timing as
+docs/headless-performance.md "Validation" asks (≥ 5 alternating reference/candidate pairs per scenario, same host,
+nothing else running), with the profile shares before and after in the PR and in docs/headless-performance-options.md.
+**Stop rule:** if Harbourline's 3-day time falls by less than 5 %, merge only if it also simplifies the code,
+record the numbers, and set CL-06 to `blocked: user` with them.
+
+### CL-06 · Lookup plan in step, policy adjustment and RMF
+`list: cleanup · status: blocked: after CL-05 · priority: high · size: M · area: sim`
+
+Not a model change: pure optimisation, label `perf`. The rest of option 1 on CL-05's plan: the `.find()` lookups and
+string keys in `src/sim/core/step.ts` (11), `tick/control.ts` (`adjustPolicies`, 10), `tick/helpers.ts` (8,
+including `cicsRegions` rebuilt every tick) and `src/sim/measure/rmf.ts` (6). `decayInto` and the per-tick record
+rebuilds in `accumulateTick` stay as they are where removing them would mutate persisted state (option 2). Same
+"not in scope", tests and "Done when" as CL-05, profile against CL-05's numbers. Finish with a re-profile: if
+`evaluateLpar` is now the largest remaining share, say so in docs/headless-performance-options.md (option 3's
+trigger); option 2 still needs the user.
