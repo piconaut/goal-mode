@@ -23,6 +23,7 @@ import { CRITICAL_PROJECTION_EVERY, DEFAULT_IO, type TickCtx, type TickSums } fr
 import { adjustPolicies, prsm, softCap, stepCapping, stepCost, stepRmf } from './tick/control';
 import { lparDemand, planLpar } from './tick/demand';
 import { dispatchLpar, reserveOverflow } from './tick/dispatch';
+import { lparPlan } from './tick/plan';
 import { byIdOf, effectiveAddressSpaces, effectiveWorkloads, updateRouting } from './tick/helpers';
 
 export type { Command } from './commands';
@@ -125,6 +126,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const t: TickCtx = {
     prev,
     scenario,
+    plan: lparPlan(scenario, config, def, workloads, addressSpaces),
     def,
     env,
     config,
@@ -152,6 +154,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     storageCritical: new Set<string>(),
     pagingWeight: {},
     evalInputs: {},
+    imageInputs: {},
     backlog: {},
     ziipBacklog: {},
     failedBy: {},
