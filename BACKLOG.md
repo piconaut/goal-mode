@@ -778,6 +778,7 @@ including `cicsRegions` rebuilt every tick) and `src/sim/measure/rmf.ts` (6). `d
 rebuilds in `accumulateTick` stay as they are where removing them would mutate persisted state (option 2). Same
 "not in scope", tests and "Done when" as CL-05 (merged: the plan, its invalidation test `tests/sim/plan.test.ts`, the
 5 % stop rule and the ≥ 5-pair timing protocol), profile against CL-05's numbers (docs/headless-performance-options.md
-"Results"). Finish with a re-profile: if
+"Results"). CL-05's plan doesn't hold workload and job-class classification results, CF structures by name or
+service class period indices yet: add them here where a lookup in these files needs them. Finish with a re-profile: if
 `evaluateLpar` is now the largest remaining share, say so in docs/headless-performance-options.md (option 3's
 trigger); option 2 still needs the user.

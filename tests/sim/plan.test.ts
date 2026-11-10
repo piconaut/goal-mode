@@ -29,6 +29,7 @@ const cpc = base.config.cpcs.find((c) => c.id === zos.cpcId)!;
 const aor = base.config.cics[0]!;
 const as = scenario.addressSpaces.find((a) => a.lparId === 'PRDA' && a.role === 'CICS.AOR')!;
 const wl = scenario.workloads.find((w) => w.id === 'MKTORD')!;
+const mqWl = scenario.workloads.find((w) => w.mq)!;
 const staticWl = scenario.workloads.find((w) => !base.routingPolicies?.[w.id])!;
 const structure = base.config.cfStructures.find((x) => x.cfLparId === 'CF01')!;
 
@@ -88,9 +89,11 @@ describe('lookup plan invalidation', () => {
       const planAfter = planOf(r.state);
       expect(planAfter).not.toBe(planBefore);
       expect(planAfter).toEqual(buildLparPlan(r.state.config, effectiveWorkloads(scenario, r.state), effectiveAddressSpaces(scenario, r.state)));
-      // And the next tick runs on the new plan without touching the old objects either.
+      // And the next tick runs on the new plan without touching the old or the new objects.
+      const newSnapshot = structuredClone(after);
       step(r.state, [], scenario);
       expect(keyObjects(base)).toEqual(snapshot);
+      expect(keyObjects(r.state)).toEqual(newSnapshot);
     });
   }
 
@@ -100,10 +103,14 @@ describe('lookup plan invalidation', () => {
       { kind: 'SET_MODIFIER', mod: 'rate', key: wl.id, value: 1.2 },
       { kind: 'SET_LOCK_BOOST', value: 1 },
       { kind: 'NOTE', text: 'x' },
+      { kind: 'ABEND_JOB', critical: false },
+      { kind: 'SET_MQ', workloadId: mqWl.id, maxDepthMsgs: 50_000 },
+      { kind: 'SET_MLC_PRICE', mult: 1.1 },
     ];
     for (const cmd of cmds) {
       const r = applyCommand(base, cmd);
-      expect(r.ok, r.message).toBe(true);
+      // A refusal (no job to abend at this hour, say) leaves the state as it is, which is just as good here.
+      if (cmd.kind !== 'ABEND_JOB') expect(r.ok, r.message).toBe(true);
       const was = keyObjects(base);
       for (const [k, v] of Object.entries(keyObjects(r.state))) expect(v, `${cmd.kind} ${k}`).toBe(was[k as keyof typeof was]);
       expect(planOf(r.state)).toBe(planOf(base));
