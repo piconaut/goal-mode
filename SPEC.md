@@ -1110,7 +1110,9 @@ Ground truth for the trigger: an event card active at any time during the incide
 the hurt workload and whose declared `mechanisms` include the incident's mechanism; otherwise new work, batch overlap
 (lock index), policy or growth. Every card with a non-empty `affects` must declare `mechanisms` (a content test
 enforces it; a card with empty `affects`, such as SMF_AUDIT, has nothing to blame): demand and CPU-per-transaction
-cards name the CPU family and THREAD_LIMIT, CF cards name CF_SERVICE/LOCK_CONTENTION, SICK_AOR names ROUTING, and
+cards name the CPU family and THREAD_LIMIT, CF cards name CF_SERVICE, LOCK_CONTENTION, DEPENDENCY, CPU_CAPACITY
+and CPU_PRIORITY (a sync CF request spins on the z/OS CP until the CF answers, so a slow CF burns z/OS CPU, SG24-7817-00
+p.56; a lost structure fails Db2 work), SICK_AOR names ROUTING, and
 NEW_APP_GOLIVE can be blamed for every mechanism except JOB_FAILURE. New work (including a persistent go-live
 card) counts for the first two simulated days after go-live (`content/sla.ts`), judged at the opening SLA hour; later
 incidents use the remaining fallback rules. APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND,
