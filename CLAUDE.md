@@ -157,6 +157,14 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   Keep sim model changes, balance decisions and cross-layer work on the main agent, and review every subagent diff
   before committing. In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent;
   vetting and balance calls stay on the main agent.
+  Commit trailers: every agent-written commit (including a subagent's) ends with a `Co-Authored-By:` line naming the
+  agent and the model it is itself running as, read from its own system prompt or environment. Never copy a trailer
+  from a coordinator's brief or reminder, and if the agent can't tell which model it is, it omits the model name
+  rather than guessing. For Claude sessions the line is `Co-Authored-By: Claude <Model> <noreply@anthropic.com>`,
+  followed by a `Claude-Session:` line; the Anthropic address and `Claude-Session:` are specific to Claude sessions.
+  Other agents (e.g. Codex) use their own name, model and vendor address (none if they have none), and no
+  `Claude-Session:` line. Coordinators pass subagents only the session link and the PR/comment footer, never their
+  own `Co-Authored-By` line.
 - Loops (each tick of a scheduled task runs one skill, with its state in PR comment markers):
   - Review: `pr-fix-loop` (the Opus `pr-fixer` reviews each PR, fixes up to 5 mechanical findings itself or holds the
     PR for its author, then a Sonnet fix-check of the fixes against the whole PR, then it merges), or the older
