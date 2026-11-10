@@ -63,7 +63,8 @@ Notes from discussion:
   1. RT-00 … RT-15, committed: bot fix lookup by card (RT-00), bugs and missing pin sources, the counterfactual validator (RT-06), accepted answer
      sets (RT-07), wording (RT-09), pin relations and proof recipes (RT-12, RT-13), card footprints (RT-14),
      grouping by cause (RT-15);
-  2. a human playtest when `dev-loop rca-truth` reports the list finished;
+  2. a human playtest when RT-15 is merged. RT-14 waits for the `wlm-truth` core (WT-04 … WT-10; docs/wlm-design.md
+     §7), so run `dev-loop rca-truth,wlm-truth`: `rca-truth` alone "finishes" at RT-14;
   3. RT-16 … RT-21 parked until that playtest (CPU split first; hour-of-day baselines deferred);
   4. then D1 itself (Q8a/Q8b, Q9, PT-20): problem records (RT-22) and proof-gated fixes (RT-24). The retry storm,
      D1's example, cannot be proven with any data the game has (it is identical to a campaign in every report);
@@ -90,8 +91,9 @@ the four structural ones: receivers are chosen on the smoothed PI but every tria
 the DP ladder only climbs and collapses at the top of the managed range within a day or two on a stressed image
 (W2); each served CICS class owns a DP and only the highest counts (W3); donors are picked by importance and CPU
 use, not by goal achievement (W4). The work is BACKLOG.md list `wlm-truth` (WT-01 … WT-15): WT-01 … WT-03 are
-ready (tooling and SPEC text, no behaviour change); every entry that changes the sim is `blocked: after RT-15`.
-Nine questions for the user are in its §8 (sequencing against the RT-15 playtest and RT-16/RT-19 first).
+ready (tooling and SPEC text, no behaviour change), and WT-12. User decisions on §8 (2026-11-10): all as
+recommended, and the core (WT-04 … WT-10) lands after RT-06 and before RT-14, so RCA footprints and balance are
+built once on the new WLM; the RT-15 playtest follows the core (§7).
 
 ### Proposals awaiting the user (written 2026-11-03; not implemented)
 
@@ -419,7 +421,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
 - Waiting on the user: docs/rca-design.md §7 Q7, Q8a, Q8b, Q9 (after the RT-15 playtest); docs/wlm-design.md §8
-  Q1–Q9. #111 Q1–Q3 are decided.
+  Q1–Q9 are decided (2026-11-10). #111 Q1–Q3 are decided.
 
 ## Known approximations and risks
 

@@ -175,7 +175,9 @@ direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-des
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
 - **RT-00 … RT-15 are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
-  in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-22 … RT-24 are D1 and wait for the user.
+  in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 waits for the `wlm-truth` core
+  (WT-04 … WT-10, user decision 2026-11-10): run `dev-loop rca-truth,wlm-truth`, or `rca-truth` alone stops at RT-14
+  and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-01 is replaced by RT-20 and RT-03 by RT-12; the replacing entry deletes the interim code path.
@@ -338,7 +340,10 @@ with look-alike pins (surge against regression, capacity against priority), and 
 each common recipe.
 
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: blocked: after RT-00, RT-02, RT-06, RT-07 · priority: high · size: L · area: game`
+`list: rca-truth · status: blocked: after RT-00, RT-02, RT-06, RT-07, WT-09, WT-10 · priority: high · size: L · area: game`
+
+Sequencing (user decision 2026-11-10, docs/wlm-design.md §7): footprints are measured on the WLM core of `wlm-truth`
+(WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
 
 User decision on Q5, 2026-11-10: yes. After RT-00, RT-02, RT-06, RT-07. Replace `affects` matching with `footprint { resource, reach, direct }` on every card
 (§4.4(1)), generalising PT-04's routing-based scope; rank direct before collateral, fresh before background, then
@@ -444,14 +449,17 @@ and §10 are rewritten for it, the sweep is recorded in PROGRESS.md, and the ban
 WLM policy adjustment: the work that makes the adjustment loop behave like IBM's description as one model. Source
 for every entry: the WLM audit of 2026-11-10, [docs/wlm-design.md](docs/wlm-design.md) (finding ids W-n, repro ids
 R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbered in dependency order.
-- **Sequencing against `rca-truth`:** every entry that changes sim behaviour or goldens is `blocked: after RT-15`
-  (docs/wlm-design.md §7). WT-01 … WT-03 change no behaviour and are ready.
+- **Sequencing against `rca-truth`** (user decision 2026-11-10, docs/wlm-design.md §7): the core WT-04 … WT-09 and
+  WT-10 land after RT-06 (the counterfactual validator) and before RT-14 (card footprints), so footprints and
+  balance are built once, on the WLM players will keep. Each of those PRs reports RT-06's validator differences.
+  WT-01 … WT-03 change no behaviour and are ready; WT-12 changes no shipped behaviour and is ready.
 - **One at a time.** Each `sim` entry: goldens regenerated with a "Behaviour change" note, `npm run bench` before and
   after (tick budget, SPEC §15), a three-scenario `npm run sweep:remote` (seeds 1–10, Normal) recorded in
   PROGRESS.md M8.2, and the realism policy (cite docs/wlm-design.md §3's pages in code comments).
 - **Coupled core:** WT-04 and WT-08 are not to be split or delegated; the main agent implements them. WT-09 is
-  cross-layer and stays on the main agent too. The others are single-rule changes (§8 Q7 asks whether they may be
-  delegated).
+  cross-layer and stays on the main agent too. The single-rule entries (WT-05, WT-07, WT-10, WT-11, WT-12) may go to
+  the Opus `realism-fixer` subagent, with the main agent reviewing and running the sweep (user decision on §8 Q7,
+  2026-11-10; an exception to the rule that `sim` entries stay on the main agent).
 - **Coefficients** go to `src/content/wlm/tuning.ts` `POLICY_ADJUST` with `// FICTIONAL:` notes (names and starting
   values in §5.10); approximations get `// APPROX:` (§5.10 list). Do not tune a coefficient to move a balance band
   (§8 Q2).
@@ -495,7 +503,7 @@ PIs in use today (docs/wlm-design.md §2.4). SPEC §17: add rows "PI window" and
 (Not modelled). No code. Done when: the four places are corrected and cite docs/research.md.
 
 ### WT-04 · One PI basis: projections at sustained demand, `base` against `after` (W1, W8, W9)
-`list: wlm-truth · status: blocked: after RT-15 · priority: high · size: L · area: sim`
+`list: wlm-truth · status: blocked: after RT-06 · priority: high · size: L · area: sim`
 
 **Coupled core; main agent only.** Implements §5.2, §5.4 and the `receiverValue`/`netValue` tests of §5.3 on the
 *existing* single-move trials (the plan is WT-08).
@@ -548,8 +556,10 @@ canonical form; `policyAdjust` ends with `canonical`; `enforceCpuProtection` wor
 become "one step" and "join the next level" for up to three levels (still single moves until WT-08); donor trials
 move the donor to the receiver's level, or just below it if already there (WLM Services p.705, code 531). No goal
 period is ever at `DP.MANAGED_MAX`, so `RG_MIN_DP` (252, `eval/grants.ts`) is above all goal work as its comment
-says. If the user answers §8 Q5 with yes, renumber in this entry (`DP` in `zos/dispatcher.ts`: small consumer 248,
-managed 247–203, reserved 249–253 used for the minimum share and promotion) and delete WT-13. Old saves: the
+says. Renumber in this entry (user decision on §8 Q5, 2026-11-10): `DP` in `zos/dispatcher.ts`, small consumer 248,
+managed 247–203 (SG24-6472 p.65, "as of z/OS 1.8"; Enrico slide 49, practitioner), 249–253 for the minimum share
+and promotion; research.md's "Dispatch priorities" row gives both Redbooks and the reason for preferring the dated
+table. Old saves: the
 ladder is made canonical on the first interval (order preserved). Tests: `ladder.test.ts` (canonical is idempotent
 and order-preserving; `raiseOneStep` splits or joins; `placeNew` by importance); `wlm-invariants: I9 canonical
 ladder`, `I10 CPU protection`, `I15 minimum above goal work` (C-4); realism `the ladder does not collapse` (S-4:
@@ -644,7 +654,9 @@ Done when: the two unit tests pass and the PROGRESS open question is removed. Bo
 minimum).
 
 ### WT-12 · Response-time goals for batch: jobs are completions (W11)
-`list: wlm-truth · status: blocked: user (docs/wlm-design.md §8 Q6; then after RT-15) · priority: low · size: S · area: sim`
+`list: wlm-truth · status: ready · priority: low · size: S · area: sim`
+
+User decision on §8 Q6, 2026-11-10: model job completions, and warn in the editor.
 
 Implements §5.8. In `dispatchLpar` (`src/sim/core/tick/dispatch.ts`), a job ending this tick adds one completion,
 its response time (queued + elapsed, as `stepRmf`'s `JobEndRecord` computes) and one bucket entry to the `ScpTick`
@@ -652,21 +664,12 @@ of the period it ended in, when that period has a response-time goal. The policy
 warnings) notes on a JES class with a response-time goal: "needs at least three completions per 20 minutes (WLM
 Planning p.71); with fewer the PI is erratic". Tests: unit "a batch class with an average goal has a PI after a job
 ends and none 25 minutes later"; unit for the warning. Goldens: unchanged (no shipped policy gives batch a
-response-time goal); prove with bench hashes. Bots: none. Codex: one line in the goals entry. Depends on §8 Q6.
-
-### WT-13 · Dispatching priorities in the z/OS 1.8 numbering (W12)
-`list: wlm-truth · status: blocked: user (docs/wlm-design.md §8 Q5; delete if WT-06 did it) · priority: low · size: S · area: sim`
-
-`DP` in `src/sim/zos/dispatcher.ts`: small consumer 248, managed 247–203 (SG24-6472 p.65, "as of z/OS 1.8"; Enrico
-slide 49, practitioner), 249–253 for the minimum share and promotion. Only numbers change: dispatch order is the
-same. Goldens: change (stored DPs). Done when: bench end-state differs only in DP values (`npm run compare` shows
-`dp` fields and log hex only), SPEC §5.4 and §17 and research.md's "Dispatch priorities" row give both Redbooks and
-the reason for preferring the dated table.
+response-time goal); prove with bench hashes. Bots: none. Codex: one line in the goals entry.
 
 ### WT-14 · Receivers that meet their goals; small consumers; mean-time-to-wait (W2, W13)
-`list: wlm-truth · status: blocked: design (docs/wlm-design.md §8 Q3, Q8) · priority: low · size: M · area: sim`
+`list: wlm-truth · status: blocked: playtest (after WT-15; docs/wlm-design.md §8 Q3, Q8) · priority: low · size: M · area: sim`
 
-Parked. IBM's receiver order ends with periods meeting their goals, largest PI first (SG24-6472 p.63), which keeps
+Parked (user decisions on §8 Q3 and Q8, 2026-11-10: not now; SPEC is corrected by WT-03). IBM's receiver order ends with periods meeting their goals, largest PI first (SG24-6472 p.63), which keeps
 the order improving when nobody misses; small consumers sit above the managed range and are neither receivers nor
 donors (WLM Services p.138); discretionary work is spread over 192–201 by mean time to wait (SG24-6472 p.66). Not
 modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a playtest finding that a stale order

@@ -1,8 +1,8 @@
 # WLM policy adjustment: audit and target model
 
-Status: **proposal for the user** (2026-11-10). Nothing here is implemented. The work it leads to is in
-[BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists the decisions it needs. This is the WLM
-counterpart of [rca-design.md](rca-design.md).
+Status: **design, decided by the user** (2026-11-10). Nothing here is implemented. The work it leads to is in
+[BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
+is the WLM counterpart of [rca-design.md](rca-design.md).
 
 Scope: one policy adjustment interval, end to end, on `dev` at `c0b065f`: `src/sim/wlm/adjust.ts`, `evaluate.ts`,
 `eval/`, `goals.ts`, `runtime.ts`, `src/sim/zos/dispatcher.ts` and `src/sim/core/tick/`. Out of scope: WLM-managed
@@ -22,7 +22,7 @@ check of the whole, and most findings (§4) are interactions between steps that 
 | WLM Services | *z/OS 3.1 MVS Programming: Workload Management Services* (ieaw200), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf): ch. 11 "Using SMF record type 99" and Appendix A (trace codes). The most detailed product documentation of the algorithm | IBM book, page-checked |
 | SG24-6472 | Redbook *System Programmer's Guide to: Workload Manager*, SG24-6472-03, Mar 2008, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf) | IBM Redbook, page-checked |
 | SG24-7621 | Redbook *ABCs of z/OS System Programming Vol. 12*, SG24-7621-00, Jan 2010, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf) | IBM Redbook, page-checked |
-| Patent | US 5,473,773, *Apparatus and method for managing a data processing system workload according to two or more distinct processing goals*, Aman et al., IBM, filed 1994. <https://patents.google.com/patent/US5473773A/en>, accessed 2026-11-10 | **IBM web.** Read through a fetch tool that returns summaries and short quotes, so the wording is not page-checked. It describes the 1994 design: no sysplex PI, no CPU Critical, no zIIP |
+| Patent | US 5,473,773, *Apparatus and method for managing a data processing system workload according to two or more distinct processing goals*, Aman et al., IBM, filed 1994. <https://patents.google.com/patent/US5473773A/en>, accessed 2026-11-10 | **Patent (1994).** IBM's original design, not product documentation: it shows how WLM was designed, not how z/OS 3.1 behaves. Read through a fetch tool that returns summaries and short quotes, so the wording is not page-checked. It describes the 1994 design: no sysplex PI, no CPU Critical, no zIIP |
 | Enrico | Peter Enrico, *How WLM Works* (slides), Enterprise Performance Strategies. <https://www.epstrategies.com/library/content/Enrico.WLM032-WLMHowWLMWorks.pdf>, accessed 2026-11-10; the PDF text was extracted and read | **Practitioner** |
 
 Page numbers are PDF page indexes (`#page=N`), as in [research.md](research.md). Where the two Redbooks or a Redbook
@@ -278,7 +278,7 @@ given with its tier. Section numbers match §2.
   expires" ([WLM Services p.145][ws145]). Its length is not given. *Practitioner:* Enrico slide 53 describes a skip
   counter set when a period was chosen as a receiver and help was given.
 - *Practitioner:* histories are rows covering the last 10 s, 30 s, 60 s, 5 min, 15 min and the 15 min before, so
-  WLM can go back far enough for representative data (Enrico slide 29). *IBM web:* the patent takes response-time
+  WLM can go back far enough for representative data (Enrico slide 29). *Patent (1994):* the patent takes response-time
   data for "thirty seconds or … ten samples", velocity data for at least thirty seconds and five hundred non-idle
   samples, and weights the last 10 seconds twice. IBM's books give no numbers.
 
@@ -345,7 +345,7 @@ given with its tier. Section numbers match §2.
   (`PA_PMD_SEC_DON`), a donor up as secondary receiver (`PA_PMU_DON_SEC_REC`), and "unchanged" donors, receivers and
   secondary donors and receivers whose access changes although their priority does not (`PA_PRO_UNC_*`)
   ([WLM Services p.707–708][ws707]).
-- *IBM web (patent):* moves alternate between raising the receiver and lowering the donor.
+- *Patent (1994):* moves alternate between raising the receiver and lowering the donor.
 
 ### 3.8 Donors
 
@@ -357,7 +357,7 @@ given with its tier. Section numbers match §2.
   then "from the lowest to the highest PI of 'happy' service class periods. Importance does not contribute to the
   algorithm when the service class periods are 'happy'". Read with the receiver order of §3.5, these agree: happy
   periods by lowest PI whatever their importance, then periods missing goals from the least important up.
-  *IBM web (patent)* and *practitioner* (Enrico slide 38) say the same.
+  *Patent (1994)* and *practitioner* (Enrico slide 38) say the same.
 - A more important period can donate to a less important one when it overachieves and is projected still to meet
   its goal easily ([SG24-6472 p.60][r60]).
 - A small processor consumer is not selected as a donor (`PA_SDO_DONFAIL_SPC`, [WLM Services p.708][ws708]).
@@ -379,7 +379,7 @@ given with its tier. Section numbers match §2.
 ### 3.10 Receiver value, net value, convergence
 
 - **Receiver value:** "a minimum performance index improvement, a minimum group service increase, or other minimum
-  criteria designed to reject very small improvements" ([WLM Services p.138][ws138]). *IBM web (patent):* for
+  criteria designed to reject very small improvements" ([WLM Services p.138][ws138]). *Patent (1994):* for
   example 10 % of the difference between the receiver's PI and 1.00. *Practitioner (Enrico slide 50):* the larger of
   10 % of the PI change needed to meet the goal and 0.05, or a cut in delay samples of at least half the largest
   delay.
@@ -389,7 +389,7 @@ given with its tier. Section numbers match §2.
   and goals) for both primary and secondary donors", and SRM "may decide not to help a receiver due to minimal net
   value for either a primary or secondary donor" ([WLM Services p.137–138][ws137]).
 - The rule by importance is not in IBM's books beyond "no service classes with a higher importance are badly
-  affected" ([SG24-6472 p.66][r66]). *IBM web (patent):* donor projected to meet its goal and receiver missing: net
+  affected" ([SG24-6472 p.66][r66]). *Patent (1994):* donor projected to meet its goal and receiver missing: net
   value; both missing: net value if and only if the receiver is more important; equal importance, or both meeting:
   net value if the PI gain exceeds the PI loss, counting only the part of each PI above 0.90; and if the receiver
   would end with a lower PI than the donor, the two must end closer than they were. *Practitioner (Enrico slide
@@ -765,7 +765,7 @@ few completions" is settled as *not modelled*.
 | Question (PROGRESS.md) | Answer | Source |
 |---|---|---|
 | Does net value credit other classes the regions serve (secondary receivers)? | No documented credit: the test is donor harm against the receiver's improvement. Served classes are checked as goal donors when their regions are moved down | [WLM Services p.137–138][ws137], [p.707][ws707] |
-| Does equal-importance convergence apply to secondary donors? | Net value is assessed "for both primary and secondary donors"; convergence is part of the net value rule for equal importance (*IBM web*, patent). So yes | [WLM Services p.138][ws138] |
+| Does equal-importance convergence apply to secondary donors? | Net value is assessed "for both primary and secondary donors"; convergence is part of the net value rule for equal importance (*patent (1994)* only; SG24-6472 p.60 states convergence for "the receiver and the donor"). **Probably yes, unverified** for z/OS 3.1 | [WLM Services p.138][ws138] |
 | How do equal-priority units share a CPU? | Their dispatching order is rotated. The sim's equal turn per ready unit is a fluid form of that | [SG24-6472 p.66][r66], [SG24-7621 p.111][a111] |
 | CPU protection: lower the less important period or raise the protected one? | The less important one is moved down. The sim's direction is IBM's, not an approximation | [WLM Services p.705][ws705] |
 | A region class as a receiver | Its goal is ignored for regions managed as servers; see W3 | [SG24-6472 p.89][r89] |
@@ -1024,9 +1024,9 @@ IBM uses it.
 | Name | Start | Shape | Origin |
 |---|---|---|---|
 | `accDecay` (moves from `runtime.ts` `ACC_DECAY`) | 0.85 | PI looks back about a minute | existing |
-| `receiverValueFrac` (from `adjust.ts`) | 0.1 | a plan must close a tenth of the gap to the goal | patent's example (*IBM web*) |
+| `receiverValueFrac` (from `adjust.ts`) | 0.1 | a plan must close a tenth of the gap to the goal | patent's example (*patent (1994)*, unverified for z/OS) |
 | `receiverValueMinPi` | 0.05 | … and never less than this, so nothing moves for a hair | Enrico slide 50 (*practitioner*) |
-| `creditFloor` (from `adjust.ts`) | 0.9 | PI below 0.9 earns and costs nothing | patent (*IBM web*) |
+| `creditFloor` (from `adjust.ts`) | 0.9 | PI below 0.9 earns and costs nothing | *patent (1994)*, unverified for z/OS |
 | `harmEps` (from `adjust.ts`, 0.02) | 0.02 | projection noise is not harm | existing |
 | `needsHelpDelayFrac` | 0.02 | a period with no managed delay is not assessed | IBM's rule is "no delay samples"; a fluid model never has exactly none |
 | `bottleneckMinFrac` | 0.15 | a second bottleneck is tried only if it is a real share of the delay | invented |
@@ -1124,7 +1124,7 @@ The list is BACKLOG.md `wlm-truth`, numbered in dependency order.
 
 1. **Ready now, no behaviour change (WT-01 … WT-03).** The statistics verb on `inspect` (the acceptance tests of
    everything after it), the trace fields the tests need, and the SPEC text that already disagrees with the code.
-2. **The core, after RT-15 (WT-04 … WT-09),** strictly in this order, one PR and one sweep each:
+2. **The core, after RT-06 and before RT-14 (WT-04 … WT-09),** strictly in this order, one PR and one sweep each:
    - WT-04 the PI basis and sustained demand. First, because every later rule is judged through projections, and a
      projection that changes its mind with one tick makes the other fixes unmeasurable.
    - WT-05 skip clocks, the delay test and the per-interval budget. Needs WT-04's `RECOVERING` outcome.
@@ -1134,20 +1134,29 @@ The list is BACKLOG.md `wlm-truth`, numbered in dependency order.
    - WT-09 server periods. Last of the core: it changes who holds a priority, which touches every piece above.
 3. **Independent of each other, after the piece they build on (WT-10 … WT-12):** bottlenecks, the minimum for
    discretionary work, batch response times.
-4. **Waiting for a decision (WT-13, WT-14),** then **WT-15**: Codex, SPEC, the skill, and the closing sweep.
+4. **WT-15**: Codex, SPEC, the skill, and the closing sweep.
 
 **WT-04 and WT-08 are too coupled to split or delegate.** WT-04 changes what every test compares; WT-08 replaces
 the receiver/donor/net-value core in one piece (a half-built plan with the old single-move tests is not a state
 worth merging). The main agent implements both. WT-09 is cross-layer (dispatch, measurement, reporting, adjustment)
 and stays on the main agent too.
 
-**Against `rca-truth`.** RT-06 (the counterfactual validator) and RT-14 (card footprints) measure the sim as it is,
-and BL-01/BL-02 wait on RT-14. A WLM change landing between RT-06's baseline and RT-14 would move the validator's
-numbers for a reason that has nothing to do with footprints. So every WT entry that changes sim behaviour or goldens
-is `blocked: after RT-15`; nothing here argues otherwise. Two things follow and are questions for the user (§8 Q1):
-the human playtest that RT-16 … RT-21 wait for would otherwise be played on a WLM about to change, and RT-16 and
-RT-19 read sim signals (CPU wait by role, region CPU wait, the displaceable-CPU split) that WT-09 and WT-10
-redefine. Cross-notes are on RT-16, RT-19, WT-09 and WT-10.
+**Against `rca-truth`** (user decision on §8 Q1, 2026-11-10). W3 and W4 change which work is hurt when something
+goes wrong, and §6.2 expects more `CPU_PRIORITY` incidents on importance-4 and -5 work. That is what RT-14 (card
+footprints) and RT-15 (grouping by cause) measure, and what BL-01/BL-02 tune. Building them on today's WLM and then
+landing the core would redo footprints and balance. So:
+
+1. `rca-truth` RT-00 … RT-13 go first. They are mostly game-layer and do not depend on WLM; RT-06 (the counterfactual
+   validator) must be merged before WT-04, so the core lands under a check that incident truths move only where
+   expected. Its baseline numbers change once, deliberately, with each WT entry; each WT PR reports the validator's
+   differences.
+2. The core WT-04 … WT-09, and WT-10 (bottlenecks change which receivers are helped): `blocked: after RT-06` for
+   WT-04, then in the order above.
+3. RT-14 (`blocked: after … WT-09, WT-10`), RT-15, then BL-01/BL-02 once.
+4. The human playtest that gates RT-16 … RT-21, on the WLM players will keep. RT-16 and RT-19 read the server-period
+   signals of WT-09 (cross-notes on both).
+
+The playtest moves out by the core's six entries either way; this order builds footprints and balance once.
 
 ## 8. Questions for the user
 
@@ -1162,3 +1171,9 @@ redefine. Cross-notes are on RT-16, RT-19, WT-09 and WT-10.
 | Q7 | May the single-rule entries (WT-05, WT-07, WT-10, WT-11, WT-12) go to the Opus `realism-fixer` subagent? BACKLOG's rule keeps `sim` entries on the main agent | **Yes for those five,** with the main agent reviewing and running the sweep; never WT-04, WT-08, WT-09 |
 | Q8 | Small consumers and mean-time-to-wait (W13): leave unmodelled and correct SPEC §5.4? | **Yes** (WT-03 corrects the text) |
 | Q9 | `rejectedSkipTicks` is invented (IBM gives no length). One minute, or longer on Hard as a difficulty knob? | **One minute everywhere.** WLM's behaviour should not vary by difficulty |
+
+**User decisions (2026-11-10).** Q2–Q9 as recommended. Q1: the playtest after the core, and RT-16/RT-19 after
+WT-09, as recommended; in addition the core lands **before RT-14**, not after RT-15 (§7). Effects in BACKLOG.md:
+WT-04 waits only for RT-06; RT-14 waits for WT-09 and WT-10; WT-13 is folded into WT-06 (Q5); WT-12 is ready (Q6,
+no shipped policy affected); WT-14 is parked for a playtest (Q3, Q8); the single-rule entries may go to the
+`realism-fixer` subagent (Q7).
