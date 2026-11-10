@@ -728,7 +728,7 @@ The work is BACKLOG.md list `rca-truth`, numbered in dependency order (user deci
 PT-25 … PT-47 entries this document first proposed). Gating uses the `blocked: after <ID>` status, so `dev-loop`
 cannot pick an entry before its prerequisites are merged.
 
-1. **Committed (RT-01 … RT-15).** Bugs and missing pin sources (RT-01 … RT-05, RT-08, RT-10, RT-11), the
+1. **Committed (RT-00 … RT-15).** Bot fix lookup by card, so bot behaviour does not depend on trigger labels (RT-00, before RT-09 and RT-14). Bugs and missing pin sources (RT-01 … RT-05, RT-08, RT-10, RT-11), the
    counterfactual validator (RT-06, moved earlier from Q10), accepted answer sets (RT-07), wording (RT-09), pin
    relations (RT-12), proof recipes (RT-13), card footprints (RT-14), grouping by cause (RT-15). Of these only RT-02,
    RT-09 and RT-14 move truth labels and need sweeps. RF-02 stays in `realism-fixes`.

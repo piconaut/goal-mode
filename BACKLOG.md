@@ -37,6 +37,7 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 | `rca-truth` | RT | RCA judging and incident truth, and D1 (docs/rca-design.md) |
 | `pr-followups` | PR | Non-blocking findings left open by PR reviews |
 | `realism-fixes` | RF | Sim model changes queued by docs/research.md rows (sim status "Fix queued") or audit rounds |
+| `balance` | BL | Balance tuning: bot bands, scenario difficulty, sweep regressions. Main agent only (CLAUDE.md) |
 | `cleanup` | CL | Refactors and tooling tidy-ups with no behaviour change (prove it with `npm run compare`) |
 
 ## playtest-fixes
@@ -172,11 +173,25 @@ RCA judging and incident truth: the work that makes RCA verdicts fair and eviden
 direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
-- **RT-01 … RT-15 are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
+- **RT-00 … RT-15 are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
   in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-01 is replaced by RT-20 and RT-03 by RT-12; the replacing entry deletes the interim code path.
+
+### RT-00 · Bots look up a card's fix by card, not by the incident's trigger
+`list: rca-truth · status: ready · priority: high · size: S · area: tooling`
+
+`obviousHourly` (`tools/strategies.ts`) applies a fix when a running card's trigger equals the incident's and takes
+the fix from `FIX_BY_TRIGGER` (`RUNAWAY_WORK` → `CANCEL_RUNAWAY`, `ACCESS_PATH_REGRESSION` → `REBIND_REVERT`), plus
+the `FIX_BY_AGENCY_CARD` exception. Bot behaviour then depends on trigger labels: once RT-09 moves
+ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT to `ACCESS_PATH_REGRESSION`, the bots would
+request `REBIND_REVERT` while those cards run, a fix that ends none of them. Replace both maps with an explicit set
+of the card ids the textbook/expert "obvious" rule fixes today (every card, in all three decks and adaptations,
+whose trigger is `RUNAWAY_WORK` or `ACCESS_PATH_REGRESSION`), taking each card's own `fix` from its definition. Source:
+review of what RT changes do to the bots (2026-11-10). Done when: the set is listed in the code with a comment on
+why it is frozen, `npm run compare` shows no difference on the three scenarios, and a three-scenario sweep (seeds
+1–10) matches the 2026-11-10 reference in PROGRESS.md M8.2 exactly.
 
 ### RT-01 · A card fixed or expired inside the hour loses its `failureMechanism`
 `list: rca-truth · status: ready · priority: high · size: S · area: game`
@@ -274,7 +289,7 @@ that is at least 5 % of the hour's ticks; keep `cappedByLpar` readable for old s
 gets the CPU split, one capped for 10 % of the hour gets CAPPING, and a sweep shows the bands hold.
 
 ### RT-09 · Trigger and mechanism wording: "Change regression", "Policy or configuration"
-`list: rca-truth · status: ready · priority: low · size: S · area: content`
+`list: rca-truth · status: blocked: after RT-00 · priority: low · size: S · area: content`
 
 User decision on Q2, 2026-11-10: yes. Labels and help text only (ids unchanged): §4.4(5). Move ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS
 and SMF_AUDIT to `ACCESS_PATH_REGRESSION` (shown as "Change regression"); widen STORAGE's and CAPPING's help. Changes
@@ -324,9 +339,9 @@ with look-alike pins (surge against regression, capacity against priority), and 
 each common recipe.
 
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: blocked: after RT-02, RT-06, RT-07 · priority: high · size: L · area: game`
+`list: rca-truth · status: blocked: after RT-00, RT-02, RT-06, RT-07 · priority: high · size: L · area: game`
 
-User decision on Q5, 2026-11-10: yes. After RT-02, RT-06, RT-07. Replace `affects` matching with `footprint { resource, reach, direct }` on every card
+User decision on Q5, 2026-11-10: yes. After RT-00, RT-02, RT-06, RT-07. Replace `affects` matching with `footprint { resource, reach, direct }` on every card
 (§4.4(1)), generalising PT-04's routing-based scope; rank direct before collateral, fresh before background, then
 overlap, and accept both on a tie (no `uid` order); collateral victims accept the card's trigger and the fallback;
 `disturbed` uses the footprint; BATCH is in reach like any workload; SMF_AUDIT gets a footprint. Moves truth
@@ -513,6 +528,38 @@ show queued DBAT requests per hour per Db2 member in a Db2 statistics / DISPLAY 
 queue model does not change. Done when: the view, the pin and the clue texts that name the old column are updated,
 `tests/game/smf.test.ts` and the evidence tests cover it, and the two `docs/research.md` rows say "Matches".
 
+## balance
+
+Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.
+Tune after the RT entries that move truth labels have landed (RT-00, RT-02, RT-09, RT-14), because they change what
+the strategy bots do (docs/rca-design.md §4.8); tuning before them would be redone.
+
+### BL-01 · Harbourline expert wins 5 of 10
+`list: balance · status: blocked: after RT-14 · priority: low · size: M · area: content`
+
+Release sweep 2026-11-10 (dev `1300e69`, Normal, seeds 1–10): expert 5/10. All five losses are trust losses, mostly
+on Markets (seeds 1, 2, 4, 7, 9); seed 4 (day 38) is new against the 6/10 the user accepted. Harbourline is gated
+against Midwest's bands for reference only. The user accepted 5/10 for the release. Find why Markets trust runs out
+for an expert player (event mix, Markets SLA tightness, the expert bot's blind spots such as never raising Db2 above
+CICS) and decide whether to tune content or the bot. Done when: a 20-seed three-bot Harbourline sweep is recorded in
+PROGRESS.md M8.2 with the decision, and any content change carries `// FICTIONAL:` notes.
+
+### BL-02 · Revenue: do-nothing survives close to textbook
+`list: balance · status: blocked: after RT-14 · priority: low · size: M · area: content`
+
+Release sweep 2026-11-10: do-nothing median day 19 (p10 16, p90 23), textbook 27, expert 10/10. Do-nothing is inside
+its 8–22 band (it moved there with #167's G1 retune), but the gap to textbook is 8 days against Midwest's 11 and
+Harbourline's 19.5, so diagnosing earns less on Revenue. The textbook PREFILL losses around day 22 (PROGRESS.md
+M8.2 follow-ups) belong here too. Decide whether the spread is wanted; if not, tune G1/G2 pressure or the deadline
+week. Done when: a 20-seed three-bot Revenue sweep and the decision are recorded in PROGRESS.md M8.2.
+
 ## cleanup
 
-None open.
+### CL-04 · WLM's receivers-per-importance limit lives in content
+`list: cleanup · status: ready · priority: low · size: S · area: sim`
+
+`RECEIVERS_PER_IMPORTANCE = 2` is a tunable hard-coded in `src/sim/wlm/adjust.ts:137`, against the CLAUDE.md rule
+that tunables live in `src/content/`. Move it to the WLM content with a `// FICTIONAL:` comment (the shape: how many
+fixable receivers the search assesses at one importance before going on to the next; SG24-7621 p.105–106 for the
+search order), and pass it through the adjust input like the other coefficients. Source: #260 milestone review,
+note N3. Done when: `npm run compare` and the bench hashes show no difference.

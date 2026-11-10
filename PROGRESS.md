@@ -59,7 +59,7 @@ Notes from discussion:
   tie-break, a capacity/priority test that takes the policy's importances as given, and evidence that does not
   discriminate. The work is BACKLOG.md list `rca-truth` (user decisions on §7 Q1–Q5 and Q10, 2026-11-10, recorded
   in docs/rca-design.md §7):
-  1. RT-01 … RT-15, committed: bugs and missing pin sources, the counterfactual validator (RT-06), accepted answer
+  1. RT-00 … RT-15, committed: bot fix lookup by card (RT-00), bugs and missing pin sources, the counterfactual validator (RT-06), accepted answer
      sets (RT-07), wording (RT-09), pin relations and proof recipes (RT-12, RT-13), card footprints (RT-14),
      grouping by cause (RT-15);
   2. a human playtest when `dev-loop rca-truth` reports the list finished;
