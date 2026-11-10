@@ -17,7 +17,7 @@ npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
 npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables incl. PROCU jobs (needs the RMF_MON3 tool)
 npm run -s play -- runs/a.json mon3 PRDA --at D1 09:40   # a past range from the history (the values a pin reads; kept 48 h in runs/a.mon3.json)
-npm run -s play -- runs/a.json wlmlog PROD1 --grep RCVR   # the Monitor's WLM activity log (last 60 lines; live only with RMF_MON3): receivers, donors, DP moves, "no action with net value"
+npm run -s play -- runs/a.json wlmlog PROD1 --grep RCVR   # the Monitor's WLM activity log (last 60 lines; live only with RMF_MON3): receivers, donors, DP moves, and for "no action with net value" the first move it tried and why it was rejected
 npm run -s play -- runs/a.json finance    # Finance tab: bill so far; under TFP, MSU-hours vs the prorated baseline, projection and overage $ per MSU-hour by LPAR
 npm run -s play -- runs/a.json capacity   # CPC engines and MSU, LPAR logical CPs/weights/defined capacity, job class initiators, capacity changes by day
 npm run -s play -- runs/a.json batch      # last batch night by stream (needs SMF30_BATCH, like smf BATCH): LPARs, start/end, queueing, stretch
@@ -57,6 +57,9 @@ Change Desk (`json '{"cmd":"change","req":{"label":"…","commands":[…]}}'`), 
 {"kind":"MOVE_STRUCTURE","name":"DB2_LOCK1","cfLparId":"CF01"}
 {"kind":"SET_RMF_INTERVAL","minutes":15}
 ```
+
+A change may carry only the change-desk kinds above and their siblings (those with an engineer-hours cost); other
+`Command` kinds, a `fixId`/`hardwareId` combined with commands, and event-only fields are refused at no cost.
 
 WLM edits (`json '{"cmd":"wlm","edit":{…}}'`, accumulate on a pending policy until `activate`). Goals are
 `{"kind":"AVG","rtSec":0.5}`, `{"kind":"PCT","rtSec":0.5,"pct":90}`, `{"kind":"VEL","velocity":40}` or
@@ -105,7 +108,7 @@ interval) for developers checking a bug. `npm run inspect -- <file> wlm <system>
 [--class ONL]` explains WLM's decisions there: per policy adjustment, the receiver candidates in assessment order
 (importance, sysplex and local PI, DP, bottleneck), each trial move and its verdict (`ACCEPTED`, `CPU_CRITICAL`,
 `NO_RECEIVER_GAIN`, `SMALL_GAIN`, `MORE_IMPORTANT_HARMED`, `EQUAL_DISPARITY`, `NO_NET_VALUE`) with the projected PIs
-behind it, and candidates skipped as not CPU/zIIP-fixable or over the two-receivers-per-interval budget. A play-CLI
+behind it, and candidates skipped as not CPU/zIIP-fixable or over the two-receivers-per-importance projection budget. A play-CLI
 file replays from its seed and log to any past time; a browser save has no log, so it is traced forward from the
 saved moment. Player agents must not use either verb: neither is something a player can see.
 

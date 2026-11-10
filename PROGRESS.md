@@ -13,11 +13,15 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 - **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
   the user" in Remaining work; none is implemented.
   The 27-card event deck is complete; add events only if a playtest asks for them.
-- **Published build:** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-  link"), rebuilt 2026-11-06 from `dev` at `474ae40`. Republish on request.
-- **Latest verified dev:** `a6a2d61` (#217); 74 test files / 739 tests pass (`npm run check`, 2026-11-06).
-- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `a6a2d61`, 2026-11-06):** Midwest `367cefafb775e701`;
-  Harbourline `bf830a86c1da1510`; Revenue `197ded14fdeb9946`. Host timings vary; use adjacent comparisons rather than
+- **Published builds** (republish on request):
+  - **Release (main):** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
+    link"), "GOAL MODE (release · main 12214d2)", rebuilt 2026-11-09 from `main` at `12214d2` (merge of #243).
+  - **Preview (dev):** [artifact](https://claude.ai/artifact/MbFdETzQXwuj87CvtiQyNW) (private until shared),
+    "GOAL MODE (preview · dev e2a66ca)", built 2026-11-09 from `dev` at `e2a66ca`.
+- **Latest verified dev:** `e2a66ca` (#242, merged to main as `12214d2`); 77 test files / 786 tests pass
+  (`npm run check`, 2026-11-09).
+- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `e2a66ca`, 2026-11-09):** Midwest `752603840465408b`;
+  Harbourline `f110fc2de59aa7f3`; Revenue `5181b5fa96813685`. Host timings vary; use adjacent comparisons rather than
   old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
@@ -410,9 +414,57 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-09: PT-06: RMF and Monitor III report IIPCP only where a zIIP is defined to the image (online or
+  reserved; *Init & Tuning* 3.1 p.431, p.434 with PROJECTCPU default NO). On an image with none (Midwest DEVT/SYSP,
+  harbourline DEV1) the eligible time on CPs stays plain CP work: `reportedTicks` folds it into APPL% CP and IIPCP
+  is 0, so Monitor III's CP/IIPCP split and the RMF/SMF 72.3 rows agree. PROD2's reserved-only zIIP keeps IIPCP.
+  Reporting only: `npm run compare -- --drop iipcpReported` leaves sim state, game state and the run log identical;
+  the goldens are regenerated for the report values and the per-image `iipcpReported` fact.
+- 2026-11-09: PT-04: a power cap's workload scope (`affects`) is re-resolved from the effective routing every tick
+  while it runs, and each hour keeps the union of the scopes seen in it: work routed onto a capped CPC (or added)
+  during the hour is attributed for that hour, and work moved off it loses the cap from the next hour, so remediation
+  during the hour (including on its last tick) does not erase its trigger. The CPC set is kept on the event as
+  `capacityCpcs` and the union's hour as `affectsHour`; the last hour's scope survives expiry. `npm run compare`
+  shows no differences on the scripted runs and the goldens are unchanged.
+- 2026-11-09: PT-13: SMF 101/110 "vs base" is frozen per closed hour (`cpuVsBase` on `SmfHour`) against the
+  baseline in force during that hour, so a past row no longer moves with the EWMA; the baseline learns only from
+  closed hours in which no card affected the workload, so a regression is not absorbed as the new normal. The Db2
+  Whisperer tip now comes from "DBA team (Db2 Whisperer)". Scripted runs' run log and sim state are unchanged; game
+  state differs only by the new frozen field (`compare --drop smfHours`: no differences).
+- 2026-11-09: PT-09: a fix planned from a forewarning no longer goes to waste when the card starts after 06:00.
+  A fix that finds no active target but whose card the player can see (inbox forewarning or revealed rumour) and
+  that starts later that day is stored as `armedEvents` on the applied change; the card's begin and end apply in
+  the same tick when it starts, and the log names the armed change. A guessed fix on an unseen card is still
+  charged with "no active event matched this fix", so the Change Desk cannot be probed. The ZIIP-loss clue now
+  says a later redeploy can bring the COBOL versions back.
+- 2026-11-09: PT-05: the WLM activity log names a rejected move and its reason ("ONLCARD#1 DP F4→F6 rejected: harms
+  DDFMOB#1, equal importance") on that receiver's own line, and WLMGL/SYSWKM mark a CICS region managed to the
+  transactions' goals (TRANSACTION mode only; REGION/BOTH manage it to its own class's goal) — the region class's own
+  goal is not used (WLM Planning p.120, p.122–123). No decision changes: goldens regenerate for the log text and the
+  new interval flag, compare differs only in the log and report text.
+- 2026-11-09: PT-03: the CPU_CAPACITY lines moved to `src/content/incidents.ts`; an RCA now says which line the
+  incident hour missed ("CPC CPCA averaged 81 % busy, below the 90 % capacity line"), from figures recorded on the
+  incident when its truth is decided; a capacity reduction keeps its normal setting and shows a CPU-Activity-style
+  `CHANGE REASON=` line on Partition Data (SMF70CCR; SMF70CAI kept for tooling). Scoring and goldens unchanged.
+- 2026-11-09: A player change carries only change-desk commands (`CHANGE_DESK_KINDS` in `src/game/catalog.ts`); a
+  fix or hardware order can no longer carry commands, and event-only fields (CF degrade, LCU extra I/O, CICS leak)
+  plus an over-large hot-skew rebalance are refused at no cost (PT-02).
+- 2026-11-09: WLM's projection budget is per importance (`RECEIVERS_PER_IMPORTANCE` in `src/sim/wlm/adjust.ts`), so a
+  receiver whose projections find no move of net value no longer keeps lower importances out (PT-01, playtest round 2
+  D19: STCMED/STCHI held both importance-1 slots while ONLCARD/ONLRBANK sat at PI 4.0 until 22:30). Goldens
+  regenerated for both scripted days; harbourline bench hash and `npm run compare` differ there by design, midwest
+  and revenue are unchanged. Balance sweep (Normal Midwest, seeds 1–10): donothing 10/17/22 (median day 16.5),
+  textbook 18/28/28 (27.5), expert 40/40/40 (victory every seed); all inside their bands.
+- 2026-11-09: Milestone #243 (dev → main) merged. Review notes fixed: CF Activity CONTENTION % marked APPROX (a
+  Monitor III CFACT column; the Postprocessor report shows -CONT counts, RMF RA p.373), MSU citation moved to WLM
+  Planning p.44, test for `isNewWorkload` on a workload no event or story beat adds. Left open: `setWlmTraceSink`
+  is module-level mutable state in `src/sim/wlm/adjust.ts` (inspect-only, decision-neutral).
 - 2026-11-06: Added five IBM Redbooks/Redpaper entries to the `zos-docs` catalog after checking their IBM publication pages and PDF title pages; ingested their PDFs and caches with `books.py`.
 - Split `src/sim/core/step.ts` (1,458 → 278 lines at #217) into `src/sim/core/tick/`; bench hashes unchanged.
-  Further refactors (`evaluate.ts`, Midwest `pool()`) are in BACKLOG.md `cleanup`.
+- 2026-11-09: Split `src/sim/wlm/evaluate.ts` (959 → 56 lines) into `src/sim/wlm/eval/` (types, prepare, grants,
+  results, accounting, io, paging) with the public surface re-exported; bench hashes on Midwest, Harbourline and
+  Revenue and `npm run compare` unchanged. Midwest now builds its topology with the shared `pool()` helper (#246),
+  which closes the `cleanup` list.
 - Stale remote branches (`claude/*`, `ccr-d83b42c6-*`, Oct 21–29) hold only already squash-merged work; delete
   when convenient.
 

@@ -214,6 +214,7 @@ export function Wkm({ m, game }: { m: Mon3View; game: GameHandle | null }) {
           <div>
             <b>Class: {w.serviceClass}</b> Period: {w.period} · Goal: {w.goal} · Avg. Resp. time: {w.avgRtMs === null ? '-' : `${w.avgRtMs.toFixed(0)} ms`} · {w.endedPerSec.toFixed(1)} TRX/s · PI {w.pi === null ? '-' : w.pi.toFixed(1)}
           </div>
+          {w.note && <div className="muted" style={{ fontSize: 12 }}>{w.note}</div>}
           <table>
             <thead>
               <tr>

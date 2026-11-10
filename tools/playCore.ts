@@ -188,7 +188,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const t = inc.truth;
       const pts = rca?.points ?? 0;
       const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
-      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${t.mechanism === c.mechanism ? 'right' : 'wrong'}, trigger ${t.trigger === c.trigger ? 'right' : 'wrong'} (was ${t.mechanism}/${t.trigger}); ${trustNote}.${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
+      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${t.mechanism === c.mechanism ? 'right' : 'wrong'}, trigger ${t.trigger === c.trigger ? 'right' : 'wrong'} (was ${t.mechanism}/${t.trigger}); ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
     }
     case 'ask': {
       const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));
@@ -450,6 +450,7 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
     const st = w.states;
     const f = (x: number | null) => (x === null ? '-' : x.toFixed(0));
     out.push('', `SYSWKM ${w.serviceClass} period ${w.period}: ${w.goal}, avg ${w.avgRtMs === null ? '-' : w.avgRtMs.toFixed(0)} ms, ${w.endedPerSec.toFixed(1)}/s, PI ${w.pi === null ? '-' : w.pi.toFixed(2)}`,
+      ...(w.note ? [`  ${w.note}`] : []),
       `  CICS EXE %: ACTIVE ${f(st.active)} READY ${f(st.ready)} IDLE ${f(st.idle)} LOCK ${f(st.lock)} I/O ${f(st.io)} CONV ${f(st.conv)} PROD ${f(st.prod)} MISC ${f(st.misc)}`,
       table(w.servers.filter((x) => !sys || x.system.toUpperCase() === sys).map((x) => ({ jobname: x.jobname, mgmt: x.mgmt, system: x.system, serviceClass: x.serviceClass, servicePct: x.servicePct, velocity: x.velocity, procUsgPct: x.procUsgPct, ioUsgPct: x.ioUsgPct, cappPct: x.cappPct }))));
   }

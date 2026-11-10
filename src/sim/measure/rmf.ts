@@ -7,6 +7,7 @@ import type { CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdResult } from '../io/dasd';
 import type { LparRuntime, LparTick, WorldConfig } from '../core/types';
 import type { ScpTick } from '../wlm/evaluate';
+import { CAPACITY_SETTING_FRAC } from '../../content/hardware';
 import { BUCKETS, emptyBuckets, velocityOf } from '../wlm/goals';
 import { goalInfo, accPi, emptyAcc, velDelay, velUsing, type ScpAcc } from '../wlm/runtime';
 import type { ServiceDefinition } from '../wlm/types';
@@ -159,7 +160,7 @@ export interface RmfInterval {
   /** Average sysplex lock index over the interval (running batch lock intensity); CFACT lock contention. */
   lockIndex?: number;
   cpu: CpuRecord[];
-  cpcBusy: { cpcId: string; pool: string; physicalBusyPct: number }[];
+  cpcBusy: { cpcId: string; pool: string; physicalBusyPct: number; /** SMF70CAI 1–99 while capacity is adjusted. */ capacityAdjustmentPct?: number; /** SMF70CCR: 1 operator, >1 external. */ capacityReasonCode?: number }[];
   wlm: WlmRecord[];
   /** Report class rows (only when the policy assigns report classes). */
   wlmRc?: WlmRecord[];
@@ -206,10 +207,10 @@ export function accumulateTick(
   const scps = { ...acc.scps };
   let rcs = acc.rcs;
   for (const lt of lparTicks) {
-    for (const t of reportedTicks(lt.scps, lt.cics)) addScp(scps, lt.lparId, t);
+    for (const t of reportedTicks(lt.scps, lt.cics, false, lt.iipcpReported ?? true)) addScp(scps, lt.lparId, t);
     if (lt.rcs) {
       rcs = rcs ? { ...rcs } : {};
-      for (const t of reportedTicks(lt.rcs, lt.cics, true)) {
+      for (const t of reportedTicks(lt.rcs, lt.cics, true, lt.iipcpReported ?? true)) {
         const k = accKey(lt.lparId, t.scKey);
         const prevMembers = rcs[k]?.members ?? [];
         addScp(rcs, lt.lparId, t);
@@ -525,7 +526,15 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
           if (!a) return s;
           return s + (pool === 'CP' ? a.deliveredCp : pool === 'ZIIP' ? a.deliveredZiip : a.deliveredIcf) / n;
         }, 0);
-      return { cpcId: c.id, pool, physicalBusyPct: c.engines[pool] > 0 ? (100 * used) / c.engines[pool] : 0 };
+      const adj = c.peakCapacitySetting !== undefined && CAPACITY_SETTING_FRAC[c.capacitySetting] < CAPACITY_SETTING_FRAC[c.peakCapacitySetting]
+        ? Math.max(1, Math.round((100 * CAPACITY_SETTING_FRAC[c.capacitySetting]) / CAPACITY_SETTING_FRAC[c.peakCapacitySetting]))
+        : undefined;
+      return {
+        cpcId: c.id,
+        pool,
+        physicalBusyPct: c.engines[pool] > 0 ? (100 * used) / c.engines[pool] : 0,
+        ...(adj !== undefined ? { capacityAdjustmentPct: adj, capacityReasonCode: c.capacityReasonCode ?? 1 } : {}),
+      };
     }),
   );
   const dt = Math.max(1, acc.dasd.ticks);

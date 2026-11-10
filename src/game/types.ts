@@ -65,6 +65,9 @@ export interface PlannedChange {
   revertCommands: Command[];
   /** Game-level fix that ends an active event (e.g. cancel a runaway query). */
   endsEvent: string | null;
+  /** Applied fixes only: cards of this fix that the player could see and that had not started yet when the fix
+   * applied. They end when they start that day (a forewarned change met by the fix already in place). */
+  armedEvents?: string[];
 }
 
 export interface ActiveEvent {
@@ -82,6 +85,12 @@ export interface ActiveEvent {
   failureMechanism?: Mechanism;
   /** Hardware items refused while the card runs (copied from the card). */
   blocksHardware?: string[];
+  /** A power cap: the CPCs whose capacity it dropped. Their workloads (the card's `affects`) are re-resolved
+   * from the effective routing every tick while the cap runs, and each hour keeps the union of the scopes seen
+   * in it, so a mid-cap move or added workload is attributed for that hour. */
+  capacityCpcs?: string[];
+  /** Start tick of the hour whose union `affects` holds (a power cap's scope follows the routing). */
+  affectsHour?: number;
   endCommands: Command[];
   started: boolean;
   ended: boolean;
@@ -100,6 +109,9 @@ export interface SmfHour {
   /** Hour of day at the start of the hour (0..23). */
   hourOfDay: number;
   workloads: Record<string, WorkloadHour>;
+  /** Per workload, CPU per transaction ÷ the healthy baseline in force at close. Frozen when the hour closes so
+   * a past row keeps its "vs base" ratio however later hours move the EWMA (absent in older saves). */
+  cpuVsBase?: Record<string, number>;
   /** CICS storage manager statistics per AOR (absent in older saves). */
   cicsStorage?: Record<string, CicsStorageHour>;
 }
@@ -143,6 +155,22 @@ export interface HourAcc {
   cicsStorage?: Record<string, CicsStorageHour>;
 }
 
+/** The figures the capacity decision used, for the verdict the player is shown. Kept on the incident when the
+ * truth is set: the RMF intervals don't carry the image measure, and the routing can change before the RCA. */
+export interface CapacityBasis {
+  /** The image whose numbers decided: one that cleared a line, else the busiest CPC. */
+  lparId: string;
+  cpcId: string;
+  /** Hour-average CPC general-CP busy, %. */
+  cpcBusyPct: number;
+  /** Hour-average delivered ÷ available CP of the image, %, the measure the rule uses. */
+  lparBusyPct: number;
+  /** Share of the image's CP that went to less important work, %. */
+  donorPct: number;
+  /** A capacity line was reached and the donor test passed: the verdict is CPU_CAPACITY. */
+  full: boolean;
+}
+
 export interface Incident {
   id: number;
   workloadId: string;
@@ -152,9 +180,13 @@ export interface Incident {
   hours: number;
   worstAttainmentPct: number;
   truth: { mechanism: Mechanism; trigger: Trigger };
+  /** The capacity figures behind a CPU mechanism verdict, taken when the truth was set (absent for other
+   * mechanisms and in old saves). */
+  basis?: CapacityBasis;
   /** AIOps hypotheses when the incident opened (tool AIOPS), best first. */
   aiops?: Hypothesis[];
-  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number } | null;
+  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). */
+  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; explain?: string } | null;
   trustLost: number;
   /** Id of the first incident that day with the same root cause: one RCA covers the group, scored once (SPEC §10). */
   rcaGroup?: number;

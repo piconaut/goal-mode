@@ -23,13 +23,13 @@ import { deliverInquiries } from './inquiries';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
-import { failRisk, NO_TARGET, requestChange } from './run/changes';
+import { ARMED, failRisk, NO_TARGET, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
-import { drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
+import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
-import { BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, importanceRank } from './sla';
+import { BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank } from './sla';
 import { tfpAtDayEnd } from './tfp';
 import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
@@ -131,9 +131,12 @@ export function startDay(run: RunState, content: GameContent): RunState {
         continue;
       }
       r = { ...r, pendingCommands: [...r.pendingCommands, ...c.commands] };
-      changes.push({ ...c, status: 'APPLIED' });
       const noTarget = c.endsEvent !== null && !hasEventForFix(r, content, c.endsEvent);
-      r = logLine(r, `Planned change applied: ${c.label}${noTarget ? ` (${NO_TARGET})` : ''}`);
+      // A forewarned card that has not started yet: the fix arms against it and ends it when it lands that day.
+      const arms = noTarget ? armableEvents(r, content, c.endsEvent!, r.day) : [];
+      changes.push({ ...c, status: 'APPLIED', ...(arms.length > 0 ? { armedEvents: arms } : {}) });
+      const why = arms.length > 0 ? ` (${ARMED})` : noTarget ? ` (${NO_TARGET})` : '';
+      r = logLine(r, `Planned change applied: ${c.label}${why}`);
       if (c.endsEvent) r = endEventByFix(r, content, c.endsEvent);
     } else {
       if (c.status === 'APPLIED' && c.revertDay === r.day) {
@@ -163,6 +166,10 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       r = logLine(r, `V WLM,POLICY=${switchTo.kind === 'ACTIVATE_POLICY' ? switchTo.definition.policyName : ''} (scheduled)`);
     }
     let events = r.events;
+    // Fixes applied earlier today whose forewarned card had not started yet: they end the card when it starts.
+    const armed = new Map<string, string>();
+    for (const c of r.changes) if (c.status === 'APPLIED' && c.armedEvents) for (const uid of c.armedEvents) armed.set(uid, c.label);
+    const armedEnded = new Set<string>();
     const resolvedEnd = new Map<string, Command[]>();
     const resolvedCpcs = new Map<string, Set<string>>();
     for (const e of events) {
@@ -176,17 +183,28 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
           for (const cpc of r.sim.config.cpcs) {
             const to = Math.max(4, cpc.capacitySetting - def.capacityDrop) as 4 | 5 | 6 | 7;
             if (to < cpc.capacitySetting) affectedCpcs.add(cpc.id);
-            cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to });
+            cmds.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: to, reason: 2 });
             restore.push({ kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting });
           }
           resolvedEnd.set(e.uid, restore);
           resolvedCpcs.set(e.uid, affectedCpcs);
         }
         if (def?.announcement) r = msg(r, 'Operations', def.name, def.announcement);
-        if (def?.perkTip && r.perks.includes(def.perkTip.perk)) r = msg(r, def.perkTip.from, def.name, def.perkTip.text);
+        if (def?.perkTip && r.perks.includes(def.perkTip.perk)) {
+          // The tip is the perk's: tag the sender so the player knows where it came from (PT-13).
+          const perk = DRAFT_OPTIONS.find((o) => o.id === def.perkTip!.perk)?.title.replace(/^Perk: /, '');
+          r = msg(r, perk ? `${def.perkTip.from} (${perk})` : def.perkTip.from, def.name, def.perkTip.text);
+        }
         // Only cards the player was told about may appear in the log (and its chart markers).
         const line = def ? eventStartLog(r, def, e.uid) : null;
         if (line) r = logLine(r, line);
+        const armedLabel = armed.get(e.uid);
+        if (armedLabel !== undefined) {
+          // The fix was ready before the card landed: begin and end apply in the same tick, so it never takes hold.
+          cmds.push(...(resolvedEnd.get(e.uid) ?? e.endCommands));
+          armedEnded.add(e.uid);
+          r = logLine(r, `Armed change ${armedLabel}: the forewarned change has been backed out`);
+        }
       }
       if (e.started && !e.ended && e.endTick !== null && e.endTick <= tick) {
         cmds.push(...e.endCommands);
@@ -197,19 +215,38 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     const sim = step(r.sim, cmds, scenario);
     r = logConnectFailures(r, sim);
     const resolvedAffects = new Map<string, string[]>();
-    for (const [uid, cpcs] of resolvedCpcs) {
-      // Pending commands and dynamic routing have now chosen the hosts used by this tick.
+    // The workloads whose effective routing (pending commands and dynamic routing already applied for this tick)
+    // puts them on these CPCs.
+    const scopeOf = (cpcs: ReadonlySet<string>): string[] => {
       const affectedLpars = new Set(sim.config.lpars.filter((l) => cpcs.has(l.cpcId)).map((l) => l.id));
-      resolvedAffects.set(uid, allWorkloads(scenario, { ...r, sim })
+      return allWorkloads(scenario, { ...r, sim })
         .filter((w) => Object.entries(sim.routing[w.id] ?? w.routing).some(([id, share]) => share > 0 && affectedLpars.has(id)))
-        .map((w) => w.id));
+        .map((w) => w.id);
+    };
+    for (const [uid, cpcs] of resolvedCpcs) resolvedAffects.set(uid, scopeOf(cpcs));
+    // A running power cap re-resolves its scope every tick, and the hour keeps the union of the scopes seen in it:
+    // work routed onto a capped CPC (or added) during the hour is attributed for that hour, while work moved off
+    // it loses the cap from the next hour — remediation during the hour does not erase its trigger (PT-04;
+    // SPEC §10). The last hour's union is kept when the cap ends.
+    const hourStartTick = tick - (tick % TICKS_PER_HOUR);
+    const affectsHour = new Map<string, number>();
+    const running = (e: RunState['events'][number]) =>
+      (e.started || e.startTick <= tick) && !e.ended && !armedEnded.has(e.uid) && (e.endTick === null || e.endTick > tick);
+    for (const e of events) {
+      if (!e.capacityCpcs || !running(e)) continue;
+      const now = scopeOf(new Set(e.capacityCpcs));
+      resolvedAffects.set(e.uid, e.affectsHour === hourStartTick ? [...new Set([...e.affects, ...now])] : now);
+      affectsHour.set(e.uid, hourStartTick);
     }
     events = events.map((e) => ({
       ...e,
       affects: resolvedAffects.get(e.uid) ?? e.affects,
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || e.startTick <= tick,
-      ended: e.ended || (e.started && e.endTick !== null && e.endTick <= tick),
+      ended: e.ended || armedEnded.has(e.uid) || (e.started && e.endTick !== null && e.endTick <= tick),
+      ...(armedEnded.has(e.uid) ? { endTick: tick } : {}),
+      ...(resolvedCpcs.has(e.uid) ? { capacityCpcs: [...resolvedCpcs.get(e.uid)!], affectsHour: hourStartTick } : {}),
+      ...(affectsHour.has(e.uid) ? { affectsHour: affectsHour.get(e.uid) } : {}),
     }));
     r = { ...r, sim, events, pendingCommands: [] };
     r = accumulateHour(r);
@@ -252,6 +289,7 @@ function batchMissIncident(r: RunState, night: NightSummary, trustLost: number):
   const nightStartTick = r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
   const nightHour = r.nightHour ?? newHour(nightStartTick);
   const mechanism = batchMissMechanism(night, nightHour, hosts);
+  const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(nightHour, hosts) : null;
   const truth = { mechanism, trigger: batchMissTrigger(mechanism, r.events, nightHour, nightStartTick, night) };
   const lead = r.incidents.find((i) => i.day === r.day && i.rcaGroup === undefined && i.truth.mechanism === truth.mechanism && i.truth.trigger === truth.trigger);
   const inc: Incident = {
@@ -263,6 +301,7 @@ function batchMissIncident(r: RunState, night: NightSummary, trustLost: number):
     hours: 12,
     worstAttainmentPct: 0,
     truth,
+    ...(basis ? { basis } : {}),
     rca: lead?.rca ?? null,
     trustLost,
     ...(lead ? { rcaGroup: lead.id } : {}),

@@ -19,6 +19,10 @@ export interface WorkManagerSamples {
   waitingMisc: number;
   /** Region service-class periods that own the resource samples. */
   regionKeys: string[];
+  /** Every region serving these transactions is managed to the transaction goals (Manage Region Using Goals Of
+   * = TRANSACTION). Under REGION or BOTH the region is managed to the goal of its own service class
+   * (WLM Planning p.122), so the reports must not claim otherwise. */
+  managedToTxn?: boolean;
 }
 
 const SAMPLE_FIELDS = ['cpEngines', 'ziipEngines', 'iipcpEngines', 'usingCpu', 'usingZiip', 'usingIo', 'delayCpu', 'delayZiip', 'delayIo', 'delayOther', 'delayStorage', 'delayCap'] as const;
@@ -59,6 +63,7 @@ export function mergeWorkManager(a?: WorkManagerSamples, b?: WorkManagerSamples,
     waitingProd: (a?.waitingProd ?? 0) * decay + (b?.waitingProd ?? 0),
     waitingMisc: (a?.waitingMisc ?? 0) * decay + (b?.waitingMisc ?? 0),
     regionKeys: a && b ? mergeRegionKeys(a.regionKeys, b.regionKeys) : (a ?? b)?.regionKeys ?? [],
+    managedToTxn: a?.managedToTxn === undefined ? (b?.managedToTxn ?? false) : b?.managedToTxn === undefined ? a.managedToTxn : a.managedToTxn && b.managedToTxn,
   };
 }
 
@@ -70,7 +75,7 @@ const emptyMoved = (): MovedSamples => ({
 /** Tags a CICS transaction slice's samples on its tick (same accumulation order as the tick itself, so a pure
  * CICS class nets to exactly zero) and adds its work manager states. `breakdown: false`: REGION mode, where the
  * response times and the breakdown reach report classes only (WLM Planning p.123). */
-export function tagCicsSlice(t: ScpTick, s: SliceSpec, r: SliceResult, regionKeys: string[], breakdown = true): void {
+export function tagCicsSlice(t: ScpTick, s: SliceSpec, r: SliceResult, regionKeys: string[], breakdown = true, managedToTxn = false): void {
   const m = (t.moved ??= emptyMoved());
   m.cpEngines += r.cpGranted;
   m.ziipEngines += r.ziipGranted;
@@ -101,8 +106,9 @@ export function tagCicsSlice(t: ScpTick, s: SliceSpec, r: SliceResult, regionKey
   const waitingProd = s.rate * ((parts?.dependency ?? 0) + (parts?.extra.cf ?? 0));
   const waitingMisc = Math.max(0, s.rate * r.rtMeanSec - active - ready - waitingIo - waitingLock - waitingProd);
   const w = t.workManager;
-  if (!w) t.workManager = { active, ready, idle: 0, waitingIo, waitingLock, waitingProd, waitingMisc, regionKeys };
+  if (!w) t.workManager = { active, ready, idle: 0, waitingIo, waitingLock, waitingProd, waitingMisc, regionKeys, managedToTxn };
   else {
+    w.managedToTxn = w.managedToTxn === true && managedToTxn;
     w.active += active;
     w.ready += ready;
     w.waitingIo += waitingIo;
@@ -131,10 +137,18 @@ function plus(t: ScpTick, m: MovedSamples, share: number): void {
   if (m.usingIoNoVel !== undefined) for (const f of NOVEL_FIELDS) t[f] = (t[f] ?? 0) + (m[f] ?? 0) * share;
 }
 
-/** One image's ticks as RMF reports them: CICS transaction samples moved to the region classes. Pure; ticks
- * without moved samples are returned as they are. */
-export function reportedTicks<T extends ScpTick>(ticks: readonly T[], targets: CicsTargets | undefined, reportClasses = false): T[] {
-  if (!targets || !ticks.some((t) => t.moved)) return ticks as T[];
+/** IIPCP on an image with no zIIP defined: the time is plain CP work, so it moves to APPL% CP and IIPCP is zero
+ * (Init & Tuning p.431: reported only when a zIIP is defined, online or reserved; p.434: PROJECTCPU defaults NO). */
+function withoutIipcp<T extends ScpTick>(t: T): T {
+  if ((t.iipcpEngines ?? 0) === 0) return t;
+  return { ...t, cpEngines: t.cpEngines + t.iipcpEngines, iipcpEngines: 0 };
+}
+
+/** One image's ticks as RMF reports them: CICS transaction samples moved to the region classes, and IIPCP folded
+ * into CP time on an image with no zIIP defined. Pure; ticks without moved samples are returned as they are. */
+export function reportedTicks<T extends ScpTick>(ticks: readonly T[], targets: CicsTargets | undefined, reportClasses = false, iipcpReported = true): T[] {
+  const fold = (list: T[]): T[] => (iipcpReported ? list : list.map(withoutIipcp));
+  if (!targets || !ticks.some((t) => t.moved)) return fold(ticks as T[]);
   const out = ticks.map((t) => (t.moved ? (minus(t, t.moved) as T) : t));
   const at: Record<string, number> = {};
   out.forEach((t, i) => (at[t.scKey] = i));
@@ -152,7 +166,7 @@ export function reportedTicks<T extends ScpTick>(ticks: readonly T[], targets: C
       plus(out[i]!, t.moved, r.share);
     }
   }
-  return out;
+  return fold(out);
 }
 
 /** Decays the moved part kept in WLM's accumulator; drops it once nothing is left. */

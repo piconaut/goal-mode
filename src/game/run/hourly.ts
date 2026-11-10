@@ -5,7 +5,7 @@ import type { Scenario } from '../../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
 import { classify } from '../../sim/wlm/classify';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
-import { addHour, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline } from '../sla';
+import { addHour, capacityBasis, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline } from '../sla';
 import {
   type CapacityDay,
   type HourAcc,
@@ -124,7 +124,24 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   const trust = { ...r.trust };
   let incidents = [...r.incidents];
   const baselines = { ...r.baselines };
-  for (const w of allWorkloads(scenario, r)) {
+  const hourStart = r.sim.tick - TICKS_PER_HOUR;
+  const hourEnd = r.sim.tick;
+  const workloads = allWorkloads(scenario, r);
+  // "vs base" is frozen now, against the baseline that was in force during this hour: later clean hours move the
+  // EWMA, and a past row's ratio must not move with it (PT-13). SMF 110 performance data is completed at task end
+  // (CICS TS 6 Monitoring CICS p.19) and SMF 101 accounting written at thread end (Db2 13 Managing Performance p.144).
+  const cpuVsBase: Record<string, number> = {};
+  for (const w of workloads) {
+    const wh = h.workloads[w.id];
+    const base = baselines[w.id]?.cpu ?? 0;
+    if (!wh || wh.completions <= 0 || base <= 0) continue;
+    cpuVsBase[w.id] = (perTxnParts(wh).cpu ?? 0) / base;
+  }
+  // A card running in the hour disturbs its workloads' response-time parts, so that hour teaches nothing about
+  // the healthy baseline; otherwise the EWMA absorbs a regression as the new normal within a few hours (PT-13).
+  const disturbed = (workloadId: string) =>
+    r.events.some((e) => e.started && e.startTick < hourEnd && (e.endTick === null || e.endTick > hourStart) && e.affects.includes(workloadId));
+  for (const w of workloads) {
     const wh = h.workloads[w.id];
     if (!wh) continue;
     const att = hourAttainment(w, wh);
@@ -132,11 +149,10 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     const parts = perTxnParts(wh);
     // Incidents are per played day (the day's SLA report and RCA count them): one still open at
     // 06:00 is closed there, and a breach that carries on opens a new incident for the new day.
-    const hourStart = r.sim.tick - TICKS_PER_HOUR;
     incidents = incidents.map((i) => (i.workloadId === w.id && i.endTick === null && i.day !== r.day ? { ...i, endTick: hourStart } : i));
     const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
     if (att.met) {
-      baselines[w.id] = updateBaseline(baselines[w.id], parts);
+      if (!disturbed(w.id)) baselines[w.id] = updateBaseline(baselines[w.id], parts);
       if (openIdx >= 0) incidents[openIdx] = { ...incidents[openIdx]!, endTick: r.sim.tick };
       continue;
     }
@@ -154,6 +170,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
       const mechanism = failureMechanismOf(w, wh, r.events) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
+      const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(h, hosts) : null;
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
       const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
       let aiops: Hypothesis[] | undefined;
@@ -172,6 +189,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           hours: 1,
           worstAttainmentPct: att.attainmentPct,
           truth,
+          ...(basis ? { basis } : {}),
           ...(aiops ? { aiops } : {}),
           rca: lead?.rca ?? null,
           trustLost: loss,
@@ -185,6 +203,12 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   r = { ...r, capacityToday: hourPeaks(r, h) };
   const hourOfDay = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
   if (hourOfDay >= 18 || hourOfDay < 6) r = { ...r, nightHour: addHour(r.nightHour, h) };
-  const smfHours = [...(r.smfHours ?? []), { day: r.day, hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay), workloads: h.workloads, ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}) }].slice(-SMF_HOURS_KEPT);
+  const smfHours = [...(r.smfHours ?? []), {
+    day: r.day,
+    hourOfDay: Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay),
+    workloads: h.workloads,
+    ...(Object.keys(cpuVsBase).length > 0 ? { cpuVsBase } : {}),
+    ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}),
+  }].slice(-SMF_HOURS_KEPT);
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }

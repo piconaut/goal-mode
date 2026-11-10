@@ -492,7 +492,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: null,
     forewarning: null,
     announcement: 'Facilities: "Cooling fault on the raised floor; the CPC is running at reduced capacity until the chiller is fixed."',
-    clue: 'SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEVT, defer discretionary batch, protect importance-1 work.',
+    clue: 'Partition Data: CHANGE REASON=MACHINE on the CPC line; SYSINFO / Partition Data: same engines but every LPAR delivers less MSU; CPU delay rises everywhere at once. Fixes: cap or quiesce DEVT, defer discretionary batch, protect importance-1 work.',
   },
   {
     // A month-old HSM migration policy change makes hundreds of users' data sets recall from ML2 at once.
@@ -536,7 +536,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     fix: 'NATIVE_SQL_PROCS',
     forewarning: 'Change board: "Mobile API stored procedures were redeployed overnight (new COBOL versions)."',
     announcement: null,
-    clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures, or absorb it (cap, more CP).',
+    clue: 'WLMGL: DDFPRD APPL% on CP up and IIP% down on PROD1 with END/S and total CPU per transaction flat; MSU and R4HA rise. Fixes: redeploy as native SQL procedures (the team\'s next redeploy can bring the COBOL versions back), or absorb it (cap, more CP).',
   },
   {
     // A program storage leak fills both PROD2 AORs' EDSA: once in-flight tasks no longer fit, CICS defers attaches

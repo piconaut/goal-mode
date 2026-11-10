@@ -109,6 +109,22 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
   out.push('');
   out.push(...wlmHeader('SERVICE'));
   for (const r of rows) out.push(wlmRow(r));
+  // A CICS region managed to the transactions' goals (Manage Region Using Goals Of = TRANSACTION) is managed as
+  // the server for the classes it serves: its own service class's goal is not used (WLM Planning p.120, p.122-123).
+  // Under REGION or BOTH the region is managed to its own class's goal, so there is nothing to say.
+  const servedBy = new Map<string, Set<string>>();
+  for (const r of rows) {
+    if (!r.workManager?.managedToTxn) continue;
+    for (const k of r.workManager.regionKeys) {
+      const set = servedBy.get(k) ?? new Set<string>();
+      set.add(r.scKey);
+      servedBy.set(k, set);
+    }
+  }
+  for (const [region, served] of servedBy) {
+    if (!rows.some((r) => r.scKey === region)) continue;
+    out.push('', `${region} RUNS AS A CICS TRANSACTION SERVER: WLM MANAGES THE REGION TO THE GOALS OF ${[...served].sort().join(', ')} (TRANSACTION MODE), NOT TO THIS CLASS'S OWN GOAL (WLM PLANNING p.120, p.122-123).`);
+  }
   const rcRows = (iv.wlmRc ?? []).filter((r) => r.lparId === system).sort((a, b) => a.scKey.localeCompare(b.scKey));
   if (rcRows.length > 0) {
     out.push('', `REPORT BY: SYSTEM=${system}   (REPORT CLASSES; GOAL AND PI ONLY FOR HOMOGENEOUS CLASSES)`, '');
@@ -193,7 +209,14 @@ function hms(sec: number): string {
 
 export function renderPartitionData(iv: RmfInterval): string {
   const out = header('PARTITION DATA REPORT', iv);
-  for (const c of iv.cpcBusy) out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
+  for (const c of iv.cpcBusy) {
+    // A capacity change shows as CHANGE REASON on the CPU Activity header (RMF Report Analysis p.391–392);
+    // this sim renders it on Partition Data instead (APPROX, SPEC §17). SMF70CCR: 1 = operator, >1 = external.
+    const adj = c.capacityReasonCode !== undefined && c.pool === 'CP'
+      ? `   CHANGE REASON=${c.capacityReasonCode === 1 ? 'POWERSAVE (initiated by the user)' : 'MACHINE (initiated by the machine)'}`
+      : '';
+    out.push(`CPC ${c.cpcId}  ${padR(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%${adj}`);
+  }
   out.push('');
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
   out.push('NAME      WGT  LCPS  POLARITY        PHYS ENG LPAR BUSY%  MVS BUSY%  LPAR MGMT%  PR/SM DLY%     WLM%  MSU AVG   R4HA   DEF CAP  ABS CAP  zIIP ENG');
@@ -231,8 +254,10 @@ export function renderCfActivity(iv: RmfInterval): string {
   }
   if ((iv.cfStructures ?? []).length) {
     // Usage Summary lists every structure copy; synchronously duplexed pairs are marked PRIM/SEC (RMF Report Analysis p.365).
-    // CONTENTION % is RMF's delayed-request share for serialized LIST and LOCK structures (p.85); the sim maps the
-    // sysplex lock index to it and has no serialized LIST model, so only the LOCK structure reports a value.
+    // APPROX: CONTENTION % is a Monitor III CFACT field (delayed-request share for serialized LIST and LOCK
+    // structures, p.85). The Postprocessor CF Activity report imitated here shows lock contention as request counts
+    // instead (REQ TOTAL / REQ DEFERRED / -CONT / -FALSE CONT, p.373); the column is borrowed from CFACT for
+    // readability. The sim maps the sysplex lock index to it and has no serialized LIST model, so only LOCK reports.
     out.push('', 'STRUCTURE SUMMARY');
     out.push('STRUCTURE NAME     TYPE   STATUS  CF        REQ/SEC   SYNC %   SYNC SERV(us)   AVG SERV(us)  CONTENTION %');
     const lockContention = iv.lockIndex === undefined ? null : Math.min(CF_LOCK_CONTENTION.capPct, CF_LOCK_CONTENTION.pctPerIndex * iv.lockIndex);

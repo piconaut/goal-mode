@@ -40,104 +40,12 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-01 · Two-receiver budget starves the CICS transaction classes
-`list: playtest-fixes · status: ready · priority: high · size: M · area: sim`
-
-`adjust.ts` assesses at most two fixable receivers per interval. D19 22:00–22:27 both slots went to importance 1:
-- STCMED: sysplex PI 1.9–2.5, all of it from DEVT's Db2 at PI 21.19 and 97 % CPU delay under DEVT's cap. Its PI was
-  0.40–0.49 on PROD1/PROD2, so no move had net value.
-- STCHI: a CICS region class. Raising its DP FA→FC doesn't move TRANSACTION-managed regions, which run at the served
-  classes' DP.
-
-ONLCARD and ONLRBANK sat at PI 4.0 until ONLPAYMQ got a slot at 22:30 (F4→FC/FB; STCHI PROD2 PI 4.1 → 1.3). Real: if
-no receiver can be helped, WLM goes on at the next importance (SG24-7621 p.105–106); a per-interval receiver limit
-isn't documented. Options: stop counting a receiver whose projection found nothing against the budget, or cap by time.
-Done when: a receiver with no move of net value doesn't use a slot; a regression test reproduces the D19 shape;
-goldens, sweep, SPEC §17, the docs/research.md row and the `wlm-why` skill's verdict table are updated.
-
-### PT-02 · A player change can carry any sim command
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-Found 2026-11-09 in review of piconaut/goal-mode#238. The play CLI's `json change` takes `req.commands` from the client
-as-is:
-- Event-only kinds plan like any change, at the 0.5 h default: `ADD_CPC_ENGINES` (free engines), `SET_MLC_PRICE`,
-  `SET_MODIFIER`, `ADD_WORKLOAD`, and `REMOVE_ADDRESS_SPACE`. The last one ends XLOG_LOOP without its fix, or removes
-  an AOR that work is routed to.
-- A request with a `fixId` skips `dryRunRefusal` but still applies its commands, and any fix id is accepted with no
-  event active. On a live day, `CANCEL_RUNAWAY` plus `ADD_CPC_ENGINES` took CPCA from 8 to 12 CPs for 0.5 h and no
-  capex. The same path can put MOBILE on SYSP past `placementRefusal`.
-- Allowed kinds carry event-only fields: `SET_CF degrade`, `SET_LCU extraIops` and `SET_CICS leak` end their events
-  without diagnosis. `SET_LCU hotSkew` has no limit through JSON, unlike the UI.
-
-Fix: allow only the kinds with an engineer-hours cost (`HOURS` in `game/catalog.ts`), refuse commands alongside a
-`fixId` or `hardwareId`, and check event-only fields. A tested allowlist was written and then reverted out of #238
-(commit f4a8dec), so start from that.
-Done when: each case above is refused at no cost, with tests; the UI and bots are unaffected (`npm run compare`).
-
-### PT-03 · Power-cap RCA is a gotcha (remaining parts)
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-INC52 RBANK: filed CPU_CAPACITY/HARDWARE_FAULT, truth CPU_PRIORITY/HARDWARE_FAULT. CPU_CAPACITY needs CPC ≥ 90 % (or
-LPAR ≥ 95 %) and < 10 % of CP to less important work (`src/game/sla.ts`); CPCA was 70.9–82 % physical. Already fixed:
-the card's affected workloads (POWER_CAP resolves every workload on the throttled CPC) and the RCA vocabulary in the
-form. Remaining:
-- move the CPU_CAPACITY thresholds out of `sla.ts` into `src/content/` (CLAUDE.md data-driven rule);
-- explain the verdict after scoring ("CPC 81 % busy, below the 90 % capacity line");
-- show a capacity-adjustment clue in CPC / Partition Data (SMF70CAI/SMF70CCR, MVS SMF p.589; check with zos-docs).
-Done when: all three are in, with tests; the scoring itself is unchanged (goldens unchanged).
-
-### PT-04 · POWER_CAP's RCA scope is a start-time snapshot
-`list: playtest-fixes · status: ready · priority: low · size: S · area: game`
-
-Known limitation left by the POWER_CAP fix: `affects` is resolved when the card starts and kept for expired-card
-attribution. Routing changes and workloads added during the cap don't refresh it, so mid-cap moves can leave stale
-attribution or miss newly exposed workloads. Done when: attribution follows the routing in effect during the
-incident's hour; a regression test covers a mid-cap routing change.
-
-### PT-05 · Clue path for "why didn't WLM raise CICS"
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-The player read the WLM log correctly but couldn't see why there was no receiver raise. Add to the player-visible WLM
-log the best rejected trial and why ("ONLCARD F4→F6 rejected: harms DDFMOB, equal importance"). On WLMGL/SYSWKM, say
-that a region class managed to transaction goals runs at the served classes' DP (its own PI is reported, not managed
-to; WLM Planning p.111, p.122–123). The `inspect wlm` trace sink in `adjust.ts` already has the verdicts.
-Done when: both clues show in the browser and in `play wlmlog` / `play mon3`; no decision changes (`npm run compare`
-differs only in the log/report text).
-
-### PT-06 · IIPCP reported on an image with no online zIIP
-`list: playtest-fixes · status: ready · priority: low · size: S · area: sim`
-
-With PROJECTCPU=NO (the default) and no zIIP configured, real RMF reports no IIPCP (Init & Tuning p.434; re-check with
-zos-docs). The sim always reports it. Midwest PROD2 now has 0 online + 1 reserved zIIP, so it still shows there.
-Done when: IIPCP is zero on an image with no online zIIP (reporting only), with a test and a docs/research.md row.
-
-### PT-07 · No clue path from a sysplex PI to the LPAR behind it
-`list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
-
-The D19–D20 STCMED alerts were DEVT's test Db2 (`TN=DB*` → STCMED, importance 1) under DEVT's cap; Monitor III DELAY
-named a PROD batch job as STCMED's primary reason. Sysplex PI first is real (SG24-7621 p.105–106), but the per-system
-split should be easy to find. Done when: the alert and SYSSUM link to the per-system rows (WLMGL by system, or a
-by-system SYSSUM toggle).
-
 ### PT-08 · No alert for CICS short-on-storage stalls
 `list: playtest-fixes · status: ready · priority: low · size: M · area: content`
 
 Response times are for ended transactions only, so PI looking fine while transactions stall is real (RMF Report
 Analysis 3.1 p.148; SG24-6472 p.190). The game has no alert on what does show it: ended-rate drop, SOS time, MXT waits.
 Done when: an Analytics/automation alert rule for it exists in `src/content/`, with a test and a Codex mention.
-
-### PT-09 · A forewarned fix planned ahead is silently wasted
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-D24: the inbox forewarned a stored-procedure redeploy and the player planned "Redeploy as native SQL procedures" in the
-briefing. It applied at 06:00, the card started later that morning, `endEventByFix` found nothing and the 2 h were
-spent. Dev now logs "no active event matched this fix" but still discards it. Pick one:
-- the fix arms against the forewarned card and ends it when it starts that day;
-- or it is refused at planning time with the reason, and the hours are refunded if it found no target.
-
-A free refusal must not let the Change Desk probe for hidden events, which is why no-target fixes are charged today.
-Also, the same card came twice in that run (D11, D24): if a redeploy reintroduces COBOL procedures, say so in the
-card's clue. Done when: the chosen behaviour has tests and the SPEC §6 visibility rule is updated.
 
 ### PT-10 · Activate a saved policy now
 `list: playtest-fixes · status: ready · priority: low · size: M · area: game`
@@ -161,15 +69,6 @@ The offer shows baseline $/month, the sub-capacity bill at the peak and overage 
 from the view, and nothing projects TFP against sub-capacity from history. Add a per-product table (peak MSU and
 $/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection. Done when: the offer shows both,
 in the browser and `play finance`.
-
-### PT-13 · SMF 101 "vs base" moves retroactively
-`list: playtest-fixes · status: ready · priority: high · size: M · area: game`
-
-`src/game/smf.ts` divides past hours by today's baseline, an EWMA (0.8/h) learned from every SLA-met hour, so a
-regression is absorbed in ~3 h: at the D7 briefing the D6 08:00 row read 1.00 instead of ≈2.8. Fix: freeze each hour's
-ratio when it closes, and learn the baseline only from hours without an active event of that mechanism (or a slow
-decay, or same hour last week). Also tag the Db2-team mail "(Db2 Whisperer)": it is the perk's tip, sent at event
-start. Done when: a past row keeps its ratio across days, with a test.
 
 ### PT-14 · Monitor III CPC report: per-type groups
 `list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
@@ -330,27 +229,16 @@ no primary/danger styling.
 
 ## realism-fixes
 
-None open. Completed fixes are in SPEC §17 and docs/research.md.
+### RF-01 · CPU Activity report with the CHANGE REASON header
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
+
+The sim has no CPU Activity report, so the capacity-change clue (SMF70CCR) is shown as a `CHANGE REASON=` line on
+Partition Data instead. Real RMF puts it in the CPU Activity report header (`NONE | POWERSAVE (initiated by the
+user) | MACHINE (cycle steering, initiated by the machine) | N/A`, RMF Report Analysis p.391–392), and the Monitor
+III CPC Capacity report has no capacity-adjustment column (p.97–98). Done when: a CPU Activity report renders with
+that header, Partition Data drops the line, the clue paths that name Partition Data name the new report instead, and
+SPEC §17 and the `docs/research.md` SMF 70 row stop marking it APPROX.
 
 ## cleanup
 
-### CL-01 · Midwest should use the shared `pool()` helper
-`list: cleanup · status: ready · priority: low · size: S · area: content`
-
-`src/content/scenarios/midwest.ts` defines its own `cp`, `ziip` and `icf` constructors; Revenue and Harbourline use
-`pool()` from `scenarios/pool.ts`. Switch Midwest to `pool()` and delete the local helpers (`icf` needs its
-`dedicated` flag via `extra`). Done when: `npm run compare` shows no difference.
-
-### CL-02 · Split `src/sim/wlm/evaluate.ts`
-`list: cleanup · status: ready · priority: low · size: L · area: sim`
-
-959 lines at #217; the next candidate after the `step.ts` split (#217), done the same way: stage bodies moved verbatim
-into modules, public helpers re-exported. Done when: bench hashes on all three scenarios and `npm run compare` are
-unchanged.
-
-### CL-03 · Lab harness: say which test rejected each WLM trial
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Left from the playtest agents' update (round 2): `npm run lab` should log which test rejected each WLM trial, to
-diagnose "no action with net value" without patching `adjust.ts`. First check whether `npm run inspect -- <file> wlm`
-(added 2026-11-07) already covers the need; if so, delete this entry and point the realism auditor's brief at it.
+None open.

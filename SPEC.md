@@ -379,7 +379,10 @@ Algorithm per pool:
    the mix. CICS and DDF slices sharing a service class keep separate overflow permissions but
    one service-class goal/report row. No per-region transaction assignment is modelled.
    If the LPAR has no zIIPs, *all* eligible work runs on CP. That costs MSU and software
-   dollars, a planted flaw in the starting scenario.
+   dollars, a planted flaw in the starting scenario. IIPCP is reported only where a zIIP is defined
+   to the image, online or reserved; with none, the eligible time on CPs is plain CP work and APPL% IIPCP
+   is 0 (*Init & Tuning* 3.1 p.431; PROJECTCPU defaults NO, p.434). PROD2's reserved-only zIIP keeps its
+   IIPCP reporting for planning (p.431).
 5. **Blocked workload support:** periods that got 0 CPU for longer than `BLWLINTHD` (default
    20 s) get a trickle of promotion, capped at `BLWLTRPCT` (default 0.5%) of LPAR capacity.
    This matters for priority inversion (§5.6). It does not apply to zIIPs
@@ -495,6 +498,9 @@ for importance in 1..5:
     // at most ONE receiver helped per interval per system
 ```
 
+- **Projection budget.** Each projection re-runs §5.4, so the search assesses at most two fixable
+  receivers per importance level per interval, then goes on at the next importance. A receiver that
+  finds no move of net value does not keep lower importances out (SG24-7621 p.105–106).
 - Donors are preferably *happy* (PI < 1) *heavy users of the bottleneck resource*, of lower
   importance, chosen in reverse order of receivers.
 - **Non-WLM-fixable bottlenecks** (lock contention, a starved dependency server, PR/SM delay,
@@ -510,6 +516,11 @@ for importance in 1..5:
   less important transactions in the same region a "free ride").
 - A *WLM Activity* log (unlocked by Monitor III) shows each decision:
   `10:41:20 SYS1 RCVR=DDFMOB P1 PI=1.84 BTLNK=CPU DONOR=BATCHPRD DP F3→F1`.
+  With no move taken it names the first move it tried and why it failed, so "why didn't WLM raise it?" is answered
+  from the log alone: `… ONLCARD#1 PI=4.00 BTLNK=CPU no action with net value (ONLCARD#1 DP F4→F6 rejected: harms
+  DDFMOB#1, equal importance)`. On WLMGL and SYSWKM a CICS region managed to the transactions' goals (Manage Region
+  Using Goals Of = TRANSACTION) is marked as managed that way: its own service class's goal is not used, while under
+  REGION or BOTH the region is managed to its own class's goal and nothing is said (WLM Planning p.120, p.122–123).
 
 #### 5.5.5 Discretionary goal management
 
@@ -642,7 +653,8 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 - **Lock structure:** global lock contention rises with update intensity and with batch overlapping
   online. STRUCTURE SUMMARY shows it as CONTENTION % on the lock structure, from the same sysplex
   lock index that drives Db2 lock wait (RMF Report Analysis p.85; FICTIONAL mapping: 5 % per index
-  unit, capped at 90 %). APPROX: serialized LIST structures report none, and false contention (hash
+  unit, capped at 90 %). APPROX: the column is Monitor III CFACT's; the real Postprocessor CF Activity report shows
+  lock contention as request counts (-CONT / -FALSE CONT, p.373). Serialized LIST structures report none, and false contention (hash
   collisions) is not modelled.
 - **Structure duplexing** (opt-in resilience) doubles some traffic and adds cost.
 - CF link failure event: CF requests reroute or slow down. Losing a CF forces a structure
@@ -883,12 +895,21 @@ that doesn't validate, a weight change that fails on the HMC. A **validation** t
 reduces the risk.
 Planned event fixes queue their restoration commands at 06:00 along with the other planned changes;
 the event ends only when that fix succeeds. A fix already planned is refused without spending
-engineer-hours or trust (it reveals only the player's own plan). A fix with no active target is accepted
-and charged like any other, and its log line says "no active event matched this fix" once it runs (06:00
-for a planned fix, at once for a live one), so the Change Desk can't be probed for hidden events.
+engineer-hours or trust (it reveals only the player's own plan). A fix that finds no active target is
+accepted and charged like any other, so the Change Desk can't be probed for hidden events. When its card is
+one the player can see (a forewarning in the inbox, or an Ask Around rumour just revealed) and the card has not
+started yet but starts later that day, the fix arms instead: the log says it is armed (at 06:00 for a planned
+fix, at once for a live one), and when the card starts its begin and end apply in the same tick — the forewarned
+change never takes hold — with a log line naming the armed change. Otherwise the log line says "no active event
+matched this fix" once it runs.
 The Operations list offers a card's fix only once the player has seen the card: it has started, its
 forewarning has arrived in the inbox, or an Ask Around rumour about it has been revealed. Unseen cards
 stay out of the list, so it cannot spoil an event that has not happened yet.
+A change may carry only the **change-desk commands**: the kinds with an engineer-hours cost (`HOURS` in
+`game/catalog.ts`). The sim also uses commands no change desk can do — adding engines, the MLC price, modifiers,
+address spaces, workloads — and those are refused before anything is charged, as is a fix or hardware order that
+also carries commands (the fix's hours must not pay for them). Event-only fields (`SET_CF` degrade, `SET_LCU`
+extra I/O, `SET_CICS` leak) are refused, and a hot-skew rebalance must be one Change Desk step, as the UI does.
 Event fixes that are operator or DBA commands under the incident procedure (`-CANCEL THREAD`,
 `-TERM UTILITY`, cancelling a job, `HOLD RECALL`) are not changes: during the live day they cost their
 engineer-hours and their own facet trust, but no change-board trust. A runaway query only ever runs inside
@@ -1091,10 +1112,12 @@ the hurt workload, provided the card's declared
 growth. New work (including a persistent go-live card) counts for the first two simulated days after go-live
 (`content/sla.ts`), judged at the opening SLA hour; later incidents use the remaining fallback rules.
 APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception, a CICS program leaking EDSA storage). Without the mechanism check an I/O card could take the blame for an unrelated CPU meltdown.
-POWER_CAP matches CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY only. Its workload scope is resolved
-from effective routing when the cap starts, including same-tick commands and added workloads, to CPCs whose
-capacity actually drops. The scope is retained after expiry; later routing changes and workload additions do
-not refresh it (a known RCA limitation).
+POWER_CAP matches CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY only. Its workload scope is the workloads whose
+effective routing puts them on the CPCs whose capacity actually drops (same-tick commands and workloads added at the
+start included). It is re-resolved every tick while the cap runs, and each hour keeps the union of the scopes seen in
+it: a workload routed onto a capped CPC or added during the hour is attributed for that hour, and one moved off loses
+the cap from the next hour, so remediation during the hour (including on its last tick) does not erase its trigger.
+The last hour's scope is retained after expiry.
 Card activity and the SLA hour are half-open intervals: a card ending at the hour's start or starting at its end
 does not overlap. Expiry or remediation during the hour (including remediation at its end) does not erase its trigger.
 When several cards qualify, prefer a card still active at hour close, then the longest overlap with the opening
@@ -1113,6 +1136,16 @@ since PR/SM shares engines only within a machine), or the image itself used at l
 can't reach — *and* less than 10 % of that image's CP went to work less important than the hurt
 workload's service class (WLM had no donors left), otherwise CPU_PRIORITY: the policy could have served it.
 Both thresholds are FICTIONAL.
+
+The healthy baseline is an EWMA (×0.8 per hour) folded only from closed hours in which the workload met its SLA
+*and* no card affected it: a card's own effect must not become the new normal, or a regression is absorbed within a
+few hours. The SMF 101/110 "vs base" ratio is frozen when its hour closes, against the baseline in force during that
+hour, so a past row keeps its ratio however later hours move the baseline. That matches the records it is read
+from: CICS completes a task's performance class data when the task terminates (*CICS TS 6 Monitoring CICS*, p.19,
+https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=19) and Db2 writes the accounting record
+at thread termination (*Db2 13 for z/OS Managing Performance*, p.144,
+https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=144), so a written hour's figures don't change
+afterwards. The baseline and its learning rule are game rules, not IBM behaviour.
 
 A miss caused by failures alone (with no failed transactions the hour would have met its SLA) has no delay group to
 point at, so a running card that affects the workload names the mechanism (`failureMechanism`). SICK_AOR names
@@ -1610,10 +1643,11 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Classification masks and wildcards (`%`, trailing `*`) | **Real** | WLM Planning p.104; `*` mid-pattern is a literal |
 | Temporary started-task lifecycle (`XLOG_LOOP`) | **Approximation** | Start creates an extra address space; expiry or cancellation removes it, and a later occurrence starts at its base CPU demand. MVS System Commands 3.1, PDF p.50, p.188. APPROX: cleanup on the command tick assumes cancellation succeeds; real cancellation issues an asynchronous ABEND and can require repeated CANCEL commands. Old-save duplicates and zero-CPU modifiers are cleared on the next start |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
-| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents. Between equal-importance periods a move must gain more than it harms and leave the projected PIs closer together (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52) |
+| Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); Partition Data shows `CHANGE REASON=POWERSAVE (initiated by the user)` or `MACHINE (initiated by the machine)`. APPROX: real RMF puts CHANGE REASON on the CPU Activity report header (RMF Report Analysis p.391–392), which the sim does not render, and the Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98); SMF70CAI is kept on the interval for tooling but not printed. A power cap does not slow cycle speed |
+| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents. Between equal-importance periods a move must gain more than it harms and leave the projected PIs closer together (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Projections stop at two fixable receivers per importance per interval, then the search moves on as SG24-7621 p.105–106 describes |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
-| CFACT lock contention | **Approximation** | STRUCTURE SUMMARY shows CONTENTION % on the lock structure from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
+| CFACT lock contention | **Approximation** | STRUCTURE SUMMARY in the Postprocessor-style CF Activity report shows CONTENTION % on the lock structure, a column borrowed from Monitor III CFACT (the real Postprocessor report shows -CONT / -FALSE CONT request counts instead, RMF Report Analysis p.373) from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
 | Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |
 | CICSPlex SM goal routing | **Simplified** | Aggregate shares chase the best observed response (abends count as fast; QR TCB overload and timeouts count as slow, so only a genuinely abending region storm-drains), with ABENDTHRESH/ABENDCRIT abend compensation; real CPSM picks a region per transaction from live load and goal data |
 | Arrival bursts | **Invented** | Optional per workload: random flat-topped bursts (Poisson starts, uniform height and length) and fixed-time decaying spikes (market open). Shapes are FICTIONAL, set in scenario content |

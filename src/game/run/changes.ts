@@ -5,14 +5,15 @@ import type { Scenario } from '../../sim/core/scenario';
 import { effectiveAddressSpaces } from '../../sim/core/tick/helpers';
 import type { SimState } from '../../sim/core/types';
 import type { ServiceDefinition } from '../../sim/wlm/types';
-import { failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
+import { DASD_REBALANCE } from '../../content/hardware-catalog';
+import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
 import { placementRefusal } from '../workloads';
 import { idText } from '../ids';
 import {
   type PlannedChange,
   type RunState
 } from '../types';
-import { endEventByFix, fixIdsOf, hasEventForFix } from './events';
+import { armableEvents, endEventByFix, fixIdsOf, hasEventForFix } from './events';
 import type { GameContent } from './shared';
 import { clampTrust, FATIGUE_PER_OVERTIME_HOUR, logLine, mapTrust } from './shared';
 
@@ -36,6 +37,8 @@ export interface ChangeOutcome {
 }
 
 export const NO_TARGET = 'no active event matched this fix';
+/** A fix whose forewarned card has not started yet: it ends when the card starts. */
+export const ARMED = 'armed against the forewarned change; it ends when it lands';
 
 export function failRisk(run: RunState): number {
   return failRiskFor(run.fatigue, run.perks);
@@ -111,12 +114,15 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
         message: `${req.automated ? 'Automation misfired' : 'Change failed during implementation'} (risk ${(100 * risk).toFixed(0)}%): ${req.label}`,
       };
     }
-    if (change.activateDay === r.day) {
-      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED' }] };
-    } else r = { ...r, changes: [...r.changes, change] };
     const noTarget = fix !== undefined && !hasEventForFix(r, content, fix.id);
+    // The forewarned card has not started yet: the fix is ready and ends it when it lands that day.
+    const arms = fix !== undefined && noTarget ? armableEvents(r, content, fix.id, r.day) : [];
+    if (change.activateDay === r.day) {
+      r = { ...r, pendingCommands: [...r.pendingCommands, ...commands], changes: [...r.changes, { ...change, status: 'APPLIED', ...(arms.length > 0 ? { armedEvents: arms } : {}) }] };
+    } else r = { ...r, changes: [...r.changes, change] };
     if (fix) r = endEventByFix(r, content, fix.id);
     const what = `${req.automated ? 'Automation' : 'Emergency change'}: ${req.label}`;
+    if (arms.length > 0) return { run: logLine(r, `${what} (${ARMED})`), ok: true, message: `Applied: ${req.label}; ${ARMED}` };
     if (noTarget) return { run: logLine(r, `${what} (${NO_TARGET})`), ok: true, message: `Applied with no effect: ${req.label}; ${NO_TARGET}` };
     return { run: logLine(r, what), ok: true, message: `Applied: ${req.label}` };
   }
@@ -130,6 +136,10 @@ export function dryRunRefusal(run: RunState, commands: readonly Command[]): stri
   let s = run.sim;
   for (const c of run.changes) if (c.status === 'PLANNED') for (const cmd of c.commands) s = applyCommand(s, cmd).state;
   for (const cmd of commands) {
+    // Only player commands: the JSON change path accepts any Command shape, including event-only ones.
+    if (!CHANGE_DESK_KINDS.has(cmd.kind)) return `${cmd.kind} is not a change-desk command; hardware, fixes and events keep their own paths`;
+    const field = eventOnlyField(cmd) ?? hotSkewRefusal(s, cmd);
+    if (field) return field;
     const placement = placementOf(scenario, s, cmd);
     if (placement) return `${placement}${targetHint(s, cmd)}`;
     const res = applyCommand(s, cmd);
@@ -139,11 +149,30 @@ export function dryRunRefusal(run: RunState, commands: readonly Command[]): stri
   return null;
 }
 
+/** Fields an event card sets to start or end a failure the player must diagnose; a change may not. */
+function eventOnlyField(cmd: Command): string | null {
+  if (cmd.kind === 'SET_CF' && cmd.degrade !== undefined) return 'A CF degradation is raised by an event, not by a change';
+  if (cmd.kind === 'SET_LCU' && cmd.extraIops !== undefined) return 'Extra LCU I/O is raised by an event, not by a change';
+  if (cmd.kind === 'SET_CICS' && cmd.leak !== undefined) return 'A storage leak is raised by an event, not by a change';
+  return null;
+}
+
+/** A rebalance moves the hottest data sets one step, as the Change Desk offers: it must reduce the LCU's skew and
+ * no further than `DASD_REBALANCE`. The raw command clamps to 0.05–1, which would balance a whole LCU at once. */
+function hotSkewRefusal(s: SimState, cmd: Command): string | null {
+  if (cmd.kind !== 'SET_LCU' || cmd.hotSkew === undefined) return null;
+  const lcu = s.config.dasd.lcus.find((x) => x.id === cmd.lcuId);
+  if (!lcu) return `No LCU ${cmd.lcuId}`;
+  const floor = Math.max(DASD_REBALANCE.minSkew, lcu.hotSkew * DASD_REBALANCE.skewFactor);
+  if (cmd.hotSkew >= lcu.hotSkew) return `LCU ${lcu.id} hot skew is ${lcu.hotSkew}; a rebalance must reduce it`;
+  if (cmd.hotSkew < floor - 1e-9) return `One rebalance moves ${Math.round((1 - DASD_REBALANCE.skewFactor) * 100)} % of the hot skew at most: LCU ${lcu.id} needs ${floor.toFixed(2)} or more`;
+  return null;
+}
+
 /** Placement checks the sim command cannot make: the sim state has no scenario, so it cannot look up a
  * scenario workload's server roles nor the scenario's address spaces. */
 function placementOf(scenario: Scenario, s: SimState, cmd: Command): string | null {
   const addressSpaces = effectiveAddressSpaces(scenario, s);
-  if (cmd.kind === 'ADD_WORKLOAD') return placementRefusal(scenario, addressSpaces, cmd.workload, cmd.workload.routing);
   if (cmd.kind !== 'SET_ROUTING') return null;
   const workload = [...scenario.workloads, ...s.extraWorkloads].find((w) => w.id === cmd.workloadId);
   return workload ? placementRefusal(scenario, addressSpaces, workload, cmd.routing) : `Unknown workload ${cmd.workloadId}`;

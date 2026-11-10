@@ -1,23 +1,7 @@
 // "Midwest Mutual" starting topology (SPEC §13). Deliberately decent-but-flawed.
 
 import type { LparConfig, LparPoolConfig, WorldConfig } from '../../sim/core/types';
-
-const cp = (logical: number, weight: number, extra: Partial<LparPoolConfig> = {}): LparPoolConfig => ({
-  pool: 'CP',
-  logical,
-  reserved: 0,
-  weight,
-  dedicated: false,
-  initialCapping: false,
-  absoluteCapEngines: null,
-  ...extra,
-});
-const ziip = (logical: number, weight: number, extra: Partial<LparPoolConfig> = {}): LparPoolConfig => ({ ...cp(logical, weight, extra), pool: 'ZIIP' });
-const icf = (logical: number, weight: number, dedicated: boolean): LparPoolConfig => ({
-  ...cp(logical, weight),
-  pool: 'ICF',
-  dedicated,
-});
+import { pool } from './pool';
 
 const zos = (id: string, pools: LparPoolConfig[], memoryGb: number): LparConfig => ({
   id,
@@ -35,16 +19,16 @@ const PROD_CFS = ['CF01', 'CF02'];
 export const MIDWEST_WORLD: WorldConfig = {
   cpcs: [{ id: 'CPCA', generation: 'M1', capacitySetting: 6, engines: { CP: 8, ZIIP: 2, ICF: 2 }, memoryGb: 768 }],
   lpars: [
-    zos('PROD1', [cp(6, 500, { reserved: 2 }), ziip(2, 500, { reserved: 1 })], 160),
+    zos('PROD1', [pool('CP', 6, 500, { reserved: 2 }), pool('ZIIP', 2, 500, { reserved: 1 })], 160),
     // F7: PROD2 has no zIIPs online (1 reserved) although DDF is routed here.
-    zos('PROD2', [cp(6, 350, { reserved: 2 }), ziip(0, 350, { reserved: 1 })], 140),
+    zos('PROD2', [pool('CP', 6, 350, { reserved: 2 }), pool('ZIIP', 0, 350, { reserved: 1 })], 140),
     // F9: DEVT has 4 logicals at weight 100 (E≈0.8): VL-heavy and uncapped.
-    zos('DEVT', [cp(4, 100)], 64),
-    zos('SYSP', [cp(2, 50)], 24),
-    { id: 'CF01', cpcId: 'CPCA', kind: 'CF', pools: [icf(1, 0, true)], memoryGb: 32, hiperDispatch: false, definedCapacityMsu: null, capacityGroup: null },
+    zos('DEVT', [pool('CP', 4, 100)], 64),
+    zos('SYSP', [pool('CP', 2, 50)], 24),
+    { id: 'CF01', cpcId: 'CPCA', kind: 'CF', pools: [pool('ICF', 1, 0, { dedicated: true })], memoryGb: 32, hiperDispatch: false, definedCapacityMsu: null, capacityGroup: null },
     // F8: CF02 runs on a shared ICF engine with a low weight, next to the test CF.
-    { id: 'CF02', cpcId: 'CPCA', kind: 'CF', pools: [icf(1, 10, false)], memoryGb: 32, hiperDispatch: false, definedCapacityMsu: null, capacityGroup: null },
-    { id: 'CFTEST', cpcId: 'CPCA', kind: 'CF', pools: [icf(1, 90, false)], memoryGb: 16, hiperDispatch: false, definedCapacityMsu: null, capacityGroup: null },
+    { id: 'CF02', cpcId: 'CPCA', kind: 'CF', pools: [pool('ICF', 1, 10)], memoryGb: 32, hiperDispatch: false, definedCapacityMsu: null, capacityGroup: null },
+    { id: 'CFTEST', cpcId: 'CPCA', kind: 'CF', pools: [pool('ICF', 1, 90)], memoryGb: 16, hiperDispatch: false, definedCapacityMsu: null, capacityGroup: null },
   ],
   capacityGroups: [],
   systems: ['PROD1', 'PROD2', 'DEVT', 'SYSP'].map((lparId) => ({

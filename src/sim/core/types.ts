@@ -22,6 +22,11 @@ export interface CpcConfig {
   id: string;
   generation: string;          // key into content hardware generations
   capacitySetting: 4 | 5 | 6 | 7;
+  /** The capacity setting before a reduction (temporary capacity loss or an operator downgrade), so the
+   * reports can show SMF70CAI. Absent while the machine runs at its normal setting. */
+  peakCapacitySetting?: 4 | 5 | 6 | 7;
+  /** SMF70CCR for that reduction: 1 = operator, 2 = external (e.g. a site power cap). */
+  capacityReasonCode?: number;
   /** Active physical engines per pool (shared + dedicated). */
   engines: Record<PoolType, number>;
   memoryGb: number;
@@ -190,6 +195,9 @@ export interface LparTick {
   rcs?: ReportClassTick[];
   /** Where RMF reports this image's CICS transaction samples (reporting.ts). */
   cics?: CicsTargets;
+  /** RMF reports IIPCP on this image: a zIIP is defined to the LPAR (online or reserved). Without one, eligible
+   * time on CPs is plain CP work and the reports show no IIPCP (Init & Tuning p.431, p.434). Absent: reported. */
+  iipcpReported?: boolean;
   /** CICS AOR dynamic storage this tick (SOS = in-flight tasks no longer fit under EDSALIM). */
   cicsStorage?: CicsStorageTick[];
   roleHealth: Record<string, { health: number; queueRatio: number }>;

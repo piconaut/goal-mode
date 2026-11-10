@@ -1,6 +1,7 @@
 import { EVIDENCE } from '../../content/evidence';
 import type { Scenario } from '../../sim/core/scenario';
 import { judgeGroupEvidence } from '../evidence';
+import { mechanismExplanation } from '../rcaExplain';
 import { scoreRca } from '../sla';
 import {
   type Incident,
@@ -35,7 +36,8 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
   const trust = mapTrust(run, (t) => t + facetTrust / 2);
   const total = points + evidencePoints;
-  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints };
+  const explain = mechanismExplanation(inc);
+  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(explain ? { explain } : {}) };
   return {
     ...run,
     trust,

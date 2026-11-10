@@ -6,7 +6,7 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { EVENT_RUMOURS } from '../../src/content/inquiries';
 import { MIDWEST, SCENARIOS } from '../../src/content/scenarios';
 import { advance, chooseDraft, continueEndless, drawEvents, failedPolicyToday, newRun, overallTrust, requestChange, startDay, submitRca, sysotherByLpar } from '../../src/game/run';
-import { TICKS_PER_DAY } from '../../src/sim/core/units';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { streamRng } from '../../src/sim/core/rng';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
 import { applyCommands } from '../../src/sim/core/commands';
@@ -246,7 +246,7 @@ describe('events', () => {
 
   it.each(['BRIEFING', 'LIVE'] as const)('a fix with no active target in %s is charged and reports no effect', (phase) => {
     const base = activeCard('REGRESSION');
-    for (const event of [undefined, { ...base.events[0]!, started: false }, { ...base.events[0]!, ended: true }]) {
+    for (const event of [undefined, { ...base.events[0]!, ended: true }]) {
       const r = { ...base, phase, events: event ? [event] : [] };
       const out = requestChange(r, MIDWEST_GAME, { label: 'fix', fixId: 'REBIND_REVERT' });
       // Accepted like a matching fix, so the Change Desk cannot be probed for hidden events.
@@ -258,6 +258,75 @@ describe('events', () => {
       if (phase === 'LIVE') expect(out.message).toMatch(/no effect/);
       expect(after.pendingCommands).toEqual([]);
     }
+  });
+
+  /** A card of `defId` drawn for today but not started yet, starting `hours` into the day. */
+  const pendingCard = (defId: string, r: RunState, hours: number): RunState => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
+    const startTick = r.day * TICKS_PER_DAY + hours * TICKS_PER_HOUR;
+    return {
+      ...r,
+      events: [{ uid: `${defId}@${r.day}`, defId, name: def.name, startTick, endTick: startTick + TICKS_PER_DAY, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false }],
+    };
+  };
+  /** A label whose 06:00 activation roll passes, so the test sees the arming rather than the failure risk. */
+  const labelThatApplies = (r: RunState): string =>
+    Array.from({ length: 1000 }, (_, i) => `fix${i}`).find((s) => !streamRng(r.seed, 'activate', r.day, s, 0).chance(failRiskFor(r.fatigue, r.perks)))!;
+
+  it('a planned fix arms against its forewarned card and ends it when it starts', () => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === 'ZIIP_LOSS')!;
+    const r0 = pendingCard('ZIIP_LOSS', fresh(), 2);
+    const restored = applyCommands(r0.sim, def.end).mods;
+    let r = requestChange(r0, MIDWEST_GAME, { label: labelThatApplies(r0), fixId: 'NATIVE_SQL_PROCS' }).run;
+    r = startDay(r, MIDWEST_GAME);
+    const change = r.changes.at(-1)!;
+    expect(change.status).toBe('APPLIED');
+    expect(change.armedEvents).toEqual([`ZIIP_LOSS@${r.day}`]);
+    expect(r.log.some((l) => l.includes('armed against the forewarned change'))).toBe(true);
+    expect(r.events[0]!.ended).toBe(false);
+    // The fix was ready before the card landed: at its start tick the card begins and is backed out at once.
+    r = advance(r, MIDWEST, MIDWEST_GAME, 2 * TICKS_PER_HOUR + 1);
+    expect(r.events[0]).toMatchObject({ started: true, ended: true });
+    expect(r.log.some((l) => l.includes('Armed change'))).toBe(true);
+    expect(r.sim.mods).toEqual(restored);
+    r = advance(r, MIDWEST, MIDWEST_GAME, 6 * TICKS_PER_HOUR);
+    expect(r.events[0]!.ended).toBe(true);
+    expect(r.sim.mods).toEqual(restored);
+  });
+
+  it('a live fix arms against a forewarned card that starts later that day', () => {
+    const r0 = { ...pendingCard('REGRESSION', fresh(), 1), phase: 'LIVE' as const };
+    const out = requestChange(r0, MIDWEST_GAME, { label: 'emergency fix', fixId: 'REBIND_REVERT' });
+    expect(out.ok).toBe(true);
+    expect(out.message).toContain('armed against the forewarned change');
+    expect(out.run.changes.at(-1)!.armedEvents).toEqual([`REGRESSION@${r0.day}`]);
+    const r = advance(out.run, MIDWEST, MIDWEST_GAME, TICKS_PER_HOUR + 1);
+    expect(r.events[0]).toMatchObject({ started: true, ended: true });
+    expect(r.log.some((l) => l.includes('Armed change'))).toBe(true);
+  });
+
+  it('a fix guessed for an unseen card is still charged with no effect (the desk cannot be probed)', () => {
+    // BOT_ATTACK has no forewarning: the player has no legitimate sign of it until it starts.
+    const r0 = pendingCard('BOT_ATTACK', fresh(), 2);
+    let r = requestChange(r0, MIDWEST_GAME, { label: labelThatApplies(r0), fixId: 'BLOCK_BOTS' }).run;
+    r = startDay(r, MIDWEST_GAME);
+    expect(r.changes.at(-1)!.armedEvents).toBeUndefined();
+    expect(r.log.some((l) => l.includes('no active event matched this fix'))).toBe(true);
+  });
+
+  it('a planned fix arms against an unforewarned card once its Ask Around rumour is revealed', () => {
+    // RETRY_STORM has no forewarning: only the revealed rumour lets the player see it coming.
+    const hidden = pendingCard('RETRY_STORM', fresh(), 2);
+    const uid = hidden.events[0]!.uid;
+    const r0 = { ...hidden, inquiries: { pending: [], revealed: [`ev:${uid}`] } };
+    const label = labelThatApplies(r0);
+    let r = startDay(requestChange(r0, MIDWEST_GAME, { label, fixId: 'MOBILE_BACKOFF' }).run, MIDWEST_GAME);
+    expect(r.changes.at(-1)!.armedEvents).toEqual([uid]);
+    r = advance(r, MIDWEST, MIDWEST_GAME, 2 * TICKS_PER_HOUR + 1);
+    expect(r.events[0]).toMatchObject({ started: true, ended: true });
+    // The same plan without the reveal arms nothing.
+    const unseen = startDay(requestChange(hidden, MIDWEST_GAME, { label, fixId: 'MOBILE_BACKOFF' }).run, MIDWEST_GAME);
+    expect(unseen.changes.at(-1)!.armedEvents).toBeUndefined();
   });
 
   it('a matching and a non-matching fix are indistinguishable when requested', () => {
@@ -313,10 +382,11 @@ describe('event cards resolved at start', () => {
     return { ...r, events: [ev] };
   };
 
-  it('Db2 Whisperer turns the silent REBIND regression into a DBA tip', () => {
-    const tip = (perks: string[]) => advance({ ...withCard('REGRESSION', 7), perks }, sc, MIDWEST_GAME, 1).inbox.some((m) => m.from === 'DBA team');
-    expect(tip([])).toBe(false);
-    expect(tip(['DB2_WHISPERER'])).toBe(true);
+  it('Db2 Whisperer turns the silent REBIND regression into a DBA tip tagged with the perk', () => {
+    const tip = (perks: string[]) => advance({ ...withCard('REGRESSION', 7), perks }, sc, MIDWEST_GAME, 1).inbox.find((m) => m.from.startsWith('DBA team'));
+    expect(tip([])).toBeUndefined();
+    // It is the perk's tip: the sender says so, so the player knows where it came from (PT-13).
+    expect(tip(['DB2_WHISPERER'])!.from).toBe('DBA team (Db2 Whisperer)');
   });
 
   it('a power cap drops one setting from the current one and restores that setting, not a fixed one', () => {

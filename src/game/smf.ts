@@ -24,11 +24,16 @@ export function smfHourRefs(run: RunState): SmfHourRef[] {
 
 const hh = (h: number) => String(h).padStart(2, '0');
 
-function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number } | null {
+function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number> } | null {
   if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC } : null;
   const h = run.smfHours.find((x) => `${x.day}:${x.hourOfDay}` === key);
-  return h ? { workloads: h.workloads, seconds: 3600 } : null;
+  return h ? { workloads: h.workloads, seconds: 3600, ...(h.cpuVsBase ? { cpuVsBase: h.cpuVsBase } : {}) } : null;
 }
+
+/** A closed hour's frozen ratio (none if the workload had no baseline yet then, e.g. a new workload's first hour);
+ * the open hour, and closed hours from before the freeze, divide by the live baseline. */
+const ratioVsBase = (d: { cpuVsBase?: Record<string, number> }, id: string, cpuMs: number, base: Record<string, number> | undefined): number | null =>
+  d.cpuVsBase ? (d.cpuVsBase[id] ?? null) : base?.cpu ? cpuMs / (1000 * base.cpu) : null;
 
 const usesDb2 = (w: WorkloadDef) => w.servers.some((s) => s.role.startsWith('DB2.'));
 const perTxnMs = (h: WorkloadHour, k: string) => (h.completions > 0 ? (1000 * (h.parts[k] ?? 0)) / h.completions : 0);
@@ -71,7 +76,7 @@ export function db2Accounting(run: RunState, scenario: Scenario, key: string): D
           txnPerSec: h.completions / d.seconds,
           class1Ms: (1000 * h.rtSumSec) / h.completions,
           cpuMs,
-          cpuVsBaseline: base?.cpu ? cpuMs / (1000 * base.cpu) : null,
+          cpuVsBaseline: ratioVsBase(d, w.id, cpuMs, base),
           lockMs: perTxnMs(h, 'lock'),
           syncIoMs: perTxnMs(h, 'io'),
           cfMs: perTxnMs(h, 'cf'),
@@ -117,7 +122,7 @@ export function cicsMonitoring(run: RunState, scenario: Scenario, key: string): 
           txnPerSec: h.completions / d.seconds,
           avgRtMs: (1000 * h.rtSumSec) / h.completions,
           cpuMs,
-          cpuVsBaseline: base?.cpu ? cpuMs / (1000 * base.cpu) : null,
+          cpuVsBaseline: ratioVsBase(d, w.id, cpuMs, base),
           qrWaitMs: perTxnMs(h, 'qr'),
           mxtWaitMs: perTxnMs(h, 'outside'),
           dispMinusCpuMs: perTxnMs(h, 'cpuQueue') + perTxnMs(h, 'backlogWait'),

@@ -267,6 +267,17 @@ export const CODEX: CodexEntry[] = [
     discover: { events: ['ZIIP_LOSS'] },
   },
   {
+    id: 'capacity-change',
+    title: 'Capacity change (CHANGE REASON, SMF70CAI/SMF70CCR)',
+    category: 'Capacity & cost',
+    body: 'A CPC can run below its normal capacity without losing engines. SMF type 70 records it: SMF70CAI is 100 at normal capacity and 1 to 99 when capacity is reduced (temporary capacity such as CBU or On/Off CoD is not counted), and SMF70CCR gives the reason: 1 for a manual control, above 1 for a machine condition or an external exception. RMF prints the reason as CHANGE REASON in the CPU Activity report header: NONE, POWERSAVE (power-save mode, set by the user) or MACHINE (cycle steering, initiated by the machine). Every LPAR on the machine delivers less MSU at the same busy, so CPU delay rises everywhere at once. In this game the line appears on Partition Data, as the CPU Activity report is not rendered.',
+    sources: [
+      { label: 'IBM z/OS 3.1 MVS System Management Facilities (SMF), p.589: SMF70CAI, SMF70CCR', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=589' },
+      { label: 'IBM z/OS 3.1 RMF Report Analysis, p.391–392: CPU Activity report, CHANGE REASON', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=391' },
+    ],
+    discover: { events: ['POWER_CAP'] },
+  },
+  {
     id: 'cics-sos',
     title: 'CICS MXT and short-on-storage (SOS)',
     category: 'Subsystems',
