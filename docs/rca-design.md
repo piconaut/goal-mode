@@ -1,7 +1,7 @@
 # RCA judging and incident truth: audit, truth model and D1 draft
 
 Status: **proposal for the user** (2026-11-09). Nothing here is implemented. The work it leads to is in
-[BACKLOG.md](../BACKLOG.md) (PT-25 … PT-47, RF-02); entries that need a decision name the section of this
+[BACKLOG.md](../BACKLOG.md) list `rca-truth` (RT-01 … RT-24) and RF-02; entries that need a decision name the section of this
 document to decide on. §7 lists the decisions.
 
 Scope: the whole chain from sim causality → game "truth" (`src/game/sla.ts`, `run/hourly.ts`) → evidence matching
@@ -456,7 +456,7 @@ Sources of accepted answers:
 4. **Failure-only misses.** The sim knows why it failed each transaction (slot-queue timeout, region abend, Db2 or
    MQ unavailable, backlog timeout). Record failures by source per workload (reporting-only state), and map: queue
    timeout → THREAD_LIMIT, region abend → ROUTING, Db2/MQ → DEPENDENCY, backlog timeout → the CPU family. This
-   replaces `failureMechanism` on the card and closes A7 and U-12. Until it exists, A7 is fixed on its own (PT-25).
+   replaces `failureMechanism` on the card and closes A7 and U-12. Until it exists, A7 is fixed on its own (RT-01).
 5. **Over the incident, not only its first hour.** Keep the opening hour as the primary (the player is paged then),
    and add to the accepted set whatever the same rules give for the hour with the worst attainment. Truth is then
    final when the incident closes; an RCA filed while it is open is judged when it closes.
@@ -625,7 +625,7 @@ What the player was *told* counts as half a proof. A forewarning ("REBINDs ran o
 the "what changed" predicate; the player still pins the measurement. Announced cards (CF_LINK, CF_FAILURE,
 POWER_CAP, JOB_ABEND) have no targeted fix and are not gated. Today a forewarned card's fix can be armed before the
 card starts (`armableEvents`); under D1 arming needs the same proof, so it is possible only from the second
-occurrence or with a tip. That is a visible nerf to preparation and needs the user's call (§7 Q8).
+occurrence or with a tip. That is a visible nerf to preparation and needs the user's call (§7 Q8b).
 
 ### 5.2 Unlock recipes per card
 
@@ -658,7 +658,7 @@ at unchanged CPU per transaction" (the D1 note) is true of both. Options:
    work: a higher share of rolled-back or abnormally ended threads in Db2 accounting, or timeouts at the
    distributor. *Unverified*: the book search in this session did not confirm which accounting field an analyst
    would read (searched Db2 13 Managing Performance for rollback/abort counters in the accounting sections); it
-   needs a `zos-docs` pass before it is modelled (PT-44 is `blocked: research`). It also needs the card to stop
+   needs a `zos-docs` pass before it is modelled (RT-23 is `blocked: research`). It also needs the card to stop
    being a fixed multiplier, or at least to expose a second modifier.
 2. **An inbox clue from the application team** ("many duplicate request IDs") on the hint ladder, accepted as the
    second half of the proof once received. Cheap, but then the proof is "wait for the mail".
@@ -724,30 +724,35 @@ Today `obviousHourly` and the fixer's `ON_SIGHT_FIXES` apply a card's fix the ti
 
 ## 6. Order of work
 
-1. **Bugs and content gaps, no design call** (ready): PT-25 … PT-30, PT-46, PT-47, RF-02.
-2. **Scoring-only truth model** (cannot move the bands): accepted sets and reply text (PT-31), vocabulary (PT-32),
-   incident snapshot and pin relations (PT-29 then PT-33), new pin sources (PT-30, PT-46, PT-47), proof recipes (PT-34), grouping
-   by cause (PT-35).
-3. **Primary-label changes** (each with a sweep): footprints and trigger ranking (PT-36), fallback triggers (PT-37),
-   slot baselines (PT-38), per-host and displaceable CPU split (PT-39), server CPU and thread-limit reference
-   (PT-40), failure sources (PT-41), batch nights (PT-42).
-4. **D1**: problem records (PT-43), retry discriminator research (PT-44), gating with recipes, costs and hints
-   (PT-45), then bots (part of PT-45's sweep).
+The work is BACKLOG.md list `rca-truth`, numbered in dependency order (user decision 2026-11-10, replacing the
+PT-25 … PT-47 entries this document first proposed). Gating uses the `blocked: after <ID>` status, so `dev-loop`
+cannot pick an entry before its prerequisites are merged.
 
-D1 depends on PT-31, PT-33, PT-34, PT-36 and PT-30. It does not depend on group 3 beyond PT-36, because unlocking
-is judged against accepted sets and recipes, not against the primary label.
+1. **Committed (RT-01 … RT-15).** Bugs and missing pin sources (RT-01 … RT-05, RT-08, RT-10, RT-11), the
+   counterfactual validator (RT-06, moved earlier from Q10), accepted answer sets (RT-07), wording (RT-09), pin
+   relations (RT-12), proof recipes (RT-13), card footprints (RT-14), grouping by cause (RT-15). Of these only RT-02,
+   RT-09 and RT-14 move truth labels and need sweeps. RF-02 stays in `realism-fixes`.
+2. **Human playtest** on the result, when `dev-loop rca-truth` reports the list finished (only blocked entries left).
+   Footprints come before it because most "one cause, several truths" complaints are collateral blame (§3 A2).
+3. **Parked until that playtest (RT-16 … RT-21):** the CPU split (RT-16, first in line: Revenue G1 is still judged
+   capacity and bots buy CPs on it), hour-of-day baselines (RT-17, deferred), fallback triggers (RT-18), server CPU
+   and the thread-limit reference (RT-19), failure sources (RT-20), batch nights (RT-21).
+4. **D1 (RT-22 … RT-24)**, after the user's Q8a/Q8b and Q9, and PT-20's design call.
+
+D1 depends on RT-05, RT-07, RT-12, RT-13 and RT-14. It does not depend on RT-16 … RT-21, because unlocking is
+judged against accepted sets and recipes, not against the primary label.
 
 ## 7. Decisions for the user
 
-| # | Question | Recommendation | Unblocks |
-|---|---|---|---|
-| Q1 | §4.1: accept a set of answers at full credit, with the primary named in the reply? Add the 1-point family credit? | Yes; yes | PT-31 |
-| Q2 | §4.4(5): relabel the two triggers and move five cards to "Change regression"? | Yes (labels only) | PT-32 |
-| Q3 | §4.6: evidence as two-predicate recipes, pin relations instead of `anySubject`? | Yes | PT-33, PT-34 |
-| Q4 | §4.5: group by cause identity; stop silent inheritance across different causes? | Yes | PT-35 |
-| Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | PT-36, PT-37 |
-| Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | PT-38, PT-40, PT-41 |
-| Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | PT-39 |
-| Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | PT-43, PT-45 |
-| Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | PT-44 |
-| Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after PT-36 | — |
+| # | Question | Recommendation | Decision (user) | Unblocks |
+|---|---|---|---|---|
+| Q1 | §4.1: accept a set of answers at full credit, with the primary named in the reply? Add the 1-point family credit? | Yes; yes | Yes to accepted sets; **no** family credit (2026-11-10) | RT-07 |
+| Q2 | §4.4(5): relabel the two triggers and move five cards to "Change regression"? | Yes (labels only) | Yes (2026-11-10) | RT-09 |
+| Q3 | §4.6: evidence as two-predicate recipes, pin relations instead of `anySubject`? | Yes | Yes, and every common recipe needs a tier-0/1 path (2026-11-10) | RT-12, RT-13 |
+| Q4 | §4.5: group by cause identity; stop silent inheritance across different causes? | Yes | Yes, with two refinements: card causes group across the played day (the two-hour window applies only to non-card causes), and RT-15 lands after RT-14 (2026-11-10) | RT-15 |
+| Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | Yes (2026-11-10); the fallback half (RT-18) is parked until the playtest | RT-14, RT-18 |
+| Q6 | §4.2: hour-of-day baselines, co-dominance at one third, incident-long accepted set? | Yes; the thresholds are tunables | Deferred until after the playtest (2026-11-10) | RT-17, RT-19, RT-20 |
+| Q7 | §4.3: displaceable CPU instead of importance donors, judged on the host of the delay, with bands? | Yes | Open; after the playtest | RT-16 |
+| Q8 | §5: D1 as proof-gated fixes with problem records; arming a forewarned fix needs proof; costs of §5.4; ladder of §5.5? | Yes, starting with REGRESSION and XLOG_LOOP | Split into Q8a (problem records, RT-22) and Q8b (gating, RT-24), decided separately; open | RT-22, RT-24 |
+| Q9 | §5.3: retry storm ungated until a discriminator is researched? | Yes | Open | RT-23 |
+| Q10 | §4.8: build the counterfactual replay as an offline validator? | Later, after RT-14 | Yes, **earlier**: RT-06, now, as RT-14's acceptance test (2026-11-10) | — |

@@ -57,16 +57,16 @@ Notes from discussion:
   is not yet trustworthy, for structural reasons: one label where two answers are defensible, blame through
   hand-written `affects` lists (collateral victims get `POLICY`/`GROWTH`), long-running cards and an alphabetical
   tie-break, a capacity/priority test that takes the policy's importances as given, and evidence that does not
-  discriminate. Before D1 can gate anything:
-  1. the ready fixes BACKLOG PT-25 … PT-30, PT-46, PT-47 (a mid-hour fix erasing the mechanism, cards without
-     `mechanisms`, capping by one tick, pins from unrelated systems, evidence judged against today's classification,
-     missing pin sources);
-  2. the user's answers to docs/rca-design.md §7 Q1–Q7, which unblock the truth model: accepted answer sets (PT-31),
-     pin relations and proof recipes (PT-33, PT-34), grouping by cause (PT-35), card footprints (PT-36);
-  3. then D1 itself (Q8, Q9): problem records (PT-43) and proof-gated fixes (PT-45). The retry storm, D1's example,
-     cannot be proven with any data the game has (it is identical to a campaign in every report); PT-44 researches a
-     discriminator and until then its fix stays ungated.
-  The primary-label changes (PT-37 … PT-42) improve fairness but D1 does not depend on them.
+  discriminate. The work is BACKLOG.md list `rca-truth` (user decisions on §7 Q1–Q5 and Q10, 2026-11-10, recorded
+  in docs/rca-design.md §7):
+  1. RT-01 … RT-15, committed: bugs and missing pin sources, the counterfactual validator (RT-06), accepted answer
+     sets (RT-07), wording (RT-09), pin relations and proof recipes (RT-12, RT-13), card footprints (RT-14),
+     grouping by cause (RT-15);
+  2. a human playtest when `dev-loop rca-truth` reports the list finished;
+  3. RT-16 … RT-21 parked until that playtest (CPU split first; hour-of-day baselines deferred);
+  4. then D1 itself (Q8a/Q8b, Q9, PT-20): problem records (RT-22) and proof-gated fixes (RT-24). The retry storm,
+     D1's example, cannot be proven with any data the game has (it is identical to a campaign in every report);
+     RT-23 researches a discriminator and until then its fix stays ungated.
 - Proof should be a mechanism, not a single pin. A rate pin alone can't tell a retry storm from a demand surge. The
   discriminator is END/S up at unchanged CPU per transaction, so the unlock might take a rate pin plus a pin that
   rules out a surge, judged by the existing evidence matcher (`src/content/evidence.ts`).
@@ -402,14 +402,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   (browser and play CLI) repairs it. If it recurs, look at how the artifact host saves a Blob download.
 - Retry storm against real demand (RCA audit 2026-11-09): what does an analyst read to tell client retries from a
   campaign? Candidates are rolled-back or abnormally ended DDF threads in Db2 accounting or statistics and connection
-  timeouts; a first search of Db2 13 Managing Performance did not confirm a field. BACKLOG PT-44.
+  timeouts; a first search of Db2 13 Managing Performance did not confirm a field. BACKLOG RT-23.
 - Resource-group capping as an RCA mechanism: WLMGL CAP delay is resource-group and discretionary capping (RMF Report
   Analysis p.540), so should a class held by a resource-group maximum be judged `CAPPING` (docs/rca-design.md §4.3
   proposes yes, with the help text widened from "the image" to "the image or the class")?
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: docs/rca-design.md §7 Q1–Q10 (RCA truth model and D1). #111 Q1–Q3 are decided.
+- Waiting on the user: docs/rca-design.md §7 Q7, Q8a, Q8b, Q9 (after the RT-15 playtest). #111 Q1–Q3 are decided.
 
 ## Known approximations and risks
 
@@ -441,10 +441,13 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   unchanged). [docs/rca-design.md](docs/rca-design.md) has the truth inventory for all 27 Midwest cards, the
   Harbourline and Revenue cards and the scenario flaws, fourteen rule findings with repros (replays on Midwest,
   Harbourline and Revenue seed 42 with cards injected as `tests/game/power-cap.test.ts` does, plus direct calls to
-  `triggerOf`/`mechanismOf`/`judgeEvidence`), a proposed truth model and a D1 draft. BACKLOG: PT-25 … PT-30, PT-46,
-  PT-47 and RF-02 are ready; PT-31 … PT-45 wait for the user's answers to its §7. Ledger: two Db2 rows (the wait for
+  `triggerOf`/`mechanismOf`/`judgeEvidence`), a proposed truth model and a D1 draft. BACKLOG list `rca-truth`
+  (RT-01 … RT-24, numbered in dependency order, gated with the new `blocked: after <ID>` status) and RF-02. User
+  decisions 2026-11-10: Q1 (no family credit), Q2, Q3 (tier-0/1 recipe paths), Q4 (card causes group across the
+  day; after footprints), Q5 yes; Q6 deferred; Q8 split; Q10 moved earlier as RT-06. Why a separate list: pick order
+  ignores "After" notes, and the list finishing marks the playtest checkpoint. Ledger: two Db2 rows (the wait for
   a thread at MAXDBAT is not traced; QDSTQDBT via `-DISPLAY DDF DETAIL`), and the WLMGL CAP-delay row now says the
-  report matches. Next: the user's decisions on §7; the ready entries can go to `dev-loop` now.
+  report matches. Next: `/dev-loop rca-truth`.
 - 2026-11-09: PT-06: RMF and Monitor III report IIPCP only where a zIIP is defined to the image (online or
   reserved; *Init & Tuning* 3.1 p.431, p.434 with PROJECTCPU default NO). On an image with none (Midwest DEVT/SYSP,
   harbourline DEV1) the eligible time on CPs stays plain CP work: `reportedTicks` folds it into APPL% CP and IIPCP
