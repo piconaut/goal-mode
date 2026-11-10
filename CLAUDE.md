@@ -157,7 +157,8 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   Keep sim model changes, balance decisions and cross-layer work on the main agent, and review every subagent diff
   before committing. In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent;
   vetting and balance calls stay on the main agent.
-  Commit trailers: a commit written by a subagent ends with `Co-Authored-By: Claude <Model> <noreply@anthropic.com>`,
+  Commit trailers (this applies to Claude sessions and their subagents only, not to humans or other agents such as
+  Codex): a commit written by a subagent ends with `Co-Authored-By: Claude <Model> <noreply@anthropic.com>`,
   where `<Model>` is the model the subagent itself is running as, read from its own system prompt or environment.
   Never copy a trailer from a coordinator's brief or reminder. If the subagent can't tell which model it is, it omits
   the trailer rather than guessing. The `Claude-Session:` line stays as given. Coordinators pass subagents only the
