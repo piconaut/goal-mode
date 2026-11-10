@@ -12,22 +12,24 @@ import { clockAt } from '../clock';
 import type { LparConfig, EnvState, SimState } from '../types';
 import { TICK_SEC } from '../units';
 import { RMF_KEEP, type TickCtx, WLM_LOG_MAX } from './ctx';
+import { atOrFind } from './plan';
 
 /** 6. Soft capping: LPARs whose R4HA exceeds their defined capacity, and members of capacity
  * groups over their limit, are held to their MSU share. */
 export function softCap(t: TickCtx): void {
-  const { prev, config, cpcOf, demands } = t;
+  const { prev, plan, cpcOf, demands } = t;
   for (const d of demands) {
     if (d.pool !== 'CP') continue;
-    const l = config.lpars.find((x) => x.id === d.lparId)!;
+    const l = plan.lparById[d.lparId]!;
     const msuCp = msuPerCp(cpcOf[l.cpcId]!);
-    const r = prev.capping.lpars.find((x) => x.id === l.id);
+    // prev.capping.lpars follows the z/OS image order.
+    const r = atOrFind(prev.capping.lpars, plan.byLparId[l.id]?.zosIdx ?? -1, (x) => x.id === l.id);
     let capMsu = Infinity;
     if (r?.capped && l.definedCapacityMsu !== null) capMsu = l.definedCapacityMsu;
-    const g = l.capacityGroup ? config.capacityGroups.find((x) => x.id === l.capacityGroup) : undefined;
+    const g = l.capacityGroup ? plan.groupOf[l.capacityGroup] : undefined;
     const gs = g ? prev.capping.groups.find((x) => x.id === g.id) : undefined;
     if (g && gs?.capped) {
-      const members = config.lpars.filter((x) => x.capacityGroup === g.id);
+      const members = plan.groupMembers[g.id]!;
       const shares = groupShares(
         g.limitMsu,
         members.map((m) => ({
@@ -61,12 +63,13 @@ export function prsm(t: TickCtx): void {
 
 /** 12b. Policy adjustment, one receiver per system. */
 export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemState[]; log: string[] } {
-  const { prev, def, config, systems, lparTicks, evalInputs } = t;
+  const { prev, def, plan, systems, lparTicks, evalInputs } = t;
   const spPi = sysplexPis(def, systems);
   // The previous log is only copied once a line is added (states are never mutated in place).
   let log = prev.wlm.log;
-  const adjusted = systems.map((sys) => {
-    const lt = lparTicks.find((x) => x.lparId === sys.lparId)!;
+  // dispatchLpar pushes one system and one LPAR tick per image, in the same order.
+  const adjusted = systems.map((sys, i) => {
+    const lt = atOrFind(lparTicks, i, (x) => x.lparId === sys.lparId)!;
     const evalInput = evalInputs[sys.lparId]!;
     const out = policyAdjust({
       def,
@@ -75,7 +78,7 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
       current: lt.scps,
       sysplexPi: spPi,
       clockText,
-      ccImp: config.systems.find((c) => c.lparId === sys.lparId)?.ccImp,
+      ccImp: plan.byLparId[sys.lparId]?.system?.ccImp,
       receiversPerImportance: RECEIVERS_PER_IMPORTANCE,
       batch: evalInput.ziipServers > 0 ? t.batchRefsBy[sys.lparId]?.map((r) => ({
         key: r.slice.key,
@@ -106,14 +109,14 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
 
 /** R4HA bookkeeping and soft-cap decisions for the next tick. */
 export function stepCapping(t: TickCtx, zosLpars: readonly LparConfig[]) {
-  const { prev, config, lpars } = t;
+  const { prev, plan, config, lpars } = t;
   const msuBy: Record<string, number> = {};
   for (const l of lpars) msuBy[l.id] = l.msuRate;
-  const cappingLpars = zosLpars.map((l) =>
-    stepR4ha(prev.capping.lpars.find((x) => x.id === l.id) ?? newR4ha(l.id), msuBy[l.id] ?? 0, l.definedCapacityMsu),
+  const cappingLpars = zosLpars.map((l, i) =>
+    stepR4ha(atOrFind(prev.capping.lpars, i, (x) => x.id === l.id) ?? newR4ha(l.id), msuBy[l.id] ?? 0, l.definedCapacityMsu),
   );
   const cappingGroups = config.capacityGroups.map((g) => {
-    const msu = config.lpars.filter((l) => l.capacityGroup === g.id).reduce((a, l) => a + (msuBy[l.id] ?? 0), 0);
+    const msu = plan.groupMembers[g.id]!.reduce((a, l) => a + (msuBy[l.id] ?? 0), 0);
     return stepR4ha(prev.capping.groups.find((x) => x.id === g.id) ?? newR4ha(g.id), msu, g.limitMsu);
   });
   const r4haBy: Record<string, number> = {};

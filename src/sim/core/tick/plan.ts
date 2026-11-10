@@ -69,8 +69,10 @@ export interface LparPlan {
   zosLpars: LparConfig[];
   /** CF images in config.lpars order. */
   cfImages: CfImagePlan[];
-  /** Every LPAR config by id (first one, as `.find()`), and the CPC it runs on. */
+  /** Every LPAR config by id (first one, as `.find()`), and its position in `t.lpars` (PR/SM order). */
   lparById: Record<string, LparConfig>;
+  rtIdxOf: Record<string, number>;
+  /** CPC config by id. */
   cpcOf: Record<string, CpcConfig>;
   /** CPC site position of each LPAR's CPC, km (0 when unknown). */
   siteKmOf: Record<string, number>;
@@ -153,6 +155,7 @@ export function buildLparPlan(config: WorldConfig, workloads: readonly WorkloadD
     zosLpars: images.map((i) => i.lpar),
     cfImages: config.lpars.filter((l) => l.kind === 'CF').map((l) => ({ lpar: l, cf: config.cfs.find((c) => c.lparId === l.id), icf: l.pools.find((p) => p.pool === 'ICF') })),
     lparById,
+    rtIdxOf: rtOrder,
     cpcOf,
     siteKmOf,
     db2Lpars: new Set(addressSpaces.filter((a) => a.role === 'DB2.MSTR').map((a) => a.lparId)),
