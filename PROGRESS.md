@@ -396,9 +396,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - WLM audit 2026-11-10: the questions on secondary receivers and donors, a region class as receiver, equal-DP
   sharing, percentile PI with few completions, the discretionary minimum and backlog in projections are settled in
   docs/research.md ("WLM policy adjustment and dispatching") and docs/wlm-design.md §4 W15; their fixes are WT entries.
-- WLM audit, still unverified: the numbers behind receiver value, the net value rule by importance and the 0.90
-  credit come from IBM's 1994 patent (read through a summarising fetch, not page-checked) and Peter Enrico's slides;
-  IBM's books state the tests without numbers. The skip clock's length, where the unbunched ladder sits in the
+- WLM audit: the numbers behind receiver value, the net value rule by importance and the 0.90 credit come from IBM's
+  1994 patent (page-checked 2026-11-10, US 5,473,773 p.18–20) and Peter Enrico's slides; IBM's z/OS books state the
+  tests without numbers, so they are the original design, not confirmed for z/OS 3.1. The skip clock's length, where the unbunched ladder sits in the
   managed range, and the priorities assigned at IPL or policy activation are not documented anywhere found.
 - WLM audit: the dispatching priority table differs between SG24-7621 (252–208 managed) and SG24-6472 (247–203 as of
   z/OS 1.8); no z/OS book gives numbers (docs/wlm-design.md W12, §8 Q5).
@@ -449,6 +449,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-10: WT-04 prototyped on branch `proto/wlm-wt04` (no PR, not merged; WT-04 stays
+  open): docs/wlm-design.md §9. `npm run check` passes there (851 tests, goldens regenerated); `npm run compare`
+  differs in all three scenarios as intended; Midwest seeds 1–5 sweep ends every run on the same day and cause as
+  `dev`. The first revision was worse on Revenue (flat projected PIs hide harm); the fix is a rule now in §5.3.
+  User decision on §9.4 point 5 (2026-11-10): keep the strict rule (no WLM move for less important work past more
+  important work that is missing its goal, also on a capped image). The prototype lives on branch `proto/wlm-wt04`.
 - 2026-11-10: WLM policy adjustment audit and target model (design only, PR #265): docs/wlm-design.md, BACKLOG list
   `wlm-truth`, 21 docs/research.md rows. No file under `src/`, `tests/` or `tools/` changed. Repro harness and
   outputs are under `runs/wlm-audit/` (ignored); WT-01 turns the harness into `inspect … wlm-stats`.
