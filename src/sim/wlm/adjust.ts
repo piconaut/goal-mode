@@ -67,6 +67,13 @@ export interface WlmTrialTrace {
   detail?: string;
 }
 
+/**
+ * Delay shares a bottleneck was chosen from: each delay component over `using + delay`. The denominator keeps the
+ * storage and queue delay that have no numerator of their own, and `IO` is the velocity share (delay I/O priority
+ * management cannot see is subtracted), so the five do not sum to 1.
+ */
+export type WlmDelayShares = Record<Exclude<Bottleneck, 'NONE'>, number>;
+
 export interface WlmCandidateTrace {
   scKey: string;
   importance: number;
@@ -74,6 +81,13 @@ export interface WlmCandidateTrace {
   localPi: number | null;
   dp: number;
   bottleneck: Bottleneck | null;
+  /**
+   * The shares `bottleneckOf` saw for this period (zero when it used and lost no time). On a `BUDGET` candidate the
+   * bottleneck was never chosen; the shares are still recorded so a consumer always has the period's accounting.
+   */
+  delayShares: WlmDelayShares;
+  /** Donor periods in the order their trials were built (assessed receivers; empty when none qualified). */
+  donors?: string[];
   /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: receiversPerImportance receivers were already assessed at this importance;
    * ASSESSED: trials below. */
   outcome: 'NOT_FIXABLE' | 'BUDGET' | 'ASSESSED';
@@ -215,7 +229,11 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       why = { move: '', verdict: 'CPU_CRITICAL', detail: cc };
       return false;
     }
-    return project(trial, (after) => {
+    // The pair is only recorded once the whole projection accepts: `project` can still refuse after every accept
+    // callback said yes (a batch recovery that never settles runs out of rounds), and a trace must not call that move
+    // accepted.
+    let acceptedPi: [number | null, number | null] | null = null;
+    const ok = project(trial, (after) => {
       const r0 = before[receiver];
       const r1 = after[receiver];
       if (r0 == null || r1 == null || r1 >= r0) return reject('NO_RECEIVER_GAIN', [r0 ?? null, r1 ?? null]);
@@ -237,9 +255,15 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
           equalHarm += harm;
         }
       }
-      if (gain > equalHarm) return true;
+      if (gain > equalHarm) {
+        acceptedPi = [r0, r1];
+        return true;
+      }
       return reject('NO_NET_VALUE', [r0, r1], `gain ${gain.toFixed(2)} ≤ equal-importance harm ${equalHarm.toFixed(2)}`);
     });
+    // An accepted trial records the receiver's PI pair like a rejected one, so a trace can show what the move bought.
+    if (ok) why = { move: '', verdict: 'ACCEPTED', receiverPi: acceptedPi ?? [null, null] };
+    return ok;
   };
 
   const ordered = (piOf: Record<string, number | null>) =>
@@ -261,10 +285,26 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
 
   const notes: string[] = [];
   const traced: WlmCandidateTrace[] = [];
-  const traceOf = (k: string, bottleneck: Bottleneck | null, outcome: WlmCandidateTrace['outcome']): WlmCandidateTrace => {
-    const c = { scKey: k, importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, outcome, trials: [] };
+  const traceOf = (
+    k: string,
+    bottleneck: Bottleneck | null,
+    outcome: WlmCandidateTrace['outcome'],
+    delayShares: WlmDelayShares,
+  ): WlmCandidateTrace => {
+    const c = { scKey: k, importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, delayShares, outcome, trials: [] };
     traced.push(c);
     return c;
+  };
+  /** The period's delay accounting with I/O priority management off applied: what the bottleneck is chosen from. */
+  const delaysOf = (k: string) => {
+    const acc = system.scps.find((s) => s.scKey === k)!.acc;
+    return { ...acc, delayIo: acc.delayIo - (acc.delayIoNoVel ?? 0) };
+  };
+  const sharesOf = (k: string): WlmDelayShares => {
+    const d = delaysOf(k);
+    const denom = d.using + d.delay;
+    const share = (v: number) => (denom > 0 ? v / denom : 0);
+    return { CPU: share(d.delayCpu), ZIIP: share(d.delayZiip), IO: share(d.delayIo), CAP: share(d.delayCap), OTHER: share(d.delayOther) };
   };
   const finish = (out: AdjustOutput): AdjustOutput => {
     if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null, protection });
@@ -282,19 +322,18 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     }
     if (projected >= receiversPerImportance) {
       // Skip, don't stop: lower importances still get their own budget, traced or not.
-      if (tracing) traceOf(receiver, null, 'BUDGET');
+      if (tracing) traceOf(receiver, null, 'BUDGET', sharesOf(receiver));
       continue;
     }
-    const scState = system.scps.find((s) => s.scKey === receiver)!;
     // With I/O priority management off, I/O samples are outside velocity and WLM doesn't manage I/O (WLM Planning p.115).
-    const btl = bottleneckOf({ ...scState.acc, delayIo: scState.acc.delayIo - (scState.acc.delayIoNoVel ?? 0) });
+    const btl = bottleneckOf(delaysOf(receiver));
     const pi = (input.sysplexPi[receiver] ?? localPi[receiver] ?? 0).toFixed(2);
     if (btl !== 'CPU' && btl !== 'ZIIP') {
       notes.push(`${receiver} PI=${pi} BTLNK=${btl} not WLM-fixable`);
-      if (tracing) traceOf(receiver, btl, 'NOT_FIXABLE');
+      if (tracing) traceOf(receiver, btl, 'NOT_FIXABLE', sharesOf(receiver));
       continue;
     }
-    const ct = tracing ? traceOf(receiver, btl, 'ASSESSED') : null;
+    const ct = tracing ? traceOf(receiver, btl, 'ASSESSED', sharesOf(receiver)) : null;
     /** The first move tried against this receiver: the clue the log gives when none of them paid off. */
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
     projected++;
@@ -330,6 +369,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
           (a < b ? -1 : 1),
       )
       .slice(0, 3);
+    if (ct) ct.donors = [...donors];
     for (const d of donors) {
       const nd = Math.max(DP.MANAGED_MIN, rdp - 1);
       trials.push({ trial: { ...dps, [d]: nd }, text: `DONOR ${d} DP ${hex(dps[d]!)}→${hex(nd)}` });
@@ -338,7 +378,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     for (const tr of trials) {
       why = null;
       const ok = passes(receiver, tr.trial);
-      if (ct) ct.trials.push(ok ? { move: tr.text, verdict: 'ACCEPTED' } : { ...(why ?? { verdict: 'NO_RECEIVER_GAIN' as const }), move: tr.text });
+      if (ct) ct.trials.push({ ...(why ?? { verdict: 'NO_RECEIVER_GAIN' as const }), move: tr.text });
       if (ok) {
         return finish({
           dps: tr.trial,

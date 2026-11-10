@@ -1,7 +1,7 @@
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { BATCH_PROJECTION, PCT_PROJECTION_SIGMA } from '../../src/content/wlm/tuning';
 import { advanceJob, emptyBatch, jobCpuDemand, jobPacing, jobShape, releaseNetwork, type JobDef } from '../../src/sim/subsys/batch';
-import { policyAdjust } from '../../src/sim/wlm/adjust';
+import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from '../../src/sim/wlm/batchProjection';
 import { evaluateLpar, prepareLpar, sliceSpec, type LparEvalInput, type LparEvalResult } from '../../src/sim/wlm/evaluate';
 import { projectedPercentilePi } from '../../src/sim/wlm/goals';
@@ -90,6 +90,28 @@ describe('cross-pool recovery during WLM projections', () => {
       expect(r.slices[0]!.cpGranted).toBeLessThanOrEqual(.01);
       expect(r.slices[0]!.ziipGranted).toBeLessThan(.002);
     }
+  });
+
+  it('does not record an exhausted recovery trial as accepted (WT-02)', () => {
+    // Every accept callback says yes and the recovery still runs out of rounds, so the move is not taken: the trace
+    // must not call it ACCEPTED and the player log must not invent a rejection reason for it.
+    const { def, system, e, current, batch } = recoveryCase(true);
+    const traces: WlmAdjustTrace[] = [];
+    const rounds = BATCH_PROJECTION.maxRecoveryRounds;
+    BATCH_PROJECTION.maxRecoveryRounds = 0;
+    setWlmTraceSink((t) => traces.push(t));
+    let out;
+    try {
+      out = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
+    } finally {
+      setWlmTraceSink(null);
+      BATCH_PROJECTION.maxRecoveryRounds = rounds;
+    }
+    expect(out.log).not.toContain('RCVR=');
+    expect(out.log).not.toContain('rejected:');
+    expect(out.dps['ONLCARD#1']).toBe(244);
+    const verdicts = traces[0]!.candidates.flatMap((c) => c.trials.map((t) => t.verdict));
+    expect(verdicts).not.toContain('ACCEPTED');
   });
 
   it('rejects an unsettled trial when its recovery budget is exhausted', () => {
