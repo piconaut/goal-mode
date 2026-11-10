@@ -246,9 +246,13 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       for (const k of infoKeys) {
         const g = info[k]!;
         const p0 = before[k];
-        if (k === receiver || g.importance >= rImp0 || p0 == null || p0 <= 1) continue;
+        if (k === receiver || g.importance >= rImp0) continue;
+        // "Missing its goal" is a fact about the period, so it is read from the management PI (local or sysplex)
+        // as well as from the projection at the current DPs.
+        const worst = Math.max(p0 ?? 0, localPi[k] ?? 0, input.sysplexPi[k] ?? 0);
+        if (worst <= 1) continue;
         const kdp = trial[k] ?? dps[k]!;
-        if (kdp >= r0dp && kdp <= r1dp) return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) PI ${p0.toFixed(2)} is missing its goal and would be passed`);
+        if (kdp >= r0dp && kdp <= r1dp) return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) PI ${worst.toFixed(2)} is missing its goal and would be passed`);
       }
     }
     return project(trial, (after) => {
