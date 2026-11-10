@@ -142,6 +142,8 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
   // A fix or natural expiry before hour close must not erase the card that caused the breach.
   const overlapTicks = (e: ActiveEvent) => Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick);
   const activeAtClose = (e: ActiveEvent) => e.endTick === null || e.endTick > endTick;
+  // A card active in a save written before RT-02 carries no `mechanisms`; treat that as "any mechanism" so the
+  // old save keeps its previous blame until the card ends (new cards always declare the list, RT-02).
   const ev = events.filter((e) =>
     e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
     (e.trigger !== 'NEW_WORKLOAD' || startTick < e.startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY) &&
