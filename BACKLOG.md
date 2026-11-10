@@ -35,6 +35,7 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 | --- | --- | --- |
 | `playtest-fixes` | PT | Findings from human and agent playtests: bugs, clue-path gaps, UI and tooling problems |
 | `rca-truth` | RT | RCA judging and incident truth, and D1 (docs/rca-design.md) |
+| `wlm-truth` | WT | WLM policy adjustment against real WLM (docs/wlm-design.md) |
 | `pr-followups` | PR | Non-blocking findings left open by PR reviews |
 | `realism-fixes` | RF | Sim model changes queued by docs/research.md rows (sim status "Fix queued") or audit rounds |
 | `balance` | BL | Balance tuning: bot bands, scenario difficulty, sweep regressions. Main agent only (CLAUDE.md) |
@@ -432,6 +433,251 @@ Q8a decides problem records (RT-22), Q8b the gating itself, including whether ar
 ladder of §5.5 with difficulty and Mentor; strategy bots diagnose from report data before fixing (§5.7). Balance: a
 three-scenario sweep and a re-tune call on the main agent. Start with REGRESSION and XLOG_LOOP. Done when: SPEC §9
 and §10 are rewritten for it, the sweep is recorded in PROGRESS.md, and the bands are restored or re-decided.
+
+## wlm-truth
+
+WLM policy adjustment: the work that makes the adjustment loop behave like IBM's description as one model. Source
+for every entry: the WLM audit of 2026-11-10, [docs/wlm-design.md](docs/wlm-design.md) (finding ids W-n, repro ids
+R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbered in dependency order.
+- **Sequencing against `rca-truth`:** every entry that changes sim behaviour or goldens is `blocked: after RT-15`
+  (docs/wlm-design.md §7). WT-01 … WT-03 change no behaviour and are ready.
+- **One at a time.** Each `sim` entry: goldens regenerated with a "Behaviour change" note, `npm run bench` before and
+  after (tick budget, SPEC §15), a three-scenario `npm run sweep:remote` (seeds 1–10, Normal) recorded in
+  PROGRESS.md M8.2, and the realism policy (cite docs/wlm-design.md §3's pages in code comments).
+- **Coupled core:** WT-04 and WT-08 are not to be split or delegated; the main agent implements them. WT-09 is
+  cross-layer and stays on the main agent too. The others are single-rule changes (§8 Q7 asks whether they may be
+  delegated).
+- **Coefficients** go to `src/content/wlm/tuning.ts` `POLICY_ADJUST` with `// FICTIONAL:` notes (names and starting
+  values in §5.10); approximations get `// APPROX:` (§5.10 list). Do not tune a coefficient to move a balance band
+  (§8 Q2).
+- Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
+  S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
+
+### WT-01 · `inspect … wlm-stats`: policy adjustment statistics for a run
+`list: wlm-truth · status: ready · priority: high · size: M · area: tooling`
+
+Add a verb to `tools/inspect.ts`: `npm run inspect -- <file> wlm-stats [system] --from 'D1 06:00' --to 'D3 06:00'
+[--ladder '12:00'] [--json]`. It replays the play-CLI file as `wlmText` does, with `setWlmTraceSink` installed for
+the whole range, and prints per system and in total: adjustments; adjustments with no candidate; candidates by
+outcome; trials by verdict; accepted moves (receiver-up, donor); rejected trials whose receiver's own-tick PI was
+≤ 0.9 and `null`; moves reversed by the same period's next move; episodes of a candidate assessed 30 intervals
+running without a move; and with `--ladder`, each system's DPs (hex, highest first) at that clock time each day.
+Pure functions `wlmStats(traces)` and `statsText(stats)` exported for tests. Investigation tooling only (same
+warning as `inspect wlm`). Add the command to CLAUDE.md's command list and the `wlm-why` skill. No sim change:
+`npm run compare` reports no differences. Done when: `tests/tools/inspect.test.ts` covers `wlmStats` on a
+hand-built trace list (each counter once), and the verb reproduces §1's table for S-1 within the same commit
+(numbers pasted in the PR).
+
+### WT-02 · The WLM trace carries what the invariant tests need
+`list: wlm-truth · status: ready · priority: high · size: S · area: tooling`
+
+In `src/sim/wlm/adjust.ts`, trace only (the sink is never set by the game; `policyAdjust`'s outputs must not change):
+an accepted trial records its `receiverPi` like a rejected one; each `WlmCandidateTrace` records the delay shares the
+bottleneck was chosen from (CPU, zIIP, I/O, cap, other, as fractions of using + delay) and the donor list in the
+order tried. `tools/inspect.ts` prints them. No behaviour change: bench hashes unchanged (Midwest
+`bde6d147471ece9f`, Harbourline `ec94548d8283d76c`, Revenue `fb563b38750d988f` on `1300e69`; take the current ones
+first) and `npm run compare` reports no differences. Done when: a test in `tests/sim/adjust.test.ts` asserts the
+new fields on one accepted and one rejected trial.
+
+### WT-03 · SPEC text that disagrees with the code (W13, W14)
+`list: wlm-truth · status: ready · priority: low · size: S · area: tooling`
+
+Documentation only. SPEC §5.4: discretionary work runs at one priority (196); mean-time-to-wait and the
+small-consumer priority are not modelled. SPEC §5.5.3: the sysplex PI is computed from the systems' accumulators
+summed, not as an average of local PIs; the PI window is one exponential decay (0.85 per tick, about 67 s), not a
+horizon that grows; transactions never show small-sample variability (fluid completions). SPEC §5.5.4: the three
+PIs in use today (docs/wlm-design.md §2.4). SPEC §17: add rows "PI window" and "Small consumer, mean-time-to-wait"
+(Not modelled). No code. Done when: the four places are corrected and cite docs/research.md.
+
+### WT-04 · One PI basis: projections at sustained demand, `base` against `after` (W1, W8, W9)
+`list: wlm-truth · status: blocked: after RT-15 · priority: high · size: L · area: sim`
+
+**Coupled core; main agent only.** Implements §5.2, §5.4 and the `receiverValue`/`netValue` tests of §5.3 on the
+*existing* single-move trials (the plan is WT-08).
+- `src/sim/wlm/runtime.ts`: `ScpAcc` gains `demandCp`, `demandZi` (decayed arriving demand in engines, without
+  backlog) and `ziipEngines`; `decayInto` fills them from new `ScpTick` fields set in `eval/accounting.ts`
+  (`periodTicks`, from the prepared slice demand before backlog). `ACC_DECAY` moves to `POLICY_ADJUST.accDecay`.
+- New `projectionInput(evalInput, system, C)` (new file `src/sim/wlm/projection.ts`, pure): the per-period uplift
+  `f` and the bounded backlog of §5.4.
+- `src/sim/wlm/adjust.ts` `policyAdjust`: compute `base` lazily (one `evaluateLpar` on the projection input at the
+  current DPs); replace `before` (this tick's PI) by `base` everywhere; a candidate with `base ≤ 1` or `null` is
+  traced `RECOVERING` and gets no trials and no budget use; `receiverValue` gains the 0.05 floor; `NO_NET_VALUE`
+  only when `equalHarm > 0`; `harmEps` applies to equal importance too. `RECEIVER_VALUE_FRAC`, `DONOR_CREDIT_FLOOR`
+  and the literal 0.02 move to `POLICY_ADJUST`. `playerReason` gains "already recovering".
+- Old saves: missing accumulator fields start at this tick's values.
+
+Tests (named): `wlm-invariants: I8 one basis`, `I4 receiver value`, `I17 projection is honest at rest`, `I1
+determinism` (shuffled `scps` and slices); `projection.test.ts`: uplift never below 1 and capped, backlog bounded,
+caps and I/O untouched; realism `WLM does not flip a period on one quiet tick` (R-1: Midwest 42, PROD2, D1
+12:19–12:23, DDFPRD#2 is not moved up while DDFPRD#1's smoothed demand would push it past its goal). Goldens:
+change. Done when: on S-1 … S-3 "rejected trials whose receiver's own-tick PI ≤ 0.9" is 0 by construction (the
+counter is replaced by `RECOVERING` candidates), "reversed by its next move" falls by at least half in each, and
+the misleading `gain 0.00 ≤ harm 0.00` line no longer occurs. Bots: small; do-nothing and textbook medians within
+± 1 day expected. SPEC §5.5.3–§5.5.4 and §17 "Policy adjustment" and "Percentile PI in WLM projections" updated.
+
+### WT-05 · Skip clocks, the delay test and a per-interval projection budget (W6)
+`list: wlm-truth · status: blocked: after WT-04 · priority: high · size: M · area: sim`
+
+Implements the candidate gates of §5.3. `ScpState` gains `skipUntilTick` (absent = 0; `dispatchLpar` in
+`src/sim/core/tick/dispatch.ts` carries it over; `adjustPolicies` in `tick/control.ts` passes the tick and stores
+the returned clocks). In `policyAdjust`: skip a candidate whose clock has not expired (`SKIP_CLOCK`); skip one with
+`managedDelayFrac < needsHelpDelayFrac` (`NO_MANAGED_DELAY`, no clock); set the clock to `nowTick +
+rejectedSkipTicks` when every trial of an assessed candidate was rejected; replace the per-importance budget by
+`maxProjectionsPerInterval` counted over the interval (`BUDGET` when it runs out: no clock). Delete
+`RECEIVERS_PER_IMPORTANCE` and `AdjustInput.receiversPerImportance`. The log's no-action note appends `next look
+hh:mm:ss`. Tests: `wlm-invariants: I12 skip clock, no starvation` (five unfixable and one fixable candidate at one
+importance: the fixable one is helped within 8 intervals), `I16 cost bound`; unit: clock set, honoured, cleared by
+expiry; a helped receiver gets no clock (WLM Services p.149: helped again 10 s later). Goldens: change. Done when:
+S-2's WEBDDF#1 is assessed at most once a minute while it cannot be helped (2 846 → under 500 assessments in three
+days), "assessed 30 intervals running without a move" is 0 in S-1 … S-3, and R-4's MKTDDF#1 (PRDD, D1 14:17:40) is
+assessed. Bots: none expected beyond WT-04. docs/research.md row "skip clock" → Modelled; SPEC §5.5.4 "Projection
+budget" rewritten; `wlm-why` skill table updated for the new outcomes.
+
+### WT-06 · The canonical ladder: priorities are an order (W2, W10)
+`list: wlm-truth · status: blocked: after WT-05 · priority: high · size: M · area: sim`
+
+Implements §5.6. New pure module `src/sim/wlm/ladder.ts`: `ladderOf(dps)`, `canonical(ladder)`,
+`raiseOneStep(ladder, holder)`, `moveToLevel(ladder, holder, level | 'below')`, `placeNew(ladder, holder,
+importance, info)`. `initialDp` (`runtime.ts`) and the first-seen path in `dispatchLpar` use `placeNew` on the
+canonical form; `policyAdjust` ends with `canonical`; `enforceCpuProtection` works on levels. Receiver-up trials
+become "one step" and "join the next level" for up to three levels (still single moves until WT-08); donor trials
+move the donor to the receiver's level, or just below it if already there (WLM Services p.705, code 531). No goal
+period is ever at `DP.MANAGED_MAX`, so `RG_MIN_DP` (252, `eval/grants.ts`) is above all goal work as its comment
+says. If the user answers §8 Q5 with yes, renumber in this entry (`DP` in `zos/dispatcher.ts`: small consumer 248,
+managed 247–203, reserved 249–253 used for the minimum share and promotion) and delete WT-13. Old saves: the
+ladder is made canonical on the first interval (order preserved). Tests: `ladder.test.ts` (canonical is idempotent
+and order-preserving; `raiseOneStep` splits or joins; `placeNew` by importance); `wlm-invariants: I9 canonical
+ladder`, `I10 CPU protection`, `I15 minimum above goal work` (C-4); realism `the ladder does not collapse` (S-4:
+Midwest 42, eight days, PROD2 at D8 12:00 has its goal holders on at least four levels and nothing at
+`MANAGED_MAX`). Goldens: change (every DP). Done when: those pass and R-4's shape (an importance-4 period on the top
+level on day 1) needs a logged plan that put it there. Bots: this is the entry that moves the bands (§6.2):
+do-nothing ± 3 days, Harbourline most; expert Harbourline up. Record the sweep; an out-of-band median is a `balance`
+entry, not a reason to change the ladder. SPEC §5.4 (DP table), §5.5.4, §17 "DP ranges" updated; research.md rows
+"unbunching" and "dispatch priorities" updated.
+
+### WT-07 · Donors in IBM's order, by the processor that is short (W4)
+`list: wlm-truth · status: blocked: after WT-06 · priority: high · size: S · area: sim`
+
+Implements §5.5 `donorOrder` in `src/sim/wlm/adjust.ts` (pure, exported): pool = holders at or above the receiver
+using at least `donorMinEngines` of the bottleneck's processor (smoothed: `acc.cpuEngines` for CPU,
+`acc.ziipEngines` for zIIP, × (1 − decay)); happy holders first by lowest `max(mPlex, mLocal)`, importance
+ignored; then the rest from importance 5 up, lowest PI first; an unhappy holder more important than the receiver is
+left out; first `donorsPerReceiver`. Tests: `wlm-invariants: I7 donor order`; unit C-2 (zIIP bottleneck: a period
+with 2 zIIP engines and no CP is a donor, one with 0.2 CP and no zIIP is not); unit "an over-achieving importance-1
+period is tried before a struggling importance-4 one"; realism `a more important class is not pushed past its goal
+as a donor` (I5). Goldens: change. Done when: R-1's donor list for DDFPRD#1 starts with the happy period of lowest
+PI and does not include Db2's class while it is missing its goal. Bots: small; importance-4 and -5 work is hurt
+less, over-achieving work more. research.md row "donor order" → Modelled.
+
+### WT-08 · A change is a plan: receiver up, secondary receivers, donors down, judged together (W5)
+`list: wlm-truth · status: blocked: after WT-07 · priority: high · size: L · area: sim`
+
+**Coupled core; main agent only.** Implements `buildPlan`, `assess` and whole-plan `netValue`/`receiverValue` of
+§5.3 in `src/sim/wlm/adjust.ts`, replacing the trial list. A plan alternates receiver steps (one ladder step; on a
+net value failure by a period left at or below the receiver that is not less important, carry that period to the
+receiver's level and assess once more) and donor moves (kept only if they lower the receiver's projected PI);
+receiver value is tested on the whole plan against `base`; a rejected plan leaves the ladder untouched;
+`maxPlanSteps` and the interval budget bound it. `AdjustOutput.log` lists the plan's moves; `WlmCandidateTrace`
+records steps (`UP`, `CARRY k`, `DONOR d`) with `base → after` and the rejecting period. `playerReason` unchanged
+in wording. Tests: `wlm-invariants: I2 one change per interval`, `I4`, `I5 no harm to more important work`, `I6
+equal-importance convergence`, `I13 settles` (constant demand: no move after 30 intervals, no reversal), `I16`;
+unit "secondary receiver is carried" (the Redbook's shape: I, H at one level, moving I alone fails net value on H,
+moving both passes; SG24-6472 p.67); unit "a failing donor stays, the next is tried"; unit "a plan without receiver
+value changes nothing". Goldens: change. Done when: in S-1 and S-3 the share of `MORE_IMPORTANT_HARMED` among
+assessed steps falls below half its baseline (58 %, 42 %), "reversed by its next move" is at most 20 % of §1's
+baseline in each of S-1 … S-3, and the existing equal-importance realism test (Midwest seed 7, PROD1 defined
+capacity 200) still passes. Bench: tick time not above the WT-07 commit by more than 5 %. Bots: textbook 0 to + 2
+days, others small. SPEC §5.5.4 pseudocode replaced by §5.3's; §17 "Policy adjustment" row rewritten; research.md
+rows "CPU move is projected for every class…", "secondary receivers" updated.
+
+### WT-09 · Server periods hold the regions' priority (W3)
+`list: wlm-truth · status: blocked: after WT-08 · priority: high · size: L · area: sim`
+
+**Main agent (cross-layer).** Implements §5.1 holders and §5.8. `WlmSystemState.servers` (`runtime.ts`);
+`cicsRegions` (`tick/helpers.ts`) returns `serverKey` (`$SRMS001`) when any AOR on the image is TRANSACTION;
+`evaluateLpar` (`evaluate.ts`) takes `txnDp` from the server period instead of the maximum over `reg.keys`;
+`policyAdjust` maps a goal period to its holder for ladder, plan and `donorOrder` (a server period's goal periods are
+the classes it serves; `worst` and `imp` per §5.5); served periods' stored `dp` is written from the holder; the log
+names `(regions $SRMS001)` (§8 Q4). The region class keeps its PI without server regions' samples and is not on the
+ladder while it has no other member with samples. Old saves: `servers` created with the highest DP among served
+periods. Reporting: WLMGL/Monitor III DP of a served class is its holder's (no layout change). Tests:
+`wlm-invariants: I11 one priority per server` (C-3 a, b, c); realism `the free ride` (an importance-3 CICS class in
+regions that also serve a missing importance-1 class runs at the same DP and improves with it; SG24-6472 p.63);
+realism `the region class's goal does not move the regions` (R-2: STCHI is not a receiver for its CICS regions).
+Goldens: change. Done when: R-2 shows no `STCHI#1` move for the regions and ONLMED's reported DP equals ONLHI's on
+PROD2. Bots: CICS-heavy scenarios (Harbourline) move; record the sweep. Cross-note: **RT-16** ("CP use by
+address-space role", displaceable CPU) and **RT-19** (region CPU wait joins the CPU group) read the same topology;
+do them after this entry and take the regions' CPU from the server period (§8 Q1). SPEC §5.5.1 (region management),
+§5.6, §17 "CICS region management"; research.md rows on region management updated; Codex entry *server topology
+and the free ride*.
+
+### WT-10 · Managed bottlenecks in turn; waits are not delays (W7)
+`list: wlm-truth · status: blocked: after WT-05 · priority: low · size: S · area: sim`
+
+Implements §5.7 in `adjust.ts`: `bottleneckOf` is replaced by `managedDelayFrac(acc)` and
+`fixableBottlenecks(acc, C)`; `delayOther` leaves the comparison; CPU and zIIP are tried in order of delay when
+each is at least `bottleneckMinFrac` of the managed delay, even when I/O, storage or cap is larger. `ScpAcc` gains
+decayed `delayStorage` and `delayQueue` (today only in the `delay` total). The no-action note for a period that is
+mostly waiting reads `mostly waiting, CPU delay n %: not WLM-fixable`. Tests: `wlm-invariants: I14 not fixable, not
+moved`; unit "45 % other, 40 % CPU delay: a CPU plan is tried"; the existing realism test "Db2 MSTR starvation
+raises DDF response time without raising DDF CPU delay" still passes and its log line has the waiting note.
+Goldens: change. Done when: S-3's "not assessed: bottleneck OTHER / I/O" (5 291 / 4 208) are replaced by
+`NO_MANAGED_DELAY` or assessed candidates, with the counts in the PR. Bots: small. Cross-note: **RT-19** splits the
+same waits (`serverCpu`, `serverOther`) for RCA truth; share the per-period split rather than computing it twice.
+
+### WT-11 · The resource-group minimum for discretionary work (W10)
+`list: wlm-truth · status: blocked: after WT-06 · priority: low · size: S · area: sim`
+
+Implements §5.8 in `rgMin` and `missingGoal` (`src/sim/core/tick/helpers.ts`) and `grantDispatch`
+(`eval/grants.ts`): a group is below its minimum and wanting when its smoothed CP service is under the minimum and
+a member has CPU delay (replaces `delay > using` for discretionary members); a discretionary member's share is
+dispatched at the minimum's priority while no goal period outside the group has local PI > 1, else just below the
+managed range as today. Cite SG24-6472 p.63 (receiver order, cases 1–3) and WLM Planning p.57. Tests: unit
+"discretionary minimum is served ahead of work meeting its goals", "… and yields while a goal period misses";
+existing resource-group tests. Goldens: unchanged unless a scenario gains a minimum (none ships one); say so.
+Done when: the two unit tests pass and the PROGRESS open question is removed. Bots: none (no policy uses a
+minimum).
+
+### WT-12 · Response-time goals for batch: jobs are completions (W11)
+`list: wlm-truth · status: blocked: user (docs/wlm-design.md §8 Q6; then after RT-15) · priority: low · size: S · area: sim`
+
+Implements §5.8. In `dispatchLpar` (`src/sim/core/tick/dispatch.ts`), a job ending this tick adds one completion,
+its response time (queued + elapsed, as `stepRmf`'s `JobEndRecord` computes) and one bucket entry to the `ScpTick`
+of the period it ended in, when that period has a response-time goal. The policy editor (`src/game/wlmEdit.ts`
+warnings) notes on a JES class with a response-time goal: "needs at least three completions per 20 minutes (WLM
+Planning p.71); with fewer the PI is erratic". Tests: unit "a batch class with an average goal has a PI after a job
+ends and none 25 minutes later"; unit for the warning. Goldens: unchanged (no shipped policy gives batch a
+response-time goal); prove with bench hashes. Bots: none. Codex: one line in the goals entry. Depends on §8 Q6.
+
+### WT-13 · Dispatching priorities in the z/OS 1.8 numbering (W12)
+`list: wlm-truth · status: blocked: user (docs/wlm-design.md §8 Q5; delete if WT-06 did it) · priority: low · size: S · area: sim`
+
+`DP` in `src/sim/zos/dispatcher.ts`: small consumer 248, managed 247–203 (SG24-6472 p.65, "as of z/OS 1.8"; Enrico
+slide 49, practitioner), 249–253 for the minimum share and promotion. Only numbers change: dispatch order is the
+same. Goldens: change (stored DPs). Done when: bench end-state differs only in DP values (`npm run compare` shows
+`dp` fields and log hex only), SPEC §5.4 and §17 and research.md's "Dispatch priorities" row give both Redbooks and
+the reason for preferring the dated table.
+
+### WT-14 · Receivers that meet their goals; small consumers; mean-time-to-wait (W2, W13)
+`list: wlm-truth · status: blocked: design (docs/wlm-design.md §8 Q3, Q8) · priority: low · size: M · area: sim`
+
+Parked. IBM's receiver order ends with periods meeting their goals, largest PI first (SG24-6472 p.63), which keeps
+the order improving when nobody misses; small consumers sit above the managed range and are neither receivers nor
+donors (WLM Services p.138); discretionary work is spread over 192–201 by mean time to wait (SG24-6472 p.66). Not
+modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a playtest finding that a stale order
+or equal-priority discretionary work misleads players.
+
+### WT-15 · Codex, SPEC, the `wlm-why` skill and the closing sweep
+`list: wlm-truth · status: blocked: after WT-09 · priority: high · size: M · area: content`
+
+Codex entries (`src/content/codex/`) with source links: *donors and net value*, *skip clock*, *dispatching
+priorities and unbunching*, and a revised policy adjustment entry (one receiver, a plan of several moves, why "no
+action"). `.claude/skills/wlm-why/SKILL.md`: the verdict table for the new outcomes and plan steps. SPEC §5.5.4,
+§16 (the invariants as realism tests) and §17 read as one description of the model of docs/wlm-design.md §5, and
+that document's status line says what is implemented. Then a 20-seed three-scenario sweep (`npm run sweep:remote`,
+Normal), recorded in PROGRESS.md M8.2 against the bands, with out-of-band medians filed as `balance` entries.
+Done when: the sweep table is in PROGRESS.md and every finding W1 … W11 in docs/wlm-design.md §4 is marked fixed,
+parked or declined.
 
 ## pr-followups
 
