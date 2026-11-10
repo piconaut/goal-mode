@@ -449,6 +449,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-10: WT-04 prototyped on branch `proto/wlm-wt04` (no PR, not merged; WT-04 stays
+  open): docs/wlm-design.md §9. `npm run check` passes there (851 tests, goldens regenerated); `npm run compare`
+  differs in all three scenarios as intended; Midwest seeds 1–5 sweep ends every run on the same day and cause as
+  `dev`. The first revision was worse on Revenue (flat projected PIs hide harm); the fix is a rule now in §5.3.
+  User decision on §9.4 point 5 (2026-11-10): keep the strict rule (no WLM move for less important work past more
+  important work that is missing its goal, also on a capped image). The prototype lives on branch `proto/wlm-wt04`.
 - 2026-11-10: WLM policy adjustment audit and target model (design only, PR #265): docs/wlm-design.md, BACKLOG list
   `wlm-truth`, 21 docs/research.md rows. No file under `src/`, `tests/` or `tools/` changed. Repro harness and
   outputs are under `runs/wlm-audit/` (ignored); WT-01 turns the harness into `inspect … wlm-stats`.

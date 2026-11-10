@@ -1,6 +1,7 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). Nothing here is implemented. The work it leads to is in
+Status: **design, decided by the user** (2026-11-10). Nothing here is implemented on `dev`. WT-04 was prototyped
+on branch `proto/wlm-wt04` (no PR); §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
 is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -886,7 +887,13 @@ assess(r, T):
 
 receiverValue(b0, a1, C):  a1 < b0  and  b0 − a1 ≥ max(C.receiverValueFrac × (b0 − 1), C.receiverValueMinPi)
 
-netValue(r, base, after, info, C):
+netValue(r, base, after, info, C):                       // T: the trial ladder; L0: the ladder before the plan
+  // Added by the prototype (§9.3): harm that the projection cannot show still counts.
+  for k ≠ r in key order with importance(k) more important than r:
+      if max(base[k], mLocal[k], mPlex[k]) > 1                      // k is missing its goal: a fact, not a projection
+         and usedEngines(k) ≥ C.donorMinEngines                     // k holds processor time it could lose
+         and T puts holder(r) at or above holder(k) where L0 had it below or level:
+          return (false, MORE_IMPORTANT_HARMED k "is missing its goal and would be passed")
   if after[r] is null or after[r] > base[r]: return (false, NO_RECEIVER_GAIN)
   gain ← max(base[r], C.creditFloor) − max(after[r], C.creditFloor);  equalHarm ← 0
   for k ≠ r in key order, with base[k] and after[k] not null:
@@ -1009,7 +1016,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
 | I12 | **Skip clock, no starvation.** A receiver whose plans were all rejected is not assessed again before its clock expires; every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 100 intervals with five unfixable and one fixable candidate at one importance (R-4's shape): the fixable one is helped |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals, and no period's move is reversed by its next move | Realism: R-1 replayed (Midwest 42, PROD2, D1 12:19–12:23) has no reversal; S-1 … S-3 "reversed by its next move" fall by at least 80 % |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has no move undone within two minutes (`tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" fall by at least 80 % |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -1177,3 +1184,152 @@ WT-09, as recommended; in addition the core lands **before RT-14**, not after RT
 WT-04 waits only for RT-06; RT-14 waits for WT-09 and WT-10; WT-13 is folded into WT-06 (Q5); WT-12 is ready (Q6,
 no shipped policy affected); WT-14 is parked for a playtest (Q3, Q8); the single-rule entries may go to the
 `realism-fixer` subagent (Q7).
+
+## 9. Prototype results (WT-04)
+
+A prototype of the first coupled entry, **WT-04** (one PI basis, projections at sustained demand), on the existing
+single-move trials, as its BACKLOG entry describes. Branch `proto/wlm-wt04`, cut from `dev` at
+`59f4e7e`; no PR. It is a prototype: SPEC §5.5/§17 and docs/research.md are not updated, WT-04 stays open, and the
+other entries (ladder, donors, plan, server periods, skip clocks, bottlenecks) are untouched.
+
+### 9.1 What was built
+
+| Piece | Where |
+|---|---|
+| `POLICY_ADJUST` (decay, receiver value share and floor, credit floor, harm epsilon, donor minimum, demand uplift cap, backlog boost), each with a `// FICTIONAL:` note | `src/content/wlm/tuning.ts` |
+| Decayed arriving demand per period (`demandCp`, `demandZi`), seeded at steady state for a new period or an old save | `eval/accounting.ts`, `eval/types.ts`, `runtime.ts` |
+| `projectionInput` and `demandUplift` (§5.4) | new `src/sim/wlm/projection.ts` |
+| `base` computed lazily; every test compares `base` with `after`; outcome `RECOVERING`; receiver value floor; `NO_NET_VALUE` only with equal-importance harm; rejections named in key order; the rule of §9.3 | `src/sim/wlm/adjust.ts` |
+| `RECOVERING` in the trace text; accepted trials carry their receiver PIs | `tools/inspect.ts`, `adjust.ts` |
+
+Not built from the entry: `acc.ziipEngines` (only WT-07 needs it). `ACC_DECAY` is still exported from `runtime.ts`,
+now read from content.
+
+### 9.2 What held
+
+- **`npm run check`:** typecheck clean; 82 files, 851 tests pass (11 new).
+- **Invariant tests** (`tests/sim/wlm-invariants.test.ts`, 150 generated images each; each asserts that the generator
+  reached the branch it tests):
+
+  | Test | Result |
+  |---|---|
+  | I8 one basis: no trial for a receiver with `base ≤ 1`; every verdict's "before" is the candidate's `base` | passes |
+  | I4 receiver value: an accepted move closes a tenth of the gap and at least 0.05 | passes |
+  | I17 honest at rest: settled demand, no backlog, nothing at its timeout ⇒ `base` is exactly this tick's PI | passes |
+  | I1 determinism: shuffled `scps` and ticks give the same DPs and the same log line; the same input twice is identical | passes, after rejections were made to iterate in key order (the named period used to depend on `scps` order) |
+  | I1 for slices: reversing the slice array changes no DP | passes |
+
+  `tests/sim/projection.test.ts` (5): uplift never below 1 and capped; nothing lifted returns the same object; backlog
+  bounded with its zIIP part; batch slices fixed and caps, I/O, paging, capacity untouched; timeouts kept.
+- **Realism** (`tests/sim/wlm-realism.test.ts`): Midwest seed 42, PROD2, day 1 06:00–14:00, no DP move undone by the
+  same period's next move within two minutes. It **fails on `dev`** with the four moves of R-1 (09:07 and
+  12:19–12:23) and passes on the prototype.
+- **Existing tests that encoded the old basis** (changed, each with a comment):
+  - `adjust.test.ts`, three "hopeless receiver" tests: importance-1 receivers that are at their goal locally and
+    only miss on the sysplex PI are now `RECOVERING` and use no budget. The budget tests were rebuilt on receivers
+    that miss locally for a reason no DP move fixes (PR/SM delay).
+  - `batchProjection.test.ts`, one test: it changed demand without letting the accumulators see it, which is now
+    exactly a "quiet tick"; the accumulators are settled first.
+  - `mon3.test.ts`, one assertion made conditional (the CPU-delay *share* of a class that is already mostly delayed
+    in the control); `realism.test.ts`, one assertion (§9.4).
+- **Goldens** regenerated (both hashes).
+
+### 9.3 Behaviour against `dev`
+
+`npm run compare -- --base origin/dev` (seed 42, one day): **differences in all three scenarios**, as expected.
+Sim state and game state differ everywhere; the run log is the same on Midwest and Revenue and differs on
+Harbourline; RMF report text first differs at tick 1260 (09:30) on Midwest and Harbourline and tick 1800 (11:00) on
+Revenue. Bench hash (Midwest, one day): `bde6d147471ece9f` → `2ccd39447a530771`.
+
+Policy adjustment statistics, same runs as §1 (S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days
+1–3), `dev` → prototype:
+
+| | S-1 Midwest | S-2 Revenue | S-3 Harbourline |
+|---|---|---|---|
+| DP moves | 36 → 19 | 46 → 26 | 117 → 79 |
+| A period's move undone by its next move, at any distance | 12 → 4 | 22 → 12 | 44 → 23 |
+| … within two minutes | 6 → 0 | 6 → 1 | 19 → 4 |
+| Candidates assessed | 1 609 → 1 357 | 3 046 → 4 066 | 5 939 → 4 600 |
+| Candidates `RECOVERING` (no trials) | 308 | 2 218 | 2 576 |
+| Rejected trials whose receiver was fine on its own tick | 793 → 0 | 383 → 0 | 5 188 → 0 (by construction) |
+| `NO_NET_VALUE` (mostly the `0.00 ≤ 0.00` line) | 465 → 2 | 291 → 4 | 2 336 → 0 |
+| Assessed 30 intervals running without a move (episodes) | 7 → 5 | 4 → 7 | 20 → 8 |
+
+The ladder still climbs (W2 is WT-06's): Midwest PROD2 at D2 12:00 is `ONLHI=FA STCHI=FA DDFPRD#2=F9 STCMED=F9
+TSO#1=F9 DDFPRD#1=F8 TSO#2=F8` against `FC FC FB FB FB FA FA` on `dev`; slower only because there are fewer moves.
+
+**Sweep** (`npm run sweep -- --bots donothing,textbook,expert --seeds 1-5`, Midwest, Normal), with the same sweep
+on `dev` for the same seeds:
+
+| Bot | Band (SPEC §16) | `dev`: day p10 / median / p90, score median, ends | Prototype |
+|---|---|---|---|
+| do-nothing | loses day 12–18 | 10 / 16 / 22, 1025, trust 5 | 10 / 16 / 22, 1035, trust 5 |
+| textbook | reaches day 28–32 | 16 / 27 / 28, 1679, batch 3, trust 2 | 16 / 27 / 28, 1682, batch 3, trust 2 |
+| expert | wins | 40 / 40 / 40, 2780, victory 5 | 40 / 40 / 40, 2774, victory 5 |
+
+Every one of the 15 runs ends on the same day for the same cause as on `dev`; scores move by at most 10 points and
+final trust by a few points either way (do-nothing seed 4: 44 → 55; seed 2: 38 → 36). Do-nothing's median is inside
+its band and textbook's median of 27 is one day under its band on both, so the prototype moves nothing against the
+bands. Five seeds on one scenario is a quick check, not a balance result: WT-04's own entry asks for three scenarios
+and ten seeds.
+
+**Cost.** One-day bench, Midwest, noisy host: `dev` 7.2 s (0.83 ms per tick); prototype 6.6 s and 5.9 s on two runs.
+No slowdown measured; the extra `base` evaluation is offset by fewer trials. The sweep's wall time was 815 s on
+`dev` and 944 s on an earlier prototype revision, run one after the other on the same host; not re-timed.
+
+### 9.4 What the prototype taught, and what it changes in the design
+
+Five revisions were measured before the numbers above. The first did what §5 said and was **worse** on Revenue.
+
+| Revision | Change | Moves / undone by next move: S-1, S-2, S-3 |
+|---|---|---|
+| `dev` | | 36 / 12, 46 / 22, 117 / 44 |
+| 1 | §5.2–§5.4 as designed | 19 / 6, **117 / 93**, 130 / 41 |
+| 2 | + no transaction timeout in projections | 14 / 4, 117 / 93, 127 / 39 |
+| 3 | + never pass more important work whose `base` is over 1 | 23 / 16, 26 / 12, 111 / 36 |
+| 4 | + "missing" read from the management PI too | 19 / 12, 26 / 12, 79 / 28 |
+| final | timeout restored; the rule only for periods that use the processor | 19 / 4, 26 / 12, 79 / 23 |
+
+1. **A flat PI hides harm, and one basis is not enough to fix that.** (Changes §5.3.) Revision 1 on Revenue PROD2
+   (D2 11:18–11:20): WEBDDF#1 (importance 4, zIIP-bound) takes STCLO#1 (importance 5) as donor; 40 s later STCLO#1,
+   starved at PI 99, moves back above it, accepted because WEBDDF's projected PI was 17.06 before and after. Its
+   PI was at the floor of the queueing model (both pools saturated; the queue ratio is capped), so it could not get
+   worse on paper. The cycle repeated all morning: 93 undone moves against 22 on `dev`, where the same flatness had
+   hidden the *gain* instead and nothing moved. The more-important test of §5.3 asked for projected harm. It now
+   also has a rule that needs no projection: **a less important receiver is never moved to or above more important
+   work that is missing its goal and uses the processor.** Sources: the patent (both missing and the donor more
+   important: no net value) and Enrico slide 52 ("never … if donor is missing goal"); both are labelled as in §1,
+   and IBM's books do not state it. §5.3's `netValue` carries the rule.
+2. **"Missing its goal" is a fact, so it is read from the management PI.** Revision 3 used `base` alone and Midwest
+   got worse (16 undone moves): DDFPRD#1's `base` dipped under 1 on single intervals and DDFPRD#2 slipped past.
+   With `max(base, mLocal, mPlex)` the rule has the PI window's memory. This is the hysteresis the design expected
+   from sustained demand; the demand uplift alone did not give it, because a percentile PI near a capacity limit is
+   a step (0.5 or 4.0) and the mean demand sits just under the step.
+3. **Do not project without the timeout.** Revision 2 tried it to un-flatten the PI. It changed nothing on Revenue
+   (the flatness there is the queue ratio, not the timeout) and broke an existing realism test: with no upper scale,
+   ONLHI's response-time PI outweighed any velocity PI and ONLHI was lifted over the Db2 it waits for (Midwest seed
+   7, PROD1 capped), then sat at PI 4.0 for four hours. Projections keep what execution does. §5.4 is unchanged; the
+   attempt is recorded here so it is not repeated.
+4. **The rule must not count work that has nothing to lose.** Applied to every passed period, it froze WLM on a
+   capped image: nothing could move past a starved importance-3 class getting no CPU. Periods using less than
+   `donorMinEngines` are left to the projection (IBM: a donor uses the resource, SG24-7621 p.105).
+5. **One consequence, decided by the user (2026-11-10): keep the strict rule.** Midwest seed 7 with PROD1 capped at 200 MSU: importance 1 and 2 miss
+   their goals for hours (capping), and under the rule WLM now makes **no move at all** on PROD1 from 10:00, where
+   `dev` made one for a less important class. The existing test's last assertion was relaxed for it. By the two
+   sources this is right, and the log says why ("harms ONLHI#1, more important"), but it is the stricter reading of
+   IBM's "no service classes with a higher importance are badly affected". The user chose the
+   strict reading: realistic, and the log gives the clue path. (The alternative, limiting the rule to periods whose
+   projected PI is at the model's floor, is not taken.)
+6. **The "undone by its next move" count was the wrong measure.** WT-04's "Done when" asked for it to halve. It
+   counts a starving importance-4 period that gets a turn every ten minutes when the importance-2 period above it
+   is comfortable, and loses it again, which is WLM doing its job on a full image. The measure that separates W1
+   from that is "undone within two minutes": 6, 6 and 19 on `dev`, 0, 1 and 4 here. I13 and the entry are reworded.
+7. **Not separated by the prototype.** How much the demand uplift and the backlog bound each contribute was not
+   measured apart from the rest (switching the bound off changed neither failing test). The bound is the piece
+   least like execution, which does drain a whole backlog in one tick; WT-04 proper should measure both with the
+   rule of point 1 in place and drop what does nothing.
+8. **Smaller things.** A receiver that misses only on the sysplex PI is `RECOVERING` locally and costs nothing,
+   which removes the shape PT-01 was first reported with. The order of `scps` leaked into the log through the
+   period a rejection names. Existing tests that build accumulators from one tick keep working because a new
+   period's demand is seeded at steady state.
+
