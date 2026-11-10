@@ -490,8 +490,14 @@ determinism` (shuffled `scps` and slices); `projection.test.ts`: uplift never be
 caps and I/O untouched; realism `WLM does not flip a period on one quiet tick` (R-1: Midwest 42, PROD2, D1
 12:19–12:23, DDFPRD#2 is not moved up while DDFPRD#1's smoothed demand would push it past its goal). Goldens:
 change. Done when: on S-1 … S-3 "rejected trials whose receiver's own-tick PI ≤ 0.9" is 0 by construction (the
-counter is replaced by `RECOVERING` candidates), "reversed by its next move" falls by at least half in each, and
-the misleading `gain 0.00 ≤ harm 0.00` line no longer occurs. Bots: small; do-nothing and textbook medians within
+counter is replaced by `RECOVERING` candidates), moves "undone by the same period's next move within two minutes"
+fall by at least 80 % in total (6, 6 and 19 on `dev`), and the misleading `gain 0.00 ≤ harm 0.00` line no longer
+occurs.
+**Prototyped 2026-11-10** on branch `claude/wlm-policy-audit-design-q2vbhy` (no PR; docs/wlm-design.md §9): start
+from it. It added one rule the first design lacked, now in §5.3: a less important receiver never moves to or above
+more important work that is missing its goal (management PI or `base`) and uses the processor. Left for this entry:
+measure the demand uplift and the backlog bound separately and drop what does nothing (§9.4 point 7); decide the
+capped-image case (§9.4 point 5) with the user; `acc.ziipEngines`; SPEC and research.md; the three-scenario sweep. Bots: small; do-nothing and textbook medians within
 ± 1 day expected. SPEC §5.5.3–§5.5.4 and §17 "Policy adjustment" and "Percentile PI in WLM projections" updated.
 
 ### WT-05 · Skip clocks, the delay test and a per-interval projection budget (W6)
