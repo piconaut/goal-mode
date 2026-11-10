@@ -186,6 +186,42 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
     expect(accepted!.candidates[0]!.trials.at(-1)!.verdict).toBe('ACCEPTED');
     expect(accepted!.action).toContain('RCVR=ONLMED#1');
   });
+
+  it('the trace carries the receiver PI pair, the delay shares and the donor order (WT-02)', () => {
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      run(0.4);
+      run(0.02);
+    } finally {
+      setWlmTraceSink(null);
+    }
+    const [rejected, accepted] = traces as [WlmAdjustTrace, WlmAdjustTrace];
+    // A rejected trial keeps its projected receiver pair (it did before), and now an accepted one records it too:
+    // the move must have brought the receiver's PI down.
+    const rejectedTrial = rejected.candidates.find((c) => c.scKey === 'ONLMED#1')!.trials.find((t) => t.verdict === 'EQUAL_DISPARITY')!;
+    expect(rejectedTrial.receiverPi![0]).toBeGreaterThan(rejectedTrial.receiverPi![1]!);
+    expect(rejectedTrial.receiverPi![0]).toBeGreaterThan(1);
+    const acceptedTrial = accepted.candidates[0]!.trials.at(-1)!;
+    expect(acceptedTrial.verdict).toBe('ACCEPTED');
+    expect(acceptedTrial.receiverPi![0]!).toBeGreaterThan(acceptedTrial.receiverPi![1]!);
+
+    // The shares are the numbers the bottleneck was chosen from, so the bottleneck's own share leads the rest.
+    const c = accepted.candidates[0]!;
+    expect(c.bottleneck).toBe('CPU');
+    expect(c.delayShares.CPU).toBeGreaterThan(0);
+    expect(c.delayShares.CPU).toBeLessThanOrEqual(1);
+    expect(c.delayShares.CPU).toBeGreaterThan(c.delayShares.ZIIP + c.delayShares.IO + c.delayShares.CAP + c.delayShares.OTHER);
+
+    // The donor list is what the DONOR trials were built from, in the same order.
+    const candidates = traces.flatMap((t) => t.candidates);
+    expect(candidates.some((x) => (x.donors ?? []).length > 0)).toBe(true);
+    for (const x of candidates) {
+      const tried = x.trials.filter((t) => t.move.startsWith('DONOR ')).map((t) => t.move.split(' ')[1]!);
+      if (tried.length > 0) expect(tried).toEqual((x.donors ?? []).slice(0, tried.length));
+      if (x.outcome !== 'ASSESSED') expect(x.donors).toBeUndefined();
+    }
+  });
 });
 
 describe('a hopeless receiver does not stop the search at the next importance (SG24-7621 p.105–106)', () => {

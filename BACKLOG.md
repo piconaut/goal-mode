@@ -451,17 +451,6 @@ warning as `inspect wlm`). Add the command to CLAUDE.md's command list and the `
 hand-built trace list (each counter once), and the verb reproduces §1's table for S-1 within the same commit
 (numbers pasted in the PR).
 
-### WT-02 · The WLM trace carries what the invariant tests need
-`list: wlm-truth · status: ready · priority: high · size: S · area: tooling`
-
-In `src/sim/wlm/adjust.ts`, trace only (the sink is never set by the game; `policyAdjust`'s outputs must not change):
-an accepted trial records its `receiverPi` like a rejected one; each `WlmCandidateTrace` records the delay shares the
-bottleneck was chosen from (CPU, zIIP, I/O, cap, other, as fractions of using + delay) and the donor list in the
-order tried. `tools/inspect.ts` prints them. No behaviour change: bench hashes unchanged (Midwest
-`bde6d147471ece9f`, Harbourline `ec94548d8283d76c`, Revenue `fb563b38750d988f` on `1300e69`; take the current ones
-first) and `npm run compare` reports no differences. Done when: a test in `tests/sim/adjust.test.ts` asserts the
-new fields on one accepted and one rejected trial.
-
 ### WT-03 · SPEC text that disagrees with the code (W13, W14)
 `list: wlm-truth · status: ready · priority: low · size: S · area: tooling`
 

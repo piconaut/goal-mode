@@ -53,12 +53,21 @@ const OUTCOME_TEXT: Record<WlmCandidateTrace['outcome'], string> = {
   ASSESSED: '',
 };
 
+const SHARE_KEYS = ['CPU', 'ZIIP', 'IO', 'CAP', 'OTHER'] as const;
+
+/** The shares the bottleneck was chosen from: each delay over the period's using + delay. */
+const shareText = (c: WlmCandidateTrace) =>
+  SHARE_KEYS.map((k) => `${k} ${(100 * c.delayShares[k]).toFixed(0)}%`).join(' ');
+
 function candidateLines(c: WlmCandidateTrace, n: number): string[] {
   const head = `  ${n}. ${c.scKey} imp ${c.importance} PI ${piText(c.sysplexPi)} (local ${piText(c.localPi)}) DP ${hexDp(c.dp)}${c.bottleneck ? ` BTLNK ${c.bottleneck}` : ''}`;
-  if (c.outcome !== 'ASSESSED') return [`${head}  ${OUTCOME_TEXT[c.outcome]}`];
-  if (c.trials.length === 0) return [head, '       no move to try (DP at the top and no donor at or above it)'];
+  const shares = [`       delay ${shareText(c)} of using + delay`];
+  if (c.outcome !== 'ASSESSED') return [head, ...shares, `       ${OUTCOME_TEXT[c.outcome]}`];
+  if (c.trials.length === 0) return [head, ...shares, '       no move to try (DP at the top and no donor at or above it)'];
   return [
     head,
+    ...shares,
+    ...(c.donors?.length ? [`       donors in order: ${c.donors.join(' ')}`] : []),
     ...c.trials.map((t) => {
       const r = t.receiverPi ? `  rcvr PI ${piText(t.receiverPi[0])}→${piText(t.receiverPi[1])}` : '';
       return `       ${t.move.padEnd(30)} ${t.verdict}${r}${t.detail ? `  ${t.detail}` : ''}`;
