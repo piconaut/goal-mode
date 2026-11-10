@@ -782,3 +782,281 @@ The findings feed each other, which is why §5 is one model and not fifteen patc
   projection of the other assumed.
 - W6 (reassess every interval) multiplies the cost of W1 (assessing the recovered) and hides fixable receivers
   behind unfixable ones.
+
+## 5. Target model
+
+One loop, the same shape as IBM's (§3), sized for the sim. What stays: the 10 s interval, one receiver per image per
+interval, receiver order, projection by re-running the dispatcher model, the 0.9 credit floor, CPU protection,
+resource-group caps, the dispatcher. What changes: one PI basis per decision (W1), a priority ladder that is an order
+and nothing else (W2), a server period that owns the regions' priority (W3), IBM's donor order (W4), a change built
+from several moves (W5), skip clocks instead of a per-importance budget (W6), managed bottlenecks in turn (W7) and
+sustained demand in projections (W8).
+
+### 5.1 Terms and state
+
+- **Goal period**: a service class period with a goal that is not discretionary. It has PIs.
+- **Holder**: what owns a dispatching priority. Every goal period is its own holder, except CICS transaction
+  periods: their holder is the image's **server period** `$SRMS001` when any AOR on the image is managed to
+  TRANSACTION goals, else the region class's period (REGION/BOTH, as today). The server period holds the TRANSACTION
+  regions and the CICS transactions; it has no goal and no PI. APPROX: one server period per image, because the sim
+  does not split a workload's transactions between regions (IBM: one per set of regions serving the same classes).
+- **Ladder**: the holders of an image grouped into **levels**, highest first. Only the order matters to dispatch.
+
+State (all plain, serialised in key order):
+
+| Field | Where | New? | Meaning |
+|---|---|---|---|
+| `dp` | `ScpState` | no | The DP of the period's holder. Written from the ladder every interval, so reports and saves keep their shape |
+| `acc` | `ScpState` | adds `demandCp`, `demandZi`, `ziipEngines` | Decayed sums like the rest: the period's arriving demand in engines (without backlog), and zIIP engines used |
+| `skipUntilTick` | `ScpState` | yes | The period is not assessed as a receiver before this tick. Absent = 0 |
+| `servers` | `WlmSystemState` | yes | `[{ key: '$SRMS001', dp }]`, sorted by key. Absent in an old save: created with the highest DP among the served periods, which is what runs today |
+
+### 5.2 Two PIs, each with one job
+
+| | **Management PI** `m` | **Projected PI** `p` |
+|---|---|---|
+| From | the accumulators (`goalPi`): `mLocal` from this image, `mPlex` from all images summed | `evaluateLpar` on the projection input (§5.4) at a given ladder; percentile goals through `projectedPercentilePi` |
+| Used for | who is a receiver candidate and in what order; whether a donor is happy; the resource-group minimum; reports | everything a plan is judged on: `base = p(current ladder)`, `after = p(trial ladder)` |
+
+No test mixes them. A candidate whose `base` is ≤ 1 is recovering by itself and gets no plan.
+
+### 5.3 The loop
+
+```
+policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
+  info    ← goal periods of sys: goal, importance, cpuCritical, holder
+  L       ← ladderOf(sys)                                  // holders by level, from stored DPs
+  L       ← enforceCpuProtection(L, info, ccImp)           // unchanged rule; logs CPU PROTECTION
+  mLocal  ← { k: goalPi(goal_k, acc_k) };  mPlex ← { k: goalPi(goal_k, plexAcc_k) }
+  budget  ← C.maxProjectionsPerInterval
+  base    ← not computed yet
+
+  for r in receiverOrder(info, mPlex, mLocal):             // §2.5 order, unchanged: importance; sysplex then local; worst first; key
+      if skipUntilTick[r] > nowTick:              trace SKIP_CLOCK;        continue
+      if managedDelayFrac(acc_r) < C.needsHelpDelayFrac:
+                                                  trace NO_MANAGED_DELAY;  continue
+      if base not computed: P ← projectionInput(tickInput, sys); base ← p(evaluate(P, L))
+      if base[r] is null or base[r] ≤ 1:          trace RECOVERING;        continue
+      tried ← false
+      for b in fixableBottlenecks(acc_r, C):      // §5.7
+          if budget ≤ 0:                          trace BUDGET;            goto done     // no skip clock: first in line next time
+          plan ← buildPlan(r, b, L, base, P, info, budget, C);  tried ← true
+          if plan.accepted:
+              L ← plan.ladder
+              log "RCVR=r PI=… BTLNK=b" + plan.moves;                      goto done     // one change per interval
+      if tried: skipUntilTick[r] ← nowTick + C.rejectedSkipTicks; note the first rejected step and its reason
+      else:     note "r PI=… BTLNK=<largest delay> not WLM-fixable"
+  done:
+  L ← canonical(L)                                         // §5.6
+  write every period's dp from its holder's level; return dps, skip clocks, log, trace
+```
+
+```
+buildPlan(r, b, L0, base, P, info, budget, C):             // a change is a set of moves judged together (§3.7)
+  H ← holder(r);  L ← L0;  moves ← [];  upBlocked ← false
+  donors ← donorOrder(r, b, L0, info, C);  d ← 0
+  repeat at most C.maxPlanSteps times, while budget > 0:
+      // A. receiver one step up
+      if not upBlocked and H is not alone on the top level:
+          T ← raiseOneStep(L, H)                           // §5.6: to the free slot above its level, else join the next level
+          (ok, why, after) ← assess(r, T);  budget −= 1
+          if not ok and why names a period k that T leaves at or below H and that is not less important than r:
+              T ← T with holder(k) placed on H's level     // secondary receiver: carried along
+              (ok, why, after) ← assess(r, T);  budget −= 1
+          if ok: L ← T; moves += T's moves
+                 if receiverValue(base[r], after[r], C): return accepted(L, moves)
+          else:  upBlocked ← true;  remember (T, why) as the first rejection if none yet
+      // B. next donor down
+      else if d < donors.length:
+          D ← donors[d];  d += 1
+          T ← L with D moved to H's level, or to the free slot just below it if D is already there
+          (ok, why, after) ← assess(r, T);  budget −= 1
+          if ok: L ← T; moves += "DONOR D …";  upBlocked ← false       // room may have opened above
+                 if receiverValue(base[r], after[r], C): return accepted(L, moves)
+          else:  remember (T, why) as the first rejection if none yet   // this donor stays where it is
+      else: break
+  return rejected(first rejection)                          // all intermediate moves are set back
+
+assess(r, T):
+  if violatesCpuCritical(T): return (false, CPU_CRITICAL)
+  after ← p(evaluateWithBatchRecovery(P, T))               // as batchRecoveryAccepts today: every round must pass
+  return netValue(r, base, after, info, C)
+
+receiverValue(b0, a1, C):  a1 < b0  and  b0 − a1 ≥ max(C.receiverValueFrac × (b0 − 1), C.receiverValueMinPi)
+
+netValue(r, base, after, info, C):
+  if after[r] is null or after[r] > base[r]: return (false, NO_RECEIVER_GAIN)
+  gain ← max(base[r], C.creditFloor) − max(after[r], C.creditFloor);  equalHarm ← 0
+  for k ≠ r in key order, with base[k] and after[k] not null:
+      harm ← max(0, after[k] − max(base[k], C.creditFloor))
+      if harm ≤ C.harmEps: continue
+      if importance(k) < importance(r):                     // more important
+          if after[k] > 1: return (false, MORE_IMPORTANT_HARMED k)
+      else if importance(k) = importance(r):
+          if |after[r] − after[k]| ≥ |base[r] − base[k]|: return (false, EQUAL_DISPARITY k)
+          equalHarm += harm
+      // less important: no test. base[r] > 1 is guaranteed, and a receiver missing its goal may take from them
+  if gain ≤ equalHarm and equalHarm > 0: return (false, NO_NET_VALUE)
+  return (true, –, after)
+```
+
+Receiver value is judged on the whole plan against `base`, so a step that passes net value but gains too little is
+kept and built on, as in IBM's example. A plan with no receiver value at the end is discarded whole.
+
+### 5.4 Projection input: sustained demand
+
+```
+projectionInput(tickInput, sys):
+  for each period k with slices this tick:
+      arrive   ← Σ over k's slices of (cpEngines + ziipEngines)                       // this tick, no backlog
+      sustained← (acc_k.demandCp + acc_k.demandZi) × (1 − ACC_DECAY)                  // decayed sum → engines
+      f        ← clamp(sustained / arrive, 1, C.demandUpliftMax)                      // never below the tick
+      every slice of k: rate, cpEngines, ziipEngines, ioRate × f
+  for each transaction slice s: backlog'[s] ← min(backlog[s], C.backlogBoostFrac × (cpEngines_s + ziipEngines_s) × TICK_SEC)
+                                 ziipBacklog'[s] scaled by the same ratio
+  everything else (caps, I/O, paging, promotion, capacity) as this tick
+```
+
+- A quiet tick no longer hides a period's normal load (W1.3): its demand is lifted to its smoothed level. A rising
+  load is believed at once, because `f ≥ 1`.
+- A backlog adds at most `backlogBoostFrac` of a period's sustained demand (W8): a class that has fallen behind is
+  projected to want somewhat more than its rate, not everything.
+- `evaluate(P, current ladder)` is the `base`. It costs one evaluation and is only made when a candidate has passed
+  the skip clock and the delay test.
+
+### 5.5 Donors
+
+```
+donorOrder(r, b, L, info, C):
+  pool ← holders X ≠ holder(r) with level(X) ≥ level(holder(r))
+           and smoothed use of b's processor ≥ C.donorMinEngines        // CP + IIPCP for CPU, zIIP engines for ZIIP
+  worst(X) ← max over X's goal periods g of max(mPlex[g], mLocal[g])    // a server period: the classes it serves
+  imp(X)   ← the most important of X's goal periods
+  drop X with worst(X) > 1 and imp(X) more important than r             // net value could only reject it
+  order: happy holders (worst < 1) by worst ascending, importance ignored;
+         then the rest by imp descending (5 first), then worst ascending; ties by key
+  return the first C.donorsPerReceiver
+```
+
+Discretionary periods are fixed below the managed range and hold nothing a priority move could free, so they are
+not in the pool (they are IBM's "universal donor" for storage and through capping).
+
+### 5.6 The ladder
+
+```
+canonical(L):      level i from the top (i = 0, 1, …) gets DP = DP.MANAGED_MAX − 1 − 2·i
+                   // one free priority between occupied ones (unbunching); MANAGED_MAX itself is never occupied
+raiseOneStep(L, H): if H shares its level → H alone on a new level directly above it
+                    else                   → H joins the next level above        (alone on the top level: no step)
+first ladder:      one level per importance present, importance 1 on top
+a period seen for the first time: the level of the lowest period of its importance; if there is none, a new level
+                   directly below the lowest level that holds a more important period (the top if there is none)
+```
+
+With 45 managed priorities the canonical form holds 22 levels; if an image ever has more, the two lowest merge
+(APPROX; no shipped policy has 22 active goal periods on an image). DPs become a function of the order alone, so two
+runs that reach the same order have the same DPs, and the climb of W2 cannot occur. `MANAGED_MAX` stays free for the
+resource-group minimum's share and 253 for blocked-workload promotion, which closes W10's collision.
+
+### 5.7 Bottlenecks
+
+```
+managed delays: CPU, ZIIP, IO (the part in velocity), STORAGE, QUEUE.      CAP is reported, not managed.
+managedDelayFrac(acc) ← Σ managed delays ÷ (using + delay in velocity)
+fixableBottlenecks(acc, C) ← [CPU, ZIIP] ordered by delay, largest first, keeping those ≥ C.bottleneckMinFrac × Σ managed delays
+```
+
+`delayOther` (waits for locks, servers, the CF, the QR TCB) is not a delay state and takes no part. A period that is
+mostly waiting has little managed delay: either `NO_MANAGED_DELAY`, or a CPU plan that finds no receiver value and
+sets the skip clock. The no-action note then reads `… mostly waiting, CPU delay 6 %: not WLM-fixable`, which keeps
+the planted clue for a starved server (SPEC §5.5.4).
+
+### 5.8 Server periods, minimums, batch response times
+
+- **Dispatch:** `evaluateLpar` takes the TRANSACTION regions' and CICS transactions' DP from the server period
+  instead of the maximum over served classes. A served class as receiver moves its holder. The log names both:
+  `RCVR=ONLMED#1 (regions $SRMS001) …`. Served classes report their holder's DP, so the free ride shows.
+- **Region class:** unchanged PI (without server regions' samples). With only server regions in it, it has no PI and
+  is never a candidate.
+- **Resource-group minimum:** a group is *below its minimum and wanting* when its smoothed CP service is under the
+  minimum and a member has CPU delay. Goal members: as today, while a member's `mLocal` > 1. A discretionary member:
+  its share is dispatched at `MANAGED_MAX` while no goal period outside the group has `mLocal` > 1, else just below
+  the managed range as today (IBM's order: after periods missing goals, before happy ones).
+- **Batch response-time goals:** a job's end adds one completion with response time = queue + elapsed to its
+  period's accumulator and buckets. The PI then exists for as long as the decayed completion count lasts (about 20
+  minutes), and varies with single jobs, which is the behaviour behind IBM's "three completions per 20 minutes".
+
+### 5.9 Invariants and their tests
+
+Each is a named test in `tests/sim/wlm-invariants.test.ts` (property tests over generated inputs, seeded with the
+sim's RNG) or `tests/sim/realism.test.ts` (scenario assertions, SPEC §16 style). "Generated input" = 2–12 goal
+periods with random goals, importances, demands and backlog on a 2–8 engine image.
+
+| # | Invariant | Test |
+|---|---|---|
+| I1 | **Determinism.** Same state and input ⇒ same ladder, skip clocks, log and trace. No result depends on the order of `scps`, of slices within a period, or of object keys | Property: shuffle `scps` and the slice array; output identical after sorting. Golden runs |
+| I2 | **One change per interval.** At most one receiver is helped per image per interval; all DP changes of an interval belong to its plan or to CPU protection | Property: diff of ladders before and after ⊆ plan moves ∪ protection moves |
+| I3 | **Receiver order.** A candidate is assessed before every candidate of lower importance, and at equal importance sysplex-missing before local-only, worse PI first | Property on the trace order |
+| I4 | **Receiver value.** An accepted plan has `base[r] − after[r] ≥ max(frac × (base[r] − 1), minPi)` | Property: recompute from the trace |
+| I5 | **No harm to more important work.** No accepted plan takes a more important period from `base ≤ 1` to `after > 1`, or worsens one already above 1 by more than `harmEps` | Property. Realism: importance-1 class at its goal next to a starving importance-3 class keeps PI ≤ 1 for an hour |
+| I6 | **Equal-importance convergence.** When an accepted plan harms an equally important period, the two projected PIs are closer than before and the receiver gains more than the sum of such harms | Property. Realism: two equal classes on a saturated image end within 0.3 PI of each other and stop moving |
+| I7 | **Donor order.** The n-th donor tried is the n-th of `donorOrder`; a happy holder is tried before any unhappy one; a zIIP bottleneck never selects a donor with no zIIP use | Property on the trace; unit test C-2 |
+| I8 | **One basis.** No plan is built for a receiver with `base ≤ 1`; every accept or reject compares `base` with `after` only | Property: every assessed candidate has `base > 1`. Unit: the tick-PI helper is gone from `policyAdjust` |
+| I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism (S-4): Midwest seed 42, eight days, PROD2 never has more periods on its top level than it has importance-1 holders unless a plan put them there that day |
+| I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
+| I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
+| I12 | **Skip clock, no starvation.** A receiver whose plans were all rejected is not assessed again before its clock expires; every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 100 intervals with five unfixable and one fixable candidate at one importance (R-4's shape): the fixable one is helped |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals, and no period's move is reversed by its next move | Realism: R-1 replayed (Midwest 42, PROD2, D1 12:19–12:23) has no reversal; S-1 … S-3 "reversed by its next move" fall by at least 80 % |
+| I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
+| I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
+| I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
+| I17 | **Projection is honest at rest.** With `f = 1` for every period and no backlog, `base` equals this tick's PIs | Unit (keeps today's "projection = execution" property) |
+
+### 5.10 Coefficients and approximations
+
+Every number moves to `src/content/wlm/tuning.ts` as one object `POLICY_ADJUST`, each with a `// FICTIONAL:` note of
+the shape it should produce. IBM publishes none of them; the origin of a starting value is given, not a claim that
+IBM uses it.
+
+| Name | Start | Shape | Origin |
+|---|---|---|---|
+| `accDecay` (moves from `runtime.ts` `ACC_DECAY`) | 0.85 | PI looks back about a minute | existing |
+| `receiverValueFrac` (from `adjust.ts`) | 0.1 | a plan must close a tenth of the gap to the goal | patent's example (*IBM web*) |
+| `receiverValueMinPi` | 0.05 | … and never less than this, so nothing moves for a hair | Enrico slide 50 (*practitioner*) |
+| `creditFloor` (from `adjust.ts`) | 0.9 | PI below 0.9 earns and costs nothing | patent (*IBM web*) |
+| `harmEps` (from `adjust.ts`, 0.02) | 0.02 | projection noise is not harm | existing |
+| `needsHelpDelayFrac` | 0.02 | a period with no managed delay is not assessed | IBM's rule is "no delay samples"; a fluid model never has exactly none |
+| `bottleneckMinFrac` | 0.15 | a second bottleneck is tried only if it is a real share of the delay | invented |
+| `rejectedSkipTicks` | 6 | a hopeless receiver is looked at once a minute, not every 10 s | IBM gives no length |
+| `donorsPerReceiver` | 3 | bounds a plan's cost | existing |
+| `donorMinEngines` | 0.01 | a holder using almost none of the processor is no donor | IBM: small consumers are not donors |
+| `maxPlanSteps` | 6 | a plan is a handful of moves | invented |
+| `maxProjectionsPerInterval` | 12 | the tick budget (replaces `RECEIVERS_PER_IMPORTANCE`, which is deleted) | invented |
+| `demandUpliftMax` | 2 | a quiet tick is lifted to at most twice its demand | invented |
+| `backlogBoostFrac` | 0.5 | work that fell behind wants up to 1.5 × its rate | invented |
+
+Approximations, each marked `// APPROX:` where it is coded:
+
+1. `m` is one exponential window, not rows of history; no small-sample variability for transactions (W14).
+2. Projection re-runs the sim's dispatcher at sustained demand; WLM projects from demand, achievable demand and
+   learned plots.
+3. A backlog's demand is a fixed boost; slot-queue (MXT, DBAT) feedback is not projected.
+4. One server period per image; all region wait of a served transaction counts as its CPU delay (existing).
+5. Only CPU and zIIP are fixed by policy adjustment. No I/O priority, MPL or storage targets; no receiver that
+   meets its goal (§3.5 case 4); no small-consumer priority; discretionary work at one priority (§8 Q3, Q6).
+6. Where the canonical ladder sits in the managed range; IBM only says occupied priorities are spaced.
+7. Equal-importance harm is summed over all such periods as well as tested per period (IBM: per donor).
+8. A discretionary minimum yields to any goal period missing its goal on the image, not to a receiver search.
+9. `needsHelpDelayFrac`, `rejectedSkipTicks`, `maxPlanSteps` stand in for rules IBM does not quantify.
+
+### 5.11 Cost
+
+`evaluateLpar` is linear in slices and is the whole cost. Today's worst case per image per tick is 5 importances × 2
+receivers × 6 trials × up to 9 batch-recovery rounds = 540 evaluations; the measured average is far lower (S-3: 0.12
+projections per adjustment). The target is bounded by I16: 13 projections, 117 evaluations with batch recovery, and
+zero on an interval where every candidate is on its skip clock.
+
+Steps whose cost grows with the number of service class periods `n`: `netValue` (O(n) per projection),
+`donorOrder` and `canonical` (O(n log n) per interval), `projectionInput` (O(slices) per assessed interval). None
+grows with trials beyond the budget. The entries that touch the loop record `npm run bench` before and after; the
+≤ 4 ms tick budget (SPEC §15) is their gate.
