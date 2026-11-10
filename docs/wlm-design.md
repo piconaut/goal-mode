@@ -853,7 +853,7 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
 
 ```
 buildPlan(r, b, L0, base, P, info, budget, C):             // a change is a set of moves judged together (§3.7)
-  H ← holder(r);  L ← L0;  moves ← [];  upBlocked ← false
+  H ← holder(r);  L ← L0;  moves ← [];  upBlocked ← false;  cur ← base[r]      // cur: r's projected PI under L
   donors ← donorOrder(r, b, L0, info, C);  d ← 0
   repeat at most C.maxPlanSteps times, while budget > 0:
       // A. receiver one step up
@@ -863,17 +863,18 @@ buildPlan(r, b, L0, base, P, info, budget, C):             // a change is a set 
           if not ok and why names a period k that T leaves at or below H and that is not less important than r:
               T ← T with holder(k) placed on H's level     // secondary receiver: carried along
               (ok, why, after) ← assess(r, T);  budget −= 1
-          if ok: L ← T; moves += T's moves
-                 if receiverValue(base[r], after[r], C): return accepted(L, moves)
+          if ok: L ← T; moves += T's moves; cur ← after[r]                // kept even without gain: the next level may give it
+                 if receiverValue(base[r], cur, C): return accepted(L, moves)
           else:  upBlocked ← true;  remember (T, why) as the first rejection if none yet
       // B. next donor down
       else if d < donors.length:
           D ← donors[d];  d += 1
           T ← L with D moved to H's level, or to the free slot just below it if D is already there
           (ok, why, after) ← assess(r, T);  budget −= 1
-          if ok: L ← T; moves += "DONOR D …";  upBlocked ← false       // room may have opened above
-                 if receiverValue(base[r], after[r], C): return accepted(L, moves)
-          else:  remember (T, why) as the first rejection if none yet   // this donor stays where it is
+          if ok and after[r] < cur:                                       // a donor move is kept only if it helps r
+                 L ← T; moves += "DONOR D …"; cur ← after[r]; upBlocked ← false   // room may have opened above
+                 if receiverValue(base[r], cur, C): return accepted(L, moves)
+          else:  remember (T, why or NO_RECEIVER_GAIN) as the first rejection if none yet   // this donor stays
       else: break
   return rejected(first rejection)                          // all intermediate moves are set back
 
@@ -901,7 +902,8 @@ netValue(r, base, after, info, C):
 ```
 
 Receiver value is judged on the whole plan against `base`, so a step that passes net value but gains too little is
-kept and built on, as in IBM's example. A plan with no receiver value at the end is discarded whole.
+kept and built on, as in IBM's example. A plan with no receiver value at the end is discarded whole. Net value is
+judged on the whole plan too: `assess` always compares the trial ladder with `base`, never with the previous step.
 
 ### 5.4 Projection input: sustained demand
 
@@ -1002,7 +1004,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I6 | **Equal-importance convergence.** When an accepted plan harms an equally important period, the two projected PIs are closer than before and the receiver gains more than the sum of such harms | Property. Realism: two equal classes on a saturated image end within 0.3 PI of each other and stop moving |
 | I7 | **Donor order.** The n-th donor tried is the n-th of `donorOrder`; a happy holder is tried before any unhappy one; a zIIP bottleneck never selects a donor with no zIIP use | Property on the trace; unit test C-2 |
 | I8 | **One basis.** No plan is built for a receiver with `base ≤ 1`; every accept or reject compares `base` with `after` only | Property: every assessed candidate has `base > 1`. Unit: the tick-PI helper is gone from `policyAdjust` |
-| I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism (S-4): Midwest seed 42, eight days, PROD2 never has more periods on its top level than it has importance-1 holders unless a plan put them there that day |
+| I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism (S-4): Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels (today seven periods on three), and nothing is at `MANAGED_MAX` |
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
 | I12 | **Skip clock, no starvation.** A receiver whose plans were all rejected is not assessed again before its clock expires; every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 100 intervals with five unfixable and one fixable candidate at one importance (R-4's shape): the fixable one is helped |
@@ -1060,3 +1062,102 @@ Steps whose cost grows with the number of service class periods `n`: `netValue` 
 `donorOrder` and `canonical` (O(n log n) per interval), `projectionInput` (O(slices) per assessed interval). None
 grows with trials beyond the budget. The entries that touch the loop record `npm run bench` before and after; the
 ≤ 4 ms tick budget (SPEC §15) is their gate.
+
+## 6. Effects on play and balance
+
+None of this is measured: the model is not implemented. Directions are reasoned from §4's repros; each `sim` entry
+in the list carries its own three-scenario sweep.
+
+### 6.1 What changes for players
+
+| Lever | Today | With the target model | Cost or trade-off that remains |
+|---|---|---|---|
+| **Importance** | Decides the receiver order, then fades: on a stressed image everything ends on two or three levels (W2) | Holds under stress: the ladder is an order, more important work is never pushed past its goal for less important work, and a struggling less important class is no longer the first donor | Raising a class's importance exposes everything below it; one change per 10 s still limits how fast many classes are sorted |
+| **Goal value** | Mostly decides whether a class is a receiver | Also decides who gives: the happiest period at or above the receiver donates first, whatever its importance (W4) | A goal that is easy to beat makes a class the first donor. A goal that cannot be met makes it a permanent receiver that blocks less important receivers from taking from it, and is revisited once a minute |
+| **CPU Critical** | Protects against less important work | Same, and now also the way to stop an over-achieving important class from donating to less important work | It still removes WLM's freedom to trade; less important work waits longer |
+| **Splitting CICS classes** (a critical-path class) | The new class's DP is one of several, only the highest counts (W3) | The regions follow the most important unhappy class they serve; the free ride of the other classes is visible as their shared DP | The free ride is real: a critical class lifts everything in the same regions. Separating work for real needs separate regions (not a lever in the game) |
+| **The region class's goal and importance** (STCHI) | Looks like a lever, moves the top of the ladder, does not reach the regions | Ignored for regions managed to transaction goals, and it shows | None: it stops being a trap |
+| **Resource-group minimum on discretionary batch** | Only capacity nobody wants | Served ahead of work that meets its goals | It takes from happy work and slows it toward its goal |
+| **Response-time goal on batch** | Silently unmanaged | Managed, with a PI that jumps with single jobs | IBM's own advice: too few completions make it erratic; velocity is steadier |
+| **Number of active periods** | More periods, slower convergence | The same, softened by skip clocks | Unchanged |
+
+**What the log and `wlm-why` say.** One line per interval with a change, listing the plan:
+`12:19:30 PROD2 RCVR=DDFPRD#1 PI=1.84 BTLNK=CPU DDFPRD#1 UP; DONOR TSO#2 DOWN` with the DPs in hex. Without a
+change, the first rejected step and its reason, in the same words as now, plus three new ones: `already recovering`
+(projected PI at or under 1), `mostly waiting, CPU delay n %: not WLM-fixable`, and `next look hh:mm:ss` (skip
+clock). `inspect wlm` adds the outcomes `SKIP_CLOCK`, `NO_MANAGED_DELAY`, `RECOVERING` and prints each plan step with
+`base → after` for the receiver and the period that rejected it. The `wlm-why` skill's verdict table is rewritten
+with these (WT-15). Every reason a player reads is then stated on the PI the log shows, which is not true today
+(W1).
+
+### 6.2 Bots and the balance bands
+
+Bands (SPEC §16; latest numbers PROGRESS.md M8.2): do-nothing loses day 12–18, textbook reaches day 28–32, expert
+wins.
+
+| Bot | Expected direction | Rough size | Why |
+|---|---|---|---|
+| do-nothing | Two opposite effects. **Later:** importance-1 and -2 online work keeps its place on stressed images. **Earlier:** Db2 in STCMED (flaw F1) no longer rides up to FB/FC with everything else (S-4 shows it there from day 2), so the planted flaw bites as designed | ± 3 days on the median; Harbourline (median 9.5, the collapse starts on day 1) moves most | W2, W4 |
+| textbook | Slightly later: it fixes the policy flaws, after which WLM's quality only matters near the capacity wall | 0 to + 2 days | W1, W5 |
+| expert | Harbourline up from 5/10: one accepted loss was "Db2 crowded out at equal dispatch priority", which the canonical ladder removes. Midwest and Revenue stay 10/10 | + 1 to + 3 victories of 10 on Harbourline | W2 |
+| spend-to-win | None: it removes the contention WLM arbitrates | 0 | |
+| oraclerca | Same incidents as do-nothing with different labels: fewer incidents on important work, more `CPU_PRIORITY` on importance-4 and -5 work | no band | RT-16 judges these |
+
+If a median leaves its band after the core entries, the fix is scenario pressure (growth, event severity, flaw
+size) in the `balance` list, not a WLM coefficient chosen to hit a band (§8 Q2). BL-01 and BL-02 tune numbers this
+list moves, so they should follow WT-09.
+
+### 6.3 Guardrails
+
+- **Every lever keeps a cost** (table above). The two that lose force (the region class's goal, a low-importance
+  class as the automatic donor) were not trade-offs but traps or defaults.
+- **Explainable from exposed data.** The three PIs of today collapse to the one in WLMGL and the log; the server
+  period and its DP appear in the log and the Codex; skip clocks are named in the log. New Codex entries: *server
+  topology and the free ride*, *donors and net value*, *skip clock*, *dispatching priorities and unbunching*.
+- **Diagnosis stays the gameplay.** The planted pattern "missing its goal with little CPU delay: WLM cannot help"
+  keeps its log clue (§5.7) and its realism test (I14).
+
+## 7. Order of work
+
+The list is BACKLOG.md `wlm-truth`, numbered in dependency order.
+
+1. **Ready now, no behaviour change (WT-01 … WT-03).** The statistics verb on `inspect` (the acceptance tests of
+   everything after it), the trace fields the tests need, and the SPEC text that already disagrees with the code.
+2. **The core, after RT-15 (WT-04 … WT-09),** strictly in this order, one PR and one sweep each:
+   - WT-04 the PI basis and sustained demand. First, because every later rule is judged through projections, and a
+     projection that changes its mind with one tick makes the other fixes unmeasurable.
+   - WT-05 skip clocks, the delay test and the per-interval budget. Needs WT-04's `RECOVERING` outcome.
+   - WT-06 the canonical ladder. Before the plan, because plan steps are steps on the ladder.
+   - WT-07 donor order. Small, and the plan needs it.
+   - WT-08 the plan (receiver up, secondary receivers, donors) and net value on the whole plan.
+   - WT-09 server periods. Last of the core: it changes who holds a priority, which touches every piece above.
+3. **Independent of each other, after the piece they build on (WT-10 … WT-12):** bottlenecks, the minimum for
+   discretionary work, batch response times.
+4. **Waiting for a decision (WT-13, WT-14),** then **WT-15**: Codex, SPEC, the skill, and the closing sweep.
+
+**WT-04 and WT-08 are too coupled to split or delegate.** WT-04 changes what every test compares; WT-08 replaces
+the receiver/donor/net-value core in one piece (a half-built plan with the old single-move tests is not a state
+worth merging). The main agent implements both. WT-09 is cross-layer (dispatch, measurement, reporting, adjustment)
+and stays on the main agent too.
+
+**Against `rca-truth`.** RT-06 (the counterfactual validator) and RT-14 (card footprints) measure the sim as it is,
+and BL-01/BL-02 wait on RT-14. A WLM change landing between RT-06's baseline and RT-14 would move the validator's
+numbers for a reason that has nothing to do with footprints. So every WT entry that changes sim behaviour or goldens
+is `blocked: after RT-15`; nothing here argues otherwise. Two things follow and are questions for the user (§8 Q1):
+the human playtest that RT-16 … RT-21 wait for would otherwise be played on a WLM about to change, and RT-16 and
+RT-19 read sim signals (CPU wait by role, region CPU wait, the displaceable-CPU split) that WT-09 and WT-10
+redefine. Cross-notes are on RT-16, RT-19, WT-09 and WT-10.
+
+## 8. Questions for the user
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q1 | The playtest after RT-15 gates RT-16 … RT-21. Play it before or after the WLM core (WT-04 … WT-09)? And RT-16/RT-19 before or after WT-09? | **After.** One playtest on the WLM players will keep; RT-16 and RT-19 after WT-09, so the CPU split is built on the server-period signals. Cost: the playtest moves out by six entries |
+| Q2 | If the core moves do-nothing or textbook out of its band, tune scenario content (the `balance` list) or WLM coefficients? | **Content.** The coefficients of §5.10 are chosen for behaviour (I13 settles, I16 cost). BL-01 and BL-02 then follow WT-09 |
+| Q3 | Model receivers that meet their goals (IBM's case 4) so the order keeps improving when nobody misses? | **Not now** (WT-14 parked). It doubles the projections on quiet intervals for an effect players rarely see; revisit if a playtest finds a stale order hurting the next morning's ramp |
+| Q4 | Show the server period (`$SRMS001`) by name in the WLM log and Codex? In z/OS it is visible only in SMF 99 | **Yes** in the log and Codex (the log is the game's SMF 99 view); RMF-style reports stay as they are and show the served classes at the regions' DP |
+| Q5 | Renumber dispatching priorities to the z/OS 1.8 table (managed 247–203, small consumer 248) (W12)? | **Yes, inside WT-06,** which changes every DP in the goldens anyway. Otherwise WT-13 does it alone later with a second golden change |
+| Q6 | Batch response-time goals (W11): model job completions, or only warn in the editor? | **Model** (WT-12, small), plus a Codex line with IBM's three-completions advice |
+| Q7 | May the single-rule entries (WT-05, WT-07, WT-10, WT-11, WT-12) go to the Opus `realism-fixer` subagent? BACKLOG's rule keeps `sim` entries on the main agent | **Yes for those five,** with the main agent reviewing and running the sweep; never WT-04, WT-08, WT-09 |
+| Q8 | Small consumers and mean-time-to-wait (W13): leave unmodelled and correct SPEC §5.4? | **Yes** (WT-03 corrects the text) |
+| Q9 | `rejectedSkipTicks` is invented (IBM gives no length). One minute, or longer on Hard as a difficulty knob? | **One minute everywhere.** WLM's behaviour should not vary by difficulty |
