@@ -51,7 +51,8 @@ mid-run; skip the PR.
 
 Spawn one `pr-fixer` per PR to review (background; spawn them all in one message, wait for every hand-back). Brief:
 PR number, title, head branch and SHA, base `dev`, a scratchpad directory per PR, pass, attempt, open items
-verbatim on a follow-up, the attribution lines and footer, and: "Check z/OS behaviour claims against IBM docs with
+verbatim on a follow-up, the `Claude-Session:` line and the footer (not your own `Co-Authored-By` line: the subagent adds its own model's
+trailer, see CLAUDE.md), and: "Check z/OS behaviour claims against IBM docs with
 the zos-docs skill (Skill tool; cite pages); a z/OS behaviour or report change with no checked citation is a
 blocking finding."
 
