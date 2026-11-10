@@ -74,7 +74,7 @@ export interface WlmCandidateTrace {
   localPi: number | null;
   dp: number;
   bottleneck: Bottleneck | null;
-  /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: two receivers were already assessed at this importance;
+  /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: receiversPerImportance receivers were already assessed at this importance;
    * ASSESSED: trials below. */
   outcome: 'NOT_FIXABLE' | 'BUDGET' | 'ASSESSED';
   trials: WlmTrialTrace[];
@@ -274,7 +274,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   let projectedImp = -1;
   for (const receiver of candidates) {
     const impOf = info[receiver]!.importance;
-    // Projection is the expensive part: assess at most two fixable receivers per importance, then move on.
+    // Projection is the expensive part: assess at most receiversPerImportance fixable receivers per importance, then move on.
     if (impOf !== projectedImp) {
       projectedImp = impOf;
       projected = 0;
