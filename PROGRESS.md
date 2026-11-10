@@ -396,9 +396,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - WLM audit 2026-11-10: the questions on secondary receivers and donors, a region class as receiver, equal-DP
   sharing, percentile PI with few completions, the discretionary minimum and backlog in projections are settled in
   docs/research.md ("WLM policy adjustment and dispatching") and docs/wlm-design.md §4 W15; their fixes are WT entries.
-- WLM audit, still unverified: the numbers behind receiver value, the net value rule by importance and the 0.90
-  credit come from IBM's 1994 patent (read through a summarising fetch, not page-checked) and Peter Enrico's slides;
-  IBM's books state the tests without numbers. The skip clock's length, where the unbunched ladder sits in the
+- WLM audit: the numbers behind receiver value, the net value rule by importance and the 0.90 credit come from IBM's
+  1994 patent (page-checked 2026-11-10, US 5,473,773 p.18–20) and Peter Enrico's slides; IBM's z/OS books state the
+  tests without numbers, so they are the original design, not confirmed for z/OS 3.1. The skip clock's length, where the unbunched ladder sits in the
   managed range, and the priorities assigned at IPL or policy activation are not documented anywhere found.
 - WLM audit: the dispatching priority table differs between SG24-7621 (252–208 managed) and SG24-6472 (247–203 as of
   z/OS 1.8); no z/OS book gives numbers (docs/wlm-design.md W12, §8 Q5).

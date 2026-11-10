@@ -23,7 +23,7 @@ check of the whole, and most findings (§4) are interactions between steps that 
 | WLM Services | *z/OS 3.1 MVS Programming: Workload Management Services* (ieaw200), [PDF](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf): ch. 11 "Using SMF record type 99" and Appendix A (trace codes). The most detailed product documentation of the algorithm | IBM book, page-checked |
 | SG24-6472 | Redbook *System Programmer's Guide to: Workload Manager*, SG24-6472-03, Mar 2008, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf) | IBM Redbook, page-checked |
 | SG24-7621 | Redbook *ABCs of z/OS System Programming Vol. 12*, SG24-7621-00, Jan 2010, [PDF](https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf) | IBM Redbook, page-checked |
-| Patent | US 5,473,773, *Apparatus and method for managing a data processing system workload according to two or more distinct processing goals*, Aman et al., IBM, filed 1994. <https://patents.google.com/patent/US5473773A/en>, accessed 2026-11-10 | **Patent (1994).** IBM's original design, not product documentation: it shows how WLM was designed, not how z/OS 3.1 behaves. Read through a fetch tool that returns summaries and short quotes, so the wording is not page-checked. It describes the 1994 design: no sysplex PI, no CPU Critical, no zIIP |
+| Patent | US 5,473,773, *Apparatus and method for managing a data processing system workload according to two or more distinct processing goals*, Aman et al., IBM, filed 1994. <https://patents.google.com/patent/US5473773A/en>, accessed 2026-11-10 | **Patent (1994), page-checked** in the `zos-docs` copy (`us5473773`, [PDF](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf), PDF pages 18–20). IBM's original design, not product documentation: it shows how WLM was designed, not how z/OS 3.1 behaves. It describes the 1994 design: no sysplex PI, no CPU Critical, no zIIP |
 | Enrico | Peter Enrico, *How WLM Works* (slides), Enterprise Performance Strategies. <https://www.epstrategies.com/library/content/Enrico.WLM032-WLMHowWLMWorks.pdf>, accessed 2026-11-10; the PDF text was extracted and read | **Practitioner** |
 
 Page numbers are PDF page indexes (`#page=N`), as in [research.md](research.md). Where the two Redbooks or a Redbook
@@ -279,8 +279,8 @@ given with its tier. Section numbers match §2.
   expires" ([WLM Services p.145][ws145]). Its length is not given. *Practitioner:* Enrico slide 53 describes a skip
   counter set when a period was chosen as a receiver and help was given.
 - *Practitioner:* histories are rows covering the last 10 s, 30 s, 60 s, 5 min, 15 min and the 15 min before, so
-  WLM can go back far enough for representative data (Enrico slide 29). *Patent (1994):* the patent takes response-time
-  data for "thirty seconds or … ten samples", velocity data for at least thirty seconds and five hundred non-idle
+  WLM can go back far enough for representative data (Enrico slide 29). *Patent (1994), [p.18][pt18]:* the patent takes response-time
+  data for "thirty seconds or accumulates ten samples, whichever is less", velocity data for at least thirty seconds and five hundred non-idle
   samples, and weights the last 10 seconds twice. IBM's books give no numbers.
 
 ### 3.3 Sampling
@@ -346,7 +346,9 @@ given with its tier. Section numbers match §2.
   (`PA_PMD_SEC_DON`), a donor up as secondary receiver (`PA_PMU_DON_SEC_REC`), and "unchanged" donors, receivers and
   secondary donors and receivers whose access changes although their priority does not (`PA_PRO_UNC_*`)
   ([WLM Services p.707–708][ws707]).
-- *Patent (1994):* moves alternate between raising the receiver and lowering the donor.
+- *Patent (1994), [p.19][pt19]–[20][pt20]:* moves alternate between raising the receiver and lowering the donor;
+  when a net value check fails, secondary receivers (below the receiver, failing the check) and secondary donors
+  (above the donor, failing the check) are moved with them and the combination is checked again.
 
 ### 3.8 Donors
 
@@ -358,7 +360,8 @@ given with its tier. Section numbers match §2.
   then "from the lowest to the highest PI of 'happy' service class periods. Importance does not contribute to the
   algorithm when the service class periods are 'happy'". Read with the receiver order of §3.5, these agree: happy
   periods by lowest PI whatever their importance, then periods missing goals from the least important up.
-  *Patent (1994)* and *practitioner* (Enrico slide 38) say the same.
+  *Patent (1994), [p.19][pt19]* ("Importance is not used to differentiate among goal classes meeting their specified
+  goals"; else the least important owners, best PI first) and *practitioner* (Enrico slide 38) say the same.
 - A more important period can donate to a less important one when it overachieves and is projected still to meet
   its goal easily ([SG24-6472 p.60][r60]).
 - A small processor consumer is not selected as a donor (`PA_SDO_DONFAIL_SPC`, [WLM Services p.708][ws708]).
@@ -380,7 +383,7 @@ given with its tier. Section numbers match §2.
 ### 3.10 Receiver value, net value, convergence
 
 - **Receiver value:** "a minimum performance index improvement, a minimum group service increase, or other minimum
-  criteria designed to reject very small improvements" ([WLM Services p.138][ws138]). *Patent (1994):* for
+  criteria designed to reject very small improvements" ([WLM Services p.138][ws138]). *Patent (1994), [p.19][pt19]:* for
   example 10 % of the difference between the receiver's PI and 1.00. *Practitioner (Enrico slide 50):* the larger of
   10 % of the PI change needed to meet the goal and 0.05, or a cut in delay samples of at least half the largest
   delay.
@@ -390,7 +393,7 @@ given with its tier. Section numbers match §2.
   and goals) for both primary and secondary donors", and SRM "may decide not to help a receiver due to minimal net
   value for either a primary or secondary donor" ([WLM Services p.137–138][ws137]).
 - The rule by importance is not in IBM's books beyond "no service classes with a higher importance are badly
-  affected" ([SG24-6472 p.66][r66]). *Patent (1994):* donor projected to meet its goal and receiver missing: net
+  affected" ([SG24-6472 p.66][r66]). *Patent (1994), [p.19][pt19] (FIG. 8):* donor projected to meet its goal and receiver missing: net
   value; both missing: net value if and only if the receiver is more important; equal importance, or both meeting:
   net value if the PI gain exceeds the PI loss, counting only the part of each PI above 0.90; and if the receiver
   would end with a lower PI than the donor, the two must end closer than they were. *Practitioner (Enrico slide
@@ -469,6 +472,9 @@ A CPU delay is being ready but not dispatched "because of active work at the sam
 [ws136]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=136
 [ws137]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=137
 [ws138]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=138
+[pt18]: https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=18
+[pt19]: https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=19
+[pt20]: https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=20
 [ws139]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=139
 [ws140]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=140
 [ws142]: https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=142
@@ -766,7 +772,7 @@ few completions" is settled as *not modelled*.
 | Question (PROGRESS.md) | Answer | Source |
 |---|---|---|
 | Does net value credit other classes the regions serve (secondary receivers)? | No documented credit: the test is donor harm against the receiver's improvement. Served classes are checked as goal donors when their regions are moved down | [WLM Services p.137–138][ws137], [p.707][ws707] |
-| Does equal-importance convergence apply to secondary donors? | Net value is assessed "for both primary and secondary donors"; convergence is part of the net value rule for equal importance (*patent (1994)* only; SG24-6472 p.60 states convergence for "the receiver and the donor"). **Probably yes, unverified** for z/OS 3.1 | [WLM Services p.138][ws138] |
+| Does equal-importance convergence apply to secondary donors? | Net value is assessed "for both primary and secondary donors"; convergence is part of the net value rule for equal importance (*patent (1994)*, [p.19][pt19]–[20][pt20]: the combination with secondary donors must pass the same FIG. 8 check, which includes it; SG24-6472 p.60 states convergence for "the receiver and the donor"). **Yes in the 1994 design; not stated for z/OS 3.1** | [WLM Services p.138][ws138] |
 | How do equal-priority units share a CPU? | Their dispatching order is rotated. The sim's equal turn per ready unit is a fluid form of that | [SG24-6472 p.66][r66], [SG24-7621 p.111][a111] |
 | CPU protection: lower the less important period or raise the protected one? | The less important one is moved down. The sim's direction is IBM's, not an approximation | [WLM Services p.705][ws705] |
 | A region class as a receiver | Its goal is ignored for regions managed as servers; see W3 | [SG24-6472 p.89][r89] |
@@ -1031,9 +1037,9 @@ IBM uses it.
 | Name | Start | Shape | Origin |
 |---|---|---|---|
 | `accDecay` (moves from `runtime.ts` `ACC_DECAY`) | 0.85 | PI looks back about a minute | existing |
-| `receiverValueFrac` (from `adjust.ts`) | 0.1 | a plan must close a tenth of the gap to the goal | patent's example (*patent (1994)*, unverified for z/OS) |
+| `receiverValueFrac` (from `adjust.ts`) | 0.1 | a plan must close a tenth of the gap to the goal | *patent (1994)* [p.19][pt19], an example; not stated for z/OS 3.1 |
 | `receiverValueMinPi` | 0.05 | … and never less than this, so nothing moves for a hair | Enrico slide 50 (*practitioner*) |
-| `creditFloor` (from `adjust.ts`) | 0.9 | PI below 0.9 earns and costs nothing | *patent (1994)*, unverified for z/OS |
+| `creditFloor` (from `adjust.ts`) | 0.9 | PI below 0.9 earns and costs nothing | *patent (1994)* [p.19][pt19]; not stated for z/OS 3.1 |
 | `harmEps` (from `adjust.ts`, 0.02) | 0.02 | projection noise is not harm | existing |
 | `needsHelpDelayFrac` | 0.02 | a period with no managed delay is not assessed | IBM's rule is "no delay samples"; a fluid model never has exactly none |
 | `bottleneckMinFrac` | 0.15 | a second bottleneck is tried only if it is a real share of the delay | invented |
@@ -1297,8 +1303,8 @@ Five revisions were measured before the numbers above. The first did what §5 sa
    worse on paper. The cycle repeated all morning: 93 undone moves against 22 on `dev`, where the same flatness had
    hidden the *gain* instead and nothing moved. The more-important test of §5.3 asked for projected harm. It now
    also has a rule that needs no projection: **a less important receiver is never moved to or above more important
-   work that is missing its goal and uses the processor.** Sources: the patent (both missing and the donor more
-   important: no net value) and Enrico slide 52 ("never … if donor is missing goal"); both are labelled as in §1,
+   work that is missing its goal and uses the processor.** Sources: the patent ([p.19][pt19], FIG. 8 step 809: both
+   missing and the donor more important: no net value) and Enrico slide 52 ("never … if donor is missing goal"); both are labelled as in §1,
    and IBM's books do not state it. §5.3's `netValue` carries the rule.
 2. **"Missing its goal" is a fact, so it is read from the management PI.** Revision 3 used `base` alone and Midwest
    got worse (16 undone moves): DDFPRD#1's `base` dipped under 1 on single intervals and DDFPRD#2 slipped past.
