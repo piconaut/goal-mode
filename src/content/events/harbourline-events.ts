@@ -25,6 +25,7 @@ const BANK_CARDS: EventDef[] = [
     weight: 2,
     trigger: 'POLICY',
     affects: ['MKTORD', 'CARDS'],
+    mechanisms: ['ROUTING'],
     failureMechanism: 'ROUTING',
     startHour: [9, 15],
     durationHours: 5,
@@ -45,6 +46,7 @@ const BANK_CARDS: EventDef[] = [
     weight: 2.5,
     trigger: 'DEMAND_SURGE',
     affects: ['MKTORD', 'MKTQRY'],
+    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
     startHour: [9, 9.5],
     // FICTIONAL: two hours of ×1.6 order and price-query volume on top of the usual open and burst traffic.
     durationHours: 2,
@@ -63,6 +65,7 @@ const BANK_CARDS: EventDef[] = [
     weight: 2,
     trigger: 'DEMAND_SURGE',
     affects: ['CARDS', 'RETAIL'],
+    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
     startHour: [10, 12],
     // FICTIONAL: a shopping holiday lifts card authorisations ×1.7 and retail enquiries ×1.2 for the afternoon.
     durationHours: 8,

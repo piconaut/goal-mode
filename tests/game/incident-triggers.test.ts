@@ -2,7 +2,10 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { advance, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
 import { closeHour, newHour } from '../../src/game/run/hourly';
-import type { RunState } from '../../src/game/types';
+import { triggerOf } from '../../src/game/sla';
+import { HARBOURLINE_GAME } from '../../src/content/game-harbourline';
+import { REVENUE_GAME } from '../../src/content/game-revenue';
+import type { ActiveEvent, HourAcc, RunState } from '../../src/game/types';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const content = { ...MIDWEST_GAME, events: [] };
@@ -50,5 +53,32 @@ describe('incident trigger history', () => {
     expect(closed.sim.tick).toBe(hourEnd);
     expect(closed.events[0]!.ended).toBe(true);
     expect(closed.incidents.find((i) => i.workloadId === 'MOBILE')?.truth).toEqual({ mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' });
+  });
+});
+
+describe('card mechanisms', () => {
+  const hour = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cpcBusySum: 0, lockIndexSum: 0 } as HourAcc;
+  const cardOf = (defId: string, over: Partial<ActiveEvent> = {}): ActiveEvent => {
+    const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
+    return { uid: `${defId}@1`, defId, name: def.name, startTick: 0, endTick: 10, trigger: def.trigger, affects: def.affects, mechanisms: def.mechanisms, endCommands: [], started: true, ended: false, ...over };
+  };
+
+  it('U-2: a 30-hour CPU regression does not take an I/O incident from the DASD fault', () => {
+    const regression = cardOf('REGRESSION', { endTick: null });
+    const dasd = cardOf('DASD_DEGRADED', { uid: 'DASD_DEGRADED@1' });
+    expect(triggerOf('RBANK', 'IO', [regression, dasd], hour, false)).toBe('HARDWARE_FAULT');
+  });
+
+  it('U-4: a retry storm (demand) does not take a lock incident', () => {
+    // With no lock index the fallback is growth; a real lock clash is batch overlap, not the storm.
+    expect(triggerOf('MOBILE', 'LOCK_CONTENTION', [cardOf('RETRY_STORM')], hour, false)).toBe('GROWTH');
+    const clash = { ...hour, ticks: 10, lockIndexSum: 30 } as HourAcc;
+    expect(triggerOf('MOBILE', 'LOCK_CONTENTION', [cardOf('RETRY_STORM')], clash, false)).toBe('BATCH_OVERLAP');
+  });
+
+  it('every card in the three decks with non-empty affects declares its mechanisms', () => {
+    const decks = [MIDWEST_GAME, HARBOURLINE_GAME, REVENUE_GAME];
+    const missing = decks.flatMap((d) => d.events.filter((e) => e.affects.length > 0 && !e.mechanisms).map((e) => e.id));
+    expect(missing).toEqual([]);
   });
 });

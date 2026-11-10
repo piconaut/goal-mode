@@ -182,23 +182,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 path; the replacing entry deletes the interim code path.
 
-### RT-02 · Every card that can be blamed declares its `mechanisms`
-`list: rca-truth · status: ready · priority: high · size: S · area: content`
-
-Cards with `affects` but no `mechanisms` are blamed for incidents of any mechanism (A3: U-2 a 30-hour REGRESSION
-takes an I/O incident from a DASD fault, U-4 a RETRY_STORM takes a lock incident). Declare them:
-- CAMPAIGN, BOT_ATTACK, RETRY_STORM, MARKET_OPEN_SURGE, HOLIDAY_CARD_SPIKE, RUNAWAY, REGRESSION, XLOG_LOOP,
-  ENCRYPTION_MANDATE, MONITOR_CREEP, SHADOW_IT: `CPU_CAPACITY, CPU_PRIORITY, CAPPING, DEPENDENCY, THREAD_LIMIT`
-  (more arrivals or more CPU per transaction also lengthen the unqueued service time the thread-limit rule uses);
-- ZIIP_LOSS: add `CPU_PRIORITY, CAPPING, DEPENDENCY` to its `CPU_CAPACITY` (U-6);
-- CF_LINK and CF_FAILURE: `CF_SERVICE, LOCK_CONTENTION, DEPENDENCY, CPU_CAPACITY, CPU_PRIORITY` (slow sync requests
-  cost z/OS CPU; a lost structure fails Db2 work);
-- SICK_AOR: `ROUTING`; NEW_APP_GOLIVE: every mechanism except `JOB_FAILURE` (the new work is the cause whatever it
-  waits for).
-Leave SMF_AUDIT (empty `affects`) to RT-14. Adapted cards inherit. Done when: a content test fails for any card in
-the three decks with non-empty `affects` and no `mechanisms`; `tests/game/incident-triggers.test.ts` covers U-2 and
-U-4; SPEC §10 says the list is mandatory; goldens regenerated if they move, with a Behaviour note and a sweep.
-
 ### RT-03 · Pins from systems the hurt work does not run on count as evidence
 `list: rca-truth · status: ready · priority: high · size: S · area: game`
 
