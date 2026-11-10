@@ -9,8 +9,9 @@ import { classify } from '../sim/wlm/classify';
 import { buildMon3 } from './mon3';
 import type { Mon3PinLookup, Mon3PinView } from './mon3PinHistory';
 import { BATCH_INCIDENT } from './sla';
+import type { NightSummary } from '../sim/subsys/batch';
 import { cicsMonitoring, db2Accounting } from './smf';
-import type { Incident, RunState } from './types';
+import type { Incident, IncidentSubjects, RunState } from './types';
 import { allWorkloads } from './workloads';
 import { idText } from './ids';
 
@@ -147,13 +148,46 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
   }
 }
 
-/** Service classes and images of a missed night's critical jobs: WLMGL or Monitor III pins on them are about BATCH. */
-function batchSubjects(run: RunState, inc: Incident): { classes: string[]; lpars: string[] } {
-  const hosts = run.reports.find((x) => x.day === inc.day)?.batch?.criticalHosts ?? [];
-  return {
-    classes: hosts.map((j) => classify(run.sim.wlm.definition, { subsystem: 'JES', TN: j.name, TC: j.jobClass, SY: j.lparId }).serviceClass).filter((x): x is string => !!x),
-    lpars: hosts.map((j) => j.lparId),
-  };
+/**
+ * What the evidence judge derives for an incident opened now (RT-04): its service classes (the workload's and its
+ * CICS region classes), its images and the region jobnames serving it. Stored on the incident at open, so a later
+ * `ACTIVATE_POLICY` or `SET_ROUTING` cannot turn a good pin into "not about X" (A10).
+ * `night` is the missed night when the caller has it (the day's report is written after the incident).
+ */
+export function incidentSubjects(
+  run: RunState,
+  scenario: Scenario,
+  workloadId: string,
+  day: number,
+  night?: NightSummary | null,
+): IncidentSubjects {
+  // A missed night's critical jobs: WLMGL or Monitor III pins on their classes and images are about BATCH.
+  if (workloadId === BATCH_INCIDENT) {
+    const hosts = night?.criticalHosts ?? run.reports.find((x) => x.day === day)?.batch?.criticalHosts ?? [];
+    const lpars = hosts.map((j) => j.lparId);
+    return {
+      classes: hosts.map((j) => classify(run.sim.wlm.definition, { subsystem: 'JES', TN: j.name, TC: j.jobClass, SY: j.lparId }).serviceClass).filter((x): x is string => !!x),
+      lpars,
+      hosts: [...lpars],
+      servers: [],
+    };
+  }
+  const w = allWorkloads(scenario, run).find((x) => x.id === workloadId);
+  const classes = w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
+  const routing = run.sim.routing[workloadId] ?? w?.routing ?? {};
+  const lpars = Object.keys(routing);
+  // Images the work actually runs on. A static routing table keeps a 0 weight for an image it was routed away from
+  // (`SET_ROUTING`), and that image is not a host of the work any more.
+  const hosts = Object.entries(routing).filter(([, share]) => share > 0).map(([id]) => id);
+  const servers: { jobname: string; lparId: string }[] = [];
+  // Resource evidence on a CICS region class is evidence about its hosted transactions.
+  if (w?.subsystem === 'CICS') for (const a of [...scenario.addressSpaces, ...run.sim.extraAddressSpaces]) {
+    if (!lpars.includes(a.lparId) || (a.role !== 'CICS.AOR' && a.role !== 'CICS.TOR')) continue;
+    if (a.role === 'CICS.AOR' && (routing[a.lparId] ?? 0) > 0) servers.push({ jobname: a.jobname, lparId: a.lparId });
+    const sc = classify(run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;
+    if (sc && !classes.includes(sc)) classes.push(sc);
+  }
+  return { classes, lpars, hosts, servers };
 }
 
 function hourEndTick(run: RunState, key: string): number | null {
@@ -207,22 +241,9 @@ interface RankedVerdict {
 }
 
 function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): RankedVerdict[] {
-  const w = allWorkloads(scenario, run).find((x) => x.id === inc.workloadId);
-  const batch = inc.workloadId === BATCH_INCIDENT ? batchSubjects(run, inc) : null;
-  const classes = batch ? batch.classes : w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
-  const routing = run.sim.routing[inc.workloadId] ?? w?.routing ?? {};
-  const lpars = batch ? batch.lpars : Object.keys(routing);
-  // Images the work actually runs on. A static routing table keeps a 0 weight for an image it was routed away from
-  // (`SET_ROUTING`), and that image is not a host of the work any more.
-  const hostLpars = batch ? batch.lpars : Object.entries(routing).filter(([, share]) => share > 0).map(([id]) => id);
-  const servers: { jobname: string; lparId: string }[] = [];
-  // Resource evidence on a CICS region class is evidence about its hosted transactions.
-  if (w?.subsystem === 'CICS') for (const a of [...scenario.addressSpaces, ...run.sim.extraAddressSpaces]) {
-    if (!lpars.includes(a.lparId) || (a.role !== 'CICS.AOR' && a.role !== 'CICS.TOR')) continue;
-    if (a.role === 'CICS.AOR' && (routing[a.lparId] ?? 0) > 0) servers.push(a);
-    const sc = classify(run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;
-    if (sc && !classes.includes(sc)) classes.push(sc);
-  }
+  // Judged against what the incident recorded when it opened (RT-04), so a reclassification or rerouting after the
+  // fact keeps the verdicts a player would have got at the time; incidents from old saves derive them now.
+  const { classes, lpars, hosts: hostLpars, servers } = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
   const lo = inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR;
   const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
   return pins.map((p) => {

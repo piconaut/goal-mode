@@ -1,9 +1,9 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { EVIDENCE } from '../../src/content/evidence';
 import { MIDWEST } from '../../src/content/scenarios';
-import { addPin, judgeEvidence, type EvidencePin } from '../../src/game/evidence';
+import { addPin, incidentSubjects, judgeEvidence, type EvidencePin } from '../../src/game/evidence';
 import { buildMon3 } from '../../src/game/mon3';
-import { advance, newRun, startDay, submitRca } from '../../src/game/run';
+import { advance, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
 import type { Incident, RunState } from '../../src/game/types';
 
 const content = { ...MIDWEST_GAME, events: [] };
@@ -349,5 +349,71 @@ describe('CICS resource evidence on region classes', () => {
     expect(v!.relevance).toBeGreaterThan(0);
     const [unrelated] = judgeEvidence(regressed, MIDWEST, inc, [{ ...p, subject: 'DEVONLY#1' }]);
     expect(unrelated!.relevance).toBe(0);
+  });
+});
+
+describe("evidence against the incident's own subjects (RT-04, A10)", () => {
+  const MOBILE_TRUTH = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } as const;
+
+  it('records the classes, images and serving regions when an incident opens', () => {
+    const inc = regressed.incidents[0]!;
+    expect(inc.subjects).toEqual(incidentSubjects(regressed, MIDWEST, inc.workloadId, inc.day));
+    expect(inc.subjects!.classes).toContain('ONLHI');
+    expect(inc.subjects!.lpars).toEqual(expect.arrayContaining(['PROD1', 'PROD2']));
+    expect(inc.subjects!.servers.map((s) => s.jobname)).toContain('CICSAOR1');
+  });
+
+  it('keeps the verdicts after a reclassification and a rerouting', () => {
+    const pins: EvidencePin[] = [
+      { id: 1000, source: 'WLMGL', metric: 'DELAY_ZIIP', subject: 'DDFPRD#1', system: '*PLEX', tick: regressed.sim.tick, value: 20, text: '' },
+      { id: 1001, source: 'WLMGL', metric: 'DELAY_CPU', subject: 'DDFPRD#1', system: 'PROD2', tick: regressed.sim.tick, value: 25, text: '' },
+    ];
+    const subjects = incidentSubjects(regressed, MIDWEST, 'MOBILE', regressed.day);
+    const verdicts = (r: RunState, over: Partial<Incident>) =>
+      judgeEvidence(r, MIDWEST, incident(r, { workloadId: 'MOBILE', truth: MOBILE_TRUTH, ...over }), pins).map((v) => [v.relevance, v.why]);
+    expect(verdicts(regressed, { subjects })).toEqual([[1, 'points at the cause'], [1, 'points at the cause']]);
+
+    // Before filing the RCA the player gives MOBILE its own class and stops routing it to PROD2.
+    const def = structuredClone(regressed.sim.wlm.definition);
+    def.classes.push({
+      id: 'MOBILECLS',
+      description: 'Mobile API',
+      periods: [{ goal: { kind: 'AVG', rtSec: 0.1 }, importance: 2, durationSu: null }],
+      cpuCritical: false,
+      storageCritical: false,
+      resourceGroup: null,
+      honorPriority: true,
+    });
+    const ddf = def.subsystems.find((s) => s.subsystem === 'DDF')!;
+    ddf.rules = [{ qualifier: 'CI', pattern: 'ZCONNECT', serviceClass: 'MOBILECLS', reportClass: null, children: [] }, ...ddf.rules];
+    const edit = requestChange(regressed, content, {
+      label: 'Own class and one image',
+      commands: [
+        { kind: 'ACTIVATE_POLICY', definition: def },
+        { kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PROD1: 1 } },
+      ],
+    });
+    expect(edit.ok, edit.message).toBe(true);
+    // A live change lands on the next tick (the change desk queues its commands).
+    const edited = advance(edit.run, MIDWEST, content, 1);
+    expect(edited.sim.wlm.definition.classes.some((c) => c.id === 'MOBILECLS')).toBe(true);
+    expect(edited.sim.routing.MOBILE).toEqual({ PROD1: 1 });
+
+    // Judged against what the incident recorded: the same verdicts as before the edits.
+    expect(verdicts(edited, { subjects })).toEqual([[1, 'points at the cause'], [1, 'points at the cause']]);
+    // Judged against today's values (an incident from an old save has no subjects): the A10 defect.
+    expect(verdicts(edited, {})).toEqual([[0, 'not about MOBILE'], [0, 'not on a system MOBILE runs on']]);
+  });
+
+  it("a missed night records the critical jobs' classes and images", () => {
+    const night = {
+      day: 0, jobs: 40, done: 38, criticalJobs: 14, criticalDone: 13, criticalEndSec: null, missedDeadline: true,
+      criticalHosts: [{ lparId: 'PROD1', name: 'STL001', jobClass: 'A' }],
+    };
+    const s = incidentSubjects(regressed, MIDWEST, 'BATCH', 0, night);
+    expect(s.lpars).toEqual(['PROD1']);
+    expect(s.hosts).toEqual(['PROD1']);
+    expect(s.classes).toHaveLength(1);
+    expect(s.servers).toEqual([]);
   });
 });

@@ -29,6 +29,7 @@ import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, h
 import { accumulateHour, closeHour, newHour } from './run/hourly';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
+import { incidentSubjects } from './evidence';
 import { BATCH_INCIDENT, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank } from './sla';
 import { tfpAtDayEnd } from './tfp';
 import { expireToolTrials, measurementCommands, trialTool } from './tools';
@@ -281,7 +282,7 @@ function logConnectFailures(r: RunState, sim: RunState['sim']): RunState {
 }
 
 /** A missed batch window opens an incident for the night, so it can get an RCA like an online SLA miss. */
-function batchMissIncident(r: RunState, night: NightSummary, trustLost: number): RunState {
+function batchMissIncident(r: RunState, scenario: Scenario, night: NightSummary, trustLost: number): RunState {
   const hosts = (night.criticalHosts ?? []).map((j) => {
     const sc = classify(r.sim.wlm.definition, { subsystem: 'JES', TN: j.name, TC: j.jobClass, SY: j.lparId }).serviceClass;
     return { lparId: j.lparId, cpcId: r.sim.config.lpars.find((l) => l.id === j.lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
@@ -302,6 +303,7 @@ function batchMissIncident(r: RunState, night: NightSummary, trustLost: number):
     worstAttainmentPct: 0,
     truth,
     ...(basis ? { basis } : {}),
+    subjects: incidentSubjects(r, scenario, BATCH_INCIDENT, r.day, night),
     rca: lead?.rca ?? null,
     trustLost,
     ...(lead ? { rcaGroup: lead.id } : {}),
@@ -341,7 +343,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     const hurt = r.batchMissFacet ?? 'Retail';
     if (hurt in trust) trust[hurt] = clampTrust(trust[hurt]! - 4);
     r = msg(r, 'Regulator', 'Batch deadline missed', 'Critical batch did not complete on time. A second consecutive miss will trigger a formal review.');
-    r = batchMissIncident(r, night, (trustBefore.Regulator! - trust.Regulator!) + (hurt in trust ? trustBefore[hurt]! - trust[hurt]! : 0));
+    r = batchMissIncident(r, scenario, night, (trustBefore.Regulator! - trust.Regulator!) + (hurt in trust ? trustBefore[hurt]! - trust[hurt]! : 0));
   } else if (night) trust.Regulator = clampTrust(trust.Regulator! + 1);
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
   const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);

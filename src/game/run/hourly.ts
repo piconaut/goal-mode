@@ -12,6 +12,7 @@ import {
   type RunState
 } from '../types';
 import { allWorkloads, isNewWorkload } from '../workloads';
+import { incidentSubjects } from '../evidence';
 import type { GameContent } from './shared';
 import { toolOn } from './shared';
 import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
@@ -191,6 +192,8 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           truth,
           ...(basis ? { basis } : {}),
           ...(aiops ? { aiops } : {}),
+          // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
+          subjects: incidentSubjects(r, scenario, w.id, r.day),
           rca: lead?.rca ?? null,
           trustLost: loss,
           ...(lead ? { rcaGroup: lead.id } : {}),
