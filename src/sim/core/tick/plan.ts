@@ -49,7 +49,8 @@ export interface ImagePlan {
   /**
    * `cicsRegions` for the image, filled on first use (`regionsOf`). It reads only template fields of the image's
    * slices (kind, role, key, jobname, scKey, reportClass), which the plan's keys fix; batch slices carry none of the
-   * CICS roles. Per-tick region state (WT-09's server periods' DPs, rates, backlogs) stays out of it.
+   * CICS roles. Per-tick region state (WT-09's server periods' DPs, rates, backlogs) stays out of it. Its `targets`
+   * object goes into every tick's `LparTick.cics` (shared, so nothing may mutate it).
    */
   cicsRegions?: ReturnType<typeof cicsRegions>;
 }
@@ -63,30 +64,30 @@ export interface CfImagePlan {
 
 export interface LparPlan {
   /** z/OS images in config.lpars order. */
-  images: ImagePlan[];
-  byLparId: Record<string, ImagePlan>;
+  readonly images: readonly ImagePlan[];
+  readonly byLparId: Readonly<Record<string, ImagePlan>>;
   /** z/OS image configs in config order (`images.map((i) => i.lpar)`). */
-  zosLpars: LparConfig[];
+  readonly zosLpars: readonly LparConfig[];
   /** CF images in config.lpars order. */
-  cfImages: CfImagePlan[];
+  readonly cfImages: readonly CfImagePlan[];
   /** Every LPAR config by id (first one, as `.find()`), and its position in `t.lpars` (PR/SM order). */
-  lparById: Record<string, LparConfig>;
-  rtIdxOf: Record<string, number>;
+  readonly lparById: Readonly<Record<string, LparConfig>>;
+  readonly rtIdxOf: Readonly<Record<string, number>>;
   /** CPC config by id. */
-  cpcOf: Record<string, CpcConfig>;
+  readonly cpcOf: Readonly<Record<string, CpcConfig>>;
   /** CPC site position of each LPAR's CPC, km (0 when unknown). */
-  siteKmOf: Record<string, number>;
+  readonly siteKmOf: Readonly<Record<string, number>>;
   /** Images with a Db2 subsystem (a DB2.MSTR address space). */
-  db2Lpars: ReadonlySet<string>;
+  readonly db2Lpars: ReadonlySet<string>;
   /** CF structure request share by structure name (first one, as `.find()`). */
-  structureShareOf: Record<string, number>;
+  readonly structureShareOf: Readonly<Record<string, number>>;
   /** Job class config by name (first one, as `.find()`), and where its WLM-managed queued jobs count. */
-  jobClassOf: Record<string, JobClassConfig>;
+  readonly jobClassOf: Readonly<Record<string, JobClassConfig>>;
   /** WLM mode: first eligible image in name order (initiators > 0). */
-  wlmHomeOf: Record<string, string | undefined>;
+  readonly wlmHomeOf: Readonly<Record<string, string | undefined>>;
   /** Capacity group config by id, and its member LPAR configs (config order). */
-  groupOf: Record<string, CapacityGroupConfig>;
-  groupMembers: Record<string, LparConfig[]>;
+  readonly groupOf: Readonly<Record<string, CapacityGroupConfig>>;
+  readonly groupMembers: Readonly<Record<string, readonly LparConfig[]>>;
 }
 
 export function buildLparPlan(config: WorldConfig, workloads: readonly WorkloadDef[], addressSpaces: readonly AddressSpaceDef[]): LparPlan {
@@ -167,7 +168,6 @@ export function buildLparPlan(config: WorldConfig, workloads: readonly WorkloadD
   };
 }
 
-/** `arr[i]` when it is the entry `ok` wants (the plan's order holds while config is unchanged), else a search. */
 /** The image's CICS region topology (`cicsRegions`), computed once per plan from this tick's slices. */
 export function regionsOf(
   img: ImagePlan,
@@ -179,6 +179,7 @@ export function regionsOf(
   return (img.cicsRegions ??= cicsRegions(def, slices, byId, addressSpaces, img.lpar.id));
 }
 
+/** `arr[i]` when it is the entry `ok` wants (the plan's order holds while config is unchanged), else a search. */
 export function atOrFind<T>(arr: readonly T[], i: number, ok: (x: T) => boolean): T | undefined {
   const x = arr[i];
   return x !== undefined && ok(x) ? x : arr.find(ok);

@@ -205,6 +205,14 @@ Timing against CL-05 (`dev` `8a7a0e1`), same protocol, 7 alternating pairs per s
 | Days 2–3, ms per tick | 1.028 → 0.965 | 0.446 → 0.397 | 0.395 → 0.363 |
 | Peak RSS | 209 → 214 MB | 128 → 122 MB | 126 → 126 MB |
 
+**Stop rule:** CL-06 took over CL-05's "Done when", and Harbourline's −3.7 % is below its 5 % bar. Read that way, it
+merges only if it also simplifies the code. It does in part:
+- the per-tick rebuild of the CICS region topology is gone;
+- `step` and the capping stages lose their ad hoc `.find()`/`filter` chains for a named record each.
+
+But the source grows by about 30 lines net, and the plan now has a lazily filled field that WT-09 has to respect. So
+it is a call for the user, recorded here rather than decided. Midwest (−7.6 %) and Revenue (−6.9 %) clear the bar.
+
 Option 1 in total is roughly 10 % on Harbourline and 14 % on Midwest, from the two steps' medians compounded. That
 sits at the low end of the 15–25 % estimate: the `.find()` calls were cheap, and the gain came from not rebuilding
 the image inputs and the region topology.
