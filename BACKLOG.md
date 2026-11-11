@@ -660,6 +660,18 @@ would avoid the frame. `close()` also runs twice on cancel (harmless).
 From #185. During a file import the button still reads "Reading file…" while the prompt is open; the confirm button has
 no primary/danger styling.
 
+### PR-13 · One abended-job set for the play CLI and the `inspect` replays
+`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
+
+Source: [#292 pr-fixer review, observation](https://github.com/piconaut/goal-mode/pull/292#issuecomment-6800632362)
+(2026-11-11). The play CLI's `advance` decides where to stop from the view (`buildView(...).batch.abended`,
+`tools/playCore.ts`), while the `inspect` replays read `sim.batch.jobs` status directly (`abendedNames` in
+`tools/inspect.ts`). Both filter `status === 'ABENDED'` and key `day:name` today, so they agree, but a change to the
+view's list (e.g. hiding restarted or non-critical jobs) would silently desynchronise the replays from the CLI they
+reproduce. Change: one exported helper (in `tools/playCore.ts`, keyed `day:name` from the view) used by the CLI's stop
+rule and by `abendedNames`'s callers. Done when: both use it, `npm run compare` shows no difference, and the
+`inspect` tests still pass.
+
 ### PR-11 · Match the RCA evidence example to its accepted mechanisms
 `list: pr-followups · status: ready · priority: low · size: S · area: content`
 
