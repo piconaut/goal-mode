@@ -1,7 +1,8 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). Nothing here is implemented on `dev`. WT-04 was prototyped
-on branch `proto/wlm-wt04` (no PR); §9 has its results and the two changes it made to §5. The work it leads to is in
+Status: **design, decided by the user** (2026-11-10). **WT-04 is implemented** (2026-11-11: one PI basis, sustained
+demand, the §5.3 missing-goal rule; §9.5); the rest of §5 is not. WT-04 was prototyped on branch `proto/wlm-wt04`;
+§9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
 is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -1345,4 +1346,50 @@ Five revisions were measured before the numbers above. The first did what §5 sa
    which removes the shape PT-01 was first reported with. The order of `scps` leaked into the log through the
    period a rejection names. Existing tests that build accumulators from one tick keep working because a new
    period's demand is seeded at steady state.
+
+### 9.5 WT-04 as landed: the uplift and the bound measured apart
+
+WT-04 took the prototype onto `dev` at `40b81dc` (after WT-01 … WT-03, RT-06, RT-07, RT-12, CL-05, CL-06) and settled
+point 7 above. `npm run inspect -- <file> wlm-stats` on the S-1 … S-3 files (seed 42, Normal, no player actions),
+with `demandUpliftMax` 1 for "no uplift" and `backlogBoostFrac` unbounded for "no bound". Cells: DP moves; moves
+undone by the period's next move, of which within two minutes; episodes of 30 adjustments without a move.
+
+| Variant | S-1 Midwest | S-2 Revenue | S-3 Harbourline |
+|---|---|---|---|
+| both (landed) | 19; 4 / **0**; 5 | 26; 12 / 1; 5 | 79; 23 / **4**; 11 |
+| no uplift | 38; 20 / **17**; 3 | 21; 10 / 0; 5 | 70; 16 / 4; 10 |
+| no bound | 19; 4 / 0; 5 | 22; 8 / 1; 4 | 84; 29 / **12**; 16 |
+| neither | 38; 20 / 17; 3 | 17; 6 / 0; 4 | 52; 11 / 2; 6 |
+
+Both stay. The uplift is what keeps Midwest's DDFPRD pair from trading places on quiet ticks (R-1); the bound is what
+keeps Harbourline's backlogged online classes from being projected to want everything at once. Neither alone does
+both jobs, and Revenue is close either way. The "both" row reproduces the prototype's §9.3 table (episodes on S-2: 5
+by the committed verb's rule, 7 by the prototype's harness). `wlm-stats` gained the two counters this needed:
+candidates `RECOVERING`, and reversals within two minutes (12 adjustments of the same system).
+
+**Review of #295 (B1): the bound hid a runaway.** On Midwest seed 2 (D2 17:03–17:15) WLM raised the runaway
+DDFPRD#2 (importance 4, management PI 56.6) past DDFPRD#1 three times: with its backlog bounded the projection put
+it at 1.15 → 0.72 and showed no harm, while draining the real backlog put DDFPRD#1 and ONLHI#1 at 4.0 ten seconds
+later. Two fixes were measured side by side (same cells as above; "seed 2" is Midwest seed 2, D1 06:00 to D2 18:00):
+
+| Variant | S-1 | S-2 | S-3 | Seed 2 | Seed 2 incidents D2 17:00 |
+|---|---|---|---|---|---|
+| neither | 19; 4 / 0; 5 | 26; 12 / 1; 5 | 79; 23 / 4; 11 | 30; 11 / 4; 6 | MOBILE, CARDAUTH |
+| 1: the receiver's own backlog projected whole | 19; 4 / 0; 5 | 22; 8 / 1; 4 | 85; 29 / **12**; 16 | 22; 7 / 2; 5 | none |
+| 3: no raise while management PI > 4 × `base` | 19; 4 / 0; 5 | 26; 12 / 1; 6 | 81; 23 / 4; 11 | **20; 5 / 1; 5** | none |
+| both | as 1 | as 1 | as 1 | as 1 | none |
+
+Fix 1 is "no bound" for every backlogged receiver and brings back Harbourline's flip-flop; fix 3 removes the seed-2
+moves and leaves S-1 … S-3 as they were. Fix 3 landed (`projectionTrustMax`, verdict `PROJECTION_DISAGREES`).
+Seed 2 now has no incident on D2 at all (on `dev` MOBILE missed from 14:00), so the RT-06 tests moved to seed 3,
+whose runaway still breaks MOBILE at D2 13:00. The same review made running batch jobs exact on images without
+zIIPs (they were lifted there), kept them out of the sustained demand, and counted smoothed zIIP use in
+`usedEngines`; the "neither" row includes those.
+
+Second review: the check applied wherever the PIs disagreed, also to address-space classes with no backlog (Revenue
+STCLO#1: local PI 8.99, `base` 1.89). It now applies only where the bound cut the receiver's transaction backlog. S-1,
+S-2 and seed 2 keep their moves and S-3 goes back to the "neither" row (81 → 79 moves, 4 undone within two
+minutes, 11 episodes); it still rejects 5 976 of S-2's 15 329 trials and 9 426 of S-3's
+13 899, nearly all receiver-up trials of backlogged transaction classes, in place of other rejections. A percentile
+PI stops at 4.0, so a percentile receiver never trips it (a known limit).
 

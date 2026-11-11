@@ -491,16 +491,28 @@ by design of the fluid model.
 
 #### 5.5.4 Policy adjustment (every tick = 10 s, per system)
 
-Modelled on SG24-7621 §3.12–3.15 and the WLM patents. Three PIs are in use today (docs/wlm-design.md §2.4):
+Modelled on SG24-7621 §3.12–3.15 and the WLM patents. Two kinds of PI, each with one job (docs/wlm-design.md §5.2):
 
 | PI | Computed from | Used for |
 |---|---|---|
-| local PI | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list, donor "happy" test, resource-group minimum, discretionary capping |
-| sysplex PI | all images' accumulators summed, then one PI (`sysplexPis`) | receiver list (first), the WLM Activity log's `PI=` |
-| tick PI | this tick only (`tickPi`; percentile goals through `projectedPercentilePi`, past 4.0 from the mean RT) | every projection: receiver value, donor harm, net value |
+| management PI: local | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list, donor "happy" test, "missing its goal", resource-group minimum, discretionary capping |
+| management PI: sysplex | all images' accumulators summed, then one PI (`sysplexPis`) | receiver list (first), "missing its goal", the WLM Activity log's `PI=` |
+| projected PI | the dispatcher model on the projection input (sustained demand, below), percentile goals through `projectedPercentilePi` (past 4.0 from the mean RT): `base` at the current DPs, `after` at a trial's | every test a trial is judged on: receiver value, donor harm, net value |
 
-Real WLM uses the sysplex PI as the primary criterion for receivers, donors and assessing a change
-([`docs/research.md`](docs/research.md) "The sysplex PI is the primary criterion…"); one PI basis is WT-04's work.
+No test mixes them. A candidate whose `base` is already ≤ 1 (or unknown) is recovering by itself: it is traced
+`RECOVERING`, gets no trials and uses no projection budget. Real WLM uses the sysplex PI as the primary criterion
+for receivers, donors and assessing a change ([`docs/research.md`](docs/research.md) "The sysplex PI is the primary
+criterion…"); the sim chooses receivers on it and judges a change on projections, as WLM Services p.144 describes.
+
+**Sustained demand** (`projectionInput`, `src/sim/wlm/projection.ts`). Real WLM assesses a priority change from each
+period's maximum and achievable demand, taken from sampled history (WLM Services p.144). The sim projects with this
+tick's evaluation input, adjusted so one quiet tick or one burst does not decide: a period whose arriving demand this tick is under its smoothed demand (`ScpAcc.demandCp`, `demandZi`) is lifted to it, at most `demandUpliftMax` times (never lowered: a rising load is believed at once), and a transaction backlog adds at most `backlogBoostFrac` of the slice's sustained demand instead of draining whole in one interval. Both were measured apart (docs/wlm-design.md §9.5): without the uplift Midwest's moves undone within two minutes go from 0 to 17; without the bound Harbourline's go from 4 to 12. Caps, I/O,
+paging, promotion, capacity and transaction timeouts stay as this tick (a projection without the timeout gives a
+response-time PI no upper scale; docs/wlm-design.md §9.4 point 3). APPROX. Running batch jobs
+(`SliceSpec.fixedDemand`) are exact: never lifted, and left out of the sustained demand they would be compared with.
+The bound can hide a runaway's backlog, so a receiver whose transaction backlog the bound cut and whose management PI
+is over `projectionTrustMax` (4) times its `base` is not raised (`PROJECTION_DISAGREES`; donor moves are still tried;
+a percentile PI stops at 4.0 and never trips it; docs/wlm-design.md §9.5).
 
 ```
 for importance in 1..5:
@@ -509,12 +521,17 @@ for importance in 1..5:
     for receiver in candidates:
         bottleneck = largest delay type of receiver (CPU, zIIP, I/O, storage, MPL/initiator, queue)
         if bottleneck is not WLM-fixable (capping, PR/SM delay, lock wait, dependency): record & continue
+        base = projected PIs at the current DPs (one evaluation, made when first needed)
+        if base[receiver] ≤ 1 or unknown: record RECOVERING & continue      // no trials, no budget
         for each candidate action (move receiver up 1..k DP; move donors down):
+            if the receiver would pass or join more important work that is missing its goal
+               (management or projected PI > 1) and uses the processor: reject   // MORE_IMPORTANT_HARMED
             project new CPU distribution with the dispatcher model (re-run §5.4 on a copy)
             follow separate-pool batch demand recovery; check net value at every distribution
-            receiverValue = improvement ≥ 10% of (PI_receiver − 1)   // reject marginal moves
-            netValue      = no higher-or-equal-importance period harmed beyond its goal;
-                            receiver gains more than donors lose (PI credit only above 0.90)
+            receiverValue = base − after ≥ max(10% of (base − 1), 0.05)       // reject marginal moves
+            netValue      = no more important period pushed past its goal;
+                            equal importance: PIs end closer, and the gain exceeds the harm when there is harm
+                            (PI credit only above 0.90; changes up to 0.02 are noise)
             if receiverValue && netValue: apply, mark done for this interval; return
     // at most ONE receiver helped per interval per system
 ```
@@ -524,6 +541,12 @@ for importance in 1..5:
   finds no move of net value does not keep lower importances out (SG24-7621 p.105–106).
 - Donors are preferably *happy* (PI < 1) *heavy users of the bottleneck resource*, of lower
   importance, chosen in reverse order of receivers.
+- **Missing goals are not passed.** A less important receiver never moves to or above more important work that is
+  missing its goal and uses at least `donorMinEngines` of processor, whatever the projection says: a period at the
+  floor of the queueing model shows no further projected harm (the 1994 patent p.19, FIG. 8; Enrico slide 52;
+  neither is product documentation). On a capped image where the important work misses for hours this freezes WLM
+  below it, and the log says why (`harms ONLHI#1, more important`); user decision 2026-11-10, docs/wlm-design.md
+  §9.4 point 5.
 - **Non-WLM-fixable bottlenecks** (lock contention, a starved dependency server, PR/SM delay,
   soft-cap delay) cannot be fixed by WLM. It flails, and RMF shows the receiver unhappy with
   little CPU delay (for CICS: little READY in its work manager breakdown, healthy serving AORs in SYSWKM).
@@ -1710,7 +1733,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); Partition Data shows `CHANGE REASON=POWERSAVE (initiated by the user)` or `MACHINE (initiated by the machine)`. APPROX: real RMF puts CHANGE REASON on the CPU Activity report header (RMF Report Analysis p.391–392), which the sim does not render, and the Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98); SMF70CAI is kept on the interval for tooling but not printed. A power cap does not slow cycle speed |
 | PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
 | Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
-| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents. Between equal-importance periods a move must gain more than it harms and leave the projected PIs closer together (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Projections stop at two fixable receivers per importance per interval, then the search moves on as SG24-7621 p.105–106 describes |
+| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model at sustained demand (§5.5.4); exact IBM thresholds are not public beyond patents. One PI basis (WT-04): receivers are chosen on the management PI, every trial is judged on projected PIs (`base` at the current DPs against `after`), and a candidate whose `base` is ≤ 1 is left to recover. Receiver value is 10 % of the distance to the goal with a 0.05 floor. A less important receiver never passes more important work that is missing its goal (1994 patent; Enrico slide 52). A receiver whose transaction backlog the projection bounded and whose management PI is over 4 × its `base` is not raised (`projectionTrustMax`, APPROX: guards the sim's backlog bound). Between equal-importance periods a move must leave the projected PIs closer together and, when it harms, gain more than it harms (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Projections stop at two fixable receivers per importance per interval, then the search moves on as SG24-7621 p.105–106 describes |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | CFACT lock contention | **Approximation** | STRUCTURE SUMMARY in the Postprocessor-style CF Activity report shows CONTENTION % on the lock structure, a column borrowed from Monitor III CFACT (the real Postprocessor report shows -CONT / -FALSE CONT request counts instead, RMF Report Analysis p.373) from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
@@ -1758,7 +1781,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
 | CICS region management | **Simplified** | Per region on its STC/JES rule. CICS transactions on an image share the AORs' DP: most important served period (TRANSACTION, free ride) or the AOR class (REGION/BOTH). TRANSACTION regions' own CPU dispatches with the transactions; their samples are reported in the region class but left out of its goal-management PI, so a class holding only such regions is not managed. BOTH = REGION for dispatch; when every region is REGION, transaction completions go to report classes only (no service-class response time data). No per-region split of a workload's transactions: if any AOR on the image is TRANSACTION, all its CICS transactions ride the transaction DP. The wait for TRANSACTION regions is the transactions' CPU delay (all of it, APPROX) |
-| Percentile PI in WLM projections | **Simplified** | Reported PI stops at 4.0 (bucket layout); receiver value and donor harm use the bucketed PI, extended past 4.0 by a log-normal quantile of the mean RT (sigma 0.5, FICTIONAL), so work far past its goal can still be helped and harm to it still vetoes a move |
+| Percentile PI in WLM projections | **Simplified** | Reported PI stops at 4.0 (bucket layout); receiver value and donor harm use the bucketed PI of the projection at sustained demand (`base` and `after`, never this tick's own), extended past 4.0 by a log-normal quantile of the mean RT (sigma 0.5, FICTIONAL), so work far past its goal can still be helped and harm to it still vetoes a move |
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
 | CF | **Real concepts, invented coefficients** | Sync spin CPU, async conversion above a threshold, shared-engine dispatch wait, polling burns ICF share |

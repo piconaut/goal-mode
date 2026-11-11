@@ -1,3 +1,4 @@
+import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { enforceCpuProtection, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
@@ -260,22 +261,26 @@ describe('a hopeless receiver does not stop the search at the next importance (S
     } finally {
       setWlmTraceSink(null);
     }
-    const assessed = traces[0]!.candidates.filter((c) => c.outcome === 'ASSESSED').map((c) => c.scKey);
-    expect(assessed).toEqual(['OLD1#1', 'OLD2#1', 'ONLCARD#1']);
-    // The two importance-1 receivers found nothing: their projections reject every trial.
-    for (const k of ['OLD1#1', 'OLD2#1']) expect(traces[0]!.candidates.find((c) => c.scKey === k)!.trials.some((t) => t.verdict === 'ACCEPTED')).toBe(false);
+    // One basis (docs/wlm-design.md §5.2): the importance-1 receivers are at their goal on this system (only the
+    // sysplex PI is over 1), so their projected PI is ≤ 1 and they get no trials and use no budget.
+    const outcomes = traces[0]!.candidates.map((c) => [c.scKey, c.outcome]);
+    expect(outcomes).toEqual([['OLD1#1', 'RECOVERING'], ['OLD2#1', 'RECOVERING'], ['ONLCARD#1', 'ASSESSED']]);
+    for (const k of ['OLD1#1', 'OLD2#1']) expect(traces[0]!.candidates.find((c) => c.scKey === k)!.basePi).toBeLessThanOrEqual(1);
     expect(traces[0]!.candidates.find((c) => c.scKey === 'ONLCARD#1')!.trials.length).toBeGreaterThan(0);
     expect(out.log).not.toContain('RCVR=');
   });
 
   it('still assesses at most receiversPerImportance (default two) receivers per importance', () => {
-    const third = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
-    third.id = 'OLD3';
-    third.periods = [{ goal: { kind: 'VEL', velocity: 5 }, importance: 1, durationSu: null }];
-    const wide = structuredClone(def);
-    wide.classes.push(third);
-    const slices3 = [...slices, sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 1, units: 4 })];
-    const input3 = { ...evalInput, slices: slices3 };
+    // Receivers that miss their goal on this system and that no DP move helps: their CPU delay is PR/SM delay.
+    const wide = structuredClone(BASEPOL);
+    wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
+    const slices3 = [
+      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 2, units: 8 }),
+    ];
+    const input3 = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: slices3 };
     const cur3 = evaluateLpar({ ...input3, dpOf: (k) => dps[k] ?? 0xee });
     const system3: WlmSystemState = {
       lparId: 'SYS1',
@@ -304,22 +309,23 @@ describe('a hopeless receiver does not stop the search at the next importance (S
   });
 
   it('skips past a spent budget to the next importance whether traced or not', () => {
-    // Three CPU-fixable importance-1 receivers that find nothing spend the importance-1 budget; the importance-2
-    // class behind them must still be helped in the untraced (production) path, not only when the trace is on.
+    // Three importance-1 receivers that find nothing (PR/SM delay: no DP move helps) spend the importance-1 budget;
+    // the importance-2 class behind them must still be helped in the untraced (production) path, not only when
+    // the trace is on.
     const wide = structuredClone(BASEPOL);
-    wide.classes.push(cls('OLD1', 5, 1), cls('OLD2', 5, 1), cls('OLD3', 5, 1), cls('ONLCARD', 95, 2));
+    wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
     const bat = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
     bat.id = 'BAT';
     bat.periods = [{ goal: { kind: 'VEL', velocity: 10 }, importance: 5, durationSu: null }];
     wide.classes.push(bat);
     const sl = [
-      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 1, units: 4 }),
-      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 1, units: 4 }),
-      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 1, units: 4 }),
+      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
       sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 1.5, units: 8 }),
       sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
     ];
-    const input = { ...evalInput, slices: sl };
+    const input = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: sl };
     const d: Record<string, number> = { 'OLD1#1': 0xf4, 'OLD2#1': 0xf3, 'OLD3#1': 0xf2, 'BAT#1': 0xf0, 'ONLCARD#1': 0xe6 };
     const c = evaluateLpar({ ...input, dpOf: (k) => d[k]! });
     const sys: WlmSystemState = {
@@ -375,5 +381,94 @@ describe('long-term CPU protection is enforced, not a reason to stop managing (W
     expect(out.protect).toBe('T SYS1 CPU PROTECTION BATCHPRD#1 DP FB→F3');
     expect(out.dps['BATCHPRD#1']!).toBeLessThan(out.dps['ONLCARD#1']!);
     expect(out.log ?? '').not.toContain('no action with net value');
+  });
+});
+
+describe('the missing-goal rule counts smoothed zIIP use (docs/wlm-design.md §5.3)', () => {
+  it('a less important receiver is not raised past a quiet zIIP class that is missing its goal', () => {
+    const def = structuredClone(BASEPOL);
+    const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+    const cls = (id: string, velocity: number, importance: 1 | 4) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
+    def.classes.push(cls('ZA', 50, 1), cls('BLO', 90, 4));
+    const slices = [
+      sliceSpec({ key: 'za', scKey: 'ZA#1', kind: 'AS', ziipEngines: 0.001, units: 2 }),
+      sliceSpec({ key: 'blo', scKey: 'BLO#1', kind: 'AS', cpEngines: 3, units: 8 }),
+    ];
+    const evalInput = { cpCapacityEngines: 2, cpServers: 2, ziipCapacityEngines: 2, ziipServers: 2, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = { 'ZA#1': 0xf0, 'BLO#1': 0xe6 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = {
+      lparId: 'SYS1',
+      scps: cur.scps.map((t) => {
+        const acc = decayInto(emptyAcc(), t);
+        // ZA has used a whole zIIP for a minute and is quiet only this tick.
+        return { scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: t.scKey === 'ZA#1' ? { ...acc, ziipEngines: 1 / (1 - 0.85) } : acc };
+      }),
+    };
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: { 'ZA#1': 1.5 }, clockText: 'T' });
+    } finally {
+      setWlmTraceSink(null);
+    }
+    const blo = traces[0]!.candidates.find((c) => c.scKey === 'BLO#1')!;
+    const past = blo.trials.filter((t) => /BLO#1 DP E6→F[0-9A-F]/.test(t.move) && parseInt(t.move.slice(-2), 16) >= 0xf0);
+    expect(past.length).toBeGreaterThan(0);
+    for (const t of past) {
+      expect(t.verdict).toBe('MORE_IMPORTANT_HARMED');
+      expect(t.detail).toContain('ZA#1');
+    }
+  });
+});
+
+describe('a receiver measured far worse than projected is not raised (projectionTrustMax, docs/wlm-design.md §9.5)', () => {
+  // Midwest seed 2's shape: a runaway (importance 4) whose management PI is 56.6 while the projection, with its
+  // backlog bounded, puts it at 1.15. Here: a transaction class with a large backlog and a smoothed PI far above
+  // what the projection says.
+  const def = structuredClone(BASEPOL);
+  const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+  const cls = (id: string, velocity: number, importance: 4 | 5) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
+  def.classes.push(cls('RUN', 50, 4), cls('BAT', 10, 5));
+  const slices = [
+    sliceSpec({ key: 'run', scKey: 'RUN#1', kind: 'TXN', workloadId: 'run', rate: 100, cpEngines: 2, cpuSecPerTxn: 0.02, baseLatencySec: 0.01, rtSigma: 0.5 }),
+    sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
+  ];
+  const dps: Record<string, number> = { 'RUN#1': 0xe6, 'BAT#1': 0xf0 };
+  const run = (backlog: Record<string, number>, plex: (basePi: number) => number) => {
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog, io: IO, pagingFrac: 0 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const go = (p: number) => {
+      const traces: WlmAdjustTrace[] = [];
+      setWlmTraceSink((t) => traces.push(t));
+      try {
+        policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: { 'RUN#1': p }, clockText: 'T' });
+      } finally {
+        setWlmTraceSink(null);
+      }
+      return traces[0]!.candidates.find((c) => c.scKey === 'RUN#1')!;
+    };
+    return go(plex(go(1.5).basePi ?? 1.5));
+  };
+  const far = (b: number) => b * POLICY_ADJUST.projectionTrustMax + 1;
+
+  it('rejects its receiver-up moves as PROJECTION_DISAGREES when the bound cut its backlog, and still tries donors', () => {
+    const c = run({ run: 2 * 10 * 50 }, far);
+    expect(c.outcome).toBe('ASSESSED');
+    const up = c.trials.filter((t) => !t.move.startsWith('DONOR '));
+    expect(up.length).toBeGreaterThan(0);
+    for (const t of up) expect(t.verdict).toBe('PROJECTION_DISAGREES');
+    expect(c.trials.some((t) => t.move.startsWith('DONOR ') && t.verdict !== 'PROJECTION_DISAGREES')).toBe(true);
+  });
+
+  it('trusts the projection when nothing was cut, however far the measured PI is', () => {
+    const c = run({}, far);
+    expect(c.trials.some((t) => t.verdict === 'PROJECTION_DISAGREES')).toBe(false);
+  });
+
+  it('trusts it when the measured PI is close, backlog or not', () => {
+    const c = run({ run: 2 * 10 * 50 }, () => 1.5);
+    expect(c.trials.some((t) => t.verdict === 'PROJECTION_DISAGREES')).toBe(false);
   });
 });

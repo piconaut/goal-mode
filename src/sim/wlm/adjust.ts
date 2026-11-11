@@ -2,13 +2,17 @@
 // pick the most important, worst-PI receiver; find its bottleneck; try DP moves
 // (receiver up, donors down); accept the first move with receiver value and net value.
 // At most one receiver is helped per interval.
+// Two PIs, each with one job (docs/wlm-design.md §5.2): receivers are chosen on the management PI (the smoothed
+// accumulators); every trial is judged on projected PIs, `base` at the current DPs against `after` at the trial's,
+// both from the dispatcher model at sustained demand (projection.ts).
 
-import { PCT_PROJECTION_SIGMA, RECEIVERS_PER_IMPORTANCE as DEFAULT_RECEIVERS_PER_IMPORTANCE } from '../../content/wlm/tuning';
+import { PCT_PROJECTION_SIGMA, POLICY_ADJUST, RECEIVERS_PER_IMPORTANCE as DEFAULT_RECEIVERS_PER_IMPORTANCE } from '../../content/wlm/tuning';
 import { DP } from '../zos/dispatcher';
-import { prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
+import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
+import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
 import { projectedPercentilePi } from './goals';
-import { goalPi, goalInfo, tickPi, type ScpGoalInfo, type WlmSystemState } from './runtime';
+import { ACC_DECAY, goalPi, goalInfo, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -57,7 +61,8 @@ export type WlmTrialVerdict =
   | 'SMALL_GAIN' // improves by less than the receiver value threshold
   | 'MORE_IMPORTANT_HARMED' // a more important period would be pushed past its goal
   | 'EQUAL_DISPARITY' // an equal-importance period is harmed and the PIs don't get closer
-  | 'NO_NET_VALUE'; // equal-importance harm outweighs the receiver's gain
+  | 'NO_NET_VALUE' // equal-importance harm outweighs the receiver's gain
+  | 'PROJECTION_DISAGREES'; // a receiver-up move for a receiver measured far worse than projected (projectionTrustMax)
 
 export interface WlmTrialTrace {
   move: string;
@@ -90,8 +95,11 @@ export interface WlmCandidateTrace {
   /** Donor periods in the order their trials were built (assessed receivers; empty when none qualified). */
   donors?: string[];
   /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: receiversPerImportance receivers were already assessed at this importance;
+   * RECOVERING: its projected PI at sustained demand and the current DPs is already ≤ 1 (or unknown): no trials;
    * ASSESSED: trials below. */
-  outcome: 'NOT_FIXABLE' | 'BUDGET' | 'ASSESSED';
+  outcome: 'NOT_FIXABLE' | 'BUDGET' | 'RECOVERING' | 'ASSESSED';
+  /** Projected PI at the current DPs (the basis every trial is judged against); absent when not computed. */
+  basePi?: number | null;
   trials: WlmTrialTrace[];
 }
 
@@ -146,8 +154,10 @@ export function enforceCpuProtection(
   return { dps: out, moves };
 }
 
-const RECEIVER_VALUE_FRAC = 0.1;
-const DONOR_CREDIT_FLOOR = 0.9;
+/** Receiver value (WLM Services p.138: "a minimum performance index improvement … to reject very small
+ * improvements"): the projected gain must close a share of the distance to the goal, and at least a floor. */
+export const receiverValueNeeded = (basePi: number): number =>
+  Math.max(POLICY_ADJUST.receiverValueFrac * (basePi - 1), POLICY_ADJUST.receiverValueMinPi);
 
 export function policyAdjust(input: AdjustInput): AdjustOutput {
   const { def, system } = input;
@@ -159,6 +169,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const g = goalInfo(def, s.scKey);
     if (g && g.goal.kind !== 'DISC') info[s.scKey] = g;
   }
+  const infoKeys = Object.keys(info).sort();
   const ccImp = input.ccImp ?? 0;
   // Protection is restored first, so receivers are assessed (and trials judged) from DPs that keep it.
   const { dps, moves: protection } = enforceCpuProtection(held, info, ccImp);
@@ -184,20 +195,37 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     }
     return m;
   };
-  const before = instPi(input.current);
 
+  // Projections run at sustained demand (projection.ts): running batch jobs are exact and never lifted.
   // The first evaluation shares prepared demand; later evaluations follow cross-pool batch recovery.
   let projectBase: LparEvalInput | null = null;
-  const project = (trial: Record<string, number>, accepts: (after: Record<string, number | null>) => boolean) => {
-    projectBase ??= {
-      ...input.evalInput,
+  const projectionBase = (): LparEvalInput => {
+    if (projectBase) return projectBase;
+    // Running batch slices carry `fixedDemand` on every image, with or without zIIPs.
+    const P = projectionInput(input.evalInput, system.scps, POLICY_ADJUST);
+    return (projectBase = {
+      ...P,
       dpOf: (k) => dps[k] ?? 196,
       scpsOnly: true,
       bucketsFor: new Set(Object.keys(info).filter((k) => info[k]!.goal.kind === 'PCT')),
-      prepared: prepareLpar(input.evalInput),
-    };
-    return batchRecoveryAccepts({ ...projectBase, dpOf: (k) => trial[k] ?? dps[k] ?? 196 }, input.batch ?? [], (r) => accepts(instPi(r.scps)));
+      prepared: P.prepared ?? prepareLpar(P),
+    });
   };
+  /** Did the projection bound this period's transaction backlog below what is queued? */
+  const backlogCut = (k: string): boolean => {
+    const bounded = projectionBase().backlog;
+    for (const s of input.evalInput.slices) {
+      if (s.scKey !== k || s.kind !== 'TXN') continue;
+      const bl = input.evalInput.backlog[s.key] ?? 0;
+      if (bl > 0 && (bounded[s.key] ?? 0) < bl) return true;
+    }
+    return false;
+  };
+  // `base`: every period's projected PI at the current DPs. One evaluation, made only when a candidate needs it.
+  let baseCache: Record<string, number | null> | null = null;
+  const basePis = (): Record<string, number | null> => (baseCache ??= instPi(evaluateLpar(projectionBase()).scps));
+  const project = (trial: Record<string, number>, accepts: (after: Record<string, number | null>) => boolean) =>
+    batchRecoveryAccepts({ ...projectionBase(), dpOf: (k) => trial[k] ?? dps[k] ?? 196 }, input.batch ?? [], (r) => accepts(instPi(r.scps)));
 
   // Long-term CPU protection: less important work never gets an equal or higher DP than a CPU-critical
   // class (MVS Planning: WLM, ch. 14; enqueue promotion is the documented exception, not modelled).
@@ -217,6 +245,15 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     return null;
   };
 
+  /** Processor use of a period, engines: the larger of this tick and the smoothed accumulators (CP, IIPCP and zIIP). */
+  const accOf: Record<string, ScpState> = {};
+  for (const s of system.scps) accOf[s.scKey] = s;
+  const usedEngines = (k: string): number => {
+    const t = tickOf[k];
+    const now = t ? t.cpEngines + t.iipcpEngines + t.ziipEngines : 0;
+    const acc = accOf[k]?.acc;
+    return Math.max(now, ((acc?.cpuEngines ?? 0) + (acc?.ziipEngines ?? 0)) * (1 - ACC_DECAY));
+  };
   const tracing = traceSink !== null;
   let why: WlmTrialTrace | null = null;
   // Recorded even without the trace sink: the player-visible log names a rejected move and why.
@@ -225,11 +262,34 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     return false;
   };
   const passes = (receiver: string, trial: Record<string, number>): boolean => {
+    const before = basePis();
     const cc = violatesCpuCritical(trial);
     if (cc) {
-      // No projection was judged, but the receiver's own-tick PI was measured and is worth recording.
+      // No projection was judged; the receiver's `base` is still worth recording.
       why = { move: '', verdict: 'CPU_CRITICAL', receiverPi: [before[receiver] ?? null, null], detail: cc };
       return false;
+    }
+    // A less important receiver never takes from more important work that is missing its goal (the 1994 patent:
+    // both missing and the donor more important → no net value; Enrico, slide 52: "never … if donor is missing
+    // goal"). The donors of a receiver-up move are the periods it passes or joins that use the processor, whatever
+    // the projection says: a period already at the floor of the queueing model (saturated pool) shows no further
+    // projected harm. A passed period that gets no CPU has nothing to lose and is left to the projection.
+    const rImp0 = info[receiver]!.importance;
+    const r0dp = dps[receiver]!;
+    const r1dp = trial[receiver] ?? r0dp;
+    if (r1dp > r0dp) {
+      for (const k of infoKeys) {
+        const g = info[k]!;
+        const p0 = before[k];
+        if (k === receiver || g.importance >= rImp0) continue;
+        // "Missing its goal" is a fact about the period, so it is read from the management PI (local or sysplex)
+        // as well as from the projection at the current DPs.
+        const worst = Math.max(p0 ?? 0, localPi[k] ?? 0, input.sysplexPi[k] ?? 0);
+        if (worst <= 1) continue;
+        const kdp = trial[k] ?? dps[k]!;
+        if (usedEngines(k) < POLICY_ADJUST.donorMinEngines) continue;
+        if (kdp >= r0dp && kdp <= r1dp) return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) PI ${worst.toFixed(2)} is missing its goal and would be passed`);
+      }
     }
     // The pair is only recorded once the whole projection accepts: `project` can still refuse after every accept
     // callback said yes (a batch recovery that never settles runs out of rounds), and a trace must not call that move
@@ -239,29 +299,33 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       const r0 = before[receiver];
       const r1 = after[receiver];
       if (r0 == null || r1 == null || r1 >= r0) return reject('NO_RECEIVER_GAIN', [r0 ?? null, r1 ?? null]);
-      if (r0 - r1 < RECEIVER_VALUE_FRAC * (r0 - 1)) return reject('SMALL_GAIN', [r0, r1], `needs ≥ ${(RECEIVER_VALUE_FRAC * (r0 - 1)).toFixed(2)}`);
+      const needed = receiverValueNeeded(r0);
+      if (r0 - r1 < needed) return reject('SMALL_GAIN', [r0, r1], `needs ≥ ${needed.toFixed(2)}`);
       const rImp = info[receiver]!.importance;
-      const gain = Math.max(0, r0 - Math.max(r1, DONOR_CREDIT_FLOOR));
+      const floor = POLICY_ADJUST.creditFloor;
+      const gain = Math.max(0, r0 - Math.max(r1, floor));
       let equalHarm = 0;
-      for (const [k, g] of Object.entries(info)) {
+      // Key order, so the period a rejection names (and the harm sum) never depends on the order of `scps`.
+      for (const k of infoKeys) {
+        const g = info[k]!;
         if (k === receiver) continue;
         const p0 = before[k];
         const p1 = after[k];
         if (p0 == null || p1 == null) continue;
-        const harm = Math.max(0, p1 - Math.max(p0, DONOR_CREDIT_FLOOR));
-        if (g.importance < rImp && p1 > 1 && harm > 0.02) return reject('MORE_IMPORTANT_HARMED', [r0, r1], `${k} (imp ${g.importance}) PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
+        const harm = Math.max(0, p1 - Math.max(p0, floor));
+        if (harm <= POLICY_ADJUST.harmEps) continue;
+        if (g.importance < rImp && p1 > 1) return reject('MORE_IMPORTANT_HARMED', [r0, r1], `${k} (imp ${g.importance}) PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
         if (g.importance === rImp) {
           // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,
           // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
-          if (harm > 0 && Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return reject('EQUAL_DISPARITY', [r0, r1], `${k} PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
+          if (Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return reject('EQUAL_DISPARITY', [r0, r1], `${k} PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
           equalHarm += harm;
         }
       }
-      if (gain > equalHarm) {
-        acceptedPi = [r0, r1];
-        return true;
-      }
-      return reject('NO_NET_VALUE', [r0, r1], `gain ${gain.toFixed(2)} ≤ equal-importance harm ${equalHarm.toFixed(2)}`);
+      // APPROX: equal-importance harm is also summed over periods (IBM tests net value per donor).
+      if (equalHarm > 0 && gain <= equalHarm) return reject('NO_NET_VALUE', [r0, r1], `gain ${gain.toFixed(2)} ≤ equal-importance harm ${equalHarm.toFixed(2)}`);
+      acceptedPi = [r0, r1];
+      return true;
     });
     // An accepted trial records the receiver's PI pair like a rejected one, so a trace can show what the move bought.
     if (ok) why = { move: '', verdict: 'ACCEPTED', receiverPi: acceptedPi ?? [null, null] };
@@ -293,7 +357,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     outcome: WlmCandidateTrace['outcome'],
     delayShares: WlmDelayShares,
   ): WlmCandidateTrace => {
-    const c = { scKey: k, importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, delayShares, outcome, trials: [] };
+    const c: WlmCandidateTrace = { scKey: k, importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, delayShares, outcome, trials: [] };
     traced.push(c);
     return c;
   };
@@ -335,7 +399,23 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       if (tracing) traceOf(receiver, btl, 'NOT_FIXABLE', sharesOf(receiver));
       continue;
     }
+    // One basis: a receiver whose projected PI at sustained demand is already at or under 1 is recovering by
+    // itself (its management PI is still catching up). No trials, and no use of the projection budget.
+    const b0 = basePis()[receiver];
+    if (b0 == null || b0 <= 1) {
+      notes.push(`${receiver} PI=${pi} BTLNK=${btl} already recovering`);
+      if (tracing) traceOf(receiver, btl, 'RECOVERING', sharesOf(receiver)).basePi = b0 ?? null;
+      continue;
+    }
     const ct = tracing ? traceOf(receiver, btl, 'ASSESSED', sharesOf(receiver)) : null;
+    if (ct) ct.basePi = b0;
+    // A receiver whose backlog the projection bounded, and that is measured far worse than projected (a runaway), is
+    // not raised: the projection cannot show what draining that backlog does to others. Only where the bound cut
+    // something: elsewhere a gap between the PIs is no reason to distrust the projection. APPROX: real WLM's demand
+    // data does not hide a backlog (WLM Services p.144: maximum demand is use with no processor delay); this guards
+    // the sim's bound (docs/wlm-design.md §9.5). A percentile PI stops at 4.0, so a percentile receiver never trips it.
+    const mPi = Math.max(localPi[receiver] ?? 0, input.sysplexPi[receiver] ?? 0);
+    const distrust = mPi > POLICY_ADJUST.projectionTrustMax * b0 && backlogCut(receiver);
     /** The first move tried against this receiver: the clue the log gives when none of them paid off. */
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
     projected++;
@@ -379,7 +459,10 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
 
     for (const tr of trials) {
       why = null;
-      const ok = passes(receiver, tr.trial);
+      const up = !tr.text.startsWith('DONOR ');
+      const ok = up && distrust
+        ? reject('PROJECTION_DISAGREES', [b0, null], `projected PI ${b0.toFixed(2)} vs measured ${mPi.toFixed(2)}`)
+        : passes(receiver, tr.trial);
       if (ct) ct.trials.push({ ...(why ?? { verdict: 'NO_RECEIVER_GAIN' as const }), move: tr.text });
       if (ok) {
         return finish({
@@ -411,6 +494,7 @@ function playerReason(w: WlmTrialTrace): string {
     case 'EQUAL_DISPARITY': return `harms ${name ?? 'equal-importance work'}, equal importance`;
     case 'NO_NET_VALUE': return 'equal-importance harm outweighs the gain';
     case 'CPU_CRITICAL': return 'would breach CPU protection';
+    case 'PROJECTION_DISAGREES': return 'its backlog would take the processor from other work while it catches up';
     default: return 'no net value';
   }
 }

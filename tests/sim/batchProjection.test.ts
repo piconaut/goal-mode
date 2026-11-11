@@ -75,7 +75,9 @@ describe('cross-pool recovery during WLM projections', () => {
     const slices = e.slices.map((s) => s.key === 'fixed' ? { ...s, cpEngines: 2 } : s);
     const evalInput = { ...e, slices };
     const current = evaluateLpar(evalInput);
-    const out = policyAdjust({ def, system, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
+    // WLM projects at sustained demand: the lighter load has to be what the accumulators have seen too.
+    const settled = { ...system, scps: system.scps.map((s) => ({ ...s, acc: decayInto(emptyAcc(), current.scps.find((t) => t.scKey === s.scKey)!) })) };
+    const out = policyAdjust({ def, system: settled, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
     expect(out.dps['BATCHPRD#1']).toBe(244);
   });
 
