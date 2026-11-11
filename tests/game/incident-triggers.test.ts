@@ -43,7 +43,7 @@ describe('incident trigger history', () => {
     const closed = closeHour({ ...fixed.run, sim: { ...fixed.run.sim, tick: hourEnd } }, MIDWEST, MIDWEST_GAME);
     const inc = closed.incidents.find((i) => i.workloadId === 'MOBILE')!;
     expect(inc.startTick).toBe(hourStart);
-    expect(inc.truth).toEqual({ mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' });
+    expect(inc.truth).toMatchObject({ mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' });
     const scored = submitRca(closed, inc.id, 'CPU_PRIORITY', 'DEMAND_SURGE');
     expect(scored.incidents.find((i) => i.id === inc.id)!.rca!.points).toBe(5);
   });
@@ -54,7 +54,7 @@ describe('incident trigger history', () => {
     const closed = advance(run, MIDWEST, content, 1);
     expect(closed.sim.tick).toBe(hourEnd);
     expect(closed.events[0]!.ended).toBe(true);
-    expect(closed.incidents.find((i) => i.workloadId === 'MOBILE')?.truth).toEqual({ mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' });
+    expect(closed.incidents.find((i) => i.workloadId === 'MOBILE')?.truth).toMatchObject({ mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' });
   });
 });
 

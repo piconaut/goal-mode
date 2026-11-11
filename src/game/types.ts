@@ -185,6 +185,20 @@ export interface IncidentSubjects {
   servers: { jobname: string; lparId: string }[];
 }
 
+/** An incident's hidden ground truth: the primary answer, the accepted set, and the cause's identity. */
+export interface IncidentTruth {
+  mechanism: Mechanism;
+  trigger: Trigger;
+  /** Answers a fair expert could defend from visible data, always including the primary (RT-07). Absent in saves
+   * written before RT-07: read it through `acceptedOf` (game/sla.ts), which falls back to the primary alone. */
+  accepted?: { mechanisms: Mechanism[]; triggers: Trigger[] };
+  /** One line per accepted answer that is not the primary, keyed by the answer, for the post-RCA reply. */
+  notes?: Record<string, string>;
+  /** Identity of the cause for grouping (docs/rca-design.md §4.5): the blamed card's `uid`, `new:<workload>`, or
+   * `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. */
+  cause?: string;
+}
+
 export interface Incident {
   id: number;
   workloadId: string;
@@ -193,7 +207,7 @@ export interface Incident {
   endTick: number | null;
   hours: number;
   worstAttainmentPct: number;
-  truth: { mechanism: Mechanism; trigger: Trigger };
+  truth: IncidentTruth;
   /** The capacity figures behind a CPU mechanism verdict, taken when the truth was set (absent for other
    * mechanisms and in old saves). */
   basis?: CapacityBasis;

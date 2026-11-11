@@ -15,6 +15,11 @@ export interface EventDef {
   affects: string[];
   /** Mechanisms the card causes; RCA ground truth blames it only for incidents with one of these (absent = any). */
   mechanisms?: Mechanism[];
+  /** Answers a fair expert could also defend for this card, added to the RCA's accepted set (RT-07). A card that is
+   * both a runaway and a policy decision declares the other trigger here; a card that starves storage also accepts
+   * STORAGE here. Neither changes the primary. */
+  alsoTriggers?: Trigger[];
+  alsoMechanisms?: Mechanism[];
   /** Ground truth for an incident its failures alone caused (the hurt workload's response time met its SLA, its
    * error rate didn't): no delay grows, so the card names the mechanism (e.g. ROUTING for a sick region). */
   failureMechanism?: Mechanism;
@@ -197,6 +202,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     trigger: 'DEMAND_SURGE',
     affects: ['MOBILE'],
     mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    alsoTriggers: ['APPLICATION_ERROR'],
     startHour: [11, 14],
     durationHours: 3, // the card network recovers
     // FICTIONAL magnitude: up to three retries on a 2 s client timeout, ~2.5x the offered mobile load.
@@ -218,6 +224,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     trigger: 'RUNAWAY_WORK',
     affects: ['TELLER', 'PAYMQ'],
     mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    alsoTriggers: ['POLICY'],
     startHour: [8, 16],
     durationHours: 6, // the on-call eventually notices and cancels it
     // A loop in a single-TCB program burns at most one engine (APPROX: exactly ~0.9 reference engines).
@@ -431,6 +438,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     trigger: 'NEW_WORKLOAD',
     affects: ['MOBILE', 'RBANK'],
     mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    alsoTriggers: ['RUNAWAY_WORK'],
     startHour: [8, 11],
     durationHours: 8,
     begin: [mod('cpu', 'TSO', 8)],
@@ -517,6 +525,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     // I/O only: without the mechanism filter this card stole the blame for an unrelated CPU meltdown (textbook seed 7).
     affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
     mechanisms: ['IO'],
+    alsoTriggers: ['POLICY'],
     startHour: [7, 10],
     durationHours: 2.5,
     // FICTIONAL magnitude: 60_000 random I/Os per second on LCU 30 roughly doubles its response at day-0 load. The
@@ -563,6 +572,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     trigger: 'APPLICATION_ERROR',
     affects: ['TELLER', 'RBANK', 'CARDAUTH', 'PAYMQ'],
     mechanisms: ['THREAD_LIMIT'],
+    alsoMechanisms: ['STORAGE'],
     startHour: [9, 14],
     durationHours: 4,
     begin: [

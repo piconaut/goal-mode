@@ -168,7 +168,7 @@ class and program; inbox answers per stream; the batch analysis unlock shows the
 `list: playtest-fixes · status: blocked: balance · priority: low · size: S · area: game`
 
 The player doubted it. Check the grade's inputs and caps against sweep results; the call is the main agent's. Wait
-for RT-07 and RT-13: accepted answer sets and recipe scoring raise RCA scores, which feed the grade.
+for RT-13: recipe scoring raises RCA scores, which feed the grade.
 
 ## rca-truth
 
@@ -184,17 +184,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 `anySubject` image test;
   the replacing entry deletes the interim code path.
-
-### RT-07 · Accepted answers: score an RCA against a set, name the primary
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-Add `truth.accepted { mechanisms, triggers }` (always containing the primary) and `truth.cause`; `scoreRca` and the
-evidence gate use membership; the RCA reply names the primary and "also accepted" with a line each. First sources of
-accepted answers, none of which changes a primary: card-declared `alsoTriggers`/`alsoMechanisms` (table in §4.1), a
-capacity-reducing card adds CPU_CAPACITY, a CPU incident inside the §4.3 bands adds the other side, DEPENDENCY from a
-CPU-starved server adds CPU_PRIORITY, and no-card incidents accept both GROWTH and POLICY. No partial credit for
-the right resource with the wrong refinement (user decision on Q1, 2026-11-10). Bots and bands are unaffected (scoring only). Done when: the playtest D12 answer
-(`CPU_CAPACITY/HARDWARE_FAULT`) scores 5 on R-7's MOBILE incident, old saves load, SPEC §10 and §12 are updated.
 
 ### RT-08 · CAPPING is decided by one capped tick, not by 5 % of the hour
 `list: rca-truth · status: ready · priority: low · size: S · area: game`
@@ -259,9 +248,9 @@ image (R-16's TSO#1 on PROD2) still scores full weight from the image test alone
 discriminator can say whether that class was ahead of the hurt work.
 
 ### RT-13 · Proof recipes: evidence as a discriminating pair
-`list: rca-truth · status: blocked: after RT-05, RT-07, RT-12 · priority: high · size: L · area: game`
+`list: rca-truth · status: blocked: after RT-12 · priority: high · size: L · area: game`
 
-User decision on Q3, 2026-11-10: yes. After RT-05, RT-07, RT-12. Recipes per mechanism and trigger in
+User decision on Q3, 2026-11-10: yes. After RT-12. Recipes per mechanism and trigger in
 `content/evidence.ts` (§4.6 table), judged over the up-to-three attached pins. Every common recipe (CPU family,
 DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) has a path that needs only tier-0/1 tools, so early-game
 players can complete a proof. The CF, DASD and CICS-storage recipes need RT-10 and RT-11: whichever of RT-10, RT-11
@@ -272,12 +261,12 @@ with look-alike pins (surge against regression, capacity against priority), and 
 each common recipe.
 
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: blocked: after RT-00, RT-02, RT-06, RT-07, WT-09, WT-10 · priority: high · size: L · area: game`
+`list: rca-truth · status: blocked: after WT-09, WT-10 · priority: high · size: L · area: game`
 
 Sequencing (user decision 2026-11-10, docs/wlm-design.md §7): footprints are measured on the WLM core of `wlm-truth`
 (WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
 
-User decision on Q5, 2026-11-10: yes. After RT-00, RT-02, RT-06, RT-07. Replace `affects` matching with `footprint { resource, reach, direct }` on every card
+User decision on Q5, 2026-11-10: yes. After WT-09 and WT-10. Replace `affects` matching with `footprint { resource, reach, direct }` on every card
 (§4.4(1)), generalising PT-04's routing-based scope; rank direct before collateral, fresh before background, then
 overlap, and accept both on a tie (no `uid` order); collateral victims accept the card's trigger and the fallback;
 `disturbed` uses the footprint; BATCH is in reach like any workload; SMF_AUDIT gets a footprint. Moves truth
@@ -299,7 +288,7 @@ and `tests/game/groupedRcaEvidence.test.ts` is updated.
 ### RT-16 · CPU split on the host of the delay, by displaceable CPU, with bands
 `list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
 
-After RT-08 and RT-07. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
+After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
 (prove with `npm run compare --drop`); judge on the host with the most excess, on the pool that queued (zIIP);
 displaceable CP instead of lower-importance CP; bands from `content/incidents.ts`; CAPPING also for a resource-group
 maximum on the class or its server, with `DELAY_CAP` as its evidence (RMF Report Analysis p.540); the basis and
@@ -369,7 +358,7 @@ REFSTAT_BACKOFF are not gated by RT-24.
 ### RT-24 · D1: targeted fixes unlocked by proof
 `list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
 
-After RT-07, RT-13, RT-14, RT-22 (and PT-20's design call, made with this one). Q8 is split (user, 2026-11-10):
+After RT-13, RT-14, RT-22 (and PT-20's design call, made with this one). Q8 is split (user, 2026-11-10):
 Q8a decides problem records (RT-22), Q8b the gating itself, including whether arming a forewarned fix needs proof. Per-card unlock claims and recipes (§5.2) in content;
 `visibleFixIds`/`armableEvents` require a filed diagnosis with a complete recipe; costs and limits of §5.4; hint
 ladder of §5.5 with difficulty and Mentor; strategy bots diagnose from report data before fixing (§5.7). Balance: a

@@ -66,7 +66,7 @@ describe('new-workload incident window', () => {
 
   it.each([0, windowTicks - TICKS_PER_HOUR, windowTicks, windowTicks + TICKS_PER_DAY])(
     'uses the scripted go-live age at offset %i, including the exact expiry boundary', (age) => {
-      expect(truth(breach(ACQUIRED_APP, storyStart + age))).toEqual({
+      expect(truth(breach(ACQUIRED_APP, storyStart + age))).toMatchObject({
         mechanism: 'CPU_PRIORITY', trigger: age < windowTicks ? 'NEW_WORKLOAD' : 'POLICY',
       });
     },
