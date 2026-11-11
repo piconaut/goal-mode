@@ -80,8 +80,10 @@ in the browser and `play finance`.
 `list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
 
 CPC lists CP rows only. Real Monitor III CPC has per-type groups with *CP / *ICF / *IIP and PHYSICAL lines (RMF Report
-Analysis p.97–98; check the Monitor III CPC page with zos-docs). RT-05 adds pins on the CPC rows: whichever lands
-second keeps the pin controls on the new layout. Done when: the browser and `play mon3 CPC` show the groups.
+Analysis p.97–98; check the Monitor III CPC page with zos-docs). RT-05 (#279) put pins on the CPC view: `CPC_BUSY` on
+the *CP Physical Total, `CAPACITY_ADJ` under the header table, and since the single-table layout `LPAR_BUSY` on
+Logical Util % Total, `PRSM_DELAY` and `CAPPED` on their own columns of the partition rows. Keep every pin control on
+the new layout. Done when: the browser and `play mon3 CPC` show the groups.
 
 ### PT-15 · Monitor III charts: choose which charts to show, fix CP busy labels, add CPU by service class
 `list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
@@ -778,3 +780,17 @@ other two, and its PR doesn't record them as dropped.
 Done when: bench hashes unchanged for Midwest, Harbourline and Revenue (`npm run bench -- --hash`); `npm run compare
 -- --base origin/dev` reports no differences; `npm run check` green; the profile numbers (and timing pairs, if code
 changed) in the PR and docs/headless-performance-options.md.
+
+### CL-08 · `play mon3` CPC table: same columns as the browser's CPC view
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: the single-table Monitor III CPC view (2026-11-11). The browser now shows one partition table (MSU Def/Act,
+Proc Num, Logical Util % Effect/Total, Physical Util % LPAR/Effect/Total, PR/SM delay %, capped %) and dropped the
+old second table (weight, polarity, busy %). `mon3Text` (`tools/playCore.ts`) still prints the CPC section as
+`table(cpc)`, every `Mon3Cpc` field: `busyPct` (same formula as `logicalTotalPct`), `logical` (same as `procNum`),
+`weight`, `polarity`, `overheadPct`, `capacityAdjPct`, `kind`, `cpcId`. Print the browser's columns with RMF-style
+headers (*CP / *ICF group rows as in `src/ui/monitor/Cpc.tsx`), plus the capacity-adjusted line once per CPC; say in
+the section heading which pin each column takes (`pin CPC <lpar> LPAR_BUSY|PRSM_DELAY|CAPPED`, `CPC_BUSY`,
+`CAPACITY_ADJ`). Leave `--json`, `mon3PastText` (the pin-history dump) and the `Mon3Cpc` view model unchanged:
+agents and pins read `busyPct` there. Weight and polarity stay in `play capacity`. Done when: `play mon3` and `play
+mon3 PROD1` show the new CPC section, `--json` output is unchanged, and the docs/agents.md example (if any) matches.

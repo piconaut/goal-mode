@@ -463,6 +463,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-11: Monitor III CPC view is one partition table (user request). The lower table's busy % had the same
+  formula as Logical Util % Total; weight and polarity are on the Change Desk. Its `LPAR_BUSY` pin moved to Logical
+  Util % Total and PR/SM delay % (pinned) and capped % joined the partition rows. UI only: the `Mon3Cpc` view model,
+  pin requests and RT-05 judging are unchanged. `play mon3`'s CPC section is BACKLOG CL-08.
 - 2026-11-10: WT-04 prototyped on branch `proto/wlm-wt04` (no PR, not merged; WT-04 stays
   open): docs/wlm-design.md §9. `npm run check` passes there (851 tests, goldens regenerated); `npm run compare`
   differs in all three scenarios as intended; Midwest seeds 1–5 sweep ends every run on the same day and cause as
