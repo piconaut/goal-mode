@@ -136,15 +136,15 @@ export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: read
   )?.failureMechanism ?? null;
 }
 
-export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
-  const startTick = hour.hourIndex * TICKS_PER_HOUR;
+export function blamedCard(events: readonly ActiveEvent[], workloadId: string, mechanism: Mechanism, hourIndex: number): ActiveEvent | undefined {
+  const startTick = hourIndex * TICKS_PER_HOUR;
   const endTick = startTick + TICKS_PER_HOUR;
   // A fix or natural expiry before hour close must not erase the card that caused the breach.
   const overlapTicks = (e: ActiveEvent) => Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick);
   const activeAtClose = (e: ActiveEvent) => e.endTick === null || e.endTick > endTick;
   // A card active in a save written before RT-02 carries no `mechanisms`; treat that as "any mechanism" so the
   // old save keeps its previous blame until the card ends (new cards always declare the list, RT-02).
-  const ev = events.filter((e) =>
+  return events.filter((e) =>
     e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
     (e.trigger !== 'NEW_WORKLOAD' || startTick < e.startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY) &&
     e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)),
@@ -152,6 +152,11 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
     Number(activeAtClose(b)) - Number(activeAtClose(a)) || overlapTicks(b) - overlapTicks(a) ||
     (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0),
   )[0];
+}
+
+export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
+  // The card the hour's truth blames, if any (the counterfactual validator reads the same choice, RT-06).
+  const ev = blamedCard(events, workloadId, mechanism, hour.hourIndex);
   if (ev) return ev.trigger;
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;

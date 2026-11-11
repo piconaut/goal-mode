@@ -628,8 +628,9 @@ rule with the change as the "card".
   opening hour from a kept state with one card's `end` commands applied at the hour start, and call the card a cause
   iff the SLA would then have been met. That is exact (it would have decided every row of §2 without footprints),
   but costs an hour of sim (360 ticks) per qualifying card per incident, in the worker, against the 4 ms tick budget,
-  and slows sweeps. Not recommended now. It is a good offline **validator**: a headless tool that replays incidents
-  both ways and reports where footprint attribution and the counterfactual disagree would keep the footprints honest.
+  and slows sweeps. Not recommended now. It is a good offline **validator** (built as RT-06:
+  `npm run inspect -- <file> blame`): a headless tool that replays incidents both ways and reports where footprint
+  attribution and the counterfactual disagree would keep the footprints honest.
 
 ## 5. D1 on top of it: fixes unlocked by proof
 
