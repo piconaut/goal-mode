@@ -22,7 +22,7 @@ export function demandUplift(
 ): Record<string, number> {
   const arrive: Record<string, number> = {};
   for (const s of slices) {
-    if (fixedKeys?.has(s.key)) continue;
+    if (s.fixedDemand || fixedKeys?.has(s.key)) continue;
     arrive[s.scKey] = (arrive[s.scKey] ?? 0) + s.cpEngines + s.ziipEngines;
   }
   const out: Record<string, number> = {};
@@ -48,7 +48,7 @@ export function projectionInput<T extends Omit<LparEvalInput, 'dpOf'>>(input: T,
   let ziipBacklog: Record<string, number> | null = null;
   for (let i = 0; i < input.slices.length; i++) {
     const s = input.slices[i]!;
-    const f = fixedKeys?.has(s.key) ? 1 : (uplift[s.scKey] ?? 1);
+    const f = s.fixedDemand || fixedKeys?.has(s.key) ? 1 : (uplift[s.scKey] ?? 1);
     if (f !== 1) {
       slices ??= [...input.slices];
       slices[i] = { ...s, rate: s.rate * f, cpEngines: s.cpEngines * f, ziipEngines: s.ziipEngines * f, ioRate: s.ioRate * f };

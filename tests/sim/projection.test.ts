@@ -1,5 +1,5 @@
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
-import { sliceSpec } from '../../src/sim/wlm/evaluate';
+import { evaluateLpar, sliceSpec } from '../../src/sim/wlm/evaluate';
 import { demandUplift, projectionInput } from '../../src/sim/wlm/projection';
 import { ACC_DECAY, decayInto, emptyAcc, type ScpState } from '../../src/sim/wlm/runtime';
 import type { ScpTick } from '../../src/sim/wlm/evaluate';
@@ -70,4 +70,21 @@ describe('WLM projection input: sustained demand (docs/wlm-design.md §5.4)', ()
     expect(quiet.ziipEngines).toBeCloseTo(first.ziipEngines! * ACC_DECAY, 9);
     expect(quiet.demandCp).toBeCloseTo(first.demandCp! * ACC_DECAY, 9);
   });
+
+  it('never lifts a running batch slice on any image, and keeps it out of sustained demand (no zIIP needed)', () => {
+    // A batch job's slice carries `fixedDemand`; a CP-only image passes no batch recovery list.
+    const job = sliceSpec({ key: 'BATCH:X#1@P', scKey: 'X#1', kind: 'AS', cpEngines: 1, fixedDemand: true });
+    const as = sliceSpec({ key: 'x', scKey: 'X#1', kind: 'AS', cpEngines: 1 });
+    // The period's smoothed demand has 3 engines of non-batch work (the job is not in it).
+    const p = projectionInput({ ...base([]), ziipCapacityEngines: 0, ziipServers: 0, slices: [job, as] }, [scp('X#1', 3)], POLICY_ADJUST);
+    expect(p.slices[0]).toBe(job);
+    expect(p.slices[1]!.cpEngines).toBeCloseTo(POLICY_ADJUST.demandUpliftMax, 9);
+    // At rest the accounting's demand is the non-batch work only, so nothing is lifted.
+    const tick = evaluateLpar({ ...base([]), ziipCapacityEngines: 0, ziipServers: 0, slices: [{ ...job, cpEngines: 3 }, as], dpOf: () => 240 }).scps[0]!;
+    expect(tick.demandCp).toBeCloseTo(1, 9);
+    const settled: ScpState = { scKey: 'X#1', dp: 240, starvedSec: 0, acc: decayInto(emptyAcc(), tick) };
+    const rest = projectionInput({ ...base([]), ziipCapacityEngines: 0, ziipServers: 0, slices: [{ ...job, cpEngines: 3 }, as] }, [settled], POLICY_ADJUST);
+    expect(rest.slices.map((x) => x.cpEngines)).toEqual([3, 1]);
+  });
 });
+

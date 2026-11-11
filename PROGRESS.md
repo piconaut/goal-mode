@@ -484,6 +484,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   1.40 ms). RT-06 validator: S-1 … S-3 same incidents, triggers and verdicts (hour attainment only); Midwest seed 2's
   runaway now breaks MOBILE from D2 17:00, not 14:00, and CARDAUTH misses with it through Db2 (no card names it:
   RT-14). Sweep in M8.2. User request 2026-11-11: WT-04 … WT-09 in one attended session, one PR each, in order.
+  Review fixes (#295): the backlog bound hid a runaway on Midwest seed 2, so a receiver measured over 4× its `base`
+  is not raised (`projectionTrustMax`; measured against projecting its whole backlog, docs/wlm-design.md §9.5);
+  running batch jobs are exact on every image and left out of sustained demand; `usedEngines` counts smoothed zIIP
+  use. Seed 2 has no D2 incident now; the RT-06 tests moved to seed 3 (MOBILE, D2 13:00, RUNAWAY@1).
 
 - 2026-11-11: WT-03 (docs only): SPEC §5.4 now says every discretionary period runs at DP 196 and small consumers
   and mean-time-to-wait are not modelled; §5.5.3 describes the sysplex PI as summed accumulators, the PI window as

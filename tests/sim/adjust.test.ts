@@ -1,3 +1,4 @@
+import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { enforceCpuProtection, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
@@ -380,5 +381,79 @@ describe('long-term CPU protection is enforced, not a reason to stop managing (W
     expect(out.protect).toBe('T SYS1 CPU PROTECTION BATCHPRD#1 DP FB→F3');
     expect(out.dps['BATCHPRD#1']!).toBeLessThan(out.dps['ONLCARD#1']!);
     expect(out.log ?? '').not.toContain('no action with net value');
+  });
+});
+
+describe('the missing-goal rule counts smoothed zIIP use (docs/wlm-design.md §5.3)', () => {
+  it('a less important receiver is not raised past a quiet zIIP class that is missing its goal', () => {
+    const def = structuredClone(BASEPOL);
+    const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+    const cls = (id: string, velocity: number, importance: 1 | 4) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
+    def.classes.push(cls('ZA', 50, 1), cls('BLO', 90, 4));
+    const slices = [
+      sliceSpec({ key: 'za', scKey: 'ZA#1', kind: 'AS', ziipEngines: 0.001, units: 2 }),
+      sliceSpec({ key: 'blo', scKey: 'BLO#1', kind: 'AS', cpEngines: 3, units: 8 }),
+    ];
+    const evalInput = { cpCapacityEngines: 2, cpServers: 2, ziipCapacityEngines: 2, ziipServers: 2, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = { 'ZA#1': 0xf0, 'BLO#1': 0xe6 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = {
+      lparId: 'SYS1',
+      scps: cur.scps.map((t) => {
+        const acc = decayInto(emptyAcc(), t);
+        // ZA has used a whole zIIP for a minute and is quiet only this tick.
+        return { scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: t.scKey === 'ZA#1' ? { ...acc, ziipEngines: 1 / (1 - 0.85) } : acc };
+      }),
+    };
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: { 'ZA#1': 1.5 }, clockText: 'T' });
+    } finally {
+      setWlmTraceSink(null);
+    }
+    const blo = traces[0]!.candidates.find((c) => c.scKey === 'BLO#1')!;
+    const past = blo.trials.filter((t) => /BLO#1 DP E6→F[0-9A-F]/.test(t.move) && parseInt(t.move.slice(-2), 16) >= 0xf0);
+    expect(past.length).toBeGreaterThan(0);
+    for (const t of past) {
+      expect(t.verdict).toBe('MORE_IMPORTANT_HARMED');
+      expect(t.detail).toContain('ZA#1');
+    }
+  });
+});
+
+describe('a receiver measured far worse than projected is not raised (projectionTrustMax, docs/wlm-design.md §9.5)', () => {
+  it('rejects its receiver-up moves as PROJECTION_DISAGREES and still tries donors', () => {
+    // Midwest seed 2's shape: a runaway (importance 4) whose management PI is 56.6 while the projection, with its
+    // backlog bounded, puts it at 1.15. Here: a velocity class with a smoothed PI far above what this tick projects.
+    const def = structuredClone(BASEPOL);
+    const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+    const cls = (id: string, velocity: number, importance: 2 | 4 | 5) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
+    def.classes.push(cls('RUN', 50, 4), cls('BAT', 10, 5));
+    const slices = [
+      sliceSpec({ key: 'run', scKey: 'RUN#1', kind: 'AS', cpEngines: 2, units: 8 }),
+      sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
+    ];
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = { 'RUN#1': 0xe6, 'BAT#1': 0xf0 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const run = (plex: number) => {
+      const traces: WlmAdjustTrace[] = [];
+      setWlmTraceSink((t) => traces.push(t));
+      try {
+        policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: { 'RUN#1': plex }, clockText: 'T' });
+      } finally {
+        setWlmTraceSink(null);
+      }
+      return traces[0]!.candidates.find((c) => c.scKey === 'RUN#1')!;
+    };
+    const ok = run(1.5);
+    expect(ok.trials.some((t) => t.verdict === 'PROJECTION_DISAGREES')).toBe(false);
+    const far = run(ok.basePi! * POLICY_ADJUST.projectionTrustMax + 1);
+    const up = far.trials.filter((t) => !t.move.startsWith('DONOR '));
+    expect(up.length).toBeGreaterThan(0);
+    for (const t of up) expect(t.verdict).toBe('PROJECTION_DISAGREES');
+    expect(far.trials.some((t) => t.move.startsWith('DONOR ') && t.verdict !== 'PROJECTION_DISAGREES')).toBe(true);
   });
 });

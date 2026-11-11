@@ -71,6 +71,9 @@ export interface SliceSpec {
   /** Dispatchable units able to run this work (TCBs/SRBs, batch jobs): its weight against other work at the
    * same DP. 0 or absent: at least one for an address space; for transactions one per engine of new work. */
   units?: number;
+  /** Running batch jobs: demand is discrete and already exact, so WLM's projections never lift it and its sustained
+   * demand (`ScpAcc.demandCp`) leaves it out. */
+  fixedDemand?: boolean;
 }
 
 /** Builds a slice with every field present in one fixed order, so all slices share one hidden
@@ -106,6 +109,7 @@ export function sliceSpec(p: Pick<SliceSpec, 'key' | 'scKey' | 'kind'> & Partial
     mqQueueFrac: p.mqQueueFrac,
     maxQueueMsgs: p.maxQueueMsgs,
     units: p.units ?? 0,
+    fixedDemand: p.fixedDemand ?? false,
   };
 }
 

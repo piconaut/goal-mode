@@ -61,7 +61,8 @@ export type WlmTrialVerdict =
   | 'SMALL_GAIN' // improves by less than the receiver value threshold
   | 'MORE_IMPORTANT_HARMED' // a more important period would be pushed past its goal
   | 'EQUAL_DISPARITY' // an equal-importance period is harmed and the PIs don't get closer
-  | 'NO_NET_VALUE'; // equal-importance harm outweighs the receiver's gain
+  | 'NO_NET_VALUE' // equal-importance harm outweighs the receiver's gain
+  | 'PROJECTION_DISAGREES'; // a receiver-up move for a receiver measured far worse than projected (projectionTrustMax)
 
 export interface WlmTrialTrace {
   move: string;
@@ -200,8 +201,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   let projectBase: LparEvalInput | null = null;
   const projectionBase = (): LparEvalInput => {
     if (projectBase) return projectBase;
-    const fixed = input.batch && input.batch.length > 0 ? new Set(input.batch.map((b) => b.key)) : undefined;
-    const P = projectionInput(input.evalInput, system.scps, POLICY_ADJUST, fixed);
+    // Running batch slices carry `fixedDemand` on every image, with or without zIIPs.
+    const P = projectionInput(input.evalInput, system.scps, POLICY_ADJUST);
     return (projectBase = {
       ...P,
       dpOf: (k) => dps[k] ?? 196,
@@ -234,13 +235,14 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     return null;
   };
 
-  /** Processor use of a period, engines: the larger of this tick and the smoothed accumulator (CP and zIIP). */
+  /** Processor use of a period, engines: the larger of this tick and the smoothed accumulators (CP, IIPCP and zIIP). */
   const accOf: Record<string, ScpState> = {};
   for (const s of system.scps) accOf[s.scKey] = s;
   const usedEngines = (k: string): number => {
     const t = tickOf[k];
     const now = t ? t.cpEngines + t.iipcpEngines + t.ziipEngines : 0;
-    return Math.max(now, (accOf[k]?.acc.cpuEngines ?? 0) * (1 - ACC_DECAY));
+    const acc = accOf[k]?.acc;
+    return Math.max(now, ((acc?.cpuEngines ?? 0) + (acc?.ziipEngines ?? 0)) * (1 - ACC_DECAY));
   };
   const tracing = traceSink !== null;
   let why: WlmTrialTrace | null = null;
@@ -397,6 +399,11 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     }
     const ct = tracing ? traceOf(receiver, btl, 'ASSESSED', sharesOf(receiver)) : null;
     if (ct) ct.basePi = b0;
+    // A receiver measured far worse than projected (a runaway whose backlog the projection bounds) is not raised:
+    // the projection cannot show what draining that backlog does to others. APPROX: real WLM's demand data does
+    // not hide a backlog; this guards the sim's bound (docs/wlm-design.md §9.5).
+    const mPi = Math.max(localPi[receiver] ?? 0, input.sysplexPi[receiver] ?? 0);
+    const distrust = mPi > POLICY_ADJUST.projectionTrustMax * b0;
     /** The first move tried against this receiver: the clue the log gives when none of them paid off. */
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
     projected++;
@@ -440,7 +447,10 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
 
     for (const tr of trials) {
       why = null;
-      const ok = passes(receiver, tr.trial);
+      const up = !tr.text.startsWith('DONOR ');
+      const ok = up && distrust
+        ? reject('PROJECTION_DISAGREES', [b0, null], `projected PI ${b0.toFixed(2)} vs measured ${mPi.toFixed(2)}`)
+        : passes(receiver, tr.trial);
       if (ct) ct.trials.push({ ...(why ?? { verdict: 'NO_RECEIVER_GAIN' as const }), move: tr.text });
       if (ok) {
         return finish({
@@ -472,6 +482,7 @@ function playerReason(w: WlmTrialTrace): string {
     case 'EQUAL_DISPARITY': return `harms ${name ?? 'equal-importance work'}, equal importance`;
     case 'NO_NET_VALUE': return 'equal-importance harm outweighs the gain';
     case 'CPU_CRITICAL': return 'would breach CPU protection';
+    case 'PROJECTION_DISAGREES': return 'too far behind to project the effect on other work';
     default: return 'no net value';
   }
 }

@@ -175,6 +175,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
         slice: sliceSpec({
           key: `BATCH:${refKey}@${l.id}`,
           scKey,
+          fixedDemand: true,
           reportClass: cls.reportClass,
           kind: 'AS',
           workloadId: null,

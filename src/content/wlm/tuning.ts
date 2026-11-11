@@ -72,6 +72,11 @@ export const POLICY_ADJUST = {
   // FICTIONAL: work that has fallen behind is projected to want up to (1 + this) × its sustained demand, not its
   // whole backlog in one interval.
   backlogBoostFrac: 0.5,
+  // FICTIONAL: a receiver is not raised while its management PI exceeds this multiple of its projected `base`. A
+  // projection that far below what is measured (a runaway whose backlog the bound above hides: 56.6 against 1.15)
+  // cannot show what draining that backlog does to others. Shape: rare; only work far behind is affected, and it
+  // can still be helped by a donor move. Measured against projecting its whole backlog (docs/wlm-design.md §9.5).
+  projectionTrustMax: 4,
 };
 
 // FICTIONAL: how many fixable receivers the search assesses at one importance before going on to the next.

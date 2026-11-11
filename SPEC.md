@@ -508,7 +508,10 @@ criterion…"); the sim chooses receivers on it and judges a change on projectio
 period's maximum and achievable demand, taken from sampled history (WLM Services p.144). The sim projects with this
 tick's evaluation input, adjusted so one quiet tick or one burst does not decide: a period whose arriving demand this tick is under its smoothed demand (`ScpAcc.demandCp`, `demandZi`) is lifted to it, at most `demandUpliftMax` times (never lowered: a rising load is believed at once), and a transaction backlog adds at most `backlogBoostFrac` of the slice's sustained demand instead of draining whole in one interval. Both were measured apart (docs/wlm-design.md §9.5): without the uplift Midwest's moves undone within two minutes go from 0 to 17; without the bound Harbourline's go from 4 to 12. Caps, I/O,
 paging, promotion, capacity and transaction timeouts stay as this tick (a projection without the timeout gives a
-response-time PI no upper scale; docs/wlm-design.md §9.4 point 3). APPROX.
+response-time PI no upper scale; docs/wlm-design.md §9.4 point 3). APPROX. Running batch jobs
+(`SliceSpec.fixedDemand`) are exact: never lifted, and left out of the sustained demand they would be compared with.
+The bound can hide a runaway's backlog, so a receiver whose management PI is over `projectionTrustMax` (4) times its
+`base` is not raised (`PROJECTION_DISAGREES`; donor moves are still tried; §9.5).
 
 ```
 for importance in 1..5:

@@ -1367,3 +1367,22 @@ both jobs, and Revenue is close either way. The "both" row reproduces the protot
 by the committed verb's rule, 7 by the prototype's harness). `wlm-stats` gained the two counters this needed:
 candidates `RECOVERING`, and reversals within two minutes (12 adjustments of the same system).
 
+**Review of #295 (B1): the bound hid a runaway.** On Midwest seed 2 (D2 17:03–17:15) WLM raised the runaway
+DDFPRD#2 (importance 4, management PI 56.6) past DDFPRD#1 three times: with its backlog bounded the projection put
+it at 1.15 → 0.72 and showed no harm, while draining the real backlog put DDFPRD#1 and ONLHI#1 at 4.0 ten seconds
+later. Two fixes were measured side by side (same cells as above; "seed 2" is Midwest seed 2, D1 06:00 to D2 18:00):
+
+| Variant | S-1 | S-2 | S-3 | Seed 2 | Seed 2 incidents D2 17:00 |
+|---|---|---|---|---|---|
+| neither | 19; 4 / 0; 5 | 26; 12 / 1; 5 | 79; 23 / 4; 11 | 30; 11 / 4; 6 | MOBILE, CARDAUTH |
+| 1: the receiver's own backlog projected whole | 19; 4 / 0; 5 | 22; 8 / 1; 4 | 85; 29 / **12**; 16 | 22; 7 / 2; 5 | none |
+| 3: no raise while management PI > 4 × `base` | 19; 4 / 0; 5 | 26; 12 / 1; 6 | 81; 23 / 4; 11 | **20; 5 / 1; 5** | none |
+| both | as 1 | as 1 | as 1 | as 1 | none |
+
+Fix 1 is "no bound" for every backlogged receiver and brings back Harbourline's flip-flop; fix 3 removes the seed-2
+moves and leaves S-1 … S-3 as they were. Fix 3 landed (`projectionTrustMax`, verdict `PROJECTION_DISAGREES`).
+Seed 2 now has no incident on D2 at all (on `dev` MOBILE missed from 14:00), so the RT-06 tests moved to seed 3,
+whose runaway still breaks MOBILE at D2 13:00. The same review made running batch jobs exact on images without
+zIIPs (they were lifted there), kept them out of the sustained demand, and counted smoothed zIIP use in
+`usedEngines`; the "neither" row includes those.
+

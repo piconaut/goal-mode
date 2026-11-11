@@ -166,7 +166,8 @@ export interface WlmStatsCounters {
   /** Accepted trials that raised the receiver, and those that lowered a donor. */
   acceptedReceiverUp: number;
   acceptedDonor: number;
-  /** Rejected trials whose receiver's own-tick PI (the before value the trial was judged on) was ≤ 0.9 … */
+  /** Rejected trials whose receiver's before PI (the value the trial was judged on: its projected `base` since WT-04,
+   * so 0 by construction; this tick's own PI before) was ≤ 0.9 … */
   rejectedPiUnder09: number;
   /** … or null (no PI measured for it this tick). */
   rejectedPiNull: number;
@@ -193,11 +194,11 @@ export interface WlmStats {
 
 const emptyCounters = (): WlmStatsCounters => ({
   adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, OTHER: 0, CAP: 0, NONE: 0 }, budget: 0, recovering: 0, trials: 0,
-  verdicts: { ACCEPTED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0 },
+  verdicts: { ACCEPTED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
   acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, episodes: 0,
 });
 
-const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE'];
+const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE', 'PROJECTION_DISAGREES'];
 
 const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounters['notFixable'] => {
   switch (b) {
@@ -393,8 +394,8 @@ export function statsText(stats: WlmStats): string {
     ]),
     ['accepted: receiver up', [...stats.systems.map((s) => s.counters.acceptedReceiverUp), stats.total.acceptedReceiverUp]],
     ['accepted: donor down', [...stats.systems.map((s) => s.counters.acceptedDonor), stats.total.acceptedDonor]],
-    ['rejected, receiver own-tick PI ≤ 0.9', [...stats.systems.map((s) => s.counters.rejectedPiUnder09), stats.total.rejectedPiUnder09]],
-    ['rejected, receiver own-tick PI null', [...stats.systems.map((s) => s.counters.rejectedPiNull), stats.total.rejectedPiNull]],
+    ['rejected, receiver before PI (base) ≤ 0.9', [...stats.systems.map((s) => s.counters.rejectedPiUnder09), stats.total.rejectedPiUnder09]],
+    ['rejected, receiver before PI (base) null', [...stats.systems.map((s) => s.counters.rejectedPiNull), stats.total.rejectedPiNull]],
     ["moves reversed by the period's next move", [...stats.systems.map((s) => s.counters.reversed), stats.total.reversed]],
     ['  … within two minutes', [...stats.systems.map((s) => s.counters.reversedWithin2Min), stats.total.reversedWithin2Min]],
     ['assessed on 30 adjustments without a move (episodes)', [...stats.systems.map((s) => s.counters.episodes), stats.total.episodes]],

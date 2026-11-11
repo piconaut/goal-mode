@@ -54,8 +54,11 @@ export function periodTicks(
     const t = scps[scpOfAgg[sliceAgg[i]!]!]!;
     const untracked = reg !== undefined && reg.rtTracked === false && s.kind === 'TXN' && reg.keys.includes(s.scKey);
     addSliceTo(t, s, r, bucketsFor === undefined || bucketsFor.has(s.scKey), !untracked);
-    t.demandCp = (t.demandCp ?? 0) + s.cpEngines;
-    t.demandZi = (t.demandZi ?? 0) + s.ziipEngines;
+    // Sustained demand is of the work projections lift: running batch jobs are exact and left out of both sides.
+    if (!s.fixedDemand) {
+      t.demandCp = (t.demandCp ?? 0) + s.cpEngines;
+      t.demandZi = (t.demandZi ?? 0) + s.ziipEngines;
+    }
     if (cicsTxn) tagCicsSlice(t, s, r, cics.regionKeys, !untracked, managedToTxn);
     if (order[sliceAgg[i]!] !== s.scKey) {
       // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).

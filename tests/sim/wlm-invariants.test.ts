@@ -1,5 +1,6 @@
 // Invariants of WLM policy adjustment (docs/wlm-design.md §5.9), as property tests over generated images.
-// This file holds the ones the PI-basis change (WT-04) is responsible for: I1, I4, I8, I17.
+// This file holds the ones the PI-basis change (WT-04) is responsible for: I1, I4, I8, I17. Some generated images
+// have a CPU-critical class, so CPU protection and the CPU_CRITICAL verdict are reached too.
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { PCT_PROJECTION_SIGMA, POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { Rng, seedRng } from '../../src/sim/core/rng';
@@ -50,6 +51,12 @@ function makeCase(seed: number, history: 'rest' | 'varied'): Case {
       slices.push(sliceSpec({ key: `a${i}`, scKey: key, kind: 'AS', cpEngines: cp, units: int(1, 8) }));
     }
   }
+  // Drawn after every other value, so the rest of the case is the same as before this was added: some images have a
+  // CPU-critical class, so the CPU_CRITICAL verdict is reached too.
+  if (u() < 0.5) {
+    const critical = `G${String(int(0, n - 1)).padStart(2, '0')}`;
+    def.classes.find((c) => c.id === critical)!.cpuCritical = true;
+  }
   const evalInput = { cpCapacityEngines: engines, cpServers: engines, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog, io: IO, pagingFrac: 0 };
   const dpOf = (k: string) => dps[k]!;
   const accs: Record<string, ScpAcc> = {};
@@ -82,6 +89,7 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
   it('I8 one basis: no trial for a receiver whose projected PI is ≤ 1, and every verdict compares base with after', () => {
     let assessed = 0;
     let recovering = 0;
+    let cpuCritical = 0;
     for (const seed of SEEDS) {
       const { trace } = traced(makeCase(seed, 'varied').input);
       for (const c of trace.candidates) {
@@ -93,9 +101,16 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
         if (c.outcome !== 'ASSESSED') continue;
         assessed++;
         expect(c.basePi).toBeGreaterThan(1);
-        for (const t of c.trials) if (t.receiverPi) expect(t.receiverPi[0]).toBe(c.basePi);
+        for (const t of c.trials) {
+          if (t.receiverPi) expect(t.receiverPi[0]).toBe(c.basePi);
+          if (t.verdict === 'CPU_CRITICAL') {
+            cpuCritical++;
+            expect(t.receiverPi).toEqual([c.basePi, null]);
+          }
+        }
       }
     }
+    expect(cpuCritical).toBeGreaterThan(0);
     // The generator has to reach both branches for the property to mean anything.
     expect(assessed).toBeGreaterThan(50);
     expect(recovering).toBeGreaterThan(5);
@@ -124,6 +139,8 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     for (const seed of SEEDS) {
       const { def, input } = makeCase(seed, 'rest');
       const { trace } = traced(input);
+      // Restored CPU protection moves DPs before `base` is projected, so this tick ran at other DPs.
+      if (trace.protection.length > 0) continue;
       const tickOf: Record<string, ScpTick> = {};
       for (const t of input.current) tickOf[t.scKey] = t;
       for (const c of trace.candidates) {

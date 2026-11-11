@@ -16,6 +16,7 @@ import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
+import { setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
 
@@ -1022,28 +1023,37 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
   // 4.0, but WLM's projection must still see the gain of a DP move, and the wait for its own regions is CPU delay.
   // ONLHI already ties with its regions and Db2 in STCHI, and equal-DP work shares by ready units, so the light
   // region and Db2 work keeps its CPU: lifting ONLHI over them would only starve the servers it waits for.
-  it('ONLHI stays CPU-bound on PROD1 once capped, and WLM helps the next receiver past PI 4.0', () => {
+  it('ONLHI stays CPU-bound on PROD1 once capped, and nothing less important is raised past it', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
     const lines: string[] = [];
-    for (let t = 0; t < 10 * 360 && !lines.some((l) => /RCVR=/.test(l)); t++) {
-      const prev = s.wlm.log;
-      s = step(s, [], MIDWEST);
-      if (s.wlm.log === prev) continue;
-      const last = prev[prev.length - 1];
-      const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
-      for (const l of s.wlm.log.slice(from)) if (/ 1\d:\d\d:\d\d PROD1 /.test(l)) lines.push(l);
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => { if (t.lparId === 'PROD1' && / 1\d:\d\d:\d\d$/.test(t.clockText)) traces.push(t); });
+    try {
+      for (let t = 0; t < 10 * 360; t++) {
+        const prev = s.wlm.log;
+        s = step(s, [], MIDWEST);
+        if (s.wlm.log === prev) continue;
+        const last = prev[prev.length - 1];
+        const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
+        for (const l of s.wlm.log.slice(from)) if (/ 1\d:\d\d:\d\d PROD1 /.test(l)) lines.push(l);
+      }
+    } finally {
+      setWlmTraceSink(null);
     }
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
     expect(lines.some((l) => /ONLHI#1 .*BTLNK=OTHER/.test(l))).toBe(false);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
     // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
     // Under the cap every less important receiver would have to pass more important work that is missing its goal
-    // and using CPU, which WLM never does (docs/wlm-design.md §9.4), so there may be no move at all; one that is
-    // made is a CPU fix with a DP move.
-    const first = lines.find((l) => /RCVR=/.test(l));
-    if (first !== undefined) expect(first).toMatch(/RCVR=\S+ PI=[\d.]+ BTLNK=CPU (?:DONOR )?\S+ DP /);
+    // and using CPU, which WLM never does (docs/wlm-design.md §9.4 point 5, user decision 2026-11-10): those
+    // receivers are assessed, their raises are refused for that reason, and no move is made from 10:00 to 16:00.
+    expect(lines.some((l) => /RCVR=/.test(l))).toBe(false);
+    const passed = traces.flatMap((t) => t.candidates.filter((c) => c.importance > 1).flatMap((c) => c.trials))
+      .filter((tr) => tr.verdict === 'MORE_IMPORTANT_HARMED' && /missing its goal and would be passed/.test(tr.detail ?? ''));
+    expect(passed.length).toBeGreaterThan(0);
+    expect(traces.flatMap((t) => t.candidates.flatMap((c) => c.trials)).some((tr) => tr.verdict === 'ACCEPTED')).toBe(false);
   }, 180_000);
 });
 

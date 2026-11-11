@@ -53,11 +53,11 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(stats.total.recovering).toBe(1);
     expect(stats.total.trials).toBe(7);
     expect(stats.total.verdicts).toEqual({
-      ACCEPTED: 3, CPU_CRITICAL: 1, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 1, MORE_IMPORTANT_HARMED: 1, EQUAL_DISPARITY: 0, NO_NET_VALUE: 1,
+      ACCEPTED: 3, CPU_CRITICAL: 1, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 1, MORE_IMPORTANT_HARMED: 1, EQUAL_DISPARITY: 0, NO_NET_VALUE: 1, PROJECTION_DISAGREES: 0,
     });
     expect(stats.total.acceptedReceiverUp).toBe(2);
     expect(stats.total.acceptedDonor).toBe(1);
-    // The own-tick PI each trial was judged on: 0.8, 0.7 (CPU_CRITICAL), null, 1.5.
+    // The before PI each trial was judged on: 0.8, 0.7 (CPU_CRITICAL), null, 1.5.
     expect(stats.total.rejectedPiUnder09).toBe(2);
     expect(stats.total.rejectedPiNull).toBe(1);
     // A#1 went up in `busy` and down in `reversed`.
