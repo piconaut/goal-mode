@@ -7,6 +7,9 @@
 //     Why WLM did or didn't move DPs: per policy adjustment (10 s), the receiver candidates in order, each trial
 //     move and why it was accepted or rejected. A play-CLI run (seed + log) replays to any past time; a browser save
 //     has no log, so it traces forward from the saved moment (live day only).
+//   npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--json]
+//     Policy adjustment statistics over a range of a play file (WT-01): adjustments, candidates by outcome, trials by
+//     verdict, accepted moves, receivers assessed 30 intervals without a move, and the DP ladder at a clock time.
 //   npm run inspect -- runs/a.json blame [--json] [--incident N]
 //     Counterfactual validator (RT-06): every online incident's opening hour is replayed once per card that affects
 //     the hurt workload with that card ended at the hour start. Reports the game's trigger against the cards whose
@@ -15,14 +18,14 @@
 import { readFileSync } from 'node:fs';
 import { applyPlayCommand, decodePlayFile, clockText, newPlayFile, type PlayFile } from './playCore';
 import { tickOfClock } from '../src/sim/core/clock';
-import { TICKS_PER_HOUR } from '../src/sim/core/units';
+import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
 import { packOf } from '../src/content/packs';
 import { scenarioFor } from '../src/game/difficulty';
 import { advance } from '../src/game/run';
 import { blameIncident, summarizeBlame, type IncidentBlame } from '../src/game/counterfactual';
 import { BATCH_INCIDENT } from '../src/game/sla';
 import type { Incident, RunState } from '../src/game/types';
-import { setWlmTraceSink, type WlmAdjustTrace, type WlmCandidateTrace } from '../src/sim/wlm/adjust';
+import { setWlmTraceSink, type WlmAdjustTrace, type WlmCandidateTrace, type WlmTrialVerdict } from '../src/sim/wlm/adjust';
 
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
 
@@ -141,6 +144,295 @@ export function wlmText(text: string, system: string, opts: { at: string; ticks?
   }
   if (traces.length === 0) out.push(`no policy adjustment ran (the day ended at ${clockText(r.sim.tick)}?)`);
   return out.join('\n');
+}
+
+/** Per-system and total counts from a run's policy adjustment traces (WT-01); the audit's S-1 … S-3 table. */
+export interface WlmStatsCounters {
+  /** Policy adjustments in the range (one per system per tick). */
+  adjustments: number;
+  /** Adjustments where every goal period met its goal, so no candidate was assessed. */
+  noCandidate: number;
+  /** Candidates with an outcome of `ASSESSED` (trials were built for them). */
+  assessed: number;
+  /** `NOT_FIXABLE` candidates by the bottleneck they were skipped for. */
+  notFixable: Record<'IO' | 'OTHER' | 'CAP' | 'NONE', number>;
+  /** `BUDGET` candidates: skipped because a same-importance receiver was already assessed. */
+  budget: number;
+  trials: number;
+  /** Trials by verdict. `ACCEPTED` is the move the adjustment took. */
+  verdicts: Record<WlmTrialVerdict, number>;
+  /** Accepted trials that raised the receiver, and those that lowered a donor. */
+  acceptedReceiverUp: number;
+  acceptedDonor: number;
+  /** Rejected trials whose receiver's own-tick PI (the before value the trial was judged on) was ≤ 0.9 … */
+  rejectedPiUnder09: number;
+  /** … or null (no PI measured for it this tick). */
+  rejectedPiNull: number;
+  /** A period's DP move reversed by the next move of the same period. */
+  reversed: number;
+  /** Periods assessed on 30 adjustments without being the receiver of an accepted move (one per run). A donor move
+   * on the period does not reset the run, and neither does an adjustment that skipped it: the count is of
+   * assessments, in the order they happened. */
+  episodes: number;
+}
+
+export interface WlmStats {
+  total: WlmStatsCounters;
+  systems: { lparId: string; counters: WlmStatsCounters }[];
+  /** With `ladder`, each system's DP ladder (hex, highest first) at that clock time each played day. */
+  ladder: { lparId: string; lines: string[] }[];
+  ladderTime: string | null;
+}
+
+const emptyCounters = (): WlmStatsCounters => ({
+  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, OTHER: 0, CAP: 0, NONE: 0 }, budget: 0, trials: 0,
+  verdicts: { ACCEPTED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0 },
+  acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, episodes: 0,
+});
+
+const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE'];
+
+const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounters['notFixable'] =>
+  b === 'IO' ? 'IO' : b === 'CAP' ? 'CAP' : b === 'OTHER' ? 'OTHER' : 'NONE';
+
+/** A trial's move text names the period and its new DP: `ONLHI#1 DP 20→21` or `DONOR X DP 20→1F`. */
+const MOVED = /^(DONOR\s+)?(\S+)\s+DP\s+([0-9A-F]+)→([0-9A-F]+)$/;
+
+/** Count one system's adjustments in trace order: totals, and the two cross-adjustment patterns (reversals, runs). */
+function countSystem(traces: readonly WlmAdjustTrace[]): WlmStatsCounters {
+  const c = emptyCounters();
+  const lastDirection = new Map<string, 1 | -1>();
+  const runs = new Map<string, { n: number; counted: boolean }>();
+  for (const t of traces) {
+    c.adjustments++;
+    if (t.candidates.length === 0) c.noCandidate++;
+    const assessed = new Set<string>();
+    const moved = new Map<string, 1 | -1>();
+    const receiverMoved = new Set<string>();
+    for (const cand of t.candidates) {
+      if (cand.outcome === 'NOT_FIXABLE') c.notFixable[notFixableKey(cand.bottleneck)]++;
+      else if (cand.outcome === 'BUDGET') c.budget++;
+      else { c.assessed++; assessed.add(cand.scKey); }
+      for (const tr of cand.trials) {
+        c.trials++;
+        c.verdicts[tr.verdict]++;
+        if (tr.verdict !== 'ACCEPTED') {
+          const pi = tr.receiverPi?.[0] ?? null;
+          if (pi === null) c.rejectedPiNull++;
+          else if (pi <= 0.9) c.rejectedPiUnder09++;
+          continue;
+        }
+        const m = MOVED.exec(tr.move);
+        if (!m) continue;
+        if (m[1] !== undefined) {
+          c.acceptedDonor++;
+        } else {
+          c.acceptedReceiverUp++;
+          receiverMoved.add(m[2]!);
+        }
+        moved.set(m[2]!, parseInt(m[4]!, 16) > parseInt(m[3]!, 16) ? 1 : -1);
+      }
+    }
+    for (const [period, dir] of moved) {
+      const was = lastDirection.get(period);
+      if (was !== undefined && was !== dir) c.reversed++;
+      lastDirection.set(period, dir);
+    }
+    // A receiver move ends its own run; a donor move does not, and neither does an adjustment that skipped the period.
+    for (const period of receiverMoved) runs.delete(period);
+    for (const period of assessed) {
+      if (receiverMoved.has(period)) continue;
+      const run = runs.get(period) ?? { n: 0, counted: false };
+      const n = run.n + 1;
+      if (n >= 30 && !run.counted) c.episodes++;
+      runs.set(period, { n, counted: run.counted || n >= 30 });
+    }
+  }
+  return c;
+}
+
+const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
+  const total = emptyCounters();
+  for (const c of all) {
+    total.adjustments += c.adjustments;
+    total.noCandidate += c.noCandidate;
+    total.assessed += c.assessed;
+    for (const k of Object.keys(total.notFixable) as (keyof WlmStatsCounters['notFixable'])[]) total.notFixable[k] += c.notFixable[k];
+    total.budget += c.budget;
+    total.trials += c.trials;
+    for (const v of VERDICT_ORDER) total.verdicts[v] += c.verdicts[v];
+    total.acceptedReceiverUp += c.acceptedReceiverUp;
+    total.acceptedDonor += c.acceptedDonor;
+    total.rejectedPiUnder09 += c.rejectedPiUnder09;
+    total.rejectedPiNull += c.rejectedPiNull;
+    total.reversed += c.reversed;
+    total.episodes += c.episodes;
+  }
+  return total;
+};
+
+/** A trace's clock text (`D1 12:19:40` in the sim, `D1 Mon 12:19` from the play CLI) → day and clock time, so no
+ * tick is needed. */
+const traceWhen = (text: string): { day: string; time: string } | null => {
+  const m = /^(D\d+)(?:\s+\S+)?\s+(\d\d:\d\d)(?::\d\d)?$/.exec(text.trim());
+  return m ? { day: m[1]!, time: m[2]! } : null;
+};
+
+/** A tick as seconds since the run's first 06:00, and a trace's clock text the same way, so a range can be checked
+ * exactly even when an advance crosses its end mid-hour. */
+const tickKey = (tick: number) => Math.floor(tick / TICKS_PER_DAY) * 86400 + (tick % TICKS_PER_DAY) * TICK_SEC;
+
+/** Seconds since the played day's 06:00, so a trace at 05:59 sorts after a 23:59 one of the same played day. */
+const daySec = (time: string): number => {
+  const [hh, mm] = time.split(':').map(Number) as [number, number];
+  return ((hh - 6 + 24) % 24) * 3600 + mm * 60;
+};
+
+/** Each played day's last adjustment at or before `time`, as a DP ladder (hex, highest first). */
+function ladderLines(traces: readonly WlmAdjustTrace[], time: string): string[] {
+  const target = daySec(time);
+  const out: string[] = [];
+  let day = '';
+  let best: WlmAdjustTrace | null = null;
+  const push = () => {
+    if (!best) return;
+    const rows = Object.entries(best.dps)
+      .sort(([ka, a], [kb, b]) => b - a || (ka < kb ? -1 : 1))
+      .map(([k, dp]) => `${k}=${hexDp(dp)}`);
+    out.push(`${best.clockText}  ${rows.join(' ')}`);
+  };
+  for (const t of traces) {
+    const when = traceWhen(t.clockText);
+    if (!when) continue;
+    if (when.day !== day) {
+      push();
+      day = when.day;
+      best = null;
+    }
+    if (daySec(when.time) <= target) best = t;
+  }
+  push();
+  return out;
+}
+
+/** Policy adjustment statistics over a trace list (WT-01). Pure: the audit's S-1 … S-3 counters, per system and total. */
+export function wlmStats(traces: readonly WlmAdjustTrace[], opts: { ladder?: string } = {}): WlmStats {
+  const bySystem = new Map<string, WlmAdjustTrace[]>();
+  for (const t of traces) {
+    const list = bySystem.get(t.lparId);
+    if (list) list.push(t);
+    else bySystem.set(t.lparId, [t]);
+  }
+  const systems = [...bySystem.keys()].sort().map((lparId) => ({ lparId, counters: countSystem(bySystem.get(lparId)!) }));
+  return {
+    total: sumCounters(systems.map((x) => x.counters)),
+    systems,
+    ladder: opts.ladder ? systems.map((x) => ({ lparId: x.lparId, lines: ladderLines(bySystem.get(x.lparId)!, opts.ladder!) })) : [],
+    ladderTime: opts.ladder ?? null,
+  };
+}
+
+const n0 = (n: number) => n.toLocaleString('en-US');
+
+/** Render `wlmStats` as a table, one column per system plus the total, then the optional ladders. */
+export function statsText(stats: WlmStats): string {
+  const columns = [...stats.systems.map((s) => s.lparId), 'TOTAL'];
+  const rows: [string, number[]][] = [
+    ['adjustments', [...stats.systems.map((s) => s.counters.adjustments), stats.total.adjustments]],
+    ['  no candidate (every goal met)', [...stats.systems.map((s) => s.counters.noCandidate), stats.total.noCandidate]],
+    ['candidates assessed', [...stats.systems.map((s) => s.counters.assessed), stats.total.assessed]],
+    ['  not assessed: I/O bottleneck', [...stats.systems.map((s) => s.counters.notFixable.IO), stats.total.notFixable.IO]],
+    ['  not assessed: other bottleneck', [...stats.systems.map((s) => s.counters.notFixable.OTHER), stats.total.notFixable.OTHER]],
+    ['  not assessed: capping bottleneck', [...stats.systems.map((s) => s.counters.notFixable.CAP), stats.total.notFixable.CAP]],
+    ['  not assessed: no bottleneck', [...stats.systems.map((s) => s.counters.notFixable.NONE), stats.total.notFixable.NONE]],
+    ['  not assessed: budget', [...stats.systems.map((s) => s.counters.budget), stats.total.budget]],
+    ['trials (projections)', [...stats.systems.map((s) => s.counters.trials), stats.total.trials]],
+    ...VERDICT_ORDER.map((v): [string, number[]] => [
+      `  ${v === 'ACCEPTED' ? 'accepted' : `rejected: ${v}`}`,
+      [...stats.systems.map((s) => s.counters.verdicts[v]), stats.total.verdicts[v]],
+    ]),
+    ['accepted: receiver up', [...stats.systems.map((s) => s.counters.acceptedReceiverUp), stats.total.acceptedReceiverUp]],
+    ['accepted: donor down', [...stats.systems.map((s) => s.counters.acceptedDonor), stats.total.acceptedDonor]],
+    ['rejected, receiver own-tick PI ≤ 0.9', [...stats.systems.map((s) => s.counters.rejectedPiUnder09), stats.total.rejectedPiUnder09]],
+    ['rejected, receiver own-tick PI null', [...stats.systems.map((s) => s.counters.rejectedPiNull), stats.total.rejectedPiNull]],
+    ["moves reversed by the period's next move", [...stats.systems.map((s) => s.counters.reversed), stats.total.reversed]],
+    ['assessed 30 intervals without a move (episodes)', [...stats.systems.map((s) => s.counters.episodes), stats.total.episodes]],
+  ];
+  const labelWidth = Math.max(...rows.map(([label]) => label.length));
+  const cell = (x: number) => n0(x).padStart(8);
+  const lines = [
+    'WLM policy adjustment statistics (sim internals: investigations only)',
+    `${' '.repeat(labelWidth)}${columns.map((c) => c.padStart(9)).join('')}`,
+    ...rows.map(([label, values]) => `${label.padEnd(labelWidth)}${values.map(cell).join(' ')}`),
+  ];
+  if (stats.ladderTime !== null) {
+    lines.push('', `DP ladder at ${stats.ladderTime} each played day (hex, highest first)`);
+    for (const l of stats.ladder) lines.push(`${l.lparId}:`, ...(l.lines.length ? l.lines.map((x) => `  ${x}`) : ['  no adjustment up to that time']));
+  }
+  return lines.join('\n');
+}
+
+/** Replay a play file and collect the traces of adjustments in [from, to). Returns the tick reached. */
+function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdjustTrace) => void): number {
+  const first = file.log[0];
+  if (first?.cmd !== 'new') throw new Error('wlm-stats needs a play-CLI file (seed + command log); a browser save has no log to replay past hours');
+  let f = newPlayFile(first.seed, first.difficulty, first.scenario);
+  const same = (a: string | undefined, b: string | undefined) => (a ?? 'NORMAL') === (b ?? 'NORMAL');
+  if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed || !same(f.run.difficulty, file.run.difficulty)) {
+    throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty ?? 'NORMAL'}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty ?? 'NORMAL'})`);
+  }
+  const step = () => {
+    // Installed for the hour that overlaps the range: the caller filters traces by their own clock.
+    if (f.run.sim.tick + TICKS_PER_HOUR > from) setWlmTraceSink(sink);
+    const out = applyPlayCommand(f, { cmd: 'advance', hours: 1 });
+    if (!out.ok) throw new Error(`replay failed advancing from ${clockText(f.run.sim.tick)}: ${out.text}`);
+    f = out.file;
+  };
+  try {
+    for (const c of file.log.slice(1)) {
+      if (f.run.sim.tick >= to) break;
+      if (c.cmd === 'advance') {
+        const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
+        for (let h = 0; h < hours && f.run.sim.tick < to; h++) step();
+      } else {
+        const out = applyPlayCommand(f, c);
+        if (!out.ok) throw new Error(`replay failed at ${JSON.stringify(c)}: ${out.text}`);
+        f = out.file;
+      }
+    }
+  } finally {
+    setWlmTraceSink(null);
+  }
+  return f.run.sim.tick;
+}
+
+/** `inspect … wlm-stats`: the audit's policy adjustment counters over a play file's range (WT-01). */
+export function wlmStatsText(text: string, opts: { system?: string; from?: string; to?: string; ladder?: string; json?: boolean } = {}): string {
+  const file = decodePlayFile(text);
+  const from = tickOfClock(opts.from ?? 'D1 06:00');
+  const to = tickOfClock(opts.to ?? '') ?? file.run.sim.tick;
+  if (from === null) throw new Error("times look like 'D1 06:00'");
+  if (to <= from) throw new Error('the end of the range must be after its start');
+  const lo = tickKey(from), hi = tickKey(to);
+  const traces: WlmAdjustTrace[] = [];
+  const reached = replayTraces(file, from, to, (t) => {
+    if (opts.system !== undefined && t.lparId !== opts.system) return;
+    const when = traceWhen(t.clockText);
+    // The replay advances a whole hour at a time, so the first and last hours can overshoot the range.
+    if (when) {
+      const key = (Number(when.day.slice(1)) - 1) * 86400 + daySec(when.time);
+      if (key < lo || key >= hi) return;
+    }
+    traces.push(t);
+  });
+  if (traces.length === 0) return `No policy adjustment traced between ${clockText(from)} and ${clockText(Math.min(to, reached))}; ${reached < to ? `the play log ends at ${clockText(reached)}` : 'check the range and the system'}.`;
+  const stats = wlmStats(traces, opts.ladder ? { ladder: opts.ladder } : {});
+  const systems = stats.systems.map((s) => s.lparId).join(' ');
+  const note = `${clockText(from)} → ${clockText(reached)}, ${systems}${opts.system === undefined ? '' : ` (${opts.system} only)`}`;
+  const short = reached < to ? `\nThe play log ends at ${clockText(reached)}; the range ${clockText(to)} is not covered.` : '';
+  return opts.json
+    ? JSON.stringify({ range: { from: clockText(from), to: clockText(reached) }, ...stats }, null, 2)
+    : `${statsText(stats)}\n${note}${short}`;
 }
 
 const scOfRun = (run: RunState) => scenarioFor(packOf(run.scenarioId).scenario, run.difficulty);
@@ -278,6 +570,16 @@ if (process.argv[1]?.endsWith('inspect.ts')) {
       console.log(blameText(readFileSync(path, 'utf8'), { json, ...(incident ? { incident: Number(incident) } : {}) }));
     } catch (e) {
       console.error(`blame: ${(e as Error).message}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+  if (path && verb === 'wlm-stats') {
+    const ladder = opt(rest, '--ladder');
+    try {
+      console.log(wlmStatsText(readFileSync(path, 'utf8'), { ...(system ? { system } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(ladder ? { ladder } : {}), json }));
+    } catch (e) {
+      console.error(`wlm-stats: ${(e as Error).message}`);
       process.exit(1);
     }
     process.exit(0);

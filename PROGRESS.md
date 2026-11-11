@@ -19,7 +19,7 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
   - **Preview (dev):** [artifact](https://claude.ai/artifact/MbFdETzQXwuj87CvtiQyNW) (private until shared),
     "GOAL MODE (preview · dev ab5d1ff)", built 2026-11-10 from `dev` at `ab5d1ff` (#259; the same game as the
     release, since #259 changed docs only).
-- **Latest verified dev:** `53b5789` (#287); 83 test files / 907 tests pass (single-worker `vitest`, 2026-11-11).
+- **Latest verified dev:** `71a0685` (#288); 83 test files / 913 tests pass (single-worker `vitest`, 2026-11-11).
 - **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `1300e69`, 2026-11-10):** Midwest `bde6d147471ece9f`;
   Harbourline `ec94548d8283d76c`; Revenue `fb563b38750d988f`. Host timings vary; use adjacent comparisons rather than
   old absolute timings.
@@ -91,8 +91,8 @@ it) against IBM's description, step by step, and proposes one target model. Fift
 the four structural ones: receivers are chosen on the smoothed PI but every trial is judged on one tick's PI (W1);
 the DP ladder only climbs and collapses at the top of the managed range within a day or two on a stressed image
 (W2); each served CICS class owns a DP and only the highest counts (W3); donors are picked by importance and CPU
-use, not by goal achievement (W4). The work is BACKLOG.md list `wlm-truth` (WT-01 … WT-15): WT-01 … WT-03 are
-ready (tooling and SPEC text, no behaviour change), and WT-12. User decisions on §8 (2026-11-10): all as
+use, not by goal achievement (W4). The work is BACKLOG.md list `wlm-truth` (WT-01 … WT-15): WT-02 and WT-03 are
+ready (SPEC text, no behaviour change), and WT-12; WT-01's `inspect … wlm-stats` has landed. User decisions on §8 (2026-11-10): all as
 recommended, and the core (WT-04 … WT-10) lands after RT-06 and before RT-14, so RCA footprints and balance are
 built once on the new WLM; the RT-15 playtest follows the core (§7).
 
@@ -472,6 +472,18 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 - 2026-11-11: Queued BACKLOG PR-11 to align the RCA design's two-pin example with the evidence metric's accepted
   mechanisms. The correction is scoped as documentation only; proof recipes remain RT-13.
+- 2026-11-11: WT-01 `inspect … wlm-stats`: a new `inspect` verb replays a play-CLI file over a range with the WLM
+  trace sink installed and prints per system and in total the audit's counters — adjustments, adjustments with no
+  candidate, candidates by outcome (assessed / not fixable by bottleneck / budget), trials by verdict, accepted
+  moves split receiver-up vs donor-down, rejected trials whose receiver's own-tick PI (the before value the trial was
+  judged on) was ≤ 0.9 or null, DP moves reversed by the period's next move, runs of 30 assessments without a
+  receiver move, and with `--ladder` each system's DP ladder at a clock time each day (`--json` for scripts).
+  `wlmStats` and `statsText` are pure and tested. On the audit's seed-42 Midwest file (D1 06:00 → D3 06:00) it
+  reproduces docs/wlm-design.md §1's S-1 column exactly: 69,120 adjustments, 67,101 with no candidate, 1,609
+  candidates assessed, 481 not fixable (all OTHER), 5,934 trials, 36 accepted moves, 3,447 MORE_IMPORTANT_HARMED,
+  793 rejected with the receiver's own-tick PI ≤ 0.9, 12 reversed moves and 7 episodes. Tooling only: no sim change
+  (`npm run compare` reports no differences). CLAUDE.md, docs/agents.md, docs/wlm-design.md §1 and the `wlm-why`
+  skill list the verb.
 - 2026-11-11: RT-12 evidence baselines: moved the six-row lookback into
   `content/evidence.ts` as `EVIDENCE.baselineRows`, with a FICTIONAL note explaining the smoothing choice;
   the value and evidence behavior are unchanged.
@@ -523,7 +535,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   important work that is missing its goal, also on a capped image). The prototype lives on branch `proto/wlm-wt04`.
 - 2026-11-10: WLM policy adjustment audit and target model (design only, PR #265): docs/wlm-design.md, BACKLOG list
   `wlm-truth`, 21 docs/research.md rows. No file under `src/`, `tests/` or `tools/` changed. Repro harness and
-  outputs are under `runs/wlm-audit/` (ignored); WT-01 turns the harness into `inspect … wlm-stats`.
+  outputs are under `runs/wlm-audit/` (ignored); WT-01 has since turned the harness into `inspect … wlm-stats`.
 - 2026-11-10: RT-00: the textbook/expert "obvious" rule (`obviousHourly`, `tools/strategies.ts`) looks up the fix
   by card from a frozen card-id set (RUNAWAY, REGRESSION, XLOG_LOOP, RUNAWAY_COMPLIANCE, EFILE_REGRESSION) instead
   of by the incident's trigger, so RT-09's relabelling can't change the bots' fix choice. One intended bot change

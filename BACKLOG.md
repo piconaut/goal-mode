@@ -382,21 +382,6 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-01 · `inspect … wlm-stats`: policy adjustment statistics for a run
-`list: wlm-truth · status: ready · priority: high · size: M · area: tooling`
-
-Add a verb to `tools/inspect.ts`: `npm run inspect -- <file> wlm-stats [system] --from 'D1 06:00' --to 'D3 06:00'
-[--ladder '12:00'] [--json]`. It replays the play-CLI file as `wlmText` does, with `setWlmTraceSink` installed for
-the whole range, and prints per system and in total: adjustments; adjustments with no candidate; candidates by
-outcome; trials by verdict; accepted moves (receiver-up, donor); rejected trials whose receiver's own-tick PI was
-≤ 0.9 and `null`; moves reversed by the same period's next move; episodes of a candidate assessed 30 intervals
-running without a move; and with `--ladder`, each system's DPs (hex, highest first) at that clock time each day.
-Pure functions `wlmStats(traces)` and `statsText(stats)` exported for tests. Investigation tooling only (same
-warning as `inspect wlm`). Add the command to CLAUDE.md's command list and the `wlm-why` skill. No sim change:
-`npm run compare` reports no differences. Done when: `tests/tools/inspect.test.ts` covers `wlmStats` on a
-hand-built trace list (each counter once), and the verb reproduces §1's table for S-1 within the same commit
-(numbers pasted in the PR).
-
 ### WT-03 · SPEC text that disagrees with the code (W13, W14)
 `list: wlm-truth · status: ready · priority: low · size: S · area: tooling`
 

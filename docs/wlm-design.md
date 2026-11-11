@@ -35,11 +35,13 @@ labelled where it is used. Anything not found is marked *unverified*; nothing is
 - **Traces (R-n).** A play-CLI file and `npm run inspect -- <file> wlm <system> --at <time> --ticks <n>`. The file
   is made with `npm run -s play -- <file> new 42 [normal <scenario>]`, then per day `start`, `advance 24` (repeat
   until the day ends), `draft none`. Times are sim clock; "D2" is the second played day.
-- **Statistics (S-n).** A scratch harness (`runs/wlm-audit/stats.ts`, not committed; WT-01 turns it into
-  `inspect … wlm-stats`) that plays the same commands through `applyPlayCommand` with `setWlmTraceSink` installed
-  and counts, over every policy adjustment of every system: candidates by outcome, trials by verdict, accepted
-  moves, a DP move reversed by the next move of the same period, receivers assessed without a move 30 intervals
-  running, and the DP ladder at chosen times.
+- **Statistics (S-n).** A scratch harness that played the same commands through `applyPlayCommand` with
+  `setWlmTraceSink` installed and counted, over every policy adjustment of every system: candidates by outcome,
+  trials by verdict, accepted moves, a DP move reversed by the next move of the same period, receivers assessed
+  without a move 30 intervals running, and the DP ladder at chosen times. WT-01 turned it into the committed
+  `npm run inspect -- <file> wlm-stats [system] [--from …] [--to …] [--ladder …]`, and it reproduces the S-1
+  column below exactly (a rejected trial's PI is the before value its projection was judged on; a donor move does
+  not end a period's "assessed without a move" run).
 - **Code reading (C-n).** Where no seed-42 replay hits the case, the finding says "by code reading" and gives the
   smallest input that would show it; that input is the regression test of its fix.
 
