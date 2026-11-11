@@ -136,6 +136,26 @@ describe('counterfactual validator (RT-06)', () => {
     expect(counterfactualCandidates([golive], [golive], 'MOBILE', HOUR_START, fake)).toHaveLength(0);
   });
 
+  it("reads an incident in the day's last hour, whose replay ends the day", () => {
+    const run = advance(structuredClone(file.run), scenario, pack.game, 15 * TICKS_PER_HOUR); // D3 05:00
+    const incident: Incident = {
+      id: 999,
+      workloadId: 'MOBILE',
+      day: run.day,
+      startTick: run.sim.tick,
+      endTick: null,
+      hours: 1,
+      worstAttainmentPct: 0,
+      truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' },
+      rca: null,
+      trustLost: 0,
+    };
+    const blame = blameIncident(run, scenario, pack.game, incident);
+    // The hour's accounting is in the last smfHours entry even though the branch crossed 06:00 and ended the day.
+    expect(blame.baseline.attainmentPct).not.toBeNull();
+    expect(blame.id).toBe(999);
+  });
+
   it('removes an already-running card at the first tick and a card that starts inside the hour before it begins', () => {
     const ev = { uid: 'C@1', defId: 'C', name: 'Change', startTick: HOUR_START - TICKS_PER_HOUR, endTick: HOUR_START + TICKS_PER_HOUR, trigger: 'POLICY' as const, affects: ['MOBILE'], endCommands: [], started: true, ended: false };
     // Ran before the hour: its end commands apply at the first tick.

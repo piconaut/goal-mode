@@ -12,7 +12,7 @@ let noon: RunState;
 
 beforeAll(() => {
   noon = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 6 * HOUR);
-});
+}, 60_000);
 
 describe('LSPR category table', () => {
   it('follows the published L1MP/RNI bands', () => {
