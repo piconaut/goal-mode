@@ -167,7 +167,9 @@ level or a separate toggle.
   median day, expert victories. Midwest 16.5 / 28 / 10 → 16.5 / 28 / 10 (identical); Revenue 19 / 27 / 10 → 20 / 27
   / 10; Harbourline 9.5 / 29 / 5 → 9.5 / 29 / **8** (trust losses 5 → 2; back inside the 60–100 % band). Every bot
   inside its band on all three. After the review fixes (`68ea72a`): Midwest 16.5 / 28 / 10, Revenue 20 / 27 / 10,
-  Harbourline 10 / 29 / 8 (textbook 1 victory); all inside. The `wlm-truth` entries each add a row here; WT-15 closes with a 20-seed sweep.
+  Harbourline 10 / 29 / 8 (textbook 1 victory). As merged (`8f22df3`): Midwest 16.5 / 28 / 10, Revenue 20 / 27 / 10,
+  Harbourline 9.5 / 29 / 8; all inside. The `wlm-truth` entries each add a row here; WT-15 closes with a 20-seed
+  sweep.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -482,14 +484,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   important work that is missing its goal. From `proto/wlm-wt04`; the demand uplift and the backlog bound were
   measured apart and both kept. S-1 … S-3 (`wlm-stats`): moves 36/46/117 → 19/26/79, undone within two minutes
   6/6/19 → 0/1/4, `NO_NET_VALUE` 465/291/2 336 → 2/4/0. Bench (paired, Harbourline): about +5 % per tick (1.33 →
-  1.40 ms). RT-06 validator: S-1 … S-3 same incidents, triggers and verdicts (hour attainment only); Midwest seed 2's
-  runaway no longer breaks MOBILE on D2 (on `dev` from 14:00), so the RT-06 tests use seed 3. Sweep in M8.2. User request 2026-11-11: WT-04 … WT-09 in one attended session, one PR each, in order.
+  1.40 ms). RT-06 validator: S-1 … S-3 same incidents, triggers and verdicts (hour attainment only); Midwest seed
+  2's runaway no longer breaks MOBILE on D2 (on `dev` from 14:00), so the RT-06 tests use seed 3. Sweep in M8.2.
+  User request 2026-11-11: WT-04 … WT-09 in one attended session, one PR each, in order.
   Review fixes (#295): the backlog bound hid a runaway on Midwest seed 2, so a receiver whose backlog the bound cut
   and that is measured over 4× its `base` is not raised (`projectionTrustMax`; measured against projecting its whole
   backlog, docs/wlm-design.md §9.5; it rejects 39 % of S-2's and 68 % of S-3's trials, replacing other rejections
-  without changing a move: WT-05's skip clock is what cuts those retries);
-  running batch jobs are exact on every image and left out of sustained demand; `usedEngines` counts smoothed zIIP
-  use. Seed 2 has no D2 incident now; the RT-06 tests moved to seed 3 (MOBILE, D2 13:00, RUNAWAY@1).
+  without changing a move: WT-05's skip clock is what cuts those retries); running batch jobs are exact on every
+  image and left out of sustained demand; `usedEngines` counts smoothed zIIP use. Seed 2 has no D2 incident now; the RT-06 tests moved to seed 3 (MOBILE, D2 13:00, RUNAWAY@1).
 
 - 2026-11-11: WT-03 (docs only): SPEC §5.4 now says every discretionary period runs at DP 196 and small consumers
   and mean-time-to-wait are not modelled; §5.5.3 describes the sysplex PI as summed accumulators, the PI window as
