@@ -183,19 +183,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 `anySubject` image test;
   the replacing entry deletes the interim code path.
 
-### RT-05 · Pin CPC busy, image busy, the capacity change and the CP/zIIP split
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-The facts that separate capacity from priority, and the clues of POWER_CAP and ZIIP_LOSS, cannot be pinned (A11).
-Add metrics and pin requests (play CLI `pin`, and the existing pin control on those report rows):
-- Partition Data and Monitor III CPC: `CPC_BUSY` (general-CP busy % of the CPC; CPU_CAPACITY; notable 90),
-  `LPAR_BUSY` (image's use of the CP available to it; CPU_CAPACITY; notable 95), `CAPACITY_ADJ` (100 − capacity
-  adjustment indication, SMF70CAI, MVS SMF p.589; CPU_CAPACITY and HARDWARE_FAULT; notable 1);
-- WLMGL and PROCU: `APPL_CP`, `APPL_IIP` and `IIPCP` beside the summed `APPL` (CPU_CAPACITY, CPU_PRIORITY; triggers
-  as `APPL`; half weight).
-Thresholds are FICTIONAL, in `content/evidence.ts`. Done when: each is pinnable from the CLI and the UI row, judged
-like the existing CPC pins, covered in `tests/game/evidence.test.ts`, and SPEC §10 lists them.
-
 ### RT-06 · Counterfactual validator for incident triggers
 `list: rca-truth · status: ready · priority: high · size: M · area: tooling`
 

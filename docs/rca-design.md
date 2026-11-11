@@ -377,9 +377,9 @@ class and no longer match — the price of a stable subject for the hour that op
 
 | Fact the clue text points at | Card or mechanism it separates | Today |
 |---|---|---|
-| CPC busy, LPAR busy, MSU (Partition Data) | CPU_CAPACITY from CPU_PRIORITY | not a metric (only `PRSM_DELAY`, `CAPPED`) |
-| CHANGE REASON / capacity adjustment | POWER_CAP | not a metric |
-| CP against IIP APPL %, IIPCP | ZIIP_LOSS, RUNAWAY on PROD2, H2 | `APPL` is the sum |
+| CPC busy, LPAR busy, MSU (Partition Data) | CPU_CAPACITY from CPU_PRIORITY | `CPC_BUSY` (90) and `LPAR_BUSY` (95) since RT-05; MSU not a metric |
+| CHANGE REASON / capacity adjustment | POWER_CAP | `CAPACITY_ADJ` since RT-05 (100 − SMF70CAI, notable 1) |
+| CP against IIP APPL %, IIPCP | ZIIP_LOSS, RUNAWAY on PROD2, H2 | `APPL_CP`, `APPL_IIP`, `IIPCP` since RT-05, at half weight beside `APPL` |
 | CF Activity: sync service time, async conversion | CF_LINK, CF_FAILURE, F8 | no pin source |
 | DASD Activity: DISC, IOSQ, per LCU | DASD_DEGRADED against HSM against REORG | no pin source |
 | CICS region storage: EDSA at EDSALIM, SOS time | CICS_SOS against low MXT | shown (SMF tab), no pin |

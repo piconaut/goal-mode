@@ -29,18 +29,29 @@ export interface EvidencePin {
   text: string;
 }
 
+/** Metrics a Partition Data or Monitor III CPC row can pin. */
+export type CpcMetric = 'PRSM_DELAY' | 'CAPPED' | 'CPC_BUSY' | 'LPAR_BUSY' | 'CAPACITY_ADJ';
+
 export type PinRequest =
   | { source: 'WLMGL'; index: number; system: string; scKey: string; metric: EvidenceMetric }
   /** tick: a past Monitor III range (the one ending at or before it, from the history); without it, now. */
   /** jobname: a SYSWKM server row ("Address Spaces Serving this Service Class" of transaction class scKey). */
   | { source: 'MON3'; system: string; scKey: string; metric: EvidenceMetric; tick?: number; jobname?: string }
-  /** index: an RMF interval (Partition Data); without it, the Monitor III CPC view (now, or at `tick`). */
-  | { source: 'CPC'; lparId: string; metric: 'PRSM_DELAY' | 'CAPPED'; index?: number; tick?: number }
+  /** index: an RMF interval (Partition Data); without it, the Monitor III CPC view (now, or at `tick`).
+   * The partition names the row; CPC_BUSY and CAPACITY_ADJ are about the CPC it runs on (the pin's subject). */
+  | { source: 'CPC'; lparId: string; metric: CpcMetric; index?: number; tick?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
   /** SMF 30 for the batch night that followed played day `day` (critical jobs' delay accounting). */
   | { source: 'BATCH'; day: number; metric: EvidenceMetric };
 
 type Located = Omit<EvidencePin, 'id' | 'text'>;
+
+/** The CLI's Monitor III history keeps PI, CPU, the ended rate and the delay shares per class, and PR/SM delay and
+ * capping per image: the busier CPC metrics are not in it. */
+const TRIM_HISTORY = 'This Monitor III range keeps PI, CPU, ended rate and delay shares only; pin the value from a Partition Data interval';
+
+/** Metrics that are a class's CPU total: a CICS region class reports the regions', not its transactions'. */
+const APPL_METRICS = new Set<EvidenceMetric>(['APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP']);
 
 function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mon3PinLookup): Located | string {
   const sim = run.sim;
@@ -53,11 +64,14 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const iv = sim.rmf.intervals[req.index];
       const w = iv?.wlm.find((x) => x.lparId === req.system && x.scKey === req.scKey);
       if (!iv || !w) return 'No such report row';
-      if (w.resourceSamples === false && (req.metric === 'APPL' || req.metric.startsWith('DELAY_')))
+      if (w.resourceSamples === false && (APPL_METRICS.has(req.metric) || req.metric.startsWith('DELAY_')))
         return `CICS resource samples are reported with the regions' classes: ${w.workManager?.regionKeys.join(', ') ?? 'see the region service classes'}`;
       const v: Partial<Record<EvidenceMetric, number | null>> = {
         PI: w.pi,
         APPL: w.applCpPct + w.applIipPct,
+        APPL_CP: w.applCpPct,
+        APPL_IIP: w.applIipPct,
+        IIPCP: w.applIipcpPct,
         ENDED_RATE: w.endPerSec,
         DELAY_CPU: w.delayPct.cpu,
         DELAY_ZIIP: w.delayPct.ziip,
@@ -81,11 +95,14 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       }
       const r = m.view.rows.find((x) => x.system === req.system && x.scKey === req.scKey);
       if (!r) return 'No such Monitor III row';
-      if (r.resourceSamples === false && (req.metric === 'APPL' || req.metric.startsWith('DELAY_')))
+      if (r.resourceSamples === false && (APPL_METRICS.has(req.metric) || req.metric.startsWith('DELAY_')))
         return `CICS resource samples are reported with the regions' classes: see the region service classes`;
       const v: Partial<Record<EvidenceMetric, number | null>> = {
         PI: r.pi,
         APPL: 100 * r.cpuEngines,
+        APPL_CP: 100 * r.cpuEngines,
+        APPL_IIP: r.ziipEngines === undefined ? null : 100 * r.ziipEngines,
+        IIPCP: r.iipcpEngines === undefined ? null : 100 * r.iipcpEngines,
         ENDED_RATE: r.endedPerSec,
         DELAY_CPU: 100 * r.delay.cpu,
         DELAY_ZIIP: 100 * r.delay.ziip,
@@ -95,22 +112,43 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         DELAY_OTHER: 100 * r.delay.other,
       };
       const value = v[req.metric];
-      if (value === undefined || value === null) return 'That metric is not in this view';
-      const view = req.metric.startsWith('DELAY') ? 'DELAY' : req.metric === 'APPL' ? 'PROCU' : req.system === '*PLEX' ? 'SYSSUM' : 'SYSINFO';
+      if (value === undefined) return 'That metric is not in this view';
+      if (value === null) return TRIM_HISTORY;
+      const view = req.metric.startsWith('DELAY') ? 'DELAY' : APPL_METRICS.has(req.metric) ? 'PROCU' : req.system === '*PLEX' ? 'SYSSUM' : 'SYSINFO';
       return { source: view, metric: req.metric, subject: req.scKey, system: req.system, tick: m.tick, value };
     }
     case 'CPC': {
+      const cpcId = run.sim.config.lpars.find((l) => l.id === req.lparId)?.cpcId ?? '';
       if (req.index !== undefined) {
         const iv = sim.rmf.intervals[req.index];
         const r = iv?.cpu.find((x) => x.lparId === req.lparId);
         if (!iv || !r) return 'No such Partition Data row';
-        return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: iv.endTick, value: req.metric === 'CAPPED' ? r.cappedPct : r.prsmDelayPct };
+        if (req.metric === 'CPC_BUSY' || req.metric === 'CAPACITY_ADJ') {
+          const c = iv.cpcBusy.find((x) => x.cpcId === cpcId && x.pool === 'CP');
+          if (!c) return 'No such CPC row';
+          const value = req.metric === 'CPC_BUSY' ? c.physicalBusyPct : 100 - (c.capacityAdjustmentPct ?? 100);
+          return { source: 'CPC', metric: req.metric, subject: cpcId, system: cpcId, tick: iv.endTick, value };
+        }
+        const value = req.metric === 'CAPPED' ? r.cappedPct : req.metric === 'LPAR_BUSY' ? r.logicalBusyPct : r.prsmDelayPct;
+        return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: iv.endTick, value };
       }
       const m = mon3(req.tick);
       if (typeof m === 'string') return m;
       const c = m.view.cpc.find((x) => x.lparId === req.lparId);
       if (!c) return 'No such LPAR';
-      return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: m.tick, value: req.metric === 'CAPPED' ? c.cappedPct : c.prsmDelayPct };
+      if (req.metric === 'LPAR_BUSY' && c.busyPct === undefined) return TRIM_HISTORY;
+      if (req.metric === 'CPC_BUSY' || req.metric === 'CAPACITY_ADJ') {
+        if (c.cpcId === undefined || (req.metric === 'CAPACITY_ADJ' && c.capacityAdjPct === undefined)) return TRIM_HISTORY;
+        // The CPC report's *CP row: physical utilisation (Total, i.e. LPAR management included) summed over the
+        // box's partitions (RMF Report Analysis 3.1 p.99), and the capacity loss the view was built with.
+        const busy = m.view.cpc
+          .filter((x) => x.cpcId === c.cpcId && x.kind === 'ZOS')
+          .reduce((a, x) => a + (x.physTotalPct ?? 0), 0);
+        const value = req.metric === 'CPC_BUSY' ? busy : c.capacityAdjPct!;
+        return { source: 'CPC', metric: req.metric, subject: c.cpcId, system: c.cpcId, tick: m.tick, value };
+      }
+      const value = req.metric === 'CAPPED' ? c.cappedPct : req.metric === 'LPAR_BUSY' ? c.busyPct! : c.prsmDelayPct;
+      return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: m.tick, value };
     }
     case 'DB2':
     case 'CICS': {
@@ -244,6 +282,9 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
   // Judged against what the incident recorded when it opened (RT-04), so a reclassification or rerouting after the
   // fact keeps the verdicts a player would have got at the time; incidents from old saves derive them now.
   const { classes, lpars, hosts: hostLpars, servers } = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
+  // CPC-level pins (busy, capacity adjustment) relate through the images of the incident that sit on the processor.
+  const cpcOfImage = (lparId: string) => run.sim.config.lpars.find((l) => l.id === lparId)?.cpcId;
+  const onIncidentCpc = (cpcId: string) => hostLpars.some((lparId) => cpcOfImage(lparId) === cpcId);
   const lo = inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR;
   const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
   return pins.map((p) => {
@@ -260,7 +301,8 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
     const onImage = p.system === '*PLEX' || hostLpars.includes(p.system);
     const related = d.anySubject
       ? onImage
-      : p.subject === inc.workloadId ||
+      : (d.cpcSubject === true && onIncidentCpc(p.subject)) ||
+        p.subject === inc.workloadId ||
         (p.source === 'SYSWKM' && servers.some((a) => p.subject === a.jobname && p.system === a.lparId)) ||
         classes.some((sc) => p.subject === sc || p.subject.startsWith(`${sc}#`)) ||
         lpars.includes(p.subject) ||

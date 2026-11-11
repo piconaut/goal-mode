@@ -424,3 +424,106 @@ describe("evidence against the incident's own subjects (RT-04, A10)", () => {
     expect(s.servers).toEqual([]);
   });
 });
+
+describe('capacity and processor-split pins (RT-05, A11)', () => {
+  const iv = () => regressed.sim.rmf.intervals.length - 1;
+  const pinOf = (r: RunState, req: Parameters<typeof addPin>[2]): EvidencePin => {
+    const out = addPin(r, MIDWEST, req);
+    expect(out.ok, out.message).toBe(true);
+    return out.run.pins.at(-1)!;
+  };
+
+  it('pins the image and CPC busy figures from a Partition Data interval', () => {
+    const index = iv();
+    const row = regressed.sim.rmf.intervals[index]!.cpu.find((x) => x.lparId === 'PROD1')!;
+    const cpc = regressed.sim.config.lpars.find((l) => l.id === 'PROD1')!.cpcId;
+    // The image's own busy: its delivered CP engines over its logical CPs.
+    const lpar = pinOf(regressed, { source: 'CPC', index, lparId: 'PROD1', metric: 'LPAR_BUSY' });
+    expect(lpar).toMatchObject({ subject: 'PROD1', value: row.logicalBusyPct, metric: 'LPAR_BUSY' });
+    expect(lpar.text).toContain('image busy');
+    // The processor's: its CP pool's physical busy, about the CPC rather than the image.
+    const busy = pinOf(regressed, { source: 'CPC', index, lparId: 'PROD1', metric: 'CPC_BUSY' });
+    const cpcRow = regressed.sim.rmf.intervals[index]!.cpcBusy.find((x) => x.cpcId === cpc && x.pool === 'CP')!;
+    expect(busy).toMatchObject({ subject: cpc, system: cpc, value: cpcRow.physicalBusyPct });
+    // No capacity adjustment in a healthy run: 100 % of the setting.
+    expect(pinOf(regressed, { source: 'CPC', index, lparId: 'PROD1', metric: 'CAPACITY_ADJ' }).value).toBe(0);
+  });
+
+  it('pins the same three from the live Monitor III CPC view, and the CLIs trimmed history refuses them', () => {
+    const view = buildMon3(regressed, MIDWEST);
+    const c = view.cpc.find((x) => x.lparId === 'PROD1')!;
+    // Without a Partition Data interval the pin reads the Monitor III CPC view as it stands now: the *CP row is the
+    // box's physical utilisation (LPAR management included, RMF Report Analysis 3.1 p.99), which agrees with the
+    // Partition Data figure of the interval that just closed.
+    const busy = pinOf(regressed, { source: 'CPC', lparId: 'PROD1', metric: 'CPC_BUSY' });
+    const expected = view.cpc.filter((x) => x.cpcId === c.cpcId && x.kind === 'ZOS').reduce((a, x) => a + x.physTotalPct, 0);
+    expect(busy.value).toBeCloseTo(expected);
+    expect(busy.subject).toBe(c.cpcId);
+    const interval = regressed.sim.rmf.intervals[iv()]!.cpcBusy.find((x) => x.cpcId === c.cpcId && x.pool === 'CP')!;
+    expect(Math.abs(busy.value - interval.physicalBusyPct)).toBeLessThan(10);
+    expect(pinOf(regressed, { source: 'CPC', lparId: 'PROD1', metric: 'LPAR_BUSY' }).value).toBe(c.busyPct);
+    expect(pinOf(regressed, { source: 'CPC', lparId: 'PROD1', metric: 'CAPACITY_ADJ' }).value).toBe(0);
+    // A past range from the CLI's trimmed history has no such column.
+    for (const metric of ['LPAR_BUSY', 'CPC_BUSY', 'CAPACITY_ADJ'] as const) {
+      const trimmed = addPin(regressed, MIDWEST, { source: 'CPC', lparId: 'PROD1', metric, tick: regressed.sim.tick }, () => ({
+        tick: regressed.sim.tick,
+        view: { rows: [], cpc: [{ lparId: 'PROD1', prsmDelayPct: 1, cappedPct: 0 }] },
+      }));
+      expect(trimmed.ok).toBe(false);
+      expect(trimmed.message).toContain('pin the value from a Partition Data interval');
+    }
+  });
+
+  it('pins a capacity reduction as the loss from the normal setting', () => {
+    const reduced = { ...regressed, sim: { ...regressed.sim, config: { ...regressed.sim.config, cpcs: regressed.sim.config.cpcs.map((c) => ({ ...c, peakCapacitySetting: 6 as const, capacitySetting: 4 as const })) } } };
+    // The live Monitor III view carries the adjustment of the state it was built from (a past interval keeps the
+    // setting it ran at; the view is rebuilt per tick and snapshotted into history).
+    const p = pinOf(reduced, { source: 'CPC', lparId: 'PROD1', metric: 'CAPACITY_ADJ' });
+    expect(p.value).toBeGreaterThan(1);
+    expect(p.value).toBeLessThan(100);
+    // It is evidence for a capacity incident and for a hardware fault, not for priority.
+    const inc = incident(reduced, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' } });
+    expect(judgeEvidence(reduced, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 1, why: 'points at the cause' });
+    const priority = incident(reduced, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
+    expect(judgeEvidence(reduced, MIDWEST, priority, [p])[0]).toMatchObject({ relevance: 0, why: 'points elsewhere' });
+    // A past range uses the adjustment recorded with it, not the present capacity setting.
+    const past = addPin(reduced, MIDWEST, { source: 'CPC', lparId: 'PROD1', metric: 'CAPACITY_ADJ', tick: reduced.sim.tick - 360 }, () => ({
+      tick: reduced.sim.tick - 360,
+      view: { rows: [], cpc: [{ lparId: 'PROD1', prsmDelayPct: 1, cappedPct: 0, cpcId: 'CPCA', kind: 'ZOS', physTotalPct: 90, capacityAdjPct: 12 }] },
+    }));
+    expect(past.ok, past.message).toBe(true);
+    expect(past.run.pins.at(-1)!.value).toBe(12);
+  });
+
+  it('a CPC pin relates through the images the incident runs on', () => {
+    const p: EvidencePin = { id: 1000, source: 'CPC', metric: 'CPC_BUSY', subject: 'CPCA', system: 'CPCA', tick: regressed.sim.tick, value: 96, text: '' };
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_CAPACITY', trigger: 'GROWTH' } });
+    expect(judgeEvidence(regressed, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 1, why: 'points at the cause' });
+    // Another processor is not about this incident, and an idle one is unremarkable.
+    expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...p, subject: 'CPCZ', system: 'CPCZ' }])[0]!.why).toBe('not about MOBILE');
+    expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...p, value: 40 }])[0]!.why).toBe('value is unremarkable');
+  });
+
+  it('pins the CP, IIP and IIPCP split of APPL% beside the summed value', () => {
+    const index = iv();
+    const rows = regressed.sim.rmf.intervals[index]!.wlm.filter((w) => w.lparId !== '*PLEX');
+    const row = rows.reduce((a, b) => (b.applIipcpPct > a.applIipcpPct ? b : a));
+    expect(row.applIipcpPct).toBeGreaterThan(0);
+    const cp = pinOf(regressed, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'APPL_CP' });
+    const iip = pinOf(regressed, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'APPL_IIP' });
+    const iipcp = pinOf(regressed, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'IIPCP' });
+    expect([cp.value, iip.value, iipcp.value]).toEqual([row.applCpPct, row.applIipPct, row.applIipcpPct]);
+    // Below the 5 % line this row is unremarkable; a real overflow counts half, like APPL, on any class of a host
+    // image (the split is about the processor, not the class).
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_CAPACITY', trigger: 'POLICY' } });
+    expect(judgeEvidence(regressed, MIDWEST, inc, [iipcp])[0]!.why).toBe('value is unremarkable');
+    expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...iipcp, value: 20 }])[0]).toMatchObject({ relevance: 0.5, why: 'consistent with the cause (but not specific)' });
+  });
+
+  it('labels the split pinned from Monitor III as PROCU, like APPL', () => {
+    const live = buildMon3(regressed, MIDWEST);
+    const row = live.rows.find((r) => r.system !== '*PLEX' && r.resourceSamples !== false && r.ziipEngines > 0)!;
+    for (const metric of ['APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP'] as const)
+      expect(pinOf(regressed, { source: 'MON3', system: row.system, scKey: row.scKey, metric }).source).toBe('PROCU');
+  });
+});
