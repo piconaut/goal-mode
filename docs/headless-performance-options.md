@@ -179,6 +179,63 @@ the self time of those lookups was well under 1 %. Most of the gain comes from n
 record work in `accumulateTick` and the `step` body (copying and rebuilding state), which is option 2's territory,
 and the evaluator.
 
+## Results: option 1, step 2 (CL-06, 2026-11-11)
+
+What landed:
+- `cicsRegions` is computed once per plan (`regionsOf`), not every tick. It reads only slice template fields, which the
+  plan's keys fix; batch slices carry no CICS role. A test checks that the result is the same at different rates.
+- `step.ts` reads the plan for its CPC record, z/OS and CF images, Db2 images, structure request shares, job classes
+  and their WLM home, and CPC sites.
+- `control.ts`: `softCap` and `stepCapping` take capacity groups and their members from the plan, and capping state by
+  index. `adjustPolicies` reads LPAR ticks by index and IEAOPT from the plan.
+- `measure/rmf.ts` is unchanged. Its per-tick lookups are on `LparRuntime` pools, which are per-tick state, and the
+  rest run once per RMF interval, so a config plan has nothing to offer there.
+
+Checks: hashes as in CL-05, `npm run compare` no differences, and a 1-day A/B against `dev` with mid-run config edits
+(capacity group, defined capacity, ADD_AOR, IEAOPT honor priority off, a WLM routing policy, CF fail and recover)
+gives identical hashes on Harbourline and Midwest.
+
+Timing against CL-05 (`dev` `8a7a0e1`), same protocol, 7 alternating pairs per scenario (raw:
+[performance/cl06-timing-2026-11-11.csv](performance/cl06-timing-2026-11-11.csv)). Medians:
+
+| | Harbourline | Midwest | Revenue |
+|---|---:|---:|---:|
+| 3-day total, CL-05 → CL-06 | 27.28 → 25.69 s | 12.84 → 11.62 s | 11.50 → 10.58 s |
+| Paired change (range) | −3.7 % (−9.1 … −1.0) | −7.6 % (−12.9 … −1.1) | −6.9 % (−10.0 … +0.8) |
+| Days 2–3, ms per tick | 1.028 → 0.965 | 0.446 → 0.397 | 0.395 → 0.363 |
+| Peak RSS | 209 → 214 MB | 128 → 122 MB | 126 → 126 MB |
+
+**Stop rule:** CL-06 took over CL-05's "Done when", and Harbourline's −3.7 % is below its 5 % bar. Read that way, it
+merges only if it also simplifies the code. It does in part:
+- the per-tick rebuild of the CICS region topology is gone;
+- `step` and the capping stages lose their ad hoc `.find()`/`filter` chains for a named record each.
+
+But the source grows by about 30 lines net, and the plan now has a lazily filled field that WT-09 has to respect. The
+user accepted it on the combined result (2026-11-11). Midwest (−7.6 %) and Revenue (−6.9 %) clear the bar on their own.
+
+Option 1 in total is roughly 10 % on Harbourline and 14 % on Midwest, from the two steps' medians compounded. That
+sits at the low end of the 15–25 % estimate: the `.find()` calls were cheap, and the gain came from not rebuilding
+the image inputs and the region topology.
+
+Re-profile, 3-day bench, inclusive shares, CL-05 → CL-06 (profiled totals: Harbourline 28.4 → 27.6 s, Midwest 12.6 →
+12.0 s):
+
+| Stage | Harbourline | Midwest |
+|---|---:|---:|
+| `dispatchLpar` | 30.8 → 32.0 % | 34.6 → 34.4 % |
+| `evaluateLpar` | 23.5 → 24.7 % | 25.9 → 27.3 % |
+| `imageInput` / `cicsRegions` | 5.0 / 3.0 → 1.8 / 0.4 % | 5.3 / 3.3 → 1.7 / 0.0 % |
+| `reserveOverflow` | 12.4 → 9.6 % | 6.4 → 4.2 % |
+| `stepRmf` / `accumulateTick` | 13.8 / 12.5 → 14.1 / 12.6 % | 12.8 / 11.1 → 14.5 / 13.0 % |
+| `adjustPolicies` | 9.0 → 9.6 % | 12.0 → 12.3 % |
+| `lparDemand` | 7.8 → 8.8 % | 5.5 → 6.2 % |
+| GC (self) | 6.1 → 6.7 % | 4.5 → 4.7 % |
+
+**`evaluateLpar` is now the largest remaining share** (25–27 %). `dispatchLpar` contains it; outside the evaluator,
+`dispatchLpar` is about 7 %. This is option 3's trigger. Next come RMF accumulation (`accumulateTick`, 12–13 %, nearly
+all record copying of persisted accumulators) and the `step` body's own per-tick copies (5–7 % self). Both are
+option 2's territory, which still needs a user decision. No config lookup is left that shows in the profile.
+
 ## Reproduction
 
 ```sh

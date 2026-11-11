@@ -584,6 +584,9 @@ address-space role", displaceable CPU) and **RT-19** (region CPU wait joins the 
 do them after this entry and take the regions' CPU from the server period (§8 Q1). SPEC §5.5.1 (region management),
 §5.6, §17 "CICS region management"; research.md rows on region management updated; Codex entry *server topology
 and the free ride*.
+Since CL-06: `cicsRegions` is built once per lookup plan (`regionsOf` in `tick/plan.ts`, called from `imageInput` in
+`tick/dispatch.ts`) and may only read slice template fields; `serverKey` belongs there, while the server period's DP
+and other per-tick region state stay out of the plan.
 
 ### WT-10 · Managed bottlenecks in turn; waits are not delays (W7)
 `list: wlm-truth · status: blocked: after WT-05 · priority: low · size: S · area: sim`
@@ -769,16 +772,4 @@ Cross-note: as BL-01, tune after WT-09 (docs/wlm-design.md §6.2, §8 Q2).
 
 ## cleanup
 
-### CL-06 · Lookup plan in step, policy adjustment and RMF
-`list: cleanup · status: ready · priority: high · size: M · area: sim`
-
-Not a model change: pure optimisation, label `perf`. The rest of option 1 on CL-05's plan: the `.find()` lookups and
-string keys in `src/sim/core/step.ts` (11), `tick/control.ts` (`adjustPolicies`, 10), `tick/helpers.ts` (8,
-including `cicsRegions` rebuilt every tick) and `src/sim/measure/rmf.ts` (6). `decayInto` and the per-tick record
-rebuilds in `accumulateTick` stay as they are where removing them would mutate persisted state (option 2). Same
-"not in scope", tests and "Done when" as CL-05 (merged: the plan, its invalidation test `tests/sim/plan.test.ts`, the
-5 % stop rule and the ≥ 5-pair timing protocol), profile against CL-05's numbers (docs/headless-performance-options.md
-"Results"). CL-05's plan doesn't hold workload and job-class classification results, CF structures by name or
-service class period indices yet: add them here where a lookup in these files needs them. Finish with a re-profile: if
-`evaluateLpar` is now the largest remaining share, say so in docs/headless-performance-options.md (option 3's
-trigger); option 2 still needs the user.
+No entries.

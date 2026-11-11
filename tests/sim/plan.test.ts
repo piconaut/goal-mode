@@ -6,6 +6,8 @@ import { step } from '../../src/sim/core/step';
 import type { SimState } from '../../src/sim/core/types';
 import { effectiveAddressSpaces, effectiveWorkloads } from '../../src/sim/core/tick/helpers';
 import { buildLparPlan, lparPlan } from '../../src/sim/core/tick/plan';
+import { byIdOf, cicsRegions } from '../../src/sim/core/tick/helpers';
+import { buildSlices } from '../../src/sim/workload/slices';
 
 // The lookup plan (src/sim/core/tick/plan.ts) is memoised on the identity of config, the WLM definition and the
 // effective workload / address-space lists (routing and run additions). That is its only invalidation, so every
@@ -136,5 +138,23 @@ describe('lookup plan invalidation', () => {
     }
     expect(reused).toBeGreaterThan(0);
     expect(rebuilt).toBeGreaterThan(0);
+  });
+
+  it("keeps the CICS region topology, which doesn't depend on rates", () => {
+    // regionsOf computes cicsRegions once per plan from one tick's slices: only template fields may matter.
+    const workloads = effectiveWorkloads(scenario, base);
+    const addressSpaces = effectiveAddressSpaces(scenario, base);
+    const def = base.wlm.definition;
+    const cpcOf = Object.fromEntries(base.config.cpcs.map((c) => [c.id, c]));
+    const quiet = Object.fromEntries(workloads.map((w) => [w.id, 0]));
+    const busy = Object.fromEntries(workloads.map((w, i) => [w.id, 100 * (i + 1)]));
+    let withRegions = 0;
+    for (const l of base.config.lpars.filter((x) => x.kind === 'ZOS')) {
+      const slices = (rates: Record<string, number>) => buildSlices({ def, cpc: cpcOf[l.cpcId]!, lpar: l, workloads, rates, addressSpaces, cpuMultiplier: {} });
+      const a = cicsRegions(def, slices(quiet), byIdOf(workloads), addressSpaces, l.id);
+      expect(cicsRegions(def, slices(busy), byIdOf(workloads), addressSpaces, l.id)).toEqual(a);
+      if (a.regions) withRegions++;
+    }
+    expect(withRegions).toBeGreaterThan(0);
   });
 });

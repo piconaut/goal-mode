@@ -23,7 +23,7 @@ import { CRITICAL_PROJECTION_EVERY, DEFAULT_IO, type TickCtx, type TickSums } fr
 import { adjustPolicies, prsm, softCap, stepCapping, stepCost, stepRmf } from './tick/control';
 import { lparDemand, planLpar } from './tick/demand';
 import { dispatchLpar, reserveOverflow } from './tick/dispatch';
-import { lparPlan } from './tick/plan';
+import { atOrFind, lparPlan } from './tick/plan';
 import { byIdOf, effectiveAddressSpaces, effectiveWorkloads, updateRouting } from './tick/helpers';
 
 export type { Command } from './commands';
@@ -40,8 +40,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const def = prev.wlm.definition;
   const env = prev.env;
   const tickOfDay = prev.tick % TICKS_PER_DAY;
-  const cpcOf: Record<string, CpcConfig> = {};
-  for (const c of config.cpcs) cpcOf[c.id] = c;
+  const plan = lparPlan(scenario, config, def, workloads, addressSpaces);
+  const cpcOf = plan.cpcOf;
   const workloadById = byIdOf(workloads);
 
   // 1–2. Arrivals (noise is mean-corrected so it doesn't inflate average λ).
@@ -72,8 +72,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
     const cp = l.pools.find((p) => p.pool === 'CP');
     if (cp && cp.availableEngines > 0) lparBusy[l.id] = cp.deliveredEngines / cp.availableEngines;
   }
-  const db2Lpars = new Set(addressSpaces.filter((a) => a.role === 'DB2.MSTR').map((a) => a.lparId));
-  startJobs(batch.jobs, prev.tick, { jobClasses: config.jobClasses, lparBusy, db2Lpars });
+  startJobs(batch.jobs, prev.tick, { jobClasses: config.jobClasses, lparBusy, db2Lpars: plan.db2Lpars });
   const runningBy: Record<string, JobRuntime[]> = {};
   for (const j of batch.jobs) if (j.status === 'RUNNING' && j.lparId !== null) (runningBy[j.lparId] ??= []).push(j);
   // Jobs waiting for an initiator in a WLM-managed class are initiation delay for their service class
@@ -81,9 +80,8 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const queuedWlmBy: Record<string, JobRuntime[]> = {};
   for (const j of batch.jobs) {
     if (j.status !== 'QUEUED') continue;
-    const jc = config.jobClasses.find((c) => c.jobClass === j.def.jobClass);
-    if (jc?.mode !== 'WLM') continue;
-    const home = j.def.sysaff ?? Object.keys(jc.initiators).filter((l) => (jc.initiators[l] ?? 0) > 0).sort()[0];
+    if (plan.jobClassOf[j.def.jobClass]?.mode !== 'WLM') continue;
+    const home = j.def.sysaff ?? plan.wlmHomeOf[j.def.jobClass];
     if (home) (queuedWlmBy[home] ??= []).push(j);
   }
 
@@ -99,7 +97,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   let cfZosCpuSec = 0;
   for (const r of env.cf) {
     for (const st of r.structures ?? []) {
-      const share = config.cfStructures.find((x) => x.name === st.name)?.requestShare ?? 0;
+      const share = plan.structureShareOf[st.name] ?? 0;
       cfServiceSec += share * st.serviceSec;
       cfZosCpuSec += share * st.zosCpuSec;
     }
@@ -120,13 +118,13 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
 
   // 3–4. Slices and demand per z/OS image. The per-image stages are separate functions so a
   // deoptimisation in one (state shapes settle over the first simulated days) stays cheap.
-  const zosLpars = config.lpars.filter((l) => l.kind === 'ZOS');
+  const zosLpars = plan.zosLpars;
   const pagingFrac: Record<string, number> = {};
   const demands: PoolDemand[] = [];
   const t: TickCtx = {
     prev,
     scenario,
-    plan: lparPlan(scenario, config, def, workloads, addressSpaces),
+    plan,
     def,
     env,
     config,
@@ -172,9 +170,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   for (const l of zosLpars) planLpar(t, l);
   // Coupling facilities: request work from last tick; a shared CF without thin
   // interrupts polls, consuming its whole logical engine share.
-  for (const l of config.lpars.filter((x) => x.kind === 'CF')) {
-    const cfg = config.cfs.find((c) => c.lparId === l.id);
-    const icf = l.pools.find((p) => p.pool === 'ICF');
+  for (const { lpar: l, cf: cfg, icf } of plan.cfImages) {
     const work = (env.cf.find((r) => r.lparId === l.id)?.demandEngines ?? 0) + (scenario.cfBaseEngines[l.id] ?? 0);
     const polling = icf && !icf.dedicated && cfg && !cfg.thinInterrupts;
     demands.push({ lparId: l.id, pool: 'ICF', demandEngines: polling ? (icf?.logical ?? 1) : work, softCapEngines: Infinity });
@@ -212,14 +208,14 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   const dasd = evaluateDasd(config.dasd, { RANDOM: randomIops, SEQ: seqIops });
   const cfImages: CfImageInput[] = config.cfs.flatMap((cfg) => {
     if (cfg.failed) return [];
-    const l = config.lpars.find((x) => x.id === cfg.lparId);
+    const l = plan.lparById[cfg.lparId];
     const icf = l?.pools.find((p) => p.pool === 'ICF');
-    const rt = lpars.find((x) => x.id === cfg.lparId)?.pools.find((p) => p.pool === 'ICF');
+    const rt = atOrFind(lpars, plan.rtIdxOf[cfg.lparId] ?? -1, (x) => x.id === cfg.lparId)?.pools.find((p) => p.pool === 'ICF');
     if (!l || !icf || !rt) return [];
     return [{ cfg, availableEngines: rt.availableEngines, entitlementEngines: rt.entitlementEngines, dedicated: icf.dedicated }];
   });
   const cf = evaluateCf(cfImages, config.cfStructures, cfRequests, scenario.cfTunables);
-  const siteKm = (lparId: string) => cpcOf[config.lpars.find((x) => x.id === lparId)?.cpcId ?? '']?.siteKm ?? 0;
+  const siteKm = (lparId: string) => plan.siteKmOf[lparId] ?? 0;
   const cfBySystem: Record<string, CfSystemResult> = {};
   for (const l of zosLpars) {
     const here = siteKm(l.id);
@@ -230,7 +226,7 @@ export function step(before: SimState, commands: readonly Command[], scenario: S
   // Batch critical-path projection and end-of-night summary.
   if (prev.tick % CRITICAL_PROJECTION_EVERY === 0) {
     // A job runs at its sysaff LPAR's CPC speed; unpinned jobs project on the first CPC.
-    const cpcOfJob = (lparId: string | null): CpcConfig => cpcOf[config.lpars.find((l) => l.id === lparId)?.cpcId ?? ''] ?? config.cpcs[0]!;
+    const cpcOfJob = (lparId: string | null): CpcConfig => cpcOf[(lparId === null ? undefined : plan.lparById[lparId])?.cpcId ?? ''] ?? config.cpcs[0]!;
     batch.projectedCriticalEndSec = projectCriticalEnd(batch.jobs, clock.day, prev.tick, (j) => {
       const cpc = cpcOfJob(j.def.sysaff);
       return jobShape(j.def, cpSpeed(cpc), ziipSpeed(cpc), io.SEQ.rtSec).elapsed;
