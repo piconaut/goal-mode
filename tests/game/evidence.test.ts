@@ -519,4 +519,11 @@ describe('capacity and processor-split pins (RT-05, A11)', () => {
     expect(judgeEvidence(regressed, MIDWEST, inc, [iipcp])[0]!.why).toBe('value is unremarkable');
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...iipcp, value: 20 }])[0]).toMatchObject({ relevance: 0.5, why: 'consistent with the cause (but not specific)' });
   });
+
+  it('labels the split pinned from Monitor III as PROCU, like APPL', () => {
+    const live = buildMon3(regressed, MIDWEST);
+    const row = live.rows.find((r) => r.system !== '*PLEX' && r.resourceSamples !== false && r.ziipEngines > 0)!;
+    for (const metric of ['APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP'] as const)
+      expect(pinOf(regressed, { source: 'MON3', system: row.system, scKey: row.scKey, metric }).source).toBe('PROCU');
+  });
 });

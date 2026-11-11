@@ -114,7 +114,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const value = v[req.metric];
       if (value === undefined) return 'That metric is not in this view';
       if (value === null) return TRIM_HISTORY;
-      const view = req.metric.startsWith('DELAY') ? 'DELAY' : req.metric === 'APPL' ? 'PROCU' : req.system === '*PLEX' ? 'SYSSUM' : 'SYSINFO';
+      const view = req.metric.startsWith('DELAY') ? 'DELAY' : APPL_METRICS.has(req.metric) ? 'PROCU' : req.system === '*PLEX' ? 'SYSSUM' : 'SYSINFO';
       return { source: view, metric: req.metric, subject: req.scKey, system: req.system, tick: m.tick, value };
     }
     case 'CPC': {
