@@ -63,10 +63,6 @@ const APPL_METRICS = new Set<EvidenceMetric>(['APPL', 'APPL_CP', 'APPL_IIP', 'II
 
 const NUM = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** How many rows back a pin's baseline looks (RT-12): six report intervals (each `rmfIntervalMin` long) for the RMF
- * sources, six closed hours for the SMF ones. */
-const BASELINE_ROWS = 6;
-
 /** Median of the earlier hours, or undefined when none reported the row: the baseline a "normal" predicate compares
  * against, so a recipe can ask whether a value is flat without knowing the report it came from (RT-12, §4.6). */
 function median(xs: number[]): number | undefined {
@@ -122,7 +118,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         return `CICS resource samples are reported with the regions' classes: ${w.workManager?.regionKeys.join(', ') ?? 'see the region service classes'}`;
       const value = wlmMetric(w, req.metric);
       if (value === undefined || value === null) return 'That metric is not in the Workload Activity report';
-      const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_ROWS), req.index)
+      const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index)
         .map((x) => x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey))
         .map((r) => (r ? wlmMetric(r, req.metric) : null))
         .filter(NUM));
@@ -171,14 +167,14 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
           const c = iv.cpcBusy.find((x) => x.cpcId === cpcId && x.pool === 'CP');
           if (!c) return 'No such CPC row';
           const value = req.metric === 'CPC_BUSY' ? c.physicalBusyPct : 100 - (c.capacityAdjustmentPct ?? 100);
-          const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_ROWS), req.index)
+          const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index)
             .map((x) => x.cpcBusy.find((y) => y.cpcId === cpcId && y.pool === 'CP'))
             .map((y) => (y === undefined ? null : req.metric === 'CPC_BUSY' ? y.physicalBusyPct : 100 - (y.capacityAdjustmentPct ?? 100)))
             .filter(NUM));
           return { source: 'CPC', metric: req.metric, subject: cpcId, system: cpcId, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
         }
         const value = cpuMetric(r, req.metric)!;
-        const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_ROWS), req.index)
+        const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index)
           .map((x) => x.cpu.find((y) => y.lparId === req.lparId))
           .map((y) => (y === undefined ? null : cpuMetric(y, req.metric)))
           .filter(NUM));
@@ -223,7 +219,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         return req.source === 'DB2' ? 'That metric is not in Db2 accounting' : 'That metric is not in CICS monitoring';
       const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
       const upto = i < 0 ? run.smfHours.length : i;
-      const earlier = run.smfHours.slice(Math.max(0, upto - BASELINE_ROWS), upto);
+      const earlier = run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
       const baseline = req.metric === 'CPU_VS_BASE'
         ? 1
         : median(earlier.map((h) => read(`${h.day}:${h.hourOfDay}`)?.[req.metric]).filter(NUM));

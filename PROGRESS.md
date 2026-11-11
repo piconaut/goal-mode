@@ -470,6 +470,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-11: RT-12 evidence baselines: moved the six-row lookback into
+  `content/evidence.ts` as `EVIDENCE.baselineRows`, with a FICTIONAL note explaining the smoothing choice;
+  the value and evidence behavior are unchanged.
 - 2026-11-11: RT-12 pin relations (user decision on Q3, docs/rca-design.md §4.6). Every pin now has a relation to the
   incident, derived from the subjects recorded when it opened: `self` (the work's own class or period, its Db2/CICS
   accounting, its batch night), `server` (a `SYSWKM` row matching a serving region by jobname and image, or a region

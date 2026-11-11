@@ -119,6 +119,8 @@ export const EVIDENCE = {
   maxPins: 12,
   /** Pins attachable to one RCA. */
   perRca: 3,
+  // FICTIONAL: compare with six earlier report rows to smooth short spikes while following recent load.
+  baselineRows: 6,
   /** A pin counts if taken within this many hours of the incident window. */
   windowHours: 1,
   /** Score points per unit of evidence relevance (only with the right mechanism). */
