@@ -352,9 +352,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   items as a FAIL. Why: the same agent finds, triages and fixes, so the fixes got the weakest review.
 
 - Codex native `pr-fixer` role (user request 2026-11-11): `.codex/agents/pr-fixer.toml` now adapts the existing
-  `.claude/agents/pr-fixer.md` brief for `pr-fix-loop`, registered in `.codex/config.toml`. It uses Astra at high
-  reasoning as the Codex counterpart for the skill's stronger review-and-fix role; a fresh Codex session still must
-  verify native role selection before relying on it.
+  `.claude/agents/pr-fixer.md` brief for `pr-fix-loop`, registered in `.codex/config.toml`. It uses `gpt-6.1-sol`
+  at high reasoning; a fresh Codex session still must verify native role selection before relying on it.
 
 - Codex branch-workflow guard (user request 2026-11-11): `AGENTS.md` now states directly that every repository
   change goes through a task branch and PR into `dev`; "merge into dev" means open that PR, not a direct push.
