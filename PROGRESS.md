@@ -84,7 +84,7 @@ Notes from discussion:
 - When settled, this rewrites SPEC §10 (RCA mini-game) and parts of §9 (events); move it to its own design doc if it
   grows.
 
-### WLM policy adjustment audit (2026-11-10; WT-04 implemented 2026-11-11)
+### WLM policy adjustment audit (2026-11-10; WT-04 and WT-05 implemented 2026-11-11)
 
 [docs/wlm-design.md](docs/wlm-design.md) checks the whole adjustment loop (`src/sim/wlm/adjust.ts` and what feeds
 it) against IBM's description, step by step, and proposes one target model. Fifteen findings with seed-42 repros;
@@ -478,6 +478,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-11: WT-05, skip clocks, the delay test and a per-interval projection budget (docs/wlm-design.md §5.3,
+  §9.6): a receiver whose every trial was rejected is skipped for a minute (WLM Services p.145); a period under 2 %
+  managed delay is not assessed (p.144); `RECEIVERS_PER_IMPORTANCE` is replaced by 12 projections per image per
+  interval, counted in real projections. S-1 … S-3: candidates assessed 1 358/4 066/4 600 → 251/723/892, moves
+  19/26/79 → 13/29/49, undone within two minutes 0/1/4 → 0/1/0, episodes 5/5/11 → 1/2/2 (the rest are hopeless
+  receivers re-assessed once a minute as the clock allows, §9.6). S-2 WEBDDF#1 on PROD2 assessed 418 times (2 846
+  before WT-04). RT-06 validator: same incidents, triggers and verdicts. Bench (Harbourline) 1.65 → 1.56 ms/tick.
+  Sweep in M8.2.
 - 2026-11-11: WT-04, one PI basis (docs/wlm-design.md §5.2–§5.4, §9.5): receivers chosen on the management PI,
   trials judged on projected PIs (`base` against `after`) at sustained demand (`src/sim/wlm/projection.ts`); a
   candidate with `base` ≤ 1 is `RECOVERING`; receiver value floor 0.05; a less important receiver never passes more

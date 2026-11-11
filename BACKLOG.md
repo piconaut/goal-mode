@@ -383,28 +383,8 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-05 · Skip clocks, the delay test and a per-interval projection budget (W6)
-`list: wlm-truth · status: ready · priority: high · size: M · area: sim`
-
-Implements the candidate gates of §5.3. `ScpState` gains `skipUntilTick` (absent = 0; `dispatchLpar` in
-`src/sim/core/tick/dispatch.ts` carries it over; `adjustPolicies` in `tick/control.ts` passes the tick and stores
-the returned clocks). In `policyAdjust`: skip a candidate whose clock has not expired (`SKIP_CLOCK`); skip one with
-`managedDelayFrac < needsHelpDelayFrac` (`NO_MANAGED_DELAY`, no clock); set the clock to `nowTick +
-rejectedSkipTicks` when every trial of an assessed candidate was rejected; replace the per-importance budget by
-`maxProjectionsPerInterval` counted over the interval (`BUDGET` when it runs out: no clock). Delete
-`RECEIVERS_PER_IMPORTANCE` and `AdjustInput.receiversPerImportance`. The log's no-action note appends `next look
-hh:mm:ss`. Tests: `wlm-invariants: I12 skip clock, no starvation` (five unfixable and one fixable candidate at one
-importance: the fixable one is helped within 8 intervals), `I16 cost bound`; unit: clock set, honoured, cleared by
-expiry; a helped receiver gets no clock (WLM Services p.149: helped again 10 s later). Goldens: change. Done when:
-S-2's WEBDDF#1 is assessed at most once a minute while it cannot be helped (2 846 → under 500 assessments in three
-days), "assessed 30 intervals running without a move" is 0 in S-1 … S-3, and R-4's MKTDDF#1 (PRDD, D1 14:17:40) is
-assessed. Bots: none expected beyond WT-04. docs/research.md row "skip clock" → Modelled; SPEC §5.5.4 "Projection
-budget" rewritten; `wlm-why` skill table updated for the new outcomes.
-Since CL-05: the carry-over is `dispatchLpar`'s 12a loop, which matches last tick's period by position when the order
-is unchanged (else by key); `skipUntilTick` is per-tick state and stays out of the lookup plan (`tick/plan.ts`).
-
 ### WT-06 · The canonical ladder: priorities are an order (W2, W10)
-`list: wlm-truth · status: blocked: after WT-05 · priority: high · size: M · area: sim`
+`list: wlm-truth · status: ready · priority: high · size: M · area: sim`
 
 Implements §5.6. New pure module `src/sim/wlm/ladder.ts`: `ladderOf(dps)`, `canonical(ladder)`,
 `raiseOneStep(ladder, holder)`, `moveToLevel(ladder, holder, level | 'below')`, `placeNew(ladder, holder,
@@ -489,9 +469,10 @@ Since CL-06: `cicsRegions` is built once per lookup plan (`regionsOf` in `tick/p
 and other per-tick region state stay out of the plan.
 
 ### WT-10 · Managed bottlenecks in turn; waits are not delays (W7)
-`list: wlm-truth · status: blocked: after WT-05 · priority: low · size: S · area: sim`
+`list: wlm-truth · status: ready · priority: low · size: S · area: sim`
 
-Implements §5.7 in `adjust.ts`: `bottleneckOf` is replaced by `managedDelayFrac(acc)` and
+Implements §5.7 in `adjust.ts`: `bottleneckOf` is replaced by `managedDelayFrac(acc)` (WT-05 added it, for the
+delay test) and
 `fixableBottlenecks(acc, C)`; `delayOther` leaves the comparison; CPU and zIIP are tried in order of delay when
 each is at least `bottleneckMinFrac` of the managed delay, even when I/O, storage or cap is larger. `ScpAcc` gains
 decayed `delayStorage` and `delayQueue` (today only in the `delay` total). The no-action note for a period that is
