@@ -184,19 +184,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 `anySubject` image test;
   the replacing entry deletes the interim code path.
 
-### RT-06 · Counterfactual validator for incident triggers
-`list: rca-truth · status: ready · priority: high · size: M · area: tooling`
-
-A headless tool (`npm run inspect -- <file> blame` or a `tools/` script) that, for each incident in a run, replays its
-opening SLA hour from the kept state once per qualifying card with that card's `end` commands applied at the hour
-start, and reports whether the SLA would then have been met. The sim is deterministic, so this is exact; it costs
-an hour of sim per card per incident, so it stays offline (never in the worker or the game's truth). Output: per
-incident, the game's trigger against the cards that were counterfactual causes, and a summary of disagreements
-(docs/rca-design.md §4.8, Q10, moved earlier by the user). Run it now on seeds 1–5 of the three scenarios and put
-the disagreement counts in the PR: that is today's baseline. Done when: the tool runs on play-CLI files, has a test
-on a hand-built run with one causal and one bystander card, is in CLAUDE.md's command list, and RT-14 can use it as
-its acceptance test.
-
 ### RT-07 · Accepted answers: score an RCA against a set, name the primary
 `list: rca-truth · status: ready · priority: high · size: M · area: game`
 

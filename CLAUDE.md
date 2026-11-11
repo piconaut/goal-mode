@@ -43,6 +43,7 @@ npm run play -- runs/a.json mon3 [system] [--json] [--at D2 10:40]   # Monitor I
 npm run play -- runs/a.json finance | capacity | batch   # bill and TFP pace per product (overage $/MSU-hour by LPAR); CPC MSU, LPARs, initiators, capacity changes; last batch night by stream
 npm run inspect -- runs/a.json dp PROD1 [--class ONL] [--from 'D19 20:00'] [--to 'D20 06:00']   # sim internals the player can't see (DPs per RMF interval): investigations only, never in player agents
 npm run inspect -- runs/a.json wlm PROD1 --at 'D19 22:00' [--ticks 6] [--class ONL]   # why WLM did or didn't move DPs: receivers in order, each trial and its verdict (play-CLI files replay to any past time; browser saves trace forward)
+npm run inspect -- runs/a.json blame [--json] [--incident N]   # counterfactual validator (RT-06): replay each online incident's opening hour once per card that affects the hurt workload, with the card ended at the hour start; report the game's blamed card against the cards whose removal met the SLA. Offline only (an hour of sim per card per incident); needs a play-CLI file
 npm run compare -- [--base origin/dev] [--head <ref>] [--scenarios a,b] [--drop k1,k2]   # behaviour diff vs base: sim state (reporting excluded), game state, log, RMF report text/records, Monitor III views; exit 1 on any difference
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
