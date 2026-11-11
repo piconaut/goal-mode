@@ -32,6 +32,7 @@ Narrow it to a 10-minute window before tracing:
 npm run -s play -- <file> wlmlog <system> --grep <CLASS>                     # what WLM logged (RCVR= lines are moves)
 npm run -s inspect -- <file> dp <system> --class <CLASS> --from 'D19 20:00' --to 'D20 02:00'   # DPs per RMF interval
 npm run -s play -- <file> report WLM_SUMMARY                                  # PI / velocity / delays per interval
+npm run -s inspect -- <file> wlm-stats [system] --from 'D19 06:00' --to 'D21 06:00' --ladder '22:00'   # whole-range counters (WT-01)
 ```
 
 Note the PI, DP and bottleneck of the period in question and of everything above it, from the RMF interval that
@@ -48,6 +49,13 @@ order WLM assessed them (importance, sysplex PI, local PI, DP, bottleneck), with
 Identical adjustments collapse to one line. `--class` filters the candidates shown, never the action. Trace a few
 minutes (`--ticks 30`) when the answer might be "WLM did help, later"; a run of the same verdict over many ticks is
 the finding.
+
+For a question about a whole day or run rather than one moment, `inspect … wlm-stats` gives the same counters over a
+range (the wlm-design audit's S-table): adjustments, candidates by outcome, trials by verdict, accepted and reversed
+moves, episodes of a period assessed on 30 adjustments without a receiver move, and with `--ladder` the DP ladder at a
+clock time each day. `--json` prints the counters for a script. It replays faithfully — a logged `advance` stops where
+the play CLI stopped (a fresh ABEND, the end of a played day), and a log that ends before `--to` says so — and costs
+about 6 s per played day, so give it a range rather than a 19-day file when a shorter one answers the question.
 
 ## 4. Read the verdicts
 
