@@ -198,5 +198,6 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     const after = JSON.parse(wlmStatsText(encodePlayFile(f), { from: 'D2 22:00', to: 'D3 06:00', json: true }));
     expect(after.range.to).toBe(clockText(f.run.sim.tick));
     expect(after.total.adjustments).toBe(after.systems.length * 4 * 360);
-  });
+    // About 43 played hours plus two replays: ~27 s alone, so over the 30 s default under a parallel CI load.
+  }, 120_000);
 });
