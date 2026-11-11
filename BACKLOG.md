@@ -182,8 +182,8 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
-- Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 `anySubject` image test;
-  the replacing entry deletes the interim code path.
+- Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
+  image test.
 
 ### RT-08 · CAPPING is decided by one capped tick, not by 5 % of the hour
 `list: rca-truth · status: ready · priority: low · size: S · area: game`
@@ -236,19 +236,8 @@ notable 25 % of an engine), and the WLMGL work-manager states of a CICS transact
 lock → LOCK_CONTENTION; `WM_READY` → CPU_PRIORITY, CPU_CAPACITY, QR_TCB at half weight; RMF Report Analysis
 p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §10.
 
-### RT-12 · Pin relations instead of `anySubject`
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-User decision on Q3, 2026-11-10: yes. After RT-04. Each pin gets a relation to the incident (`self`, `server`, `competitor`, `host`) from the incident's
-`subjects`; each metric says which relations it accepts; `anySubject` is removed; pins store the baseline beside the
-value so a predicate can ask for "normal". RT-04's snapshot holds a server's jobname and image only: widen it if a
-relation needs the region's role or subsystem. Done when: R-16's table comes out as §4.6 describes and the existing
-evidence tests are ported. That includes the residual RT-03 leaves: a competing class's `DELAY_CPU` row on a host
-image (R-16's TSO#1 on PROD2) still scores full weight from the image test alone, and only the relation plus §4.6's
-discriminator can say whether that class was ahead of the hurt work.
-
 ### RT-13 · Proof recipes: evidence as a discriminating pair
-`list: rca-truth · status: blocked: after RT-12 · priority: high · size: L · area: game`
+`list: rca-truth · status: ready · priority: high · size: L · area: game`
 
 User decision on Q3, 2026-11-10: yes. After RT-12. Recipes per mechanism and trigger in
 `content/evidence.ts` (§4.6 table), judged over the up-to-three attached pins. Every common recipe (CPU family,
@@ -256,6 +245,8 @@ DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) has a path that needs
 players can complete a proof. The CF, DASD and CICS-storage recipes need RT-10 and RT-11: whichever of RT-10, RT-11
 and RT-13 lands last adds them; a complete recipe for the filed, accepted mechanism replaces today's
 relevance sum, a second for the trigger makes the evidence strong; the reply shows each predicate ticked or not.
+Note: `ENDED_RATE` is `self`/`server` only today, so the DEMAND_SURGE recipe's "on the surging workload" and §4.4's
+collateral-victim surrogate (a co-hosted workload's rate) need it widened to `competitor` here.
 Done when: every mechanism and trigger has a recipe a test satisfies from a replayed incident, and one a test fails
 with look-alike pins (surge against regression, capacity against priority), and a test shows a tier-0/1 path for
 each common recipe.

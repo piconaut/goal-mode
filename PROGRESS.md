@@ -19,8 +19,7 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
   - **Preview (dev):** [artifact](https://claude.ai/artifact/MbFdETzQXwuj87CvtiQyNW) (private until shared),
     "GOAL MODE (preview · dev ab5d1ff)", built 2026-11-10 from `dev` at `ab5d1ff` (#259; the same game as the
     release, since #259 changed docs only).
-- **Latest verified dev:** `1300e69` (#258, merged to main as `0008a76`); 79 test files / 832 tests pass
-  (`npm run check`, 2026-11-10).
+- **Latest verified dev:** `53b5789` (#287); 83 test files / 907 tests pass (single-worker `vitest`, 2026-11-11).
 - **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `1300e69`, 2026-11-10):** Midwest `bde6d147471ece9f`;
   Harbourline `ec94548d8283d76c`; Revenue `fb563b38750d988f`. Host timings vary; use adjacent comparisons rather than
   old absolute timings.
@@ -471,6 +470,26 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-11: RT-12 evidence baselines: moved the six-row lookback into
+  `content/evidence.ts` as `EVIDENCE.baselineRows`, with a FICTIONAL note explaining the smoothing choice;
+  the value and evidence behavior are unchanged.
+- 2026-11-11: RT-12 pin relations (user decision on Q3, docs/rca-design.md §4.6). Every pin now has a relation to the
+  incident, derived from the subjects recorded when it opened: `self` (the work's own class or period, its Db2/CICS
+  accounting, its batch night), `server` (a `SYSWKM` row matching a serving region by jobname and image, or a region
+  class), `host` (an incident image, or the CPC one of them sits on) or `competitor` (another class the definition
+  knows, and only from an image the work runs on: a `*PLEX` roll-up cannot say where it ran). `IncidentSubjects`
+  gained `serverClasses`, so a region's class row is the server's and not the work's own. `EVIDENCE_METRICS` replaced
+  `anySubject`/`cpcSubject` with `relations`, and the judge rejects a pin whose relation the metric does not accept,
+  before it looks at size or mechanism. R-16's residual is closed: TSO#1's CPU delay on a MOBILE image scores 0
+  (another class's delay) while its `APPL` share is still the half-weight competitor clue, and a competitor's `*PLEX`
+  row is rejected with its own reason. A class row in any relation must name an image the work runs on or `*PLEX`,
+  so the mirror of A9 (the work's own class on an image it never ran on) does not count either, and a competitor is
+  recognised from the row's shape rather than the live definition, so an `ACTIVATE_POLICY` cannot change a frozen
+  row's verdict. Pins also store a `baseline` where a report gives one (median of the same row's six preceding
+  report intervals or closed SMF hours; 1 for the `CPU_VS_BASE` ratio), for RT-13's "normal" predicates; Monitor III
+  pins carry none because that view normalises APPL and ended/s differently. No truth label, sim behaviour or bot
+  label changed: Midwest bench hash still `bde6d147471ece9f`, and the run-state golden is unchanged because the
+  golden run opens no incidents. 913 tests pass.
 - 2026-11-11: RT-07 accepted answer sets (user decision on Q1, docs/rca-design.md §4.1). `truth` now carries
   `accepted { mechanisms, triggers }` — always including the primary — with one line of reasoning per alternate
   (`notes`), and `cause` for RT-15's grouping. `scoreRca` and the evidence gate read membership, so a defensible
