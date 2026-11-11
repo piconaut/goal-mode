@@ -607,7 +607,8 @@ parked or declined.
 
 ## pr-followups
 
-Non-blocking findings from the reviews of #178–#185 (2026-11-04), each still present on `dev` at 7fbeffa.
+Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
+on `dev` at 7fbeffa; later entries name their source.
 
 ### PR-01 · A scheduled activation overrides a queued install
 `list: pr-followups · status: ready · priority: high · size: S · area: game`
@@ -673,6 +674,17 @@ would avoid the frame. `close()` also runs twice on cancel (harmless).
 
 From #185. During a file import the button still reads "Reading file…" while the prompt is open; the confirm button has
 no primary/danger styling.
+
+### PR-11 · Match the RCA evidence example to its accepted mechanisms
+`list: pr-followups · status: ready · priority: low · size: S · area: content`
+
+Source: [#288 independent fix-check, M1](https://github.com/piconaut/goal-mode/pull/288#issuecomment-6796163086)
+(2026-11-11). `docs/rca-design.md` §3 A9 says two `DELAY_ZIIP` pins can reach strong evidence for any CPU or
+dependency incident, but `src/content/evidence.ts` accepts that metric only for `CPU_CAPACITY` and `CPU_PRIORITY`;
+`DELAY_CPU` also accepts `DEPENDENCY`. Verify the intended example against the metric definitions and judge, then
+use `DELAY_CPU` or restrict the example to the CPU mechanisms. This is a documentation correction, not a scoring
+change. Done when: A9's example matches the accepted mechanisms and relation/notability rules, preserving its
+explanation of the remaining proof-recipe gap.
 
 ## realism-fixes
 
