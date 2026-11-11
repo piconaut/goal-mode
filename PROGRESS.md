@@ -84,7 +84,7 @@ Notes from discussion:
 - When settled, this rewrites SPEC §10 (RCA mini-game) and parts of §9 (events); move it to its own design doc if it
   grows.
 
-### WLM policy adjustment audit (2026-11-10; design only, nothing implemented)
+### WLM policy adjustment audit (2026-11-10; WT-04 implemented 2026-11-11)
 
 [docs/wlm-design.md](docs/wlm-design.md) checks the whole adjustment loop (`src/sim/wlm/adjust.ts` and what feeds
 it) against IBM's description, step by step, and proposes one target model. Fifteen findings with seed-42 repros;
@@ -162,6 +162,11 @@ level or a separate toggle.
   [docs/performance/](docs/performance/). Preserve pure snapshots and exact hashes for optimizations.
 
 ### M8.2 Balance harness & targets
+
+- WT-04 sweep (2026-11-11, remote, Normal, seeds 1–10, `dev` `40b81dc` → WT-04 `1f2e8d3`): do-nothing / textbook
+  median day, expert victories. Midwest 16.5 / 28 / 10 → 16.5 / 28 / 10 (identical); Revenue 19 / 27 / 10 → 20 / 27
+  / 10; Harbourline 9.5 / 29 / 5 → 9.5 / 29 / **8** (trust losses 5 → 2; back inside the 60–100 % band). Every bot
+  inside its band on all three. The `wlm-truth` entries each add a row here; WT-15 closes with a 20-seed sweep.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -469,6 +474,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   Use commit/PR links for completed detail rather than rebuilding a chronological transcript.
 
 ## Latest maintenance
+
+- 2026-11-11: WT-04, one PI basis (docs/wlm-design.md §5.2–§5.4, §9.5): receivers chosen on the management PI,
+  trials judged on projected PIs (`base` against `after`) at sustained demand (`src/sim/wlm/projection.ts`); a
+  candidate with `base` ≤ 1 is `RECOVERING`; receiver value floor 0.05; a less important receiver never passes more
+  important work that is missing its goal. From `proto/wlm-wt04`; the demand uplift and the backlog bound were
+  measured apart and both kept. S-1 … S-3 (`wlm-stats`): moves 36/46/117 → 19/26/79, undone within two minutes
+  6/6/19 → 0/1/4, `NO_NET_VALUE` 465/291/2 336 → 2/4/0. Bench (paired, Harbourline): about +5 % per tick (1.33 →
+  1.40 ms). RT-06 validator: S-1 … S-3 same incidents, triggers and verdicts (hour attainment only); Midwest seed 2's
+  runaway now breaks MOBILE from D2 17:00, not 14:00, and CARDAUTH misses with it through Db2 (no card names it:
+  RT-14). Sweep in M8.2. User request 2026-11-11: WT-04 … WT-09 in one attended session, one PR each, in order.
 
 - 2026-11-11: WT-03 (docs only): SPEC §5.4 now says every discretionary period runs at DP 196 and small consumers
   and mean-time-to-wait are not modelled; §5.5.3 describes the sysplex PI as summed accumulators, the PI window as
