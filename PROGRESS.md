@@ -463,6 +463,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-10: RT-06 counterfactual validator: `npm run inspect -- <file> blame [--json]` replays each online
+  incident's opening hour from the play log, once unchanged and once per card that affects the hurt workload with
+  that card ended at the hour start, then compares the card the game's trigger names with the cards whose removal
+  met the SLA. Baseline (five passive days, seeds 1–5 of the three scenarios): 202 online incidents, 15 with a card
+  to test, 12 counterfactual causes, 12 agree, 3 disagreements — all Harbourline CAPPING hours (seeds 2 and 4) where
+  a demand card overlapped but removing it still missed (best 91.1 % against MOBILE's 95 %); 187 incidents had no
+  card on the hurt workload, 7 batch nights are out of scope, and 0 hours failed to reproduce. Offline only (an
+  hour of sim per card per incident); RT-14 consumes `--json`.
 - 2026-11-11: Monitor III CPC view is one partition table (user request). The lower table's busy % had the same
   formula as Logical Util % Total; weight and polarity are on the Change Desk. Its `LPAR_BUSY` pin moved to Logical
   Util % Total and PR/SM delay % (pinned) and capped % joined the partition rows. UI only: the `Mon3Cpc` view model,

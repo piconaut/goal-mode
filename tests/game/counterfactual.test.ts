@@ -29,7 +29,7 @@ beforeAll(() => {
     run,
     pendingPolicy: null,
     log: [
-      { cmd: 'new', seed: 2 },
+      { cmd: 'new', seed: 2, difficulty: 'NORMAL', scenario: 'midwest' },
       { cmd: 'start' },
       { cmd: 'advance', hours: 24 },
       { cmd: 'draft', optionId: null },
@@ -92,6 +92,11 @@ describe('counterfactual validator (RT-06)', () => {
 
   it('refuses a save with no play log, which cannot replay a past hour', () => {
     expect(() => blameText(encodePlayFile({ ...file, log: [] }))).toThrow(/play-CLI file/);
+  });
+
+  it('refuses a log that replays a different run than the saved state', () => {
+    const wrong = { ...file, log: [{ cmd: 'new' as const, seed: 3 }, ...file.log.slice(1)] };
+    expect(() => blameText(encodePlayFile(wrong))).toThrow(/starts a different run/);
   });
 
   it('runs on a play-CLI file and reports the incident, cards and verdict', () => {

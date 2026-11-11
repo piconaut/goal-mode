@@ -156,6 +156,9 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
   for (const i of incidents) byTick.set(i.startTick, [...(byTick.get(i.startTick) ?? []), i]);
   const last = Math.max(...byTick.keys());
   let f = newPlayFile(first.seed, first.difficulty, first.scenario);
+  if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed) {
+    throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed})`);
+  }
   const content = packOf(f.run.scenarioId).game;
   /** One hour, without the play CLI's view-building (the state is identical; the MON3 history is not needed). */
   const stepHour = () => {
