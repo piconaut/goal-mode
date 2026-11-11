@@ -1171,10 +1171,14 @@ trigger (`content/evidence.ts`). Evidence is judged against the incident's own s
 good at the time into "not about" the work; incidents from old saves derive the subjects from the present. The
 record is taken at the hour's close, so a change applied during that same hour is already in it, and a later hour
 of a still-open incident keeps the subjects it opened with.
-For an `anySubject` metric (`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), whose subject may be another class, the
-pin must still come from an image the incident's work runs on or a sysplex-wide `*PLEX` row; a server-side clue
-(`SYSWKM`) instead needs the exact serving image. PI is a symptom and never counts. Evidence points need the right
-mechanism.
+For an `anySubject` metric (`APPL`, `APPL_CP`, `APPL_IIP`, `IIPCP`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), whose
+subject may be another class, the pin must still come from an image the incident's work runs on or a sysplex-wide
+`*PLEX` row; a server-side clue (`SYSWKM`) instead needs the exact serving image. The capacity facts are pinnable
+too: `CPC_BUSY` (the processor's CP busy %, notable 90), `LPAR_BUSY` (the image's CP engines over its logical CPs,
+notable 95) and `CAPACITY_ADJ` (100 − SMF70CAI, the capacity lost against the normal setting, notable 1) from
+Partition Data or Monitor III, the first and last about the CPC and so relevant through the incident's images; and
+the CP/zIIP split of APPL % (`APPL_CP`, `APPL_IIP`, `IIPCP`) beside the summed value at half weight. PI is a symptom
+and never counts. Evidence points need the right mechanism.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one

@@ -95,7 +95,7 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
   );
 }
 
-const WLM_METRICS: EvidenceMetric[] = ['PI', 'APPL', 'ENDED_RATE', 'DELAY_CPU', 'DELAY_ZIIP', 'DELAY_IO', 'DELAY_STO', 'DELAY_CAP', 'DELAY_OTHER'];
+const WLM_METRICS: EvidenceMetric[] = ['PI', 'APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP', 'ENDED_RATE', 'DELAY_CPU', 'DELAY_ZIIP', 'DELAY_IO', 'DELAY_STO', 'DELAY_CAP', 'DELAY_OTHER'];
 
 /** Pin one value from this Workload Activity interval as RCA evidence. */
 function PinFromReport({ index, system, scKeys, initial, game }: { index: number; system: string; scKeys: string[]; initial?: string; game: GameHandle }) {

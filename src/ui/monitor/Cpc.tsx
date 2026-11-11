@@ -73,6 +73,7 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
             const part = cpcRows.filter((c) => c.kind === kind);
             if (part.length === 0) return null;
             const sum = (f: (c: Mon3Cpc) => number) => part.reduce((a, c) => a + f(c), 0);
+            const anyPart = part[0];
             return [
               <tr key={kind}>
                 <td>{kind === 'ZOS' ? '*CP' : '*ICF'}</td>
@@ -81,7 +82,12 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
                 <td className="num">{n1(sum((c) => c.procNum))}</td>
                 <td />
                 <td />
-                <td className="num">{n1(sum((c) => c.physLparPct))}</td>
+                <td className="num">
+                  {n1(sum((c) => c.physLparPct))}
+                  {kind === 'ZOS' && anyPart && (
+                    <PinButton game={game} req={{ source: 'CPC', lparId: anyPart.lparId, metric: 'CPC_BUSY' }} label={`CPC ${anyPart.cpcId} busy`} />
+                  )}
+                </td>
                 <td className="num">{n1(sum((c) => c.physEffectPct))}</td>
                 <td className="num">{n1(sum((c) => c.physTotalPct))}</td>
               </tr>,
@@ -108,6 +114,7 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
             <th>Partition</th>
             <th className="num">weight</th>
             <th>polarity</th>
+            <th className="num" title="The image's CP engines as a share of its logical CPs">busy %</th>
             <th className="num" title="Not an RMF field: RMF shows it only indirectly, as Avg MVS Util% above Avg CPU Util% in SYSINFO">PR/SM delay %*</th>
             <th className="num">capped %</th>
           </tr>
@@ -118,6 +125,10 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
               <td>{c.lparId}</td>
               <td className="num">{c.weight}</td>
               <td>{c.polarity}</td>
+              <td className="num">
+                {c.busyPct.toFixed(1)}
+                <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'LPAR_BUSY' }} label={`${c.lparId} busy`} />
+              </td>
               <td className="num">
                 {c.prsmDelayPct.toFixed(1)}
                 <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'PRSM_DELAY' }} label={`${c.lparId} PR/SM delay`} />
