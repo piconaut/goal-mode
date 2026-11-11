@@ -356,6 +356,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   reasoning as the Codex counterpart for the skill's stronger review-and-fix role; a fresh Codex session still must
   verify native role selection before relying on it.
 
+- Codex branch-workflow guard (user request 2026-11-11): `AGENTS.md` now states directly that every repository
+  change goes through a task branch and PR into `dev`; "merge into dev" means open that PR, not a direct push.
+  Auto-merge still needs explicit user authorization, as do any bypasses of the PR workflow.
+
 - Dev loop and review loop take turns (user request 2026-11-09). On a `dev-loop` PR, the latest review marker
   decides who acts. No marker, MERGE, FIXED, or a fix-check under way: the review loop's turn. HOLD: dev-loop's turn,
   until it pushes or posts a `dev-loop-response` comment. pr-fix-loop still fixes mechanical findings on `dev-loop` PRs

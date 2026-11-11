@@ -22,6 +22,14 @@ scope and reporting. The Codex role instructions adapt host-specific details.
 - `goal-mode-player`, `goal-mode-cost-cutter`, `goal-mode-cautious-operator`, `goal-mode-firefighter`:
   headless play with the brief's information restrictions and strategy.
 
+## Branch workflow
+
+For any repository change, create a task branch from `dev` and open a pull request targeting `dev`. Do not push
+directly to `dev` or `main`, and do not interpret "merge into dev" as permission to do so: it means create the PR
+into `dev`. The review loop merges ordinary PRs. Enable auto-merge only when the user explicitly authorizes it.
+Direct pushes or merges to either protected branch require the user's explicit wording that they want to bypass the
+PR workflow.
+
 Keep model design, balance decisions and cross-layer work on the main agent,
 except the vetted realism-fixer delegation documented in CLAUDE.md. Give each
 delegate a precise scope, working directory and validation expectations; review
