@@ -1,13 +1,13 @@
 // Invariants of WLM policy adjustment (docs/wlm-design.md §5.9), as property tests over generated images.
-// This file holds the ones the PI-basis change (WT-04) is responsible for: I1, I4, I8, I17. Some generated images
-// have a CPU-critical class, so CPU protection and the CPU_CRITICAL verdict are reached too.
+// I1, I4, I8, I17 came with the PI basis (WT-04); I12 and I16 with skip clocks and the interval budget (WT-05). Some
+// generated images have a CPU-critical class, so CPU protection and the CPU_CRITICAL verdict are reached too.
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { PCT_PROJECTION_SIGMA, POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { Rng, seedRng } from '../../src/sim/core/rng';
 import { policyAdjust, receiverValueNeeded, setWlmTraceSink, type AdjustInput, type AdjustOutput, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { evaluateLpar, sliceSpec, type ScpTick, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { projectedPercentilePi } from '../../src/sim/wlm/goals';
-import { decayInto, emptyAcc, goalInfo, tickPi, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
+import { decayInto, emptyAcc, goalInfo, goalPi, tickPi, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
@@ -184,4 +184,72 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
       expect(b.dps).toEqual(a.dps);
     }
   });
+
+  /** Projections a trace's trials cost: a CPU-protection or missing-goal rejection is decided without one. */
+  const projections = (t: WlmAdjustTrace) =>
+    t.candidates.flatMap((c) => c.trials).filter((tr) => tr.verdict !== 'CPU_CRITICAL' && !tr.detail?.includes('would be passed')).length;
+
+  it('I16 cost bound: at most maxProjectionsPerInterval projections per interval, none when every candidate is on its clock', () => {
+    let spent = 0;
+    let allClocked = 0;
+    for (const seed of SEEDS) {
+      const { input } = makeCase(seed, 'varied');
+      const first = traced({ ...input, nowTick: 0 });
+      expect(projections(first.trace)).toBeLessThanOrEqual(POLICY_ADJUST.maxProjectionsPerInterval);
+      if (projections(first.trace) === POLICY_ADJUST.maxProjectionsPerInterval) spent++;
+      // Every candidate on a clock: nothing is projected.
+      const clocked = { ...input.system, scps: input.system.scps.map((p) => ({ ...p, skipUntilTick: 50 })) };
+      const quiet = traced({ ...input, system: clocked, nowTick: 1 });
+      if (quiet.trace.candidates.length > 0) {
+        allClocked++;
+        expect(quiet.trace.candidates.every((c) => c.outcome === 'SKIP_CLOCK')).toBe(true);
+        expect(projections(quiet.trace)).toBe(0);
+        expect(quiet.out.dps).toEqual(Object.fromEntries(input.system.scps.map((p) => [p.scKey, quiet.out.dps[p.scKey]])));
+      }
+    }
+    expect(allClocked).toBeGreaterThan(50);
+    expect(spent).toBeGreaterThan(0);
+  });
+
+  it('I12 skip clock, no starvation: every candidate is assessed, clocked or recovering within rejectedSkipTicks + 2 intervals', () => {
+    // A small budget so it bites; the image is replayed for 40 intervals with its DPs and clocks carried over.
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    POLICY_ADJUST.maxProjectionsPerInterval = 3;
+    let budgetHits = 0;
+    try {
+      for (const seed of SEEDS.slice(0, 60)) {
+        const { def, input } = makeCase(seed, 'varied');
+        const candidates = input.system.scps.filter((p) => {
+          const g = goalInfo(def, p.scKey);
+          return g && g.goal.kind !== 'DISC' && (goalPi(g.goal, p.acc) ?? 0) > 1;
+        }).map((p) => p.scKey);
+        const waiting: Record<string, number> = {};
+        let system = input.system;
+        for (let tick = 0; tick < 40; tick++) {
+          const { out, trace } = traced({ ...input, system, nowTick: tick });
+          const carried = system;
+          system = { ...carried, scps: carried.scps.map((p) => {
+            const { skipUntilTick: _, ...rest } = p;
+            const c = out.skipUntil[p.scKey];
+            return { ...rest, dp: out.dps[p.scKey] ?? p.dp, ...(c !== undefined ? { skipUntilTick: c } : {}) };
+          }) };
+          const seen = new Map(trace.candidates.map((c) => [c.scKey, c.outcome]));
+          // An interval that helped a receiver ends there (one change per interval): that is not starvation.
+          if (trace.action !== null) continue;
+          for (const k of candidates) {
+            const o = seen.get(k);
+            if (o === undefined || o === 'BUDGET') {
+              if (o === 'BUDGET') budgetHits++;
+              waiting[k] = (waiting[k] ?? 0) + 1;
+              expect(waiting[k], `${k} seed ${seed} tick ${tick}`).toBeLessThanOrEqual(POLICY_ADJUST.rejectedSkipTicks + 2);
+            } else waiting[k] = 0;
+          }
+        }
+      }
+    } finally {
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
+    }
+    expect(budgetHits).toBeGreaterThan(3);
+  });
 });
+

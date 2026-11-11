@@ -1,6 +1,6 @@
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { BASEPOL } from '../../src/content/wlm/basepol';
-import { enforceCpuProtection, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { enforceCpuProtection, managedDelayFrac, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
@@ -270,82 +270,147 @@ describe('a hopeless receiver does not stop the search at the next importance (S
     expect(out.log).not.toContain('RCVR=');
   });
 
-  it('still assesses at most receiversPerImportance (default two) receivers per importance', () => {
-    // Receivers that miss their goal on this system and that no DP move helps: their CPU delay is PR/SM delay.
-    const wide = structuredClone(BASEPOL);
-    wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
-    const slices3 = [
-      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 2, units: 8 }),
-    ];
-    const input3 = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: slices3 };
-    const cur3 = evaluateLpar({ ...input3, dpOf: (k) => dps[k] ?? 0xee });
-    const system3: WlmSystemState = {
-      lparId: 'SYS1',
-      scps: cur3.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey] ?? 0xee, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
-    };
-    const traces: WlmAdjustTrace[] = [];
-    setWlmTraceSink((t) => traces.push(t));
+  // Receivers that miss their goal on this system and that no DP move helps: their CPU delay is PR/SM delay.
+  const wide = structuredClone(BASEPOL);
+  wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
+  const slices3 = [
+    sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+    sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+    sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+    sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 2, units: 8 }),
+  ];
+  const input3 = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: slices3 };
+  const cur3 = evaluateLpar({ ...input3, dpOf: (k) => dps[k] ?? 0xee });
+  const system3: WlmSystemState = {
+    lparId: 'SYS1',
+    scps: cur3.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey] ?? 0xee, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+  };
+  const plexPi = { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 };
+  const run3 = (sys: WlmSystemState, nowTick: number) => {
+    const tr: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => tr.push(t));
     try {
-      policyAdjust({ def: wide, system: system3, evalInput: input3, current: cur3.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T' });
+      const out = policyAdjust({ def: wide, system: sys, evalInput: input3, current: cur3.scps, sysplexPi: plexPi, clockText: 'D1 06:00:00', nowTick });
+      return { out, trace: tr[0]! };
     } finally {
       setWlmTraceSink(null);
     }
-    const b = traces[0]!.candidates.filter((c) => c.outcome === 'BUDGET').map((c) => c.scKey);
-    expect(b).toEqual(['OLD3#1']);
-    // The limit comes from the adjust input; a limit below 1 is clamped to 1.
-    for (const [limit, budget] of [[1, ['OLD2#1', 'OLD3#1']], [0, ['OLD2#1', 'OLD3#1']], [3, []]] as const) {
-      const tr: WlmAdjustTrace[] = [];
-      setWlmTraceSink((t) => tr.push(t));
-      try {
-        policyAdjust({ def: wide, system: system3, evalInput: input3, current: cur3.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T', receiversPerImportance: limit });
-      } finally {
-        setWlmTraceSink(null);
-      }
-      expect(tr[0]!.candidates.filter((c) => c.outcome === 'BUDGET').map((c) => c.scKey)).toEqual(budget);
+  };
+  const withClocks = (clocks: Record<string, number>): WlmSystemState => ({
+    ...system3,
+    scps: system3.scps.map((s) => (clocks[s.scKey] !== undefined ? { ...s, skipUntilTick: clocks[s.scKey] } : s)),
+  });
+  const outcome = (t: WlmAdjustTrace, k: string) => t.candidates.find((c) => c.scKey === k)?.outcome;
+
+  it('sets a skip clock on a receiver whose every trial was rejected, honours it, and drops it on expiry (WLM Services p.145)', () => {
+    const first = run3(system3, 0);
+    const until = POLICY_ADJUST.rejectedSkipTicks;
+    for (const k of ['OLD1#1', 'OLD2#1', 'OLD3#1']) {
+      expect(outcome(first.trace, k)).toBe('ASSESSED');
+      expect(first.out.skipUntil[k]).toBe(until);
+    }
+    expect(first.out.log).toMatch(/OLD1#1 .* no action with net value .*, next look 06:01:00$/);
+    // ONLCARD's raises would all pass importance-1 work that is missing its goal: rejected too, and clocked.
+    expect(first.out.skipUntil['ONLCARD#1']).toBe(until);
+    // A tick later all four are on their clocks: no projection at all this interval (I16).
+    const next = run3(withClocks(first.out.skipUntil), 1);
+    expect(next.trace.candidates.flatMap((c) => c.trials)).toEqual([]);
+    for (const k of ['OLD1#1', 'OLD2#1', 'OLD3#1', 'ONLCARD#1']) {
+      expect(outcome(next.trace, k)).toBe('SKIP_CLOCK');
+      expect(next.trace.candidates.find((c) => c.scKey === k)!.skipUntilTick).toBe(until);
+      expect(next.out.skipUntil[k]).toBe(until);
+    }
+    // At the clock's tick they are assessed again.
+    const later = run3(withClocks(first.out.skipUntil), until);
+    expect(outcome(later.trace, 'OLD1#1')).toBe('ASSESSED');
+  });
+
+  it('gives a helped receiver no clock: it may be helped again next interval', () => {
+    // An importance-2 class below busy importance-5 work: raising it is worth it.
+    const two = structuredClone(BASEPOL);
+    const bat = { ...cls('BAT', 10, 2), periods: [{ goal: { kind: 'VEL' as const, velocity: 10 }, importance: 5 as const, durationSu: null }] };
+    two.classes.push(cls('ONLCARD', 95, 2), bat);
+    const sl = [sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 1.5, units: 8 }), sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 })];
+    const inp = { ...evalInput, slices: sl };
+    const d: Record<string, number> = { 'BAT#1': 0xf0, 'ONLCARD#1': 0xe6 };
+    const c = evaluateLpar({ ...inp, dpOf: (k) => d[k]! });
+    const sys: WlmSystemState = { lparId: 'SYS1', scps: c.scps.map((t) => ({ scKey: t.scKey, dp: d[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const out = policyAdjust({ def: two, system: sys, evalInput: inp, current: c.scps, sysplexPi: {}, clockText: 'T', nowTick: 100 });
+    expect(out.log).toMatch(/RCVR=ONLCARD#1 /);
+    expect(out.skipUntil).toEqual({});
+  });
+
+  it('stops the search when the interval projection budget is spent, with no clock for the receiver it cut short', () => {
+    // OLD1 is on its clock; OLD2 (one trial) spends one of two projections, OLD3 (two trials) gets the other.
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    POLICY_ADJUST.maxProjectionsPerInterval = 2;
+    try {
+      const { out, trace } = run3(withClocks({ 'OLD1#1': 200 }), 100);
+      const old3 = trace.candidates.find((c) => c.scKey === 'OLD3#1')!;
+      expect(old3.outcome).toBe('ASSESSED');
+      expect(old3.trials).toHaveLength(1);
+      expect(old3.skipUntilTick).toBeUndefined();
+      expect(trace.candidates.map((c) => c.scKey)).toEqual(['OLD1#1', 'OLD2#1', 'OLD3#1']);
+      expect(out.skipUntil).toEqual({ 'OLD1#1': 200, 'OLD2#1': 100 + POLICY_ADJUST.rejectedSkipTicks });
+    } finally {
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
     }
   });
 
-  it('skips past a spent budget to the next importance whether traced or not', () => {
-    // Three importance-1 receivers that find nothing (PR/SM delay: no DP move helps) spend the importance-1 budget;
-    // the importance-2 class behind them must still be helped in the untraced (production) path, not only when
-    // the trace is on.
-    const wide = structuredClone(BASEPOL);
-    wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
-    const bat = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
-    bat.id = 'BAT';
-    bat.periods = [{ goal: { kind: 'VEL', velocity: 10 }, importance: 5, durationSu: null }];
-    wide.classes.push(bat);
-    const sl = [
-      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 1.5, units: 8 }),
-      sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
-    ];
-    const input = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: sl };
-    const d: Record<string, number> = { 'OLD1#1': 0xf4, 'OLD2#1': 0xf3, 'OLD3#1': 0xf2, 'BAT#1': 0xf0, 'ONLCARD#1': 0xe6 };
-    const c = evaluateLpar({ ...input, dpOf: (k) => d[k]! });
-    const sys: WlmSystemState = {
-      lparId: 'SYS1',
-      scps: c.scps.map((t) => ({ scKey: t.scKey, dp: d[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
-    };
-    const run = () => policyAdjust({ def: wide, system: sys, evalInput: input, current: c.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T' });
-    const plain = run();
-    const traces: WlmAdjustTrace[] = [];
-    setWlmTraceSink((t) => traces.push(t));
-    let traced;
+  it('clocks a receiver that had the whole budget and still ran out, so it cannot keep the rest out (I12)', () => {
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    POLICY_ADJUST.maxProjectionsPerInterval = 1;
     try {
-      traced = run();
+      const { out, trace } = run3(withClocks({ 'OLD1#1': 200, 'OLD2#1': 200 }), 100);
+      const old3 = trace.candidates.find((c) => c.scKey === 'OLD3#1')!;
+      expect(old3.trials).toHaveLength(1);
+      expect(out.skipUntil['OLD3#1']).toBe(100 + POLICY_ADJUST.rejectedSkipTicks);
+      expect(trace.candidates.map((c) => c.scKey)).toEqual(['OLD1#1', 'OLD2#1', 'OLD3#1']);
     } finally {
-      setWlmTraceSink(null);
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
     }
-    expect(traces[0]!.candidates.find((x) => x.scKey === 'OLD3#1')!.outcome).toBe('BUDGET');
-    expect(plain.log).toMatch(/RCVR=ONLCARD#1 /);
-    expect(plain.log).toBe(traced.log);
-    expect(plain.dps).toEqual(traced.dps);
+  });
+
+  it('traces BUDGET for the next candidate when the budget ran out between receivers, and stops', () => {
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    POLICY_ADJUST.maxProjectionsPerInterval = 1;
+    try {
+      const { out, trace } = run3(system3, 100);
+      expect(trace.candidates.map((c) => [c.scKey, c.outcome])).toEqual([['OLD1#1', 'ASSESSED'], ['OLD2#1', 'BUDGET']]);
+      expect(out.skipUntil).toEqual({ 'OLD1#1': 100 + POLICY_ADJUST.rejectedSkipTicks });
+    } finally {
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
+    }
+  });
+
+  it('skips a period with no managed delay without a clock (WLM Services p.144)', () => {
+    // OLD1 waits on something WLM does not manage (a lock, a server): all its delay is "other".
+    const sys = { ...system3, scps: system3.scps.map((s) => (s.scKey === 'OLD1#1' ? { ...s, acc: { ...s.acc, delay: s.acc.delay, delayCpu: 0, delayZiip: 0, delayIo: 0, delayCap: 0, delayOther: s.acc.delay } } : s)) };
+    const { out, trace } = run3(sys, 100);
+    expect(outcome(trace, 'OLD1#1')).toBe('NO_MANAGED_DELAY');
+    expect(trace.candidates.find((c) => c.scKey === 'OLD1#1')!.managedDelayFrac).toBe(0);
+    expect(out.skipUntil['OLD1#1']).toBeUndefined();
+  });
+
+  it('decides the same with and without the trace sink', () => {
+    const plain = policyAdjust({ def: wide, system: system3, evalInput: input3, current: cur3.scps, sysplexPi: plexPi, clockText: 'T', nowTick: 100 });
+    const { out } = run3(system3, 100);
+    expect(plain.dps).toEqual(out.dps);
+    expect(plain.skipUntil).toEqual(out.skipUntil);
+  });
+});
+
+describe('managedDelayFrac (docs/wlm-design.md §5.7)', () => {
+  const acc = { ...emptyAcc(), using: 50, delay: 50, delayCpu: 20, delayZiip: 5, delayIo: 5, delayOther: 15, delayCap: 5 };
+  it('counts CPU, zIIP, I/O and the storage/queue remainder, not waits or capping', () => {
+    // 50 delay − 15 other − 5 cap = 30 of 100 samples (the remainder 50 − 45 = 5 is storage/queue).
+    expect(managedDelayFrac(acc)).toBeCloseTo(0.3, 12);
+  });
+  it('leaves I/O outside velocity out of both sides', () => {
+    expect(managedDelayFrac({ ...acc, usingIoNoVel: 10, delayIoNoVel: 5 })).toBeCloseTo(25 / 85, 12);
+  });
+  it('is 0 for a period with no samples', () => {
+    expect(managedDelayFrac(emptyAcc())).toBe(0);
   });
 });
 
@@ -470,5 +535,21 @@ describe('a receiver measured far worse than projected is not raised (projection
   it('trusts it when the measured PI is close, backlog or not', () => {
     const c = run({ run: 2 * 10 * 50 }, () => 1.5);
     expect(c.trials.some((t) => t.verdict === 'PROJECTION_DISAGREES')).toBe(false);
+  });
+
+  it('spends no projection on a PROJECTION_DISAGREES rejection (WT-05 budget)', () => {
+    const all = run({ run: 2 * 10 * 50 }, far);
+    const donorTrials = all.trials.filter((t) => t.move.startsWith('DONOR ')).length;
+    expect(donorTrials).toBeGreaterThan(0);
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    // Exactly enough budget for the donor trials: the receiver-up rejections before them must not use any.
+    POLICY_ADJUST.maxProjectionsPerInterval = donorTrials;
+    try {
+      const c = run({ run: 2 * 10 * 50 }, far);
+      expect(c.trials.map((t) => t.move)).toEqual(all.trials.map((t) => t.move));
+      expect(c.trials.map((t) => t.verdict)).toEqual(all.trials.map((t) => t.verdict));
+    } finally {
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
+    }
   });
 });

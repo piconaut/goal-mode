@@ -50,6 +50,9 @@ export interface ScpState {
   dp: number;
   starvedSec: number;
   acc: ScpAcc;
+  /** Skip clock: a receiver whose every trial was rejected is not assessed again before this tick (WLM Services
+   * p.145). Absent when no clock runs. */
+  skipUntilTick?: number;
 }
 
 export interface WlmSystemState {

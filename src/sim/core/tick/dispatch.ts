@@ -278,6 +278,7 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       dp: dpOf(t.scKey),
       starvedSec: starved ? (p?.starvedSec ?? 0) + TICK_SEC : 0,
       acc: decayInto(p?.acc ?? emptyAcc(), t),
+      ...(p?.skipUntilTick !== undefined ? { skipUntilTick: p.skipUntilTick } : {}),
     });
   }
   const seen = prevScp ? new Set(res.scps.map((x) => x.scKey)) : undefined;
