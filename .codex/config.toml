@@ -13,6 +13,10 @@ config_file = "agents/log-reader.toml"
 description = "Review a PR in disposable worktrees, verify its claims and return a merge verdict; never merge or push."
 config_file = "agents/pr-reviewer.toml"
 
+[agents.pr-fixer]
+description = "Review one PR into dev and fast-forward small mechanical fixes; hold anything requiring the author; never merge."
+config_file = "agents/pr-fixer.toml"
+
 [agents.realism-fixer]
 description = "Implement one vetted realism finding in an assigned isolated worktree, with tests and fidelity documentation."
 config_file = "agents/realism-fixer.toml"

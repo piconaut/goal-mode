@@ -351,6 +351,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   checks each fix cures the cause (not a test bent to fit) and that the triage held, and reports blocking `Missed:`
   items as a FAIL. Why: the same agent finds, triages and fixes, so the fixes got the weakest review.
 
+- Codex native `pr-fixer` role (user request 2026-11-11): `.codex/agents/pr-fixer.toml` now adapts the existing
+  `.claude/agents/pr-fixer.md` brief for `pr-fix-loop`, registered in `.codex/config.toml`. It uses Astra at high
+  reasoning as the Codex counterpart for the skill's stronger review-and-fix role; a fresh Codex session still must
+  verify native role selection before relying on it.
+
 - Dev loop and review loop take turns (user request 2026-11-09). On a `dev-loop` PR, the latest review marker
   decides who acts. No marker, MERGE, FIXED, or a fix-check under way: the review loop's turn. HOLD: dev-loop's turn,
   until it pushes or posts a `dev-loop-response` comment. pr-fix-loop still fixes mechanical findings on `dev-loop` PRs

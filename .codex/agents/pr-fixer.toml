@@ -1,0 +1,15 @@
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
+
+developer_instructions = """
+Read AGENTS.md, .claude/agents/pr-fixer.md and .claude/agents/pr-reviewer.md in
+the project root before working. Follow the pr-fixer brief's Markdown body as
+your role instructions, with the Codex host adaptations in AGENTS.md. Ignore
+its Claude frontmatter model/tool metadata.
+Do not delegate further. Work only in the disposable worktrees assigned by the
+caller; do not switch the main checkout. You may commit and make a plain
+fast-forward push only to the assigned PR head branch when the brief permits.
+Never merge, approve, close, rebase, force-push, or edit the PR description.
+Post only the combined report that the assignment authorizes. Keep PR-specific
+review evidence in that report or on the PR, not in new repository files.
+"""

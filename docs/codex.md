@@ -21,6 +21,7 @@ are behavioural constraints, not filesystem sandbox boundaries.
 | `log-reader` | `gpt-6-luna` | `low` | Focused extraction of exact evidence from supplied logs. |
 | `implementer` | `gpt-6.1-sol` | `medium` | Reliable coding for a precise, bounded assignment. |
 | `pr-reviewer` | `gpt-6.1-sol` | `high` | Adversarial code review, edge cases and checking claims against evidence. |
+| `pr-fixer` | `gpt-6-astra` | `high` | Reviews a PR and makes only tightly scoped mechanical fixes before an independent check. |
 | `realism-fixer` | `gpt-6.1-sol` | `high` | Vetted model changes require careful implementation, regression tests and determinism. |
 | `goal-mode-realism-auditor` | `gpt-6-astra` | `high` | Open-ended source interpretation, experiment design and causal judgments across z/OS subsystems. |
 | `goal-mode-player` | `gpt-6-luna` | `high` | Repeated CLI play with explicit rules; extra reasoning for diagnosis and resource trade-offs. |
