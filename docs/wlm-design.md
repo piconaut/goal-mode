@@ -41,7 +41,10 @@ labelled where it is used. Anything not found is marked *unverified*; nothing is
   without a move 30 intervals running, and the DP ladder at chosen times. WT-01 turned it into the committed
   `npm run inspect -- <file> wlm-stats [system] [--from …] [--to …] [--ladder …]`, and it reproduces the S-1
   column below exactly (a rejected trial's PI is the before value its projection was judged on; a donor move does
-  not end a period's "assessed without a move" run).
+  not end a period's "assessed without a move" run). It replays faithfully: a logged `advance` stops where the play
+  CLI stopped (a fresh ABEND, the end of a played day), and a log that ends before `--to` says so. "Moves" are
+  accepted trials only; the CPU-protection restorations a trace also carries are not counted (none in S-1 … S-3). A
+  whole-run replay costs about 6 s per played day.
 - **Code reading (C-n).** Where no seed-42 replay hits the case, the finding says "by code reading" and gives the
   smallest input that would show it; that input is the regression test of its fix.
 
@@ -69,9 +72,11 @@ labelled where it is used. Anything not found is marked *unverified*; nothing is
 | … `NO_NET_VALUE` / `EQUAL_DISPARITY` | 465 / 135 | 291 / 1 | 2 336 / 314 |
 | Rejected trials whose receiver's own-tick PI was ≤ 0.9 | 793 | 383 | 5 188 |
 | A period's move reversed by its next move | 12 | 22 | 44 |
-| Receiver assessed 30 intervals running without a move (episodes) | 7 | 4 | 20 |
+| Receiver assessed on 30 adjustments without a move (episodes) | 7 | 4* | 20* |
 
-The numbers are from the harness on `c0b065f`; they will differ on another commit.
+The numbers are from the harness on `c0b065f`; they will differ on another commit. \*The committed verb's episode
+rule gives 3 for Revenue and 22 for Harbourline; every other cell reproduces exactly, so the old harness counted
+episodes slightly differently. That difference is left open (WT-01's PR notes it) rather than guessed at.
 
 ## 2. The algorithm as built
 
@@ -1261,7 +1266,7 @@ Policy adjustment statistics, same runs as §1 (S-1 Midwest days 1–2, S-2 Reve
 | Candidates `RECOVERING` (no trials) | 308 | 2 218 | 2 576 |
 | Rejected trials whose receiver was fine on its own tick | 793 → 0 | 383 → 0 | 5 188 → 0 (by construction) |
 | `NO_NET_VALUE` (mostly the `0.00 ≤ 0.00` line) | 465 → 2 | 291 → 4 | 2 336 → 0 |
-| Assessed 30 intervals running without a move (episodes) | 7 → 5 | 4 → 7 | 20 → 8 |
+| Assessed on 30 adjustments without a move (episodes) | 7 → 5 | 4 → 7 | 20 → 8 |
 
 The ladder still climbs (W2 is WT-06's): Midwest PROD2 at D2 12:00 is `ONLHI=FA STCHI=FA DDFPRD#2=F9 STCMED=F9
 TSO#1=F9 DDFPRD#1=F8 TSO#2=F8` against `FC FC FB FB FB FA FA` on `dev`; slower only because there are fewer moves.

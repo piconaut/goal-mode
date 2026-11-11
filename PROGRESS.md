@@ -481,9 +481,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   `wlmStats` and `statsText` are pure and tested. On the audit's seed-42 Midwest file (D1 06:00 → D3 06:00) it
   reproduces docs/wlm-design.md §1's S-1 column exactly: 69,120 adjustments, 67,101 with no candidate, 1,609
   candidates assessed, 481 not fixable (all OTHER), 5,934 trials, 36 accepted moves, 3,447 MORE_IMPORTANT_HARMED,
-  793 rejected with the receiver's own-tick PI ≤ 0.9, 12 reversed moves and 7 episodes. Tooling only: no sim change
-  (`npm run compare` reports no differences). CLAUDE.md, docs/agents.md, docs/wlm-design.md §1 and the `wlm-why`
-  skill list the verb.
+  793 rejected with the receiver's own-tick PI ≤ 0.9, 12 reversed moves and 7 episodes. It replays faithfully: a
+  logged `advance` stops where the play CLI stopped (a fresh ABEND, the end of a played day) and a log that ends
+  before `--to` says so, the DP ladder reads from each counted day's 06:00, range bounds are minute-validated and
+  applied at second precision, and `CPU_CRITICAL` trials now record the receiver's before PI (trace only). The
+  episode rule matches S-1 but gives 3 (not 4) for Revenue and 22 (not 20) for Harbourline; every other cell
+  reproduces, and §1 footnotes the difference rather than guessing the old harness's rule. Tooling only: no sim
+  behaviour change (`npm run compare` reports no differences). CLAUDE.md, docs/agents.md, docs/wlm-design.md §1 and
+  the `wlm-why` skill list the verb.
 - 2026-11-11: RT-12 evidence baselines: moved the six-row lookback into
   `content/evidence.ts` as `EVIDENCE.baselineRows`, with a FICTIONAL note explaining the smoothing choice;
   the value and evidence behavior are unchanged.

@@ -111,7 +111,8 @@ interval) for developers checking a bug. `npm run inspect -- <file> wlm <system>
 behind it, and candidates skipped as not CPU/zIIP-fixable or over the two-receivers-per-importance projection budget.
 `npm run inspect -- <file> wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00']` adds the same
 counters over a range (adjustments, candidates by outcome, trials by verdict, accepted and reversed moves, periods
-assessed 30 adjustments without a receiver move, and the DP ladder at a clock time each day); it needs a play-CLI file.
+assessed on 30 adjustments without a receiver move, and the DP ladder at a clock time each day); it needs a play-CLI
+file, replays a logged `advance` only as far as the CLI ran it (an ABEND stops it), and costs about 6 s per played day.
 A play-CLI file replays from its seed and log to any past time; a browser save has no log, so `wlm` is traced forward
 from the saved moment and `wlm-stats` refuses it. Player agents must not use any of these verbs: none is something a
 player can see.

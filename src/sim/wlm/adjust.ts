@@ -62,7 +62,8 @@ export type WlmTrialVerdict =
 export interface WlmTrialTrace {
   move: string;
   verdict: WlmTrialVerdict;
-  /** Receiver PI before → projected after (unclamped, as judged). */
+  /** Receiver PI before → projected after (unclamped, as judged). A `CPU_CRITICAL` trial was never projected, so its
+   * after value is null; a trial with no receiver PI at all omits the pair. */
   receiverPi?: [number | null, number | null];
   detail?: string;
 }
@@ -226,7 +227,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const passes = (receiver: string, trial: Record<string, number>): boolean => {
     const cc = violatesCpuCritical(trial);
     if (cc) {
-      why = { move: '', verdict: 'CPU_CRITICAL', detail: cc };
+      // No projection was judged, but the receiver's own-tick PI was measured and is worth recording.
+      why = { move: '', verdict: 'CPU_CRITICAL', receiverPi: [before[receiver] ?? null, null], detail: cc };
       return false;
     }
     // The pair is only recorded once the whole projection accepts: `project` can still refuse after every accept

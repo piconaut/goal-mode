@@ -9,7 +9,8 @@
 //     has no log, so it traces forward from the saved moment (live day only).
 //   npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--json]
 //     Policy adjustment statistics over a range of a play file (WT-01): adjustments, candidates by outcome, trials by
-//     verdict, accepted moves, receivers assessed 30 intervals without a move, and the DP ladder at a clock time.
+//     verdict, accepted moves, receivers assessed on 30 adjustments without a move, and the DP ladder at a clock
+//     time. A whole-run replay costs about 6 s per played day, like `blame`.
 //   npm run inspect -- runs/a.json blame [--json] [--incident N]
 //     Counterfactual validator (RT-06): every online incident's opening hour is replayed once per card that affects
 //     the hurt workload with that card ended at the hour start. Reports the game's trigger against the cards whose
@@ -192,8 +193,26 @@ const emptyCounters = (): WlmStatsCounters => ({
 
 const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE'];
 
-const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounters['notFixable'] =>
-  b === 'IO' ? 'IO' : b === 'CAP' ? 'CAP' : b === 'OTHER' ? 'OTHER' : 'NONE';
+const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounters['notFixable'] => {
+  switch (b) {
+    case 'IO':
+    case 'CAP':
+    case 'OTHER':
+    case 'NONE':
+      return b;
+    case null:
+      return 'NONE';
+    // A CPU/zIIP bottleneck is assessable, so `policyAdjust` never records it as NOT_FIXABLE: if that changes, the
+    // audit table needs a column for it rather than quietly folding it into "no bottleneck".
+    case 'CPU':
+    case 'ZIIP':
+      throw new Error(`a ${b} bottleneck cannot be NOT_FIXABLE`);
+    default: {
+      const never: never = b;
+      return never;
+    }
+  }
+};
 
 /** A trial's move text names the period and its new DP: `ONLHI#1 DP 20→21` or `DONOR X DP 20→1F`. */
 const MOVED = /^(DONOR\s+)?(\S+)\s+DP\s+([0-9A-F]+)→([0-9A-F]+)$/;
@@ -271,11 +290,11 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
   return total;
 };
 
-/** A trace's clock text (`D1 12:19:40` in the sim, `D1 Mon 12:19` from the play CLI) → day and clock time, so no
- * tick is needed. */
+/** A trace's clock text (`D1 12:19:40` in the sim, `D1 Mon 12:19` from the play CLI) → day and clock time with its
+ * seconds, so a range boundary can be applied exactly without a tick. */
 const traceWhen = (text: string): { day: string; time: string } | null => {
-  const m = /^(D\d+)(?:\s+\S+)?\s+(\d\d:\d\d)(?::\d\d)?$/.exec(text.trim());
-  return m ? { day: m[1]!, time: m[2]! } : null;
+  const m = /^(D\d+)(?:\s+\S+)?\s+(\d\d:\d\d)(?::(\d\d))?$/.exec(text.trim());
+  return m ? { day: m[1]!, time: m[3] === undefined ? m[2]! : `${m[2]}:${m[3]}` } : null;
 };
 
 /** A tick as seconds since the run's first 06:00, and a trace's clock text the same way, so a range can be checked
@@ -284,8 +303,8 @@ const tickKey = (tick: number) => Math.floor(tick / TICKS_PER_DAY) * 86400 + (ti
 
 /** Seconds since the played day's 06:00, so a trace at 05:59 sorts after a 23:59 one of the same played day. */
 const daySec = (time: string): number => {
-  const [hh, mm] = time.split(':').map(Number) as [number, number];
-  return ((hh - 6 + 24) % 24) * 3600 + mm * 60;
+  const [hh, mm, ss] = time.split(':').map(Number) as [number, number, number | undefined];
+  return ((hh - 6 + 24) % 24) * 3600 + mm * 60 + (ss ?? 0);
 };
 
 /** Each played day's last adjustment at or before `time`, as a DP ladder (hex, highest first). */
@@ -315,8 +334,9 @@ function ladderLines(traces: readonly WlmAdjustTrace[], time: string): string[] 
   return out;
 }
 
-/** Policy adjustment statistics over a trace list (WT-01). Pure: the audit's S-1 … S-3 counters, per system and total. */
-export function wlmStats(traces: readonly WlmAdjustTrace[], opts: { ladder?: string } = {}): WlmStats {
+/** Policy adjustment statistics over a trace list (WT-01). Pure: the audit's S-1 … S-3 counters, per system and total.
+ * `ladderTraces` lets the ladder read a wider replay than the counted range (the CLI passes the whole first day). */
+export function wlmStats(traces: readonly WlmAdjustTrace[], opts: { ladder?: string; ladderTraces?: readonly WlmAdjustTrace[] } = {}): WlmStats {
   const bySystem = new Map<string, WlmAdjustTrace[]>();
   for (const t of traces) {
     const list = bySystem.get(t.lparId);
@@ -324,12 +344,17 @@ export function wlmStats(traces: readonly WlmAdjustTrace[], opts: { ladder?: str
     else bySystem.set(t.lparId, [t]);
   }
   const systems = [...bySystem.keys()].sort().map((lparId) => ({ lparId, counters: countSystem(bySystem.get(lparId)!) }));
-  return {
-    total: sumCounters(systems.map((x) => x.counters)),
-    systems,
-    ladder: opts.ladder ? systems.map((x) => ({ lparId: x.lparId, lines: ladderLines(bySystem.get(x.lparId)!, opts.ladder!) })) : [],
-    ladderTime: opts.ladder ?? null,
-  };
+  let ladder: WlmStats['ladder'] = [];
+  if (opts.ladder) {
+    const ladderBySystem = new Map<string, WlmAdjustTrace[]>();
+    for (const t of opts.ladderTraces ?? traces) {
+      const list = ladderBySystem.get(t.lparId);
+      if (list) list.push(t);
+      else ladderBySystem.set(t.lparId, [t]);
+    }
+    ladder = systems.map((x) => ({ lparId: x.lparId, lines: ladderLines(ladderBySystem.get(x.lparId) ?? [], opts.ladder!) }));
+  }
+  return { total: sumCounters(systems.map((x) => x.counters)), systems, ladder, ladderTime: opts.ladder ?? null };
 }
 
 const n0 = (n: number) => n.toLocaleString('en-US');
@@ -356,7 +381,7 @@ export function statsText(stats: WlmStats): string {
     ['rejected, receiver own-tick PI ≤ 0.9', [...stats.systems.map((s) => s.counters.rejectedPiUnder09), stats.total.rejectedPiUnder09]],
     ['rejected, receiver own-tick PI null', [...stats.systems.map((s) => s.counters.rejectedPiNull), stats.total.rejectedPiNull]],
     ["moves reversed by the period's next move", [...stats.systems.map((s) => s.counters.reversed), stats.total.reversed]],
-    ['assessed 30 intervals without a move (episodes)', [...stats.systems.map((s) => s.counters.episodes), stats.total.episodes]],
+    ['assessed on 30 adjustments without a move (episodes)', [...stats.systems.map((s) => s.counters.episodes), stats.total.episodes]],
   ];
   const labelWidth = Math.max(...rows.map(([label]) => label.length));
   const cell = (x: number) => n0(x).padStart(8);
@@ -372,7 +397,13 @@ export function statsText(stats: WlmStats): string {
   return lines.join('\n');
 }
 
-/** Replay a play file and collect the traces of adjustments in [from, to). Returns the tick reached. */
+/** The play CLI's `advance` stops early when a job newly ABENDs (its text says `STOPPED:`) and a played day ends at
+ * 06:00; the commands after that point in the log were issued there, so a faithful replay stops too. */
+export const stoppedEarly = (text: string, before: ReadonlySet<string>, after: ReadonlySet<string>): boolean =>
+  /STOPPED:/.test(text) || after.size !== before.size || [...after].some((name) => !before.has(name));
+
+/** Replay a play file and collect every policy adjustment trace from `from` to `to` (exclusive). Returns the tick
+ * reached: short of `to` when the log or a day ends first. */
 function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdjustTrace) => void): number {
   const first = file.log[0];
   if (first?.cmd !== 'new') throw new Error('wlm-stats needs a play-CLI file (seed + command log); a browser save has no log to replay past hours');
@@ -381,19 +412,25 @@ function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdj
   if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed || !same(f.run.difficulty, file.run.difficulty)) {
     throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty ?? 'NORMAL'}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty ?? 'NORMAL'})`);
   }
-  const step = () => {
+  const step = (): boolean => {
     // Installed for the hour that overlaps the range: the caller filters traces by their own clock.
     if (f.run.sim.tick + TICKS_PER_HOUR > from) setWlmTraceSink(sink);
+    const before = abendedNames(f.run);
     const out = applyPlayCommand(f, { cmd: 'advance', hours: 1 });
     if (!out.ok) throw new Error(`replay failed advancing from ${clockText(f.run.sim.tick)}: ${out.text}`);
     f = out.file;
+    // The CLI's multi-hour `advance` stops at the hour a job abends and at the end of a played day. Replaying the
+    // same hours it did not run would invent a run that never happened (and mis-time the commands after it).
+    return f.run.phase !== 'LIVE' || stoppedEarly(out.text, before, abendedNames(f.run));
   };
   try {
     for (const c of file.log.slice(1)) {
       if (f.run.sim.tick >= to) break;
       if (c.cmd === 'advance') {
+        // A log whose next command is an advance while the day is not live cannot be replayed any further.
+        if (f.run.phase !== 'LIVE') break;
         const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
-        for (let h = 0; h < hours && f.run.sim.tick < to; h++) step();
+        for (let h = 0; h < hours && f.run.sim.tick < to; h++) if (step()) break;
       } else {
         const out = applyPlayCommand(f, c);
         if (!out.ok) throw new Error(`replay failed at ${JSON.stringify(c)}: ${out.text}`);
@@ -410,28 +447,36 @@ function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdj
 export function wlmStatsText(text: string, opts: { system?: string; from?: string; to?: string; ladder?: string; json?: boolean } = {}): string {
   const file = decodePlayFile(text);
   const from = tickOfClock(opts.from ?? 'D1 06:00');
-  const to = tickOfClock(opts.to ?? '') ?? file.run.sim.tick;
-  if (from === null) throw new Error("times look like 'D1 06:00'");
+  const to = opts.to === undefined ? file.run.sim.tick : tickOfClock(opts.to);
+  // Minutes only, like `tickOfClock`: a seconds field would be silently floored, and a mistyped bound must not fall
+  // back to the file's end.
+  const timeText = /^D\d+\s+(?:[A-Za-z]{3}\s+)?\d{1,2}:\d{2}$/;
+  if (from === null || to === null || (opts.from !== undefined && !timeText.test(opts.from.trim())) || (opts.to !== undefined && !timeText.test(opts.to.trim())) ||
+      (opts.ladder !== undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(opts.ladder)))
+    throw new Error("times look like 'D1 06:00', and --ladder like '12:00'");
   if (to <= from) throw new Error('the end of the range must be after its start');
   const lo = tickKey(from), hi = tickKey(to);
-  const traces: WlmAdjustTrace[] = [];
-  const reached = replayTraces(file, from, to, (t) => {
+  // The ladder is about each played day, so the replay starts at the 06:00 of the range's first day; the counters
+  // still apply the exact range.
+  const start = from - (from % TICKS_PER_DAY);
+  const all: WlmAdjustTrace[] = [];
+  const reached = replayTraces(file, start, to, (t) => {
     if (opts.system !== undefined && t.lparId !== opts.system) return;
+    all.push(t);
+  });
+  const traces = all.filter((t) => {
     const when = traceWhen(t.clockText);
-    // The replay advances a whole hour at a time, so the first and last hours can overshoot the range.
-    if (when) {
-      const key = (Number(when.day.slice(1)) - 1) * 86400 + daySec(when.time);
-      if (key < lo || key >= hi) return;
-    }
-    traces.push(t);
+    if (!when) return true;
+    const key = (Number(when.day.slice(1)) - 1) * 86400 + daySec(when.time);
+    return key >= lo && key < hi;
   });
   if (traces.length === 0) return `No policy adjustment traced between ${clockText(from)} and ${clockText(Math.min(to, reached))}; ${reached < to ? `the play log ends at ${clockText(reached)}` : 'check the range and the system'}.`;
-  const stats = wlmStats(traces, opts.ladder ? { ladder: opts.ladder } : {});
+  const stats = wlmStats(traces, opts.ladder ? { ladder: opts.ladder, ladderTraces: all } : {});
   const systems = stats.systems.map((s) => s.lparId).join(' ');
   const note = `${clockText(from)} → ${clockText(reached)}, ${systems}${opts.system === undefined ? '' : ` (${opts.system} only)`}`;
   const short = reached < to ? `\nThe play log ends at ${clockText(reached)}; the range ${clockText(to)} is not covered.` : '';
   return opts.json
-    ? JSON.stringify({ range: { from: clockText(from), to: clockText(reached) }, ...stats }, null, 2)
+    ? JSON.stringify({ range: { from: clockText(from), to: clockText(reached), covered: reached >= to }, ...stats }, null, 2)
     : `${statsText(stats)}\n${note}${short}`;
 }
 

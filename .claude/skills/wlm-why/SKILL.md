@@ -52,8 +52,10 @@ the finding.
 
 For a question about a whole day or run rather than one moment, `inspect … wlm-stats` gives the same counters over a
 range (the wlm-design audit's S-table): adjustments, candidates by outcome, trials by verdict, accepted and reversed
-moves, episodes of a period assessed 30 adjustments without a receiver move, and with `--ladder` the DP ladder at a
-clock time each day. `--json` prints the counters for a script.
+moves, episodes of a period assessed on 30 adjustments without a receiver move, and with `--ladder` the DP ladder at a
+clock time each day. `--json` prints the counters for a script. It replays faithfully — a logged `advance` stops where
+the play CLI stopped (a fresh ABEND, the end of a played day), and a log that ends before `--to` says so — and costs
+about 6 s per played day, so give it a range rather than a 19-day file when a shorter one answers the question.
 
 ## 4. Read the verdicts
 
