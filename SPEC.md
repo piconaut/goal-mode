@@ -1162,6 +1162,20 @@ fast failure looks like a fast response (CPSM uses ABENDTHRESH/ABENDCRIT and reg
 CICS TS 6 CICSPlex SM Managing Workloads p.34). Its evidence is the CICS 110 failed share (FAIL_PCT). Without
 such a card the delay groups decide as above.
 
+**Accepted answers.** An incident's truth carries the primary answer — what the rules above rank first, and what
+hints, AIOps and the bots read — and the accepted set: the answers a fair expert could defend from what the player can
+see. A filed RCA scores 3 points for an accepted mechanism and 2 for an accepted trigger, so a defensible reading earns
+what the primary does; there is no partial credit for the right resource with the wrong refinement (user decision on Q1,
+docs/rca-design.md §4.1). The set is produced by rule when the truth is set, never listed per incident, and always
+contains the primary: the blamed card's declared alternates (`alsoTriggers`/`alsoMechanisms`: XLOG_LOOP and
+HSM_RECALL_STORM also POLICY, SHADOW_IT also RUNAWAY_WORK, RETRY_STORM and SICK_AOR also APPLICATION_ERROR, CICS_SOS
+also STORAGE); a card that lowered the processor's capacity (POWER_CAP) adds CPU_CAPACITY; a CPU verdict inside the
+§4.3 bands adds the other side of the capacity/priority split; a DEPENDENCY incident whose server image was itself
+short of CPU adds CPU_PRIORITY; and an incident with no card to blame accepts GROWTH and POLICY together, because no
+visible data separates growth that crossed the headroom from a configuration without headroom. Authentication from an
+accepted mechanism earns evidence points too. The reply names the primary and gives one line for each other accepted
+answer. Old saves carry no accepted set and are scored on the primary alone.
+
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
@@ -1178,7 +1192,7 @@ too: `CPC_BUSY` (the processor's CP busy %, notable 90), `LPAR_BUSY` (the image'
 notable 95) and `CAPACITY_ADJ` (100 − SMF70CAI, the capacity lost against the normal setting, notable 1) from
 Partition Data or Monitor III, the first and last about the CPC and so relevant through the incident's images; and
 the CP/zIIP split of APPL % (`APPL_CP`, `APPL_IIP`, `IIPCP`) beside the summed value at half weight. PI is a symptom
-and never counts. Evidence points need the right mechanism.
+and never counts. Evidence points need an accepted mechanism.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one
@@ -1307,7 +1321,7 @@ abstracts the gritty z/OS details for players who aren't already experts:
 
 **Daily score** = Σ_services weight_s × attainment_s
            − cost overrun penalty
-           + RCA bonuses
+           + RCA bonuses (3 for an accepted mechanism, 2 for an accepted trigger, plus evidence)
            + efficiency bonus (MSU per business transaction, improved over baseline)
 
 **Loss:** Trust = 0 ("You've been reassigned to the printer fleet") · two consecutive

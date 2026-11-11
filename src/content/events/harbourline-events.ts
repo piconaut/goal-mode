@@ -26,6 +26,7 @@ const BANK_CARDS: EventDef[] = [
     trigger: 'POLICY',
     affects: ['MKTORD', 'CARDS'],
     mechanisms: ['ROUTING'],
+    alsoTriggers: ['APPLICATION_ERROR'],
     failureMechanism: 'ROUTING',
     startHour: [9, 15],
     durationHours: 5,

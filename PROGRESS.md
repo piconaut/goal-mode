@@ -471,6 +471,17 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-11: RT-07 accepted answer sets (user decision on Q1, docs/rca-design.md §4.1). `truth` now carries
+  `accepted { mechanisms, triggers }` — always including the primary — with one line of reasoning per alternate
+  (`notes`), and `cause` for RT-15's grouping. `scoreRca` and the evidence gate read membership, so a defensible
+  reading earns the same as the primary; the post-RCA reply names the primary and lists the rest. Sources are rules,
+  not per-incident lists: a card's declared `alsoTriggers`/`alsoMechanisms` (XLOG_LOOP and HSM_RECALL_STORM also
+  POLICY, SHADOW_IT also RUNAWAY_WORK, RETRY_STORM and SICK_AOR also APPLICATION_ERROR, CICS_SOS also STORAGE), a
+  capacity-lowering card adds CPU_CAPACITY, the §4.3 bands add the other side of the capacity/priority split,
+  DEPENDENCY on a server image that was itself short of CPU adds CPU_PRIORITY, and no-card incidents accept GROWTH
+  and POLICY together (a card that lowered capacity only widens a CPU-family or DEPENDENCY verdict). Primaries are
+  untouched, so bot labels and bands do not move and the sim bench hashes hold; the run-state golden is regenerated
+  because it hashes the whole `RunState`, whose incident truth grew. Old saves score the primary alone. The playtest's D12 answer (`CPU_CAPACITY/HARDWARE_FAULT`) now scores 5 on R-7's MOBILE incident.
 - 2026-11-10: RT-06 counterfactual validator: `npm run inspect -- <file> blame [--json]` replays each online
   incident's opening hour from the play log, once unchanged and once per card that affects the hurt workload with
   that card ended at the hour start, then compares the card the game's trigger names with the cards whose removal

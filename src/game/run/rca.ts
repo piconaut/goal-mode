@@ -2,7 +2,7 @@ import { EVIDENCE } from '../../content/evidence';
 import type { Scenario } from '../../sim/core/scenario';
 import { judgeGroupEvidence } from '../evidence';
 import { mechanismExplanation } from '../rcaExplain';
-import { scoreRca } from '../sla';
+import { acceptedOf, scoreRca } from '../sla';
 import {
   type Incident,
   type Mechanism,
@@ -29,8 +29,8 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
     ? judgeGroupEvidence(run, scenario, group, pins)
     : [];
   const relevance = verdicts.reduce((a, v) => a + v.relevance, 0);
-  // Evidence only earns points when it supports the right mechanism (SPEC §10).
-  const evidencePoints = mechanism === inc.truth.mechanism ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
+  // Evidence only earns points when it supports an accepted mechanism (RT-07): a defensible reading is proof too.
+  const evidencePoints = acceptedOf(inc.truth).mechanisms.includes(mechanism) ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
   const strong = evidencePoints > 0 && relevance >= EVIDENCE.strongAt;
   const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;

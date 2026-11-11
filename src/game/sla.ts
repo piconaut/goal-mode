@@ -209,8 +209,12 @@ export function batchMissMechanism(night: NightSummary, nightHour: HourAcc, host
 }
 
 /** A card blamed for a missed night: one that affects BATCH, causes this mechanism and ran during the night. */
+export function batchMissCard(mechanism: Mechanism, events: readonly ActiveEvent[], nightStartTick: number): ActiveEvent | undefined {
+  return events.find((e) => e.started && e.affects.includes(BATCH_INCIDENT) && (!e.mechanisms || e.mechanisms.includes(mechanism)) && (!e.ended || (e.endTick ?? 0) >= nightStartTick));
+}
+
 export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEvent[], nightHour: HourAcc, nightStartTick: number, night?: NightSummary): Trigger {
-  const ev = events.find((e) => e.started && e.affects.includes(BATCH_INCIDENT) && (!e.mechanisms || e.mechanisms.includes(mechanism)) && (!e.ended || (e.endTick ?? 0) >= nightStartTick));
+  const ev = batchMissCard(mechanism, events, nightStartTick);
   if (ev) return ev.trigger;
   // A Db2 job failing to connect was sent to an image without Db2 by the initiator setup.
   if (mechanism === 'JOB_FAILURE' && Object.values(night?.criticalFailCodes ?? {}).includes(DB2_CONNECT_FAIL)) return 'POLICY';
@@ -229,7 +233,13 @@ export function updateBaseline(prev: Record<string, number> | undefined, parts: 
 export const MECHANISMS: Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'ROUTING', 'IO', 'STORAGE', 'JOB_FAILURE'];
 export const TRIGGERS: Trigger[] = ['DEMAND_SURGE', 'ACCESS_PATH_REGRESSION', 'RUNAWAY_WORK', 'BATCH_OVERLAP', 'POLICY', 'HARDWARE_FAULT', 'NEW_WORKLOAD', 'GROWTH', 'APPLICATION_ERROR'];
 
-/** RCA scoring: 3 points for the mechanism, 2 for the trigger. */
+/** The accepted answers of a truth: the primary alone in saves written before RT-07. */
+export function acceptedOf(truth: Incident['truth']): { mechanisms: Mechanism[]; triggers: Trigger[] } {
+  return truth.accepted ?? { mechanisms: [truth.mechanism], triggers: [truth.trigger] };
+}
+
+/** RCA scoring: 3 points for an accepted mechanism, 2 for an accepted trigger (RT-07; docs/rca-design.md §4.1). */
 export function scoreRca(truth: Incident['truth'], guess: { mechanism: Mechanism; trigger: Trigger }): number {
-  return (truth.mechanism === guess.mechanism ? 3 : 0) + (truth.trigger === guess.trigger ? 2 : 0);
+  const accepted = acceptedOf(truth);
+  return (accepted.mechanisms.includes(guess.mechanism) ? 3 : 0) + (accepted.triggers.includes(guess.trigger) ? 2 : 0);
 }
