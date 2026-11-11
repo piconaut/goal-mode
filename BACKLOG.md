@@ -79,9 +79,10 @@ in the browser and `play finance`.
 ### PT-14 · Monitor III CPC report: per-type groups
 `list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
 
-CPC is missing an *IIP group and PHYSICAL lines (RMF Report Analysis p.97–98; check the Monitor III CPC page with zos-docs). 
-RT-05 (#279) put pins on the CPC view: `CPC_BUSY` on the *CP Physical Total, `CAPACITY_ADJ` under the header table, and 
-since the single-table layout `LPAR_BUSY` on Logical Util % Total, `PRSM_DELAY` and `CAPPED` on their own columns of the 
+The browser CPC is missing an *IIP group and PHYSICAL lines (it has *CP and *ICF summary rows); `play mon3 CPC` prints
+partition rows only, with no groups at all (RMF Report Analysis p.97–98; check the Monitor III CPC page with zos-docs).
+RT-05 (#279) put pins on the CPC view: `CPC_BUSY` on the *CP Physical Total, `CAPACITY_ADJ` under the header table, and
+since the single-table layout `LPAR_BUSY` on Logical Util % Total, `PRSM_DELAY` and `CAPPED` on their own columns of the
 partition rows. Keep every pin control on the new layout. Done when: the browser and `play mon3 CPC` show the groups.
 
 ### PT-15 · Monitor III charts: choose which charts to show, fix CP busy labels, add CPU by service class
