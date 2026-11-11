@@ -408,6 +408,12 @@ entry, not a reason to change the ladder. SPEC §5.4 (DP table), §5.5.4, §17 "
 "unbunching" and "dispatch priorities" updated.
 Since CL-05: the first-seen path is the `dpOf` fallback in `imageInput` (`tick/dispatch.ts`), built once per image per
 tick; DPs are per-tick state, so `placeNew` belongs there, outside the lookup plan.
+From WT-05 (2026-11-11, docs/wlm-design.md §9.6): the skip clock removed the churn that kept the ladder spread.
+Under WT-05, Harbourline expert seeds 7 and 9 freeze on D29 with most goal holders at FC, the top of the managed
+range: receivers at FC can't rise, a donor's one step down to FB gains nothing, and every receiver is clocked. With
+the clock off, both behave as on `dev` (6 → 0 intervals; 2 nearly restores it). This entry's donor move to the
+receiver's level and its "nothing at `MANAGED_MAX`" ladder should fix it. Check that those two seeds come back
+(expert Harbourline was 8/10 on WT-04, 6/10 on WT-05), and replay seed 9's D29 to see WLM keep moving.
 
 ### WT-07 · Donors in IBM's order, by the processor that is short (W4)
 `list: wlm-truth · status: blocked: after WT-06 · priority: high · size: S · area: sim`

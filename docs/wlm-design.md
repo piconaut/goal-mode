@@ -1427,3 +1427,18 @@ projection (no trust-limit case) and none is undone within two minutes; a ladder
 entry. The runaway raise of §9.5 (D2 17:03–17:15) does not come back. RT-06 validator on S-1 … S-3: the same
 incidents, triggers and verdicts as WT-04; only the hour's attainment changes (S-3's PAYMENTS at D2 09:00 54.0 →
 63.9 %, the rest within 1.1 points). Bench (paired, Harbourline): 1.65 → 1.56 ms per tick.
+
+**Sweep and the two lost seeds.** Remote sweep, Normal, seeds 1–10 (do-nothing median day / textbook median day /
+expert victories): Midwest 16.5 / 28 / 10 and Revenue 20 / 27 / 10, the same as WT-04; Harbourline 9.5 / 29 / 8 → 10
+/ 30 / **6**, inside its bands but on the edge. Expert seeds 7 and 9 become trust losses, both from the D29 morning
+overload (first day of month 2), when every online workload sits near 0 % for 7–9 hours against 1–6 on `dev`.
+Seed 9 is identical to `dev` through D28. On D29 at 07:00 PRDA has five goal holders at FC (three on `dev`). In the
+overload the receivers (STCHI#1, TSO#1, STCMED#1) are at FC and can't rise, a donor's step FC→FB gains nothing, every
+receiver is clocked, and WLM makes almost no moves until the load drops; `dev` keeps making deep donor moves
+(FC→F8, FC→F3) that spread the ladder, and recovers. With `rejectedSkipTicks` 0, WT-05 reproduces `dev`'s D29
+on seed 9 hour for hour; with 2 it nearly does, with 3 it is half way. The budget and the delay test change nothing
+there. Seed 7 also differs earlier (WT-05 handles D12 better, so the expert bot buys CPs later), but its D29 freeze
+goes away with the clock too. The clock is real (WLM Services p.145); what the sim lacks is a ladder that stays spread
+without churn (W2), WT-06's entry. User decision 2026-11-11: WT-05 ships with the 6-interval clock, and WT-06 checks
+those two seeds.
+

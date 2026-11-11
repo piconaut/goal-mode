@@ -170,6 +170,10 @@ level or a separate toggle.
   Harbourline 10 / 29 / 8 (textbook 1 victory). As merged (`8f22df3`): Midwest 16.5 / 28 / 10, Revenue 20 / 27 / 10,
   Harbourline 9.5 / 29 / 8; all inside. The `wlm-truth` entries each add a row here; WT-15 closes with a 20-seed
   sweep.
+- WT-05 sweep (2026-11-11, remote, Normal, seeds 1–10, WT-04 `ac84d6a` → WT-05 `7f0fbd8`): Midwest 16.5 / 28 / 10,
+  Revenue 20 / 27 / 10 (both unchanged); Harbourline 9.5 / 29 / 8 → 10 / 30 / 6, inside the bands with expert on the
+  60 % edge. Seeds 7 and 9 freeze on D29 with the ladder at FC; the 6-interval skip clock is the cause (docs/
+  wlm-design.md §9.6). User decision: ship, and WT-06 checks those seeds.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -485,7 +489,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   19/26/79 → 13/29/49, undone within two minutes 0/1/4 → 0/1/0, episodes 5/5/11 → 1/2/2 (the rest are hopeless
   receivers re-assessed once a minute as the clock allows, §9.6). S-2 WEBDDF#1 on PROD2 assessed 418 times (2 846
   before WT-04). RT-06 validator: same incidents, triggers and verdicts. Bench (Harbourline) 1.65 → 1.56 ms/tick.
-  Sweep in M8.2.
+  Sweep in M8.2: Harbourline expert 8 → 6 of 10 (D29 freeze with the ladder at FC, from the skip clock; WT-06 note).
+  Fixed on the way: `managedDelayFrac` subtracted waits that `delay` never held, so transaction classes with long
+  waits were skipped as `NO_MANAGED_DELAY` (changes Midwest and Revenue; numbers above are after the fix).
 - 2026-11-11: WT-04, one PI basis (docs/wlm-design.md §5.2–§5.4, §9.5): receivers chosen on the management PI,
   trials judged on projected PIs (`base` against `after`) at sustained demand (`src/sim/wlm/projection.ts`); a
   candidate with `base` ≤ 1 is `RECOVERING`; receiver value floor 0.05; a less important receiver never passes more
