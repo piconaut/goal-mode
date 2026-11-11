@@ -170,8 +170,8 @@ level or a separate toggle.
   Harbourline 10 / 29 / 8 (textbook 1 victory). As merged (`8f22df3`): Midwest 16.5 / 28 / 10, Revenue 20 / 27 / 10,
   Harbourline 9.5 / 29 / 8; all inside. The `wlm-truth` entries each add a row here; WT-15 closes with a 20-seed
   sweep.
-- WT-05 sweep (2026-11-11, remote, Normal, seeds 1–10, WT-04 `ac84d6a` → WT-05 `7f0fbd8`): Midwest 16.5 / 28 / 10,
-  Revenue 20 / 27 / 10 (both unchanged); Harbourline 9.5 / 29 / 8 → 10 / 30 / 6, inside the bands with expert on the
+- WT-05 sweep (2026-11-11, remote, Normal, seeds 1–10, WT-04 `ac84d6a` → WT-05 `e90a356`): Midwest 16.5 / 28 / 10,
+  Revenue 20 / 27 / 10 (both unchanged); Harbourline 9.5 / 29 / 8 → 10 / 29 / 6, inside the bands with expert on the
   60 % edge. Seeds 7 and 9 freeze on D29 with the ladder at FC; the 6-interval skip clock is the cause (docs/
   wlm-design.md §9.6). User decision: ship, and WT-06 checks those seeds.
 

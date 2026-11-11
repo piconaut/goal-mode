@@ -1432,7 +1432,7 @@ incidents, triggers and verdicts as WT-04; only the hour's attainment changes (S
 
 **Sweep and the two lost seeds.** Remote sweep, Normal, seeds 1–10 (do-nothing median day / textbook median day /
 expert victories): Midwest 16.5 / 28 / 10 and Revenue 20 / 27 / 10, the same as WT-04; Harbourline 9.5 / 29 / 8 → 10
-/ 30 / **6**, inside its bands but on the edge. Expert seeds 7 and 9 become trust losses, both from the D29 morning
+/ 29 / **6** (`e90a356`; 10 / 30 / 6 before the `managedDelayFrac` fix), inside its bands but on the edge. Expert seeds 7 and 9 become trust losses, both from the D29 morning
 overload (first day of month 2), when every online workload sits near 0 % for 7–9 hours against 1–6 on `dev`.
 Seed 9 is identical to `dev` through D28. On D29 at 07:00 PRDA has five goal holders at FC (three on `dev`). In the
 overload the receivers (STCHI#1, TSO#1, STCMED#1) are at FC and can't rise, a donor's step FC→FB gains nothing, every
