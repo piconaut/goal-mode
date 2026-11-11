@@ -22,7 +22,6 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
   const inCpc = (x: { cpcId: string }) => cpcId === null || x.cpcId === cpcId;
   const heads = m.cpcHeaders.filter((h) => inCpc(h) && (system === '*PLEX' || h.lparId === system));
   const cpcRows = m.cpc.filter(inCpc);
-  const zos = cpcRows.filter((c) => c.kind === 'ZOS');
   const ratio = cpcId === null ? m.logicalToPhysical : m.logicalToPhysicalByCpc[cpcId] ?? 0;
   return (
     <>
@@ -76,6 +75,8 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
             <th className="num">Physical Util % LPAR</th>
             <th className="num">Effect</th>
             <th className="num">Total</th>
+            <th className="num" title="Not an RMF field: RMF shows it only indirectly, as Avg MVS Util% above Avg CPU Util% in SYSINFO">PR/SM delay %*</th>
+            <th className="num">capped %</th>
           </tr>
         </thead>
         <tbody>
@@ -100,6 +101,8 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
                     <PinButton game={game} req={{ source: 'CPC', lparId: anyPart.lparId, metric: 'CPC_BUSY' }} label={`CPC ${anyPart.cpcId} busy`} />
                   )}
                 </td>
+                <td />
+                <td />
               </tr>,
               ...part.map((c) => (
                 <tr key={c.lparId}>
@@ -108,47 +111,33 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
                   <td className="num">{c.msuAct === null ? '' : c.msuAct.toFixed(0)}</td>
                   <td className="num">{n1(c.procNum)}</td>
                   <td className="num">{n1(c.logicalEffectPct)}</td>
-                  <td className="num">{n1(c.logicalTotalPct)}</td>
+                  <td className="num">
+                    {n1(c.logicalTotalPct)}
+                    {c.kind === 'ZOS' && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'LPAR_BUSY' }} label={`${c.lparId} busy`} />}
+                  </td>
                   <td className="num">{n1(c.physLparPct)}</td>
                   <td className="num">{n1(c.physEffectPct)}</td>
                   <td className="num">{n1(c.physTotalPct)}</td>
+                  <td className="num">
+                    {c.kind === 'ZOS' && (
+                      <>
+                        {c.prsmDelayPct.toFixed(1)}
+                        <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'PRSM_DELAY' }} label={`${c.lparId} PR/SM delay`} />
+                      </>
+                    )}
+                  </td>
+                  <td className="num">
+                    {c.kind === 'ZOS' && (
+                      <>
+                        {c.cappedPct.toFixed(0)}
+                        {c.cappedPct > 0 && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'CAPPED' }} label={`${c.lparId} capped`} />}
+                      </>
+                    )}
+                  </td>
                 </tr>
               )),
             ];
           })}
-        </tbody>
-      </table>
-      <table style={{ marginTop: 8 }}>
-        <thead>
-          <tr>
-            <th>Partition</th>
-            <th className="num">weight</th>
-            <th>polarity</th>
-            <th className="num" title="The image's CP engines as a share of its logical CPs">busy %</th>
-            <th className="num" title="Not an RMF field: RMF shows it only indirectly, as Avg MVS Util% above Avg CPU Util% in SYSINFO">PR/SM delay %*</th>
-            <th className="num">capped %</th>
-          </tr>
-        </thead>
-        <tbody>
-          {zos.map((c) => (
-            <tr key={c.lparId}>
-              <td>{c.lparId}</td>
-              <td className="num">{c.weight}</td>
-              <td>{c.polarity}</td>
-              <td className="num">
-                {c.busyPct.toFixed(1)}
-                <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'LPAR_BUSY' }} label={`${c.lparId} busy`} />
-              </td>
-              <td className="num">
-                {c.prsmDelayPct.toFixed(1)}
-                <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'PRSM_DELAY' }} label={`${c.lparId} PR/SM delay`} />
-              </td>
-              <td className="num">
-                {c.cappedPct.toFixed(0)}
-                {c.cappedPct > 0 && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'CAPPED' }} label={`${c.lparId} capped`} />}
-              </td>
-            </tr>
-          ))}
         </tbody>
       </table>
       <div className={ratio > 2 ? 'err' : 'muted'} style={{ fontSize: 12, marginTop: 4 }}>
