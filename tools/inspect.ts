@@ -404,6 +404,20 @@ export function statsText(stats: WlmStats): string {
 export const stoppedEarly = (before: ReadonlySet<string>, after: ReadonlySet<string>): boolean =>
   [...after].some((name) => !before.has(name));
 
+/** Replay one logged `advance` of `hours` an hour at a time, stopping where the play CLI did (`stoppedEarly` against
+ * the abended set at the start of the advance). `hour` runs one hour and returns false when the replay must stop for
+ * its own reasons (end of range, day over); it may return false before running anything. Returns the number of `hour`
+ * calls, which counts such a call too. */
+export function replayAdvance(hours: number, abended: () => ReadonlySet<string>, hour: () => boolean): number {
+  const before = abended();
+  let ran = 0;
+  while (ran < hours) {
+    ran++;
+    if (!hour() || stoppedEarly(before, abended())) break;
+  }
+  return ran;
+}
+
 /** Replay a play file and collect every policy adjustment trace from `from` to `to` (exclusive). Returns the tick
  * reached: short of `to` when the log or a day ends first. */
 function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdjustTrace) => void): number {
@@ -414,7 +428,8 @@ function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdj
   if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed || !same(f.run.difficulty, file.run.difficulty)) {
     throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty ?? 'NORMAL'}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty ?? 'NORMAL'})`);
   }
-  const step = (before: ReadonlySet<string>): boolean => {
+  const step = (): boolean => {
+    if (f.run.sim.tick >= to) return false;
     // Installed for the hour that overlaps the range: the caller filters traces by their own clock.
     if (f.run.sim.tick + TICKS_PER_HOUR > from) setWlmTraceSink(sink);
     const out = applyPlayCommand(f, { cmd: 'advance', hours: 1 });
@@ -422,7 +437,7 @@ function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdj
     f = out.file;
     // The CLI's multi-hour `advance` stops at the hour a job abends and at the end of a played day. Replaying the
     // same hours it did not run would invent a run that never happened (and mis-time the commands after it).
-    return f.run.phase !== 'LIVE' || stoppedEarly(before, abendedNames(f.run));
+    return f.run.phase === 'LIVE';
   };
   try {
     for (const c of file.log.slice(1)) {
@@ -431,8 +446,7 @@ function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdj
         // A log whose next command is an advance while the day is not live cannot be replayed any further.
         if (f.run.phase !== 'LIVE') break;
         const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
-        const before = abendedNames(f.run);
-        for (let h = 0; h < hours && f.run.sim.tick < to; h++) if (step(before)) break;
+        replayAdvance(hours, () => abendedNames(f.run), step);
       } else {
         const out = applyPlayCommand(f, c);
         if (!out.ok) throw new Error(`replay failed at ${JSON.stringify(c)}: ${out.text}`);
@@ -525,17 +539,15 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
     if (f.run.sim.tick > last) break;
     if (c.cmd === 'advance') {
       const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
-      const before = abendedNames(f.run);
       // One hour at a time, so each incident hour start is a state we can branch from. The CLI stops an advance at
       // the hour a job newly abends; the commands after it in the log were issued there, so this must stop too.
-      for (let h = 0; h < hours && f.run.phase === 'LIVE'; h++) {
+      replayAdvance(hours, () => abendedNames(f.run), () => {
+        if (f.run.phase !== 'LIVE') return false;
         flush();
         stepHour();
         mark();
-        if (f.run.sim.tick > last || f.run.phase !== 'LIVE') break;
-        const after = abendedNames(f.run);
-        if (after.size !== before.size || [...after].some((x) => !before.has(x))) break;
-      }
+        return f.run.sim.tick <= last && f.run.phase === 'LIVE';
+      });
     } else {
       const out = applyPlayCommand(f, c);
       if (!out.ok) throw new Error(`replay failed at ${JSON.stringify(c)}: ${out.text}`);
