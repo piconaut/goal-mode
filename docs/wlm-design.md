@@ -1411,8 +1411,10 @@ minutes; episodes of 30 assessments without a move.
 
 `BUDGET` never happens in these runs (once on S-3 before). S-2's WEBDDF#1 on PROD2 is assessed 418 times in three
 days (2 846 before W6's repro, under the 500 the entry asked for); the rest of its intervals are skip clock (2 019),
-recovering (422) or no managed delay (66). On PROD1 the same class has no managed delay 2 840 times: the zIIP delay
-that made it "not fixable" there is under 2 %. R-4 changed shape under WT-04: at D1 14:17:40 on PRDD MKTDDF#1 is no
+recovering (422) or not fixable (74). The delay test never fires in S-1 … S-3: every candidate has at least 2 % managed
+delay; the periods whose waits dwarf it are `NOT_FIXABLE` instead, since the bottleneck choice still counts waits (WT-10). An early version subtracted
+waits from `delay`, which never held them, and skipped such periods as `NO_MANAGED_DELAY` instead (fixed; the S-table
+is unchanged by the fix, Midwest's and Revenue's one-day bench hashes are not). R-4 changed shape under WT-04: at D1 14:17:40 on PRDD MKTDDF#1 is no
 longer a candidate, and it is assessed whenever it is one (four times on D1); nothing on S-3 is cut by the budget.
 
 The episodes that remain are not every-interval re-assessment: each is a receiver no move helps, assessed once a
