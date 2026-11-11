@@ -118,16 +118,6 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
           })}
         </tbody>
       </table>
-      {cpcRows.some((c) => c.kind === 'ZOS') && (() => {
-        const first = cpcRows.find((c) => c.kind === 'ZOS')!;
-        const adj = first.capacityAdjPct ?? 0;
-        return (
-          <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-            CPC {first.cpcId}: capacity adjusted {adj.toFixed(1)} %
-            <PinButton game={game} req={{ source: 'CPC', lparId: first.lparId, metric: 'CAPACITY_ADJ' }} label={`CPC ${first.cpcId} capacity adjusted`} />
-          </div>
-        );
-      })()}
       <table style={{ marginTop: 8 }}>
         <thead>
           <tr>
