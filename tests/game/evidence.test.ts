@@ -452,24 +452,32 @@ describe('capacity and processor-split pins (RT-05, A11)', () => {
   it('pins the same three from the live Monitor III CPC view, and the CLIs trimmed history refuses them', () => {
     const view = buildMon3(regressed, MIDWEST);
     const c = view.cpc.find((x) => x.lparId === 'PROD1')!;
-    // Without a Partition Data interval the pin reads the Monitor III CPC view as it stands now.
-    const lpar = pinOf(regressed, { source: 'CPC', lparId: 'PROD1', metric: 'LPAR_BUSY' });
-    expect(lpar.value).toBe(c.busyPct);
+    // Without a Partition Data interval the pin reads the Monitor III CPC view as it stands now: the *CP row is the
+    // box's physical utilisation (LPAR management included, RMF Report Analysis 3.1 p.99), which agrees with the
+    // Partition Data figure of the interval that just closed.
     const busy = pinOf(regressed, { source: 'CPC', lparId: 'PROD1', metric: 'CPC_BUSY' });
-    expect(busy.value).toBeCloseTo(view.cpc.filter((x) => x.cpcId === c.cpcId && x.kind === 'ZOS').reduce((a, x) => a + x.physLparPct, 0));
+    const expected = view.cpc.filter((x) => x.cpcId === c.cpcId && x.kind === 'ZOS').reduce((a, x) => a + x.physTotalPct, 0);
+    expect(busy.value).toBeCloseTo(expected);
     expect(busy.subject).toBe(c.cpcId);
+    const interval = regressed.sim.rmf.intervals[iv()]!.cpcBusy.find((x) => x.cpcId === c.cpcId && x.pool === 'CP')!;
+    expect(Math.abs(busy.value - interval.physicalBusyPct)).toBeLessThan(10);
+    expect(pinOf(regressed, { source: 'CPC', lparId: 'PROD1', metric: 'LPAR_BUSY' }).value).toBe(c.busyPct);
+    expect(pinOf(regressed, { source: 'CPC', lparId: 'PROD1', metric: 'CAPACITY_ADJ' }).value).toBe(0);
     // A past range from the CLI's trimmed history has no such column.
-    const trimmed = addPin(regressed, MIDWEST, { source: 'CPC', lparId: 'PROD1', metric: 'LPAR_BUSY', tick: regressed.sim.tick }, () => ({
-      tick: regressed.sim.tick,
-      view: { rows: [], cpc: [{ lparId: 'PROD1', prsmDelayPct: 1, cappedPct: 0 }] },
-    }));
-    expect(trimmed.ok).toBe(false);
-    expect(trimmed.message).toContain('PR/SM delay and capping only');
+    for (const metric of ['LPAR_BUSY', 'CPC_BUSY', 'CAPACITY_ADJ'] as const) {
+      const trimmed = addPin(regressed, MIDWEST, { source: 'CPC', lparId: 'PROD1', metric, tick: regressed.sim.tick }, () => ({
+        tick: regressed.sim.tick,
+        view: { rows: [], cpc: [{ lparId: 'PROD1', prsmDelayPct: 1, cappedPct: 0 }] },
+      }));
+      expect(trimmed.ok).toBe(false);
+      expect(trimmed.message).toContain('pin the value from a Partition Data interval');
+    }
   });
 
   it('pins a capacity reduction as the loss from the normal setting', () => {
     const reduced = { ...regressed, sim: { ...regressed.sim, config: { ...regressed.sim.config, cpcs: regressed.sim.config.cpcs.map((c) => ({ ...c, peakCapacitySetting: 6 as const, capacitySetting: 4 as const })) } } };
-    // The live Monitor III view reads the current capacity setting (a past interval keeps the setting it ran at).
+    // The live Monitor III view carries the adjustment of the state it was built from (a past interval keeps the
+    // setting it ran at; the view is rebuilt per tick and snapshotted into history).
     const p = pinOf(reduced, { source: 'CPC', lparId: 'PROD1', metric: 'CAPACITY_ADJ' });
     expect(p.value).toBeGreaterThan(1);
     expect(p.value).toBeLessThan(100);
@@ -478,6 +486,13 @@ describe('capacity and processor-split pins (RT-05, A11)', () => {
     expect(judgeEvidence(reduced, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 1, why: 'points at the cause' });
     const priority = incident(reduced, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
     expect(judgeEvidence(reduced, MIDWEST, priority, [p])[0]).toMatchObject({ relevance: 0, why: 'points elsewhere' });
+    // A past range uses the adjustment recorded with it, not the present capacity setting.
+    const past = addPin(reduced, MIDWEST, { source: 'CPC', lparId: 'PROD1', metric: 'CAPACITY_ADJ', tick: reduced.sim.tick - 360 }, () => ({
+      tick: reduced.sim.tick - 360,
+      view: { rows: [], cpc: [{ lparId: 'PROD1', prsmDelayPct: 1, cappedPct: 0, cpcId: 'CPCA', kind: 'ZOS', physTotalPct: 90, capacityAdjPct: 12 }] },
+    }));
+    expect(past.ok, past.message).toBe(true);
+    expect(past.run.pins.at(-1)!.value).toBe(12);
   });
 
   it('a CPC pin relates through the images the incident runs on', () => {

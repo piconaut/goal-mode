@@ -12,7 +12,8 @@ export interface Mon3PinView {
     Partial<Pick<Mon3Row, 'ziipEngines' | 'iipcpEngines'>>)[];
   /** The CPC view's full rows in the browser; the CLI's trimmed history keeps only `prsmDelayPct` and `cappedPct`,
    * so the busier CPC metrics need a Partition Data interval there (RT-05). */
-  cpc: (Pick<Mon3Cpc, 'lparId' | 'prsmDelayPct' | 'cappedPct'> & Partial<Pick<Mon3Cpc, 'cpcId' | 'kind' | 'busyPct' | 'physLparPct'>>)[];
+  cpc: (Pick<Mon3Cpc, 'lparId' | 'prsmDelayPct' | 'cappedPct'> &
+    Partial<Pick<Mon3Cpc, 'cpcId' | 'kind' | 'busyPct' | 'physLparPct' | 'physTotalPct' | 'capacityAdjPct'>>)[];
   /** SYSWKM server rows (full view only; the CLI's history doesn't keep them, so past SYSWKM pins need the browser). */
   wkm?: { scKey: string; servers: Pick<Mon3Wkm['servers'][number], 'system' | 'jobname' | 'velocity'>[] }[];
 }

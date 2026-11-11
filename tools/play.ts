@@ -56,11 +56,17 @@ function pinCommand(a: string[]): PlayCommand {
   return req.source === 'WLMGL' || (req.source === 'CPC' && req.index !== undefined) ? { cmd: 'pin', req, intervalId: req.index } : { cmd: 'pin', req, ...(at !== undefined ? { at } : {}) };
 }
 
+const CPC_METRICS: readonly CpcMetric[] = ['PRSM_DELAY', 'CAPPED', 'LPAR_BUSY', 'CPC_BUSY', 'CAPACITY_ADJ'];
+
 function pinRequest(a: string[]): PinRequest {
   const src = (a[0] ?? '').toUpperCase();
   if (src === 'WLMGL') return { source: 'WLMGL', index: Number(a[1]), system: a[2] ?? '*PLEX', scKey: a[3] ?? '', metric: a[4] as EvidenceMetric };
   if (src === 'MON3') return { source: 'MON3', system: a[1] ?? '', scKey: a[2] ?? '', metric: a[3] as EvidenceMetric, ...(a[4] ? { jobname: a[4] } : {}) };
-  if (src === 'CPC') return { source: 'CPC', lparId: a[1] ?? '', metric: (a[2] ?? 'PRSM_DELAY') as CpcMetric, ...(a[3] !== undefined ? { index: Number(a[3]) } : {}) };
+  if (src === 'CPC') {
+    const metric = (a[2] ?? 'PRSM_DELAY').toUpperCase() as CpcMetric;
+    if (!CPC_METRICS.includes(metric)) throw new Error(`CPC metric: ${CPC_METRICS.join(' | ')}`);
+    return { source: 'CPC', lparId: a[1] ?? '', metric, ...(a[3] !== undefined ? { index: Number(a[3]) } : {}) };
+  }
   if (src === 'DB2' || src === 'CICS') return { source: src, hour: a[1] ?? '', workloadId: a[2] ?? '', metric: a[3] as EvidenceMetric };
   if (src === 'BATCH') return { source: 'BATCH', day: Number(String(a[1] ?? '').replace(/^D/i, '')) - 1, metric: a[2] as EvidenceMetric };
   throw new Error('pin source: WLMGL | MON3 | CPC | DB2 | CICS | BATCH');

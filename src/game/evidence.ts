@@ -2,7 +2,6 @@
 // each against the incident's hidden truth, its time window and the work it hurt.
 
 import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, type EvidenceMetric } from '../content/evidence';
-import { CAPACITY_SETTING_FRAC } from '../content/hardware';
 import { formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
@@ -47,8 +46,12 @@ export type PinRequest =
 
 type Located = Omit<EvidencePin, 'id' | 'text'>;
 
-/** The CLI's Monitor III history keeps PR/SM delay and capping per image only. */
-const TRIM_HISTORY = 'This Monitor III range keeps PR/SM delay and capping only; pin a Partition Data interval';
+/** The CLI's Monitor III history keeps PI, CPU, the ended rate and the delay shares per class, and PR/SM delay and
+ * capping per image: the busier CPC metrics are not in it. */
+const TRIM_HISTORY = 'This Monitor III range keeps PI, CPU, ended rate and delay shares only; pin the value from a Partition Data interval';
+
+/** Metrics that are a class's CPU total: a CICS region class reports the regions', not its transactions'. */
+const APPL_METRICS = new Set<EvidenceMetric>(['APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP']);
 
 function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mon3PinLookup): Located | string {
   const sim = run.sim;
@@ -61,7 +64,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const iv = sim.rmf.intervals[req.index];
       const w = iv?.wlm.find((x) => x.lparId === req.system && x.scKey === req.scKey);
       if (!iv || !w) return 'No such report row';
-      if (w.resourceSamples === false && (req.metric === 'APPL' || req.metric.startsWith('DELAY_')))
+      if (w.resourceSamples === false && (APPL_METRICS.has(req.metric) || req.metric.startsWith('DELAY_')))
         return `CICS resource samples are reported with the regions' classes: ${w.workManager?.regionKeys.join(', ') ?? 'see the region service classes'}`;
       const v: Partial<Record<EvidenceMetric, number | null>> = {
         PI: w.pi,
@@ -92,7 +95,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       }
       const r = m.view.rows.find((x) => x.system === req.system && x.scKey === req.scKey);
       if (!r) return 'No such Monitor III row';
-      if (r.resourceSamples === false && (req.metric === 'APPL' || req.metric.startsWith('DELAY_')))
+      if (r.resourceSamples === false && (APPL_METRICS.has(req.metric) || req.metric.startsWith('DELAY_')))
         return `CICS resource samples are reported with the regions' classes: see the region service classes`;
       const v: Partial<Record<EvidenceMetric, number | null>> = {
         PI: r.pi,
@@ -116,13 +119,6 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
     }
     case 'CPC': {
       const cpcId = run.sim.config.lpars.find((l) => l.id === req.lparId)?.cpcId ?? '';
-      // SMF70CAI as a loss: the processor runs at this percentage below its normal setting.
-      const capacityAdj = (id: string): number => {
-        const c = sim.config.cpcs.find((x) => x.id === id);
-        const peak = c?.peakCapacitySetting;
-        if (!c || peak === undefined || CAPACITY_SETTING_FRAC[c.capacitySetting] >= CAPACITY_SETTING_FRAC[peak]) return 0;
-        return Math.max(1, Math.round(100 - (100 * CAPACITY_SETTING_FRAC[c.capacitySetting]) / CAPACITY_SETTING_FRAC[peak]));
-      };
       if (req.index !== undefined) {
         const iv = sim.rmf.intervals[req.index];
         const r = iv?.cpu.find((x) => x.lparId === req.lparId);
@@ -142,12 +138,13 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if (!c) return 'No such LPAR';
       if (req.metric === 'LPAR_BUSY' && c.busyPct === undefined) return TRIM_HISTORY;
       if (req.metric === 'CPC_BUSY' || req.metric === 'CAPACITY_ADJ') {
-        if (c.cpcId === undefined) return TRIM_HISTORY;
-        // The CPC report's *CP row: physical utilisation summed over the box's partitions.
+        if (c.cpcId === undefined || (req.metric === 'CAPACITY_ADJ' && c.capacityAdjPct === undefined)) return TRIM_HISTORY;
+        // The CPC report's *CP row: physical utilisation (Total, i.e. LPAR management included) summed over the
+        // box's partitions (RMF Report Analysis 3.1 p.99), and the capacity loss the view was built with.
         const busy = m.view.cpc
           .filter((x) => x.cpcId === c.cpcId && x.kind === 'ZOS')
-          .reduce((a, x) => a + (x.physLparPct ?? 0), 0);
-        const value = req.metric === 'CPC_BUSY' ? busy : capacityAdj(c.cpcId);
+          .reduce((a, x) => a + (x.physTotalPct ?? 0), 0);
+        const value = req.metric === 'CPC_BUSY' ? busy : c.capacityAdjPct!;
         return { source: 'CPC', metric: req.metric, subject: c.cpcId, system: c.cpcId, tick: m.tick, value };
       }
       const value = req.metric === 'CAPPED' ? c.cappedPct : req.metric === 'LPAR_BUSY' ? c.busyPct! : c.prsmDelayPct;
@@ -287,7 +284,7 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
   const { classes, lpars, hosts: hostLpars, servers } = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
   // CPC-level pins (busy, capacity adjustment) relate through the images of the incident that sit on the processor.
   const cpcOfImage = (lparId: string) => run.sim.config.lpars.find((l) => l.id === lparId)?.cpcId;
-  const onIncidentCpc = (cpcId: string) => lpars.some((lparId) => cpcOfImage(lparId) === cpcId);
+  const onIncidentCpc = (cpcId: string) => hostLpars.some((lparId) => cpcOfImage(lparId) === cpcId);
   const lo = inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR;
   const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
   return pins.map((p) => {

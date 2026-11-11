@@ -8,7 +8,7 @@
 import { mergeWorkManager, noResources, reportedAccs, reportedTicks, type WorkManagerSamples } from '../sim/wlm/reporting';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
-import { msuPerCp } from '../sim/hw/cpc';
+import { capacityLossPct, msuPerCp } from '../sim/hw/cpc';
 import { classify } from '../sim/wlm/classify';
 import { jobShape } from '../sim/subsys/batch';
 import { BUCKET_BOUNDS, goalText, velocityOf } from '../sim/wlm/goals';
@@ -107,6 +107,8 @@ export interface Mon3Cpc {
   prsmDelayPct: number;
   overheadPct: number;
   cappedPct: number;
+  /** 100 − SMF70CAI: capacity lost against the processor's normal setting (0 when not adjusted). */
+  capacityAdjPct?: number;
 }
 
 /** CPC report header, for one partition (RMF shows it for the partition the reporter runs on). */
@@ -378,6 +380,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
       logical,
       polarity: rt && l.hiperDispatch ? `${rt.vh}VH ${rt.vm}VM ${rt.vl}VL` : cfg?.dedicated ? 'DED' : 'SHARED',
       busyPct: logical > 0 ? (100 * total) / logical : 0,
+      capacityAdjPct: box ? capacityLossPct(box) : 0,
       prsmDelayPct: 100 * (rt?.prsmDelayFrac ?? 0),
       overheadPct: 100 * (rt?.overheadFrac ?? 0),
       cappedPct: 100 * (rt?.cappedFrac ?? 0),

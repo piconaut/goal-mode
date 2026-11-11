@@ -35,3 +35,12 @@ export const SU_PER_SEC_PER_MSU = 1e6 / 3600;
 export function suPerCpuSecOf(cpc: CpcConfig): number {
   return (msuPerCp(cpc) * 1e6) / 3600;
 }
+
+/** SMF70CAI as a loss: how much capacity the processor lost against its normal (peak) setting, 0 when none. */
+export function capacityLossPct(cpc: { capacitySetting: number; peakCapacitySetting?: number }): number {
+  const peak = cpc.peakCapacitySetting;
+  if (peak === undefined) return 0;
+  const frac = CAPACITY_SETTING_FRAC as Record<number, number>;
+  if (frac[cpc.capacitySetting]! >= frac[peak]!) return 0;
+  return Math.max(1, Math.round(100 - (100 * frac[cpc.capacitySetting]!) / frac[peak]!));
+}
