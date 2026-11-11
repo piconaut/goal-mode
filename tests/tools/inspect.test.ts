@@ -1,5 +1,5 @@
 import { applyPlayCommand, clockText, encodePlayFile, newPlayFile } from '../../tools/playCore';
-import { statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
+import { replayAdvance, statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
 import type { WlmAdjustTrace, WlmCandidateTrace, WlmTrialTrace } from '../../src/sim/wlm/adjust';
 
 const trial = (over: Partial<WlmTrialTrace> = {}): WlmTrialTrace => ({
@@ -123,6 +123,21 @@ describe('inspect … wlm-stats over a play file', () => {
     expect(stoppedEarly(new Set(['2:STL004']), new Set(['2:STL004', '2:STL005']))).toBe(true);
     // A restart that clears an abend mid-advance does not stop the CLI (it only pages on a fresh abend).
     expect(stoppedEarly(new Set(['2:STL004']), none)).toBe(false);
+  });
+
+  it('replays a logged advance through a restart without stopping (PR-12)', () => {
+    // Abended sets seen at the advance start and after each hour: STL004 is restarted in hour 2 and re-abends in
+    // hour 3 (neither stops the CLI); STL005 abends fresh in hour 4, so the CLI stopped there.
+    const seen = [['2:STL004'], ['2:STL004'], [], ['2:STL004'], ['2:STL004', '2:STL005'], [], []].map((x) => new Set(x));
+    let i = 0;
+    const run = (hours: number, ok = () => true) => {
+      i = 0;
+      return replayAdvance(hours, () => seen[i]!, () => (i++, ok()));
+    };
+    expect(run(6)).toBe(4);
+    expect(run(3)).toBe(3);
+    // The caller's own stop (end of range, day over) ends the advance at that hour.
+    expect(run(6, () => i < 2)).toBe(2);
   });
 
   it('validates the range and keeps second precision', () => {

@@ -671,15 +671,6 @@ use `DELAY_CPU` or restrict the example to the CPU mechanisms. This is a documen
 change. Done when: A9's example matches the accepted mechanisms and relation/notability rules, preserving its
 explanation of the remaining proof-recipe gap.
 
-### PR-12 · `blame` and incident replays stop early when a restart shrinks the abended set
-`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
-
-Source: [#290 fix-check, M1](https://github.com/piconaut/goal-mode/pull/290#issuecomment-6800057870) (2026-11-11).
-#290 made the `wlm-stats` replay stop only on an abend that is new since the logged `advance` began
-(`stoppedEarly(before, after)` in `tools/inspect.ts`), as the play CLI does. The `blame` replay and the incident replay
-in `tools/inspect.ts` still use `after.size !== before.size || [...after].some(...)`, so a restart that clears one abend
-mid-advance stops them early. Done when: both use `stoppedEarly`, with a test of a restart inside a logged advance.
-
 ## realism-fixes
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header

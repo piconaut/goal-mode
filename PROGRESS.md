@@ -470,6 +470,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-11: PR-12: the `blame` incident replay now stops a logged `advance` only on an abend new since the advance
+  began (`stoppedEarly`), like the play CLI and `wlm-stats`; both replays share `replayAdvance` in `tools/inspect.ts`,
+  tested with a restart and a re-abend inside one advance. Tooling only; no sim change.
 - 2026-11-11: Queued BACKLOG PR-11 to align the RCA design's two-pin example with the evidence metric's accepted
   mechanisms. The correction is scoped as documentation only; proof recipes remain RT-13.
 - 2026-11-11: WT-01 `inspect … wlm-stats`: a new `inspect` verb replays a play-CLI file over a range with the WLM
