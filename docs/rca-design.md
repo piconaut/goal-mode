@@ -43,7 +43,8 @@ The judging is not trustworthy enough to gate fixes on, and the reasons are stru
    CPU incident, while the discriminating facts for most cards (CPC busy, capacity change, CP vs zIIP split, CF and
    DASD reports, region storage, a flat CPU per transaction) cannot be pinned or are rejected as "unremarkable".
    Pins are also judged against the classification and routing at *filing* time, so the player's own remediation
-   turns good pins into "not about X" (§3 A9–A11).
+   turns good pins into "not about X" (§3 A9–A11). RT-12 replaced the subject test with pin relations; the proof
+   recipes (RT-13) and the missing pin sources (RT-05's busy figures are done; RT-10, RT-11) close the rest.
 6. **A campaign and a retry storm are byte-identical in every report** (R-5). The D1 example fix cannot be proven
    by any data the game has today (§2, §5.3).
 
@@ -324,32 +325,37 @@ gives `failureMechanismOf` the hour and the same half-open overlap test, so both
 - A player's own change has no special rule. It comes out as `POLICY` for most mechanisms (R-14, R-15 at 12:00),
   which is right, but the reply cannot say which change.
 
-### A9. Evidence does not discriminate
+### A9. Evidence does not discriminate (fixed by RT-12's relations)
 
-A pin scores when its metric lists the true mechanism **or** the true trigger. Four metrics are `anySubject`
-(`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), which skips the "about the hurt workload" test entirely. R-16, for a
-MOBILE incident on PROD1/PROD2:
+A pin scored when its metric listed the true mechanism **or** the true trigger, and four metrics were `anySubject`
+(`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), which skipped the "about the hurt workload" test entirely. R-16, for a
+MOBILE incident on PROD1/PROD2, through the three rules:
 
-| Pin | Verdict before RT-03 | Verdict now |
-|---|---|---|
-| WLMGL PROD2 **TSO#1** CPU delay 19.7 % | 1.0, "points at the cause" | 1.0, unchanged (PROD2 is a MOBILE image) |
-| WLMGL **SYSP SYSTEM#1** APPL 3.4 % | 0.5, "consistent with the cause" | 0, "not on a system MOBILE runs on" |
-| WLMGL PROD1 DDFPRD#1 CPU delay 8.2 % (the hurt class, on the image that was fine) | 0, "value is unremarkable" | 0, unchanged |
-| WLMGL PROD1 DDFPRD#1 ended/s 222 | 0.5 | 0.5, unchanged |
+| Pin | Before RT-03 | RT-03 | RT-12 (now) |
+|---|---|---|---|
+| WLMGL PROD2 **TSO#1** CPU delay 19.7 % | 1.0, "points at the cause" | 1.0 (PROD2 is a MOBILE image) | 0, "another class's row, not the hurt work's" |
+| WLMGL **SYSP SYSTEM#1** APPL 3.4 % | 0.5, "consistent with the cause" | 0, "not on a system MOBILE runs on" | 0, unchanged |
+| WLMGL PROD1 DDFPRD#1 CPU delay 8.2 % (the hurt class, on the image that was fine) | 0, "value is unremarkable" | 0, unchanged | 0, unchanged |
+| WLMGL PROD1 DDFPRD#1 ended/s 222 | 0.5 | 0.5 | 0.5, unchanged |
 
-RT-03 makes an `anySubject` pin keep its subject freedom but takes away its image freedom: `p.system` must be one of
-the incident's LPARs or `*PLEX`, so a TSO or SYSTEM row on another image no longer reaches a production incident. It
-also gives `APPL` a 5 % notable line, so a row that is not a contender does not count. Two limits of that rule:
+RT-03 made an `anySubject` pin keep its subject freedom but took away its image freedom: `p.system` had to be one of
+the incident's LPARs or `*PLEX`, so a TSO or SYSTEM row on another image no longer reached a production incident. It
+also gave `APPL` a 5 % notable line. Two limits remained:
 
-- `*PLEX` has to stay open: it is the roll-up of every image and the report views' default filter, so a `*PLEX` row
-  for a class that only runs on some other image still scores. RT-12's relations close that.
-- `LOCK_WAIT` and `CF_WAIT` are only ever pinned from Db2 101, which is sysplex-wide, so the image test is a no-op for
-  them; the visible effect is on `APPL` and `DELAY_CPU`.
+- `*PLEX` had to stay open: it is the roll-up of every image and the report views' default filter, so a `*PLEX` row
+  for a class that only ran elsewhere still scored.
+- The subject itself was never checked: TSO#1's *own* CPU delay, pinned on a MOBILE image, scored full weight for a
+  MOBILE incident because the class merely ran on the host.
 
-What remains open: any two CPU-delay rows from *different* images the work runs on still reach "strong evidence"
+RT-12 replaces the subject test with a **relation** per pin (below and §4.6): TSO#1's delay is a `competitor` row and
+`DELAY_CPU` accepts only `self`/`server`, so it scores nothing; its `APPL` share is still the half-weight competitor
+clue. A competitor's row must also name a host image, so a `*PLEX` roll-up is rejected outright ("a *PLEX row does not
+show which image the class ran on"). `LOCK_WAIT` and `CF_WAIT` are only ever pinned from Db2 101, whose subject is the
+workload itself, so their relation is always `self`.
+
+What remains open is the *combination*: two `DELAY_ZIIP` rows of the work's own class still reach "strong evidence"
 (relevance ≥ 2, +5 Insight) for any CPU or dependency incident, because nothing checks that the pins, taken together,
-separate the cause from its look-alikes. RT-12 (pin relations) narrows this further, and RT-05/RT-14 add the
-images' own busy and capacity evidence.
+separate the cause from its look-alikes. That is RT-13's proof recipes.
 
 The reverse also holds: a ruling-out pin cannot count. "CPU per transaction unchanged" is the discriminator for a
 surge against a regression or bot traffic, and `CPU_VS_BASE` near ×1.0 (or ×0.4 for bots) is below `notableAt`.
@@ -366,8 +372,9 @@ R-16, same pins, after three remediations a player would plausibly make before t
   with a positive routing weight. Routing the work *to* PROD2 is not what flips the pin.
 
 All three punished the player for fixing the incident before the review. RT-04 stores the incident's classes, hosts
-(and the positive-weight hosts the `anySubject` image test needs) and serving regions when it opens, and judges
-against that snapshot; incidents from old saves still derive them from the present. `tests/game/evidence.test.ts`
+(and the positive-weight hosts the relation test needs) and serving regions when it opens, and judges against that
+snapshot; incidents from old saves still derive them from the present. RT-12 added the serving regions' classes
+(`serverClasses`), so a region's row is a `server` relation rather than the work's own. `tests/game/evidence.test.ts`
 pins a class row, reclassifies the workload and reroutes it, and gets the pre-edit verdicts from the recorded
 subjects (and the old defect from the live values). The snapshot is taken at the hour's close, so a change made
 during the breaching hour is already in it, and rows from a later hour of a still-open incident sit under the new
@@ -604,6 +611,16 @@ Consequences for the matcher:
 - Predicates may ask for a value to be *normal*. Pins store the baseline beside the value so "flat" can be judged.
 - New pin sources for the rows of A11 (Partition Data busy and capacity adjustment, CP/IIP split, CF Activity, DASD
   Activity per LCU, region storage, top-consumer job rows, work-manager states).
+
+**As built (RT-12).** `PinRelation = 'self' | 'server' | 'competitor' | 'host'`. `pinRelation` derives it from the
+incident's recorded subjects: `self` is the work's own class or period, its Db2 101/CICS 110 row (subject = workload)
+or its SMF 30 night; `server` is a `SYSWKM` row whose jobname and image match a serving region, or a region class
+(`serverClasses`); `host` is an incident image, or the CPC one of them sits on; `competitor` is any other class the
+definition knows, and only from an image the work runs on (never `*PLEX`). Each metric carries `relations`
+(`SYMPTOM` = all, `OWN` = self/server, `OWN_OR_COMPETITOR`, `HOST_ONLY` = host, batch jobs = self), and the judge
+rejects a pin whose relation is missing or not listed before it looks at size or mechanism. Pins also carry an
+optional `baseline`: the median of the same row over the six preceding report intervals or closed hours, or 1 for
+`CPU_VS_BASE` (already a ratio). No recipe reads it yet — that is RT-13.
 - Scoring: a complete recipe for the filed mechanism (if accepted) is worth what three relevant pins are worth today;
   a second complete recipe for the filed trigger makes the evidence "strong". A lone symptom pin earns the half
   weight a non-specific pin earns today. The three-pin limit stays: two recipes can share the symptom pin.

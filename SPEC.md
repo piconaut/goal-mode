@@ -1179,20 +1179,26 @@ answer. Old saves carry no accepted set and are scored on the primary alone.
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
-trigger (`content/evidence.ts`). Evidence is judged against the incident's own subjects — the service classes
-(including its CICS region classes), images and serving regions recorded when it opened (`closeHour`,
-`batchMissIncident`) — so a policy activation or a routing change made after it opened cannot turn a pin that was
+trigger (`content/evidence.ts`). Evidence is judged against the incident's own subjects — the service classes, the serving region classes
+(`serverClasses`, kept apart so a region's row is the server's), images and serving regions recorded when it opened
+(`closeHour`, `batchMissIncident`) — so a policy activation or a routing change made after it opened cannot turn a pin that was
 good at the time into "not about" the work; incidents from old saves derive the subjects from the present. The
 record is taken at the hour's close, so a change applied during that same hour is already in it, and a later hour
 of a still-open incident keeps the subjects it opened with.
-For an `anySubject` metric (`APPL`, `APPL_CP`, `APPL_IIP`, `IIPCP`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), whose
-subject may be another class, the pin must still come from an image the incident's work runs on or a sysplex-wide
-`*PLEX` row; a server-side clue (`SYSWKM`) instead needs the exact serving image. The capacity facts are pinnable
-too: `CPC_BUSY` (the processor's CP busy %, notable 90), `LPAR_BUSY` (the image's CP engines over its logical CPs,
-notable 95) and `CAPACITY_ADJ` (100 − SMF70CAI, the capacity lost against the normal setting, notable 1) from
-Partition Data or Monitor III, the first and last about the CPC and so relevant through the incident's images; and
-the CP/zIIP split of APPL % (`APPL_CP`, `APPL_IIP`, `IIPCP`) beside the summed value at half weight. PI is a symptom
-and never counts. Evidence points need an accepted mechanism.
+Every pin gets a **relation** to the incident, derived from those subjects: `self` (the work's own class or period,
+its Db2/CICS accounting, its SMF 30 night), `server` (a CICS region serving it, or a region class), `competitor`
+(another class — and only placeable from an image the work runs on, because a `*PLEX` roll-up cannot say where that
+class ran) or `host` (an image or processor of the incident). Each metric lists the relations it is evidence for,
+and a pin outside them scores nothing whatever its size: the work's own service metrics (`DELAY_*`, `ENDED_RATE`,
+`CPU_VS_BASE`, the Db2/CICS waits) accept `self` and `server`; `APPL` and its CP/zIIP split also accept `competitor`
+at half weight, because it shows a contender existed, not that it was ahead; the image and processor facts
+(`PRSM_DELAY`, `CAPPED`, `CAPACITY_ADJ`, and `CPC_BUSY`/`LPAR_BUSY`, notable 90/95) are `host` only; the batch job
+metrics are `self` only; PI and velocity are symptoms that accept any relation but never score. So another class's
+CPU-delay row on a production image is not evidence about the hurt workload (only its `APPL` share is), and a
+server-side clue (`SYSWKM`) still needs the exact serving image. Pins also store a `baseline` where the report gives
+one — the median of the same row's six preceding hours, or 1 for the CPU-per-transaction ratio — so a predicate can
+ask whether the value is normal (`docs/rca-design.md` §4.6). PI is a symptom and never counts. Evidence points need
+an accepted mechanism.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one

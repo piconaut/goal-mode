@@ -236,19 +236,8 @@ notable 25 % of an engine), and the WLMGL work-manager states of a CICS transact
 lock → LOCK_CONTENTION; `WM_READY` → CPU_PRIORITY, CPU_CAPACITY, QR_TCB at half weight; RMF Report Analysis
 p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §10.
 
-### RT-12 · Pin relations instead of `anySubject`
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-User decision on Q3, 2026-11-10: yes. After RT-04. Each pin gets a relation to the incident (`self`, `server`, `competitor`, `host`) from the incident's
-`subjects`; each metric says which relations it accepts; `anySubject` is removed; pins store the baseline beside the
-value so a predicate can ask for "normal". RT-04's snapshot holds a server's jobname and image only: widen it if a
-relation needs the region's role or subsystem. Done when: R-16's table comes out as §4.6 describes and the existing
-evidence tests are ported. That includes the residual RT-03 leaves: a competing class's `DELAY_CPU` row on a host
-image (R-16's TSO#1 on PROD2) still scores full weight from the image test alone, and only the relation plus §4.6's
-discriminator can say whether that class was ahead of the hurt work.
-
 ### RT-13 · Proof recipes: evidence as a discriminating pair
-`list: rca-truth · status: blocked: after RT-12 · priority: high · size: L · area: game`
+`list: rca-truth · status: ready · priority: high · size: L · area: game`
 
 User decision on Q3, 2026-11-10: yes. After RT-12. Recipes per mechanism and trigger in
 `content/evidence.ts` (§4.6 table), judged over the up-to-three attached pins. Every common recipe (CPU family,

@@ -177,12 +177,17 @@ export interface CapacityBasis {
  * that was good when the incident opened into "not about X". */
 export interface IncidentSubjects {
   classes: string[];
-  /** Routing-table images: every routing key, including a zero weight, as the subject test reads it. */
+  /** Routing-table images: every routing key, including a zero weight (kept for old saves; the relation test reads
+   * `hosts`). */
   lpars: string[];
-  /** Images the work actually runs on: routing keys with a positive share (the `anySubject` image test). */
+  /** Images the work actually runs on: routing keys with a positive share (RT-12's host relation, and where a
+   * competitor's row can be placed). */
   hosts: string[];
   /** CICS regions (AOR/TOR) serving the transactions, by jobname and image. */
   servers: { jobname: string; lparId: string }[];
+  /** The region classes among `classes` (RT-12): a row on one of them is the server's, not the hurt work's. Absent in
+   * saves written before RT-12, which then treat every recorded class as the work's own. */
+  serverClasses?: string[];
 }
 
 /** An incident's hidden ground truth: the primary answer, the accepted set, and the cause's identity. */
