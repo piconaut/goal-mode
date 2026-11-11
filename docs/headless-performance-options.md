@@ -210,8 +210,8 @@ merges only if it also simplifies the code. It does in part:
 - the per-tick rebuild of the CICS region topology is gone;
 - `step` and the capping stages lose their ad hoc `.find()`/`filter` chains for a named record each.
 
-But the source grows by about 30 lines net, and the plan now has a lazily filled field that WT-09 has to respect. So
-it is a call for the user, recorded here rather than decided. Midwest (−7.6 %) and Revenue (−6.9 %) clear the bar.
+But the source grows by about 30 lines net, and the plan now has a lazily filled field that WT-09 has to respect. The
+user accepted it on the combined result (2026-11-11). Midwest (−7.6 %) and Revenue (−6.9 %) clear the bar on their own.
 
 Option 1 in total is roughly 10 % on Harbourline and 14 % on Midwest, from the two steps' medians compounded. That
 sits at the low end of the 15–25 % estimate: the `.find()` calls were cheap, and the gain came from not rebuilding
