@@ -397,10 +397,12 @@ export function statsText(stats: WlmStats): string {
   return lines.join('\n');
 }
 
-/** The play CLI's `advance` stops early when a job newly ABENDs (its text says `STOPPED:`) and a played day ends at
- * 06:00; the commands after that point in the log were issued there, so a faithful replay stops too. */
-export const stoppedEarly = (text: string, before: ReadonlySet<string>, after: ReadonlySet<string>): boolean =>
-  /STOPPED:/.test(text) || after.size !== before.size || [...after].some((name) => !before.has(name));
+/** The play CLI's `advance` stops after the hour in which a job abends that was not abended when the advance began
+ * (and at the end of a played day); the commands after that point in the log were issued there, so a faithful replay
+ * stops too. `before` is the set at the start of the logged advance, not of the hour: a restart that clears an abend
+ * mid-advance does not stop the CLI, and neither does a re-abend of a job that was abended at the start. */
+export const stoppedEarly = (before: ReadonlySet<string>, after: ReadonlySet<string>): boolean =>
+  [...after].some((name) => !before.has(name));
 
 /** Replay a play file and collect every policy adjustment trace from `from` to `to` (exclusive). Returns the tick
  * reached: short of `to` when the log or a day ends first. */
@@ -412,16 +414,15 @@ function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdj
   if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed || !same(f.run.difficulty, file.run.difficulty)) {
     throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty ?? 'NORMAL'}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty ?? 'NORMAL'})`);
   }
-  const step = (): boolean => {
+  const step = (before: ReadonlySet<string>): boolean => {
     // Installed for the hour that overlaps the range: the caller filters traces by their own clock.
     if (f.run.sim.tick + TICKS_PER_HOUR > from) setWlmTraceSink(sink);
-    const before = abendedNames(f.run);
     const out = applyPlayCommand(f, { cmd: 'advance', hours: 1 });
     if (!out.ok) throw new Error(`replay failed advancing from ${clockText(f.run.sim.tick)}: ${out.text}`);
     f = out.file;
     // The CLI's multi-hour `advance` stops at the hour a job abends and at the end of a played day. Replaying the
     // same hours it did not run would invent a run that never happened (and mis-time the commands after it).
-    return f.run.phase !== 'LIVE' || stoppedEarly(out.text, before, abendedNames(f.run));
+    return f.run.phase !== 'LIVE' || stoppedEarly(before, abendedNames(f.run));
   };
   try {
     for (const c of file.log.slice(1)) {
@@ -430,7 +431,8 @@ function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdj
         // A log whose next command is an advance while the day is not live cannot be replayed any further.
         if (f.run.phase !== 'LIVE') break;
         const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
-        for (let h = 0; h < hours && f.run.sim.tick < to; h++) if (step()) break;
+        const before = abendedNames(f.run);
+        for (let h = 0; h < hours && f.run.sim.tick < to; h++) if (step(before)) break;
       } else {
         const out = applyPlayCommand(f, c);
         if (!out.ok) throw new Error(`replay failed at ${JSON.stringify(c)}: ${out.text}`);

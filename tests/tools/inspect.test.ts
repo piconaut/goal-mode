@@ -1,4 +1,4 @@
-import { applyPlayCommand, encodePlayFile, newPlayFile } from '../../tools/playCore';
+import { applyPlayCommand, clockText, encodePlayFile, newPlayFile } from '../../tools/playCore';
 import { statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
 import type { WlmAdjustTrace, WlmCandidateTrace, WlmTrialTrace } from '../../src/sim/wlm/adjust';
 
@@ -117,10 +117,12 @@ describe('wlmStats counts the audit table (WT-01)', () => {
 describe('inspect … wlm-stats over a play file', () => {
   it('knows when the CLI advance stopped early (B1)', () => {
     const none = new Set<string>();
-    expect(stoppedEarly('Advanced to D1 07:00.', none, none)).toBe(false);
-    expect(stoppedEarly('Advanced to D1 07:00.\nSTOPPED: STL004 ABENDED.', none, none)).toBe(true);
-    expect(stoppedEarly('Advanced to D1 07:00.', none, new Set(['2:STL004']))).toBe(true);
-    expect(stoppedEarly('Advanced to D1 07:00.', new Set(['2:STL004']), new Set(['2:STL004']))).toBe(false);
+    expect(stoppedEarly(none, none)).toBe(false);
+    expect(stoppedEarly(none, new Set(['2:STL004']))).toBe(true);
+    expect(stoppedEarly(new Set(['2:STL004']), new Set(['2:STL004']))).toBe(false);
+    expect(stoppedEarly(new Set(['2:STL004']), new Set(['2:STL004', '2:STL005']))).toBe(true);
+    // A restart that clears an abend mid-advance does not stop the CLI (it only pages on a fresh abend).
+    expect(stoppedEarly(new Set(['2:STL004']), none)).toBe(false);
   });
 
   it('validates the range and keeps second precision', () => {
@@ -171,7 +173,7 @@ describe('inspect … wlm-stats over a play file', () => {
 describe('inspect … wlm-stats stops where the play CLI stopped', () => {
   it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
     let f = newPlayFile(42);
-    const run = (c: { cmd: 'start' } | { cmd: 'advance'; hours: number } | { cmd: 'draft'; optionId: null }) => {
+    const run = (c: { cmd: 'start' } | { cmd: 'advance'; hours: number } | { cmd: 'draft'; optionId: null } | { cmd: 'restart'; name: string }) => {
       const out = applyPlayCommand(f, c);
       expect(out.ok, out.text).toBe(true);
       f = out.file;
@@ -189,5 +191,12 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     expect(stats.range.covered).toBe(false);
     expect(stats.range.to).toMatch(/^D2 /);
     expect(stats.total.adjustments).toBe(stats.systems.length * 41 * 360);
+    // Restarting the job clears the abend during the next advance; the CLI does not stop for that, so neither does
+    // the replay: it covers all three hours (D2 23:00 → D3 02:00), not one.
+    run({ cmd: 'restart', name: 'STL004' });
+    expect(run({ cmd: 'advance', hours: 3 }).text).not.toContain('STOPPED:');
+    const after = JSON.parse(wlmStatsText(encodePlayFile(f), { from: 'D2 22:00', to: 'D3 06:00', json: true }));
+    expect(after.range.to).toBe(clockText(f.run.sim.tick));
+    expect(after.total.adjustments).toBe(after.systems.length * 4 * 360);
   });
 });
