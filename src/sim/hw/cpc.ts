@@ -36,11 +36,16 @@ export function suPerCpuSecOf(cpc: CpcConfig): number {
   return (msuPerCp(cpc) * 1e6) / 3600;
 }
 
-/** SMF70CAI as a loss: how much capacity the processor lost against its normal (peak) setting, 0 when none. */
-export function capacityLossPct(cpc: { capacitySetting: number; peakCapacitySetting?: number }): number {
+/** SMF70CAI, capacity-adjustment indication: 1–99 while capacity is reduced against the normal (peak) setting,
+ * undefined when not adjusted (MVS SMF p.589). */
+export function capacityAdjustmentIndication(cpc: { capacitySetting: 4 | 5 | 6 | 7; peakCapacitySetting?: 4 | 5 | 6 | 7 }): number | undefined {
   const peak = cpc.peakCapacitySetting;
-  if (peak === undefined) return 0;
-  const frac = CAPACITY_SETTING_FRAC as Record<number, number>;
-  if (frac[cpc.capacitySetting]! >= frac[peak]!) return 0;
-  return Math.max(1, Math.round(100 - (100 * frac[cpc.capacitySetting]!) / frac[peak]!));
+  if (peak === undefined || CAPACITY_SETTING_FRAC[cpc.capacitySetting] >= CAPACITY_SETTING_FRAC[peak]) return undefined;
+  return Math.max(1, Math.round((100 * CAPACITY_SETTING_FRAC[cpc.capacitySetting]) / CAPACITY_SETTING_FRAC[peak]));
+}
+
+/** SMF70CAI as a loss: 100 − SMF70CAI, 0 when not adjusted (the same figure Partition Data reports). */
+export function capacityLossPct(cpc: { capacitySetting: 4 | 5 | 6 | 7; peakCapacitySetting?: 4 | 5 | 6 | 7 }): number {
+  const cai = capacityAdjustmentIndication(cpc);
+  return cai === undefined ? 0 : 100 - cai;
 }

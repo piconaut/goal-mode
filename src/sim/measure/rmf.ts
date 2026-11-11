@@ -7,7 +7,7 @@ import type { CfResult, CfSystemResult } from '../cf/cf';
 import type { DasdResult } from '../io/dasd';
 import type { LparRuntime, LparTick, WorldConfig } from '../core/types';
 import type { ScpTick } from '../wlm/evaluate';
-import { CAPACITY_SETTING_FRAC } from '../../content/hardware';
+import { capacityAdjustmentIndication } from '../hw/cpc';
 import { BUCKETS, emptyBuckets, velocityOf } from '../wlm/goals';
 import { goalInfo, accPi, emptyAcc, velDelay, velUsing, type ScpAcc } from '../wlm/runtime';
 import type { ServiceDefinition } from '../wlm/types';
@@ -526,9 +526,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
           if (!a) return s;
           return s + (pool === 'CP' ? a.deliveredCp : pool === 'ZIIP' ? a.deliveredZiip : a.deliveredIcf) / n;
         }, 0);
-      const adj = c.peakCapacitySetting !== undefined && CAPACITY_SETTING_FRAC[c.capacitySetting] < CAPACITY_SETTING_FRAC[c.peakCapacitySetting]
-        ? Math.max(1, Math.round((100 * CAPACITY_SETTING_FRAC[c.capacitySetting]) / CAPACITY_SETTING_FRAC[c.peakCapacitySetting]))
-        : undefined;
+      const adj = capacityAdjustmentIndication(c);
       return {
         cpcId: c.id,
         pool,
