@@ -470,6 +470,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-11: Queued BACKLOG PR-11 to align the RCA design's two-pin example with the evidence metric's accepted
+  mechanisms. The correction is scoped as documentation only; proof recipes remain RT-13.
 - 2026-11-11: RT-12 evidence baselines: moved the six-row lookback into
   `content/evidence.ts` as `EVIDENCE.baselineRows`, with a FICTIONAL note explaining the smoothing choice;
   the value and evidence behavior are unchanged.
