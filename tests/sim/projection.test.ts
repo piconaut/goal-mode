@@ -1,4 +1,7 @@
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
+import { MIDWEST } from '../../src/content/scenarios';
+import { initState } from '../../src/sim/core/init';
+import { step } from '../../src/sim/core/step';
 import { evaluateLpar, sliceSpec } from '../../src/sim/wlm/evaluate';
 import { demandUplift, projectionInput } from '../../src/sim/wlm/projection';
 import { ACC_DECAY, decayInto, emptyAcc, type ScpState } from '../../src/sim/wlm/runtime';
@@ -86,5 +89,15 @@ describe('WLM projection input: sustained demand (docs/wlm-design.md §5.4)', ()
     const rest = projectionInput({ ...base([]), ziipCapacityEngines: 0, ziipServers: 0, slices: [{ ...job, cpEngines: 3 }, as] }, [settled], POLICY_ADJUST);
     expect(rest.slices.map((x) => x.cpEngines)).toEqual([3, 1]);
   });
+
+  it('marks running batch jobs as fixed where demand is built, so a batch-only period has no sustained demand', () => {
+    // Midwest seed 42 at 23:00: the batch night runs in BATCHPRD#1 on both production images.
+    let st = initState(42, MIDWEST);
+    for (let t = 0; t < 17 * 360; t++) st = step(st, [], MIDWEST);
+    const batch = st.wlm.systems.flatMap((sys) => sys.scps.filter((p) => p.scKey === 'BATCHPRD#1').map((p) => p.acc));
+    expect(batch.length).toBeGreaterThan(0);
+    expect(batch.some((a) => a.cpuEngines > 1)).toBe(true);
+    for (const a of batch) expect(a.demandCp ?? 0).toBe(0);
+  }, 60_000);
 });
 

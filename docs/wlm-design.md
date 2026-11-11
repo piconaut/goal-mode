@@ -1386,3 +1386,9 @@ whose runaway still breaks MOBILE at D2 13:00. The same review made running batc
 zIIPs (they were lifted there), kept them out of the sustained demand, and counted smoothed zIIP use in
 `usedEngines`; the "neither" row includes those.
 
+Second review: the check applied wherever the PIs disagreed, also to address-space classes with no backlog (Revenue
+STCLO#1: local PI 8.99, `base` 1.89). It now applies only where the bound cut the receiver's transaction backlog. S-1
+… S-3 and seed 2 keep their moves (S-3 81 → 79); it still rejects 5 976 of S-2's 15 329 trials and 9 426 of S-3's
+13 899, nearly all receiver-up trials of backlogged transaction classes, in place of other rejections. A percentile
+PI stops at 4.0, so a percentile receiver never trips it (a known limit).
+

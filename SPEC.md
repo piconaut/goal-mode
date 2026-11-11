@@ -510,8 +510,9 @@ tick's evaluation input, adjusted so one quiet tick or one burst does not decide
 paging, promotion, capacity and transaction timeouts stay as this tick (a projection without the timeout gives a
 response-time PI no upper scale; docs/wlm-design.md §9.4 point 3). APPROX. Running batch jobs
 (`SliceSpec.fixedDemand`) are exact: never lifted, and left out of the sustained demand they would be compared with.
-The bound can hide a runaway's backlog, so a receiver whose management PI is over `projectionTrustMax` (4) times its
-`base` is not raised (`PROJECTION_DISAGREES`; donor moves are still tried; §9.5).
+The bound can hide a runaway's backlog, so a receiver whose transaction backlog the bound cut and whose management PI
+is over `projectionTrustMax` (4) times its `base` is not raised (`PROJECTION_DISAGREES`; donor moves are still tried;
+a percentile PI stops at 4.0 and never trips it; docs/wlm-design.md §9.5).
 
 ```
 for importance in 1..5:

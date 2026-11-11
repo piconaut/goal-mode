@@ -51,8 +51,8 @@ function makeCase(seed: number, history: 'rest' | 'varied'): Case {
       slices.push(sliceSpec({ key: `a${i}`, scKey: key, kind: 'AS', cpEngines: cp, units: int(1, 8) }));
     }
   }
-  // Drawn after every other value, so the rest of the case is the same as before this was added: some images have a
-  // CPU-critical class, so the CPU_CRITICAL verdict is reached too.
+  // Some images have a CPU-critical class, so the CPU_CRITICAL verdict is reached too. (Drawn after the periods; the
+  // 'varied' history draws after it.)
   if (u() < 0.5) {
     const critical = `G${String(int(0, n - 1)).padStart(2, '0')}`;
     def.classes.find((c) => c.id === critical)!.cpuCritical = true;

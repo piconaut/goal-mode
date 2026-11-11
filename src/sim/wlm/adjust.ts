@@ -211,6 +211,16 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       prepared: P.prepared ?? prepareLpar(P),
     });
   };
+  /** Did the projection bound this period's transaction backlog below what is queued? */
+  const backlogCut = (k: string): boolean => {
+    const bounded = projectionBase().backlog;
+    for (const s of input.evalInput.slices) {
+      if (s.scKey !== k || s.kind !== 'TXN') continue;
+      const bl = input.evalInput.backlog[s.key] ?? 0;
+      if (bl > 0 && (bounded[s.key] ?? 0) < bl) return true;
+    }
+    return false;
+  };
   // `base`: every period's projected PI at the current DPs. One evaluation, made only when a candidate needs it.
   let baseCache: Record<string, number | null> | null = null;
   const basePis = (): Record<string, number | null> => (baseCache ??= instPi(evaluateLpar(projectionBase()).scps));
@@ -399,11 +409,13 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     }
     const ct = tracing ? traceOf(receiver, btl, 'ASSESSED', sharesOf(receiver)) : null;
     if (ct) ct.basePi = b0;
-    // A receiver measured far worse than projected (a runaway whose backlog the projection bounds) is not raised:
-    // the projection cannot show what draining that backlog does to others. APPROX: real WLM's demand data does
-    // not hide a backlog; this guards the sim's bound (docs/wlm-design.md §9.5).
+    // A receiver whose backlog the projection bounded, and that is measured far worse than projected (a runaway), is
+    // not raised: the projection cannot show what draining that backlog does to others. Only where the bound cut
+    // something: elsewhere a gap between the PIs is no reason to distrust the projection. APPROX: real WLM's demand
+    // data does not hide a backlog (WLM Services p.144: maximum demand is use with no processor delay); this guards
+    // the sim's bound (docs/wlm-design.md §9.5). A percentile PI stops at 4.0, so a percentile receiver never trips it.
     const mPi = Math.max(localPi[receiver] ?? 0, input.sysplexPi[receiver] ?? 0);
-    const distrust = mPi > POLICY_ADJUST.projectionTrustMax * b0;
+    const distrust = mPi > POLICY_ADJUST.projectionTrustMax * b0 && backlogCut(receiver);
     /** The first move tried against this receiver: the clue the log gives when none of them paid off. */
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
     projected++;
@@ -482,7 +494,7 @@ function playerReason(w: WlmTrialTrace): string {
     case 'EQUAL_DISPARITY': return `harms ${name ?? 'equal-importance work'}, equal importance`;
     case 'NO_NET_VALUE': return 'equal-importance harm outweighs the gain';
     case 'CPU_CRITICAL': return 'would breach CPU protection';
-    case 'PROJECTION_DISAGREES': return 'too far behind to project the effect on other work';
+    case 'PROJECTION_DISAGREES': return 'its backlog would take the processor from other work while it catches up';
     default: return 'no net value';
   }
 }

@@ -423,37 +423,52 @@ describe('the missing-goal rule counts smoothed zIIP use (docs/wlm-design.md §5
 });
 
 describe('a receiver measured far worse than projected is not raised (projectionTrustMax, docs/wlm-design.md §9.5)', () => {
-  it('rejects its receiver-up moves as PROJECTION_DISAGREES and still tries donors', () => {
-    // Midwest seed 2's shape: a runaway (importance 4) whose management PI is 56.6 while the projection, with its
-    // backlog bounded, puts it at 1.15. Here: a velocity class with a smoothed PI far above what this tick projects.
-    const def = structuredClone(BASEPOL);
-    const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
-    const cls = (id: string, velocity: number, importance: 2 | 4 | 5) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
-    def.classes.push(cls('RUN', 50, 4), cls('BAT', 10, 5));
-    const slices = [
-      sliceSpec({ key: 'run', scKey: 'RUN#1', kind: 'AS', cpEngines: 2, units: 8 }),
-      sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
-    ];
-    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
-    const dps: Record<string, number> = { 'RUN#1': 0xe6, 'BAT#1': 0xf0 };
+  // Midwest seed 2's shape: a runaway (importance 4) whose management PI is 56.6 while the projection, with its
+  // backlog bounded, puts it at 1.15. Here: a transaction class with a large backlog and a smoothed PI far above
+  // what the projection says.
+  const def = structuredClone(BASEPOL);
+  const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+  const cls = (id: string, velocity: number, importance: 4 | 5) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
+  def.classes.push(cls('RUN', 50, 4), cls('BAT', 10, 5));
+  const slices = [
+    sliceSpec({ key: 'run', scKey: 'RUN#1', kind: 'TXN', workloadId: 'run', rate: 100, cpEngines: 2, cpuSecPerTxn: 0.02, baseLatencySec: 0.01, rtSigma: 0.5 }),
+    sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
+  ];
+  const dps: Record<string, number> = { 'RUN#1': 0xe6, 'BAT#1': 0xf0 };
+  const run = (backlog: Record<string, number>, plex: (basePi: number) => number) => {
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog, io: IO, pagingFrac: 0 };
     const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
     const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
-    const run = (plex: number) => {
+    const go = (p: number) => {
       const traces: WlmAdjustTrace[] = [];
       setWlmTraceSink((t) => traces.push(t));
       try {
-        policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: { 'RUN#1': plex }, clockText: 'T' });
+        policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: { 'RUN#1': p }, clockText: 'T' });
       } finally {
         setWlmTraceSink(null);
       }
       return traces[0]!.candidates.find((c) => c.scKey === 'RUN#1')!;
     };
-    const ok = run(1.5);
-    expect(ok.trials.some((t) => t.verdict === 'PROJECTION_DISAGREES')).toBe(false);
-    const far = run(ok.basePi! * POLICY_ADJUST.projectionTrustMax + 1);
-    const up = far.trials.filter((t) => !t.move.startsWith('DONOR '));
+    return go(plex(go(1.5).basePi ?? 1.5));
+  };
+  const far = (b: number) => b * POLICY_ADJUST.projectionTrustMax + 1;
+
+  it('rejects its receiver-up moves as PROJECTION_DISAGREES when the bound cut its backlog, and still tries donors', () => {
+    const c = run({ run: 2 * 10 * 50 }, far);
+    expect(c.outcome).toBe('ASSESSED');
+    const up = c.trials.filter((t) => !t.move.startsWith('DONOR '));
     expect(up.length).toBeGreaterThan(0);
     for (const t of up) expect(t.verdict).toBe('PROJECTION_DISAGREES');
-    expect(far.trials.some((t) => t.move.startsWith('DONOR ') && t.verdict !== 'PROJECTION_DISAGREES')).toBe(true);
+    expect(c.trials.some((t) => t.move.startsWith('DONOR ') && t.verdict !== 'PROJECTION_DISAGREES')).toBe(true);
+  });
+
+  it('trusts the projection when nothing was cut, however far the measured PI is', () => {
+    const c = run({}, far);
+    expect(c.trials.some((t) => t.verdict === 'PROJECTION_DISAGREES')).toBe(false);
+  });
+
+  it('trusts it when the measured PI is close, backlog or not', () => {
+    const c = run({ run: 2 * 10 * 50 }, () => 1.5);
+    expect(c.trials.some((t) => t.verdict === 'PROJECTION_DISAGREES')).toBe(false);
   });
 });
