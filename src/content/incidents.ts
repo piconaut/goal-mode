@@ -21,6 +21,4 @@ export const CPU_BANDS = {
   hostRoomFrac: 0.85,
   /** Below this share of the image's CP going to displaceable work, capacity is clearly the answer. */
   donorRoomFrac: 0.05,
-  /** From this share up, priority is clearly the answer: WLM had CPU it could have moved. */
-  donorBusyFrac: 0.2,
 } as const;

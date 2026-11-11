@@ -298,6 +298,8 @@ function batchMissIncident(r: RunState, scenario: Scenario, night: NightSummary,
   const card = batchMissCard(mechanism, r.events, nightStartTick);
   const ctx: TruthContext = {
     workloadId: BATCH_INCIDENT, mechanism, trigger, hour: nightHour, events: r.events, ...(card ? { card } : {}),
+    // The night runs 18:00 to the day end: a card starting at 20:00 is a card for this incident, not one for 18:00.
+    window: { startTick: nightStartTick, endTick: r.sim.tick },
     basis, hosts, servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew: false,
   };
   const { accepted, notes } = acceptedAnswers(ctx);

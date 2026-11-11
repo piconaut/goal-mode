@@ -6,6 +6,7 @@ import { advance, newRun, startDay, submitRca } from '../../src/game/run';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import { acceptedOf, importanceRank, scoreRca } from '../../src/game/sla';
 import type { ActiveEvent } from '../../src/game/types';
+import { applyPlayCommand, newPlayFile } from '../../tools/playCore';
 import { classify } from '../../src/sim/wlm/classify';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
@@ -56,7 +57,8 @@ describe('accepted answer sets (RT-07)', () => {
 
   it("scores the playtest D12 answer 5 on R-7's numbers (CPC 98 % busy, 12 % displaceable)", () => {
     // R-7: POWER_CAP, MOBILE `CPU_PRIORITY/HARDWARE_FAULT` at CPC 98 % with 12 % donors (docs/rca-design.md §3,
-    // row 20). The bands cannot separate capacity from priority there, so the D12 answer is a full answer.
+    // row 20). The bands cannot separate capacity from priority there, so the D12 answer is a full answer. The hour
+    // is built from those published numbers rather than replayed: a 12-day replay is far too slow for the suite.
     const { accepted } = acceptedAnswers(ctx({
       mechanism: 'CPU_PRIORITY', trigger: 'HARDWARE_FAULT', basis: basis(), events: [card('POWER_CAP')],
     }));
@@ -74,6 +76,37 @@ describe('accepted answer sets (RT-07)', () => {
     // Room on the machine is enough on its own: an unmeasured donor share must not widen the answer.
     const noDonors = acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', basis: basis({ cpcBusyPct: 70, lparBusyPct: 60, donorPct: 0 }) }));
     expect(noDonors.accepted.mechanisms).toEqual(['CPU_PRIORITY']);
+    // The mixed row (§4.3): a host short of full leaves capacity open even with donors to move.
+    expect(acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', basis: basis({ cpcBusyPct: 88, lparBusyPct: 70, donorPct: 22 }) })).accepted.mechanisms)
+      .toEqual(['CPU_PRIORITY', 'CPU_CAPACITY']);
+    // Edges: below 85 % the host had room (strict), at 85 % it is already the band; 95 % and 5 % are the
+    // clear-capacity lines.
+    expect(acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', basis: basis({ cpcBusyPct: 84.9, lparBusyPct: 60, donorPct: 30 }) })).accepted.mechanisms)
+      .toEqual(['CPU_PRIORITY']);
+    expect(acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', basis: basis({ cpcBusyPct: 85, lparBusyPct: 60, donorPct: 0 }) })).accepted.mechanisms)
+      .toEqual(['CPU_PRIORITY', 'CPU_CAPACITY']);
+    expect(acceptedAnswers(ctx({ mechanism: 'CPU_CAPACITY', basis: basis({ cpcBusyPct: 95, lparBusyPct: 80, donorPct: 4.9 }) })).accepted.mechanisms)
+      .toEqual(['CPU_CAPACITY']);
+    expect(acceptedAnswers(ctx({ mechanism: 'CPU_CAPACITY', basis: basis({ cpcBusyPct: 95, lparBusyPct: 80, donorPct: 5 }) })).accepted.mechanisms)
+      .toEqual(['CPU_CAPACITY', 'CPU_PRIORITY']);
+  });
+
+  it('a machine that lost capacity explains CPU work only, not an I/O or storage miss', () => {
+    // POWER_CAP overlaps an I/O hour: accepting CPU_CAPACITY there would teach a cause the data cannot support.
+    const out = acceptedAnswers(ctx({ mechanism: 'IO', trigger: 'POLICY', events: [card('POWER_CAP')] }));
+    expect(out.accepted.mechanisms).toEqual(['IO']);
+  });
+
+  it('a batch night sees a card that starts after 18:00', () => {
+    const night = newHour(12 * TICKS_PER_HOUR); // 18:00
+    const late = card('POWER_CAP', 14 * TICKS_PER_HOUR); // 20:00
+    // The 18:00 hour alone does not overlap it; the night window (18:00 to the day end) does.
+    expect(acceptedAnswers(ctx({ mechanism: 'CPU_PRIORITY', hour: night, events: [late] })).accepted.mechanisms)
+      .toEqual(['CPU_PRIORITY']);
+    expect(acceptedAnswers(ctx({
+      mechanism: 'CPU_PRIORITY', hour: night, events: [late],
+      window: { startTick: 12 * TICKS_PER_HOUR, endTick: 24 * TICKS_PER_HOUR },
+    })).accepted.mechanisms).toEqual(['CPU_PRIORITY', 'CPU_CAPACITY']);
   });
 
   it('DEPENDENCY on a server short of its own CPU adds CPU_PRIORITY', () => {
@@ -84,8 +117,9 @@ describe('accepted answer sets (RT-07)', () => {
     }));
     expect(out.accepted.mechanisms).toEqual(['DEPENDENCY', 'CPU_PRIORITY']);
     expect(out.notes.CPU_PRIORITY).toMatch(/DB2MSTR on PROD2/);
-    // A server with room on its image is no evidence of a policy miss.
-    const quiet = acceptedAnswers(ctx({ mechanism: 'DEPENDENCY', trigger: 'POLICY', hour: { ...newHour(0), ticks: TICKS_PER_HOUR }, servers: [{ jobname: 'DB2MSTR', lparId: 'PROD2' }] }));
+    // A server with room on its own image is no evidence of a policy miss, even on a busy machine.
+    const busyCpc = { ...newHour(0), ticks: TICKS_PER_HOUR, cpcBusyById: { CPCA: 0.85 * TICKS_PER_HOUR }, lparBusyById: { PROD2: 0.4 * TICKS_PER_HOUR } };
+    const quiet = acceptedAnswers(ctx({ mechanism: 'DEPENDENCY', trigger: 'POLICY', hour: busyCpc, servers: [{ jobname: 'DB2MSTR', lparId: 'PROD2' }] }));
     expect(quiet.accepted.mechanisms).toEqual(['DEPENDENCY']);
   });
 
@@ -109,6 +143,26 @@ describe('accepted answer sets (RT-07)', () => {
     expect(truthCause(ctx({ isNew: true, trigger: 'NEW_WORKLOAD' }))).toBe('new:MOBILE');
     expect(truthCause(ctx({ mechanism: 'DEPENDENCY', basis: null }))).toBe('none:DEPENDENCY:PROD1');
     expect(truthCause(ctx({ mechanism: 'CAPPING', basis: null }))).toBe('none:CPU:PROD1');
+  });
+
+  it('the headless reply calls an accepted alternate right and gives its reason', () => {
+    const file = newPlayFile(3);
+    const incident = {
+      id: 7, workloadId: 'MOBILE', day: 0, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80,
+      truth: {
+        mechanism: 'CPU_PRIORITY' as const, trigger: 'HARDWARE_FAULT' as const,
+        accepted: { mechanisms: ['CPU_PRIORITY' as const, 'CPU_CAPACITY' as const], triggers: ['HARDWARE_FAULT' as const] },
+        notes: { CPU_CAPACITY: 'the machine may have been the constraint' },
+      },
+      rca: null, trustLost: 1,
+    };
+    const out = applyPlayCommand({ ...file, run: { ...file.run, incidents: [incident], nextId: 8 } }, {
+      cmd: 'rca', incidentId: 7, mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT',
+    });
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain('Mechanism right, trigger right');
+    expect(out.text).toContain('5 points');
+    expect(out.text).toContain('also accepted: CPU_CAPACITY (the machine may have been the constraint)');
   });
 
   it('a closed hour records the accepted set and scores a defensible alternate in full', () => {

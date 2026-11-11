@@ -520,6 +520,11 @@ For a CPU-family primary, or a `serverCpu` dependency:
    | Displaceable share of the image's CP | < 5 % | ≥ 20 % | both accepted; primary by the midpoint, 10 % |
 
    Capacity is the primary only when both rows say so; it is the only accepted answer only when both are clear.
+   As built (RT-07): the accepted set widens unless a row settles the split — a host with room (< 85 %) rules capacity
+   out, and a host at 95 % busy with under 5 % of its CP displaceable leaves capacity as the only answer. Everywhere
+   between, both are accepted. A high displaceable share does not veto capacity, because the primary rule already
+   keeps an hour with donors out of CPU_CAPACITY: it only ever appears beside a priority primary, where both readings
+   hold.
 
    A capacity-reducing card, or a CPC whose capacity setting is below the one it had when the slot baseline was
    learned, always adds CPU_CAPACITY to the accepted set. The numbers are FICTIONAL and belong in

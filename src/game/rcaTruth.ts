@@ -11,7 +11,8 @@ import type { GameContent } from './run/shared';
 import { blamedCard } from './sla';
 import type { ActiveEvent, CapacityBasis, HourAcc, IncidentTruth, Mechanism, Trigger } from './types';
 
-/** The CPU family: one machine's shortage, seen three ways. Used for the cause identity and the bands. */
+/** The CPU family: one machine's shortage, seen three ways. Used for the cause's identity and to scope the
+ * capacity-card rule (a machine that lost capacity explains CPU work, not an I/O or storage miss). */
 export const CPU_FAMILY: readonly Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING'];
 
 export interface TruthContext {
@@ -26,6 +27,8 @@ export interface TruthContext {
   card?: ActiveEvent;
   /** The capacity figures behind a CPU verdict, as recorded on the incident. */
   basis?: CapacityBasis | null;
+  /** The window the cards must overlap: the incident's hour, or a batch night (18:00 to the day end). */
+  window?: { startTick: number; endTick: number };
   /** The images the work runs on, for the cause's host. */
   hosts: readonly { lparId: string; cpcId: string }[];
   /** Region and Db2 images serving the work (RT-04's snapshot), for the DEPENDENCY server test. */
@@ -52,6 +55,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   const mechanisms: Mechanism[] = [ctx.mechanism];
   const triggers: Trigger[] = [ctx.trigger];
   const notes: Record<string, string> = {};
+  // The first reason offered for an answer is the one shown: the card's, then the band's, then the server's.
   const offerMechanism = (m: Mechanism, why: string) => {
     if (mechanisms.includes(m)) return;
     mechanisms.push(m);
@@ -64,9 +68,10 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   };
 
   const card = ctx.card ?? blamedCard(ctx.events, ctx.workloadId, ctx.mechanism, ctx.hour.hourIndex);
-  const hourStart = ctx.hour.hourIndex * TICKS_PER_HOUR;
-  const hourEnd = hourStart + TICKS_PER_HOUR;
-  const overlaps = (e: ActiveEvent) => e.started && e.startTick < hourEnd && (e.endTick === null || e.endTick > hourStart);
+  const [windowStart, windowEnd] = ctx.window
+    ? [ctx.window.startTick, ctx.window.endTick]
+    : [ctx.hour.hourIndex * TICKS_PER_HOUR, (ctx.hour.hourIndex + 1) * TICKS_PER_HOUR];
+  const overlaps = (e: ActiveEvent) => e.started && e.startTick < windowEnd && (e.endTick === null || e.endTick > windowStart);
   const defOf = (e: ActiveEvent) => ctx.content.events.find((d) => d.id === e.defId);
 
   // The card's own declared alternates: a looping archiver is also the policy that ran it, a storage shortage is
@@ -77,8 +82,13 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     for (const t of def.alsoTriggers ?? []) offerTrigger(t, `the ${def.name} card can read as ${t} too`);
   }
 
-  // A card that lowered capacity: the machine, not the policy, decided the hour, whatever the bands say.
-  const capCard = ctx.events.find((e) => overlaps(e) && (e.affects.includes(ctx.workloadId) || e.uid === card?.uid) && (defOf(e)?.capacityDrop ?? 0) > 0);
+  // A card that lowered capacity: the machine, not the policy, decided the hour, whatever the bands say. §4.3 scopes
+  // this to a CPU-family verdict or a server-CPU dependency: a machine with fewer engines does not explain an I/O,
+  // storage, lock or thread-limit miss, and accepting CPU_CAPACITY there would teach a cause the data cannot support.
+  const cpuSide = CPU_FAMILY.includes(ctx.mechanism) || ctx.mechanism === 'DEPENDENCY';
+  const capCard = cpuSide
+    ? ctx.events.find((e) => overlaps(e) && (e.affects.includes(ctx.workloadId) || e.uid === card?.uid) && (defOf(e)?.capacityDrop ?? 0) > 0)
+    : undefined;
   if (capCard) offerMechanism('CPU_CAPACITY', `${capCard.name} lowered the processor's capacity`);
 
   // The §4.3 bands: the evidence does not separate capacity from priority, so both are accepted. Measured against
@@ -89,10 +99,10 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     const hostFull = hostPct >= 100 * CPU_BANDS.hostFullFrac;
     const hostRoom = hostPct < 100 * CPU_BANDS.hostRoomFrac;
     const donorRoom = b.donorPct < 100 * CPU_BANDS.donorRoomFrac;
-    const donorBusy = b.donorPct >= 100 * CPU_BANDS.donorBusyFrac;
     const where = `${pct(hostPct)} busy with ${pct(b.donorPct)} of the CP displaceable`;
-    // Either row saying priority clearly is enough to keep capacity out: room on the machine, or CPU WLM could move.
-    if (ctx.mechanism === 'CPU_PRIORITY' && !(hostRoom || donorBusy)) offerMechanism('CPU_CAPACITY', `${where}: the machine may have been the constraint`);
+    // A row that clearly says one side keeps the other answer out: a host with room rules out capacity, and capacity
+    // is the only answer when the host was full with almost nothing displaceable. Everywhere between, both hold.
+    if (ctx.mechanism === 'CPU_PRIORITY' && !hostRoom) offerMechanism('CPU_CAPACITY', `${where}: the machine may have been the constraint`);
     if (ctx.mechanism === 'CPU_CAPACITY' && !(hostFull && donorRoom)) offerMechanism('CPU_PRIORITY', `${where}: the policy may have been able to serve it`);
   }
 
@@ -101,10 +111,12 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   if (ctx.mechanism === 'DEPENDENCY') {
     const avg = (sum: number | undefined) => (ctx.hour.ticks > 0 ? (sum ?? 0) / ctx.hour.ticks : 0);
     const starved = (ctx.servers ?? []).find((s) => {
+      // Each measure against its own line: an image at 40 % of its own CP on a busy machine was not held back.
       const capped = (ctx.hour.cappedByLpar[s.lparId] ?? 0) > 0.05;
       const cpcId = ctx.lpars.find((l) => l.id === s.lparId)?.cpcId ?? '';
-      const busy = Math.max(avg(ctx.hour.cpcBusyById?.[cpcId]), avg(ctx.hour.lparBusyById?.[s.lparId]));
-      return capped || busy >= CPU_CAPACITY.lparBusyFrac || busy >= CPU_CAPACITY.cpcBusyFrac;
+      return capped
+        || avg(ctx.hour.lparBusyById?.[s.lparId]) >= CPU_CAPACITY.lparBusyFrac
+        || avg(ctx.hour.cpcBusyById?.[cpcId]) >= CPU_CAPACITY.cpcBusyFrac;
     });
     if (starved) offerMechanism('CPU_PRIORITY', `${starved.jobname} on ${starved.lparId} was short of CPU itself`);
   }
@@ -121,7 +133,8 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   return { accepted: { mechanisms, triggers }, notes };
 }
 
-/** The cause's identity for grouping (docs/rca-design.md §4.5): the blamed card, new work, or what was short. */
+/** The cause's identity for grouping (docs/rca-design.md §4.5): the blamed card, new work, or what was short. §4.5's
+ * `change:<id>` (an incident the player's own change caused, §4.7) arrives with RT-18's tested player-change trigger. */
 export function truthCause(ctx: {
   workloadId: string;
   mechanism: Mechanism;
