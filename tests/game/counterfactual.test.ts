@@ -11,9 +11,10 @@ import type { ActiveEvent, Incident, RunState } from '../../src/game/types';
 const pack = packOf('midwest');
 const scenario = scenarioFor(pack.scenario, 'NORMAL');
 
-// D2 14:00: the hour of seed 2's first incident (a runaway query, RUNAWAY@1).
+// D2 17:00: the hour of seed 2's first incident (a runaway query, RUNAWAY@1, from 14:38). Under the one-PI-basis WLM
+// (WT-04) MOBILE rides out the runaway's first hours and misses its SLA from 17:00.
 const DAY = 1;
-const HOUR_START = DAY * TICKS_PER_DAY + 8 * TICKS_PER_HOUR;
+const HOUR_START = DAY * TICKS_PER_DAY + 11 * TICKS_PER_HOUR;
 
 /** D1 played to its review, D2 started, at the incident's hour start; the log replays it. */
 let file: PlayFile;
@@ -23,7 +24,7 @@ beforeAll(() => {
   run = advance(run, scenario, pack.game, 24 * 360);
   run = chooseDraft(run, pack.game, null);
   run = startDay(run, pack.game);
-  run = advance(run, scenario, pack.game, 8 * 360);
+  run = advance(run, scenario, pack.game, 11 * 360);
   file = {
     version: 1,
     run,
@@ -34,7 +35,7 @@ beforeAll(() => {
       { cmd: 'advance', hours: 24 },
       { cmd: 'draft', optionId: null },
       { cmd: 'start' },
-      { cmd: 'advance', hours: 8 },
+      { cmd: 'advance', hours: 11 },
     ],
   };
   expect(run.sim.tick).toBe(HOUR_START);
@@ -108,8 +109,10 @@ describe('counterfactual validator (RT-06)', () => {
     expect(run.incidents.some((i) => i.startTick === HOUR_START)).toBe(true);
     const log = [...file.log, { cmd: 'note' as const, text: 'the hour starts here' }, { cmd: 'advance' as const, hours: 1 }];
     const text = blameText(encodePlayFile({ ...file, run, log }));
-    expect(text).toContain('1 online incident');
-    expect(text.split('MOBILE (incident 1)')).toHaveLength(2);
+    // CARDAUTH misses in the same hour through its Db2 dependency; no card lists it, so it has nothing to test (RT-14).
+    expect(text).toContain('2 online incidents');
+    expect(text).toContain('CARDAUTH (incident 1)');
+    expect(text.split('MOBILE (incident 2)')).toHaveLength(2);
     expect(text).toContain('Runaway ad-hoc query [RUNAWAY@1]');
     expect(text).toContain('AGREE: Runaway ad-hoc query is a counterfactual cause');
   });
@@ -119,13 +122,13 @@ describe('counterfactual validator (RT-06)', () => {
     const log = [
       ...file.log.slice(0, 5),
       { cmd: 'buy' as const, toolId: 'RMF_MON3' },
-      { cmd: 'advance' as const, hours: 8 },
-      { cmd: 'pin' as const, req: { source: 'MON3' as const, system: 'PROD1', scKey: 'ONLHI#1', metric: 'PI' as const }, at: 'D2 13:30' },
+      { cmd: 'advance' as const, hours: 11 },
+      { cmd: 'pin' as const, req: { source: 'MON3' as const, system: 'PROD1', scKey: 'ONLHI#1', metric: 'PI' as const }, at: 'D2 16:30' },
       { cmd: 'advance' as const, hours: 1 },
     ];
     const run = advance(structuredClone(file.run), scenario, pack.game, TICKS_PER_HOUR);
     const text = blameText(encodePlayFile({ ...file, run, log }));
-    expect(text).toContain('MOBILE (incident 1)');
+    expect(text).toContain('MOBILE (incident 2)');
     expect(text).not.toContain('failed');
   }, 120_000);
 

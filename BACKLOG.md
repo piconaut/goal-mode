@@ -374,48 +374,17 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
   2026-11-10; an exception to the rule that `sim` entries stay on the main agent).
 - **Attended sessions** (user decision 2026-11-10): WT-04, WT-08 and WT-09 are not for `dev-loop`. Each is done in
   a session the user watches; that session sets the entry to `ready` when it starts. Their `after` dependencies
-  still hold. With them gated, `dev-loop rca-truth,wlm-truth` reporting both lists finished means "WT-04's turn",
-  not the playtest cue.
+  still hold. With them gated, `dev-loop rca-truth,wlm-truth` reporting both lists finished means "WT-08's turn"
+  (WT-04 landed 2026-11-11), not the playtest cue. User request 2026-11-11: one attended session takes WT-04 …
+  WT-09 in order, one PR each, so WT-05 … WT-07 are done there too rather than by `dev-loop`.
 - **Coefficients** go to `src/content/wlm/tuning.ts` `POLICY_ADJUST` with `// FICTIONAL:` notes (names and starting
   values in §5.10); approximations get `// APPROX:` (§5.10 list). Do not tune a coefficient to move a balance band
   (§8 Q2).
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-04 · One PI basis: projections at sustained demand, `base` against `after` (W1, W8, W9)
-`list: wlm-truth · status: blocked: user (attended session, after RT-06; start from proto/wlm-wt04) · priority: high · size: L · area: sim`
-
-**Coupled core; main agent only.** Implements §5.2, §5.4 and the `receiverValue`/`netValue` tests of §5.3 on the
-*existing* single-move trials (the plan is WT-08).
-- `src/sim/wlm/runtime.ts`: `ScpAcc` gains `demandCp`, `demandZi` (decayed arriving demand in engines, without
-  backlog) and `ziipEngines`; `decayInto` fills them from new `ScpTick` fields set in `eval/accounting.ts`
-  (`periodTicks`, from the prepared slice demand before backlog). `ACC_DECAY` moves to `POLICY_ADJUST.accDecay`.
-- New `projectionInput(evalInput, system, C)` (new file `src/sim/wlm/projection.ts`, pure): the per-period uplift
-  `f` and the bounded backlog of §5.4.
-- `src/sim/wlm/adjust.ts` `policyAdjust`: compute `base` lazily (one `evaluateLpar` on the projection input at the
-  current DPs); replace `before` (this tick's PI) by `base` everywhere; a candidate with `base ≤ 1` or `null` is
-  traced `RECOVERING` and gets no trials and no budget use; `receiverValue` gains the 0.05 floor; `NO_NET_VALUE`
-  only when `equalHarm > 0`; `harmEps` applies to equal importance too. `RECEIVER_VALUE_FRAC`, `DONOR_CREDIT_FLOOR`
-  and the literal 0.02 move to `POLICY_ADJUST`. `playerReason` gains "already recovering".
-- Old saves: missing accumulator fields start at this tick's values.
-
-Tests (named): `wlm-invariants: I8 one basis`, `I4 receiver value`, `I17 projection is honest at rest`, `I1
-determinism` (shuffled `scps` and slices); `projection.test.ts`: uplift never below 1 and capped, backlog bounded,
-caps and I/O untouched; realism `WLM does not flip a period on one quiet tick` (R-1: Midwest 42, PROD2, D1
-12:19–12:23, DDFPRD#2 is not moved up while DDFPRD#1's smoothed demand would push it past its goal). Goldens:
-change. Done when: on S-1 … S-3 "rejected trials whose receiver's own-tick PI ≤ 0.9" is 0 by construction (the
-counter is replaced by `RECOVERING` candidates), moves "undone by the same period's next move within two minutes"
-fall by at least 80 % in total (6, 6 and 19 on `dev`), and the misleading `gain 0.00 ≤ harm 0.00` line no longer
-occurs.
-**Prototyped 2026-11-10** on branch `proto/wlm-wt04` (no PR; docs/wlm-design.md §9): start
-from it. It added one rule the first design lacked, now in §5.3: a less important receiver never moves to or above
-more important work that is missing its goal (management PI or `base`) and uses the processor. Left for this entry:
-measure the demand uplift and the backlog bound separately and drop what does nothing (§9.4 point 7); keep the strict
-rule on a capped image (§9.4 point 5, user decision 2026-11-10) and keep the WLM log's "harms X, more important" for it; `acc.ziipEngines`; SPEC and research.md; the three-scenario sweep. Bots: small; do-nothing and textbook medians within
-± 1 day expected. SPEC §5.5.3–§5.5.4 and §17 "Policy adjustment" and "Percentile PI in WLM projections" updated.
-
 ### WT-05 · Skip clocks, the delay test and a per-interval projection budget (W6)
-`list: wlm-truth · status: blocked: after WT-04 · priority: high · size: M · area: sim`
+`list: wlm-truth · status: ready · priority: high · size: M · area: sim`
 
 Implements the candidate gates of §5.3. `ScpState` gains `skipUntilTick` (absent = 0; `dispatchLpar` in
 `src/sim/core/tick/dispatch.ts` carries it over; `adjustPolicies` in `tick/control.ts` passes the tick and stores

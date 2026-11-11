@@ -1,7 +1,8 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). Nothing here is implemented on `dev`. WT-04 was prototyped
-on branch `proto/wlm-wt04` (no PR); §9 has its results and the two changes it made to §5. The work it leads to is in
+Status: **design, decided by the user** (2026-11-10). **WT-04 is implemented** (2026-11-11: one PI basis, sustained
+demand, the §5.3 missing-goal rule; §9.5); the rest of §5 is not. WT-04 was prototyped on branch `proto/wlm-wt04`;
+§9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
 is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -1345,4 +1346,24 @@ Five revisions were measured before the numbers above. The first did what §5 sa
    which removes the shape PT-01 was first reported with. The order of `scps` leaked into the log through the
    period a rejection names. Existing tests that build accumulators from one tick keep working because a new
    period's demand is seeded at steady state.
+
+### 9.5 WT-04 as landed: the uplift and the bound measured apart
+
+WT-04 took the prototype onto `dev` at `40b81dc` (after WT-01 … WT-03, RT-06, RT-07, RT-12, CL-05, CL-06) and settled
+point 7 above. `npm run inspect -- <file> wlm-stats` on the S-1 … S-3 files (seed 42, Normal, no player actions),
+with `demandUpliftMax` 1 for "no uplift" and `backlogBoostFrac` unbounded for "no bound". Cells: DP moves; moves
+undone by the period's next move, of which within two minutes; episodes of 30 adjustments without a move.
+
+| Variant | S-1 Midwest | S-2 Revenue | S-3 Harbourline |
+|---|---|---|---|
+| both (landed) | 19; 4 / **0**; 5 | 26; 12 / 1; 5 | 79; 23 / **4**; 11 |
+| no uplift | 38; 20 / **17**; 3 | 21; 10 / 0; 5 | 70; 16 / 4; 10 |
+| no bound | 19; 4 / 0; 5 | 22; 8 / 1; 4 | 84; 29 / **12**; 16 |
+| neither | 38; 20 / 17; 3 | 17; 6 / 0; 4 | 52; 11 / 2; 6 |
+
+Both stay. The uplift is what keeps Midwest's DDFPRD pair from trading places on quiet ticks (R-1); the bound is what
+keeps Harbourline's backlogged online classes from being projected to want everything at once. Neither alone does
+both jobs, and Revenue is close either way. The "both" row reproduces the prototype's §9.3 table (episodes on S-2: 5
+by the committed verb's rule, 7 by the prototype's harness). `wlm-stats` gained the two counters this needed:
+candidates `RECOVERING`, and reversals within two minutes (12 adjustments of the same system).
 

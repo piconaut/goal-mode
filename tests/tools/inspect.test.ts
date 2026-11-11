@@ -23,6 +23,7 @@ describe('wlmStats counts the audit table (WT-01)', () => {
       candidate({ scKey: 'CAP#1', outcome: 'NOT_FIXABLE', bottleneck: 'CAP' }),
       candidate({ scKey: 'NON#1', outcome: 'NOT_FIXABLE', bottleneck: null }),
       candidate({ scKey: 'BUD#1', outcome: 'BUDGET' }),
+      candidate({ scKey: 'REC#1', outcome: 'RECOVERING' }),
       candidate({
         trials: [
           trial({ move: 'A#1 DP 20→21', verdict: 'ACCEPTED' }),
@@ -49,6 +50,7 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(stats.total.assessed).toBe(2);
     expect(stats.total.notFixable).toEqual({ IO: 1, OTHER: 1, CAP: 1, NONE: 1 });
     expect(stats.total.budget).toBe(1);
+    expect(stats.total.recovering).toBe(1);
     expect(stats.total.trials).toBe(7);
     expect(stats.total.verdicts).toEqual({
       ACCEPTED: 3, CPU_CRITICAL: 1, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 1, MORE_IMPORTANT_HARMED: 1, EQUAL_DISPARITY: 0, NO_NET_VALUE: 1,
@@ -60,10 +62,17 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(stats.total.rejectedPiNull).toBe(1);
     // A#1 went up in `busy` and down in `reversed`.
     expect(stats.total.reversed).toBe(1);
+    expect(stats.total.reversedWithin2Min).toBe(1);
     expect(stats.systems.map((s) => [s.lparId, s.counters.adjustments, s.counters.trials])).toEqual([
       ['PROD1', 3, 7],
       ['PROD2', 1, 0],
     ]);
+  });
+
+  it('counts a reversal within two minutes only when at most 12 adjustments separate the moves', () => {
+    const gap = (n: number) => wlmStats([busy, ...Array.from({ length: n - 1 }, () => trace()), reversed]).total;
+    expect(gap(12)).toMatchObject({ reversed: 1, reversedWithin2Min: 1 });
+    expect(gap(13)).toMatchObject({ reversed: 1, reversedWithin2Min: 0 });
   });
 
   it('counts a period assessed 30 adjustments without a receiver move as one episode', () => {

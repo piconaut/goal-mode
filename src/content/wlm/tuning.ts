@@ -52,6 +52,28 @@ export const PCT_PROJECTION_SIGMA = 0.5;
 // using the final, possibly optimistic estimate. Tolerance is engines per job, not an IBM WLM threshold.
 export const BATCH_PROJECTION = { maxRecoveryRounds: 8, demandToleranceEngines: 1e-8 };
 
+// Policy adjustment (docs/wlm-design.md §5.10). IBM publishes none of these numbers; each note says where the
+// starting value comes from, not that IBM uses it.
+export const POLICY_ADJUST = {
+  // FICTIONAL: per-tick decay of WLM's accumulators. Shape: the management PI looks back about a minute.
+  accDecay: 0.85,
+  // FICTIONAL: a move must close this share of the receiver's distance to its goal (the 1994 patent's example).
+  receiverValueFrac: 0.1,
+  // FICTIONAL: … and never less than this PI improvement, so nothing moves for a hair (Enrico, slide 50; practitioner).
+  receiverValueMinPi: 0.05,
+  // FICTIONAL: PI below this earns the receiver nothing and costs a donor nothing (the 1994 patent).
+  creditFloor: 0.9,
+  // FICTIONAL: projected PI changes up to this are projection noise, not harm.
+  harmEps: 0.02,
+  // FICTIONAL: a period using less than this many engines holds nothing a priority move could take: not a donor.
+  donorMinEngines: 0.01,
+  // FICTIONAL: a quiet tick's demand is lifted to its smoothed level in projections, to at most this multiple.
+  demandUpliftMax: 2,
+  // FICTIONAL: work that has fallen behind is projected to want up to (1 + this) × its sustained demand, not its
+  // whole backlog in one interval.
+  backlogBoostFrac: 0.5,
+};
+
 // FICTIONAL: how many fixable receivers the search assesses at one importance before going on to the next.
 // Shape: at most this many receivers per importance level get their trials run; the rest are skipped (BUDGET)
 // and lower importances still get their own budget. A receiver whose trials find no move of net value does
