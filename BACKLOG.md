@@ -759,4 +759,22 @@ Cross-note: as BL-01, tune after WT-09 (docs/wlm-design.md §6.2, §8 Q2).
 
 ## cleanup
 
-No entries.
+### CL-07 · Lookup plan leftovers: classification and period indices, two untested commands
+`list: cleanup · status: ready · priority: low · size: S · area: sim`
+
+Not a model change: pure optimisation and a test gap, label `perf`. Source: review of #277 and #278 (2026-11-11).
+CL-05's review handed CL-06 three plan fields; CL-06 built CF structures by name (`structureShareOf`) but not the
+other two, and its PR doesn't record them as dropped.
+- **Measure first** (`node --cpu-prof`, Harbourline and Midwest, 3 days, seed 42, as docs/headless-performance-options.md):
+  the self time of `classifyJob` (`tick/helpers.ts`, already cached) and of service class period key lookups in
+  `dispatchLpar`/`lparDemand`. If together they are under 1 % of the profile, skip the code change, say so in
+  docs/headless-performance-options.md "Results", and do only the test part.
+- **Otherwise** add to `LparPlan` (`src/sim/core/tick/plan.ts`) workload and job-class classification results and
+  integer indices for service class periods, keyed only on what the plan already keys on, and use them where the
+  profile shows the lookups. Plan fields stay `readonly`; no per-tick state in the plan; no `SimState` change.
+- **Test gap:** `tests/sim/plan.test.ts` lists `RESTART_JOB` and `SET_PRICING` in `NO_PLAN_INPUT` but never runs
+  them; run both like `ABEND_JOB` and `SET_MLC_PRICE`, with the key-object snapshot around `step()`.
+
+Done when: bench hashes unchanged for Midwest, Harbourline and Revenue (`npm run bench -- --hash`); `npm run compare
+-- --base origin/dev` reports no differences; `npm run check` green; the profile numbers (and timing pairs, if code
+changed) in the PR and docs/headless-performance-options.md.
