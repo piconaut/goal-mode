@@ -406,7 +406,8 @@ export const stoppedEarly = (before: ReadonlySet<string>, after: ReadonlySet<str
 
 /** Replay one logged `advance` of `hours` an hour at a time, stopping where the play CLI did (`stoppedEarly` against
  * the abended set at the start of the advance). `hour` runs one hour and returns false when the replay must stop for
- * its own reasons (end of range, day over). Returns the hours run. */
+ * its own reasons (end of range, day over); it may return false before running anything. Returns the number of `hour`
+ * calls, which counts such a call too. */
 export function replayAdvance(hours: number, abended: () => ReadonlySet<string>, hour: () => boolean): number {
   const before = abended();
   let ran = 0;
