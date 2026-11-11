@@ -165,14 +165,14 @@ export function enforceCpuProtection(
 
 /**
  * The share of a period's samples that are delays WLM manages (docs/wlm-design.md §5.7): CPU, zIIP, I/O in velocity,
- * and storage and queue delay (the part of `delay` with no numerator of its own). Waits for locks, servers, the CF or
- * the QR TCB (`delayOther`) are not delay states; capping delay is reported, not managed. A period with none is not
- * assessed (WLM Services p.144: "no delay samples").
+ * storage and queue delay. Capping delay is in `delay` but reported, not managed. Waits for locks, servers, the CF or
+ * the QR TCB (`delayOther`) are not delay states and are not in `delay` at all (`decayInto`), so nothing is taken off
+ * for them. A period with none is not assessed (WLM Services p.144: "no delay samples").
  */
-export function managedDelayFrac(acc: Pick<ScpState['acc'], 'using' | 'delay' | 'delayOther' | 'delayCap' | 'usingIoNoVel' | 'delayIoNoVel'>): number {
+export function managedDelayFrac(acc: Pick<ScpState['acc'], 'using' | 'delay' | 'delayCap' | 'usingIoNoVel' | 'delayIoNoVel'>): number {
   const samples = acc.using + acc.delay - (acc.usingIoNoVel ?? 0) - (acc.delayIoNoVel ?? 0);
   if (!(samples > 0)) return 0;
-  return Math.max(0, acc.delay - acc.delayOther - acc.delayCap - (acc.delayIoNoVel ?? 0)) / samples;
+  return Math.max(0, acc.delay - acc.delayCap - (acc.delayIoNoVel ?? 0)) / samples;
 }
 
 /** Receiver value (WLM Services p.138: "a minimum performance index improvement … to reject very small

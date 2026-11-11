@@ -384,8 +384,9 @@ describe('a hopeless receiver does not stop the search at the next importance (S
   });
 
   it('skips a period with no managed delay without a clock (WLM Services p.144)', () => {
-    // OLD1 waits on something WLM does not manage (a lock, a server): all its delay is "other".
-    const sys = { ...system3, scps: system3.scps.map((s) => (s.scKey === 'OLD1#1' ? { ...s, acc: { ...s.acc, delay: s.acc.delay, delayCpu: 0, delayZiip: 0, delayIo: 0, delayCap: 0, delayOther: s.acc.delay } } : s)) };
+    // OLD1 waits on something WLM does not manage (a lock, a server): no delay state at all, only waits, which the
+    // accumulator keeps beside `delay` rather than in it (`decayInto`).
+    const sys = { ...system3, scps: system3.scps.map((s) => (s.scKey === 'OLD1#1' ? { ...s, acc: { ...s.acc, delay: 0, delayCpu: 0, delayZiip: 0, delayIo: 0, delayCap: 0, delayOther: s.acc.delay } } : s)) };
     const { out, trace } = run3(sys, 100);
     expect(outcome(trace, 'OLD1#1')).toBe('NO_MANAGED_DELAY');
     expect(trace.candidates.find((c) => c.scKey === 'OLD1#1')!.managedDelayFrac).toBe(0);
@@ -401,13 +402,24 @@ describe('a hopeless receiver does not stop the search at the next importance (S
 });
 
 describe('managedDelayFrac (docs/wlm-design.md §5.7)', () => {
-  const acc = { ...emptyAcc(), using: 50, delay: 50, delayCpu: 20, delayZiip: 5, delayIo: 5, delayOther: 15, delayCap: 5 };
-  it('counts CPU, zIIP, I/O and the storage/queue remainder, not waits or capping', () => {
-    // 50 delay − 15 other − 5 cap = 30 of 100 samples (the remainder 50 − 45 = 5 is storage/queue).
-    expect(managedDelayFrac(acc)).toBeCloseTo(0.3, 12);
+  // Built the way the sim builds it (decayInto from one tick), so `delay` has the shape the sim gives it: waits
+  // (`delayOther`) are kept beside it, not inside it.
+  const tick = { ...emptyScpTick('X#1', 0xf0), usingCpu: 40, usingZiip: 5, usingIo: 5, delayCpu: 20, delayZiip: 5, delayIo: 5, delayStorage: 3, delayQueue: 2, delayCap: 5, delayOther: 400 };
+  const acc = decayInto(emptyAcc(), tick);
+  it('counts CPU, zIIP, I/O, storage and queue, not capping; waits change nothing however long', () => {
+    // using 50; delay 20 + 5 + 5 + 3 + 2 + 5 cap = 40; managed 35 of 90.
+    expect(acc.delay).toBe(40);
+    expect(managedDelayFrac(acc)).toBeCloseTo(35 / 90, 12);
+    expect(managedDelayFrac(decayInto(emptyAcc(), { ...tick, delayOther: 0 }))).toBeCloseTo(35 / 90, 12);
+  });
+  it('a transaction class waiting on a lock as well as the processor still needs help (Harbourline expert seed 7)', () => {
+    // MKTORD#1 on PRDB, D29 09:20: CPU delay 98 % of using + delay, waits several times its samples.
+    const mkt = decayInto(emptyAcc(), { ...emptyScpTick('MKTORD#1', 0xfc), usingCpu: 2, delayCpu: 98, delayOther: 566 });
+    expect(managedDelayFrac(mkt)).toBeGreaterThan(POLICY_ADJUST.needsHelpDelayFrac);
   });
   it('leaves I/O outside velocity out of both sides', () => {
-    expect(managedDelayFrac({ ...acc, usingIoNoVel: 10, delayIoNoVel: 5 })).toBeCloseTo(25 / 85, 12);
+    const noVel = decayInto(emptyAcc(), { ...tick, usingIoNoVel: 5, delayIoNoVel: 5 });
+    expect(managedDelayFrac(noVel)).toBeCloseTo(30 / 80, 12);
   });
   it('is 0 for a period with no samples', () => {
     expect(managedDelayFrac(emptyAcc())).toBe(0);
