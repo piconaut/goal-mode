@@ -114,6 +114,21 @@ describe('counterfactual validator (RT-06)', () => {
     expect(text).toContain('AGREE: Runaway ad-hoc query is a counterfactual cause');
   });
 
+  it('replays a log with a Monitor III pin at a past time', () => {
+    // The pin reads the Monitor III history the play CLI records while it advances; the replay must record it too.
+    const log = [
+      ...file.log.slice(0, 5),
+      { cmd: 'buy' as const, toolId: 'RMF_MON3' },
+      { cmd: 'advance' as const, hours: 8 },
+      { cmd: 'pin' as const, req: { source: 'MON3' as const, system: 'PROD1', scKey: 'ONLHI#1', metric: 'PI' as const }, at: 'D2 13:30' },
+      { cmd: 'advance' as const, hours: 1 },
+    ];
+    const run = advance(structuredClone(file.run), scenario, pack.game, TICKS_PER_HOUR);
+    const text = blameText(encodePlayFile({ ...file, run, log }));
+    expect(text).toContain('MOBILE (incident 1)');
+    expect(text).not.toContain('failed');
+  }, 120_000);
+
   it('tests a cap whose scope grew during the hour and a card that put the workload live', () => {
     const cap = (uid: string, affects: string[]) => ({
       uid, defId: 'POWER_CAP', name: 'Power cap', startTick: HOUR_START, endTick: HOUR_START + 6 * TICKS_PER_HOUR,

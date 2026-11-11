@@ -160,10 +160,11 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
   if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed || !same(f.run.difficulty, file.run.difficulty)) {
     throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty ?? 'NORMAL'}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty ?? 'NORMAL'})`);
   }
-  const content = packOf(f.run.scenarioId).game;
-  /** One hour, without the play CLI's view-building (the state is identical; the MON3 history is not needed). */
+  /** One hour through the play CLI's own advance, so the Monitor III history a later `pin … --at` reads is recorded. */
   const stepHour = () => {
-    f = { ...f, run: advance(f.run, scOfRun(f.run), content, TICKS_PER_HOUR) };
+    const out = applyPlayCommand(f, { cmd: 'advance', hours: 1 });
+    if (!out.ok) throw new Error(`replay failed advancing from ${clockText(f.run.sim.tick)}: ${out.text}`);
+    f = out.file;
   };
   // An incident's hour start is the state after every command issued at that tick: a command in the log at the hour
   // boundary (a WLM activation, a pin, a note) is part of the hour, so the snapshot waits for the next advance.
