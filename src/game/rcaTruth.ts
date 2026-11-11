@@ -106,8 +106,12 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     if (ctx.mechanism === 'CPU_CAPACITY' && !(hostFull && donorRoom)) offerMechanism('CPU_PRIORITY', `${where}: the policy may have been able to serve it`);
   }
 
-  // Server waits: a server short of its own CPU is also a policy miss on that class (WLM Planning p.113). The sim
-  // keeps no per-server CPU delay at hour granularity (§4.2(3) is RT-19's), so the test is its image's shortage.
+  // Server waits: when a transaction class misses its goal, WLM finds the regions serving it through the topology and
+  // helps the ones that measured delays (SG24-7621 printed p.81 §3.5, p.126 §3.31; docs/research.md), so a server held
+  // back for CPU is the served class's goal problem, not a separate resource. APPROX: the sim keeps no per-server CPU
+  // delay at hour granularity (§4.2(3) is RT-19's), so the test is the server image's shortage — capping, or its own
+  // busy past its line — and not the region's measured CPU delay. The extra answer is a game rule for what the player
+  // can see, not a measurement.
   if (ctx.mechanism === 'DEPENDENCY') {
     const avg = (sum: number | undefined) => (ctx.hour.ticks > 0 ? (sum ?? 0) / ctx.hour.ticks : 0);
     const starved = (ctx.servers ?? []).find((s) => {

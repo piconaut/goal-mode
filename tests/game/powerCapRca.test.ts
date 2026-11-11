@@ -31,8 +31,8 @@ describe('the CPU verdict explains itself from the hour that decided it (PT-03)'
   });
 
   it('names the capacity line and the donor share when the verdict is capacity', () => {
-    const text = mechanismExplanation(incumbent('CPU_CAPACITY', basis({ cpcBusyPct: 94, donorPct: 3, full: true })))!;
-    expect(text).toMatch(/CPC CPCA averaged 94\.0 % busy \(capacity line 90 %\)/);
+    const text = mechanismExplanation(incumbent('CPU_CAPACITY', basis({ cpcBusyPct: 96, donorPct: 3, full: true })))!;
+    expect(text).toMatch(/CPC CPCA averaged 96\.0 % busy \(capacity line 90 %\)/);
     expect(text).toMatch(/3\.0 % of the CP against the 10 % donor line/);
     expect(text).toMatch(/machine, not the policy, was short/);
   });
@@ -43,9 +43,26 @@ describe('the CPU verdict explains itself from the hour that decided it (PT-03)'
   });
 
   it('explains a full machine that still had donors as the policy', () => {
+    // A truth with no accepted set (an old save) keeps the categorical line: only the primary is accepted.
     const text = mechanismExplanation(incumbent('CPU_PRIORITY', basis({ cpcBusyPct: 94, donorPct: 18 })))!;
     expect(text).toMatch(/18\.0 % of the CP went to less important work/);
     expect(text).toMatch(/policy held this work back/);
+  });
+
+  it('does not rule capacity out when the bands accept it beside a priority verdict', () => {
+    // 88 % busy is inside the 85–95 % band: a priority primary with CPU_CAPACITY accepted (RT-07, N1).
+    const inc = incumbent('CPU_PRIORITY', basis({ cpcBusyPct: 88, lparBusyPct: 70, donorPct: 12 }));
+    const text = mechanismExplanation({ ...inc, truth: { ...inc.truth, accepted: { mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY'], triggers: ['HARDWARE_FAULT'] } } })!;
+    expect(text).not.toMatch(/capacity was not the constraint/);
+    expect(text).toMatch(/either answer scores/);
+  });
+
+  it('does not rule the policy out when the bands accept it beside a capacity verdict', () => {
+    // The same band from the other side: capacity primary with CPU_PRIORITY accepted.
+    const inc = incumbent('CPU_CAPACITY', basis({ cpcBusyPct: 94, donorPct: 3, full: true }));
+    const text = mechanismExplanation({ ...inc, truth: { ...inc.truth, accepted: { mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['HARDWARE_FAULT'] } } })!;
+    expect(text).not.toMatch(/machine, not the policy, was short/);
+    expect(text).toMatch(/either answer scores/);
   });
 
   it('prints the figure to one decimal, so it cannot straddle its own line', () => {
