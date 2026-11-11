@@ -156,19 +156,31 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
   for (const i of incidents) byTick.set(i.startTick, [...(byTick.get(i.startTick) ?? []), i]);
   const last = Math.max(...byTick.keys());
   let f = newPlayFile(first.seed, first.difficulty, first.scenario);
-  if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed) {
-    throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed})`);
+  const same = (a: string | undefined, b: string | undefined) => (a ?? 'NORMAL') === (b ?? 'NORMAL');
+  if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed || !same(f.run.difficulty, file.run.difficulty)) {
+    throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty ?? 'NORMAL'}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty ?? 'NORMAL'})`);
   }
   const content = packOf(f.run.scenarioId).game;
   /** One hour, without the play CLI's view-building (the state is identical; the MON3 history is not needed). */
   const stepHour = () => {
     f = { ...f, run: advance(f.run, scOfRun(f.run), content, TICKS_PER_HOUR) };
   };
-  const grab = () => {
+  // An incident's hour start is the state after every command issued at that tick: a command in the log at the hour
+  // boundary (a WLM activation, a pin, a note) is part of the hour, so the snapshot waits for the next advance.
+  let pending = false;
+  const snapshot = () => {
     const here = byTick.get(f.run.sim.tick);
     if (here && f.run.phase === 'LIVE') at(f.run, here);
   };
-  grab();
+  const flush = () => {
+    if (!pending) return;
+    pending = false;
+    snapshot();
+  };
+  const mark = () => {
+    if (byTick.has(f.run.sim.tick)) pending = true;
+  };
+  mark();
   for (const c of file.log.slice(1)) {
     if (f.run.sim.tick > last) break;
     if (c.cmd === 'advance') {
@@ -177,8 +189,9 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
       // One hour at a time, so each incident hour start is a state we can branch from. The CLI stops an advance at
       // the hour a job newly abends; the commands after it in the log were issued there, so this must stop too.
       for (let h = 0; h < hours && f.run.phase === 'LIVE'; h++) {
+        flush();
         stepHour();
-        grab();
+        mark();
         if (f.run.sim.tick > last || f.run.phase !== 'LIVE') break;
         const after = abendedNames(f.run);
         if (after.size !== before.size || [...after].some((x) => !before.has(x))) break;
@@ -187,9 +200,10 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
       const out = applyPlayCommand(f, c);
       if (!out.ok) throw new Error(`replay failed at ${JSON.stringify(c)}: ${out.text}`);
       f = out.file;
-      grab();
+      mark();
     }
   }
+  flush();
 }
 
 const pctText = (x: number | null) => (x === null ? '-' : `${x.toFixed(1)}%`);
@@ -202,19 +216,20 @@ export function blameText(text: string, opts: { json?: boolean; incident?: numbe
   if (file.log[0]?.cmd !== 'new') throw new Error('blame needs a play-CLI file (seed + command log); a browser save has no log to replay past hours');
   if (opts.incident !== undefined && online.length === 0) throw new Error(`No online incident ${opts.incident} in this run (batch nights are out of scope)`);
   const results: IncidentBlame[] = [];
-  const failed: number[] = [];
+  const failed: { id: number; message: string }[] = [];
   walkToIncidents(file, online, (run, here) => {
     for (const inc of here) {
       try {
         results.push(blameIncident(run, scOfRun(run), packOf(run.scenarioId).game, inc));
-      } catch {
-        failed.push(inc.id);
+      } catch (e) {
+        failed.push({ id: inc.id, message: (e as Error).message });
       }
     }
   });
   results.sort((a, b) => a.startTick - b.startTick || a.id - b.id);
   const reached = new Set(results.map((r) => r.id));
-  const notReached = online.filter((i) => !reached.has(i.id) && !failed.includes(i.id)).map((i) => i.id);
+  const failedIds = new Set(failed.map((f) => f.id));
+  const notReached = online.filter((i) => !reached.has(i.id) && !failedIds.has(i.id)).map((i) => i.id);
   const summary = summarizeBlame(results);
   if (opts.json) return JSON.stringify({ summary, batchSkipped: batch, notReached, failed, incidents: results }, null, 2);
   const lines: string[] = [
@@ -222,7 +237,7 @@ export function blameText(text: string, opts: { json?: boolean; incident?: numbe
     `${summary.incidents} online incident${summary.incidents === 1 ? '' : 's'}` +
       (batch > 0 ? `, ${batch} batch night${batch === 1 ? '' : 's'} skipped` : '') +
       (notReached.length > 0 ? `, ${notReached.length} outside the replayed log` : '') +
-      (failed.length > 0 ? `, ${failed.length} failed` : ''),
+      (failed.length > 0 ? `, ${failed.length} failed${failed[0] ? ` (${failed[0].message})` : ''}` : ''),
     `${summary.reproduced} reproduced the miss; ${summary.testable} had a card to test; ${summary.withCause} had a counterfactual cause.`,
     `${summary.agree} agree with the game's trigger, ${summary.disagree} disagree` +
       (summary.noCause > 0 ? `; ${summary.noCause} testable with no cause` : '') +
@@ -255,8 +270,8 @@ if (process.argv[1]?.endsWith('inspect.ts')) {
   const json = args.includes('--json');
   const rest = args.filter((a) => a !== '--json');
   const cls = opt(rest, '--class'), from = opt(rest, '--from'), to = opt(rest, '--to'), at = opt(rest, '--at'), ticks = opt(rest, '--ticks');
-  const [path, verb, system] = rest;
   const incident = opt(rest, '--incident');
+  const [path, verb, system] = rest;
   if (path && verb === 'blame') {
     try {
       console.log(blameText(readFileSync(path, 'utf8'), { json, ...(incident ? { incident: Number(incident) } : {}) }));
