@@ -157,6 +157,8 @@ level or a separate toggle.
 - CL-06 (2026-11-11): CICS region topology once per plan; step and capping/policy stages read the plan. Against CL-05:
   Harbourline −3.7 %, Midwest −7.6 %, Revenue −6.9 % (7 pairs each). The re-profile puts `evaluateLpar` as the largest
   remaining share (25–27 %): option 3's trigger. Option 2 (RMF/state copying, ~13 %) still waits for the user.
+  Option 1 in total: about −10 % Harbourline, −14 % Midwest, −20 % Revenue. Leftovers (classification results and
+  period indices in the plan, two commands the plan test lists but never runs) are BACKLOG CL-07, measure-first.
 - Evidence and current proposal: [docs/headless-performance.md](docs/headless-performance.md), raw results in
   [docs/performance/](docs/performance/). Preserve pure snapshots and exact hashes for optimizations.
 
