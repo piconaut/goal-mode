@@ -470,6 +470,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-11: WT-03 (docs only): SPEC §5.4 now says every discretionary period runs at DP 196 and small consumers
+  and mean-time-to-wait are not modelled; §5.5.3 describes the sysplex PI as summed accumulators, the PI window as
+  one 0.85-per-tick decay (about 67 s) and no small-sample variability for transactions; §5.5.4 lists the three PIs
+  in use; §17 gains "PI window" and "Small consumer, mean-time-to-wait" rows. New docs/research.md row for small
+  consumers and mean-time-to-wait (WLM Services p.138, SG24-6472 p.66).
 - 2026-11-11: PR-12: the `blame` incident replay now stops a logged `advance` only on an abend new since the advance
   began (`stoppedEarly`), like the play CLI and `wlm-stats`; both replays share `replayAdvance` in `tools/inspect.ts`,
   tested with a restart and a re-abend inside one advance. Tooling only; no sim change.

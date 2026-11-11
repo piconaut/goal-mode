@@ -364,7 +364,7 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - **Sequencing against `rca-truth`** (user decision 2026-11-10, docs/wlm-design.md §7): the core WT-04 … WT-09 and
   WT-10 land after RT-06 (the counterfactual validator) and before RT-14 (card footprints), so footprints and
   balance are built once, on the WLM players will keep. Each of those PRs reports RT-06's validator differences.
-  WT-02 and WT-03 change no behaviour and are ready; WT-12 changes no shipped behaviour and is ready.
+  WT-12 changes no shipped behaviour and is ready.
 - **One at a time.** Each `sim` entry: goldens regenerated with a "Behaviour change" note, `npm run bench` before and
   after (tick budget, SPEC §15), a three-scenario `npm run sweep:remote` (seeds 1–10, Normal) recorded in
   PROGRESS.md M8.2, and the realism policy (cite docs/wlm-design.md §3's pages in code comments).
@@ -381,16 +381,6 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
   (§8 Q2).
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
-
-### WT-03 · SPEC text that disagrees with the code (W13, W14)
-`list: wlm-truth · status: ready · priority: low · size: S · area: tooling`
-
-Documentation only. SPEC §5.4: discretionary work runs at one priority (196); mean-time-to-wait and the
-small-consumer priority are not modelled. SPEC §5.5.3: the sysplex PI is computed from the systems' accumulators
-summed, not as an average of local PIs; the PI window is one exponential decay (0.85 per tick, about 67 s), not a
-horizon that grows; transactions never show small-sample variability (fluid completions). SPEC §5.5.4: the three
-PIs in use today (docs/wlm-design.md §2.4). SPEC §17: add rows "PI window" and "Small consumer, mean-time-to-wait"
-(Not modelled). No code. Done when: the four places are corrected and cite docs/research.md.
 
 ### WT-04 · One PI basis: projections at sustained demand, `base` against `after` (W1, W8, W9)
 `list: wlm-truth · status: blocked: user (attended session, after RT-06; start from proto/wlm-wt04) · priority: high · size: L · area: sim`

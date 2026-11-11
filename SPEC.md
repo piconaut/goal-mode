@@ -343,12 +343,17 @@ Capacity available to the image this tick: `C = delivered physical engine-second
 ```
 DP 255  SYSTEM          (fixed)
 DP 254  SYSSTC*         (fixed)
-DP 253  "small consumer" (I/O-bound periods, WLM-assigned)
+DP 253  "small consumer" (real z/OS; not modelled: no period is ever one)
 DP 252–208  managed periods (WLM-assigned, importance 1–5)
-DP 201–192  discretionary (mean-time-to-wait: I/O-bound higher, CPU-bound lower)
+DP 196  every discretionary period (real z/OS: 201–192 by mean-time-to-wait; not modelled)
 DP 191  quiesced work
 ```
-(DP ranges from IBM Redbook SG24-7621 §3.13–3.14.)
+(DP ranges from IBM Redbook SG24-7621 §3.13–3.14.) Real WLM gives small consumers a high priority and leaves them out
+of priority assessment, and spreads discretionary work over 201–192 by mean time to wait, I/O-bound work higher
+([`docs/research.md`](docs/research.md) "Small consumers … mean-time-to-wait"). The sim does neither: every
+discretionary period runs at 196 (C4), and no period is a small consumer (DP 253 is used only for blocked-workload
+promotion, step 5). The effect is small: work at one level shares by ready units, which already favours work that
+wants little CPU (docs/wlm-design.md W13).
 
 Algorithm per pool:
 1. Group demand by DP level, from high to low.
@@ -473,13 +478,29 @@ priority they get.
 [Colin Paice's walkthrough of RMF WLM reports](https://colinpaice.blog/2021/06/27/one-minute-mvs-performance-work-load-manager-looking-at-wlm-reports/)).
 We fill buckets from the log-normal response distribution, Φ((ln b − μ)/σ), times completions.
 
-PI is tracked **locally** (per system) and as a **sysplex PI** (a completion-weighted average of
-local PIs). WLM uses PI over a longer window for low-activity periods (min ~ N completions);
-we use an EWMA whose horizon grows when completions are sparse.
+PI is tracked **locally** (per system) and as a **sysplex PI**, computed from the systems' accumulators summed
+(completions, response-time sums, buckets, using and delay samples), then one PI (`sysplexPis`), not as an average of
+local PIs ([`docs/research.md`](docs/research.md) "The sysplex PI is the primary criterion…"). The PI window is one
+exponential decay, 0.85 per tick (`ACC_DECAY`, an effective window of 1 ÷ (1 − 0.85) ≈ 6.7 ticks, about 67 s); it
+does not lengthen when completions are sparse (real WLM keeps history rows of growing length; practitioner source,
+[`docs/research.md`](docs/research.md) "Net value at a high level…"). Transactions never show small-sample
+variability: completions are fractional and every tick spreads a full distribution over the buckets, so a period
+with one completion a minute has a smooth PI where real WLM's would vary ([`docs/research.md`](docs/research.md)
+"Work with a response-time goal should have at least three completions…"; docs/wlm-design.md W14). Not modelled,
+by design of the fluid model.
 
 #### 5.5.4 Policy adjustment (every tick = 10 s, per system)
 
-Modelled on SG24-7621 §3.12–3.15 and the WLM patents:
+Modelled on SG24-7621 §3.12–3.15 and the WLM patents. Three PIs are in use today (docs/wlm-design.md §2.4):
+
+| PI | Computed from | Used for |
+|---|---|---|
+| local PI | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list, donor "happy" test, resource-group minimum, discretionary capping |
+| sysplex PI | all images' accumulators summed, then one PI (`sysplexPis`) | receiver list (first), the WLM Activity log's `PI=` |
+| tick PI | this tick only (`tickPi`; percentile goals through `projectedPercentilePi`, past 4.0 from the mean RT) | every projection: receiver value, donor harm, net value |
+
+Real WLM uses the sysplex PI as the primary criterion for receivers, donors and assessing a change
+([`docs/research.md`](docs/research.md) "The sysplex PI is the primary criterion…"); one PI basis is WT-04's work.
 
 ```
 for importance in 1..5:
@@ -1685,8 +1706,10 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
 | Classification masks and wildcards (`%`, trailing `*`) | **Real** | WLM Planning p.104; `*` mid-pattern is a literal |
 | Temporary started-task lifecycle (`XLOG_LOOP`) | **Approximation** | Start creates an extra address space; expiry or cancellation removes it, and a later occurrence starts at its base CPU demand. MVS System Commands 3.1, PDF p.50, p.188. APPROX: cleanup on the command tick assumes cancellation succeeds; real cancellation issues an asynchronous ABEND and can require repeated CANCEL commands. Old-save duplicates and zero-CPU modifiers are cleared on the next start |
-| DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary) |
+| DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary). The sim runs every discretionary period at 196 and has no small consumers (row "Small consumer, mean-time-to-wait") |
 | Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); Partition Data shows `CHANGE REASON=POWERSAVE (initiated by the user)` or `MACHINE (initiated by the machine)`. APPROX: real RMF puts CHANGE REASON on the CPU Activity report header (RMF Report Analysis p.391–392), which the sim does not render, and the Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98); SMF70CAI is kept on the interval for tooling but not printed. A power cap does not slow cycle speed |
+| PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
+| Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model; exact IBM thresholds are not public beyond patents. Between equal-importance periods a move must gain more than it harms and leave the projected PIs closer together (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Projections stop at two fixable receivers per importance per interval, then the search moves on as SG24-7621 p.105–106 describes |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
