@@ -1195,9 +1195,11 @@ at half weight, because it shows a contender existed, not that it was ahead; the
 (`PRSM_DELAY`, `CAPPED`, `CAPACITY_ADJ`, and `CPC_BUSY`/`LPAR_BUSY`, notable 90/95) are `host` only; the batch job
 metrics are `self` only; PI and velocity are symptoms that accept any relation but never score. So another class's
 CPU-delay row on a production image is not evidence about the hurt workload (only its `APPL` share is), and a
-server-side clue (`SYSWKM`) still needs the exact serving image. Pins also store a `baseline` where the report gives
-one — the median of the same row's six preceding hours, or 1 for the CPU-per-transaction ratio — so a predicate can
-ask whether the value is normal (`docs/rca-design.md` §4.6). PI is a symptom and never counts. Evidence points need
+server-side clue (`SYSWKM`) still needs the exact serving image. Class rows must name an image the work runs on or `*PLEX` in every relation, so the work's own class on an image
+it never ran on does not count either. Pins also store a `baseline` where the report gives one — the median of the
+same row's six preceding report intervals (or closed SMF hours), or 1 for the CPU-per-transaction ratio — so a
+predicate can ask whether the value is normal; Monitor III pins carry none, because that view normalises APPL and
+ended/s differently (`docs/rca-design.md` §4.6). PI is a symptom and never counts. Evidence points need
 an accepted mechanism.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and

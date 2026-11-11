@@ -3,6 +3,7 @@ import { EVIDENCE } from '../../src/content/evidence';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, judgeEvidence, judgeGroupEvidence, pinRelation, type EvidencePin } from '../../src/game/evidence';
 import { buildMon3 } from '../../src/game/mon3';
+import { cicsMonitoring } from '../../src/game/smf';
 import { advance, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
 import type { Incident, RunState } from '../../src/game/types';
 
@@ -205,9 +206,10 @@ describe('evidence pins', () => {
       .toMatchObject({ relevance: 0, why: 'not about CARDAUTH' });
     // A SYSWKM row names a region jobname: an LPAR id is not about the work.
     expect(judgeEvidence(r, MIDWEST, inc, [{ ...p, subject: 'PROD1' }])[0]!.why).toBe('not about CARDAUTH');
-    // The region's own class row is a `server` relation, which a symptom metric accepts.
+    // The region's own class row is a `server` relation, which a symptom metric accepts — from an image it serves.
     const wlm = { ...p, source: 'WLMGL', subject: 'STCHI#1' };
-    expect(judgeEvidence(r, MIDWEST, inc, [wlm])[0]!.why).toBe('a symptom, not a cause');
+    expect(judgeEvidence(r, MIDWEST, inc, [{ ...wlm, system: 'PROD2' }])[0]!.why).toBe('a symptom, not a cause');
+    expect(judgeEvidence(r, MIDWEST, inc, [wlm])[0]!.why).toBe('not on a system CARDAUTH runs on');
     expect(judgeEvidence(r, MIDWEST, inc, [{ ...p, subject: 'CICSAOR2', system: 'PROD2' }])[0]!.why)
       .toBe('a symptom, not a cause');
   });
@@ -567,9 +569,14 @@ describe('pin relations (RT-12, docs/rca-design.md §4.6)', () => {
     expect(pinRelation(regressed, inc, pinOf({ source: 'CPC', metric: 'LPAR_BUSY', subject: 'PROD2', system: 'PROD2' }), card)).toBe('host');
     expect(pinRelation(regressed, inc, pinOf({ source: 'CPC', metric: 'CPC_BUSY', subject: 'CPCA', system: 'CPCA' }), card)).toBe('host');
     expect(pinRelation(regressed, inc, pinOf({ source: 'CPC', metric: 'CPC_BUSY', subject: 'CPCZ', system: 'CPCZ' }), card)).toBeNull();
-    // A region row from an image it does not serve, and a class no definition knows, relate to nothing.
+    // A region row from an image it does not serve relates to nothing. A class-shaped row on a host image is a
+    // competitor even when today's definition has dropped the class (A10); a subject that is not class-shaped and
+    // that no definition knows relates to nothing.
     expect(pinRelation(regressed, inc, pinOf({ source: 'SYSWKM', metric: 'VELOCITY', subject: 'CICSAOR1', system: 'PROD2' }), card)).toBeNull();
-    expect(pinRelation(regressed, inc, pinOf({ subject: 'NOSUCH#1', system: 'PROD2' }), card)).toBeNull();
+    expect(pinRelation(regressed, inc, pinOf({ subject: 'NOSUCH#1', system: 'PROD2' }), card)).toBe('competitor');
+    expect(pinRelation(regressed, inc, pinOf({ subject: 'NOCLASS', system: 'PROD2' }), card)).toBeNull();
+    // The work's own class on an image it never ran on is not about the incident either (the mirror of A9).
+    expect(pinRelation(regressed, inc, pinOf({ subject: 'ONLHI#1', system: 'DEVT' }), card)).toBeNull();
   });
 
   it('records a CICS workload\'s region classes apart from its own', () => {
@@ -595,13 +602,42 @@ describe('pin relations (RT-12, docs/rca-design.md §4.6)', () => {
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...own, metric: 'APPL' as const, value: 40 }])[0]!.relevance).toBe(0.5);
   });
 
+  it('posits no relation for an own-class row from an image the work was routed away from', () => {
+    const r = { ...regressed, sim: { ...regressed.sim, routing: { ...regressed.sim.routing, CARDAUTH: { PROD1: 0, PROD2: 1 } } } };
+    const inc = incident(r, { workloadId: 'CARDAUTH', truth: { mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' } });
+    // A DDF/TSO row of another class on the abandoned image is not the work's own delay, and neither is its own class's
+    // row there: only PROD2 hosts CARDAUTH now.
+    expect(judgeEvidence(r, MIDWEST, inc, [pinOf({ subject: 'ONLHI#1', system: 'PROD1' })])[0])
+      .toMatchObject({ relevance: 0, why: 'not on a system CARDAUTH runs on' });
+    expect(judgeEvidence(r, MIDWEST, inc, [pinOf({ subject: 'ONLHI#1', system: 'PROD2' })])[0]!.relevance).toBe(1);
+    // The same holds for the host facts of an image it no longer runs on.
+    for (const metric of ['LPAR_BUSY', 'CAPPED', 'PRSM_DELAY'] as const) {
+      const host = pinOf({ source: 'CPC', metric, subject: 'PROD1', system: 'PROD1', value: 99 });
+      expect(judgeEvidence(r, MIDWEST, inc, [host])[0]!.why, metric).toBe('not about CARDAUTH');
+    }
+  });
+
+  it('reads a region class as the work\'s own when the incident predates RT-12', () => {
+    const card = subjects('CARDAUTH');
+    const { serverClasses: _drop, ...old } = card;
+    const inc = incident(regressed, { workloadId: 'CARDAUTH', subjects: old });
+    expect(pinRelation(regressed, inc, pinOf({ subject: 'STCHI#1', system: 'PROD1' }), old)).toBe('self');
+  });
+
   it('stores a baseline beside the value so a predicate can ask for "normal" (RT-12)', () => {
     // CPU per transaction is already a ratio to the baseline.
     const db2 = pin(regressed, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' }).pins.at(-1)!;
     expect(db2.baseline).toBe(1);
-    // A rate's baseline is the median of the closed hours before the pinned one.
+    // A rate's baseline is the median of the closed hours before the pinned one, which the pinned hour is not part of.
     const rate = pin(regressed, { source: 'CICS', hour: hourKey, workloadId: 'CARDAUTH', metric: 'ENDED_RATE' }).pins.at(-1)!;
     expect(rate.baseline).toBeGreaterThan(0);
+    const hourIndex = regressed.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === hourKey);
+    const earlierRates = regressed.smfHours.slice(Math.max(0, hourIndex - 6), hourIndex)
+      .map((h) => cicsMonitoring(regressed, MIDWEST, `${h.day}:${h.hourOfDay}`).find((x) => x.workloadId === 'CARDAUTH')?.txnPerSec)
+      .filter((x): x is number => x !== undefined)
+      .sort((a, b) => a - b);
+    const rateMid = earlierRates.length >> 1;
+    expect(rate.baseline).toBeCloseTo(earlierRates.length % 2 === 1 ? earlierRates[rateMid]! : (earlierRates[rateMid - 1]! + earlierRates[rateMid]!) / 2);
     // A Workload Activity share's baseline is the median of the report intervals before the pinned one.
     const iv = regressed.sim.rmf.intervals.length - 1;
     const row = regressed.sim.rmf.intervals[iv]!.wlm.find((x) => x.lparId !== '*PLEX' && x.applCpPct + x.applIipPct > 5)!;
@@ -613,8 +649,19 @@ describe('pin relations (RT-12, docs/rca-design.md §4.6)', () => {
       .sort((a, b) => a - b);
     const mid = earlier.length >> 1;
     expect(appl.baseline).toBeCloseTo(earlier.length % 2 === 1 ? earlier[mid]! : (earlier[mid - 1]! + earlier[mid]!) / 2);
-    // The first interval of a run has no earlier hours to compare with.
+    // The first interval of a run has no earlier rows to compare with.
     expect(pin(regressed, { source: 'WLMGL', index: 0, system: row.lparId, scKey: row.scKey, metric: 'APPL' }).pins.at(-1)!.baseline)
+      .toBeUndefined();
+    // Partition Data rows carry one too, from the intervals before the pinned one.
+    const busy = pin(regressed, { source: 'CPC', index: iv, lparId: 'PROD1', metric: 'LPAR_BUSY' }).pins.at(-1)!;
+    const earlierBusy = regressed.sim.rmf.intervals.slice(Math.max(0, iv - 6), iv)
+      .map((x) => x.cpu.find((r) => r.lparId === 'PROD1')?.logicalBusyPct)
+      .filter((x): x is number => x !== undefined)
+      .sort((a, b) => a - b);
+    const busyMid = earlierBusy.length >> 1;
+    expect(busy.baseline).toBeCloseTo(earlierBusy.length % 2 === 1 ? earlierBusy[busyMid]! : (earlierBusy[busyMid - 1]! + earlierBusy[busyMid]!) / 2);
+    // Every Monitor III pin has none: its view normalises APPL and ended/s differently, so a WLMGL median would mislead.
+    expect(pin(regressed, { source: 'MON3', system: row.lparId, scKey: row.scKey, metric: 'APPL' }).pins.at(-1)!.baseline)
       .toBeUndefined();
   });
 });

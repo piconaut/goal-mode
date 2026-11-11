@@ -27,9 +27,11 @@ export interface EvidencePin {
   /** End of the measurement window the value describes. */
   tick: number;
   value: number;
-  /** The value's baseline, when the report lets one be read (RT-12): the median of the same row over the six closed
-   * hours before it, so a predicate can ask whether the value is normal. `CPU_VS_BASE` is already a ratio, so its
-   * baseline is 1. Absent where no baseline exists (a new workload's first hours, a sysplex-wide only row). */
+  /** The value's baseline when the report lets one be read (RT-12), so a predicate can ask whether the value is
+   * normal: the median of the same row over the six report intervals (or closed SMF hours) before it. `CPU_VS_BASE`
+   * is already a ratio, so its baseline is 1. Absent where none exists: a new workload's first rows, and every
+   * Monitor III pin, whose view normalises APPL and ended/s differently from Workload Activity and whose history only
+   * carries the pinned range — a baseline from another view would not compare. */
   baseline?: number;
   text: string;
 }
@@ -61,8 +63,9 @@ const APPL_METRICS = new Set<EvidenceMetric>(['APPL', 'APPL_CP', 'APPL_IIP', 'II
 
 const NUM = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** How many closed hours back a pin's baseline looks (RT-12). */
-const BASELINE_HOURS = 6;
+/** How many rows back a pin's baseline looks (RT-12): six report intervals (each `rmfIntervalMin` long) for the RMF
+ * sources, six closed hours for the SMF ones. */
+const BASELINE_ROWS = 6;
 
 /** Median of the earlier hours, or undefined when none reported the row: the baseline a "normal" predicate compares
  * against, so a recipe can ask whether a value is flat without knowing the report it came from (RT-12, §4.6). */
@@ -119,7 +122,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         return `CICS resource samples are reported with the regions' classes: ${w.workManager?.regionKeys.join(', ') ?? 'see the region service classes'}`;
       const value = wlmMetric(w, req.metric);
       if (value === undefined || value === null) return 'That metric is not in the Workload Activity report';
-      const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_HOURS), req.index)
+      const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_ROWS), req.index)
         .map((x) => x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey))
         .map((r) => (r ? wlmMetric(r, req.metric) : null))
         .filter(NUM));
@@ -168,14 +171,14 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
           const c = iv.cpcBusy.find((x) => x.cpcId === cpcId && x.pool === 'CP');
           if (!c) return 'No such CPC row';
           const value = req.metric === 'CPC_BUSY' ? c.physicalBusyPct : 100 - (c.capacityAdjustmentPct ?? 100);
-          const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_HOURS), req.index)
+          const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_ROWS), req.index)
             .map((x) => x.cpcBusy.find((y) => y.cpcId === cpcId && y.pool === 'CP'))
             .map((y) => (y === undefined ? null : req.metric === 'CPC_BUSY' ? y.physicalBusyPct : 100 - (y.capacityAdjustmentPct ?? 100)))
             .filter(NUM));
           return { source: 'CPC', metric: req.metric, subject: cpcId, system: cpcId, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
         }
         const value = cpuMetric(r, req.metric)!;
-        const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_HOURS), req.index)
+        const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - BASELINE_ROWS), req.index)
           .map((x) => x.cpu.find((y) => y.lparId === req.lparId))
           .map((y) => (y === undefined ? null : cpuMetric(y, req.metric)))
           .filter(NUM));
@@ -220,7 +223,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         return req.source === 'DB2' ? 'That metric is not in Db2 accounting' : 'That metric is not in CICS monitoring';
       const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
       const upto = i < 0 ? run.smfHours.length : i;
-      const earlier = run.smfHours.slice(Math.max(0, upto - BASELINE_HOURS), upto);
+      const earlier = run.smfHours.slice(Math.max(0, upto - BASELINE_ROWS), upto);
       const baseline = req.metric === 'CPU_VS_BASE'
         ? 1
         : median(earlier.map((h) => read(`${h.day}:${h.hourOfDay}`)?.[req.metric]).filter(NUM));
@@ -363,15 +366,20 @@ export function pinRelation(run: RunState, inc: Incident, p: EvidencePin, s: Inc
         ? 'host'
         : null;
     default: {
-      // WLMGL and the Monitor III views report class rows.
+      // WLMGL and the Monitor III views report class rows. A class row is only about the incident from an image the
+      // work runs on, or the sysplex roll-up: the same TSO row on a test image says nothing about production work,
+      // whichever relation it claims (RT-12). `*PLEX` stays open for the work's own rows because it is the report
+      // views' default filter, but it cannot place a competitor.
       const cls = p.subject.split('#')[0]!;
-      if (p.subject === inc.workloadId || (s.classes.includes(cls) && !(s.serverClasses ?? []).includes(cls))) return 'self';
-      if ((s.serverClasses ?? []).includes(cls)) return 'server';
-      // A class no definition knows is not a competitor, just an unrelated row.
-      if (!knownClass(run, cls)) return null;
-      // Another class's row is only proof of what ran where from an image the hurt work runs on: a `*PLEX` row is the
-      // roll-up of every image, so it cannot say whether that competitor shared the host (RT-12 closes A9's hole).
-      return p.system !== '*PLEX' && s.hosts.includes(p.system) ? 'competitor' : null;
+      // The work's own rows and its regions' may come from the sysplex roll-up (the report views' default filter);
+      // a competitor's must name a host image, because the roll-up cannot say where that class ran.
+      const onHost = s.hosts.includes(p.system);
+      if (p.subject === inc.workloadId || (s.classes.includes(cls) && !(s.serverClasses ?? []).includes(cls)))
+        return onHost || p.system === '*PLEX' ? 'self' : null;
+      if ((s.serverClasses ?? []).includes(cls)) return onHost || p.system === '*PLEX' ? 'server' : null;
+      // Any other class row is a competitor, whether or not today's definition still has the class: judging it from
+      // the live policy would let an `ACTIVATE_POLICY` change a frozen row's verdict (A10).
+      return (p.subject.includes('#') || knownClass(run, cls)) && onHost ? 'competitor' : null;
     }
   }
 }

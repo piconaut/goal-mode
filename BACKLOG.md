@@ -182,8 +182,8 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
-- Interim fixes: RT-20 replaces the `failureMechanism` path and RT-12 replaces the RT-03 `anySubject` image test;
-  the replacing entry deletes the interim code path.
+- Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
+  image test.
 
 ### RT-08 · CAPPING is decided by one capped tick, not by 5 % of the hour
 `list: rca-truth · status: ready · priority: low · size: S · area: game`
@@ -245,6 +245,8 @@ DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) has a path that needs
 players can complete a proof. The CF, DASD and CICS-storage recipes need RT-10 and RT-11: whichever of RT-10, RT-11
 and RT-13 lands last adds them; a complete recipe for the filed, accepted mechanism replaces today's
 relevance sum, a second for the trigger makes the evidence strong; the reply shows each predicate ticked or not.
+Note: `ENDED_RATE` is `self`/`server` only today, so the DEMAND_SURGE recipe's "on the surging workload" and §4.4's
+collateral-victim surrogate (a co-hosted workload's rate) need it widened to `competitor` here.
 Done when: every mechanism and trigger has a recipe a test satisfies from a replayed incident, and one a test fails
 with look-alike pins (surge against regression, capacity against priority), and a test shows a tier-0/1 path for
 each common recipe.

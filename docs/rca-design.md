@@ -327,8 +327,9 @@ gives `failureMechanismOf` the hour and the same half-open overlap test, so both
 
 ### A9. Evidence does not discriminate (fixed by RT-12's relations)
 
-A pin scored when its metric listed the true mechanism **or** the true trigger, and four metrics were `anySubject`
-(`APPL`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), which skipped the "about the hurt workload" test entirely. R-16, for a
+A pin scored when its metric listed the true mechanism **or** the true trigger, and seven metrics were `anySubject`
+(`APPL`, `APPL_CP`, `APPL_IIP`, `IIPCP`, `DELAY_CPU`, `LOCK_WAIT`, `CF_WAIT`), which skipped the "about the hurt
+workload" test entirely. R-16, for a
 MOBILE incident on PROD1/PROD2, through the three rules:
 
 | Pin | Before RT-03 | RT-03 | RT-12 (now) |
@@ -612,21 +613,26 @@ Consequences for the matcher:
 - New pin sources for the rows of A11 (Partition Data busy and capacity adjustment, CP/IIP split, CF Activity, DASD
   Activity per LCU, region storage, top-consumer job rows, work-manager states).
 
-**As built (RT-12).** `PinRelation = 'self' | 'server' | 'competitor' | 'host'`. `pinRelation` derives it from the
-incident's recorded subjects: `self` is the work's own class or period, its Db2 101/CICS 110 row (subject = workload)
-or its SMF 30 night; `server` is a `SYSWKM` row whose jobname and image match a serving region, or a region class
-(`serverClasses`); `host` is an incident image, or the CPC one of them sits on; `competitor` is any other class the
-definition knows, and only from an image the work runs on (never `*PLEX`). Each metric carries `relations`
-(`SYMPTOM` = all, `OWN` = self/server, `OWN_OR_COMPETITOR`, `HOST_ONLY` = host, batch jobs = self), and the judge
-rejects a pin whose relation is missing or not listed before it looks at size or mechanism. Pins also carry an
-optional `baseline`: the median of the same row over the six preceding report intervals or closed hours, or 1 for
-`CPU_VS_BASE` (already a ratio). No recipe reads it yet — that is RT-13.
 - Scoring: a complete recipe for the filed mechanism (if accepted) is worth what three relevant pins are worth today;
   a second complete recipe for the filed trigger makes the evidence "strong". A lone symptom pin earns the half
   weight a non-specific pin earns today. The three-pin limit stays: two recipes can share the symptom pin.
 - The reply shows the recipe with each predicate ticked or not, in report terms. That is also the natural hint
   surface (§5.4).
 
+**As built (RT-12).** `PinRelation = 'self' | 'server' | 'competitor' | 'host'`. `pinRelation` derives it from the
+incident's recorded subjects: `self` is the work's own class or period, its Db2 101/CICS 110 row (subject = workload)
+or its SMF 30 night; `server` is a `SYSWKM` row whose jobname and image match a serving region, or a region class
+(`serverClasses`); `host` is an incident image, or the CPC one of them sits on; `competitor` is any other class row,
+and only from an image the work runs on (never `*PLEX`). Class rows in any relation must name a host image or
+`*PLEX`, so the mirror of A9 — the work's own class on an image it never runs on — does not count either, and a
+competitor is judged from the row's own shape rather than today's definition, so an `ACTIVATE_POLICY` cannot change
+a frozen row's verdict (A10). Each metric carries `relations` (`SYMPTOM` = all, `OWN` = self/server,
+`OWN_OR_COMPETITOR`, `HOST_ONLY` = host, batch jobs = self), and the judge rejects a pin whose relation is missing or
+not listed before it looks at size or mechanism. Pins also carry an optional `baseline`: the median of the same row
+over the six preceding report intervals (each `rmfIntervalMin` long) or closed SMF hours, or 1 for `CPU_VS_BASE`
+(already a ratio). Monitor III pins carry none: that view normalises APPL and ended/s differently from Workload
+Activity, and its history only holds the pinned range, so a baseline from another view would not compare. No recipe
+reads the baseline yet — that is RT-13.
 ### 4.7 Incidents caused by the player
 
 Covered by §4.4(4): the trigger is POLICY, the reply names the change, and under D1 nothing is gated (there is no

@@ -479,10 +479,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   `anySubject`/`cpcSubject` with `relations`, and the judge rejects a pin whose relation the metric does not accept,
   before it looks at size or mechanism. R-16's residual is closed: TSO#1's CPU delay on a MOBILE image scores 0
   (another class's delay) while its `APPL` share is still the half-weight competitor clue, and a competitor's `*PLEX`
-  row is rejected with its own reason. Pins also store a `baseline` where a report gives one (median of the six
-  preceding intervals or closed hours; 1 for the `CPU_VS_BASE` ratio), for RT-13's "normal" predicates. No truth
-  label, sim behaviour or bot label changed: Midwest bench hash still `bde6d147471ece9f`, and the run-state golden
-  is unchanged because the golden run opens no incidents. 911 tests pass.
+  row is rejected with its own reason. A class row in any relation must name an image the work runs on or `*PLEX`,
+  so the mirror of A9 (the work's own class on an image it never ran on) does not count either, and a competitor is
+  recognised from the row's shape rather than the live definition, so an `ACTIVATE_POLICY` cannot change a frozen
+  row's verdict. Pins also store a `baseline` where a report gives one (median of the same row's six preceding
+  report intervals or closed SMF hours; 1 for the `CPU_VS_BASE` ratio), for RT-13's "normal" predicates; Monitor III
+  pins carry none because that view normalises APPL and ended/s differently. No truth label, sim behaviour or bot
+  label changed: Midwest bench hash still `bde6d147471ece9f`, and the run-state golden is unchanged because the
+  golden run opens no incidents. 913 tests pass.
 - 2026-11-11: RT-07 accepted answer sets (user decision on Q1, docs/rca-design.md §4.1). `truth` now carries
   `accepted { mechanisms, triggers }` — always including the primary — with one line of reasoning per alternate
   (`notes`), and `cause` for RT-15's grouping. `scoreRca` and the evidence gate read membership, so a defensible

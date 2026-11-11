@@ -177,8 +177,8 @@ export interface CapacityBasis {
  * that was good when the incident opened into "not about X". */
 export interface IncidentSubjects {
   classes: string[];
-  /** Routing-table images: every routing key, including a zero weight (kept for old saves; the relation test reads
-   * `hosts`). */
+  /** Routing-table images: every routing key, including a zero weight. Kept because incidents record it and saved
+   * runs carry it; the relation test reads `hosts`. */
   lpars: string[];
   /** Images the work actually runs on: routing keys with a positive share (RT-12's host relation, and where a
    * competitor's row can be placed). */
