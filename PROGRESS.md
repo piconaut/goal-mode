@@ -188,6 +188,11 @@ level or a separate toggle.
   do-nothing improves seven days versus WT-07, outside the expected small change, and returns to its pre-WT-06 16.5,
   inside SPEC §16's day 12–18 design target. The review-fix sweeps match `111cce1`'s preliminary medians/victories.
   User decision (2026-11-12): accepted, no balance entry. Coefficients were not tuned to recover the old outcomes.
+  Final head after the last review fixes (`9122490`, remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10, Harbourline
+  10 / 30.5 / 7 (textbook 1 victory), Revenue 20.5 / 27 / 10; all inside the bands
+  ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43241910317),
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43241910407),
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43241910326)).
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
