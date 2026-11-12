@@ -1544,6 +1544,8 @@ inside the CI gate's bands; Midwest do-nothing is below the design target (day 1
   day is the same (78.7 % against 77.7 %). At D29 11:00 on PRDA the most important receivers, MKTORD#1 (importance
   1) and ONLHI#1 (2), have 98 % CPU delay and are `NOT_FIXABLE` because their waits are larger (OTHER 157 and 144
   % of using + delay): W7, WT-10's entry. The collapsed ladder hid it by keeping everything near the top.
+  Correction (WT-10, §9.10): with W7 fixed they are assessed and every plan projects no gain; PRDA is saturated, and
+  seed 7 is still lost on day 39.
 
 RT-06 validator: Midwest seed 3 gains a D1 21:00 MOBILE incident (POLICY, no card), the same flaw; the runaway's
 incident at D2 13:00 and its verdict are unchanged.
@@ -1709,6 +1711,63 @@ logged at most every five minutes, and a new reason or a move logs it again: 33/
   --episodes`: assessed candidates that end in an accepted plan, which must not fall below the previous entry
   without an explanation in the PR (WT-08's S-1 fall is explained above); every period assessed 30 times or more and
   never helped; and carries accepted.
-- *Midwest's swing* rides on W7 in both directions (§9.7 correction); WT-10 now goes before WT-09.
+- *Midwest's swing* rides on W7 in both directions (§9.7 correction); WT-10 now goes before WT-09. At WT-10 the
+  median is unchanged (16.5, §9.10).
 - *Still unmeasured:* `RECOVERING` (225 / 1 703 / 5 636 on S-1 … S-3, more than assessed) is not checked to recover;
   a streak count belongs with PR-20.
+
+### 9.10 WT-10: managed bottlenecks in turn
+
+Built on WT-08 (`73f0627`). `bottleneckOf` is gone (§5.7). A receiver's plans are built for CPU and then zIIP, largest
+delay first, each when it is at least `bottleneckMinFrac` (15 %) of the managed delay (CPU, zIIP, I/O in velocity,
+storage, queue), even when I/O, storage or queue delay is larger. A plan for the second bottleneck is built only when
+the first is rejected (its UP moves are the same; its donors are the second processor's). Waits (`delayOther`) and
+capping take no part. A period with neither is `NOT_FIXABLE` with its largest managed delay named. `ScpAcc` gains
+decayed `delayStorage` and `delayQueue`. A period whose waits are over half its samples logs `mostly waiting, CPU
+delay n %: not WLM-fixable` in place of the no-action, not-fixable and recovering notes. Real: WLM Services p.148
+(the largest delay is worked on first, then the next, then the third; one has no donor, `pa_pro_na_no_donor`);
+SG24-6472-03 p.63–64.
+
+Audit at `fc63db3` (same S-1 … S-3 recipes; WT-08 `d9617a4` → WT-10):
+
+| | S-1 | S-2 | S-3 |
+|---|---|---|---|
+| not assessed: other / I/O bottleneck | 572 / 0 → — / 0 | 4 771 / 0 → — / 0 | 5 520 / 106 → — / 22 |
+| not assessed: storage, queue / no managed delay | 0, 0 / 0 | 0, 0 / 0 | 0, 0 / 15 |
+| assessed candidates (of which mostly waiting) | 250 → 254 (6) | 1 039 → 777 (12) | 910 → 1 429 (478) |
+| not assessed: recovering (`base` ≤ 1) | 225 → 646 | 1 703 → 3 431 | 5 636 → 9 608 |
+| accepted plans | 19 → 21 | 24 → 24 | 54 → 107 |
+| assessed candidates ending in an accepted plan | 7.6 → 8.3 % | 2.3 → 3.1 % | 5.9 → 7.5 % |
+| proposal projections | 1 129 → 1 241 | 3 200 → 2 953 | 3 007 → 4 820 |
+| net rank reversals / within two minutes | 1 → 1 / 0 | 3 → 6 / 0 | 5 → 22 / 1 |
+| episodes of 30 assessments | 1 → 1 | 3 → 2 | 2 → 5 |
+
+The other column is gone: no candidate is dropped for its waits. The periods it held are assessed, or found
+recovering by the projection, which at sustained demand does not see the waits that keep their measured PI up
+(S-3's `RECOVERING` grows by 3 972; Midwest seed 7's ONLHI is recovering on 1 390 checks in five hours at 93 %
+waits). Both outcomes leave the DPs alone, as `NOT_FIXABLE` did; the log keeps the waiting clue. Whether
+`RECOVERING` periods recover is PR-20's streak count. S-3 doubles its plans: Harbourline's DDF and CICS periods,
+which mostly wait on Db2 and their regions, are now raised when their CPU delay is a real share. The reversal within
+two minutes (S-3 PRDD, D3 11:35:00) is a happy-donor plan: MKTDDF#1 donates to DDFPRD#2, misses its goal at once
+(25.36) and is raised back at 11:36:00. Its projected harm was small; that projection is WT-16's question, not the
+bottleneck rule. S-3's new episodes are PRDA MKTORD#1, ONLHI#1 and ONLMED#1 (D1 … D3): MKTORD#1 is alone at the top
+DP with no donor at or above it, and is 97 % waiting (WLM Services p.148's no-donor case); the other two are at
+the floor of what a raise projects.
+
+The criterion's case: on WT-07's state (`1f4f212`, Midwest seed 42, PROD2 D1 21:40:00) DDFPRD#1 (local PI 4.00,
+CPU 59 %, zIIP 30 %, other 251 % of using + delay) now has CPU and zIIP as bottlenecks, and its CPU plan is accepted:
+`UP DDFPRD#1 DP EA→EC (above BATCHPRD#1)`, projected 51.22 → 0.50. The zIIP plan is not needed; a unit test covers
+a rejected CPU plan followed by a zIIP plan with its own donors. Since WT-08 that state no longer forms on `dev`
+(DDFPRD#1 stays above BATCHPRD#1 all evening).
+
+Sweep (remote, Normal, seeds 1–10, `44a35ab`; `fc63db3` differs only in log text, `npm run compare --drop log`):
+Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged; Harbourline 10.5 / 30 / 7 → 9.5 / 30 / 7 (textbook 1
+victory). Midwest was expected to move (§9.7 correction): on seeds 1–10 its median does not, though single seeds
+do (seed 3's runaway no longer breaks MOBILE, seed 7's RBANK CPU regression reads DEPENDENCY). RT-06 on S-1 … S-3:
+online incidents 0 / 2 / 14 → 0 / 2 / 13; S-2's runaway still agrees. The RT-06 test fixture moves to Revenue seed 6
+(D2 11:00, EFILE, RUNAWAY_COMPLIANCE@1): no Midwest runaway in seeds 1–30 breaks MOBILE in two days any more.
+
+*Harbourline expert seed 7 does not come back* (day 39, as at WT-07). §9.7's attribution to W7 was wrong: at D29
+11:00 on PRDA the receivers are assessed now (MKTORD#1, ONLHI#1 at 98 % CPU delay), and every plan projects no gain
+(ONLHI#1 82.33 → 82.33 for each raise and for STCHI#1 as donor). D29 is 78.7 %, as before: PRDA is saturated after
+the day's access-path regression, which policy adjustment cannot fix.
