@@ -482,6 +482,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-12: investigation tooling from the WT-05 work, committed (tools only; sim untouched): `inspect … wlm-stats`
+  `--by-class`, `--episodes`, `--moves`; `npm run bot` `--changes`, `--trace-day`, `--dump` (tools/botTrace.ts) and
+  `--tune` (POLICY_ADJUST overrides, tools/tune.ts), passed through `sweep` and `sweep:remote`; `npm run repro`
+  builds the audit's S-1 … S-3 play files (and any hands-off run). Used for the Harbourline seed 7/9 ablation.
 - 2026-11-11: WT-05, skip clocks, the delay test and a per-interval projection budget (docs/wlm-design.md §5.3,
   §9.6): a receiver whose every trial was rejected is skipped for a minute (WLM Services p.145); a period under 2 %
   managed delay is not assessed (p.144); `RECEIVERS_PER_IMPORTANCE` is replaced by 12 projections per image per

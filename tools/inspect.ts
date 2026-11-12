@@ -7,10 +7,11 @@
 //     Why WLM did or didn't move DPs: per policy adjustment (10 s), the receiver candidates in order, each trial
 //     move and why it was accepted or rejected. A play-CLI run (seed + log) replays to any past time; a browser save
 //     has no log, so it traces forward from the saved moment (live day only).
-//   npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--json]
+//   npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--by-class] [--episodes] [--moves] [--json]
 //     Policy adjustment statistics over a range of a play file (WT-01): adjustments, candidates by outcome, trials by
 //     verdict, accepted moves, receivers assessed on 30 adjustments without a move, and the DP ladder at a clock
-//     time. A whole-run replay costs about 6 s per played day, like `blame`.
+//     time. --by-class adds each period's outcomes, --episodes lists those 30-assessment runs, --moves lists every
+//     accepted move. A whole-run replay costs about 6 s per played day, like `blame`.
 //   npm run inspect -- runs/a.json blame [--json] [--incident N]
 //     Counterfactual validator (RT-06): every online incident's opening hour is replayed once per card that affects
 //     the hurt workload with that card ended at the hour start. Reports the game's trigger against the cards whose
@@ -200,6 +201,10 @@ export interface WlmStats {
   /** With `ladder`, each system's DP ladder (hex, highest first) at that clock time each played day. */
   ladder: { lparId: string; lines: string[] }[];
   ladderTime: string | null;
+  /** With `byClass`, `episodes` or `moves` (the CLI's `--by-class`, `--episodes`, `--moves`). */
+  byClass?: WlmClassRow[];
+  episodes?: WlmEpisode[];
+  moves?: WlmMoveRow[];
 }
 
 const emptyCounters = (): WlmStatsCounters => ({
@@ -234,12 +239,32 @@ const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounte
 /** A trial's move text names the period and its new DP: `ONLHI#1 DP 20→21` or `DONOR X DP 20→1F`. */
 const MOVED = /^(DONOR\s+)?(\S+)\s+DP\s+([0-9A-F]+)→([0-9A-F]+)$/;
 
-/** Count one system's adjustments in trace order: totals, and the two cross-adjustment patterns (reversals, runs). */
-function countSystem(traces: readonly WlmAdjustTrace[]): WlmStatsCounters {
+/** One episode (`--episodes`): a period's run of assessments without being the receiver of an accepted move, once
+ * it reached 30. `end` is the clock of the receiver move that ended it, or null when the range ended first. */
+export interface WlmEpisode {
+  lparId: string;
+  scKey: string;
+  /** Clock of the run's first and last assessment. */
+  first: string;
+  last: string;
+  assessments: number;
+  /** Trials in the run by verdict; donor moves accepted while the period was the candidate count as `ACCEPTED`. */
+  verdicts: Partial<Record<WlmTrialVerdict, number>>;
+  end: string | null;
+}
+
+/** Count one system's adjustments in trace order: totals, and the two cross-adjustment patterns (reversals, runs).
+ * `episodes`, when given, receives each episode the counter counts, in the order they end. */
+function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[]): WlmStatsCounters {
   const c = emptyCounters();
   const lastDirection = new Map<string, { dir: 1 | -1; at: number }>();
   let at = -1;
-  const runs = new Map<string, { n: number; counted: boolean }>();
+  const runs = new Map<string, { n: number; counted: boolean; first: string; last: string; verdicts: Partial<Record<WlmTrialVerdict, number>> }>();
+  const close = (period: string, end: string | null) => {
+    const run = runs.get(period);
+    if (run?.counted && episodes) episodes.push({ lparId: traces[0]!.lparId, scKey: period, first: run.first, last: run.last, assessments: run.n, verdicts: run.verdicts, end });
+    runs.delete(period);
+  };
   for (const t of traces) {
     c.adjustments++;
     at++;
@@ -287,16 +312,71 @@ function countSystem(traces: readonly WlmAdjustTrace[]): WlmStatsCounters {
       lastDirection.set(period, { dir, at });
     }
     // A receiver move ends its own run; a donor move does not, and neither does an adjustment that skipped the period.
-    for (const period of receiverMoved) runs.delete(period);
-    for (const period of assessed) {
-      if (receiverMoved.has(period)) continue;
-      const run = runs.get(period) ?? { n: 0, counted: false };
+    for (const period of receiverMoved) close(period, t.clockText);
+    for (const cand of t.candidates) {
+      const period = cand.scKey;
+      if (!assessed.has(period) || receiverMoved.has(period)) continue;
+      const run = runs.get(period) ?? { n: 0, counted: false, first: t.clockText, last: t.clockText, verdicts: {} };
       const n = run.n + 1;
       if (n >= 30 && !run.counted) c.episodes++;
-      runs.set(period, { n, counted: run.counted || n >= 30 });
+      for (const tr of cand.trials) run.verdicts[tr.verdict] = (run.verdicts[tr.verdict] ?? 0) + 1;
+      runs.set(period, { ...run, n, last: t.clockText, counted: run.counted || n >= 30 });
     }
   }
+  for (const period of [...runs.keys()].sort()) close(period, null);
   return c;
+}
+
+/** `--by-class`: each period's candidate outcomes, trials and accepted receiver moves over the range, per system. */
+export interface WlmClassRow {
+  lparId: string;
+  scKey: string;
+  outcomes: Record<WlmCandidateTrace['outcome'], number>;
+  trials: number;
+  /** Accepted moves with this period as the receiver raised. */
+  helped: number;
+}
+
+export function classRows(traces: readonly WlmAdjustTrace[]): WlmClassRow[] {
+  const rows = new Map<string, WlmClassRow>();
+  for (const t of traces) {
+    for (const cand of t.candidates) {
+      const key = `${t.lparId} ${cand.scKey}`;
+      let row = rows.get(key);
+      if (!row) {
+        row = { lparId: t.lparId, scKey: cand.scKey, outcomes: { ASSESSED: 0, SKIP_CLOCK: 0, RECOVERING: 0, NOT_FIXABLE: 0, NO_MANAGED_DELAY: 0, BUDGET: 0 }, trials: 0, helped: 0 };
+        rows.set(key, row);
+      }
+      row.outcomes[cand.outcome]++;
+      row.trials += cand.trials.length;
+      for (const tr of cand.trials) {
+        const m = tr.verdict === 'ACCEPTED' ? MOVED.exec(tr.move) : null;
+        if (m && m[1] === undefined && m[2] === cand.scKey) row.helped++;
+      }
+    }
+  }
+  return [...rows.keys()].sort().map((k) => rows.get(k)!);
+}
+
+/** `--moves`: every accepted move in trace order, with the receiver it was made for and the receiver's projected PI. */
+export interface WlmMoveRow {
+  clockText: string;
+  lparId: string;
+  receiver: string;
+  move: string;
+  receiverPi: (number | null)[];
+}
+
+export function moveRows(traces: readonly WlmAdjustTrace[]): WlmMoveRow[] {
+  const out: WlmMoveRow[] = [];
+  for (const t of traces) {
+    for (const cand of t.candidates) {
+      for (const tr of cand.trials) {
+        if (tr.verdict === 'ACCEPTED') out.push({ clockText: t.clockText, lparId: t.lparId, receiver: cand.scKey, move: tr.move, receiverPi: [...(tr.receiverPi ?? [])] });
+      }
+    }
+  }
+  return out;
 }
 
 const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
@@ -370,14 +450,18 @@ function ladderLines(traces: readonly WlmAdjustTrace[], time: string): string[] 
 
 /** Policy adjustment statistics over a trace list (WT-01). Pure: the audit's S-1 … S-3 counters, per system and total.
  * `ladderTraces` lets the ladder read a wider replay than the counted range (the CLI passes the whole first day). */
-export function wlmStats(traces: readonly WlmAdjustTrace[], opts: { ladder?: string; ladderTraces?: readonly WlmAdjustTrace[] } = {}): WlmStats {
+export function wlmStats(
+  traces: readonly WlmAdjustTrace[],
+  opts: { ladder?: string; ladderTraces?: readonly WlmAdjustTrace[]; byClass?: boolean; episodes?: boolean; moves?: boolean } = {},
+): WlmStats {
   const bySystem = new Map<string, WlmAdjustTrace[]>();
   for (const t of traces) {
     const list = bySystem.get(t.lparId);
     if (list) list.push(t);
     else bySystem.set(t.lparId, [t]);
   }
-  const systems = [...bySystem.keys()].sort().map((lparId) => ({ lparId, counters: countSystem(bySystem.get(lparId)!) }));
+  const episodes: WlmEpisode[] = [];
+  const systems = [...bySystem.keys()].sort().map((lparId) => ({ lparId, counters: countSystem(bySystem.get(lparId)!, episodes) }));
   let ladder: WlmStats['ladder'] = [];
   if (opts.ladder) {
     const ladderBySystem = new Map<string, WlmAdjustTrace[]>();
@@ -388,7 +472,48 @@ export function wlmStats(traces: readonly WlmAdjustTrace[], opts: { ladder?: str
     }
     ladder = systems.map((x) => ({ lparId: x.lparId, lines: ladderLines(ladderBySystem.get(x.lparId) ?? [], opts.ladder!) }));
   }
-  return { total: sumCounters(systems.map((x) => x.counters)), systems, ladder, ladderTime: opts.ladder ?? null };
+  return {
+    total: sumCounters(systems.map((x) => x.counters)),
+    systems,
+    ladder,
+    ladderTime: opts.ladder ?? null,
+    ...(opts.byClass ? { byClass: classRows(traces) } : {}),
+    ...(opts.episodes ? { episodes } : {}),
+    ...(opts.moves ? { moves: moveRows(traces) } : {}),
+  };
+}
+
+const piPath = (pi: readonly (number | null)[]) => pi.map((x) => (x === null ? '-' : x.toFixed(2))).join('→');
+const verdictText = (v: Partial<Record<WlmTrialVerdict, number>>) =>
+  VERDICT_ORDER.filter((k) => v[k]).map((k) => `${k} ${v[k]}`).join(', ') || 'no trials';
+const CLASS_OUTCOMES: WlmCandidateTrace['outcome'][] = ['ASSESSED', 'SKIP_CLOCK', 'RECOVERING', 'NOT_FIXABLE', 'NO_MANAGED_DELAY', 'BUDGET'];
+
+/** The optional `--by-class`, `--episodes` and `--moves` sections, in that order. */
+function detailLines(stats: WlmStats): string[] {
+  const lines: string[] = [];
+  if (stats.byClass) {
+    const heads = ['assessed', 'clock', 'recover', 'notfix', 'nodelay', 'budget', 'trials', 'helped'];
+    const width = Math.max(18, ...stats.byClass.map((r) => r.lparId.length + 1 + r.scKey.length));
+    lines.push('', 'Candidates by period (outcome counts, trials, accepted moves raising it)', `${' '.repeat(width)}${heads.map((h) => h.padStart(9)).join('')}`);
+    for (const r of stats.byClass) {
+      const cells = [...CLASS_OUTCOMES.map((o) => r.outcomes[o]), r.trials, r.helped];
+      lines.push(`${`${r.lparId} ${r.scKey}`.padEnd(width)}${cells.map((x) => n0(x).padStart(9)).join('')}`);
+    }
+  }
+  if (stats.episodes) {
+    lines.push('', 'Episodes (30 assessments without a receiver move; first → last assessment)');
+    if (stats.episodes.length === 0) lines.push('  none');
+    for (const e of stats.episodes) {
+      lines.push(`  ${e.lparId} ${e.scKey}  ${e.first} → ${e.last}  ${e.assessments} assessments, ${e.end ? `ended by a move at ${e.end}` : 'still open at the end of the range'}`);
+      lines.push(`    trials: ${verdictText(e.verdicts)}`);
+    }
+  }
+  if (stats.moves) {
+    lines.push('', 'Accepted moves (receiver, move, receiver PI before → projected)');
+    if (stats.moves.length === 0) lines.push('  none');
+    for (const m of stats.moves) lines.push(`  ${m.clockText}  ${m.lparId}  for ${m.receiver}: ${m.move}  ${piPath(m.receiverPi)}`);
+  }
+  return lines;
 }
 
 const n0 = (n: number) => n.toLocaleString('en-US');
@@ -433,6 +558,7 @@ export function statsText(stats: WlmStats): string {
     lines.push('', `DP ladder at ${stats.ladderTime} each played day (hex, highest first)`);
     for (const l of stats.ladder) lines.push(`${l.lparId}:`, ...(l.lines.length ? l.lines.map((x) => `  ${x}`) : ['  no adjustment up to that time']));
   }
+  lines.push(...detailLines(stats));
   return lines.join('\n');
 }
 
@@ -499,7 +625,10 @@ export function replayTraces(file: PlayFile, from: number, to: number, sink: (t:
 }
 
 /** `inspect … wlm-stats`: the audit's policy adjustment counters over a play file's range (WT-01). */
-export function wlmStatsText(text: string, opts: { system?: string; from?: string; to?: string; ladder?: string; json?: boolean } = {}): string {
+export function wlmStatsText(
+  text: string,
+  opts: { system?: string; from?: string; to?: string; ladder?: string; json?: boolean; byClass?: boolean; episodes?: boolean; moves?: boolean } = {},
+): string {
   const file = decodePlayFile(text);
   const from = tickOfClock(opts.from ?? 'D1 06:00');
   const to = opts.to === undefined ? file.run.sim.tick : tickOfClock(opts.to);
@@ -526,7 +655,12 @@ export function wlmStatsText(text: string, opts: { system?: string; from?: strin
     return key >= lo && key < hi;
   });
   if (traces.length === 0) return `No policy adjustment traced between ${clockText(from)} and ${clockText(Math.min(to, reached))}; ${reached < to ? `the play log ends at ${clockText(reached)}` : 'check the range and the system'}.`;
-  const stats = wlmStats(traces, opts.ladder ? { ladder: opts.ladder, ladderTraces: all } : {});
+  const stats = wlmStats(traces, {
+    ...(opts.ladder ? { ladder: opts.ladder, ladderTraces: all } : {}),
+    ...(opts.byClass ? { byClass: true } : {}),
+    ...(opts.episodes ? { episodes: true } : {}),
+    ...(opts.moves ? { moves: true } : {}),
+  });
   const systems = stats.systems.map((s) => s.lparId).join(' ');
   const note = `${clockText(from)} → ${clockText(reached)}, ${systems}${opts.system === undefined ? '' : ` (${opts.system} only)`}`;
   const short = reached < to ? `\nThe play log ends at ${clockText(reached)}; the range ${clockText(to)} is not covered.` : '';
@@ -674,8 +808,12 @@ if (process.argv[1]?.endsWith('inspect.ts')) {
   }
   if (path && verb === 'wlm-stats') {
     const ladder = opt(rest, '--ladder');
+    const flag = (name: string) => (rest.includes(name) ? true : undefined);
+    const details = { byClass: flag('--by-class'), episodes: flag('--episodes'), moves: flag('--moves') };
+    const sys = system?.startsWith('--') ? undefined : system;
     try {
-      console.log(wlmStatsText(readFileSync(path, 'utf8'), { ...(system ? { system } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(ladder ? { ladder } : {}), json }));
+      console.log(wlmStatsText(readFileSync(path, 'utf8'), { ...(sys ? { system: sys } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(ladder ? { ladder } : {}), json,
+        ...Object.fromEntries(Object.entries(details).filter(([, v]) => v)) }));
     } catch (e) {
       console.error(`wlm-stats: ${(e as Error).message}`);
       process.exit(1);

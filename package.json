@@ -18,7 +18,8 @@
     "sweep": "tsx tools/sweep.ts",
     "sweep:remote": "tsx tools/sweepRemote.ts",
     "play": "tsx tools/play.ts",
-    "inspect": "tsx tools/inspect.ts"
+    "inspect": "tsx tools/inspect.ts",
+    "repro": "tsx tools/repro.ts"
   },
   "dependencies": {
     "react": "19.3.1",
