@@ -1,8 +1,8 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-07 are implemented; WT-08 is in progress**: one PI basis, sustained
+Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 are implemented**: one PI basis, sustained
 demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval budget (WT-05,
-§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8). Draft atomic plans (WT-08, §9.9) await validation and acceptance. Server periods (WT-09) and the other remaining entries are not. Findings W2, W4, W5, W10 and W12 below describe the sim before those
+§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic plans (WT-08, §9.9). Server periods (WT-09) and the other remaining entries are not. Findings W2, W4, W5, W10 and W12 below describe the sim before those
 entries; each says what fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
@@ -1593,7 +1593,7 @@ last intermediate step or raw canonical DP deltas. Internal moves of one atomic 
 The old §1 reversal targets are ≤2/4/8: S-3's 10 does not meet the target. S-1's raw MORE_IMPORTANT_HARMED share
 is 45.5% (500/1 099), above its 29% target; S-3 is 15.1% (559/3 702), below 21%. Net value now has to be assessed before receiver value
 for intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. These
-are reported as unmet historical criteria, not silently redefined or fixed by tuning coefficients.
+are not met as written; the user accepted both with the targets restated (below), not by tuning coefficients.
 
 Historical W5 thresholds are 29%/21%
 MORE_IMPORTANT_HARMED for S-1/S-3; WT-07 already measured 13.3%/15.4%, so passing them alone is not evidence that
@@ -1612,15 +1612,15 @@ and DDFPRD#1 (importance 2). Their projected PIs still meet their goals. This ch
 the 10:00 shadow-IT pair improves MOBILE from 117.61 to 83.74 ms instead of slowing it. A separate fixed-priority
 pair tests the card's CPU pressure. On seed 3, the former D1 21:00 policy-only MOBILE incident disappears, leaving
 the D2 runaway incident; the counterfactual test still checks one replay at the hour boundary and its cause.
-These are explicit scenario/balance changes awaiting acceptance, not golden noise or a new general guarantee
-that increased demand helps MOBILE.
+These are explicit scenario/balance changes, accepted by the user (below), not golden noise or a new general
+guarantee that increased demand helps MOBILE.
 
 The capped-PROD1 seed-7 fixture also changes beyond WT-07's §9.8 five-minute episode: ONLHI is OTHER from 14:00
 through the 16:00 end of the observation, despite STCHI's partial recovery at 14:02:30. STCHI remains below ONLHI.
 Waits outside velocity dominate that bottleneck choice (OTHER exceeds 100%, the outstanding WT-10 issue).
 The test preserves the missing-goal ordering checks and the restored CPU rejection clue, and checks the
 preceding accepted STCHI donation and actual ladder rather than a distance between deduplicated log entries.
-This longer episode is a draft acceptance concern; it is not claimed fixed by WT-08.
+The user accepted this longer episode as WT-10's (below); it is not claimed fixed by WT-08.
 
 RT-06 validation against WT-07 on the same seed-42 runs: S-1 online incidents 2 → 0 (the two policy-only MOBILE
 misses disappear); S-2 2 → 2, still one testable runaway cause and agreement; S-3 13 → 15, adding card-free CARDS

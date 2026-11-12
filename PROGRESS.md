@@ -185,9 +185,9 @@ level or a separate toggle.
   do-nothing stays below the design target.
 - WT-08 sweep (2026-11-12, draft #316 `e4902b7`, Normal, seeds 1–10): Midwest 16.5 / 28 / 10,
   Harbourline 10.5 / 30.5 / 7 (textbook 1 victory), Revenue 20.5 / 27 / 10. All inside the CI bands; Midwest
-  do-nothing improves seven days versus WT-07, outside the expected small change. The review-fix sweeps match
-  `111cce1`'s preliminary medians/victories. Acceptance is pending; coefficients have not been tuned to recover
-  the old outcomes. Later commits change only test measurement and documentation.
+  do-nothing improves seven days versus WT-07, outside the expected small change, and returns to its pre-WT-06 16.5,
+  inside SPEC §16's day 12–18 design target. The review-fix sweeps match `111cce1`'s preliminary medians/victories.
+  User decision (2026-11-12): accepted, no balance entry. Coefficients were not tuned to recover the old outcomes.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -513,6 +513,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   online incidents 2/2/13 → 0/2/15; S-3 adds two CARDS QR_TCB/POLICY misses, common causes/agreements unchanged.
   Midwest's survival shift, shadow-IT's adaptive MOBILE improvement and the longer capped ONLHI OTHER episode
   remain acceptance questions. No coefficient or happy-donor restriction was introduced to hide them.
+
+- 2026-11-12: WT-08 accepted (user decision after the #316 review): the legal happy-donor plans, the scenario and
+  balance changes (Midwest do-nothing 9.5 → 16.5, back inside SPEC §16's target; online incidents 2/2/13 → 0/2/15;
+  the shadow-IT card can help MOBILE under adaptive WLM), and the two unmet Done-when criteria with restated
+  targets (docs/wlm-design.md §9.9). The capped-PROD1 ONLHI OTHER episode is WT-10's; its test now bounds it.
+  Last review fixes: a plan's raise may no longer undo what its retained moves bought, and an unchanged skip-clock
+  clue is logged at most every five minutes (seed 42 day 1: 105/66/25 → 33/40/20 lines on Midwest/Revenue/
+  Harbourline).
 
 - 2026-11-12: queued PR-20 for repeated `NOT_FIXABLE` checks: report those streaks separately from the existing
   `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in

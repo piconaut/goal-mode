@@ -706,7 +706,7 @@ describe('event cards (SPEC §9)', () => {
   it('adaptive WLM can improve mobile when shadow IT displaces work above it', () => {
     // WT-08's legal happy-donor plan at 09:41 puts DDFPRD#2 above MOBILE's DDFPRD#1. Additional TSO
     // demand can displace #2 and help MOBILE: increased total CPU demand is not monotonic per workload.
-    // This scenario/balance change is recorded in docs/wlm-design.md §9.9, pending acceptance.
+    // Accepted as a scenario change (user decision 2026-11-12, docs/wlm-design.md §9.9).
     const asIs = run([]);
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
@@ -1076,6 +1076,9 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       if (t.candidates.some((c) => c.trials.some((tr) => tr.verdict === 'ACCEPTED' && tr.plan?.some((m) => m.kind === 'DONOR' && m.scKey === 'STCHI#1')))) donated = true;
     }
     expect(other).toBeGreaterThan(0);
+    // Bound: at WT-08 it starts at 14:00 and lasts to the end of this window (720 adjustments to 16:00); WT-10 owns
+    // the episode, so one that starts earlier fails here.
+    expect(other).toBeLessThanOrEqual(720);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
     // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
     // Under the cap a less important receiver may not pass more important work that is missing its goal and using
