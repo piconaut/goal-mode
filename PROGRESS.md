@@ -540,6 +540,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   do-nothing swing rides on W7. User decision: WT-10 goes before WT-09. New WT-16: why joining a level projects much
   worse than staying below it.
 
+- 2026-11-12: open WLM questions researched. A receiver whose delays are all unmanaged is not a receiver and gets no
+  skip clock (SG24-6472-03 p.61, 64; WLM Services p.145): the sim's NOT_FIXABLE matches for capping, and W7 (waits
+  outranking managed delay) is WT-10's. The skip clock lasts 3 cycles and since z/OS 1.11 is not honoured when 5 or
+  fewer periods miss their goals (Sinram, SHARE 2010 session 7777 p.11, added to `ibm-zos-books` as
+  `products/share/115/S7777_WLM_Update.pdf` and to the zos-docs book map): RF-03. Same-priority work is rotated
+  (SG24-6472-03 p.66), which `shareByUnits` already models, so WT-16's leads are now demand, unit counts and the
+  grant-to-PI step rather than the sharing rule.
+
 - 2026-11-12: queued PR-20 for repeated `NOT_FIXABLE` checks: report those streaks separately from the existing
   `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in
   #307 has 30 cheaper candidate checks over five minutes and one periodic no-action log entry. Clock and
