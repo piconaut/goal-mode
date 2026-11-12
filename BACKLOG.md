@@ -456,6 +456,11 @@ raises DDF response time without raising DDF CPU delay" still passes and its log
 Goldens: change. Done when: S-3's "not assessed: bottleneck OTHER / I/O" (5 291 / 4 208) are replaced by
 `NO_MANAGED_DELAY` or assessed candidates, with the counts in the PR. Bots: small. Cross-note: **RT-19** splits the
 same waits (`serverCpu`, `serverOther`) for RCA truth; share the per-period split rather than computing it twice.
+From WT-06 (2026-11-12, docs/wlm-design.md §9.7): Harbourline expert seed 7 is lost to a D29 freeze this causes. At
+D29 11:00 on PRDA, MKTORD#1 (importance 1) and ONLHI#1 (2) have 98 % CPU delay and are `NOT_FIXABLE` because their
+waits are larger; the skip clock is not involved (`--tune rejectedSkipTicks=0` gives the same day). Check that seed 7
+comes back (`npm run bot -- --bot expert --scenario harbourline --seed 7 --days 40 --trace-day 29`); bots may move
+more than "small".
 
 ### WT-11 · The resource-group minimum for discretionary work (W10)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`

@@ -1446,3 +1446,42 @@ goes away with the clock too. The clock is real (WLM Services p.145); what the s
 without churn (W2), WT-06's entry. User decision 2026-11-11: WT-05 ships with the 6-interval clock, and WT-06 checks
 those two seeds.
 
+### 9.7 WT-06: the canonical ladder
+
+WT-06 makes the DPs a function of an order (§5.6) and moves the table to z/OS 1.8's (§3.13). Same files and settings as
+§9.6; cells as there.
+
+| | S-1 | S-2 | S-3 | Seed 2 |
+|---|---|---|---|---|
+| WT-05 (`dev`) | 13; 2 / 0; 1 | 29; 12 / 1; 2 | 49; 9 / 0; 2 | 26; 5 / 1; 2 |
+| WT-06 | 25; 2 / 0; 4 | 26; 5 / 0; 3 | 44; 0 / 0; 2 | 48; 0 / 0; 2 |
+| candidates assessed | 251 → 341 | 723 → 727 | 892 → 900 | 339 → 357 |
+| projections | 968 → 1 953 | 2 749 → 4 289 | 2 642 → 4 460 | 1 272 → 1 901 |
+
+Moves are single steps now, so a climb that was one move is two or three (seed 2: 26 → 48), and a receiver tries up
+to six raises (projections up 1.5–2×; bench, Harbourline, paired: 1.37 → 1.44 ms per tick). No move is undone within
+two minutes anywhere. S-1's four episodes are DDFPRD#2 and BATCHPRD#1 on PROD2, each re-assessed once a minute as its
+clock expires (`SMALL_GAIN`), as in §9.6. The ladder no longer collapses: Midwest 42's PROD2 is on 7–8 levels from D1
+to D8 (S-4 test), nothing reaches F7. R-4 is gone: at D1 14:17 on PRDD MKTDDF#2 is second from the bottom.
+
+**Sweep** (remote, Normal, seeds 1–10; do-nothing median day / textbook median day / expert victories): Revenue 20 /
+27 / 10 (unchanged); Midwest 16.5 / 28 / 10 → **9.5** / 28 / 10; Harbourline 10 / 29 / 6 → 10.5 / 30.5 / **7**. All
+inside the bands.
+
+- *Midwest do-nothing.* On 8 of 10 seeds the hands-off run ends earlier (seed 1: D22 → D8), from a MOBILE miss every
+  evening at exactly 40.0 %: PROD1's share of its routing meets the SLA, PROD2's misses it. MOBILE's SLA (95 % <
+  0.4 s) is stricter than DDFPRD#1's goal (90 % < 0.5 s), a planted policy flaw. The collapsed ladder kept DDFPRD#1 on
+  a shared level near the top and over-served it; on the ladder, periods that ask for help step past DDFPRD#1 while
+  it meets its goal (allowed: it is not missing it), and WLM gives it what its goal needs and no more. The game names
+  these incidents CPU_PRIORITY/POLICY, with WLMGL showing the goal met. Real WLM behaviour; more than the ±3 days the
+  entry expected, inside the band, so no change (an out-of-band median would be a `balance` entry).
+- *Harbourline expert seed 9* comes back (victory): on D29 WLM makes 20–58 moves an hour from 10:00 and SLAs are back
+  near 100 % by 15:00 (WT-05: 7–9 hours near 0 %).
+- *Seed 7* is still lost (day 36 → 39). Its D29 freeze is not the ladder or the clock: with `rejectedSkipTicks` 0 the
+  day is the same (78.7 % against 77.7 %). At D29 11:00 on PRDA the most important receivers, MKTORD#1 (importance
+  1) and ONLHI#1 (2), have 98 % CPU delay and are `NOT_FIXABLE` because their waits are larger (OTHER 157 and 144
+  % of using + delay): W7, WT-10's entry. The collapsed ladder hid it by keeping everything near the top.
+
+RT-06 validator: Midwest seed 3 gains a D1 21:00 MOBILE incident (POLICY, no card), the same flaw; the runaway's
+incident at D2 13:00 and its verdict are unchanged.
+

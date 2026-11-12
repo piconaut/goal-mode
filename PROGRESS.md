@@ -84,7 +84,7 @@ Notes from discussion:
 - When settled, this rewrites SPEC §10 (RCA mini-game) and parts of §9 (events); move it to its own design doc if it
   grows.
 
-### WLM policy adjustment audit (2026-11-10; WT-04 and WT-05 implemented 2026-11-11)
+### WLM policy adjustment audit (2026-11-10; WT-04 and WT-05 implemented 2026-11-11, WT-06 2026-11-12)
 
 [docs/wlm-design.md](docs/wlm-design.md) checks the whole adjustment loop (`src/sim/wlm/adjust.ts` and what feeds
 it) against IBM's description, step by step, and proposes one target model. Fifteen findings with seed-42 repros;
@@ -174,6 +174,10 @@ level or a separate toggle.
   Revenue 20 / 27 / 10 (both unchanged); Harbourline 9.5 / 29 / 8 → 10 / 29 / 6, inside the bands with expert on the
   60 % edge. Seeds 7 and 9 freeze on D29 with the ladder at FC; the 6-interval skip clock is the cause (docs/
   wlm-design.md §9.6). User decision: ship, and WT-06 checks those seeds.
+- WT-06 sweep (2026-11-12, remote, Normal, seeds 1–10, WT-05 `2f614b5` → WT-06 `a0904ec`): Revenue 20 / 27 / 10
+  (unchanged); Midwest 16.5 / 28 / 10 → 9.5 / 28 / 10 (MOBILE's goal is looser than its SLA, and the ladder no
+  longer over-serves DDF; real behaviour, inside the band); Harbourline 10 / 29 / 6 → 10.5 / 30.5 / 7 (seed 9 back;
+  seed 7 lost to W7, WT-10's note). All inside the bands.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -482,6 +486,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-12: WT-06, the canonical ladder (docs/wlm-design.md §5.6, §9.7): goal periods are an order of levels at
+  246, 244, … (unbunching, WLM Services p.139); receivers step one at a time, donors move to the receiver's level or
+  just below (SMF 99 codes 530/540/620/635, p.706–707); the z/OS 1.8 DP table (managed 247–203; promotion 253 and the
+  resource-group minimum 249 in the reserved range). S-1 … S-3: moves 13/29/49 → 25/26/44, undone within two
+  minutes 0 everywhere, projections up 1.5–2×; bench (Harbourline) 1.37 → 1.44 ms/tick. Midwest PROD2 stays on 7–8
+  levels through D8. Sweep in M8.2: Midwest do-nothing 16.5 → 9.5 (planted MOBILE goal/SLA gap no longer hidden),
+  Harbourline expert 6 → 7. Fixed on the way: the missing-goal rule refused donor moves for a more important period
+  that only shared the receiver's level.
 - 2026-11-12: investigation tooling from the WT-05 work, committed (tools only; sim untouched): `inspect … wlm-stats`
   `--by-class`, `--episodes`, `--moves`; `npm run bot` `--changes`, `--trace-day`, `--dump` (tools/botTrace.ts) and
   `--tune` (POLICY_ADJUST overrides, tools/tune.ts), passed through `sweep` and `sweep:remote`; `npm run repro`
