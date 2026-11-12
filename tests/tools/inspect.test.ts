@@ -16,6 +16,29 @@ const trace = (over: Partial<WlmAdjustTrace> = {}): WlmAdjustTrace => ({
 });
 
 describe('wlmStats counts the audit table (WT-01)', () => {
+  it('counts atomic plans, retained steps and projections separately; canonical renumbering does not reverse UP', () => {
+    const steps: NonNullable<WlmTrialTrace['plan']> = [
+      { kind: 'UP', scKey: 'A#1', fromDp: 246, toDp: 246, above: 'B#1' },
+      { kind: 'CARRY', scKey: 'B#1', fromDp: 244, toDp: 246 },
+    ];
+    const rows = [
+      trace({ dps: { 'A#1': 246, 'B#1': 246, 'C#1': 246 }, candidates: [candidate({ trials: [
+        trial({ verdict: 'RETAINED', projected: true }),
+        trial({ verdict: 'ACCEPTED', projected: true, plan: steps, afterDps: { 'A#1': 246, 'B#1': 246, 'C#1': 244 } }),
+      ] })] }),
+      trace({ dps: { 'A#1': 246, 'B#1': 246, 'C#1': 244 }, candidates: [candidate({ trials: [
+        trial({ verdict: 'ACCEPTED', projected: true, plan: [steps[0]!], afterDps: { 'A#1': 246, 'B#1': 244, 'C#1': 242 } }),
+      ] })] }),
+    ];
+    const total = wlmStats(rows).total;
+    expect(total.projections).toBe(3);
+    expect(total.acceptedPlans).toBe(2);
+    expect(total.acceptedSteps).toBe(3);
+    expect(total.acceptedCarry).toBe(1);
+    expect(total.reversed).toBe(0);
+    expect(total.rejectedPiUnder09).toBe(0);
+  });
+
   const busy = trace({
     candidates: [
       candidate({ scKey: 'IO#1', outcome: 'NOT_FIXABLE', bottleneck: 'IO' }),
@@ -53,7 +76,7 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(stats.total.recovering).toBe(1);
     expect(stats.total.trials).toBe(7);
     expect(stats.total.verdicts).toEqual({
-      ACCEPTED: 3, CPU_CRITICAL: 1, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 1, MORE_IMPORTANT_HARMED: 1, EQUAL_DISPARITY: 0, NO_NET_VALUE: 1, PROJECTION_DISAGREES: 0,
+      ACCEPTED: 3, RETAINED: 0, CPU_CRITICAL: 1, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 1, MORE_IMPORTANT_HARMED: 1, EQUAL_DISPARITY: 0, NO_NET_VALUE: 1, PROJECTION_DISAGREES: 0,
     });
     expect(stats.total.acceptedReceiverUp).toBe(2);
     expect(stats.total.acceptedDonor).toBe(1);
@@ -90,6 +113,15 @@ describe('wlmStats counts the audit table (WT-01)', () => {
       .toBe(0);
   });
 
+  it('a donor-only plan helps its primary receiver without ending the donor\'s own episode', () => {
+    const rows = Array.from({ length: 30 }, (_, i) => trace({ candidates: [
+      candidate({ trials: i === 15 ? [trial({ verdict: 'ACCEPTED', plan: [{ kind: 'DONOR', scKey: 'B#1', fromDp: 246, toDp: 244 }] })] : [trial()] }),
+      candidate({ scKey: 'B#1', trials: [trial()] }),
+    ] }));
+    expect(wlmStats(rows, { episodes: true }).episodes?.map((e) => e.scKey)).toEqual(['B#1']);
+    expect(classRows(rows).map((c) => [c.scKey, c.helped])).toEqual([['A#1', 1], ['B#1', 0]]);
+  });
+
   it('prints a column per system, the total, and the requested DP ladder', () => {
     const stats = wlmStats(
       [
@@ -124,6 +156,20 @@ describe('wlmStats counts the audit table (WT-01)', () => {
 });
 
 describe('wlm-stats detail sections: --by-class, --episodes, --moves', () => {
+  it('prints the complete committed plan rather than just its final proposal', () => {
+    const plan: NonNullable<WlmTrialTrace['plan']> = [
+      { kind: 'UP', scKey: 'A#1', fromDp: 244, toDp: 246 },
+      { kind: 'CARRY', scKey: 'B#1', fromDp: 244, toDp: 246 },
+      { kind: 'DONOR', scKey: 'D#1', fromDp: 246, toDp: 244 },
+      { kind: 'UP', scKey: 'A#1', fromDp: 246, toDp: 246, above: 'B#1' },
+    ];
+    const ts = [trace({ candidates: [candidate({ trials: [trial({
+      move: 'UP A#1 DP F6→F6 (above B#1)', verdict: 'ACCEPTED', plan,
+    })] })] })];
+    expect(moveRows(ts)[0]!.move).toBe('UP A#1 DP F4→F6; CARRY B#1 DP F4→F6; DONOR D#1 DP F6→F4; UP A#1 DP F6→F6 (above B#1)');
+    expect(statsText(wlmStats(ts, { moves: true }))).toContain('CARRY B#1 DP F4→F6; DONOR D#1 DP F6→F4');
+  });
+
   const clock = (i: number) => `D1 ${String(6 + Math.floor(i / 360)).padStart(2, '0')}:${String(Math.floor((i % 360) / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`;
   const assessed = (i: number, trials = [trial()]) => trace({ clockText: clock(i), candidates: [candidate({ trials })] });
 

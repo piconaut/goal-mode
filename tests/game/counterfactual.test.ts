@@ -109,9 +109,11 @@ describe('counterfactual validator (RT-06)', () => {
     expect(run.incidents.some((i) => i.startTick === HOUR_START)).toBe(true);
     const log = [...file.log, { cmd: 'note' as const, text: 'the hour starts here' }, { cmd: 'advance' as const, hours: 1 }];
     const text = blameText(encodePlayFile({ ...file, run, log }));
-    // Two incidents since WT-06: a D1 21:00 MOBILE miss with no card on it (POLICY), then the runaway's.
-    expect(text).toContain('2 online incidents');
-    expect(text.split('MOBILE (incident 2)')).toHaveLength(2);
+    // WT-08 prevents the old D1 21:00 policy-only MOBILE miss; the runaway remains a counterfactual cause.
+    // Keep the hour-boundary replay assertion independent of incident numbering on earlier days.
+    const incident = run.incidents.find((i) => i.startTick === HOUR_START && i.workloadId === 'MOBILE')!;
+    expect(text).toContain('1 online incident');
+    expect(text.split(`MOBILE (incident ${incident.id})`)).toHaveLength(2);
     expect(text).toContain('Runaway ad-hoc query [RUNAWAY@1]');
     expect(text).toContain('AGREE: Runaway ad-hoc query is a counterfactual cause');
   });

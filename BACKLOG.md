@@ -379,36 +379,16 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
   a session the user watches; that session sets the entry to `ready` when it starts. Their `after` dependencies
   still hold. With them gated, `dev-loop rca-truth,wlm-truth` reporting both lists finished means "WT-08's turn"
   (WT-04 landed 2026-11-11), not the playtest cue. User request 2026-11-11: one attended session takes WT-04 …
-  WT-09 in order, one PR each, so WT-05 … WT-07 are done there too rather than by `dev-loop`.
+  WT-09 in order, one PR each, so WT-05 … WT-07 are done there too rather than by `dev-loop`. User decision
+  2026-11-12 (after the design review of WT-04 … WT-08): WT-10 goes before WT-09, in the same attended session.
 - **Coefficients** go to `src/content/wlm/tuning.ts` `POLICY_ADJUST` with `// FICTIONAL:` notes (names and starting
   values in §5.10); approximations get `// APPROX:` (§5.10 list). Do not tune a coefficient to move a balance band
   (§8 Q2).
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-08 · A change is a plan: receiver up, secondary receivers, donors down, judged together (W5)
-`list: wlm-truth · status: blocked: user (attended session, after WT-07) · priority: high · size: L · area: sim`
-
-**Coupled core; main agent only.** Implements `buildPlan`, `assess` and whole-plan `netValue`/`receiverValue` of
-§5.3 in `src/sim/wlm/adjust.ts`, replacing the trial list. A plan alternates receiver steps (one ladder step; on a
-net value failure by a period left at or below the receiver that is not less important, carry that period to the
-receiver's level and assess once more) and donor moves (kept only if they lower the receiver's projected PI);
-receiver value is tested on the whole plan against `base`; a rejected plan leaves the ladder untouched;
-`maxPlanSteps` and the interval budget bound it. `AdjustOutput.log` lists the plan's moves; `WlmCandidateTrace`
-records steps (`UP`, `CARRY k`, `DONOR d`) with `base → after` and the rejecting period. `playerReason` unchanged
-in wording. Tests: `wlm-invariants: I2 one change per interval`, `I4`, `I5 no harm to more important work`, `I6
-equal-importance convergence`, `I13 settles` (constant demand: no move after 30 intervals, no reversal), `I16`;
-unit "secondary receiver is carried" (the Redbook's shape: I, H at one level, moving I alone fails net value on H,
-moving both passes; SG24-6472 p.67); unit "a failing donor stays, the next is tried"; unit "a plan without receiver
-value changes nothing". Goldens: change. Done when: in S-1 and S-3 the share of `MORE_IMPORTANT_HARMED` among
-assessed steps falls below half its baseline (58 %, 42 %), "reversed by its next move" is at most 20 % of §1's
-baseline in each of S-1 … S-3, and the existing equal-importance realism test (Midwest seed 7, PROD1 defined
-capacity 200) still passes. Bench: tick time not above the WT-07 commit by more than 5 %. Bots: textbook 0 to + 2
-days, others small. SPEC §5.5.4 pseudocode replaced by §5.3's; §17 "Policy adjustment" row rewritten; research.md
-rows "CPU move is projected for every class…", "secondary receivers" updated.
-
 ### WT-09 · Server periods hold the regions' priority (W3)
-`list: wlm-truth · status: blocked: user (attended session, after WT-08) · priority: high · size: L · area: sim`
+`list: wlm-truth · status: blocked: user (attended session, after WT-10) · priority: high · size: L · area: sim`
 
 **Main agent (cross-layer).** Implements §5.1 holders and §5.8. `WlmSystemState.servers` (`runtime.ts`);
 `cicsRegions` (`tick/helpers.ts`) returns `serverKey` (`$SRMS001`) when any AOR on the image is TRANSACTION;
@@ -430,11 +410,16 @@ and the free ride*.
 Since CL-06: `cicsRegions` is built once per lookup plan (`regionsOf` in `tick/plan.ts`, called from `imageInput` in
 `tick/dispatch.ts`) and may only read slice template fields; `serverKey` belongs there, while the server period's DP
 and other per-tick region state stay out of the plan.
+After WT-10 (design review, 2026-11-12). Since WT-08 the ladder, `buildPlan`, the donor filter (`usedEngines`) and
+the missing-goal rule's "passed or joined" test read goal periods; each has to work on holders here, and a carry of
+a period that shares the receiver's holder is void. WT-09 does not change the capped-PROD1 case (Db2 in STCHI below
+its client): Db2 is not in the server topology, which is the CICS/IMS address spaces (SG24-6472-03 p.62). Done when
+also: the S-1 … S-3 table and RT-06 differences against WT-10.
 
 ### WT-10 · Managed bottlenecks in turn; waits are not delays (W7)
-`list: wlm-truth · status: ready · priority: low · size: S · area: sim`
+`list: wlm-truth · status: ready · priority: high · size: S · area: sim`
 
-Implements §5.7 in `adjust.ts`: `bottleneckOf` is replaced by `managedDelayFrac(acc)` (WT-05 added it, for the
+Do before WT-09 (user decision 2026-11-12). Implements §5.7 in `adjust.ts`: `bottleneckOf` is replaced by `managedDelayFrac(acc)` (WT-05 added it, for the
 delay test) and
 `fixableBottlenecks(acc, C)`; `delayOther` leaves the comparison; CPU and zIIP are tried in order of delay when
 each is at least `bottleneckMinFrac` of the managed delay, even when I/O, storage or cap is larger. `ScpAcc` gains
@@ -442,8 +427,10 @@ decayed `delayStorage` and `delayQueue` (today only in the `delay` total). The n
 mostly waiting reads `mostly waiting, CPU delay n %: not WLM-fixable`. Tests: `wlm-invariants: I14 not fixable, not
 moved`; unit "45 % other, 40 % CPU delay: a CPU plan is tried"; the existing realism test "Db2 MSTR starvation
 raises DDF response time without raising DDF CPU delay" still passes and its log line has the waiting note.
-Goldens: change. Done when: S-3's "not assessed: bottleneck OTHER / I/O" (5 291 / 4 208) are replaced by
-`NO_MANAGED_DELAY` or assessed candidates, with the counts in the PR. Bots: small. Cross-note: **RT-19** splits the
+Goldens: change. Done when: S-1 … S-3 "not assessed: other / I/O bottleneck" (572 / 0, 4 771 / 0, 5 520 / 106 at
+WT-08) are replaced by `NO_MANAGED_DELAY` or assessed candidates, with the counts in the PR; and Midwest seed 42
+PROD2 DDFPRD#1 at D1 21:40 on `1f4f212` (local PI 4.00, CPU 59 %, zIIP 30 %, OTHER 251 %, below BATCHPRD#1) gets a
+CPU and a zIIP plan. Bots: Midwest and Harbourline are expected to move (docs/wlm-design.md §9.7 correction). Cross-note: **RT-19** splits the
 same waits (`serverCpu`, `serverOther`) for RCA truth; share the per-period split rather than computing it twice.
 From WT-06 (2026-11-12, docs/wlm-design.md §9.7): Harbourline expert seed 7 is lost to a D29 freeze this causes. At
 D29 11:00 on PRDA, MKTORD#1 (importance 1) and ONLHI#1 (2) have 98 % CPU delay and are `NOT_FIXABLE` because their
@@ -497,6 +484,23 @@ that document's status line says what is implemented. Then a 20-seed three-scena
 Normal), recorded in PROGRESS.md M8.2 against the bands, with out-of-band medians filed as `balance` entries.
 Done when: the sweep table is in PROGRESS.md and every finding W1 … W11 in docs/wlm-design.md §4 is marked fixed,
 parked or declined.
+
+### WT-16 · Joining a level projects much worse than staying below it (projection question)
+`list: wlm-truth · status: ready · priority: medium · size: S · area: sim`
+
+From the design review of WT-04 … WT-08 (2026-11-12), unverified. On the capped-PROD1 fixture (Midwest seed 7,
+PROD1 defined capacity 200, DB* in STCHI), STCHI#1 (importance 1, holds Db2) projects 4.26 below ONLHI#1 and 26.37
+on ONLHI's level (D1 14:30:40 at `e7015cb`), and 0.74 above it from a base of 4.00 (`1f4f212`'s accepted move at
+14:02:40). A second case, on S-1 (Midwest seed 42) PROD2 at D1 22:00:20 (`6306f1c`): raising BATCHPRD#1 onto
+DDFPRD#2's level takes DDFPRD#2 from 0.35 to 7.74, and DDFPRD#1 lowered to BATCHPRD#1's level goes from 0.50 to
+51.15; both may be the same level-sharing effect. Equal-DP work shares by
+ready units, and ONLHI waits for Db2 in STCHI, so the level-shared projection may starve the server its client
+waits on. How real z/OS dispatches work at one priority is to be checked with zos-docs. Investigate first:
+`npm run inspect` on a play-CLI copy of the fixture, the per-level grants in `evaluateLpar`, and whether the level
+share should weight by demand rather than units. Report before any model change; if the sharing rule is wrong, the
+fix is a model change for the main agent, goes before WT-09 (whose regions share their holder's level), and needs
+goldens, the S-1 … S-3 table and a sweep. Done when: the cause is recorded in docs/wlm-design.md with a verdict
+(artefact fixed, or real and explained).
 
 ## pr-followups
 
@@ -618,18 +622,6 @@ dependency incident, but `src/content/evidence.ts` accepts that metric only for 
 use `DELAY_CPU` or restrict the example to the CPU mechanisms. This is a documentation correction, not a scoring
 change. Done when: A9's example matches the accepted mechanisms and relation/notability rules, preserving its
 explanation of the remaining proof-recipe gap.
-
-### PR-14 · Receiver trials are cumulative plans, logged and counted as single moves
-`list: pr-followups · status: ready · priority: low · size: S · area: sim`
-
-From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. The receiver-up loop in `policyAdjust` (`src/sim/wlm/adjust.ts`) carries `up` forward, so trial N is steps
-1…N; one accepted "move" can be a four-step plan (batch-recovery fixture: `BATCHPRD#1 DP F0→F5`). The code comment,
-SPEC §5.5.4 and the docs/research.md move-codes row say "each trial is a single move", and `inspect … wlm-stats`
-counts accepted plans as moves. A top-level split also logs `DP F6→F7`, the one priority never occupied, while the
-stored DP stays F6 and the mate drops a level. Keep the cumulative trials (WT-08 builds plans on them); fix the
-wording, add a step count to the trace and `wlm-stats` (moves vs steps), and log a split's stored effect rather than
-F7. Log text may move goldens; no behaviour change otherwise. Done when: the docs say "plan of steps", `wlm-stats`
-reports both counts, no log names F7, and `npm run compare` shows only log/report differences.
 
 ### PR-15 · A policy edit can leave discretionary work on the ladder, or a new goal at the bottom
 `list: pr-followups · status: ready · priority: high · size: M · area: sim`

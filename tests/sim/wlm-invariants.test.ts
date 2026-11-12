@@ -89,6 +89,86 @@ function traced(input: AdjustInput): { out: AdjustOutput; trace: WlmAdjustTrace 
 const SEEDS = Array.from({ length: 150 }, (_, i) => i + 1);
 
 describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
+  it('repairs aggregate equal-importance NO_NET_VALUE by carrying its largest harmed period (real evaluator)', () => {
+    // Tied lower periods G00/G03/G06 below five donors. Raising G00 alone narrows each PI gap but
+    // costs more total harm than it gains; carrying G03 preserves the gain without that harm.
+    const { input } = makeCase(1044, 'rest');
+    for (const c of input.def.classes.filter((c) => c.id.startsWith('G'))) c.periods[0]!.importance = 2;
+    input.system.scps.forEach((p, i) => { p.dp = i % 3 === 0 ? 244 : 246; });
+    const held = Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]));
+    input.current = evaluateLpar({ ...input.evalInput, dpOf: (k) => held[k]! }).scps;
+    for (const p of input.system.scps) p.acc = decayInto(emptyAcc(), input.current.find((t) => t.scKey === p.scKey)!);
+    const { out, trace } = traced(input);
+    const receiver = trace.candidates[0]!;
+    expect(receiver.scKey).toBe('G00#1');
+    expect(receiver.trials.map((t) => t.verdict)).toEqual(['NO_NET_VALUE', 'ACCEPTED']);
+    expect(receiver.trials[0]!.blockedBy).toBe('G03#1');
+    expect(receiver.trials[0]!.detail).toBe('gain 149.37 ≤ equal-importance harm 192.30');
+    expect(receiver.trials[1]!.plan?.map((m) => [m.kind, m.scKey])).toEqual([['UP', 'G00#1'], ['CARRY', 'G03#1']]);
+    expect(out.dps).toEqual({ 'G00#1': 244, 'G01#1': 246, 'G02#1': 246, 'G03#1': 244, 'G04#1': 246, 'G05#1': 246, 'G06#1': 242, 'G07#1': 246 });
+    expect(receiver.trials[1]!.receiverPi![1]!).toBeCloseTo(90.90406894046295);
+    expect(receiver.trials[1]!.afterPis!['G03#1']).toBeCloseTo(2.6765215857532136);
+  });
+
+  it('I13 settles at constant demand: no plan after interval 30, including ten subsequent clock cycles', () => {
+    const { input } = makeCase(134, 'rest');
+    let system = input.system;
+    let changed = 0;
+    for (let tick = 0; tick < 90; tick++) {
+      const held = Object.fromEntries(system.scps.map((p) => [p.scKey, p.dp]));
+      const current = evaluateLpar({ ...input.evalInput, dpOf: (k) => held[k]! }).scps;
+      system = { ...system, scps: system.scps.map((p) => ({ ...p, acc: decayInto(p.acc, current.find((c) => c.scKey === p.scKey)!) })) };
+      const out = policyAdjust({ ...input, system, current, nowTick: tick });
+      if (out.log?.includes('RCVR=')) { changed++; expect(tick).toBeLessThan(30); }
+      system = { ...system, scps: system.scps.map((p) => {
+        const { skipUntilTick: _, resumeSearch: _r, ...rest } = p;
+        return { ...rest, dp: out.dps[p.scKey]!, ...(out.skipUntil[p.scKey] !== undefined ? { skipUntilTick: out.skipUntil[p.scKey] } : {}),
+          ...(out.resumeAt === p.scKey ? { resumeSearch: true as const } : {}) };
+      }) };
+    }
+    expect(changed).toBeGreaterThan(0);
+  });
+
+  it('I2/I5/I6: one atomic plan, safe for every period, with receiver value on the original base', () => {
+    let accepted = 0, carried = 0;
+    for (const seed of SEEDS) {
+      const { input } = makeCase(seed, 'rest');
+      const { out, trace } = traced(input);
+      const plans = trace.candidates.flatMap((c) => c.trials.filter((t) => t.verdict === 'ACCEPTED').map((t) => ({ c, t })));
+      expect(plans.length).toBeLessThanOrEqual(1);
+      if (plans.length === 0) { expect(out.dps).toEqual(trace.dps); continue; }
+      accepted++;
+      const { c, t } = plans[0]!;
+      expect(t.plan!.length).toBeLessThanOrEqual(POLICY_ADJUST.maxPlanSteps);
+      carried += t.plan!.filter((m) => m.kind === 'CARRY').length;
+      const piAt = (dps: Record<string, number>) => Object.fromEntries(evaluateLpar({ ...input.evalInput, dpOf: (k) => dps[k]! }).scps.map((s) => {
+        const g = goalInfo(input.def, s.scKey)!.goal;
+        return [s.scKey, g.kind === 'PCT' ? projectedPercentilePi(s.buckets, g.pct, s.completions, s.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, s)];
+      }));
+      const before = piAt(trace.dps), after = piAt(out.dps);
+      expect(t.afterPis).toEqual(after);
+      const r0 = before[c.scKey]!, r1 = after[c.scKey]!;
+      expect(r0 - r1).toBeGreaterThanOrEqual(receiverValueNeeded(r0));
+      let equalHarm = 0;
+      for (const k of Object.keys(before)) {
+        if (k === c.scKey || before[k] == null || after[k] == null) continue;
+        const importance = goalInfo(input.def, k)!.importance;
+        const p0 = before[k]!, p1 = after[k]!;
+        const harm = Math.max(0, p1 - Math.max(p0, POLICY_ADJUST.creditFloor));
+        if (importance < c.importance) {
+          if (p0 <= 1) expect(p1).toBeLessThanOrEqual(1);
+          else expect(harm).toBeLessThanOrEqual(POLICY_ADJUST.harmEps);
+        } else if (importance === c.importance && harm > POLICY_ADJUST.harmEps) {
+          expect(Math.abs(r1 - p1)).toBeLessThan(Math.abs(r0 - p0));
+          equalHarm += harm;
+        }
+      }
+      if (equalHarm > 0) expect(r0 - Math.max(r1, POLICY_ADJUST.creditFloor)).toBeGreaterThan(equalHarm);
+    }
+    expect(accepted).toBeGreaterThan(20);
+    expect(carried).toBeGreaterThan(0); // seed 134 needs the carry: real dispatcher and PI computation, not a fake assessor.
+  });
+
   it('I7 donor order: trials follow happy PI order, then reverse importance/PI order on the delayed processor', () => {
     let donorsTried = 0;
     let happyTried = 0;
@@ -114,8 +194,9 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
         for (const imp of [5, 4, 3, 2, 1]) expected.push(...pool.filter((p) => p.pi >= 1 && p.importance === imp).sort(byPi));
         const order = expected.slice(0, POLICY_ADJUST.donorsPerReceiver).map((p) => p.key);
         expect(c.donors).toEqual(order);
-        const tried = c.trials.filter((t) => t.move.startsWith('DONOR ')).map((t) => t.move.split(' ')[1]!);
-        expect(tried).toEqual(order.slice(0, tried.length));
+        const tried = c.trials.filter((t) => t.steps?.[0]?.kind === 'DONOR').map((t) => t.steps![0]!.scKey);
+        expect(tried).toEqual(order.filter((k) => tried.includes(k)));
+        expect(new Set(tried).size).toBe(tried.length);
         donorsTried += tried.length;
         happyTried += tried.filter((k) => pool.find((p) => p.key === k)!.pi < 1).length;
         unhappyTried += tried.filter((k) => pool.find((p) => p.key === k)!.pi >= 1).length;
@@ -227,7 +308,7 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
 
   /** Projections a trace's trials cost: a CPU-protection or missing-goal rejection is decided without one. */
   const projections = (t: WlmAdjustTrace) =>
-    t.candidates.flatMap((c) => c.trials).filter((tr) => tr.verdict !== 'CPU_CRITICAL' && !tr.detail?.includes('would be passed')).length;
+    t.candidates.flatMap((c) => c.trials).filter((tr) => tr.projected).length;
 
   it('I16 cost bound: at most maxProjectionsPerInterval projections per interval, none when every candidate is on its clock', () => {
     let spent = 0;

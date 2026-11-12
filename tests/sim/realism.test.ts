@@ -17,6 +17,7 @@ import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
 import { setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { committedMoves } from '../helpers/wlmMoves';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
 
@@ -668,8 +669,12 @@ describe('event cards (SPEC §9)', () => {
   beforeAll(() => {
     for (let i = 0; i < 4 * 360; i++) base = step(base, [], MIDWEST);
   });
-  const run = (cmds: Parameters<typeof step>[1]) => {
-    let s = step(base, cmds, MIDWEST);
+  const run = (cmds: Parameters<typeof step>[1], holdPriorities = false) => {
+    // A fixed-policy pair isolates the card's CPU pressure from WLM's adaptive priority decisions.
+    const held = holdPriorities ? { ...base, wlm: { ...base.wlm, systems: base.wlm.systems.map((sys) => ({
+      ...sys, scps: sys.scps.map((p) => ({ ...p, skipUntilTick: base.tick + 182 })),
+    })) } } : base;
+    let s = step(held, cmds, MIDWEST);
     let qr = 0;
     let n = 0;
     let devtMsu = 0;
@@ -691,11 +696,21 @@ describe('event cards (SPEC §9)', () => {
   };
   const card = (id: string) => MIDWEST_EVENTS.find((e) => e.id === id)!.begin;
 
-  it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD', () => {
+  it('shadow IT on TSO lifts DEVT MSU and slows mobile at fixed priorities', () => {
+    const asIs = run([], true);
+    const shadow = run(card('SHADOW_IT'), true);
+    expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
+    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+  }, 60_000);
+
+  it('adaptive WLM can improve mobile when shadow IT displaces work above it', () => {
+    // WT-08's legal happy-donor plan at 09:41 puts DDFPRD#2 above MOBILE's DDFPRD#1. Additional TSO
+    // demand can displace #2 and help MOBILE: increased total CPU demand is not monotonic per workload.
+    // Accepted as a scenario change (user decision 2026-11-12, docs/wlm-design.md §9.9).
     const asIs = run([]);
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
-    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+    expect(shadow.mobileRtMs).toBeLessThan(asIs.mobileRtMs);
   }, 60_000);
 
   it('a non-threadsafe release raises QR wait for teller transactions', () => {
@@ -1023,7 +1038,7 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
   // 4.0, but WLM's projection must still see the gain of a DP move, and the wait for its own regions is CPU delay.
   // ONLHI already ties with its regions and Db2 in STCHI, and equal-DP work shares by ready units, so the light
   // region and Db2 work keeps its CPU: lifting ONLHI over them would only starve the servers it waits for.
-  it('ONLHI stays CPU-bound on PROD1 once capped, and nothing less important is raised past it', () => {
+  it('capped ONLHI logs its CPU rejection, and nothing less important is raised past it', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
@@ -1043,13 +1058,28 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       setWlmTraceSink(null);
     }
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
-    // Db2 is in STCHI here. A happy STCHI may donate to a less important receiver (WT-07, SG24-6472 p.59–60: happy
-    // donors by PI, importance ignored). The projection sees ONLHI's longer waits for Db2, but ONLHI's percentile PI
-    // is at its 0.5 floor, so the move shows no harm and ONLHI can be wait-bound (OTHER) for a moment until STCHI
-    // misses its goal and is raised again (docs/wlm-design.md §9.8). Only then.
-    lines.forEach((l, i) => {
-      if (/ONLHI#1 .*BTLNK=OTHER/.test(l)) expect(lines.slice(Math.max(0, i - 5), i).some((p) => /DONOR STCHI#1 /.test(p)), l).toBe(true);
-    });
+    const firstClock = traces.find((t) => t.candidates.some((c) => c.scKey === 'ONLHI#1' && c.outcome === 'ASSESSED' && c.skipUntilTick !== undefined))!;
+    expect(firstClock).toBeDefined();
+    expect(lines.some((l) => l.startsWith(`${firstClock.clockText} PROD1 ONLHI#1`) && l.includes('no action with net value') && l.includes('rejected:'))).toBe(true);
+    // Db2 is in STCHI here. A happy STCHI may donate (WT-07, SG24-6472 p.59–60), and ONLHI then waits for it (OTHER)
+    // until STCHI misses its goal and is raised back above ONLHI. That raise needs the move to the free priority above
+    // ONLHI, assessed even when joining ONLHI's level is worse for STCHI (WLM Services p.707, code 630; the design
+    // review of 2026-11-12 found WT-08 without it, OTHER to the 16:00 end of this window).
+    let donated = false, other = 0;
+    for (const t of traces) {
+      const c = t.candidates.find((c) => c.scKey === 'ONLHI#1');
+      if (c?.outcome === 'NOT_FIXABLE' && c.bottleneck === 'OTHER') {
+        other++;
+        expect(donated, t.clockText).toBe(true);
+      }
+      if (t.candidates.some((c) => c.trials.some((tr) => tr.verdict === 'ACCEPTED' && tr.plan?.some((m) => m.kind === 'DONOR' && m.scKey === 'STCHI#1')))) donated = true;
+    }
+    expect(other).toBeGreaterThan(0);
+    expect(other).toBeLessThanOrEqual(60);
+    // Once assessed as a receiver below ONLHI, STCHI is back above ONLHI within five minutes (30 adjustments).
+    const first = traces.findIndex((t) => t.dps['STCHI#1']! < t.dps['ONLHI#1']! && t.candidates.some((c) => c.scKey === 'STCHI#1' && c.outcome === 'ASSESSED'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(traces.slice(first, first + 31).some((t) => t.dps['STCHI#1']! > t.dps['ONLHI#1']!), traces[first]!.clockText).toBe(true);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
     // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
     // Under the cap a less important receiver may not pass more important work that is missing its goal and using
@@ -1073,25 +1103,22 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
   it('equally important classes do not keep taking DP from each other', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
-    const move = /PROD2 RCVR=(?:TSO#2|DDFPRD#2) .*?(TSO#2|DDFPRD#2) DP ([0-9A-F]+)→([0-9A-F]+)/;
-    const lines: string[] = [];
-    for (let t = 0; t < 4.5 * 360; t++) {
-      const prev = s.wlm.log;
-      s = step(s, [], MIDWEST);
-      if (s.wlm.log === prev) continue;
-      const last = prev[prev.length - 1];
-      const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
-      for (const l of s.wlm.log.slice(from)) if (/ (09|10):\d\d:\d\d /.test(l) && move.test(l)) lines.push(l);
+    const pair = ['TSO#2', 'DDFPRD#2'];
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => {
+      if (t.lparId === 'PROD2' && / (09|10):\d\d:\d\d$/.test(t.clockText) && t.candidates.some((c) => pair.includes(c.scKey) && c.trials.some((tr) => tr.verdict === 'ACCEPTED'))) traces.push(t);
+    });
+    try {
+      for (let t = 0; t < 4.5 * 360; t++) s = step(s, [], MIDWEST);
+    } finally {
+      setWlmTraceSink(null);
     }
-    expect(lines.length).toBeGreaterThan(0);
-    const donorMoves = lines.filter((l) => /RCVR=TSO#2 .*DONOR DDFPRD#2|RCVR=DDFPRD#2 .*DONOR TSO#2/.test(l));
+    expect(traces.length).toBeGreaterThan(0);
+    const donorMoves = traces.flatMap((t) => t.candidates.filter((c) => pair.includes(c.scKey)).flatMap((c) => c.trials.filter((tr) => tr.verdict === 'ACCEPTED').flatMap((tr) => tr.plan!.filter((m) => m.kind === 'DONOR' && m.scKey !== c.scKey && pair.includes(m.scKey)))));
     expect(donorMoves.length).toBeLessThanOrEqual(1);
     // Neither class's DP goes down, up and down again.
     const reversals = (sc: string) => {
-      const dirs = lines.flatMap((l) => {
-        const m = move.exec(l)!;
-        return m[1] === sc ? [Math.sign(parseInt(m[3]!, 16) - parseInt(m[2]!, 16))] : [];
-      });
+      const dirs = traces.flatMap(committedMoves).filter((m) => m.who === sc).map((m) => m.dir);
       return dirs.filter((d, i) => i > 0 && d !== dirs[i - 1]).length;
     };
     expect(reversals('TSO#2')).toBeLessThanOrEqual(1);

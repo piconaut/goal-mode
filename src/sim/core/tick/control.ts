@@ -60,6 +60,25 @@ export function prsm(t: TickCtx): void {
   }
 }
 
+const LINE_HEAD = /^D(\d+) (\d\d):(\d\d):(\d\d) (\S+) (\S+) /;
+const lineTick = (m: RegExpExecArray) => (Number(m[1]) * 86400 + Number(m[2]) * 3600 + Number(m[3]) * 60 + Number(m[4])) / 10;
+/** A no-action note without its clock, PI and next look: what WLM tried and why it was rejected. */
+const clueOf = (line: string) => line.replace(LINE_HEAD, '$5 $6 ').replace(/ PI=[\d.]+/, '').replace(/, next look \S+$/, '');
+
+/** True when the last line about this note's receiver on its system is the same clue, less than 5 minutes old. */
+export function repeatsClue(log: readonly string[], note: string): boolean {
+  const m = LINE_HEAD.exec(note);
+  if (!m) return false;
+  const named = ` ${m[5]} ${m[6]} `, received = ` ${m[5]} RCVR=${m[6]} `;
+  for (let i = log.length - 1; i >= 0; i--) {
+    const l = log[i]!;
+    if (!l.includes(named) && !l.includes(received)) continue;
+    const p = LINE_HEAD.exec(l);
+    return p !== null && lineTick(m) - lineTick(p) < 30 && clueOf(l) === clueOf(note);
+  }
+  return false;
+}
+
 /** 12b. Policy adjustment, one receiver per system. */
 export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSystemState[]; log: string[] } {
   const { prev, def, plan, systems, lparTicks, evalInputs } = t;
@@ -91,7 +110,14 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
       if (log === prev.wlm.log) log = [...log];
       log.push(out.protect);
     }
-    if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
+    // A newly clocked receiver may never land on the five-minute no-action cadence, so its clue is logged when the
+    // clock starts; a stuck receiver re-clocks every minute, so an unchanged clue is repeated at most every 5 minutes.
+    for (const note of out.clockNotes) {
+      if (repeatsClue(log, note)) continue;
+      if (log === prev.wlm.log) log = [...log];
+      log.push(note);
+    }
+    if (out.log && !out.clockNotes.includes(out.log) && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
       if (log === prev.wlm.log) log = [...log];
       log.push(out.log);
     }

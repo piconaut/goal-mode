@@ -183,6 +183,21 @@ level or a separate toggle.
 - WT-07 sweep (2026-11-12, remote, Normal, seeds 1–10, `6c00eca`): Midwest 9.5 / 28 / 10 and Revenue 20 / 27 / 10
   (unchanged); Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook 1 victory). Inside the CI gate's bands; Midwest
   do-nothing stays below the design target.
+- WT-08 sweep (2026-11-12, draft #316 `e4902b7`, Normal, seeds 1–10): Midwest 16.5 / 28 / 10,
+  Harbourline 10.5 / 30.5 / 7 (textbook 1 victory), Revenue 20.5 / 27 / 10. All inside the CI bands; Midwest
+  do-nothing improves seven days versus WT-07, outside the expected small change, and returns to its pre-WT-06 16.5,
+  inside SPEC §16's day 12–18 design target. The review-fix sweeps match `111cce1`'s preliminary medians/victories.
+  User decision (2026-11-12): accepted, no balance entry. Coefficients were not tuned to recover the old outcomes.
+  Final head after the last review fixes (`9122490`, remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10, Harbourline
+  10 / 30.5 / 7 (textbook 1 victory), Revenue 20.5 / 27 / 10; all inside the bands
+  ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43241910317),
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43241910407),
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43241910326)).
+  After the design-review planner fix (`d9617a4`, remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10, Harbourline
+  10.5 / 30 / 7 (textbook 1 victory), Revenue 20.5 / 27 / 10; all inside the bands
+  ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43253180617),
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43253182591),
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43253182465)).
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -490,6 +505,40 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   Use commit/PR links for completed detail rather than rebuilding a chronological transcript.
 
 ## Latest maintenance
+
+- 2026-11-12: WT-08 implements atomic policy plans (`buildPlan`): original-base net value, whole-plan receiver
+  value, secondary carries, bounded join-and-split repair, six retained moves, and real-projection budget checks
+  before every retry. Rejected/uncommitted plans leave live DPs untouched. Receiver stages advance until blocked;
+  a safe donor opens another receiver stage. Traces and statistics distinguish proposals, plans, retained steps
+  and net rank reversals; canonical stored DP targets with split anchors address PR-14. WT-08 remains open in
+  BACKLOG while draft #316 is validated and the unmet historical criteria and scenario changes are settled.
+  Audit, sweep and review results are recorded in docs/wlm-design.md §9.9 and M8.2 when complete.
+
+- 2026-11-12: WT-08 draft review fixes (`e4902b7`): aggregate NO_NET_VALUE names its largest equal-harm blocker;
+  safe partial failures retain a player clue; new skip clocks log that clue off cadence; player explanations and
+  inspect show complete plans. Full local check and CI pass 1 017 tests/90 files. Adversarial review found two
+  convergence-test parsers that could miss live reversals; both now use committed ladder ordering, with explicit
+  counterexamples. Final-head audit: plans 19/28/66, projections 1 093/3 318/2 814, reversals 1/3/10 (zero within
+  two minutes), episodes 1/3/2. S-1 raw harm share 45.5% and S-3 reversals remain above their targets. RT-06:
+  online incidents 2/2/13 → 0/2/15; S-3 adds two CARDS QR_TCB/POLICY misses, common causes/agreements unchanged.
+  Midwest's survival shift, shadow-IT's adaptive MOBILE improvement and the longer capped ONLHI OTHER episode
+  remain acceptance questions. No coefficient or happy-donor restriction was introduced to hide them.
+
+- 2026-11-12: WT-08 accepted (user decision after the #316 review): the legal happy-donor plans, the scenario and
+  balance changes (Midwest do-nothing 9.5 → 16.5, back inside SPEC §16's target; online incidents 2/2/13 → 0/2/15;
+  the shadow-IT card can help MOBILE under adaptive WLM), and the two unmet Done-when criteria with restated
+  targets (docs/wlm-design.md §9.9). The capped-PROD1 ONLHI OTHER episode is WT-10's; its test now bounds it.
+  Last review fixes: a plan's raise may no longer undo what its retained moves bought, and an unchanged skip-clock
+  clue is logged at most every five minutes (seed 42 day 1: 105/66/25 → 33/40/20 lines on Midwest/Revenue/
+  Harbourline).
+
+- 2026-11-12: design review of WT-04 … WT-08 by the design's author (docs/wlm-design.md §9.9). Fixed on #316: the
+  planner now assesses the place above the next level when joining it is worse for the receiver (WLM Services p.707,
+  code 630); the capped-PROD1 ONLHI episode is back to 30 adjustments, so it is not WT-10's. Criteria restated:
+  WT-05 (a regression check by construction, §9.6), WT-08 (harm share dropped; assessed candidates ending in a plan
+  must not fall without an explanation; reversals reported against the previous entry). §9.7 corrected: Midwest's
+  do-nothing swing rides on W7. User decision: WT-10 goes before WT-09. New WT-16: why joining a level projects much
+  worse than staying below it.
 
 - 2026-11-12: queued PR-20 for repeated `NOT_FIXABLE` checks: report those streaks separately from the existing
   `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in

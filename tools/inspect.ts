@@ -28,6 +28,7 @@ import { blameIncident, summarizeBlame, type IncidentBlame } from '../src/game/c
 import { BATCH_INCIDENT } from '../src/game/sla';
 import type { Incident, RunState } from '../src/game/types';
 import { setWlmTraceSink, type WlmAdjustTrace, type WlmCandidateTrace, type WlmTrialVerdict } from '../src/sim/wlm/adjust';
+import { formatPlanMoves } from '../src/sim/wlm/plan';
 
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
 
@@ -88,7 +89,8 @@ function candidateLines(c: WlmCandidateTrace, n: number): string[] {
       const r = t.receiverPi ? `  rcvr PI ${piText(t.receiverPi[0])}→${piText(t.receiverPi[1])}` : '';
       return `       ${t.move.padEnd(30)} ${t.verdict}${r}${t.detail ? `  ${t.detail}` : ''}`;
     }),
-    ...(nextLook ? [`${nextLook} (all rejected: skip clock set)`] : []),
+    ...(c.planOutcome && c.planOutcome !== 'ACCEPTED' ? [`       plan ended: ${c.planOutcome}; no tentative moves committed`] : []),
+    ...(nextLook ? [`${nextLook} (${c.planOutcome ? 'plan not committed' : 'all rejected'}: skip clock set)`] : []),
   ];
 }
 
@@ -172,6 +174,10 @@ export interface WlmStatsCounters {
   /** `BUDGET` candidates: the interval's projection budget was spent before them. */
   budget: number;
   trials: number;
+  projections: number;
+  acceptedPlans: number;
+  acceptedSteps: number;
+  acceptedCarry: number;
   /** Trials by verdict. `ACCEPTED` is the move the adjustment took. */
   verdicts: Record<WlmTrialVerdict, number>;
   /** Accepted trials that raised the receiver, and those that lowered a donor. */
@@ -208,12 +214,12 @@ export interface WlmStats {
 }
 
 const emptyCounters = (): WlmStatsCounters => ({
-  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, OTHER: 0, CAP: 0, NONE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, clocksSet: 0, trials: 0,
-  verdicts: { ACCEPTED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
+  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, OTHER: 0, CAP: 0, NONE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
+  verdicts: { ACCEPTED: 0, RETAINED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
   acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, episodes: 0,
 });
 
-const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE', 'PROJECTION_DISAGREES'];
+const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'RETAINED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE', 'PROJECTION_DISAGREES'];
 
 const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounters['notFixable'] => {
   switch (b) {
@@ -239,8 +245,8 @@ const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounte
 /** A trial's move text names the period and its new DP: `ONLHI#1 DP 20→21` or `DONOR X DP 20→1F`. */
 const MOVED = /^(DONOR\s+)?(\S+)\s+DP\s+([0-9A-F]+)→([0-9A-F]+)$/;
 
-/** One episode (`--episodes`): a period's run of assessments without being the receiver of an accepted move, once
- * it reached 30. `end` is the clock of the receiver move that ended it, or null when the range ended first. */
+/** One episode (`--episodes`): a period's run of assessments without a committed plan helping it, once
+ * it reached 30. `end` is that plan's clock, or null when the range ended first. Legacy traces count receiver moves. */
 export interface WlmEpisode {
   lparId: string;
   scKey: string;
@@ -285,22 +291,41 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
       }
       for (const tr of cand.trials) {
         c.trials++;
+        if (tr.projected ?? (!['CPU_CRITICAL', 'PROJECTION_DISAGREES'].includes(tr.verdict) && !(tr.verdict === 'MORE_IMPORTANT_HARMED' && tr.receiverPi?.[1] == null))) c.projections++;
         c.verdicts[tr.verdict]++;
+        if (tr.verdict === 'RETAINED') continue;
         if (tr.verdict !== 'ACCEPTED') {
           const pi = tr.receiverPi?.[0] ?? null;
           if (pi === null) c.rejectedPiNull++;
           else if (pi <= 0.9) c.rejectedPiUnder09++;
           continue;
         }
-        const m = MOVED.exec(tr.move);
-        if (!m) continue;
-        if (m[1] !== undefined) {
-          c.acceptedDonor++;
+        c.acceptedPlans++;
+        if (tr.plan) {
+          c.acceptedSteps += tr.plan.length;
+          receiverMoved.add(cand.scKey);
+          // A plan is applied once: internal steps do not reverse each other in live state.
+          for (const m of tr.plan) {
+            if (m.kind === 'DONOR') c.acceptedDonor++;
+            else if (m.kind === 'CARRY') c.acceptedCarry++;
+            else c.acceptedReceiverUp++;
+            if (!tr.afterDps) moved.set(m.scKey, m.kind === 'DONOR' ? -1 : 1);
+          }
+          if (tr.afterDps) {
+            const rank = (ds: Record<string, number>, key: string) => Object.keys(ds).sort().reduce((sum, k) => sum + Math.sign(ds[key]! - ds[k]!), 0);
+            for (const key of [...new Set(tr.plan.map((m) => m.scKey))].sort()) {
+              const delta = rank(tr.afterDps, key) - rank(t.dps, key);
+              if (delta !== 0) moved.set(key, delta > 0 ? 1 : -1);
+            }
+          }
         } else {
-          c.acceptedReceiverUp++;
-          receiverMoved.add(m[2]!);
+          const m = MOVED.exec(tr.move);
+          if (!m) continue;
+          c.acceptedSteps++;
+          if (m[1] !== undefined) c.acceptedDonor++;
+          else { c.acceptedReceiverUp++; receiverMoved.add(m[2]!); }
+          moved.set(m[2]!, parseInt(m[4]!, 16) > parseInt(m[3]!, 16) ? 1 : -1);
         }
-        moved.set(m[2]!, parseInt(m[4]!, 16) > parseInt(m[3]!, 16) ? 1 : -1);
       }
     }
     for (const [period, dir] of moved) {
@@ -311,7 +336,8 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
       }
       lastDirection.set(period, { dir, at });
     }
-    // A receiver move ends its own run; a donor move does not, and neither does an adjustment that skipped the period.
+    // A committed plan ends the primary receiver's run, even if only its donors moved. Donating to another
+    // receiver does not end the donor's own run; neither does an adjustment that skipped the period.
     for (const period of receiverMoved) close(period, t.clockText);
     for (const cand of t.candidates) {
       const period = cand.scKey;
@@ -327,13 +353,13 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
   return c;
 }
 
-/** `--by-class`: each period's candidate outcomes, trials and accepted receiver moves over the range, per system. */
+/** `--by-class`: each period's candidate outcomes, trials and plans helping it over the range, per system. */
 export interface WlmClassRow {
   lparId: string;
   scKey: string;
   outcomes: Record<WlmCandidateTrace['outcome'], number>;
   trials: number;
-  /** Accepted moves with this period as the receiver raised. */
+  /** Accepted plans with this period as the primary receiver, including donor-only plans. */
   helped: number;
 }
 
@@ -350,6 +376,7 @@ export function classRows(traces: readonly WlmAdjustTrace[]): WlmClassRow[] {
       row.outcomes[cand.outcome]++;
       row.trials += cand.trials.length;
       for (const tr of cand.trials) {
+        if (tr.verdict === 'ACCEPTED' && tr.plan) { row.helped++; continue; }
         const m = tr.verdict === 'ACCEPTED' ? MOVED.exec(tr.move) : null;
         if (m && m[1] === undefined && m[2] === cand.scKey) row.helped++;
       }
@@ -372,7 +399,7 @@ export function moveRows(traces: readonly WlmAdjustTrace[]): WlmMoveRow[] {
   for (const t of traces) {
     for (const cand of t.candidates) {
       for (const tr of cand.trials) {
-        if (tr.verdict === 'ACCEPTED') out.push({ clockText: t.clockText, lparId: t.lparId, receiver: cand.scKey, move: tr.move, receiverPi: [...(tr.receiverPi ?? [])] });
+        if (tr.verdict === 'ACCEPTED') out.push({ clockText: t.clockText, lparId: t.lparId, receiver: cand.scKey, move: tr.plan ? formatPlanMoves(tr.plan) : tr.move, receiverPi: [...(tr.receiverPi ?? [])] });
       }
     }
   }
@@ -392,6 +419,10 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
     total.noManagedDelay += c.noManagedDelay;
     total.clocksSet += c.clocksSet;
     total.trials += c.trials;
+    total.projections += c.projections;
+    total.acceptedPlans += c.acceptedPlans;
+    total.acceptedSteps += c.acceptedSteps;
+    total.acceptedCarry += c.acceptedCarry;
     for (const v of VERDICT_ORDER) total.verdicts[v] += c.verdicts[v];
     total.acceptedReceiverUp += c.acceptedReceiverUp;
     total.acceptedDonor += c.acceptedDonor;
@@ -534,12 +565,16 @@ export function statsText(stats: WlmStats): string {
     ['  not assessed: skip clock running', [...stats.systems.map((s) => s.counters.skipClock), stats.total.skipClock]],
     ['  not assessed: no managed delay', [...stats.systems.map((s) => s.counters.noManagedDelay), stats.total.noManagedDelay]],
     ['skip clocks set (every trial rejected)', [...stats.systems.map((s) => s.counters.clocksSet), stats.total.clocksSet]],
-    ['trials (projections)', [...stats.systems.map((s) => s.counters.trials), stats.total.trials]],
+    ['proposed steps (including free rejections)', [...stats.systems.map((s) => s.counters.trials), stats.total.trials]],
+    ['projections', [...stats.systems.map((s) => s.counters.projections), stats.total.projections]],
+    ['accepted plans', [...stats.systems.map((s) => s.counters.acceptedPlans), stats.total.acceptedPlans]],
+    ['retained moves in accepted plans', [...stats.systems.map((s) => s.counters.acceptedSteps), stats.total.acceptedSteps]],
+    ['accepted: carried receiver', [...stats.systems.map((s) => s.counters.acceptedCarry), stats.total.acceptedCarry]],
     ...VERDICT_ORDER.map((v): [string, number[]] => [
-      `  ${v === 'ACCEPTED' ? 'accepted' : `rejected: ${v}`}`,
+      `  ${v === 'ACCEPTED' ? 'accepted' : v === 'RETAINED' ? 'retained in tentative plan' : `rejected: ${v}`}`,
       [...stats.systems.map((s) => s.counters.verdicts[v]), stats.total.verdicts[v]],
     ]),
-    ['accepted: receiver up', [...stats.systems.map((s) => s.counters.acceptedReceiverUp), stats.total.acceptedReceiverUp]],
+    ['accepted steps: receiver up', [...stats.systems.map((s) => s.counters.acceptedReceiverUp), stats.total.acceptedReceiverUp]],
     ['accepted: donor down', [...stats.systems.map((s) => s.counters.acceptedDonor), stats.total.acceptedDonor]],
     ['rejected, receiver before PI (base) ≤ 0.9', [...stats.systems.map((s) => s.counters.rejectedPiUnder09), stats.total.rejectedPiUnder09]],
     ['rejected, receiver before PI (base) null', [...stats.systems.map((s) => s.counters.rejectedPiNull), stats.total.rejectedPiNull]],

@@ -1,9 +1,8 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-07 are implemented**: one PI basis, sustained
+Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 are implemented**: one PI basis, sustained
 demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval budget (WT-05,
-§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8). The rest of §5
-(plans, server periods, WT-08 onward) is not. Findings W2, W4, W10 and W12 below describe the sim before those
+§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic plans (WT-08, §9.9). Server periods (WT-09) and the other remaining entries are not. Findings W2, W4, W5, W10 and W12 below describe the sim before those
 entries; each says what fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
@@ -677,6 +676,8 @@ reverse.
 
 ### W5. A change is one move of one period (medium)
 
+*Fixed by WT-08 (§5.3, §9.9): changes are atomic plans of retained moves.*
+
 **Sim.** §2.7: each trial moves one DP; any equally or more important period the move would harm rejects it.
 
 **Real.** §3.7: the receiver's move, the co-moves of periods that would otherwise be harmed (secondary receivers)
@@ -849,7 +850,9 @@ State (all plain, serialised in key order):
 | From | the accumulators (`goalPi`): `mLocal` from this image, `mPlex` from all images summed | `evaluateLpar` on the projection input (§5.4) at a given ladder; percentile goals through `projectedPercentilePi` |
 | Used for | who is a receiver candidate and in what order; whether a donor is happy; the resource-group minimum; reports | everything a plan is judged on: `base = p(current ladder)`, `after = p(trial ladder)` |
 
-No test mixes them. A candidate whose `base` is ≤ 1 is recovering by itself and gets no plan.
+Two rules read `m` inside a plan test, both because a projection cannot show the fact: the missing-goal rule (§5.3)
+and the trust limit (`projectionTrustMax`, §9.5). A candidate whose `base` is ≤ 1 is recovering by itself and gets
+no plan.
 
 ### 5.3 The loop
 
@@ -884,34 +887,42 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
 ```
 
 ```
-buildPlan(r, b, L0, base, P, info, budget, C):             // a change is a set of moves judged together (§3.7)
-  H ← holder(r);  L ← L0;  moves ← [];  upBlocked ← false;  cur ← base[r]      // cur: r's projected PI under L
-  donors ← donorOrder(r, b, L0, info, C);  d ← 0
-  repeat at most C.maxPlanSteps times, while budget > 0:
-      // A. receiver one step up
-      if not upBlocked and H is not alone on the top level:
-          T ← raiseOneStep(L, H)                           // §5.6: to the free slot above its level, else join the next level
-          (ok, why, after) ← assess(r, T);  budget −= 1
-          if not ok and why names a period k that T leaves at or below H and that is not less important than r:
-              T ← T with holder(k) placed on H's level     // secondary receiver: carried along
-              (ok, why, after) ← assess(r, T);  budget −= 1
-          if ok: L ← T; moves += T's moves; cur ← after[r]                // kept even without gain: the next level may give it
-                 if receiverValue(base[r], cur, C): return accepted(L, moves)
-          else:  upBlocked ← true;  remember (T, why) as the first rejection if none yet
-      // B. next donor down
-      else if d < donors.length:
-          D ← donors[d];  d += 1
-          T ← L with D moved to H's level, or to the free slot just below it if D is already there
-          (ok, why, after) ← assess(r, T);  budget −= 1
-          if ok and after[r] < cur:                                       // a donor move is kept only if it helps r
-                 L ← T; moves += "DONOR D …"; cur ← after[r]; upBlocked ← false   // room may have opened above
-                 if receiverValue(base[r], cur, C): return accepted(L, moves)
-          else:  remember (T, why or NO_RECEIVER_GAIN) as the first rejection if none yet   // this donor stays
-      else: break
-  return rejected(first rejection)                          // all intermediate moves are set back
+buildPlan(r, b, L0, base, P, info, budget, C):
+  L ← L0; moves ← []; cur ← base[r]; preferUp ← true; upBlocked ← false
+  donors ← donorOrder(r, b, L0, info, C); nextDonor ← 0
+  while retained move count < C.maxPlanSteps:
+      if preferUp and not upBlocked:
+          T ← raiseOneStep(L, holder(r))
+          if no step or repeated ladder: upBlocked ← true
+          else:
+              assess T against base (budget checked at the actual projection)
+              on a named net-value blocker k at/below r of equal or greater importance:
+                  try carrying k onto r's proposed level, if this changes T and two moves fit
+              else on an unsafe join (NO_NET_VALUE / EQUAL_DISPARITY):
+                  try the join-and-split above that level together, if two moves fit  // APPROX
+              if net value passes:
+                  retain the proposal in L, never in live state; cur ← after[r]
+                  if receiverValue(base[r], cur): commit the whole plan
+                  preferUp ← true; continue
+              upBlocked ← true
+      try the next untried donor still at/above r in L (skip donors a previous raise left below r)
+      if one exists:
+          T ← move it onto r's level, or just below if already there
+          assess T against base
+          if net value passes and after[r] < cur:
+              retain T; cur ← after[r]; upBlocked ← false; preferUp ← true
+              if receiverValue(base[r], cur): commit the whole plan
+          continue                                      // a failing donor stays; earlier retained moves survive
+      if upBlocked: reject the complete plan
+      preferUp ← true                                   // no donors left; further safe raises can still help
+  reject the complete plan                              // step limit, no receiver value
+  // Any required projection without budget returns BUDGET; every uncommitted move is rolled back.
 
 assess(r, T):
   if violatesCpuCritical(T): return (false, CPU_CRITICAL)
+  if the missing-goal rule rejects T: return (false, MORE_IMPORTANT_HARMED k) // no projection
+  if budget = 0: return BUDGET
+  budget −= 1
   after ← p(evaluateWithBatchRecovery(P, T))               // as batchRecoveryAccepts today: every round must pass
   return netValue(r, base, after, info, C)
 
@@ -937,12 +948,18 @@ netValue(r, base, after, info, C):                       // T: the trial ladder;
           if |after[r] − after[k]| ≥ |base[r] − base[k]|: return (false, EQUAL_DISPARITY k)
           equalHarm += harm
       // less important: no test. base[r] > 1 is guaranteed, and a receiver missing its goal may take from them
-  if gain ≤ equalHarm and equalHarm > 0: return (false, NO_NET_VALUE)
+  if gain ≤ equalHarm and equalHarm > 0:
+      return (false, NO_NET_VALUE k)                     // k has largest equal-importance harm; key order breaks ties
   return (true, –, after)
 ```
 
 Receiver value is judged on the whole plan against `base`, so a step that passes net value but gains too little is
-kept and built on, as in IBM's example. A plan with no receiver value at the end is discarded whole. Net value is
+kept and built on, as in IBM's example. A plan with no receiver value at the end is discarded whole. WT-08 implements this with pure `buildPlan` in
+`src/sim/wlm/plan.ts`; `maxPlanSteps` counts retained UP/CARRY/DONOR moves, including both moves of a repaired
+proposal. Receiver steps continue until blocked; a retained donor opens another receiver stage, and a failed donor advances to the next donor.
+A join-and-split repair preserves useful multi-level raises when the intermediate join fails net value (APPROX:
+one bounded lookahead, not an exhaustive search). Only a real proposal projection spends budget; CPU protection,
+the missing-goal rule and the trust limit are free. Every carry or split retry checks budget separately. Net value is
 judged on the whole plan too: `assess` always compares the trial ladder with `base`, never with the previous step.
 
 ### 5.4 Projection input: sustained demand
@@ -1084,6 +1101,7 @@ IBM uses it.
 | `maxProjectionsPerInterval` | 12 | the tick budget (replaces `RECEIVERS_PER_IMPORTANCE`, which is deleted) | invented |
 | `demandUpliftMax` | 2 | a quiet tick is lifted to at most twice its demand | invented |
 | `backlogBoostFrac` | 0.5 | work that fell behind wants up to 1.5 × its rate | invented |
+| `projectionTrustMax` | 4 | a receiver whose backlog the bound cut and that is measured over 4 × its `base` is not raised | invented (§9.5) |
 
 Approximations, each marked `// APPROX:` where it is coded:
 
@@ -1449,6 +1467,13 @@ and `SMALL_GAIN`; STCLO#1 from 11:19 to 15:54, `MORE_IMPORTANT_HARMED`; S-1: BAT
 That is the documented clock (WLM Services p.145), so the entry's "0 episodes" is not met as `wlm-stats` counts them;
 counted as intervals running (a skipped interval ends the run) they are 0 by construction.
 
+Restated criterion (design review, 2026-11-12): no period is assessed on two adjustments running without an accepted
+plan or a `BUDGET` stop between them. `wlm-stats` shows it as skip clocks set = assessed − accepted plans − budget
+stops (S-1 at WT-08: 231 = 250 − 19). That holds by construction, since the code sets a clock in exactly those cases,
+so it is a regression check, not evidence on its own. Episodes of 30 assessments are listed with their cause; each
+should be a receiver no CPU or zIIP move helps. Unverified: whether real WLM also clocks a receiver with no fixable
+bottleneck (WLM Services p.144–145 states the clock for "all actions to help it are rejected").
+
 Seed 2's six extra moves are a climb on PROD2 from D2 09:46 to 10:11 (STCHI, TSO#1, TSO#2, DDFPRD#1, DDFPRD#2,
 ONLHI: each two DPs up in turn) that the per-importance budget used to cut short. Every one agrees with its
 projection (no trust-limit case) and none is undone within two minutes; a ladder that only climbs is W2, WT-06's
@@ -1500,6 +1525,10 @@ inside the CI gate's bands; Midwest do-nothing is below the design target (day 1
   these incidents CPU_PRIORITY/POLICY, with WLMGL showing the goal met. Real WLM behaviour. It moves the median by 7
   days, more than the ±3 the entry expected, and below the design target of day 12–18 though inside the CI gate's
   8–22. User decision (2026-11-12): accepted, no change to the ladder or the band.
+  Correction (design review, 2026-11-12): this is incomplete. On seed 42 DDFPRD#1 meets its goal across the sysplex
+  (PI 0.50) but is at local PI 4.00 on PROD2, below batch, on 1,190 adjustments in two days, and is never assessed
+  because its waits exceed its CPU and zIIP delay (W7). The drop to 9.5 days and the return to 16.5 at WT-08 both
+  depend on that; WT-10 owns it.
 - *Harbourline expert seed 9* comes back (victory): on D29 WLM makes 20–58 moves an hour from 10:00 and SLAs are back
   near 100 % by 15:00 (WT-05: 7–9 hours near 0 %).
 - *Seed 7* is still lost (day 36 → 39). Its D29 freeze is not the ladder or the clock: with `rejectedSkipTicks` 0 the
@@ -1551,3 +1580,126 @@ one-day hashes for Midwest, Revenue and Harbourline are unchanged by both.
 victory). All inside the CI gate's bands; Midwest do-nothing stays below the design target (§9.7). The entry expected
 small changes.
 
+
+### 9.9 WT-08: atomic policy plans
+
+Built on WT-07 (`1f4f212`). The planner keeps safe intermediate moves, repairs a raise with one named secondary
+receiver, tries donors in WT-07 order and discards every tentative move unless the complete plan has receiver
+value. One bounded join-and-split proposal preserves useful raises whose intermediate join fails net value.
+The original PI basis, strict more-important goal boundary, no-PI rule, CPU protection, skip clocks, resume cursor
+and real-projection budget remain in force. Six retained moves bound a plan; retries spend budget only when they
+project. Traces distinguish RETAINED proposals from the one ACCEPTED plan, and tools count plans, retained moves
+and projections separately. Log targets are canonical stored DPs; `UP … (above X)` explains a split whose number
+stays the same while its old mates move down.
+
+Audit at `d9617a4` (same S-1 … S-3 recipes as §9.8; WT-07 `1f4f212` → WT-08 after the design-review fix below):
+
+| | S-1 | S-2 | S-3 |
+|---|---|---|---|
+| accepted plans | 33 → 19 | 21 → 24 | 47 → 54 |
+| assessed candidates ending in an accepted plan | 12.2 → 7.6 % (19/250) | 2.0 → 2.3 % (24/1 039) | 5.1 → 5.9 % (54/910) |
+| retained moves in accepted plans | 28 | 34 | 102 |
+| secondary carries | 1 | 0 | 2 |
+| proposal projections | 1 978 → 1 129 | 7 347 → 3 200 | 6 859 → 3 007 |
+| net rank reversals / within two minutes | 0 → 1 / 0 | 3 → 3 / 0 | 2 → 5 / 0 |
+| episodes of 30 assessments | 1 | 3 | 2 |
+
+Reversals of a composite plan are measured from the net ordinal rank of each explicitly moved period, not the
+last intermediate step or raw canonical DP deltas. Internal moves of one atomic plan cannot reverse live state.
+The old §1 reversal targets (≤ 2/4/8) are met. S-1's raw MORE_IMPORTANT_HARMED share is 47.1 % (535/1 135), above
+its 29 % target; S-3 is 16.1 % (624/3 878), below 21 %. Net value now has to be assessed before receiver value for
+intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. The share is
+dropped as a criterion (below), not met by tuning coefficients.
+
+S-1's lower share of candidates helped is two things. Plans bundle moves: 28 retained moves in 19 plans against
+WT-07's 33 single moves. And 173 of S-1's 250 assessments are PROD2 BATCHPRD#1 (importance 4, PI 1.1–1.3 in the
+batch window), retried each minute over two nights and never helped (twice on WT-07). Every move it has is
+refused on its projection (D1 22:00:20): a raise takes DDFPRD#2, of equal importance, from 0.35 to 7.74
+(`EQUAL_DISPARITY`, then `NO_NET_VALUE` for the split above), and DDFPRD#1 as donor goes from 0.50 to 51.15
+(`MORE_IMPORTANT_HARMED`). Only 6 of PROD2's 1,133 proposals are refused without a projection, so neither the
+missing-goal rule nor W7 is the cause. On WT-07 BATCHPRD#1 ends above DDFPRD#1 by D1 21:30, the state W7 then
+could not undo (§9.7 correction). Without BATCHPRD#1 the share is 25 % (19/77). Those projections are WT-16's
+question too (joining a level projects far worse than staying below it).
+
+Historical W5 thresholds are 29%/21%
+MORE_IMPORTANT_HARMED for S-1/S-3; WT-07 already measured 13.3%/15.4%, so passing them alone is not evidence that
+composite planning works. Real-evaluator carry cases and independently recomputed whole-plan safety checks are
+the functional acceptance tests; attempted proposals, retained moves and accepted plans have separate counts.
+
+Review follow-up on the draft: aggregate NO_NET_VALUE now names the greatest equal-importance harm (key order
+breaks ties), enabling a secondary carry. A real evaluator fixture raises G00, fails with gain 149.37 versus
+harm 192.30, then accepts UP + CARRY G03. Safe partial plans that run out of steps or budget explain insufficient
+receiver value. Each newly started skip clock records its rejection clue, including off the periodic log cadence.
+Monitor III and `inspect --moves` describe every retained move of the committed plan, including split anchors.
+
+The legal happy-donor rule is retained; no donor cap or coefficient was added to preserve old scenario outcomes.
+At D1 09:41:10 PROD2 on Midwest seed 42, a six-move plan helps importance-4 DDFPRD#2 by lowering happy TSO#1
+and DDFPRD#1 (importance 2). Their projected PIs still meet their goals. This changes subsequent adaptive WLM:
+the 10:00 shadow-IT pair improves MOBILE from 117.61 to 83.74 ms instead of slowing it. A separate fixed-priority
+pair tests the card's CPU pressure. On seed 3, the former D1 21:00 policy-only MOBILE incident disappears, leaving
+the D2 runaway incident; the counterfactual test still checks one replay at the hour boundary and its cause.
+These are explicit scenario/balance changes, accepted by the user (below), not golden noise or a new general
+guarantee that increased demand helps MOBILE.
+
+The capped-PROD1 seed-7 fixture (Midwest, PROD1 defined capacity 200, DB* in STCHI) is as on WT-07: a happy STCHI
+donates below ONLHI, ONLHI waits for Db2 (OTHER), STCHI misses its goal and is raised back above ONLHI at 14:02:50,
+and ONLHI is OTHER for 30 adjustments (14:00:00–14:04:50). Before the design-review fix (below) WT-08 left STCHI
+below ONLHI to the 16:00 end of the observation (720 adjustments). The test bounds the episode at 60 adjustments and
+asserts STCHI is above ONLHI within five minutes of its first assessment below it.
+
+RT-06 validation against WT-07 on the same seed-42 runs (at `d9617a4`): S-1 online incidents 2 → 0 (the two
+policy-only MOBILE misses disappear); S-2 2 → 2, still one testable runaway cause and agreement; S-3 13 → 14, adding
+a card-free CARDS QR_TCB/POLICY incident at D1 12:00 (before the design-review fix also one at D3 11:00). All common
+incidents retain their truth/cause/agreement results. Every incident is reached and reproduced; no validator
+failure. This is a changed incident set, not a grading fix.
+
+The independent review found two old log parsers that could miss a reversal by retaining an internal move kind
+or only reading the first period in a plan. The convergence tests now observe committed before/after ladder
+ordering, with explicit carry-then-donor and second-period donor fixtures; internal plan steps are never live moves.
+
+Validation: full local check and CI at `e4902b7` pass 1 017 tests/90 files. The two strengthened reversal scenario
+checks and four direct measurement fixtures pass. Typecheck is clean. Three
+alternating bench pairs repeat each state hash: Midwest `5e3d12e473a68684`, Harbourline `b4ddefae6ecb78b2`,
+Revenue `a92778144a456760` (WT-07: `de5702f483716600`, `99607427db7d9fad`, `13d9a98c4ddd06af`). Goldens change for
+atomic search and the new skip-clock log clues. Quiet median day timings, head/base: Midwest 4.38/4.53 s
+(two pairs; first pair excluded for a concurrent test startup), Harbourline 8.44/8.51 s, Revenue 4.50/4.56 s;
+no measured regression above the 5% budget. Final three-scenario Normal seeds-1–10 sweeps are recorded in
+PROGRESS M8.2. Independent review found no further production defect and verified the reversal-test fixes;
+its recommendation remains NEEDS USER for the explicit unmet criteria and behaviour/balance changes.
+
+**User decision (2026-11-12, after the #316 review).** WT-08 is accepted as it stands:
+- The happy-donor plans stay. SG24-6472-03 p.60 lets a more important class donate while it still meets its goals
+  easily, and p.67–68's example keeps intermediate moves without receiver value. A margin for more important
+  donors would not have stopped the 09:41 plan (its donors end at PI 0.13 and 0.5).
+- The scenario and balance changes above are accepted. Midwest do-nothing returns to its pre-WT-06 16.5 days,
+  inside SPEC §16's day 12–18 target, so no balance entry follows.
+- The two Done-when criteria are restated rather than met (the design review's text, below).
+- The capped-PROD1 ONLHI episode was first sent to WT-10; the design review found it was WT-08's own gap (below).
+
+Last review fixes (`64b98d3`, `f683789`). A receiver raise was judged only against the original base, so it could
+pass while undoing what earlier retained moves had bought; it now also has to match the retained plan (a donor
+already had to beat it). This changes S-3 as in the table and leaves the goldens and day-1 hashes unchanged. A
+receiver stuck under its skip clock re-clocks every minute, and each clock logged its clue, which shrank the
+400-line log window (seed 42 day 1: 105/66/25 such lines on Midwest/Revenue/Harbourline). An unchanged clue is now
+logged at most every five minutes, and a new reason or a move logs it again: 33/40/20. `npm run compare
+--drop log` over two days shows no other state change; the goldens changed only because the log is hashed.
+
+**Design review of WT-04 … WT-08 (2026-11-12).** The author of this design reviewed what landed against its intent.
+- *A planner gap, fixed here (`d9617a4`).* `buildPlan` assessed join-and-split as one proposal only after
+  `NO_NET_VALUE` or `EQUAL_DISPARITY`. A join that is worse for the receiver itself (`NO_RECEIVER_GAIN`) blocked
+  the raise, although WLM assesses the move to the free priority above a donor directly (WLM Services p.707, code
+  630 `PA_PMUUA_REC`). On the capped-PROD1 fixture, STCHI#1 (importance 1, local PI 4.2, CPU delay 94 %) was
+  assessed every minute from 14:02:30; three raises were retained at 4.26 → 4.26, the join with ONLHI projected 26.37
+  and every plan was rejected. Why joining projects so much worse than staying below is WT-16's question.
+- *Restated criteria.* (1) Moves undone within two minutes: 0 in S-1 … S-3 (I13). Net-rank reversals are reported
+  against the previous entry (WT-07 0/3/2, WT-08 1/3/5); two periods trading places by alternate raises reverse
+  neither one's own move, which needs a pair-order count no tool has yet. (2) The MORE_IMPORTANT_HARMED share is
+  dropped: a few receivers retried each minute dominate it (S-1: 432 of the 500 at `e7015cb` are PROD2 BATCHPRD#1),
+  and it was meant to show that carrying a harmed period unblocks receivers (W5's premise, which the carries 1/0/2
+  do not bear out: most of those rejections were W1 artefacts). Reported instead, from `wlm-stats --by-class
+  --episodes`: assessed candidates that end in an accepted plan, which must not fall below the previous entry
+  without an explanation in the PR (WT-08's S-1 fall is explained above); every period assessed 30 times or more and
+  never helped; and carries accepted.
+- *Midwest's swing* rides on W7 in both directions (§9.7 correction); WT-10 now goes before WT-09.
+- *Still unmeasured:* `RECOVERING` (225 / 1 703 / 5 636 on S-1 … S-3, more than assessed) is not checked to recover;
+  a streak count belongs with PR-20.

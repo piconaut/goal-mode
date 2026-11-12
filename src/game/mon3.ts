@@ -720,6 +720,14 @@ export function explainWlmLog(line: string): string {
   if (head) {
     const [, sys, rcvr, pi, btl, action] = head as unknown as [string, string, string, string, string, string];
     const why = `On ${sys}, ${rcvr} was the most important period missing its goal (PI ${pi}, mostly ${BTLNK_TEXT[btl] ?? btl}).`;
+    const plan = [...action.matchAll(/(?:^|; )(UP|CARRY|DONOR) (\S+) DP (\w+)→(\w+)(?: \(above (\S+)\))?/g)];
+    if (plan.length) {
+      const steps = plan.map(([, kind, key, from, to, above]) => {
+        const role = kind === 'CARRY' ? `carried secondary receiver ${key}` : kind === 'DONOR' ? `lowered donor ${key}` : `raised ${key}`;
+        return above ? `${role} above ${above} (stored DP ${to})` : `${role} from DP ${from} to ${to}`;
+      });
+      return `${why} WLM committed one plan: ${steps.join('; ')}. The complete plan gave the receiver enough improvement while passing the net-value checks.`;
+    }
     const donor = /^DONOR (\S+) DP (\w+)→(\w+)/.exec(action);
     if (donor) return `${why} WLM lowered donor ${donor[1]} from DP ${donor[2]} to ${donor[3]} so the receiver gets the CPU first.`;
     const up = /DP (\w+)→(\w+)/.exec(action);
@@ -735,7 +743,7 @@ export function explainWlmLog(line: string): string {
   const noNet = /(\S+) (\S+) PI=([\d.]+) BTLNK=(\S+) no action with net value(?: \((.+) rejected: (.+)\))?/.exec(line);
   if (noNet) {
     const tried = noNet[5] ? ` First move tried: ${noNet[5]}, rejected ${noNet[6]}.` : '';
-    return `On ${noNet[1]}, ${noNet[2]} misses its goal (PI ${noNet[3]}) but every move WLM projected would hurt donors more than it helps.${tried} There isn't enough capacity to go round at this importance.`;
+    return `On ${noNet[1]}, ${noNet[2]} misses its goal (PI ${noNet[3]}) but WLM found no complete plan with enough receiver improvement that passed the net-value checks.${tried}`;
   }
   return line;
 }

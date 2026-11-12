@@ -69,6 +69,8 @@ export const POLICY_ADJUST = {
   donorMinEngines: 0.01,
   // FICTIONAL: at most this many donors are tried for one receiver, bounding the search's cost.
   donorsPerReceiver: 3,
+  // FICTIONAL: bound retained moves in one atomic plan; UP, CARRY and DONOR each count.
+  maxPlanSteps: 6,
   // FICTIONAL: a quiet tick's demand is lifted to its smoothed level in projections, to at most this multiple.
   demandUpliftMax: 2,
   // FICTIONAL: work that has fallen behind is projected to want up to (1 + this) × its sustained demand, not its

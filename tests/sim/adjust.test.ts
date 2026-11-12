@@ -69,6 +69,40 @@ describe('policy adjustment', () => {
     const changed = Object.keys(dps).filter((k) => out.dps[k] !== dps[k]);
     expect(changed.length).toBe(1);
   });
+
+  it('explains a safe partial plan rolled back at the step limit, and logs the new clock off cadence', () => {
+    const saved = { ...POLICY_ADJUST };
+    const traces: WlmAdjustTrace[] = [];
+    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100, maxPlanSteps: 1 });
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'D1 06:00:40', nowTick: 4 });
+      expect(traces[0]!.candidates[0]).toMatchObject({ planOutcome: 'STEP_LIMIT', trials: [{ verdict: 'RETAINED', projected: true }] });
+      expect(out.dps).toEqual(dps);
+      expect(out.log).toContain('UP ONLHI#1 DP F4→F6 rejected: gain too small');
+      expect(out.clockNotes).toContain(out.log);
+      expect(out.clockNotes[0]).toContain('next look 06:01:40');
+    } finally {
+      Object.assign(POLICY_ADJUST, saved);
+      setWlmTraceSink(null);
+    }
+  });
+
+  it('explains insufficient receiver value when budget runs out after retaining a safe step', () => {
+    const saved = { ...POLICY_ADJUST };
+    const traces: WlmAdjustTrace[] = [];
+    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100, maxProjectionsPerInterval: 1 });
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
+      expect(traces[0]!.candidates[0]).toMatchObject({ planOutcome: 'BUDGET', trials: [{ verdict: 'RETAINED', projected: true }] });
+      expect(out.dps).toEqual(dps);
+      expect(out.log).toContain('rejected: gain too small');
+    } finally {
+      Object.assign(POLICY_ADJUST, saved);
+      setWlmTraceSink(null);
+    }
+  });
 });
 
 it('tries a locally unhappy more important receiver before a globally unhappy lower tier', () => {
@@ -359,10 +393,10 @@ describe('a hopeless receiver does not stop the search at the next importance (S
   });
 
   it('stops the search when the interval projection budget is spent, with no clock for the receiver it cut short', () => {
-    // OLD1 is on its clock; OLD2 spends three projections (two raises, then OLD1 as an unhappy equal-importance
-    // donor, eligible since WT-07). OLD3 gets the last of four, without finishing its trials.
+    // OLD1 is on its clock. The bounded planner spends two projections on OLD2;
+    // OLD3 gets the last of three, without completing its plan.
     const saved = POLICY_ADJUST.maxProjectionsPerInterval;
-    POLICY_ADJUST.maxProjectionsPerInterval = 4;
+    POLICY_ADJUST.maxProjectionsPerInterval = 3;
     try {
       const { out, trace } = run3(withClocks({ 'OLD1#1': 200 }), 100);
       const old3 = trace.candidates.find((c) => c.scKey === 'OLD3#1')!;
@@ -392,8 +426,8 @@ describe('a hopeless receiver does not stop the search at the next importance (S
 
   it('traces BUDGET for the next candidate when the budget ran out between receivers, and stops', () => {
     const saved = POLICY_ADJUST.maxProjectionsPerInterval;
-    // OLD1 has no trial (alone on top); OLD2's two raises and equal-importance donor trial spend the budget (WT-07).
-    POLICY_ADJUST.maxProjectionsPerInterval = 3;
+    // OLD1 has no trial (alone on top); OLD2's two projected proposals spend the budget.
+    POLICY_ADJUST.maxProjectionsPerInterval = 2;
     try {
       const { out, trace } = run3(system3, 100);
       expect(trace.candidates.map((c) => [c.scKey, c.outcome])).toEqual([['OLD1#1', 'ASSESSED'], ['OLD2#1', 'ASSESSED'], ['OLD3#1', 'BUDGET']]);
@@ -638,7 +672,7 @@ describe('the missing-goal rule counts smoothed zIIP use (docs/wlm-design.md §5
       setWlmTraceSink(null);
     }
     const blo = traces[0]!.candidates.find((c) => c.scKey === 'BLO#1')!;
-    const past = blo.trials.filter((t) => /^BLO#1 DP F4→/.test(t.move) && parseInt(t.move.slice(-2), 16) >= 0xf6);
+    const past = blo.trials.filter((t) => /^UP BLO#1 DP F4→/.test(t.move) && parseInt(t.move.slice(-2), 16) >= 0xf6);
     expect(past.length).toBeGreaterThan(0);
     for (const t of past) {
       expect(t.verdict).toBe('MORE_IMPORTANT_HARMED');

@@ -541,33 +541,33 @@ for importance in 1..5:
         base = projected PIs at the current DPs (one evaluation, made when first needed)
         if base[receiver] ≤ 1 or unknown: record RECOVERING & continue      // no trials, no budget
         if the interval's projection budget is spent: record BUDGET & stop  // no clock: next search starts here
-        for each candidate action (receiver one step up at a time, up to the third level above; then donors down):
-            if the receiver would pass or join more important work that is missing its goal
-               (management or projected PI > 1) and uses the processor: reject   // MORE_IMPORTANT_HARMED
-            project new CPU distribution with the dispatcher model (re-run §5.4 on a copy)
-            follow separate-pool batch demand recovery; check net value at every distribution
-            receiverValue = base − after ≥ max(10% of (base − 1), 0.05)       // reject marginal moves
-            netValue      = no more important period pushed past its goal;
-                            equal importance: PIs end closer, and the gain exceeds the harm when there is harm
-                            (PI credit only above 0.90; changes up to 0.02 are noise, but never one that
-                            takes more important work from PI ≤ 1 to over 1)
-            if receiverValue && netValue: apply, mark done for this interval; return
+        build an atomic plan on a copy of the ladder (docs/wlm-design.md §5.3):
+            propose one receiver step; a named net-value blocker may be carried to its level
+            continue safe receiver steps until blocked, then try donors; a retained donor opens another receiver stage
+            a failed join may be assessed with the following split as one two-step proposal (APPROX)
+            judge every proposal's net value against the original base, including every batch-recovery round
+            keep safe intermediate proposals even without sufficient receiver value; donors must improve on the partial plan
+            cap retained UP/CARRY/DONOR moves at maxPlanSteps (6); charge only real projections to the interval budget
+            commit all moves together only with receiver value ≥ max(10% of (base − 1), 0.05)
+            otherwise discard the complete plan; budget exhaustion preserves WT-05's clocks and resume cursor
         every action rejected: skip clock = now + rejectedSkipTicks; next receiver
     // at most ONE receiver helped per interval per system
 ```
 
-- **Moves on the ladder** (§5.4, WT-06). A receiver steps up one at a time, each trial from the last: sharing a level,
-  it moves alone onto the free priority directly above it; alone, it joins the next level (WLM Services p.707,
-  codes 635 and 620), until it has joined the third level above. Alone on the top level it has no step. A donor
-  above the receiver moves onto the receiver's level, one already on it alone onto a new level just below (p.706,
-  codes 530/540; rejection code 531, "moving the donor to the receivers priority violates CPU critical rules", shows
-  the receiver's priority is a donor target). Each trial is a single move until WT-08's
-  plans. The log names the priority moved to before the ladder is renumbered (`DP F2→F3`: the free priority above
-  F2's level), so the stored DPs can differ from the logged target. "Passes or joins" in the missing-goal rule
-  means a change of position: a more important period that already shared the receiver's level and still does is
-  not passed. CPU protection moves every less important period at or above a protected one onto one new level
-  directly below it. When no move pays off, the log's clue is the first rejection that names what stood in the way
-  (harm, protection, the trust limit), else the first: small first steps often gain nothing.
+- **Moves and plans on the ladder** (WT-06/WT-08). A receiver shares the next level or splits above its mates;
+  a donor joins the receiver's level or splits below it. A secondary receiver may be carried with a raise. The
+  complete plan is judged on one original PI basis, and is applied atomically or rolled back (SG24-6472-03,
+  March 2008, PDF p.67–68; WLM Services p.137–138). APPROX: one named carry per raise, a bounded join-and-split
+  repair, six retained moves, and summed equal-importance harm. Donor order is fixed at the original ladder but
+  donors now below the receiver are skipped. More-important missing work is not passed, and a more-important
+  period meeting its goal may never cross PI 1.0, even within harmEps. Zero-gain safe receiver steps can be
+  retained, but an accepted whole plan must meet receiver value. Logs list UP/CARRY/DONOR with canonical DPs;
+  an `(above X)` anchor explains splits whose mover keeps its number while old mates move down. Traces show
+  each proposal's base → after, structured blocker and RETAINED/ACCEPTED distinction. CPU protection, the
+  missing-goal rule and the trust limit use no projection budget; every retry that does project costs one.
+  Each newly started skip clock logs the failed plan's reason once, including between periodic no-action log
+  points; safe partial plans with insufficient final receiver value say "gain too small". Monitor III and
+  `inspect --moves` describe the entire committed plan.
 - **Skip clock and the delay test.** A receiver whose every action was rejected is not selected again until its skip
   clock expires, `rejectedSkipTicks` (6) intervals later; a helped receiver gets no clock and can be helped again 10 s
   later (WLM Services p.145, p.148–149; the length is not documented, so it is FICTIONAL and one value on every
@@ -579,7 +579,9 @@ for importance in 1..5:
   the trust limit rejected every raise lasts its minute even if the other image's PI improves sooner.
 - **Projection budget.** Each projection re-runs §5.4, so the search makes at most `maxProjectionsPerInterval` (12)
   per image per interval, over all importances (the tick budget, I16). Rejections that need no projection (CPU
-  protection, the missing-goal rule, the trust limit) cost none, and neither does a `RECOVERING` candidate. When it
+  protection, the missing-goal rule, the trust limit) cost none, and neither does a `RECOVERING` candidate.
+  This counts proposal projections, not evaluator calls: the shared base and a proposal's internal batch-recovery
+  rounds are outside that count, preserving WT-05's accounting. When the proposal budget
   is spent the search stops (`BUDGET`) with no clock, and the next interval's search starts at the receiver it
   stopped on (`ScpState.resumeSearch`), then wraps to the top. A search that restarted at the top every interval
   could cycle through hopeless receivers forever, their clocks expiring just as the last were reached, and never get
@@ -1792,7 +1794,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); Partition Data shows `CHANGE REASON=POWERSAVE (initiated by the user)` or `MACHINE (initiated by the machine)`. APPROX: real RMF puts CHANGE REASON on the CPU Activity report header (RMF Report Analysis p.391–392), which the sim does not render, and the Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98); SMF70CAI is kept on the interval for tooling but not printed. A power cap does not slow cycle speed |
 | PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
 | Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
-| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model at sustained demand (§5.5.4); exact IBM thresholds are not public beyond patents. One PI basis (WT-04): receivers are chosen on the management PI, every trial is judged on projected PIs (`base` at the current DPs against `after`), and a candidate whose `base` is ≤ 1 is left to recover. Receiver value is 10 % of the distance to the goal with a 0.05 floor. A less important receiver never passes more important work that is missing its goal (1994 patent; Enrico slide 52). A receiver whose transaction backlog the projection bounded and whose management PI is over 4 × its `base` is not raised (`projectionTrustMax`, APPROX: guards the sim's backlog bound). Between equal-importance periods a move must leave the projected PIs closer together and, when it harms, gain more than it harms (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). A receiver whose every move was rejected is skipped for a minute (skip clock, WLM Services p.145; length FICTIONAL), a period with under 2 % managed delay is not assessed (p.144), and projections are bounded at 12 per image per interval. Donors (WT-07) use the delayed processor: happy periods by lowest worst local/sysplex PI regardless of importance, then the rest from importance 5 up, lowest PI first; unhappy more important periods excluded, at most three donors (threshold and limit FICTIONAL) |
+| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model at sustained demand (§5.5.4); exact IBM thresholds are not public beyond patents. One PI basis (WT-04): receivers are chosen on the management PI, every trial is judged on projected PIs (`base` at the current DPs against `after`), and a candidate whose `base` is ≤ 1 is left to recover. Receiver value is 10 % of the distance to the goal with a 0.05 floor. A less important receiver never passes more important work that is missing its goal (1994 patent; Enrico slide 52). A receiver whose transaction backlog the projection bounded and whose management PI is over 4 × its `base` is not raised (`projectionTrustMax`, APPROX: guards the sim's backlog bound). Between equal-importance periods a move must leave the projected PIs closer together and, when it harms, gain more than it harms (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). A receiver whose every move was rejected is skipped for a minute (skip clock, WLM Services p.145; length FICTIONAL), a period with under 2 % managed delay is not assessed (p.144), and proposal projections are bounded at 12 per image per interval. Atomic plans (WT-08) retain safe intermediate UP/CARRY/DONOR moves and commit only with whole-plan receiver value; one carry and a bounded join-and-split repair, at most six retained moves (APPROX; SG24-6472-03 p.67–68). Donors (WT-07) use the delayed processor: happy periods by lowest worst local/sysplex PI regardless of importance, then the rest from importance 5 up, lowest PI first; unhappy more important periods excluded, at most three donors (threshold and limit FICTIONAL) |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work, though since WT-07 a happy more important period can donate too; RT-16's displaceable CP replaces this) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | CFACT lock contention | **Approximation** | STRUCTURE SUMMARY in the Postprocessor-style CF Activity report shows CONTENTION % on the lock structure, a column borrowed from Monitor III CFACT (the real Postprocessor report shows -CONT / -FALSE CONT request counts instead, RMF Report Analysis p.373) from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
