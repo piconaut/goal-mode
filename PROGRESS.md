@@ -183,10 +183,11 @@ level or a separate toggle.
 - WT-07 sweep (2026-11-12, remote, Normal, seeds 1–10, `6c00eca`): Midwest 9.5 / 28 / 10 and Revenue 20 / 27 / 10
   (unchanged); Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook 1 victory). Inside the CI gate's bands; Midwest
   do-nothing stays below the design target.
-- WT-08 preliminary sweep (2026-11-12, draft #316 `111cce1`, Normal, seeds 1–10): Midwest 16.5 / 28 / 10,
+- WT-08 sweep (2026-11-12, draft #316 `e4902b7`, Normal, seeds 1–10): Midwest 16.5 / 28 / 10,
   Harbourline 10.5 / 30.5 / 7 (textbook 1 victory), Revenue 20.5 / 27 / 10. All inside the CI bands; Midwest
-  do-nothing improves seven days versus WT-07, outside the expected small change. Final review fixes require
-  another sweep. Acceptance is pending; coefficients have not been tuned to recover the old outcomes.
+  do-nothing improves seven days versus WT-07, outside the expected small change. The review-fix sweeps match
+  `111cce1`'s preliminary medians/victories. Acceptance is pending; coefficients have not been tuned to recover
+  the old outcomes. Later commits change only test measurement and documentation.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.

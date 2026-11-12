@@ -1595,7 +1595,7 @@ is 45.5% (500/1 099), above its 29% target; S-3 is 15.1% (559/3 702), below 21%.
 for intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. These
 are reported as unmet historical criteria, not silently redefined or fixed by tuning coefficients.
 
-Full checks, final hashes, sweeps and independent review are still in progress. Historical W5 thresholds are 29%/21%
+Historical W5 thresholds are 29%/21%
 MORE_IMPORTANT_HARMED for S-1/S-3; WT-07 already measured 13.3%/15.4%, so passing them alone is not evidence that
 composite planning works. Real-evaluator carry cases and independently recomputed whole-plan safety checks are
 the functional acceptance tests; attempted proposals, retained moves and accepted plans have separate counts.
@@ -1630,3 +1630,13 @@ Every incident is reached and reproduced; no validator failure. This is a change
 The independent review found two old log parsers that could miss a reversal by retaining an internal move kind
 or only reading the first period in a plan. The convergence tests now observe committed before/after ladder
 ordering, with explicit carry-then-donor and second-period donor fixtures; internal plan steps are never live moves.
+
+Validation: full local check and CI at `e4902b7` pass 1 017 tests/90 files. The two strengthened reversal scenario
+checks and four direct measurement fixtures pass. Typecheck is clean. Three
+alternating bench pairs repeat each state hash: Midwest `5e3d12e473a68684`, Harbourline `b4ddefae6ecb78b2`,
+Revenue `a92778144a456760` (WT-07: `de5702f483716600`, `99607427db7d9fad`, `13d9a98c4ddd06af`). Goldens change for
+atomic search and the new skip-clock log clues. Quiet median day timings, head/base: Midwest 4.38/4.53 s
+(two pairs; first pair excluded for a concurrent test startup), Harbourline 8.44/8.51 s, Revenue 4.50/4.56 s;
+no measured regression above the 5% budget. Final three-scenario Normal seeds-1–10 sweeps are recorded in
+PROGRESS M8.2. Independent review found no further production defect and verified the reversal-test fixes;
+its recommendation remains NEEDS USER for the explicit unmet criteria and behaviour/balance changes.
