@@ -486,6 +486,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-12: queued PR-20 for repeated `NOT_FIXABLE` checks: report those streaks separately from the existing
+  `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in
+  #307 has 30 cheaper candidate checks over five minutes and one periodic no-action log entry. Clock and
+  bottleneck policy remain separate model decisions, with the waits/delay question in WT-10.
 - 2026-11-12: WT-06, the canonical ladder (docs/wlm-design.md §5.6, §9.7): goal periods are an order of levels at
   246, 244, … (unbunching, WLM Services p.139); receivers step one at a time, donors move to the receiver's level or
   just below (SMF 99 codes 530/540/620/635, p.706–707); the z/OS 1.8 DP table (managed 247–203; promotion 253 and the
