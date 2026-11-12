@@ -84,7 +84,7 @@ Notes from discussion:
 - When settled, this rewrites SPEC §10 (RCA mini-game) and parts of §9 (events); move it to its own design doc if it
   grows.
 
-### WLM policy adjustment audit (2026-11-10; WT-04 and WT-05 implemented 2026-11-11, WT-06 2026-11-12)
+### WLM policy adjustment audit (2026-11-10; WT-04 and WT-05 implemented 2026-11-11, WT-06 and WT-07 2026-11-12)
 
 [docs/wlm-design.md](docs/wlm-design.md) checks the whole adjustment loop (`src/sim/wlm/adjust.ts` and what feeds
 it) against IBM's description, step by step, and proposes one target model. Fifteen findings with seed-42 repros;
@@ -686,3 +686,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Pruned completed milestone checklists, superseded decisions, stale timings, and chronological session logs.
   Pending requirements/questions and current validation remain above; the full pre-prune tracker is recoverable
   from `1d9d5a2:PROGRESS.md` and `git log -p -- PROGRESS.md`.
+
+
+### WT-07 · Donors by goal achievement and the delayed processor (2026-11-12)
+
+Implemented docs/wlm-design.md §5.5 on merged WT-06 (`b2a9903`): pure `donorOrder` selects goal periods at or
+above the receiver, filters smoothed use of CPU (CP + IIPCP) or zIIP, then orders happy periods by lowest worst
+local/sysplex PI regardless of importance, followed by the rest from importance 5 up, lowest PI first. Missing
+more important periods are excluded. `donorsPerReceiver` (3) joins the existing FICTIONAL tuning parameters.
+The existing missing-goal, CPU-protection and projection checks still judge every move. No new persisted state.
+IBM sources verified with zos-docs: WLM Services 3.1 pp.138,147,708; SG24-6472-03 (March 2008) pp.59–60;
+SG24-7621 p.105. Tests cover I7 trace order, C-2 processor selection, smoothed history and IIPCP, tie order and
+I5 (a happy more important donor must not be pushed past its goal). WT-07 deleted from BACKLOG; WT-08 remains
+attended and user-gated. Validation, audit statistics and sweep results will be recorded below when complete.

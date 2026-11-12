@@ -383,20 +383,6 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-07 · Donors in IBM's order, by the processor that is short (W4)
-`list: wlm-truth · status: ready · priority: high · size: S · area: sim`
-
-Implements §5.5 `donorOrder` in `src/sim/wlm/adjust.ts` (pure, exported): pool = holders at or above the receiver
-using at least `donorMinEngines` of the bottleneck's processor (smoothed: `acc.cpuEngines` for CPU,
-`acc.ziipEngines` for zIIP, × (1 − decay)); happy holders first by lowest `max(mPlex, mLocal)`, importance
-ignored; then the rest from importance 5 up, lowest PI first; an unhappy holder more important than the receiver is
-left out; first `donorsPerReceiver`. Tests: `wlm-invariants: I7 donor order`; unit C-2 (zIIP bottleneck: a period
-with 2 zIIP engines and no CP is a donor, one with 0.2 CP and no zIIP is not); unit "an over-achieving importance-1
-period is tried before a struggling importance-4 one"; realism `a more important class is not pushed past its goal
-as a donor` (I5). Goldens: change. Done when: R-1's donor list for DDFPRD#1 starts with the happy period of lowest
-PI and does not include Db2's class while it is missing its goal. Bots: small; importance-4 and -5 work is hurt
-less, over-achieving work more. research.md row "donor order" → Modelled.
-
 ### WT-08 · A change is a plan: receiver up, secondary receivers, donors down, judged together (W5)
 `list: wlm-truth · status: blocked: user (attended session, after WT-07) · priority: high · size: L · area: sim`
 

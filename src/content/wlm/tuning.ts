@@ -67,6 +67,8 @@ export const POLICY_ADJUST = {
   harmEps: 0.02,
   // FICTIONAL: a period using less than this many engines holds nothing a priority move could take: not a donor.
   donorMinEngines: 0.01,
+  // FICTIONAL: at most this many donors are tried for one receiver, bounding the search's cost.
+  donorsPerReceiver: 3,
   // FICTIONAL: a quiet tick's demand is lifted to its smoothed level in projections, to at most this multiple.
   demandUpliftMax: 2,
   // FICTIONAL: work that has fallen behind is projected to want up to (1 + this) × its sustained demand, not its

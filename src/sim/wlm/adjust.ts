@@ -228,6 +228,49 @@ export function managedDelayFrac(
 export const receiverValueNeeded = (basePi: number): number =>
   Math.max(POLICY_ADJUST.receiverValueFrac * (basePi - 1), POLICY_ADJUST.receiverValueMinPi);
 
+export interface DonorInfo {
+  importance: ScpGoalInfo['importance'];
+  localPi: number | null;
+  sysplexPi: number | null;
+  /** Decayed processor use, as stored in ScpAcc (CPU includes IIPCP). */
+  acc: Pick<ScpState['acc'], 'cpuEngines' | 'ziipEngines'>;
+}
+
+/**
+ * Goal holders at or above the receiver using the delayed processor (WLM Services p.147; SG24-7621 p.105).
+ * Happy periods give first, lowest PI first regardless of importance (SG24-6472-03, March 2008, p.59–60);
+ * then reverse receiver order (WLM Services p.138). APPROX: happiness uses the worse of local/sysplex PI,
+ * processor use is exponentially smoothed, and the small-consumer threshold and donor limit are FICTIONAL.
+ * `info` contains goal holders only; discretionary work is fixed below the managed ladder.
+ */
+export function donorOrder(
+  receiver: string,
+  bottleneck: 'CPU' | 'ZIIP',
+  dps: Readonly<Record<string, number>>,
+  info: Readonly<Record<string, DonorInfo>>,
+  tuning: Pick<typeof POLICY_ADJUST, 'accDecay' | 'donorMinEngines' | 'donorsPerReceiver'> = POLICY_ADJUST,
+): string[] {
+  const r = info[receiver];
+  const rdp = dps[receiver];
+  if (!r || rdp === undefined) return [];
+  return Object.keys(info)
+    .map((key) => {
+      const g = info[key]!;
+      return { key, importance: g.importance, worst: Math.max(g.localPi ?? 0, g.sysplexPi ?? 0),
+        engines: (bottleneck === 'CPU' ? g.acc.cpuEngines : g.acc.ziipEngines ?? 0) * (1 - tuning.accDecay) };
+    })
+    .filter((g) => g.key !== receiver && dps[g.key] !== undefined && dps[g.key]! >= rdp &&
+      g.engines >= tuning.donorMinEngines && !(g.worst > 1 && g.importance < r.importance))
+    .sort((a, b) => {
+      const happyA = a.worst < 1;
+      const happyB = b.worst < 1;
+      return Number(happyB) - Number(happyA) || (!happyA ? b.importance - a.importance : 0) ||
+        a.worst - b.worst || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+    })
+    .slice(0, tuning.donorsPerReceiver)
+    .map((g) => g.key);
+}
+
 export function policyAdjust(input: AdjustInput): AdjustOutput {
   const { def, system } = input;
   const held: Record<string, number> = {};
@@ -319,6 +362,10 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   /** Processor use of a period, engines: the larger of this tick and the smoothed accumulators (CP, IIPCP and zIIP). */
   const accOf: Record<string, ScpState> = {};
   for (const s of system.scps) accOf[s.scKey] = s;
+  const donorInfo: Record<string, DonorInfo> = {};
+  for (const k of infoKeys) donorInfo[k] = {
+    importance: info[k]!.importance, localPi: localPi[k] ?? null, sysplexPi: input.sysplexPi[k] ?? null, acc: accOf[k]!.acc,
+  };
   const usedEngines = (k: string): number => {
     const t = tickOf[k];
     const now = t ? t.cpEngines + t.iipcpEngines + t.ziipEngines : 0;
@@ -352,7 +399,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // the projection says: a period already at the floor of the queueing model (saturated pool) shows no further
     // projected harm. A passed period that gets no CPU has nothing to lose and is left to the projection.
     // Passed or joined: above the receiver before and not after, or level with it before and below it after. Each
-    // side compares DPs of one canonical ladder. Only a receiver-up move can do it: a donor is never more important.
+    // side compares DPs of one canonical ladder. A happy more important donor is eligible too, but must still pass
+    // this rule and the projected harm check below.
     const rImp0 = info[receiver]!.importance;
     const r0dp = dps[receiver]!;
     const r1dp = trial[receiver] ?? r0dp;
@@ -463,7 +511,6 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   };
   let stoppedAt: string | null = null;
   for (const receiver of candidates) {
-    const impOf = info[receiver]!.importance;
     // The skip clock (WLM Services p.145): a receiver nothing could help is not assessed again until it expires.
     if (skipUntil[receiver] !== undefined) {
       if (tracing) traceOf(receiver, null, 'SKIP_CLOCK', sharesOf(receiver)).skipUntilTick = skipUntil[receiver];
@@ -516,7 +563,6 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
     let firstNamed: { move: string; why: WlmTrialTrace } | null = null;
     const rdp = dps[receiver]!;
-    const rImp = impOf;
     const trials: { trial: Record<string, number>; text: string }[] = [];
 
     // Receiver up (WLM Services p.707, codes 635 and 620): one step at a time, each from the last (alone onto the free
@@ -532,23 +578,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       up = next;
       trials.push({ trial: withLadder(dps, up), text: `${receiver} DP ${hex(rdp)}→${hex(moveTarget(dps, up, receiver))}` });
     }
-    // Donors: heavy CPU users at or above the receiver's DP that are less important, or
-    // equally important and happy. Least important first (reverse receiver order).
-    const donors = Object.keys(info)
-      .filter(
-        (k) =>
-          k !== receiver &&
-          dps[k]! >= rdp &&
-          (info[k]!.importance > rImp || (info[k]!.importance === rImp && (localPi[k] ?? 0) < 1)) &&
-          (tickOf[k]?.cpEngines ?? 0) + (tickOf[k]?.iipcpEngines ?? 0) > 1e-4,
-      )
-      .sort(
-        (a, b) =>
-          info[b]!.importance - info[a]!.importance ||
-          (tickOf[b]?.cpEngines ?? 0) - (tickOf[a]?.cpEngines ?? 0) ||
-          (a < b ? -1 : 1),
-      )
-      .slice(0, 3);
+    const donors = donorOrder(receiver, btl, dps, donorInfo);
     if (ct) ct.donors = [...donors];
     // A donor above the receiver moves to the receiver's level; one already on it, to a new level just below (WLM
     // Services p.706, codes 530/540; the rejection code 531, "moving the donor to the receivers priority violates CPU
