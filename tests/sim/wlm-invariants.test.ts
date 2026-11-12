@@ -10,7 +10,7 @@ import { ladderOf, levelDp } from '../../src/sim/wlm/ladder';
 import { DP } from '../../src/sim/zos/dispatcher';
 import { evaluateLpar, sliceSpec, type ScpTick, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { projectedPercentilePi } from '../../src/sim/wlm/goals';
-import { decayInto, emptyAcc, goalInfo, goalPi, tickPi, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
+import { ACC_DECAY, decayInto, emptyAcc, goalInfo, goalPi, tickPi, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
@@ -89,6 +89,43 @@ function traced(input: AdjustInput): { out: AdjustOutput; trace: WlmAdjustTrace 
 const SEEDS = Array.from({ length: 150 }, (_, i) => i + 1);
 
 describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
+  it('I7 donor order: trials follow happy PI order, then reverse importance/PI order on the delayed processor', () => {
+    let donorsTried = 0;
+    let happyTried = 0;
+    let unhappyTried = 0;
+    for (const seed of SEEDS) {
+      const { input } = makeCase(seed, 'varied');
+      const { trace } = traced(input);
+      for (const c of trace.candidates.filter((c) => c.outcome === 'ASSESSED')) {
+        // An independent partition/order, using the actual DPs after protection and the measured history.
+        const pool = input.system.scps.flatMap((s) => {
+          const g = goalInfo(input.def, s.scKey);
+          const use = (c.bottleneck === 'CPU' ? s.acc.cpuEngines : s.acc.ziipEngines ?? 0) * (1 - ACC_DECAY);
+          if (!g || g.goal.kind === 'DISC' || s.scKey === c.scKey || trace.dps[s.scKey]! < c.dp || use < POLICY_ADJUST.donorMinEngines) return [];
+          // No PI at all counts as missing the goal (managementWorstPi), so it is never taken as happy.
+          const own = goalPi(g.goal, s.acc);
+          const plex = input.sysplexPi[s.scKey];
+          const pi = own == null && plex == null ? Infinity : Math.max(own ?? 0, plex ?? 0);
+          if (pi > 1 && g.importance < c.importance) return [];
+          return [{ key: s.scKey, importance: g.importance, pi }];
+        });
+        const byPi = (a: typeof pool[number], b: typeof pool[number]) => (a.pi === b.pi ? 0 : a.pi - b.pi) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+        const expected = pool.filter((p) => p.pi < 1).sort(byPi);
+        for (const imp of [5, 4, 3, 2, 1]) expected.push(...pool.filter((p) => p.pi >= 1 && p.importance === imp).sort(byPi));
+        const order = expected.slice(0, POLICY_ADJUST.donorsPerReceiver).map((p) => p.key);
+        expect(c.donors).toEqual(order);
+        const tried = c.trials.filter((t) => t.move.startsWith('DONOR ')).map((t) => t.move.split(' ')[1]!);
+        expect(tried).toEqual(order.slice(0, tried.length));
+        donorsTried += tried.length;
+        happyTried += tried.filter((k) => pool.find((p) => p.key === k)!.pi < 1).length;
+        unhappyTried += tried.filter((k) => pool.find((p) => p.key === k)!.pi >= 1).length;
+      }
+    }
+    expect(donorsTried).toBeGreaterThan(20);
+    expect(happyTried).toBeGreaterThan(0);
+    expect(unhappyTried).toBeGreaterThan(0);
+  });
+
   it('I8 one basis: no trial for a receiver whose projected PI is ≤ 1, and every verdict compares base with after', () => {
     let assessed = 0;
     let recovering = 0;

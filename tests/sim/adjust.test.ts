@@ -1,6 +1,6 @@
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { BASEPOL } from '../../src/content/wlm/basepol';
-import { enforceCpuProtection, managedDelayFrac, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { donorOrder, type DonorInfo, enforceCpuProtection, managedDelayFrac, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
@@ -359,10 +359,10 @@ describe('a hopeless receiver does not stop the search at the next importance (S
   });
 
   it('stops the search when the interval projection budget is spent, with no clock for the receiver it cut short', () => {
-    // OLD1 is on its clock; OLD2 (two trials: onto OLD1's level, then above it) spends two of three projections,
-    // OLD3 (four trials) gets the last.
+    // OLD1 is on its clock; OLD2 spends three projections (two raises, then OLD1 as an unhappy equal-importance
+    // donor, eligible since WT-07). OLD3 gets the last of four, without finishing its trials.
     const saved = POLICY_ADJUST.maxProjectionsPerInterval;
-    POLICY_ADJUST.maxProjectionsPerInterval = 3;
+    POLICY_ADJUST.maxProjectionsPerInterval = 4;
     try {
       const { out, trace } = run3(withClocks({ 'OLD1#1': 200 }), 100);
       const old3 = trace.candidates.find((c) => c.scKey === 'OLD3#1')!;
@@ -392,8 +392,8 @@ describe('a hopeless receiver does not stop the search at the next importance (S
 
   it('traces BUDGET for the next candidate when the budget ran out between receivers, and stops', () => {
     const saved = POLICY_ADJUST.maxProjectionsPerInterval;
-    // OLD1 has no trial (alone on top); OLD2's two trials spend the budget.
-    POLICY_ADJUST.maxProjectionsPerInterval = 2;
+    // OLD1 has no trial (alone on top); OLD2's two raises and equal-importance donor trial spend the budget (WT-07).
+    POLICY_ADJUST.maxProjectionsPerInterval = 3;
     try {
       const { out, trace } = run3(system3, 100);
       expect(trace.candidates.map((c) => [c.scKey, c.outcome])).toEqual([['OLD1#1', 'ASSESSED'], ['OLD2#1', 'ASSESSED'], ['OLD3#1', 'BUDGET']]);
@@ -745,5 +745,102 @@ describe('the missing-goal rule on the ladder (WT-06)', () => {
     expect(donor!.detail ?? '').not.toContain('would be passed');
     // The raise past MORE is refused for it.
     expect(rcv!.trials[0]!.detail).toMatch(/^MORE#1 .*would be passed/);
+  });
+});
+
+
+describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
+  const atRest = (importance: DonorInfo['importance'], localPi: number | null, sysplexPi = localPi, cp = 1, ziip = 0): DonorInfo => ({
+    importance, localPi, sysplexPi, acc: { cpuEngines: cp / (1 - ACC_DECAY), ziipEngines: ziip / (1 - ACC_DECAY) },
+  });
+  const all = { ...POLICY_ADJUST, donorsPerReceiver: 100 };
+
+  it('tries an over-achieving importance-1 period before a struggling importance-4 one', () => {
+    const info = { R: atRest(2, 2), HAPPY: atRest(1, .6), STRUGGLING: atRest(4, 1.2) };
+    expect(donorOrder('R', 'CPU', { R: 242, HAPPY: 246, STRUGGLING: 244 }, info)).toEqual(['HAPPY', 'STRUGGLING']);
+  });
+
+  it('orders happy periods by the worse local/sysplex PI, ignoring importance and CPU size', () => {
+    const info = { R: atRest(2, 2), A: atRest(1, .2, .8, .1), B: atRest(5, .6, .3, 2), C: atRest(3, .1, .9, 4) };
+    expect(donorOrder('R', 'CPU', { R: 240, A: 246, B: 244, C: 242 }, info)).toEqual(['B', 'A', 'C']);
+    // A locally happy but globally missing more important period is excluded, as is the converse.
+    expect(donorOrder('R', 'CPU', { R: 240, A: 246, B: 244, C: 242 }, { ...info, A: atRest(1, .2, 1.1) })).toEqual(['B', 'C']);
+    expect(donorOrder('R', 'CPU', { R: 240, A: 246, B: 244, C: 242 }, { ...info, A: atRest(1, 1.1, .2) })).toEqual(['B', 'C']);
+  });
+
+  it('then takes non-happy periods from importance 5 up, best PI first and keys breaking ties', () => {
+    const info = { R: atRest(3, 2), A: atRest(5, 1.4), B: atRest(5, 1.1), C: atRest(5, 1.1), D: atRest(4, 1), E: atRest(3, 1.2), EXCLUDED: atRest(2, 1.1), HAPPY: atRest(1, .9) };
+    const dps = Object.fromEntries(Object.keys(info).map((k) => [k, 246]));
+    expect(donorOrder('R', 'CPU', dps, info, all)).toEqual(['HAPPY', 'B', 'C', 'A', 'D', 'E']);
+    expect(donorOrder('R', 'CPU', dps, info)).toEqual(['HAPPY', 'B', 'C']);
+    expect(donorOrder('R', 'CPU', dps, info, { ...all, donorsPerReceiver: 0 })).toEqual([]);
+  });
+
+  it('a period with no PI is not taken as happy: last at its importance, never when more important', () => {
+    const info = { R: atRest(3, 2), HAPPY: atRest(5, .9), NOPI: atRest(5, null), STRUGGLING: atRest(5, 1.5), NOPI1: atRest(1, null) };
+    const dps = Object.fromEntries(Object.keys(info).map((k) => [k, 246]));
+    expect(donorOrder('R', 'CPU', dps, info, all)).toEqual(['HAPPY', 'STRUGGLING', 'NOPI']);
+    // One PI known is enough: a period with only a local PI is judged on it.
+    expect(donorOrder('R', 'CPU', dps, { ...info, NOPI: atRest(5, .5, null) }, all)).toEqual(['NOPI', 'HAPPY', 'STRUGGLING']);
+  });
+
+  it('C-2: a zIIP bottleneck takes 2 zIIP engines with no CP, not 0.2 CP with no zIIP', () => {
+    const info = { R: atRest(2, 2), Z: atRest(4, .5, .5, 0, 2), CP: atRest(5, .2, .2, .2, 0) };
+    const dps = { R: 242, Z: 244, CP: 246 };
+    expect(donorOrder('R', 'ZIIP', dps, info)).toEqual(['Z']);
+    expect(donorOrder('R', 'CPU', dps, info)).toEqual(['CP']);
+  });
+
+  it('uses the zIIP donor order in policyAdjust on a real zIIP-bound image (C-2)', () => {
+    const def = structuredClone(BASEPOL);
+    const template = def.classes.find((c) => c.id === 'STCLO')!;
+    for (const [id, importance, velocity] of [['R', 2, 90], ['Z', 4, 5], ['CP', 5, 5]] as const) {
+      def.classes.push({ ...structuredClone(template), id, cpuCritical: false,
+        periods: [{ goal: { kind: 'VEL', velocity }, importance, durationSu: null }] });
+    }
+    const dps: Record<string, number> = { 'R#1': 242, 'Z#1': 244, 'CP#1': 246 };
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 2, ziipServers: 2, cpPrsmDelayFrac: 0,
+      slices: [sliceSpec({ key: 'R', scKey: 'R#1', kind: 'AS', cpEngines: 0, ziipEngines: 2, units: 2, mayOverflow: false }),
+        sliceSpec({ key: 'Z', scKey: 'Z#1', kind: 'AS', cpEngines: 0, ziipEngines: 2, units: 2, mayOverflow: false }),
+        sliceSpec({ key: 'CP', scKey: 'CP#1', kind: 'AS', cpEngines: .2, units: 1 })], backlog: {}, io: IO, pagingFrac: 0 };
+    const current = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! }).scps;
+    const system = { lparId: 'SYS', scps: current.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      policyAdjust({ def, system, evalInput, current, sysplexPi: {}, clockText: 'T' });
+    } finally {
+      setWlmTraceSink(null);
+    }
+    const receiver = traces[0]!.candidates.find((c) => c.scKey === 'R#1')!;
+    expect(receiver.outcome).toBe('ASSESSED');
+    expect(receiver.bottleneck).toBe('ZIIP');
+    expect(receiver.donors).toEqual(['Z#1']);
+  });
+
+  it('uses smoothed processor use, including IIPCP, with an inclusive minimum; ignores absent old-save zIIP use', () => {
+    const min = POLICY_ADJUST.donorMinEngines;
+    const info = { R: atRest(2, 2), AT: atRest(4, .5, .5, min * 2), BELOW: atRest(5, .1, .1, min / 2), OLD: { ...atRest(4, .6), acc: { cpuEngines: 1 / (1 - ACC_DECAY) } } };
+    expect(donorOrder('R', 'CPU', { R: 242, AT: 246, BELOW: 246, OLD: 244 }, info)).toEqual(['AT', 'OLD']);
+    expect(donorOrder('R', 'ZIIP', { R: 242, AT: 246, BELOW: 246, OLD: 244 }, info)).toEqual([]);
+    // A binary-exact decay makes the boundary exact too, rather than just below it through rounding.
+    expect(donorOrder('R', 'CPU', { R: 242, AT: 246 }, { R: info.R, AT: { ...info.AT, acc: { cpuEngines: 2 * min } } },
+      { ...POLICY_ADJUST, accDecay: .5 })).toEqual(['AT']);
+    const t = { ...emptyScpTick('IIPCP#1', 246), iipcpEngines: 1 };
+    const acc = decayInto(emptyAcc(), t);
+    expect(donorOrder('R', 'CPU', { R: 242, IIPCP: 246 }, { R: info.R, IIPCP: { ...atRest(5, .5), acc } })).toEqual(['IIPCP']);
+    // The tick is quiet now, but its decayed history still holds CPU the projection could take.
+    const quiet = decayInto(acc, emptyScpTick('IIPCP#1', 246));
+    expect(donorOrder('R', 'CPU', { R: 242, IIPCP: 246 }, { R: info.R, IIPCP: { ...atRest(5, .5), acc: quiet } })).toEqual(['IIPCP']);
+  });
+
+  it('excludes self, lower and absent holders; keeps inputs unchanged and key order irrelevant', () => {
+    const info = { R: atRest(2, 2), LOWER: atRest(5, .1), ABSENT: atRest(5, .1), Z: atRest(4, .5), A: atRest(1, .5, null) };
+    const dps = { R: 244, LOWER: 242, Z: 246, A: 244 };
+    const before = structuredClone({ info, dps });
+    expect(donorOrder('R', 'CPU', dps, info)).toEqual(['A', 'Z']);
+    expect(donorOrder('R', 'CPU', dps, Object.fromEntries(Object.entries(info).reverse()))).toEqual(['A', 'Z']);
+    expect({ info, dps }).toEqual(before);
+    expect(donorOrder('MISSING', 'CPU', dps, info)).toEqual([]);
   });
 });

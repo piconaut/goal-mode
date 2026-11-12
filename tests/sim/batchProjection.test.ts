@@ -114,7 +114,8 @@ describe('cross-pool recovery during WLM projections', () => {
       BATCH_PROJECTION.maxRecoveryRounds = rounds;
     }
     expect(out.log).not.toContain('RCVR=');
-    expect(out.log).not.toContain('rejected:');
+    // The clue may name a donor trial's real rejection (WT-07 tries a happy STCHI#1), never one for batch's own move.
+    expect(out.log).not.toMatch(/\(BATCHPRD#1 DP \S+ rejected/);
     expect(out.dps['ONLCARD#1']).toBe(244);
     const verdicts = traces[0]!.candidates.flatMap((c) => c.trials.map((t) => t.verdict));
     expect(verdicts).not.toContain('ACCEPTED');
@@ -174,8 +175,12 @@ describe('cross-pool recovery during WLM projections', () => {
     const trialOnly = batch.map((g) => ({ ...g, jobs: g.jobs.map((j) => ({ ...j, nextCp: j.cp, nextZi: j.zi })) }));
     const run = (b: BatchProjectionSlice[]) => policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch: b });
     // Without recovery batch is raised past BATCHHI (alone above it, after onto ONLHI's level, above it, onto
-    // BATCHHI's); with it, every step is rejected and the ladder is only made canonical.
+    // BATCHHI's).
     expect(run(trialOnly).dps).toMatchObject({ 'STCHI#1': 0xf6, 'BATCHPRD#1': 0xf4, 'BATCHHI#1': 0xf2, 'ONLHI#1': 0xf0 });
-    expect(run(batch).dps).toMatchObject({ 'STCHI#1': 0xf6, 'BATCHHI#1': 0xf4, 'ONLHI#1': 0xf2, 'BATCHPRD#1': 0xf0 });
+    // With it, every step up is rejected; the happy importance-1 STCHI (zIIP user) then donates to batch's level
+    // (WT-07: happy donors first, importance ignored).
+    const recovered = run(batch);
+    expect(recovered.log).toBe('T TEST RCVR=BATCHPRD#1 PI=9.88 BTLNK=ZIIP DONOR STCHI#1 DP F6→F0');
+    expect(recovered.dps).toMatchObject({ 'BATCHHI#1': 0xf6, 'ONLHI#1': 0xf4, 'STCHI#1': 0xf2, 'BATCHPRD#1': 0xf2 });
   });
 });

@@ -531,10 +531,11 @@ describe('capacity and processor-split pins (RT-05, A11)', () => {
     const iip = pinOf(regressed, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'APPL_IIP' });
     const iipcp = pinOf(regressed, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'IIPCP' });
     expect([cp.value, iip.value, iipcp.value]).toEqual([row.applCpPct, row.applIipPct, row.applIipcpPct]);
-    // Below the 5 % line this row is unremarkable; a real overflow counts half, like APPL, on any class of a host
-    // image (the split is about the processor, not the class).
+    // Below the 5 % line the split is unremarkable; a real overflow counts half, like APPL, on any class of a host
+    // image (the split is about the processor, not the class). Values set explicitly: the run's own IIPCP moves with
+    // WLM's choices.
     const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_CAPACITY', trigger: 'POLICY' } });
-    expect(judgeEvidence(regressed, MIDWEST, inc, [iipcp])[0]!.why).toBe('value is unremarkable');
+    expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...iipcp, value: 2 }])[0]!.why).toBe('value is unremarkable');
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...iipcp, value: 20 }])[0]).toMatchObject({ relevance: 0.5, why: 'consistent with the cause (but not specific)' });
   });
 

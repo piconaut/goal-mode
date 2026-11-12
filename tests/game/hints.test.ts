@@ -112,15 +112,18 @@ describe('morning hints in a run', () => {
     const { SCENARIOS } = await import('../../src/content/scenarios');
     const { advance, chooseDraft, newRun, startDay } = await import('../../src/game/run');
     const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
-    // Seed 5's first day is quiet; its second day leaves hints for the third morning (day index 2). (Seed 2 until
-    // WT-06: on the ladder its first day leaves a hint too.)
+    // Each day's hints are dated for the next morning (day index 1 after day 0, 2 after day 1). Checked day by day so
+    // the test doesn't depend on which day of a seed happens to be quiet.
+    const hintsOf = (r: typeof run) => r.inbox.filter((m) => m.subject === 'A thought for this morning');
     let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 5, 'NORMAL'), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
+    const first = hintsOf(run);
+    expect(first.every((m) => m.day === 1)).toBe(true);
     run = startDay(chooseDraft(run, MIDWEST_GAME, null), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
-    const hints = run.inbox.filter((m) => m.subject === 'A thought for this morning');
-    expect(hints.length).toBeGreaterThan(0);
-    expect(hints.every((m) => m.day === 2)).toBe(true);
+    const second = hintsOf(run).slice(first.length);
+    expect(first.length + second.length).toBeGreaterThan(0);
+    expect(second.every((m) => m.day === 2)).toBe(true);
     expect(Object.keys(run.reports[0]!.piWorst ?? {}).length).toBeGreaterThan(3);
     const forewarnings = run.inbox.filter((m) => m.subject === 'For day 2');
     expect(forewarnings.every((m) => m.day === 1)).toBe(true);

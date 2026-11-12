@@ -84,7 +84,7 @@ Notes from discussion:
 - When settled, this rewrites SPEC §10 (RCA mini-game) and parts of §9 (events); move it to its own design doc if it
   grows.
 
-### WLM policy adjustment audit (2026-11-10; WT-04 and WT-05 implemented 2026-11-11, WT-06 2026-11-12)
+### WLM policy adjustment audit (2026-11-10; WT-04 and WT-05 implemented 2026-11-11, WT-06 and WT-07 2026-11-12)
 
 [docs/wlm-design.md](docs/wlm-design.md) checks the whole adjustment loop (`src/sim/wlm/adjust.ts` and what feeds
 it) against IBM's description, step by step, and proposes one target model. Fifteen findings with seed-42 repros;
@@ -176,8 +176,13 @@ level or a separate toggle.
   wlm-design.md §9.6). User decision: ship, and WT-06 checks those seeds.
 - WT-06 sweep (2026-11-12, remote, Normal, seeds 1–10, WT-05 `2f614b5` → WT-06 `a0904ec`): Revenue 20 / 27 / 10
   (unchanged); Midwest 16.5 / 28 / 10 → 9.5 / 28 / 10 (MOBILE's goal is looser than its SLA, and the ladder no
-  longer over-serves DDF; real behaviour, inside the band); Harbourline 10 / 29 / 6 → 10.5 / 30.5 / 7 (seed 9 back;
-  seed 7 lost to W7, WT-10's note). All inside the bands.
+  longer over-serves DDF; real behaviour); Harbourline 10 / 29 / 6 → 10.5 / 30.5 / 7 (seed 9 back; seed 7 lost to
+  W7, WT-10's note). All inside the CI gate's bands (`tools/ci/balanceGate.ts`; do-nothing 8–22). Midwest do-nothing
+  is below SPEC §16's design target of day 12–18 and moved 7 days against the ±3 WT-06 expected; user decision
+  (2026-11-12): accepted, no change to the ladder or the band.
+- WT-07 sweep (2026-11-12, remote, Normal, seeds 1–10, `6c00eca`): Midwest 9.5 / 28 / 10 and Revenue 20 / 27 / 10
+  (unchanged); Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook 1 victory). Inside the CI gate's bands; Midwest
+  do-nothing stays below the design target.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -690,3 +695,25 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Pruned completed milestone checklists, superseded decisions, stale timings, and chronological session logs.
   Pending requirements/questions and current validation remain above; the full pre-prune tracker is recoverable
   from `1d9d5a2:PROGRESS.md` and `git log -p -- PROGRESS.md`.
+
+
+### WT-07 · Donors by goal achievement and the delayed processor (2026-11-12)
+
+Implemented docs/wlm-design.md §5.5 on merged WT-06 (`b2a9903`): pure `donorOrder` selects goal periods at or
+above the receiver, filters smoothed use of CPU (CP + IIPCP) or zIIP, then orders happy periods by lowest worst
+local/sysplex PI regardless of importance, followed by the rest from importance 5 up, lowest PI first. Missing
+more important periods are excluded. `donorsPerReceiver` (3) joins the existing FICTIONAL tuning parameters.
+The existing missing-goal, CPU-protection and projection checks still judge every move. No new persisted state.
+IBM sources verified with zos-docs: WLM Services 3.1 pp.138,147,708; SG24-6472-03 (March 2008) pp.59–60;
+SG24-7621 p.105. Tests cover I7 trace order, C-2 processor selection, smoothed history and IIPCP, tie order and
+I5 (a happy more important donor must not be pushed past its goal). WT-07 deleted from BACKLOG; WT-08 remains
+attended and user-gated. Finished on the same branch: a period with no PI yet counts as missing its goal (it was the
+happiest donor); fixtures moved for the new order (one realism case: a happy STCHI holding Db2 donates and ONLHI is
+briefly wait-bound; the projection sees it but ONLHI's PI is at its 0.5 floor). S-table, R-1 and sweep in docs/wlm-design.md §9.8: moves 25/26/44 → 33/21/47,
+nothing undone within two minutes, projections up to 1.7×, bench 1.53 → 1.58 ms per tick; sweep (Normal, seeds 1–10)
+Midwest and Revenue unchanged, Harbourline do-nothing 10.5 → 10, all inside the CI gate's bands (M8.2).
+Review fixes (#307 comments 6814997986 and 6815514698): a more important period at PI ≤ 1 can no longer be taken
+past 1 by a harm under `harmEps` (I5; reviewer's three-period case as a test); one `managementWorstPi` rule for "no
+PI counts as missing" in the donor order and the "missing goals are not passed" check; docs say periods, not
+holders, until WT-09; the RCA "donors are less important" approximation is noted for RT-16; B5 (sysplex PI first)
+is PR-19.

@@ -1,8 +1,10 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 and WT-05 are implemented** (2026-11-11: one PI basis, sustained
-demand, the §5.3 missing-goal rule, §9.5; skip clocks, the delay test and the interval budget, §9.6); the rest of §5 is
-not. WT-04 was prototyped on branch `proto/wlm-wt04`;
+Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-07 are implemented**: one PI basis, sustained
+demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval budget (WT-05,
+§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8). The rest of §5
+(plans, server periods, WT-08 onward) is not. Findings W2, W4, W10 and W12 below describe the sim before those
+entries; each says what fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
 is the WLM counterpart of [rca-design.md](rca-design.md).
@@ -253,7 +255,8 @@ that level and above.
   dispatch (`dispatchableDemand`); the cut is CAP delay. A receiver whose largest delay is CAP is not fixable.
 - **Minimum:** `rgMin` gives a group's member periods a share while any member "misses its goal" (`missingGoal`:
   local PI > 1; for a discretionary member, delay > using). `grantDispatch` (`eval/grants.ts`) dispatches that share
-  as a separate demand at `RG_MIN_DP` = 252, or 207 for a discretionary member.
+  as a separate demand at `RG_MIN_DP` = 252, or 207 for a discretionary member (as audited; 249 and 202 since WT-06,
+§5.6).
 - **Discretionary goal management:** `discretionaryCaps` caps periods with loose goals and local PI < 0.71 while
   discretionary work is waiting.
 - **Blocked workload:** a period with CPU delay and under 1 % CPU for `BLWLINTHD` gets a share at DP 253.
@@ -571,6 +574,8 @@ path explains none of it: nothing the game exposes says that the test used a dif
 
 ### W2. The priority ladder only climbs, then collapses at the top (high)
 
+*Fixed by WT-06 (§5.6, §9.7).*
+
 **Sim.** A receiver moves to an occupied level **+ 1** (§2.7); a donor moves to just below the receiver; nothing
 ever spreads the ladder or brings it down (§2.13). Each episode on a busy image leaves the periods involved one or
 two steps higher, and the top is 252.
@@ -640,6 +645,8 @@ transactions lifted by the regions' priority) is invisible in priorities althoug
 players are meant to learn. PT-01's "two hopeless importance-1 receivers" was this finding plus W6.
 
 ### W4. Donors are picked by importance and CPU use, not by goal achievement (high)
+
+*Fixed by WT-07 (§5.5 `donorOrder`, §9.8).*
 
 **Sim.** §2.8. Less important periods are donors whatever their PI, least important first, heaviest CP user first;
 equal importance only if happy; more important never.
@@ -740,6 +747,10 @@ by itself, which is when it no longer needs to be.
 
 ### W10. The resource-group minimum is dispatched inside the managed range (medium)
 
+*Collision fixed by WT-06:* a goal member's minimum runs at `DP.RG_MINIMUM` (249, in the reserved 253–249 range,
+APPROX), above all goal work; a discretionary member's at `MANAGED_MIN − 1` (202), above discretionary work only. The
+second paragraph (a discretionary member's minimum is weaker than in z/OS) still holds.
+
 `RG_MIN_DP` is 252 with the comment "above every goal-managed period", and 252 is `DP.MANAGED_MAX`
 (`eval/grants.ts`, `zos/dispatcher.ts`). Once a period reaches 252 (W2: day 2 on Midwest PROD2) the guaranteed share
 competes with it by ready units. By code reading (C-4); no shipped policy has a minimum.
@@ -757,6 +768,8 @@ response-time goals for batch with at least three completions per 20 minutes ([W
 editor accepts such a goal without comment.
 
 ### W12. Dispatching priorities use the table from before z/OS 1.8 (low)
+
+*Fixed by WT-06:* the sim uses the z/OS 1.8 table (SG24-6472 p.65): 248 small consumer, 247–203 managed.
 
 §3.13: 253 small consumer and 252–208 managed against 248 and 247–203. The two Redbooks conflict; the dated
 statement and the practitioner source agree on the newer table. Cosmetic, but DPs are shown in hex in the WLM log
@@ -915,6 +928,8 @@ netValue(r, base, after, info, C):                       // T: the trial ladder;
   gain ← max(base[r], C.creditFloor) − max(after[r], C.creditFloor);  equalHarm ← 0
   for k ≠ r in key order, with base[k] and after[k] not null:
       harm ← max(0, after[k] − max(base[k], C.creditFloor))
+      if importance(k) < importance(r) and base[k] ≤ 1 < after[k]:
+          return (false, MORE_IMPORTANT_HARMED k)            // crossing its goal is harm, however small (I5)
       if harm ≤ C.harmEps: continue
       if importance(k) < importance(r):                     // more important
           if after[k] > 1: return (false, MORE_IMPORTANT_HARMED k)
@@ -965,6 +980,11 @@ donorOrder(r, b, L, info, C):
   return the first C.donorsPerReceiver
 ```
 
+As implemented in WT-07 the pool is goal periods, not holders: until server periods exist (WT-09) every goal
+period is its own holder, so CICS transaction periods sharing regions are separate donors, and a donor move of one
+that is not the most important of the classes its regions serve changes no dispatching. A period with neither PI
+counts as missing its goal (`managementWorstPi`), here and in the "missing goals are not passed" rule.
+
 Discretionary periods are fixed below the managed range and hold nothing a priority move could free, so they are
 not in the pool (they are IBM's "universal donor" for storage and through capping).
 
@@ -980,10 +1000,13 @@ a period seen for the first time: the level of the lowest period of its importan
                    directly below the lowest level that holds a more important period (the top if there is none)
 ```
 
-With 45 managed priorities the canonical form holds 22 levels; if an image ever has more, the two lowest merge
-(APPROX; no shipped policy has 22 active goal periods on an image). DPs become a function of the order alone, so two
-runs that reach the same order have the same DPs, and the climb of W2 cannot occur. `MANAGED_MAX` stays free for the
-resource-group minimum's share and 253 for blocked-workload promotion, which closes W10's collision.
+With 45 managed priorities the canonical form holds 22 levels; if an image ever has more, every level from the 22nd
+down merges into the 22nd (APPROX; no shipped policy has 22 active goal periods on an image). DPs become a function of
+the order alone, so two runs that reach the same order have the same DPs, and the climb of W2 cannot occur.
+`MANAGED_MAX` is left free (a sim choice: the free priority above the top level, as unbunching leaves one between
+levels). A goal member's resource-group minimum runs at `DP.RG_MINIMUM` (249) and blocked-workload promotion at 253,
+both in the reserved range and above all goal work (APPROX: IBM doesn't say where they run), which closes W10's
+collision; a discretionary member's minimum runs at 202, above discretionary work only.
 
 ### 5.7 Bottlenecks
 
@@ -1117,8 +1140,9 @@ with these (WT-15). Every reason a player reads is then stated on the PI the log
 
 ### 6.2 Bots and the balance bands
 
-Bands (SPEC §16; latest numbers PROGRESS.md M8.2): do-nothing loses day 12–18, textbook reaches day 28–32, expert
-wins.
+Bands: the design targets (SPEC §16) are do-nothing loses day 12–18, textbook reaches day 28–32, expert wins; the CI
+gate (`tools/ci/balanceGate.ts`) is looser: do-nothing median day 8–22, textbook 20–36, expert 28–40 with 60–100 %
+victories. "Inside the bands" in §9 means the CI gate unless a row says otherwise. Latest numbers: PROGRESS.md M8.2.
 
 | Bot | Expected direction | Rough size | Why |
 |---|---|---|---|
@@ -1466,15 +1490,16 @@ to D8 (S-4 test), nothing reaches F7. R-4 is gone: at D1 14:17 on PRDD MKTDDF#2 
 
 **Sweep** (remote, Normal, seeds 1–10; do-nothing median day / textbook median day / expert victories): Revenue 20 /
 27 / 10 (unchanged); Midwest 16.5 / 28 / 10 → **9.5** / 28 / 10; Harbourline 10 / 29 / 6 → 10.5 / 30.5 / **7**. All
-inside the bands.
+inside the CI gate's bands; Midwest do-nothing is below the design target (day 12–18).
 
 - *Midwest do-nothing.* On 8 of 10 seeds the hands-off run ends earlier (seed 1: D22 → D8), from a MOBILE miss every
   evening at exactly 40.0 %: PROD1's share of its routing meets the SLA, PROD2's misses it. MOBILE's SLA (95 % <
   0.4 s) is stricter than DDFPRD#1's goal (90 % < 0.5 s), a planted policy flaw. The collapsed ladder kept DDFPRD#1 on
   a shared level near the top and over-served it; on the ladder, periods that ask for help step past DDFPRD#1 while
   it meets its goal (allowed: it is not missing it), and WLM gives it what its goal needs and no more. The game names
-  these incidents CPU_PRIORITY/POLICY, with WLMGL showing the goal met. Real WLM behaviour; more than the ±3 days the
-  entry expected, inside the band, so no change (an out-of-band median would be a `balance` entry).
+  these incidents CPU_PRIORITY/POLICY, with WLMGL showing the goal met. Real WLM behaviour. It moves the median by 7
+  days, more than the ±3 the entry expected, and below the design target of day 12–18 though inside the CI gate's
+  8–22. User decision (2026-11-12): accepted, no change to the ladder or the band.
 - *Harbourline expert seed 9* comes back (victory): on D29 WLM makes 20–58 moves an hour from 10:00 and SLAs are back
   near 100 % by 15:00 (WT-05: 7–9 hours near 0 %).
 - *Seed 7* is still lost (day 36 → 39). Its D29 freeze is not the ladder or the clock: with `rejectedSkipTicks` 0 the
@@ -1484,4 +1509,45 @@ inside the bands.
 
 RT-06 validator: Midwest seed 3 gains a D1 21:00 MOBILE incident (POLICY, no card), the same flaw; the runaway's
 incident at D2 13:00 and its verdict are unchanged.
+
+### 9.8 WT-07: donors in IBM's order
+
+WT-07 orders donors by goal achievement and takes them by the processor that is short (§5.5 `donorOrder`). Same files
+and settings as §9.6; cells as there.
+
+| | S-1 | S-2 | S-3 | Seed 2 |
+|---|---|---|---|---|
+| WT-06 (`dev`) | 25; 2 / 0; 4 | 26; 5 / 0; 3 | 44; 0 / 0; 2 | 48; 0 / 0; 2 |
+| WT-07 | 33; 0 / 0; 3 | 21; 3 / 0; 3 | 47; 2 / 0; 2 | 48; 0 / 0; 2 |
+| candidates assessed | 341 → 270 | 727 → 1 027 | 900 → 919 | 357 → 459 |
+| projections | 1 953 → 1 978 | 4 289 → 7 347 | 4 460 → 6 859 | 1 901 → 3 378 |
+| donor moves accepted | 1 | 3 | 3 | 0 |
+
+The pool is wider (happy more important periods, unhappy equal-importance ones), so a receiver now nearly always has
+three donor trials: projections up to 1.7× (S-2), mostly donor trials refused for harming more important work or
+gaining nothing. Bench (Harbourline, paired): 1.53 → 1.58 ms per tick. No move is undone within two minutes.
+
+**R-1** at D1 12:19:30 (PROD2, DDFPRD#1 at importance 2, CPU): donors `DDFPRD#2 ONLHI#1 STCMED#1`, the happy periods at
+or above it by PI (0.45, 0.50, 0.53; STCHI at 0.70 is fourth; TSO#1 at 0.11 uses 0.007 engines, under
+`donorMinEngines`). `dev` listed TSO#2, STCMED#1, ONLMED#1 by importance. STCMED (Db2) is in the list because it meets
+its goal there.
+
+A happy importance-1 STC class can now be lowered for a less important receiver. In the capped-PROD1 realism case
+(Db2 moved into STCHI) STCHI donates to STCMED at D1 13:57, ONLHI is wait-bound on Db2 for one assessment (`BTLNK=OTHER`)
+and STCHI, now at PI 0.99, is raised again at 14:02. The projection does see ONLHI's waits on Db2 (the #307 review
+measured its projected mean response time rising from 38 to 50 ms and `delayOther` from 3.4 to 10.4), but ONLHI's percentile PI is at its 0.5
+floor before and after, so harm judged on the PI is nil and the move passes. That follows from the bucketed PI
+(SPEC §17, "Percentile PI in WLM projections"), not from a missing dependency model; whether real WLM would make
+the same trade is unverified. The test allows the dip only right after such a donation.
+
+Review of #307 (2026-11-12): a more important period just under its goal (PI 0.995) could be taken to 1.004 because
+the 0.02 noise tolerance ran before the goal-crossing test. Crossing from ≤ 1 to > 1 is now refused whatever the
+size (§5.3, I5; SG24-6472-03 p.60); a three-period case in `tests/sim/wlm-realism.test.ts` covers it. The
+"missing goals are not passed" rule now reads a period with no PI as missing, like the donor order. Seed-42
+one-day hashes for Midwest, Revenue and Harbourline are unchanged by both.
+
+**Sweep** (remote, Normal, seeds 1–10; do-nothing median day / textbook median day / expert victories): Midwest 9.5 /
+28 / 10 and Revenue 20 / 27 / 10, both unchanged; Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook gains a
+victory). All inside the CI gate's bands; Midwest do-nothing stays below the design target (§9.7). The entry expected
+small changes.
 

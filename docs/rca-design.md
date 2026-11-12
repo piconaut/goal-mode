@@ -250,7 +250,9 @@ hurt workload's class. Three systematic errors:
    CPU, the CPC is 97–99 % busy and only importance 5 and discretionary count as donors (1 %), so the planted policy
    flaw is `CPU_CAPACITY/GROWTH` on days 0, 5 and 8. The bots' `buyCapacityForIncidents` buys a permanent CP on
    repeated incidents with that label.
-2. **Work at the same or higher importance is never a donor**, though it is the usual culprit of a priority problem:
+2. **Work at the same or higher importance is never counted as a donor**, though it is the usual culprit of a
+   priority problem (and since WT-07 WLM itself takes from a happy more important period, down to its goal; RT-16's
+   displaceable CP is to count that):
    XLOG_LOOP (importance 1 over importance 2), SHADOW_IT and F5 (TSO at the victim's importance), F3 (same class).
    U-11: CPC 99 %, 80 % of the CP used at the victim's importance, 2.5 % below → `CPU_CAPACITY`.
 3. **The hurt work's own servers count as donors.** With F1, Db2 is importance 3 and uses 10–15 % of an image, so
