@@ -698,4 +698,8 @@ The existing missing-goal, CPU-protection and projection checks still judge ever
 IBM sources verified with zos-docs: WLM Services 3.1 pp.138,147,708; SG24-6472-03 (March 2008) pp.59–60;
 SG24-7621 p.105. Tests cover I7 trace order, C-2 processor selection, smoothed history and IIPCP, tie order and
 I5 (a happy more important donor must not be pushed past its goal). WT-07 deleted from BACKLOG; WT-08 remains
-attended and user-gated. Validation, audit statistics and sweep results will be recorded below when complete.
+attended and user-gated. Finished on the same branch: a period with no PI yet counts as missing its goal (it was the
+happiest donor); fixtures moved for the new order (one realism case: a happy STCHI holding Db2 donates and ONLHI is
+briefly wait-bound, real behaviour). S-table, R-1 and sweep in docs/wlm-design.md §9.8: moves 25/26/44 → 33/21/47,
+nothing undone within two minutes, projections up to 1.7×, bench 1.53 → 1.58 ms per tick; sweep (Normal, seeds 1–10)
+Midwest and Revenue unchanged, Harbourline do-nothing 10.5 → 10, all inside the bands.

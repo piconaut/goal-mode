@@ -1485,3 +1485,34 @@ inside the bands.
 RT-06 validator: Midwest seed 3 gains a D1 21:00 MOBILE incident (POLICY, no card), the same flaw; the runaway's
 incident at D2 13:00 and its verdict are unchanged.
 
+### 9.8 WT-07: donors in IBM's order
+
+WT-07 orders donors by goal achievement and takes them by the processor that is short (§5.5 `donorOrder`). Same files
+and settings as §9.6; cells as there.
+
+| | S-1 | S-2 | S-3 | Seed 2 |
+|---|---|---|---|---|
+| WT-06 (`dev`) | 25; 2 / 0; 4 | 26; 5 / 0; 3 | 44; 0 / 0; 2 | 48; 0 / 0; 2 |
+| WT-07 | 33; 0 / 0; 3 | 21; 3 / 0; 3 | 47; 2 / 0; 2 | 48; 0 / 0; 2 |
+| candidates assessed | 341 → 270 | 727 → 1 027 | 900 → 919 | 357 → 459 |
+| projections | 1 953 → 1 978 | 4 289 → 7 347 | 4 460 → 6 859 | 1 901 → 3 378 |
+| donor moves accepted | 1 | 3 | 3 | 0 |
+
+The pool is wider (happy more important periods, unhappy equal-importance ones), so a receiver now nearly always has
+three donor trials: projections up to 1.7× (S-2), mostly donor trials refused for harming more important work or
+gaining nothing. Bench (Harbourline, paired): 1.53 → 1.58 ms per tick. No move is undone within two minutes.
+
+**R-1** at D1 12:19:30 (PROD2, DDFPRD#1 at importance 2, CPU): donors `DDFPRD#2 ONLHI#1 STCMED#1`, the happy periods at
+or above it by PI (0.45, 0.50, 0.53; STCHI at 0.70 is fourth; TSO#1 at 0.11 uses 0.007 engines, under
+`donorMinEngines`). `dev` listed TSO#2, STCMED#1, ONLMED#1 by importance. STCMED (Db2) is in the list because it meets
+its goal there.
+
+A happy importance-1 STC class can now be lowered for a less important receiver. In the capped-PROD1 realism case
+(Db2 moved into STCHI) STCHI donates to STCMED at D1 13:57, ONLHI is wait-bound on Db2 for one assessment (`BTLNK=OTHER`)
+and STCHI, now at PI 0.99, is raised again at 14:02. WLM projects no dependency between address spaces it manages by
+their own goals, so the dip is real behaviour; the test allows it only right after such a donation.
+
+**Sweep** (remote, Normal, seeds 1–10; do-nothing median day / textbook median day / expert victories): Midwest 9.5 /
+28 / 10 and Revenue 20 / 27 / 10, both unchanged; Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook gains a
+victory). All inside the bands; the entry expected small changes.
+
