@@ -8,7 +8,7 @@
 
 import { PCT_PROJECTION_SIGMA, POLICY_ADJUST } from '../../content/wlm/tuning';
 import { formatClock } from '../core/clock';
-import { DP } from '../zos/dispatcher';
+import { canonical, ladderOf, levelOf, moveToLevel, raiseOneStep, type Ladder } from './ladder';
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
 import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
@@ -136,33 +136,71 @@ export function setWlmTraceSink(sink: ((t: WlmAdjustTrace) => void) | null): voi
 export const cpuProtected = (g: Pick<ScpGoalInfo, 'cpuCritical' | 'period' | 'importance'>, ccImp: number): boolean =>
   g.cpuCritical || (g.period === 0 && g.importance <= ccImp);
 
+/** The DPs of `dps` with its goal periods (`keys`) on `ladder`'s canonical DPs; other periods keep theirs. */
+const withLadder = (dps: Readonly<Record<string, number>>, ladder: Ladder): Record<string, number> => ({ ...dps, ...canonical(ladder) });
+
 /**
- * Restore long-term CPU protection: every period less important than a protected period goes below its DP. WLM
- * enforces the protection rather than refusing to manage (WLM Planning p.120: "less important work will generally
- * have a lower dispatch priority"). A policy activation can break it (CPU Critical newly set while batch holds a DP
- * it earned under the old policy); DPs carry over by period. APPROX: the less important period is lowered rather than
- * the protected one raised, so the protection costs only the work it is meant to cost. Importance order makes one
- * pass enough: a protected period's DP is final before any less important period is checked against it.
+ * Where a single move takes `holder`, in the DPs before it (`dps0`): the DP of the level it joins, else the free
+ * priority directly above the level below it (directly below the level above it, at the bottom). The log and the
+ * trace name this priority, as WLM's moves go to an occupied or unoccupied priority (WLM Services p.706–707); the
+ * ladder is then renumbered (unbunching, p.139), which the stored DPs show.
+ */
+function moveTarget(dps0: Readonly<Record<string, number>>, ladder: Ladder, holder: string): number {
+  const i = levelOf(ladder, holder);
+  const mate = ladder[i]!.find((k) => k !== holder);
+  if (mate !== undefined) return dps0[mate]!;
+  const below = ladder[i + 1]?.[0];
+  if (below !== undefined) return dps0[below]! + 1;
+  const above = ladder[i - 1]?.[0];
+  return above !== undefined ? dps0[above]! - 1 : dps0[holder]!;
+}
+
+/** The ladder of the goal periods `keys` at `dps`. */
+const ladderAt = (dps: Readonly<Record<string, number>>, keys: readonly string[]): Ladder => {
+  const goal: Record<string, number> = {};
+  for (const k of keys) if (dps[k] !== undefined) goal[k] = dps[k]!;
+  return ladderOf(goal);
+};
+
+/**
+ * Make the goal periods' DPs canonical (docs/wlm-design.md §5.6; an old save's are on the first interval, order kept)
+ * and restore long-term CPU protection: every period less important than a protected period goes to a new level
+ * directly below the lowest protected level above it. WLM enforces the protection rather than refusing to manage (WLM
+ * Planning p.120: "less important work will generally have a lower dispatch priority"). A policy activation can break
+ * it (CPU Critical newly set while batch holds a DP it earned under the old policy); DPs carry over by period. APPROX:
+ * the less important period is lowered rather than the protected one raised, so the protection costs only the work
+ * it is meant to cost. Importance order makes one pass enough: a protected period's level is final before any less
+ * important period is checked against it.
  */
 export function enforceCpuProtection(
   dps: Readonly<Record<string, number>>,
   info: Readonly<Record<string, Pick<ScpGoalInfo, 'cpuCritical' | 'period' | 'importance'>>>,
   ccImp: number,
 ): { dps: Record<string, number>; moves: string[] } {
-  const out = { ...dps };
-  const moves: string[] = [];
-  const keys = Object.keys(info).filter((k) => out[k] !== undefined).sort();
+  const keys = Object.keys(info).filter((k) => dps[k] !== undefined).sort();
+  let L = ladderAt(dps, keys);
+  const moved: [string, string][] = [];
+  // Everything moved below one protected level shares one new level there, whatever its importance (as one DP did).
+  const belowOf: Record<string, string> = {};
   for (let imp = 2; imp <= 5; imp++) {
-    let ceiling = Infinity;
-    for (const k of keys) if (info[k]!.importance < imp && cpuProtected(info[k]!, ccImp)) ceiling = Math.min(ceiling, out[k]! - 1);
-    if (ceiling === Infinity) continue;
-    const to = Math.max(DP.MANAGED_MIN, ceiling);
+    // The lowest level holding a protected period more important than `imp`, named by a period on it.
+    let floorKey: string | null = null;
     for (const k of keys) {
-      if (info[k]!.importance !== imp || out[k]! <= ceiling || out[k]! <= to) continue;
-      moves.push(`${k} DP ${hex(out[k]!)}→${hex(to)}`);
-      out[k] = to;
+      if (info[k]!.importance < imp && cpuProtected(info[k]!, ccImp) && (floorKey === null || levelOf(L, k) > levelOf(L, floorKey))) floorKey = k;
+    }
+    if (floorKey === null) continue;
+    for (const k of keys) {
+      if (info[k]!.importance !== imp || levelOf(L, k) > levelOf(L, floorKey)) continue;
+      const first = belowOf[floorKey];
+      L = first === undefined ? moveToLevel(L, k, levelOf(L, floorKey), 'below') : moveToLevel(L, k, levelOf(L, first));
+      belowOf[floorKey] ??= k;
+      moved.push([k, floorKey]);
     }
   }
+  const out = withLadder(dps, L);
+  // Named by the DPs before and after all the moves: a protected period can itself be lowered before it is the floor
+  // of a later move, so targets in any intermediate numbering would contradict each other.
+  const moves = moved.map(([k, floorKey]) => `${k} DP ${hex(dps[k]!)}→${hex(out[k]!)} below ${floorKey}`);
   return { dps: out, moves };
 }
 
@@ -203,7 +241,9 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const infoKeys = Object.keys(info).sort();
   const ccImp = input.ccImp ?? 0;
   // Protection is restored first, so receivers are assessed (and trials judged) from DPs that keep it.
+  // The ladder is made canonical here too, so every trial and the result are canonical (I9).
   const { dps, moves: protection } = enforceCpuProtection(held, info, ccImp);
+  const ladder = ladderAt(dps, infoKeys);
   const protect = protection.length > 0 ? `${input.clockText} ${system.lparId} CPU PROTECTION ${protection.join(', ')}` : null;
   const localPi: Record<string, number | null> = {};
   for (const s of system.scps) {
@@ -311,22 +351,23 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // goal"). The donors of a receiver-up move are the periods it passes or joins that use the processor, whatever
     // the projection says: a period already at the floor of the queueing model (saturated pool) shows no further
     // projected harm. A passed period that gets no CPU has nothing to lose and is left to the projection.
+    // Passed or joined: above the receiver before and not after, or level with it before and below it after. Each
+    // side compares DPs of one canonical ladder. Only a receiver-up move can do it: a donor is never more important.
     const rImp0 = info[receiver]!.importance;
     const r0dp = dps[receiver]!;
     const r1dp = trial[receiver] ?? r0dp;
-    if (r1dp > r0dp) {
-      for (const k of infoKeys) {
-        const g = info[k]!;
-        const p0 = before[k];
-        if (k === receiver || g.importance >= rImp0) continue;
-        // "Missing its goal" is a fact about the period, so it is read from the management PI (local or sysplex)
-        // as well as from the projection at the current DPs.
-        const worst = Math.max(p0 ?? 0, localPi[k] ?? 0, input.sysplexPi[k] ?? 0);
-        if (worst <= 1) continue;
-        const kdp = trial[k] ?? dps[k]!;
-        if (usedEngines(k) < POLICY_ADJUST.donorMinEngines) continue;
-        if (kdp >= r0dp && kdp <= r1dp) return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) PI ${worst.toFixed(2)} is missing its goal and would be passed`);
-      }
+    for (const k of infoKeys) {
+      const g = info[k]!;
+      if (k === receiver || g.importance >= rImp0) continue;
+      const k0 = dps[k]!;
+      const k1 = trial[k] ?? k0;
+      if (!((k0 > r0dp && k1 <= r1dp) || (k0 === r0dp && k1 < r1dp))) continue;
+      // "Missing its goal" is a fact about the period, so it is read from the management PI (local or sysplex)
+      // as well as from the projection at the current DPs.
+      const worst = Math.max(before[k] ?? 0, localPi[k] ?? 0, input.sysplexPi[k] ?? 0);
+      if (worst <= 1) continue;
+      if (usedEngines(k) < POLICY_ADJUST.donorMinEngines) continue;
+      return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) PI ${worst.toFixed(2)} is missing its goal and would be passed`);
     }
     // The pair is only recorded once the whole projection accepts: `project` can still refuse after every accept
     // callback said yes (a batch recovery that never settles runs out of rounds), and a trace must not call that move
@@ -469,22 +510,27 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // the sim's bound (docs/wlm-design.md §9.5). A percentile PI stops at 4.0, so a percentile receiver never trips it.
     const mPi = Math.max(localPi[receiver] ?? 0, input.sysplexPi[receiver] ?? 0);
     const distrust = mPi > POLICY_ADJUST.projectionTrustMax * b0 && backlogCut(receiver);
-    /** The first move tried against this receiver: the clue the log gives when none of them paid off. */
+    /** The clue the log gives when no move paid off: the first rejection that names what stood in the way (harm,
+     * CPU protection, the projection), else the first. Small steps come first on the ladder and often only gain
+     * nothing, which says less than the harm a larger step would do. */
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
+    let firstNamed: { move: string; why: WlmTrialTrace } | null = null;
     const rdp = dps[receiver]!;
     const rImp = impOf;
     const trials: { trial: Record<string, number>; text: string }[] = [];
 
-    const levelsAbove = [...new Set(Object.keys(info).map((k) => dps[k]!))]
-      .filter((d) => d > rdp)
-      .sort((a, b) => a - b)
-      .slice(0, 3);
-    for (const lvl of levelsAbove) {
-      const nd = Math.min(DP.MANAGED_MAX, lvl + 1);
-      trials.push({ trial: { ...dps, [receiver]: nd }, text: `${receiver} DP ${hex(rdp)}→${hex(nd)}` });
-    }
-    if (levelsAbove.length === 0 && rdp < DP.MANAGED_MAX) {
-      trials.push({ trial: { ...dps, [receiver]: rdp + 1 }, text: `${receiver} DP ${hex(rdp)}→${hex(rdp + 1)}` });
+    // Receiver up (WLM Services p.707, codes 635 and 620): one step at a time, each from the last (alone onto the free
+    // priority above its level if it shares it, else onto the next level), until it has joined the third level above.
+    // Each step is a trial of its own (single moves until WT-08).
+    const rl0 = levelOf(ladder, receiver);
+    let up: Ladder = ladder;
+    for (let joined = 0; joined < 3; ) {
+      const shared = up[levelOf(up, receiver)]!.length > 1;
+      const next = raiseOneStep(up, receiver);
+      if (next === up) break;
+      if (!shared) joined++;
+      up = next;
+      trials.push({ trial: withLadder(dps, up), text: `${receiver} DP ${hex(rdp)}→${hex(moveTarget(dps, up, receiver))}` });
     }
     // Donors: heavy CPU users at or above the receiver's DP that are less important, or
     // equally important and happy. Least important first (reverse receiver order).
@@ -504,9 +550,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       )
       .slice(0, 3);
     if (ct) ct.donors = [...donors];
+    // A donor above the receiver moves to the receiver's level; one already on it, to a new level just below (WLM
+    // Services p.706, codes 530/540; the rejection code 531, "moving the donor to the receivers priority violates CPU
+    // critical rules", shows the receiver's priority is a donor target).
     for (const d of donors) {
-      const nd = Math.max(DP.MANAGED_MIN, rdp - 1);
-      trials.push({ trial: { ...dps, [d]: nd }, text: `DONOR ${d} DP ${hex(dps[d]!)}→${hex(nd)}` });
+      const L = moveToLevel(ladder, d, rl0, levelOf(ladder, d) < rl0 ? 'join' : 'below');
+      trials.push({ trial: withLadder(dps, L), text: `DONOR ${d} DP ${hex(dps[d]!)}→${hex(moveTarget(dps, L, d))}` });
     }
 
     let outOfBudget = false;
@@ -532,9 +581,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         }, resumedAt);
       }
       if (!firstReject && why) firstReject = { move: tr.text, why };
+      const w = why as WlmTrialTrace | null;
+      if (!firstNamed && w && w.verdict !== 'NO_RECEIVER_GAIN' && w.verdict !== 'SMALL_GAIN') firstNamed = { move: tr.text, why: w };
     }
     // No move taken: say what this receiver's first move would have done, so the log answers "why not?".
-    const whyNot = firstReject ? ` (${firstReject.move} rejected: ${playerReason(firstReject.why)})` : '';
+    const clue = firstNamed ?? firstReject;
+    const whyNot = clue ? ` (${clue.move} rejected: ${playerReason(clue.why)})` : '';
     if (outOfBudget && !hadWholeBudget) {
       notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}`);
       stoppedAt = receiver;

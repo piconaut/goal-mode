@@ -50,7 +50,7 @@ describe('policy adjustment', () => {
   // ONLHI (imp 1, 95% < 0.25 s) sits below BATCHPRD (imp 4) on a saturated image.
   const slices = [slice('RB', 'ONLHI#1', 2.5, 0.25), slice('BAT', 'BATCHPRD#1', 3, null)];
   const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
-  const dps: Record<string, number> = { 'ONLHI#1': 230, 'BATCHPRD#1': 240 };
+  const dps: Record<string, number> = { 'ONLHI#1': 244, 'BATCHPRD#1': 246 };
   const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
   const system: WlmSystemState = {
     lparId: 'SYS1',
@@ -60,7 +60,8 @@ describe('policy adjustment', () => {
   it('helps the important unhappy class by moving it above the less important one', () => {
     const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
     expect(out.log).toContain('RCVR=ONLHI#1');
-    expect(out.dps['ONLHI#1']!).toBeGreaterThan(out.dps['BATCHPRD#1']!);
+    // One step: alone below batch, it joins batch's level (WLM Services p.707, code 620).
+    expect(out.dps['ONLHI#1']!).toBe(out.dps['BATCHPRD#1']!);
   });
 
   it('only one receiver is helped per interval', () => {
@@ -95,11 +96,12 @@ it('retains starved batch demand when projecting the playtest F2 to F4 raise on 
 });
 
 it('rejects a harmful F2 to F4 batch raise when ready demand is restored', () => {
-  // Controlled shared-region case based on the save's no-zIIP F2→F4 sequence.
+  // Controlled shared-region case based on the save's no-zIIP F2→F4 sequence. On the ladder (WT-06) the raise is a
+  // step at a time: batch first joins STCLO, below ONLCARD; with STCLO above ONLCARD its first step joins ONLCARD.
   const def = structuredClone(BASEPOL);
   def.classes.push({ ...structuredClone(def.classes.find((c) => c.id === 'ONLHI')!), id: 'ONLCARD', periods: [{ goal: { kind: 'PCT', pct: 99, rtSec: .1 }, importance: 2, durationSu: null }] });
-  const dps: Record<string, number> = { 'ONLCARD#1': 0xf4, 'STCHI#1': 0xfa, 'BATCHPRD#1': 0xf2, 'STCLO#1': 0xf3 };
-  const run = (batchCp: number) => {
+  const run = (batchCp: number, stcloDp: number) => {
+    const dps: Record<string, number> = { 'ONLCARD#1': 0xf4, 'STCHI#1': 0xfa, 'BATCHPRD#1': 0xf2, 'STCLO#1': stcloDp };
     const slices = [
       sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'TXN', workloadId: 'CARD', rate: 200, cpEngines: .2, cpuSecPerTxn: .001, baseLatencySec: .025, rtSigma: .4, goalRtSec: .1, timeoutSec: 30 }),
       sliceSpec({ key: 'aor', scKey: 'STCHI#1', kind: 'AS', role: 'CICS.AOR', cpEngines: .1, units: 1 }),
@@ -109,10 +111,25 @@ it('rejects a harmful F2 to F4 batch raise when ready demand is restored', () =>
     const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0, regions: { keys: ['ONLCARD#1'], mode: 'TRANSACTION' as const, regionKey: 'STCHI#1', servers: ['aor'] } };
     const current = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
     const system: WlmSystemState = { lparId: 'SYS1', scps: current.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
-    return policyAdjust({ def, system, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T' });
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      return { out: policyAdjust({ def, system, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T' }), trace: traces[0]! };
+    } finally {
+      setWlmTraceSink(null);
+    }
   };
-  expect(run(3).dps['BATCHPRD#1']).toBe(0xf4);
-  expect(run(savedReadyDemand()).dps['BATCHPRD#1']).toBe(0xf2);
+  for (const demand of [3, savedReadyDemand()]) {
+    const { out } = run(demand, 0xf3);
+    expect(out.log).toContain('RCVR=BATCHPRD#1');
+    expect(out.dps['BATCHPRD#1']).toBe(out.dps['STCLO#1']);
+    expect(out.dps['BATCHPRD#1']!).toBeLessThan(out.dps['ONLCARD#1']!);
+  }
+  const { out, trace } = run(savedReadyDemand(), 0xfa);
+  const batch = trace.candidates.find((c) => c.scKey === 'BATCHPRD#1')!;
+  expect(batch.trials[0]).toMatchObject({ verdict: 'MORE_IMPORTANT_HARMED' });
+  expect(batch.trials[0]!.detail).toMatch(/^ONLCARD#1 /);
+  expect(out.dps['BATCHPRD#1']!).toBeLessThan(out.dps['ONLCARD#1']!);
 });
 
 describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How WLM Works, slide 52)', () => {
@@ -120,7 +137,7 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
   const run = (ddfLatencySec: number) => {
     const slices = [slice('A', 'ONLMED#1', 2.5, 0.5), { ...slice('B', 'DDFPRD#1', 1, 0.5), baseLatencySec: ddfLatencySec }];
     const evalInput = { cpCapacityEngines: 3.5, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
-    const dps: Record<string, number> = { 'ONLMED#1': 230, 'DDFPRD#1': 240 };
+    const dps: Record<string, number> = { 'ONLMED#1': 244, 'DDFPRD#1': 246 };
     const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
     const system: WlmSystemState = {
       lparId: 'SYS1',
@@ -154,12 +171,12 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
     def.classes.push({ ...structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!), id: 'IONOW', periods: [{ goal: { kind: 'VEL' as const, velocity: 10 }, importance: 1, durationSu: null }] });
     const slices = [slice('A', 'ONLMED#1', 2.5, 0.5), { ...slice('B', 'DDFPRD#1', 1, 0.5), baseLatencySec: 0.4 }];
     const evalInput = { cpCapacityEngines: 3.5, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
-    const dps: Record<string, number> = { 'ONLMED#1': 230, 'DDFPRD#1': 240, 'IONOW#1': 0xf0 };
+    const dps: Record<string, number> = { 'ONLMED#1': 244, 'DDFPRD#1': 246, 'IONOW#1': 0xf2 };
     const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
     const system: WlmSystemState = {
       lparId: 'SYS1',
       scps: [...cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
-        { scKey: 'IONOW#1', dp: 0xf0, starvedSec: 0, acc: { ...emptyAcc(), using: 0.01, delay: 5, delayIo: 5 } }],
+        { scKey: 'IONOW#1', dp: 0xf2, starvedSec: 0, acc: { ...emptyAcc(), using: 0.01, delay: 5, delayIo: 5 } }],
     };
     const ionow = { ...emptyScpTick('IONOW#1', 0xf0), usingIo: 5, delayIo: 5 };
     const out = policyAdjust({ def, system, evalInput, current: [...cur.scps, ionow], sysplexPi: {}, clockText: 'T' });
@@ -309,7 +326,8 @@ describe('a hopeless receiver does not stop the search at the next importance (S
       expect(outcome(first.trace, k)).toBe('ASSESSED');
       expect(first.out.skipUntil[k]).toBe(until);
     }
-    expect(first.out.log).toMatch(/OLD1#1 .* no action with net value .*, next look 06:01:00$/);
+    // OLD1 is alone on the top level: no step up, no donor, so no trial at all; it is clocked like a rejected one.
+    expect(first.out.log).toMatch(/OLD1#1 .* no action with net value, next look 06:01:00$/);
     // ONLCARD's raises would all pass importance-1 work that is missing its goal: rejected too, and clocked.
     expect(first.out.skipUntil['ONLCARD#1']).toBe(until);
     // A tick later all four are on their clocks: no projection at all this interval (I16).
@@ -341,9 +359,10 @@ describe('a hopeless receiver does not stop the search at the next importance (S
   });
 
   it('stops the search when the interval projection budget is spent, with no clock for the receiver it cut short', () => {
-    // OLD1 is on its clock; OLD2 (one trial) spends one of two projections, OLD3 (two trials) gets the other.
+    // OLD1 is on its clock; OLD2 (two trials: onto OLD1's level, then above it) spends two of three projections,
+    // OLD3 (four trials) gets the last.
     const saved = POLICY_ADJUST.maxProjectionsPerInterval;
-    POLICY_ADJUST.maxProjectionsPerInterval = 2;
+    POLICY_ADJUST.maxProjectionsPerInterval = 3;
     try {
       const { out, trace } = run3(withClocks({ 'OLD1#1': 200 }), 100);
       const old3 = trace.candidates.find((c) => c.scKey === 'OLD3#1')!;
@@ -373,11 +392,12 @@ describe('a hopeless receiver does not stop the search at the next importance (S
 
   it('traces BUDGET for the next candidate when the budget ran out between receivers, and stops', () => {
     const saved = POLICY_ADJUST.maxProjectionsPerInterval;
-    POLICY_ADJUST.maxProjectionsPerInterval = 1;
+    // OLD1 has no trial (alone on top); OLD2's two trials spend the budget.
+    POLICY_ADJUST.maxProjectionsPerInterval = 2;
     try {
       const { out, trace } = run3(system3, 100);
-      expect(trace.candidates.map((c) => [c.scKey, c.outcome])).toEqual([['OLD1#1', 'ASSESSED'], ['OLD2#1', 'BUDGET']]);
-      expect(out.skipUntil).toEqual({ 'OLD1#1': 100 + POLICY_ADJUST.rejectedSkipTicks });
+      expect(trace.candidates.map((c) => [c.scKey, c.outcome])).toEqual([['OLD1#1', 'ASSESSED'], ['OLD2#1', 'ASSESSED'], ['OLD3#1', 'BUDGET']]);
+      expect(out.skipUntil).toEqual({ 'OLD1#1': 100 + POLICY_ADJUST.rejectedSkipTicks, 'OLD2#1': 100 + POLICY_ADJUST.rejectedSkipTicks });
     } finally {
       POLICY_ADJUST.maxProjectionsPerInterval = saved;
     }
@@ -403,7 +423,7 @@ describe('a hopeless receiver does not stop the search at the next importance (S
 
 describe('a run of hopeless receivers does not starve the receivers behind it (I12; #296 review B1)', () => {
   // Twelve importance-1 receivers no move helps (their CPU delay is PR/SM delay), each costing six projections: three
-  // raises and three happy equal-importance donors. With the budget at 12 and the clock at 6 intervals, two are
+  // raises (above the blockers' level, onto the happy level, above it) and three happy equal-importance donors. With the budget at 12 and the clock at 6 intervals, two are
   // clocked per interval and the first clocks expire just as the last are reached, so a search that restarted at
   // the top every interval never reached TARGET, which an EF→DF donor move by HOG helps at once.
   const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
@@ -418,7 +438,7 @@ describe('a run of hopeless receivers does not starve the receivers behind it (I
     sliceSpec({ key: 'hog', scKey: 'HOG#1', kind: 'AS', cpEngines: 3.5, units: 8 }),
   ];
   const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0.3, slices, backlog: {}, io: IO, pagingFrac: 0 };
-  const dps0: Record<string, number> = { 'TARGET#1': 0xe0, 'HOG#1': 0xef, 'HAPPY1#1': 0xf1, 'HAPPY2#1': 0xf2, 'HAPPY3#1': 0xf3 };
+  const dps0: Record<string, number> = { 'TARGET#1': 0xe0, 'HOG#1': 0xef, 'HAPPY1#1': 0xf1, 'HAPPY2#1': 0xf1, 'HAPPY3#1': 0xf1 };
   for (const b of blockers) dps0[`${b}#1`] = 0xf0;
 
   it('reaches TARGET: a search the budget stopped resumes where it stopped', () => {
@@ -552,14 +572,26 @@ describe('long-term CPU protection is enforced, not a reason to stop managing (W
 
   it('lowers less important periods below the protected DP and leaves more important ones alone', () => {
     const out = enforceCpuProtection({ 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf9, 'BATCHPRD#1': 0xfb, 'ONLHI#1': 0xfc }, info, 0);
-    expect(out.dps).toEqual({ 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf3, 'BATCHPRD#1': 0xf3, 'ONLHI#1': 0xfc });
-    expect(out.moves).toEqual(['BATCHHI#1 DP F9→F3', 'BATCHPRD#1 DP FB→F3']);
+    // Both onto one new level directly below the protected one; the result is canonical (WT-06).
+    expect(out.dps).toEqual({ 'ONLHI#1': 0xf6, 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf2, 'BATCHPRD#1': 0xf2 });
+    expect(out.moves).toEqual(['BATCHHI#1 DP F9→F2 below ONLRBANK#1', 'BATCHPRD#1 DP FB→F2 below ONLRBANK#1']);
+  });
+
+  it('names chained moves by the DPs before and after all of them (a protected period lowered, then a floor)', () => {
+    const chain = {
+      A: { cpuCritical: false, period: 0, importance: 1 },
+      B: { cpuCritical: false, period: 0, importance: 2 },
+      C: { cpuCritical: false, period: 0, importance: 3 },
+    } as const;
+    const out = enforceCpuProtection({ A: 0xf2, B: 0xf6, C: 0xf4 }, chain, 2);
+    expect(out.dps).toEqual({ A: 0xf6, B: 0xf4, C: 0xf2 });
+    expect(out.moves).toEqual(['B DP F6→F4 below A', 'C DP F4→F2 below B']);
   });
 
   it('changes nothing when protection already holds, and CCIMP protects first periods up to that importance', () => {
     expect(enforceCpuProtection({ 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf2, 'BATCHPRD#1': 0xf0, 'ONLHI#1': 0xfc }, info, 0).moves).toEqual([]);
     const cc = enforceCpuProtection({ 'ONLRBANK#1': 0xfa, 'BATCHHI#1': 0xf2, 'BATCHPRD#1': 0xf0, 'ONLHI#1': 0xf0 }, info, 1);
-    expect(cc.dps['ONLRBANK#1']).toBe(0xef);
+    expect(cc.dps).toEqual({ 'ONLHI#1': 0xf6, 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf2, 'BATCHPRD#1': 0xf2 });
   });
 
   it('a protected class below batch is still helped (playtest BASEPO10, D20 21:15)', () => {
@@ -571,7 +603,7 @@ describe('long-term CPU protection is enforced, not a reason to stop managing (W
     const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
     const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
     const out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
-    expect(out.protect).toBe('T SYS1 CPU PROTECTION BATCHPRD#1 DP FB→F3');
+    expect(out.protect).toBe('T SYS1 CPU PROTECTION BATCHPRD#1 DP FB→F4 below ONLCARD#1');
     expect(out.dps['BATCHPRD#1']!).toBeLessThan(out.dps['ONLCARD#1']!);
     expect(out.log ?? '').not.toContain('no action with net value');
   });
@@ -588,7 +620,7 @@ describe('the missing-goal rule counts smoothed zIIP use (docs/wlm-design.md §5
       sliceSpec({ key: 'blo', scKey: 'BLO#1', kind: 'AS', cpEngines: 3, units: 8 }),
     ];
     const evalInput = { cpCapacityEngines: 2, cpServers: 2, ziipCapacityEngines: 2, ziipServers: 2, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
-    const dps: Record<string, number> = { 'ZA#1': 0xf0, 'BLO#1': 0xe6 };
+    const dps: Record<string, number> = { 'ZA#1': 0xf6, 'BLO#1': 0xf4 };
     const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
     const system: WlmSystemState = {
       lparId: 'SYS1',
@@ -606,7 +638,7 @@ describe('the missing-goal rule counts smoothed zIIP use (docs/wlm-design.md §5
       setWlmTraceSink(null);
     }
     const blo = traces[0]!.candidates.find((c) => c.scKey === 'BLO#1')!;
-    const past = blo.trials.filter((t) => /BLO#1 DP E6→F[0-9A-F]/.test(t.move) && parseInt(t.move.slice(-2), 16) >= 0xf0);
+    const past = blo.trials.filter((t) => /^BLO#1 DP F4→/.test(t.move) && parseInt(t.move.slice(-2), 16) >= 0xf6);
     expect(past.length).toBeGreaterThan(0);
     for (const t of past) {
       expect(t.verdict).toBe('MORE_IMPORTANT_HARMED');
@@ -679,5 +711,39 @@ describe('a receiver measured far worse than projected is not raised (projection
     } finally {
       POLICY_ADJUST.maxProjectionsPerInterval = saved;
     }
+  });
+});
+
+describe('the missing-goal rule on the ladder (WT-06)', () => {
+  it('a donor move is not refused for a more important period that already shared the receiver\'s level', () => {
+    // MORE (imp 2, missing its goal) and RCV (imp 3) share a level; HOG (imp 5) above them is the donor. Moving HOG
+    // down passes nobody, so it is judged on its projection, not refused for MORE.
+    const def = structuredClone(BASEPOL);
+    const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+    const cls = (id: string, velocity: number, importance: 2 | 3 | 5) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
+    def.classes.push(cls('MORE', 90, 2), cls('RCV', 90, 3), cls('HOG', 10, 5));
+    const slices = [
+      sliceSpec({ key: 'more', scKey: 'MORE#1', kind: 'AS', cpEngines: 1.5, units: 4 }),
+      sliceSpec({ key: 'rcv', scKey: 'RCV#1', kind: 'AS', cpEngines: 1.5, units: 4 }),
+      sliceSpec({ key: 'hog', scKey: 'HOG#1', kind: 'AS', cpEngines: 3, units: 8 }),
+    ];
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = { 'HOG#1': 0xf6, 'MORE#1': 0xf4, 'RCV#1': 0xf4 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    // MORE is on its skip clock, so the search goes on to RCV.
+    const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t), ...(t.scKey === 'MORE#1' ? { skipUntilTick: 100 } : {}) })) };
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T', nowTick: 0 });
+    } finally {
+      setWlmTraceSink(null);
+    }
+    const rcv = traces[0]!.candidates.find((c) => c.scKey === 'RCV#1');
+    const donor = rcv?.trials.find((t) => t.move.startsWith('DONOR HOG#1'));
+    expect(donor, JSON.stringify(traces[0]!.candidates.map((c) => [c.scKey, c.outcome, c.trials.map((t) => [t.move, t.verdict, t.detail])]))).toBeDefined();
+    expect(donor!.detail ?? '').not.toContain('would be passed');
+    // The raise past MORE is refused for it.
+    expect(rcv!.trials[0]!.detail).toMatch(/^MORE#1 .*would be passed/);
   });
 });

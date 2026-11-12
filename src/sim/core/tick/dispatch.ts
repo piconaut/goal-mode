@@ -2,7 +2,7 @@ import { addJobDelay, advanceJob, jobShape } from '../../subsys/batch';
 import { DB2 } from '../../subsys/db2';
 import { scKeyAtService } from '../../workload/slices';
 import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../../wlm/evaluate';
-import { decayInto, emptyAcc, initialDp, type ScpState } from '../../wlm/runtime';
+import { decayInto, emptyAcc, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
 import type { LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
@@ -31,9 +31,13 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
     for (const s of prevSys.scps) if (s.starvedSec >= sysCfg.blwlinthdSec) promoted.add(s.scKey);
   }
 
-  const dpMap: Record<string, number> = {};
-  for (const s of prevSys?.scps ?? []) dpMap[s.scKey] = s.dp;
-  const dpOf = (k: string) => dpMap[k] ?? initialDp(def, k);
+  // DPs are per-tick state: periods the image has not dispatched before are placed on the ladder here (WT-06).
+  const held: Record<string, number> = {};
+  for (const s of prevSys?.scps ?? []) held[s.scKey] = s.dp;
+  let fresh: string[] | null = null;
+  for (const s of slices) if (held[s.scKey] === undefined) (fresh ??= []).push(s.scKey);
+  const dpMap = fresh ? placeNewPeriods(def, held, fresh) : held;
+  const dpOf = (k: string) => dpMap[k] ?? (dpMap[k] = placeLateDp(def, dpMap, k));
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
   const regions = regionsOf(img, def, slices, workloadById, addressSpaces).regions;
   const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
@@ -285,7 +289,9 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
   const seen = prevScp ? new Set(res.scps.map((x) => x.scKey)) : undefined;
   for (const p of seen ? prevScps : []) {
     if (seen!.has(p.scKey)) continue;
-    scps.push({ ...p, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, p.dp)) });
+    // dpOf, not p.dp: placing a new period may have renumbered the ladder this tick.
+    const dp = dpOf(p.scKey);
+    scps.push({ ...p, dp, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, dp)) });
   }
   systems.push({ lparId: l.id, scps });
   const cics = regions?.targets;

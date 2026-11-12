@@ -5,13 +5,17 @@
 
 import { queueDelayRatio } from './erlang';
 
-/** Fixed DPs from SG24-7621 §3.14. */
+/** DPs "as of z/OS 1.8" (SG24-6472 p.65; Enrico slide 49, practitioner): 253–249 are reserved, 202 unused. The sim
+ * uses the reserved range for blocked-workload promotion and the resource-group minimum's share (APPROX: IBM does not
+ * say where either runs). SG24-7621 §3.14 gives the older table (253 small consumer, 252–208 managed). */
 export const DP = {
   SYSTEM: 255,
   SYSSTC: 254,
-  SMALL_CONSUMER: 253,
-  MANAGED_MAX: 252,
-  MANAGED_MIN: 208,
+  PROMOTED: 253,
+  RG_MINIMUM: 249,
+  SMALL_CONSUMER: 248,
+  MANAGED_MAX: 247,
+  MANAGED_MIN: 203,
   DISCRETIONARY_MAX: 201,
   DISCRETIONARY_MIN: 192,
   QUIESCED: 191,

@@ -383,40 +383,8 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-06 · The canonical ladder: priorities are an order (W2, W10)
-`list: wlm-truth · status: ready · priority: high · size: M · area: sim`
-
-Implements §5.6. New pure module `src/sim/wlm/ladder.ts`: `ladderOf(dps)`, `canonical(ladder)`,
-`raiseOneStep(ladder, holder)`, `moveToLevel(ladder, holder, level | 'below')`, `placeNew(ladder, holder,
-importance, info)`. `initialDp` (`runtime.ts`) and the first-seen path in `dispatchLpar` use `placeNew` on the
-canonical form; `policyAdjust` ends with `canonical`; `enforceCpuProtection` works on levels. Receiver-up trials
-become "one step" and "join the next level" for up to three levels (still single moves until WT-08); donor trials
-move the donor to the receiver's level, or just below it if already there (WLM Services p.705, code 531). No goal
-period is ever at `DP.MANAGED_MAX`, so `RG_MIN_DP` (252, `eval/grants.ts`) is above all goal work as its comment
-says. Renumber in this entry (user decision on §8 Q5, 2026-11-10): `DP` in `zos/dispatcher.ts`, small consumer 248,
-managed 247–203 (SG24-6472 p.65, "as of z/OS 1.8"; Enrico slide 49, practitioner), 249–253 for the minimum share
-and promotion; research.md's "Dispatch priorities" row gives both Redbooks and the reason for preferring the dated
-table. Old saves: the
-ladder is made canonical on the first interval (order preserved). Tests: `ladder.test.ts` (canonical is idempotent
-and order-preserving; `raiseOneStep` splits or joins; `placeNew` by importance); `wlm-invariants: I9 canonical
-ladder`, `I10 CPU protection`, `I15 minimum above goal work` (C-4); realism `the ladder does not collapse` (S-4:
-Midwest 42, eight days, PROD2 at D8 12:00 has its goal holders on at least four levels and nothing at
-`MANAGED_MAX`). Goldens: change (every DP). Done when: those pass and R-4's shape (an importance-4 period on the top
-level on day 1) needs a logged plan that put it there. Bots: this is the entry that moves the bands (§6.2):
-do-nothing ± 3 days, Harbourline most; expert Harbourline up. Record the sweep; an out-of-band median is a `balance`
-entry, not a reason to change the ladder. SPEC §5.4 (DP table), §5.5.4, §17 "DP ranges" updated; research.md rows
-"unbunching" and "dispatch priorities" updated.
-Since CL-05: the first-seen path is the `dpOf` fallback in `imageInput` (`tick/dispatch.ts`), built once per image per
-tick; DPs are per-tick state, so `placeNew` belongs there, outside the lookup plan.
-From WT-05 (2026-11-11, docs/wlm-design.md §9.6): the skip clock removed the churn that kept the ladder spread.
-Under WT-05, Harbourline expert seeds 7 and 9 freeze on D29 with most goal holders at FC, the top of the managed
-range: receivers at FC can't rise, a donor's one step down to FB gains nothing, and every receiver is clocked. With
-the clock off, both behave as on `dev` (6 → 0 intervals; 2 nearly restores it). This entry's donor move to the
-receiver's level and its "nothing at `MANAGED_MAX`" ladder should fix it. Check that those two seeds come back
-(expert Harbourline was 8/10 on WT-04, 6/10 on WT-05), and replay seed 9's D29 to see WLM keep moving.
-
 ### WT-07 · Donors in IBM's order, by the processor that is short (W4)
-`list: wlm-truth · status: blocked: after WT-06 · priority: high · size: S · area: sim`
+`list: wlm-truth · status: ready · priority: high · size: S · area: sim`
 
 Implements §5.5 `donorOrder` in `src/sim/wlm/adjust.ts` (pure, exported): pool = holders at or above the receiver
 using at least `donorMinEngines` of the bottleneck's processor (smoothed: `acc.cpuEngines` for CPU,
@@ -488,9 +456,14 @@ raises DDF response time without raising DDF CPU delay" still passes and its log
 Goldens: change. Done when: S-3's "not assessed: bottleneck OTHER / I/O" (5 291 / 4 208) are replaced by
 `NO_MANAGED_DELAY` or assessed candidates, with the counts in the PR. Bots: small. Cross-note: **RT-19** splits the
 same waits (`serverCpu`, `serverOther`) for RCA truth; share the per-period split rather than computing it twice.
+From WT-06 (2026-11-12, docs/wlm-design.md §9.7): Harbourline expert seed 7 is lost to a D29 freeze this causes. At
+D29 11:00 on PRDA, MKTORD#1 (importance 1) and ONLHI#1 (2) have 98 % CPU delay and are `NOT_FIXABLE` because their
+waits are larger; the skip clock is not involved (`--tune rejectedSkipTicks=0` gives the same day). Check that seed 7
+comes back (`npm run bot -- --bot expert --scenario harbourline --seed 7 --days 40 --trace-day 29`); bots may move
+more than "small".
 
 ### WT-11 · The resource-group minimum for discretionary work (W10)
-`list: wlm-truth · status: blocked: after WT-06 · priority: low · size: S · area: sim`
+`list: wlm-truth · status: ready · priority: low · size: S · area: sim`
 
 Implements §5.8 in `rgMin` and `missingGoal` (`src/sim/core/tick/helpers.ts`) and `grantDispatch`
 (`eval/grants.ts`): a group is below its minimum and wanting when its smoothed CP service is under the minimum and
