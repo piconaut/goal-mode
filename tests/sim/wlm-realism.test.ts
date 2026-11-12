@@ -2,6 +2,9 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
+import { goalInfo } from '../../src/sim/wlm/runtime';
+import { DP } from '../../src/sim/zos/dispatcher';
 
 interface Move { sec: number; who: string; from: number; to: number; line: string }
 
@@ -49,4 +52,23 @@ describe('WLM does not flip a period on one quiet tick (docs/wlm-design.md W1, R
     expect(moves.length).toBeGreaterThan(0); // WLM did have work to do
     expect(quickReversals(moves, 120)).toEqual([]);
   }, 240_000);
+});
+
+describe('the ladder does not collapse (docs/wlm-design.md W2, S-4; WT-06)', () => {
+  // Midwest seed 42, eight days. Before the canonical ladder, receivers moved to an occupied level + 1 and nothing
+  // spread or lowered the ladder, so it climbed to the top managed priority: PROD2's seven goal periods of importance
+  // 1 to 4 sat on three adjacent levels from day 2, five of them sharing 252 on day 4.
+  it('PROD2 at D8 12:00 has its goal periods on at least four levels and nothing at MANAGED_MAX', () => {
+    let s = initState(42, MIDWEST);
+    const at = 7 * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
+    while (s.tick < at) s = step(s, [], MIDWEST);
+    const prod2 = s.wlm.systems.find((x) => x.lparId === 'PROD2')!;
+    const goal = prod2.scps.filter((p) => {
+      const g = goalInfo(s.wlm.definition, p.scKey);
+      return g !== null && g.goal.kind !== 'DISC';
+    });
+    expect(goal.length).toBeGreaterThanOrEqual(7);
+    expect(new Set(goal.map((p) => p.dp)).size).toBeGreaterThanOrEqual(4);
+    expect(goal.every((p) => p.dp < DP.MANAGED_MAX)).toBe(true);
+  }, 300_000);
 });

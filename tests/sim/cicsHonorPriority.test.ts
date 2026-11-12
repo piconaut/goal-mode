@@ -60,7 +60,7 @@ describe('CICS shared-region Honor Priority', () => {
     ];
     const result = evaluateLpar({ slices, backlog: {}, cpCapacityEngines: 1, cpServers: 1,
       ziipCapacityEngines: 1, ziipServers: 1, cpPrsmDelayFrac: 0, pagingFrac: 0, io,
-      dpOf: (k) => k === 'ONLHI#1' ? 250 : 220,
+      dpOf: (k) => k === 'ONLHI#1' ? 246 : 220,
       ...(kind === 'minimum' ? { minOf: { 'ONLMED#1': 0.6 } } : { promoted: new Set(['ONLMED#1']), promotionShareFrac: 0.2 }),
     });
     expect(result.slices[0]!.cpGranted + result.slices[1]!.cpGranted).toBeCloseTo(kind === 'minimum' ? 0.6 : 0.2);

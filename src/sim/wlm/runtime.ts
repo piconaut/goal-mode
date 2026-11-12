@@ -2,6 +2,7 @@
 
 import { decayMoved, mergeWorkManager, type MovedSamples, type WorkManagerSamples } from './reporting';
 import { DP } from '../zos/dispatcher';
+import { canonical, ladderOf, levelDp, placeNew } from './ladder';
 import { POLICY_ADJUST } from '../../content/wlm/tuning';
 import { emptyBuckets, performanceIndex } from './goals';
 import type { ScpTick } from './evaluate';
@@ -120,7 +121,59 @@ export function initialDp(def: ServiceDefinition, scKey: string): number {
   if (serviceClass === SYSSTC) return DP.SYSSTC;
   const g = goalInfo(def, scKey);
   if (!g || g.goal.kind === 'DISC') return 196;
-  return DP.MANAGED_MAX - 2 - (g.importance - 1) * 6;
+  // The first ladder: one level per importance (docs/wlm-design.md §5.6); the interval's end makes it canonical.
+  return levelDp(g.importance - 1);
+}
+
+const isGoal = (def: ServiceDefinition, k: string): boolean => {
+  const g = goalInfo(def, k);
+  return g !== null && g.goal.kind !== 'DISC';
+};
+
+/**
+ * DPs for an image's tick when periods it has not dispatched before appear (docs/wlm-design.md §5.6): each new goal
+ * period is placed on the ladder by importance (`placeNew`, in key order: the result does not depend on it), and the
+ * ladder is made canonical, which renumbers held periods without changing their order. Other new periods get their
+ * fixed DP. `held` is not changed.
+ */
+export function placeNewPeriods(def: ServiceDefinition, held: Readonly<Record<string, number>>, fresh: readonly string[]): Record<string, number> {
+  const out: Record<string, number> = { ...held };
+  const goal: Record<string, number> = {};
+  for (const k of Object.keys(held)) if (isGoal(def, k)) goal[k] = held[k]!;
+  let L = ladderOf(goal);
+  let placed = false;
+  const imp = (k: string) => goalInfo(def, k)?.importance;
+  for (const k of [...new Set(fresh)].sort()) {
+    if (held[k] !== undefined) continue;
+    if (!isGoal(def, k)) out[k] = initialDp(def, k);
+    else {
+      L = placeNew(L, k, imp(k)!, imp);
+      placed = true;
+    }
+  }
+  if (placed) Object.assign(out, canonical(L));
+  return out;
+}
+
+/**
+ * The DP of one new period once the tick's other DPs are in use, so nothing else may be renumbered: its level's DP,
+ * or for a new level the free priority below the level above it (above the level below it on top). APPROX: with no
+ * free priority there (two new levels in one gap in one tick) it shares the level below until the next move.
+ */
+export function placeLateDp(def: ServiceDefinition, dps: Readonly<Record<string, number>>, k: string): number {
+  if (!isGoal(def, k)) return initialDp(def, k);
+  const goal: Record<string, number> = {};
+  for (const x of Object.keys(dps)) if (isGoal(def, x)) goal[x] = dps[x]!;
+  const imp = (x: string) => goalInfo(def, x)?.importance;
+  const L = placeNew(ladderOf(goal), k, imp(k)!, imp);
+  const i = L.findIndex((lv) => lv.includes(k));
+  const mate = L[i]!.find((x) => x !== k);
+  if (mate !== undefined) return goal[mate]!;
+  const up = L[i - 1]?.[0];
+  const down = L[i + 1]?.[0];
+  if (up !== undefined) return Math.max(goal[up]! - 1, DP.MANAGED_MIN);
+  if (down !== undefined) return Math.min(goal[down]! + 1, DP.MANAGED_MAX);
+  return levelDp(0);
 }
 
 export const emptyAcc = (): ScpAcc => ({

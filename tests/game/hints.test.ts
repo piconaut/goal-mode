@@ -112,8 +112,9 @@ describe('morning hints in a run', () => {
     const { SCENARIOS } = await import('../../src/content/scenarios');
     const { advance, chooseDraft, newRun, startDay } = await import('../../src/game/run');
     const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
-    // Seed 2's first day is quiet; its second day leaves hints for the third morning (day index 2).
-    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 2, 'NORMAL'), MIDWEST_GAME);
+    // Seed 5's first day is quiet; its second day leaves hints for the third morning (day index 2). (Seed 2 until
+    // WT-06: on the ladder its first day leaves a hint too.)
+    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 5, 'NORMAL'), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
     run = startDay(chooseDraft(run, MIDWEST_GAME, null), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);

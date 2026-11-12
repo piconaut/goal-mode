@@ -1046,14 +1046,18 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     expect(lines.some((l) => /ONLHI#1 .*BTLNK=OTHER/.test(l))).toBe(false);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
     // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
-    // Under the cap every less important receiver would have to pass more important work that is missing its goal
-    // and using CPU, which WLM never does (docs/wlm-design.md §9.4 point 5, user decision 2026-11-10): those
-    // receivers are assessed, their raises are refused for that reason, and no move is made from 10:00 to 16:00.
-    expect(lines.some((l) => /RCVR=/.test(l))).toBe(false);
+    // Under the cap a less important receiver may not pass more important work that is missing its goal and using
+    // CPU, which WLM never does (docs/wlm-design.md §9.4 point 5, user decision 2026-11-10): those raises are
+    // assessed and refused for that reason, and from 10:00 to 16:00 nothing less important reaches ONLHI's level.
+    // On the ladder (WT-06) a receiver may still step above its own level's mates, which passes nobody more important.
     const passed = traces.flatMap((t) => t.candidates.filter((c) => c.importance > 1).flatMap((c) => c.trials))
       .filter((tr) => tr.verdict === 'MORE_IMPORTANT_HARMED' && /missing its goal and would be passed/.test(tr.detail ?? ''));
     expect(passed.length).toBeGreaterThan(0);
-    expect(traces.flatMap((t) => t.candidates.flatMap((c) => c.trials)).some((tr) => tr.verdict === 'ACCEPTED')).toBe(false);
+    const reachedOnlhi = traces.flatMap((t) => Object.keys(t.dps).filter((k) => {
+      const g = goalInfo(s.wlm.definition, k);
+      return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && t.dps[k]! >= t.dps['ONLHI#1']!;
+    }).map((k) => `${t.clockText} ${k}`));
+    expect(reachedOnlhi).toEqual([]);
   }, 180_000);
 });
 

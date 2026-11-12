@@ -5,6 +5,9 @@ import { BASEPOL } from '../../src/content/wlm/basepol';
 import { PCT_PROJECTION_SIGMA, POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { Rng, seedRng } from '../../src/sim/core/rng';
 import { policyAdjust, receiverValueNeeded, setWlmTraceSink, type AdjustInput, type AdjustOutput, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { cpuProtected } from '../../src/sim/wlm/adjust';
+import { ladderOf, levelDp } from '../../src/sim/wlm/ladder';
+import { DP } from '../../src/sim/zos/dispatcher';
 import { evaluateLpar, sliceSpec, type ScpTick, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { projectedPercentilePi } from '../../src/sim/wlm/goals';
 import { decayInto, emptyAcc, goalInfo, goalPi, tickPi, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
@@ -205,7 +208,8 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
         expect(quiet.trace.candidates.every((c) => c.outcome === 'SKIP_CLOCK')).toBe(true);
         expect(projections(quiet.trace)).toBe(0);
         // No receiver moved: the DPs are the input's, or what CPU protection restored before the search.
-        if (quiet.out.protect === null) expect(quiet.out.dps).toEqual(Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp])));
+        // No receiver moved: the order is the input's (made canonical, WT-06), or what CPU protection restored.
+        if (quiet.out.protect === null) expect(ladderOf(quiet.out.dps)).toEqual(ladderOf(Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]))));
       }
     }
     expect(allClocked).toBeGreaterThan(50);
@@ -277,5 +281,60 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     }
     expect(budgetHits).toBeGreaterThan(3);
   });
-});
 
+  it('I9 canonical ladder: after every interval the goal DPs are MANAGED_MAX − 1 − 2i; fixed DPs never change', () => {
+    let moved = 0;
+    for (const seed of SEEDS) {
+      const { def, input } = makeCase(seed, 'varied');
+      // Work outside goal management on the same image: SYSSTC and discretionary keep their DPs.
+      const fixed = [{ scKey: 'SYSSTC#1', dp: DP.SYSSTC }, { scKey: 'SYSOTHER#1', dp: 196 }];
+      const system = { ...input.system, scps: [...input.system.scps, ...fixed.map((f) => ({ ...f, starvedSec: 0, acc: emptyAcc() }))] };
+      const out = policyAdjust({ ...input, system, ccImp: seed % 3 });
+      if (out.log?.includes('RCVR=')) moved++;
+      for (const f of fixed) expect(out.dps[f.scKey]).toBe(f.dp);
+      const goal = Object.keys(out.dps).filter((k) => goalInfo(def, k)?.goal.kind !== 'DISC' && goalInfo(def, k) !== null);
+      const levels = [...new Set(goal.map((k) => out.dps[k]!))].sort((a, b) => b - a);
+      expect(levels).toEqual(levels.map((_, i) => levelDp(i)));
+      for (const k of goal) {
+        expect(out.dps[k]).toBeLessThan(DP.MANAGED_MAX);
+        expect(out.dps[k]).toBeGreaterThanOrEqual(DP.MANAGED_MIN);
+      }
+    }
+    expect(moved).toBeGreaterThan(10);
+  });
+
+  it('I10 CPU protection: after every interval no less important period is at or above a protected one', () => {
+    let protectedPairs = 0;
+    for (const seed of SEEDS) {
+      const { def, input } = makeCase(seed, 'varied');
+      const ccImp = seed % 3;
+      const out = policyAdjust({ ...input, ccImp });
+      const keys = input.system.scps.map((p) => p.scKey);
+      for (const k of keys) {
+        const g = goalInfo(def, k)!;
+        if (!cpuProtected(g, ccImp)) continue;
+        for (const k2 of keys) {
+          if (goalInfo(def, k2)!.importance <= g.importance) continue;
+          protectedPairs++;
+          expect(out.dps[k2]!, `${k2} vs protected ${k} (seed ${seed})`).toBeLessThan(out.dps[k]!);
+        }
+      }
+    }
+    expect(protectedPairs).toBeGreaterThan(50);
+  });
+
+  it('I15 minimum above goal work: a resource-group minimum and promotion are dispatched above every goal period', () => {
+    expect(DP.RG_MINIMUM).toBeGreaterThan(DP.MANAGED_MAX);
+    expect(DP.PROMOTED).toBeGreaterThan(DP.RG_MINIMUM);
+    // C-4: a period low on the ladder with a 1-engine minimum gets it from a hog on the top level.
+    const slices = [
+      sliceSpec({ key: 'hog', scKey: 'HOG#1', kind: 'AS', cpEngines: 4, units: 8 }),
+      sliceSpec({ key: 'min', scKey: 'MIN#1', kind: 'AS', cpEngines: 2, units: 4 }),
+    ];
+    const dps: Record<string, number> = { 'HOG#1': levelDp(0), 'MIN#1': levelDp(5) };
+    const base = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0, dpOf: (k: string) => dps[k]! };
+    const got = (r: ReturnType<typeof evaluateLpar>) => r.slices[1]!.cpGranted;
+    expect(got(evaluateLpar(base))).toBeLessThan(0.1);
+    expect(got(evaluateLpar({ ...base, minOf: { 'MIN#1': 1 } }))).toBeCloseTo(1, 2);
+  });
+});

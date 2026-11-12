@@ -47,27 +47,30 @@ describe('cross-pool recovery during WLM projections', () => {
   it.each([true, false])('rejects the reproduced F2→F4 raise after zIIP service restores CP demand (CP help %s)', (help) => {
     const { def, dps, job, e, current, system, batch } = recoveryCase(help);
     const snapshot = JSON.stringify({ job, slices: e.slices, batch });
+    // On the ladder (WT-06) policy adjustment raises batch one step at a time: its first step joins STCLO, below
+    // ONLCARD, and is taken with or without recovery. The F2→F4 raise onto ONLCARD's level is checked directly.
     const frozen = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T' });
-    expect(frozen.dps['BATCHPRD#1']).toBe(244);
+    expect(frozen.dps['BATCHPRD#1']).toBe(frozen.dps['STCLO#1']);
+    expect(frozen.dps['BATCHPRD#1']!).toBeLessThan(frozen.dps['ONLCARD#1']!);
     const trial = { ...e, prepared: prepareLpar(e), dpOf: (k: string) => k === 'BATCHPRD#1' ? 244 : dps[k]! };
     const pis: number[] = [];
     expect(batchRecoveryAccepts(trial, batch, (r) => { pis.push(cardPi(r)); return cardPi(r) < 1; })).toBe(false);
     expect(pis).toEqual([.8, 2]);
     const corrected = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
-    expect(corrected.dps['BATCHPRD#1']).toBe(242);
+    expect(corrected.dps['BATCHPRD#1']!).toBeLessThan(corrected.dps['ONLCARD#1']!);
     expect(JSON.stringify({ job, slices: e.slices, batch })).toBe(snapshot);
   });
 
   it.each([true, false])('also catches zIIP demand restored by better CP service (CP help %s)', (help) => {
     const { def, dps, e, current, system, batch } = recoveryCase(help, true);
     const frozen = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T' });
-    expect(frozen.dps['BATCHPRD#1']).toBe(244);
+    expect(frozen.dps['BATCHPRD#1']).toBe(frozen.dps['STCLO#1']);
     const pis: number[] = [];
     expect(batchRecoveryAccepts({ ...e, dpOf: (k) => k === 'BATCHPRD#1' ? 244 : dps[k]! }, batch, (r) => { pis.push(cardPi(r)); return cardPi(r) < 1; })).toBe(false);
     expect(pis[0]).toBeLessThan(1);
     expect(pis[1]).toBeGreaterThan(1);
     const corrected = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
-    expect(corrected.dps['BATCHPRD#1']).toBe(242);
+    expect(corrected.dps['BATCHPRD#1']!).toBeLessThan(corrected.dps['ONLCARD#1']!);
   });
 
   it('still permits useful help when recovered demand has CP headroom', () => {
@@ -78,7 +81,8 @@ describe('cross-pool recovery during WLM projections', () => {
     // WLM projects at sustained demand: the lighter load has to be what the accumulators have seen too.
     const settled = { ...system, scps: system.scps.map((s) => ({ ...s, acc: decayInto(emptyAcc(), current.scps.find((t) => t.scKey === s.scKey)!) })) };
     const out = policyAdjust({ def, system: settled, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
-    expect(out.dps['BATCHPRD#1']).toBe(244);
+    expect(out.log).toContain('RCVR=BATCHPRD#1');
+    expect(out.dps['BATCHPRD#1']).toBe(out.dps['STCLO#1']);
   });
 
   it.each(['LPAR', 'RG'])('keeps zIIP demand paced while CP service remains constrained by a %s cap', (cap) => {
@@ -169,7 +173,9 @@ describe('cross-pool recovery during WLM projections', () => {
     const system: WlmSystemState = { lparId: 'TEST', scps: current.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
     const trialOnly = batch.map((g) => ({ ...g, jobs: g.jobs.map((j) => ({ ...j, nextCp: j.cp, nextZi: j.zi })) }));
     const run = (b: BatchProjectionSlice[]) => policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch: b });
-    expect(run(trialOnly).dps['BATCHPRD#1']).toBe(246);
-    expect(run(batch).dps['BATCHPRD#1']).toBe(242);
+    // Without recovery batch is raised past BATCHHI (alone above it, after onto ONLHI's level, above it, onto
+    // BATCHHI's); with it, every step is rejected and the ladder is only made canonical.
+    expect(run(trialOnly).dps).toMatchObject({ 'STCHI#1': 0xf6, 'BATCHPRD#1': 0xf4, 'BATCHHI#1': 0xf2, 'ONLHI#1': 0xf0 });
+    expect(run(batch).dps).toMatchObject({ 'STCHI#1': 0xf6, 'BATCHHI#1': 0xf4, 'ONLHI#1': 0xf2, 'BATCHPRD#1': 0xf0 });
   });
 });
