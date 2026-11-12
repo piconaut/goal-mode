@@ -92,10 +92,16 @@ jobs:
   # Merge the shards, run the balance gate, upload the combined result.
   balance:
     needs: [balance-plan, balance-shard]
-    if: always() && needs.balance-plan.result == 'success' && (needs.balance-shard.result == 'success' || needs.balance-shard.result == 'skipped')
+    if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
+      - name: Fail if a dependency failed or was cancelled
+        if: needs.balance-plan.result != 'success' || (needs.balance-plan.outputs.changed == 'true' && needs.balance-shard.result != 'success')
+        run: |
+          echo "balance-plan: ${{ needs.balance-plan.result }}"
+          echo "balance-shard: ${{ needs.balance-shard.result }}"
+          exit 1
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
