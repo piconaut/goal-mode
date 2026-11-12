@@ -125,4 +125,4 @@ jobs:
           name: ci-sweep
           path: runs/result/sweep.csv*
       - if: needs.balance-plan.outputs.changed != 'true'
-        run: echo "Goldens unchanged: no balance sweep needed."
+        run: 'echo "Goldens unchanged: no balance sweep needed."'
