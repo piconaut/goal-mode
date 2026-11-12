@@ -1094,7 +1094,7 @@ IBM uses it.
 | `harmEps` (from `adjust.ts`, 0.02) | 0.02 | projection noise is not harm | existing |
 | `needsHelpDelayFrac` | 0.02 | a period with no managed delay is not assessed | IBM's rule is "no delay samples"; a fluid model never has exactly none |
 | `bottleneckMinFrac` | 0.15 | a second bottleneck is tried only if it is a real share of the delay | invented |
-| `rejectedSkipTicks` | 6 | a hopeless receiver is looked at once a minute, not every 10 s | IBM gives no length |
+| `rejectedSkipTicks` | 6 | a hopeless receiver is looked at once a minute, not every 10 s | invented; IBM's is 3 cycles and not honoured when ≤ 5 periods miss goals (Sinram, SHARE 2010 session 7777 p.11; RF-03) |
 | `donorsPerReceiver` | 3 | bounds a plan's cost | existing |
 | `donorMinEngines` | 0.01 | a holder using almost none of the processor is no donor | IBM: small consumers are not donors |
 | `maxPlanSteps` | 6 | a plan is a handful of moves | invented |
@@ -1236,7 +1236,7 @@ The playtest moves out by the core's six entries either way; this order builds f
 | Q6 | Batch response-time goals (W11): model job completions, or only warn in the editor? | **Model** (WT-12, small), plus a Codex line with IBM's three-completions advice |
 | Q7 | May the single-rule entries (WT-05, WT-07, WT-10, WT-11, WT-12) go to the Opus `realism-fixer` subagent? BACKLOG's rule keeps `sim` entries on the main agent | **Yes for those five,** with the main agent reviewing and running the sweep; never WT-04, WT-08, WT-09 |
 | Q8 | Small consumers and mean-time-to-wait (W13): leave unmodelled and correct SPEC §5.4? | **Yes** (WT-03 corrects the text) |
-| Q9 | `rejectedSkipTicks` is invented (IBM gives no length). One minute, or longer on Hard as a difficulty knob? | **One minute everywhere.** WLM's behaviour should not vary by difficulty |
+| Q9 | `rejectedSkipTicks` is invented (IBM gives no length). One minute, or longer on Hard as a difficulty knob? | **One minute everywhere.** WLM's behaviour should not vary by difficulty. (2026-11-12: IBM's is 3 cycles, with a z/OS 1.11 exception; RF-03.) |
 
 **User decisions (2026-11-10).** Q2–Q9 as recommended. Q1: the playtest after the core, and RT-16/RT-19 after
 WT-09, as recommended; in addition the core lands **before RT-14**, not after RT-15 (§7). Effects in BACKLOG.md:
@@ -1471,8 +1471,11 @@ Restated criterion (design review, 2026-11-12): no period is assessed on two adj
 plan or a `BUDGET` stop between them. `wlm-stats` shows it as skip clocks set = assessed − accepted plans − budget
 stops (S-1 at WT-08: 231 = 250 − 19). That holds by construction, since the code sets a clock in exactly those cases,
 so it is a regression check, not evidence on its own. Episodes of 30 assessments are listed with their cause; each
-should be a receiver no CPU or zIIP move helps. Unverified: whether real WLM also clocks a receiver with no fixable
-bottleneck (WLM Services p.144–145 states the clock for "all actions to help it are rejected").
+should be a receiver no CPU or zIIP move helps.
+Does real WLM also clock a receiver with no fixable bottleneck? Answered (2026-11-12): no. A period whose delays
+are all for resources WLM does not manage (capping, locks, enqueue, operator) "cannot be helped, and is not a receiver" (SG24-6472-03 p.61, 64); only an assessed receiver
+whose actions are all rejected is clocked (WLM Services p.145). The clock lasts 3 cycles, and since z/OS 1.11 it is
+not honoured when 5 or fewer periods miss their goals (Sinram, SHARE 2010 session 7777 p.11): RF-03.
 
 Seed 2's six extra moves are a climb on PROD2 from D2 09:46 to 10:11 (STCHI, TSO#1, TSO#2, DDFPRD#1, DDFPRD#2,
 ONLHI: each two DPs up in turn) that the per-importance budget used to cut short. Every one agrees with its

@@ -351,6 +351,15 @@ The file names are opaque, so check the title page once a book is in the repo.
 | Guide to Reporting * | `C2832161` |
 | Other Version 3.1 books, exact filename-to-title mapping unverified * | `C2832181`, `C2832260` |
 
+### SHARE conference handouts — `--product share --version <event number>`
+IBM speakers' handouts from SHARE conferences, stored as `products/share/{event}/{file}.pdf` (event 115 = Boston,
+August 2010). They are presentations, not product documentation: cite them as the speaker's statement for that
+release, and prefer a manual when one says the same. The original `share.confex.com` handout links are dead; these
+copies came from an archive.
+| Handout | ID |
+|---|---|
+| z/OS Workload Management Update for z/OS V1.11 and V1.12 — Horst Sinram (IBM Germany Research & Development), SHARE Boston, session 7777, 2 Aug 2010 (WLM changes incl. the policy adjustment skip clock, p.11) | `S7777_WLM_Update` |
+
 ### Not yet listed
 For zSecure, Db2/IMS tools, z/OS Connect, and similar products: search
 `site:ibm.com/docs "<product> <version>" pdf`, take the file name from the URL as the ID, and

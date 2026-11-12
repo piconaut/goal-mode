@@ -495,9 +495,13 @@ on ONLHI's level (D1 14:30:40 at `e7015cb`), and 0.74 above it from a base of 4.
 DDFPRD#2's level takes DDFPRD#2 from 0.35 to 7.74, and DDFPRD#1 lowered to BATCHPRD#1's level goes from 0.50 to
 51.15; both may be the same level-sharing effect. Equal-DP work shares by
 ready units, and ONLHI waits for Db2 in STCHI, so the level-shared projection may starve the server its client
-waits on. How real z/OS dispatches work at one priority is to be checked with zos-docs. Investigate first:
-`npm run inspect` on a play-CLI copy of the fixture, the per-level grants in `evaluateLpar`, and whether the level
-share should weight by demand rather than units. Report before any model change; if the sharing rule is wrong, the
+waits on. Real z/OS rotates the dispatching order of all units at one priority (SG24-6472-03 p.66; three
+CPU-bound classes at one priority "all receive the same service", p.333–334), and `shareByUnits` already gives an
+equal turn per ready unit, max-min fair (docs/research.md). With the same demands that rule cannot give a period
+less on another's level than strictly below it, so look elsewhere first: demand that changes with the ladder
+(backlog boost; a client's demand rising once its server speeds up), transactions counted as one ready unit per
+engine of new work (may undercount DDF threads against batch jobs), and how the projected grant becomes a PI.
+Investigate with `npm run inspect` on a play-CLI copy of the fixture and the per-level grants in `evaluateLpar`. Report before any model change; if the sharing rule is wrong, the
 fix is a model change for the main agent, goes before WT-09 (whose regions share their holder's level), and needs
 goldens, the S-1 … S-3 table and a sweep. Done when: the cause is recorded in docs/wlm-design.md with a verdict
 (artefact fixed, or real and explained).
@@ -684,6 +688,23 @@ shows the choice either way. Done when: SPEC §5.5.4, docs/wlm-design.md §5.5 a
 row agree with the code, and the test exists.
 
 ## realism-fixes
+
+### RF-03 · The skip clock lasts 3 cycles and is not honoured when few periods miss goals
+`list: realism-fixes · status: ready · priority: medium · size: S · area: sim`
+
+IBM (Sinram, *z/OS Workload Management Update for z/OS V1.11 and V1.12*, SHARE 2010 session 7777, p.11; in
+`ibm-zos-books` as `products/share/115/S7777_WLM_Update.pdf`): "If WLM cannot help a service class it sets a skip
+clock to not assess it in the next 3 policy adjustment cycles", and since z/OS 1.11 "the skip clock will no longer
+be honored if 5 or less service class periods do not meet their performance objectives". The sim uses 6 cycles
+(`rejectedSkipTicks`, chosen when IBM's length was unknown, docs/wlm-design.md §8 Q9) and always honours the clock.
+Change `rejectedSkipTicks` to 3 and skip the clock while at most `skipClockMinMissing` (5, content) goal periods on
+the image miss their goal (`m` > 1). APPROX: whether IBM counts periods per system or across the sysplex is not
+stated; per image matches the per-system policy adjustment. Expect more assessments in quiet hours (S-1's
+BATCHPRD#1 is retried each minute over two nights) and a projection-budget cost: measure `wlm-stats` S-1 … S-3
+(assessed, projections, `BUDGET` stops) and the bench before/after. Do with or right after WT-10 (both change
+who is assessed); before WT-09. Tests: unit "≤ 5 missing: a clocked receiver is assessed next interval"; I12
+updated for 3 cycles. Goldens: change. Done when: those pass, research.md's skip-clock row and §5.10 say modelled,
+SPEC §5.5's clock text matches, and a three-scenario sweep is in the PR.
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`
