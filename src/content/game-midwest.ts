@@ -5,7 +5,7 @@ import { MIDWEST_EVENTS, MIDWEST_STORY } from './events/midwest-events';
 export const MIDWEST_GAME: GameContent = {
   events: MIDWEST_EVENTS,
   story: MIDWEST_STORY,
-  opexBudgetMonthly: 780_000,
+  opexBudgetMonthly: 780_001,
   capexQuarter: 1_500_000,
   maxDays: 40,
   // Story keeps the WLM and PR/SM flaws (the diagnosis) but hands over the infrastructure ones fixed.
