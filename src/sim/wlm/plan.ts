@@ -12,6 +12,12 @@ export interface PlanMove {
   above?: string;
 }
 
+/** Shared by the activity log and inspect's complete accepted-plan rows. */
+export function formatPlanMoves(moves: readonly PlanMove[]): string {
+  const hex = (dp: number) => dp.toString(16).toUpperCase();
+  return moves.map((m) => `${m.kind} ${m.scKey} DP ${hex(m.fromDp)}→${hex(m.toDp)}${m.above ? ` (above ${m.above})` : ''}`).join('; ');
+}
+
 export interface PlanAssessment {
   ok: boolean;
   verdict: WlmTrialVerdict;

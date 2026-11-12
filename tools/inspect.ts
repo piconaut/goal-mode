@@ -28,6 +28,7 @@ import { blameIncident, summarizeBlame, type IncidentBlame } from '../src/game/c
 import { BATCH_INCIDENT } from '../src/game/sla';
 import type { Incident, RunState } from '../src/game/types';
 import { setWlmTraceSink, type WlmAdjustTrace, type WlmCandidateTrace, type WlmTrialVerdict } from '../src/sim/wlm/adjust';
+import { formatPlanMoves } from '../src/sim/wlm/plan';
 
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
 
@@ -244,8 +245,8 @@ const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounte
 /** A trial's move text names the period and its new DP: `ONLHI#1 DP 20→21` or `DONOR X DP 20→1F`. */
 const MOVED = /^(DONOR\s+)?(\S+)\s+DP\s+([0-9A-F]+)→([0-9A-F]+)$/;
 
-/** One episode (`--episodes`): a period's run of assessments without being the receiver of an accepted move, once
- * it reached 30. `end` is the clock of the receiver move that ended it, or null when the range ended first. */
+/** One episode (`--episodes`): a period's run of assessments without a committed plan helping it, once
+ * it reached 30. `end` is that plan's clock, or null when the range ended first. Legacy traces count receiver moves. */
 export interface WlmEpisode {
   lparId: string;
   scKey: string;
@@ -335,7 +336,8 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
       }
       lastDirection.set(period, { dir, at });
     }
-    // A receiver move ends its own run; a donor move does not, and neither does an adjustment that skipped the period.
+    // A committed plan ends the primary receiver's run, even if only its donors moved. Donating to another
+    // receiver does not end the donor's own run; neither does an adjustment that skipped the period.
     for (const period of receiverMoved) close(period, t.clockText);
     for (const cand of t.candidates) {
       const period = cand.scKey;
@@ -351,13 +353,13 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
   return c;
 }
 
-/** `--by-class`: each period's candidate outcomes, trials and accepted receiver moves over the range, per system. */
+/** `--by-class`: each period's candidate outcomes, trials and plans helping it over the range, per system. */
 export interface WlmClassRow {
   lparId: string;
   scKey: string;
   outcomes: Record<WlmCandidateTrace['outcome'], number>;
   trials: number;
-  /** Accepted moves with this period as the receiver raised. */
+  /** Accepted plans with this period as the primary receiver, including donor-only plans. */
   helped: number;
 }
 
@@ -397,7 +399,7 @@ export function moveRows(traces: readonly WlmAdjustTrace[]): WlmMoveRow[] {
   for (const t of traces) {
     for (const cand of t.candidates) {
       for (const tr of cand.trials) {
-        if (tr.verdict === 'ACCEPTED') out.push({ clockText: t.clockText, lparId: t.lparId, receiver: cand.scKey, move: tr.move, receiverPi: [...(tr.receiverPi ?? [])] });
+        if (tr.verdict === 'ACCEPTED') out.push({ clockText: t.clockText, lparId: t.lparId, receiver: cand.scKey, move: tr.plan ? formatPlanMoves(tr.plan) : tr.move, receiverPi: [...(tr.receiverPi ?? [])] });
       }
     }
   }
@@ -572,7 +574,7 @@ export function statsText(stats: WlmStats): string {
       `  ${v === 'ACCEPTED' ? 'accepted' : v === 'RETAINED' ? 'retained in tentative plan' : `rejected: ${v}`}`,
       [...stats.systems.map((s) => s.counters.verdicts[v]), stats.total.verdicts[v]],
     ]),
-    ['accepted: receiver up', [...stats.systems.map((s) => s.counters.acceptedReceiverUp), stats.total.acceptedReceiverUp]],
+    ['accepted steps: receiver up', [...stats.systems.map((s) => s.counters.acceptedReceiverUp), stats.total.acceptedReceiverUp]],
     ['accepted: donor down', [...stats.systems.map((s) => s.counters.acceptedDonor), stats.total.acceptedDonor]],
     ['rejected, receiver before PI (base) ≤ 0.9', [...stats.systems.map((s) => s.counters.rejectedPiUnder09), stats.total.rejectedPiUnder09]],
     ['rejected, receiver before PI (base) null', [...stats.systems.map((s) => s.counters.rejectedPiNull), stats.total.rejectedPiNull]],

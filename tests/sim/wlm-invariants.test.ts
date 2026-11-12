@@ -89,6 +89,27 @@ function traced(input: AdjustInput): { out: AdjustOutput; trace: WlmAdjustTrace 
 const SEEDS = Array.from({ length: 150 }, (_, i) => i + 1);
 
 describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
+  it('repairs aggregate equal-importance NO_NET_VALUE by carrying its largest harmed period (real evaluator)', () => {
+    // Tied lower periods G00/G03/G06 below five donors. Raising G00 alone narrows each PI gap but
+    // costs more total harm than it gains; carrying G03 preserves the gain without that harm.
+    const { input } = makeCase(1044, 'rest');
+    for (const c of input.def.classes.filter((c) => c.id.startsWith('G'))) c.periods[0]!.importance = 2;
+    input.system.scps.forEach((p, i) => { p.dp = i % 3 === 0 ? 244 : 246; });
+    const held = Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]));
+    input.current = evaluateLpar({ ...input.evalInput, dpOf: (k) => held[k]! }).scps;
+    for (const p of input.system.scps) p.acc = decayInto(emptyAcc(), input.current.find((t) => t.scKey === p.scKey)!);
+    const { out, trace } = traced(input);
+    const receiver = trace.candidates[0]!;
+    expect(receiver.scKey).toBe('G00#1');
+    expect(receiver.trials.map((t) => t.verdict)).toEqual(['NO_NET_VALUE', 'ACCEPTED']);
+    expect(receiver.trials[0]!.blockedBy).toBe('G03#1');
+    expect(receiver.trials[0]!.detail).toBe('gain 149.37 ≤ equal-importance harm 192.30');
+    expect(receiver.trials[1]!.plan?.map((m) => [m.kind, m.scKey])).toEqual([['UP', 'G00#1'], ['CARRY', 'G03#1']]);
+    expect(out.dps).toEqual({ 'G00#1': 244, 'G01#1': 246, 'G02#1': 246, 'G03#1': 244, 'G04#1': 246, 'G05#1': 246, 'G06#1': 242, 'G07#1': 246 });
+    expect(receiver.trials[1]!.receiverPi![1]!).toBeCloseTo(90.90406894046295);
+    expect(receiver.trials[1]!.afterPis!['G03#1']).toBeCloseTo(2.6765215857532136);
+  });
+
   it('I13 settles at constant demand: no plan after interval 30, including ten subsequent clock cycles', () => {
     const { input } = makeCase(134, 'rest');
     let system = input.system;

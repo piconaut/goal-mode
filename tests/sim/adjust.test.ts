@@ -69,6 +69,40 @@ describe('policy adjustment', () => {
     const changed = Object.keys(dps).filter((k) => out.dps[k] !== dps[k]);
     expect(changed.length).toBe(1);
   });
+
+  it('explains a safe partial plan rolled back at the step limit, and logs the new clock off cadence', () => {
+    const saved = { ...POLICY_ADJUST };
+    const traces: WlmAdjustTrace[] = [];
+    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100, maxPlanSteps: 1 });
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'D1 06:00:40', nowTick: 4 });
+      expect(traces[0]!.candidates[0]).toMatchObject({ planOutcome: 'STEP_LIMIT', trials: [{ verdict: 'RETAINED', projected: true }] });
+      expect(out.dps).toEqual(dps);
+      expect(out.log).toContain('UP ONLHI#1 DP F4→F6 rejected: gain too small');
+      expect(out.clockNotes).toContain(out.log);
+      expect(out.clockNotes[0]).toContain('next look 06:01:40');
+    } finally {
+      Object.assign(POLICY_ADJUST, saved);
+      setWlmTraceSink(null);
+    }
+  });
+
+  it('explains insufficient receiver value when budget runs out after retaining a safe step', () => {
+    const saved = { ...POLICY_ADJUST };
+    const traces: WlmAdjustTrace[] = [];
+    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100, maxProjectionsPerInterval: 1 });
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
+      expect(traces[0]!.candidates[0]).toMatchObject({ planOutcome: 'BUDGET', trials: [{ verdict: 'RETAINED', projected: true }] });
+      expect(out.dps).toEqual(dps);
+      expect(out.log).toContain('rejected: gain too small');
+    } finally {
+      Object.assign(POLICY_ADJUST, saved);
+      setWlmTraceSink(null);
+    }
+  });
 });
 
 it('tries a locally unhappy more important receiver before a globally unhappy lower tier', () => {

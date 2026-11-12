@@ -386,6 +386,30 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
+### WT-08 · A change is a plan: receiver up, secondary receivers, donors down, judged together (W5)
+`list: wlm-truth · status: ready (in progress, draft #316) · priority: high · size: L · area: sim`
+
+**Coupled core; main agent only.** Implements `buildPlan`, `assess` and whole-plan `netValue`/`receiverValue` of
+§5.3 in `src/sim/wlm/adjust.ts`, replacing the trial list. A plan alternates receiver steps (one ladder step; on a
+net value failure by a period left at or below the receiver that is not less important, carry that period to the
+receiver's level and assess once more) and donor moves (kept only if they lower the receiver's projected PI);
+receiver value is tested on the whole plan against `base`; a rejected plan leaves the ladder untouched;
+`maxPlanSteps` and the interval budget bound it. `AdjustOutput.log` lists the plan's moves; `WlmCandidateTrace`
+records steps (`UP`, `CARRY k`, `DONOR d`) with `base → after` and the rejecting period. `playerReason` unchanged
+in wording. Tests: `wlm-invariants: I2 one change per interval`, `I4`, `I5 no harm to more important work`, `I6
+equal-importance convergence`, `I13 settles` (constant demand: no move after 30 intervals, no reversal), `I16`;
+unit "secondary receiver is carried" (the Redbook's shape: I, H at one level, moving I alone fails net value on H,
+moving both passes; SG24-6472 p.67); unit "a failing donor stays, the next is tried"; unit "a plan without receiver
+value changes nothing". Goldens: change. Done when: in S-1 and S-3 the share of `MORE_IMPORTANT_HARMED` among
+assessed steps falls below half its baseline (58 %, 42 %), "reversed by its next move" is at most 20 % of §1's
+baseline in each of S-1 … S-3, and the existing equal-importance realism test (Midwest seed 7, PROD1 defined
+capacity 200) still passes. Bench: tick time not above the WT-07 commit by more than 5 %. Bots: textbook 0 to + 2
+days, others small. SPEC §5.5.4 pseudocode replaced by §5.3's; §17 "Policy adjustment" row rewritten; research.md
+rows "CPU move is projected for every class…", "secondary receivers" updated.
+
+Implementation is on draft #316. The S-1 harm-share and S-3 reversal criteria remain unmet; final validation and
+the behaviour/balance decision are pending. Keep this entry open until those criteria are fixed or accepted.
+
 ### WT-09 · Server periods hold the regions' priority (W3)
 `list: wlm-truth · status: blocked: user (attended session, after WT-08) · priority: high · size: L · area: sim`
 

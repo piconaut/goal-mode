@@ -565,6 +565,9 @@ for importance in 1..5:
   an `(above X)` anchor explains splits whose mover keeps its number while old mates move down. Traces show
   each proposal's base → after, structured blocker and RETAINED/ACCEPTED distinction. CPU protection, the
   missing-goal rule and the trust limit use no projection budget; every retry that does project costs one.
+  Each newly started skip clock logs the failed plan's reason once, including between periodic no-action log
+  points; safe partial plans with insufficient final receiver value say "gain too small". Monitor III and
+  `inspect --moves` describe the entire committed plan.
 - **Skip clock and the delay test.** A receiver whose every action was rejected is not selected again until its skip
   clock expires, `rejectedSkipTicks` (6) intervals later; a helped receiver gets no clock and can be helped again 10 s
   later (WLM Services p.145, p.148–149; the length is not documented, so it is FICTIONAL and one value on every

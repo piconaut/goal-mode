@@ -1,8 +1,8 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 are implemented**: one PI basis, sustained
+Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-07 are implemented; WT-08 is in progress**: one PI basis, sustained
 demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval budget (WT-05,
-§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic plans (WT-08, §9.9). Server periods (WT-09) and the other remaining entries are not. Findings W2, W4, W5, W10 and W12 below describe the sim before those
+§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8). Draft atomic plans (WT-08, §9.9) await validation and acceptance. Server periods (WT-09) and the other remaining entries are not. Findings W2, W4, W5, W10 and W12 below describe the sim before those
 entries; each says what fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
@@ -946,7 +946,8 @@ netValue(r, base, after, info, C):                       // T: the trial ladder;
           if |after[r] − after[k]| ≥ |base[r] − base[k]|: return (false, EQUAL_DISPARITY k)
           equalHarm += harm
       // less important: no test. base[r] > 1 is guaranteed, and a receiver missing its goal may take from them
-  if gain ≤ equalHarm and equalHarm > 0: return (false, NO_NET_VALUE)
+  if gain ≤ equalHarm and equalHarm > 0:
+      return (false, NO_NET_VALUE k)                     // k has largest equal-importance harm; key order breaks ties
   return (true, –, after)
 ```
 
@@ -1598,3 +1599,25 @@ Full checks, final hashes, sweeps and independent review are still in progress. 
 MORE_IMPORTANT_HARMED for S-1/S-3; WT-07 already measured 13.3%/15.4%, so passing them alone is not evidence that
 composite planning works. Real-evaluator carry cases and independently recomputed whole-plan safety checks are
 the functional acceptance tests; attempted proposals, retained moves and accepted plans have separate counts.
+
+Review follow-up on the draft: aggregate NO_NET_VALUE now names the greatest equal-importance harm (key order
+breaks ties), enabling a secondary carry. A real evaluator fixture raises G00, fails with gain 149.37 versus
+harm 192.30, then accepts UP + CARRY G03. Safe partial plans that run out of steps or budget explain insufficient
+receiver value. Each newly started skip clock records its rejection clue, including off the periodic log cadence.
+Monitor III and `inspect --moves` describe every retained move of the committed plan, including split anchors.
+
+The legal happy-donor rule is retained; no donor cap or coefficient was added to preserve old scenario outcomes.
+At D1 09:41:10 PROD2 on Midwest seed 42, a six-move plan helps importance-4 DDFPRD#2 by lowering happy TSO#1
+and DDFPRD#1 (importance 2). Their projected PIs still meet their goals. This changes subsequent adaptive WLM:
+the 10:00 shadow-IT pair improves MOBILE from 117.61 to 83.74 ms instead of slowing it. A separate fixed-priority
+pair tests the card's CPU pressure. On seed 3, the former D1 21:00 policy-only MOBILE incident disappears, leaving
+the D2 runaway incident; the counterfactual test still checks one replay at the hour boundary and its cause.
+These are explicit scenario/balance changes awaiting acceptance, not golden noise or a new general guarantee
+that increased demand helps MOBILE.
+
+The capped-PROD1 seed-7 fixture also changes beyond WT-07's §9.8 five-minute episode: ONLHI is OTHER from 14:00
+through the 16:00 end of the observation, despite STCHI's partial recovery at 14:02:30. STCHI remains below ONLHI.
+Waits outside velocity dominate that bottleneck choice (OTHER exceeds 100%, the outstanding WT-10 issue).
+The test preserves the missing-goal ordering checks and the restored CPU rejection clue, and checks the
+preceding accepted STCHI donation and actual ladder rather than a distance between deduplicated log entries.
+This longer episode is a draft acceptance concern; it is not claimed fixed by WT-08.

@@ -668,8 +668,12 @@ describe('event cards (SPEC §9)', () => {
   beforeAll(() => {
     for (let i = 0; i < 4 * 360; i++) base = step(base, [], MIDWEST);
   });
-  const run = (cmds: Parameters<typeof step>[1]) => {
-    let s = step(base, cmds, MIDWEST);
+  const run = (cmds: Parameters<typeof step>[1], holdPriorities = false) => {
+    // A fixed-policy pair isolates the card's CPU pressure from WLM's adaptive priority decisions.
+    const held = holdPriorities ? { ...base, wlm: { ...base.wlm, systems: base.wlm.systems.map((sys) => ({
+      ...sys, scps: sys.scps.map((p) => ({ ...p, skipUntilTick: base.tick + 182 })),
+    })) } } : base;
+    let s = step(held, cmds, MIDWEST);
     let qr = 0;
     let n = 0;
     let devtMsu = 0;
@@ -691,11 +695,21 @@ describe('event cards (SPEC §9)', () => {
   };
   const card = (id: string) => MIDWEST_EVENTS.find((e) => e.id === id)!.begin;
 
-  it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD', () => {
+  it('shadow IT on TSO lifts DEVT MSU and slows mobile at fixed priorities', () => {
+    const asIs = run([], true);
+    const shadow = run(card('SHADOW_IT'), true);
+    expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
+    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+  }, 60_000);
+
+  it('adaptive WLM can improve mobile when shadow IT displaces work above it', () => {
+    // WT-08's legal happy-donor plan at 09:41 puts DDFPRD#2 above MOBILE's DDFPRD#1. Additional TSO
+    // demand can displace #2 and help MOBILE: increased total CPU demand is not monotonic per workload.
+    // This scenario/balance change is recorded in docs/wlm-design.md §9.9, pending acceptance.
     const asIs = run([]);
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
-    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+    expect(shadow.mobileRtMs).toBeLessThan(asIs.mobileRtMs);
   }, 60_000);
 
   it('a non-threadsafe release raises QR wait for teller transactions', () => {
@@ -1023,7 +1037,7 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
   // 4.0, but WLM's projection must still see the gain of a DP move, and the wait for its own regions is CPU delay.
   // ONLHI already ties with its regions and Db2 in STCHI, and equal-DP work shares by ready units, so the light
   // region and Db2 work keeps its CPU: lifting ONLHI over them would only starve the servers it waits for.
-  it('ONLHI stays CPU-bound on PROD1 once capped, and nothing less important is raised past it', () => {
+  it('capped ONLHI logs its CPU rejection, and nothing less important is raised past it', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
@@ -1043,13 +1057,24 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       setWlmTraceSink(null);
     }
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
-    // Db2 is in STCHI here. A happy STCHI may donate to a less important receiver (WT-07, SG24-6472 p.59–60: happy
-    // donors by PI, importance ignored). The projection sees ONLHI's longer waits for Db2, but ONLHI's percentile PI
-    // is at its 0.5 floor, so the move shows no harm and ONLHI can be wait-bound (OTHER) for a moment until STCHI
-    // misses its goal and is raised again (docs/wlm-design.md §9.8). Only then.
-    lines.forEach((l, i) => {
-      if (/ONLHI#1 .*BTLNK=OTHER/.test(l)) expect(lines.slice(Math.max(0, i - 5), i).some((p) => /DONOR STCHI#1 /.test(p)), l).toBe(true);
-    });
+    const firstClock = traces.find((t) => t.candidates.some((c) => c.scKey === 'ONLHI#1' && c.outcome === 'ASSESSED' && c.skipUntilTick !== undefined))!;
+    expect(firstClock).toBeDefined();
+    expect(lines.some((l) => l.startsWith(`${firstClock.clockText} PROD1 ONLHI#1`) && l.includes('no action with net value') && l.includes('rejected:'))).toBe(true);
+    // Db2 is in STCHI here. A happy STCHI may donate (WT-07, SG24-6472 p.59–60). WT-08 leaves it
+    // below ONLHI even after a partial recovery, so OTHER persists beyond WT-07's five-minute episode.
+    // Check the actual ladder and preceding committed donation, not a distance between deduplicated log lines.
+    // Waits outside velocity can dominate this bottleneck choice (WT-10); §9.9 records the changed duration.
+    let donated = false, other = 0;
+    for (const t of traces) {
+      const c = t.candidates.find((c) => c.scKey === 'ONLHI#1');
+      if (c?.outcome === 'NOT_FIXABLE' && c.bottleneck === 'OTHER') {
+        other++;
+        expect(donated, t.clockText).toBe(true);
+        expect(t.dps['STCHI#1'], t.clockText).toBeLessThan(t.dps['ONLHI#1']!);
+      }
+      if (t.candidates.some((c) => c.trials.some((tr) => tr.verdict === 'ACCEPTED' && tr.plan?.some((m) => m.kind === 'DONOR' && m.scKey === 'STCHI#1')))) donated = true;
+    }
+    expect(other).toBeGreaterThan(0);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
     // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
     // Under the cap a less important receiver may not pass more important work that is missing its goal and using

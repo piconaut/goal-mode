@@ -91,7 +91,12 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
       if (log === prev.wlm.log) log = [...log];
       log.push(out.protect);
     }
-    if (out.log && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
+    // A newly clocked receiver may never land on the five-minute no-action cadence. Preserve its first clue.
+    for (const note of out.clockNotes) {
+      if (log === prev.wlm.log) log = [...log];
+      log.push(note);
+    }
+    if (out.log && !out.clockNotes.includes(out.log) && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
       if (log === prev.wlm.log) log = [...log];
       log.push(out.log);
     }

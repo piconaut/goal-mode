@@ -67,6 +67,22 @@ describe('Monitor III views', () => {
 });
 
 describe('WLM log explanations', () => {
+  it('explains every move in an atomic plan and its canonical split anchors', () => {
+    const text = explainWlmLog('D1 12:00:10 PROD1 RCVR=ONLHI#1 PI=1.80 BTLNK=CPU UP ONLHI#1 DP F4→F6; CARRY EQUAL#1 DP F4→F6; DONOR D#1 DP F6→F4; UP ONLHI#1 DP F6→F6 (above EQUAL#1)');
+    expect(text).toContain('one plan');
+    expect(text).toContain('raised ONLHI#1 from DP F4 to F6');
+    expect(text).toContain('carried secondary receiver EQUAL#1 from DP F4 to F6');
+    expect(text).toContain('lowered donor D#1 from DP F6 to F4');
+    expect(text).toContain('raised ONLHI#1 above EQUAL#1 (stored DP F6)');
+    expect(text).not.toContain('from DP F6 to F6');
+  });
+
+  it('explains insufficient receiver value without claiming all proposals harmed donors', () => {
+    const text = explainWlmLog('D1 12:00:10 PROD1 ONLHI#1 PI=4.00 BTLNK=CPU no action with net value (UP ONLHI#1 DP F4→F6 rejected: gain too small), next look 12:01:10');
+    expect(text).toContain('gain too small');
+    expect(text).not.toContain('hurt donors');
+  });
+
   it('explains receivers, donors and unfixable delays', () => {
     expect(explainWlmLog('D1 12:00:10 PROD1 RCVR=ONLHI#1 PI=1.80 BTLNK=CPU ONLHI#1 DP F8→F9')).toMatch(/raised its dispatch priority from F8 to F9/);
     expect(explainWlmLog('D1 12:00:10 PROD1 RCVR=ONLHI#1 PI=1.80 BTLNK=CPU DONOR BATCHPRD#1 DP F8→F7')).toMatch(/lowered donor BATCHPRD#1/);

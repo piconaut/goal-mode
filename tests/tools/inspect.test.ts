@@ -113,6 +113,15 @@ describe('wlmStats counts the audit table (WT-01)', () => {
       .toBe(0);
   });
 
+  it('a donor-only plan helps its primary receiver without ending the donor\'s own episode', () => {
+    const rows = Array.from({ length: 30 }, (_, i) => trace({ candidates: [
+      candidate({ trials: i === 15 ? [trial({ verdict: 'ACCEPTED', plan: [{ kind: 'DONOR', scKey: 'B#1', fromDp: 246, toDp: 244 }] })] : [trial()] }),
+      candidate({ scKey: 'B#1', trials: [trial()] }),
+    ] }));
+    expect(wlmStats(rows, { episodes: true }).episodes?.map((e) => e.scKey)).toEqual(['B#1']);
+    expect(classRows(rows).map((c) => [c.scKey, c.helped])).toEqual([['A#1', 1], ['B#1', 0]]);
+  });
+
   it('prints a column per system, the total, and the requested DP ladder', () => {
     const stats = wlmStats(
       [
@@ -147,6 +156,20 @@ describe('wlmStats counts the audit table (WT-01)', () => {
 });
 
 describe('wlm-stats detail sections: --by-class, --episodes, --moves', () => {
+  it('prints the complete committed plan rather than just its final proposal', () => {
+    const plan: NonNullable<WlmTrialTrace['plan']> = [
+      { kind: 'UP', scKey: 'A#1', fromDp: 244, toDp: 246 },
+      { kind: 'CARRY', scKey: 'B#1', fromDp: 244, toDp: 246 },
+      { kind: 'DONOR', scKey: 'D#1', fromDp: 246, toDp: 244 },
+      { kind: 'UP', scKey: 'A#1', fromDp: 246, toDp: 246, above: 'B#1' },
+    ];
+    const ts = [trace({ candidates: [candidate({ trials: [trial({
+      move: 'UP A#1 DP F6→F6 (above B#1)', verdict: 'ACCEPTED', plan,
+    })] })] })];
+    expect(moveRows(ts)[0]!.move).toBe('UP A#1 DP F4→F6; CARRY B#1 DP F4→F6; DONOR D#1 DP F6→F4; UP A#1 DP F6→F6 (above B#1)');
+    expect(statsText(wlmStats(ts, { moves: true }))).toContain('CARRY B#1 DP F4→F6; DONOR D#1 DP F6→F4');
+  });
+
   const clock = (i: number) => `D1 ${String(6 + Math.floor(i / 360)).padStart(2, '0')}:${String(Math.floor((i % 360) / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`;
   const assessed = (i: number, trials = [trial()]) => trace({ clockText: clock(i), candidates: [candidate({ trials })] });
 

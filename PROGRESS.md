@@ -183,6 +183,10 @@ level or a separate toggle.
 - WT-07 sweep (2026-11-12, remote, Normal, seeds 1–10, `6c00eca`): Midwest 9.5 / 28 / 10 and Revenue 20 / 27 / 10
   (unchanged); Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook 1 victory). Inside the CI gate's bands; Midwest
   do-nothing stays below the design target.
+- WT-08 preliminary sweep (2026-11-12, draft #316 `111cce1`, Normal, seeds 1–10): Midwest 16.5 / 28 / 10,
+  Harbourline 10.5 / 30.5 / 7 (textbook 1 victory), Revenue 20.5 / 27 / 10. All inside the CI bands; Midwest
+  do-nothing improves seven days versus WT-07, outside the expected small change. Final review fixes require
+  another sweep. Acceptance is pending; coefficients have not been tuned to recover the old outcomes.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -495,8 +499,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   value, secondary carries, bounded join-and-split repair, six retained moves, and real-projection budget checks
   before every retry. Rejected/uncommitted plans leave live DPs untouched. Receiver stages advance until blocked;
   a safe donor opens another receiver stage. Traces and statistics distinguish proposals, plans, retained steps
-  and net rank reversals; canonical stored DP targets with split anchors resolve PR-14. WT-08 and PR-14 removed
-  from BACKLOG. Audit, sweep and review results are recorded in docs/wlm-design.md §9.9 and M8.2 when complete.
+  and net rank reversals; canonical stored DP targets with split anchors address PR-14. WT-08 remains open in
+  BACKLOG while draft #316 is validated and the unmet historical criteria and scenario changes are settled.
+  Audit, sweep and review results are recorded in docs/wlm-design.md §9.9 and M8.2 when complete.
 
 - 2026-11-12: queued PR-20 for repeated `NOT_FIXABLE` checks: report those streaks separately from the existing
   `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in

@@ -14,7 +14,7 @@ import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
 import { projectedPercentilePi } from './goals';
 import { ACC_DECAY, goalPi, goalInfo, srvDelayCapOf, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
-import { buildPlan, type PlanMove, type PlanAssessment } from './plan';
+import { buildPlan, formatPlanMoves, type PlanMove, type PlanAssessment } from './plan';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -58,6 +58,8 @@ export interface AdjustOutput {
   /** Where the next interval's search starts (`ScpState.resumeSearch`): set when the projection budget stopped this
    * one, kept when a move was accepted, null once a search reached the end of the list. */
   resumeAt: string | null;
+  /** First rejection notes when a receiver starts a skip clock, including off the periodic log cadence. */
+  clockNotes: string[];
 }
 
 /** Why a trial DP move was accepted or rejected (investigation trace only). */
@@ -449,6 +451,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       const floor = POLICY_ADJUST.creditFloor;
       const gain = Math.max(0, r0 - Math.max(r1, floor));
       let equalHarm = 0;
+      let largestEqualHarm = 0;
+      let equalBlocker: string | undefined;
       // Key order, so the period a rejection names (and the harm sum) never depends on the order of `scps`.
       for (const k of infoKeys) {
         const g = info[k]!;
@@ -468,10 +472,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
           // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
           if (Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return reject('EQUAL_DISPARITY', [r0, r1], `${k} PI ${p0.toFixed(2)}→${p1.toFixed(2)}`, k);
           equalHarm += harm;
+          // infoKeys is sorted, so equal harms retain the first key deterministically.
+          if (harm > largestEqualHarm) { largestEqualHarm = harm; equalBlocker = k; }
         }
       }
       // APPROX: equal-importance harm is also summed over periods (IBM tests net value per donor).
-      if (equalHarm > 0 && gain <= equalHarm) return reject('NO_NET_VALUE', [r0, r1], `gain ${gain.toFixed(2)} ≤ equal-importance harm ${equalHarm.toFixed(2)}`);
+      if (equalHarm > 0 && gain <= equalHarm) return reject('NO_NET_VALUE', [r0, r1], `gain ${gain.toFixed(2)} ≤ equal-importance harm ${equalHarm.toFixed(2)}`, equalBlocker);
       acceptedPi = [r0, r1];
       return true;
     });
@@ -504,6 +510,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const resumedAt = start >= 0 ? resumeKey : null;
 
   const notes: string[] = [];
+  const clockNotes: string[] = [];
   const traced: WlmCandidateTrace[] = [];
   const traceOf = (
     k: string,
@@ -526,9 +533,9 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const share = (v: number) => (denom > 0 ? v / denom : 0);
     return { CPU: share(d.delayCpu), ZIIP: share(d.delayZiip), IO: share(d.delayIo), CAP: share(d.delayCap), OTHER: share(d.delayOther) };
   };
-  const finish = (out: Omit<AdjustOutput, 'skipUntil' | 'resumeAt'>, resumeAt: string | null): AdjustOutput => {
+  const finish = (out: Omit<AdjustOutput, 'skipUntil' | 'resumeAt' | 'clockNotes'>, resumeAt: string | null): AdjustOutput => {
     if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null, protection });
-    return { ...out, skipUntil, resumeAt };
+    return { ...out, skipUntil, resumeAt, clockNotes };
   };
   let stoppedAt: string | null = null;
   for (const receiver of candidates) {
@@ -586,8 +593,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const donors = donorOrder(receiver, btl, dps, donorInfo);
     if (ct) ct.donors = [...donors];
     const hadWholeBudget = budget === POLICY_ADJUST.maxProjectionsPerInterval;
-    const describe = (moves: readonly PlanMove[]): string => moves.map((m) =>
-      `${m.kind} ${m.scKey} DP ${hex(m.fromDp)}→${hex(m.toDp)}${m.above ? ` (above ${m.above})` : ''}`).join('; ');
+    const describe = formatPlanMoves;
     const plan = buildPlan({
       receiver, ladder, donors, maxSteps: POLICY_ADJUST.maxPlanSteps, basePi: b0,
       importanceOf: (k) => info[k]!.importance,
@@ -620,7 +626,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     }, resumedAt);
     const outOfBudget = plan.outcome === 'BUDGET';
     // No move taken: say what this receiver's first move would have done, so the log answers "why not?".
-    const clue = firstNamed ?? firstReject;
+    const retained = plan.attempts.filter((a) => a.ok).at(-1);
+    const clue = firstNamed ?? firstReject ?? (retained ? {
+      move: describe(retained.moves),
+      why: { move: '', verdict: 'SMALL_GAIN' as const, receiverPi: retained.receiverPi,
+        detail: `complete plan needs ≥ ${receiverValueNeeded(b0).toFixed(2)}` },
+    } : null);
     const whyNot = clue ? ` (${clue.move} rejected: ${playerReason(clue.why)})` : '';
     if (outOfBudget && !hadWholeBudget) {
       notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}`);
@@ -631,7 +642,9 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const until = nowTick + POLICY_ADJUST.rejectedSkipTicks;
     skipUntil[receiver] = until;
     if (ct) ct.skipUntilTick = until;
-    notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}, next look ${formatClock(until).split(' ')[1]}`);
+    const note = `${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}, next look ${formatClock(until).split(' ')[1]}`;
+    notes.push(note);
+    clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
     if (outOfBudget) {
       stoppedAt = receiver;
       break;
@@ -652,7 +665,7 @@ function playerReason(w: WlmTrialTrace): string {
     case 'SMALL_GAIN': return 'gain too small';
     case 'MORE_IMPORTANT_HARMED': return `harms ${name ?? 'more important work'}, more important`;
     case 'EQUAL_DISPARITY': return `harms ${name ?? 'equal-importance work'}, equal importance`;
-    case 'NO_NET_VALUE': return 'equal-importance harm outweighs the gain';
+    case 'NO_NET_VALUE': return w.blockedBy ? `harms ${w.blockedBy}, equal importance (no net gain)` : 'equal-importance harm outweighs the gain';
     case 'CPU_CRITICAL': return 'would breach CPU protection';
     case 'PROJECTION_DISAGREES': return 'its backlog would take the processor from other work while it catches up';
     default: return 'no net value';
