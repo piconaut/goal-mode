@@ -588,6 +588,67 @@ use `DELAY_CPU` or restrict the example to the CPU mechanisms. This is a documen
 change. Done when: A9's example matches the accepted mechanisms and relation/notability rules, preserving its
 explanation of the remaining proof-recipe gap.
 
+### PR-14 · Receiver trials are cumulative plans, logged and counted as single moves
+`list: pr-followups · status: ready · priority: low · size: S · area: sim`
+
+From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. The receiver-up loop in `policyAdjust` (`src/sim/wlm/adjust.ts`) carries `up` forward, so trial N is steps
+1…N; one accepted "move" can be a four-step plan (batch-recovery fixture: `BATCHPRD#1 DP F0→F5`). The code comment,
+SPEC §5.5.4 and the docs/research.md move-codes row say "each trial is a single move", and `inspect … wlm-stats`
+counts accepted plans as moves. A top-level split also logs `DP F6→F7`, the one priority never occupied, while the
+stored DP stays F6 and the mate drops a level. Keep the cumulative trials (WT-08 builds plans on them); fix the
+wording, add a step count to the trace and `wlm-stats` (moves vs steps), and log a split's stored effect rather than
+F7. Log text may move goldens; no behaviour change otherwise. Done when: the docs say "plan of steps", `wlm-stats`
+reports both counts, no log names F7, and `npm run compare` shows only log/report differences.
+
+### PR-15 · A policy edit can leave discretionary work on the ladder, or a new goal at the bottom
+`list: pr-followups · status: ready · priority: high · size: M · area: sim`
+
+From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. DPs are carried by period key (`held` in `src/sim/core/tick/dispatch.ts` `imageInput`; `control.ts` applies
+`out.dps[k] ?? s.dp`), and `policyAdjust` only ladders goal periods, so a period whose goal kind changes in an
+activated policy (`src/game/wlmEdit.ts` allows a discretionary last period) keeps its old DP:
+- goal → discretionary: `DEVBAT#1` held at 246 stays at 246, on the top level (SPEC §5.4: discretionary runs at 196);
+- discretionary → goal: held at 196, `placeNewPeriods` skips it (`held[k] !== undefined`, `src/sim/wlm/runtime.ts`)
+  and `canonical` puts an importance-1 goal at the bottom.
+Older than WT-06 (DPs were always carried by key), but WT-06's I9 and WT-07's donor comment ("discretionary work is
+fixed below the managed ladder") assume it can't happen. Reset non-goal periods to `initialDp` (server periods
+excepted) and place a held period whose goal kind changed, or whose DP is outside its range, as new; `initialDp`'s
+dead goal branch can go. Done when: tests for both edits (policy activation mid-run), I9 checks non-goal periods at
+their fixed DPs, goldens unchanged unless a golden run edits a goal kind (say which).
+
+### PR-16 · `placeLateDp` can return MANAGED_MAX
+`list: pr-followups · status: ready · priority: low · size: S · area: sim`
+
+From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. `src/sim/wlm/runtime.ts` `placeLateDp` caps at `DP.MANAGED_MAX` (`Math.min(goal[down]! + 1, DP.MANAGED_MAX)`):
+`placeLateDp(BASEPOL, { 'STCMED#1': 246 }, 'STCHI#1')` is 247 for one interval, until the next canonical pass. It is
+the fallback for a key `dpOf` meets after `placeNewPeriods` (a region key not in `slices`). Cap at `MANAGED_MAX − 1`
+(join the top level). Done when: unit tests for `placeLateDp` and `placeNewPeriods` (neither has one), including
+this case.
+
+### PR-17 · Invariant I15 is stated for every resource-group minimum but holds only for goal members
+`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
+
+From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. docs/wlm-design.md I15 says a minimum's share "is dispatched above every goal period"; a discretionary member's
+runs at `MANAGED_MIN − 1` = 202 (`src/sim/wlm/eval/grants.ts`), below all goal work and above discretionary work, by
+design. The I15 test (`tests/sim/wlm-invariants.test.ts`) only covers the goal-member path. Split the invariant
+(goal member above goal work; discretionary member above discretionary work, below goal work) and test both. Done
+when: the doc and the test cover both paths.
+
+### PR-18 · WT-06 test gaps
+`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
+
+From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. Tests only; no behaviour change:
+- S-4 (`tests/sim/wlm-realism.test.ts`) checks ≥ 4 distinct DPs below `MANAGED_MAX` at D8 12:00; assert canonical
+  spacing (`levelDp`) and the "7–8 levels from D1 to D8" of docs/wlm-design.md §9.7.
+- R-4 ("MKTDDF#2 second from the bottom on PRDD at D1 14:17", §9.7) has no test.
+- The capped-PROD1 realism test (`tests/sim/realism.test.ts`, "nothing less important is raised past it") reads the
+  trace's `dps`, which `finish` records before the move; a move accepted in the last interval is missed. Check the
+  state after the step.
+- The log clue ("first rejection that names what stood in the way") has no test: first trial `SMALL_GAIN`, a later
+  one `MORE_IMPORTANT_HARMED`.
+- I9 checks the set of goal DPs only; add order preservation across an interval with no move.
+- `tests/sim/adjust.test.ts` "moving it above the less important one" asserts a join; rename it.
+Done when: each is covered (or named here as not worth it).
+
 ## realism-fixes
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header

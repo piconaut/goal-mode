@@ -176,8 +176,13 @@ level or a separate toggle.
   wlm-design.md §9.6). User decision: ship, and WT-06 checks those seeds.
 - WT-06 sweep (2026-11-12, remote, Normal, seeds 1–10, WT-05 `2f614b5` → WT-06 `a0904ec`): Revenue 20 / 27 / 10
   (unchanged); Midwest 16.5 / 28 / 10 → 9.5 / 28 / 10 (MOBILE's goal is looser than its SLA, and the ladder no
-  longer over-serves DDF; real behaviour, inside the band); Harbourline 10 / 29 / 6 → 10.5 / 30.5 / 7 (seed 9 back;
-  seed 7 lost to W7, WT-10's note). All inside the bands.
+  longer over-serves DDF; real behaviour); Harbourline 10 / 29 / 6 → 10.5 / 30.5 / 7 (seed 9 back; seed 7 lost to
+  W7, WT-10's note). All inside the CI gate's bands (`tools/ci/balanceGate.ts`; do-nothing 8–22). Midwest do-nothing
+  is below SPEC §16's design target of day 12–18 and moved 7 days against the ±3 WT-06 expected; user decision
+  (2026-11-12): accepted, no change to the ladder or the band.
+- WT-07 sweep (2026-11-12, remote, Normal, seeds 1–10, `6c00eca`): Midwest 9.5 / 28 / 10 and Revenue 20 / 27 / 10
+  (unchanged); Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook 1 victory). Inside the CI gate's bands; Midwest
+  do-nothing stays below the design target.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -702,4 +707,4 @@ attended and user-gated. Finished on the same branch: a period with no PI yet co
 happiest donor); fixtures moved for the new order (one realism case: a happy STCHI holding Db2 donates and ONLHI is
 briefly wait-bound, real behaviour). S-table, R-1 and sweep in docs/wlm-design.md §9.8: moves 25/26/44 → 33/21/47,
 nothing undone within two minutes, projections up to 1.7×, bench 1.53 → 1.58 ms per tick; sweep (Normal, seeds 1–10)
-Midwest and Revenue unchanged, Harbourline do-nothing 10.5 → 10, all inside the bands.
+Midwest and Revenue unchanged, Harbourline do-nothing 10.5 → 10, all inside the CI gate's bands (M8.2).

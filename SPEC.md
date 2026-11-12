@@ -1756,7 +1756,9 @@ never touches the DOM.
 - **Golden runs:** fixed seed + scripted commands → hashed day summaries; changes that alter
   them must be intentional (update the golden file in the same commit with an explanation).
 - **Strategy bots** for balance (headless):
-  - *Do-nothing*: should **lose between days 12–18** on Normal.
+  - *Do-nothing*: should **lose between days 12–18** on Normal. (Design target; the CI gate in
+    `tools/ci/balanceGate.ts` allows 8–22. Midwest's median is 9.5 since WT-06, from a planted MOBILE goal/SLA gap the
+    old ladder hid; accepted by the user 2026-11-12, PROGRESS.md M8.2.)
   - *Textbook fixer*: fixes F1–F12 with known-good settings, no hardware → survives to
     ~day 28–32.
   - *Spend-to-win*: buys CoD every day → wins on SLA but trips the opex loss condition.
