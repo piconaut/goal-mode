@@ -343,17 +343,30 @@ Capacity available to the image this tick: `C = delivered physical engine-second
 ```
 DP 255  SYSTEM          (fixed)
 DP 254  SYSSTC*         (fixed)
-DP 253  "small consumer" (real z/OS; not modelled: no period is ever one)
-DP 252–208  managed periods (WLM-assigned, importance 1–5)
+DP 253–249  reserved (real z/OS); the sim dispatches blocked-workload promotion at 253 and a resource group's
+            minimum share at 249 (APPROX: IBM does not say where either runs), both above all goal work
+DP 248  "small consumer" (real z/OS; not modelled: no period is ever one)
+DP 247–203  managed periods (WLM-assigned, importance 1–5); goal periods only on 246, 244, …: the canonical ladder
+DP 202  unused (the sim serves a discretionary member's resource-group minimum here)
 DP 196  every discretionary period (real z/OS: 201–192 by mean-time-to-wait; not modelled)
 DP 191  quiesced work
 ```
-(DP ranges from IBM Redbook SG24-7621 §3.13–3.14.) Real WLM gives small consumers a high priority and leaves them out
-of priority assessment, and spreads discretionary work over 201–192 by mean time to wait, I/O-bound work higher
-([`docs/research.md`](docs/research.md) "Small consumers … mean-time-to-wait"). The sim does neither: every
-discretionary period runs at 196 (C4), and no period is a small consumer (DP 253 is used only for blocked-workload
-promotion, step 5). The effect is small: work at one level shares by ready units, which already favours work that
-wants little CPU (docs/wlm-design.md W13).
+(The table "as of z/OS 1.8", SG24-6472 p.65 and Enrico slide 49; SG24-7621 §3.13–3.14 gives the older one, 253 small
+consumer and 252–208 managed. docs/research.md "Dispatch priorities".) Real WLM gives small consumers a high priority
+and leaves them out of priority assessment, and spreads discretionary work over 201–192 by mean time to wait,
+I/O-bound work higher ([`docs/research.md`](docs/research.md) "Small consumers … mean-time-to-wait"). The sim does
+neither: every discretionary period runs at 196 (C4), and no period is a small consumer. The effect is small: work at
+one level shares by ready units, which already favours work that wants little CPU (docs/wlm-design.md W13).
+
+**The ladder** (docs/wlm-design.md §5.6, `src/sim/wlm/ladder.ts`). An image's goal periods form an order of levels;
+DPs are a function of it. Level *i* from the top is dispatched at `MANAGED_MAX − 1 − 2i` (246, 244, …), so an
+unoccupied priority lies between occupied ones and `MANAGED_MAX` (247) is never occupied: "after a dispatching
+priority change, service class periods may be remapped … such that there is an unoccupied priority between each
+occupied priority" (WLM Services p.139, priority unbunching). Policy adjustment ends every interval with the ladder
+renumbered this way (an old save's on its first interval, order kept). A period seen for the first time joins the
+level of the lowest period of its importance, else a new level directly below the lowest level that holds a more
+important period (the top if there is none); a new image's first ladder is one level per importance present. APPROX:
+more than 22 levels (no shipped policy has 22 active goal periods on an image) merge from the bottom.
 
 Algorithm per pool:
 1. Group demand by DP level, from high to low.
@@ -528,7 +541,7 @@ for importance in 1..5:
         base = projected PIs at the current DPs (one evaluation, made when first needed)
         if base[receiver] ≤ 1 or unknown: record RECOVERING & continue      // no trials, no budget
         if the interval's projection budget is spent: record BUDGET & stop  // no clock: next search starts here
-        for each candidate action (move receiver up 1..k DP; move donors down):
+        for each candidate action (receiver one step up at a time, up to the third level above; then donors down):
             if the receiver would pass or join more important work that is missing its goal
                (management or projected PI > 1) and uses the processor: reject   // MORE_IMPORTANT_HARMED
             project new CPU distribution with the dispatcher model (re-run §5.4 on a copy)
@@ -542,6 +555,17 @@ for importance in 1..5:
     // at most ONE receiver helped per interval per system
 ```
 
+- **Moves on the ladder** (§5.4, WT-06). A receiver steps up one at a time, each trial from the last: sharing a level,
+  it moves alone onto the free priority directly above it; alone, it joins the next level (WLM Services p.707,
+  codes 635 and 620), until it has joined the third level above. Alone on the top level it has no step. A donor
+  above the receiver moves onto the receiver's level, one already on it alone onto a new level just below (p.706,
+  codes 530/540 and 531 "moving the donor to the receivers priority"). Each trial is a single move until WT-08's
+  plans. The log names the priority moved to before the ladder is renumbered (`DP F2→F3`: the free priority above
+  F2's level), so the stored DPs can differ from the logged target. "Passes or joins" in the missing-goal rule
+  means a change of position: a more important period that already shared the receiver's level and still does is
+  not passed. CPU protection moves every less important period at or above a protected one onto one new level
+  directly below it. When no move pays off, the log's clue is the first rejection that names what stood in the way
+  (harm, protection, the trust limit), else the first: small first steps often gain nothing.
 - **Skip clock and the delay test.** A receiver whose every action was rejected is not selected again until its skip
   clock expires, `rejectedSkipTicks` (6) intervals later; a helped receiver gets no clock and can be helped again 10 s
   later (WLM Services p.145, p.148–149; the length is not documented, so it is FICTIONAL and one value on every
@@ -1751,7 +1775,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | WLM goal types, importance, PI formulas, percentile buckets, discretionary PI 0.81 | **Real** | Per SG24-7621 |
 | Classification masks and wildcards (`%`, trailing `*`) | **Real** | WLM Planning p.104; `*` mid-pattern is a literal |
 | Temporary started-task lifecycle (`XLOG_LOOP`) | **Approximation** | Start creates an extra address space; expiry or cancellation removes it, and a later occurrence starts at its base CPU demand. MVS System Commands 3.1, PDF p.50, p.188. APPROX: cleanup on the command tick assumes cancellation succeeds; real cancellation issues an asynchronous ABEND and can require repeated CANCEL commands. Old-save duplicates and zero-CPU modifiers are cleared on the next start |
-| DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | SG24-7621 §3.13–3.14 (255 SYSTEM, 254 SYSSTC, 253 small consumer, 252–208 managed, 201–192 discretionary). The sim runs every discretionary period at 196 and has no small consumers (row "Small consumer, mean-time-to-wait") |
+| DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | The table as of z/OS 1.8 (SG24-6472 p.65; Enrico slide 49): 255 SYSTEM, 254 SYSSTC, 253–249 reserved (the sim: promotion 253, resource-group minimum 249, APPROX), 248 small consumer, 247–203 managed, 201–192 discretionary. Goal periods sit on a canonical ladder (246, 244, …; unbunching, WLM Services p.139), so 247 is never occupied (WT-06). The sim runs every discretionary period at 196 and has no small consumers (row "Small consumer, mean-time-to-wait") |
 | Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); Partition Data shows `CHANGE REASON=POWERSAVE (initiated by the user)` or `MACHINE (initiated by the machine)`. APPROX: real RMF puts CHANGE REASON on the CPU Activity report header (RMF Report Analysis p.391–392), which the sim does not render, and the Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98); SMF70CAI is kept on the interval for tooling but not printed. A power cap does not slow cycle speed |
 | PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
 | Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
