@@ -18,7 +18,7 @@
 
 import { readFileSync } from 'node:fs';
 import { applyPlayCommand, decodePlayFile, clockText, newPlayFile, type PlayFile } from './playCore';
-import { tickOfClock } from '../src/sim/core/clock';
+import { formatClock, tickOfClock } from '../src/sim/core/clock';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
 import { packOf } from '../src/content/packs';
 import { scenarioFor } from '../src/game/difficulty';
@@ -58,8 +58,10 @@ const hexDp = (n: number) => n.toString(16).toUpperCase();
 const piText = (p: number | null | undefined) => (p == null ? '-' : p.toFixed(2));
 
 const OUTCOME_TEXT: Record<WlmCandidateTrace['outcome'], string> = {
+  SKIP_CLOCK: 'not assessed: skip clock running (every move was rejected at its last assessment)',
+  NO_MANAGED_DELAY: 'not assessed: no managed delay (CPU, zIIP, I/O, storage, queue under 2 % of samples)',
   NOT_FIXABLE: 'not assessed: bottleneck is not CPU/zIIP',
-  BUDGET: 'not assessed: two receivers already assessed at this importance',
+  BUDGET: "not assessed: the interval's projection budget is spent (first in line next time)",
   RECOVERING: 'not assessed: projected PI at sustained demand is already ≤ 1 (recovering by itself)',
   ASSESSED: '',
 };
@@ -73,8 +75,10 @@ const shareText = (c: WlmCandidateTrace) =>
 function candidateLines(c: WlmCandidateTrace, n: number): string[] {
   const head = `  ${n}. ${c.scKey} imp ${c.importance} PI ${piText(c.sysplexPi)} (local ${piText(c.localPi)}) DP ${hexDp(c.dp)}${c.bottleneck ? ` BTLNK ${c.bottleneck}` : ''}`;
   const shares = [`       delay ${shareText(c)} of using + delay`];
-  if (c.outcome !== 'ASSESSED') return [head, ...shares, `       ${OUTCOME_TEXT[c.outcome]}`];
-  if (c.trials.length === 0) return [head, ...shares, '       no move to try (DP at the top and no donor at or above it)'];
+  // To the second: a clock runs in 10-second intervals.
+  const nextLook = c.skipUntilTick !== undefined ? `       next look ${clockText(c.skipUntilTick)}${formatClock(c.skipUntilTick).slice(-3)}` : null;
+  if (c.outcome !== 'ASSESSED') return [head, ...shares, `       ${OUTCOME_TEXT[c.outcome]}`, ...(nextLook ? [nextLook] : [])];
+  if (c.trials.length === 0) return [head, ...shares, '       no move to try (DP at the top and no donor at or above it)', ...(nextLook ? [`${nextLook} (skip clock set)`] : [])];
   return [
     head,
     ...shares,
@@ -83,6 +87,7 @@ function candidateLines(c: WlmCandidateTrace, n: number): string[] {
       const r = t.receiverPi ? `  rcvr PI ${piText(t.receiverPi[0])}→${piText(t.receiverPi[1])}` : '';
       return `       ${t.move.padEnd(30)} ${t.verdict}${r}${t.detail ? `  ${t.detail}` : ''}`;
     }),
+    ...(nextLook ? [`${nextLook} (all rejected: skip clock set)`] : []),
   ];
 }
 
@@ -158,7 +163,12 @@ export interface WlmStatsCounters {
   assessed: number;
   /** `NOT_FIXABLE` candidates by the bottleneck they were skipped for. */
   notFixable: Record<'IO' | 'OTHER' | 'CAP' | 'NONE', number>;
-  /** `BUDGET` candidates: skipped because a same-importance receiver was already assessed. */
+  /** `SKIP_CLOCK` and `NO_MANAGED_DELAY` candidates (WT-05). */
+  skipClock: number;
+  noManagedDelay: number;
+  /** Skip clocks set (an assessed candidate with every trial rejected). */
+  clocksSet: number;
+  /** `BUDGET` candidates: the interval's projection budget was spent before them. */
   budget: number;
   trials: number;
   /** Trials by verdict. `ACCEPTED` is the move the adjustment took. */
@@ -193,7 +203,7 @@ export interface WlmStats {
 }
 
 const emptyCounters = (): WlmStatsCounters => ({
-  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, OTHER: 0, CAP: 0, NONE: 0 }, budget: 0, recovering: 0, trials: 0,
+  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, OTHER: 0, CAP: 0, NONE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, clocksSet: 0, trials: 0,
   verdicts: { ACCEPTED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
   acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, episodes: 0,
 });
@@ -241,7 +251,13 @@ function countSystem(traces: readonly WlmAdjustTrace[]): WlmStatsCounters {
       if (cand.outcome === 'NOT_FIXABLE') c.notFixable[notFixableKey(cand.bottleneck)]++;
       else if (cand.outcome === 'BUDGET') c.budget++;
       else if (cand.outcome === 'RECOVERING') c.recovering++;
-      else { c.assessed++; assessed.add(cand.scKey); }
+      else if (cand.outcome === 'SKIP_CLOCK') c.skipClock++;
+      else if (cand.outcome === 'NO_MANAGED_DELAY') c.noManagedDelay++;
+      else {
+        c.assessed++;
+        assessed.add(cand.scKey);
+        if (cand.skipUntilTick !== undefined) c.clocksSet++;
+      }
       for (const tr of cand.trials) {
         c.trials++;
         c.verdicts[tr.verdict]++;
@@ -292,6 +308,9 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
     for (const k of Object.keys(total.notFixable) as (keyof WlmStatsCounters['notFixable'])[]) total.notFixable[k] += c.notFixable[k];
     total.budget += c.budget;
     total.recovering += c.recovering;
+    total.skipClock += c.skipClock;
+    total.noManagedDelay += c.noManagedDelay;
+    total.clocksSet += c.clocksSet;
     total.trials += c.trials;
     for (const v of VERDICT_ORDER) total.verdicts[v] += c.verdicts[v];
     total.acceptedReceiverUp += c.acceptedReceiverUp;
@@ -387,6 +406,9 @@ export function statsText(stats: WlmStats): string {
     ['  not assessed: no bottleneck', [...stats.systems.map((s) => s.counters.notFixable.NONE), stats.total.notFixable.NONE]],
     ['  not assessed: budget', [...stats.systems.map((s) => s.counters.budget), stats.total.budget]],
     ['  not assessed: already recovering (base ≤ 1)', [...stats.systems.map((s) => s.counters.recovering), stats.total.recovering]],
+    ['  not assessed: skip clock running', [...stats.systems.map((s) => s.counters.skipClock), stats.total.skipClock]],
+    ['  not assessed: no managed delay', [...stats.systems.map((s) => s.counters.noManagedDelay), stats.total.noManagedDelay]],
+    ['skip clocks set (every trial rejected)', [...stats.systems.map((s) => s.counters.clocksSet), stats.total.clocksSet]],
     ['trials (projections)', [...stats.systems.map((s) => s.counters.trials), stats.total.trials]],
     ...VERDICT_ORDER.map((v): [string, number[]] => [
       `  ${v === 'ACCEPTED' ? 'accepted' : `rejected: ${v}`}`,
@@ -437,7 +459,7 @@ export function replayAdvance(hours: number, abended: () => ReadonlySet<string>,
 
 /** Replay a play file and collect every policy adjustment trace from `from` to `to` (exclusive). Returns the tick
  * reached: short of `to` when the log or a day ends first. */
-function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdjustTrace) => void): number {
+export function replayTraces(file: PlayFile, from: number, to: number, sink: (t: WlmAdjustTrace) => void): number {
   const first = file.log[0];
   if (first?.cmd !== 'new') throw new Error('wlm-stats needs a play-CLI file (seed + command log); a browser save has no log to replay past hours');
   let f = newPlayFile(first.seed, first.difficulty, first.scenario);

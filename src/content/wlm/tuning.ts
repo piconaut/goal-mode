@@ -78,10 +78,14 @@ export const POLICY_ADJUST = {
   // it can still be helped by a donor move; a percentile PI stops at 4.0, so a percentile goal never trips it.
   // Measured against projecting its whole backlog (docs/wlm-design.md §9.5).
   projectionTrustMax: 4,
+  // FICTIONAL: a period whose managed delay (CPU, zIIP, I/O in velocity, storage, queue) is under this share of its
+  // samples is not assessed. IBM's rule is "no delay samples" (WLM Services p.144); a fluid model never has exactly none.
+  needsHelpDelayFrac: 0.02,
+  // FICTIONAL: a receiver whose every trial was rejected is skipped for this many intervals (a minute). IBM documents
+  // the skip clock but not its length (WLM Services p.145); one length on every difficulty (docs/wlm-design.md §8 Q9).
+  rejectedSkipTicks: 6,
+  // FICTIONAL: projections (trial evaluations) per image per interval; the tick budget. When it is spent the search
+  // stops for the interval, with no skip clock, and the next interval's search starts where it stopped.
+  maxProjectionsPerInterval: 12,
 };
 
-// FICTIONAL: how many fixable receivers the search assesses at one importance before going on to the next.
-// Shape: at most this many receivers per importance level get their trials run; the rest are skipped (BUDGET)
-// and lower importances still get their own budget. A receiver whose trials find no move of net value does
-// not keep lower importances out. SG24-7621 p.105-106 for the search order.
-export const RECEIVERS_PER_IMPORTANCE = 2;

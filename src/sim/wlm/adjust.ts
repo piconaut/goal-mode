@@ -6,13 +6,14 @@
 // accumulators); every trial is judged on projected PIs, `base` at the current DPs against `after` at the trial's,
 // both from the dispatcher model at sustained demand (projection.ts).
 
-import { PCT_PROJECTION_SIGMA, POLICY_ADJUST, RECEIVERS_PER_IMPORTANCE as DEFAULT_RECEIVERS_PER_IMPORTANCE } from '../../content/wlm/tuning';
+import { PCT_PROJECTION_SIGMA, POLICY_ADJUST } from '../../content/wlm/tuning';
+import { formatClock } from '../core/clock';
 import { DP } from '../zos/dispatcher';
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
 import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
 import { projectedPercentilePi } from './goals';
-import { ACC_DECAY, goalPi, goalInfo, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
+import { ACC_DECAY, goalPi, goalInfo, srvDelayCapOf, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -40,8 +41,8 @@ export interface AdjustInput {
   clockText: string;
   /** IEAOPT CCIMP on this system. */
   ccImp?: number;
-  /** How many fixable receivers the search assesses at one importance before going on (WLM content tunable). */
-  receiversPerImportance?: number;
+  /** This interval's tick: skip clocks are compared with it and set from it (absent = 0). */
+  nowTick?: number;
   /** Measured demand and next-tick demand already enabled by execution's grants. */
   batch?: readonly BatchProjectionSlice[];
 }
@@ -51,6 +52,11 @@ export interface AdjustOutput {
   log: string | null;
   /** DPs lowered to restore long-term CPU protection before any receiver was assessed. */
   protect: string | null;
+  /** Skip clocks still running after this interval (period → first tick it may be assessed again). */
+  skipUntil: Record<string, number>;
+  /** Where the next interval's search starts (`ScpState.resumeSearch`): set when the projection budget stopped this
+   * one, kept when a move was accepted, null once a search reached the end of the list. */
+  resumeAt: string | null;
 }
 
 /** Why a trial DP move was accepted or rejected (investigation trace only). */
@@ -94,10 +100,16 @@ export interface WlmCandidateTrace {
   delayShares: WlmDelayShares;
   /** Donor periods in the order their trials were built (assessed receivers; empty when none qualified). */
   donors?: string[];
-  /** NOT_FIXABLE: bottleneck isn't CPU/zIIP; BUDGET: receiversPerImportance receivers were already assessed at this importance;
-   * RECOVERING: its projected PI at sustained demand and the current DPs is already ≤ 1 (or unknown): no trials;
-   * ASSESSED: trials below. */
-  outcome: 'NOT_FIXABLE' | 'BUDGET' | 'RECOVERING' | 'ASSESSED';
+  /** SKIP_CLOCK: its skip clock has not expired (`skipUntilTick`); NO_MANAGED_DELAY: its managed delay is under
+   * `needsHelpDelayFrac` (`managedDelayFrac`); NOT_FIXABLE: bottleneck isn't CPU/zIIP; RECOVERING: its projected PI at
+   * sustained demand and the current DPs is already ≤ 1 (or unknown): no trials; BUDGET: the interval's projection
+   * budget was spent before it (the search stops); ASSESSED: trials below. */
+  outcome: 'SKIP_CLOCK' | 'NO_MANAGED_DELAY' | 'NOT_FIXABLE' | 'RECOVERING' | 'BUDGET' | 'ASSESSED';
+  /** SKIP_CLOCK: the tick from which it may be assessed again; ASSESSED: the clock set because every trial was
+   * rejected (absent when a move was accepted or the budget ran out first). */
+  skipUntilTick?: number;
+  /** The managed delay share the needs-help test saw. */
+  managedDelayFrac?: number;
   /** Projected PI at the current DPs (the basis every trial is judged against); absent when not computed. */
   basePi?: number | null;
   trials: WlmTrialTrace[];
@@ -152,6 +164,25 @@ export function enforceCpuProtection(
     }
   }
   return { dps: out, moves };
+}
+
+/**
+ * The share of a period's samples that are delays WLM manages (docs/wlm-design.md §5.7): CPU, zIIP, I/O in velocity,
+ * storage and queue delay. Capping delay is in `delay` but reported, not managed. Waits for locks, servers, the CF or
+ * the QR TCB (`delayOther`) are not delay states and are not in `delay` at all (`decayInto`), so nothing is taken off
+ * for them. A period with none is not assessed (WLM Services p.144: "no delay samples"). The population is the one
+ * the period's goal PI is taken from (`goalPi`): velocity samples without those of transaction-server regions, which
+ * are managed to the goals of the transactions they serve (WLM Planning p.122).
+ */
+export function managedDelayFrac(
+  acc: Pick<ScpState['acc'], 'using' | 'delay' | 'delayCap' | 'usingIoNoVel' | 'delayIoNoVel' | 'srvUsing' | 'srvDelay' | 'srvDelayCap'>,
+): number {
+  const srvDelay = acc.srvDelay ?? 0;
+  const delay = acc.delay - (acc.delayIoNoVel ?? 0) - srvDelay;
+  const samples = acc.using - (acc.usingIoNoVel ?? 0) - (acc.srvUsing ?? 0) + delay;
+  if (!(samples > 0)) return 0;
+  const cap = acc.delayCap - srvDelayCapOf(acc);
+  return Math.max(0, delay - cap) / samples;
 }
 
 /** Receiver value (WLM Services p.138: "a minimum performance index improvement … to reject very small
@@ -255,6 +286,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     return Math.max(now, ((acc?.cpuEngines ?? 0) + (acc?.ziipEngines ?? 0)) * (1 - ACC_DECAY));
   };
   const tracing = traceSink !== null;
+  const nowTick = input.nowTick ?? 0;
+  // Projections left this interval (I16): a CPU-protection or missing-goal rejection costs none.
+  let budget = POLICY_ADJUST.maxProjectionsPerInterval;
+  // Clocks still running; an expired one is dropped (WLM Services p.148–149: a helped receiver can be helped again the next interval).
+  const skipUntil: Record<string, number> = {};
+  for (const s of system.scps) if (s.skipUntilTick !== undefined && s.skipUntilTick > nowTick) skipUntil[s.scKey] = s.skipUntilTick;
   let why: WlmTrialTrace | null = null;
   // Recorded even without the trace sink: the player-visible log names a rejected move and why.
   const reject = (verdict: WlmTrialVerdict, r: [number | null, number | null], detail?: string) => {
@@ -295,6 +332,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // callback said yes (a batch recovery that never settles runs out of rounds), and a trace must not call that move
     // accepted.
     let acceptedPi: [number | null, number | null] | null = null;
+    budget--;
     const ok = project(trial, (after) => {
       const r0 = before[receiver];
       const r1 = after[receiver];
@@ -348,6 +386,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     tried.add(k);
     return true;
   });
+  // A search the budget stopped resumes at the receiver it stopped on, then wraps to the top, so receivers behind a
+  // run of hopeless ones are reached in turn (I12). APPROX: real WLM assesses every receiver each interval.
+  const resumeKey = system.scps.find((s) => s.resumeSearch)?.scKey ?? null;
+  const start = resumeKey === null ? -1 : candidates.indexOf(resumeKey);
+  if (start > 0) candidates.push(...candidates.splice(0, start));
+  const resumedAt = start >= 0 ? resumeKey : null;
 
   const notes: string[] = [];
   const traced: WlmCandidateTrace[] = [];
@@ -372,23 +416,22 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const share = (v: number) => (denom > 0 ? v / denom : 0);
     return { CPU: share(d.delayCpu), ZIIP: share(d.delayZiip), IO: share(d.delayIo), CAP: share(d.delayCap), OTHER: share(d.delayOther) };
   };
-  const finish = (out: AdjustOutput): AdjustOutput => {
+  const finish = (out: Omit<AdjustOutput, 'skipUntil' | 'resumeAt'>, resumeAt: string | null): AdjustOutput => {
     if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null, protection });
-    return out;
+    return { ...out, skipUntil, resumeAt };
   };
-  const receiversPerImportance = Math.max(1, input.receiversPerImportance ?? DEFAULT_RECEIVERS_PER_IMPORTANCE);
-  let projected = 0;
-  let projectedImp = -1;
+  let stoppedAt: string | null = null;
   for (const receiver of candidates) {
     const impOf = info[receiver]!.importance;
-    // Projection is the expensive part: assess at most receiversPerImportance fixable receivers per importance, then move on.
-    if (impOf !== projectedImp) {
-      projectedImp = impOf;
-      projected = 0;
+    // The skip clock (WLM Services p.145): a receiver nothing could help is not assessed again until it expires.
+    if (skipUntil[receiver] !== undefined) {
+      if (tracing) traceOf(receiver, null, 'SKIP_CLOCK', sharesOf(receiver)).skipUntilTick = skipUntil[receiver];
+      continue;
     }
-    if (projected >= receiversPerImportance) {
-      // Skip, don't stop: lower importances still get their own budget, traced or not.
-      if (tracing) traceOf(receiver, null, 'BUDGET', sharesOf(receiver));
+    // A period with no managed delay is not assessed: no priority change can help it (WLM Services p.144).
+    const mdf = managedDelayFrac(accOf[receiver]!.acc);
+    if (mdf < POLICY_ADJUST.needsHelpDelayFrac) {
+      if (tracing) traceOf(receiver, null, 'NO_MANAGED_DELAY', sharesOf(receiver)).managedDelayFrac = mdf;
       continue;
     }
     // With I/O priority management off, I/O samples are outside velocity and WLM doesn't manage I/O (WLM Planning p.115).
@@ -407,8 +450,18 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       if (tracing) traceOf(receiver, btl, 'RECOVERING', sharesOf(receiver)).basePi = b0 ?? null;
       continue;
     }
+    // The projection budget is per interval: when it is spent the search stops, with no skip clock, and the next
+    // interval's search starts at this receiver.
+    if (budget <= 0) {
+      if (tracing) traceOf(receiver, btl, 'BUDGET', sharesOf(receiver)).basePi = b0;
+      stoppedAt = receiver;
+      break;
+    }
     const ct = tracing ? traceOf(receiver, btl, 'ASSESSED', sharesOf(receiver)) : null;
-    if (ct) ct.basePi = b0;
+    if (ct) {
+      ct.basePi = b0;
+      ct.managedDelayFrac = mdf;
+    }
     // A receiver whose backlog the projection bounded, and that is measured far worse than projected (a runaway), is
     // not raised: the projection cannot show what draining that backlog does to others. Only where the bound cut
     // something: elsewhere a gap between the PIs is no reason to distrust the projection. APPROX: real WLM's demand
@@ -418,7 +471,6 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const distrust = mPi > POLICY_ADJUST.projectionTrustMax * b0 && backlogCut(receiver);
     /** The first move tried against this receiver: the clue the log gives when none of them paid off. */
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
-    projected++;
     const rdp = dps[receiver]!;
     const rImp = impOf;
     const trials: { trial: Record<string, number>; text: string }[] = [];
@@ -457,7 +509,15 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       trials.push({ trial: { ...dps, [d]: nd }, text: `DONOR ${d} DP ${hex(dps[d]!)}→${hex(nd)}` });
     }
 
+    let outOfBudget = false;
+    // A receiver that had the whole interval's budget and still ran out has had its turn: it is clocked like one
+    // whose every trial was rejected, or it would be first in line every interval and keep the rest out (I12).
+    const hadWholeBudget = budget === POLICY_ADJUST.maxProjectionsPerInterval;
     for (const tr of trials) {
+      if (budget <= 0) {
+        outOfBudget = true;
+        break;
+      }
       why = null;
       const up = !tr.text.startsWith('DONOR ');
       const ok = up && distrust
@@ -469,19 +529,32 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
           dps: tr.trial,
           log: `${input.clockText} ${system.lparId} RCVR=${receiver} PI=${pi} BTLNK=${btl} ${tr.text}`,
           protect,
-        });
+        }, resumedAt);
       }
       if (!firstReject && why) firstReject = { move: tr.text, why };
     }
     // No move taken: say what this receiver's first move would have done, so the log answers "why not?".
     const whyNot = firstReject ? ` (${firstReject.move} rejected: ${playerReason(firstReject.why)})` : '';
-    notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}`);
+    if (outOfBudget && !hadWholeBudget) {
+      notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}`);
+      stoppedAt = receiver;
+      break;
+    }
+    // Every trial was rejected: skip it until the clock expires. APPROX: one fixed length (`rejectedSkipTicks`).
+    const until = nowTick + POLICY_ADJUST.rejectedSkipTicks;
+    skipUntil[receiver] = until;
+    if (ct) ct.skipUntilTick = until;
+    notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}, next look ${formatClock(until).split(' ')[1]}`);
+    if (outOfBudget) {
+      stoppedAt = receiver;
+      break;
+    }
   }
   return finish({
     dps,
     log: notes.length > 0 ? `${input.clockText} ${system.lparId} ${notes[0]}` : null,
     protect,
-  });
+  }, stoppedAt);
 }
 
 /** The WLM log's wording for a rejected trial: short, and in the player's terms rather than the trace's. */

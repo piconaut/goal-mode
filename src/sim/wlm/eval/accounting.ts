@@ -64,6 +64,7 @@ export function periodTicks(
       // Not managed to its own class's goal: its samples stay out of the class's PI (WLM Planning p.122).
       t.srvUsing = (t.srvUsing ?? 0) + r.usingCpu + r.usingZiip + (input.ioPriority === false ? 0 : r.usingIo);
       t.srvDelay = (t.srvDelay ?? 0) + r.delayCpu + r.delayZiip + (input.ioPriority === false ? 0 : r.delayIo) + r.delayStorage + r.delayCap;
+      t.srvDelayCap = (t.srvDelayCap ?? 0) + r.delayCap;
     }
   }
   // With I/O priority management off, I/O using and delay samples are still reported but "not included" in

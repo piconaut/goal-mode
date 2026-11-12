@@ -1,7 +1,8 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 is implemented** (2026-11-11: one PI basis, sustained
-demand, the §5.3 missing-goal rule; §9.5); the rest of §5 is not. WT-04 was prototyped on branch `proto/wlm-wt04`;
+Status: **design, decided by the user** (2026-11-10). **WT-04 and WT-05 are implemented** (2026-11-11: one PI basis, sustained
+demand, the §5.3 missing-goal rule, §9.5; skip clocks, the delay test and the interval budget, §9.6); the rest of §5 is
+not. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
 is the WLM counterpart of [rca-design.md](rca-design.md).
@@ -848,6 +849,7 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
   base    ← not computed yet
 
   for r in receiverOrder(info, mPlex, mLocal):             // §2.5 order, unchanged: importance; sysplex then local; worst first; key
+                                                           // after a BUDGET stop: from the receiver it stopped on, wrapping (resumeSearch)
       if skipUntilTick[r] > nowTick:              trace SKIP_CLOCK;        continue
       if managedDelayFrac(acc_r) < C.needsHelpDelayFrac:
                                                   trace NO_MANAGED_DELAY;  continue
@@ -855,7 +857,7 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
       if base[r] is null or base[r] ≤ 1:          trace RECOVERING;        continue
       tried ← false
       for b in fixableBottlenecks(acc_r, C):      // §5.7
-          if budget ≤ 0:                          trace BUDGET;            goto done     // no skip clock: first in line next time
+          if budget ≤ 0:                          trace BUDGET;            goto done     // no skip clock: the next search starts at r
           plan ← buildPlan(r, b, L, base, P, info, budget, C);  tried ← true
           if plan.accepted:
               L ← plan.ladder
@@ -986,7 +988,7 @@ resource-group minimum's share and 253 for blocked-workload promotion, which clo
 
 ```
 managed delays: CPU, ZIIP, IO (the part in velocity), STORAGE, QUEUE.      CAP is reported, not managed.
-managedDelayFrac(acc) ← Σ managed delays ÷ (using + delay in velocity)
+managedDelayFrac(acc) ← Σ managed delays ÷ (using + delay in velocity), both without transaction-server samples (as goalPi)
 fixableBottlenecks(acc, C) ← [CPU, ZIIP] ordered by delay, largest first, keeping those ≥ C.bottleneckMinFrac × Σ managed delays
 ```
 
@@ -1392,4 +1394,54 @@ S-2 and seed 2 keep their moves and S-3 goes back to the "neither" row (81 → 7
 minutes, 11 episodes); it still rejects 5 976 of S-2's 15 329 trials and 9 426 of S-3's
 13 899, nearly all receiver-up trials of backlogged transaction classes, in place of other rejections. A percentile
 PI stops at 4.0, so a percentile receiver never trips it (a known limit).
+
+
+### 9.6 WT-05: skip clocks, the delay test and the interval budget
+
+WT-05 adds the candidate gates of §5.3 on top of WT-04 (`ac84d6a`). Same files and settings as §9.5; "seed 2" is
+Midwest seed 2, D1 06:00 to D2 18:00. Cells: DP moves; moves undone by the period's next move, of which within two
+minutes; episodes of 30 assessments without a move.
+
+| | S-1 | S-2 | S-3 | Seed 2 |
+|---|---|---|---|---|
+| WT-04 (`dev`) | 19; 4 / 0; 5 | 26; 12 / 1; 5 | 79; 23 / 4; 11 | 20; 5 / 1; 5 |
+| WT-05 | 13; 2 / 0; 1 | 29; 12 / 1; 2 | 49; 9 / 0; 2 | 26; 5 / 1; 2 |
+| candidates assessed | 1 358 → 251 | 4 066 → 723 | 4 600 → 892 | 1 810 → 339 |
+| projections | 5 362 → 968 | 15 329 → 2 749 | 13 899 → 2 642 | 7 145 → 1 272 |
+| `PROJECTION_DISAGREES` | 0 → 0 | 5 976 → 1 017 | 9 426 → 1 575 | 2 154 → 378 |
+
+`BUDGET` never happens in these runs (once on S-3 before). S-2's WEBDDF#1 on PROD2 is assessed 418 times in three
+days (2 846 before W6's repro, under the 500 the entry asked for); the rest of its intervals are skip clock (2 019),
+recovering (422) or not fixable (74). The delay test never fires in S-1 … S-3: every candidate has at least 2 % managed
+delay; the periods whose waits dwarf it are `NOT_FIXABLE` instead, since the bottleneck choice still counts waits (WT-10). An early version subtracted
+waits from `delay`, which never held them, and skipped such periods as `NO_MANAGED_DELAY` instead (fixed; the S-table
+is unchanged by the fix, Midwest's and Revenue's one-day bench hashes are not). R-4 changed shape under WT-04: at D1 14:17:40 on PRDD MKTDDF#1 is no
+longer a candidate, and it is assessed whenever it is one (four times on D1); nothing on S-3 is cut by the budget.
+
+The episodes that remain are not every-interval re-assessment: each is a receiver no move helps, assessed once a
+minute as its clock expires (S-2: WEBDDF#1 from D2 10:05 to 17:24, 372 assessments, mostly `PROJECTION_DISAGREES`
+and `SMALL_GAIN`; STCLO#1 from 11:19 to 15:54, `MORE_IMPORTANT_HARMED`; S-1: BATCHPRD#1 from D2 21:09 to 22:44).
+That is the documented clock (WLM Services p.145), so the entry's "0 episodes" is not met as `wlm-stats` counts them;
+counted as intervals running (a skipped interval ends the run) they are 0 by construction.
+
+Seed 2's six extra moves are a climb on PROD2 from D2 09:46 to 10:11 (STCHI, TSO#1, TSO#2, DDFPRD#1, DDFPRD#2,
+ONLHI: each two DPs up in turn) that the per-importance budget used to cut short. Every one agrees with its
+projection (no trust-limit case) and none is undone within two minutes; a ladder that only climbs is W2, WT-06's
+entry. The runaway raise of §9.5 (D2 17:03–17:15) does not come back. RT-06 validator on S-1 … S-3: the same
+incidents, triggers and verdicts as WT-04; only the hour's attainment changes (S-3's PAYMENTS at D2 09:00 54.0 →
+63.9 %, the rest within 1.1 points). Bench (paired, Harbourline): 1.65 → 1.56 ms per tick.
+
+**Sweep and the two lost seeds.** Remote sweep, Normal, seeds 1–10 (do-nothing median day / textbook median day /
+expert victories): Midwest 16.5 / 28 / 10 and Revenue 20 / 27 / 10, the same as WT-04; Harbourline 9.5 / 29 / 8 → 10
+/ 29 / **6** (`e90a356`; 10 / 30 / 6 before the `managedDelayFrac` fix), inside its bands but on the edge. Expert seeds 7 and 9 become trust losses, both from the D29 morning
+overload (first day of month 2), when every online workload sits near 0 % for 7–9 hours against 1–6 on `dev`.
+Seed 9 is identical to `dev` through D28. On D29 at 07:00 PRDA has five goal holders at FC (three on `dev`). In the
+overload the receivers (STCHI#1, TSO#1, STCMED#1) are at FC and can't rise, a donor's step FC→FB gains nothing, every
+receiver is clocked, and WLM makes almost no moves until the load drops; `dev` keeps making deep donor moves
+(FC→F8, FC→F3) that spread the ladder, and recovers. With `rejectedSkipTicks` 0, WT-05 reproduces `dev`'s D29
+on seed 9 hour for hour; with 2 it nearly does, with 3 it is half way. The budget and the delay test change nothing
+there. Seed 7 also differs earlier (WT-05 handles D12 better, so the expert bot buys CPs later), but its D29 freeze
+goes away with the clock too. The clock is real (WLM Services p.145); what the sim lacks is a ladder that stays spread
+without churn (W2), WT-06's entry. User decision 2026-11-11: WT-05 ships with the 6-interval clock, and WT-06 checks
+those two seeds.
 

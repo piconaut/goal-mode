@@ -1,11 +1,11 @@
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { BASEPOL } from '../../src/content/wlm/basepol';
-import { enforceCpuProtection, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { enforceCpuProtection, managedDelayFrac, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
-import { decayInto, emptyAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
+import { ACC_DECAY, decayInto, emptyAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
 
 // RPT job shapes and prior pacing from the saved D5 22:23 CP-only trial.
 const savedJobs = [
@@ -270,82 +270,275 @@ describe('a hopeless receiver does not stop the search at the next importance (S
     expect(out.log).not.toContain('RCVR=');
   });
 
-  it('still assesses at most receiversPerImportance (default two) receivers per importance', () => {
-    // Receivers that miss their goal on this system and that no DP move helps: their CPU delay is PR/SM delay.
-    const wide = structuredClone(BASEPOL);
-    wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
-    const slices3 = [
-      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 2, units: 8 }),
-    ];
-    const input3 = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: slices3 };
-    const cur3 = evaluateLpar({ ...input3, dpOf: (k) => dps[k] ?? 0xee });
-    const system3: WlmSystemState = {
-      lparId: 'SYS1',
-      scps: cur3.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey] ?? 0xee, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
-    };
-    const traces: WlmAdjustTrace[] = [];
-    setWlmTraceSink((t) => traces.push(t));
+  // Receivers that miss their goal on this system and that no DP move helps: their CPU delay is PR/SM delay.
+  const wide = structuredClone(BASEPOL);
+  wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
+  const slices3 = [
+    sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+    sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+    sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
+    sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 2, units: 8 }),
+  ];
+  const input3 = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: slices3 };
+  const cur3 = evaluateLpar({ ...input3, dpOf: (k) => dps[k] ?? 0xee });
+  const system3: WlmSystemState = {
+    lparId: 'SYS1',
+    scps: cur3.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey] ?? 0xee, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+  };
+  const plexPi = { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 };
+  const run3 = (sys: WlmSystemState, nowTick: number) => {
+    const tr: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => tr.push(t));
     try {
-      policyAdjust({ def: wide, system: system3, evalInput: input3, current: cur3.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T' });
+      const out = policyAdjust({ def: wide, system: sys, evalInput: input3, current: cur3.scps, sysplexPi: plexPi, clockText: 'D1 06:00:00', nowTick });
+      return { out, trace: tr[0]! };
     } finally {
       setWlmTraceSink(null);
     }
-    const b = traces[0]!.candidates.filter((c) => c.outcome === 'BUDGET').map((c) => c.scKey);
-    expect(b).toEqual(['OLD3#1']);
-    // The limit comes from the adjust input; a limit below 1 is clamped to 1.
-    for (const [limit, budget] of [[1, ['OLD2#1', 'OLD3#1']], [0, ['OLD2#1', 'OLD3#1']], [3, []]] as const) {
-      const tr: WlmAdjustTrace[] = [];
-      setWlmTraceSink((t) => tr.push(t));
-      try {
-        policyAdjust({ def: wide, system: system3, evalInput: input3, current: cur3.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T', receiversPerImportance: limit });
-      } finally {
-        setWlmTraceSink(null);
-      }
-      expect(tr[0]!.candidates.filter((c) => c.outcome === 'BUDGET').map((c) => c.scKey)).toEqual(budget);
+  };
+  const withClocks = (clocks: Record<string, number>): WlmSystemState => ({
+    ...system3,
+    scps: system3.scps.map((s) => (clocks[s.scKey] !== undefined ? { ...s, skipUntilTick: clocks[s.scKey] } : s)),
+  });
+  const outcome = (t: WlmAdjustTrace, k: string) => t.candidates.find((c) => c.scKey === k)?.outcome;
+
+  it('sets a skip clock on a receiver whose every trial was rejected, honours it, and drops it on expiry (WLM Services p.145)', () => {
+    const first = run3(system3, 0);
+    const until = POLICY_ADJUST.rejectedSkipTicks;
+    for (const k of ['OLD1#1', 'OLD2#1', 'OLD3#1']) {
+      expect(outcome(first.trace, k)).toBe('ASSESSED');
+      expect(first.out.skipUntil[k]).toBe(until);
+    }
+    expect(first.out.log).toMatch(/OLD1#1 .* no action with net value .*, next look 06:01:00$/);
+    // ONLCARD's raises would all pass importance-1 work that is missing its goal: rejected too, and clocked.
+    expect(first.out.skipUntil['ONLCARD#1']).toBe(until);
+    // A tick later all four are on their clocks: no projection at all this interval (I16).
+    const next = run3(withClocks(first.out.skipUntil), 1);
+    expect(next.trace.candidates.flatMap((c) => c.trials)).toEqual([]);
+    for (const k of ['OLD1#1', 'OLD2#1', 'OLD3#1', 'ONLCARD#1']) {
+      expect(outcome(next.trace, k)).toBe('SKIP_CLOCK');
+      expect(next.trace.candidates.find((c) => c.scKey === k)!.skipUntilTick).toBe(until);
+      expect(next.out.skipUntil[k]).toBe(until);
+    }
+    // At the clock's tick they are assessed again.
+    const later = run3(withClocks(first.out.skipUntil), until);
+    expect(outcome(later.trace, 'OLD1#1')).toBe('ASSESSED');
+  });
+
+  it('gives a helped receiver no clock: it may be helped again next interval', () => {
+    // An importance-2 class below busy importance-5 work: raising it is worth it.
+    const two = structuredClone(BASEPOL);
+    const bat = { ...cls('BAT', 10, 2), periods: [{ goal: { kind: 'VEL' as const, velocity: 10 }, importance: 5 as const, durationSu: null }] };
+    two.classes.push(cls('ONLCARD', 95, 2), bat);
+    const sl = [sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 1.5, units: 8 }), sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 })];
+    const inp = { ...evalInput, slices: sl };
+    const d: Record<string, number> = { 'BAT#1': 0xf0, 'ONLCARD#1': 0xe6 };
+    const c = evaluateLpar({ ...inp, dpOf: (k) => d[k]! });
+    const sys: WlmSystemState = { lparId: 'SYS1', scps: c.scps.map((t) => ({ scKey: t.scKey, dp: d[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const out = policyAdjust({ def: two, system: sys, evalInput: inp, current: c.scps, sysplexPi: {}, clockText: 'T', nowTick: 100 });
+    expect(out.log).toMatch(/RCVR=ONLCARD#1 /);
+    expect(out.skipUntil).toEqual({});
+  });
+
+  it('stops the search when the interval projection budget is spent, with no clock for the receiver it cut short', () => {
+    // OLD1 is on its clock; OLD2 (one trial) spends one of two projections, OLD3 (two trials) gets the other.
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    POLICY_ADJUST.maxProjectionsPerInterval = 2;
+    try {
+      const { out, trace } = run3(withClocks({ 'OLD1#1': 200 }), 100);
+      const old3 = trace.candidates.find((c) => c.scKey === 'OLD3#1')!;
+      expect(old3.outcome).toBe('ASSESSED');
+      expect(old3.trials).toHaveLength(1);
+      expect(old3.skipUntilTick).toBeUndefined();
+      expect(trace.candidates.map((c) => c.scKey)).toEqual(['OLD1#1', 'OLD2#1', 'OLD3#1']);
+      expect(out.skipUntil).toEqual({ 'OLD1#1': 200, 'OLD2#1': 100 + POLICY_ADJUST.rejectedSkipTicks });
+    } finally {
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
     }
   });
 
-  it('skips past a spent budget to the next importance whether traced or not', () => {
-    // Three importance-1 receivers that find nothing (PR/SM delay: no DP move helps) spend the importance-1 budget;
-    // the importance-2 class behind them must still be helped in the untraced (production) path, not only when
-    // the trace is on.
-    const wide = structuredClone(BASEPOL);
-    wide.classes.push(cls('OLD1', 90, 1), cls('OLD2', 90, 1), cls('OLD3', 90, 1), cls('ONLCARD', 95, 2));
-    const bat = structuredClone(BASEPOL.classes.find((c) => c.id === 'STCLO')!);
-    bat.id = 'BAT';
-    bat.periods = [{ goal: { kind: 'VEL', velocity: 10 }, importance: 5, durationSu: null }];
-    wide.classes.push(bat);
-    const sl = [
-      sliceSpec({ key: 'old1', scKey: 'OLD1#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'old2', scKey: 'OLD2#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'old3', scKey: 'OLD3#1', kind: 'AS', cpEngines: 0.5, units: 4 }),
-      sliceSpec({ key: 'card', scKey: 'ONLCARD#1', kind: 'AS', cpEngines: 1.5, units: 8 }),
-      sliceSpec({ key: 'bat', scKey: 'BAT#1', kind: 'AS', cpEngines: 3, units: 8 }),
-    ];
-    const input = { ...evalInput, cpPrsmDelayFrac: 0.3, slices: sl };
-    const d: Record<string, number> = { 'OLD1#1': 0xf4, 'OLD2#1': 0xf3, 'OLD3#1': 0xf2, 'BAT#1': 0xf0, 'ONLCARD#1': 0xe6 };
-    const c = evaluateLpar({ ...input, dpOf: (k) => d[k]! });
-    const sys: WlmSystemState = {
-      lparId: 'SYS1',
-      scps: c.scps.map((t) => ({ scKey: t.scKey, dp: d[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
-    };
-    const run = () => policyAdjust({ def: wide, system: sys, evalInput: input, current: c.scps, sysplexPi: { 'OLD1#1': 2.1, 'OLD2#1': 1.7, 'OLD3#1': 1.5 }, clockText: 'T' });
-    const plain = run();
-    const traces: WlmAdjustTrace[] = [];
-    setWlmTraceSink((t) => traces.push(t));
-    let traced;
+  it('clocks a receiver that had the whole budget and still ran out, so it cannot keep the rest out (I12)', () => {
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    POLICY_ADJUST.maxProjectionsPerInterval = 1;
     try {
-      traced = run();
+      const { out, trace } = run3(withClocks({ 'OLD1#1': 200, 'OLD2#1': 200 }), 100);
+      const old3 = trace.candidates.find((c) => c.scKey === 'OLD3#1')!;
+      expect(old3.trials).toHaveLength(1);
+      expect(out.skipUntil['OLD3#1']).toBe(100 + POLICY_ADJUST.rejectedSkipTicks);
+      expect(trace.candidates.map((c) => c.scKey)).toEqual(['OLD1#1', 'OLD2#1', 'OLD3#1']);
     } finally {
-      setWlmTraceSink(null);
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
     }
-    expect(traces[0]!.candidates.find((x) => x.scKey === 'OLD3#1')!.outcome).toBe('BUDGET');
-    expect(plain.log).toMatch(/RCVR=ONLCARD#1 /);
-    expect(plain.log).toBe(traced.log);
-    expect(plain.dps).toEqual(traced.dps);
+  });
+
+  it('traces BUDGET for the next candidate when the budget ran out between receivers, and stops', () => {
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    POLICY_ADJUST.maxProjectionsPerInterval = 1;
+    try {
+      const { out, trace } = run3(system3, 100);
+      expect(trace.candidates.map((c) => [c.scKey, c.outcome])).toEqual([['OLD1#1', 'ASSESSED'], ['OLD2#1', 'BUDGET']]);
+      expect(out.skipUntil).toEqual({ 'OLD1#1': 100 + POLICY_ADJUST.rejectedSkipTicks });
+    } finally {
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
+    }
+  });
+
+  it('skips a period with no managed delay without a clock (WLM Services p.144)', () => {
+    // OLD1 waits on something WLM does not manage (a lock, a server): no delay state at all, only waits, which the
+    // accumulator keeps beside `delay` rather than in it (`decayInto`).
+    const sys = { ...system3, scps: system3.scps.map((s) => (s.scKey === 'OLD1#1' ? { ...s, acc: { ...s.acc, delay: 0, delayCpu: 0, delayZiip: 0, delayIo: 0, delayCap: 0, delayOther: s.acc.delay } } : s)) };
+    const { out, trace } = run3(sys, 100);
+    expect(outcome(trace, 'OLD1#1')).toBe('NO_MANAGED_DELAY');
+    expect(trace.candidates.find((c) => c.scKey === 'OLD1#1')!.managedDelayFrac).toBe(0);
+    expect(out.skipUntil['OLD1#1']).toBeUndefined();
+  });
+
+  it('decides the same with and without the trace sink', () => {
+    const plain = policyAdjust({ def: wide, system: system3, evalInput: input3, current: cur3.scps, sysplexPi: plexPi, clockText: 'T', nowTick: 100 });
+    const { out } = run3(system3, 100);
+    expect(plain.dps).toEqual(out.dps);
+    expect(plain.skipUntil).toEqual(out.skipUntil);
+  });
+});
+
+describe('a run of hopeless receivers does not starve the receivers behind it (I12; #296 review B1)', () => {
+  // Twelve importance-1 receivers no move helps (their CPU delay is PR/SM delay), each costing six projections: three
+  // raises and three happy equal-importance donors. With the budget at 12 and the clock at 6 intervals, two are
+  // clocked per interval and the first clocks expire just as the last are reached, so a search that restarted at
+  // the top every interval never reached TARGET, which an EF→DF donor move by HOG helps at once.
+  const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+  const cls = (id: string, velocity: number, importance: 1 | 2 | 5) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
+  const def = structuredClone(BASEPOL);
+  const blockers = Array.from({ length: 12 }, (_, i) => `BLK${String(i).padStart(2, '0')}`);
+  const donors = ['HAPPY1', 'HAPPY2', 'HAPPY3'];
+  def.classes.push(...blockers.map((b) => cls(b, 90, 1)), ...donors.map((d) => cls(d, 5, 1)), cls('TARGET', 90, 2), cls('HOG', 10, 5));
+  const slices = [
+    ...[...blockers, ...donors].map((k) => sliceSpec({ key: k, scKey: `${k}#1`, kind: 'AS', cpEngines: 0.01, units: 1 })),
+    sliceSpec({ key: 'target', scKey: 'TARGET#1', kind: 'AS', cpEngines: 0.5, units: 2 }),
+    sliceSpec({ key: 'hog', scKey: 'HOG#1', kind: 'AS', cpEngines: 3.5, units: 8 }),
+  ];
+  const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0.3, slices, backlog: {}, io: IO, pagingFrac: 0 };
+  const dps0: Record<string, number> = { 'TARGET#1': 0xe0, 'HOG#1': 0xef, 'HAPPY1#1': 0xf1, 'HAPPY2#1': 0xf2, 'HAPPY3#1': 0xf3 };
+  for (const b of blockers) dps0[`${b}#1`] = 0xf0;
+
+  it('reaches TARGET: a search the budget stopped resumes where it stopped', () => {
+    let system: WlmSystemState | null = null;
+    const dps = { ...dps0 };
+    let targetAssessed = -1;
+    let budgetStops = 0;
+    for (let tick = 0; tick < 20 && targetAssessed < 0; tick++) {
+      const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+      const prev: Record<string, WlmSystemState['scps'][number]> = {};
+      for (const p of system?.scps ?? []) prev[p.scKey] = p;
+      system = {
+        lparId: 'SYS1',
+        scps: cur.scps.map((t) => {
+          const p = prev[t.scKey];
+          return { scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(p?.acc ?? emptyAcc(), t), ...(p?.skipUntilTick !== undefined ? { skipUntilTick: p.skipUntilTick } : {}), ...(p?.resumeSearch ? { resumeSearch: true as const } : {}) };
+        }),
+      };
+      const traces: WlmAdjustTrace[] = [];
+      setWlmTraceSink((t) => traces.push(t));
+      let out;
+      try {
+        out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T', nowTick: tick });
+      } finally {
+        setWlmTraceSink(null);
+      }
+      const target = traces[0]!.candidates.find((c) => c.scKey === 'TARGET#1');
+      if (target?.outcome === 'ASSESSED') targetAssessed = tick;
+      if (traces[0]!.candidates.some((c) => c.outcome === 'BUDGET')) budgetStops++;
+      Object.assign(dps, out.dps);
+      system = { ...system, scps: system.scps.map((p) => {
+        const { skipUntilTick: _c, resumeSearch: _r, ...rest } = p;
+        const c = out.skipUntil[p.scKey];
+        return { ...rest, ...(c !== undefined ? { skipUntilTick: c } : {}), ...(p.scKey === out.resumeAt ? { resumeSearch: true as const } : {}) };
+      }) };
+      if (targetAssessed >= 0) expect(out.log).toContain('RCVR=TARGET#1');
+    }
+    expect(budgetStops).toBeGreaterThan(0);
+    // Two blockers per interval: TARGET's turn comes in the seventh interval.
+    expect(targetAssessed).toBeGreaterThanOrEqual(0);
+    expect(targetAssessed).toBeLessThanOrEqual(blockers.length / 2 + 1);
+  });
+});
+
+it('assesses a mixed class for its own members when its AOR is healthy (#296 review B2)', () => {
+  // MIXED holds a 1-CP AOR managed to TX's transaction goals and a starved address space. Its goal PI is the address
+  // space's; the delay test must read the same population, or the AOR's using samples hide the starvation.
+  const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+  const def = structuredClone(BASEPOL);
+  def.classes.push(
+    { ...structuredClone(tpl), id: 'MIXED', periods: [{ goal: { kind: 'VEL' as const, velocity: 50 }, importance: 2, durationSu: null }] },
+    { ...structuredClone(tpl), id: 'HOG', periods: [{ goal: { kind: 'VEL' as const, velocity: 10 }, importance: 5, durationSu: null }] },
+    { ...structuredClone(def.classes.find((c) => c.id === 'ONLHI')!), id: 'TX', periods: [{ goal: { kind: 'PCT', pct: 90, rtSec: 1 }, importance: 1, durationSu: null }] },
+  );
+  const slices = [
+    sliceSpec({ key: 'tx', scKey: 'TX#1', kind: 'TXN', workloadId: 'TX', rate: 100, cpEngines: 0.1, cpuSecPerTxn: 0.001, baseLatencySec: 0.01, rtSigma: 0.4, goalRtSec: 1, timeoutSec: 30 }),
+    sliceSpec({ key: 'aor', scKey: 'MIXED#1', kind: 'AS', role: 'CICS.AOR', cpEngines: 1, units: 1 }),
+    sliceSpec({ key: 'own', scKey: 'MIXED#1', kind: 'AS', cpEngines: 0.001, units: 1 }),
+    sliceSpec({ key: 'hog', scKey: 'HOG#1', kind: 'AS', cpEngines: 3.4, units: 8 }),
+  ];
+  const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0, regions: { keys: ['TX#1'], mode: 'TRANSACTION' as const, regionKey: 'MIXED#1', servers: ['aor'] } };
+  const dps: Record<string, number> = { 'TX#1': 0xfc, 'MIXED#1': 0xe0, 'HOG#1': 0xf0 };
+  const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+  const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+  const acc = system.scps.find((p) => p.scKey === 'MIXED#1')!.acc;
+  expect(acc.srvUsing).toBeGreaterThan(0);
+  const traces: WlmAdjustTrace[] = [];
+  setWlmTraceSink((t) => traces.push(t));
+  let out;
+  try {
+    out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
+  } finally {
+    setWlmTraceSink(null);
+  }
+  const mixed = traces[0]!.candidates.find((c) => c.scKey === 'MIXED#1')!;
+  expect(mixed.outcome).toBe('ASSESSED');
+  expect(mixed.managedDelayFrac).toBeGreaterThan(POLICY_ADJUST.needsHelpDelayFrac);
+  expect(out.log).toContain('RCVR=MIXED#1');
+});
+
+describe('managedDelayFrac (docs/wlm-design.md §5.7)', () => {
+  // Built the way the sim builds it (decayInto from one tick), so `delay` has the shape the sim gives it: waits
+  // (`delayOther`) are kept beside it, not inside it.
+  const tick = { ...emptyScpTick('X#1', 0xf0), usingCpu: 40, usingZiip: 5, usingIo: 5, delayCpu: 20, delayZiip: 5, delayIo: 5, delayStorage: 3, delayQueue: 2, delayCap: 5, delayOther: 400 };
+  const acc = decayInto(emptyAcc(), tick);
+  it('counts CPU, zIIP, I/O, storage and queue, not capping; waits change nothing however long', () => {
+    // using 50; delay 20 + 5 + 5 + 3 + 2 + 5 cap = 40; managed 35 of 90.
+    expect(acc.delay).toBe(40);
+    expect(managedDelayFrac(acc)).toBeCloseTo(35 / 90, 12);
+    expect(managedDelayFrac(decayInto(emptyAcc(), { ...tick, delayOther: 0 }))).toBeCloseTo(35 / 90, 12);
+  });
+  it('a transaction class waiting on a lock as well as the processor still needs help (Harbourline expert seed 7)', () => {
+    // MKTORD#1 on PRDB, D29 09:20: CPU delay 98 % of using + delay, waits several times its samples.
+    const mkt = decayInto(emptyAcc(), { ...emptyScpTick('MKTORD#1', 0xfc), usingCpu: 2, delayCpu: 98, delayOther: 566 });
+    expect(managedDelayFrac(mkt)).toBeGreaterThan(POLICY_ADJUST.needsHelpDelayFrac);
+  });
+  it('leaves I/O outside velocity out of both sides', () => {
+    const noVel = decayInto(emptyAcc(), { ...tick, usingIoNoVel: 5, delayIoNoVel: 5 });
+    expect(managedDelayFrac(noVel)).toBeCloseTo(30 / 80, 12);
+  });
+  it('is 0 for a period with no samples', () => {
+    expect(managedDelayFrac(emptyAcc())).toBe(0);
+  });
+  it('leaves transaction-server regions out, as the goal PI does (WLM Planning p.122; #296 review B2)', () => {
+    // A healthy 1-CP AOR managed to its transactions' goals and a starved address space in the same class: the
+    // class is managed for the address space, whose samples are all delay.
+    const mixed = decayInto(emptyAcc(), { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 1, delayCpu: 0.001, srvUsing: 1, srvDelay: 0, srvDelayCap: 0 });
+    expect(managedDelayFrac(mixed)).toBeCloseTo(1, 12);
+    // A capped server's capping delay is its own: the other members' CPU delay still counts.
+    const capped = decayInto(emptyAcc(), { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
+    expect(managedDelayFrac(capped)).toBeCloseTo(1 / 10, 12);
+    // A save from before srvDelayCap: the server history is there without it. Taking the server's capping off twice
+    // (inside srvDelay and again from delayCap) would leave no managed delay at all (#296 review B3).
+    const { srvDelayCap: _gone, ...legacy } = capped;
+    expect(managedDelayFrac(legacy)).toBeCloseTo(1 / 10, 12);
+    const next = decayInto(legacy, { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
+    expect(next.srvDelayCap).toBeCloseTo(10 * (1 + ACC_DECAY), 12);
+    expect(managedDelayFrac(next)).toBeCloseTo(1 / 10, 12);
+    // Only server regions: nothing left to manage.
+    expect(managedDelayFrac(decayInto(emptyAcc(), { ...emptyScpTick('TOR#1', 0xe0), usingCpu: 1, delayCpu: 1, srvUsing: 1, srvDelay: 1, srvDelayCap: 0 }))).toBe(0);
   });
 });
 
@@ -470,5 +663,21 @@ describe('a receiver measured far worse than projected is not raised (projection
   it('trusts it when the measured PI is close, backlog or not', () => {
     const c = run({ run: 2 * 10 * 50 }, () => 1.5);
     expect(c.trials.some((t) => t.verdict === 'PROJECTION_DISAGREES')).toBe(false);
+  });
+
+  it('spends no projection on a PROJECTION_DISAGREES rejection (WT-05 budget)', () => {
+    const all = run({ run: 2 * 10 * 50 }, far);
+    const donorTrials = all.trials.filter((t) => t.move.startsWith('DONOR ')).length;
+    expect(donorTrials).toBeGreaterThan(0);
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    // Exactly enough budget for the donor trials: the receiver-up rejections before them must not use any.
+    POLICY_ADJUST.maxProjectionsPerInterval = donorTrials;
+    try {
+      const c = run({ run: 2 * 10 * 50 }, far);
+      expect(c.trials.map((t) => t.move)).toEqual(all.trials.map((t) => t.move));
+      expect(c.trials.map((t) => t.verdict)).toEqual(all.trials.map((t) => t.verdict));
+    } finally {
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
+    }
   });
 });

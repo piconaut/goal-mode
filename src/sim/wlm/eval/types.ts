@@ -243,6 +243,8 @@ export interface ScpTick {
   /** Velocity samples of transaction-server regions in this period: reported, but left out of its PI. */
   srvUsing?: number;
   srvDelay?: number;
+  /** The capping delay inside `srvDelay`. */
+  srvDelayCap?: number;
   completions: number;
   failed: number;
   rtSumSec: number;
