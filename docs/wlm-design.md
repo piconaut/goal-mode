@@ -1578,20 +1578,21 @@ project. Traces distinguish RETAINED proposals from the one ACCEPTED plan, and t
 and projections separately. Log targets are canonical stored DPs; `UP … (above X)` explains a split whose number
 stays the same while its old mates move down.
 
-Draft audit at `e4902b7` (same S-1 … S-3 recipes as §9.8; WT-07 → WT-08):
+Audit at `f683789` (same S-1 … S-3 recipes as §9.8; WT-07 → WT-08; S-1 and S-2 equal `e4902b7`'s, S-3 moved
+with the last review fix below):
 
 | | S-1 | S-2 | S-3 |
 |---|---|---|---|
-| accepted plans | 33 → 19 | 21 → 28 | 47 → 66 |
-| retained moves in accepted plans | 28 | 40 | 127 |
+| accepted plans | 33 → 19 | 21 → 28 | 47 → 64 |
+| retained moves in accepted plans | 28 | 40 | 121 |
 | secondary carries | 1 | 0 | 2 |
-| proposal projections | 1 978 → 1 093 | 7 347 → 3 318 | 6 859 → 2 814 |
+| proposal projections | 1 978 → 1 093 | 7 347 → 3 318 | 6 859 → 2 820 |
 | net rank reversals / within two minutes | 1 / 0 | 3 / 0 | 10 / 0 |
 
 Reversals of a composite plan are measured from the net ordinal rank of each explicitly moved period, not the
 last intermediate step or raw canonical DP deltas. Internal moves of one atomic plan cannot reverse live state.
 The old §1 reversal targets are ≤2/4/8: S-3's 10 does not meet the target. S-1's raw MORE_IMPORTANT_HARMED share
-is 45.5% (500/1 099), above its 29% target; S-3 is 15.1% (559/3 702), below 21%. Net value now has to be assessed before receiver value
+is 45.5% (500/1 099), above its 29% target; S-3 is 15.1% (562/3 711), below 21%. Net value now has to be assessed before receiver value
 for intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. These
 are not met as written; the user accepted both with the targets restated (below), not by tuning coefficients.
 
@@ -1640,3 +1641,23 @@ atomic search and the new skip-clock log clues. Quiet median day timings, head/b
 no measured regression above the 5% budget. Final three-scenario Normal seeds-1–10 sweeps are recorded in
 PROGRESS M8.2. Independent review found no further production defect and verified the reversal-test fixes;
 its recommendation remains NEEDS USER for the explicit unmet criteria and behaviour/balance changes.
+
+**User decision (2026-11-12, after the #316 review).** WT-08 is accepted as it stands:
+- The happy-donor plans stay. SG24-6472-03 p.60 lets a more important class donate while it still meets its goals
+  easily, and p.67–68's example keeps intermediate moves without receiver value. A margin for more important
+  donors would not have stopped the 09:41 plan (its donors end at PI 0.13 and 0.5).
+- The scenario and balance changes above are accepted. Midwest do-nothing returns to its pre-WT-06 16.5 days,
+  inside SPEC §16's day 12–18 target, so no balance entry follows.
+- The two Done-when criteria are restated rather than met. The MORE_IMPORTANT_HARMED share is now counted per
+  proposal, and a plan makes several proposals per candidate (free pre-check rejections included), so it is not
+  comparable with §1's per-trial baseline. Reversals are measured from net rank, and none occur within two minutes,
+  W1's concern. The counts in the table above are the baseline later entries report against.
+- The capped-PROD1 ONLHI episode is WT-10's. Its realism test bounds it at today's 720 OTHER adjustments.
+
+Last review fixes (`64b98d3`, `f683789`). A receiver raise was judged only against the original base, so it could
+pass while undoing what earlier retained moves had bought; it now also has to match the retained plan (a donor
+already had to beat it). This changes S-3 as in the table and leaves the goldens and day-1 hashes unchanged. A
+receiver stuck under its skip clock re-clocks every minute, and each clock logged its clue, which shrank the
+400-line log window (seed 42 day 1: 105/66/25 such lines on Midwest/Revenue/Harbourline). An unchanged clue is now
+logged at most every five minutes, and a new reason or a move logs it again: 33/40/20. `npm run compare
+--drop log` over two days shows no other state change; the goldens changed only because the log is hashed.
