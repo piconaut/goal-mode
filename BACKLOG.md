@@ -591,6 +591,34 @@ reproduce. Change: one exported helper (in `tools/playCore.ts`, keyed `day:name`
 rule and by `abendedNames`'s callers. Done when: both use it, `npm run compare` shows no difference, and the
 `inspect` tests still pass.
 
+### PR-20 · Repeated non-fixable checks are invisible to the assessment episode counter
+`list: pr-followups · status: ready · priority: low · size: M · area: tooling`
+
+Source: [#307 follow-up review, N3](https://github.com/piconaut/goal-mode/pull/307#issuecomment-6815991988),
+#296's accepted WT-05 done criteria, and user request (2026-11-12). In #307's capped-PROD1 fixture (`202d90d`,
+Midwest seed 7, PROD1 defined capacity 200 MSU, Db2 classified into STCHI), ONLHI is `NOT_FIXABLE` / `OTHER` on
+30 successive adjustments, D1 14:00:00–14:04:50. These are candidate checks every 10 s, with no trials or projections
+for that candidate. The skip clock is set after a rejected trial search, not after `NOT_FIXABLE`. `countSystem`
+(`tools/inspect.ts`) counts only `ASSESSED` toward its 30-assessment episodes and keeps those runs across skipped
+intervals; these 30 checks contribute zero. Thus #296's accepted 1/2/2 episodes of once-a-minute assessments do not
+establish that all unhelpable candidates avoid every-interval checks. The player log emits no-action notes every
+30 ticks (five minutes, `adjustPolicies` in `tick/control.ts`); one printed entry is not one check or deduplication.
+
+Change: add a separate streak metric to `inspect … wlm-stats` for at least 30 consecutive `NOT_FIXABLE` checks of
+the same period on an image, with bottleneck, first/last tick and check count, exposed in text and JSON alongside
+the existing episode details. Preserve the accepted `ASSESSED` episode counter and label both populations clearly.
+End a streak when the outcome/bottleneck changes or the candidate is absent from an image's next adjustment.
+Update SPEC §5.5.4 and docs/wlm-design.md §9.6/§9.8 to distinguish candidate checks, trial-search assessments,
+skip-clock retries and periodic log entries. Relate the results to WT-10's separate question of waits masking
+fixable CPU/zIIP delay; this reporting task does not extend skip clocks or change bottleneck selection. Any proposed
+suppression policy needs its own sourced sim entry and an explicit responsiveness/fairness decision.
+
+Done when: a 30-tick `OTHER` trace reports one non-fixable streak, zero `ASSESSED` and zero existing assessment
+episodes; changing outcome/bottleneck or omitting the candidate breaks the streak; 30 rejected-search assessments
+separated by their five clock skips still count as one existing episode. The recorded #307 fixture is described as
+30 checks over about five minutes, with one periodic log entry. Targeted inspect tests cover those distinctions,
+and `npm run compare` confirms unchanged sim/game behaviour, logs and reports.
+
 ### PR-11 · Match the RCA evidence example to its accepted mechanisms
 `list: pr-followups · status: ready · priority: low · size: S · area: content`
 
