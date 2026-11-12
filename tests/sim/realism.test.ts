@@ -17,6 +17,7 @@ import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
 import { setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { committedMoves } from '../helpers/wlmMoves';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
 
@@ -1098,27 +1099,22 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
   it('equally important classes do not keep taking DP from each other', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
-    const move = /PROD2 RCVR=(?:TSO#2|DDFPRD#2) .*?(TSO#2|DDFPRD#2) DP ([0-9A-F]+)→([0-9A-F]+)/;
-    const lines: string[] = [];
-    for (let t = 0; t < 4.5 * 360; t++) {
-      const prev = s.wlm.log;
-      s = step(s, [], MIDWEST);
-      if (s.wlm.log === prev) continue;
-      const last = prev[prev.length - 1];
-      const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
-      for (const l of s.wlm.log.slice(from)) if (/ (09|10):\d\d:\d\d /.test(l) && move.test(l)) lines.push(l);
+    const pair = ['TSO#2', 'DDFPRD#2'];
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => {
+      if (t.lparId === 'PROD2' && / (09|10):\d\d:\d\d$/.test(t.clockText) && t.candidates.some((c) => pair.includes(c.scKey) && c.trials.some((tr) => tr.verdict === 'ACCEPTED'))) traces.push(t);
+    });
+    try {
+      for (let t = 0; t < 4.5 * 360; t++) s = step(s, [], MIDWEST);
+    } finally {
+      setWlmTraceSink(null);
     }
-    expect(lines.length).toBeGreaterThan(0);
-    const donorMoves = lines.filter((l) => /RCVR=TSO#2 .*DONOR DDFPRD#2|RCVR=DDFPRD#2 .*DONOR TSO#2/.test(l));
+    expect(traces.length).toBeGreaterThan(0);
+    const donorMoves = traces.flatMap((t) => t.candidates.filter((c) => pair.includes(c.scKey)).flatMap((c) => c.trials.filter((tr) => tr.verdict === 'ACCEPTED').flatMap((tr) => tr.plan!.filter((m) => m.kind === 'DONOR' && m.scKey !== c.scKey && pair.includes(m.scKey)))));
     expect(donorMoves.length).toBeLessThanOrEqual(1);
     // Neither class's DP goes down, up and down again.
     const reversals = (sc: string) => {
-      const dirs = lines.flatMap((l) => {
-        const m = move.exec(l)!;
-        // Canonical renumbering can leave an UP's DP unchanged. Read the declared move kind.
-        const step = new RegExp(`(UP|CARRY|DONOR) ${sc.replace('#', '#')} DP`).exec(l);
-        return m[1] === sc ? [step ? (step[1] === 'DONOR' ? -1 : 1) : Math.sign(parseInt(m[3]!, 16) - parseInt(m[2]!, 16))] : [];
-      });
+      const dirs = traces.flatMap(committedMoves).filter((m) => m.who === sc).map((m) => m.dir);
       return dirs.filter((d, i) => i > 0 && d !== dirs[i - 1]).length;
     };
     expect(reversals('TSO#2')).toBeLessThanOrEqual(1);

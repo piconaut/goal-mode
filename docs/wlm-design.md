@@ -1578,20 +1578,20 @@ project. Traces distinguish RETAINED proposals from the one ACCEPTED plan, and t
 and projections separately. Log targets are canonical stored DPs; `UP … (above X)` explains a split whose number
 stays the same while its old mates move down.
 
-Preliminary audit (same S-1 … S-3 recipes as §9.8; WT-07 → WT-08):
+Draft audit at `e4902b7` (same S-1 … S-3 recipes as §9.8; WT-07 → WT-08):
 
 | | S-1 | S-2 | S-3 |
 |---|---|---|---|
 | accepted plans | 33 → 19 | 21 → 28 | 47 → 66 |
 | retained moves in accepted plans | 28 | 40 | 127 |
 | secondary carries | 1 | 0 | 2 |
-| proposal projections | 1 978 → 1 091 | 7 347 → 3 318 | 6 859 → 2 812 |
+| proposal projections | 1 978 → 1 093 | 7 347 → 3 318 | 6 859 → 2 814 |
 | net rank reversals / within two minutes | 1 / 0 | 3 / 0 | 10 / 0 |
 
 Reversals of a composite plan are measured from the net ordinal rank of each explicitly moved period, not the
 last intermediate step or raw canonical DP deltas. Internal moves of one atomic plan cannot reverse live state.
 The old §1 reversal targets are ≤2/4/8: S-3's 10 does not meet the target. S-1's raw MORE_IMPORTANT_HARMED share
-is 45.6%, above its 29% target; S-3 is 15.1%, below 21%. Net value now has to be assessed before receiver value
+is 45.5% (500/1 099), above its 29% target; S-3 is 15.1% (559/3 702), below 21%. Net value now has to be assessed before receiver value
 for intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. These
 are reported as unmet historical criteria, not silently redefined or fixed by tuning coefficients.
 
@@ -1621,3 +1621,12 @@ Waits outside velocity dominate that bottleneck choice (OTHER exceeds 100%, the 
 The test preserves the missing-goal ordering checks and the restored CPU rejection clue, and checks the
 preceding accepted STCHI donation and actual ladder rather than a distance between deduplicated log entries.
 This longer episode is a draft acceptance concern; it is not claimed fixed by WT-08.
+
+RT-06 validation against WT-07 on the same seed-42 runs: S-1 online incidents 2 → 0 (the two policy-only MOBILE
+misses disappear); S-2 2 → 2, still one testable runaway cause and agreement; S-3 13 → 15, adding card-free CARDS
+QR_TCB/POLICY incidents at D1 12:00 and D3 11:00. All common incidents retain their truth/cause/agreement results.
+Every incident is reached and reproduced; no validator failure. This is a changed incident set, not a grading fix.
+
+The independent review found two old log parsers that could miss a reversal by retaining an internal move kind
+or only reading the first period in a plan. The convergence tests now observe committed before/after ladder
+ordering, with explicit carry-then-donor and second-period donor fixtures; internal plan steps are never live moves.

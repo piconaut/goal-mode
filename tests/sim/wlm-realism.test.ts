@@ -9,6 +9,7 @@ import { BASEPOL } from '../../src/content/wlm/basepol';
 import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { evaluateLpar, sliceSpec } from '../../src/sim/wlm/evaluate';
 import { decayInto, emptyAcc, goalPi } from '../../src/sim/wlm/runtime';
+import { committedMoves, type CommittedMove } from '../helpers/wlmMoves';
 
 describe('donors retain their goal protection (WT-07, I5)', () => {
   it('a happy more important class is tried as a donor but is not pushed past its goal', () => {
@@ -129,30 +130,13 @@ describe('donors retain their goal protection (WT-07, I5)', () => {
   });
 });
 
-interface Move { dir?: number; sec: number; who: string; from: number; to: number; line: string }
-
-/** DP moves WLM logged on one system, in order. */
-function movesOn(log: readonly string[], system: string): Move[] {
-  const re = new RegExp(`^D(\\d+) (\\d\\d):(\\d\\d):(\\d\\d) ${system} RCVR=\\S+ `);
-  return log.flatMap((line) => {
-    const m = re.exec(line);
-    if (!m) return [];
-    const sec = Number(m[1]) * 86400 + Number(m[2]) * 3600 + Number(m[3]) * 60 + Number(m[4]);
-    const moves = new Map<string, Move>();
-    for (const p of line.matchAll(/(UP|CARRY|DONOR) (\S+) DP ([0-9A-F]+)→([0-9A-F]+)/g)) {
-      moves.set(p[2]!, { sec, who: p[2]!, from: parseInt(p[3]!, 16), to: parseInt(p[4]!, 16), dir: p[1] === 'DONOR' ? -1 : 1, line });
-    }
-    return [...moves.values()];
-  });
-}
-
 /** Moves of one period that undo the direction of its previous move within `withinSec`. */
-export function quickReversals(moves: readonly Move[], withinSec: number): string[] {
-  const last: Record<string, Move> = {};
+export function quickReversals(moves: readonly CommittedMove[], withinSec: number): string[] {
+  const last: Record<string, CommittedMove> = {};
   const out: string[] = [];
   for (const m of moves) {
     const p = last[m.who];
-    if (p && m.sec - p.sec <= withinSec && (m.dir ?? Math.sign(m.to - m.from)) !== (p.dir ?? Math.sign(p.to - p.from))) out.push(`${p.line}  ⇄  ${m.line}`);
+    if (p && m.sec - p.sec <= withinSec && m.dir !== p.dir) out.push(`${p.line}  ⇄  ${m.line}`);
     last[m.who] = m;
   }
   return out;
@@ -165,17 +149,13 @@ describe('WLM does not flip a period on one quiet tick (docs/wlm-design.md W1, R
   // important work that is missing its goal, no period is moved one way and back within two minutes.
   it('no DP move on PROD2 is undone by the same period\'s next move within two minutes (06:00–14:00)', () => {
     let s = initState(42, MIDWEST);
-    const log: string[] = [];
-    let seen = s.wlm.log;
-    for (let t = 0; t < 8 * 360; t++) {
-      s = step(s, [], MIDWEST);
-      if (s.wlm.log === seen) continue;
-      const lastSeen = seen[seen.length - 1];
-      const from = lastSeen === undefined ? 0 : s.wlm.log.lastIndexOf(lastSeen) + 1;
-      log.push(...s.wlm.log.slice(from));
-      seen = s.wlm.log;
+    const moves: CommittedMove[] = [];
+    setWlmTraceSink((t) => { if (t.lparId === 'PROD2' && t.action) moves.push(...committedMoves(t)); });
+    try {
+      for (let t = 0; t < 8 * 360; t++) s = step(s, [], MIDWEST);
+    } finally {
+      setWlmTraceSink(null);
     }
-    const moves = movesOn(log, 'PROD2');
     expect(moves.length).toBeGreaterThan(0); // WLM did have work to do
     expect(quickReversals(moves, 120)).toEqual([]);
   }, 240_000);

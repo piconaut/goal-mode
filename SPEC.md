@@ -579,7 +579,9 @@ for importance in 1..5:
   the trust limit rejected every raise lasts its minute even if the other image's PI improves sooner.
 - **Projection budget.** Each projection re-runs §5.4, so the search makes at most `maxProjectionsPerInterval` (12)
   per image per interval, over all importances (the tick budget, I16). Rejections that need no projection (CPU
-  protection, the missing-goal rule, the trust limit) cost none, and neither does a `RECOVERING` candidate. When it
+  protection, the missing-goal rule, the trust limit) cost none, and neither does a `RECOVERING` candidate.
+  This counts proposal projections, not evaluator calls: the shared base and a proposal's internal batch-recovery
+  rounds are outside that count, preserving WT-05's accounting. When the proposal budget
   is spent the search stops (`BUDGET`) with no clock, and the next interval's search starts at the receiver it
   stopped on (`ScpState.resumeSearch`), then wraps to the top. A search that restarted at the top every interval
   could cycle through hopeless receivers forever, their clocks expiring just as the last were reached, and never get

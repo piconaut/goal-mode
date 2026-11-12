@@ -503,6 +503,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   BACKLOG while draft #316 is validated and the unmet historical criteria and scenario changes are settled.
   Audit, sweep and review results are recorded in docs/wlm-design.md §9.9 and M8.2 when complete.
 
+- 2026-11-12: WT-08 draft review fixes (`e4902b7`): aggregate NO_NET_VALUE names its largest equal-harm blocker;
+  safe partial failures retain a player clue; new skip clocks log that clue off cadence; player explanations and
+  inspect show complete plans. Full local check and CI pass 1 017 tests/90 files. Adversarial review found two
+  convergence-test parsers that could miss live reversals; both now use committed ladder ordering, with explicit
+  counterexamples. Final-head audit: plans 19/28/66, projections 1 093/3 318/2 814, reversals 1/3/10 (zero within
+  two minutes), episodes 1/3/2. S-1 raw harm share 45.5% and S-3 reversals remain above their targets. RT-06:
+  online incidents 2/2/13 → 0/2/15; S-3 adds two CARDS QR_TCB/POLICY misses, common causes/agreements unchanged.
+  Midwest's survival shift, shadow-IT's adaptive MOBILE improvement and the longer capped ONLHI OTHER episode
+  remain acceptance questions. No coefficient or happy-donor restriction was introduced to hide them.
+
 - 2026-11-12: queued PR-20 for repeated `NOT_FIXABLE` checks: report those streaks separately from the existing
   `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in
   #307 has 30 cheaper candidate checks over five minutes and one periodic no-action log entry. Clock and

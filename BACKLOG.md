@@ -453,6 +453,9 @@ D29 11:00 on PRDA, MKTORD#1 (importance 1) and ONLHI#1 (2) have 98 % CPU delay a
 waits are larger; the skip clock is not involved (`--tune rejectedSkipTicks=0` gives the same day). Check that seed 7
 comes back (`npm run bot -- --bot expert --scenario harbourline --seed 7 --days 40 --trace-day 29`); bots may move
 more than "small".
+From draft WT-08 (2026-11-12, docs/wlm-design.md §9.9): Midwest seed 7, PROD1 capped at 200 MSU with DB* in STCHI,
+leaves ONLHI `NOT_FIXABLE/OTHER` from D1 14:00 through 16:00 while CPU delay is about 99%. STCHI has donated and
+partly recovered but remains below ONLHI. Recheck this extended episode when waits leave the bottleneck comparison.
 
 ### WT-11 · The resource-group minimum for discretionary work (W10)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`
