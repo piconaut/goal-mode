@@ -256,8 +256,11 @@ export function donorOrder(
   return Object.keys(info)
     .map((key) => {
       const g = info[key]!;
-      return { key, importance: g.importance, worst: Math.max(g.localPi ?? 0, g.sysplexPi ?? 0),
-        engines: (bottleneck === 'CPU' ? g.acc.cpuEngines : g.acc.ziipEngines ?? 0) * (1 - tuning.accDecay) };
+      // APPROX: a period with no PI at all (no completions yet) is not known to be happy; it is treated as missing
+      // its goal, so it donates last at its importance and never when more important than the receiver.
+      const worst = g.localPi === null && g.sysplexPi === null ? Infinity : Math.max(g.localPi ?? 0, g.sysplexPi ?? 0);
+      const used = bottleneck === 'CPU' ? g.acc.cpuEngines : (g.acc.ziipEngines ?? 0);
+      return { key, importance: g.importance, worst, engines: used * (1 - tuning.accDecay) };
     })
     .filter((g) => g.key !== receiver && dps[g.key] !== undefined && dps[g.key]! >= rdp &&
       g.engines >= tuning.donorMinEngines && !(g.worst > 1 && g.importance < r.importance))
@@ -265,7 +268,7 @@ export function donorOrder(
       const happyA = a.worst < 1;
       const happyB = b.worst < 1;
       return Number(happyB) - Number(happyA) || (!happyA ? b.importance - a.importance : 0) ||
-        a.worst - b.worst || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+        (a.worst === b.worst ? 0 : a.worst - b.worst) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
     })
     .slice(0, tuning.donorsPerReceiver)
     .map((g) => g.key);

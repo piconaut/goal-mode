@@ -593,7 +593,8 @@ for importance in 1..5:
   Ties use the period key; at most `donorsPerReceiver` (3) are tried. A happy more important donor still must pass
   CPU protection and the projected harm check. Discretionary work is below the managed ladder and cannot donate
   through a DP move. Sources: WLM Services p.138 and p.147, SG24-6472-03 (March 2008) p.59–60; resource use,
-  SG24-7621 p.105. APPROX: the worse local/sysplex PI, exponential use history, threshold and donor limit.
+  SG24-7621 p.105. APPROX: the worse local/sysplex PI, exponential use history, threshold and donor limit; a
+  period with no PI yet counts as missing its goal (last at its importance, never when more important).
 - **Missing goals are not passed.** A less important receiver never moves to or above more important work that is
   missing its goal and uses at least `donorMinEngines` of processor, whatever the projection says: a period at the
   floor of the queueing model shows no further projected harm (the 1994 patent p.19, FIG. 8; Enrico slide 52;

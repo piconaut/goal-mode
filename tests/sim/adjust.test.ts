@@ -776,6 +776,14 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
     expect(donorOrder('R', 'CPU', dps, info, { ...all, donorsPerReceiver: 0 })).toEqual([]);
   });
 
+  it('a period with no PI is not taken as happy: last at its importance, never when more important', () => {
+    const info = { R: atRest(3, 2), HAPPY: atRest(5, .9), NOPI: atRest(5, null), STRUGGLING: atRest(5, 1.5), NOPI1: atRest(1, null) };
+    const dps = Object.fromEntries(Object.keys(info).map((k) => [k, 246]));
+    expect(donorOrder('R', 'CPU', dps, info, all)).toEqual(['HAPPY', 'STRUGGLING', 'NOPI']);
+    // One PI known is enough: a period with only a local PI is judged on it.
+    expect(donorOrder('R', 'CPU', dps, { ...info, NOPI: atRest(5, .5, null) }, all)).toEqual(['NOPI', 'HAPPY', 'STRUGGLING']);
+  });
+
   it('C-2: a zIIP bottleneck takes 2 zIIP engines with no CP, not 0.2 CP with no zIIP', () => {
     const info = { R: atRest(2, 2), Z: atRest(4, .5, .5, 0, 2), CP: atRest(5, .2, .2, .2, 0) };
     const dps = { R: 242, Z: 244, CP: 246 };
