@@ -509,6 +509,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43277480117),
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43277481255)). Harbourline expert seed 7 is still lost
   on day 39: its D29 is a saturated PRDA, not W7 (docs/wlm-design.md §9.10).
+- zos-docs searches (2026-11-12): map hits with `pdf_find.py --grep … --pages-only` before reading, never cut search
+  output with `head`, read the section that owns the topic (hit page ±1) and search in the book's words as well as
+  the user's. A WLM answer missed ieaw100 3.1 p.61 ("no goals for CICS ⇒ region velocity goals") because the
+  page says "address spaces", not "region", and the truncated hit list hid the pages around it. Rules in SKILL.md §3.
 
 ## Latest maintenance
 

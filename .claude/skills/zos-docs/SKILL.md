@@ -112,18 +112,46 @@ Search for the most specific token first — a field name (`SMF70CPA`), member
 (`IEASYSxx`), message ID (`IXC402D`), code (`0C4`), keyword (`PERIOD`):
 
 ```bash
-python3 $S/pdf_find.py BOOK.pdf --grep SMF70CPA                  # hits with page + section
+python3 $S/pdf_find.py BOOK.pdf --grep CICS region --all --pages-only  # every matching page + section, one line each
+python3 $S/pdf_find.py BOOK.pdf --grep SMF70CPA                  # hits with page + section + lines
 python3 $S/pdf_find.py BOOK.pdf --grep "SMF30" "CPU time" --all  # pages containing both
 python3 $S/pdf_find.py BOOK.pdf --toc --filter "type 30"         # locate a section
 python3 $S/pdf_find.py BOOK.pdf --page 512 --to 513              # read the pages grep found
 ```
 
-Read whole pages only after grep has pointed at them, a page or two at a time. If the
-output gets truncated, narrow the search rather than raising the limits.
+A page costs about 1k tokens; a missed page can cost the whole answer. These rules keep
+the usual lookup cheap and spend more only where a miss would turn into a wrong answer:
+
+1. **Map before you read.** For a concept search (anything broader than one field, member,
+   message or code), run `--pages-only` first: it lists every matching page with its
+   section in a line each, so nothing gets cut off. Then read snippets or pages from that
+   list. Never pipe search output into `head` or `tail`: a cut-off list hides the pages
+   you didn't see. If the list is too long, narrow the patterns or add `--all`.
+2. **Read the section that owns the topic.** When hits land in the section that covers
+   the thing asked about (the CICS part of "Defining classification rules for each
+   subsystem", the SMF 30 processor accounting section), read the hit page and the page
+   before and after it in full, not just the lines around the match. The sentence that
+   answers the question often doesn't contain the search word.
+3. **Search in the book's words as well as the user's.** IBM's prose often names a thing
+   differently from how people ask about it. Try the book's term too:
+
+   | User says | Books also say |
+   |---|---|
+   | region | address space, server address space, server |
+   | rules, no rules | goals, not classified, no matching, default service class |
+   | transaction | work request, work, unit of work |
+   | LPAR | partition, logical partition, image |
+   | CPU | processor, CP, general purpose processor |
+   | delayed, waiting | delay, contention, queued |
+
+4. **Before any unverified claim, read more.** If the answer would rest on an inference
+   or on "not found", first read the owning section through (rule 2) with the book's
+   terms (rule 3). Only then fall back to "not found in BOOK under X or Y" or an inference
+   labelled as one.
 
 If you can't find support for part of the question, say that part isn't covered by what
-you found and name where you looked (book, search terms). An honest "not found in ieag200
-under X or Y" is a valid answer; a guess isn't.
+you found and name where you looked (book, sections read, search terms). An honest "not
+found in ieag200 under X or Y" is a valid answer; a guess isn't.
 
 ## 4. Answer
 
