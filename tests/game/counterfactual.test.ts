@@ -8,34 +8,38 @@ import { packOf } from '../../src/content/packs';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import type { ActiveEvent, Incident, RunState } from '../../src/game/types';
 
-const pack = packOf('midwest');
+const pack = packOf('revenue');
 const scenario = scenarioFor(pack.scenario, 'NORMAL');
 
-// D2 13:00: the hour of seed 3's first incident (a runaway query, RUNAWAY@1, from 13:33). Seed 2's runaway, the
-// fixture before WT-04, no longer breaks MOBILE: WLM does not raise the runaway past its own victims any more.
+// D2 11:00 on Revenue: the hour of seed 6's first incident (a runaway compliance query, RUNAWAY_COMPLIANCE@1, from
+// 11:17, hurting EFILE). Midwest's runaways were the fixture before WT-10 (seed 2 before WT-04, then seed 3); since
+// WT-10 WLM helps MOBILE's CPU delay while it mostly waits on Db2, and no Midwest runaway in seeds 1–30 breaks it.
 const DAY = 1;
-const HOUR_START = DAY * TICKS_PER_DAY + 7 * TICKS_PER_HOUR;
+const HOURS = 5;
+const HOUR_START = DAY * TICKS_PER_DAY + HOURS * TICKS_PER_HOUR;
+const CARD = 'RUNAWAY_COMPLIANCE@1';
+const VICTIM = 'EFILE';
 
 /** D1 played to its review, D2 started, at the incident's hour start; the log replays it. */
 let file: PlayFile;
 beforeAll(() => {
-  let run = newRun(pack.scenario, pack.game, 3);
+  let run = newRun(pack.scenario, pack.game, 6);
   run = startDay(run, pack.game);
   run = advance(run, scenario, pack.game, 24 * 360);
   run = chooseDraft(run, pack.game, null);
   run = startDay(run, pack.game);
-  run = advance(run, scenario, pack.game, 7 * 360);
+  run = advance(run, scenario, pack.game, HOURS * 360);
   file = {
     version: 1,
     run,
     pendingPolicy: null,
     log: [
-      { cmd: 'new', seed: 3, difficulty: 'NORMAL', scenario: 'midwest' },
+      { cmd: 'new', seed: 6, difficulty: 'NORMAL', scenario: 'revenue' },
       { cmd: 'start' },
       { cmd: 'advance', hours: 24 },
       { cmd: 'draft', optionId: null },
       { cmd: 'start' },
-      { cmd: 'advance', hours: 7 },
+      { cmd: 'advance', hours: HOURS },
     ],
   };
   expect(run.sim.tick).toBe(HOUR_START);
@@ -50,7 +54,7 @@ const truthOf = (start: RunState, workloadId: string): Incident => {
 
 describe('counterfactual validator (RT-06)', () => {
   it('clears a causal card, ignores a bystander on the same workload, and agrees with the game', () => {
-    const incident = truthOf(file.run, 'MOBILE');
+    const incident = truthOf(file.run, VICTIM);
     // A card on the same workload that does nothing at all, and cannot be the CPU card the game blames.
     const bystander: ActiveEvent = {
       uid: 'BYSTANDER@1',
@@ -59,7 +63,7 @@ describe('counterfactual validator (RT-06)', () => {
       startTick: HOUR_START,
       endTick: HOUR_START + TICKS_PER_HOUR,
       trigger: 'POLICY',
-      affects: ['MOBILE'],
+      affects: [VICTIM],
       mechanisms: ['CAPPING'],
       endCommands: [],
       started: true,
@@ -70,23 +74,23 @@ describe('counterfactual validator (RT-06)', () => {
     expect(blame.reproduced).toBe(true);
     expect(blame.baseline.met).toBe(false);
     // Both cards are tested; only the runaway's removal meets the SLA.
-    expect(blame.tested.map((t) => t.card.uid).sort()).toEqual(['BYSTANDER@1', 'RUNAWAY@1']);
+    expect(blame.tested.map((t) => t.card.uid).sort()).toEqual(['BYSTANDER@1', CARD]);
     expect(blame.tested.find((t) => t.card.uid === 'BYSTANDER@1')!.met).toBe(false);
-    expect(blame.causes.map((c) => c.uid)).toEqual(['RUNAWAY@1']);
-    expect(blame.blamed?.uid).toBe('RUNAWAY@1');
+    expect(blame.causes.map((c) => c.uid)).toEqual([CARD]);
+    expect(blame.blamed?.uid).toBe(CARD);
     expect(blame.agrees).toBe(true);
     expect(summarizeBlame([blame])).toMatchObject({ incidents: 1, reproduced: 1, testable: 1, withCause: 1, agree: 1, disagree: 0 });
   });
 
   it('disagrees when the game blames no card but a card would have met the SLA', () => {
-    const real = truthOf(file.run, 'MOBILE');
+    const real = truthOf(file.run, VICTIM);
     // The same hour read as a policy incident: every card declares CPU_PRIORITY only, so none can be blamed for
     // CAPPING, while the runaway is still the cause.
     const events = file.run.events.map((e) => ({ ...e, mechanisms: ['CPU_PRIORITY' as const] }));
     const mislabeled: Incident = { ...real, truth: { mechanism: 'CAPPING', trigger: 'POLICY' } };
     const blame = blameIncident({ ...file.run, events }, scenario, pack.game, mislabeled);
     expect(blame.blamed).toBeNull();
-    expect(blame.causes.map((c) => c.uid)).toEqual(['RUNAWAY@1']);
+    expect(blame.causes.map((c) => c.uid)).toEqual([CARD]);
     expect(blame.agrees).toBe(false);
     expect(summarizeBlame([blame])).toMatchObject({ testable: 1, withCause: 1, agree: 0, disagree: 1 });
   });
@@ -109,13 +113,12 @@ describe('counterfactual validator (RT-06)', () => {
     expect(run.incidents.some((i) => i.startTick === HOUR_START)).toBe(true);
     const log = [...file.log, { cmd: 'note' as const, text: 'the hour starts here' }, { cmd: 'advance' as const, hours: 1 }];
     const text = blameText(encodePlayFile({ ...file, run, log }));
-    // WT-08 prevents the old D1 21:00 policy-only MOBILE miss; the runaway remains a counterfactual cause.
     // Keep the hour-boundary replay assertion independent of incident numbering on earlier days.
-    const incident = run.incidents.find((i) => i.startTick === HOUR_START && i.workloadId === 'MOBILE')!;
+    const incident = run.incidents.find((i) => i.startTick === HOUR_START && i.workloadId === VICTIM)!;
     expect(text).toContain('1 online incident');
-    expect(text.split(`MOBILE (incident ${incident.id})`)).toHaveLength(2);
-    expect(text).toContain('Runaway ad-hoc query [RUNAWAY@1]');
-    expect(text).toContain('AGREE: Runaway ad-hoc query is a counterfactual cause');
+    expect(text.split(`${VICTIM} (incident ${incident.id})`)).toHaveLength(2);
+    expect(text).toContain(`Runaway compliance query [${CARD}]`);
+    expect(text).toContain('AGREE: Runaway compliance query is a counterfactual cause');
   });
 
   it('replays a log with a Monitor III pin at a past time', () => {
@@ -123,13 +126,13 @@ describe('counterfactual validator (RT-06)', () => {
     const log = [
       ...file.log.slice(0, 5),
       { cmd: 'buy' as const, toolId: 'RMF_MON3' },
-      { cmd: 'advance' as const, hours: 7 },
-      { cmd: 'pin' as const, req: { source: 'MON3' as const, system: 'PROD1', scKey: 'ONLHI#1', metric: 'PI' as const }, at: 'D2 12:30' },
+      { cmd: 'advance' as const, hours: HOURS },
+      { cmd: 'pin' as const, req: { source: 'MON3' as const, system: 'PROD1', scKey: 'WEBDDF#1', metric: 'PI' as const }, at: 'D2 10:30' },
       { cmd: 'advance' as const, hours: 1 },
     ];
     const run = advance(structuredClone(file.run), scenario, pack.game, TICKS_PER_HOUR);
     const text = blameText(encodePlayFile({ ...file, run, log }));
-    expect(text).toContain('MOBILE (incident 1)');
+    expect(text).toContain(`${VICTIM} (incident 1)`);
     expect(text).not.toContain('failed');
   }, 120_000);
 
@@ -156,10 +159,10 @@ describe('counterfactual validator (RT-06)', () => {
   });
 
   it("reads an incident in the day's last hour, whose replay ends the day", () => {
-    const run = advance(structuredClone(file.run), scenario, pack.game, 16 * TICKS_PER_HOUR); // D3 05:00
+    const run = advance(structuredClone(file.run), scenario, pack.game, (23 - HOURS) * TICKS_PER_HOUR); // D3 05:00
     const incident: Incident = {
       id: 999,
-      workloadId: 'MOBILE',
+      workloadId: VICTIM,
       day: run.day,
       startTick: run.sim.tick,
       endTick: null,

@@ -5,7 +5,7 @@ import { committedMoves } from '../helpers/wlmMoves';
 const trace = (before: Record<string, number>, after: Record<string, number>, plan: PlanMove[], sec: number): WlmAdjustTrace => ({
   clockText: `D1 06:00:${String(sec).padStart(2, '0')}`, lparId: 'SYS', dps: before, protection: [], action: `plan at ${sec}`,
   candidates: [{ scKey: 'I', importance: 2, sysplexPi: 2, localPi: 2, dp: before.I ?? 244, bottleneck: 'CPU',
-    delayShares: { CPU: 1, ZIIP: 0, IO: 0, CAP: 0, OTHER: 0 }, outcome: 'ASSESSED',
+    delayShares: { CPU: 1, ZIIP: 0, IO: 0, STORAGE: 0, QUEUE: 0, CAP: 0, OTHER: 0 }, outcome: 'ASSESSED',
     trials: [{ move: 'last proposal only', verdict: 'ACCEPTED', plan, afterDps: after }] }],
 });
 

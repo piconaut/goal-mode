@@ -87,6 +87,7 @@ describe('WLM log explanations', () => {
     expect(explainWlmLog('D1 12:00:10 PROD1 RCVR=ONLHI#1 PI=1.80 BTLNK=CPU ONLHI#1 DP F8→F9')).toMatch(/raised its dispatch priority from F8 to F9/);
     expect(explainWlmLog('D1 12:00:10 PROD1 RCVR=ONLHI#1 PI=1.80 BTLNK=CPU DONOR BATCHPRD#1 DP F8→F7')).toMatch(/lowered donor BATCHPRD#1/);
     expect(explainWlmLog('D1 12:00:10 PROD2 DDFPRD#1 PI=2.10 BTLNK=OTHER not WLM-fixable')).toMatch(/can't fix that/);
+    expect(explainWlmLog('D1 12:00:10 PROD2 DDFPRD#1 PI=2.10 mostly waiting, CPU delay 6 %: not WLM-fixable, next look 12:01:10')).toMatch(/waiting on a server, lock or subsystem.*CPU delay only 6 %/);
   });
 
   it('repeats the first rejected move and why (PT-05)', () => {

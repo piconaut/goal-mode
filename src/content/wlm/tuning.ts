@@ -85,6 +85,11 @@ export const POLICY_ADJUST = {
   // FICTIONAL: a period whose managed delay (CPU, zIIP, I/O in velocity, storage, queue) is under this share of its
   // samples is not assessed. IBM's rule is "no delay samples" (WLM Services p.144); a fluid model never has exactly none.
   needsHelpDelayFrac: 0.02,
+  // FICTIONAL: CPU and zIIP are each tried as a receiver's bottleneck, largest delay first, when the delay is at least
+  // this share of its managed delay, even when I/O, storage or queue delay is larger (docs/wlm-design.md §5.7). Shape:
+  // a second bottleneck is tried only when it is a real share of the delay, so a period that is mostly I/O-bound with a
+  // trace of CPU delay is not raised for that trace.
+  bottleneckMinFrac: 0.15,
   // FICTIONAL: a receiver whose every trial was rejected is skipped for this many intervals (a minute). IBM documents
   // the skip clock but not its length (WLM Services p.145); one length on every difficulty (docs/wlm-design.md §8 Q9).
   rejectedSkipTicks: 6,

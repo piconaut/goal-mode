@@ -1,9 +1,11 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 are implemented**: one PI basis, sustained
-demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval budget (WT-05,
-§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic plans (WT-08, §9.9). Server periods (WT-09) and the other remaining entries are not. Findings W2, W4, W5, W10 and W12 below describe the sim before those
-entries; each says what fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
+Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 and WT-10 are implemented**: one PI
+basis, sustained demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
+budget (WT-05, §9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic
+plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10). Server periods (WT-09) and the other remaining
+entries are not. Findings W2, W4, W5, W7, W10 and W12 below describe the sim before those entries; each says what
+fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
 is the WLM counterpart of [rca-design.md](rca-design.md).
@@ -712,6 +714,8 @@ fixed across importances, left in place within one.
 
 ### W7. One bottleneck, chosen among delays WLM does not manage (medium)
 
+*Fixed by WT-10 (§5.7, §9.10).*
+
 **Sim.** §2.6: the largest of CPU, zIIP, I/O, cap and other; if it is not CPU or zIIP the receiver is dropped.
 
 **Real.** §3.6: only managed delays are considered, largest first, and the next one is tried when the first cannot
@@ -1036,7 +1040,9 @@ fixableBottlenecks(acc, C) ← [CPU, ZIIP] ordered by delay, largest first, keep
 `delayOther` (waits for locks, servers, the CF, the QR TCB) is not a delay state and takes no part. A period that is
 mostly waiting has little managed delay: either `NO_MANAGED_DELAY`, or a CPU plan that finds no receiver value and
 sets the skip clock. The no-action note then reads `… mostly waiting, CPU delay 6 %: not WLM-fixable`, which keeps
-the planted clue for a starved server (SPEC §5.5.4).
+the planted clue for a starved server (SPEC §5.5.4). As built (WT-10, §9.10): "mostly waiting" is waits over half of
+all samples, and the note also replaces `already recovering` (`RECOVERING`), where the projection at sustained demand
+does not see the waits that hold the measured PI up.
 
 ### 5.8 Server periods, minimums, batch response times
 
@@ -1073,7 +1079,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
 | I12 | **Skip clock, no starvation.** A receiver whose plans were all rejected is not assessed again before its clock expires; every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 100 intervals with five unfixable and one fixable candidate at one importance (R-4's shape): the fixable one is helped |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has no move undone within two minutes (`tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" fall by at least 80 % |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has no move undone within two minutes (`tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" fall by at least 80 % |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -1538,6 +1544,8 @@ inside the CI gate's bands; Midwest do-nothing is below the design target (day 1
   day is the same (78.7 % against 77.7 %). At D29 11:00 on PRDA the most important receivers, MKTORD#1 (importance
   1) and ONLHI#1 (2), have 98 % CPU delay and are `NOT_FIXABLE` because their waits are larger (OTHER 157 and 144
   % of using + delay): W7, WT-10's entry. The collapsed ladder hid it by keeping everything near the top.
+  Correction (WT-10, §9.10): with W7 fixed they are assessed and every plan projects no gain; PRDA is saturated, and
+  seed 7 is still lost on day 39.
 
 RT-06 validator: Midwest seed 3 gains a D1 21:00 MOBILE incident (POLICY, no card), the same flaw; the runaway's
 incident at D2 13:00 and its verdict are unchanged.
@@ -1694,7 +1702,8 @@ logged at most every five minutes, and a new reason or a move logs it again: 33/
   630 `PA_PMUUA_REC`). On the capped-PROD1 fixture, STCHI#1 (importance 1, local PI 4.2, CPU delay 94 %) was
   assessed every minute from 14:02:30; three raises were retained at 4.26 → 4.26, the join with ONLHI projected 26.37
   and every plan was rejected. Why joining projects so much worse than staying below is WT-16's question.
-- *Restated criteria.* (1) Moves undone within two minutes: 0 in S-1 … S-3 (I13). Net-rank reversals are reported
+- *Restated criteria.* (1) Moves undone within two minutes: 0 in S-1 … S-3 (I13; since WT-10 not counting a
+  reversal after another receiver's plan projected the period past its goal, which is reported apart). Net-rank reversals are reported
   against the previous entry (WT-07 0/3/2, WT-08 1/3/5); two periods trading places by alternate raises reverse
   neither one's own move, which needs a pair-order count no tool has yet. (2) The MORE_IMPORTANT_HARMED share is
   dropped: a few receivers retried each minute dominate it (S-1: 432 of the 500 at `e7015cb` are PROD2 BATCHPRD#1),
@@ -1703,6 +1712,67 @@ logged at most every five minutes, and a new reason or a move logs it again: 33/
   --episodes`: assessed candidates that end in an accepted plan, which must not fall below the previous entry
   without an explanation in the PR (WT-08's S-1 fall is explained above); every period assessed 30 times or more and
   never helped; and carries accepted.
-- *Midwest's swing* rides on W7 in both directions (§9.7 correction); WT-10 now goes before WT-09.
+- *Midwest's swing* rides on W7 in both directions (§9.7 correction); WT-10 now goes before WT-09. At WT-10 the
+  median is unchanged (16.5, §9.10).
 - *Still unmeasured:* `RECOVERING` (225 / 1 703 / 5 636 on S-1 … S-3, more than assessed) is not checked to recover;
   a streak count belongs with PR-20.
+
+### 9.10 WT-10: managed bottlenecks in turn
+
+Built on WT-08 (`73f0627`). `bottleneckOf` is gone (§5.7). A receiver's plans are built for CPU and then zIIP, largest
+delay first, each when it is at least `bottleneckMinFrac` (15 %) of the managed delay (CPU, zIIP, I/O in velocity,
+storage, queue), even when I/O, storage or queue delay is larger. A plan for the second bottleneck is built only when
+the first is rejected (its UP moves are the same; its donors are the second processor's). Waits (`delayOther`) and
+capping take no part. A period with neither is `NOT_FIXABLE` with its largest managed delay named. `ScpAcc` gains
+decayed `delayStorage` and `delayQueue`. A period whose waits are over half its samples logs `mostly waiting, CPU
+delay n %: not WLM-fixable` in place of the no-action, not-fixable and recovering notes. Real: WLM Services p.148
+(the largest delay is worked on first, then the next, then the third; one has no donor, `pa_pro_na_no_donor`);
+SG24-6472-03 p.63–64.
+
+Audit at `fc63db3` (same S-1 … S-3 recipes; WT-08 `d9617a4` → WT-10):
+
+| | S-1 | S-2 | S-3 |
+|---|---|---|---|
+| not assessed: other / I/O bottleneck | 572 / 0 → — / 0 | 4 771 / 0 → — / 0 | 5 520 / 106 → — / 22 |
+| not assessed: storage, queue / no managed delay | 0, 0 / 0 | 0, 0 / 0 | 0, 0 / 15 |
+| assessed candidates (of which mostly waiting) | 250 → 254 (6) | 1 039 → 777 (12) | 910 → 1 429 (478) |
+| not assessed: recovering (`base` ≤ 1) | 225 → 646 | 1 703 → 3 431 | 5 636 → 9 608 |
+| accepted plans | 19 → 21 | 24 → 24 | 54 → 107 |
+| assessed candidates ending in an accepted plan | 7.6 → 8.3 % | 2.3 → 3.1 % | 5.9 → 7.5 % |
+| proposal projections | 1 129 → 1 241 | 3 200 → 2 953 | 3 007 → 4 820 |
+| net rank reversals / within two minutes (after an intervening plan) | 1 → 1 / 0 | 3 → 6 / 0 | 5 → 22 / 0 (1) |
+| episodes of 30 assessments | 1 → 1 | 3 → 2 | 2 → 5 |
+
+The other column is gone: no candidate is dropped for its waits. The periods it held are assessed, or found
+recovering by the projection, which at sustained demand does not see the waits that keep their measured PI up
+(S-3's `RECOVERING` grows by 3 972; Midwest seed 7's ONLHI is recovering on 1 390 checks in five hours at 93 %
+waits). Both outcomes leave the DPs alone, as `NOT_FIXABLE` did; the log keeps the waiting clue. Whether
+`RECOVERING` periods recover is PR-20's streak count. S-3 doubles its plans: Harbourline's DDF and CICS periods,
+which mostly wait on Db2 and their regions, are now raised when their CPU delay is a real share. The reversal within
+two minutes (S-3 PRDD, MKTDDF#1, importance 2) is three plans in a minute, not a donor projection gone wrong: at
+11:35:00 DDFPRD#2's plan lowers MKTDDF#1 as a happy donor (EE→E8), projected to PI 1.00, its goal; at 11:35:30
+MKTORD#1 (importance 1) is raised above STCMED#1, projected to take MKTDDF#1 to 25.36, a harm a more important
+receiver may do; at 11:36:00 MKTDDF#1, at local PI 4.00, is the receiver and goes back to EE (25.36 → 6.06). Each
+plan passed the checks it is held to. Corrected after review (#318); the first version blamed the donation's
+projection. User decision (2026-11-12): accepted, and I13 reworded to exclude a reversal after another receiver's
+plan in between projected the period past its goal; `wlm-stats` reports those apart (S-3: 0, and 1 apart). S-3's new episodes are PRDA MKTORD#1, ONLHI#1 and ONLMED#1 (D1 … D3): MKTORD#1 is alone at the top
+DP with no donor at or above it, and is 97 % waiting (WLM Services p.148's no-donor case); the other two are at
+the floor of what a raise projects.
+
+The criterion's case: on WT-07's state (`1f4f212`, Midwest seed 42, PROD2 D1 21:40:00) DDFPRD#1 (local PI 4.00,
+CPU 59 %, zIIP 30 %, other 251 % of using + delay) now has CPU and zIIP as bottlenecks, and its CPU plan is accepted:
+`UP DDFPRD#1 DP EA→EC (above BATCHPRD#1)`, projected 51.22 → 0.50. The zIIP plan is not needed; a unit test covers
+a rejected CPU plan followed by a zIIP plan with its own donors. Since WT-08 that state no longer forms on `dev`
+(DDFPRD#1 stays above BATCHPRD#1 all evening).
+
+Sweep (remote, Normal, seeds 1–10, `44a35ab`; `fc63db3` differs only in log text, `npm run compare --drop log`):
+Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged; Harbourline 10.5 / 30 / 7 → 9.5 / 30 / 7 (textbook 1
+victory). Midwest was expected to move (§9.7 correction): on seeds 1–10 its median does not, though single seeds
+do (seed 3's runaway no longer breaks MOBILE, seed 7's RBANK CPU regression reads DEPENDENCY). RT-06 on S-1 … S-3:
+online incidents 0 / 2 / 14 → 0 / 2 / 13; S-2's runaway still agrees. The RT-06 test fixture moves to Revenue seed 6
+(D2 11:00, EFILE, RUNAWAY_COMPLIANCE@1): no Midwest runaway in seeds 1–30 breaks MOBILE in two days any more.
+
+*Harbourline expert seed 7 does not come back* (day 39, as at WT-07). §9.7's attribution to W7 was wrong: at D29
+11:00 on PRDA the receivers are assessed now (MKTORD#1, ONLHI#1 at 98 % CPU delay), and every plan projects no gain
+(ONLHI#1 82.33 → 82.33 for each raise and for STCHI#1 as donor). D29 is 78.7 %, as before: PRDA is saturated after
+the day's access-path regression, which policy adjustment cannot fix.

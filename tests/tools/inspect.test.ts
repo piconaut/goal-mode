@@ -8,7 +8,7 @@ const trial = (over: Partial<WlmTrialTrace> = {}): WlmTrialTrace => ({
 
 const candidate = (over: Partial<WlmCandidateTrace> = {}): WlmCandidateTrace => ({
   scKey: 'A#1', importance: 2, sysplexPi: null, localPi: 1.4, dp: 0x20, bottleneck: 'CPU',
-  delayShares: { CPU: 1, ZIIP: 0, IO: 0, CAP: 0, OTHER: 0 }, outcome: 'ASSESSED', trials: [], ...over,
+  delayShares: { CPU: 1, ZIIP: 0, IO: 0, STORAGE: 0, QUEUE: 0, CAP: 0, OTHER: 0 }, outcome: 'ASSESSED', trials: [], ...over,
 });
 
 const trace = (over: Partial<WlmAdjustTrace> = {}): WlmAdjustTrace => ({
@@ -42,11 +42,12 @@ describe('wlmStats counts the audit table (WT-01)', () => {
   const busy = trace({
     candidates: [
       candidate({ scKey: 'IO#1', outcome: 'NOT_FIXABLE', bottleneck: 'IO' }),
-      candidate({ scKey: 'OTH#1', outcome: 'NOT_FIXABLE', bottleneck: 'OTHER' }),
-      candidate({ scKey: 'CAP#1', outcome: 'NOT_FIXABLE', bottleneck: 'CAP' }),
-      candidate({ scKey: 'NON#1', outcome: 'NOT_FIXABLE', bottleneck: null }),
+      candidate({ scKey: 'STO#1', outcome: 'NOT_FIXABLE', bottleneck: 'STORAGE' }),
+      candidate({ scKey: 'QUE#1', outcome: 'NOT_FIXABLE', bottleneck: 'QUEUE', waitingFrac: 0.7 }),
+      candidate({ scKey: 'WAI#1', outcome: 'NO_MANAGED_DELAY', waitingFrac: 0.8 }),
+      candidate({ scKey: 'CAP#1', outcome: 'NO_MANAGED_DELAY', waitingFrac: 0.1 }),
       candidate({ scKey: 'BUD#1', outcome: 'BUDGET' }),
-      candidate({ scKey: 'REC#1', outcome: 'RECOVERING' }),
+      candidate({ scKey: 'REC#1', outcome: 'RECOVERING', waitingFrac: 0.8 }),
       candidate({
         trials: [
           trial({ move: 'A#1 DP 20→21', verdict: 'ACCEPTED' }),
@@ -71,7 +72,11 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(stats.total.adjustments).toBe(4);
     expect(stats.total.noCandidate).toBe(2);
     expect(stats.total.assessed).toBe(2);
-    expect(stats.total.notFixable).toEqual({ IO: 1, OTHER: 1, CAP: 1, NONE: 1 });
+    expect(stats.total.notFixable).toEqual({ IO: 1, STORAGE: 1, QUEUE: 1 });
+    expect(stats.total.noManagedDelay).toBe(2);
+    expect(stats.total.waitingNoDelay).toBe(1);
+    expect(stats.total.waitingNotFixable).toBe(1);
+    expect(stats.total.waitingRecovering).toBe(1);
     expect(stats.total.budget).toBe(1);
     expect(stats.total.recovering).toBe(1);
     expect(stats.total.trials).toBe(7);
@@ -96,6 +101,15 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     const gap = (n: number) => wlmStats([busy, ...Array.from({ length: n - 1 }, () => trace()), reversed]).total;
     expect(gap(12)).toMatchObject({ reversed: 1, reversedWithin2Min: 1 });
     expect(gap(13)).toMatchObject({ reversed: 1, reversedWithin2Min: 0 });
+  });
+
+  it('I13: a reversal within two minutes after another receiver projected the period past its goal is counted apart', () => {
+    // C#1's plan in between projects A#1 at 25 (S-3 PRDD D3 11:35:30); at 1.0, its goal, it would not count.
+    const harm = (pi: number) => trace({ candidates: [candidate({ scKey: 'C#1', trials: [trial({ move: 'C#1 DP 10→11', verdict: 'ACCEPTED', afterPis: { 'A#1': pi, 'C#1': 0.5 } })] })] });
+    expect(wlmStats([busy, harm(25), reversed]).total).toMatchObject({ reversed: 1, reversedWithin2Min: 0, reversedAfterHarm: 1 });
+    expect(wlmStats([busy, harm(1), reversed]).total).toMatchObject({ reversed: 1, reversedWithin2Min: 1, reversedAfterHarm: 0 });
+    // Harm before the period's own first move does not excuse the reversal.
+    expect(wlmStats([harm(25), busy, reversed]).total).toMatchObject({ reversedWithin2Min: 1, reversedAfterHarm: 0 });
   });
 
   it('counts a period assessed 30 adjustments without a receiver move as one episode', () => {

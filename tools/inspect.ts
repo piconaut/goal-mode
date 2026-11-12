@@ -62,21 +62,22 @@ const piText = (p: number | null | undefined) => (p == null ? '-' : p.toFixed(2)
 const OUTCOME_TEXT: Record<WlmCandidateTrace['outcome'], string> = {
   SKIP_CLOCK: 'not assessed: skip clock running (every move was rejected at its last assessment)',
   NO_MANAGED_DELAY: 'not assessed: no managed delay (CPU, zIIP, I/O, storage, queue under 2 % of samples)',
-  NOT_FIXABLE: 'not assessed: bottleneck is not CPU/zIIP',
+  NOT_FIXABLE: 'not assessed: CPU and zIIP delay each under 15 % of the managed delay (BTLNK is the largest)',
   BUDGET: "not assessed: the interval's projection budget is spent (first in line next time)",
   RECOVERING: 'not assessed: projected PI at sustained demand is already ≤ 1 (recovering by itself)',
   ASSESSED: '',
 };
 
-const SHARE_KEYS = ['CPU', 'ZIIP', 'IO', 'CAP', 'OTHER'] as const;
+const SHARE_KEYS = ['CPU', 'ZIIP', 'IO', 'STORAGE', 'QUEUE', 'CAP', 'OTHER'] as const;
 
-/** The shares the bottleneck was chosen from: each delay over the period's using + delay. */
+/** The period's delay shares: each delay over its using + delay (OTHER, the waits, is outside both). */
 const shareText = (c: WlmCandidateTrace) =>
   SHARE_KEYS.map((k) => `${k} ${(100 * c.delayShares[k]).toFixed(0)}%`).join(' ');
 
 function candidateLines(c: WlmCandidateTrace, n: number): string[] {
   const head = `  ${n}. ${c.scKey} imp ${c.importance} PI ${piText(c.sysplexPi)} (local ${piText(c.localPi)}) DP ${hexDp(c.dp)}${c.bottleneck ? ` BTLNK ${c.bottleneck}` : ''}`;
-  const shares = [`       delay ${shareText(c)} of using + delay`];
+  const waiting = c.waitingFrac !== undefined && c.waitingFrac > 0.5 ? [`       mostly waiting: waits are ${(100 * c.waitingFrac).toFixed(0)}% of all samples`] : [];
+  const shares = [`       delay ${shareText(c)} of using + delay`, ...waiting];
   // To the second: a clock runs in 10-second intervals.
   const nextLook = c.skipUntilTick !== undefined ? `       next look ${clockText(c.skipUntilTick)}${formatClock(c.skipUntilTick).slice(-3)}` : null;
   if (c.outcome !== 'ASSESSED') return [head, ...shares, `       ${OUTCOME_TEXT[c.outcome]}`, ...(nextLook ? [nextLook] : [])];
@@ -84,10 +85,12 @@ function candidateLines(c: WlmCandidateTrace, n: number): string[] {
   return [
     head,
     ...shares,
-    ...(c.donors?.length ? [`       donors in order: ${c.donors.join(' ')}`] : []),
+    ...(c.plans && c.plans.length > 1
+      ? [`       plans: ${c.plans.map((p) => `${p.bottleneck} ${p.outcome}${p.donors.length ? ` (donors ${p.donors.join(' ')})` : ''}`).join(', then ')}`]
+      : c.donors?.length ? [`       donors in order: ${c.donors.join(' ')}`] : []),
     ...c.trials.map((t) => {
       const r = t.receiverPi ? `  rcvr PI ${piText(t.receiverPi[0])}→${piText(t.receiverPi[1])}` : '';
-      return `       ${t.move.padEnd(30)} ${t.verdict}${r}${t.detail ? `  ${t.detail}` : ''}`;
+      return `       ${t.bottleneck ? `${t.bottleneck.padEnd(4)} ` : ''}${t.move.padEnd(30)} ${t.verdict}${r}${t.detail ? `  ${t.detail}` : ''}`;
     }),
     ...(c.planOutcome && c.planOutcome !== 'ACCEPTED' ? [`       plan ended: ${c.planOutcome}; no tentative moves committed`] : []),
     ...(nextLook ? [`${nextLook} (${c.planOutcome ? 'plan not committed' : 'all rejected'}: skip clock set)`] : []),
@@ -164,11 +167,18 @@ export interface WlmStatsCounters {
   noCandidate: number;
   /** Candidates with an outcome of `ASSESSED` (trials were built for them). */
   assessed: number;
-  /** `NOT_FIXABLE` candidates by the bottleneck they were skipped for. */
-  notFixable: Record<'IO' | 'OTHER' | 'CAP' | 'NONE', number>;
+  /** `NOT_FIXABLE` candidates by their largest managed delay (CPU and zIIP delay both under `bottleneckMinFrac` of it;
+   * WT-10). */
+  notFixable: Record<'IO' | 'STORAGE' | 'QUEUE', number>;
   /** `SKIP_CLOCK` and `NO_MANAGED_DELAY` candidates (WT-05). */
   skipClock: number;
   noManagedDelay: number;
+  /** Candidates that were mostly waiting (waits over half their samples; WT-10), by outcome: their log note says so
+   * whatever the outcome (assessed with no plan, not fixable, recovering; no managed delay). */
+  waitingNoDelay: number;
+  waitingAssessed: number;
+  waitingNotFixable: number;
+  waitingRecovering: number;
   /** Skip clocks set (an assessed candidate with every trial rejected). */
   clocksSet: number;
   /** `BUDGET` candidates: the interval's projection budget was spent before them. */
@@ -191,8 +201,11 @@ export interface WlmStatsCounters {
   /** A period's DP move reversed by the next move of the same period … */
   reversed: number;
   /** … within two minutes (12 adjustments of that system): the flip-flop W1 is about, as opposed to work that gets
-   * a turn every few minutes on a full image (docs/wlm-design.md §9.4 point 6). */
+   * a turn every few minutes on a full image (docs/wlm-design.md §9.4 point 6). Not counted here when another
+   * receiver's plan in between projected the period past its goal (I13): conditions changed, it was not a flip-flop … */
   reversedWithin2Min: number;
+  /** … but counted here: reversals within two minutes after such an intervening plan. */
+  reversedAfterHarm: number;
   /** Candidates whose projected PI at the current DPs (`base`) was already ≤ 1: no trials (WT-04). */
   recovering: number;
   /** Periods assessed on 30 adjustments without being the receiver of an accepted move (one per run). A donor move
@@ -214,9 +227,9 @@ export interface WlmStats {
 }
 
 const emptyCounters = (): WlmStatsCounters => ({
-  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, OTHER: 0, CAP: 0, NONE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
+  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, STORAGE: 0, QUEUE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, waitingNoDelay: 0, waitingAssessed: 0, waitingNotFixable: 0, waitingRecovering: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
   verdicts: { ACCEPTED: 0, RETAINED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
-  acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, episodes: 0,
+  acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, reversedAfterHarm: 0, episodes: 0,
 });
 
 const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'RETAINED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE', 'PROJECTION_DISAGREES'];
@@ -224,21 +237,13 @@ const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'RETAINED', 'CPU_CRITICAL'
 const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounters['notFixable'] => {
   switch (b) {
     case 'IO':
-    case 'CAP':
-    case 'OTHER':
-    case 'NONE':
+    case 'STORAGE':
+    case 'QUEUE':
       return b;
-    case null:
-      return 'NONE';
-    // A CPU/zIIP bottleneck is assessable, so `policyAdjust` never records it as NOT_FIXABLE: if that changes, the
-    // audit table needs a column for it rather than quietly folding it into "no bottleneck".
-    case 'CPU':
-    case 'ZIIP':
+    // CPU and zIIP are assessable, and a candidate with no managed delay is NO_MANAGED_DELAY, so `policyAdjust` never
+    // records these as NOT_FIXABLE: if that changes, the audit table needs a column for it.
+    default:
       throw new Error(`a ${b} bottleneck cannot be NOT_FIXABLE`);
-    default: {
-      const never: never = b;
-      return never;
-    }
   }
 };
 
@@ -264,6 +269,8 @@ export interface WlmEpisode {
 function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[]): WlmStatsCounters {
   const c = emptyCounters();
   const lastDirection = new Map<string, { dir: 1 | -1; at: number }>();
+  /** The last adjustment at which another receiver's accepted plan projected the period past its goal. */
+  const harmedAt = new Map<string, number>();
   let at = -1;
   const runs = new Map<string, { n: number; counted: boolean; first: string; last: string; verdicts: Partial<Record<WlmTrialVerdict, number>> }>();
   const close = (period: string, end: string | null) => {
@@ -279,13 +286,22 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
     const moved = new Map<string, 1 | -1>();
     const receiverMoved = new Set<string>();
     for (const cand of t.candidates) {
-      if (cand.outcome === 'NOT_FIXABLE') c.notFixable[notFixableKey(cand.bottleneck)]++;
-      else if (cand.outcome === 'BUDGET') c.budget++;
-      else if (cand.outcome === 'RECOVERING') c.recovering++;
+      const waiting = (cand.waitingFrac ?? 0) > 0.5;
+      if (cand.outcome === 'NOT_FIXABLE') {
+        c.notFixable[notFixableKey(cand.bottleneck)]++;
+        if (waiting) c.waitingNotFixable++;
+      } else if (cand.outcome === 'BUDGET') c.budget++;
+      else if (cand.outcome === 'RECOVERING') {
+        c.recovering++;
+        if (waiting) c.waitingRecovering++;
+      }
       else if (cand.outcome === 'SKIP_CLOCK') c.skipClock++;
-      else if (cand.outcome === 'NO_MANAGED_DELAY') c.noManagedDelay++;
-      else {
+      else if (cand.outcome === 'NO_MANAGED_DELAY') {
+        c.noManagedDelay++;
+        if (waiting) c.waitingNoDelay++;
+      } else {
         c.assessed++;
+        if (waiting) c.waitingAssessed++;
         assessed.add(cand.scKey);
         if (cand.skipUntilTick !== undefined) c.clocksSet++;
       }
@@ -332,9 +348,16 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
       const was = lastDirection.get(period);
       if (was !== undefined && was.dir !== dir) {
         c.reversed++;
-        if (at - was.at <= 12) c.reversedWithin2Min++;
+        if (at - was.at <= 12) {
+          if ((harmedAt.get(period) ?? -1) > was.at) c.reversedAfterHarm++;
+          else c.reversedWithin2Min++;
+        }
       }
       lastDirection.set(period, { dir, at });
+    }
+    for (const cand of t.candidates) for (const tr of cand.trials) {
+      if (tr.verdict !== 'ACCEPTED' || !tr.afterPis) continue;
+      for (const [period, pi] of Object.entries(tr.afterPis)) if (period !== cand.scKey && pi !== null && pi > 1) harmedAt.set(period, at);
     }
     // A committed plan ends the primary receiver's run, even if only its donors moved. Donating to another
     // receiver does not end the donor's own run; neither does an adjustment that skipped the period.
@@ -417,6 +440,10 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
     total.recovering += c.recovering;
     total.skipClock += c.skipClock;
     total.noManagedDelay += c.noManagedDelay;
+    total.waitingNoDelay += c.waitingNoDelay;
+    total.waitingAssessed += c.waitingAssessed;
+    total.waitingNotFixable += c.waitingNotFixable;
+    total.waitingRecovering += c.waitingRecovering;
     total.clocksSet += c.clocksSet;
     total.trials += c.trials;
     total.projections += c.projections;
@@ -430,6 +457,7 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
     total.rejectedPiNull += c.rejectedPiNull;
     total.reversed += c.reversed;
     total.reversedWithin2Min += c.reversedWithin2Min;
+    total.reversedAfterHarm += c.reversedAfterHarm;
     total.episodes += c.episodes;
   }
   return total;
@@ -556,14 +584,17 @@ export function statsText(stats: WlmStats): string {
     ['adjustments', [...stats.systems.map((s) => s.counters.adjustments), stats.total.adjustments]],
     ['  no candidate (every goal met)', [...stats.systems.map((s) => s.counters.noCandidate), stats.total.noCandidate]],
     ['candidates assessed', [...stats.systems.map((s) => s.counters.assessed), stats.total.assessed]],
+    ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingAssessed), stats.total.waitingAssessed]],
     ['  not assessed: I/O bottleneck', [...stats.systems.map((s) => s.counters.notFixable.IO), stats.total.notFixable.IO]],
-    ['  not assessed: other bottleneck', [...stats.systems.map((s) => s.counters.notFixable.OTHER), stats.total.notFixable.OTHER]],
-    ['  not assessed: capping bottleneck', [...stats.systems.map((s) => s.counters.notFixable.CAP), stats.total.notFixable.CAP]],
-    ['  not assessed: no bottleneck', [...stats.systems.map((s) => s.counters.notFixable.NONE), stats.total.notFixable.NONE]],
+    ['  not assessed: storage bottleneck', [...stats.systems.map((s) => s.counters.notFixable.STORAGE), stats.total.notFixable.STORAGE]],
+    ['  not assessed: queue bottleneck', [...stats.systems.map((s) => s.counters.notFixable.QUEUE), stats.total.notFixable.QUEUE]],
+    ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingNotFixable), stats.total.waitingNotFixable]],
     ['  not assessed: budget', [...stats.systems.map((s) => s.counters.budget), stats.total.budget]],
     ['  not assessed: already recovering (base ≤ 1)', [...stats.systems.map((s) => s.counters.recovering), stats.total.recovering]],
+    ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingRecovering), stats.total.waitingRecovering]],
     ['  not assessed: skip clock running', [...stats.systems.map((s) => s.counters.skipClock), stats.total.skipClock]],
     ['  not assessed: no managed delay', [...stats.systems.map((s) => s.counters.noManagedDelay), stats.total.noManagedDelay]],
+    ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingNoDelay), stats.total.waitingNoDelay]],
     ['skip clocks set (every trial rejected)', [...stats.systems.map((s) => s.counters.clocksSet), stats.total.clocksSet]],
     ['proposed steps (including free rejections)', [...stats.systems.map((s) => s.counters.trials), stats.total.trials]],
     ['projections', [...stats.systems.map((s) => s.counters.projections), stats.total.projections]],
@@ -580,6 +611,7 @@ export function statsText(stats: WlmStats): string {
     ['rejected, receiver before PI (base) null', [...stats.systems.map((s) => s.counters.rejectedPiNull), stats.total.rejectedPiNull]],
     ["moves reversed by the period's next move", [...stats.systems.map((s) => s.counters.reversed), stats.total.reversed]],
     ['  … within two minutes', [...stats.systems.map((s) => s.counters.reversedWithin2Min), stats.total.reversedWithin2Min]],
+    ['  … within two minutes, after another plan pushed it past its goal', [...stats.systems.map((s) => s.counters.reversedAfterHarm), stats.total.reversedAfterHarm]],
     ['assessed on 30 adjustments without a move (episodes)', [...stats.systems.map((s) => s.counters.episodes), stats.total.episodes]],
   ];
   const labelWidth = Math.max(...rows.map(([label]) => label.length));

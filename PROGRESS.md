@@ -503,6 +503,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   scenarios). `play … mon3` now prints SYSWKM too; use the play CLI for report and Monitor III questions.
 - Keep new session updates brief: current status, changed decisions, unresolved work, and latest validation.
   Use commit/PR links for completed detail rather than rebuilding a chronological transcript.
+- WT-10 sweep (2026-11-12, remote, Normal, seeds 1–10, `44a35ab`; the PR head differs only in log text): Midwest
+  16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged; Harbourline 9.5 / 30 / 7 (textbook 1 victory), from
+  10.5 / 30 / 7. All inside the CI bands ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43277480009),
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43277480117),
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43277481255)). Harbourline expert seed 7 is still lost
+  on day 39: its D29 is a saturated PRDA, not W7 (docs/wlm-design.md §9.10).
 
 ## Latest maintenance
 
@@ -539,6 +545,22 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   must not fall without an explanation; reversals reported against the previous entry). §9.7 corrected: Midwest's
   do-nothing swing rides on W7. User decision: WT-10 goes before WT-09. New WT-16: why joining a level projects much
   worse than staying below it.
+
+- 2026-11-12: WT-10 (managed bottlenecks in turn, W7). Plans are built for CPU and then zIIP delay, largest first,
+  each when it is at least 15 % of the managed delay; waits and capping no longer outvote CPU delay (WLM Services
+  p.148; SG24-6472-03 p.63–64). A period mostly waiting logs `mostly waiting, CPU delay n %: not WLM-fixable`, also
+  where the projection calls it recovering. S-1 … S-3: no candidate is dropped for its waits any more (other
+  572 / 4 771 / 5 520 → none; I/O 0 / 0 / 106 → 0 / 0 / 22); plans 19 / 24 / 54 → 21 / 24 / 107; `RECOVERING` grows
+  (225 / 1 703 / 5 636 → 646 / 3 431 / 9 608), PR-20 updated to count it. The DDFPRD#1 case on WT-07's state gets an
+  accepted CPU plan. Shadow IT slows MOBILE again under adaptive WLM; the RT-06 test fixture moves to Revenue seed 6.
+  Harbourline seed 7 does not come back: §9.7's W7 attribution corrected (§9.10).
+
+- 2026-11-12: WT-10 review (#318): the S-3 PRDD reversal within two minutes is three plans in a minute (a happy
+  donor at its goal, then a more important receiver's plan that projects it at 25.36, then the donor raised back).
+  User decision: accepted; I13 reworded to exclude reversals after another receiver's plan in between projected the
+  period past its goal, and `wlm-stats` counts those apart (S-1 … S-3: 0 / 0 / 0, and 0 / 0 / 1 apart). Also fixed:
+  a decayed history no longer reports bottleneck NONE (wlm-stats threw), and mostly waiting counts cover every
+  outcome whose note says so.
 
 - 2026-11-12: open WLM questions researched. A receiver whose delays are all unmanaged is not a receiver and gets no
   skip clock (SG24-6472-03 p.61, 64; WLM Services p.145): the sim's NOT_FIXABLE matches for capping, and W7 (waits
