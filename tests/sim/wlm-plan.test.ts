@@ -72,8 +72,9 @@ describe('atomic policy plans (WT-08, SG24-6472-03 p.67–68)', () => {
     let calls = 0;
     const out = buildPlan({ receiver: 'R', ladder: [['D0'], ['D1', 'R', 'X']], donors: ['D0', 'D1'],
       basePi: 10, maxSteps: 6, importanceOf: () => 2, receiverValue: () => false,
-      assess: () => { calls++; return calls === 2 ? { ...blocked(), verdict: 'NO_RECEIVER_GAIN' } : { ...net(10 - calls), receiverPi: [10, 10 - calls] }; } });
-    expect(calls).toBe(4);
+      // Calls 2 and 3: the join with D0 and the split above it both buy nothing, so the donors are tried.
+      assess: () => { calls++; return calls === 2 || calls === 3 ? { ...blocked(), verdict: 'NO_RECEIVER_GAIN' } : { ...net(10 - calls), receiverPi: [10, 10 - calls] }; } });
+    expect(calls).toBe(5);
     expect(out.outcome).toBe('REJECTED');
     expect(out.attempts.flatMap((a) => a.moves).filter((m) => m.kind === 'DONOR').map((m) => m.scKey)).toEqual(['D0']);
   });
@@ -98,5 +99,20 @@ describe('atomic policy plans (WT-08, SG24-6472-03 p.67–68)', () => {
     expect(out.outcome).toBe('REJECTED');
     expect(out.attempts.map((a) => a.verdict)).toEqual(['RETAINED', 'MORE_IMPORTANT_HARMED', 'RETAINED', 'NO_RECEIVER_GAIN']);
     expect(out.attempts[3]!.ok).toBe(false);
+  });
+
+  it('assesses the place above the next level when joining it is worse for the receiver (WLM Services p.707, 630)', () => {
+    let calls = 0;
+    const L: Ladder = [['D'], ['R']];
+    const out = buildPlan({ receiver: 'R', ladder: L, donors: [], basePi: 4, maxSteps: 2,
+      importanceOf: () => 1, receiverValue: (p) => p < 1,
+      assess: (T) => {
+        calls++;
+        if (calls === 1) { expect(T).toEqual([['D', 'R']]); return { ...net(26), ok: false, verdict: 'NO_RECEIVER_GAIN', receiverPi: [4, 26] }; }
+        expect(T).toEqual([['R'], ['D']]); return net(.74);
+      } });
+    expect(out.outcome).toBe('ACCEPTED');
+    expect(out.ladder).toEqual([['R'], ['D']]);
+    expect(out.attempts.map((a) => a.verdict)).toEqual(['NO_RECEIVER_GAIN', 'ACCEPTED']);
   });
 });

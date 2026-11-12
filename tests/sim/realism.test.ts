@@ -1061,24 +1061,25 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     const firstClock = traces.find((t) => t.candidates.some((c) => c.scKey === 'ONLHI#1' && c.outcome === 'ASSESSED' && c.skipUntilTick !== undefined))!;
     expect(firstClock).toBeDefined();
     expect(lines.some((l) => l.startsWith(`${firstClock.clockText} PROD1 ONLHI#1`) && l.includes('no action with net value') && l.includes('rejected:'))).toBe(true);
-    // Db2 is in STCHI here. A happy STCHI may donate (WT-07, SG24-6472 p.59–60). WT-08 leaves it
-    // below ONLHI even after a partial recovery, so OTHER persists beyond WT-07's five-minute episode.
-    // Check the actual ladder and preceding committed donation, not a distance between deduplicated log lines.
-    // Waits outside velocity can dominate this bottleneck choice (WT-10); §9.9 records the changed duration.
+    // Db2 is in STCHI here. A happy STCHI may donate (WT-07, SG24-6472 p.59–60), and ONLHI then waits for it (OTHER)
+    // until STCHI misses its goal and is raised back above ONLHI. That raise needs the move to the free priority above
+    // ONLHI, assessed even when joining ONLHI's level is worse for STCHI (WLM Services p.707, code 630; the design
+    // review of 2026-11-12 found WT-08 without it, OTHER to the 16:00 end of this window).
     let donated = false, other = 0;
     for (const t of traces) {
       const c = t.candidates.find((c) => c.scKey === 'ONLHI#1');
       if (c?.outcome === 'NOT_FIXABLE' && c.bottleneck === 'OTHER') {
         other++;
         expect(donated, t.clockText).toBe(true);
-        expect(t.dps['STCHI#1'], t.clockText).toBeLessThan(t.dps['ONLHI#1']!);
       }
       if (t.candidates.some((c) => c.trials.some((tr) => tr.verdict === 'ACCEPTED' && tr.plan?.some((m) => m.kind === 'DONOR' && m.scKey === 'STCHI#1')))) donated = true;
     }
     expect(other).toBeGreaterThan(0);
-    // Bound: at WT-08 it starts at 14:00 and lasts to the end of this window (720 adjustments to 16:00); WT-10 owns
-    // the episode, so one that starts earlier fails here.
-    expect(other).toBeLessThanOrEqual(720);
+    expect(other).toBeLessThanOrEqual(60);
+    // Once assessed as a receiver below ONLHI, STCHI is back above ONLHI within five minutes (30 adjustments).
+    const first = traces.findIndex((t) => t.dps['STCHI#1']! < t.dps['ONLHI#1']! && t.candidates.some((c) => c.scKey === 'STCHI#1' && c.outcome === 'ASSESSED'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(traces.slice(first, first + 31).some((t) => t.dps['STCHI#1']! > t.dps['ONLHI#1']!), traces[first]!.clockText).toBe(true);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
     // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
     // Under the cap a less important receiver may not pass more important work that is missing its goal and using

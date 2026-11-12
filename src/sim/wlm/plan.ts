@@ -110,10 +110,11 @@ export function buildPlan(input: {
             if (!a) return finish('BUDGET');
           }
         }
-        // APPROX: a harmful join can hide a valuable split above that same level (the dispatcher is nonlinear).
-        // Assess the two-step proposal as a whole; the failed join is never retained on its own.
+        // APPROX: a harmful join, or one worse for the receiver itself, can hide a valuable split above that same
+        // level (the dispatcher is nonlinear). WLM assesses the move to the free priority above a donor directly (WLM
+        // Services p.707, code 630): assess the two-step proposal as a whole; the failed join is never retained alone.
         if (!a.ok && proposed.length === 1 && L[levelOf(L, r)]!.length === 1 &&
-            (a.verdict === 'NO_NET_VALUE' || a.verdict === 'EQUAL_DISPARITY') && moves.length + 2 <= maxSteps) {
+            (a.verdict === 'NO_NET_VALUE' || a.verdict === 'EQUAL_DISPARITY' || a.verdict === 'NO_RECEIVER_GAIN') && moves.length + 2 <= maxSteps) {
           const split = raiseOneStep(T, r);
           if (split !== T && !seen.has(JSON.stringify(split))) {
             proposed.push(step('UP', r, T, split));
