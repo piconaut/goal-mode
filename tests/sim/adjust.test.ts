@@ -574,7 +574,18 @@ describe('long-term CPU protection is enforced, not a reason to stop managing (W
     const out = enforceCpuProtection({ 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf9, 'BATCHPRD#1': 0xfb, 'ONLHI#1': 0xfc }, info, 0);
     // Both onto one new level directly below the protected one; the result is canonical (WT-06).
     expect(out.dps).toEqual({ 'ONLHI#1': 0xf6, 'ONLRBANK#1': 0xf4, 'BATCHHI#1': 0xf2, 'BATCHPRD#1': 0xf2 });
-    expect(out.moves).toEqual(['BATCHHI#1 DP F9→F3', 'BATCHPRD#1 DP FB→F3']);
+    expect(out.moves).toEqual(['BATCHHI#1 DP F9→F2 below ONLRBANK#1', 'BATCHPRD#1 DP FB→F2 below ONLRBANK#1']);
+  });
+
+  it('names chained moves by the DPs before and after all of them (a protected period lowered, then a floor)', () => {
+    const chain = {
+      A: { cpuCritical: false, period: 0, importance: 1 },
+      B: { cpuCritical: false, period: 0, importance: 2 },
+      C: { cpuCritical: false, period: 0, importance: 3 },
+    } as const;
+    const out = enforceCpuProtection({ A: 0xf2, B: 0xf6, C: 0xf4 }, chain, 2);
+    expect(out.dps).toEqual({ A: 0xf6, B: 0xf4, C: 0xf2 });
+    expect(out.moves).toEqual(['B DP F6→F4 below A', 'C DP F4→F2 below B']);
   });
 
   it('changes nothing when protection already holds, and CCIMP protects first periods up to that importance', () => {
@@ -592,7 +603,7 @@ describe('long-term CPU protection is enforced, not a reason to stop managing (W
     const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
     const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
     const out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
-    expect(out.protect).toBe('T SYS1 CPU PROTECTION BATCHPRD#1 DP FB→F3');
+    expect(out.protect).toBe('T SYS1 CPU PROTECTION BATCHPRD#1 DP FB→F4 below ONLCARD#1');
     expect(out.dps['BATCHPRD#1']!).toBeLessThan(out.dps['ONLCARD#1']!);
     expect(out.log ?? '').not.toContain('no action with net value');
   });

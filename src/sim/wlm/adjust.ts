@@ -179,7 +179,7 @@ export function enforceCpuProtection(
 ): { dps: Record<string, number>; moves: string[] } {
   const keys = Object.keys(info).filter((k) => dps[k] !== undefined).sort();
   let L = ladderAt(dps, keys);
-  const moves: string[] = [];
+  const moved: [string, string][] = [];
   // Everything moved below one protected level shares one new level there, whatever its importance (as one DP did).
   const belowOf: Record<string, string> = {};
   for (let imp = 2; imp <= 5; imp++) {
@@ -194,11 +194,14 @@ export function enforceCpuProtection(
       const first = belowOf[floorKey];
       L = first === undefined ? moveToLevel(L, k, levelOf(L, floorKey), 'below') : moveToLevel(L, k, levelOf(L, first));
       belowOf[floorKey] ??= k;
-      // Named as the free priority just below the protected level, in the DPs before the moves (see moveTarget).
-      moves.push(`${k} DP ${hex(dps[k]!)}→${hex(dps[floorKey]! - 1)}`);
+      moved.push([k, floorKey]);
     }
   }
-  return { dps: withLadder(dps, L), moves };
+  const out = withLadder(dps, L);
+  // Named by the DPs before and after all the moves: a protected period can itself be lowered before it is the floor
+  // of a later move, so targets in any intermediate numbering would contradict each other.
+  const moves = moved.map(([k, floorKey]) => `${k} DP ${hex(dps[k]!)}→${hex(out[k]!)} below ${floorKey}`);
+  return { dps: out, moves };
 }
 
 /**
