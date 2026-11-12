@@ -494,7 +494,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   waits were skipped as `NO_MANAGED_DELAY` (changes Midwest and Revenue; numbers above are after the fix).
   Review fixes (#296): a search the budget stopped resumes next interval at the receiver it stopped on
   (`ScpState.resumeSearch`), so twelve hopeless receivers at six projections each can no longer starve the receivers
-  behind them; the delay test counts the goal PI's samples (transaction-server regions out, `srvDelayCap` added).
+  behind them; the delay test counts the goal PI's samples (transaction-server regions out, `srvDelayCap` added); a save from before `srvDelayCap` assumes its server history was all capping, so the test errs toward assessing).
   Neither fires in S-1 … S-3: one-day `compare` against the previous head is identical apart from the new fields.
 - 2026-11-11: WT-04, one PI basis (docs/wlm-design.md §5.2–§5.4, §9.5): receivers chosen on the management PI,
   trials judged on projected PIs (`base` against `after`) at sustained demand (`src/sim/wlm/projection.ts`); a

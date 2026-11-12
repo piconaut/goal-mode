@@ -5,7 +5,7 @@ import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
-import { decayInto, emptyAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
+import { ACC_DECAY, decayInto, emptyAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
 
 // RPT job shapes and prior pacing from the saved D5 22:23 CP-only trial.
 const savedJobs = [
@@ -530,6 +530,13 @@ describe('managedDelayFrac (docs/wlm-design.md §5.7)', () => {
     // A capped server's capping delay is its own: the other members' CPU delay still counts.
     const capped = decayInto(emptyAcc(), { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
     expect(managedDelayFrac(capped)).toBeCloseTo(1 / 10, 12);
+    // A save from before srvDelayCap: the server history is there without it. Taking the server's capping off twice
+    // (inside srvDelay and again from delayCap) would leave no managed delay at all (#296 review B3).
+    const { srvDelayCap: _gone, ...legacy } = capped;
+    expect(managedDelayFrac(legacy)).toBeCloseTo(1 / 10, 12);
+    const next = decayInto(legacy, { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
+    expect(next.srvDelayCap).toBeCloseTo(10 * (1 + ACC_DECAY), 12);
+    expect(managedDelayFrac(next)).toBeCloseTo(1 / 10, 12);
     // Only server regions: nothing left to manage.
     expect(managedDelayFrac(decayInto(emptyAcc(), { ...emptyScpTick('TOR#1', 0xe0), usingCpu: 1, delayCpu: 1, srvUsing: 1, srvDelay: 1, srvDelayCap: 0 }))).toBe(0);
   });

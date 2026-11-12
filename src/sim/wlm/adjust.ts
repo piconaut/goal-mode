@@ -13,7 +13,7 @@ import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './e
 import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
 import { projectedPercentilePi } from './goals';
-import { ACC_DECAY, goalPi, goalInfo, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
+import { ACC_DECAY, goalPi, goalInfo, srvDelayCapOf, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -181,7 +181,7 @@ export function managedDelayFrac(
   const delay = acc.delay - (acc.delayIoNoVel ?? 0) - srvDelay;
   const samples = acc.using - (acc.usingIoNoVel ?? 0) - (acc.srvUsing ?? 0) + delay;
   if (!(samples > 0)) return 0;
-  const cap = acc.delayCap - (acc.srvDelayCap ?? 0);
+  const cap = acc.delayCap - srvDelayCapOf(acc);
   return Math.max(0, delay - cap) / samples;
 }
 

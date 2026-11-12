@@ -47,6 +47,11 @@ export interface ScpAcc {
 export const velUsing = (a: { using: number; usingIoNoVel?: number }): number => a.using - (a.usingIoNoVel ?? 0);
 export const velDelay = (a: { delay: number; delayIoNoVel?: number }): number => a.delay - (a.delayIoNoVel ?? 0);
 
+/** The capping delay inside `srvDelay`. A save from before `srvDelayCap` holds server history without it: the most it
+ * can be (all capping, up to `srvDelay`) is assumed, so the managed-delay test errs toward assessing the period. */
+export const srvDelayCapOf = (a: { delayCap: number; srvDelay?: number; srvDelayCap?: number }): number =>
+  a.srvDelayCap ?? Math.min(a.delayCap, a.srvDelay ?? 0);
+
 export interface ScpState {
   scKey: string;
   dp: number;
@@ -162,7 +167,7 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
       ? {
           srvUsing: (acc.srvUsing ?? 0) * d + (t.srvUsing ?? 0),
           srvDelay: (acc.srvDelay ?? 0) * d + (t.srvDelay ?? 0),
-          srvDelayCap: (acc.srvDelayCap ?? 0) * d + (t.srvDelayCap ?? 0),
+          srvDelayCap: srvDelayCapOf(acc) * d + (t.srvDelayCap ?? 0),
         }
       : {}),
   };
@@ -201,7 +206,7 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   if (a.srvUsing !== undefined) {
     out.srvUsing = (out.srvUsing ?? 0) + a.srvUsing;
     out.srvDelay = (out.srvDelay ?? 0) + (a.srvDelay ?? 0);
-    out.srvDelayCap = (out.srvDelayCap ?? 0) + (a.srvDelayCap ?? 0);
+    out.srvDelayCap = (out.srvDelayCap ?? 0) + srvDelayCapOf(a);
   }
 }
 
