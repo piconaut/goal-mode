@@ -17,6 +17,7 @@
     "compare": "tsx tools/compare.ts",
     "sweep": "tsx tools/sweep.ts",
     "sweep:remote": "tsx tools/sweepRemote.ts",
+    "test:remote": "tsx tools/testRemote.ts",
     "play": "tsx tools/play.ts",
     "inspect": "tsx tools/inspect.ts",
     "repro": "tsx tools/repro.ts"

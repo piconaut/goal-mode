@@ -39,6 +39,7 @@ npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [-
 npm run bot -- --bot expert --scenario harbourline --seed 9 --days 29 [--changes] [--trace-day 29] [--dump 'PRDA D29 10:0'] [--tune rejectedSkipTicks=0]   # investigations: the bot's changes; one day's WLM an hour at a time (moves, outcomes, SLA, DPs); every candidate and trial of matching adjustments; POLICY_ADJUST overrides (tools/tune.ts; not balance)
 npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader] [--tune k=v,...]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
 npm run sweep:remote -- --bots donothing,textbook,expert --seeds 1-20 [--scenario harbourline] [--difficulty hard] [--tune k=v,...] [--shards 4] [--no-wait]   # same sweep on GitHub Actions, sharded by seed, on committed HEAD (no PR); waits, then runs/remote/<sha7>/summary.md + sweep.csv; --fetch <sha> collects a --no-wait run
+npm run test:remote -- [--suite golden,game,sim,tools,ui | --filter <text>] [--shards 4] [--no-wait]   # vitest (`npm test`) on GitHub Actions, sharded by test file, on committed HEAD (no PR); waits, then runs/remote-tests/<sha7>/summary.md; --fetch <sha> collects a --no-wait run
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
 npm run play -- runs/a.json mon3 [system] [--json] [--at D2 10:40]   # Monitor III now or past: SYSINFO, CPC, DELAY, PROCU, ENCLAVE, SYSWKM, WFEX (text or --json); use it instead of ad-hoc scripts
 npm run play -- runs/a.json finance | capacity | batch   # bill and TFP pace per product (overage $/MSU-hour by LPAR); CPC MSU, LPARs, initiators, capacity changes; last batch night by stream
@@ -184,4 +185,7 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   parallel shards, so the session's cores stay free and no worker session is needed. It sweeps the committed HEAD,
   pushed or not, through a throwaway `sweep/*` branch the workflow deletes. Start it with `run_in_background` (~10 min for 20 seeds);
   the summary prints when it finishes. Local `npm run sweep` stays for quick checks and offline work.
+- Full test runs go to `npm run test:remote` the same way (`--suite`/`--filter` narrow it, 4 shards by default): it
+  tests the committed HEAD through a throwaway `test/*` branch and prints one summary. Local `npm test` stays for
+  quick checks.
 - After publishing an artifact, unwatch it.
