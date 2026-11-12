@@ -255,7 +255,8 @@ that level and above.
   dispatch (`dispatchableDemand`); the cut is CAP delay. A receiver whose largest delay is CAP is not fixable.
 - **Minimum:** `rgMin` gives a group's member periods a share while any member "misses its goal" (`missingGoal`:
   local PI > 1; for a discretionary member, delay > using). `grantDispatch` (`eval/grants.ts`) dispatches that share
-  as a separate demand at `RG_MIN_DP` = 252, or 207 for a discretionary member.
+  as a separate demand at `RG_MIN_DP` = 252, or 207 for a discretionary member (as audited; 249 and 202 since WT-06,
+§5.6).
 - **Discretionary goal management:** `discretionaryCaps` caps periods with loose goals and local PI < 0.71 while
   discretionary work is waiting.
 - **Blocked workload:** a period with CPU delay and under 1 % CPU for `BLWLINTHD` gets a share at DP 253.
@@ -927,6 +928,8 @@ netValue(r, base, after, info, C):                       // T: the trial ladder;
   gain ← max(base[r], C.creditFloor) − max(after[r], C.creditFloor);  equalHarm ← 0
   for k ≠ r in key order, with base[k] and after[k] not null:
       harm ← max(0, after[k] − max(base[k], C.creditFloor))
+      if importance(k) < importance(r) and base[k] ≤ 1 < after[k]:
+          return (false, MORE_IMPORTANT_HARMED k)            // crossing its goal is harm, however small (I5)
       if harm ≤ C.harmEps: continue
       if importance(k) < importance(r):                     // more important
           if after[k] > 1: return (false, MORE_IMPORTANT_HARMED k)
@@ -976,6 +979,11 @@ donorOrder(r, b, L, info, C):
          then the rest by imp descending (5 first), then worst ascending; ties by key
   return the first C.donorsPerReceiver
 ```
+
+As implemented in WT-07 the pool is goal periods, not holders: until server periods exist (WT-09) every goal
+period is its own holder, so CICS transaction periods sharing regions are separate donors, and a donor move of one
+that is not the most important of the classes its regions serve changes no dispatching. A period with neither PI
+counts as missing its goal (`managementWorstPi`), here and in the "missing goals are not passed" rule.
 
 Discretionary periods are fixed below the managed range and hold nothing a priority move could free, so they are
 not in the pool (they are IBM's "universal donor" for storage and through capping).
@@ -1526,8 +1534,17 @@ its goal there.
 
 A happy importance-1 STC class can now be lowered for a less important receiver. In the capped-PROD1 realism case
 (Db2 moved into STCHI) STCHI donates to STCMED at D1 13:57, ONLHI is wait-bound on Db2 for one assessment (`BTLNK=OTHER`)
-and STCHI, now at PI 0.99, is raised again at 14:02. WLM projects no dependency between address spaces it manages by
-their own goals, so the dip is real behaviour; the test allows it only right after such a donation.
+and STCHI, now at PI 0.99, is raised again at 14:02. The projection does see ONLHI's waits on Db2 (the #307 review
+measured its projected mean response time rising from 38 to 50 ms and `delayOther` from 3.4 to 10.4), but ONLHI's percentile PI is at its 0.5
+floor before and after, so harm judged on the PI is nil and the move passes. That follows from the bucketed PI
+(SPEC §17, "Percentile PI in WLM projections"), not from a missing dependency model; whether real WLM would make
+the same trade is unverified. The test allows the dip only right after such a donation.
+
+Review of #307 (2026-11-12): a more important period just under its goal (PI 0.995) could be taken to 1.004 because
+the 0.02 noise tolerance ran before the goal-crossing test. Crossing from ≤ 1 to > 1 is now refused whatever the
+size (§5.3, I5; SG24-6472-03 p.60); a three-period case in `tests/sim/wlm-realism.test.ts` covers it. The
+"missing goals are not passed" rule now reads a period with no PI as missing, like the donor order. Seed-42
+one-day hashes for Midwest, Revenue and Harbourline are unchanged by both.
 
 **Sweep** (remote, Normal, seeds 1–10; do-nothing median day / textbook median day / expert victories): Midwest 9.5 /
 28 / 10 and Revenue 20 / 27 / 10, both unchanged; Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook gains a

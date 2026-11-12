@@ -11,7 +11,8 @@ import type { ActiveEvent, CapacityBasis, HourAcc, Incident, Mechanism, Trigger,
 export const BASELINE_DECAY = 0.8;
 
 /** Importance rank of a service class period for donor accounting: SYSTEM/SYSSTC 0, goal classes 1–5,
- * discretionary and SYSOTHER 6. APPROX: less important work is where policy adjustment finds CPU donors. */
+ * discretionary and SYSOTHER 6. APPROX: less important work is where policy adjustment finds CPU donors; since WT-07
+ * it also takes from happy more important work, which this does not count (RT-16). */
 export function importanceRank(def: ServiceDefinition, scKey: string): number {
   const [cls, n] = scKey.split('#');
   if (cls === SYSTEM || cls === SYSSTC) return 0;

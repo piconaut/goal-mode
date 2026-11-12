@@ -287,6 +287,9 @@ maximum on the class or its server, with `DELAY_CAP` as its evidence (RMF Report
 Done when: R-13 is CPU_PRIORITY/POLICY, R-2's basis names PROD2, U-9 … U-11 are tests, SPEC §10 and §17 are updated.
 Cross-note (WLM audit 2026-11-10): WT-09 makes CICS regions' CPU belong to a server period; do this entry after
 WT-09 and take "CP use by address-space role" and the hurt work's own servers from it (docs/wlm-design.md §7, §8 Q1).
+Cross-note (#307 review, 2026-11-12): since WT-07 WLM also takes CPU from a happy more important period, down to its
+goal, while `capacityBasis` counts only less important CP; displaceable CP should count that headroom
+(`docs/rca-design.md` A4, SPEC §17 "Incident ground truth").
 
 ### RT-17 · Healthy baseline per hour of day
 `list: rca-truth · status: blocked: playtest (deferred by the user; docs/rca-design.md §4.2, Q6) · priority: high · size: M · area: game`
@@ -648,6 +651,17 @@ From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), chec
 - I9 checks the set of goal DPs only; add order preservation across an interval with no move.
 - `tests/sim/adjust.test.ts` "moving it above the less important one" asserts a join; rename it.
 Done when: each is covered (or named here as not worth it).
+
+### PR-19 · Donor happiness uses the worse of local and sysplex PI, not the sysplex PI first
+`list: pr-followups · status: ready · priority: low · size: S · area: sim`
+
+From the second review of #307 (WT-07, comment 6815514698, 2026-11-12), B5. `managementWorstPi`
+(`src/sim/wlm/adjust.ts`) takes `max(local, sysplex)`, so a donor meeting its goal across the sysplex but missing
+it on this image counts as unhappy, and the converse. WLM Services p.138 makes the sysplex PI the primary criterion
+for selecting donors. Either justify the worse-of (a donor must be happy on both) with a source, or order by the
+sysplex PI and keep the worse-of only for the "more important and missing its goal" exclusion; a two-image test
+shows the choice either way. Done when: SPEC §5.5.4, docs/wlm-design.md §5.5 and the `docs/research.md` sysplex-PI
+row agree with the code, and the test exists.
 
 ## realism-fixes
 

@@ -1044,8 +1044,9 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     }
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
     // Db2 is in STCHI here. A happy STCHI may donate to a less important receiver (WT-07, SG24-6472 p.59–60: happy
-    // donors by PI, importance ignored), and WLM doesn't project ONLHI's waits for Db2, so ONLHI can be wait-bound
-    // (OTHER) for a moment until STCHI misses its goal and is raised again. Only then.
+    // donors by PI, importance ignored). The projection sees ONLHI's longer waits for Db2, but ONLHI's percentile PI
+    // is at its 0.5 floor, so the move shows no harm and ONLHI can be wait-bound (OTHER) for a moment until STCHI
+    // misses its goal and is raised again (docs/wlm-design.md §9.8). Only then.
     lines.forEach((l, i) => {
       if (/ONLHI#1 .*BTLNK=OTHER/.test(l)) expect(lines.slice(Math.max(0, i - 5), i).some((p) => /DONOR STCHI#1 /.test(p)), l).toBe(true);
     });

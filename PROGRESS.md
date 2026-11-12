@@ -705,6 +705,11 @@ SG24-7621 p.105. Tests cover I7 trace order, C-2 processor selection, smoothed h
 I5 (a happy more important donor must not be pushed past its goal). WT-07 deleted from BACKLOG; WT-08 remains
 attended and user-gated. Finished on the same branch: a period with no PI yet counts as missing its goal (it was the
 happiest donor); fixtures moved for the new order (one realism case: a happy STCHI holding Db2 donates and ONLHI is
-briefly wait-bound, real behaviour). S-table, R-1 and sweep in docs/wlm-design.md §9.8: moves 25/26/44 → 33/21/47,
+briefly wait-bound; the projection sees it but ONLHI's PI is at its 0.5 floor). S-table, R-1 and sweep in docs/wlm-design.md §9.8: moves 25/26/44 → 33/21/47,
 nothing undone within two minutes, projections up to 1.7×, bench 1.53 → 1.58 ms per tick; sweep (Normal, seeds 1–10)
 Midwest and Revenue unchanged, Harbourline do-nothing 10.5 → 10, all inside the CI gate's bands (M8.2).
+Review fixes (#307 comments 6814997986 and 6815514698): a more important period at PI ≤ 1 can no longer be taken
+past 1 by a harm under `harmEps` (I5; reviewer's three-period case as a test); one `managementWorstPi` rule for "no
+PI counts as missing" in the donor order and the "missing goals are not passed" check; docs say periods, not
+holders, until WT-09; the RCA "donors are less important" approximation is noted for RT-16; B5 (sysplex PI first)
+is PR-19.

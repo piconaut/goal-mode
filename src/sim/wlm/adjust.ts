@@ -228,6 +228,17 @@ export function managedDelayFrac(
 export const receiverValueNeeded = (basePi: number): number =>
   Math.max(POLICY_ADJUST.receiverValueFrac * (basePi - 1), POLICY_ADJUST.receiverValueMinPi);
 
+/**
+ * The worse of a period's management PIs, local and sysplex: what "missing its goal" is read from. APPROX: a period
+ * with neither (no completions yet, e.g. a new response-time period) is not known to meet its goal, so it counts as
+ * missing it (Infinity): it donates last at its importance, never when more important than the receiver, and a less
+ * important receiver does not pass it. A period that structurally has no PI (only server regions in it) is not a goal
+ * holder once server periods exist (WT-09, docs/wlm-design.md §5.8); until then it is judged by this rule too.
+ */
+export function managementWorstPi(localPi: number | null | undefined, sysplexPi: number | null | undefined): number {
+  return localPi == null && sysplexPi == null ? Infinity : Math.max(localPi ?? 0, sysplexPi ?? 0);
+}
+
 export interface DonorInfo {
   importance: ScpGoalInfo['importance'];
   localPi: number | null;
@@ -237,11 +248,13 @@ export interface DonorInfo {
 }
 
 /**
- * Goal holders at or above the receiver using the delayed processor (WLM Services p.147; SG24-7621 p.105).
+ * Goal periods at or above the receiver using the delayed processor (WLM Services p.147; SG24-7621 p.105).
  * Happy periods give first, lowest PI first regardless of importance (SG24-6472-03, March 2008, p.59–60);
- * then reverse receiver order (WLM Services p.138). APPROX: happiness uses the worse of local/sysplex PI,
- * processor use is exponentially smoothed, and the small-consumer threshold and donor limit are FICTIONAL.
- * `info` contains goal holders only; discretionary work is fixed below the managed ladder.
+ * then reverse receiver order (WLM Services p.138). APPROX: happiness uses the worse of local/sysplex PI
+ * (`managementWorstPi`), processor use is exponentially smoothed, and the small-consumer threshold and donor limit
+ * are FICTIONAL. APPROX: the pool is periods, not holders (docs/wlm-design.md §5.5): CICS transaction periods that
+ * share regions are separate donors until server periods (WT-09) make the regions' DP one holder's.
+ * `info` contains goal periods only; discretionary work is fixed below the managed ladder.
  */
 export function donorOrder(
   receiver: string,
@@ -256,9 +269,7 @@ export function donorOrder(
   return Object.keys(info)
     .map((key) => {
       const g = info[key]!;
-      // APPROX: a period with no PI at all (no completions yet) is not known to be happy; it is treated as missing
-      // its goal, so it donates last at its importance and never when more important than the receiver.
-      const worst = g.localPi === null && g.sysplexPi === null ? Infinity : Math.max(g.localPi ?? 0, g.sysplexPi ?? 0);
+      const worst = managementWorstPi(g.localPi, g.sysplexPi);
       const used = bottleneck === 'CPU' ? g.acc.cpuEngines : (g.acc.ziipEngines ?? 0);
       return { key, importance: g.importance, worst, engines: used * (1 - tuning.accDecay) };
     })
@@ -413,12 +424,14 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       const k0 = dps[k]!;
       const k1 = trial[k] ?? k0;
       if (!((k0 > r0dp && k1 <= r1dp) || (k0 === r0dp && k1 < r1dp))) continue;
-      // "Missing its goal" is a fact about the period, so it is read from the management PI (local or sysplex)
-      // as well as from the projection at the current DPs.
-      const worst = Math.max(before[k] ?? 0, localPi[k] ?? 0, input.sysplexPi[k] ?? 0);
+      // "Missing its goal" is a fact about the period, so it is read from the management PI (local or sysplex; none
+      // counts as missing, as in the donor order) as well as from the projection at the current DPs.
+      const mWorst = managementWorstPi(localPi[k], input.sysplexPi[k]);
+      const worst = Math.max(before[k] ?? 0, mWorst);
       if (worst <= 1) continue;
       if (usedEngines(k) < POLICY_ADJUST.donorMinEngines) continue;
-      return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) PI ${worst.toFixed(2)} is missing its goal and would be passed`);
+      const piText = mWorst === Infinity ? 'has no PI' : `PI ${worst.toFixed(2)} is missing its goal`;
+      return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) ${piText} and would be passed`);
     }
     // The pair is only recorded once the whole projection accepts: `project` can still refuse after every accept
     // callback said yes (a batch recovery that never settles runs out of rounds), and a trace must not call that move
@@ -443,7 +456,11 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         const p1 = after[k];
         if (p0 == null || p1 == null) continue;
         const harm = Math.max(0, p1 - Math.max(p0, floor));
-        if (harm <= POLICY_ADJUST.harmEps) continue;
+        // More important work that meets its goal must still meet it after the move, however small the harm
+        // (SG24-6472-03 p.60: a more important donor gives only while it keeps its goal); the noise tolerance only
+        // spares work already missing it.
+        const crosses = g.importance < rImp && p0 <= 1 && p1 > 1;
+        if (!crosses && harm <= POLICY_ADJUST.harmEps) continue;
         if (g.importance < rImp && p1 > 1) return reject('MORE_IMPORTANT_HARMED', [r0, r1], `${k} (imp ${g.importance}) PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
         if (g.importance === rImp) {
           // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,

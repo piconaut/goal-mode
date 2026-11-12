@@ -102,11 +102,14 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
           const g = goalInfo(input.def, s.scKey);
           const use = (c.bottleneck === 'CPU' ? s.acc.cpuEngines : s.acc.ziipEngines ?? 0) * (1 - ACC_DECAY);
           if (!g || g.goal.kind === 'DISC' || s.scKey === c.scKey || trace.dps[s.scKey]! < c.dp || use < POLICY_ADJUST.donorMinEngines) return [];
-          const pi = Math.max(goalPi(g.goal, s.acc) ?? 0, input.sysplexPi[s.scKey] ?? 0);
+          // No PI at all counts as missing the goal (managementWorstPi), so it is never taken as happy.
+          const own = goalPi(g.goal, s.acc);
+          const plex = input.sysplexPi[s.scKey];
+          const pi = own == null && plex == null ? Infinity : Math.max(own ?? 0, plex ?? 0);
           if (pi > 1 && g.importance < c.importance) return [];
           return [{ key: s.scKey, importance: g.importance, pi }];
         });
-        const byPi = (a: typeof pool[number], b: typeof pool[number]) => a.pi - b.pi || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
+        const byPi = (a: typeof pool[number], b: typeof pool[number]) => (a.pi === b.pi ? 0 : a.pi - b.pi) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0);
         const expected = pool.filter((p) => p.pi < 1).sort(byPi);
         for (const imp of [5, 4, 3, 2, 1]) expected.push(...pool.filter((p) => p.pi >= 1 && p.importance === imp).sort(byPi));
         const order = expected.slice(0, POLICY_ADJUST.donorsPerReceiver).map((p) => p.key);
