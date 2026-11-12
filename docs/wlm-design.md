@@ -1079,7 +1079,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
 | I12 | **Skip clock, no starvation.** A receiver whose plans were all rejected is not assessed again before its clock expires; every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 100 intervals with five unfixable and one fixable candidate at one importance (R-4's shape): the fixable one is helped |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has no move undone within two minutes (`tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" fall by at least 80 % |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has no move undone within two minutes (`tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" fall by at least 80 % |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -1702,7 +1702,8 @@ logged at most every five minutes, and a new reason or a move logs it again: 33/
   630 `PA_PMUUA_REC`). On the capped-PROD1 fixture, STCHI#1 (importance 1, local PI 4.2, CPU delay 94 %) was
   assessed every minute from 14:02:30; three raises were retained at 4.26 → 4.26, the join with ONLHI projected 26.37
   and every plan was rejected. Why joining projects so much worse than staying below is WT-16's question.
-- *Restated criteria.* (1) Moves undone within two minutes: 0 in S-1 … S-3 (I13). Net-rank reversals are reported
+- *Restated criteria.* (1) Moves undone within two minutes: 0 in S-1 … S-3 (I13; since WT-10 not counting a
+  reversal after another receiver's plan projected the period past its goal, which is reported apart). Net-rank reversals are reported
   against the previous entry (WT-07 0/3/2, WT-08 1/3/5); two periods trading places by alternate raises reverse
   neither one's own move, which needs a pair-order count no tool has yet. (2) The MORE_IMPORTANT_HARMED share is
   dropped: a few receivers retried each minute dominate it (S-1: 432 of the 500 at `e7015cb` are PROD2 BATCHPRD#1),
@@ -1739,7 +1740,7 @@ Audit at `fc63db3` (same S-1 … S-3 recipes; WT-08 `d9617a4` → WT-10):
 | accepted plans | 19 → 21 | 24 → 24 | 54 → 107 |
 | assessed candidates ending in an accepted plan | 7.6 → 8.3 % | 2.3 → 3.1 % | 5.9 → 7.5 % |
 | proposal projections | 1 129 → 1 241 | 3 200 → 2 953 | 3 007 → 4 820 |
-| net rank reversals / within two minutes | 1 → 1 / 0 | 3 → 6 / 0 | 5 → 22 / 1 |
+| net rank reversals / within two minutes (after an intervening plan) | 1 → 1 / 0 | 3 → 6 / 0 | 5 → 22 / 0 (1) |
 | episodes of 30 assessments | 1 → 1 | 3 → 2 | 2 → 5 |
 
 The other column is gone: no candidate is dropped for its waits. The periods it held are assessed, or found
@@ -1752,9 +1753,9 @@ two minutes (S-3 PRDD, MKTDDF#1, importance 2) is three plans in a minute, not a
 11:35:00 DDFPRD#2's plan lowers MKTDDF#1 as a happy donor (EE→E8), projected to PI 1.00, its goal; at 11:35:30
 MKTORD#1 (importance 1) is raised above STCMED#1, projected to take MKTDDF#1 to 25.36, a harm a more important
 receiver may do; at 11:36:00 MKTDDF#1, at local PI 4.00, is the receiver and goes back to EE (25.36 → 6.06). Each
-plan passed the checks it is held to; the I13 in-run criterion (no move undone within two minutes) does not allow
-for a more important receiver's plan in between. Corrected after review (#318); the first version blamed the
-donation's projection. S-3's new episodes are PRDA MKTORD#1, ONLHI#1 and ONLMED#1 (D1 … D3): MKTORD#1 is alone at the top
+plan passed the checks it is held to. Corrected after review (#318); the first version blamed the donation's
+projection. User decision (2026-11-12): accepted, and I13 reworded to exclude a reversal after another receiver's
+plan in between projected the period past its goal; `wlm-stats` reports those apart (S-3: 0, and 1 apart). S-3's new episodes are PRDA MKTORD#1, ONLHI#1 and ONLMED#1 (D1 … D3): MKTORD#1 is alone at the top
 DP with no donor at or above it, and is 97 % waiting (WLM Services p.148's no-donor case); the other two are at
 the floor of what a raise projects.
 

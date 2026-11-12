@@ -201,8 +201,11 @@ export interface WlmStatsCounters {
   /** A period's DP move reversed by the next move of the same period … */
   reversed: number;
   /** … within two minutes (12 adjustments of that system): the flip-flop W1 is about, as opposed to work that gets
-   * a turn every few minutes on a full image (docs/wlm-design.md §9.4 point 6). */
+   * a turn every few minutes on a full image (docs/wlm-design.md §9.4 point 6). Not counted here when another
+   * receiver's plan in between projected the period past its goal (I13): conditions changed, it was not a flip-flop … */
   reversedWithin2Min: number;
+  /** … but counted here: reversals within two minutes after such an intervening plan. */
+  reversedAfterHarm: number;
   /** Candidates whose projected PI at the current DPs (`base`) was already ≤ 1: no trials (WT-04). */
   recovering: number;
   /** Periods assessed on 30 adjustments without being the receiver of an accepted move (one per run). A donor move
@@ -226,7 +229,7 @@ export interface WlmStats {
 const emptyCounters = (): WlmStatsCounters => ({
   adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, STORAGE: 0, QUEUE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, waitingNoDelay: 0, waitingAssessed: 0, waitingNotFixable: 0, waitingRecovering: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
   verdicts: { ACCEPTED: 0, RETAINED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
-  acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, episodes: 0,
+  acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, reversedAfterHarm: 0, episodes: 0,
 });
 
 const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'RETAINED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE', 'PROJECTION_DISAGREES'];
@@ -266,6 +269,8 @@ export interface WlmEpisode {
 function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[]): WlmStatsCounters {
   const c = emptyCounters();
   const lastDirection = new Map<string, { dir: 1 | -1; at: number }>();
+  /** The last adjustment at which another receiver's accepted plan projected the period past its goal. */
+  const harmedAt = new Map<string, number>();
   let at = -1;
   const runs = new Map<string, { n: number; counted: boolean; first: string; last: string; verdicts: Partial<Record<WlmTrialVerdict, number>> }>();
   const close = (period: string, end: string | null) => {
@@ -343,9 +348,16 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
       const was = lastDirection.get(period);
       if (was !== undefined && was.dir !== dir) {
         c.reversed++;
-        if (at - was.at <= 12) c.reversedWithin2Min++;
+        if (at - was.at <= 12) {
+          if ((harmedAt.get(period) ?? -1) > was.at) c.reversedAfterHarm++;
+          else c.reversedWithin2Min++;
+        }
       }
       lastDirection.set(period, { dir, at });
+    }
+    for (const cand of t.candidates) for (const tr of cand.trials) {
+      if (tr.verdict !== 'ACCEPTED' || !tr.afterPis) continue;
+      for (const [period, pi] of Object.entries(tr.afterPis)) if (period !== cand.scKey && pi !== null && pi > 1) harmedAt.set(period, at);
     }
     // A committed plan ends the primary receiver's run, even if only its donors moved. Donating to another
     // receiver does not end the donor's own run; neither does an adjustment that skipped the period.
@@ -445,6 +457,7 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
     total.rejectedPiNull += c.rejectedPiNull;
     total.reversed += c.reversed;
     total.reversedWithin2Min += c.reversedWithin2Min;
+    total.reversedAfterHarm += c.reversedAfterHarm;
     total.episodes += c.episodes;
   }
   return total;
@@ -598,6 +611,7 @@ export function statsText(stats: WlmStats): string {
     ['rejected, receiver before PI (base) null', [...stats.systems.map((s) => s.counters.rejectedPiNull), stats.total.rejectedPiNull]],
     ["moves reversed by the period's next move", [...stats.systems.map((s) => s.counters.reversed), stats.total.reversed]],
     ['  … within two minutes', [...stats.systems.map((s) => s.counters.reversedWithin2Min), stats.total.reversedWithin2Min]],
+    ['  … within two minutes, after another plan pushed it past its goal', [...stats.systems.map((s) => s.counters.reversedAfterHarm), stats.total.reversedAfterHarm]],
     ['assessed on 30 adjustments without a move (episodes)', [...stats.systems.map((s) => s.counters.episodes), stats.total.episodes]],
   ];
   const labelWidth = Math.max(...rows.map(([label]) => label.length));

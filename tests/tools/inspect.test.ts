@@ -103,6 +103,15 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(gap(13)).toMatchObject({ reversed: 1, reversedWithin2Min: 0 });
   });
 
+  it('I13: a reversal within two minutes after another receiver projected the period past its goal is counted apart', () => {
+    // C#1's plan in between projects A#1 at 25 (S-3 PRDD D3 11:35:30); at 1.0, its goal, it would not count.
+    const harm = (pi: number) => trace({ candidates: [candidate({ scKey: 'C#1', trials: [trial({ move: 'C#1 DP 10→11', verdict: 'ACCEPTED', afterPis: { 'A#1': pi, 'C#1': 0.5 } })] })] });
+    expect(wlmStats([busy, harm(25), reversed]).total).toMatchObject({ reversed: 1, reversedWithin2Min: 0, reversedAfterHarm: 1 });
+    expect(wlmStats([busy, harm(1), reversed]).total).toMatchObject({ reversed: 1, reversedWithin2Min: 1, reversedAfterHarm: 0 });
+    // Harm before the period's own first move does not excuse the reversal.
+    expect(wlmStats([harm(25), busy, reversed]).total).toMatchObject({ reversedWithin2Min: 1, reversedAfterHarm: 0 });
+  });
+
   it('counts a period assessed 30 adjustments without a receiver move as one episode', () => {
     const run = (n: number, donorAt?: number) => Array.from({ length: n }, (_, i) => trace({
       clockText: `D1 ${String(6 + Math.floor(i / 360)).padStart(2, '0')}:${String(Math.floor((i % 360) / 6)).padStart(2, '0')}:00`,

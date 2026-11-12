@@ -555,6 +555,13 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   accepted CPU plan. Shadow IT slows MOBILE again under adaptive WLM; the RT-06 test fixture moves to Revenue seed 6.
   Harbourline seed 7 does not come back: §9.7's W7 attribution corrected (§9.10).
 
+- 2026-11-12: WT-10 review (#318): the S-3 PRDD reversal within two minutes is three plans in a minute (a happy
+  donor at its goal, then a more important receiver's plan that projects it at 25.36, then the donor raised back).
+  User decision: accepted; I13 reworded to exclude reversals after another receiver's plan in between projected the
+  period past its goal, and `wlm-stats` counts those apart (S-1 … S-3: 0 / 0 / 0, and 0 / 0 / 1 apart). Also fixed:
+  a decayed history no longer reports bottleneck NONE (wlm-stats threw), and mostly waiting counts cover every
+  outcome whose note says so.
+
 - 2026-11-12: open WLM questions researched. A receiver whose delays are all unmanaged is not a receiver and gets no
   skip clock (SG24-6472-03 p.61, 64; WLM Services p.145): the sim's NOT_FIXABLE matches for capping, and W7 (waits
   outranking managed delay) is WT-10's. The skip clock lasts 3 cycles and since z/OS 1.11 is not honoured when 5 or
