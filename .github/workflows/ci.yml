@@ -1,6 +1,5 @@
 # Merge gate for dev and main (PROGRESS.md "Branch workflow"). Required status checks: `check` and `balance`.
 name: CI
-
 on:
   pull_request:
     branches: [dev, main]
@@ -28,36 +27,102 @@ jobs:
       # Typecheck + unit, realism and golden tests. A behaviour change must commit regenerated goldens.
       - run: npm run check
 
-  # A PR that regenerates the goldens changes behaviour: re-check that the game still plays. Passes at once otherwise.
-  balance:
+  # Plan the balance sweep: only run it when the PR regenerates the goldens, and split its seeds into
+  # shards like the remote Sweep workflow (tools/ci/sweepPlan.ts) so the 5-seed sweep runs in parallel.
+  balance-plan:
     needs: check
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.goldens.outputs.changed }}
+      args: ${{ steps.plan.outputs.args }}
+      seeds: ${{ steps.plan.outputs.seeds }}
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
       - id: goldens
-        name: Did this PR regenerate the goldens?
         run: |
           if [ "${{ github.event_name }}" = pull_request ] && ! git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- tests/golden/hashes.json; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "Goldens unchanged: no balance sweep needed."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.goldens.outputs.changed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - if: steps.goldens.outputs.changed == 'true'
+        id: plan
+        env:
+          RAW: '--bots donothing,textbook,expert --seeds 1-5'
+        run: node --experimental-strip-types --no-warnings tools/ci/sweepPlan.ts "$RAW" "3" | tee -a "$GITHUB_OUTPUT"
+
+  # Run one shard per seed range in parallel.
+  balance-shard:
+    needs: balance-plan
+    if: needs.balance-plan.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        seeds: ${{ fromJSON(needs.balance-plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
           cache: npm
-      - if: steps.goldens.outputs.changed == 'true'
-        run: npm ci
-      - if: steps.goldens.outputs.changed == 'true'
-        run: npm run sweep -- --bots donothing,textbook,expert --seeds 1-5 --out runs/ci-sweep.csv
-      - if: steps.goldens.outputs.changed == 'true'
-        run: npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5
-      - if: always() && steps.goldens.outputs.changed == 'true'
+      - run: npm ci --no-audit --no-fund
+      # ARGS is validated by sweepPlan.ts (known flags, [A-Za-z0-9,._-] values) and split on spaces on purpose.
+      - run: npm run sweep -- $ARGS --seeds "$SEEDS" --out runs/shard.csv
+        env:
+          ARGS: ${{ needs.balance-plan.outputs.args }}
+          SEEDS: ${{ matrix.seeds }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: balance-shard-${{ matrix.seeds }}
+          path: runs/shard.csv.partial.jsonl
+          retention-days: 3
+
+  # Merge the shards, run the balance gate, upload the combined result.
+  balance:
+    needs: [balance-plan, balance-shard]
+    if: always() && needs.balance-plan.result == 'success' && (needs.balance-shard.result == 'success' || needs.balance-shard.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: needs.balance-plan.outputs.changed == 'true'
+        run: npm ci --no-audit --no-fund
+      - if: needs.balance-plan.outputs.changed == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: balance-shard-*
+          path: runs/shards
+      - if: needs.balance-plan.outputs.changed == 'true'
+        name: Merge shards
+        env:
+          ARGS: ${{ needs.balance-plan.outputs.args }}
+          SEEDS: ${{ needs.balance-plan.outputs.seeds }}
+        run: |
+          mkdir -p runs/result
+          cat runs/shards/*/shard.csv.partial.jsonl > runs/result/sweep.csv.partial.jsonl 2>/dev/null || true
+          npm run --silent sweep -- $ARGS --seeds "$SEEDS" --resume --out runs/result/sweep.csv > runs/result/summary.txt
+          cat runs/result/summary.txt
+          npx tsx tools/ci/balanceGate.ts runs/result/sweep.csv 5
+      - if: needs.balance-plan.outputs.changed == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: ci-sweep
-          path: runs/ci-sweep.csv*
+          path: runs/result/sweep.csv*
+      - if: needs.balance-plan.outputs.changed != 'true'
+        run: 'echo "Goldens unchanged: no balance sweep needed."'
