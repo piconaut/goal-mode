@@ -97,6 +97,19 @@ describe('policy adjustment', () => {
     expect(traces[0]!.candidates[0]).toMatchObject({ scKey: 'ONLHI#1', outcome: 'NOT_FIXABLE', bottleneck: 'IO', trials: [] });
   });
 
+  it('a recovering period that is mostly waiting logs the waiting note, not "already recovering"', () => {
+    // History from ONLHI below batch (PI 4), but at the current DPs it is above batch: projected base ≤ 1.
+    const onl = system.scps.find((p) => p.scKey === 'ONLHI#1')!;
+    const n = onl.acc.using + onl.acc.delay;
+    const acc = { ...onl.acc, delayOther: 3 * n };
+    const up = { ...system, scps: system.scps.map((p) => (p.scKey === 'ONLHI#1' ? { ...p, dp: 248, acc } : p)) };
+    const current = evaluateLpar({ ...evalInput, dpOf: (k) => ({ 'ONLHI#1': 248, 'BATCHPRD#1': 246 })[k]! }).scps;
+    const out = policyAdjust({ def: BASEPOL, system: up, evalInput, current, sysplexPi: {}, clockText: 'T' });
+    expect(out.log).toMatch(/^T SYS1 ONLHI#1 PI=4\.00 mostly waiting, CPU delay \d+ %: not WLM-fixable$/);
+    const plain = { ...system, scps: system.scps.map((p) => (p.scKey === 'ONLHI#1' ? { ...p, dp: 248 } : p)) };
+    expect(policyAdjust({ def: BASEPOL, system: plain, evalInput, current, sysplexPi: {}, clockText: 'T' }).log).toBe('T SYS1 ONLHI#1 PI=4.00 BTLNK=CPU already recovering');
+  });
+
   it('only one receiver is helped per interval', () => {
     const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
     const changed = Object.keys(dps).filter((k) => out.dps[k] !== dps[k]);

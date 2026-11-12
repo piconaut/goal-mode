@@ -252,12 +252,12 @@ with look-alike pins (surge against regression, capacity against priority), and 
 each common recipe.
 
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: blocked: after WT-09, WT-10 · priority: high · size: L · area: game`
+`list: rca-truth · status: blocked: after WT-09 · priority: high · size: L · area: game`
 
 Sequencing (user decision 2026-11-10, docs/wlm-design.md §7): footprints are measured on the WLM core of `wlm-truth`
 (WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
 
-User decision on Q5, 2026-11-10: yes. After WT-09 and WT-10. Replace `affects` matching with `footprint { resource, reach, direct }` on every card
+User decision on Q5, 2026-11-10: yes. After WT-09 and WT-10 (WT-10 landed 2026-11-12). Replace `affects` matching with `footprint { resource, reach, direct }` on every card
 (§4.4(1)), generalising PT-04's routing-based scope; rank direct before collateral, fresh before background, then
 overlap, and accept both on a tie (no `uid` order); collateral victims accept the card's trigger and the fallback;
 `disturbed` uses the footprint; BATCH is in reach like any workload; SMF_AUDIT gets a footprint. Moves truth
@@ -316,7 +316,8 @@ credited with the queue at the baseline hold time, not the unqueued time (R-15).
 THREAD_LIMIT). Done when: R-15's 20:00 incident is THREAD_LIMIT/POLICY and R-14 is one CAPPING group.
 Cross-note (WLM audit 2026-11-10): WT-09 (server periods) and WT-10 (waits are not delays) change the same
 per-period split of region CPU wait and other waits; do this entry after them and share one split
-(docs/wlm-design.md §7, §8 Q1).
+(docs/wlm-design.md §7, §8 Q1). WT-10 (landed 2026-11-12) keeps WLM's split in `adjust.ts`: `managedDelays` (CPU,
+zIIP, I/O in velocity, storage, queue) and `waitingFrac` (waits over all samples); reuse them.
 
 ### RT-20 · Failure-only misses from the failure's source, not from a card
 `list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.2(4)) · priority: low · size: M · area: sim`
@@ -388,7 +389,7 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
 ### WT-09 · Server periods hold the regions' priority (W3)
-`list: wlm-truth · status: blocked: user (attended session, after WT-10) · priority: high · size: L · area: sim`
+`list: wlm-truth · status: blocked: user (attended session) · priority: high · size: L · area: sim`
 
 **Main agent (cross-layer).** Implements §5.1 holders and §5.8. `WlmSystemState.servers` (`runtime.ts`);
 `cicsRegions` (`tick/helpers.ts`) returns `serverKey` (`$SRMS001`) when any AOR on the image is TRANSACTION;
@@ -410,33 +411,11 @@ and the free ride*.
 Since CL-06: `cicsRegions` is built once per lookup plan (`regionsOf` in `tick/plan.ts`, called from `imageInput` in
 `tick/dispatch.ts`) and may only read slice template fields; `serverKey` belongs there, while the server period's DP
 and other per-tick region state stay out of the plan.
-After WT-10 (design review, 2026-11-12). Since WT-08 the ladder, `buildPlan`, the donor filter (`usedEngines`) and
+WT-10 landed first (design review, 2026-11-12). Since WT-08 the ladder, `buildPlan`, the donor filter (`usedEngines`) and
 the missing-goal rule's "passed or joined" test read goal periods; each has to work on holders here, and a carry of
 a period that shares the receiver's holder is void. WT-09 does not change the capped-PROD1 case (Db2 in STCHI below
 its client): Db2 is not in the server topology, which is the CICS/IMS address spaces (SG24-6472-03 p.62). Done when
 also: the S-1 … S-3 table and RT-06 differences against WT-10.
-
-### WT-10 · Managed bottlenecks in turn; waits are not delays (W7)
-`list: wlm-truth · status: ready · priority: high · size: S · area: sim`
-
-Do before WT-09 (user decision 2026-11-12). Implements §5.7 in `adjust.ts`: `bottleneckOf` is replaced by `managedDelayFrac(acc)` (WT-05 added it, for the
-delay test) and
-`fixableBottlenecks(acc, C)`; `delayOther` leaves the comparison; CPU and zIIP are tried in order of delay when
-each is at least `bottleneckMinFrac` of the managed delay, even when I/O, storage or cap is larger. `ScpAcc` gains
-decayed `delayStorage` and `delayQueue` (today only in the `delay` total). The no-action note for a period that is
-mostly waiting reads `mostly waiting, CPU delay n %: not WLM-fixable`. Tests: `wlm-invariants: I14 not fixable, not
-moved`; unit "45 % other, 40 % CPU delay: a CPU plan is tried"; the existing realism test "Db2 MSTR starvation
-raises DDF response time without raising DDF CPU delay" still passes and its log line has the waiting note.
-Goldens: change. Done when: S-1 … S-3 "not assessed: other / I/O bottleneck" (572 / 0, 4 771 / 0, 5 520 / 106 at
-WT-08) are replaced by `NO_MANAGED_DELAY` or assessed candidates, with the counts in the PR; and Midwest seed 42
-PROD2 DDFPRD#1 at D1 21:40 on `1f4f212` (local PI 4.00, CPU 59 %, zIIP 30 %, OTHER 251 %, below BATCHPRD#1) gets a
-CPU and a zIIP plan. Bots: Midwest and Harbourline are expected to move (docs/wlm-design.md §9.7 correction). Cross-note: **RT-19** splits the
-same waits (`serverCpu`, `serverOther`) for RCA truth; share the per-period split rather than computing it twice.
-From WT-06 (2026-11-12, docs/wlm-design.md §9.7): Harbourline expert seed 7 is lost to a D29 freeze this causes. At
-D29 11:00 on PRDA, MKTORD#1 (importance 1) and ONLHI#1 (2) have 98 % CPU delay and are `NOT_FIXABLE` because their
-waits are larger; the skip clock is not involved (`--tune rejectedSkipTicks=0` gives the same day). Check that seed 7
-comes back (`npm run bot -- --bot expert --scenario harbourline --seed 7 --days 40 --trace-day 29`); bots may move
-more than "small".
 
 ### WT-11 · The resource-group minimum for discretionary work (W10)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`
@@ -606,8 +585,12 @@ the same period on an image, with bottleneck, first/last tick and check count, e
 the existing episode details. Preserve the accepted `ASSESSED` episode counter and label both populations clearly.
 End a streak when the outcome/bottleneck changes or the candidate is absent from an image's next adjustment.
 Update SPEC §5.5.4 and docs/wlm-design.md §9.6/§9.8 to distinguish candidate checks, trial-search assessments,
-skip-clock retries and periodic log entries. Relate the results to WT-10's separate question of waits masking
-fixable CPU/zIIP delay; this reporting task does not extend skip clocks or change bottleneck selection. Any proposed
+skip-clock retries and periodic log entries. This reporting task does not extend skip clocks or change bottleneck
+selection. Since WT-10 (2026-11-12) waits no longer mask CPU or zIIP delay: the fixture's 14:00–14:04:50 run is ONLHI
+mostly waiting, assessed once a minute with a skip clock between, and `NOT_FIXABLE` is rare (S-1 … S-3: 0 / 0 / 22).
+The large unassessed population is now `RECOVERING` (646 / 3 431 / 9 608; docs/wlm-design.md §9.10), checked every
+10 s with no trials: count streaks of any outcome without trials (`NOT_FIXABLE`, `RECOVERING`), not only
+`NOT_FIXABLE`. Any proposed
 suppression policy needs its own sourced sim entry and an explicit responsiveness/fairness decision.
 
 Done when: a 30-tick `OTHER` trace reports one non-fixable streak, zero `ASSESSED` and zero existing assessment
@@ -701,8 +684,8 @@ Change `rejectedSkipTicks` to 3 and skip the clock while at most `skipClockMinMi
 the image miss their goal (`m` > 1). APPROX: whether IBM counts periods per system or across the sysplex is not
 stated; per image matches the per-system policy adjustment. Expect more assessments in quiet hours (S-1's
 BATCHPRD#1 is retried each minute over two nights) and a projection-budget cost: measure `wlm-stats` S-1 … S-3
-(assessed, projections, `BUDGET` stops) and the bench before/after. Do with or right after WT-10 (both change
-who is assessed); before WT-09. Tests: unit "≤ 5 missing: a clocked receiver is assessed next interval"; I12
+(assessed, projections, `BUDGET` stops) and the bench before/after. Right after WT-10 (both change who is
+assessed; WT-10 landed 2026-11-12); before WT-09. Tests: unit "≤ 5 missing: a clocked receiver is assessed next interval"; I12
 updated for 3 cycles. Goldens: change. Done when: those pass, research.md's skip-clock row and §5.10 say modelled,
 SPEC §5.5's clock text matches, and a three-scenario sweep is in the PR.
 

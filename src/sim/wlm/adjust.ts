@@ -614,7 +614,9 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // itself (its management PI is still catching up). No trials, and no use of the projection budget.
     const b0 = basePis()[receiver];
     if (b0 == null || b0 <= 1) {
-      notes.push(`${receiver} PI=${pi} BTLNK=${btl0} already recovering`);
+      // A period mostly waiting keeps the waiting note: its measured PI stays high while the projection, at sustained
+      // demand, says the processor is not what holds it back.
+      notes.push(`${receiver} PI=${pi} ${waiting ?? `BTLNK=${btl0} already recovering`}`);
       if (tracing) traceOf(receiver, btl0, 'RECOVERING').basePi = b0 ?? null;
       continue;
     }

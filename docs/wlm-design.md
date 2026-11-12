@@ -1,9 +1,11 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 are implemented**: one PI basis, sustained
-demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval budget (WT-05,
-§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic plans (WT-08, §9.9). Server periods (WT-09) and the other remaining entries are not. Findings W2, W4, W5, W10 and W12 below describe the sim before those
-entries; each says what fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
+Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 and WT-10 are implemented**: one PI
+basis, sustained demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
+budget (WT-05, §9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic
+plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10). Server periods (WT-09) and the other remaining
+entries are not. Findings W2, W4, W5, W7, W10 and W12 below describe the sim before those entries; each says what
+fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
 is the WLM counterpart of [rca-design.md](rca-design.md).
@@ -712,6 +714,8 @@ fixed across importances, left in place within one.
 
 ### W7. One bottleneck, chosen among delays WLM does not manage (medium)
 
+*Fixed by WT-10 (§5.7, §9.10).*
+
 **Sim.** §2.6: the largest of CPU, zIIP, I/O, cap and other; if it is not CPU or zIIP the receiver is dropped.
 
 **Real.** §3.6: only managed delays are considered, largest first, and the next one is tried when the first cannot
@@ -1036,7 +1040,9 @@ fixableBottlenecks(acc, C) ← [CPU, ZIIP] ordered by delay, largest first, keep
 `delayOther` (waits for locks, servers, the CF, the QR TCB) is not a delay state and takes no part. A period that is
 mostly waiting has little managed delay: either `NO_MANAGED_DELAY`, or a CPU plan that finds no receiver value and
 sets the skip clock. The no-action note then reads `… mostly waiting, CPU delay 6 %: not WLM-fixable`, which keeps
-the planted clue for a starved server (SPEC §5.5.4).
+the planted clue for a starved server (SPEC §5.5.4). As built (WT-10, §9.10): "mostly waiting" is waits over half of
+all samples, and the note also replaces `already recovering` (`RECOVERING`), where the projection at sustained demand
+does not see the waits that hold the measured PI up.
 
 ### 5.8 Server periods, minimums, batch response times
 
