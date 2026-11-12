@@ -491,6 +491,13 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-12: WT-08 implements atomic policy plans (`buildPlan`): original-base net value, whole-plan receiver
+  value, secondary carries, bounded join-and-split repair, six retained moves, and real-projection budget checks
+  before every retry. Rejected/uncommitted plans leave live DPs untouched. Receiver stages advance until blocked;
+  a safe donor opens another receiver stage. Traces and statistics distinguish proposals, plans, retained steps
+  and net rank reversals; canonical stored DP targets with split anchors resolve PR-14. WT-08 and PR-14 removed
+  from BACKLOG. Audit, sweep and review results are recorded in docs/wlm-design.md §9.9 and M8.2 when complete.
+
 - 2026-11-12: queued PR-20 for repeated `NOT_FIXABLE` checks: report those streaks separately from the existing
   `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in
   #307 has 30 cheaper candidate checks over five minutes and one periodic no-action log entry. Clock and

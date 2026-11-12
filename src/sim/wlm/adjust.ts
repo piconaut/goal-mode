@@ -8,12 +8,13 @@
 
 import { PCT_PROJECTION_SIGMA, POLICY_ADJUST } from '../../content/wlm/tuning';
 import { formatClock } from '../core/clock';
-import { canonical, ladderOf, levelOf, moveToLevel, raiseOneStep, type Ladder } from './ladder';
+import { canonical, ladderOf, levelOf, moveToLevel, type Ladder } from './ladder';
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
 import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
 import { projectedPercentilePi } from './goals';
 import { ACC_DECAY, goalPi, goalInfo, srvDelayCapOf, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
+import { buildPlan, type PlanMove, type PlanAssessment } from './plan';
 import type { ServiceDefinition } from './types';
 
 export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
@@ -62,6 +63,7 @@ export interface AdjustOutput {
 /** Why a trial DP move was accepted or rejected (investigation trace only). */
 export type WlmTrialVerdict =
   | 'ACCEPTED'
+  | 'RETAINED' // net value passed; tentative until the complete plan has receiver value
   | 'CPU_CRITICAL' // a less important period would reach a CPU-protected period's DP
   | 'NO_RECEIVER_GAIN' // projected receiver PI does not improve
   | 'SMALL_GAIN' // improves by less than the receiver value threshold
@@ -77,6 +79,13 @@ export interface WlmTrialTrace {
    * after value is null; a trial with no receiver PI at all omits the pair. */
   receiverPi?: [number | null, number | null];
   detail?: string;
+  blockedBy?: string;
+  projected?: boolean;
+  steps?: PlanMove[];
+  /** Retained moves of the accepted atomic plan (only on its final ACCEPTED proposal). */
+  plan?: PlanMove[];
+  afterPis?: Record<string, number | null>;
+  afterDps?: Record<string, number>;
 }
 
 /**
@@ -112,6 +121,7 @@ export interface WlmCandidateTrace {
   managedDelayFrac?: number;
   /** Projected PI at the current DPs (the basis every trial is judged against); absent when not computed. */
   basePi?: number | null;
+  planOutcome?: 'ACCEPTED' | 'REJECTED' | 'BUDGET' | 'STEP_LIMIT';
   trials: WlmTrialTrace[];
 }
 
@@ -138,22 +148,6 @@ export const cpuProtected = (g: Pick<ScpGoalInfo, 'cpuCritical' | 'period' | 'im
 
 /** The DPs of `dps` with its goal periods (`keys`) on `ladder`'s canonical DPs; other periods keep theirs. */
 const withLadder = (dps: Readonly<Record<string, number>>, ladder: Ladder): Record<string, number> => ({ ...dps, ...canonical(ladder) });
-
-/**
- * Where a single move takes `holder`, in the DPs before it (`dps0`): the DP of the level it joins, else the free
- * priority directly above the level below it (directly below the level above it, at the bottom). The log and the
- * trace name this priority, as WLM's moves go to an occupied or unoccupied priority (WLM Services p.706–707); the
- * ladder is then renumbered (unbunching, p.139), which the stored DPs show.
- */
-function moveTarget(dps0: Readonly<Record<string, number>>, ladder: Ladder, holder: string): number {
-  const i = levelOf(ladder, holder);
-  const mate = ladder[i]!.find((k) => k !== holder);
-  if (mate !== undefined) return dps0[mate]!;
-  const below = ladder[i + 1]?.[0];
-  if (below !== undefined) return dps0[below]! + 1;
-  const above = ladder[i - 1]?.[0];
-  return above !== undefined ? dps0[above]! - 1 : dps0[holder]!;
-}
 
 /** The ladder of the goal periods `keys` at `dps`. */
 const ladderAt = (dps: Readonly<Record<string, number>>, keys: readonly string[]): Ladder => {
@@ -395,17 +389,22 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   for (const s of system.scps) if (s.skipUntilTick !== undefined && s.skipUntilTick > nowTick) skipUntil[s.scKey] = s.skipUntilTick;
   let why: WlmTrialTrace | null = null;
   // Recorded even without the trace sink: the player-visible log names a rejected move and why.
-  const reject = (verdict: WlmTrialVerdict, r: [number | null, number | null], detail?: string) => {
-    why = { move: '', verdict, receiverPi: r, ...(detail ? { detail } : {}) };
+  const reject = (verdict: WlmTrialVerdict, r: [number | null, number | null], detail?: string, blockedBy?: string) => {
+    why = { move: '', verdict, receiverPi: r, ...(detail ? { detail } : {}), ...(blockedBy ? { blockedBy } : {}) };
     return false;
   };
-  const passes = (receiver: string, trial: Record<string, number>): boolean => {
+  const assess = (receiver: string, trial: Record<string, number>): PlanAssessment | null => {
+    why = null;
+    const judged = (ok: boolean, projected: boolean, after?: Record<string, number | null>): PlanAssessment => ({
+      ...(why ?? { verdict: 'NO_RECEIVER_GAIN' as const, receiverPi: [null, null] as [null, null] }),
+      receiverPi: why?.receiverPi ?? [null, null], ok, projected, ...(after ? { after } : {}),
+    });
     const before = basePis();
     const cc = violatesCpuCritical(trial);
     if (cc) {
       // No projection was judged; the receiver's `base` is still worth recording.
       why = { move: '', verdict: 'CPU_CRITICAL', receiverPi: [before[receiver] ?? null, null], detail: cc };
-      return false;
+      return judged(false, false);
     }
     // A less important receiver never takes from more important work that is missing its goal (the 1994 patent:
     // both missing and the donor more important → no net value; Enrico, slide 52: "never … if donor is missing
@@ -431,19 +430,21 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       if (worst <= 1) continue;
       if (usedEngines(k) < POLICY_ADJUST.donorMinEngines) continue;
       const piText = mWorst === Infinity ? 'has no PI' : `PI ${worst.toFixed(2)} is missing its goal`;
-      return reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) ${piText} and would be passed`);
+      reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) ${piText} and would be passed`, k);
+      return judged(false, false);
     }
     // The pair is only recorded once the whole projection accepts: `project` can still refuse after every accept
     // callback said yes (a batch recovery that never settles runs out of rounds), and a trace must not call that move
     // accepted.
     let acceptedPi: [number | null, number | null] | null = null;
+    if (budget <= 0) return null;
     budget--;
+    let finalAfter: Record<string, number | null> | undefined;
     const ok = project(trial, (after) => {
       const r0 = before[receiver];
       const r1 = after[receiver];
-      if (r0 == null || r1 == null || r1 >= r0) return reject('NO_RECEIVER_GAIN', [r0 ?? null, r1 ?? null]);
-      const needed = receiverValueNeeded(r0);
-      if (r0 - r1 < needed) return reject('SMALL_GAIN', [r0, r1], `needs ≥ ${needed.toFixed(2)}`);
+      finalAfter = after;
+      if (r0 == null || r1 == null || r1 > r0) return reject('NO_RECEIVER_GAIN', [r0 ?? null, r1 ?? null]);
       const rImp = info[receiver]!.importance;
       const floor = POLICY_ADJUST.creditFloor;
       const gain = Math.max(0, r0 - Math.max(r1, floor));
@@ -461,11 +462,11 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         // spares work already missing it.
         const crosses = g.importance < rImp && p0 <= 1 && p1 > 1;
         if (!crosses && harm <= POLICY_ADJUST.harmEps) continue;
-        if (g.importance < rImp && p1 > 1) return reject('MORE_IMPORTANT_HARMED', [r0, r1], `${k} (imp ${g.importance}) PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
+        if (g.importance < rImp && p1 > 1) return reject('MORE_IMPORTANT_HARMED', [r0, r1], `${k} (imp ${g.importance}) PI ${p0.toFixed(2)}→${p1.toFixed(2)}`, k);
         if (g.importance === rImp) {
           // Equal importance: the move must also bring the two PIs closer together (SG24-6472 p.60; Enrico,
           // How WLM Works, slide 52: "less disparity in projected PIs"), or the pair trade places forever.
-          if (Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return reject('EQUAL_DISPARITY', [r0, r1], `${k} PI ${p0.toFixed(2)}→${p1.toFixed(2)}`);
+          if (Math.abs(r1 - p1) >= Math.abs(r0 - p0)) return reject('EQUAL_DISPARITY', [r0, r1], `${k} PI ${p0.toFixed(2)}→${p1.toFixed(2)}`, k);
           equalHarm += harm;
         }
       }
@@ -475,8 +476,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       return true;
     });
     // An accepted trial records the receiver's PI pair like a rejected one, so a trace can show what the move bought.
-    if (ok) why = { move: '', verdict: 'ACCEPTED', receiverPi: acceptedPi ?? [null, null] };
-    return ok;
+    if (ok) why = { move: '', verdict: 'RETAINED', receiverPi: acceptedPi ?? [null, null] };
+    return judged(ok, true, finalAfter);
   };
 
   const ordered = (piOf: Record<string, number | null>) =>
@@ -582,58 +583,42 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
      * nothing, which says less than the harm a larger step would do. */
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
     let firstNamed: { move: string; why: WlmTrialTrace } | null = null;
-    const rdp = dps[receiver]!;
-    const trials: { trial: Record<string, number>; text: string }[] = [];
-
-    // Receiver up (WLM Services p.707, codes 635 and 620): one step at a time, each from the last (alone onto the free
-    // priority above its level if it shares it, else onto the next level), until it has joined the third level above.
-    // Each step is a trial of its own (single moves until WT-08).
-    const rl0 = levelOf(ladder, receiver);
-    let up: Ladder = ladder;
-    for (let joined = 0; joined < 3; ) {
-      const shared = up[levelOf(up, receiver)]!.length > 1;
-      const next = raiseOneStep(up, receiver);
-      if (next === up) break;
-      if (!shared) joined++;
-      up = next;
-      trials.push({ trial: withLadder(dps, up), text: `${receiver} DP ${hex(rdp)}→${hex(moveTarget(dps, up, receiver))}` });
-    }
     const donors = donorOrder(receiver, btl, dps, donorInfo);
     if (ct) ct.donors = [...donors];
-    // A donor above the receiver moves to the receiver's level; one already on it, to a new level just below (WLM
-    // Services p.706, codes 530/540; the rejection code 531, "moving the donor to the receivers priority violates CPU
-    // critical rules", shows the receiver's priority is a donor target).
-    for (const d of donors) {
-      const L = moveToLevel(ladder, d, rl0, levelOf(ladder, d) < rl0 ? 'join' : 'below');
-      trials.push({ trial: withLadder(dps, L), text: `DONOR ${d} DP ${hex(dps[d]!)}→${hex(moveTarget(dps, L, d))}` });
-    }
-
-    let outOfBudget = false;
-    // A receiver that had the whole interval's budget and still ran out has had its turn: it is clocked like one
-    // whose every trial was rejected, or it would be first in line every interval and keep the rest out (I12).
     const hadWholeBudget = budget === POLICY_ADJUST.maxProjectionsPerInterval;
-    for (const tr of trials) {
-      if (budget <= 0) {
-        outOfBudget = true;
-        break;
-      }
-      why = null;
-      const up = !tr.text.startsWith('DONOR ');
-      const ok = up && distrust
-        ? reject('PROJECTION_DISAGREES', [b0, null], `projected PI ${b0.toFixed(2)} vs measured ${mPi.toFixed(2)}`)
-        : passes(receiver, tr.trial);
-      if (ct) ct.trials.push({ ...(why ?? { verdict: 'NO_RECEIVER_GAIN' as const }), move: tr.text });
-      if (ok) {
-        return finish({
-          dps: tr.trial,
-          log: `${input.clockText} ${system.lparId} RCVR=${receiver} PI=${pi} BTLNK=${btl} ${tr.text}`,
-          protect,
-        }, resumedAt);
-      }
-      if (!firstReject && why) firstReject = { move: tr.text, why };
-      const w = why as WlmTrialTrace | null;
-      if (!firstNamed && w && w.verdict !== 'NO_RECEIVER_GAIN' && w.verdict !== 'SMALL_GAIN') firstNamed = { move: tr.text, why: w };
+    const describe = (moves: readonly PlanMove[]): string => moves.map((m) =>
+      `${m.kind} ${m.scKey} DP ${hex(m.fromDp)}→${hex(m.toDp)}${m.above ? ` (above ${m.above})` : ''}`).join('; ');
+    const plan = buildPlan({
+      receiver, ladder, donors, maxSteps: POLICY_ADJUST.maxPlanSteps, basePi: b0,
+      importanceOf: (k) => info[k]!.importance,
+      receiverValue: (after) => b0 - after >= receiverValueNeeded(b0),
+      assess: (L, kind) => {
+        if (kind === 'UP' && distrust) {
+          reject('PROJECTION_DISAGREES', [b0, null], `projected PI ${b0.toFixed(2)} vs measured ${mPi.toFixed(2)}`);
+          return { ...why!, receiverPi: [b0, null], ok: false, projected: false };
+        }
+        return assess(receiver, withLadder(dps, L));
+      },
+    });
+    if (ct) ct.planOutcome = plan.outcome;
+    for (const attempt of plan.attempts) {
+      const w: WlmTrialTrace = { move: describe(attempt.moves), verdict: attempt.verdict,
+        receiverPi: attempt.receiverPi, projected: attempt.projected, steps: attempt.moves,
+        ...(attempt.detail ? { detail: attempt.detail } : {}),
+        ...(attempt.blockedBy ? { blockedBy: attempt.blockedBy } : {}),
+        ...(attempt.verdict === 'ACCEPTED' ? { plan: plan.moves, afterPis: attempt.after, afterDps: withLadder(dps, plan.ladder) } : {}),
+      };
+      if (ct) ct.trials.push(w);
+      if (w.verdict === 'RETAINED' || w.verdict === 'ACCEPTED') continue;
+      if (!firstReject) firstReject = { move: w.move, why: w };
+      if (!firstNamed && (w.blockedBy || w.verdict === 'CPU_CRITICAL' || w.verdict === 'PROJECTION_DISAGREES')) firstNamed = { move: w.move, why: w };
     }
+    if (plan.outcome === 'ACCEPTED') return finish({
+      dps: withLadder(dps, plan.ladder),
+      log: `${input.clockText} ${system.lparId} RCVR=${receiver} PI=${pi} BTLNK=${btl} ${describe(plan.moves)}`,
+      protect,
+    }, resumedAt);
+    const outOfBudget = plan.outcome === 'BUDGET';
     // No move taken: say what this receiver's first move would have done, so the log answers "why not?".
     const clue = firstNamed ?? firstReject;
     const whyNot = clue ? ` (${clue.move} rejected: ${playerReason(clue.why)})` : '';

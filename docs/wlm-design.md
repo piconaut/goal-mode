@@ -1,9 +1,8 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-07 are implemented**: one PI basis, sustained
+Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 are implemented**: one PI basis, sustained
 demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval budget (WT-05,
-§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8). The rest of §5
-(plans, server periods, WT-08 onward) is not. Findings W2, W4, W10 and W12 below describe the sim before those
+§9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic plans (WT-08, §9.9). Server periods (WT-09) and the other remaining entries are not. Findings W2, W4, W5, W10 and W12 below describe the sim before those
 entries; each says what fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
@@ -677,6 +676,8 @@ reverse.
 
 ### W5. A change is one move of one period (medium)
 
+*Fixed by WT-08 (§5.3, §9.9): changes are atomic plans of retained moves.*
+
 **Sim.** §2.7: each trial moves one DP; any equally or more important period the move would harm rejects it.
 
 **Real.** §3.7: the receiver's move, the co-moves of periods that would otherwise be harmed (secondary receivers)
@@ -884,34 +885,42 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
 ```
 
 ```
-buildPlan(r, b, L0, base, P, info, budget, C):             // a change is a set of moves judged together (§3.7)
-  H ← holder(r);  L ← L0;  moves ← [];  upBlocked ← false;  cur ← base[r]      // cur: r's projected PI under L
-  donors ← donorOrder(r, b, L0, info, C);  d ← 0
-  repeat at most C.maxPlanSteps times, while budget > 0:
-      // A. receiver one step up
-      if not upBlocked and H is not alone on the top level:
-          T ← raiseOneStep(L, H)                           // §5.6: to the free slot above its level, else join the next level
-          (ok, why, after) ← assess(r, T);  budget −= 1
-          if not ok and why names a period k that T leaves at or below H and that is not less important than r:
-              T ← T with holder(k) placed on H's level     // secondary receiver: carried along
-              (ok, why, after) ← assess(r, T);  budget −= 1
-          if ok: L ← T; moves += T's moves; cur ← after[r]                // kept even without gain: the next level may give it
-                 if receiverValue(base[r], cur, C): return accepted(L, moves)
-          else:  upBlocked ← true;  remember (T, why) as the first rejection if none yet
-      // B. next donor down
-      else if d < donors.length:
-          D ← donors[d];  d += 1
-          T ← L with D moved to H's level, or to the free slot just below it if D is already there
-          (ok, why, after) ← assess(r, T);  budget −= 1
-          if ok and after[r] < cur:                                       // a donor move is kept only if it helps r
-                 L ← T; moves += "DONOR D …"; cur ← after[r]; upBlocked ← false   // room may have opened above
-                 if receiverValue(base[r], cur, C): return accepted(L, moves)
-          else:  remember (T, why or NO_RECEIVER_GAIN) as the first rejection if none yet   // this donor stays
-      else: break
-  return rejected(first rejection)                          // all intermediate moves are set back
+buildPlan(r, b, L0, base, P, info, budget, C):
+  L ← L0; moves ← []; cur ← base[r]; preferUp ← true; upBlocked ← false
+  donors ← donorOrder(r, b, L0, info, C); nextDonor ← 0
+  while retained move count < C.maxPlanSteps:
+      if preferUp and not upBlocked:
+          T ← raiseOneStep(L, holder(r))
+          if no step or repeated ladder: upBlocked ← true
+          else:
+              assess T against base (budget checked at the actual projection)
+              on a named net-value blocker k at/below r of equal or greater importance:
+                  try carrying k onto r's proposed level, if this changes T and two moves fit
+              else on an unsafe join (NO_NET_VALUE / EQUAL_DISPARITY):
+                  try the join-and-split above that level together, if two moves fit  // APPROX
+              if net value passes:
+                  retain the proposal in L, never in live state; cur ← after[r]
+                  if receiverValue(base[r], cur): commit the whole plan
+                  preferUp ← true; continue
+              upBlocked ← true
+      try the next untried donor still at/above r in L (skip donors a previous raise left below r)
+      if one exists:
+          T ← move it onto r's level, or just below if already there
+          assess T against base
+          if net value passes and after[r] < cur:
+              retain T; cur ← after[r]; upBlocked ← false; preferUp ← true
+              if receiverValue(base[r], cur): commit the whole plan
+          continue                                      // a failing donor stays; earlier retained moves survive
+      if upBlocked: reject the complete plan
+      preferUp ← true                                   // no donors left; further safe raises can still help
+  reject the complete plan                              // step limit, no receiver value
+  // Any required projection without budget returns BUDGET; every uncommitted move is rolled back.
 
 assess(r, T):
   if violatesCpuCritical(T): return (false, CPU_CRITICAL)
+  if the missing-goal rule rejects T: return (false, MORE_IMPORTANT_HARMED k) // no projection
+  if budget = 0: return BUDGET
+  budget −= 1
   after ← p(evaluateWithBatchRecovery(P, T))               // as batchRecoveryAccepts today: every round must pass
   return netValue(r, base, after, info, C)
 
@@ -942,7 +951,12 @@ netValue(r, base, after, info, C):                       // T: the trial ladder;
 ```
 
 Receiver value is judged on the whole plan against `base`, so a step that passes net value but gains too little is
-kept and built on, as in IBM's example. A plan with no receiver value at the end is discarded whole. Net value is
+kept and built on, as in IBM's example. A plan with no receiver value at the end is discarded whole. WT-08 implements this with pure `buildPlan` in
+`src/sim/wlm/plan.ts`; `maxPlanSteps` counts retained UP/CARRY/DONOR moves, including both moves of a repaired
+proposal. Receiver steps continue until blocked; a retained donor opens another receiver stage, and a failed donor advances to the next donor.
+A join-and-split repair preserves useful multi-level raises when the intermediate join fails net value (APPROX:
+one bounded lookahead, not an exhaustive search). Only a real proposal projection spends budget; CPU protection,
+the missing-goal rule and the trust limit are free. Every carry or split retry checks budget separately. Net value is
 judged on the whole plan too: `assess` always compares the trial ladder with `base`, never with the previous step.
 
 ### 5.4 Projection input: sustained demand
@@ -1551,3 +1565,36 @@ one-day hashes for Midwest, Revenue and Harbourline are unchanged by both.
 victory). All inside the CI gate's bands; Midwest do-nothing stays below the design target (§9.7). The entry expected
 small changes.
 
+
+### 9.9 WT-08: atomic policy plans
+
+Built on WT-07 (`1f4f212`). The planner keeps safe intermediate moves, repairs a raise with one named secondary
+receiver, tries donors in WT-07 order and discards every tentative move unless the complete plan has receiver
+value. One bounded join-and-split proposal preserves useful raises whose intermediate join fails net value.
+The original PI basis, strict more-important goal boundary, no-PI rule, CPU protection, skip clocks, resume cursor
+and real-projection budget remain in force. Six retained moves bound a plan; retries spend budget only when they
+project. Traces distinguish RETAINED proposals from the one ACCEPTED plan, and tools count plans, retained moves
+and projections separately. Log targets are canonical stored DPs; `UP … (above X)` explains a split whose number
+stays the same while its old mates move down.
+
+Preliminary audit (same S-1 … S-3 recipes as §9.8; WT-07 → WT-08):
+
+| | S-1 | S-2 | S-3 |
+|---|---|---|---|
+| accepted plans | 33 → 19 | 21 → 28 | 47 → 66 |
+| retained moves in accepted plans | 28 | 40 | 127 |
+| secondary carries | 1 | 0 | 2 |
+| proposal projections | 1 978 → 1 091 | 7 347 → 3 318 | 6 859 → 2 812 |
+| net rank reversals / within two minutes | 1 / 0 | 3 / 0 | 10 / 0 |
+
+Reversals of a composite plan are measured from the net ordinal rank of each explicitly moved period, not the
+last intermediate step or raw canonical DP deltas. Internal moves of one atomic plan cannot reverse live state.
+The old §1 reversal targets are ≤2/4/8: S-3's 10 does not meet the target. S-1's raw MORE_IMPORTANT_HARMED share
+is 45.6%, above its 29% target; S-3 is 15.1%, below 21%. Net value now has to be assessed before receiver value
+for intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. These
+are reported as unmet historical criteria, not silently redefined or fixed by tuning coefficients.
+
+Full checks, final hashes, sweeps and independent review are still in progress. Historical W5 thresholds are 29%/21%
+MORE_IMPORTANT_HARMED for S-1/S-3; WT-07 already measured 13.3%/15.4%, so passing them alone is not evidence that
+composite planning works. Real-evaluator carry cases and independently recomputed whole-plan safety checks are
+the functional acceptance tests; attempted proposals, retained moves and accepted plans have separate counts.

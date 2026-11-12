@@ -174,13 +174,26 @@ describe('cross-pool recovery during WLM projections', () => {
     const system: WlmSystemState = { lparId: 'TEST', scps: current.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
     const trialOnly = batch.map((g) => ({ ...g, jobs: g.jobs.map((j) => ({ ...j, nextCp: j.cp, nextZi: j.zi })) }));
     const run = (b: BatchProjectionSlice[]) => policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch: b });
-    // Without recovery batch is raised past BATCHHI (alone above it, after onto ONLHI's level, above it, onto
-    // BATCHHI's).
-    expect(run(trialOnly).dps).toMatchObject({ 'STCHI#1': 0xf6, 'BATCHPRD#1': 0xf4, 'BATCHHI#1': 0xf2, 'ONLHI#1': 0xf0 });
-    // With it, every step up is rejected; the happy importance-1 STCHI (zIIP user) then donates to batch's level
-    // (WT-07: happy donors first, importance ignored).
+    // Assess the same unsafe proposal directly, so changing the planner's search order cannot hide the bug.
+    // Ignoring old-DP next demand says ONLHI stays within goal; accounting for it rejects the second recovery round.
+    const trialDps: Record<string, number> = { 'STCHI#1': 246, 'BATCHPRD#1': 244, 'BATCHHI#1': 242, 'ONLHI#1': 240 };
+    const check = (b: BatchProjectionSlice[]) => {
+      const pis: number[] = [];
+      const ok = batchRecoveryAccepts({ ...e, dpOf: (k) => trialDps[k]! }, b, (r) => {
+        const t = r.scps.find((t) => t.scKey === 'ONLHI#1')!;
+        const pi = projectedPercentilePi(t.buckets, 99, t.completions, t.rtSumSec, .1, PCT_PROJECTION_SIGMA)!;
+        pis.push(pi); return pi <= 1;
+      });
+      return { ok, pis };
+    };
+    expect(check(trialOnly)).toEqual({ ok: true, pis: [.7, .8] });
+    const guarded = check(batch);
+    expect(guarded.ok).toBe(false);
+    expect(guarded.pis[0]).toBeLessThanOrEqual(1);
+    expect(guarded.pis[1]).toBeGreaterThan(100);
+    // Policy adjustment can still take a different, safe donor plan.
     const recovered = run(batch);
-    expect(recovered.log).toBe('T TEST RCVR=BATCHPRD#1 PI=9.88 BTLNK=ZIIP DONOR STCHI#1 DP F6→F0');
+    expect(recovered.log).toContain('DONOR STCHI#1');
     expect(recovered.dps).toMatchObject({ 'BATCHHI#1': 0xf6, 'ONLHI#1': 0xf4, 'STCHI#1': 0xf2, 'BATCHPRD#1': 0xf2 });
   });
 });

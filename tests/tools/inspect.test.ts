@@ -16,6 +16,29 @@ const trace = (over: Partial<WlmAdjustTrace> = {}): WlmAdjustTrace => ({
 });
 
 describe('wlmStats counts the audit table (WT-01)', () => {
+  it('counts atomic plans, retained steps and projections separately; canonical renumbering does not reverse UP', () => {
+    const steps: NonNullable<WlmTrialTrace['plan']> = [
+      { kind: 'UP', scKey: 'A#1', fromDp: 246, toDp: 246, above: 'B#1' },
+      { kind: 'CARRY', scKey: 'B#1', fromDp: 244, toDp: 246 },
+    ];
+    const rows = [
+      trace({ dps: { 'A#1': 246, 'B#1': 246, 'C#1': 246 }, candidates: [candidate({ trials: [
+        trial({ verdict: 'RETAINED', projected: true }),
+        trial({ verdict: 'ACCEPTED', projected: true, plan: steps, afterDps: { 'A#1': 246, 'B#1': 246, 'C#1': 244 } }),
+      ] })] }),
+      trace({ dps: { 'A#1': 246, 'B#1': 246, 'C#1': 244 }, candidates: [candidate({ trials: [
+        trial({ verdict: 'ACCEPTED', projected: true, plan: [steps[0]!], afterDps: { 'A#1': 246, 'B#1': 244, 'C#1': 242 } }),
+      ] })] }),
+    ];
+    const total = wlmStats(rows).total;
+    expect(total.projections).toBe(3);
+    expect(total.acceptedPlans).toBe(2);
+    expect(total.acceptedSteps).toBe(3);
+    expect(total.acceptedCarry).toBe(1);
+    expect(total.reversed).toBe(0);
+    expect(total.rejectedPiUnder09).toBe(0);
+  });
+
   const busy = trace({
     candidates: [
       candidate({ scKey: 'IO#1', outcome: 'NOT_FIXABLE', bottleneck: 'IO' }),
@@ -53,7 +76,7 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(stats.total.recovering).toBe(1);
     expect(stats.total.trials).toBe(7);
     expect(stats.total.verdicts).toEqual({
-      ACCEPTED: 3, CPU_CRITICAL: 1, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 1, MORE_IMPORTANT_HARMED: 1, EQUAL_DISPARITY: 0, NO_NET_VALUE: 1, PROJECTION_DISAGREES: 0,
+      ACCEPTED: 3, RETAINED: 0, CPU_CRITICAL: 1, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 1, MORE_IMPORTANT_HARMED: 1, EQUAL_DISPARITY: 0, NO_NET_VALUE: 1, PROJECTION_DISAGREES: 0,
     });
     expect(stats.total.acceptedReceiverUp).toBe(2);
     expect(stats.total.acceptedDonor).toBe(1);

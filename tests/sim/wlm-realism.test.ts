@@ -129,16 +129,20 @@ describe('donors retain their goal protection (WT-07, I5)', () => {
   });
 });
 
-interface Move { sec: number; who: string; from: number; to: number; line: string }
+interface Move { dir?: number; sec: number; who: string; from: number; to: number; line: string }
 
 /** DP moves WLM logged on one system, in order. */
 function movesOn(log: readonly string[], system: string): Move[] {
-  const re = new RegExp(`^D(\\d+) (\\d\\d):(\\d\\d):(\\d\\d) ${system} RCVR=\\S+ .*?(?:DONOR )?(\\S+) DP ([0-9A-F]+)→([0-9A-F]+)$`);
+  const re = new RegExp(`^D(\\d+) (\\d\\d):(\\d\\d):(\\d\\d) ${system} RCVR=\\S+ `);
   return log.flatMap((line) => {
     const m = re.exec(line);
     if (!m) return [];
     const sec = Number(m[1]) * 86400 + Number(m[2]) * 3600 + Number(m[3]) * 60 + Number(m[4]);
-    return [{ sec, who: m[5]!, from: parseInt(m[6]!, 16), to: parseInt(m[7]!, 16), line }];
+    const moves = new Map<string, Move>();
+    for (const p of line.matchAll(/(UP|CARRY|DONOR) (\S+) DP ([0-9A-F]+)→([0-9A-F]+)/g)) {
+      moves.set(p[2]!, { sec, who: p[2]!, from: parseInt(p[3]!, 16), to: parseInt(p[4]!, 16), dir: p[1] === 'DONOR' ? -1 : 1, line });
+    }
+    return [...moves.values()];
   });
 }
 
@@ -148,7 +152,7 @@ export function quickReversals(moves: readonly Move[], withinSec: number): strin
   const out: string[] = [];
   for (const m of moves) {
     const p = last[m.who];
-    if (p && m.sec - p.sec <= withinSec && Math.sign(m.to - m.from) !== Math.sign(p.to - p.from)) out.push(`${p.line}  ⇄  ${m.line}`);
+    if (p && m.sec - p.sec <= withinSec && (m.dir ?? Math.sign(m.to - m.from)) !== (p.dir ?? Math.sign(p.to - p.from))) out.push(`${p.line}  ⇄  ${m.line}`);
     last[m.who] = m;
   }
   return out;

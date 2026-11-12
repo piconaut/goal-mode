@@ -386,27 +386,6 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-08 · A change is a plan: receiver up, secondary receivers, donors down, judged together (W5)
-`list: wlm-truth · status: blocked: user (attended session, after WT-07) · priority: high · size: L · area: sim`
-
-**Coupled core; main agent only.** Implements `buildPlan`, `assess` and whole-plan `netValue`/`receiverValue` of
-§5.3 in `src/sim/wlm/adjust.ts`, replacing the trial list. A plan alternates receiver steps (one ladder step; on a
-net value failure by a period left at or below the receiver that is not less important, carry that period to the
-receiver's level and assess once more) and donor moves (kept only if they lower the receiver's projected PI);
-receiver value is tested on the whole plan against `base`; a rejected plan leaves the ladder untouched;
-`maxPlanSteps` and the interval budget bound it. `AdjustOutput.log` lists the plan's moves; `WlmCandidateTrace`
-records steps (`UP`, `CARRY k`, `DONOR d`) with `base → after` and the rejecting period. `playerReason` unchanged
-in wording. Tests: `wlm-invariants: I2 one change per interval`, `I4`, `I5 no harm to more important work`, `I6
-equal-importance convergence`, `I13 settles` (constant demand: no move after 30 intervals, no reversal), `I16`;
-unit "secondary receiver is carried" (the Redbook's shape: I, H at one level, moving I alone fails net value on H,
-moving both passes; SG24-6472 p.67); unit "a failing donor stays, the next is tried"; unit "a plan without receiver
-value changes nothing". Goldens: change. Done when: in S-1 and S-3 the share of `MORE_IMPORTANT_HARMED` among
-assessed steps falls below half its baseline (58 %, 42 %), "reversed by its next move" is at most 20 % of §1's
-baseline in each of S-1 … S-3, and the existing equal-importance realism test (Midwest seed 7, PROD1 defined
-capacity 200) still passes. Bench: tick time not above the WT-07 commit by more than 5 %. Bots: textbook 0 to + 2
-days, others small. SPEC §5.5.4 pseudocode replaced by §5.3's; §17 "Policy adjustment" row rewritten; research.md
-rows "CPU move is projected for every class…", "secondary receivers" updated.
-
 ### WT-09 · Server periods hold the regions' priority (W3)
 `list: wlm-truth · status: blocked: user (attended session, after WT-08) · priority: high · size: L · area: sim`
 
@@ -618,18 +597,6 @@ dependency incident, but `src/content/evidence.ts` accepts that metric only for 
 use `DELAY_CPU` or restrict the example to the CPU mechanisms. This is a documentation correction, not a scoring
 change. Done when: A9's example matches the accepted mechanisms and relation/notability rules, preserving its
 explanation of the remaining proof-recipe gap.
-
-### PR-14 · Receiver trials are cumulative plans, logged and counted as single moves
-`list: pr-followups · status: ready · priority: low · size: S · area: sim`
-
-From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. The receiver-up loop in `policyAdjust` (`src/sim/wlm/adjust.ts`) carries `up` forward, so trial N is steps
-1…N; one accepted "move" can be a four-step plan (batch-recovery fixture: `BATCHPRD#1 DP F0→F5`). The code comment,
-SPEC §5.5.4 and the docs/research.md move-codes row say "each trial is a single move", and `inspect … wlm-stats`
-counts accepted plans as moves. A top-level split also logs `DP F6→F7`, the one priority never occupied, while the
-stored DP stays F6 and the mate drops a level. Keep the cumulative trials (WT-08 builds plans on them); fix the
-wording, add a step count to the trace and `wlm-stats` (moves vs steps), and log a split's stored effect rather than
-F7. Log text may move goldens; no behaviour change otherwise. Done when: the docs say "plan of steps", `wlm-stats`
-reports both counts, no log names F7, and `npm run compare` shows only log/report differences.
 
 ### PR-15 · A policy edit can leave discretionary work on the ladder, or a new goal at the bottom
 `list: pr-followups · status: ready · priority: high · size: M · area: sim`

@@ -1090,7 +1090,9 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
     const reversals = (sc: string) => {
       const dirs = lines.flatMap((l) => {
         const m = move.exec(l)!;
-        return m[1] === sc ? [Math.sign(parseInt(m[3]!, 16) - parseInt(m[2]!, 16))] : [];
+        // Canonical renumbering can leave an UP's DP unchanged. Read the declared move kind.
+        const step = new RegExp(`(UP|CARRY|DONOR) ${sc.replace('#', '#')} DP`).exec(l);
+        return m[1] === sc ? [step ? (step[1] === 'DONOR' ? -1 : 1) : Math.sign(parseInt(m[3]!, 16) - parseInt(m[2]!, 16))] : [];
       });
       return dirs.filter((d, i) => i > 0 && d !== dirs[i - 1]).length;
     };
