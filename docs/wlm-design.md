@@ -1643,10 +1643,11 @@ and ONLHI is OTHER for 30 adjustments (14:00:00–14:04:50). Before the design-r
 below ONLHI to the 16:00 end of the observation (720 adjustments). The test bounds the episode at 60 adjustments and
 asserts STCHI is above ONLHI within five minutes of its first assessment below it.
 
-RT-06 validation against WT-07 on the same seed-42 runs: S-1 online incidents 2 → 0 (the two policy-only MOBILE
-misses disappear); S-2 2 → 2, still one testable runaway cause and agreement; S-3 13 → 15, adding card-free CARDS
-QR_TCB/POLICY incidents at D1 12:00 and D3 11:00. All common incidents retain their truth/cause/agreement results.
-Every incident is reached and reproduced; no validator failure. This is a changed incident set, not a grading fix.
+RT-06 validation against WT-07 on the same seed-42 runs (at `d9617a4`): S-1 online incidents 2 → 0 (the two
+policy-only MOBILE misses disappear); S-2 2 → 2, still one testable runaway cause and agreement; S-3 13 → 14, adding
+a card-free CARDS QR_TCB/POLICY incident at D1 12:00 (before the design-review fix also one at D3 11:00). All common
+incidents retain their truth/cause/agreement results. Every incident is reached and reproduced; no validator
+failure. This is a changed incident set, not a grading fix.
 
 The independent review found two old log parsers that could miss a reversal by retaining an internal move kind
 or only reading the first period in a plan. The convergence tests now observe committed before/after ladder
