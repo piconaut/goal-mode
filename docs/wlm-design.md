@@ -850,7 +850,9 @@ State (all plain, serialised in key order):
 | From | the accumulators (`goalPi`): `mLocal` from this image, `mPlex` from all images summed | `evaluateLpar` on the projection input (§5.4) at a given ladder; percentile goals through `projectedPercentilePi` |
 | Used for | who is a receiver candidate and in what order; whether a donor is happy; the resource-group minimum; reports | everything a plan is judged on: `base = p(current ladder)`, `after = p(trial ladder)` |
 
-No test mixes them. A candidate whose `base` is ≤ 1 is recovering by itself and gets no plan.
+Two rules read `m` inside a plan test, both because a projection cannot show the fact: the missing-goal rule (§5.3)
+and the trust limit (`projectionTrustMax`, §9.5). A candidate whose `base` is ≤ 1 is recovering by itself and gets
+no plan.
 
 ### 5.3 The loop
 
@@ -1099,6 +1101,7 @@ IBM uses it.
 | `maxProjectionsPerInterval` | 12 | the tick budget (replaces `RECEIVERS_PER_IMPORTANCE`, which is deleted) | invented |
 | `demandUpliftMax` | 2 | a quiet tick is lifted to at most twice its demand | invented |
 | `backlogBoostFrac` | 0.5 | work that fell behind wants up to 1.5 × its rate | invented |
+| `projectionTrustMax` | 4 | a receiver whose backlog the bound cut and that is measured over 4 × its `base` is not raised | invented (§9.5) |
 
 Approximations, each marked `// APPROX:` where it is coded:
 
@@ -1464,6 +1467,13 @@ and `SMALL_GAIN`; STCLO#1 from 11:19 to 15:54, `MORE_IMPORTANT_HARMED`; S-1: BAT
 That is the documented clock (WLM Services p.145), so the entry's "0 episodes" is not met as `wlm-stats` counts them;
 counted as intervals running (a skipped interval ends the run) they are 0 by construction.
 
+Restated criterion (design review, 2026-11-12): no period is assessed on two adjustments running without an accepted
+plan or a `BUDGET` stop between them. `wlm-stats` shows it as skip clocks set = assessed − accepted plans − budget
+stops (S-1 at WT-08: 231 = 250 − 19). That holds by construction, since the code sets a clock in exactly those cases,
+so it is a regression check, not evidence on its own. Episodes of 30 assessments are listed with their cause; each
+should be a receiver no CPU or zIIP move helps. Unverified: whether real WLM also clocks a receiver with no fixable
+bottleneck (WLM Services p.144–145 states the clock for "all actions to help it are rejected").
+
 Seed 2's six extra moves are a climb on PROD2 from D2 09:46 to 10:11 (STCHI, TSO#1, TSO#2, DDFPRD#1, DDFPRD#2,
 ONLHI: each two DPs up in turn) that the per-importance budget used to cut short. Every one agrees with its
 projection (no trust-limit case) and none is undone within two minutes; a ladder that only climbs is W2, WT-06's
@@ -1515,6 +1525,10 @@ inside the CI gate's bands; Midwest do-nothing is below the design target (day 1
   these incidents CPU_PRIORITY/POLICY, with WLMGL showing the goal met. Real WLM behaviour. It moves the median by 7
   days, more than the ±3 the entry expected, and below the design target of day 12–18 though inside the CI gate's
   8–22. User decision (2026-11-12): accepted, no change to the ladder or the band.
+  Correction (design review, 2026-11-12): this is incomplete. On seed 42 DDFPRD#1 meets its goal across the sysplex
+  (PI 0.50) but is at local PI 4.00 on PROD2, below batch, on 1,190 adjustments in two days, and is never assessed
+  because its waits exceed its CPU and zIIP delay (W7). The drop to 9.5 days and the return to 16.5 at WT-08 both
+  depend on that; WT-10 owns it.
 - *Harbourline expert seed 9* comes back (victory): on D29 WLM makes 20–58 moves an hour from 10:00 and SLAs are back
   near 100 % by 15:00 (WT-05: 7–9 hours near 0 %).
 - *Seed 7* is still lost (day 36 → 39). Its D29 freeze is not the ladder or the clock: with `rejectedSkipTicks` 0 the
