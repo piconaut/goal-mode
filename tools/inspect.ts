@@ -62,21 +62,22 @@ const piText = (p: number | null | undefined) => (p == null ? '-' : p.toFixed(2)
 const OUTCOME_TEXT: Record<WlmCandidateTrace['outcome'], string> = {
   SKIP_CLOCK: 'not assessed: skip clock running (every move was rejected at its last assessment)',
   NO_MANAGED_DELAY: 'not assessed: no managed delay (CPU, zIIP, I/O, storage, queue under 2 % of samples)',
-  NOT_FIXABLE: 'not assessed: bottleneck is not CPU/zIIP',
+  NOT_FIXABLE: 'not assessed: CPU and zIIP delay each under 15 % of the managed delay (BTLNK is the largest)',
   BUDGET: "not assessed: the interval's projection budget is spent (first in line next time)",
   RECOVERING: 'not assessed: projected PI at sustained demand is already ≤ 1 (recovering by itself)',
   ASSESSED: '',
 };
 
-const SHARE_KEYS = ['CPU', 'ZIIP', 'IO', 'CAP', 'OTHER'] as const;
+const SHARE_KEYS = ['CPU', 'ZIIP', 'IO', 'STORAGE', 'QUEUE', 'CAP', 'OTHER'] as const;
 
-/** The shares the bottleneck was chosen from: each delay over the period's using + delay. */
+/** The period's delay shares: each delay over its using + delay (OTHER, the waits, is outside both). */
 const shareText = (c: WlmCandidateTrace) =>
   SHARE_KEYS.map((k) => `${k} ${(100 * c.delayShares[k]).toFixed(0)}%`).join(' ');
 
 function candidateLines(c: WlmCandidateTrace, n: number): string[] {
   const head = `  ${n}. ${c.scKey} imp ${c.importance} PI ${piText(c.sysplexPi)} (local ${piText(c.localPi)}) DP ${hexDp(c.dp)}${c.bottleneck ? ` BTLNK ${c.bottleneck}` : ''}`;
-  const shares = [`       delay ${shareText(c)} of using + delay`];
+  const waiting = c.waitingFrac !== undefined && c.waitingFrac > 0.5 ? [`       mostly waiting: waits are ${(100 * c.waitingFrac).toFixed(0)}% of all samples`] : [];
+  const shares = [`       delay ${shareText(c)} of using + delay`, ...waiting];
   // To the second: a clock runs in 10-second intervals.
   const nextLook = c.skipUntilTick !== undefined ? `       next look ${clockText(c.skipUntilTick)}${formatClock(c.skipUntilTick).slice(-3)}` : null;
   if (c.outcome !== 'ASSESSED') return [head, ...shares, `       ${OUTCOME_TEXT[c.outcome]}`, ...(nextLook ? [nextLook] : [])];
@@ -84,10 +85,12 @@ function candidateLines(c: WlmCandidateTrace, n: number): string[] {
   return [
     head,
     ...shares,
-    ...(c.donors?.length ? [`       donors in order: ${c.donors.join(' ')}`] : []),
+    ...(c.plans && c.plans.length > 1
+      ? [`       plans: ${c.plans.map((p) => `${p.bottleneck} ${p.outcome}${p.donors.length ? ` (donors ${p.donors.join(' ')})` : ''}`).join(', then ')}`]
+      : c.donors?.length ? [`       donors in order: ${c.donors.join(' ')}`] : []),
     ...c.trials.map((t) => {
       const r = t.receiverPi ? `  rcvr PI ${piText(t.receiverPi[0])}→${piText(t.receiverPi[1])}` : '';
-      return `       ${t.move.padEnd(30)} ${t.verdict}${r}${t.detail ? `  ${t.detail}` : ''}`;
+      return `       ${t.bottleneck ? `${t.bottleneck.padEnd(4)} ` : ''}${t.move.padEnd(30)} ${t.verdict}${r}${t.detail ? `  ${t.detail}` : ''}`;
     }),
     ...(c.planOutcome && c.planOutcome !== 'ACCEPTED' ? [`       plan ended: ${c.planOutcome}; no tentative moves committed`] : []),
     ...(nextLook ? [`${nextLook} (${c.planOutcome ? 'plan not committed' : 'all rejected'}: skip clock set)`] : []),
@@ -164,11 +167,16 @@ export interface WlmStatsCounters {
   noCandidate: number;
   /** Candidates with an outcome of `ASSESSED` (trials were built for them). */
   assessed: number;
-  /** `NOT_FIXABLE` candidates by the bottleneck they were skipped for. */
-  notFixable: Record<'IO' | 'OTHER' | 'CAP' | 'NONE', number>;
+  /** `NOT_FIXABLE` candidates by their largest managed delay (CPU and zIIP delay both under `bottleneckMinFrac` of it;
+   * WT-10). */
+  notFixable: Record<'IO' | 'STORAGE' | 'QUEUE', number>;
   /** `SKIP_CLOCK` and `NO_MANAGED_DELAY` candidates (WT-05). */
   skipClock: number;
   noManagedDelay: number;
+  /** Candidates that were mostly waiting (waits over half their samples; WT-10): not assessed for lack of managed
+   * delay, and assessed (a CPU or zIIP plan was built). */
+  waitingNoDelay: number;
+  waitingAssessed: number;
   /** Skip clocks set (an assessed candidate with every trial rejected). */
   clocksSet: number;
   /** `BUDGET` candidates: the interval's projection budget was spent before them. */
@@ -214,7 +222,7 @@ export interface WlmStats {
 }
 
 const emptyCounters = (): WlmStatsCounters => ({
-  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, OTHER: 0, CAP: 0, NONE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
+  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, STORAGE: 0, QUEUE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, waitingNoDelay: 0, waitingAssessed: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
   verdicts: { ACCEPTED: 0, RETAINED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
   acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, episodes: 0,
 });
@@ -224,21 +232,13 @@ const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'RETAINED', 'CPU_CRITICAL'
 const notFixableKey = (b: WlmCandidateTrace['bottleneck']): keyof WlmStatsCounters['notFixable'] => {
   switch (b) {
     case 'IO':
-    case 'CAP':
-    case 'OTHER':
-    case 'NONE':
+    case 'STORAGE':
+    case 'QUEUE':
       return b;
-    case null:
-      return 'NONE';
-    // A CPU/zIIP bottleneck is assessable, so `policyAdjust` never records it as NOT_FIXABLE: if that changes, the
-    // audit table needs a column for it rather than quietly folding it into "no bottleneck".
-    case 'CPU':
-    case 'ZIIP':
+    // CPU and zIIP are assessable, and a candidate with no managed delay is NO_MANAGED_DELAY, so `policyAdjust` never
+    // records these as NOT_FIXABLE: if that changes, the audit table needs a column for it.
+    default:
       throw new Error(`a ${b} bottleneck cannot be NOT_FIXABLE`);
-    default: {
-      const never: never = b;
-      return never;
-    }
   }
 };
 
@@ -283,9 +283,12 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
       else if (cand.outcome === 'BUDGET') c.budget++;
       else if (cand.outcome === 'RECOVERING') c.recovering++;
       else if (cand.outcome === 'SKIP_CLOCK') c.skipClock++;
-      else if (cand.outcome === 'NO_MANAGED_DELAY') c.noManagedDelay++;
-      else {
+      else if (cand.outcome === 'NO_MANAGED_DELAY') {
+        c.noManagedDelay++;
+        if ((cand.waitingFrac ?? 0) > 0.5) c.waitingNoDelay++;
+      } else {
         c.assessed++;
+        if ((cand.waitingFrac ?? 0) > 0.5) c.waitingAssessed++;
         assessed.add(cand.scKey);
         if (cand.skipUntilTick !== undefined) c.clocksSet++;
       }
@@ -417,6 +420,8 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
     total.recovering += c.recovering;
     total.skipClock += c.skipClock;
     total.noManagedDelay += c.noManagedDelay;
+    total.waitingNoDelay += c.waitingNoDelay;
+    total.waitingAssessed += c.waitingAssessed;
     total.clocksSet += c.clocksSet;
     total.trials += c.trials;
     total.projections += c.projections;
@@ -556,14 +561,15 @@ export function statsText(stats: WlmStats): string {
     ['adjustments', [...stats.systems.map((s) => s.counters.adjustments), stats.total.adjustments]],
     ['  no candidate (every goal met)', [...stats.systems.map((s) => s.counters.noCandidate), stats.total.noCandidate]],
     ['candidates assessed', [...stats.systems.map((s) => s.counters.assessed), stats.total.assessed]],
+    ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingAssessed), stats.total.waitingAssessed]],
     ['  not assessed: I/O bottleneck', [...stats.systems.map((s) => s.counters.notFixable.IO), stats.total.notFixable.IO]],
-    ['  not assessed: other bottleneck', [...stats.systems.map((s) => s.counters.notFixable.OTHER), stats.total.notFixable.OTHER]],
-    ['  not assessed: capping bottleneck', [...stats.systems.map((s) => s.counters.notFixable.CAP), stats.total.notFixable.CAP]],
-    ['  not assessed: no bottleneck', [...stats.systems.map((s) => s.counters.notFixable.NONE), stats.total.notFixable.NONE]],
+    ['  not assessed: storage bottleneck', [...stats.systems.map((s) => s.counters.notFixable.STORAGE), stats.total.notFixable.STORAGE]],
+    ['  not assessed: queue bottleneck', [...stats.systems.map((s) => s.counters.notFixable.QUEUE), stats.total.notFixable.QUEUE]],
     ['  not assessed: budget', [...stats.systems.map((s) => s.counters.budget), stats.total.budget]],
     ['  not assessed: already recovering (base ≤ 1)', [...stats.systems.map((s) => s.counters.recovering), stats.total.recovering]],
     ['  not assessed: skip clock running', [...stats.systems.map((s) => s.counters.skipClock), stats.total.skipClock]],
     ['  not assessed: no managed delay', [...stats.systems.map((s) => s.counters.noManagedDelay), stats.total.noManagedDelay]],
+    ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingNoDelay), stats.total.waitingNoDelay]],
     ['skip clocks set (every trial rejected)', [...stats.systems.map((s) => s.counters.clocksSet), stats.total.clocksSet]],
     ['proposed steps (including free rejections)', [...stats.systems.map((s) => s.counters.trials), stats.total.trials]],
     ['projections', [...stats.systems.map((s) => s.counters.projections), stats.total.projections]],

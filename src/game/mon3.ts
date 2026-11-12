@@ -710,6 +710,9 @@ const BTLNK_TEXT: Record<string, string> = {
   CPU: 'waiting for a general CP',
   ZIIP: 'waiting for a zIIP',
   IO: 'waiting for I/O',
+  STORAGE: 'delayed by paging or swapping',
+  QUEUE: 'queued for an initiator or MPL slot',
+  // Logs in saves from before WT-10, when waits and capping were bottlenecks.
   CAP: 'held back by capping',
   OTHER: 'waiting on a server or subsystem',
 };
@@ -737,6 +740,9 @@ export function explainWlmLog(line: string): string {
   const prot = /(\S+) CPU PROTECTION (.*)$/.exec(line);
   if (prot)
     return `On ${prot[1]}, less important work held a dispatch priority equal to or above a CPU-protected period (CPU Critical or IEAOPT CCIMP), so WLM lowered it: ${prot[2]}. CPU protection is enforced before WLM helps any receiver.`;
+  const waiting = /(\S+) (\S+) PI=([\d.]+) mostly waiting, CPU delay (\d+) %: not WLM-fixable/.exec(line);
+  if (waiting)
+    return `On ${waiting[1]}, ${waiting[2]} misses its goal (PI ${waiting[3]}) but spends most of its time waiting on a server, lock or subsystem, not in a delay WLM manages (CPU delay only ${waiting[4]} % of its samples): dispatching priority can't fix that, so WLM leaves it. Look at what it waits for (DELAY, ENCLAVE, the server's own class).`;
   const notFix = /(\S+) (\S+) PI=([\d.]+) BTLNK=(\S+) not WLM-fixable/.exec(line);
   if (notFix)
     return `On ${notFix[1]}, ${notFix[2]} misses its goal (PI ${notFix[3]}) but is mostly ${BTLNK_TEXT[notFix[4]!] ?? notFix[4]}: dispatching priority can't fix that, so WLM skips it. Look at the delay's real cause.`;

@@ -39,7 +39,7 @@ describe('bot WLM tracing (tools/botTrace.ts)', () => {
     clockText: 'D29 10:00:10', lparId: 'PRDA', dps: { 'A#1': 0xfc }, action: null, protection: [],
     candidates: [{
       scKey: 'A#1', importance: 1, sysplexPi: 2.5, localPi: 3, dp: 0xfc, bottleneck: 'CPU', basePi: 2.8, managedDelayFrac: 0.4,
-      delayShares: { CPU: 0.9, ZIIP: 0, IO: 0.1, CAP: 0, OTHER: 0 }, outcome: 'ASSESSED', skipUntilTick: 1234,
+      delayShares: { CPU: 0.9, ZIIP: 0, IO: 0.1, STORAGE: 0, QUEUE: 0, CAP: 0, OTHER: 0 }, outcome: 'ASSESSED', skipUntilTick: 1234,
       trials: [
         { move: 'DONOR B#1 DP FC→FB', verdict: 'NO_RECEIVER_GAIN', receiverPi: [2.8, 2.8] },
         { move: 'A#1 DP FC→FD', verdict: 'ACCEPTED', receiverPi: [2.8, 0.9] },
@@ -50,7 +50,7 @@ describe('bot WLM tracing (tools/botTrace.ts)', () => {
   it('dumps candidates and trials, and finds the day a dump prefix names', () => {
     expect(candidateDump(t)).toEqual([
       '## PRDA D29 10:00:10',
-      '   A#1 imp1 plex 2.50 loc 3.00 dp FC ASSESSED base 2.80 mdf 0.400 [CPU90 ZIIP0 IO10 CAP0 OTHER0] clock→1234',
+      '   A#1 imp1 plex 2.50 loc 3.00 dp FC ASSESSED base 2.80 mdf 0.400 [CPU90 ZIIP0 IO10 STORAGE0 QUEUE0 CAP0 OTHER0] clock→1234',
       '      DONOR B#1 DP FC→FB NO_RECEIVER_GAIN 2.80→2.80',
       '      A#1 DP FC→FD ACCEPTED 2.80→0.90',
     ]);

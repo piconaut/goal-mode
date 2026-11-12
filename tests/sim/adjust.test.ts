@@ -1,6 +1,6 @@
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { BASEPOL } from '../../src/content/wlm/basepol';
-import { donorOrder, type DonorInfo, enforceCpuProtection, managedDelayFrac, policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { donorOrder, type DonorInfo, enforceCpuProtection, fixableBottlenecks, largestManagedDelay, managedDelayFrac, policyAdjust, setWlmTraceSink, waitingFrac, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
@@ -62,6 +62,39 @@ describe('policy adjustment', () => {
     expect(out.log).toContain('RCVR=ONLHI#1');
     // One step: alone below batch, it joins batch's level (WLM Services p.707, code 620).
     expect(out.dps['ONLHI#1']!).toBe(out.dps['BATCHPRD#1']!);
+  });
+
+  it('45 % other, 40 % CPU delay: a CPU plan is tried (WT-10, docs/wlm-design.md §5.7)', () => {
+    // Waits (locks, servers, the CF) are not a delay state and no longer outvote CPU delay as the bottleneck.
+    const onl = system.scps.find((p) => p.scKey === 'ONLHI#1')!;
+    const n = onl.acc.using + onl.acc.delay;
+    const acc = { ...onl.acc, using: 0.15 * n, delay: 0.4 * n, delayCpu: 0.4 * n, delayZiip: 0, delayIo: 0, delayCap: 0, delayStorage: 0, delayQueue: 0, delayOther: 0.45 * n };
+    expect(waitingFrac(acc)).toBeCloseTo(0.45, 9);
+    expect(fixableBottlenecks(acc)).toEqual(['CPU']);
+    const waiting = { ...system, scps: system.scps.map((p) => (p.scKey === 'ONLHI#1' ? { ...p, acc } : p)) };
+    const out = policyAdjust({ def: BASEPOL, system: waiting, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
+    expect(out.log).toContain('RCVR=ONLHI#1 PI=4.00 BTLNK=CPU');
+  });
+
+  it('a period that is mostly waiting, with little CPU delay, logs the waiting note and moves nothing', () => {
+    const onl = system.scps.find((p) => p.scKey === 'ONLHI#1')!;
+    const n = onl.acc.using + onl.acc.delay;
+    // 6 % CPU delay, 80 % waits, the rest I/O delay: CPU is under bottleneckMinFrac of the managed delay.
+    const acc = { ...onl.acc, using: 0.04 * n, delay: 0.16 * n, delayCpu: 0.012 * n, delayZiip: 0, delayIo: 0.148 * n, delayCap: 0, delayStorage: 0, delayQueue: 0, delayOther: 0.8 * n };
+    expect(fixableBottlenecks(acc)).toEqual([]);
+    expect(largestManagedDelay(acc)).toBe('IO');
+    const waiting = { ...system, scps: system.scps.map((p) => (p.scKey === 'ONLHI#1' ? { ...p, acc } : p)) };
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    let out;
+    try {
+      out = policyAdjust({ def: BASEPOL, system: waiting, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
+    } finally {
+      setWlmTraceSink(null);
+    }
+    expect(out.log).toBe('T SYS1 ONLHI#1 PI=4.00 mostly waiting, CPU delay 1 %: not WLM-fixable');
+    expect(out.dps).toEqual(dps);
+    expect(traces[0]!.candidates[0]).toMatchObject({ scKey: 'ONLHI#1', outcome: 'NOT_FIXABLE', bottleneck: 'IO', trials: [] });
   });
 
   it('only one receiver is helped per interval', () => {
@@ -850,6 +883,60 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
     expect(receiver.outcome).toBe('ASSESSED');
     expect(receiver.bottleneck).toBe('ZIIP');
     expect(receiver.donors).toEqual(['Z#1']);
+  });
+
+  it('fixableBottlenecks: CPU and zIIP by delay, each at least bottleneckMinFrac of the managed delay', () => {
+    const acc = (cpu: number, ziip: number, io: number, other = 0) =>
+      ({ ...emptyAcc(), using: 1, delay: cpu + ziip + io, delayCpu: cpu, delayZiip: ziip, delayIo: io, delayStorage: 0, delayQueue: 0, delayOther: other });
+    expect(fixableBottlenecks(acc(0.4, 0.3, 0.3))).toEqual(['CPU', 'ZIIP']);
+    expect(fixableBottlenecks(acc(0.2, 0.3, 0.5))).toEqual(['ZIIP', 'CPU']);
+    // I/O is the largest delay; CPU is still a real share of it and is tried.
+    expect(fixableBottlenecks(acc(0.2, 0.05, 0.75))).toEqual(['CPU']);
+    expect(fixableBottlenecks(acc(0.1, 0.05, 0.85))).toEqual([]);
+    // Waits take no part: the share is of the managed delay, not of all samples.
+    expect(fixableBottlenecks(acc(0.2, 0, 0.1, 10))).toEqual(['CPU']);
+    // Storage and queue delay are managed delays; an old save without them has storage inside `delay`.
+    expect(fixableBottlenecks({ ...acc(0.1, 0, 0), delay: 1, delayStorage: undefined, delayQueue: undefined })).toEqual([]);
+    expect(largestManagedDelay({ ...acc(0.1, 0, 0), delay: 1, delayStorage: undefined, delayQueue: undefined })).toBe('STORAGE');
+    expect(fixableBottlenecks(acc(0, 0, 0))).toEqual([]);
+  });
+
+  it('builds a zIIP plan after a rejected CPU plan, each with its own donors (WT-10)', () => {
+    const def = structuredClone(BASEPOL);
+    const template = def.classes.find((c) => c.id === 'STCLO')!;
+    for (const [id, importance, velocity] of [['R', 2, 90], ['Z', 4, 5], ['CP', 5, 5]] as const) {
+      def.classes.push({ ...structuredClone(template), id, cpuCritical: false,
+        periods: [{ goal: { kind: 'VEL', velocity }, importance, durationSu: null }] });
+    }
+    const dps: Record<string, number> = { 'R#1': 242, 'Z#1': 244, 'CP#1': 246 };
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 2, ziipServers: 2, cpPrsmDelayFrac: 0,
+      slices: [sliceSpec({ key: 'R', scKey: 'R#1', kind: 'AS', cpEngines: 0, ziipEngines: 2, units: 2, mayOverflow: false }),
+        sliceSpec({ key: 'Z', scKey: 'Z#1', kind: 'AS', cpEngines: 0, ziipEngines: 2, units: 2, mayOverflow: false }),
+        sliceSpec({ key: 'CP', scKey: 'CP#1', kind: 'AS', cpEngines: .2, units: 1 })], backlog: {}, io: IO, pagingFrac: 0 };
+    const current = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! }).scps;
+    // R's history holds slightly more CPU delay than zIIP delay, so the CPU plan comes first.
+    const system = { lparId: 'SYS', scps: current.map((t) => {
+      const acc = decayInto(emptyAcc(), t);
+      return { scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: t.scKey === 'R#1' ? { ...acc, delayCpu: 1.1 * acc.delayZiip, delay: acc.delay + 1.1 * acc.delayZiip } : acc };
+    }) };
+    const saved = { ...POLICY_ADJUST };
+    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100 });
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    let out;
+    try {
+      out = policyAdjust({ def, system, evalInput, current, sysplexPi: {}, clockText: 'T', nowTick: 0 });
+    } finally {
+      setWlmTraceSink(null);
+      Object.assign(POLICY_ADJUST, saved);
+    }
+    const r = traces[0]!.candidates.find((c) => c.scKey === 'R#1')!;
+    expect(r.plans!.map((p) => [p.bottleneck, p.donors])).toEqual([['CPU', ['CP#1']], ['ZIIP', ['Z#1']]]);
+    expect(r.plans!.every((p) => p.outcome !== 'ACCEPTED')).toBe(true);
+    expect(new Set(r.trials.map((t) => t.bottleneck))).toEqual(new Set(['CPU', 'ZIIP']));
+    // One skip clock for the receiver, and the note names the first bottleneck tried.
+    expect(out.skipUntil).toEqual({ 'R#1': POLICY_ADJUST.rejectedSkipTicks });
+    expect(out.log).toMatch(/^T SYS R#1 PI=\S+ BTLNK=CPU no action with net value/);
   });
 
   it('uses smoothed processor use, including IIPCP, with an inclusive minimum; ignores absent old-save zIIP use', () => {

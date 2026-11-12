@@ -26,6 +26,10 @@ export interface ScpAcc {
   delayIo: number;
   delayOther: number;
   delayCap: number;
+  /** Decayed storage (paging) and queue delay, both also in `delay` (WT-10: managed delays told apart). Absent in old
+   * saves: `decayInto` seeds storage with the part of `delay` no other component explains, queue with 0. */
+  delayStorage?: number;
+  delayQueue?: number;
   cpuEngines: number;
   /** Decayed zIIP engines used (the zIIP counterpart of `cpuEngines`, for donors of a zIIP bottleneck; WT-07). Absent
    * in a period's first tick and in old saves: seeded at steady state. */
@@ -187,6 +191,8 @@ export const emptyAcc = (): ScpAcc => ({
   delayIo: 0,
   delayOther: 0,
   delayCap: 0,
+  delayStorage: 0,
+  delayQueue: 0,
   cpuEngines: 0,
 });
 
@@ -209,6 +215,8 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
     delayIo: acc.delayIo * d + t.delayIo,
     delayOther: acc.delayOther * d + t.delayOther,
     delayCap: acc.delayCap * d + t.delayCap,
+    delayStorage: (acc.delayStorage ?? Math.max(0, acc.delay - acc.delayCpu - acc.delayZiip - acc.delayIo - acc.delayCap)) * d + t.delayStorage,
+    delayQueue: (acc.delayQueue ?? 0) * d + (t.delayQueue ?? 0),
     cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
     ziipEngines: acc.ziipEngines === undefined ? t.ziipEngines / (1 - d) : acc.ziipEngines * d + t.ziipEngines,
     demandCp: acc.demandCp === undefined ? (t.demandCp ?? 0) / (1 - d) : acc.demandCp * d + (t.demandCp ?? 0),
@@ -251,6 +259,8 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   out.delayIo += a.delayIo;
   out.delayOther += a.delayOther;
   out.delayCap += a.delayCap;
+  if (a.delayStorage !== undefined) out.delayStorage = (out.delayStorage ?? 0) + a.delayStorage;
+  if (a.delayQueue !== undefined) out.delayQueue = (out.delayQueue ?? 0) + a.delayQueue;
   out.cpuEngines += a.cpuEngines;
   if (a.usingIoNoVel !== undefined) {
     out.usingIoNoVel = (out.usingIoNoVel ?? 0) + a.usingIoNoVel;

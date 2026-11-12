@@ -14,23 +14,63 @@ import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
 import { projectedPercentilePi } from './goals';
 import { ACC_DECAY, goalPi, goalInfo, srvDelayCapOf, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
-import { buildPlan, formatPlanMoves, type PlanMove, type PlanAssessment } from './plan';
+import { buildPlan, formatPlanMoves, type PlanAttempt, type PlanMove, type PlanAssessment } from './plan';
 import type { ServiceDefinition } from './types';
 
-export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'CAP' | 'OTHER' | 'NONE';
+/** A managed delay a receiver's plan can target (CPU, ZIIP) or that it is reported not fixable for (docs/wlm-design.md
+ * §5.7). Capping and waits (`delayOther`) are not managed delays and are never a bottleneck. */
+export type Bottleneck = 'CPU' | 'ZIIP' | 'IO' | 'STORAGE' | 'QUEUE' | 'NONE';
+export type FixableBottleneck = 'CPU' | 'ZIIP';
 
-export function bottleneckOf(t: { delayCpu: number; delayZiip: number; delayIo: number; delayOther: number; delayCap: number }): Bottleneck {
-  const opts: [Bottleneck, number][] = [
-    ['CPU', t.delayCpu],
-    ['ZIIP', t.delayZiip],
-    ['IO', t.delayIo],
-    ['CAP', t.delayCap],
-    ['OTHER', t.delayOther],
-  ];
+type DelayAcc = Pick<ScpState['acc'], 'delay' | 'delayCpu' | 'delayZiip' | 'delayIo' | 'delayCap' | 'delayStorage' | 'delayQueue' | 'delayIoNoVel'>;
+
+/**
+ * The managed delays of a period (docs/wlm-design.md §5.7; SG24-6472-03 p.61, 63–64: processor, paging and swap, MPL,
+ * I/O). I/O is the part in velocity. An old save without `delayStorage` has it inside `delay`: what no other
+ * component explains. APPROX: the samples of transaction-server regions are included here (the totals have no per-
+ * component server split); the needs-help test (`managedDelayFrac`) leaves them out.
+ */
+export function managedDelays(acc: DelayAcc): Record<Exclude<Bottleneck, 'NONE'>, number> {
+  const queue = acc.delayQueue ?? 0;
+  const storage = acc.delayStorage ?? Math.max(0, acc.delay - acc.delayCpu - acc.delayZiip - acc.delayIo - acc.delayCap - queue);
+  return { CPU: acc.delayCpu, ZIIP: acc.delayZiip, IO: Math.max(0, acc.delayIo - (acc.delayIoNoVel ?? 0)), STORAGE: storage, QUEUE: queue };
+}
+
+/** The bottlenecks a receiver's plans are built for, in order: CPU and zIIP by delay, largest first, each kept when it
+ * is at least `bottleneckMinFrac` of the managed delay, even when I/O, storage or queue delay is larger (§5.7). */
+export function fixableBottlenecks(acc: DelayAcc, tuning: Pick<typeof POLICY_ADJUST, 'bottleneckMinFrac'> = POLICY_ADJUST): FixableBottleneck[] {
+  const m = managedDelays(acc);
+  const total = m.CPU + m.ZIIP + m.IO + m.STORAGE + m.QUEUE;
+  if (!(total > 0)) return [];
+  const out: FixableBottleneck[] = [];
+  for (const b of ['CPU', 'ZIIP'] as const) if (m[b] > 0 && m[b] >= tuning.bottleneckMinFrac * total) out.push(b);
+  return m.ZIIP > m.CPU ? out.reverse() : out;
+}
+
+/** The largest managed delay: what a period no plan is built for is reported waiting for. */
+export function largestManagedDelay(acc: DelayAcc): Bottleneck {
   let best: [Bottleneck, number] = ['NONE', 1e-9];
-  for (const o of opts) if (o[1] > best[1]) best = o;
+  for (const [b, v] of Object.entries(managedDelays(acc)) as [Bottleneck, number][]) if (v > best[1]) best = [b, v];
   return best[0];
 }
+
+/** Share of a period's samples (using, delay and waits) that are waits (`delayOther`): locks, servers, the CF, the QR
+ * TCB. Not a delay state (§5.7); it decides only the wording of the no-action note. */
+export function waitingFrac(acc: Pick<ScpState['acc'], 'using' | 'delay' | 'delayOther'>): number {
+  const samples = acc.using + acc.delay + acc.delayOther;
+  return samples > 0 ? acc.delayOther / samples : 0;
+}
+
+/** A period's delay shares (`WlmDelayShares`): each component over `using + delay`. */
+export function sharesOf(acc: DelayAcc & Pick<ScpState['acc'], 'using' | 'delayOther'>): WlmDelayShares {
+  const denom = acc.using + acc.delay;
+  const share = (v: number) => (denom > 0 ? v / denom : 0);
+  const m = managedDelays(acc);
+  return { CPU: share(m.CPU), ZIIP: share(m.ZIIP), IO: share(m.IO), STORAGE: share(m.STORAGE), QUEUE: share(m.QUEUE), CAP: share(acc.delayCap), OTHER: share(acc.delayOther) };
+}
+
+/** A period whose waits are over half its samples is "mostly waiting": its note says so instead of naming a delay. */
+const MOSTLY_WAITING_FRAC = 0.5;
 
 export interface AdjustInput {
   def: ServiceDefinition;
@@ -84,6 +124,8 @@ export interface WlmTrialTrace {
   blockedBy?: string;
   projected?: boolean;
   steps?: PlanMove[];
+  /** The bottleneck whose plan this trial belongs to, when a receiver had plans for both CPU and zIIP. */
+  bottleneck?: FixableBottleneck;
   /** Retained moves of the accepted atomic plan (only on its final ACCEPTED proposal). */
   plan?: PlanMove[];
   afterPis?: Record<string, number | null>;
@@ -91,11 +133,10 @@ export interface WlmTrialTrace {
 }
 
 /**
- * Delay shares a bottleneck was chosen from: each delay component over `using + delay`. The denominator keeps the
- * storage and queue delay that have no numerator of their own, and `IO` is the velocity share (delay I/O priority
- * management cannot see is subtracted), so the five do not sum to 1.
+ * Delay shares of a period: each delay component over `using + delay`. `IO` is the velocity share (delay I/O priority
+ * management cannot see is subtracted), and `OTHER` (waits) is outside `delay`, so they do not sum to 1.
  */
-export type WlmDelayShares = Record<Exclude<Bottleneck, 'NONE'>, number>;
+export type WlmDelayShares = Record<Exclude<Bottleneck, 'NONE'> | 'CAP' | 'OTHER', number>;
 
 export interface WlmCandidateTrace {
   scKey: string;
@@ -105,14 +146,20 @@ export interface WlmCandidateTrace {
   dp: number;
   bottleneck: Bottleneck | null;
   /**
-   * The shares `bottleneckOf` saw for this period (zero when it used and lost no time). On a `BUDGET` candidate the
-   * bottleneck was never chosen; the shares are still recorded so a consumer always has the period's accounting.
+   * The period's delay shares (zero when it used and lost no time), recorded for every outcome so a consumer always
+   * has the period's accounting.
    */
   delayShares: WlmDelayShares;
-  /** Donor periods in the order their trials were built (assessed receivers; empty when none qualified). */
+  /** Waits over all samples (`waitingFrac`); over one half the no-action note reads "mostly waiting". */
+  waitingFrac?: number;
+  /** ASSESSED: one entry per plan built, in order (CPU and zIIP by delay, §5.7); `trials` holds all of their trials. */
+  plans?: { bottleneck: FixableBottleneck; donors: string[]; outcome: 'ACCEPTED' | 'REJECTED' | 'BUDGET' | 'STEP_LIMIT' }[];
+  /** Donor periods of the first plan in the order its trials were built (assessed receivers; empty when none
+   * qualified). Each plan's donors are in `plans`. */
   donors?: string[];
   /** SKIP_CLOCK: its skip clock has not expired (`skipUntilTick`); NO_MANAGED_DELAY: its managed delay is under
-   * `needsHelpDelayFrac` (`managedDelayFrac`); NOT_FIXABLE: bottleneck isn't CPU/zIIP; RECOVERING: its projected PI at
+   * `needsHelpDelayFrac` (`managedDelayFrac`); NOT_FIXABLE: neither CPU nor zIIP delay is `bottleneckMinFrac` of the
+   * managed delay (`bottleneck` is the largest managed delay); RECOVERING: its projected PI at
    * sustained demand and the current DPs is already ≤ 1 (or unknown): no trials; BUDGET: the interval's projection
    * budget was spent before it (the search stops); ASSESSED: trials below. */
   outcome: 'SKIP_CLOCK' | 'NO_MANAGED_DELAY' | 'NOT_FIXABLE' | 'RECOVERING' | 'BUDGET' | 'ASSESSED';
@@ -516,67 +563,73 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     k: string,
     bottleneck: Bottleneck | null,
     outcome: WlmCandidateTrace['outcome'],
-    delayShares: WlmDelayShares,
   ): WlmCandidateTrace => {
-    const c: WlmCandidateTrace = { scKey: k, importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, delayShares, outcome, trials: [] };
+    const acc = accOf[k]!.acc;
+    const c: WlmCandidateTrace = { scKey: k, importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, delayShares: sharesOf(acc), waitingFrac: waitingFrac(acc), outcome, trials: [] };
     traced.push(c);
     return c;
-  };
-  /** The period's delay accounting with I/O priority management off applied: what the bottleneck is chosen from. */
-  const delaysOf = (k: string) => {
-    const acc = system.scps.find((s) => s.scKey === k)!.acc;
-    return { ...acc, delayIo: acc.delayIo - (acc.delayIoNoVel ?? 0) };
-  };
-  const sharesOf = (k: string): WlmDelayShares => {
-    const d = delaysOf(k);
-    const denom = d.using + d.delay;
-    const share = (v: number) => (denom > 0 ? v / denom : 0);
-    return { CPU: share(d.delayCpu), ZIIP: share(d.delayZiip), IO: share(d.delayIo), CAP: share(d.delayCap), OTHER: share(d.delayOther) };
   };
   const finish = (out: Omit<AdjustOutput, 'skipUntil' | 'resumeAt' | 'clockNotes'>, resumeAt: string | null): AdjustOutput => {
     if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null, protection });
     return { ...out, skipUntil, resumeAt, clockNotes };
   };
+  /** The no-action note's text for a period that is mostly waiting (§5.7): its waits are not a delay WLM manages, and
+   * the CPU delay it does have is named, which keeps the clue for a starved server (SPEC §5.5.4). */
+  const waitingNote = (k: string): string | null => {
+    const acc = accOf[k]!.acc;
+    if (waitingFrac(acc) <= MOSTLY_WAITING_FRAC) return null;
+    const samples = acc.using + acc.delay + acc.delayOther;
+    return `mostly waiting, CPU delay ${Math.round((100 * acc.delayCpu) / samples)} %: not WLM-fixable`;
+  };
   let stoppedAt: string | null = null;
   for (const receiver of candidates) {
     // The skip clock (WLM Services p.145): a receiver nothing could help is not assessed again until it expires.
     if (skipUntil[receiver] !== undefined) {
-      if (tracing) traceOf(receiver, null, 'SKIP_CLOCK', sharesOf(receiver)).skipUntilTick = skipUntil[receiver];
+      if (tracing) traceOf(receiver, null, 'SKIP_CLOCK').skipUntilTick = skipUntil[receiver];
       continue;
     }
-    // A period with no managed delay is not assessed: no priority change can help it (WLM Services p.144).
-    const mdf = managedDelayFrac(accOf[receiver]!.acc);
-    if (mdf < POLICY_ADJUST.needsHelpDelayFrac) {
-      if (tracing) traceOf(receiver, null, 'NO_MANAGED_DELAY', sharesOf(receiver)).managedDelayFrac = mdf;
-      continue;
-    }
-    // With I/O priority management off, I/O samples are outside velocity and WLM doesn't manage I/O (WLM Planning p.115).
-    const btl = bottleneckOf(delaysOf(receiver));
+    const acc = accOf[receiver]!.acc;
     const pi = (input.sysplexPi[receiver] ?? localPi[receiver] ?? 0).toFixed(2);
-    if (btl !== 'CPU' && btl !== 'ZIIP') {
-      notes.push(`${receiver} PI=${pi} BTLNK=${btl} not WLM-fixable`);
-      if (tracing) traceOf(receiver, btl, 'NOT_FIXABLE', sharesOf(receiver));
+    const waiting = waitingNote(receiver);
+    // A period with no managed delay is not assessed: no priority change can help it (WLM Services p.144).
+    const mdf = managedDelayFrac(acc);
+    if (mdf < POLICY_ADJUST.needsHelpDelayFrac) {
+      if (waiting) notes.push(`${receiver} PI=${pi} ${waiting}`);
+      if (tracing) traceOf(receiver, null, 'NO_MANAGED_DELAY').managedDelayFrac = mdf;
       continue;
     }
+    // Plans are built for CPU and zIIP, largest delay first, each a real share of the managed delay (§5.7). I/O,
+    // storage and queue delay are managed by other means (I/O priority, storage targets, MPL) that the sim does not
+    // model as policy adjustment actions. With I/O priority management off, I/O samples are outside velocity
+    // (WLM Planning p.115) and are not managed delay.
+    const fixable = fixableBottlenecks(acc);
+    if (fixable.length === 0) {
+      const largest = largestManagedDelay(acc);
+      notes.push(`${receiver} PI=${pi} ${waiting ?? `BTLNK=${largest} not WLM-fixable`}`);
+      if (tracing) traceOf(receiver, largest, 'NOT_FIXABLE').managedDelayFrac = mdf;
+      continue;
+    }
+    const btl0 = fixable[0]!;
     // One basis: a receiver whose projected PI at sustained demand is already at or under 1 is recovering by
     // itself (its management PI is still catching up). No trials, and no use of the projection budget.
     const b0 = basePis()[receiver];
     if (b0 == null || b0 <= 1) {
-      notes.push(`${receiver} PI=${pi} BTLNK=${btl} already recovering`);
-      if (tracing) traceOf(receiver, btl, 'RECOVERING', sharesOf(receiver)).basePi = b0 ?? null;
+      notes.push(`${receiver} PI=${pi} BTLNK=${btl0} already recovering`);
+      if (tracing) traceOf(receiver, btl0, 'RECOVERING').basePi = b0 ?? null;
       continue;
     }
     // The projection budget is per interval: when it is spent the search stops, with no skip clock, and the next
     // interval's search starts at this receiver.
     if (budget <= 0) {
-      if (tracing) traceOf(receiver, btl, 'BUDGET', sharesOf(receiver)).basePi = b0;
+      if (tracing) traceOf(receiver, btl0, 'BUDGET').basePi = b0;
       stoppedAt = receiver;
       break;
     }
-    const ct = tracing ? traceOf(receiver, btl, 'ASSESSED', sharesOf(receiver)) : null;
+    const ct = tracing ? traceOf(receiver, btl0, 'ASSESSED') : null;
     if (ct) {
       ct.basePi = b0;
       ct.managedDelayFrac = mdf;
+      ct.plans = [];
     }
     // A receiver whose backlog the projection bounded, and that is measured far worse than projected (a runaway), is
     // not raised: the projection cannot show what draining that backlog does to others. Only where the bound cut
@@ -590,51 +643,64 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
      * nothing, which says less than the harm a larger step would do. */
     let firstReject: { move: string; why: WlmTrialTrace } | null = null;
     let firstNamed: { move: string; why: WlmTrialTrace } | null = null;
-    const donors = donorOrder(receiver, btl, dps, donorInfo);
-    if (ct) ct.donors = [...donors];
+    let retained: PlanAttempt | undefined;
     const hadWholeBudget = budget === POLICY_ADJUST.maxProjectionsPerInterval;
     const describe = formatPlanMoves;
-    const plan = buildPlan({
-      receiver, ladder, donors, maxSteps: POLICY_ADJUST.maxPlanSteps, basePi: b0,
-      importanceOf: (k) => info[k]!.importance,
-      receiverValue: (after) => b0 - after >= receiverValueNeeded(b0),
-      assess: (L, kind) => {
-        if (kind === 'UP' && distrust) {
-          reject('PROJECTION_DISAGREES', [b0, null], `projected PI ${b0.toFixed(2)} vs measured ${mPi.toFixed(2)}`);
-          return { ...why!, receiverPi: [b0, null], ok: false, projected: false };
-        }
-        return assess(receiver, withLadder(dps, L));
-      },
-    });
-    if (ct) ct.planOutcome = plan.outcome;
-    for (const attempt of plan.attempts) {
-      const w: WlmTrialTrace = { move: describe(attempt.moves), verdict: attempt.verdict,
-        receiverPi: attempt.receiverPi, projected: attempt.projected, steps: attempt.moves,
-        ...(attempt.detail ? { detail: attempt.detail } : {}),
-        ...(attempt.blockedBy ? { blockedBy: attempt.blockedBy } : {}),
-        ...(attempt.verdict === 'ACCEPTED' ? { plan: plan.moves, afterPis: attempt.after, afterDps: withLadder(dps, plan.ladder) } : {}),
-      };
-      if (ct) ct.trials.push(w);
-      if (w.verdict === 'RETAINED' || w.verdict === 'ACCEPTED') continue;
-      if (!firstReject) firstReject = { move: w.move, why: w };
-      if (!firstNamed && (w.blockedBy || w.verdict === 'CPU_CRITICAL' || w.verdict === 'PROJECTION_DISAGREES')) firstNamed = { move: w.move, why: w };
+    let outOfBudget = false;
+    for (const btl of fixable) {
+      const donors = donorOrder(receiver, btl, dps, donorInfo);
+      if (ct && !ct.donors) ct.donors = [...donors];
+      const plan = buildPlan({
+        receiver, ladder, donors, maxSteps: POLICY_ADJUST.maxPlanSteps, basePi: b0,
+        importanceOf: (k) => info[k]!.importance,
+        receiverValue: (after) => b0 - after >= receiverValueNeeded(b0),
+        assess: (L, kind) => {
+          if (kind === 'UP' && distrust) {
+            reject('PROJECTION_DISAGREES', [b0, null], `projected PI ${b0.toFixed(2)} vs measured ${mPi.toFixed(2)}`);
+            return { ...why!, receiverPi: [b0, null], ok: false, projected: false };
+          }
+          return assess(receiver, withLadder(dps, L));
+        },
+      });
+      if (ct) {
+        ct.planOutcome = plan.outcome;
+        ct.plans!.push({ bottleneck: btl, donors: [...donors], outcome: plan.outcome });
+        if (plan.outcome === 'ACCEPTED') ct.bottleneck = btl;
+      }
+      for (const attempt of plan.attempts) {
+        const w: WlmTrialTrace = { move: describe(attempt.moves), verdict: attempt.verdict,
+          receiverPi: attempt.receiverPi, projected: attempt.projected, steps: attempt.moves,
+          ...(fixable.length > 1 ? { bottleneck: btl } : {}),
+          ...(attempt.detail ? { detail: attempt.detail } : {}),
+          ...(attempt.blockedBy ? { blockedBy: attempt.blockedBy } : {}),
+          ...(attempt.verdict === 'ACCEPTED' ? { plan: plan.moves, afterPis: attempt.after, afterDps: withLadder(dps, plan.ladder) } : {}),
+        };
+        if (ct) ct.trials.push(w);
+        if (w.verdict === 'RETAINED' || w.verdict === 'ACCEPTED') continue;
+        if (!firstReject) firstReject = { move: w.move, why: w };
+        if (!firstNamed && (w.blockedBy || w.verdict === 'CPU_CRITICAL' || w.verdict === 'PROJECTION_DISAGREES')) firstNamed = { move: w.move, why: w };
+      }
+      if (plan.outcome === 'ACCEPTED') return finish({
+        dps: withLadder(dps, plan.ladder),
+        log: `${input.clockText} ${system.lparId} RCVR=${receiver} PI=${pi} BTLNK=${btl} ${describe(plan.moves)}`,
+        protect,
+      }, resumedAt);
+      retained ??= plan.attempts.filter((a) => a.ok).at(-1);
+      if (plan.outcome === 'BUDGET') {
+        outOfBudget = true;
+        break;
+      }
     }
-    if (plan.outcome === 'ACCEPTED') return finish({
-      dps: withLadder(dps, plan.ladder),
-      log: `${input.clockText} ${system.lparId} RCVR=${receiver} PI=${pi} BTLNK=${btl} ${describe(plan.moves)}`,
-      protect,
-    }, resumedAt);
-    const outOfBudget = plan.outcome === 'BUDGET';
     // No move taken: say what this receiver's first move would have done, so the log answers "why not?".
-    const retained = plan.attempts.filter((a) => a.ok).at(-1);
     const clue = firstNamed ?? firstReject ?? (retained ? {
       move: describe(retained.moves),
       why: { move: '', verdict: 'SMALL_GAIN' as const, receiverPi: retained.receiverPi,
         detail: `complete plan needs ≥ ${receiverValueNeeded(b0).toFixed(2)}` },
     } : null);
     const whyNot = clue ? ` (${clue.move} rejected: ${playerReason(clue.why)})` : '';
+    const noAction = waiting ?? `BTLNK=${btl0} no action with net value${whyNot}`;
     if (outOfBudget && !hadWholeBudget) {
-      notes.push(`${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}`);
+      notes.push(`${receiver} PI=${pi} ${noAction}`);
       stoppedAt = receiver;
       break;
     }
@@ -642,7 +708,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const until = nowTick + POLICY_ADJUST.rejectedSkipTicks;
     skipUntil[receiver] = until;
     if (ct) ct.skipUntilTick = until;
-    const note = `${receiver} PI=${pi} BTLNK=${btl} no action with net value${whyNot}, next look ${formatClock(until).split(' ')[1]}`;
+    const note = `${receiver} PI=${pi} ${noAction}, next look ${formatClock(until).split(' ')[1]}`;
     notes.push(note);
     clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
     if (outOfBudget) {

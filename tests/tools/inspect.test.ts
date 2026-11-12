@@ -8,7 +8,7 @@ const trial = (over: Partial<WlmTrialTrace> = {}): WlmTrialTrace => ({
 
 const candidate = (over: Partial<WlmCandidateTrace> = {}): WlmCandidateTrace => ({
   scKey: 'A#1', importance: 2, sysplexPi: null, localPi: 1.4, dp: 0x20, bottleneck: 'CPU',
-  delayShares: { CPU: 1, ZIIP: 0, IO: 0, CAP: 0, OTHER: 0 }, outcome: 'ASSESSED', trials: [], ...over,
+  delayShares: { CPU: 1, ZIIP: 0, IO: 0, STORAGE: 0, QUEUE: 0, CAP: 0, OTHER: 0 }, outcome: 'ASSESSED', trials: [], ...over,
 });
 
 const trace = (over: Partial<WlmAdjustTrace> = {}): WlmAdjustTrace => ({
@@ -42,9 +42,10 @@ describe('wlmStats counts the audit table (WT-01)', () => {
   const busy = trace({
     candidates: [
       candidate({ scKey: 'IO#1', outcome: 'NOT_FIXABLE', bottleneck: 'IO' }),
-      candidate({ scKey: 'OTH#1', outcome: 'NOT_FIXABLE', bottleneck: 'OTHER' }),
-      candidate({ scKey: 'CAP#1', outcome: 'NOT_FIXABLE', bottleneck: 'CAP' }),
-      candidate({ scKey: 'NON#1', outcome: 'NOT_FIXABLE', bottleneck: null }),
+      candidate({ scKey: 'STO#1', outcome: 'NOT_FIXABLE', bottleneck: 'STORAGE' }),
+      candidate({ scKey: 'QUE#1', outcome: 'NOT_FIXABLE', bottleneck: 'QUEUE' }),
+      candidate({ scKey: 'WAI#1', outcome: 'NO_MANAGED_DELAY', waitingFrac: 0.8 }),
+      candidate({ scKey: 'CAP#1', outcome: 'NO_MANAGED_DELAY', waitingFrac: 0.1 }),
       candidate({ scKey: 'BUD#1', outcome: 'BUDGET' }),
       candidate({ scKey: 'REC#1', outcome: 'RECOVERING' }),
       candidate({
@@ -71,7 +72,9 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(stats.total.adjustments).toBe(4);
     expect(stats.total.noCandidate).toBe(2);
     expect(stats.total.assessed).toBe(2);
-    expect(stats.total.notFixable).toEqual({ IO: 1, OTHER: 1, CAP: 1, NONE: 1 });
+    expect(stats.total.notFixable).toEqual({ IO: 1, STORAGE: 1, QUEUE: 1 });
+    expect(stats.total.noManagedDelay).toBe(2);
+    expect(stats.total.waitingNoDelay).toBe(1);
     expect(stats.total.budget).toBe(1);
     expect(stats.total.recovering).toBe(1);
     expect(stats.total.trials).toBe(7);

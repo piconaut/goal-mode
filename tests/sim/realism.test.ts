@@ -16,7 +16,7 @@ import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
-import { setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { committedMoves } from '../helpers/wlmMoves';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
@@ -68,6 +68,16 @@ describe('priority inversion through dependencies', () => {
     // the damage shows up as "other" delay that WLM cannot fix.
     expect(b.delayCpu).toBeLessThanOrEqual(g.delayCpu + 1e-9);
     expect(b.delayOther).toBeGreaterThan(10 * g.delayOther + 1e-9);
+    // WLM sees DDF mostly waiting, not delayed: no plan, and the log names the small CPU delay (WT-10, SPEC §5.5.4).
+    // Only DDF has a goal here, so its note is the interval's log line (a starved Db2 with a goal is helped first).
+    const def = structuredClone(BASEPOL);
+    const template = def.classes.find((c) => c.id === 'STCLO')!;
+    def.classes.push({ ...structuredClone(template), id: 'DDF', cpuCritical: false, periods: [{ goal: { kind: 'PCT', pct: 90, rtSec: 2 * g.rtMeanSec }, importance: 2, durationSu: null }] });
+    const dps = { 'DDF#1': 240, 'DB2#1': 210, 'BAT#1': 220 } as Record<string, number>;
+    const cur = evaluateLpar({ ...base, dpOf: (k) => dps[k]! }).scps;
+    const system = { lparId: 'SYS1', scps: cur.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const out = policyAdjust({ def, system, evalInput: base, current: cur, sysplexPi: {}, clockText: 'T' });
+    expect(out.log).toMatch(/^T SYS1 DDF#1 PI=\S+ mostly waiting, CPU delay \d+ %: not WLM-fixable/);
   });
 });
 
@@ -703,14 +713,13 @@ describe('event cards (SPEC §9)', () => {
     expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
   }, 60_000);
 
-  it('adaptive WLM can improve mobile when shadow IT displaces work above it', () => {
-    // WT-08's legal happy-donor plan at 09:41 puts DDFPRD#2 above MOBILE's DDFPRD#1. Additional TSO
-    // demand can displace #2 and help MOBILE: increased total CPU demand is not monotonic per workload.
-    // Accepted as a scenario change (user decision 2026-11-12, docs/wlm-design.md §9.9).
+  it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD, with adaptive WLM', () => {
+    // From WT-08 to WT-10 the opposite held: MOBILE's DDFPRD#1, mostly waiting on Db2, was never assessed, and the
+    // extra TSO demand displaced DDFPRD#2 from above it (docs/wlm-design.md §9.9). Its CPU delay is assessed since WT-10.
     const asIs = run([]);
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
-    expect(shadow.mobileRtMs).toBeLessThan(asIs.mobileRtMs);
+    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
   }, 60_000);
 
   it('a non-threadsafe release raises QR wait for teller transactions', () => {
@@ -1058,17 +1067,18 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       setWlmTraceSink(null);
     }
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
-    const firstClock = traces.find((t) => t.candidates.some((c) => c.scKey === 'ONLHI#1' && c.outcome === 'ASSESSED' && c.skipUntilTick !== undefined))!;
-    expect(firstClock).toBeDefined();
-    expect(lines.some((l) => l.startsWith(`${firstClock.clockText} PROD1 ONLHI#1`) && l.includes('no action with net value') && l.includes('rejected:'))).toBe(true);
-    // Db2 is in STCHI here. A happy STCHI may donate (WT-07, SG24-6472 p.59–60), and ONLHI then waits for it (OTHER)
-    // until STCHI misses its goal and is raised back above ONLHI. That raise needs the move to the free priority above
+    // A clock is logged when it is set, unless the same clue was logged under 30 ticks before (`repeatsClue`).
+    const clocks = traces.filter((t) => t.candidates.some((c) => c.scKey === 'ONLHI#1' && c.outcome === 'ASSESSED' && c.skipUntilTick !== undefined));
+    expect(clocks.length).toBeGreaterThan(0);
+    expect(clocks.some((t) => lines.some((l) => l.startsWith(`${t.clockText} PROD1 ONLHI#1`) && l.includes('no action with net value') && l.includes('rejected:')))).toBe(true);
+    // Db2 is in STCHI here. A happy STCHI may donate (WT-07, SG24-6472 p.59–60), and ONLHI then mostly waits for it
+    // (OTHER, not a managed delay: WT-10) until STCHI misses its goal and is raised back above ONLHI. That raise needs the move to the free priority above
     // ONLHI, assessed even when joining ONLHI's level is worse for STCHI (WLM Services p.707, code 630; the design
     // review of 2026-11-12 found WT-08 without it, OTHER to the 16:00 end of this window).
     let donated = false, other = 0;
     for (const t of traces) {
       const c = t.candidates.find((c) => c.scKey === 'ONLHI#1');
-      if (c?.outcome === 'NOT_FIXABLE' && c.bottleneck === 'OTHER') {
+      if (c && (c.waitingFrac ?? 0) > 0.5) {
         other++;
         expect(donated, t.clockText).toBe(true);
       }
@@ -1081,6 +1091,7 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     expect(first).toBeGreaterThanOrEqual(0);
     expect(traces.slice(first, first + 31).some((t) => t.dps['STCHI#1']! > t.dps['ONLHI#1']!), traces[first]!.clockText).toBe(true);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
+    expect(lines.some((l) => /ONLHI#1 PI=4\.00 mostly waiting, CPU delay \d+ %: not WLM-fixable/.test(l))).toBe(true);
     // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
     // Under the cap a less important receiver may not pass more important work that is missing its goal and using
     // CPU, which WLM never does (docs/wlm-design.md §9.4 point 5, user decision 2026-11-10): those raises are

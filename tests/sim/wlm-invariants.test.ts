@@ -400,6 +400,38 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     expect(budgetHits).toBeGreaterThan(3);
   });
 
+  it('I14 not fixable, not moved: a receiver with neither CPU nor zIIP delay a real share of its delay changes no DP', () => {
+    let notFixable = 0;
+    let waitingNotes = 0;
+    for (const seed of SEEDS) {
+      const { input } = makeCase(seed, 'varied');
+      // The same images with nine tenths of every period's CPU and zIIP delay turned into I/O delay, and on odd seeds
+      // waits three times the period's other samples.
+      const scps = input.system.scps.map((p) => {
+        const a = p.acc;
+        const moved = 0.9 * (a.delayCpu + a.delayZiip);
+        return { ...p, acc: { ...a, delayCpu: 0.1 * a.delayCpu, delayZiip: 0.1 * a.delayZiip, delayIo: a.delayIo + moved,
+          delayOther: seed % 2 ? 3 * (a.using + a.delay) : a.delayOther } };
+      });
+      const { out, trace } = traced({ ...input, system: { ...input.system, scps } });
+      for (const c of trace.candidates) {
+        expect(['NOT_FIXABLE', 'NO_MANAGED_DELAY', 'SKIP_CLOCK']).toContain(c.outcome);
+        expect(c.trials).toEqual([]);
+        expect(c.basePi).toBeUndefined();
+        if (c.outcome === 'NOT_FIXABLE') notFixable++;
+      }
+      expect(out.skipUntil).toEqual({});
+      // The DPs are the input's (made canonical, WT-06), or what CPU protection restored before the search.
+      if (out.protect === null) expect(ladderOf(out.dps)).toEqual(ladderOf(Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]))));
+      if (seed % 2 && trace.candidates.length > 0) {
+        expect(out.log).toMatch(/ mostly waiting, CPU delay \d+ %: not WLM-fixable$/);
+        waitingNotes++;
+      }
+    }
+    expect(notFixable).toBeGreaterThan(50);
+    expect(waitingNotes).toBeGreaterThan(20);
+  });
+
   it('I9 canonical ladder: after every interval the goal DPs are MANAGED_MAX − 1 − 2i; fixed DPs never change', () => {
     let moved = 0;
     for (const seed of SEEDS) {
