@@ -87,4 +87,16 @@ describe('atomic policy plans (WT-08, SG24-6472-03 p.67–68)', () => {
     expect(out.attempts.filter((a) => a.moves[0]!.kind === 'DONOR')).toHaveLength(1);
     expect(out.outcome).toBe('REJECTED');
   });
+
+  it('does not retain a raise that loses what the retained plan already bought', () => {
+    // UP (1.95) and DONOR A (1.80) are kept; the next raise still beats the base (1.90 < 2) but not the plan (1.80).
+    let calls = 0;
+    const out = buildPlan({ receiver: 'I', ladder: original, donors: ['A'], basePi: 2, maxSteps: 6,
+      importanceOf: () => 2, receiverValue: () => false,
+      assess: () => [net(1.95), blocked(), net(1.80), net(1.90)][calls++] ?? null });
+    expect(calls).toBe(4);
+    expect(out.outcome).toBe('REJECTED');
+    expect(out.attempts.map((a) => a.verdict)).toEqual(['RETAINED', 'MORE_IMPORTANT_HARMED', 'RETAINED', 'NO_RECEIVER_GAIN']);
+    expect(out.attempts[3]!.ok).toBe(false);
+  });
 });

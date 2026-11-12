@@ -75,6 +75,13 @@ export function buildPlan(input: {
     if (a) attempts.push({ ...a, moves: [...proposed] });
     return a;
   };
+  // A proposal that passes net value but buys nothing over the retained plan is recorded as no gain and not kept.
+  const noGain = (a: PlanAssessment): PlanAssessment => {
+    const attempt = attempts[attempts.length - 1]!;
+    attempt.ok = false;
+    attempt.verdict = 'NO_RECEIVER_GAIN';
+    return { ...a, ok: false, verdict: 'NO_RECEIVER_GAIN' };
+  };
   const retain = (T: Ladder, proposed: PlanMove[], a: PlanAssessment): boolean => {
     L = T;
     moves.push(...proposed);
@@ -115,6 +122,9 @@ export function buildPlan(input: {
             if (!a) return finish('BUDGET');
           }
         }
+        // Every proposal is judged against the original base, so a raise could pass while undoing what earlier
+        // retained moves bought. It may add nothing yet (p.67: the first move lacked receiver value), but not lose.
+        if (a.ok && a.receiverPi[1]! > cur) a = noGain(a);
         if (a.ok) {
           if (retain(T, proposed, a)) return finish('ACCEPTED');
           preferUp = true;
@@ -131,15 +141,11 @@ export function buildPlan(input: {
       const T = moveToLevel(L, donor, rl, levelOf(L, donor) < rl ? 'join' : 'below');
       if (seen.has(JSON.stringify(T))) continue;
       const proposed = [step('DONOR', donor, L, T)];
-      const a = evaluate(T, proposed, 'DONOR');
-      if (!a) return finish('BUDGET');
+      const judged = evaluate(T, proposed, 'DONOR');
+      if (!judged) return finish('BUDGET');
       // A safe donor still has to improve on the retained plan, not just on the original base.
-      if (a.ok && a.receiverPi[1]! >= cur) {
-        const attempt = attempts[attempts.length - 1]!;
-        attempt.ok = false;
-        attempt.verdict = 'NO_RECEIVER_GAIN';
-      }
-      if (a.ok && a.receiverPi[1]! < cur) {
+      const a = judged.ok && judged.receiverPi[1]! >= cur ? noGain(judged) : judged;
+      if (a.ok) {
         if (retain(T, proposed, a)) return finish('ACCEPTED');
         upBlocked = false;
         preferUp = true;
