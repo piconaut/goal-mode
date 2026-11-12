@@ -1611,11 +1611,15 @@ its 29 % target; S-3 is 16.1 % (624/3 878), below 21 %. Net value now has to be 
 intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. The share is
 dropped as a criterion (below), not met by tuning coefficients.
 
-S-1's lower share of candidates helped is two things, neither a loss of help. Plans bundle moves: 28 retained moves
-in 19 plans against WT-07's 33 single moves. And 173 of S-1's 250 assessments are PROD2 BATCHPRD#1 retried each
-minute over two nights (D1 21:26 → D2 22:44), blocked by the missing-goal rule from passing DDFPRD#1, which is at
-local PI 4.00 and never assessed because its waits exceed its CPU and zIIP delay (W7, WT-10). Without it the share
-is 25 % (19/77).
+S-1's lower share of candidates helped is two things. Plans bundle moves: 28 retained moves in 19 plans against
+WT-07's 33 single moves. And 173 of S-1's 250 assessments are PROD2 BATCHPRD#1 (importance 4, PI 1.1–1.3 in the
+batch window), retried each minute over two nights and never helped (twice on WT-07). Every move it has is
+refused on its projection (D1 22:00:20): a raise takes DDFPRD#2, of equal importance, from 0.35 to 7.74
+(`EQUAL_DISPARITY`, then `NO_NET_VALUE` for the split above), and DDFPRD#1 as donor goes from 0.50 to 51.15
+(`MORE_IMPORTANT_HARMED`). Only 6 of PROD2's 1,133 proposals are refused without a projection, so neither the
+missing-goal rule nor W7 is the cause. On WT-07 BATCHPRD#1 ends above DDFPRD#1 by D1 21:30, the state W7 then
+could not undo (§9.7 correction). Without BATCHPRD#1 the share is 25 % (19/77). Those projections are WT-16's
+question too (joining a level projects far worse than staying below it).
 
 Historical W5 thresholds are 29%/21%
 MORE_IMPORTANT_HARMED for S-1/S-3; WT-07 already measured 13.3%/15.4%, so passing them alone is not evidence that

@@ -485,17 +485,15 @@ Normal), recorded in PROGRESS.md M8.2 against the bands, with out-of-band median
 Done when: the sweep table is in PROGRESS.md and every finding W1 … W11 in docs/wlm-design.md §4 is marked fixed,
 parked or declined.
 
-## pr-followups
-
-Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
-on `dev` at 7fbeffa; later entries name their source.
-
 ### WT-16 · Joining a level projects much worse than staying below it (projection question)
 `list: wlm-truth · status: ready · priority: medium · size: S · area: sim`
 
 From the design review of WT-04 … WT-08 (2026-11-12), unverified. On the capped-PROD1 fixture (Midwest seed 7,
-PROD1 defined capacity 200, DB* in STCHI) at D1 14:02:30, STCHI#1 (importance 1, holds Db2, local PI ≈ 4.26) projects
-4.26 below ONLHI#1, 26.37 on ONLHI's level and 0.74 above it (`1f4f212`'s accepted move). Equal-DP work shares by
+PROD1 defined capacity 200, DB* in STCHI), STCHI#1 (importance 1, holds Db2) projects 4.26 below ONLHI#1 and 26.37
+on ONLHI's level (D1 14:30:40 at `e7015cb`), and 0.74 above it from a base of 4.00 (`1f4f212`'s accepted move at
+14:02:40). A second case, on S-1 (Midwest seed 42) PROD2 at D1 22:00:20 (`6306f1c`): raising BATCHPRD#1 onto
+DDFPRD#2's level takes DDFPRD#2 from 0.35 to 7.74, and DDFPRD#1 lowered to BATCHPRD#1's level goes from 0.50 to
+51.15; both may be the same level-sharing effect. Equal-DP work shares by
 ready units, and ONLHI waits for Db2 in STCHI, so the level-shared projection may starve the server its client
 waits on. How real z/OS dispatches work at one priority is to be checked with zos-docs. Investigate first:
 `npm run inspect` on a play-CLI copy of the fixture, the per-level grants in `evaluateLpar`, and whether the level
@@ -503,6 +501,11 @@ share should weight by demand rather than units. Report before any model change;
 fix is a model change for the main agent, goes before WT-09 (whose regions share their holder's level), and needs
 goldens, the S-1 … S-3 table and a sweep. Done when: the cause is recorded in docs/wlm-design.md with a verdict
 (artefact fixed, or real and explained).
+
+## pr-followups
+
+Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
+on `dev` at 7fbeffa; later entries name their source.
 
 ### PR-01 · A scheduled activation overrides a queued install
 `list: pr-followups · status: ready · priority: high · size: S · area: game`
