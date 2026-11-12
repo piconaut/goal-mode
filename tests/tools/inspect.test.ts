@@ -1,5 +1,5 @@
 import { applyPlayCommand, clockText, encodePlayFile, newPlayFile } from '../../tools/playCore';
-import { replayAdvance, statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
+import { classRows, moveRows, replayAdvance, statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
 import type { WlmAdjustTrace, WlmCandidateTrace, WlmTrialTrace } from '../../src/sim/wlm/adjust';
 
 const trial = (over: Partial<WlmTrialTrace> = {}): WlmTrialTrace => ({
@@ -120,6 +120,72 @@ describe('wlmStats counts the audit table (WT-01)', () => {
       ] },
     );
     expect(late.ladder[0]!.lines).toEqual(['D1 11:59:50  A#1=20 B#1=10']);
+  });
+});
+
+describe('wlm-stats detail sections: --by-class, --episodes, --moves', () => {
+  const clock = (i: number) => `D1 ${String(6 + Math.floor(i / 360)).padStart(2, '0')}:${String(Math.floor((i % 360) / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`;
+  const assessed = (i: number, trials = [trial()]) => trace({ clockText: clock(i), candidates: [candidate({ trials })] });
+
+  it('lists each episode the counter counts, with its first and last assessment and how it ended', () => {
+    const helped = trial({ move: 'A#1 DP 20→21', verdict: 'ACCEPTED', receiverPi: [1.4, 0.9] });
+    const ts = [
+      ...Array.from({ length: 31 }, (_, i) => assessed(i)),
+      assessed(31, [helped]),
+      // A skipped adjustment neither counts nor ends the run.
+      trace({ clockText: clock(32), candidates: [candidate({ outcome: 'SKIP_CLOCK' })] }),
+      ...Array.from({ length: 30 }, (_, i) => assessed(33 + i)),
+      trace({ clockText: clock(63), lparId: 'PROD2', candidates: [candidate()] }),
+    ];
+    const stats = wlmStats(ts, { episodes: true });
+    expect(stats.total.episodes).toBe(2);
+    expect(stats.episodes).toEqual([
+      { lparId: 'PROD1', scKey: 'A#1', first: clock(0), last: clock(30), assessments: 31, verdicts: { NO_RECEIVER_GAIN: 31 }, end: clock(31) },
+      { lparId: 'PROD1', scKey: 'A#1', first: clock(33), last: clock(62), assessments: 30, verdicts: { NO_RECEIVER_GAIN: 30 }, end: null },
+    ]);
+    const text = statsText(stats);
+    expect(text).toContain(`PROD1 A#1  ${clock(0)} → ${clock(30)}  31 assessments, ended by a move at ${clock(31)}`);
+    expect(text).toContain('still open at the end of the range');
+    // A run under 30 is not listed.
+    expect(wlmStats(ts.slice(0, 29), { episodes: true }).episodes).toEqual([]);
+  });
+
+  it('counts outcomes, trials and receiver moves per period', () => {
+    const ts = [
+      trace({
+        candidates: [
+          candidate({ trials: [trial({ move: 'A#1 DP 20→21', verdict: 'ACCEPTED' })] }),
+          candidate({ scKey: 'B#1', outcome: 'SKIP_CLOCK' }),
+        ],
+      }),
+      trace({ candidates: [candidate({ trials: [trial({ move: 'DONOR B#1 DP 10→F', verdict: 'ACCEPTED' }), trial()] }), candidate({ scKey: 'B#1', outcome: 'RECOVERING' })] }),
+      trace({ lparId: 'PROD2', candidates: [candidate({ outcome: 'NOT_FIXABLE', bottleneck: 'IO' })] }),
+    ];
+    const rows = classRows(ts);
+    expect(rows.map((r) => [r.lparId, r.scKey, r.outcomes.ASSESSED, r.outcomes.SKIP_CLOCK, r.outcomes.RECOVERING, r.outcomes.NOT_FIXABLE, r.trials, r.helped])).toEqual([
+      ['PROD1', 'A#1', 2, 0, 0, 0, 3, 1],
+      ['PROD1', 'B#1', 0, 1, 1, 0, 0, 0],
+      ['PROD2', 'A#1', 0, 0, 0, 1, 0, 0],
+    ]);
+    expect(statsText(wlmStats(ts, { byClass: true }))).toMatch(/PROD1 A#1\s+2\s+0\s+0\s+0\s+0\s+0\s+3\s+1/);
+  });
+
+  it('lists accepted moves with the receiver they were made for', () => {
+    const ts = [
+      trace({ clockText: 'D1 09:00:10', candidates: [candidate({ trials: [trial(), trial({ move: 'DONOR B#1 DP 10→F', verdict: 'ACCEPTED', receiverPi: [2, 0.8] })] })] }),
+      trace({ clockText: 'D1 09:00:20', candidates: [candidate({ scKey: 'B#1', trials: [trial({ move: 'B#1 DP F→10', verdict: 'ACCEPTED', receiverPi: [1.2, null] })] })] }),
+    ];
+    expect(moveRows(ts)).toEqual([
+      { clockText: 'D1 09:00:10', lparId: 'PROD1', receiver: 'A#1', move: 'DONOR B#1 DP 10→F', receiverPi: [2, 0.8] },
+      { clockText: 'D1 09:00:20', lparId: 'PROD1', receiver: 'B#1', move: 'B#1 DP F→10', receiverPi: [1.2, null] },
+    ]);
+    const text = statsText(wlmStats(ts, { moves: true }));
+    expect(text).toContain('D1 09:00:10  PROD1  for A#1: DONOR B#1 DP 10→F  2.00→0.80');
+    expect(text).toContain('D1 09:00:20  PROD1  for B#1: B#1 DP F→10  1.20→-');
+    // Without the options the sections and fields stay out (the JSON shape is unchanged).
+    const plain = wlmStats(ts);
+    expect('moves' in plain || 'episodes' in plain || 'byClass' in plain).toBe(false);
+    expect(statsText(plain)).not.toContain('Accepted moves');
   });
 });
 

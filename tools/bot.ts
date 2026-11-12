@@ -1,5 +1,11 @@
 // Headless strategy bots for balancing (SPEC §16).
 // Usage: npm run bot -- --bot donothing --days 40 --seed 42 [--spectate runs/bot.json --pace 2]
+// Investigations (sim internals; not balance):
+//   --changes                every change the bot makes, with the day and the phase it made it in
+//   --trace-day 29           policy adjustment on that played day, an hour at a time: moves, candidate outcomes,
+//                            SLA attainment, DPs (add --days 29 to stop there)
+//   --dump 'PRDA D29 10:0'   every adjustment whose "<system> <clock>" starts with this: candidates and trials
+//   --tune rejectedSkipTicks=0,maxProjectionsPerInterval=24   override POLICY_ADJUST for this run (tools/tune.ts)
 
 import { packOf } from '../src/content/packs';
 import { advance, chooseDraft, newRun, overallTrust, startDay } from '../src/game/run';
@@ -14,6 +20,10 @@ import { buyTool, noteReportOpened } from '../src/game/tools';
 import { INSIGHT, TOOLS } from '../src/content/tools';
 
 import { arg } from './args';
+import { applyTune } from './tune';
+import { addTrace, candidateDump, dumpDay, emptyHour, hourLines } from './botTrace';
+import { setWlmTraceSink } from '../src/sim/wlm/adjust';
+import { clockText } from './playCore';
 
 const pack = packOf(arg('scenario', 'midwest'));
 const scenario = pack.scenario;
@@ -63,23 +73,52 @@ function readerBriefing(r: RunState): RunState {
   return r;
 }
 
+const tuneSpec = arg('tune', '');
+const tune = tuneSpec ? applyTune(tuneSpec) : null;
+const showChanges = process.argv.includes('--changes');
+const traceDay = process.argv.includes('--trace-day') ? Number(arg('trace-day', '0')) : null;
+const dumpPrefix = process.argv.includes('--dump') ? arg('dump', '') : null;
+const dumpOn = dumpPrefix ? dumpDay(dumpPrefix) : null;
+if (traceDay !== null && !(traceDay >= 1)) throw new Error('--trace-day takes a played day, 1 or more');
+if (dumpPrefix !== null && dumpOn === null) throw new Error("--dump takes '<system> D<day> <clock prefix>', e.g. 'PRDA D29 10:0'");
+let changesSeen = 0;
+function logChanges(r: RunState, phase: string) {
+  if (showChanges) for (const c of r.changes.slice(changesSeen)) console.log(`        D${r.day + 1} ${phase}: ${c.label}`);
+  changesSeen = r.changes.length;
+}
+const hour = emptyHour();
+
 const difficulty = arg('difficulty', 'NORMAL').toUpperCase() as import('../src/content/difficulty').DifficultyId;
 let run: RunState = newRun(scenario, content, seed, difficulty);
 const t0 = performance.now();
-console.log(`bot=${botName} seed=${seed} difficulty=${difficulty}`);
+console.log(`bot=${botName} seed=${seed} difficulty=${difficulty}${tune ? ` tune=${tuneSpec}` : ''}`);
 console.log('day  overall  ' + (content.facets?.map((x) => x.id) ?? FACETS).map((f) => f.slice(0, 6).padStart(7)).join('') + '  incid  batchEnd  score  MLCest     events');
 while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
   if (run.phase === 'BRIEFING') {
     run = bot.briefing(run, scenario, content);
     if (reader) run = readerBriefing(run);
     if (tfp === 'sign' && run.tfpOffer?.status === 'OFFERED') run = decideTfp(run, true).run;
+    logChanges(run, 'briefing');
+    const traced = run.day + 1 === traceDay;
+    if (traced || run.day + 1 === dumpOn) {
+      setWlmTraceSink((t) => {
+        if (traced) addTrace(hour, t);
+        if (dumpPrefix && `${t.lparId} ${t.clockText}`.startsWith(dumpPrefix)) for (const l of candidateDump(t)) console.log(l);
+      });
+    }
     run = startDay(run, content);
     spectate(run);
     while (run.phase === 'LIVE') {
       run = advance(run, scenario, content, 360);
+      if (traced) {
+        for (const l of hourLines(clockText(run.sim.tick), hour, run, scenario)) console.log(l);
+        Object.assign(hour, emptyHour());
+      }
       if (run.phase === 'LIVE') run = bot.hourly(run, scenario, content);
+      logChanges(run, 'hourly');
       spectate(run);
     }
+    setWlmTraceSink(null);
   }
   const rep = run.reports[run.reports.length - 1];
   if (rep) {
@@ -92,6 +131,7 @@ while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
     for (const i of inc) console.log(`        ${i.workloadId} ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}% → ${i.truth.mechanism}/${i.truth.trigger}`);
   }
   if (run.phase === 'REVIEW') run = bot.review(run, scenario, content);
+  logChanges(run, 'review');
   spectate(run);
   if (run.phase === 'GAMEOVER' || run.phase === 'VICTORY') break;
   void TICKS_PER_DAY;
@@ -125,6 +165,7 @@ if (process.argv.includes('--json')) {
         byMechanism: byMech,
         batchMisses: run.reports.filter((r) => r.batchMissed).length,
         insight: run.insight,
+        ...(tune ? { tune: tuneSpec } : {}),
         ...(reader ? { toolDays } : {}),
         events: [...new Set(run.events.filter((e) => e.started).map((e) => e.defId))].sort(),
       }),

@@ -2,9 +2,11 @@
 // human: no PR, no branch switch, no working-tree change.
 //
 //   npm run sweep:remote -- --bots donothing,textbook,expert --seeds 1-20 [--difficulty hard] [--scenario harbourline]
-//                           [--reader] [--days 40] [--shards 4] [--name label] [--ref <commit|branch>] [--no-wait]
+//                           [--reader] [--days 40] [--tune k=v,...] [--shards 4] [--name label] [--ref <commit|branch>] [--no-wait]
 //   npm run sweep:remote -- --fetch <commit sha>     # wait for / download a sweep started with --no-wait
 //
+// --tune overrides POLICY_ADJUST in every run (tools/tune.ts); refused for a ref without tools/tune.ts, whose
+// tools/sweep.ts would ignore it.
 // --ref sweeps another commit (a PR head, origin/dev) without checking it out; default HEAD. The swept tree gets this
 // checkout's sweep workflow and planner overlaid, so any commit can be swept, even one cut before they existed.
 // It makes a throwaway commit on top of the ref (its tree + the overlay, `Sweep-Args:` trailer) and pushes it to `sweep/<label>-<sha7>`;
@@ -61,6 +63,13 @@ let sha = fetchSha ?? '';
 if (!fetchSha) {
   const plan = planSweep(sweepArgs, Number(shards) || undefined); // fail fast, same rules as the workflow
   const parent = sh('git', ['rev-parse', '--verify', `${ref}^{commit}`]);
+  if (/(^|\s)--tune\s/.test(sweepArgs)) {
+    try {
+      sh('git', ['cat-file', '-e', `${parent}:tools/tune.ts`]);
+    } catch {
+      throw new Error(`--tune: ${ref} has no tools/tune.ts, so its sweep would ignore the overrides`);
+    }
+  }
   if (ref === 'HEAD' && sh('git', ['status', '--porcelain', '--untracked-files=no'])) log('warning: uncommitted changes are not swept (committed HEAD only)');
   const trailers = [...(sweepArgs ? [`Sweep-Args: ${sweepArgs}`] : []), ...(shards ? [`Sweep-Shards: ${shards}`] : [])].join('\n') || 'Sweep-Args:';
   sha = sh('git', ['commit-tree', sweptTree(parent), '-p', parent, '-m', `sweep: ${sweepArgs || 'default'}`, '-m', trailers]);

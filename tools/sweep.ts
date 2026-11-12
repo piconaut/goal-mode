@@ -1,7 +1,8 @@
 // Balance sweep (SPEC §16, PROGRESS M8.2): run strategy bots over many seeds in parallel processes
 // and summarise when and why runs end. Each run is a separate `tools/bot.ts --json` process.
 //
-//   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--scenario midwest|revenue] [--out sweep.csv] [--resume] [--reader]
+//   npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--days 40] [--difficulty story|normal|hard|ironman] [--scenario midwest|revenue] [--out sweep.csv] [--resume] [--reader] [--tune k=v,...]
+// --tune passes POLICY_ADJUST overrides to every run (tools/tune.ts); an ablation, not balance.
 
 import { spawn } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -9,6 +10,7 @@ import { availableParallelism } from 'node:os';
 import { dirname } from 'node:path';
 
 import { arg } from './args';
+import { parseTune } from './tune';
 
 const bots = arg('bots', 'donothing,textbook').split(',');
 const [lo, hi] = arg('seeds', '1-20').split('-').map(Number) as [number, number];
@@ -18,6 +20,8 @@ const days = arg('days', '');
 const difficulty = arg('difficulty', '');
 const scenarioId = arg('scenario', '');
 const out = arg('out', 'sweep.csv');
+const tune = arg('tune', '');
+if (tune) parseTune(tune); // fail before spawning anything
 // Each finished run is appended here at once, so a killed sweep keeps its results; --resume skips them.
 const partial = `${out}.partial.jsonl`;
 const resume = process.argv.includes('--resume');
@@ -41,7 +45,7 @@ interface Result {
 
 function runOne(bot: string, seed: number): Promise<Result> {
   return new Promise((resolve, reject) => {
-    const args = ['--import', 'tsx', 'tools/bot.ts', '--bot', bot, '--seed', String(seed), '--json', ...(days ? ['--days', days] : []), ...(difficulty ? ['--difficulty', difficulty] : []), ...(scenarioId ? ['--scenario', scenarioId] : []), ...(process.argv.includes('--reader') ? ['--reader'] : [])];
+    const args = ['--import', 'tsx', 'tools/bot.ts', '--bot', bot, '--seed', String(seed), '--json', ...(days ? ['--days', days] : []), ...(difficulty ? ['--difficulty', difficulty] : []), ...(scenarioId ? ['--scenario', scenarioId] : []), ...(process.argv.includes('--reader') ? ['--reader'] : []), ...(tune ? ['--tune', tune] : [])];
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'inherit'] });
     let text = '';
     p.stdout.on('data', (d: Buffer) => (text += d.toString()));
@@ -99,7 +103,7 @@ const q = (xs: number[], p: number) => {
   const s = [...xs].sort((a, b) => a - b);
   return s[Math.min(s.length - 1, Math.floor(p * (s.length - 1) + 0.5))]!;
 };
-console.log(`\n${results.length} runs in ${Math.round((Date.now() - t0) / 1000)} s → ${out}\n`);
+console.log(`\n${results.length} runs in ${Math.round((Date.now() - t0) / 1000)} s → ${out}${tune ? ` (tune ${tune})` : ''}\n`);
 console.log('bot          runs  day p10/median/p90   score median  ends by cause');
 for (const b of bots) {
   const rs = results.filter((r) => r.bot === b);

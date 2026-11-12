@@ -36,7 +36,8 @@ labelled where it is used. Anything not found is marked *unverified*; nothing is
 
 - **Traces (R-n).** A play-CLI file and `npm run inspect -- <file> wlm <system> --at <time> --ticks <n>`. The file
   is made with `npm run -s play -- <file> new 42 [normal <scenario>]`, then per day `start`, `advance 24` (repeat
-  until the day ends), `draft none`. Times are sim clock; "D2" is the second played day.
+  until the day ends), `draft none`; `npm run repro -- <file> S-1` (or `--scenario <id> --days <n>`) plays exactly
+  that. Times are sim clock; "D2" is the second played day.
 - **Statistics (S-n).** A scratch harness that played the same commands through `applyPlayCommand` with
   `setWlmTraceSink` installed and counted, over every policy adjustment of every system: candidates by outcome,
   trials by verdict, accepted moves, a DP move reversed by the next move of the same period, receivers assessed
