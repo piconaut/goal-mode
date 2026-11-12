@@ -90,9 +90,14 @@ export const POLICY_ADJUST = {
   // a second bottleneck is tried only when it is a real share of the delay, so a period that is mostly I/O-bound with a
   // trace of CPU delay is not raised for that trace.
   bottleneckMinFrac: 0.15,
-  // FICTIONAL: a receiver whose every trial was rejected is skipped for this many intervals (a minute). IBM documents
-  // the skip clock but not its length (WLM Services p.145); one length on every difficulty (docs/wlm-design.md §8 Q9).
-  rejectedSkipTicks: 6,
+  // IBM: a receiver whose every trial was rejected is skipped for 3 policy adjustment cycles (Sinram, SHARE 2010
+  // session 7777 p.11; WLM Services p.145 documents the clock but not its length). One length on every difficulty
+  // (docs/wlm-design.md §8 Q9).
+  rejectedSkipTicks: 3,
+  // IBM: since z/OS 1.11 the skip clock is not honoured when 5 or fewer service class periods miss their performance
+  // objectives (Sinram, SHARE 2010 session 7777 p.11). APPROX: counted per image from the periods' local management
+  // PI, as policy adjustment is per system; IBM does not say whether the count is per system or across the sysplex.
+  skipClockMinMissing: 5,
   // FICTIONAL: projections (trial evaluations) per image per interval; the tick budget. When it is spent the search
   // stops for the interval, with no skip clock, and the next interval's search starts where it stopped.
   maxProjectionsPerInterval: 12,

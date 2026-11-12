@@ -17,6 +17,7 @@ import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
 import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { committedMoves } from '../helpers/wlmMoves';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
@@ -677,32 +678,48 @@ describe('event cards (SPEC §9)', () => {
   // 10:00 on day 0, then 30 minutes with and without the card's begin commands.
   let base = initState(42, MIDWEST);
   beforeAll(() => {
-    for (let i = 0; i < 4 * 360; i++) base = step(base, [], MIDWEST);
+    // Build the common starting state on the pre-RF-03 clock: these are content tests, and the fixed-priority pair
+    // below must start from the same ladder it did before the extra quiet-hour assessments changed that history.
+    const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+    POLICY_ADJUST.skipClockMinMissing = -1;
+    try {
+      for (let i = 0; i < 4 * 360; i++) base = step(base, [], MIDWEST);
+    } finally {
+      POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
+    }
   });
   const run = (cmds: Parameters<typeof step>[1], holdPriorities = false) => {
-    // A fixed-policy pair isolates the card's CPU pressure from WLM's adaptive priority decisions.
-    const held = holdPriorities ? { ...base, wlm: { ...base.wlm, systems: base.wlm.systems.map((sys) => ({
-      ...sys, scps: sys.scps.map((p) => ({ ...p, skipUntilTick: base.tick + 182 })),
-    })) } } : base;
-    let s = step(held, cmds, MIDWEST);
-    let qr = 0;
-    let n = 0;
-    let devtMsu = 0;
-    let mobRt = 0;
-    let mobN = 0;
-    let bookingDone = 0;
-    for (let i = 0; i < 180; i++) {
-      s = step(s, [], MIDWEST);
-      const m = s.last.workloads.find((x) => x.id === 'MOBILE')!;
-      mobRt += m.rtSumSec;
-      mobN += m.completions;
-      const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
-      qr += w.parts.qr ?? 0;
-      n += w.completions;
-      bookingDone += s.last.workloads.find((x) => x.id === 'BOOKING')?.completions ?? 0;
-      devtMsu += s.lpars.find((l) => l.id === 'DEVT')!.msuRate / 180;
+    const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+    // A fixed-policy pair isolates the card's CPU pressure from WLM's adaptive priority decisions. RF-03 ignores a
+    // skip clock while at most five periods miss their goals, so a held pair must turn that exception off; adaptive
+    // runs keep it.
+    if (holdPriorities) POLICY_ADJUST.skipClockMinMissing = -1;
+    try {
+      const held = holdPriorities ? { ...base, wlm: { ...base.wlm, systems: base.wlm.systems.map((sys) => ({
+        ...sys, scps: sys.scps.map((p) => ({ ...p, skipUntilTick: base.tick + 182 })),
+      })) } } : base;
+      let s = step(held, cmds, MIDWEST);
+      let qr = 0;
+      let n = 0;
+      let devtMsu = 0;
+      let mobRt = 0;
+      let mobN = 0;
+      let bookingDone = 0;
+      for (let i = 0; i < 180; i++) {
+        s = step(s, [], MIDWEST);
+        const m = s.last.workloads.find((x) => x.id === 'MOBILE')!;
+        mobRt += m.rtSumSec;
+        mobN += m.completions;
+        const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
+        qr += w.parts.qr ?? 0;
+        n += w.completions;
+        bookingDone += s.last.workloads.find((x) => x.id === 'BOOKING')?.completions ?? 0;
+        devtMsu += s.lpars.find((l) => l.id === 'DEVT')!.msuRate / 180;
+      }
+      return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN), bookingDone };
+    } finally {
+      if (holdPriorities) POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
     }
-    return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN), bookingDone };
   };
   const card = (id: string) => MIDWEST_EVENTS.find((e) => e.id === id)!.begin;
 
@@ -760,19 +777,30 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
-    const run = (cmds: Parameters<typeof step>[1], part = 'outside') => {
-      let s = step(base, cmds, MIDWEST);
-      let out = 0;
-      let n = 0;
-      let failed = 0;
-      for (let i = 0; i < 180; i++) {
-        s = step(s, [], MIDWEST);
-        const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
-        out += w.parts[part] ?? 0;
-        n += w.completions;
-        failed += w.failed;
+    // Held priorities isolate the storage content from WLM's adaptive moves: RF-03 reassesses more often in quiet
+    // hours, which otherwise changes how many teller transactions fail before the MXT limit is reached.
+    const run = (cmds: Parameters<typeof step>[1], part = 'outside', hold = true) => {
+      const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+      if (hold) POLICY_ADJUST.skipClockMinMissing = -1;
+      const held = hold ? { ...base, wlm: { ...base.wlm, systems: base.wlm.systems.map((sys) => ({
+        ...sys, scps: sys.scps.map((p) => ({ ...p, skipUntilTick: base.tick + 182 })),
+      })) } } : base;
+      try {
+        let s = step(held, cmds, MIDWEST);
+        let out = 0;
+        let n = 0;
+        let failed = 0;
+        for (let i = 0; i < 180; i++) {
+          s = step(s, [], MIDWEST);
+          const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
+          out += w.parts[part] ?? 0;
+          n += w.completions;
+          failed += w.failed;
+        }
+        return { waitMs: (1000 * out) / Math.max(1, n), failed };
+      } finally {
+        if (hold) POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
       }
-      return { waitMs: (1000 * out) / Math.max(1, n), failed };
     };
     // The card's leak an hour in: EDSA (default EDSALIM) holds about 15 tasks per region.
     const sos = (extra: Record<string, number> = {}) =>
@@ -866,8 +894,10 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('an SMF retention audit raises SMF address space CPU and total MSU, slowing work only on the CP-bound PROD2', () => {
-    const asIs = run([]);
-    const audit = run(card('SMF_AUDIT'));
+    // Fixed priorities: the card's extra CPU pressure on PROD2 is the subject. RF-03's extra quiet-hour assessments
+    // otherwise move the priorities it competes with, and the 30 % bound no longer measures the card alone.
+    const asIs = run([], true);
+    const audit = run(card('SMF_AUDIT'), true);
     const msu = (cmds: Parameters<typeof step>[1]) => {
       let s = step(base, cmds, MIDWEST);
       let m = 0;
@@ -1133,7 +1163,10 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
       return dirs.filter((d, i) => i > 0 && d !== dirs[i - 1]).length;
     };
     expect(reversals('TSO#2')).toBeLessThanOrEqual(1);
-    expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(1);
+    // RF-03 assesses quiet-hour receivers every interval, so DDFPRD#2 gets one extra turn: after TSO#2's plan
+    // projects it past its goal (afterPis 4.84) it is raised, and later lowered again as a donor. The one-donor-move
+    // limit above still holds; this is two direction changes, not the repeated ED↔EB trading the gap test prevents.
+    expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(2);
   }, 120_000);
 });
 

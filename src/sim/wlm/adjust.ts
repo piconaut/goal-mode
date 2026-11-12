@@ -351,6 +351,11 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const g = info[s.scKey];
     localPi[s.scKey] = g ? goalPi(g.goal, s.acc) : null;
   }
+  // z/OS 1.11: while few periods miss their goals, a skip clock is not honoured (Sinram, SHARE 2010 session 7777
+  // p.11: "5 or less service class periods"). A clock is neither kept nor started, so every candidate is assessed
+  // again next interval. APPROX: the count is per image, as policy adjustment is.
+  const missingGoals = infoKeys.filter((k) => (localPi[k] ?? 0) > 1).length;
+  const honourSkipClock = missingGoals > POLICY_ADJUST.skipClockMinMissing;
   const tickOf: Record<string, ScpTick> = {};
   for (const t of input.current) tickOf[t.scKey] = t;
   // Receiver value and donor harm are judged on a percentile PI that is not clamped at 4.0, or a period far past
@@ -436,7 +441,9 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   let budget = POLICY_ADJUST.maxProjectionsPerInterval;
   // Clocks still running; an expired one is dropped (WLM Services p.148–149: a helped receiver can be helped again the next interval).
   const skipUntil: Record<string, number> = {};
-  for (const s of system.scps) if (s.skipUntilTick !== undefined && s.skipUntilTick > nowTick) skipUntil[s.scKey] = s.skipUntilTick;
+  if (honourSkipClock) {
+    for (const s of system.scps) if (s.skipUntilTick !== undefined && s.skipUntilTick > nowTick) skipUntil[s.scKey] = s.skipUntilTick;
+  }
   let why: WlmTrialTrace | null = null;
   // Recorded even without the trace sink: the player-visible log names a rejected move and why.
   const reject = (verdict: WlmTrialVerdict, r: [number | null, number | null], detail?: string, blockedBy?: string) => {
@@ -556,6 +563,12 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const start = resumeKey === null ? -1 : candidates.indexOf(resumeKey);
   if (start > 0) candidates.push(...candidates.splice(0, start));
   const resumedAt = start >= 0 ? resumeKey : null;
+  /** The candidate after `k` in this interval's order, wrapping: where the next search starts when the budget is
+   * spent and no skip clock is available to step over the receiver that spent it (RF-03). */
+  const nextCandidateAfter = (k: string): string | null => {
+    const i = candidates.indexOf(k);
+    return i < 0 ? null : (candidates[(i + 1) % candidates.length] ?? null);
+  };
 
   const notes: string[] = [];
   const clockNotes: string[] = [];
@@ -707,15 +720,23 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       stoppedAt = receiver;
       break;
     }
-    // Every trial was rejected: skip it until the clock expires. APPROX: one fixed length (`rejectedSkipTicks`).
-    const until = nowTick + POLICY_ADJUST.rejectedSkipTicks;
-    skipUntil[receiver] = until;
-    if (ct) ct.skipUntilTick = until;
-    const note = `${receiver} PI=${pi} ${noAction}, next look ${formatClock(until).split(' ')[1]}`;
-    notes.push(note);
-    clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
+    // Every trial was rejected: skip it until the clock expires, unless few periods miss their goals (RF-03).
+    if (honourSkipClock) {
+      const until = nowTick + POLICY_ADJUST.rejectedSkipTicks;
+      skipUntil[receiver] = until;
+      if (ct) ct.skipUntilTick = until;
+      const note = `${receiver} PI=${pi} ${noAction}, next look ${formatClock(until).split(' ')[1]}`;
+      notes.push(note);
+      clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
+    } else {
+      // No clock: the note joins the ordinary five-minute no-action cadence instead of being logged when a clock starts.
+      notes.push(`${receiver} PI=${pi} ${noAction}`);
+    }
     if (outOfBudget) {
-      stoppedAt = receiver;
+      // A budget hog is normally clocked, so the next search starts at it only to trace SKIP_CLOCK and move on. With
+      // the clock not honoured (RF-03), start after it instead, or it would spend the whole budget again every
+      // interval and the receivers behind it would never be reached.
+      stoppedAt = honourSkipClock ? receiver : nextCandidateAfter(receiver);
       break;
     }
   }

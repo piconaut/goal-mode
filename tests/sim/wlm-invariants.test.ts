@@ -313,22 +313,29 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
   it('I16 cost bound: at most maxProjectionsPerInterval projections per interval, none when every candidate is on its clock', () => {
     let spent = 0;
     let allClocked = 0;
-    for (const seed of SEEDS) {
-      const { input } = makeCase(seed, 'varied');
-      const first = traced({ ...input, nowTick: 0 });
-      expect(projections(first.trace)).toBeLessThanOrEqual(POLICY_ADJUST.maxProjectionsPerInterval);
-      if (projections(first.trace) === POLICY_ADJUST.maxProjectionsPerInterval) spent++;
-      // Every candidate on a clock: nothing is projected.
-      const clocked = { ...input.system, scps: input.system.scps.map((p) => ({ ...p, skipUntilTick: 50 })) };
-      const quiet = traced({ ...input, system: clocked, nowTick: 1 });
-      if (quiet.trace.candidates.length > 0) {
-        allClocked++;
-        expect(quiet.trace.candidates.every((c) => c.outcome === 'SKIP_CLOCK')).toBe(true);
-        expect(projections(quiet.trace)).toBe(0);
-        // No receiver moved: the DPs are the input's, or what CPU protection restored before the search.
-        // No receiver moved: the order is the input's (made canonical, WT-06), or what CPU protection restored.
-        if (quiet.out.protect === null) expect(ladderOf(quiet.out.dps)).toEqual(ladderOf(Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]))));
+    // RF-03's five-period exception is tested in adjust.test.ts; here every clock must be honoured, or the quiet
+    // interval below would assess instead of skipping.
+    const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+    POLICY_ADJUST.skipClockMinMissing = -1;
+    try {
+      for (const seed of SEEDS) {
+        const { input } = makeCase(seed, 'varied');
+        const first = traced({ ...input, nowTick: 0 });
+        expect(projections(first.trace)).toBeLessThanOrEqual(POLICY_ADJUST.maxProjectionsPerInterval);
+        if (projections(first.trace) === POLICY_ADJUST.maxProjectionsPerInterval) spent++;
+        // Every candidate on a clock: nothing is projected.
+        const clocked = { ...input.system, scps: input.system.scps.map((p) => ({ ...p, skipUntilTick: 50 })) };
+        const quiet = traced({ ...input, system: clocked, nowTick: 1 });
+        if (quiet.trace.candidates.length > 0) {
+          allClocked++;
+          expect(quiet.trace.candidates.every((c) => c.outcome === 'SKIP_CLOCK')).toBe(true);
+          expect(projections(quiet.trace)).toBe(0);
+          // No receiver moved: the DPs are the input's, or what CPU protection restored before the search.
+          if (quiet.out.protect === null) expect(ladderOf(quiet.out.dps)).toEqual(ladderOf(Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]))));
+        }
       }
+    } finally {
+      POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
     }
     expect(allClocked).toBeGreaterThan(50);
     expect(spent).toBeGreaterThan(0);
@@ -360,9 +367,10 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
   });
 
   it('I12 skip clock, no starvation: every candidate is assessed, clocked or recovering within rejectedSkipTicks + 2 intervals', () => {
-    // A small budget so it bites; the image is replayed for 40 intervals with its DPs and clocks carried over.
+    // Half the default budget, so it bites but the rotation still leaves the clock bound meaningful; the image is
+    // replayed for 40 intervals with its DPs and clocks carried over.
     const saved = POLICY_ADJUST.maxProjectionsPerInterval;
-    POLICY_ADJUST.maxProjectionsPerInterval = 3;
+    POLICY_ADJUST.maxProjectionsPerInterval = 6;
     let budgetHits = 0;
     try {
       for (const seed of SEEDS.slice(0, 60)) {

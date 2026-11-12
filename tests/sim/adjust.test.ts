@@ -1,5 +1,6 @@
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { BASEPOL } from '../../src/content/wlm/basepol';
+import { formatClock } from '../../src/sim/core/clock';
 import { donorOrder, type DonorInfo, enforceCpuProtection, fixableBottlenecks, largestManagedDelay, managedDelayFrac, policyAdjust, setWlmTraceSink, waitingFrac, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
@@ -119,7 +120,7 @@ describe('policy adjustment', () => {
   it('explains a safe partial plan rolled back at the step limit, and logs the new clock off cadence', () => {
     const saved = { ...POLICY_ADJUST };
     const traces: WlmAdjustTrace[] = [];
-    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100, maxPlanSteps: 1 });
+    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100, maxPlanSteps: 1, skipClockMinMissing: -1 });
     setWlmTraceSink((t) => traces.push(t));
     try {
       const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'D1 06:00:40', nowTick: 4 });
@@ -127,7 +128,7 @@ describe('policy adjustment', () => {
       expect(out.dps).toEqual(dps);
       expect(out.log).toContain('UP ONLHI#1 DP F4→F6 rejected: gain too small');
       expect(out.clockNotes).toContain(out.log);
-      expect(out.clockNotes[0]).toContain('next look 06:01:40');
+      expect(out.clockNotes[0]).toContain(`next look ${formatClock(4 + POLICY_ADJUST.rejectedSkipTicks).split(' ')[1]}`);
     } finally {
       Object.assign(POLICY_ADJUST, saved);
       setWlmTraceSink(null);
@@ -324,7 +325,57 @@ describe('equal-importance moves narrow the PI gap (SG24-6472 p.60; Enrico, How 
   });
 });
 
+describe('skip clock exception when few periods miss their goals (RF-03, z/OS 1.11)', () => {
+  // Six goal periods, all held back by the same PR/SM delay, so no priority move helps them.
+  const def = structuredClone(BASEPOL);
+  const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+  const keys = ['K1', 'K2', 'K3', 'K4', 'K5', 'K6'];
+  for (const id of keys) def.classes.push({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity: 90 }, importance: 1 as const, durationSu: null }] });
+  const allSlices = keys.map((id) => sliceSpec({ key: id, scKey: `${id}#1`, kind: 'AS', cpEngines: 0.5, units: 4 }));
+  const dps = Object.fromEntries(keys.map((id, i) => [`${id}#1`, 0xf6 - i]));
+  // No plan is good enough, so every receiver is rejected and the clocks are what the test observes. The budget is
+  // raised so the search reaches every candidate rather than stopping on a BUDGET.
+  const saved = { ...POLICY_ADJUST };
+  beforeAll(() => { POLICY_ADJUST.receiverValueMinPi = 100; POLICY_ADJUST.maxProjectionsPerInterval = 1000; });
+  afterAll(() => { Object.assign(POLICY_ADJUST, saved); });
+  const run = (periods: number, nowTick: number, clock?: number) => {
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0.3, slices: allSlices.slice(0, periods), backlog: {}, io: IO, pagingFrac: 0 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t), ...(clock !== undefined && t.scKey === 'K1#1' ? { skipUntilTick: clock } : {}) })) };
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => traces.push(t));
+    try {
+      const out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T', nowTick });
+      return { out, trace: traces[0]! };
+    } finally {
+      setWlmTraceSink(null);
+    }
+  };
+
+  it('honours a running clock while six goal periods miss their goals', () => {
+    const { out, trace } = run(6, 1, 100);
+    expect(trace.candidates.find((c) => c.scKey === 'K1#1')!.outcome).toBe('SKIP_CLOCK');
+    expect(out.skipUntil['K1#1']).toBe(100);
+    for (const k of keys.slice(1)) expect(trace.candidates.find((c) => c.scKey === `${k}#1`)!.outcome).toBe('ASSESSED');
+  });
+
+  it('ignores the running clock and starts none when five goal periods miss their goals', () => {
+    const { out, trace } = run(5, 1, 100);
+    expect(trace.candidates.every((c) => c.outcome !== 'SKIP_CLOCK')).toBe(true);
+    expect(trace.candidates.find((c) => c.scKey === 'K1#1')!.outcome).toBe('ASSESSED');
+    // The old clock is dropped, not carried, and the rejected receivers start no new clock.
+    expect(out.skipUntil).toEqual({});
+    expect(out.clockNotes).toEqual([]);
+    expect(out.log).not.toContain('next look');
+  });
+});
+
 describe('a hopeless receiver does not stop the search at the next importance (SG24-7621 p.105–106)', () => {
+  // This fixture has four goal periods, under the five-period exception (RF-03), so it would never honour a clock.
+  // The exception itself is tested above; here the clock mechanics are what is under test.
+  const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+  beforeAll(() => { POLICY_ADJUST.skipClockMinMissing = -1; });
+  afterAll(() => { POLICY_ADJUST.skipClockMinMissing = savedMinMissing; });
   // Playtest round 2, D19 22:00–22:27: the two importance-1 slots went to receivers whose projections found no
   // move of net value (STCMED's sysplex PI came from another system; STCHI's DP cannot reach the transaction-managed
   // regions it hosts), so ONLCARD/ONLRBANK at importance 2 waited until 22:30. Shape here: two importance-1
@@ -407,7 +458,7 @@ describe('a hopeless receiver does not stop the search at the next importance (S
       expect(first.out.skipUntil[k]).toBe(until);
     }
     // OLD1 is alone on the top level: no step up, no donor, so no trial at all; it is clocked like a rejected one.
-    expect(first.out.log).toMatch(/OLD1#1 .* no action with net value, next look 06:01:00$/);
+    expect(first.out.log).toMatch(new RegExp(`OLD1#1 .* no action with net value, next look ${formatClock(until).split(' ')[1]}$`));
     // ONLCARD's raises would all pass importance-1 work that is missing its goal: rejected too, and clocked.
     expect(first.out.skipUntil['ONLCARD#1']).toBe(until);
     // A tick later all four are on their clocks: no projection at all this interval (I16).
@@ -503,9 +554,10 @@ describe('a hopeless receiver does not stop the search at the next importance (S
 
 describe('a run of hopeless receivers does not starve the receivers behind it (I12; #296 review B1)', () => {
   // Twelve importance-1 receivers no move helps (their CPU delay is PR/SM delay), each costing six projections: three
-  // raises (above the blockers' level, onto the happy level, above it) and three happy equal-importance donors. With the budget at 12 and the clock at 6 intervals, two are
-  // clocked per interval and the first clocks expire just as the last are reached, so a search that restarted at
-  // the top every interval never reached TARGET, which an EF→DF donor move by HOG helps at once.
+  // raises (above the blockers' level, onto the happy level, above it) and three happy equal-importance donors. With
+  // the budget at 12 and clocks running, two are clocked per interval; a search that restarted at the top every
+  // interval never reached TARGET, which an EF→DF donor move by HOG helps at once, so the resume cursor must carry
+  // past them.
   const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
   const cls = (id: string, velocity: number, importance: 1 | 2 | 5) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
   const def = structuredClone(BASEPOL);
@@ -810,13 +862,17 @@ describe('the missing-goal rule on the ladder (WT-06)', () => {
     const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
     const dps: Record<string, number> = { 'HOG#1': 0xf6, 'MORE#1': 0xf4, 'RCV#1': 0xf4 };
     const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
-    // MORE is on its skip clock, so the search goes on to RCV.
+    // MORE is on its skip clock, so the search goes on to RCV. Three periods is under the five-period exception:
+    // hold the clock on for this fixture (RF-03; the exception is tested on its own).
     const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t), ...(t.scKey === 'MORE#1' ? { skipUntilTick: 100 } : {}) })) };
+    const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+    POLICY_ADJUST.skipClockMinMissing = -1;
     const traces: WlmAdjustTrace[] = [];
     setWlmTraceSink((t) => traces.push(t));
     try {
       policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T', nowTick: 0 });
     } finally {
+      POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
       setWlmTraceSink(null);
     }
     const rcv = traces[0]!.candidates.find((c) => c.scKey === 'RCV#1');
@@ -938,7 +994,7 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
       return { scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: t.scKey === 'R#1' ? { ...acc, delayCpu: 1.1 * acc.delayZiip, delay: acc.delay + 1.1 * acc.delayZiip } : acc };
     }) };
     const saved = { ...POLICY_ADJUST };
-    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100 });
+    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100, skipClockMinMissing: -1 });
     const traces: WlmAdjustTrace[] = [];
     setWlmTraceSink((t) => traces.push(t));
     let out;
