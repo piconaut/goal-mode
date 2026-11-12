@@ -193,6 +193,11 @@ level or a separate toggle.
   ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43241910317),
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43241910407),
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43241910326)).
+  After the design-review planner fix (`d9617a4`, remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10, Harbourline
+  10.5 / 30 / 7 (textbook 1 victory), Revenue 20.5 / 27 / 10; all inside the bands
+  ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43253180617),
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43253182591),
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43253182465)).
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
