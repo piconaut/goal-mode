@@ -551,7 +551,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       .slice(0, 3);
     if (ct) ct.donors = [...donors];
     // A donor above the receiver moves to the receiver's level; one already on it, to a new level just below (WLM
-    // Services p.706, codes 530/540 and 531 "moving the donor to the receivers priority").
+    // Services p.706, codes 530/540; the rejection code 531, "moving the donor to the receivers priority violates CPU
+    // critical rules", shows the receiver's priority is a donor target).
     for (const d of donors) {
       const L = moveToLevel(ladder, d, rl0, levelOf(ladder, d) < rl0 ? 'join' : 'below');
       trials.push({ trial: withLadder(dps, L), text: `DONOR ${d} DP ${hex(dps[d]!)}→${hex(moveTarget(dps, L, d))}` });

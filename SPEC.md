@@ -559,7 +559,8 @@ for importance in 1..5:
   it moves alone onto the free priority directly above it; alone, it joins the next level (WLM Services p.707,
   codes 635 and 620), until it has joined the third level above. Alone on the top level it has no step. A donor
   above the receiver moves onto the receiver's level, one already on it alone onto a new level just below (p.706,
-  codes 530/540 and 531 "moving the donor to the receivers priority"). Each trial is a single move until WT-08's
+  codes 530/540; rejection code 531, "moving the donor to the receivers priority violates CPU critical rules", shows
+  the receiver's priority is a donor target). Each trial is a single move until WT-08's
   plans. The log names the priority moved to before the ladder is renumbered (`DP F2→F3`: the free priority above
   F2's level), so the stored DPs can differ from the logged target. "Passes or joins" in the missing-goal rule
   means a change of position: a more important period that already shared the receiver's level and still does is

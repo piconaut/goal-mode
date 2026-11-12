@@ -64,7 +64,7 @@ describe('raiseOneStep (WLM Services p.707, codes 635 and 620)', () => {
   });
 });
 
-describe('moveToLevel (WLM Services p.706, codes 530, 540, 531)', () => {
+describe('moveToLevel (WLM Services p.706, codes 530 and 540; 531 names the receiver\'s priority as a donor target)', () => {
   it('moves a donor onto the receiver\'s level, or alone just below it', () => {
     expect(moveToLevel(L(['D'], ['R']), 'D', 1)).toEqual(L(['D', 'R']));
     expect(moveToLevel(L(['D', 'R'], ['X']), 'D', 0, 'below')).toEqual(L(['R'], ['D'], ['X']));
