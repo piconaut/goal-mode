@@ -18,7 +18,7 @@
 
 import { readFileSync } from 'node:fs';
 import { applyPlayCommand, decodePlayFile, clockText, newPlayFile, type PlayFile } from './playCore';
-import { tickOfClock } from '../src/sim/core/clock';
+import { formatClock, tickOfClock } from '../src/sim/core/clock';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
 import { packOf } from '../src/content/packs';
 import { scenarioFor } from '../src/game/difficulty';
@@ -75,9 +75,10 @@ const shareText = (c: WlmCandidateTrace) =>
 function candidateLines(c: WlmCandidateTrace, n: number): string[] {
   const head = `  ${n}. ${c.scKey} imp ${c.importance} PI ${piText(c.sysplexPi)} (local ${piText(c.localPi)}) DP ${hexDp(c.dp)}${c.bottleneck ? ` BTLNK ${c.bottleneck}` : ''}`;
   const shares = [`       delay ${shareText(c)} of using + delay`];
-  const nextLook = c.skipUntilTick !== undefined ? `       next look ${clockText(c.skipUntilTick)}` : null;
+  // To the second: a clock runs in 10-second intervals.
+  const nextLook = c.skipUntilTick !== undefined ? `       next look ${clockText(c.skipUntilTick)}${formatClock(c.skipUntilTick).slice(-3)}` : null;
   if (c.outcome !== 'ASSESSED') return [head, ...shares, `       ${OUTCOME_TEXT[c.outcome]}`, ...(nextLook ? [nextLook] : [])];
-  if (c.trials.length === 0) return [head, ...shares, '       no move to try (DP at the top and no donor at or above it)'];
+  if (c.trials.length === 0) return [head, ...shares, '       no move to try (DP at the top and no donor at or above it)', ...(nextLook ? [`${nextLook} (skip clock set)`] : [])];
   return [
     head,
     ...shares,

@@ -204,11 +204,37 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
         allClocked++;
         expect(quiet.trace.candidates.every((c) => c.outcome === 'SKIP_CLOCK')).toBe(true);
         expect(projections(quiet.trace)).toBe(0);
-        expect(quiet.out.dps).toEqual(Object.fromEntries(input.system.scps.map((p) => [p.scKey, quiet.out.dps[p.scKey]])));
+        // No receiver moved: the DPs are the input's, or what CPU protection restored before the search.
+        if (quiet.out.protect === null) expect(quiet.out.dps).toEqual(Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp])));
       }
     }
     expect(allClocked).toBeGreaterThan(50);
     expect(spent).toBeGreaterThan(0);
+  });
+
+  it('I16 cost bound, over budget: an image that wants many times the budget gets exactly the budget', () => {
+    // Twelve importance-1 receivers no move helps (PR/SM delay), each with three raises and three happy donors to
+    // try: 72 projections with no budget.
+    const def = structuredClone(BASEPOL);
+    const template = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+    const keys = Array.from({ length: 15 }, (_, i) => `H${String(i).padStart(2, '0')}`);
+    keys.forEach((id, i) => def.classes.push({ ...structuredClone(template), id, periods: [{ goal: { kind: 'VEL', velocity: i < 12 ? 90 : 5 }, importance: 1, durationSu: null }] }));
+    const slices = keys.map((id) => sliceSpec({ key: id, scKey: `${id}#1`, kind: 'AS', cpEngines: 0.01, units: 1 }));
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0.3, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = {};
+    keys.forEach((id, i) => (dps[`${id}#1`] = i < 12 ? 0xf0 : 0xf1 + i - 12));
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const input: AdjustInput = { def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T', nowTick: 0 };
+    const { trace } = traced(input);
+    expect(projections(trace)).toBe(POLICY_ADJUST.maxProjectionsPerInterval);
+    const saved = POLICY_ADJUST.maxProjectionsPerInterval;
+    POLICY_ADJUST.maxProjectionsPerInterval = 1000;
+    try {
+      expect(projections(traced(input).trace)).toBeGreaterThan(3 * saved);
+    } finally {
+      POLICY_ADJUST.maxProjectionsPerInterval = saved;
+    }
   });
 
   it('I12 skip clock, no starvation: every candidate is assessed, clocked or recovering within rejectedSkipTicks + 2 intervals', () => {
@@ -229,9 +255,9 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
           const { out, trace } = traced({ ...input, system, nowTick: tick });
           const carried = system;
           system = { ...carried, scps: carried.scps.map((p) => {
-            const { skipUntilTick: _, ...rest } = p;
+            const { skipUntilTick: _, resumeSearch: _r, ...rest } = p;
             const c = out.skipUntil[p.scKey];
-            return { ...rest, dp: out.dps[p.scKey] ?? p.dp, ...(c !== undefined ? { skipUntilTick: c } : {}) };
+            return { ...rest, dp: out.dps[p.scKey] ?? p.dp, ...(c !== undefined ? { skipUntilTick: c } : {}), ...(p.scKey === out.resumeAt ? { resumeSearch: true as const } : {}) };
           }) };
           const seen = new Map(trace.candidates.map((c) => [c.scKey, c.outcome]));
           // An interval that helped a receiver ends there (one change per interval): that is not starvation.

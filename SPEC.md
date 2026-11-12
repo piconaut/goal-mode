@@ -520,13 +520,14 @@ for importance in 1..5:
                  then remaining periods with local PI > 1 (worst PI first)
     for receiver in candidates:
         if receiver's skip clock has not expired: record SKIP_CLOCK & continue
-        if managed delay (CPU, zIIP, I/O in velocity, storage, queue) < needsHelpDelayFrac of samples:
+        if managed delay (CPU, zIIP, I/O in velocity, storage, queue) < needsHelpDelayFrac of samples
+           (the goal PI's samples: transaction-server regions left out):
             record NO_MANAGED_DELAY & continue                                    // nothing a priority can help
         bottleneck = largest delay type of receiver (CPU, zIIP, I/O, storage, MPL/initiator, queue)
         if bottleneck is not WLM-fixable (capping, PR/SM delay, lock wait, dependency): record & continue
         base = projected PIs at the current DPs (one evaluation, made when first needed)
         if base[receiver] ≤ 1 or unknown: record RECOVERING & continue      // no trials, no budget
-        if the interval's projection budget is spent: record BUDGET & stop  // no clock: first in line next time
+        if the interval's projection budget is spent: record BUDGET & stop  // no clock: next search starts here
         for each candidate action (move receiver up 1..k DP; move donors down):
             if the receiver would pass or join more important work that is missing its goal
                (management or projected PI > 1) and uses the processor: reject   // MORE_IMPORTANT_HARMED
@@ -546,14 +547,19 @@ for importance in 1..5:
   later (WLM Services p.145, p.148–149; the length is not documented, so it is FICTIONAL and one value on every
   difficulty). A period whose managed delay is under `needsHelpDelayFrac` (2 %) of its samples is not assessed (WLM
   Services p.144: no delay samples for a resource SRM manages, no help; a fluid model never has exactly none). The
+  samples are the ones the goal PI is taken from: a transaction-server region's are left out, as they are managed to
+  the goals of the transactions it serves (WLM Planning p.122), and so is its capping delay. The
   clock lives in `ScpState.skipUntilTick` and the log's no-action note ends `next look hh:mm:ss`. A clock set because
   the trust limit rejected every raise lasts its minute even if the other image's PI improves sooner.
 - **Projection budget.** Each projection re-runs §5.4, so the search makes at most `maxProjectionsPerInterval` (12)
   per image per interval, over all importances (the tick budget, I16). Rejections that need no projection (CPU
   protection, the missing-goal rule, the trust limit) cost none, and neither does a `RECOVERING` candidate. When it
-  is spent the search stops (`BUDGET`) with no clock, so the next candidate is first in line next interval; a
-  receiver that had the whole budget and still ran out is clocked like a rejected one, or it would keep everyone
-  behind it out (I12). Real WLM examines every candidate at an importance before moving down (SG24-7621 p.105–106);
+  is spent the search stops (`BUDGET`) with no clock, and the next interval's search starts at the receiver it
+  stopped on (`ScpState.resumeSearch`), then wraps to the top. A search that restarted at the top every interval
+  could cycle through hopeless receivers forever, their clocks expiring just as the last were reached, and never get
+  to the ones behind them. The cursor stays put when a move is accepted and is cleared when a search reaches the
+  end of the list. A receiver that had the whole budget and still ran out is clocked like a rejected one, or it
+  would keep everyone behind it out (I12). Real WLM examines every candidate at an importance before moving down (SG24-7621 p.105–106);
   with skip clocks the budget rarely binds.
 - Donors are preferably *happy* (PI < 1) *heavy users of the bottleneck resource*, of lower
   importance, chosen in reverse order of receivers.

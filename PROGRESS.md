@@ -492,6 +492,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   Sweep in M8.2: Harbourline expert 8 → 6 of 10 (D29 freeze with the ladder at FC, from the skip clock; WT-06 note).
   Fixed on the way: `managedDelayFrac` subtracted waits that `delay` never held, so transaction classes with long
   waits were skipped as `NO_MANAGED_DELAY` (changes Midwest and Revenue; numbers above are after the fix).
+  Review fixes (#296): a search the budget stopped resumes next interval at the receiver it stopped on
+  (`ScpState.resumeSearch`), so twelve hopeless receivers at six projections each can no longer starve the receivers
+  behind them; the delay test counts the goal PI's samples (transaction-server regions out, `srvDelayCap` added).
+  Neither fires in S-1 … S-3: one-day `compare` against the previous head is identical apart from the new fields.
 - 2026-11-11: WT-04, one PI basis (docs/wlm-design.md §5.2–§5.4, §9.5): receivers chosen on the management PI,
   trials judged on projected PIs (`base` against `after`) at sustained demand (`src/sim/wlm/projection.ts`); a
   candidate with `base` ≤ 1 is `RECOVERING`; receiver value floor 0.05; a less important receiver never passes more

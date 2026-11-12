@@ -101,6 +101,8 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
       const clock = out.skipUntil[s.scKey];
       if (clock !== undefined) s.skipUntilTick = clock;
       else delete s.skipUntilTick;
+      if (s.scKey === out.resumeAt) s.resumeSearch = true;
+      else delete s.resumeSearch;
     }
     return sys;
   });

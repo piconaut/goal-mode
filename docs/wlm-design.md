@@ -849,6 +849,7 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
   base    ← not computed yet
 
   for r in receiverOrder(info, mPlex, mLocal):             // §2.5 order, unchanged: importance; sysplex then local; worst first; key
+                                                           // after a BUDGET stop: from the receiver it stopped on, wrapping (resumeSearch)
       if skipUntilTick[r] > nowTick:              trace SKIP_CLOCK;        continue
       if managedDelayFrac(acc_r) < C.needsHelpDelayFrac:
                                                   trace NO_MANAGED_DELAY;  continue
@@ -856,7 +857,7 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
       if base[r] is null or base[r] ≤ 1:          trace RECOVERING;        continue
       tried ← false
       for b in fixableBottlenecks(acc_r, C):      // §5.7
-          if budget ≤ 0:                          trace BUDGET;            goto done     // no skip clock: first in line next time
+          if budget ≤ 0:                          trace BUDGET;            goto done     // no skip clock: the next search starts at r
           plan ← buildPlan(r, b, L, base, P, info, budget, C);  tried ← true
           if plan.accepted:
               L ← plan.ladder
@@ -987,7 +988,7 @@ resource-group minimum's share and 253 for blocked-workload promotion, which clo
 
 ```
 managed delays: CPU, ZIIP, IO (the part in velocity), STORAGE, QUEUE.      CAP is reported, not managed.
-managedDelayFrac(acc) ← Σ managed delays ÷ (using + delay in velocity)
+managedDelayFrac(acc) ← Σ managed delays ÷ (using + delay in velocity), both without transaction-server samples (as goalPi)
 fixableBottlenecks(acc, C) ← [CPU, ZIIP] ordered by delay, largest first, keeping those ≥ C.bottleneckMinFrac × Σ managed delays
 ```
 

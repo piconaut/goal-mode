@@ -39,6 +39,8 @@ export interface ScpAcc {
   /** Velocity samples of transaction-server regions: reported, but not used to manage this period; absent when none. */
   srvUsing?: number;
   srvDelay?: number;
+  /** The capping delay inside `srvDelay` (the managed-delay test leaves capping out); absent in old saves. */
+  srvDelayCap?: number;
 }
 
 /** Velocity samples: all using / delay samples except I/O while I/O priority management is off. */
@@ -53,6 +55,9 @@ export interface ScpState {
   /** Skip clock: a receiver whose every trial was rejected is not assessed again before this tick (WLM Services
    * p.145). Absent when no clock runs. */
   skipUntilTick?: number;
+  /** The interval's projection budget ran out at this receiver: the next interval's search starts here (only one
+   * period per image carries it). APPROX: real WLM assesses every receiver; the budget is for cost. */
+  resumeSearch?: true;
 }
 
 export interface WlmSystemState {
@@ -154,7 +159,11 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
       ? { usingIoNoVel: (acc.usingIoNoVel ?? 0) * d + (t.usingIoNoVel ?? 0), delayIoNoVel: (acc.delayIoNoVel ?? 0) * d + (t.delayIoNoVel ?? 0) }
       : {}),
     ...(acc.srvUsing !== undefined || t.srvUsing !== undefined
-      ? { srvUsing: (acc.srvUsing ?? 0) * d + (t.srvUsing ?? 0), srvDelay: (acc.srvDelay ?? 0) * d + (t.srvDelay ?? 0) }
+      ? {
+          srvUsing: (acc.srvUsing ?? 0) * d + (t.srvUsing ?? 0),
+          srvDelay: (acc.srvDelay ?? 0) * d + (t.srvDelay ?? 0),
+          srvDelayCap: (acc.srvDelayCap ?? 0) * d + (t.srvDelayCap ?? 0),
+        }
       : {}),
   };
   const moved = decayMoved(acc.moved, t.moved, d);
@@ -192,6 +201,7 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   if (a.srvUsing !== undefined) {
     out.srvUsing = (out.srvUsing ?? 0) + a.srvUsing;
     out.srvDelay = (out.srvDelay ?? 0) + (a.srvDelay ?? 0);
+    out.srvDelayCap = (out.srvDelayCap ?? 0) + (a.srvDelayCap ?? 0);
   }
 }
 

@@ -401,6 +401,104 @@ describe('a hopeless receiver does not stop the search at the next importance (S
   });
 });
 
+describe('a run of hopeless receivers does not starve the receivers behind it (I12; #296 review B1)', () => {
+  // Twelve importance-1 receivers no move helps (their CPU delay is PR/SM delay), each costing six projections: three
+  // raises and three happy equal-importance donors. With the budget at 12 and the clock at 6 intervals, two are
+  // clocked per interval and the first clocks expire just as the last are reached, so a search that restarted at
+  // the top every interval never reached TARGET, which an EF→DF donor move by HOG helps at once.
+  const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+  const cls = (id: string, velocity: number, importance: 1 | 2 | 5) => ({ ...structuredClone(tpl), id, periods: [{ goal: { kind: 'VEL' as const, velocity }, importance, durationSu: null }] });
+  const def = structuredClone(BASEPOL);
+  const blockers = Array.from({ length: 12 }, (_, i) => `BLK${String(i).padStart(2, '0')}`);
+  const donors = ['HAPPY1', 'HAPPY2', 'HAPPY3'];
+  def.classes.push(...blockers.map((b) => cls(b, 90, 1)), ...donors.map((d) => cls(d, 5, 1)), cls('TARGET', 90, 2), cls('HOG', 10, 5));
+  const slices = [
+    ...[...blockers, ...donors].map((k) => sliceSpec({ key: k, scKey: `${k}#1`, kind: 'AS', cpEngines: 0.01, units: 1 })),
+    sliceSpec({ key: 'target', scKey: 'TARGET#1', kind: 'AS', cpEngines: 0.5, units: 2 }),
+    sliceSpec({ key: 'hog', scKey: 'HOG#1', kind: 'AS', cpEngines: 3.5, units: 8 }),
+  ];
+  const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0.3, slices, backlog: {}, io: IO, pagingFrac: 0 };
+  const dps0: Record<string, number> = { 'TARGET#1': 0xe0, 'HOG#1': 0xef, 'HAPPY1#1': 0xf1, 'HAPPY2#1': 0xf2, 'HAPPY3#1': 0xf3 };
+  for (const b of blockers) dps0[`${b}#1`] = 0xf0;
+
+  it('reaches TARGET: a search the budget stopped resumes where it stopped', () => {
+    let system: WlmSystemState | null = null;
+    const dps = { ...dps0 };
+    let targetAssessed = -1;
+    let budgetStops = 0;
+    for (let tick = 0; tick < 20 && targetAssessed < 0; tick++) {
+      const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+      const prev: Record<string, WlmSystemState['scps'][number]> = {};
+      for (const p of system?.scps ?? []) prev[p.scKey] = p;
+      system = {
+        lparId: 'SYS1',
+        scps: cur.scps.map((t) => {
+          const p = prev[t.scKey];
+          return { scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(p?.acc ?? emptyAcc(), t), ...(p?.skipUntilTick !== undefined ? { skipUntilTick: p.skipUntilTick } : {}), ...(p?.resumeSearch ? { resumeSearch: true as const } : {}) };
+        }),
+      };
+      const traces: WlmAdjustTrace[] = [];
+      setWlmTraceSink((t) => traces.push(t));
+      let out;
+      try {
+        out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T', nowTick: tick });
+      } finally {
+        setWlmTraceSink(null);
+      }
+      const target = traces[0]!.candidates.find((c) => c.scKey === 'TARGET#1');
+      if (target?.outcome === 'ASSESSED') targetAssessed = tick;
+      if (traces[0]!.candidates.some((c) => c.outcome === 'BUDGET')) budgetStops++;
+      Object.assign(dps, out.dps);
+      system = { ...system, scps: system.scps.map((p) => {
+        const { skipUntilTick: _c, resumeSearch: _r, ...rest } = p;
+        const c = out.skipUntil[p.scKey];
+        return { ...rest, ...(c !== undefined ? { skipUntilTick: c } : {}), ...(p.scKey === out.resumeAt ? { resumeSearch: true as const } : {}) };
+      }) };
+      if (targetAssessed >= 0) expect(out.log).toContain('RCVR=TARGET#1');
+    }
+    expect(budgetStops).toBeGreaterThan(0);
+    // Two blockers per interval: TARGET's turn comes in the seventh interval.
+    expect(targetAssessed).toBeGreaterThanOrEqual(0);
+    expect(targetAssessed).toBeLessThanOrEqual(blockers.length / 2 + 1);
+  });
+});
+
+it('assesses a mixed class for its own members when its AOR is healthy (#296 review B2)', () => {
+  // MIXED holds a 1-CP AOR managed to TX's transaction goals and a starved address space. Its goal PI is the address
+  // space's; the delay test must read the same population, or the AOR's using samples hide the starvation.
+  const tpl = BASEPOL.classes.find((c) => c.id === 'STCLO')!;
+  const def = structuredClone(BASEPOL);
+  def.classes.push(
+    { ...structuredClone(tpl), id: 'MIXED', periods: [{ goal: { kind: 'VEL' as const, velocity: 50 }, importance: 2, durationSu: null }] },
+    { ...structuredClone(tpl), id: 'HOG', periods: [{ goal: { kind: 'VEL' as const, velocity: 10 }, importance: 5, durationSu: null }] },
+    { ...structuredClone(def.classes.find((c) => c.id === 'ONLHI')!), id: 'TX', periods: [{ goal: { kind: 'PCT', pct: 90, rtSec: 1 }, importance: 1, durationSu: null }] },
+  );
+  const slices = [
+    sliceSpec({ key: 'tx', scKey: 'TX#1', kind: 'TXN', workloadId: 'TX', rate: 100, cpEngines: 0.1, cpuSecPerTxn: 0.001, baseLatencySec: 0.01, rtSigma: 0.4, goalRtSec: 1, timeoutSec: 30 }),
+    sliceSpec({ key: 'aor', scKey: 'MIXED#1', kind: 'AS', role: 'CICS.AOR', cpEngines: 1, units: 1 }),
+    sliceSpec({ key: 'own', scKey: 'MIXED#1', kind: 'AS', cpEngines: 0.001, units: 1 }),
+    sliceSpec({ key: 'hog', scKey: 'HOG#1', kind: 'AS', cpEngines: 3.4, units: 8 }),
+  ];
+  const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0, regions: { keys: ['TX#1'], mode: 'TRANSACTION' as const, regionKey: 'MIXED#1', servers: ['aor'] } };
+  const dps: Record<string, number> = { 'TX#1': 0xfc, 'MIXED#1': 0xe0, 'HOG#1': 0xf0 };
+  const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+  const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+  const acc = system.scps.find((p) => p.scKey === 'MIXED#1')!.acc;
+  expect(acc.srvUsing).toBeGreaterThan(0);
+  const traces: WlmAdjustTrace[] = [];
+  setWlmTraceSink((t) => traces.push(t));
+  let out;
+  try {
+    out = policyAdjust({ def, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
+  } finally {
+    setWlmTraceSink(null);
+  }
+  const mixed = traces[0]!.candidates.find((c) => c.scKey === 'MIXED#1')!;
+  expect(mixed.outcome).toBe('ASSESSED');
+  expect(mixed.managedDelayFrac).toBeGreaterThan(POLICY_ADJUST.needsHelpDelayFrac);
+  expect(out.log).toContain('RCVR=MIXED#1');
+});
+
 describe('managedDelayFrac (docs/wlm-design.md §5.7)', () => {
   // Built the way the sim builds it (decayInto from one tick), so `delay` has the shape the sim gives it: waits
   // (`delayOther`) are kept beside it, not inside it.
@@ -423,6 +521,17 @@ describe('managedDelayFrac (docs/wlm-design.md §5.7)', () => {
   });
   it('is 0 for a period with no samples', () => {
     expect(managedDelayFrac(emptyAcc())).toBe(0);
+  });
+  it('leaves transaction-server regions out, as the goal PI does (WLM Planning p.122; #296 review B2)', () => {
+    // A healthy 1-CP AOR managed to its transactions' goals and a starved address space in the same class: the
+    // class is managed for the address space, whose samples are all delay.
+    const mixed = decayInto(emptyAcc(), { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 1, delayCpu: 0.001, srvUsing: 1, srvDelay: 0, srvDelayCap: 0 });
+    expect(managedDelayFrac(mixed)).toBeCloseTo(1, 12);
+    // A capped server's capping delay is its own: the other members' CPU delay still counts.
+    const capped = decayInto(emptyAcc(), { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
+    expect(managedDelayFrac(capped)).toBeCloseTo(1 / 10, 12);
+    // Only server regions: nothing left to manage.
+    expect(managedDelayFrac(decayInto(emptyAcc(), { ...emptyScpTick('TOR#1', 0xe0), usingCpu: 1, delayCpu: 1, srvUsing: 1, srvDelay: 1, srvDelayCap: 0 }))).toBe(0);
   });
 });
 

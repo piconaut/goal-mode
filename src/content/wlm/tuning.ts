@@ -85,7 +85,7 @@ export const POLICY_ADJUST = {
   // the skip clock but not its length (WLM Services p.145); one length on every difficulty (docs/wlm-design.md §8 Q9).
   rejectedSkipTicks: 6,
   // FICTIONAL: projections (trial evaluations) per image per interval; the tick budget. When it is spent the search
-  // stops for the interval and the next candidate is first in line next time (no skip clock).
+  // stops for the interval, with no skip clock, and the next interval's search starts where it stopped.
   maxProjectionsPerInterval: 12,
 };
 
