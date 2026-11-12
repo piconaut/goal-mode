@@ -527,6 +527,14 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   clue is logged at most every five minutes (seed 42 day 1: 105/66/25 → 33/40/20 lines on Midwest/Revenue/
   Harbourline).
 
+- 2026-11-12: design review of WT-04 … WT-08 by the design's author (docs/wlm-design.md §9.9). Fixed on #316: the
+  planner now assesses the place above the next level when joining it is worse for the receiver (WLM Services p.707,
+  code 630); the capped-PROD1 ONLHI episode is back to 30 adjustments, so it is not WT-10's. Criteria restated:
+  WT-05 (a regression check by construction, §9.6), WT-08 (harm share dropped; assessed candidates ending in a plan
+  must not fall without an explanation; reversals reported against the previous entry). §9.7 corrected: Midwest's
+  do-nothing swing rides on W7. User decision: WT-10 goes before WT-09. New WT-16: why joining a level projects much
+  worse than staying below it.
+
 - 2026-11-12: queued PR-20 for repeated `NOT_FIXABLE` checks: report those streaks separately from the existing
   `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in
   #307 has 30 cheaper candidate checks over five minutes and one periodic no-action log entry. Clock and

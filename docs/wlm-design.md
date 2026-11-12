@@ -1592,23 +1592,30 @@ project. Traces distinguish RETAINED proposals from the one ACCEPTED plan, and t
 and projections separately. Log targets are canonical stored DPs; `UP … (above X)` explains a split whose number
 stays the same while its old mates move down.
 
-Audit at `f683789` (same S-1 … S-3 recipes as §9.8; WT-07 → WT-08; S-1 and S-2 equal `e4902b7`'s, S-3 moved
-with the last review fix below):
+Audit at `d9617a4` (same S-1 … S-3 recipes as §9.8; WT-07 `1f4f212` → WT-08 after the design-review fix below):
 
 | | S-1 | S-2 | S-3 |
 |---|---|---|---|
-| accepted plans | 33 → 19 | 21 → 28 | 47 → 64 |
-| retained moves in accepted plans | 28 | 40 | 121 |
+| accepted plans | 33 → 19 | 21 → 24 | 47 → 54 |
+| assessed candidates ending in an accepted plan | 12.2 → 7.6 % (19/250) | 2.0 → 2.3 % (24/1 039) | 5.1 → 5.9 % (54/910) |
+| retained moves in accepted plans | 28 | 34 | 102 |
 | secondary carries | 1 | 0 | 2 |
-| proposal projections | 1 978 → 1 093 | 7 347 → 3 318 | 6 859 → 2 820 |
-| net rank reversals / within two minutes | 1 / 0 | 3 / 0 | 10 / 0 |
+| proposal projections | 1 978 → 1 129 | 7 347 → 3 200 | 6 859 → 3 007 |
+| net rank reversals / within two minutes | 0 → 1 / 0 | 3 → 3 / 0 | 2 → 5 / 0 |
+| episodes of 30 assessments | 1 | 3 | 2 |
 
 Reversals of a composite plan are measured from the net ordinal rank of each explicitly moved period, not the
 last intermediate step or raw canonical DP deltas. Internal moves of one atomic plan cannot reverse live state.
-The old §1 reversal targets are ≤2/4/8: S-3's 10 does not meet the target. S-1's raw MORE_IMPORTANT_HARMED share
-is 45.5% (500/1 099), above its 29% target; S-3 is 15.1% (562/3 711), below 21%. Net value now has to be assessed before receiver value
-for intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. These
-are not met as written; the user accepted both with the targets restated (below), not by tuning coefficients.
+The old §1 reversal targets (≤ 2/4/8) are met. S-1's raw MORE_IMPORTANT_HARMED share is 47.1 % (535/1 135), above
+its 29 % target; S-3 is 16.1 % (624/3 878), below 21 %. Net value now has to be assessed before receiver value for
+intermediate proposals, so some failures formerly classified SMALL_GAIN now name a harmed period. The share is
+dropped as a criterion (below), not met by tuning coefficients.
+
+S-1's lower share of candidates helped is two things, neither a loss of help. Plans bundle moves: 28 retained moves
+in 19 plans against WT-07's 33 single moves. And 173 of S-1's 250 assessments are PROD2 BATCHPRD#1 retried each
+minute over two nights (D1 21:26 → D2 22:44), blocked by the missing-goal rule from passing DDFPRD#1, which is at
+local PI 4.00 and never assessed because its waits exceed its CPU and zIIP delay (W7, WT-10). Without it the share
+is 25 % (19/77).
 
 Historical W5 thresholds are 29%/21%
 MORE_IMPORTANT_HARMED for S-1/S-3; WT-07 already measured 13.3%/15.4%, so passing them alone is not evidence that
@@ -1630,12 +1637,11 @@ the D2 runaway incident; the counterfactual test still checks one replay at the 
 These are explicit scenario/balance changes, accepted by the user (below), not golden noise or a new general
 guarantee that increased demand helps MOBILE.
 
-The capped-PROD1 seed-7 fixture also changes beyond WT-07's §9.8 five-minute episode: ONLHI is OTHER from 14:00
-through the 16:00 end of the observation, despite STCHI's partial recovery at 14:02:30. STCHI remains below ONLHI.
-Waits outside velocity dominate that bottleneck choice (OTHER exceeds 100%, the outstanding WT-10 issue).
-The test preserves the missing-goal ordering checks and the restored CPU rejection clue, and checks the
-preceding accepted STCHI donation and actual ladder rather than a distance between deduplicated log entries.
-The user accepted this longer episode as WT-10's (below); it is not claimed fixed by WT-08.
+The capped-PROD1 seed-7 fixture (Midwest, PROD1 defined capacity 200, DB* in STCHI) is as on WT-07: a happy STCHI
+donates below ONLHI, ONLHI waits for Db2 (OTHER), STCHI misses its goal and is raised back above ONLHI at 14:02:50,
+and ONLHI is OTHER for 30 adjustments (14:00:00–14:04:50). Before the design-review fix (below) WT-08 left STCHI
+below ONLHI to the 16:00 end of the observation (720 adjustments). The test bounds the episode at 60 adjustments and
+asserts STCHI is above ONLHI within five minutes of its first assessment below it.
 
 RT-06 validation against WT-07 on the same seed-42 runs: S-1 online incidents 2 → 0 (the two policy-only MOBILE
 misses disappear); S-2 2 → 2, still one testable runaway cause and agreement; S-3 13 → 15, adding card-free CARDS
@@ -1662,11 +1668,8 @@ its recommendation remains NEEDS USER for the explicit unmet criteria and behavi
   donors would not have stopped the 09:41 plan (its donors end at PI 0.13 and 0.5).
 - The scenario and balance changes above are accepted. Midwest do-nothing returns to its pre-WT-06 16.5 days,
   inside SPEC §16's day 12–18 target, so no balance entry follows.
-- The two Done-when criteria are restated rather than met. The MORE_IMPORTANT_HARMED share is now counted per
-  proposal, and a plan makes several proposals per candidate (free pre-check rejections included), so it is not
-  comparable with §1's per-trial baseline. Reversals are measured from net rank, and none occur within two minutes,
-  W1's concern. The counts in the table above are the baseline later entries report against.
-- The capped-PROD1 ONLHI episode is WT-10's. Its realism test bounds it at today's 720 OTHER adjustments.
+- The two Done-when criteria are restated rather than met (the design review's text, below).
+- The capped-PROD1 ONLHI episode was first sent to WT-10; the design review found it was WT-08's own gap (below).
 
 Last review fixes (`64b98d3`, `f683789`). A receiver raise was judged only against the original base, so it could
 pass while undoing what earlier retained moves had bought; it now also has to match the retained plan (a donor
@@ -1675,3 +1678,23 @@ receiver stuck under its skip clock re-clocks every minute, and each clock logge
 400-line log window (seed 42 day 1: 105/66/25 such lines on Midwest/Revenue/Harbourline). An unchanged clue is now
 logged at most every five minutes, and a new reason or a move logs it again: 33/40/20. `npm run compare
 --drop log` over two days shows no other state change; the goldens changed only because the log is hashed.
+
+**Design review of WT-04 … WT-08 (2026-11-12).** The author of this design reviewed what landed against its intent.
+- *A planner gap, fixed here (`d9617a4`).* `buildPlan` assessed join-and-split as one proposal only after
+  `NO_NET_VALUE` or `EQUAL_DISPARITY`. A join that is worse for the receiver itself (`NO_RECEIVER_GAIN`) blocked
+  the raise, although WLM assesses the move to the free priority above a donor directly (WLM Services p.707, code
+  630 `PA_PMUUA_REC`). On the capped-PROD1 fixture, STCHI#1 (importance 1, local PI 4.2, CPU delay 94 %) was
+  assessed every minute from 14:02:30; three raises were retained at 4.26 → 4.26, the join with ONLHI projected 26.37
+  and every plan was rejected. Why joining projects so much worse than staying below is WT-16's question.
+- *Restated criteria.* (1) Moves undone within two minutes: 0 in S-1 … S-3 (I13). Net-rank reversals are reported
+  against the previous entry (WT-07 0/3/2, WT-08 1/3/5); two periods trading places by alternate raises reverse
+  neither one's own move, which needs a pair-order count no tool has yet. (2) The MORE_IMPORTANT_HARMED share is
+  dropped: a few receivers retried each minute dominate it (S-1: 432 of the 500 at `e7015cb` are PROD2 BATCHPRD#1),
+  and it was meant to show that carrying a harmed period unblocks receivers (W5's premise, which the carries 1/0/2
+  do not bear out: most of those rejections were W1 artefacts). Reported instead, from `wlm-stats --by-class
+  --episodes`: assessed candidates that end in an accepted plan, which must not fall below the previous entry
+  without an explanation in the PR (WT-08's S-1 fall is explained above); every period assessed 30 times or more and
+  never helped; and carries accepted.
+- *Midwest's swing* rides on W7 in both directions (§9.7 correction); WT-10 now goes before WT-09.
+- *Still unmeasured:* `RECOVERING` (225 / 1 703 / 5 636 on S-1 … S-3, more than assessed) is not checked to recover;
+  a streak count belongs with PR-20.

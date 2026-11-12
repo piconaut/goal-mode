@@ -379,7 +379,8 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
   a session the user watches; that session sets the entry to `ready` when it starts. Their `after` dependencies
   still hold. With them gated, `dev-loop rca-truth,wlm-truth` reporting both lists finished means "WT-08's turn"
   (WT-04 landed 2026-11-11), not the playtest cue. User request 2026-11-11: one attended session takes WT-04 …
-  WT-09 in order, one PR each, so WT-05 … WT-07 are done there too rather than by `dev-loop`.
+  WT-09 in order, one PR each, so WT-05 … WT-07 are done there too rather than by `dev-loop`. User decision
+  2026-11-12 (after the design review of WT-04 … WT-08): WT-10 goes before WT-09, in the same attended session.
 - **Coefficients** go to `src/content/wlm/tuning.ts` `POLICY_ADJUST` with `// FICTIONAL:` notes (names and starting
   values in §5.10); approximations get `// APPROX:` (§5.10 list). Do not tune a coefficient to move a balance band
   (§8 Q2).
@@ -387,7 +388,7 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
 ### WT-09 · Server periods hold the regions' priority (W3)
-`list: wlm-truth · status: blocked: user (attended session, after WT-08) · priority: high · size: L · area: sim`
+`list: wlm-truth · status: blocked: user (attended session, after WT-10) · priority: high · size: L · area: sim`
 
 **Main agent (cross-layer).** Implements §5.1 holders and §5.8. `WlmSystemState.servers` (`runtime.ts`);
 `cicsRegions` (`tick/helpers.ts`) returns `serverKey` (`$SRMS001`) when any AOR on the image is TRANSACTION;
@@ -409,11 +410,16 @@ and the free ride*.
 Since CL-06: `cicsRegions` is built once per lookup plan (`regionsOf` in `tick/plan.ts`, called from `imageInput` in
 `tick/dispatch.ts`) and may only read slice template fields; `serverKey` belongs there, while the server period's DP
 and other per-tick region state stay out of the plan.
+After WT-10 (design review, 2026-11-12). Since WT-08 the ladder, `buildPlan`, the donor filter (`usedEngines`) and
+the missing-goal rule's "passed or joined" test read goal periods; each has to work on holders here, and a carry of
+a period that shares the receiver's holder is void. WT-09 does not change the capped-PROD1 case (Db2 in STCHI below
+its client): Db2 is not in the server topology, which is the CICS/IMS address spaces (SG24-6472-03 p.62). Done when
+also: the S-1 … S-3 table and RT-06 differences against WT-10.
 
 ### WT-10 · Managed bottlenecks in turn; waits are not delays (W7)
-`list: wlm-truth · status: ready · priority: low · size: S · area: sim`
+`list: wlm-truth · status: ready · priority: high · size: S · area: sim`
 
-Implements §5.7 in `adjust.ts`: `bottleneckOf` is replaced by `managedDelayFrac(acc)` (WT-05 added it, for the
+Do before WT-09 (user decision 2026-11-12). Implements §5.7 in `adjust.ts`: `bottleneckOf` is replaced by `managedDelayFrac(acc)` (WT-05 added it, for the
 delay test) and
 `fixableBottlenecks(acc, C)`; `delayOther` leaves the comparison; CPU and zIIP are tried in order of delay when
 each is at least `bottleneckMinFrac` of the managed delay, even when I/O, storage or cap is larger. `ScpAcc` gains
@@ -421,20 +427,16 @@ decayed `delayStorage` and `delayQueue` (today only in the `delay` total). The n
 mostly waiting reads `mostly waiting, CPU delay n %: not WLM-fixable`. Tests: `wlm-invariants: I14 not fixable, not
 moved`; unit "45 % other, 40 % CPU delay: a CPU plan is tried"; the existing realism test "Db2 MSTR starvation
 raises DDF response time without raising DDF CPU delay" still passes and its log line has the waiting note.
-Goldens: change. Done when: S-3's "not assessed: bottleneck OTHER / I/O" (5 291 / 4 208) are replaced by
-`NO_MANAGED_DELAY` or assessed candidates, with the counts in the PR. Bots: small. Cross-note: **RT-19** splits the
+Goldens: change. Done when: S-1 … S-3 "not assessed: other / I/O bottleneck" (572 / 0, 4 771 / 0, 5 520 / 106 at
+WT-08) are replaced by `NO_MANAGED_DELAY` or assessed candidates, with the counts in the PR; and Midwest seed 42
+PROD2 DDFPRD#1 at D1 21:40 on `1f4f212` (local PI 4.00, CPU 59 %, zIIP 30 %, OTHER 251 %, below BATCHPRD#1) gets a
+CPU and a zIIP plan. Bots: Midwest and Harbourline are expected to move (docs/wlm-design.md §9.7 correction). Cross-note: **RT-19** splits the
 same waits (`serverCpu`, `serverOther`) for RCA truth; share the per-period split rather than computing it twice.
 From WT-06 (2026-11-12, docs/wlm-design.md §9.7): Harbourline expert seed 7 is lost to a D29 freeze this causes. At
 D29 11:00 on PRDA, MKTORD#1 (importance 1) and ONLHI#1 (2) have 98 % CPU delay and are `NOT_FIXABLE` because their
 waits are larger; the skip clock is not involved (`--tune rejectedSkipTicks=0` gives the same day). Check that seed 7
 comes back (`npm run bot -- --bot expert --scenario harbourline --seed 7 --days 40 --trace-day 29`); bots may move
 more than "small".
-From WT-08 (2026-11-12, docs/wlm-design.md §9.9; accepted by the user as WT-10's): Midwest seed 7, PROD1 capped at
-200 MSU with DB* in STCHI, leaves ONLHI `NOT_FIXABLE/OTHER` from D1 14:00 through 16:00 while CPU delay is about 99%.
-STCHI has donated and partly recovered but remains below ONLHI. Recheck this extended episode when waits leave the
-bottleneck comparison, and tighten the bound in `tests/sim/realism.test.ts` ("capped ONLHI logs its CPU rejection",
-at most 720 OTHER adjustments today). Whether real WLM leaves Db2 in a happy STCHI below its client this long is
-unverified.
 
 ### WT-11 · The resource-group minimum for discretionary work (W10)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`
@@ -487,6 +489,20 @@ parked or declined.
 
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
+
+### WT-16 · Joining a level projects much worse than staying below it (projection question)
+`list: wlm-truth · status: ready · priority: medium · size: S · area: sim`
+
+From the design review of WT-04 … WT-08 (2026-11-12), unverified. On the capped-PROD1 fixture (Midwest seed 7,
+PROD1 defined capacity 200, DB* in STCHI) at D1 14:02:30, STCHI#1 (importance 1, holds Db2, local PI ≈ 4.26) projects
+4.26 below ONLHI#1, 26.37 on ONLHI's level and 0.74 above it (`1f4f212`'s accepted move). Equal-DP work shares by
+ready units, and ONLHI waits for Db2 in STCHI, so the level-shared projection may starve the server its client
+waits on. How real z/OS dispatches work at one priority is to be checked with zos-docs. Investigate first:
+`npm run inspect` on a play-CLI copy of the fixture, the per-level grants in `evaluateLpar`, and whether the level
+share should weight by demand rather than units. Report before any model change; if the sharing rule is wrong, the
+fix is a model change for the main agent, goes before WT-09 (whose regions share their holder's level), and needs
+goldens, the S-1 … S-3 table and a sweep. Done when: the cause is recorded in docs/wlm-design.md with a verdict
+(artefact fixed, or real and explained).
 
 ### PR-01 · A scheduled activation overrides a queued install
 `list: pr-followups · status: ready · priority: high · size: S · area: game`
