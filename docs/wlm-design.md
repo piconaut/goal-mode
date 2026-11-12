@@ -1839,4 +1839,8 @@ clock fixtures that need a clock set `skipClockMinMissing = 0`; the RF-03 unit t
 boundary (six missing honours a clock, five ignores it and starts none); I12 uses a 6-projection budget so the
 rotation leaves the clock bound meaningful; I16 turns the exception off for its all-clocked interval.
 
-Three-scenario sweep (remote, Normal, seeds 1–10): **PENDING**.
+Sweep (remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged from
+WT-10; Harbourline 9 / 30 / 8, from 9.5 / 30 / 7 (do-nothing 9.5 → 9, expert 7 → 8 victories), all inside the CI
+bands ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43327916254),
+[Revenue](https://github.com/piconaut/goal-mode/actions/runs/43327920681),
+[Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43327924751)).

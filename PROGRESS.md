@@ -509,6 +509,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43277480117),
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43277481255)). Harbourline expert seed 7 is still lost
   on day 39: its D29 is a saturated PRDA, not W7 (docs/wlm-design.md §9.10).
+- RF-03 (2026-11-12): the skip clock is IBM's 3 cycles and is not kept or started while five or fewer goal periods
+  on the image miss their goals (Sinram, SHARE 2010 session 7777 p.11; APPROX per image). S-1 … S-3 assessed
+  254/777/1 429 → 1 317/5 701/5 801, projections 1 241/2 953/4 820 → 6 700/20 624/18 197, `BUDGET` 0/0/1 →
+  0/3/31; S-1/S-2 lose their clocks (1 162/3 701 → 0), S-3 keeps 472. Bench 9.41 → 10.76 s/day (+14 %).
+  Quick reversals rise 0/0/0 → 1/0/3 within two minutes (recorded in docs/wlm-design.md §9.11; the affected
+  realism tests allow the measured donor-at-goal boundary). Sweep, remote Normal seeds 1–10:
+  [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43327916254) 16.5/28/10,
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43327920681) 20.5/27/10,
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43327924751) 9/30/8 (expert 7 → 8), all inside
+  their bands. Full suite 1 034/1 034; goldens regenerated.
 - zos-docs searches (2026-11-12): map hits with `pdf_find.py --grep … --pages-only` before reading, never cut search
   output with `head`, read the section that owns the topic (hit page ±1) and search in the book's words as well as
   the user's. A WLM answer missed ieaw100 3.1 p.61 ("no goals for CICS ⇒ region velocity goals") because the
