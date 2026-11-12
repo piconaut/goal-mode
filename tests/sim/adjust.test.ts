@@ -912,6 +912,11 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
     expect(fixableBottlenecks({ ...acc(0.1, 0, 0), delay: 1, delayStorage: undefined, delayQueue: undefined })).toEqual([]);
     expect(largestManagedDelay({ ...acc(0.1, 0, 0), delay: 1, delayStorage: undefined, delayQueue: undefined })).toBe('STORAGE');
     expect(fixableBottlenecks(acc(0, 0, 0))).toEqual([]);
+    // A decayed history (an idle period after 142 quiet ticks) holds its whole delay below any fixed floor: still IO.
+    const idle = { ...emptyAcc(), using: 9.49e-11, delay: 8.55e-10, delayIo: 8.55e-10, delayStorage: 0, delayQueue: 0 };
+    expect(managedDelayFrac(idle)).toBeGreaterThan(0.85);
+    expect(fixableBottlenecks(idle)).toEqual([]);
+    expect(largestManagedDelay(idle)).toBe('IO');
   });
 
   it('builds a zIIP plan after a rejected CPU plan, each with its own donors (WT-10)', () => {

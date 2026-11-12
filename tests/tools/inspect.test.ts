@@ -43,11 +43,11 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     candidates: [
       candidate({ scKey: 'IO#1', outcome: 'NOT_FIXABLE', bottleneck: 'IO' }),
       candidate({ scKey: 'STO#1', outcome: 'NOT_FIXABLE', bottleneck: 'STORAGE' }),
-      candidate({ scKey: 'QUE#1', outcome: 'NOT_FIXABLE', bottleneck: 'QUEUE' }),
+      candidate({ scKey: 'QUE#1', outcome: 'NOT_FIXABLE', bottleneck: 'QUEUE', waitingFrac: 0.7 }),
       candidate({ scKey: 'WAI#1', outcome: 'NO_MANAGED_DELAY', waitingFrac: 0.8 }),
       candidate({ scKey: 'CAP#1', outcome: 'NO_MANAGED_DELAY', waitingFrac: 0.1 }),
       candidate({ scKey: 'BUD#1', outcome: 'BUDGET' }),
-      candidate({ scKey: 'REC#1', outcome: 'RECOVERING' }),
+      candidate({ scKey: 'REC#1', outcome: 'RECOVERING', waitingFrac: 0.8 }),
       candidate({
         trials: [
           trial({ move: 'A#1 DP 20→21', verdict: 'ACCEPTED' }),
@@ -75,6 +75,8 @@ describe('wlmStats counts the audit table (WT-01)', () => {
     expect(stats.total.notFixable).toEqual({ IO: 1, STORAGE: 1, QUEUE: 1 });
     expect(stats.total.noManagedDelay).toBe(2);
     expect(stats.total.waitingNoDelay).toBe(1);
+    expect(stats.total.waitingNotFixable).toBe(1);
+    expect(stats.total.waitingRecovering).toBe(1);
     expect(stats.total.budget).toBe(1);
     expect(stats.total.recovering).toBe(1);
     expect(stats.total.trials).toBe(7);

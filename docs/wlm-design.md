@@ -1748,9 +1748,13 @@ recovering by the projection, which at sustained demand does not see the waits t
 waits). Both outcomes leave the DPs alone, as `NOT_FIXABLE` did; the log keeps the waiting clue. Whether
 `RECOVERING` periods recover is PR-20's streak count. S-3 doubles its plans: Harbourline's DDF and CICS periods,
 which mostly wait on Db2 and their regions, are now raised when their CPU delay is a real share. The reversal within
-two minutes (S-3 PRDD, D3 11:35:00) is a happy-donor plan: MKTDDF#1 donates to DDFPRD#2, misses its goal at once
-(25.36) and is raised back at 11:36:00. Its projected harm was small; that projection is WT-16's question, not the
-bottleneck rule. S-3's new episodes are PRDA MKTORD#1, ONLHI#1 and ONLMED#1 (D1 … D3): MKTORD#1 is alone at the top
+two minutes (S-3 PRDD, MKTDDF#1, importance 2) is three plans in a minute, not a donor projection gone wrong: at
+11:35:00 DDFPRD#2's plan lowers MKTDDF#1 as a happy donor (EE→E8), projected to PI 1.00, its goal; at 11:35:30
+MKTORD#1 (importance 1) is raised above STCMED#1, projected to take MKTDDF#1 to 25.36, a harm a more important
+receiver may do; at 11:36:00 MKTDDF#1, at local PI 4.00, is the receiver and goes back to EE (25.36 → 6.06). Each
+plan passed the checks it is held to; the I13 in-run criterion (no move undone within two minutes) does not allow
+for a more important receiver's plan in between. Corrected after review (#318); the first version blamed the
+donation's projection. S-3's new episodes are PRDA MKTORD#1, ONLHI#1 and ONLMED#1 (D1 … D3): MKTORD#1 is alone at the top
 DP with no donor at or above it, and is 97 % waiting (WLM Services p.148's no-donor case); the other two are at
 the floor of what a raise projects.
 

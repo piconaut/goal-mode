@@ -47,9 +47,10 @@ export function fixableBottlenecks(acc: DelayAcc, tuning: Pick<typeof POLICY_ADJ
   return m.ZIIP > m.CPU ? out.reverse() : out;
 }
 
-/** The largest managed delay: what a period no plan is built for is reported waiting for. */
+/** The largest managed delay: what a period no plan is built for is reported waiting for. Any positive delay counts,
+ * however small: a decayed history can hold a period's whole delay below any fixed floor. */
 export function largestManagedDelay(acc: DelayAcc): Bottleneck {
-  let best: [Bottleneck, number] = ['NONE', 1e-9];
+  let best: [Bottleneck, number] = ['NONE', 0];
   for (const [b, v] of Object.entries(managedDelays(acc)) as [Bottleneck, number][]) if (v > best[1]) best = [b, v];
   return best[0];
 }

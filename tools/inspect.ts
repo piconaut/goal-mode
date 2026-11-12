@@ -173,10 +173,12 @@ export interface WlmStatsCounters {
   /** `SKIP_CLOCK` and `NO_MANAGED_DELAY` candidates (WT-05). */
   skipClock: number;
   noManagedDelay: number;
-  /** Candidates that were mostly waiting (waits over half their samples; WT-10): not assessed for lack of managed
-   * delay, and assessed (a CPU or zIIP plan was built). */
+  /** Candidates that were mostly waiting (waits over half their samples; WT-10), by outcome: their log note says so
+   * whatever the outcome (assessed with no plan, not fixable, recovering; no managed delay). */
   waitingNoDelay: number;
   waitingAssessed: number;
+  waitingNotFixable: number;
+  waitingRecovering: number;
   /** Skip clocks set (an assessed candidate with every trial rejected). */
   clocksSet: number;
   /** `BUDGET` candidates: the interval's projection budget was spent before them. */
@@ -222,7 +224,7 @@ export interface WlmStats {
 }
 
 const emptyCounters = (): WlmStatsCounters => ({
-  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, STORAGE: 0, QUEUE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, waitingNoDelay: 0, waitingAssessed: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
+  adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, STORAGE: 0, QUEUE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, waitingNoDelay: 0, waitingAssessed: 0, waitingNotFixable: 0, waitingRecovering: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
   verdicts: { ACCEPTED: 0, RETAINED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
   acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, episodes: 0,
 });
@@ -279,16 +281,22 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
     const moved = new Map<string, 1 | -1>();
     const receiverMoved = new Set<string>();
     for (const cand of t.candidates) {
-      if (cand.outcome === 'NOT_FIXABLE') c.notFixable[notFixableKey(cand.bottleneck)]++;
-      else if (cand.outcome === 'BUDGET') c.budget++;
-      else if (cand.outcome === 'RECOVERING') c.recovering++;
+      const waiting = (cand.waitingFrac ?? 0) > 0.5;
+      if (cand.outcome === 'NOT_FIXABLE') {
+        c.notFixable[notFixableKey(cand.bottleneck)]++;
+        if (waiting) c.waitingNotFixable++;
+      } else if (cand.outcome === 'BUDGET') c.budget++;
+      else if (cand.outcome === 'RECOVERING') {
+        c.recovering++;
+        if (waiting) c.waitingRecovering++;
+      }
       else if (cand.outcome === 'SKIP_CLOCK') c.skipClock++;
       else if (cand.outcome === 'NO_MANAGED_DELAY') {
         c.noManagedDelay++;
-        if ((cand.waitingFrac ?? 0) > 0.5) c.waitingNoDelay++;
+        if (waiting) c.waitingNoDelay++;
       } else {
         c.assessed++;
-        if ((cand.waitingFrac ?? 0) > 0.5) c.waitingAssessed++;
+        if (waiting) c.waitingAssessed++;
         assessed.add(cand.scKey);
         if (cand.skipUntilTick !== undefined) c.clocksSet++;
       }
@@ -422,6 +430,8 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
     total.noManagedDelay += c.noManagedDelay;
     total.waitingNoDelay += c.waitingNoDelay;
     total.waitingAssessed += c.waitingAssessed;
+    total.waitingNotFixable += c.waitingNotFixable;
+    total.waitingRecovering += c.waitingRecovering;
     total.clocksSet += c.clocksSet;
     total.trials += c.trials;
     total.projections += c.projections;
@@ -565,8 +575,10 @@ export function statsText(stats: WlmStats): string {
     ['  not assessed: I/O bottleneck', [...stats.systems.map((s) => s.counters.notFixable.IO), stats.total.notFixable.IO]],
     ['  not assessed: storage bottleneck', [...stats.systems.map((s) => s.counters.notFixable.STORAGE), stats.total.notFixable.STORAGE]],
     ['  not assessed: queue bottleneck', [...stats.systems.map((s) => s.counters.notFixable.QUEUE), stats.total.notFixable.QUEUE]],
+    ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingNotFixable), stats.total.waitingNotFixable]],
     ['  not assessed: budget', [...stats.systems.map((s) => s.counters.budget), stats.total.budget]],
     ['  not assessed: already recovering (base ≤ 1)', [...stats.systems.map((s) => s.counters.recovering), stats.total.recovering]],
+    ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingRecovering), stats.total.waitingRecovering]],
     ['  not assessed: skip clock running', [...stats.systems.map((s) => s.counters.skipClock), stats.total.skipClock]],
     ['  not assessed: no managed delay', [...stats.systems.map((s) => s.counters.noManagedDelay), stats.total.noManagedDelay]],
     ['    of which mostly waiting', [...stats.systems.map((s) => s.counters.waitingNoDelay), stats.total.waitingNoDelay]],
