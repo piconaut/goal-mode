@@ -7,9 +7,11 @@ book section they fall under — instead of dumping the whole PDF.
 Usage:
   pdf_find.py BOOK.pdf --toc [--filter REGEX] [--depth N]
       Print the book's outline (bookmarks) with page numbers.
-  pdf_find.py BOOK.pdf --grep REGEX [REGEX ...] [--context N] [--max-hits N] [--all]
+  pdf_find.py BOOK.pdf --grep REGEX [REGEX ...] [--context N] [--max-hits N] [--all] [--pages-only]
       Case-insensitive search. A page matches only if it contains ALL patterns
       when --all is given, otherwise ANY. Each hit shows page, section, and lines.
+      --pages-only prints one line per matching page (page, matching-line count,
+      section) instead, so the whole spread of hits fits in a few lines.
   pdf_find.py BOOK.pdf --page N [--to M] [--max-chars N]
       Print the text of page N (through M), whitespace-compacted.
 
@@ -22,6 +24,7 @@ import argparse
 import hashlib
 import os
 import re
+import signal
 import subprocess
 import sys
 
@@ -122,6 +125,8 @@ def compact(s):
 
 
 def main():
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)  # quiet exit when piped into head
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("pdf")
     g = ap.add_mutually_exclusive_group(required=True)
@@ -131,7 +136,10 @@ def main():
     ap.add_argument("--filter", help="with --toc: only entries matching this regex")
     ap.add_argument("--depth", type=int, default=2, help="with --toc: max depth (default 2)")
     ap.add_argument("--context", type=int, default=2, help="lines around each match (default 2)")
-    ap.add_argument("--max-hits", type=int, default=15)
+    ap.add_argument("--max-hits", type=int,
+                    help="pages to show before stopping (default 15, or 300 with --pages-only)")
+    ap.add_argument("--pages-only", action="store_true",
+                    help="with --grep: one line per matching page, no snippets")
     ap.add_argument("--all", action="store_true", help="page must match every pattern")
     ap.add_argument("--to", type=int, help="with --page: last page")
     ap.add_argument("--max-chars", type=int, default=6000)
@@ -172,6 +180,7 @@ def main():
 
     pats = [re.compile(p, re.I) for p in a.grep]
     outline = load_outline(a.pdf)
+    max_hits = a.max_hits or (300 if a.pages_only else 15)
     hits = 0
     for n, text in enumerate(pages, 1):
         if a.all and not all(p.search(text) for p in pats):
@@ -179,6 +188,14 @@ def main():
         lines = text.splitlines()
         idx = [i for i, l in enumerate(lines) if any(p.search(l) for p in pats)]
         if not idx:
+            continue
+        sec = section_for(outline, n) if outline else ""
+        hits += 1
+        if a.pages_only:
+            print(f"p.{n:<5} {len(idx):>3} lines" + (f" | {sec}" if sec else ""))
+            if hits >= max_hits:
+                print(f"(stopped at {max_hits} pages; refine patterns or add --all)")
+                break
             continue
         # merge overlapping context windows
         windows = []
@@ -188,15 +205,13 @@ def main():
                 windows[-1][1] = hi
             else:
                 windows.append([lo, hi])
-        sec = section_for(outline, n) if outline else ""
         print(f"== p.{n}" + (f" | {sec}" if sec else ""))
         for lo, hi in windows:
             chunk = [compact(l) for l in lines[lo:hi] if l.strip()]
             print("   " + "\n   ".join(chunk))
             print("   ..")
-        hits += 1
-        if hits >= a.max_hits:
-            print(f"(stopped at {a.max_hits} pages; refine patterns, add --all, or raise --max-hits)")
+        if hits >= max_hits:
+            print(f"(stopped at {max_hits} pages; refine patterns, add --all, or raise --max-hits)")
             break
     if hits == 0:
         print("(no matches)")
