@@ -555,6 +555,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   accepted CPU plan. Shadow IT slows MOBILE again under adaptive WLM; the RT-06 test fixture moves to Revenue seed 6.
   Harbourline seed 7 does not come back: §9.7's W7 attribution corrected (§9.10).
 
+- 2026-11-12: shadow IT slows MOBILE again since WT-10 (111 against 80 ms in the adaptive realism test; WT-08 had
+  117.61 → 83.74 ms). User decision: the restored behaviour stands and WT-08's acceptance of the improvement no
+  longer applies (docs/wlm-design.md §9.9 note, §9.10).
+
 - 2026-11-12: WT-10 review (#318): the S-3 PRDD reversal within two minutes is three plans in a minute (a happy
   donor at its goal, then a more important receiver's plan that projects it at 25.36, then the donor raised back).
   User decision: accepted; I13 reworded to exclude reversals after another receiver's plan in between projected the

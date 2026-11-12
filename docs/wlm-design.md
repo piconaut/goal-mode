@@ -1650,7 +1650,8 @@ the 10:00 shadow-IT pair improves MOBILE from 117.61 to 83.74 ms instead of slow
 pair tests the card's CPU pressure. On seed 3, the former D1 21:00 policy-only MOBILE incident disappears, leaving
 the D2 runaway incident; the counterfactual test still checks one replay at the hour boundary and its cause.
 These are explicit scenario/balance changes, accepted by the user (below), not golden noise or a new general
-guarantee that increased demand helps MOBILE.
+guarantee that increased demand helps MOBILE. *Reversed by WT-10 (2026-11-12, §9.10): shadow IT slows MOBILE again
+under adaptive WLM; the acceptance of the improvement no longer applies.*
 
 The capped-PROD1 seed-7 fixture (Midwest, PROD1 defined capacity 200, DB* in STCHI) is as on WT-07: a happy STCHI
 donates below ONLHI, ONLHI waits for Db2 (OTHER), STCHI misses its goal and is raised back above ONLHI at 14:02:50,
@@ -1758,6 +1759,13 @@ projection. User decision (2026-11-12): accepted, and I13 reworded to exclude a 
 plan in between projected the period past its goal; `wlm-stats` reports those apart (S-3: 0, and 1 apart). S-3's new episodes are PRDA MKTORD#1, ONLHI#1 and ONLMED#1 (D1 … D3): MKTORD#1 is alone at the top
 DP with no donor at or above it, and is 97 % waiting (WLM Services p.148's no-donor case); the other two are at
 the floor of what a raise projects.
+
+Shadow IT slows MOBILE again under adaptive WLM, as the card intends (SPEC §9: PROD share falls): in the realism
+test's Midwest run MOBILE is 111 ms with the card against 80 ms without it, where WT-08 had it improve
+(117.61 → 83.74 ms, §9.9). WT-08's improvement came from MOBILE's DDFPRD#1 never being assessed while it mostly waited
+on Db2, so the extra TSO demand happened to displace DDFPRD#2 from above it. With its CPU delay assessed, the
+card's CPU pressure shows. The adaptive test asserts the slowdown again and the fixed-priority test is kept. User
+decision (2026-11-12): the restored behaviour stands; WT-08's acceptance of the improvement no longer applies.
 
 The criterion's case: on WT-07's state (`1f4f212`, Midwest seed 42, PROD2 D1 21:40:00) DDFPRD#1 (local PI 4.00,
 CPU 59 %, zIIP 30 %, other 251 % of using + delay) now has CPU and zIIP as bottlenecks, and its CPU plan is accepted:
