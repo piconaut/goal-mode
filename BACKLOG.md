@@ -664,6 +664,26 @@ show queued DBAT requests per hour per Db2 member in a Db2 statistics / DISPLAY 
 queue model does not change. Done when: the view, the pin and the clue texts that name the old column are updated,
 `tests/game/smf.test.ts` and the evidence tests cover it, and the two `docs/research.md` rows say "Matches".
 
+### RF-04 · The velocity floor sets a starved period's projected PI, and outweighs percentile periods
+`list: realism-fixes · status: ready · priority: low · size: S · area: sim`
+
+From the pr-reviewer report on #331 (WT-16, N2, 2026-11-13). Since WT-16, projections judge velocity before the PI
+ceiling of 99, so a starved velocity period's projected PI is set by the hard-coded 0.1 % velocity floor in
+`performanceIndex` (`src/sim/wlm/goals.ts`): `goal.velocity / 0.1`, i.e. 10 × its goal (VEL 74 → 740). A percentile
+PI stops at 4.0 and an average one at the timeout, so in net value's summed equal-importance harm and in the
+disparity test a starved velocity period outweighs any response-time period by two orders of magnitude, whatever
+its importance-equal rival's state. On #331's seed-1044 fixture G06 (VEL 74) goes 3.02 → 740.00 and turns the first
+trial into `EQUAL_DISPARITY`. No net-value rule changed, but the effective weights did. How real WLM scales a
+projected velocity PI near zero service is not documented in the books checked so far (unverified; check with
+`zos-docs` before choosing).
+Change: move the floor to `src/content/wlm/tuning.ts` with a `// FICTIONAL:` note describing the shape it should
+give, and decide whether projected harm should be bounded comparably across goal types (e.g. a projection ceiling
+for velocity like percentile's 4.0 past-the-mean scale, or harm counted on a common scale). That is a design call
+for the main agent; report before changing the rule. Done when: the floor is a named content coefficient, the
+choice is recorded in docs/wlm-design.md §5.10 and SPEC §5.5.4, a test shows a starved velocity period and a
+missing percentile period of equal importance traded on the chosen scale, and goldens, the S-1 … S-3 table and a
+three-scenario sweep (seeds 1–10) are recorded if behaviour changes.
+
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.

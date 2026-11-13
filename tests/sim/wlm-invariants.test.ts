@@ -89,13 +89,46 @@ function traced(input: AdjustInput): { out: AdjustOutput; trace: WlmAdjustTrace 
 const SEEDS = Array.from({ length: 150 }, (_, i) => i + 1);
 
 describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
-  it('repairs aggregate equal-importance NO_NET_VALUE by carrying its largest harmed period (real evaluator)', () => {
-    // Tied lower periods G00/G03/G06 below five donors. Raising G00 alone narrows each PI gap but
-    // costs more total harm than it gains; carrying G03 preserves the gain without that harm.
+  it('rejects on the sum of equal-importance harms when each is smaller than the gain (real evaluator)', () => {
+    // G00's raise harms G01 and G02, each by less than G00 gains; only together do they outweigh it (§5.3 netValue).
+    const { input } = makeCase(3109, 'rest');
+    for (const c of input.def.classes.filter((c) => c.id.startsWith('G'))) c.periods[0]!.importance = 2;
+    input.system.scps.forEach((p, i) => { p.dp = i % 3 === 0 ? 244 : 246; });
+    const held = Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]));
+    input.current = evaluateLpar({ ...input.evalInput, dpOf: (k) => held[k]! }).scps;
+    for (const p of input.system.scps) p.acc = decayInto(emptyAcc(), input.current.find((t) => t.scKey === p.scKey)!);
+    const { trace } = traced(input);
+    const receiver = trace.candidates[0]!;
+    expect(receiver.scKey).toBe('G00#1');
+    const first = receiver.trials[0]!;
+    expect(first.verdict).toBe('NO_NET_VALUE');
+    expect(first.blockedBy).toBe('G02#1');
+    expect(first.detail).toBe('gain 11.25 ≤ equal-importance harm 17.35');
+    // The premise, from the projections themselves: every single harm is below the gain, the sum is not.
+    const piAt = (dps: Record<string, number>) => Object.fromEntries(evaluateLpar({ ...input.evalInput, dpOf: (k) => dps[k]! }).scps.map((x) => {
+      const g = goalInfo(input.def, x.scKey)!.goal;
+      return [x.scKey, g.kind === 'PCT' ? projectedPercentilePi(x.buckets, g.pct, x.completions, x.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, x, Infinity)];
+    }));
+    const trial = { ...trace.dps };
+    for (const m of first.steps ?? []) trial[m.scKey] = m.toDp;
+    const before = piAt(trace.dps), after = piAt(trial);
+    const floor = POLICY_ADJUST.creditFloor;
+    const gain = Math.max(before['G00#1']!, floor) - Math.max(after['G00#1']!, floor);
+    const harms = Object.keys(after).filter((k) => k !== 'G00#1')
+      .map((k) => Math.max(0, after[k]! - Math.max(before[k]!, floor))).filter((h) => h > POLICY_ADJUST.harmEps);
+    expect(harms.length).toBeGreaterThanOrEqual(2);
+    expect(Math.max(...harms)).toBeLessThan(gain);
+    expect(harms.reduce((a, b) => a + b, 0)).toBeGreaterThan(gain);
+  });
+
+  it('repairs a NO_NET_VALUE raise by carrying its largest harmed period (real evaluator)', () => {
+    // Tied lower periods G00/G03/G06 below five donors. Raising G00 alone harms G03 by more than it gains (since
+    // WT-16's uncapped velocity projections, G03 alone outweighs the gain; the sum rule has its own test above);
+    // carrying G03 preserves the gain without that harm.
     const { input } = makeCase(1044, 'rest');
     for (const c of input.def.classes.filter((c) => c.id.startsWith('G'))) c.periods[0]!.importance = 2;
-    // This fixture isolates aggregate harm to G03. G06's old goal relied on the velocity PI ceiling to bound its
-    // harm; projections now expose that harm (WT-16), so give this unrelated rival an achievable low goal.
+    // With its generated VEL 74 goal, G06 is starved and its uncapped projected PI (3.02 → 740) makes the first
+    // trial EQUAL_DISPARITY instead, and the plan becomes a donor move; a low goal keeps this fixture on the carry.
     input.def.classes.find(c => c.id === 'G06')!.periods[0]!.goal = { kind: 'VEL', velocity: 9 };
     input.system.scps.forEach((p, i) => { p.dp = i % 3 === 0 ? 244 : 246; });
     const held = Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]));
