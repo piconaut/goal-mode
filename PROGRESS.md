@@ -88,8 +88,7 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
   - **Release (main):** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
     link"), "GOAL MODE (release · main 0008a76)", rebuilt 2026-11-10 from `main` at `0008a76` (merge of #260).
   - **Preview (dev):** [artifact](https://claude.ai/artifact/MbFdETzQXwuj87CvtiQyNW) (private until shared),
-    "GOAL MODE (preview · dev ab5d1ff)", built 2026-11-10 from `dev` at `ab5d1ff` (#259; the same game as the
-    release, since #259 changed docs only).
+    "GOAL MODE (preview · dev a77884a)", built 2026-11-13 from `dev` at `a77884a` (#338).
 - **Latest verified dev:** `71a0685` (#288); 83 test files / 913 tests pass (single-worker `vitest`, 2026-11-11).
 - **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `1300e69`, 2026-11-10):** Midwest `bde6d147471ece9f`;
   Harbourline `ec94548d8283d76c`; Revenue `fb563b38750d988f`. Host timings vary; use adjacent comparisons rather than
