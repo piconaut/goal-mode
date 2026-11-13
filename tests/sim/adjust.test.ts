@@ -360,13 +360,15 @@ describe('skip clock exception when few periods miss their goals (RF-03, z/OS 1.
   });
 
   it('ignores the running clock and starts none when five goal periods miss their goals', () => {
-    const { out, trace } = run(5, 1, 100);
+    // nowTick 30 is the five-minute log cadence: every rejected receiver's clue is logged there, not only the first.
+    const { out, trace } = run(5, 30, 100);
     expect(trace.candidates.every((c) => c.outcome !== 'SKIP_CLOCK')).toBe(true);
     expect(trace.candidates.find((c) => c.scKey === 'K1#1')!.outcome).toBe('ASSESSED');
-    // The old clock is dropped, not carried, and the rejected receivers start no new clock. The first clue still
-    // reaches the periodic log; the rest are in the trace (N3).
+    // The old clock is dropped, not carried, and the rejected receivers start no new clock. Their clues are logged
+    // at the cadence, one per receiver, without a "next look" (RF-03/N3).
     expect(out.skipUntil).toEqual({});
-    expect(out.clockNotes).toEqual([]);
+    expect(out.clockNotes).toHaveLength(5);
+    expect(out.clockNotes.every((n) => n.includes('no action with net value') && !n.includes('next look'))).toBe(true);
     expect(out.log).not.toContain('next look');
   });
 });

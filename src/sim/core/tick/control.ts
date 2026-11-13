@@ -110,8 +110,9 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
       if (log === prev.wlm.log) log = [...log];
       log.push(out.protect);
     }
-    // A newly clocked receiver may never land on the five-minute no-action cadence, so its clue is logged when the
-    // clock starts; a stuck receiver re-clocks every minute, so an unchanged clue is repeated at most every 5 minutes.
+    // A receiver whose clue would otherwise wait for the five-minute no-action cadence is logged now: a new skip
+    // clock, or the cadence itself for a rejection at five or fewer missing where no clock starts (RF-03). An
+    // unchanged clue for the same receiver is repeated at most every 5 minutes (`repeatsClue`).
     for (const note of out.clockNotes) {
       if (repeatsClue(log, note)) continue;
       if (log === prev.wlm.log) log = [...log];

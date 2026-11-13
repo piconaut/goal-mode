@@ -99,7 +99,8 @@ export interface AdjustOutput {
   /** Where the next interval's search starts (`ScpState.resumeSearch`): set when the projection budget stopped this
    * one, kept when a move was accepted, null once a search reached the end of the list. */
   resumeAt: string | null;
-  /** First rejection notes when a receiver starts a skip clock, including off the periodic log cadence. */
+  /** First rejection notes when a receiver starts a skip clock, including off the periodic log cadence; at five or
+   * fewer missing, every rejected receiver's note at the five-minute cadence (RF-03). */
   clockNotes: string[];
 }
 
@@ -730,8 +731,10 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
     } else {
       // No clock: the note joins the ordinary five-minute no-action cadence instead of being logged when a clock
-      // starts. Only notes[0] reaches the player log; the other receivers' clues stay in the trace (`wlm`, `--dump`).
-      notes.push(`${receiver} PI=${pi} ${noAction}`);
+      // starts. At the cadence, `clockNotes` carries every receiver's clue, not only the first (`out.log`).
+      const note = `${receiver} PI=${pi} ${noAction}`;
+      notes.push(note);
+      if (nowTick % 30 === 0) clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
     }
     if (outOfBudget) {
       // A budget hog is normally clocked, so the next search starts at it only to trace SKIP_CLOCK and move on. With

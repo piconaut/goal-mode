@@ -1841,11 +1841,9 @@ state hash changes because the decisions change. Goldens are regenerated for the
 clock fixtures that need a clock set `skipClockMinMissing = -1` (the check is `missing > value`, so a negative
 value forces the clock even when no period is missing; 0 would still drop it on a fully happy image); the RF-03
 unit test covers both sides of the
-boundary (six missing honours a clock, five ignores it and starts none); at five or fewer missing only `notes[0]`
-reaches the periodic player log, as before, and the other receivers' clues are in the `wlm`/`--dump` trace (logging
-them all at the cadence made the long replay tests exceed their timeout, so it is a follow-up); I12 uses a
-6-projection budget so the rotation leaves the clock bound meaningful; I16 turns the exception off for its
-all-clocked interval.
+boundary (six missing honours a clock, five ignores it and starts none); a rejection at five or fewer missing logs
+its clue at the five-minute cadence, one per receiver, without a "next look"; I12 uses a 6-projection budget so the
+rotation leaves the clock bound meaningful; I16 turns the exception off for its all-clocked interval.
 
 Sweep (remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged from
 WT-10; Harbourline 9 / 30 / 8, from 9.5 / 30 / 7 (do-nothing 9.5 → 9, expert 7 → 8 victories), all inside the CI
