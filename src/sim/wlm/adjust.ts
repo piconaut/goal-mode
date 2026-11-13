@@ -12,6 +12,7 @@ import { canonical, ladderOf, levelOf, moveToLevel, type Ladder } from './ladder
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
 import { projectionInput } from './projection';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from './batchProjection';
+import { projectBatchRtPi } from './batchRt';
 import { projectedPercentilePi } from './goals';
 import { ACC_DECAY, goalPi, goalInfo, srvDelayCapOf, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
 import { buildPlan, formatPlanMoves, type PlanAttempt, type PlanMove, type PlanAssessment } from './plan';
@@ -421,17 +422,28 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const honourSkipClock = missingGoals > POLICY_ADJUST.skipClockMinMissing;
   const tickOf: Record<string, ScpTick> = {};
   for (const t of input.current) tickOf[t.scKey] = t;
+  const accOf: Record<string, ScpState> = {};
+  for (const s of system.scps) accOf[s.scKey] = s;
   // Receiver value and donor harm use PIs before the reporting ceilings (percentile 4.0, velocity 99), or
   // improvements far past a goal look flat and a safe plan can exhaust its step limit without receiver value.
   const instPi = (ticks: readonly ScpTick[]) => {
     const m: Record<string, number | null> = {};
     for (const t of ticks) {
       const g = info[t.scKey];
-      m[t.scKey] = !g
-        ? null
-        : g.goal.kind === 'PCT'
-          ? projectedPercentilePi(t.buckets, g.goal.pct, t.completions, t.rtSumSec, g.goal.rtSec, PCT_PROJECTION_SIGMA)
-          : tickPi(g.goal, t, Infinity);
+      if (!g) {
+        m[t.scKey] = null;
+        continue;
+      }
+      const acc = accOf[t.scKey]?.acc;
+      // Batch RT goals manage by scaling the measured PI (WT-12, docs/wlm-design.md §9.15). A null projection
+      // (no running job) stays null rather than falling back to the completionless address-space evaluation.
+      if ((g.goal.kind === 'AVG' || g.goal.kind === 'PCT') && acc?.rtQueueSumSec !== undefined) {
+        m[t.scKey] = projectBatchRtPi(g.goal, acc, t);
+        continue;
+      }
+      m[t.scKey] = g.goal.kind === 'PCT'
+        ? projectedPercentilePi(t.buckets, g.goal.pct, t.completions, t.rtSumSec, g.goal.rtSec, PCT_PROJECTION_SIGMA)
+        : tickPi(g.goal, t, Infinity);
     }
     return m;
   };
@@ -491,8 +503,6 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   };
 
   /** Processor use of a period, engines: the larger of this tick and the smoothed accumulators (CP, IIPCP and zIIP). */
-  const accOf: Record<string, ScpState> = {};
-  for (const s of system.scps) accOf[s.scKey] = s;
   // Donors are holders (§5.5): a server period is one donor for all the classes it serves.
   const periodDonor = (k: string): DonorInfo => ({
     importance: info[k]!.importance, localPi: localPi[k] ?? null, sysplexPi: input.sysplexPi[k] ?? null, acc: accOf[k]!.acc,

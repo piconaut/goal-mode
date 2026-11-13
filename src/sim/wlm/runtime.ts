@@ -19,6 +19,9 @@ export interface ScpAcc {
   workManager?: WorkManagerSamples;
   completions: number;
   rtSumSec: number;
+  /** Decayed queue time of those completions, beside `rtSumSec`: written only by the batch completion path (WT-12),
+   * absent elsewhere. Q̄ = rtQueueSumSec / completions (docs/wlm-design.md §9.15). */
+  rtQueueSumSec?: number;
   buckets: number[];
   using: number;
   delay: number;
@@ -250,6 +253,9 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
   const out: ScpAcc = {
     completions: acc.completions * d + t.completions,
     rtSumSec: acc.rtSumSec * d + t.rtSumSec,
+    ...(acc.rtQueueSumSec !== undefined || t.rtQueueSumSec !== undefined
+      ? { rtQueueSumSec: (acc.rtQueueSumSec ?? 0) * d + (t.rtQueueSumSec ?? 0) }
+      : {}),
     buckets: decayBuckets(acc.buckets, t.buckets, d),
     using: acc.using * d + t.usingCpu + t.usingZiip + t.usingIo,
     delay: acc.delay * d + t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0),
@@ -294,6 +300,7 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   if (a.workManager) out.workManager = mergeWorkManager(out.workManager, a.workManager);
   out.completions += a.completions;
   out.rtSumSec += a.rtSumSec;
+  if (a.rtQueueSumSec !== undefined) out.rtQueueSumSec = (out.rtQueueSumSec ?? 0) + a.rtQueueSumSec;
   for (let i = 0; i < a.buckets.length; i++) out.buckets[i] = (out.buckets[i] ?? 0) + a.buckets[i]!;
   out.using += a.using;
   out.delay += a.delay;

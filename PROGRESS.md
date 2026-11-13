@@ -8,11 +8,16 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
-- **WT-12 projection rule agreed (2026-11-13; docs/wlm-design.md §9.15):** a batch RT period's projected PI is
-  its measured PI, with the execution part scaled by measured ÷ projected execution velocity. Queue time is held
-  fixed, and there is no forecast of each job's remaining work. WT-12 is `ready`.
+- **WT-12 batch RT priority projections (2026-11-13):** a batch AVG/PCT period's base and trial PIs are its measured
+  PI with the execution part scaled by measured ÷ projected execution velocity (`PI × (Q̄ + Ē × v_ref / v') / (Q̄ + Ē)`,
+  docs/wlm-design.md §9.15). The queue time is held fixed and there is no forecast of each job's remaining work.
+  `rtQueueSumSec` keeps the queue split beside `rtSumSec`; `batchRt.ts` applies the formula only where that field is
+  present, so transaction RT periods keep their re-evaluated projections. Null with no completions or no running job;
+  PCT uses the same factor on the extrapolated percentile PI; donors use the same formula. Tests: `tests/sim/batchRt.test.ts`.
+  W11 is fixed for batch; started tasks still have no completions. No shipped policy gives batch an RT goal, so
+  goldens, bench hashes and `npm run compare` are unchanged.
   - User decision: a fair few installations use batch RT goals despite IBM's advice, and the user may want to play
-    with them in game. Lower priority than the core WLM redesign, but the WLM work isn't complete without it.
+    with them in game. Lower priority than the core WLM redesign, but the WLM work is not complete without it.
 
 - **PR #333 review documentation (2026-11-13):** W11's no-PI/no-warning description is explicitly the state before
   WT-12. The remaining no-completions limitation covers all started tasks, including temporary tasks; it is not

@@ -284,6 +284,8 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
           for (const target of measured) {
             target.completions += 1;
             target.rtSumSec += rtSec;
+            // The initiator wait, which a DP move cannot change; kept apart for the batch RT projection (WT-12).
+            target.rtQueueSumSec = (target.rtQueueSumSec ?? 0) + (jr.job.startTick - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
             addToBuckets(target.buckets, goal.rtSec, 1, rtSec, 0);
           }
         }
