@@ -3,8 +3,8 @@
 Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 and WT-10 are implemented**: one PI
 basis, sustained demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
 budget (WT-05, §9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic
-plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10). Server periods (WT-09) and the other remaining
-entries are not. Findings W2, W4, W5, W7, W10 and W12 below describe the sim before those entries; each says what
+plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). The other remaining
+entries are not. Findings W2 … W5, W7, W10 and W12 below describe the sim before those entries; each says what
 fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
@@ -649,6 +649,8 @@ without a priority of their own, and the region's own class is ignored (§3.11).
 transactions lifted by the regions' priority) is invisible in priorities although it is the documented behaviour
 players are meant to learn. PT-01's "two hopeless importance-1 receivers" was this finding plus W6.
 
+*Fixed by WT-09 (§5.1, §5.8, §9.12): the server period `$SRMS001` holds the regions' DP.*
+
 ### W4. Donors are picked by importance and CPU use, not by goal achievement (high)
 
 *Fixed by WT-07 (§5.5 `donorOrder`, §9.8).*
@@ -1010,10 +1012,11 @@ donorOrder(r, b, L, info, C):
   return the first C.donorsPerReceiver
 ```
 
-As implemented in WT-07 the pool is goal periods, not holders: until server periods exist (WT-09) every goal
-period is its own holder, so CICS transaction periods sharing regions are separate donors, and a donor move of one
-that is not the most important of the classes its regions serve changes no dispatching. A period with neither PI
-counts as missing its goal (`managementWorstPi`), here and in the "missing goals are not passed" rule.
+As built (WT-09): the pool is holders. A server period's entry (`holderDonorInfo`) takes the most important of the
+classes it serves, the worst of their PIs and the sum of their processor use (APPROX: the regions' own overhead
+stays in the region class's accumulators), and the receiver's own importance, not its holder's, decides the "more
+important and missing" drop. A period with neither PI counts as missing its goal (`managementWorstPi`), here and in
+the "missing goals are not passed" rule.
 
 Discretionary periods are fixed below the managed range and hold nothing a priority move could free, so they are
 not in the pool (they are IBM's "universal donor" for storage and through capping).
@@ -1060,6 +1063,17 @@ does not see the waits that hold the measured PI up.
   `RCVR=ONLMED#1 (regions $SRMS001) …`. Served classes report their holder's DP, so the free ride shows.
 - **Region class:** unchanged PI (without server regions' samples). With only server regions in it, it has no PI and
   is never a candidate.
+- *As built (WT-09, §9.12):* `src/sim/wlm/holders.ts` maps each goal period to its holder; `cicsRegions` sets
+  `serverKey` under TRANSACTION; `WlmSystemState.servers` holds the server period's DP, and dispatch places new
+  periods on the holder ladder (a new served class takes its server's DP; a new server period is placed by its most
+  important class). CPU protection and the CPU-critical check work on holders (a server period is protected when a
+  class it serves is). A blocker sharing the receiver's holder is never carried. REGION and BOTH are unchanged: the
+  transactions run at the region class's DP and the served classes keep a DP each (not a player lever; holder = region
+  class, as §5.1 has it, would make transaction classes receivers that move a region managed to its own goal). Every
+  region class with only server regions is attached to the server period (`holderTopology`, the same in dispatch and
+  adjustment): neither receiver nor donor, no level on the ladder for placing new work, no importance for the server
+  period, and it reports the regions' DP: every member on the image is a transaction-server region, whether or not
+  they used CPU this interval.
 - **Resource-group minimum:** a group is *below its minimum and wanting* when its smoothed CP service is under the
   minimum and a member has CPU delay. Goal members: as today, while a member's `mLocal` > 1. A discretionary member:
   its share is dispatched at `MANAGED_MAX` while no goal period outside the group has `mLocal` > 1, else just below
@@ -1086,9 +1100,9 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I8 | **One basis.** No plan is built for a receiver with `base ≤ 1`; every accept or reject compares `base` with `after` only | Property: every assessed candidate has `base > 1`. Unit: the tick-PI helper is gone from `policyAdjust` |
 | I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism (S-4): Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels (today seven periods on three), and nothing is at `MANAGED_MAX` |
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
-| I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
+| I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) (`tests/sim/wlm-servers.test.ts`) |
 | I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11, RF-03). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget; it bites (`BUDGET` stops are counted) but leaves the clock bound meaningful |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19) |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19; WT-09: 1 / 0 / 4, S-3 short by one, accepted by the user 2026-11-13, §9.12) |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -1853,3 +1867,121 @@ WT-10; Harbourline 9 / 30 / 8, from 9.5 / 30 / 7 (do-nothing 9.5 → 9, expert 7
 bands ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43327916254),
 [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43327920681),
 [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43327924751)).
+
+### 9.12 WT-09: server periods hold the regions' priority
+
+Built on `23a9d77`. `src/sim/wlm/holders.ts` maps each goal period to its **holder**. When any AOR on the image is
+managed to TRANSACTION goals, the CICS transaction periods are held by the image's server period `$SRMS001`
+(`cicsRegions` sets `serverKey`; `WlmSystemState.servers` stores its DP). Every other goal period holds its own DP.
+- **Dispatch** takes the DP of the TRANSACTION regions and the CICS transactions from the server period
+  (`evaluateLpar`), so a served class's stored DP plays no part (I11).
+- **Placement:** new periods are placed on the holder ladder. A new served class takes its server's DP; a new server
+  period goes in by its most important class.
+- **Old saves** create the server period at the highest served DP, which is where the regions ran.
+- **Policy adjustment** builds the ladder, CPU protection, the CPU-critical check and the donor pool on holders:
+  - a served class as receiver moves its holder;
+  - a server period is one donor (`holderDonorInfo`);
+  - a carry of a blocker that shares the receiver's holder is void;
+  - every served period is written with its holder's DP, so reports show the free ride.
+- **Log:** names the server period, `RCVR=ONLMED#1 (regions $SRMS001) PI=… BTLNK=CPU UP $SRMS001 DP …`
+  (`explainWlmLog` explains it).
+- **Region class with only server regions** is attached to the server period (SG24-6472-03 p.89: "The external
+  service class of a server is ignored"). It is neither receiver nor donor, and it reports the regions' DP.
+- **REGION/BOTH** are unchanged (§5.8 as built).
+
+**A guard the server period needed.** Revenue S-2 showed a cycle the old model could not have.
+- TSO#2 (importance 5) took the happy `$SRMS001` as a donor, and the donor move joined TSO#2's level, below WEBDDF#1.
+- WEBDDF#1 (importance 4) was 60× past its goal with a large queued backlog.
+- The plan projected AGENTS#1 at 0.9. Twenty seconds later the transactions had no CPU: ONLINE#1 and AGENTS#1 were at
+  PI ≈ 50, and AGENTS#1 raised the server back. This happened six times on D2.
+- The projection bounds a backlog at `(1 + backlogBoostFrac)` × sustained demand (§9.5), so it cannot show WEBDDF#1
+  draining its queue on whatever ends up below it.
+- Before WT-09 a served class's donor move changed nothing, so this never surfaced.
+
+The receiver-side guard (`projectionTrustMax`) did not catch it: 62 measured against 17 projected is under 4×. So
+`assess` now refuses, as `PROJECTION_DISAGREES`, any trial that puts a holder below a period it was not already
+below, where that period:
+- is not the receiver's holder;
+- is missing its goal (management PI);
+- has a backlog the projection cut.
+
+The check is free (no projection). APPROX, like §9.5's guard: real WLM's demand data does not hide a backlog. S-2's
+quick reversals went from 6 to 0 with it.
+
+Audit, same S-1 … S-3 recipes as §9.11 (base `23a9d77`):
+
+| | S-1 Midwest | S-2 Revenue | S-3 Harbourline |
+|---|---|---|---|
+| candidates assessed | 1 317 → 1 296 | 5 701 → 5 690 | 5 751 → 5 733 |
+| projections | 6 700 → 6 244 | 20 624 → 13 113 | 19 648 → 15 437 |
+| accepted plans | 35 → 35 | 24 → 39 | 131 → 137 |
+| rejected `NO_RECEIVER_GAIN` | 1 652 → 801 | 6 242 → 882 | 10 222 → 9 476 |
+| rejected `MORE_IMPORTANT_HARMED` | 2 230 → 3 048 | 10 534 → 8 554 | 2 792 → 4 740 |
+| rejected `PROJECTION_DISAGREES` | 2 → 2 | 3 686 → 9 201 | 4 154 → 3 846 |
+| reversed within two minutes | 1 → 1 | 0 → 0 | 1 → 4 |
+| … after another plan pushed it past its goal | 0 → 0 | 1 → 1 | 0 → 0 |
+
+- **Futile raises are gone (C-3 a).** Revenue's `NO_RECEIVER_GAIN` falls by 86 %, and Midwest's by half:
+  - those were raises of a served class that did not reach the highest served DP;
+  - the plans that replace them are accepted, so S-2's accepted plans rise 24 → 39;
+  - the projections they spent are saved.
+- **The server period donates.**
+  - It holds the CICS classes' processor use as one holder, and is the first happy donor in many plans.
+  - The importance-1 classes it serves then pass more of the missing-goal checks, so `MORE_IMPORTANT_HARMED` grows on
+    S-1 and S-3.
+- **Harbourline's four quick reversals are market-open churn,** at 09:29–09:33, 09:59 and 14:18 on D1:
+  - one is `$SRMS001` itself, taken as a donor at 09:29:10 by MKTDDF#2 and raised back by MKTORD#1 at 09:30:00, as the
+    09:30 burst arrives;
+  - the other three are DDFPRD#1 and STCHI#1, which compete with the server period at importance 1 now that the
+    regions no longer follow the classes' own DPs.
+- **I13 per scenario:** against the original 6 / 6 / 19 this is a 79 % fall on S-3, short of the 80 %. Over all three
+  it is 84 % (5 against 31). Recorded rather than tuned (§8 Q2); user decision (2026-11-13, #324): accepted.
+- **`wlm-stats`:** a projected harm to a served class now counts against its holder (the trace's `heldBy`), so the
+  exception for a reversal after another plan pushed the period past its goal applies to the server period too. It
+  changes none of the counts above.
+
+R-2 (S-1, PROD2): no `STCHI#1` move in two days. ONLHI#1 and ONLMED#1 report the same DP at every interval (EE at
+D2 10:30, where the ladder had ONLHI#1 F6 and ONLMED#1 F4 before). On D2 the server period sits below TSO and DDF at
+EE: from 09:37 it was a happy donor for DDFPRD#2, and at 10:11 ONLHI#1 raised it only above DDFPRD#1, which met
+ONLHI's goal.
+
+RT-06 (`inspect blame` on S-1 … S-3): online incidents go from 0 / 1 / 14 to 0 / 2 / 16, and every incident with a
+card on its workload still agrees with the counterfactual (1 / 1).
+- **Revenue:** EMPLOYER at D2 10:00 is new. It is a CICS class hurt in the runaway compliance query's hour; the game
+  blames POLICY, since no card is on its workload. That is collateral blame for RT-14's footprints: the runaway takes
+  the CPU of the regions EMPLOYER shares.
+- **Harbourline:** incidents move between CARDS, MKTORD and RETAIL in the online peaks, and the D1 09:00 MKTQRY
+  capping incident goes. This is the free ride: CARDS now shares MKTORD's server period.
+
+Bench (one day, back to back on one box, `npm run bench -- --hash`): Midwest 6.43 → 6.14 s, Revenue 6.40 → 6.48 s,
+Harbourline 12.12 → 12.15 s. The state hashes change because the decisions change. Goldens are regenerated.
+
+Tests: `tests/sim/wlm-servers.test.ts` (topology, placement, I11 C-3 a–c, the free ride, R-2, the attached region
+class, an old save, the void carry, the new guard). Realism tests changed with it:
+- **CCIMP and capped ONLHI** compare holders: a less important class in the regions of importance-1 work rides at
+  their DP, which is the free ride, not an inversion.
+- **CICS short on storage** runs adaptive: held priorities pinned PROD2's regions where a happy donation had left
+  them, so CPU starvation decided the failures.
+- **Shadow IT with adaptive WLM** measures MOBILE on PROD1, where the card's TSO work competes (71.5 → 73.3 ms). The
+  sysplex-wide figure is now decided by a PROD2 donor episode in the run without the card (DDFPRD#2 takes DDFPRD#1
+  as donor at 10:21: PROD2 MOBILE 106 ms), which the card's changed sysplex PIs happen to avoid. User decision
+  (2026-11-13, #324): measuring on PROD1 is fine; it replaces the sysplex-wide assertion that the 2026-11-12 decision
+  (§9.10) restored.
+
+Review of #324 (B1): the region class was attached only while its regions had used CPU (`srvUsing > 0`), so an idle
+AOR left an importance-1 class with no PI on the ladder, where under CCIMP it was a protection floor that demoted
+batch. Attachment is now structural: every member of the region class on the image is a transaction-server region.
+Goldens and bench hashes are unchanged (no shipped region class holds only AORs).
+
+Second review of #324: attachment lived in adjustment only, so dispatch's placement still saw an attached class as a
+holder of its own: an importance-5 region class at the server's DP placed new importance-5 work at the regions'
+priority without an assessment (Midwest PROD2: F6, against EE on the base). And only the first AOR's region class was
+attached, so a second all-server class stayed a no-PI CPU-protection floor. `holderTopology` now attaches every
+qualifying class, and dispatch and adjustment both use it. Goldens and bench hashes are again unchanged.
+
+Sweep (remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged from RF-03;
+Harbourline 10 / 29 / 7 (textbook 1 victory), from 9 / 30 / 8. The expert losses are seeds 1 (day 40), 2 (day 33) and
+7 (day 39), the same three as under WT-10: RF-03's seed-1 victory does not hold. All inside the CI bands
+([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43362925863),
+[Revenue](https://github.com/piconaut/goal-mode/actions/runs/43362926036),
+[Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43362925676)).

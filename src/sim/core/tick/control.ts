@@ -131,6 +131,7 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
       if (s.scKey === out.resumeAt) s.resumeSearch = true;
       else delete s.resumeSearch;
     }
+    if (out.servers) sys.servers = out.servers;
     return sys;
   });
   if (log.length > WLM_LOG_MAX) {

@@ -5,6 +5,7 @@ import { classify } from '../../wlm/classify';
 import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../../workload/routing';
 import { ROUTING } from '../../../content/routing';
 import { cicsTargets } from '../../wlm/reporting';
+import { SERVER_KEY } from '../../wlm/holders';
 import { backlogCpSec, type LparEvalInput, type ScpTick, type SliceSpec } from '../../wlm/evaluate';
 import { emptyBuckets } from '../../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../../content/wlm/tuning';
@@ -354,8 +355,8 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
 /** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). "Manage
  * Region Using Goals Of" is set per region on its STC/JES rule (WLM Planning 3.1 p.122, p.211). TRANSACTION regions
  * are transaction servers: their own CPU dispatches with the transactions. APPROX: the sim does not split a
- * workload's transactions between regions, so the transactions follow the AORs together: they ride the most
- * important served class's DP if any AOR on the image is TRANSACTION, else the first AOR's class DP. */
+ * workload's transactions between regions, so the transactions follow the AORs together: if any AOR on the image is
+ * TRANSACTION they run at the server period's DP (`serverKey`, holders.ts), else at the first AOR's class DP. */
 export function cicsRegions(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
@@ -398,7 +399,7 @@ export function cicsRegions(
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   const transactionKeys = new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key));
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey), ...(anyServer && managedToTxn ? { managedToTxn } : {}) } };
+  return { regions: { keys, mode: txnMode, regionKey, ...(txnMode === 'TRANSACTION' ? { serverKey: SERVER_KEY } : {}), servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey), ...(anyServer && managedToTxn ? { managedToTxn } : {}) } };
 }
 
 /** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a

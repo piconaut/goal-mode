@@ -16,6 +16,7 @@ import { projectedPercentilePi } from './goals';
 import { ACC_DECAY, goalPi, goalInfo, srvDelayCapOf, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
 import { buildPlan, formatPlanMoves, type PlanAttempt, type PlanMove, type PlanAssessment } from './plan';
 import type { ServiceDefinition } from './types';
+import { expandHolderDps, holderOf, holderTopology, servedBy, servedKeys } from './holders';
 
 /** A managed delay a receiver's plan can target (CPU, ZIIP) or that it is reported not fixable for (docs/wlm-design.md
  * §5.7). Capping and waits (`delayOther`) are not managed delays and are never a bottleneck. */
@@ -90,7 +91,10 @@ export interface AdjustInput {
 }
 
 export interface AdjustOutput {
+  /** Every goal period's DP (a served period's is its holder's), and the server period's (`servers`). */
   dps: Record<string, number>;
+  /** The image's server period after this interval (holders.ts), absent with none. */
+  servers?: { key: string; dp: number }[];
   log: string | null;
   /** DPs lowered to restore long-term CPU protection before any receiver was assessed. */
   protect: string | null;
@@ -114,7 +118,8 @@ export type WlmTrialVerdict =
   | 'MORE_IMPORTANT_HARMED' // a more important period would be pushed past its goal
   | 'EQUAL_DISPARITY' // an equal-importance period is harmed and the PIs don't get closer
   | 'NO_NET_VALUE' // equal-importance harm outweighs the receiver's gain
-  | 'PROJECTION_DISAGREES'; // a receiver-up move for a receiver measured far worse than projected (projectionTrustMax)
+  | 'PROJECTION_DISAGREES'; // a receiver-up move for a receiver measured far worse than projected (projectionTrustMax), or a
+  // trial that puts a holder below work far behind with a bounded backlog (§9.12)
 
 export interface WlmTrialTrace {
   move: string;
@@ -142,6 +147,8 @@ export type WlmDelayShares = Record<Exclude<Bottleneck, 'NONE'> | 'CAP' | 'OTHER
 
 export interface WlmCandidateTrace {
   scKey: string;
+  /** The holder whose DP the plans move, when it is not the period itself (the server period of CICS transactions). */
+  holder?: string;
   importance: number;
   sysplexPi: number | null;
   localPi: number | null;
@@ -184,6 +191,8 @@ export interface WlmAdjustTrace {
   action: string | null;
   /** Moves that restored CPU protection this interval (before the receivers). */
   protection: string[];
+  /** Goal periods whose DP another holder holds → that holder (the server period, WT-09); absent with none. */
+  heldBy?: Record<string, string>;
 }
 
 // Investigation tooling only (tools/inspect.ts): never set by the game, never part of state, and it doesn't change
@@ -297,9 +306,10 @@ export interface DonorInfo {
  * Happy periods give first, lowest PI first regardless of importance (SG24-6472-03, March 2008, p.59–60);
  * then reverse receiver order (WLM Services p.138). APPROX: happiness uses the worse of local/sysplex PI
  * (`managementWorstPi`), processor use is exponentially smoothed, and the small-consumer threshold and donor limit
- * are FICTIONAL. APPROX: the pool is periods, not holders (docs/wlm-design.md §5.5): CICS transaction periods that
- * share regions are separate donors until server periods (WT-09) make the regions' DP one holder's.
- * `info` contains goal periods only; discretionary work is fixed below the managed ladder.
+ * are FICTIONAL. The pool is holders (docs/wlm-design.md §5.5): `receiver` is the receiver's holder, and a server
+ * period's entry is `holderDonorInfo` over the classes it serves (the goal donors of one resource donor, WLM Services
+ * p.138). `receiverImportance` is the receiver period's own, which can be less important than its holder's.
+ * `info` contains goal holders only; discretionary work is fixed below the managed ladder.
  */
 export function donorOrder(
   receiver: string,
@@ -307,10 +317,12 @@ export function donorOrder(
   dps: Readonly<Record<string, number>>,
   info: Readonly<Record<string, DonorInfo>>,
   tuning: Pick<typeof POLICY_ADJUST, 'accDecay' | 'donorMinEngines' | 'donorsPerReceiver'> = POLICY_ADJUST,
+  receiverImportance?: number,
 ): string[] {
   const r = info[receiver];
   const rdp = dps[receiver];
   if (!r || rdp === undefined) return [];
+  const rImp = receiverImportance ?? r.importance;
   return Object.keys(info)
     .map((key) => {
       const g = info[key]!;
@@ -319,7 +331,7 @@ export function donorOrder(
       return { key, importance: g.importance, worst, engines: used * (1 - tuning.accDecay) };
     })
     .filter((g) => g.key !== receiver && dps[g.key] !== undefined && dps[g.key]! >= rdp &&
-      g.engines >= tuning.donorMinEngines && !(g.worst > 1 && g.importance < r.importance))
+      g.engines >= tuning.donorMinEngines && !(g.worst > 1 && g.importance < rImp))
     .sort((a, b) => {
       const happyA = a.worst < 1;
       const happyB = b.worst < 1;
@@ -328,6 +340,28 @@ export function donorOrder(
     })
     .slice(0, tuning.donorsPerReceiver)
     .map((g) => g.key);
+}
+
+/** A holder's donor entry from the goal periods it serves: the most important of them, the worst of their PIs (none
+ * counts as missing, as `managementWorstPi`) and the sum of their processor use. APPROX: the regions' own overhead
+ * stays in the region class's accumulators and is not counted. */
+export function holderDonorInfo(served: readonly DonorInfo[]): DonorInfo {
+  let importance = served[0]!.importance;
+  let local: number | null = null;
+  let plex: number | null = null;
+  let cpu = 0;
+  let zi = 0;
+  for (const g of served) {
+    if (g.importance < importance) importance = g.importance;
+    if (g.localPi == null && g.sysplexPi == null) local = Infinity;
+    else {
+      if (g.localPi != null) local = Math.max(local ?? 0, g.localPi);
+      if (g.sysplexPi != null) plex = Math.max(plex ?? 0, g.sysplexPi);
+    }
+    cpu += g.acc.cpuEngines;
+    zi += g.acc.ziipEngines ?? 0;
+  }
+  return { importance, localPi: local, sysplexPi: plex, acc: { cpuEngines: cpu, ziipEngines: zi } };
 }
 
 export function policyAdjust(input: AdjustInput): AdjustOutput {
@@ -340,12 +374,40 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const g = goalInfo(def, s.scKey);
     if (g && g.goal.kind !== 'DISC') info[s.scKey] = g;
   }
+  // Holders (WT-09, docs/wlm-design.md §5.1): CICS transaction periods hold no DP of their own; their server period
+  // does. A region class whose members on the image are all transaction-server regions is attached (`holderTopology`):
+  // neither receiver nor donor, and it reports the regions' DP.
+  const regions = input.evalInput.regions;
+  const topo = holderTopology(regions, Object.keys(info), input.evalInput.slices);
+  const server = topo.serverKey;
+  for (const k of topo.attached) delete info[k];
+  if (server) {
+    const kept = system.servers?.find((x) => x.key === server)?.dp;
+    held[server] = kept ?? Math.max(...servedKeys(topo).map((k) => held[k] ?? 0));
+  }
   const infoKeys = Object.keys(info).sort();
+  const hold = (k: string) => holderOf(topo, k);
   const ccImp = input.ccImp ?? 0;
+  /** Holders and what CPU protection needs of them: a server period has its most important served class's importance
+   * and is protected when any class it serves is. */
+  const holderInfo: Record<string, Pick<ScpGoalInfo, 'cpuCritical' | 'period' | 'importance'>> = {};
+  for (const k of infoKeys) {
+    const h = hold(k);
+    if (h === k) {
+      holderInfo[k] = info[k]!;
+      continue;
+    }
+    const g = info[k]!;
+    const prev = holderInfo[h];
+    const prot = cpuProtected(g, ccImp) || (prev?.cpuCritical ?? false);
+    holderInfo[h] = { importance: Math.min(prev?.importance ?? 5, g.importance) as ScpGoalInfo['importance'], cpuCritical: prot, period: prot ? 0 : 1 };
+  }
+  const holderKeys = Object.keys(holderInfo).sort();
   // Protection is restored first, so receivers are assessed (and trials judged) from DPs that keep it.
   // The ladder is made canonical here too, so every trial and the result are canonical (I9).
-  const { dps, moves: protection } = enforceCpuProtection(held, info, ccImp);
-  const ladder = ladderAt(dps, infoKeys);
+  const { dps: protectedDps, moves: protection } = enforceCpuProtection(held, holderInfo, ccImp);
+  const dps = expandHolderDps(topo, protectedDps);
+  const ladder = ladderAt(dps, holderKeys);
   const protect = protection.length > 0 ? `${input.clockText} ${system.lparId} CPU PROTECTION ${protection.join(', ')}` : null;
   const localPi: Record<string, number | null> = {};
   for (const s of system.scps) {
@@ -389,6 +451,10 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       prepared: P.prepared ?? prepareLpar(P),
     });
   };
+  /** Goal periods missing their goal whose backlog the projection bounded, in key order (computed once). */
+  let runawayCache: string[] | null = null;
+  const runaways = (): string[] =>
+    (runawayCache ??= infoKeys.filter((k) => managementWorstPi(localPi[k], input.sysplexPi[k]) > 1 && backlogCut(k)));
   /** Did the projection bound this period's transaction backlog below what is queued? */
   const backlogCut = (k: string): boolean => {
     const bounded = projectionBase().backlog;
@@ -411,9 +477,10 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   // System Recovery Boost in the sim, so CCIMPBOOST never applies. A pair enforcement could not separate (protected
   // period at the managed floor) is only blamed on a trial that widens it.
   const violatesCpuCritical = (trial: Record<string, number>): string | null => {
-    for (const [k, g] of Object.entries(info)) {
+    // Holders, not periods: a less important class served by the same regions as protected work rides with it.
+    for (const [k, g] of Object.entries(holderInfo)) {
       if (!cpuProtected(g, ccImp)) continue;
-      for (const [k2, g2] of Object.entries(info)) {
+      for (const [k2, g2] of Object.entries(holderInfo)) {
         if (g2.importance <= g.importance) continue;
         const gap = (trial[k2] ?? 0) - (trial[k] ?? 0);
         const heldGap = (dps[k2] ?? 0) - (dps[k] ?? 0);
@@ -426,10 +493,14 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   /** Processor use of a period, engines: the larger of this tick and the smoothed accumulators (CP, IIPCP and zIIP). */
   const accOf: Record<string, ScpState> = {};
   for (const s of system.scps) accOf[s.scKey] = s;
-  const donorInfo: Record<string, DonorInfo> = {};
-  for (const k of infoKeys) donorInfo[k] = {
+  // Donors are holders (§5.5): a server period is one donor for all the classes it serves.
+  const periodDonor = (k: string): DonorInfo => ({
     importance: info[k]!.importance, localPi: localPi[k] ?? null, sysplexPi: input.sysplexPi[k] ?? null, acc: accOf[k]!.acc,
-  };
+  });
+  const donorInfo: Record<string, DonorInfo> = {};
+  for (const h of holderKeys) donorInfo[h] = holderInfo[h] === info[h] ? periodDonor(h) : holderDonorInfo(servedBy(topo, h, infoKeys).map(periodDonor));
+  /** A trial ladder's DPs, served periods at their holder's. */
+  const withHolders = (d: Readonly<Record<string, number>>, L: Ladder) => expandHolderDps(topo, withLadder(d, L));
   const usedEngines = (k: string): number => {
     const t = tickOf[k];
     const now = t ? t.cpEngines + t.iipcpEngines + t.ziipEngines : 0;
@@ -490,6 +561,27 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       const piText = mWorst === Infinity ? 'has no PI' : `PI ${worst.toFixed(2)} is missing its goal`;
       reject('MORE_IMPORTANT_HARMED', [before[receiver] ?? null, null], `${k} (imp ${g.importance}) ${piText} and would be passed`, k);
       return judged(false, false);
+    }
+    // Work that is behind its goal with a backlog the projection bounded (sustained demand, `backlogBoostFrac`) will
+    // drain that backlog on whatever ends up below it, which the projection cannot show (the receiver-side guard is
+    // `projectionTrustMax`). So no trial puts a holder below such a period that was not below it: the server period of a
+    // CICS image lowered past a runaway DDF class starved every transaction it serves (docs/wlm-design.md §9.12).
+    // APPROX: real WLM's demand data does not hide a backlog (WLM Services p.144); this guards the sim's bound.
+    const rHold = hold(receiver);
+    for (const k of runaways()) {
+      const hk = hold(k);
+      if (hk === rHold) continue;
+      const k0 = dps[hk]!;
+      const k1 = trial[hk] ?? k0;
+      for (const x of holderKeys) {
+        if (x === hk) continue;
+        const x0 = dps[x]!;
+        const x1 = trial[x] ?? x0;
+        if (x0 >= k0 && x1 < k1) {
+          reject('PROJECTION_DISAGREES', [before[receiver] ?? null, null], `${k} is behind with a backlog the projection bounds and would pass ${x}`);
+          return judged(false, false);
+        }
+      }
     }
     // The pair is only recorded once the whole projection accepts: `project` can still refuse after every accept
     // callback said yes (a batch recovery that never settles runs out of rounds), and a trace must not call that move
@@ -580,13 +672,14 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     outcome: WlmCandidateTrace['outcome'],
   ): WlmCandidateTrace => {
     const acc = accOf[k]!.acc;
-    const c: WlmCandidateTrace = { scKey: k, importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, delayShares: sharesOf(acc), waitingFrac: waitingFrac(acc), outcome, trials: [] };
+    const c: WlmCandidateTrace = { scKey: k, ...(hold(k) !== k ? { holder: hold(k) } : {}), importance: info[k]!.importance, sysplexPi: input.sysplexPi[k] ?? null, localPi: localPi[k] ?? null, dp: dps[k]!, bottleneck, delayShares: sharesOf(acc), waitingFrac: waitingFrac(acc), outcome, trials: [] };
     traced.push(c);
     return c;
   };
   const finish = (out: Omit<AdjustOutput, 'skipUntil' | 'resumeAt' | 'clockNotes'>, resumeAt: string | null): AdjustOutput => {
-    if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null, protection });
-    return { ...out, skipUntil, resumeAt, clockNotes };
+    if (traceSink) traceSink({ clockText: input.clockText, lparId: system.lparId, dps: { ...dps }, candidates: traced, action: out.log?.includes('RCVR=') ? out.log : null, protection, ...(server ? { heldBy: { ...topo.heldBy } } : {}) });
+    const srv = server && out.dps[server] !== undefined ? { servers: [{ key: server, dp: out.dps[server]! }] } : {};
+    return { ...out, ...srv, skipUntil, resumeAt, clockNotes };
   };
   /** The no-action note's text for a period that is mostly waiting (§5.7): its waits are not a delay WLM manages, and
    * the CPU delay it does have is named, which keeps the clue for a starved server (SPEC §5.5.4). */
@@ -665,10 +758,11 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     const describe = formatPlanMoves;
     let outOfBudget = false;
     for (const btl of fixable) {
-      const donors = donorOrder(receiver, btl, dps, donorInfo);
+      const donors = donorOrder(hold(receiver), btl, dps, donorInfo, POLICY_ADJUST, info[receiver]!.importance);
       if (ct && !ct.donors) ct.donors = [...donors];
       const plan = buildPlan({
-        receiver, ladder, donors, maxSteps: POLICY_ADJUST.maxPlanSteps, basePi: b0,
+        receiver: hold(receiver), receiverImportance: info[receiver]!.importance, holderOf: hold,
+        ladder, donors, maxSteps: POLICY_ADJUST.maxPlanSteps, basePi: b0,
         importanceOf: (k) => info[k]!.importance,
         receiverValue: (after) => b0 - after >= receiverValueNeeded(b0),
         assess: (L, kind) => {
@@ -676,7 +770,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
             reject('PROJECTION_DISAGREES', [b0, null], `projected PI ${b0.toFixed(2)} vs measured ${mPi.toFixed(2)}`);
             return { ...why!, receiverPi: [b0, null], ok: false, projected: false };
           }
-          return assess(receiver, withLadder(dps, L));
+          return assess(receiver, withHolders(dps, L));
         },
       });
       if (ct) {
@@ -690,7 +784,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
           ...(fixable.length > 1 ? { bottleneck: btl } : {}),
           ...(attempt.detail ? { detail: attempt.detail } : {}),
           ...(attempt.blockedBy ? { blockedBy: attempt.blockedBy } : {}),
-          ...(attempt.verdict === 'ACCEPTED' ? { plan: plan.moves, afterPis: attempt.after, afterDps: withLadder(dps, plan.ladder) } : {}),
+          ...(attempt.verdict === 'ACCEPTED' ? { plan: plan.moves, afterPis: attempt.after, afterDps: withHolders(dps, plan.ladder) } : {}),
         };
         if (ct) ct.trials.push(w);
         if (w.verdict === 'RETAINED' || w.verdict === 'ACCEPTED') continue;
@@ -698,8 +792,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         if (!firstNamed && (w.blockedBy || w.verdict === 'CPU_CRITICAL' || w.verdict === 'PROJECTION_DISAGREES')) firstNamed = { move: w.move, why: w };
       }
       if (plan.outcome === 'ACCEPTED') return finish({
-        dps: withLadder(dps, plan.ladder),
-        log: `${input.clockText} ${system.lparId} RCVR=${receiver} PI=${pi} BTLNK=${btl} ${describe(plan.moves)}`,
+        dps: withHolders(dps, plan.ladder),
+        log: `${input.clockText} ${system.lparId} RCVR=${receiver}${hold(receiver) !== receiver ? ` (regions ${hold(receiver)})` : ''} PI=${pi} BTLNK=${btl} ${describe(plan.moves)}`,
         protect,
       }, resumedAt);
       retained ??= plan.attempts.filter((a) => a.ok).at(-1);
@@ -763,7 +857,10 @@ function playerReason(w: WlmTrialTrace): string {
     case 'EQUAL_DISPARITY': return `harms ${name ?? 'equal-importance work'}, equal importance`;
     case 'NO_NET_VALUE': return w.blockedBy ? `harms ${w.blockedBy}, equal importance (no net gain)` : 'equal-importance harm outweighs the gain';
     case 'CPU_CRITICAL': return 'would breach CPU protection';
-    case 'PROJECTION_DISAGREES': return 'its backlog would take the processor from other work while it catches up';
+    case 'PROJECTION_DISAGREES':
+      return w.detail?.includes(' is behind with a backlog ')
+        ? `${name}'s backlog would take the processor from work moved below it`
+        : 'its backlog would take the processor from other work while it catches up';
     default: return 'no net value';
   }
 }

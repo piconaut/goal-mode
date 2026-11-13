@@ -719,10 +719,14 @@ const BTLNK_TEXT: Record<string, string> = {
 
 /** Plain-English reading of one WLM activity-log line ("why did ONLHI move?"). */
 export function explainWlmLog(line: string): string {
-  const head = /(\S+) RCVR=(\S+) PI=([\d.]+) BTLNK=(\S+) (.*)$/.exec(line);
+  const head = /(\S+) RCVR=(\S+)(?: \(regions (\S+)\))? PI=([\d.]+) BTLNK=(\S+) (.*)$/.exec(line);
   if (head) {
-    const [, sys, rcvr, pi, btl, action] = head as unknown as [string, string, string, string, string, string];
-    const why = `On ${sys}, ${rcvr} was the most important period missing its goal (PI ${pi}, mostly ${BTLNK_TEXT[btl] ?? btl}).`;
+    const [, sys, rcvr, server, pi, btl, action] = head as unknown as [string, string, string, string | undefined, string, string, string];
+    // A served CICS class is helped through its regions' server period (WT-09), so the moves name that period.
+    const regions = server
+      ? ` Its transactions run in CICS regions that WLM manages as server period ${server}, so WLM moves that period, and every transaction class those regions serve moves with it.`
+      : '';
+    const why = `On ${sys}, ${rcvr} was the most important period missing its goal (PI ${pi}, mostly ${BTLNK_TEXT[btl] ?? btl}).${regions}`;
     const plan = [...action.matchAll(/(?:^|; )(UP|CARRY|DONOR) (\S+) DP (\w+)→(\w+)(?: \(above (\S+)\))?/g)];
     if (plan.length) {
       const steps = plan.map(([, kind, key, from, to, above]) => {

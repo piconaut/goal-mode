@@ -704,19 +704,24 @@ describe('event cards (SPEC §9)', () => {
       let devtMsu = 0;
       let mobRt = 0;
       let mobN = 0;
+      let prod1Rt = 0;
+      let prod1N = 0;
       let bookingDone = 0;
       for (let i = 0; i < 180; i++) {
         s = step(s, [], MIDWEST);
         const m = s.last.workloads.find((x) => x.id === 'MOBILE')!;
         mobRt += m.rtSumSec;
         mobN += m.completions;
+        const p1 = s.last.lpars.find((l) => l.lparId === 'PROD1')!.scps.find((x) => x.scKey === 'DDFPRD#1');
+        prod1Rt += p1?.rtSumSec ?? 0;
+        prod1N += p1?.completions ?? 0;
         const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
         qr += w.parts.qr ?? 0;
         n += w.completions;
         bookingDone += s.last.workloads.find((x) => x.id === 'BOOKING')?.completions ?? 0;
         devtMsu += s.lpars.find((l) => l.id === 'DEVT')!.msuRate / 180;
       }
-      return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN), bookingDone };
+      return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN), prod1MobileRtMs: (1000 * prod1Rt) / Math.max(1, prod1N), bookingDone };
     } finally {
       if (holdPriorities) POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
     }
@@ -733,10 +738,12 @@ describe('event cards (SPEC §9)', () => {
   it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD, with adaptive WLM', () => {
     // From WT-08 to WT-10 the opposite held: MOBILE's DDFPRD#1, mostly waiting on Db2, was never assessed, and the
     // extra TSO demand displaced DDFPRD#2 from above it (docs/wlm-design.md §9.9). Its CPU delay is assessed since WT-10.
+    // Measured on PROD1, where the card's TSO work competes with MOBILE: since WT-09 the sysplex-wide figure is decided
+    // by an unrelated PROD2 donor episode in the run without the card (docs/wlm-design.md §9.12).
     const asIs = run([]);
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
-    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+    expect(shadow.prod1MobileRtMs).toBeGreaterThan(asIs.prod1MobileRtMs);
   }, 60_000);
 
   it('a non-threadsafe release raises QR wait for teller transactions', () => {
@@ -777,9 +784,9 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
-    // Held priorities isolate the storage content from WLM's adaptive moves: RF-03 reassesses more often in quiet
-    // hours, which otherwise changes how many teller transactions fail before the MXT limit is reached.
-    const run = (cmds: Parameters<typeof step>[1], part = 'outside', hold = true) => {
+    // Adaptive WLM (WT-09). RF-03 held priorities here; with server periods that pinned PROD2's regions where a happy
+    // donation had left them (below TSO and DDF), so CPU starvation, not the task limit, decided the failures.
+    const run = (cmds: Parameters<typeof step>[1], part = 'outside', hold = false) => {
       const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
       if (hold) POLICY_ADJUST.skipClockMinMissing = -1;
       const held = hold ? { ...base, wlm: { ...base.wlm, systems: base.wlm.systems.map((sys) => ({
@@ -994,17 +1001,28 @@ describe('IEAOPT CCIMP implicit CPU protection (Init & Tuning p.428)', () => {
       HARBOURLINE,
     );
     let n = 0;
-    for (let i = 0; i < 4320; i++) {
-      s = step(s, [], HARBOURLINE);
-      if (i % 60) continue;
-      for (const sys of s.wlm.systems) {
-        const imp = (k: string) => goalInfo(s.wlm.definition, k);
-        for (const p of sys.scps) {
-          const g = imp(p.scKey);
-          if (!g || g.goal.kind === 'DISC' || g.period !== 0 || g.importance !== 1) continue;
-          for (const q of sys.scps) if ((imp(q.scKey)?.importance ?? 0) > 1 && q.dp >= p.dp) n++;
+    // Less important CICS classes in the same regions share their server period's DP (the free ride, WT-09): that is
+    // one holder, not an inversion.
+    const heldBy: Record<string, Record<string, string>> = {};
+    setWlmTraceSink((t) => { if (t.heldBy) heldBy[t.lparId] = t.heldBy; });
+    try {
+      for (let i = 0; i < 4320; i++) {
+        s = step(s, [], HARBOURLINE);
+        if (i % 60) continue;
+        for (const sys of s.wlm.systems) {
+          const imp = (k: string) => goalInfo(s.wlm.definition, k);
+          const hold = (k: string) => heldBy[sys.lparId]?.[k] ?? k;
+          // A holder's importance is its most important class's (a server period serving MKTORD is importance 1).
+          const holderImp = (h: string) => Math.min(...sys.scps.filter((x) => hold(x.scKey) === h).map((x) => imp(x.scKey)?.importance ?? 99));
+          for (const p of sys.scps) {
+            const g = imp(p.scKey);
+            if (!g || g.goal.kind === 'DISC' || g.period !== 0 || g.importance !== 1) continue;
+            for (const q of sys.scps) if ((imp(q.scKey)?.importance ?? 0) > 1 && holderImp(hold(q.scKey)) > 1 && q.dp >= p.dp && hold(q.scKey) !== hold(p.scKey)) n++;
+          }
         }
       }
+    } finally {
+      setWlmTraceSink(null);
     }
     return n;
   };
@@ -1130,9 +1148,11 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     const passed = traces.flatMap((t) => t.candidates.filter((c) => c.importance > 1).flatMap((c) => c.trials))
       .filter((tr) => tr.verdict === 'MORE_IMPORTANT_HARMED' && /missing its goal and would be passed/.test(tr.detail ?? ''));
     expect(passed.length).toBeGreaterThan(0);
+    // A less important CICS class in ONLHI's regions rides at ONLHI's server period (the free ride, WT-09).
     const reachedOnlhi = traces.flatMap((t) => Object.keys(t.dps).filter((k) => {
       const g = goalInfo(s.wlm.definition, k);
-      return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && t.dps[k]! >= t.dps['ONLHI#1']!;
+      const sameHolder = t.heldBy?.[k] !== undefined && t.heldBy[k] === t.heldBy['ONLHI#1'];
+      return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && !sameHolder && t.dps[k]! >= t.dps['ONLHI#1']!;
     }).map((k) => `${t.clockText} ${k}`));
     expect(reachedOnlhi).toEqual([]);
   }, 180_000);

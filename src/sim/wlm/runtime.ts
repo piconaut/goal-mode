@@ -2,7 +2,8 @@
 
 import { decayMoved, mergeWorkManager, type MovedSamples, type WorkManagerSamples } from './reporting';
 import { DP } from '../zos/dispatcher';
-import { canonical, ladderOf, levelDp, placeNew } from './ladder';
+import { canonical, ladderOf, levelDp, levelOf, placeNew, type Ladder } from './ladder';
+import { NO_SERVERS, servedKeys, type HolderTopology } from './holders';
 import { POLICY_ADJUST } from '../../content/wlm/tuning';
 import { emptyBuckets, performanceIndex } from './goals';
 import type { ScpTick } from './evaluate';
@@ -70,9 +71,19 @@ export interface ScpState {
   resumeSearch?: true;
 }
 
+/** A server period (`$SRMS001`, holders.ts): it holds the DP of the TRANSACTION regions and the CICS transactions
+ * of its image. No goal and no PI of its own; the served classes are its goal receivers and donors. */
+export interface ServerPeriodState {
+  key: string;
+  dp: number;
+}
+
 export interface WlmSystemState {
   lparId: string;
   scps: ScpState[];
+  /** Sorted by key. Absent with no server period, and in a save from before server periods: then created with the
+   * highest DP among the served periods, which is where the regions ran (docs/wlm-design.md §5.1). */
+  servers?: ServerPeriodState[];
 }
 
 export interface WlmState {
@@ -134,42 +145,74 @@ const isGoal = (def: ServiceDefinition, k: string): boolean => {
   return g !== null && g.goal.kind !== 'DISC';
 };
 
+/** The holder ladder of `dps` (goal periods that hold their own DP, and the server period) and the holders'
+ * importances: a server period's is the most important of the classes it serves (SG24-6472-03 p.62–63). */
+function holderLadder(def: ServiceDefinition, dps: Readonly<Record<string, number>>, topo: HolderTopology): {
+  L: Ladder;
+  imp: (k: string) => number | undefined;
+  goal: Record<string, number>;
+} {
+  const server = topo.serverKey;
+  let serverImp: number | undefined;
+  for (const k of servedKeys(topo)) {
+    const i = goalInfo(def, k)?.importance;
+    if (i !== undefined && (serverImp === undefined || i < serverImp)) serverImp = i;
+  }
+  const imp = (k: string) => (k === server ? serverImp : goalInfo(def, k)?.importance);
+  const goal: Record<string, number> = {};
+  for (const k of Object.keys(dps)) if (topo.heldBy[k] === undefined && isGoal(def, k)) goal[k] = dps[k]!;
+  if (server && dps[server] !== undefined) goal[server] = dps[server]!;
+  return { L: ladderOf(goal), imp, goal };
+}
+
 /**
  * DPs for an image's tick when periods it has not dispatched before appear (docs/wlm-design.md §5.6): each new goal
  * period is placed on the ladder by importance (`placeNew`, in key order: the result does not depend on it), and the
  * ladder is made canonical, which renumbers held periods without changing their order. Other new periods get their
- * fixed DP. `held` is not changed.
+ * fixed DP. The ladder is of holders (`topo`): a new served period takes its server period's DP, and a server period
+ * not yet on the ladder is placed by its most important served class. `held` is not changed.
  */
-export function placeNewPeriods(def: ServiceDefinition, held: Readonly<Record<string, number>>, fresh: readonly string[]): Record<string, number> {
+export function placeNewPeriods(
+  def: ServiceDefinition,
+  held: Readonly<Record<string, number>>,
+  fresh: readonly string[],
+  topo: HolderTopology = NO_SERVERS,
+): Record<string, number> {
   const out: Record<string, number> = { ...held };
-  const goal: Record<string, number> = {};
-  for (const k of Object.keys(held)) if (isGoal(def, k)) goal[k] = held[k]!;
-  let L = ladderOf(goal);
+  const lad = holderLadder(def, held, topo);
+  let L = lad.L;
   let placed = false;
-  const imp = (k: string) => goalInfo(def, k)?.importance;
+  const server = topo.serverKey;
   for (const k of [...new Set(fresh)].sort()) {
     if (held[k] !== undefined) continue;
-    if (!isGoal(def, k)) out[k] = initialDp(def, k);
+    if (topo.heldBy[k] !== undefined) {
+      if (levelOf(L, server!) < 0) {
+        L = placeNew(L, server!, lad.imp(server!)!, lad.imp);
+        placed = true;
+      }
+    } else if (!isGoal(def, k)) out[k] = initialDp(def, k);
     else {
-      L = placeNew(L, k, imp(k)!, imp);
+      L = placeNew(L, k, lad.imp(k)!, lad.imp);
       placed = true;
     }
   }
   if (placed) Object.assign(out, canonical(L));
+  if (server && out[server] !== undefined) for (const k of Object.keys(topo.heldBy)) out[k] = out[server]!;
   return out;
 }
 
 /**
  * The DP of one new period once the tick's other DPs are in use, so nothing else may be renumbered: its level's DP,
  * or for a new level the free priority below the level above it (above the level below it on top). APPROX: with no
- * free priority there (two new levels in one gap in one tick) it shares the level below until the next move.
+ * free priority there (two new levels in one gap in one tick) it shares the level below until the next move. A served
+ * period takes its server period's DP.
  */
-export function placeLateDp(def: ServiceDefinition, dps: Readonly<Record<string, number>>, k: string): number {
+export function placeLateDp(def: ServiceDefinition, dps: Readonly<Record<string, number>>, k: string, topo: HolderTopology = NO_SERVERS): number {
   if (!isGoal(def, k)) return initialDp(def, k);
-  const goal: Record<string, number> = {};
-  for (const x of Object.keys(dps)) if (isGoal(def, x)) goal[x] = dps[x]!;
-  const imp = (x: string) => goalInfo(def, x)?.importance;
-  const L = placeNew(ladderOf(goal), k, imp(k)!, imp);
+  const server = topo.heldBy[k];
+  if (server !== undefined && dps[server] !== undefined) return dps[server]!;
+  const { L: L0, imp, goal } = holderLadder(def, dps, topo);
+  const L = placeNew(L0, k, imp(k)!, imp);
   const i = L.findIndex((lv) => lv.includes(k));
   const mate = L[i]!.find((x) => x !== k);
   if (mate !== undefined) return goal[mate]!;

@@ -438,8 +438,15 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
 - **Report classes** (pure reporting, cost nothing) — required for granular RMF views.
 - CICS/IMS region management: "Manage Region Using Goals Of TRANSACTION | REGION | BOTH" on each STC/JES
   classification rule (inherited by sub-rules; WLM Planning p.122, p.211). TRANSACTION regions are transaction
-  servers: their own CPU runs at the DP of the most important transaction class they serve, and WLM manages the
-  transaction classes, not the region class, for them. REGION and BOTH regions run at their class's DP. REGION
+  servers. They and the CICS transactions they serve are dispatched at the DP of a **server period** (`$SRMS001`, one
+  per system, APPROX; IBM forms one dynamic internal service class period per set of regions serving the same
+  classes, SG24-6472-03 p.86–88). The served transaction classes are its goal receivers and donors and it is their
+  resource receiver or donor (WLM Services p.138): a served class as receiver raises the server period, every class it
+  serves moves with it (the free ride, SG24-6472-03 p.62–63), and as a donor it counts as meeting its goal only while
+  all of them do. Served classes report the server period's DP. The region class is ignored for its server regions
+  (SG24-6472-03 p.89); a region class with no other member on the image (each such class) has no PI, is neither
+  receiver nor donor, gives new work no level to be placed at, and reports the server period's DP. REGION and BOTH regions run
+  at their class's DP. REGION
   regions don't report their transactions' response times to any service class, only to report classes, so WLM
   can't manage those classes; BOTH (meant for TORs) keeps tracking them (WLM Planning p.123). A transaction's
   wait for TRANSACTION regions counts as its CPU delay, so a starved region makes its transaction class a CPU
@@ -609,8 +616,8 @@ for importance in 1..5:
   through a DP move. Sources: WLM Services p.138 and p.147, SG24-6472-03 (March 2008) p.59–60; resource use,
   SG24-7621 p.105. APPROX: the worse local/sysplex PI, exponential use history, threshold and donor limit; a
   period with no PI yet counts as missing its goal (last at its importance, never when more important; one rule,
-  `managementWorstPi`, also used below). APPROX: the pool is periods, not holders: CICS transaction periods sharing
-  regions are separate donors until server periods (WT-09).
+  `managementWorstPi`, also used below). The pool is holders: a server period (WT-09) is one donor for the CICS
+  classes it serves, judged by the worst of their PIs and the most important of them.
 - **Missing goals are not passed.** A less important receiver never moves to or above more important work that is
   missing its goal (or has no PI yet) and uses at least `donorMinEngines` of processor, whatever the projection says: a period at the
   floor of the queueing model shows no further projected harm (the 1994 patent p.19, FIG. 8; Enrico slide 52;
@@ -626,11 +633,12 @@ for importance in 1..5:
   ABS CAP flag as the clue; WLMGL CAP delay is resource-group and discretionary capping only
   (*RMF Report Analysis* p.401, p.540).
 - Other WLM actions at lower cadence: start/stop **WLM-managed initiators** (batch queue delay),
-  adjust **MPL**, **storage protection**, **I/O priority**, **server address-space priority via
-  topology** (CICS regions take on the most important unhappy class they serve, giving
-  less important transactions in the same region a "free ride").
+  adjust **MPL**, **storage protection**, **I/O priority**. Server address-space priority via topology is part of
+  policy adjustment itself (the server period above, WT-09).
 - A *WLM Activity* log (unlocked by Monitor III) shows each decision:
-  `10:41:20 SYS1 RCVR=DDFMOB P1 PI=1.84 BTLNK=CPU DONOR=BATCHPRD DP F3→F1`.
+  `10:41:20 SYS1 RCVR=DDFMOB P1 PI=1.84 BTLNK=CPU DONOR=BATCHPRD DP F3→F1`. A served CICS class names the period that
+  moves: `RCVR=ONLMED#1 (regions $SRMS001) PI=… BTLNK=CPU UP $SRMS001 DP F2→F4` (the log is the game's SMF 99 view;
+  in z/OS the internal periods are visible only there, SG24-6472-03 p.86).
   With no move taken it names the first move it tried and why it failed, so "why didn't WLM raise it?" is answered
   from the log alone: `… ONLCARD#1 PI=4.00 BTLNK=CPU no action with net value (ONLCARD#1 DP F4→F6 rejected: harms
   DDFMOB#1, equal importance)`. On WLMGL and SYSWKM a CICS region managed to the transactions' goals (Manage Region
@@ -1853,7 +1861,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | WLM samples | **Analytic equivalent** | Time-average concurrency per state instead of 250 ms sample counts. An address space's states are bounded by its dispatchable units (batch: one TCB per job; started tasks: `DISPATCH_UNITS`, else one): processor delay is scaled down so using + delay never exceeds them (RMF Report Analysis p.52–53, p.540). APPROX: Monitor III's single-state count per address space is not separated from WLM's per-unit count, so multi-unit address spaces can show more than one active user. CICS transaction classes report estimated EXE state percentages; ordinary resource samples/APPL belong to AOR classes (equal split, APPROX). ACTIVE combines SUB/APPL and BCP waits; READY estimates QR dispatch waits; WAITING FOR splits LOCK (Db2 locks), PROD (Db2/MQ/server waits, CF) and MISC. BTE/TOR, IDLE, EXE coverage and optional TRANS-APPL% accounting are not modeled. Reporting is independent of WLM management |
 | I/O using/delay split | **Real** | Connect = using, IOSQ + pend = delay, disconnect neither (MVS Planning: WLM, velocity formula); CU queue folded into pend (APPROX) |
 | Dependency delay | **Plausible model** | `latency × (1/health − 1 + queueRatio)` per server role; counted as "other" delay |
-| CICS region management | **Simplified** | Per region on its STC/JES rule. CICS transactions on an image share the AORs' DP: most important served period (TRANSACTION, free ride) or the AOR class (REGION/BOTH). TRANSACTION regions' own CPU dispatches with the transactions; their samples are reported in the region class but left out of its goal-management PI, so a class holding only such regions is not managed. BOTH = REGION for dispatch; when every region is REGION, transaction completions go to report classes only (no service-class response time data). No per-region split of a workload's transactions: if any AOR on the image is TRANSACTION, all its CICS transactions ride the transaction DP. The wait for TRANSACTION regions is the transactions' CPU delay (all of it, APPROX) |
+| CICS region management | **Simplified** | Per region on its STC/JES rule. CICS transactions on an image share the AORs' DP: the server period `$SRMS001` (TRANSACTION; one per system, APPROX: IBM has one per set of regions serving the same classes), which the served classes move as goal receivers and donors (free ride), or the AOR class (REGION/BOTH). TRANSACTION regions' own CPU dispatches with the transactions; their samples are reported in the region class but left out of its goal-management PI, so a class holding only such regions is not managed. BOTH = REGION for dispatch; when every region is REGION, transaction completions go to report classes only (no service-class response time data). No per-region split of a workload's transactions: if any AOR on the image is TRANSACTION, all its CICS transactions ride the transaction DP. The wait for TRANSACTION regions is the transactions' CPU delay (all of it, APPROX) |
 | Percentile PI in WLM projections | **Simplified** | Reported PI stops at 4.0 (bucket layout); receiver value and donor harm use the bucketed PI of the projection at sustained demand (`base` and `after`, never this tick's own), extended past 4.0 by a log-normal quantile of the mean RT (sigma 0.5, FICTIONAL), so work far past its goal can still be helped and harm to it still vetoes a move |
 | Pre-work-manager queueing (MXT, DBAT) | **Real concept** | In users' response time, not in WLM/RMF response time. A persistent queue: throughput ≤ limit ÷ hold (Little's law), Erlang-C wait below it, timeouts fail the excess. Hold time excludes the CPU backlog wait so one queue is not counted twice (APPROX). RCA truth splits the limit's own queue (at unqueued service time) from slow tasks holding slots (APPROX) |
 | DASD | **Plausible model** | IOSQ via M/M/c on hot volumes with HyperPAV exposures; PEND/DISC with utilisation inflation |
