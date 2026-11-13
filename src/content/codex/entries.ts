@@ -367,7 +367,7 @@ export const CODEX: CodexEntry[] = [
     sources: [
       { label: 'IBM CICS TS 6 Monitoring CICS pp.19, 25: performance class records and SMF', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=19' },
       { label: 'IBM CICS TS 6 Monitoring CICS pp.251–254, 280, 287, 290, 295–296: response, dispatch, QR, MXT and abend fields', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=251' },
-      { label: 'IBM z/OS 3.1 MVS SMF p.1183: record type 110 (CICS TS)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf#page=1183' },
+      { label: 'IBM CICS TS 6 Monitoring CICS pp.32, 34: SMF 110 record fields', url: 'https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=32' },
     ],
     discover: { tools: ['CICS_MON'] },
   },
