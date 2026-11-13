@@ -610,6 +610,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   - User decision (2026-11-13, #324): the adaptive shadow-IT test measured on PROD1 is fine; it replaces the
     sysplex-wide assertion of the 2026-11-12 decision. Review B1 fixed: the region class attaches structurally
     (all members server regions), not only while its regions used CPU.
+  - User decision (2026-11-13, #324 review M1): S-3's quick reversals 19 → 4 (79 %, one short of I13's per-scenario
+    80 %) are accepted, not tuned.
 
 - 2026-11-12: shadow IT slows MOBILE again since WT-10 (111 against 80 ms in the adaptive realism test; WT-08 had
   117.61 → 83.74 ms). User decision: the restored behaviour stands and WT-08's acceptance of the improvement no
