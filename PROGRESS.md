@@ -607,6 +607,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     measures MOBILE on PROD1 (71.5 → 73.3 ms with the card). The sysplex figure now turns on an unrelated PROD2
     donor episode in the run without the card.
   - BACKLOG: WT-09 deleted; RT-14 and WT-15 ready.
+  - User decision (2026-11-13, #324): the adaptive shadow-IT test measured on PROD1 is fine; it replaces the
+    sysplex-wide assertion of the 2026-11-12 decision. Review B1 fixed: the region class attaches structurally
+    (all members server regions), not only while its regions used CPU.
 
 - 2026-11-12: shadow IT slows MOBILE again since WT-10 (111 against 80 ms in the adaptive realism test; WT-08 had
   117.61 → 83.74 ms). User decision: the restored behaviour stands and WT-08's acceptance of the improvement no

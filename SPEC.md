@@ -615,8 +615,8 @@ for importance in 1..5:
   through a DP move. Sources: WLM Services p.138 and p.147, SG24-6472-03 (March 2008) p.59–60; resource use,
   SG24-7621 p.105. APPROX: the worse local/sysplex PI, exponential use history, threshold and donor limit; a
   period with no PI yet counts as missing its goal (last at its importance, never when more important; one rule,
-  `managementWorstPi`, also used below). APPROX: the pool is periods, not holders: CICS transaction periods sharing
-  regions are separate donors until server periods (WT-09).
+  `managementWorstPi`, also used below). The pool is holders: a server period (WT-09) is one donor for the CICS
+  classes it serves, judged by the worst of their PIs and the most important of them.
 - **Missing goals are not passed.** A less important receiver never moves to or above more important work that is
   missing its goal (or has no PI yet) and uses at least `donorMinEngines` of processor, whatever the projection says: a period at the
   floor of the queueing model shows no further projected harm (the 1994 patent p.19, FIG. 8; Enrico slide 52;

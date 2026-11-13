@@ -1071,7 +1071,7 @@ does not see the waits that hold the measured PI up.
   transactions run at the region class's DP and the served classes keep a DP each (not a player lever; holder = region
   class, as §5.1 has it, would make transaction classes receivers that move a region managed to its own goal). A region
   class with only server regions is attached to the server period: neither receiver nor donor, and it reports the
-  regions' DP.
+  regions' DP: every member on the image is a transaction-server region, whether or not they used CPU this interval.
 - **Resource-group minimum:** a group is *below its minimum and wanting* when its smoothed CP service is under the
   minimum and a member has CPU delay. Goal members: as today, while a member's `mLocal` > 1. A discretionary member:
   its share is dispatched at `MANAGED_MAX` while no goal period outside the group has `mLocal` > 1, else just below
@@ -1962,7 +1962,14 @@ class, an old save, the void carry, the new guard). Realism tests changed with i
   them, so CPU starvation decided the failures.
 - **Shadow IT with adaptive WLM** measures MOBILE on PROD1, where the card's TSO work competes (71.5 → 73.3 ms). The
   sysplex-wide figure is now decided by a PROD2 donor episode in the run without the card (DDFPRD#2 takes DDFPRD#1
-  as donor at 10:21: PROD2 MOBILE 106 ms), which the card's changed sysplex PIs happen to avoid.
+  as donor at 10:21: PROD2 MOBILE 106 ms), which the card's changed sysplex PIs happen to avoid. User decision
+  (2026-11-13, #324): measuring on PROD1 is fine; it replaces the sysplex-wide assertion that the 2026-11-12 decision
+  (§9.10) restored.
+
+Review of #324 (B1): the region class was attached only while its regions had used CPU (`srvUsing > 0`), so an idle
+AOR left an importance-1 class with no PI on the ladder, where under CCIMP it was a protection floor that demoted
+batch. Attachment is now structural: every member of the region class on the image is a transaction-server region.
+Goldens and bench hashes are unchanged (no shipped region class holds only AORs).
 
 Sweep (remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged from RF-03;
 Harbourline 10 / 29 / 7 (textbook 1 victory), from 9 / 30 / 8. The expert losses are seeds 1 (day 40), 2 (day 33) and

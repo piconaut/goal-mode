@@ -376,15 +376,15 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   }
   // Holders (WT-09, docs/wlm-design.md §5.1): CICS transaction periods hold no DP of their own; their server period
   // does. The region class is ignored while it serves only as the regions' class (SG24-6472-03 p.89: "The external
-  // service class of a server is ignored"): with no sample but the regions', it has no PI, is neither receiver nor
-  // donor, and reports the regions' DP.
+  // service class of a server is ignored"): when every member on the image is a transaction-server region it is
+  // neither receiver nor donor and reports the regions' DP. Structural, so idle regions do not change it.
   const regions = input.evalInput.regions;
   let topo = holderTopology(regions, Object.keys(info));
   const server = topo.serverKey;
   let attached: string | null = null;
   if (server && regions && info[regions.regionKey] && topo.heldBy[regions.regionKey] === undefined) {
-    const s = system.scps.find((x) => x.scKey === regions.regionKey);
-    if (s && (s.acc.srvUsing ?? 0) > 0 && goalPi(info[regions.regionKey]!.goal, s.acc) === null) {
+    const members = input.evalInput.slices.filter((x) => x.scKey === regions.regionKey);
+    if (members.length > 0 && members.every((x) => regions.servers?.includes(x.key))) {
       attached = regions.regionKey;
       delete info[attached];
     }

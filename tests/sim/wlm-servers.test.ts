@@ -8,6 +8,9 @@ import { holderOf, holderTopology, SERVER_KEY } from '../../src/sim/wlm/holders'
 import { buildPlan } from '../../src/sim/wlm/plan';
 import { decayInto, emptyAcc, placeLateDp, placeNewPeriods, type WlmSystemState } from '../../src/sim/wlm/runtime';
 import { explainWlmLog } from '../../src/game/mon3';
+import { MIDWEST } from '../../src/content/scenarios';
+import { initState } from '../../src/sim/core/init';
+import { step } from '../../src/sim/core/step';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
@@ -218,6 +221,48 @@ describe('server periods (WT-09)', () => {
     const donation = trials.find((t) => t.move.startsWith(`DONOR ${SERVER_KEY}`));
     expect(donation?.verdict).toBe('PROJECTION_DISAGREES');
     expect(donation?.detail).toBe(`RUN#1 is behind with a backlog the projection bounds and would pass ${SERVER_KEY}`);
+  });
+
+  it('an idle region class of server regions stays attached: no CPU protection floor for it (review #324 B1)', () => {
+    // STCHI holds only the AOR, which used no CPU this interval. Under CCIMP 1 an unattached STCHI (importance 1)
+    // would be a protection floor that demotes batch, for a class that is ignored for its regions.
+    const def = policy(100, 100);
+    const base = image(def);
+    const evalInput = {
+      ...base,
+      slices: base.slices.filter((x) => x.key !== 'mq').map((x) => (x.key === 'aor' ? { ...x, cpEngines: 0 } : x)),
+    };
+    const dps: Record<string, number> = { 'ONLHI#1': 0xf4, 'ONLMED#1': 0xf4, [SERVER_KEY]: 0xf4, 'STCHI#1': 0xf6, 'BATCHPRD#1': 0xf4 };
+    const current = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = {
+      lparId: 'SYS1', servers: [{ key: SERVER_KEY, dp: 0xf4 }],
+      scps: current.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+    };
+    expect(system.scps.find((x) => x.scKey === 'STCHI#1')!.acc.srvUsing ?? 0).toBe(0);
+    const out = policyAdjust({ def, system, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T', ccImp: 1 });
+    expect(out.protect ?? '').not.toContain('below STCHI#1');
+    expect(out.dps['STCHI#1']).toBe(out.dps[SERVER_KEY]);
+  });
+
+  it('a mid-run save from before server periods migrates through step(): the server period at the highest served DP', () => {
+    let s = initState(42, MIDWEST);
+    for (let i = 0; i < 6; i++) s = step(s, [], MIDWEST);
+    const prod2 = s.wlm.systems.find((x) => x.lparId === 'PROD2')!;
+    expect(prod2.servers?.[0]?.key).toBe(SERVER_KEY);
+    // Strip the server period and give the served classes the DPs a pre-WT-09 save could hold.
+    const old = structuredClone(s);
+    const sys = old.wlm.systems.find((x) => x.lparId === 'PROD2')!;
+    delete sys.servers;
+    const hi = sys.scps.find((x) => x.scKey === 'ONLHI#1')!;
+    const med = sys.scps.find((x) => x.scKey === 'ONLMED#1')!;
+    hi.dp = 0xf6;
+    med.dp = 0xe8;
+    const next = step(old, [], MIDWEST).wlm.systems.find((x) => x.lparId === 'PROD2')!;
+    const dpOf = (k: string) => next.scps.find((x) => x.scKey === k)!.dp;
+    expect(next.servers?.[0]?.key).toBe(SERVER_KEY);
+    expect(dpOf('ONLMED#1')).toBe(next.servers![0]!.dp);
+    expect(dpOf('ONLHI#1')).toBe(next.servers![0]!.dp);
+    expect(next.servers![0]!.dp).toBeGreaterThan(dpOf('DDFPRD#2'));
   });
 
   it('a carry of a blocker that shares the receiver\'s holder is void', () => {
