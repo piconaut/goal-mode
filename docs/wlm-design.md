@@ -1964,4 +1964,9 @@ class, an old save, the void carry, the new guard). Realism tests changed with i
   sysplex-wide figure is now decided by a PROD2 donor episode in the run without the card (DDFPRD#2 takes DDFPRD#1
   as donor at 10:21: PROD2 MOBILE 106 ms), which the card's changed sysplex PIs happen to avoid.
 
-Sweep (remote, Normal, seeds 1–10): SWEEP_RESULTS.
+Sweep (remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged from RF-03;
+Harbourline 10 / 29 / 7 (textbook 1 victory), from 9 / 30 / 8. The expert losses are seeds 1 (day 40), 2 (day 33) and
+7 (day 39), the same three as under WT-10: RF-03's seed-1 victory does not hold. All inside the CI bands
+([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43362925863),
+[Revenue](https://github.com/piconaut/goal-mode/actions/runs/43362926036),
+[Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43362925676)).

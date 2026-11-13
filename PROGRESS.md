@@ -534,6 +534,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43327920681) 20.5/27/10,
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43327924751) 9/30/8 (expert 7 → 8), all inside
   their bands. Full suite 1 044/1 044 (`npm run test:remote`); goldens regenerated.
+- WT-09 sweep (2026-11-13, remote, Normal, seeds 1–10, `5595de1`; later commits change tests and docs only):
+  [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43362925863) 16.5/28/10 and
+  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43362926036) 20.5/27/10, unchanged;
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43362925676) 10/29/7 (textbook 1 victory), from
+  9/30/8. Expert loses seeds 1 (day 40), 2 and 7, as under WT-10. All inside the CI bands.
 - zos-docs searches (2026-11-12): map hits with `pdf_find.py --grep … --pages-only` before reading, never cut search
   output with `head`, read the section that owns the topic (hit page ±1) and search in the book's words as well as
   the user's. A WLM answer missed ieaw100 3.1 p.61 ("no goals for CICS ⇒ region velocity goals") because the
@@ -583,6 +588,25 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   (225 / 1 703 / 5 636 → 646 / 3 431 / 9 608), PR-20 updated to count it. The DDFPRD#1 case on WT-07's state gets an
   accepted CPU plan. Shadow IT slows MOBILE again under adaptive WLM; the RT-06 test fixture moves to Revenue seed 6.
   Harbourline seed 7 does not come back: §9.7's W7 attribution corrected (§9.10).
+
+- 2026-11-13: WT-09 (server periods, W3; docs/wlm-design.md §9.12). The server period `$SRMS001` holds the DP of an
+  image's TRANSACTION regions and CICS transactions. The served classes are its goal receivers and donors (one donor
+  per server period), they report its DP (the free ride), and the log names it: `RCVR=ONLMED#1 (regions $SRMS001)`.
+  A region class with only server regions is neither receiver nor donor. REGION/BOTH are unchanged, an open gap:
+  served classes there keep their own DPs (not a player lever).
+  - New guard: no trial puts a holder below a period that is missing its goal with a backlog the projection
+    bounded (`PROJECTION_DISAGREES`). Without it, Revenue cycled six times on D2: the happy server donated below a
+    runaway WEBDDF#1 and the CICS work starved.
+  - S-1 … S-3: accepted plans 35/24/131 → 35/39/137; futile `NO_RECEIVER_GAIN` 1 652/6 242/10 222 →
+    801/882/9 476; projections 6 700/20 624/19 648 → 6 244/13 113/15 437. Quick reversals 1/0/1 → 1/0/4: S-3's are
+    market-open churn, and I13's per-scenario 80 % fall is missed by one on S-3 (recorded, not tuned).
+  - RT-06 online incidents 0/1/14 → 0/2/16, with every carded incident still agreeing. Revenue's new EMPLOYER
+    incident is collateral of the runaway query, for RT-14.
+  - Bench flat (back to back: 6.43 → 6.14, 6.40 → 6.48, 12.12 → 12.15 s/day).
+  - Realism tests: CCIMP and capped ONLHI compare holders, CICS SOS runs adaptive, and the adaptive shadow-IT test
+    measures MOBILE on PROD1 (71.5 → 73.3 ms with the card). The sysplex figure now turns on an unrelated PROD2
+    donor episode in the run without the card.
+  - BACKLOG: WT-09 deleted; RT-14 and WT-15 ready.
 
 - 2026-11-12: shadow IT slows MOBILE again since WT-10 (111 against 80 ms in the adaptive realism test; WT-08 had
   117.61 → 83.74 ms). User decision: the restored behaviour stands and WT-08's acceptance of the improvement no
