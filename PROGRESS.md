@@ -8,11 +8,11 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
-- **WT-16 investigation (2026-11-13):** docs/wlm-design.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
-  jump to address-space delay samples, despite a CP grant rising from 0 to 0.328816 engines. A two-slice fixed-demand
-  counterexample excludes backlog, uplift, batch and server dependencies. S-1's DDF cases instead lose CPU when
-  joining batch's level under the current fictional ready-unit counts. No simulation change; WT-16 remains ready
-  for the shared-evaluation correction and regression evidence, and WT-17 still waits for it.
+- **WT-16 correction (2026-11-13; docs/wlm-design.md §9.14):** offered-demand samples fix the capped-STCHI
+  velocity inversion; projections expose gains past the PI ceiling of 99, with the existing velocity floor and
+  planner limits retained. All targeted recovery/safety checks pass. S-1 … S-3 quick reversals are 1/0/8, from
+  1/0/4: I13's 80% reduction target is missed on Harbourline. WT-16 remains blocked for the user's acceptance of
+  this cost or further scoped stability work; WT-17 still waits. No coefficient or backlog-guard tuning.
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
 - **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
@@ -203,6 +203,19 @@ level or a separate toggle.
   ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43253180617),
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43253182591),
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43253182465)).
+
+- WT-16 correction (2026-11-13, model `624c8bb`; remote, Normal, seeds 1–10, all three bots):
+
+  | Scenario | Do-nothing median day, before → after | Textbook median day, before → after | Expert victories |
+  |---|---:|---:|---:|
+  | [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43397599539) | 16.5 → 16.5 | 28 → 28 | 10 → 10 of 10 |
+  | [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43397617988) | 20.5 → 20.5 | 27 → 27 | 10 → 10 of 10 |
+  | [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43397637534) | 10 → 10.5 | 29 → 30 | 7 → 7 of 10 |
+
+  Before is WT-15's seeds 1–10 reference below. Every bot is inside its CI band; no coefficient was tuned and no
+  balance entry is needed. This does **not** pass I13's separate stability criterion: S-1 … S-3 quick reversals
+  change 1/0/4 → 1/0/8. Acceptance of that cost or further stability work remains the user's WT-16 decision
+  (docs/wlm-design.md §9.14); WT-17 stays blocked.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.

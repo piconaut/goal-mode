@@ -6,7 +6,7 @@ budget (WT-05, §9.6; RF-03, §9.11); the canonical ladder and the z/OS 1.8 DP t
 §9.8); atomic plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). Every
 finding in §4 says whether it is fixed, settled, open with a ready entry (W10's discretionary half: WT-11; W11:
 WT-12) or deferred to a playtest (W13: WT-14); §2 describes the sim as audited
-(2026-11-10), before any of them. Open: WT-11 and WT-12 (to be done), WT-16 (address-space delay-sample correction; investigation in §9.13) and WT-17 (trim this document to the design
+(2026-11-10), before any of them. Open: WT-11 and WT-12 (to be done), WT-16 (sample correction in §9.14; I13 acceptance open) and WT-17 (trim this document to the design
 and archive the audit). The work is in [BACKLOG.md](../BACKLOG.md) list `wlm-truth`; §8 lists its questions and the
 user's decisions; §9 has each entry's results. This is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -1116,7 +1116,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) (`tests/sim/wlm-servers.test.ts`) |
 | I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11, RF-03). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget; it bites (`BUDGET` stops are counted) but leaves the clock bound meaningful |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19; WT-09: 1 / 0 / 4, S-3 short by one, accepted by the user 2026-11-13, §9.12) |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19; WT-09: 1 / 0 / 4, S-3 short by one, accepted by the user 2026-11-13, §9.12; WT-16 candidate: 1 / 0 / 8, acceptance open, §9.14) |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -2004,7 +2004,7 @@ Harbourline 10 / 29 / 7 (textbook 1 victory), from 9 / 30 / 8. The expert losses
 
 Investigated on `2a59cd4` (2026-11-13), before a model change. **Verdict: the capped STCHI case is a
 grant-to-sample artefact; the S-1 DDF cases are contention under the existing ready-unit approximation.**
-WT-16 stays open for the sample correction. These measurements change no simulation code or coefficients.
+These are the pre-correction measurements. The correction and its remaining I13 decision are in §9.14.
 
 **Capped fixture.** Start `initState(7, MIDWEST)`, set PROD1's `definedCapacityMsu` to 200, classify STC `DB*`
 as STCHI, then step without commands to D1 14:30:40. Capture PROD1's `evalInput` and measured `system` at
@@ -2072,3 +2072,60 @@ The IBM source checked in this session is the March 2008 Redbook
 the same priority have their order periodically rotated. That supports rotation per unit, not the sim's chosen
 count of one DDF unit per engine of new work. The DDF weights remain an approximation; this investigation
 neither validates actual thread counts nor establishes the size of these PI jumps on real z/OS.
+
+### 9.14 WT-16 correction: offered-demand samples and velocity projections
+
+Built on `38f631a`; model commit `624c8bb`. `eval/results.ts` estimates an address space's queue samples from
+**offered** work rather than just granted work, then adds unmet work and retains the ready-unit bound. The CP
+estimate starts with CP using (including eligible work) plus unmet native CP. Eligible work with permission to overflow (or no online zIIP) adds its unserved
+part to the CP estimate; otherwise it stays in the zIIP estimate. Each offered portion is assigned once, so idle
+zIIPs, exhausted CPs and Honor Priority NO do not duplicate the queue estimate. The existing unmet-delay
+attribution, I/O/storage/CAP states, transaction estimates, dispatch grants and unit counts are unchanged.
+
+This is an analytic approximation, not IBM's formula. Sources checked with `zos-docs` in z/OS 3.1:
+[RMF Report Analysis p.539–540](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=539) defines
+processor using and delayed dispatchable-unit samples; [WLM Planning p.70](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=70)
+gives velocity as using / (using + delay). A unit waiting for CPU must remain visible when it receives no CPU.
+
+The §9.13 minimal fixture now improves on a raise: reported PI 99 → 24.6063 → 0.7263 (raw projected PI at the
+lowest DP 123.0316). A property check covers 216 combinations of native/eligible demand, ready counts, online or
+absent zIIPs, overflow permissions and competing zIIP demand; every raise is monotone and total processor samples
+stay within ready units. The existing capped-PROD1 regression retains all its recovery/safety assertions and
+additionally evaluates STCHI below/on/above the server level at fixed input at D1 14:30:40: joining restores CP
+service with unchanged zIIP service and improves projected velocity.
+
+**The velocity ceiling also mattered.** With the sample correction alone, the capped fixture stalled for 720
+adjustments instead of its allowed 60: several real improvements all appeared as PI 99, exhausting six retained
+steps before a move had receiver value. Policy adjustment now uses velocity PI before that reporting ceiling,
+as it already does for percentile PI before 4.0. The existing 0.1% velocity floor remains, keeping zero-service
+projections finite; management and reporting PIs still stop at 99. No planner limit, coefficient, backlog bound,
+trust guard or net-value rule changed. The capped recovery bound and both independent plan-safety oracles pass.
+The aggregate-harm carry fixture gives its unrelated G06 rival a low goal so it still isolates G03's aggregate
+harm, rather than relying on the removed projection ceiling to hide G06's harm; its repair/safety assertions stay.
+
+S-1 … S-3 (seed 42, Normal, the §1 recipes; before → after):
+
+| | S-1 Midwest | S-2 Revenue | S-3 Harbourline |
+|---|---:|---:|---:|
+| assessed candidates | 1 296 → 1 296 | 5 690 → 5 760 | 5 733 → 5 708 |
+| projections | 6 244 → 6 244 | 13 113 → 13 495 | 15 437 → 14 224 |
+| accepted plans | 35 → 35 | 39 → 41 | 137 → 145 |
+| moves reversed within two minutes (I13) | 1 → 1 | 0 → 0 | 4 → 8 |
+| runs of 30 assessments without a receiver move | 4 → 4 | 8 → 14 | 13 → 13 |
+
+RT-06 validator: online incidents 0 / 2 / 16 → 0 / 2 / 15; reproduced counts match. Revenue's one testable carded
+incident still agrees (1/1); Midwest has none, and Harbourline's incidents have no candidate cards under RT-06's
+current filter. No tested card attribution changes; this does not settle RT-14's collateral footprints.
+
+**I13 remains a decision, not a pass.** Eight Harbourline reversals is a 58% reduction against the original 19,
+short of the 80% criterion; 4 was previously accepted, 8 has not been. Five are STCMED raise/donation pairs on
+PRDC/PRDD (D1 09:58–09:59 and 14:18–14:19; D2 09:58–09:59), one is the server period at D1's 09:30 market open,
+and two are DDF donors raised again within two minutes (one projected exactly at its goal). No additional
+reversal is excluded from the counter and no tuning hides this result. WT-16 stays open for acceptance of this
+cost or further scoped stability work; WT-17 is not unblocked by this PR.
+
+Back-to-back one-day benchmarks (same box; before → after): Midwest 5.07 → 5.17 s (0.59 → 0.60 ms/tick),
+Harbourline 8.58 → 8.39 s (0.99 → 0.97 ms/tick), Revenue 4.71 → 4.81 s (0.55 → 0.56 ms/tick). State hashes:
+Midwest `d929cb76fb5328df` → `3988113566a9eb83`; Harbourline `3c6b010e5243936c` → `3e0a8aa98af79e77`;
+Revenue `263810e48304ac4e` → `c7d26e933456fbf8`. Sampled states change even when WLM plan statistics do not.
+Scripted goldens are regenerated for changed states and WLM choices. Sweep results are recorded in PROGRESS M8.2.

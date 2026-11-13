@@ -452,27 +452,21 @@ donors (WLM Services p.138); discretionary work is spread over 192–201 by mean
 modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a playtest finding that a stale order
 or equal-priority discretionary work misleads players.
 
-### WT-16 · Correct address-space delay samples when a better CPU grant worsens velocity
-`list: wlm-truth · status: ready · priority: high · size: M · area: sim`
+### WT-16 · Decide the I13 stability cost of the sample correction
+`list: wlm-truth · status: blocked: user (accept the measured I13 gap, or scope further stability work) · priority: high · size: S · area: sim`
 
-Investigation completed before a model change (2026-11-13, docs/wlm-design.md §9.13, measured on `2a59cd4`).
-Remaining: fix the grant-to-sample artefact in shared evaluation (`src/sim/wlm/eval/results.ts`, with the
-queue estimate in `src/sim/zos/dispatcher.ts` as needed). At fixed demand, granting STCHI 0.328816 CP engines
-instead of 0 raises its CP delay from 0.328816 to 16.440787 and its velocity PI from 4.2652 to 26.3789. The
-`cpUsing * qr + unmetCp` formula gives almost no CP delay at zero CP service and far more after a useful grant.
-A two-slice, no-backlog counterexample and the capped fixture's full recipe are in §9.13. Main agent model work;
-verify the correction with `zos-docs`, keep processor samples within ready units and avoid double-counting waits.
-Test that better CP service at fixed demand, fixed other-resource service and an unchanged saturated queue
-estimate cannot worsen velocity; cover zero CP service with continuing zIIP use, and the capped-PROD1 fixture.
+Sample correction implemented (2026-11-13, model `624c8bb`; docs/wlm-design.md §9.14): offered-demand queue
+samples include starved work; velocity projections retain gains otherwise hidden by the reporting ceiling of 99. Monotonicity,
+ready-unit limits, the capped-PROD1 recovery and plan-safety regressions pass. No coefficients, planner limits or
+backlog guards changed. Goldens regenerated; S-1 … S-3 and RT-06 differences are in §9.14, sweep evidence in
+PROGRESS M8.2.
 
-The S-1 DDF cases have a different explanation: DDF loses CPU when sharing with batch under the current fictional
-ready-unit counts (§9.13). They do not justify changing `shareByUnits` or treating DDF thread counts as verified.
-Backlog and uplift are excluded as the capped artefact's cause; add no third policy-adjustment guard, and do not
-remove `projectionTrustMax` or WT-09's holder guard without separate evidence that their backlog limitation is
-fixed. Report before/after bench hashes, regenerated goldens with a Behaviour change note, S-1 … S-3 statistics,
-RT-06 validator differences and three-scenario remote sweeps (seeds 1–10, Normal). Done when: the shared formula
-and regression tests remove the artefact, §9.13 records the correction and measured effects, and the checks pass.
-Then remove WT-16 and unblock WT-17.
+Remaining user call before acceptance: Harbourline moves reversed within two minutes rise from the previously
+accepted 4 to 8 (Midwest 1 and Revenue 0 unchanged). Eight is a 58% fall from the original 19, missing I13's 80%
+criterion. Accept the corrected sample model with this recorded stability cost, or require further scoped
+stability work before accepting it? The eight pairs and their subjects/times are in §9.14; do not tune WLM
+coefficients or add a rejection guard merely to recover the old count. Done when: the user has decided, any
+required follow-up is scoped/implemented, this entry is removed and WT-17 is unblocked.
 
 ### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
 `list: wlm-truth · status: blocked: after WT-16 · priority: low · size: M · area: content`
