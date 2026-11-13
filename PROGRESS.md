@@ -104,8 +104,8 @@ it) against IBM's description, step by step, and proposes one target model. Fift
 the four structural ones: receivers are chosen on the smoothed PI but every trial is judged on one tick's PI (W1);
 the DP ladder only climbs and collapses at the top of the managed range within a day or two on a stressed image
 (W2); each served CICS class owns a DP and only the highest counts (W3); donors are picked by importance and CPU
-use, not by goal achievement (W4). The work is BACKLOG.md list `wlm-truth` (WT-01 … WT-15): WT-02 and WT-03 are
-complete (SPEC text, no behaviour change), as is WT-12; WT-01's `inspect … wlm-stats` has landed. User decisions on §8 (2026-11-10): all as
+use, not by goal achievement (W4). The work is BACKLOG.md list `wlm-truth` (WT-01 … WT-15); WT-01's `inspect … wlm-stats` and
+WT-12's batch response-time measurements have landed. User decisions on §8 (2026-11-10): all as
 recommended, and the core (WT-04 … WT-10) lands after RT-06 and before RT-14, so RCA footprints and balance are
 built once on the new WLM; the RT-15 playtest follows the core (§7).
 

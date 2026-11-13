@@ -395,7 +395,7 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - **Sequencing against `rca-truth`** (user decision 2026-11-10, docs/wlm-design.md §7): the core WT-04 … WT-09 and
   WT-10 land after RT-06 (the counterfactual validator) and before RT-14 (card footprints), so footprints and
   balance are built once, on the WLM players will keep. Each of those PRs reports RT-06's validator differences.
-  WT-12 changes no shipped behaviour and is ready.
+  WT-12 has landed without changing shipped behaviour.
 - **One at a time.** Each `sim` entry: goldens regenerated with a "Behaviour change" note, `npm run bench` before and
   after (tick budget, SPEC §15), a three-scenario `npm run sweep:remote` (seeds 1–10, Normal) recorded in
   PROGRESS.md M8.2, and the realism policy (cite docs/wlm-design.md §3's pages in code comments).
