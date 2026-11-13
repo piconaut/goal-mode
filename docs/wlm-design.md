@@ -18,7 +18,7 @@ PR.
 
 ## 1. Sources
 
-**Sources**, in the order they were used:
+The sources, with the tier each claim carries:
 
 | Short name | Source | Tier |
 |---|---|---|
