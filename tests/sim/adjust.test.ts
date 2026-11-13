@@ -128,7 +128,7 @@ describe('policy adjustment', () => {
       expect(out.dps).toEqual(dps);
       expect(out.log).toContain('UP ONLHI#1 DP F4→F6 rejected: gain too small');
       expect(out.clockNotes).toContain(out.log);
-      expect(out.clockNotes[0]).toContain(`next look ${formatClock(4 + POLICY_ADJUST.rejectedSkipTicks).split(' ')[1]}`);
+      expect(out.clockNotes[0]).toContain(`next look ${formatClock(4 + POLICY_ADJUST.rejectedSkipTicks + 1).split(' ')[1]}`);
     } finally {
       Object.assign(POLICY_ADJUST, saved);
       setWlmTraceSink(null);
@@ -338,10 +338,10 @@ describe('skip clock exception when few periods miss their goals (RF-03, z/OS 1.
   const saved = { ...POLICY_ADJUST };
   beforeAll(() => { POLICY_ADJUST.receiverValueMinPi = 100; POLICY_ADJUST.maxProjectionsPerInterval = 1000; });
   afterAll(() => { Object.assign(POLICY_ADJUST, saved); });
-  const run = (periods: number, nowTick: number, clock?: number) => {
+  const run = (periods: number, nowTick: number, clocks: Record<string, number> = {}) => {
     const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0.3, slices: allSlices.slice(0, periods), backlog: {}, io: IO, pagingFrac: 0 };
     const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
-    const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t), ...(clock !== undefined && t.scKey === 'K1#1' ? { skipUntilTick: clock } : {}) })) };
+    const system: WlmSystemState = { lparId: 'SYS1', scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t), ...(clocks[t.scKey] !== undefined ? { skipUntilTick: clocks[t.scKey] } : {}) })) };
     const traces: WlmAdjustTrace[] = [];
     setWlmTraceSink((t) => traces.push(t));
     try {
@@ -353,15 +353,27 @@ describe('skip clock exception when few periods miss their goals (RF-03, z/OS 1.
   };
 
   it('honours a running clock while six goal periods miss their goals', () => {
-    const { out, trace } = run(6, 1, 100);
+    const { out, trace } = run(6, 1, { 'K1#1': 100 });
     expect(trace.candidates.find((c) => c.scKey === 'K1#1')!.outcome).toBe('SKIP_CLOCK');
     expect(out.skipUntil['K1#1']).toBe(100);
     for (const k of keys.slice(1)) expect(trace.candidates.find((c) => c.scKey === `${k}#1`)!.outcome).toBe('ASSESSED');
   });
 
+  it('skips exactly the next three cycles: a clock set at tick 1 is honoured at 2, 3 and 4 and expires at 5', () => {
+    const first = run(6, 1);
+    const until = 1 + POLICY_ADJUST.rejectedSkipTicks + 1;
+    expect(new Set(Object.values(first.out.skipUntil))).toEqual(new Set([until]));
+    for (const tick of [2, 3, 4]) {
+      const next = run(6, tick, first.out.skipUntil);
+      expect(next.trace.candidates.every((c) => c.outcome === 'SKIP_CLOCK'), `tick ${tick}`).toBe(true);
+    }
+    const later = run(6, 5, first.out.skipUntil);
+    expect(later.trace.candidates.every((c) => c.outcome !== 'SKIP_CLOCK')).toBe(true);
+  });
+
   it('ignores the running clock and starts none when five goal periods miss their goals', () => {
     // nowTick 30 is the five-minute log cadence: every rejected receiver's clue is logged there, not only the first.
-    const { out, trace } = run(5, 30, 100);
+    const { out, trace } = run(5, 30, { 'K1#1': 100 });
     expect(trace.candidates.every((c) => c.outcome !== 'SKIP_CLOCK')).toBe(true);
     expect(trace.candidates.find((c) => c.scKey === 'K1#1')!.outcome).toBe('ASSESSED');
     // The old clock is dropped, not carried, and the rejected receivers start no new clock. Their clues are logged
@@ -455,7 +467,7 @@ describe('a hopeless receiver does not stop the search at the next importance (S
 
   it('sets a skip clock on a receiver whose every trial was rejected, honours it, and drops it on expiry (WLM Services p.145)', () => {
     const first = run3(system3, 0);
-    const until = POLICY_ADJUST.rejectedSkipTicks;
+    const until = POLICY_ADJUST.rejectedSkipTicks + 1;
     for (const k of ['OLD1#1', 'OLD2#1', 'OLD3#1']) {
       expect(outcome(first.trace, k)).toBe('ASSESSED');
       expect(first.out.skipUntil[k]).toBe(until);
@@ -504,7 +516,7 @@ describe('a hopeless receiver does not stop the search at the next importance (S
       expect(old3.trials).toHaveLength(1);
       expect(old3.skipUntilTick).toBeUndefined();
       expect(trace.candidates.map((c) => c.scKey)).toEqual(['OLD1#1', 'OLD2#1', 'OLD3#1']);
-      expect(out.skipUntil).toEqual({ 'OLD1#1': 200, 'OLD2#1': 100 + POLICY_ADJUST.rejectedSkipTicks });
+      expect(out.skipUntil).toEqual({ 'OLD1#1': 200, 'OLD2#1': 100 + POLICY_ADJUST.rejectedSkipTicks + 1 });
     } finally {
       POLICY_ADJUST.maxProjectionsPerInterval = saved;
     }
@@ -517,7 +529,7 @@ describe('a hopeless receiver does not stop the search at the next importance (S
       const { out, trace } = run3(withClocks({ 'OLD1#1': 200, 'OLD2#1': 200 }), 100);
       const old3 = trace.candidates.find((c) => c.scKey === 'OLD3#1')!;
       expect(old3.trials).toHaveLength(1);
-      expect(out.skipUntil['OLD3#1']).toBe(100 + POLICY_ADJUST.rejectedSkipTicks);
+      expect(out.skipUntil['OLD3#1']).toBe(100 + POLICY_ADJUST.rejectedSkipTicks + 1);
       expect(trace.candidates.map((c) => c.scKey)).toEqual(['OLD1#1', 'OLD2#1', 'OLD3#1']);
     } finally {
       POLICY_ADJUST.maxProjectionsPerInterval = saved;
@@ -531,7 +543,7 @@ describe('a hopeless receiver does not stop the search at the next importance (S
     try {
       const { out, trace } = run3(system3, 100);
       expect(trace.candidates.map((c) => [c.scKey, c.outcome])).toEqual([['OLD1#1', 'ASSESSED'], ['OLD2#1', 'ASSESSED'], ['OLD3#1', 'BUDGET']]);
-      expect(out.skipUntil).toEqual({ 'OLD1#1': 100 + POLICY_ADJUST.rejectedSkipTicks, 'OLD2#1': 100 + POLICY_ADJUST.rejectedSkipTicks });
+      expect(out.skipUntil).toEqual({ 'OLD1#1': 100 + POLICY_ADJUST.rejectedSkipTicks + 1, 'OLD2#1': 100 + POLICY_ADJUST.rejectedSkipTicks + 1 });
     } finally {
       POLICY_ADJUST.maxProjectionsPerInterval = saved;
     }
@@ -1012,7 +1024,7 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
     expect(r.plans!.every((p) => p.outcome !== 'ACCEPTED')).toBe(true);
     expect(new Set(r.trials.map((t) => t.bottleneck))).toEqual(new Set(['CPU', 'ZIIP']));
     // One skip clock for the receiver, and the note names the first bottleneck tried.
-    expect(out.skipUntil).toEqual({ 'R#1': POLICY_ADJUST.rejectedSkipTicks });
+    expect(out.skipUntil).toEqual({ 'R#1': POLICY_ADJUST.rejectedSkipTicks + 1 });
     expect(out.log).toMatch(/^T SYS R#1 PI=\S+ BTLNK=CPU no action with net value/);
   });
 

@@ -554,7 +554,8 @@ for importance in 1..5:
             commit all moves together only with receiver value ≥ max(10% of (base − 1), 0.05)
             otherwise discard the complete plan; budget exhaustion preserves WT-05's clocks and resume cursor
         every action rejected: if > skipClockMinMissing goal periods miss their goals:
-            skip clock = now + rejectedSkipTicks; next receiver
+            skip clock = now + rejectedSkipTicks + 1    // first tick it may be assessed again
+            next receiver
     // at most ONE receiver helped per interval per system
 ```
 

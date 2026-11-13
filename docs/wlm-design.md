@@ -891,7 +891,7 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
               L ← plan.ladder
               log "RCVR=r PI=… BTLNK=b" + plan.moves;                      goto done     // one change per interval
       if tried:
-          if missing > C.skipClockMinMissing: skipUntilTick[r] ← nowTick + C.rejectedSkipTicks
+          if missing > C.skipClockMinMissing: skipUntilTick[r] ← nowTick + C.rejectedSkipTicks + 1  // first tick it may be assessed
           note the first rejected step and its reason                       // no clock at ≤ 5 missing (z/OS 1.11)
       else:     note "r PI=… BTLNK=<largest delay> not WLM-fixable"
   done:
@@ -1807,7 +1807,10 @@ will no longer be honored if 5 or less service class periods do not meet their p
 count is per image, as policy adjustment is; IBM does not say whether it is per system or across the sysplex, and it
 is over the sim's managed goal periods (SYSTEM and SYSSTC have no goals and discretionary is excluded; real WLM could
 count two more per image, which would move the boundary). The
-exception also drops a running clock, not only a new one. A receiver that had the whole projection budget and ran out
+exception also drops a running clock, not only a new one. `skipUntilTick` is the first tick the period may be
+assessed again, so the clock is `nowTick + rejectedSkipTicks + 1`: a rejection at tick 1 skips ticks 2, 3 and 4 and
+is reassessed at 5. The earlier `nowTick + rejectedSkipTicks` skipped only two cycles (review finding, 2026-11-13).
+A receiver that had the whole projection budget and ran out
 still starts no clock at five or fewer missing, so the next search starts after it (not on it), or it would spend the
 budget again every interval and the receivers behind it would never be reached.
 

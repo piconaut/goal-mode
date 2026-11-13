@@ -723,7 +723,9 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     }
     // Every trial was rejected: skip it until the clock expires, unless few periods miss their goals (RF-03).
     if (honourSkipClock) {
-      const until = nowTick + POLICY_ADJUST.rejectedSkipTicks;
+      // The next three cycles are skipped: `nowTick + 1`, `+ 2` and `+ 3`. `until` is the first tick it may be
+      // assessed again, and the check is `skipUntilTick > nowTick`, so add one to the count.
+      const until = nowTick + POLICY_ADJUST.rejectedSkipTicks + 1;
       skipUntil[receiver] = until;
       if (ct) ct.skipUntilTick = until;
       const note = `${receiver} PI=${pi} ${noAction}, next look ${formatClock(until).split(' ')[1]}`;
