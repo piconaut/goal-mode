@@ -8,6 +8,10 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **PR #333 review documentation (2026-11-13):** W11's no-PI/no-warning description is explicitly the state before
+  WT-12. The remaining no-completions limitation covers all started tasks, including temporary tasks; it is not
+  limited to indefinite tasks. No further model scope is claimed.
+
 - **PR #333 review M2 (2026-11-13):** goal issues identify their subsystem. The service-class editor marks the
   CICS transaction tag bad only for CICS issues, while retaining JES advice in the combined issue list. Rendered
   active/pending-policy regressions cover shared CICS/JES classes with and without a genuine CICS warning.
@@ -26,7 +30,7 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
   in the ending period. JES RT goals carry the three-completions-per-20-minutes advice in the editor and PI Codex
   entry (WLM Planning 3.1 p.71). **W11 remains partially open:** batch-only AVG/PCT priority projections have no
   completions, return null PI and skip CPU-starved receivers as RECOVERING. WT-12 retains that remainder blocked on
-  a projection design; this PR completes measurement/advice only. Indefinite started tasks remain without completions.
+  a projection design; this PR completes measurement/advice only. Started tasks remain without completions.
 
 - **WT-11 (2026-11-13):** discretionary resource-group minima use smoothed CP consumption and CPU delay, run ahead
   of goal work meeting its goals, and yield while an outside goal period has local PI > 1. IIPCP counts toward

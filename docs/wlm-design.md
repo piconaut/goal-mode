@@ -784,14 +784,15 @@ batch with a minimum as a throughput goal" ([SG24-6472 p.68][r68]) is weaker in 
 ### W11. A response-time goal on batch or started tasks is never managed (medium)
 
 *Partially fixed by WT-12 (§5.8): batch completion measurements and editor advice. Priority management remains
-open in WT-12, blocked on projection design. Indefinite started tasks have no transaction completions in the sim.*
+open in WT-12, blocked on projection design. Started tasks have no transaction completions in the sim.*
 
-By code reading (C-1): address-space slices report no completions (`sliceResults`), so an average or percentile
-goal on a batch or STC class has no PI: never a receiver, never "missing" for a minimum, no PI in WLMGL. IBM allows
-response-time goals for batch with at least three completions per 20 minutes ([WLM Planning p.71][wp71]). The policy
-editor accepts such a goal without comment.
+Before WT-12, code reading (C-1) found that address-space slices reported no completions (`sliceResults`), so an
+average or percentile goal on a batch or STC class had no PI: never a receiver, never "missing" for a minimum,
+no PI in WLMGL. The policy editor accepted such a goal without comment. IBM allows response-time goals for batch
+with at least three completions per 20 minutes ([WLM Planning p.71][wp71]).
 
-WT-12 adds the measurements and advice. It does not yet fix priority management: `policyAdjust` obtains its
+WT-12 adds batch measurements and advice; started tasks, including temporary ones, still contribute no completions.
+It does not yet fix batch priority management: `policyAdjust` obtains its
 base and trial PIs by re-evaluating AS slices without discrete job completions. A batch-only AVG/PCT class therefore
 has a null projected PI even while its measured PI misses the goal, and `adjust.ts` skips it as RECOVERING without
 a trial. W11 stays open for this limitation; the remaining WT-12 entry records the projection design question.
@@ -1108,9 +1109,9 @@ does not see the waits that hold the measured PI up.
   period's accumulator and its assigned report class, with one exact bucket observation in each (WT-12;
   report-class completion/RT/bucket data: WLM Planning 3.1 p.113). Queue + elapsed uses the same tick-boundary
   clock as RMF's job-end record. Average and percentile measured PIs disappear when the decayed completion count
-  reaches 1e-9 (within 25 minutes after a lone job); the fixed window and cutoff are still approximations. The JES editor warns on RT goals,
-  and the PI Codex entry gives IBM's three-completions-per-20-minutes advice (WLM Planning 3.1 p.71). Tests:
-  `tests/sim/batchResponseGoals.test.ts`, `tests/game/batchGoals.test.ts`. Indefinite started tasks still have no
+  reaches 1e-9 (within 25 minutes after a lone job); the fixed window and cutoff are still approximations. The JES
+  editor warns on RT goals, and the PI Codex entry gives IBM's three-completions-per-20-minutes advice (WLM Planning 3.1 p.71). Tests:
+  `tests/sim/batchResponseGoals.test.ts`, `tests/game/batchGoals.test.ts`. Started tasks still have no
   completions; no shipped policy gives batch an RT goal.
   **Remaining management gap (W11):** these observations are added after dispatch evaluation. Base/trial
   evaluations used by policy adjustment still have no completions for batch AS slices, so a batch-only RT
