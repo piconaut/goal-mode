@@ -2,6 +2,13 @@
 // FICTIONAL: the shapes are the game's, not IBM's; they are here rather than in `src/game/sla.ts`
 // so a scenario can be retuned without touching the mechanism rules (CLAUDE.md, data-driven content).
 
+// When a CPU incident is capping rather than capacity or priority (SPEC §10, docs/rca-design.md §4.3): the host
+// image must have been capped for this share of the hour's ticks (time, not the worst tick).
+export const CAPPING = {
+  /** Share of an hour's ticks in which the image's CP demand was capped (`cappedFrac > 0`). */
+  minHourShare: 0.05,
+} as const;
+
 export const CPU_CAPACITY = {
   /** Hour-average busy of a host CPC's general CPs from which a CPU incident can be capacity. */
   cpcBusyFrac: 0.9,

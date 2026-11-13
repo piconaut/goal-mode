@@ -25,6 +25,7 @@ export const newHour = (tick: number): HourAcc => ({
   workloads: {},
   maxCappedFrac: 0,
   cappedByLpar: {},
+  cappedTicksByLpar: {},
   cpcBusySum: 0,
   cpcBusyById: {},
   lparBusyById: {},
@@ -50,6 +51,9 @@ export function accumulateHour(run: RunState): RunState {
   let capped = 0;
   let delivered = 0;
   const cappedByLpar = { ...h.cappedByLpar };
+  // An hour loaded from a save written before RT-08 has no tick count; leave it absent so its verdict keeps the
+  // worst-tick reading instead of counting only the ticks played after the load.
+  const cappedTicksByLpar = h.cappedTicksByLpar ? { ...h.cappedTicksByLpar } : undefined;
   const deliveredByCpc: Record<string, number> = {};
   const lparBusyById = { ...(h.lparBusyById ?? {}) };
   for (const l of run.sim.lpars) {
@@ -57,6 +61,7 @@ export function accumulateHour(run: RunState): RunState {
     if (!cp) continue;
     capped = Math.max(capped, cp.cappedFrac);
     cappedByLpar[l.id] = Math.max(cappedByLpar[l.id] ?? 0, cp.cappedFrac);
+    if (cp.cappedFrac > 0 && cappedTicksByLpar) cappedTicksByLpar[l.id] = (cappedTicksByLpar[l.id] ?? 0) + 1;
     delivered += cp.deliveredEngines;
     if (cp.availableEngines > 0) lparBusyById[l.id] = (lparBusyById[l.id] ?? 0) + Math.min(1, cp.deliveredEngines / cp.availableEngines);
     const cpcId = run.sim.config.lpars.find((x) => x.id === l.id)?.cpcId;
@@ -90,6 +95,7 @@ export function accumulateHour(run: RunState): RunState {
       workloads,
       maxCappedFrac: Math.max(h.maxCappedFrac, capped),
       cappedByLpar,
+      ...(cappedTicksByLpar ? { cappedTicksByLpar } : {}),
       cpcBusySum: h.cpcBusySum + (engines > 0 ? delivered / engines : 0),
       cpcBusyById,
       lparBusyById,

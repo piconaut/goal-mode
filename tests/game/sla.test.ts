@@ -135,6 +135,9 @@ describe('mechanismOf CPU split', () => {
   // LPAR A1 on CPCA; CP engines consumed this hour by importance rank 0–6.
   const at = (busy: number, byImp: number[], capped: Record<string, number> = {}, lparBusy = 0.5) =>
     ({ ...hour, ticks: 360, cpcBusySum: 0.5 * 360, cpcBusyById: { CPCA: busy * 360 }, lparBusyById: { A1: lparBusy * 360 }, cpByImportance: { A1: byImp }, cappedByLpar: capped }) as HourAcc;
+  // The same hour with the tick count RT-08 adds: `ticksCapped` of its 360 ticks were capped.
+  const ticks = (ticksCapped: number, busy = 0.7, byImp = [10, 200, 300, 0, 0, 0, 0], lparBusy = 0.5) =>
+    ({ ...at(busy, byImp, { A1: 0.2 }, lparBusy), cappedTicksByLpar: { A1: ticksCapped } }) as HourAcc;
   const host = (importance: number) => [{ lparId: 'A1', cpcId: 'CPCA', importance }];
 
   it('is capacity when the host CPC is full and almost nothing less important runs there', () => {
@@ -163,8 +166,20 @@ describe('mechanismOf CPU split', () => {
     expect(mechanismOf(cpu, {}, at(0.86, [10, 200, 100, 150, 0, 0, 40], {}, 0.97), host(2))).toBe('CPU_PRIORITY');
   });
 
-  it('still prefers capping of a host LPAR', () => {
+  it('still prefers capping of a host LPAR in an hour with no tick count (a save written before RT-08)', () => {
     expect(mechanismOf(cpu, {}, at(0.95, [10, 200, 300, 0, 0, 0, 0], { A1: 0.2 }), host(2))).toBe('CAPPING');
+  });
+
+  it('does not call an hour capped because one tick was (18 ticks is the 5 % line)', () => {
+    // A single tick in which 6 % of the image's demand was cut: the worst-tick reading said CAPPING, the time one
+    // gives the CPU split (the CPC has room here, so priority).
+    expect(mechanismOf(cpu, {}, ticks(1), host(2))).toBe('CPU_PRIORITY');
+    expect(mechanismOf(cpu, {}, ticks(17), host(2))).toBe('CPU_PRIORITY');
+  });
+
+  it('calls the hour capped when the image was capped for at least 5 % of its ticks', () => {
+    expect(mechanismOf(cpu, {}, ticks(18), host(2))).toBe('CAPPING');
+    expect(mechanismOf(cpu, {}, ticks(36), host(2))).toBe('CAPPING');
   });
 });
 
@@ -212,5 +227,28 @@ describe('missed batch window truth', () => {
     expect(acc.cpcBusyById!.C).toBe(600);
     expect(acc.cpByImportance!.A1).toEqual([2, 4]);
     expect(acc.lockIndexSum).toBe(20);
+  });
+
+  it('sums the ticks each night hour was capped, so the night is judged as time', () => {
+    const h = (cappedTicks: number) => ({ ...hour, ticks: 360, cappedByLpar: { A1: 0.2 }, cappedTicksByLpar: { A1: cappedTicks } });
+    const acc = addHour(addHour(null, h(18)), h(18));
+    expect(acc.cappedTicksByLpar).toEqual({ A1: 36 });
+    // 5 % of each hour's ticks is 5 % of the night's: at the line.
+    expect(mechanismOf({ cpuQueue: 1 }, {}, acc, [{ lparId: 'A1', cpcId: 'C', importance: 2 }])).toBe('CAPPING');
+    // One hour well under the line pulls the night below it, however bad the other hour was.
+    const short = addHour(addHour(null, h(35)), h(0));
+    expect(mechanismOf({ cpuQueue: 1 }, {}, short, [{ lparId: 'A1', cpcId: 'C', importance: 2 }])).toBe('CPU_PRIORITY');
+  });
+
+  it('leaves the tick count off a night that folds in an hour accumulated before RT-08', () => {
+    const counted = { ...hour, ticks: 360, cappedByLpar: { A1: 0.2 }, cappedTicksByLpar: { A1: 9 } };
+    const old = { ...hour, ticks: 360, cappedByLpar: { A1: 0.02 } };
+    const hosts = [{ lparId: 'A1', cpcId: 'C', importance: 2 }];
+    // 2.5 % of the hour's ticks: the time reading is not capping, though one tick cut 20 % of the demand.
+    expect(mechanismOf({ cpuQueue: 1 }, {}, counted, hosts)).toBe('CPU_PRIORITY');
+    // Folded with an hour that has no count, the night keeps the worst-tick reading it was working to.
+    const acc = addHour(addHour(null, counted), old);
+    expect(acc.cappedTicksByLpar).toBeUndefined();
+    expect(mechanismOf({ cpuQueue: 1 }, {}, acc, hosts)).toBe('CAPPING');
   });
 });

@@ -280,8 +280,11 @@ after filing; it did not make them less arbitrary.
   where its delay arose. U-9: a workload with any share on a host that was capped 6 % in one tick is `CAPPING`. The
   recorded basis is the first host of the busiest CPC: in R-2 and R-7 the explanation line names PROD1 (DDFPRD#1 PI
   0.5, CPU delay 3 %) while the incident is on PROD2 (PI 4.0, CPU delay 89 %).
-- **Capping is the maximum of any tick.** `cappedByLpar` keeps `max(cappedFrac)`, where `cappedFrac` is the share of
-  that tick's demand cut. SPEC §10 says "capped over 5 % of the hour". One capped tick decides the hour.
+- **Capping was the maximum of any tick.** `cappedByLpar` kept `max(cappedFrac)`, where `cappedFrac` is the share of
+  that tick's demand cut, while SPEC §10 says "capped over 5 % of the hour": one capped tick decided the hour.
+  Fixed by RT-08, which counts the ticks in which the image's demand was cut (`cappedTicksByLpar`) and calls the
+  hour capped at `CAPPING.minHourShare` (5 %) of its ticks; `cappedByLpar` stays so an hour accumulated before
+  RT-08 keeps its worst-tick reading.
 - **The CPU refinement applies only to the workload's own queue.** Server starvation under the same cap or the same
   full CPC is `DEPENDENCY`. R-14: one soft cap on PROD2 gives `DEPENDENCY/POLICY` for TELLER and `CAPPING/POLICY`
   for PAYMQ and BATCH, in different groups. R-7 likewise.
@@ -513,7 +516,8 @@ For a CPU-family primary, or a `serverCpu` dependency:
 2. **Pool.** If the excess is zIIP queueing, measure busy and displaceable use on the zIIP pool, and treat "zIIP work
    may not overflow" (IIPHONORPRIORITY=NO, Init & Tuning p.430) as a policy cause.
 3. **Capping** when the host was capped for at least 5 % of the hour's ticks (time, not the worst tick), by defined
-   capacity, group or absolute cap. Add: CAPPING also when the hurt class or its server was held by a resource-group
+   capacity, group or absolute cap (built as RT-08: `cappedTicksByLpar`, `CAPPING.minHourShare`). Add: CAPPING also
+   when the hurt class or its server was held by a resource-group
    maximum (WLMGL CAP delay, RMF Report Analysis p.540), with trigger POLICY. The form's help for CAPPING changes
    from "the image" to "the image or the class".
 4. **Capacity or priority by displaceable CPU.** Replace "CP used by lower importance" with **displaceable CP**: CP

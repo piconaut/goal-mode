@@ -5,7 +5,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
-import { CPU_CAPACITY } from '../content/incidents';
+import { CAPPING, CPU_CAPACITY } from '../content/incidents';
 import type { ActiveEvent, CapacityBasis, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
 
 export const BASELINE_DECAY = 0.8;
@@ -74,6 +74,15 @@ export function rankedMechanismGroups(parts: Record<string, number>, baseline: R
     .map(([g]) => g);
 }
 
+/** Was this image capped for enough of the hour that the hour counts as capped? A time measure, not the worst tick
+ * (SPEC §10, docs/rca-design.md §4.3): the ticks in which its CP demand was cut, at least `CAPPING.minHourShare` of
+ * the hour. An hour accumulated before RT-08 has no tick count, so it keeps the reading it was decided on. */
+export function cappedForHour(hour: HourAcc, lparId: string): boolean {
+  const ticksCapped = hour.cappedTicksByLpar?.[lparId];
+  if (ticksCapped === undefined || hour.ticks <= 0) return (hour.cappedByLpar[lparId] ?? 0) > CAPPING.minHourShare;
+  return ticksCapped >= CAPPING.minHourShare * hour.ticks;
+}
+
 /** Which mechanism grew most relative to the workload's healthy baseline. */
 export function mechanismOf(
   parts: Record<string, number>,
@@ -91,7 +100,7 @@ export function mechanismOf(
   }
   if (best !== 'CPU') return best as Mechanism;
   // Only capping of the images this workload runs on counts.
-  if (hosts.some((h) => (hour.cappedByLpar[h.lparId] ?? 0) > 0.05)) return 'CAPPING';
+  if (hosts.some((h) => cappedForHour(hour, h.lparId))) return 'CAPPING';
   // Capacity only when an image was full (its CPC was, as PR/SM shares engines only within one machine, or
   // the image used all the CP it could get, e.g. every online logical CP) and WLM had little less-important
   // work there to take CPU from; otherwise the policy (importance, goals, weights) could have served this work.
@@ -172,7 +181,7 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
 /** Pseudo-workload id of a missed batch window's incident. */
 export const BATCH_INCIDENT = 'BATCH';
 
-/** Sums an hour into the night's accumulator (busy sums add, capped fractions keep their max). */
+/** Sums an hour into the night's accumulator (busy sums and capped ticks add, capped fractions keep their max). */
 export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
   if (!acc) return { ...h, workloads: {} };
   const sum = (a: Record<string, number> | undefined, b: Record<string, number> | undefined) => {
@@ -182,6 +191,11 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
   };
   const cappedByLpar = { ...acc.cappedByLpar };
   for (const [k, v] of Object.entries(h.cappedByLpar)) cappedByLpar[k] = Math.max(cappedByLpar[k] ?? 0, v);
+  // A night with any hour accumulated before RT-08 has no tick count for that hour, so it keeps the worst-tick
+  // reading the whole night was working to (a night is decided once, at its end).
+  const cappedTicksByLpar = acc.cappedTicksByLpar && h.cappedTicksByLpar
+    ? sum(acc.cappedTicksByLpar, h.cappedTicksByLpar)
+    : undefined;
   const cpByImportance = { ...(acc.cpByImportance ?? {}) };
   for (const [k, v] of Object.entries(h.cpByImportance ?? {})) cpByImportance[k] = v.map((x, i) => x + (cpByImportance[k]?.[i] ?? 0));
   return {
@@ -190,6 +204,7 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
     workloads: {},
     maxCappedFrac: Math.max(acc.maxCappedFrac, h.maxCappedFrac),
     cappedByLpar,
+    ...(cappedTicksByLpar ? { cappedTicksByLpar } : {}),
     cpcBusySum: acc.cpcBusySum + h.cpcBusySum,
     cpcBusyById: sum(acc.cpcBusyById, h.cpcBusyById),
     lparBusyById: sum(acc.lparBusyById, h.lparBusyById),

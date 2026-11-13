@@ -185,16 +185,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-08 · CAPPING is decided by one capped tick, not by 5 % of the hour
-`list: rca-truth · status: ready · priority: low · size: S · area: game`
-
-`accumulateHour` keeps `max(cappedFrac)` per LPAR and `mechanismOf` compares it with 0.05, so a single tick in which
-6 % of an image's demand was cut makes the hour's CPU incidents CAPPING (A6, U-9). SPEC §10 says "capped over 5 % of
-the hour". Accumulate the number of ticks in which the image was capped (`cappedFrac > 0`) and call it CAPPING when
-that is at least 5 % of the hour's ticks; keep `cappedByLpar` readable for old saves; the batch night
-(`addHour`) sums ticks. Put the 5 % in `content/incidents.ts`. Done when: a test with one capped tick in an hour
-gets the CPU split, one capped for 10 % of the hour gets CAPPING, and a sweep shows the bands hold.
-
 ### RT-09 · Trigger and mechanism wording: "Change regression" (renamed id), "Policy or configuration"
 `list: rca-truth · status: blocked: after RT-00 · priority: low · size: M · area: content`
 

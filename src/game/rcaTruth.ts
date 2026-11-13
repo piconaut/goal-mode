@@ -8,7 +8,7 @@
 import { CPU_BANDS, CPU_CAPACITY } from '../content/incidents';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import type { GameContent } from './run/shared';
-import { blamedCard } from './sla';
+import { blamedCard, cappedForHour } from './sla';
 import type { ActiveEvent, CapacityBasis, HourAcc, IncidentTruth, Mechanism, Trigger } from './types';
 
 /** The CPU family: one machine's shortage, seen three ways. Used for the cause's identity and to scope the
@@ -116,7 +116,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     const avg = (sum: number | undefined) => (ctx.hour.ticks > 0 ? (sum ?? 0) / ctx.hour.ticks : 0);
     const starved = (ctx.servers ?? []).find((s) => {
       // Each measure against its own line: an image at 40 % of its own CP on a busy machine was not held back.
-      const capped = (ctx.hour.cappedByLpar[s.lparId] ?? 0) > 0.05;
+      const capped = cappedForHour(ctx.hour, s.lparId);
       const cpcId = ctx.lpars.find((l) => l.id === s.lparId)?.cpcId ?? '';
       return capped
         || avg(ctx.hour.lparBusyById?.[s.lparId]) >= CPU_CAPACITY.lparBusyFrac
