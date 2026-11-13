@@ -1,9 +1,10 @@
 # Remote test run (user request 2026-11-12): run `npx vitest run` (`npm test`) on GitHub's runners instead of a
-# session's cores, split by test shard across parallel jobs. No PR needed.
-#   - push to a `test/**` branch: arguments from the head commit's `Test-Args:` / `Test-Shards:` trailers
-#     (`npm run test:remote` makes that commit and branch and fetches the result); the branch is deleted afterwards.
+# session's cores, in one job. No PR needed.
+#   - push to a `test/**` branch: arguments from the head commit's `Test-Args:` trailer (`npm run test:remote` makes
+#     that commit and branch and fetches the result); the branch is deleted afterwards.
 #   - workflow_dispatch (Actions tab, once this file is on dev): pick the branch and type the arguments.
-# Result: artifact `test-result` (summary.md) and the run's job summary; the run fails when a test fails.
+# Result: artifact `test-result` (summary.md) and the run's job summary; the run fails when a test fails, a whole
+# test file fails, or nothing ran.
 name: Test
 
 on:
@@ -14,9 +15,6 @@ on:
       args:
         description: 'Test selection (--suite golden,game,sim,tools,ui, or --filter <filename text>)'
         default: ''
-      shards:
-        description: 'Parallel jobs (default 4, at most 10)'
-        default: ''
 
 permissions:
   contents: write # only to delete the test/** branch when done
@@ -26,89 +24,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  plan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      raw: ${{ steps.plan.outputs.raw }}
-      filters: ${{ steps.plan.outputs.filters }}
-      shards: ${{ steps.plan.outputs.shards }}
-      matrix: ${{ steps.plan.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - id: plan
-        env:
-          EVENT: ${{ github.event_name }}
-          HEAD_MSG: ${{ github.event.head_commit.message }}
-          IN_ARGS: ${{ inputs.args }}
-          IN_SHARDS: ${{ inputs.shards }}
-        run: |
-          if [ "$EVENT" = push ]; then
-            raw=$(printf '%s\n' "$HEAD_MSG" | sed -n 's/^Test-Args: *//p' | head -1)
-            shards=$(printf '%s\n' "$HEAD_MSG" | sed -n 's/^Test-Shards: *//p' | head -1)
-          else
-            raw="$IN_ARGS"; shards="$IN_SHARDS"
-          fi
-          node --experimental-strip-types --no-warnings tools/ci/testPlan.ts "$raw" "$shards" | tee -a "$GITHUB_OUTPUT"
-
-  shard:
-    needs: plan
+  test:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci --no-audit --no-fund
-      # FILTERS is validated by testPlan.ts ([A-Za-z0-9._/-]) and split on spaces on purpose. An empty shard passes
-      # (--passWithNoTests); the report job fails the run when no shard ran a test at all.
-      - name: Run vitest
+      - id: plan
         env:
-          FILTERS: ${{ needs.plan.outputs.filters }}
-          SHARD: ${{ matrix.shard }}
-          SHARDS: ${{ needs.plan.outputs.shards }}
+          EVENT: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+          IN_ARGS: ${{ inputs.args }}
+        run: |
+          if [ "$EVENT" = push ]; then
+            raw=$(printf '%s\n' "$HEAD_MSG" | sed -n 's/^Test-Args: *//p' | head -1)
+          else
+            raw="$IN_ARGS"
+          fi
+          node --experimental-strip-types --no-warnings tools/ci/testPlan.ts "$raw" | tee -a "$GITHUB_OUTPUT"
+      - run: npm ci --no-audit --no-fund
+      # FILTERS is validated by testPlan.ts ([A-Za-z0-9._,/-]) and split on spaces on purpose.
+      - id: tests
+        name: Run vitest
+        env:
+          FILTERS: ${{ steps.plan.outputs.filters }}
         run: |
           mkdir -p runs/test
           set -o pipefail
-          npx vitest run $FILTERS --shard="$SHARD/$SHARDS" --passWithNoTests \
-            --reporter=default --reporter=json --outputFile.json=runs/test/report.json 2>&1 | tee runs/test/shard.log
+          npx vitest run $FILTERS --reporter=default --reporter=json --outputFile.json=runs/test/report.json 2>&1 | tee runs/test/vitest.log
+      # Runs even when vitest failed, so the summary artifact and job summary always exist.
       - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-shard-${{ matrix.shard }}
-          path: runs/test/
-          retention-days: 3
-
-  # Merge the shards' JSON reports into one summary, fail the run on any failure, and keep the summary as an artifact.
-  report:
-    needs: [plan, shard]
-    if: always() && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22 # testReport.ts runs through node --experimental-strip-types; no npm ci needed
-      - uses: actions/download-artifact@v4
-        continue-on-error: true # a shard killed at setup leaves nothing to download; testReport.ts reports the gap
-        with:
-          pattern: test-shard-*
-          path: runs/shards
-      - name: Summarise results
+        name: Summarise results
         env:
-          RAW: ${{ needs.plan.outputs.raw }}
-          SHARDS: ${{ needs.plan.outputs.shards }}
-          SHARD_RESULT: ${{ needs.shard.result }}
+          RAW: ${{ steps.plan.outputs.raw }}
+          TESTS: ${{ steps.tests.outcome }}
         run: |
           mkdir -p runs/report
           {
@@ -118,10 +70,10 @@ jobs:
             echo
           } > runs/report/summary.md
           status=0
-          node --experimental-strip-types --no-warnings tools/ci/testReport.ts runs/shards "$SHARDS" "$PWD" >> runs/report/summary.md || status=$?
-          if [ "$SHARD_RESULT" != success ]; then
+          node --experimental-strip-types --no-warnings tools/ci/testReport.ts runs/test/report.json "$PWD" >> runs/report/summary.md || status=$?
+          if [ "$TESTS" != success ]; then
             echo >> runs/report/summary.md
-            echo "❌ The test jobs finished as \`$SHARD_RESULT\`: a shard stopped before writing its report, or a job was cancelled." >> runs/report/summary.md
+            echo "❌ The test step finished as $TESTS: the report above may be incomplete; the run log has the full output." >> runs/report/summary.md
             status=1
           fi
           cat runs/report/summary.md >> "$GITHUB_STEP_SUMMARY"
@@ -134,7 +86,7 @@ jobs:
           retention-days: 14
 
   cleanup:
-    needs: [report]
+    needs: [test]
     if: always() && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 5

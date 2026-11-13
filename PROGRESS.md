@@ -376,14 +376,17 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   session's 4 cores and starves other work (measured: 20 seeds × 3 bots of `dev` 1ec5957 in 17 min with 4 shards of 5 seeds and 8 min with 10 shards of 2, identical results both ways, every bot inside its band); a worker session costs tokens just to start and report.
 
 - Remote tests (user request 2026-11-12): `.github/workflows/test.yml` runs `npm test` (vitest) on GitHub's runners,
-  sharded by test file across parallel jobs (default 4, at most 10) on a push to `test/**` or by workflow_dispatch.
-  `npm run test:remote` mirrors `sweep:remote`: it pushes a throwaway commit (the tested commit's tree plus the current
-  test workflow, args in a `Test-Args:` trailer), waits, and downloads `test-result` to `runs/remote-tests/<sha7>/`;
-  the workflow deletes the branch afterwards. `--suite` (test directories) or `--filter` (filename text) narrows the
-  run through `tools/ci/testPlan.ts`; the shards' Vitest JSON reports merge into one summary
-  (`tools/ci/testReport.ts`); the run fails when a test fails, a shard loses its report, or nothing ran. CI's `check`
-  job still gates PRs on the merge ref: this is for running the suite on a committed ref without a PR or a session's
-  cores, e.g. a long golden-changing branch or a PR head you don't want to wait on.
+  in one job, on a push to `test/**` or by workflow_dispatch. `npm run test:remote` mirrors `sweep:remote`: it pushes a
+  throwaway commit (the tested commit's tree plus the current test workflow, args in a `Test-Args:` trailer), waits, and
+  downloads `test-result` to `runs/remote-tests/<sha7>/`; the workflow deletes the branch afterwards. `--suite` (test
+  directories) or `--filter` (filename text) narrows the run through `tools/ci/testPlan.ts`; the Vitest JSON report
+  becomes one summary (`tools/ci/testReport.ts`); the run fails when a test or a whole test file fails, no report was
+  written, or nothing ran. Why: the full suite is CPU-bound, and a shared session's cores are often busy with another
+  session's sweep or repro, so `npm test` hits its 10 s hook and 30–120 s test timeouts and reports false reds (two
+  `npm run check` runs on 2026-11-12 timed out in heavy game/tools tests while another session held the cores; the same
+  files pass on a quiet box). Runners give a quiet, reproducible budget and keep the session free. CI's `check` job
+  still gates PRs on the merge ref: this is for running the suite on a committed ref without a PR or a session's cores,
+  e.g. a long golden-changing branch or a PR head you don't want to wait on.
 
 - Review-and-fix loop (user request 2026-11-06): `.claude/skills/pr-fix-loop/` with the Opus `pr-fixer` agent, as a
   cheaper alternative to `pr-review-loop` (no author round trip, no second full review). Gate before fixing: 1–5

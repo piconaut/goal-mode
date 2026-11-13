@@ -75,30 +75,23 @@ describe('remote sweep plan', () => {
 });
 
 describe('remote test plan', () => {
-  it('defaults to every test file in four shards', () => {
-    expect(planTest('')).toEqual({ raw: '', filters: [], shards: 4 });
-    expect(planTest('   ', 2)).toEqual({ raw: '', filters: [], shards: 2 });
+  it('defaults to every test file', () => {
+    expect(planTest('')).toEqual({ raw: '', filters: [] });
+    expect(planTest('   ')).toEqual({ raw: '', filters: [] });
     expect(SUITES).toEqual(['golden', 'game', 'sim', 'tools', 'ui']);
   });
 
   it('maps --suite to test directories and --filter to a path substring', () => {
-    expect(planTest('--suite sim,golden')).toEqual({ raw: '--suite sim,golden', filters: ['tests/sim', 'tests/golden'], shards: 4 });
-    expect(planTest('--suite sim,sim', 3)).toEqual({ raw: '--suite sim,sim', filters: ['tests/sim'], shards: 3 });
-    expect(planTest('--filter tests/sim/wlm --filter golden', 2)).toEqual({ raw: '--filter tests/sim/wlm --filter golden', filters: ['tests/sim/wlm', 'golden'], shards: 2 });
+    expect(planTest('--suite sim,golden')).toEqual({ raw: '--suite sim,golden', filters: ['tests/sim', 'tests/golden'] });
+    expect(planTest('--suite sim,sim')).toEqual({ raw: '--suite sim,sim', filters: ['tests/sim'] });
+    expect(planTest('--filter tests/sim/wlm --filter golden')).toEqual({ raw: '--filter tests/sim/wlm --filter golden', filters: ['tests/sim/wlm', 'golden'] });
   });
 
   it('refuses to mix --suite with --filter, which would widen instead of narrow', () => {
     expect(() => planTest('--suite sim --filter wlm')).toThrow(/not both/);
   });
 
-  it('clamps the shard count', () => {
-    expect(planTest('', 50).shards).toBe(10);
-    expect(planTest('', 1).shards).toBe(1);
-    expect(planTest('', 2.9).shards).toBe(2);
-    expect(planTest('', 0).shards).toBe(4);
-  });
-
-  it('rejects unknown suites, missing values, the shard flag and values that could reach a shell', () => {
+  it('rejects unknown suites, missing values, shard flags and values that could reach a shell', () => {
     expect(() => planTest('--suite nope')).toThrow(/unknown suite nope/);
     expect(() => planTest('--suite sim,,golden')).toThrow(/unknown suite/);
     expect(() => planTest('--suite')).toThrow(/bad value/);
@@ -117,7 +110,9 @@ describe('remote test report', () => {
     numPassedTests: 3,
     numFailedTests: 0,
     numPendingTests: 0,
-    testResults: [{ name: '/work/tests/sim/wlm.test.ts', assertionResults: [{ fullName: 'wlm keeps the goal', status: 'passed' }] }],
+    numFailedTestSuites: 0,
+    success: true,
+    testResults: [{ name: '/work/tests/sim/wlm.test.ts', status: 'passed', assertionResults: [{ fullName: 'wlm keeps the goal', status: 'passed' }] }],
     ...over,
   });
   const failedJson = (count = 1): VitestJson =>
@@ -125,9 +120,12 @@ describe('remote test report', () => {
       numTotalTests: count,
       numPassedTests: 0,
       numFailedTests: count,
+      numFailedTestSuites: 1,
+      success: false,
       testResults: [
         {
           name: '/work/tests/sim/wlm.test.ts',
+          status: 'failed',
           assertionResults: Array.from({ length: count }, (_, i) => ({
             fullName: `wlm fails ${i}`,
             status: 'failed',
@@ -137,40 +135,53 @@ describe('remote test report', () => {
       ],
     });
 
-  it('passes when every shard reported and nothing failed', () => {
-    const { markdown, ok } = summarize([{ name: 'test-shard-1', json: json() }], 1, '/work');
+  it('passes when nothing failed', () => {
+    const { markdown, ok } = summarize(json(), '/work');
     expect(ok).toBe(true);
-    expect(markdown.join('\n')).toContain('3 passed, 0 failed, 0 skipped — 3 tests in 1 shard(s)');
+    expect(markdown.join('\n')).toContain('3 passed, 0 failed, 0 skipped — 3 tests');
     expect(markdown.join('\n')).toContain('All tests passed.');
   });
 
   it('lists failed tests with the checkout path stripped from the message', () => {
-    const { markdown, ok } = summarize([{ name: 'test-shard-1', json: failedJson() }], 1, '/work');
+    const { markdown, ok } = summarize(failedJson(), '/work');
     const text = markdown.join('\n');
     expect(ok).toBe(false);
     expect(text).toContain('**tests/sim/wlm.test.ts › wlm fails 0**');
     expect(text).toContain('AssertionError: expected 1 to be 2');
     expect(text).not.toContain('/work/');
     expect(text).toContain('0 passed, 1 failed');
+    expect(text).toContain('1 file(s) failed');
   });
 
-  it('fails when a shard sent no report or nothing ran', () => {
-    const missing = summarize([{ name: 'test-shard-1', json: json() }], 2);
+  it('fails when a hook error failed the file without failing a test', () => {
+    const hook = summarize({
+      numTotalTests: 1,
+      numPassedTests: 0,
+      numFailedTests: 0,
+      numPendingTests: 1,
+      numFailedTestSuites: 1,
+      success: false,
+      testResults: [{ name: '/work/tests/sim/hook.test.ts', status: 'failed', message: 'setup blew up', assertionResults: [{ fullName: 'never runs', status: 'skipped' }] }],
+    }, '/work');
+    const text = hook.markdown.join('\n');
+    expect(hook.ok).toBe(false);
+    expect(text).toContain('**tests/sim/hook.test.ts (file failed)**');
+    expect(text).toContain('setup blew up');
+    expect(text).toContain('0 passed, 0 failed, 1 skipped — 1 tests');
+  });
+
+  it('fails when no report was written or nothing ran', () => {
+    const missing = summarize(null);
     expect(missing.ok).toBe(false);
-    expect(missing.markdown.join('\n')).toContain('1 of 2 shard(s) sent no report');
-    expect(missing.markdown.join('\n')).toContain('| test-shard-1 | 3 | 3 | 0 | 0 | passed |');
+    expect(missing.markdown.join('\n')).toContain('No test report was written');
 
-    const empty = summarize([{ name: 'test-shard-1', json: json() }, { name: 'test-shard-2', json: null }], 2);
-    expect(empty.ok).toBe(false);
-    expect(empty.markdown.join('\n')).toContain('| test-shard-2 | 0 | 0 | 0 | 0 | ❌ no report |');
-
-    const none = summarize([{ name: 'test-shard-1', json: { numTotalTests: 0 } }], 1);
+    const none = summarize({ numTotalTests: 0 });
     expect(none.ok).toBe(false);
     expect(none.markdown.join('\n')).toContain('No tests ran');
   });
 
-  it('caps the failure list and points at the shard logs', () => {
-    const { markdown, ok } = summarize([{ name: 'test-shard-1', json: failedJson(23) }], 1, '/work');
+  it('caps the failure list and points at the run log', () => {
+    const { markdown, ok } = summarize(failedJson(23), '/work');
     const text = markdown.join('\n');
     expect(ok).toBe(false);
     expect(text).toContain('**tests/sim/wlm.test.ts › wlm fails 19**');

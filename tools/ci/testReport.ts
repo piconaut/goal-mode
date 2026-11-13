@@ -1,12 +1,10 @@
-// Remote test report (.github/workflows/test.yml): merge the shards' Vitest JSON reports into one markdown summary and
-// fail when any test failed, a shard lost its report, or nothing ran at all.
+// Remote test report (.github/workflows/test.yml): turn Vitest's JSON report into one markdown summary and fail when a
+// test or a whole test file failed, no report was written, or nothing ran at all.
 //
-//   npx tsx tools/ci/testReport.ts <shards-dir> <expected-shards> [root]
+//   npx tsx tools/ci/testReport.ts <report.json> [root]
 //
-// <shards-dir> holds one directory per shard (the downloaded `test-shard-*` artifacts), each with vitest's
-// `report.json` (--reporter=json). [root] is the checkout path, stripped from stack traces for readability.
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+// [root] is the checkout path, stripped from stack traces for readability.
+import { existsSync, readFileSync } from 'node:fs';
 
 export interface Assertion {
   fullName?: string;
@@ -18,6 +16,8 @@ export interface Assertion {
 
 export interface TestFile {
   name?: string;
+  status?: string;
+  message?: string;
   assertionResults?: Assertion[];
 }
 
@@ -26,12 +26,9 @@ export interface VitestJson {
   numPassedTests?: number;
   numFailedTests?: number;
   numPendingTests?: number;
+  numFailedTestSuites?: number;
+  success?: boolean;
   testResults?: TestFile[];
-}
-
-export interface Shard {
-  name: string;
-  json: VitestJson | null;
 }
 
 export interface Summary {
@@ -44,52 +41,39 @@ const MAX_MESSAGE_LINES = 12;
 const MAX_MESSAGE_CHARS = 1500;
 
 const assertionName = (a: Assertion) => a.fullName ?? [...(a.ancestorTitles ?? []), a.title ?? '?'].join(' › ');
+const shorten = (s: string) => s.trim().split('\n').slice(0, MAX_MESSAGE_LINES).join('\n').slice(0, MAX_MESSAGE_CHARS);
 
-/** One markdown report for every shard, with a short failure list. `expected` shards that sent no report fail. */
-export function summarize(shards: Shard[], expected: number, root = ''): Summary {
+/** One markdown report for a run, with a short failure list. A missing report, a failed test file or no tests fail. */
+export function summarize(json: VitestJson | null, root = ''): Summary {
+  if (!json) {
+    return { markdown: ['❌ No test report was written: vitest was killed or crashed before finishing (see the run log).'], ok: false };
+  }
   const strip = (s: string) => (root ? s.split(`${root}/`).join('') : s);
-  let total = 0;
-  let passed = 0;
-  let failed = 0;
-  let skipped = 0;
+  const total = json.numTotalTests ?? 0;
+  const passed = json.numPassedTests ?? 0;
+  const failed = json.numFailedTests ?? 0;
+  const skipped = json.numPendingTests ?? 0;
+  const failedFiles = json.numFailedTestSuites ?? 0;
   const failures: { test: string; message: string }[] = [];
-  const table = ['| shard | tests | passed | failed | skipped | status |', '|---|---:|---:|---:|---:|---|'];
-  for (const shard of shards) {
-    const j = shard.json;
-    const t = j?.numTotalTests ?? 0;
-    const p = j?.numPassedTests ?? 0;
-    const f = j?.numFailedTests ?? 0;
-    const s = j?.numPendingTests ?? 0;
-    total += t;
-    passed += p;
-    failed += f;
-    skipped += s;
-    const status = !j ? '❌ no report' : f > 0 ? `${f} failed` : 'passed';
-    table.push(`| ${shard.name} | ${t} | ${p} | ${f} | ${s} | ${status} |`);
-    for (const file of j?.testResults ?? []) {
-      for (const a of file.assertionResults ?? []) {
-        if (a.status !== 'failed') continue;
-        const message = (a.failureMessages?.[0] ?? '').trim().split('\n').slice(0, MAX_MESSAGE_LINES).join('\n').slice(0, MAX_MESSAGE_CHARS);
-        failures.push({ test: `${strip(file.name ?? '?')} › ${assertionName(a)}`, message: strip(message) });
-      }
+  for (const file of json.testResults ?? []) {
+    // A hook or collection error fails the file, not any assertion: vitest puts it in the file's message.
+    const message = file.message?.trim();
+    if (file.status === 'failed' && message) failures.push({ test: `${strip(file.name ?? '?')} (file failed)`, message: shorten(strip(message)) });
+    for (const a of file.assertionResults ?? []) {
+      if (a.status !== 'failed') continue;
+      failures.push({ test: `${strip(file.name ?? '?')} › ${assertionName(a)}`, message: shorten(strip(a.failureMessages?.[0] ?? '')) });
     }
   }
-  const missing = Math.max(0, expected - shards.filter((s) => s.json).length);
-  const ok = failed === 0 && missing === 0 && total > 0;
+  const ok = failed === 0 && failedFiles === 0 && json.success !== false && total > 0;
 
-  const lines = [
-    `**${passed} passed, ${failed} failed, ${skipped} skipped — ${total} tests in ${shards.length} shard(s)**`,
-    '',
-    ...table,
-  ];
-  if (missing) lines.push('', `❌ ${missing} of ${expected} shard(s) sent no report: see the shard jobs, and any shard that failed before npm ci.`);
-  if (total === 0 && !missing) lines.push('', '❌ No tests ran: check the `--suite` names and `--filter` text.');
+  const lines = [`**${passed} passed, ${failed} failed, ${skipped} skipped — ${total} tests**${failedFiles ? ` · ${failedFiles} file(s) failed` : ''}`];
+  if (total === 0) lines.push('', '❌ No tests ran: check the `--suite` names and `--filter` text.');
   if (failures.length) {
     lines.push('', '#### Failed tests', '');
     for (const f of failures.slice(0, MAX_FAILURES)) {
       lines.push('', `**${f.test}**`, '', '````', f.message || '(no message)', '````');
     }
-    if (failures.length > MAX_FAILURES) lines.push('', `… and ${failures.length - MAX_FAILURES} more failure(s); open the run's shard logs.`);
+    if (failures.length > MAX_FAILURES) lines.push('', `… and ${failures.length - MAX_FAILURES} more failure(s); the run log has the rest.`);
   } else if (ok) {
     lines.push('', 'All tests passed.');
   }
@@ -97,19 +81,16 @@ export function summarize(shards: Shard[], expected: number, root = ''): Summary
 }
 
 if (process.argv[1]?.endsWith('testReport.ts')) {
-  const [dir = 'runs/shards', expectedRaw = '0', root] = process.argv.slice(2);
-  const expected = Number(expectedRaw) || 0;
-  const names = existsSync(dir) ? readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort() : [];
-  const shards: Shard[] = names.map((name) => {
-    const file = join(dir, name, 'report.json');
-    if (!existsSync(file)) return { name, json: null };
+  const [file = 'runs/test/report.json', root] = process.argv.slice(2);
+  let json: VitestJson | null = null;
+  if (existsSync(file)) {
     try {
-      return { name, json: JSON.parse(readFileSync(file, 'utf8')) as VitestJson };
+      json = JSON.parse(readFileSync(file, 'utf8')) as VitestJson;
     } catch {
-      return { name, json: null }; // a truncated report is a failed shard, not a crashed report job
+      json = null; // a truncated report is a failed run, not a crashed report job
     }
-  });
-  const { markdown, ok } = summarize(shards, expected, root);
+  }
+  const { markdown, ok } = summarize(json, root);
   console.log(markdown.join('\n'));
   process.exit(ok ? 0 : 1);
 }

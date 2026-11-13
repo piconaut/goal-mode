@@ -1,18 +1,18 @@
 // Run the test suites on GitHub Actions (.github/workflows/test.yml) instead of this machine, from any agent or a
 // human: no PR, no branch switch, no working-tree change.
 //
-//   npm run test:remote -- [--suite golden,game,sim,tools,ui | --filter <text>] [--shards 4] [--name label]
-//                           [--ref <commit|branch>] [--no-wait]
+//   npm run test:remote -- [--suite golden,game,sim,tools,ui | --filter <text>] [--name label] [--ref <commit|branch>]
+//                           [--no-wait]
 //   npm run test:remote -- --fetch <commit sha>     # wait for / download a run started with --no-wait
 //
 // --suite picks test directories under tests/ and --filter a filename substring (validated by tools/ci/testPlan.ts);
 // they are alternatives, since vitest OR-s its file filters. No selection runs every test file. --ref tests another
 // commit (a PR head, origin/dev) without checking it out; default HEAD. The tested tree gets this checkout's test
 // workflow, planner and reporter overlaid, so any commit can be tested, even one cut before they existed. It makes a
-// throwaway commit on top of the ref (its tree plus the overlay, `Test-Args:` / `Test-Shards:` trailers) and pushes it
-// to `test/<label>-<sha7>`; the workflow deletes that branch when done. Result: runs/remote-tests/<sha7>/
+// throwaway commit on top of the ref (its tree plus the overlay, a `Test-Args:` trailer) and pushes it to
+// `test/<label>-<sha7>`; the workflow deletes that branch when done. Result: runs/remote-tests/<sha7>/
 // (summary.md), summary printed. Exit 0 when every test passed, 1 otherwise. Needs `gh` authenticated for the repo
-// (cloud sessions have it). A full run takes ~2 min with the default 4 shards, plus npm ci.
+// (cloud sessions have it). A full run is one job: a few minutes of tests plus npm ci.
 
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -30,14 +30,11 @@ const take = (name: string): string | undefined => {
   return v && !v.startsWith('--') ? v : '';
 };
 const fetchSha = take('fetch');
-const shards = take('shards');
 const label = take('name');
 const noWait = take('no-wait') !== undefined;
 const ref = take('ref') || 'HEAD';
 const testArgs = argv.join(' ');
 if (fetchSha === '') throw new Error('--fetch needs the commit sha printed by a --no-wait run');
-const shardsWanted = shards === undefined ? undefined : Number(shards);
-if (shardsWanted !== undefined && (!Number.isInteger(shardsWanted) || shardsWanted < 1)) throw new Error(`--shards must be a positive whole number: ${shards}`);
 
 const sh = (cmd: string, args: string[], env?: NodeJS.ProcessEnv) => execFileSync(cmd, args, { encoding: 'utf8', env: env ?? process.env }).trim();
 const OVERLAY = ['.github/workflows/test.yml', 'tools/ci/testPlan.ts', 'tools/ci/testReport.ts'];
@@ -63,15 +60,15 @@ const repo = `${remote.at(-2)}/${remote.at(-1)}`;
 
 let sha = fetchSha ?? '';
 if (!fetchSha) {
-  const plan = planTest(testArgs, shardsWanted); // fail fast, same rules as the workflow
+  const plan = planTest(testArgs); // fail fast, same rules as the workflow
   const parent = sh('git', ['rev-parse', '--verify', `${ref}^{commit}`]);
   if (ref === 'HEAD' && sh('git', ['status', '--porcelain', '--untracked-files=no'])) log('warning: uncommitted changes are not tested (committed HEAD only)');
-  const trailers = [...(testArgs ? [`Test-Args: ${testArgs}`] : []), ...(shards ? [`Test-Shards: ${shards}`] : [])].join('\n') || 'Test-Args:';
+  const trailers = testArgs ? `Test-Args: ${testArgs}` : 'Test-Args:';
   sha = sh('git', ['commit-tree', testedTree(parent), '-p', parent, '-m', `test: ${testArgs || 'all'}`, '-m', trailers]);
   const base = (label || (ref === 'HEAD' ? sh('git', ['rev-parse', '--abbrev-ref', 'HEAD']) : ref)).replace(/[^A-Za-z0-9._-]+/g, '-').slice(0, 40);
   const branch = `test/${base}-${sha.slice(0, 7)}`;
   execFileSync('git', ['push', '--quiet', 'origin', `${sha}:refs/heads/${branch}`], { stdio: 'inherit' });
-  log(`pushed ${branch} (${sha.slice(0, 7)}, testing ${parent.slice(0, 7)}): ${plan.shards} shard(s), args "${plan.raw || 'all tests'}"`);
+  log(`pushed ${branch} (${sha.slice(0, 7)}, testing ${parent.slice(0, 7)}): args "${plan.raw || 'all tests'}"`);
   if (noWait) {
     console.log(`test run started; fetch the result with: npm run test:remote -- --fetch ${sha}`);
     process.exit(0);
