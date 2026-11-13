@@ -176,7 +176,7 @@ RCA judging and incident truth: the work that makes RCA verdicts fair and eviden
 direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
-- **RT-00 … RT-15 are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
+- **RT-00 … RT-15 and RT-25 (before RT-14) are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
   in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 waits for the `wlm-truth` core
   (WT-04 … WT-10, user decision 2026-11-10): run `dev-loop rca-truth,wlm-truth`, or `rca-truth` alone stops at RT-14
   and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
@@ -251,8 +251,27 @@ Done when: every mechanism and trigger has a recipe a test satisfies from a repl
 with look-alike pins (surge against regression, capacity against priority), and a test shows a tier-0/1 path for
 each common recipe.
 
+### RT-25 · The counterfactual validator tests every active card and measures attainment, against a noise floor
+`list: rca-truth · status: ready · priority: high · size: M · area: tooling`
+
+From the session review of RT-06 after WT-09 (2026-11-13). `inspect blame` (`src/game/counterfactual.ts`,
+`tools/inspect.ts`) ends only cards whose `affects` names the hurt workload, so it cannot find the error RT-14 fixes
+(a card hurting work it does not declare): 187 of 202 baseline incidents had no card to test. Its verdict is binary
+(SLA met with the card ended), so joint causes read as "not a cause" (the 3 baseline disagreements: Harbourline
+CAPPING hours, best 91.1 % against 95 %) and incidents near the line flip on small path effects. Change it to:
+- end **every card active in the hour**, one at a time (offline, so the extra hours of sim are acceptable);
+- report each card's **attainment gain** (the hour's SLA attainment with the card ended, less as-run), and call it a
+  cause when the gain clears the noise floor, whether or not the SLA would then have been met;
+- measure the **noise floor** from controls: red-herring cards that by design hurt nothing (CP_SPARING, any card
+  with empty `affects`) active in incident hours, reported per scenario; with fewer than 10 controls in the sample,
+  add seeds until there are, and say so in the output.
+Keep `--json` (RT-14 consumes it) and the old verdict as a field, so the change is comparable. Game attribution does
+not change. Done when: the output lists every active card per incident with its gain, the noise floor and its
+control count are reported, a test covers a joint cause counted as a cause and a red herring below the floor, and
+a new baseline (seeds 1–5 of the three scenarios, Normal) is recorded in PROGRESS.md for RT-14.
+
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: ready · priority: high · size: L · area: game`
+`list: rca-truth · status: blocked: after RT-25 · priority: high · size: L · area: game`
 
 Sequencing (user decision 2026-11-10, docs/wlm-design.md §7): footprints are measured on the WLM core of `wlm-truth`
 (WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
@@ -261,9 +280,17 @@ User decision on Q5, 2026-11-10: yes. After WT-09 and WT-10 (WT-10 landed 2026-1
 (§4.4(1)), generalising PT-04's routing-based scope; rank direct before collateral, fresh before background, then
 overlap, and accept both on a tie (no `uid` order); collateral victims accept the card's trigger and the fallback;
 `disturbed` uses the footprint; BATCH is in reach like any workload; SMF_AUDIT gets a footprint. Moves truth
-triggers: sweep. Done when: R-3, R-8 and R-9 give the card's trigger to the collateral incidents, U-1 … U-3 are
-tests, RT-06's validator on seeds 1–5 of the three scenarios shows fewer disagreements than its baseline (remaining
-ones listed in the PR), and SPEC §9 and §10 describe footprints.
+triggers: sweep.
+Tests are built fixtures (a card, a footprint, an incident with a given mechanism on a given host), not replayed seed
+incidents: those move with every WLM change (WT-09 moved RT-06's online incidents 0/1/14 → 0/2/16). R-3, R-8 and R-9
+are checked once with the validator and the result recorded in the PR, not kept as standing assertions. Each
+validator disagreement is classified: **footprint wrong** (the card loaded its resource on the hurt work's host or
+its servers' hosts, and the footprint leaves it out, or the reverse) or **path effect** (the gain comes from a
+changed WLM path, e.g. sysplex PIs, with the card's resource not loaded where the work waited); only the first
+counts. Done when: U-1 … U-3 and the footprint fixtures are tests, R-3, R-8 and R-9 give the card's trigger to the
+collateral incidents (validator output in the PR), the validator (RT-25) on seeds 1–5 of the three scenarios shows
+fewer footprint-wrong disagreements than RT-25's baseline (path effects listed in the PR), and SPEC §9 and §10
+describe footprints.
 
 ### RT-15 · Group incidents by cause, not by equal labels
 `list: rca-truth · status: blocked: after RT-14 · priority: high · size: M · area: game`
