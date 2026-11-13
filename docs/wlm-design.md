@@ -2232,7 +2232,8 @@ path (`dispatch.ts`: start tick − queued tick), decayed beside `rtSumSec` (`ru
 keep their existing re-evaluated projections. `policyAdjust`'s `instPi` uses it for every base and trial PI,
 including donors. Tests: `tests/sim/batchRt.test.ts` (AVG and PCT, non-null base/trials, gain, RECOVERING, null
 cases, donor harm and safeguards) plus the existing batch completion tests. No shipped policy gives batch an RT
-goal, so goldens, bench hashes and `npm run compare` are unchanged.
+goal, so goldens, bench hashes and `npm run compare` are unchanged. An old save has no queue split until its next
+batch completion, so a batch RT period stays unmanaged until then; every other field loads unchanged.
 
 Started tasks still have no completions and are out of scope.
 
