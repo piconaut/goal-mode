@@ -589,6 +589,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   accepted CPU plan. Shadow IT slows MOBILE again under adaptive WLM; the RT-06 test fixture moves to Revenue seed 6.
   Harbourline seed 7 does not come back: §9.7's W7 attribution corrected (§9.10).
 
+- 2026-11-13: RT-25 filed (user request, after reviewing what RT-06 has found): the counterfactual validator ends
+  every active card, reports attainment gain against a noise floor from red-herring cards, and gives RT-14 a fixed
+  baseline; RT-14 is blocked on it. RT-14 tests footprints on built fixtures (seed incidents move with WLM changes)
+  and counts only footprint-wrong validator disagreements, not path effects. WT-16: a fix in the backlog boost
+  replaces both backlog guards.
+
 - 2026-11-13: WT-09 (server periods, W3; docs/wlm-design.md §9.12). The server period `$SRMS001` holds the DP of an
   image's TRANSACTION regions and CICS transactions. The served classes are its goal receivers and donors (one donor
   per server period), they report its DP (the free ride), and the log names it: `RCVR=ONLMED#1 (regions $SRMS001)`.
