@@ -452,28 +452,27 @@ donors (WLM Services p.138); discretionary work is spread over 192–201 by mean
 modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a playtest finding that a stale order
 or equal-priority discretionary work misleads players.
 
-### WT-16 · Joining a level projects much worse than staying below it (projection question)
-`list: wlm-truth · status: ready · priority: high · size: S · area: sim`
+### WT-16 · Correct address-space delay samples when a better CPU grant worsens velocity
+`list: wlm-truth · status: ready · priority: high · size: M · area: sim`
 
-From the design review of WT-04 … WT-08 (2026-11-12), unverified. On the capped-PROD1 fixture (Midwest seed 7,
-PROD1 defined capacity 200, DB* in STCHI), STCHI#1 (importance 1, holds Db2) projects 4.26 below ONLHI#1 and 26.37
-on ONLHI's level (D1 14:30:40 at `e7015cb`), and 0.74 above it from a base of 4.00 (`1f4f212`'s accepted move at
-14:02:40). A second case, on S-1 (Midwest seed 42) PROD2 at D1 22:00:20 (`6306f1c`): raising BATCHPRD#1 onto
-DDFPRD#2's level takes DDFPRD#2 from 0.35 to 7.74, and DDFPRD#1 lowered to BATCHPRD#1's level goes from 0.50 to
-51.15; both may be the same level-sharing effect. Equal-DP work shares by
-ready units, and ONLHI waits for Db2 in STCHI, so the level-shared projection may starve the server its client
-waits on. Real z/OS rotates the dispatching order of all units at one priority (SG24-6472-03 p.66; three
-CPU-bound classes at one priority "all receive the same service", p.333–334), and `shareByUnits` already gives an
-equal turn per ready unit, max-min fair (docs/research.md). With the same demands that rule cannot give a period
-less on another's level than strictly below it, so look elsewhere first: demand that changes with the ladder
-(backlog boost; a client's demand rising once its server speeds up), transactions counted as one ready unit per
-engine of new work (may undercount DDF threads against batch jobs), and how the projected grant becomes a PI.
-Investigate with `npm run inspect` on a play-CLI copy of the fixture and the per-level grants in `evaluateLpar`. Report before any model change; if the sharing rule is wrong, the
-fix is a model change for the main agent (WT-09 landed first, 2026-11-13: CICS regions now share their server period's level), and needs
-goldens, the S-1 … S-3 table and a sweep. If the cause is the backlog boost (`backlogBoostFrac`), the fix replaces
-both guards that exist because of it (`projectionTrustMax`, and WT-09's PROJECTION_DISAGREES holder guard in
-`policyAdjust`, docs/wlm-design.md §9.12) instead of adding a third. Done when: the cause is recorded in
-docs/wlm-design.md with a verdict (artefact fixed, or real and explained).
+Investigation completed before a model change (2026-11-13, docs/wlm-design.md §9.13, measured on `2a59cd4`).
+Remaining: fix the grant-to-sample artefact in shared evaluation (`src/sim/wlm/eval/results.ts`, with the
+queue estimate in `src/sim/zos/dispatcher.ts` as needed). At fixed demand, granting STCHI 0.328816 CP engines
+instead of 0 raises its CP delay from 0.328816 to 16.440787 and its velocity PI from 4.2652 to 26.3789. The
+`cpUsing * qr + unmetCp` formula gives almost no CP delay at zero CP service and far more after a useful grant.
+A two-slice, no-backlog counterexample and the capped fixture's full recipe are in §9.13. Main agent model work;
+verify the correction with `zos-docs`, keep processor samples within ready units and avoid double-counting waits.
+Test that better CP service at fixed demand, fixed other-resource service and an unchanged saturated queue
+estimate cannot worsen velocity; cover zero CP service with continuing zIIP use, and the capped-PROD1 fixture.
+
+The S-1 DDF cases have a different explanation: DDF loses CPU when sharing with batch under the current fictional
+ready-unit counts (§9.13). They do not justify changing `shareByUnits` or treating DDF thread counts as verified.
+Backlog and uplift are excluded as the capped artefact's cause; add no third policy-adjustment guard, and do not
+remove `projectionTrustMax` or WT-09's holder guard without separate evidence that their backlog limitation is
+fixed. Report before/after bench hashes, regenerated goldens with a Behaviour change note, S-1 … S-3 statistics,
+RT-06 validator differences and three-scenario remote sweeps (seeds 1–10, Normal). Done when: the shared formula
+and regression tests remove the artefact, §9.13 records the correction and measured effects, and the checks pass.
+Then remove WT-16 and unblock WT-17.
 
 ### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
 `list: wlm-truth · status: blocked: after WT-16 · priority: low · size: M · area: content`

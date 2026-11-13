@@ -8,6 +8,11 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **WT-16 investigation (2026-11-13):** docs/wlm-design.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
+  jump to address-space delay samples, despite a CP grant rising from 0 to 0.328816 engines. A two-slice fixed-demand
+  counterexample excludes backlog, uplift, batch and server dependencies. S-1's DDF cases instead lose CPU when
+  joining batch's level under the current fictional ready-unit counts. No simulation change; WT-16 remains ready
+  for the shared-evaluation correction and regression evidence, and WT-17 still waits for it.
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
 - **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting

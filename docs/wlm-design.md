@@ -6,7 +6,7 @@ budget (WT-05, §9.6; RF-03, §9.11); the canonical ladder and the z/OS 1.8 DP t
 §9.8); atomic plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). Every
 finding in §4 says whether it is fixed, settled, open with a ready entry (W10's discretionary half: WT-11; W11:
 WT-12) or deferred to a playtest (W13: WT-14); §2 describes the sim as audited
-(2026-11-10), before any of them. Open: WT-11 and WT-12 (to be done), WT-16 (the projection question) and WT-17 (trim this document to the design
+(2026-11-10), before any of them. Open: WT-11 and WT-12 (to be done), WT-16 (address-space delay-sample correction; investigation in §9.13) and WT-17 (trim this document to the design
 and archive the audit). The work is in [BACKLOG.md](../BACKLOG.md) list `wlm-truth`; §8 lists its questions and the
 user's decisions; §9 has each entry's results. This is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -1999,3 +1999,76 @@ Harbourline 10 / 29 / 7 (textbook 1 victory), from 9 / 30 / 8. The expert losses
 ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43362925863),
 [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43362926036),
 [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43362925676)).
+
+### 9.13 WT-16 investigation: CPU grants improve while velocity samples get worse
+
+Investigated on `2a59cd4` (2026-11-13), before a model change. **Verdict: the capped STCHI case is a
+grant-to-sample artefact; the S-1 DDF cases are contention under the existing ready-unit approximation.**
+WT-16 stays open for the sample correction. These measurements change no simulation code or coefficients.
+
+**Capped fixture.** Start `initState(7, MIDWEST)`, set PROD1's `definedCapacityMsu` to 200, classify STC `DB*`
+as STCHI, then step without commands to D1 14:30:40. Capture PROD1's `evalInput` and measured `system` at
+`adjustPolicies`, pass them through `projectionInput(..., POLICY_ADJUST)`, and evaluate the same prepared input
+with only STCHI#1's DP changed. ONLHI now runs at `$SRMS001`'s DP (WT-09). Each row uses the same slices, demand,
+backlog, capacities and unit counts. The current ladder already has STCHI above the server; "below" is a trial
+placement, not a claim that the original stalled ladder persists after WT-08's fix.
+
+| STCHI placement against `$SRMS001` | Non-region CP grant | zIIP grant | CP delay samples | STCHI projected PI |
+|---|---:|---:|---:|---:|
+| Below | 0 | 0.053843 | 0.328816 | 4.2652 |
+| Same level | 0.328816 | 0.053843 | 16.440787 | 26.3789 |
+| Above | 0.328816 | 0.053843 | 0.095588 | 0.7499 |
+
+The grants and samples in this table exclude transaction-server CICS regions, as `tickPi` does. The original
+4.26 → 26.37 discontinuity survives WT-09. At D1 14:02:40 the corresponding current values are 4.0023 below,
+26.0943 joined and 0.7447 above. Setting `backlogBoostFrac = 0` leaves the 14:30:40 table identical; setting
+`demandUpliftMax = 1` also leaves it identical. No trial changes transaction demand after helping a server:
+`projectionInput` and `prepareLpar` run before the DP alternatives, and the evaluator does not regenerate arrivals.
+The fixture's STCHI problem also reproduces without batch recovery.
+
+**Cause.** `allocateByPriority` (`src/sim/zos/dispatcher.ts`) assigns one Erlang-C queue ratio to a whole
+level at its cumulative utilisation. Below or on the saturated level this becomes 50 in `sliceResults`
+(`eval/results.ts`, `MAX_QUEUE_RATIO`). An address space's initial CP delay is `cpUsing * qr + unmetCp`.
+When it gets no CP, only its small unmet engine demand is counted. Giving it all its CP at the same saturated
+level multiplies that grant by 50. The ready-unit bound can limit the result but does not enforce monotonicity.
+`tickPi` combines that CP delay with zIIP using samples, so better CP service can produce a much worse velocity
+PI. In this fixture it is neither a fall in CPU service nor a starvation of Db2 by its clients.
+
+A minimal counterexample uses `evaluateLpar`, zero I/O/paging, empty backlog, one CP and one zIIP (capacity and
+server count 1 each), no regions or dependencies, and these `sliceSpec`s: A, an AS in A#1 wanting 0.2 CP +
+0.05 zIIP engines with 30 units; H, a TXN in H#1 wanting 2 CP engines. H has DP 200; A has a velocity goal of 60.
+All other `sliceSpec` fields take their defaults. `tickPi` on A#1 gives:
+
+| A's DP | CP grant | zIIP grant | CP delay | zIIP delay | PI |
+|---|---:|---:|---:|---:|---:|
+| 199 | 0 | 0.05 | 0.2 | 0.002632 | 3.0316 |
+| 200 | 0.2 | 0.05 | 10 | 0.002632 | 24.6063 |
+| 201 | 0.2 | 0.05 | 0.05 | 0.002632 | 0.7263 |
+
+This isolates the accounting artefact from uplift, backlog, batch, CICS and DDF unit estimation. The same
+formula serves execution and projections, so the correction belongs in shared evaluation, with a monotonicity
+test for fixed demand and grants, rather than another `policyAdjust` rejection guard. The backlog guards of
+§9.5 and §9.12 address a separate limitation; this experiment gives no reason to remove them.
+
+**S-1 is a different effect.** Run `npm run repro -- runs/wt16-s1.json S-1`, then
+`npm run inspect -- runs/wt16-s1.json wlm PROD2 --at 'D1 22:00' --ticks 3 --class BATCHPRD`.
+`inspect` accepts clock minutes; the three adjustments cover 22:00:00, :10 and :20. At :20, direct evaluation
+of the sustained input gives:
+
+| Trial | Affected period | CP + eligible-on-CP grant, before → after | PI, before → after |
+|---|---|---:|---:|
+| Raise BATCHPRD#1 onto DDFPRD#2 | DDFPRD#2 | 0.009053 → 0.001678 | 0.3493 → 7.7420 |
+| Lower DDFPRD#1 onto BATCHPRD#1 | DDFPRD#1 | 0.535227 → 0.123262 | 0.5000 → 51.1500 |
+
+PROD2 has no zIIP and 3.010555 CP engines here. BATCHPRD wants 7.211145 CP engines, including eligible work,
+with 9 ready units; DDFPRD#2 has 0.009053 units and DDFPRD#1 0.535227. Joining the batch level removes the DDF
+period's preferential service and reduces its grant. The joining receiver BATCHPRD itself gains, from 1.660723
+to 1.668098 engines. These cases do not demonstrate a receiver losing service on a raise. Removing backlog
+leaves both PI pairs unchanged; removing uplift leaves the first at 0.3490 → 7.7584 and the second unchanged
+at the shown precision. Both appear in the first evaluation, before any recovery loop (this image has no zIIP).
+
+The IBM source checked in this session is the March 2008 Redbook
+[SG24-6472-03, PDF p.66](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66): dispatchable units at
+the same priority have their order periodically rotated. That supports rotation per unit, not the sim's chosen
+count of one DDF unit per engine of new work. The DDF weights remain an approximation; this investigation
+neither validates actual thread counts nor establishes the size of these PI jumps on real z/OS.
