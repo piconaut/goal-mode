@@ -453,8 +453,10 @@ less on another's level than strictly below it, so look elsewhere first: demand 
 engine of new work (may undercount DDF threads against batch jobs), and how the projected grant becomes a PI.
 Investigate with `npm run inspect` on a play-CLI copy of the fixture and the per-level grants in `evaluateLpar`. Report before any model change; if the sharing rule is wrong, the
 fix is a model change for the main agent (WT-09 landed first, 2026-11-13: CICS regions now share their server period's level), and needs
-goldens, the S-1 … S-3 table and a sweep. Done when: the cause is recorded in docs/wlm-design.md with a verdict
-(artefact fixed, or real and explained).
+goldens, the S-1 … S-3 table and a sweep. If the cause is the backlog boost (`backlogBoostFrac`), the fix replaces
+both guards that exist because of it (`projectionTrustMax`, and WT-09's PROJECTION_DISAGREES holder guard in
+`policyAdjust`, docs/wlm-design.md §9.12) instead of adding a third. Done when: the cause is recorded in
+docs/wlm-design.md with a verdict (artefact fixed, or real and explained).
 
 ## pr-followups
 
