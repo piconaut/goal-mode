@@ -160,6 +160,13 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
     expect(text).toContain('AGREE: Runaway compliance query is a counterfactual cause');
   });
 
+  it('judges against a floor measured on a wider seed sample', () => {
+    const run = advance(structuredClone(file.run), scenario, pack.game, TICKS_PER_HOUR);
+    const text = blameText(encodePlayFile({ ...file, run }), { floorPct: 100 });
+    expect(text).toContain('noise floor 100.0 pp passed in');
+    expect(text).toContain("no card's gain cleared the floor");
+  });
+
   it('replays a log with a Monitor III pin at a past time', () => {
     // The pin reads the Monitor III history the play CLI records while it advances; the replay must record it too.
     const log = [

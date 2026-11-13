@@ -12,11 +12,12 @@
 //     verdict, accepted moves, receivers assessed on 30 adjustments without a move, and the DP ladder at a clock
 //     time. --by-class adds each period's outcomes, --episodes lists those 30-assessment runs, --moves lists every
 //     accepted move. A whole-run replay costs about 6 s per played day, like `blame`.
-//   npm run inspect -- runs/a.json blame [--json] [--incident N]
+//   npm run inspect -- runs/a.json blame [--json] [--incident N] [--floor <pp>]
 //     Counterfactual validator (RT-06, RT-25): every online incident's opening hour is replayed once per card active
 //     in it with that card ended at the hour start. Reports each card's attainment gain against a noise floor
 //     measured from red-herring cards, and keeps the RT-06 verdict (removal met the SLA) beside it. Costs an hour of
-//     sim per card per incident, so it is offline only; needs a play-CLI file.
+//     sim per card per incident, so it is offline only; needs a play-CLI file. --floor passes a scenario's floor
+//     measured on a wider seed sample.
 
 import { readFileSync } from 'node:fs';
 import { applyPlayCommand, decodePlayFile, clockText, newPlayFile, type PlayFile } from './playCore';
@@ -802,8 +803,10 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
 
 const pctText = (x: number | null) => (x === null ? '-' : `${x.toFixed(1)}%`);
 
-/** Counterfactual validator over every online incident of a play file (RT-06, RT-25). */
-export function blameText(text: string, opts: { json?: boolean; incident?: number } = {}): string {
+/** Counterfactual validator over every online incident of a play file (RT-06, RT-25).
+ * `floorPct` passes a scenario's measured noise floor (from a wider seed sample) in percentage points; without it
+ * the floor is measured from this file's own control cards. */
+export function blameText(text: string, opts: { json?: boolean; incident?: number; floorPct?: number } = {}): string {
   const file = decodePlayFile(text);
   const batch = file.run.incidents.filter((i) => i.workloadId === BATCH_INCIDENT).length;
   const online = file.run.incidents.filter((i) => i.workloadId !== BATCH_INCIDENT && (opts.incident === undefined || i.id === opts.incident));
@@ -824,15 +827,19 @@ export function blameText(text: string, opts: { json?: boolean; incident?: numbe
   const reached = new Set(results.map((r) => r.id));
   const failedIds = new Set(failed.map((f) => f.id));
   const notReached = online.filter((i) => !reached.has(i.id) && !failedIds.has(i.id)).map((i) => i.id);
-  // The floor comes from the sample's controls, so it is measured before the incidents are judged by it.
-  const floor = noiseFloor(file.run.scenarioId, results);
+  // The floor comes from the sample's controls, so it is measured before the incidents are judged by it. A caller
+  // that measured it on a wider seed sample passes it in (RT-14 records one floor per scenario).
+  const measured = noiseFloor(file.run.scenarioId, results);
+  const floor = opts.floorPct === undefined ? measured : { ...measured, floorPct: opts.floorPct };
   const judged = judgeGains(results, floor);
   const summary = summarizeBlame(judged);
   if (opts.json) return JSON.stringify({ summary, noiseFloor: floor, batchSkipped: batch, notReached, failed, incidents: judged }, null, 2);
-  const floorText = floor.floorPct === null
-    ? `scenario ${floor.scenario}: no control card (CP_SPARING or a card that declares no affected work) in the sample, so the noise floor is 0 and the gains are uncalibrated`
-    : `scenario ${floor.scenario}: noise floor ${floor.floorPct.toFixed(1)} pp from ${floor.controls} control card${floor.controls === 1 ? '' : 's'} (CP_SPARING and cards that declare no affected work)` +
-      (floor.controls < 10 ? '; fewer than 10 controls, so add seeds until there are' : '');
+  const floorText = opts.floorPct !== undefined
+    ? `scenario ${floor.scenario}: noise floor ${floor.floorPct!.toFixed(1)} pp passed in (measured on a wider seed sample); this file's own controls: ${measured.controls}`
+    : floor.floorPct === null
+      ? `scenario ${floor.scenario}: no control card (CP_SPARING or a card that declares no affected work) in the sample, so the noise floor is 0 and the gains are uncalibrated`
+      : `scenario ${floor.scenario}: noise floor ${floor.floorPct.toFixed(1)} pp from ${floor.controls} control card${floor.controls === 1 ? '' : 's'} (CP_SPARING and cards that declare no affected work)` +
+        (floor.controls < 10 ? '; fewer than 10 controls, so add seeds until there are' : '');
   const lines: string[] = [
     `Counterfactual blame: every card active in each incident's opening hour is ended at the hour start, one at a time (one hour of sim per card per incident).`,
     floorText,
@@ -881,8 +888,9 @@ if (process.argv[1]?.endsWith('inspect.ts')) {
   const incident = opt(rest, '--incident');
   const [path, verb, system] = rest;
   if (path && verb === 'blame') {
+    const floor = opt(rest, '--floor');
     try {
-      console.log(blameText(readFileSync(path, 'utf8'), { json, ...(incident ? { incident: Number(incident) } : {}) }));
+      console.log(blameText(readFileSync(path, 'utf8'), { json, ...(incident ? { incident: Number(incident) } : {}), ...(floor ? { floorPct: Number(floor) } : {}) }));
     } catch (e) {
       console.error(`blame: ${(e as Error).message}`);
       process.exit(1);
