@@ -419,7 +419,7 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 ### WT-12 · Batch response-time priority projections (remaining W11)
 `list: wlm-truth · status: ready · priority: low · size: M · area: sim`
 
-Batch response-time goals are against IBM's advice, but a fair few installations use them, and the user may want
+Batch response-time goals are against IBM's advice, the user may want
 to play with them in game. This entry has lower priority than the core WLM redesign, but the WLM work isn't complete
 without it (user, 2026-11-13).
 
