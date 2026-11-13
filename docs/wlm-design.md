@@ -4,8 +4,9 @@ Status: **implemented** (WT-04 … WT-10 and RF-03, closed by WT-15 on 2026-11-1
 entry landed differently: one PI basis, sustained demand and the missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
 budget (WT-05, §9.6; RF-03, §9.11); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07,
 §9.8); atomic plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). Every
-finding in §4 says whether it is fixed, parked (to WT-11, WT-12 or WT-14) or settled; §2 describes the sim as audited
-(2026-11-10), before any of them. Open: WT-16 (the projection question) and WT-17 (trim this document to the design
+finding in §4 says whether it is fixed, settled, open with a ready entry (W10's discretionary half: WT-11; W11:
+WT-12) or deferred to a playtest (W13: WT-14); §2 describes the sim as audited
+(2026-11-10), before any of them. Open: WT-11 and WT-12 (to be done), WT-16 (the projection question) and WT-17 (trim this document to the design
 and archive the audit). The work is in [BACKLOG.md](../BACKLOG.md) list `wlm-truth`; §8 lists its questions and the
 user's decisions; §9 has each entry's results. This is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -765,7 +766,7 @@ by itself, which is when it no longer needs to be.
 
 ### W10. The resource-group minimum is dispatched inside the managed range (medium)
 
-*Parked: the discretionary half is WT-11 (`wlm-truth`, ready, low priority).* *Collision fixed by WT-06:* a goal member's minimum runs at `DP.RG_MINIMUM` (249, in the reserved 253–249 range,
+*Open: the discretionary half is WT-11 (`wlm-truth`, ready, low priority, to be done).* *Collision fixed by WT-06:* a goal member's minimum runs at `DP.RG_MINIMUM` (249, in the reserved 253–249 range,
 APPROX), above all goal work; a discretionary member's at `MANAGED_MIN − 1` (202), above discretionary work only. The
 second paragraph (a discretionary member's minimum is weaker than in z/OS) still holds.
 
@@ -780,7 +781,7 @@ batch with a minimum as a throughput goal" ([SG24-6472 p.68][r68]) is weaker in 
 
 ### W11. A response-time goal on batch or started tasks is never managed (medium)
 
-*Parked: WT-12 (`wlm-truth`, ready, low priority).*
+*Open: WT-12 (`wlm-truth`, ready, low priority, to be done; user decision 2026-11-13).*
 
 By code reading (C-1): address-space slices report no completions (`sliceResults`), so an average or percentile
 goal on a batch or STC class has no PI: never a receiver, never "missing" for a minimum, no PI in WLMGL. IBM allows
@@ -797,7 +798,7 @@ and `inspect`, and an expert knows F7 as the top managed priority. §8 Q5.
 
 ### W13. Small consumers and mean-time-to-wait are not modelled (low)
 
-*Parked: WT-14 (`wlm-truth`, blocked on a playtest).*
+*Deferred: WT-14 (`wlm-truth`, blocked on a playtest).*
 
 Every discretionary period runs at 196 (C4); SPEC §5.4 says 201–192 by mean time to wait. No period is ever a small
 consumer. Effects are small: discretionary work at one level shares by ready units, which already favours work that

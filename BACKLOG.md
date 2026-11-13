@@ -431,6 +431,8 @@ minimum).
 ### WT-12 · Response-time goals for batch: jobs are completions (W11)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`
 
+Low priority, not optional (user decision 2026-11-13): W11 stays open until this lands.
+
 User decision on §8 Q6, 2026-11-10: model job completions, and warn in the editor.
 
 Implements §5.8. In `dispatchLpar` (`src/sim/core/tick/dispatch.ts`), a job ending this tick adds one completion,
@@ -476,7 +478,7 @@ docs/wlm-design.md with a verdict (artefact fixed, or real and explained).
 ### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
 `list: wlm-truth · status: ready · priority: low · size: M · area: content`
 
-User request 2026-11-13. WT-15 (2026-11-13) marked every finding fixed, parked or settled; split docs/wlm-design.md:
+User request 2026-11-13. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
 - **kept** in docs/wlm-design.md, as a living design doc: real WLM with page citations (§3), the sim's model as built
   (§5, as a description, not a change history), the invariants I1 … with the test that checks each (IDs unchanged),
   and the approximations, known gaps and open questions;
