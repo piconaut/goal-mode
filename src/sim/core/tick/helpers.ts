@@ -318,7 +318,7 @@ export const combineCaps = (a: ((s: SliceSpec) => number) | undefined, b: ((s: S
 /** Discretionary goal management: while discretionary work on this image is waiting, over-achieving
  * periods with loose goals are capped so it gets cycles. Only if not in a resource group, not a small
  * consumer, velocity ≤ 30 or response goal > 1 min (MVS Planning: WLM p.118), and PI < 0.71; WLM holds
- * the capped PI in 0.71–0.81 (SG24-6472-03 p.183). APPROX: a proportional cap from the current PI instead
+ * the capped PI in 0.71–0.81 (SG24-6472-03 p.58). APPROX: a proportional cap from the current PI instead
  * of WLM's projection; the other SG24-7621 Fig. 4-22 conditions are not modelled. */
 export function discretionaryCaps(def: SimState['wlm']['definition'], slices: readonly SliceSpec[], scps: readonly ScpState[]): ((s: SliceSpec) => number) | undefined {
   const D = DISC_GOAL_MGMT;
