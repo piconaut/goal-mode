@@ -1837,7 +1837,7 @@ not as a new alternation: no period goes up and down repeatedly in the window.
 
 Bench (Midwest seed 42, one day, `npm run bench -- --hash`): 9.41 s / 1.09 ms per tick → 10.76 s / 1.25 ms per tick
 (+14 % on this box; the review box measured 6.43 vs 6.26 s/day, +3–6 %, so the direction is the claim, not the size). The
-state hash changes because the decisions and the new off-cadence log lines change. Goldens are regenerated for the same reason. Tests: the
+state hash changes because the decisions change. Goldens are regenerated for the same reason. Tests: the
 clock fixtures that need a clock set `skipClockMinMissing = -1` (the check is `missing > value`, so a negative
 value forces the clock even when no period is missing; 0 would still drop it on a fully happy image); the RF-03
 unit test covers both sides of the
