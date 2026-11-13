@@ -51,7 +51,7 @@ minutes (`--ticks 30`) when the answer might be "WLM did help, later"; a run of 
 the finding.
 
 For a question about a whole day or run rather than one moment, `inspect … wlm-stats` gives the same counters over a
-range (the wlm-design audit's S-table): adjustments, candidates by outcome, trials by verdict, accepted and reversed
+range (the 2026-11 WLM audit's S-table, docs/archive/wlm-audit-2026-11.md §1): adjustments, candidates by outcome, trials by verdict, accepted and reversed
 moves, episodes of a period assessed on 30 adjustments without a receiver move, and with `--ladder` the DP ladder at a
 clock time each day. `--by-class` breaks the outcomes down per period, `--episodes` lists each 30-assessment run
 (first and last assessment, verdicts, the move that ended it) and `--moves` lists every accepted move with the
@@ -79,7 +79,7 @@ about 6 s per played day, so give it a range rather than a 19-day file when a sh
 | `NO_RECEIVER_GAIN` / `SMALL_GAIN` | Projection says the plan barely helps the receiver: under max(10 % of the gap to PI 1, 0.05) | Receiver value test (WLM Services p.138); the numbers are the 1994 patent's and Enrico's, not IBM product documentation |
 | `MORE_IMPORTANT_HARMED <class> PI a→b` | Projection pushes more important work past its goal | Net value (SG24-6472-03 p.66; WLM Services p.137–138). Check whether the projection is plausible; the sim re-evaluates every period on the LPAR |
 | `MORE_IMPORTANT_HARMED <class> … is missing its goal and would be passed` | Less important work may not move to or above more important work that is missing its goal, whatever the projection says; no projection spent | 1994 patent p.19 and Enrico slide 52, not product documentation (user decision 2026-11-10). On a capped image it freezes WLM below the missing class, by design |
-| `PROJECTION_DISAGREES` (receiver) | The receiver's management PI is over 4 × its projection and the projection bounded its transaction backlog: it is not raised (donor moves are still tried) | **Sim approximation** guarding the sim's backlog bound (docs/wlm-design.md §9.5); real WLM's demand data does not hide a backlog |
+| `PROJECTION_DISAGREES` (receiver) | The receiver's management PI is over 4 × its projection and the projection bounded its transaction backlog: it is not raised (donor moves are still tried) | **Sim approximation** guarding the sim's backlog bound (docs/wlm-design.md §5.4); real WLM's demand data does not hide a backlog |
 | `PROJECTION_DISAGREES … is behind with a backlog the projection bounds and would pass X` | A trial would put X below a period far behind its goal with a bounded backlog; that backlog would starve whatever ends up below it | **Sim approximation**, same cause (§9.12; WT-16 may replace both guards) |
 | `EQUAL_DISPARITY` / `NO_NET_VALUE` | Equal-importance harm too large, or PIs end up further apart | Matches: SG24-6472-03 p.60; Enrico *How WLM Works* slide 52 |
 | `no move to try` | Receiver already at the top managed DP and no donor at or above it | Nothing left to give on CPU; capacity or policy, not WLM |

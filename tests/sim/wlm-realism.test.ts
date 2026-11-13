@@ -142,7 +142,7 @@ export function quickReversals(moves: readonly CommittedMove[], withinSec: numbe
   return out;
 }
 
-describe('WLM does not flip a period on one quiet tick (docs/wlm-design.md W1, R-1)', () => {
+describe('WLM does not flip a period on one quiet tick (docs/archive/wlm-audit-2026-11.md W1, R-1)', () => {
   // Midwest seed 42, PROD2, day 1. Judged on one tick's PI, the second period of DDFPRD (importance 4) was moved
   // above the first (importance 2) on the one interval whose tick showed no harm, and moved back 40 s later, four
   // times in 3.5 minutes around 12:20. Judged on projections at sustained demand, and never passing more
@@ -167,7 +167,7 @@ describe('WLM does not flip a period on one quiet tick (docs/wlm-design.md W1, R
   }, 240_000);
 });
 
-describe('the ladder does not collapse (docs/wlm-design.md W2, S-4; WT-06)', () => {
+describe('the ladder does not collapse (docs/archive/wlm-audit-2026-11.md W2, S-4; WT-06)', () => {
   // Midwest seed 42, eight days. Before the canonical ladder, receivers moved to an occupied level + 1 and nothing
   // spread or lowered the ladder, so it climbed to the top managed priority: PROD2's seven goal periods of importance
   // 1 to 4 sat on three adjacent levels from day 2, five of them sharing 252 on day 4.

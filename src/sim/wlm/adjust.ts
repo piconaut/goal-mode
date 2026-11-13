@@ -440,7 +440,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         continue;
       }
       const acc = accOf[t.scKey]?.acc;
-      // Batch RT goals manage by scaling the measured PI (WT-12, docs/wlm-design.md §9.15). A null projection
+      // Batch RT goals manage by scaling the measured PI (WT-12, docs/wlm-design.md §5.8). A null projection
       // (no running job) stays null rather than falling back to the completionless address-space evaluation.
       if (addressSpaceKeys.has(t.scKey) && (g.goal.kind === 'AVG' || g.goal.kind === 'PCT') && acc?.rtQueueSumSec !== undefined) {
         m[t.scKey] = projectBatchRtPi(g.goal, acc, t);
@@ -580,7 +580,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // Work that is behind its goal with a backlog the projection bounded (sustained demand, `backlogBoostFrac`) will
     // drain that backlog on whatever ends up below it, which the projection cannot show (the receiver-side guard is
     // `projectionTrustMax`). So no trial puts a holder below such a period that was not below it: the server period of a
-    // CICS image lowered past a runaway DDF class starved every transaction it serves (docs/wlm-design.md §9.12).
+    // CICS image lowered past a runaway DDF class starved every transaction it serves (docs/wlm-design.md §5.4).
     // APPROX: real WLM's demand data does not hide a backlog (WLM Services p.144); this guards the sim's bound.
     const rHold = hold(receiver);
     for (const k of runaways()) {
@@ -649,6 +649,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     return judged(ok, true, finalAfter);
   };
 
+  // APPROX: only periods missing their goals are receivers. IBM's last case, a period meeting its goal (largest PI
+  // first, SG24-6472 p.63), is not modelled, so the ladder stays as it is while every period meets its goal.
   const ordered = (piOf: Record<string, number | null>) =>
     Object.keys(info)
       .filter((k) => (piOf[k] ?? 0) > 1 && tickOf[k])
@@ -760,7 +762,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     // not raised: the projection cannot show what draining that backlog does to others. Only where the bound cut
     // something: elsewhere a gap between the PIs is no reason to distrust the projection. APPROX: real WLM's demand
     // data does not hide a backlog (WLM Services p.144: maximum demand is use with no processor delay); this guards
-    // the sim's bound (docs/wlm-design.md §9.5). A percentile PI stops at 4.0, so a percentile receiver never trips it.
+    // the sim's bound (docs/wlm-design.md §5.4). A percentile PI stops at 4.0, so a percentile receiver never trips it.
     const mPi = Math.max(localPi[receiver] ?? 0, input.sysplexPi[receiver] ?? 0);
     const distrust = mPi > POLICY_ADJUST.projectionTrustMax * b0 && backlogCut(receiver);
     /** The clue the log gives when no move paid off: the first rejection that names what stood in the way (harm,

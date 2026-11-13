@@ -794,7 +794,7 @@ describe('the missing-goal rule counts smoothed zIIP use (docs/wlm-design.md §5
   });
 });
 
-describe('a receiver measured far worse than projected is not raised (projectionTrustMax, docs/wlm-design.md §9.5)', () => {
+describe('a receiver measured far worse than projected is not raised (projectionTrustMax, docs/wlm-design.md §5.4)', () => {
   // Midwest seed 2's shape: a runaway (importance 4) whose management PI is 56.6 while the projection, with its
   // backlog bounded, puts it at 1.15. Here: a transaction class with a large backlog and a smoothed PI far above
   // what the projection says.

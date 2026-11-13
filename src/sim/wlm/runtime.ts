@@ -20,7 +20,7 @@ export interface ScpAcc {
   completions: number;
   rtSumSec: number;
   /** Decayed queue time of those completions, beside `rtSumSec`: written only by the batch completion path (WT-12),
-   * absent elsewhere. Q̄ = rtQueueSumSec / completions (docs/wlm-design.md §9.15). */
+   * absent elsewhere. Q̄ = rtQueueSumSec / completions (docs/wlm-design.md §5.8). */
   rtQueueSumSec?: number;
   buckets: number[];
   using: number;

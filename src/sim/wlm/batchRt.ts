@@ -1,5 +1,5 @@
 // Batch response-time goals: project a measured AVG/PCT PI through the change in execution velocity
-// (docs/wlm-design.md §9.15). The projection uses only data WLM and RMF have: the completed jobs' queue and
+// (docs/wlm-design.md §5.8). The projection uses only data WLM and RMF have: the completed jobs' queue and
 // execution times and the period's using/delay samples. No per-job forecast of remaining work (RMF reports ended
 // transactions only, RMF Report Analysis 3.1 p.148; IBM names the plots, SG24-6472 p.62, but no book gives the
 // formula). APPROX: whole-life response times, mixed periods use all their samples, and the velocity floor carries
@@ -30,7 +30,7 @@ function projectedVelocity(t: ScpTick): number | null {
 
 /**
  * PI' = PI_measured × (Q̄ + Ē × v_ref / v') / (Q̄ + Ē), the measured PI scaled by the projected change in execution
- * speed of the elapsed part (docs/wlm-design.md §9.15). A DP move changes only Ē: JES initiator wait does not
+ * speed of the elapsed part (docs/wlm-design.md §5.8). A DP move changes only Ē: JES initiator wait does not
  * respond to dispatching priority. Null when a job has not completed in the window (no measured PI), when no job of
  * the period is running (no samples in the evaluation), or when there is no queue/execution split to scale.
  *

@@ -68,7 +68,7 @@ describe('bot WLM tracing (tools/botTrace.ts)', () => {
 });
 
 describe('npm run repro (tools/repro.ts)', () => {
-  it('names the audit runs of docs/wlm-design.md §1', () => {
+  it('names the audit runs of docs/archive/wlm-audit-2026-11.md §1', () => {
     expect(REPRO_RUNS).toEqual({ 'S-1': { scenario: 'midwest', days: 2 }, 'S-2': { scenario: 'revenue', days: 3 }, 'S-3': { scenario: 'harbourline', days: 3 } });
   });
 
