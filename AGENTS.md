@@ -41,6 +41,17 @@ PR description or comments. Do not create or commit per-PR documents in the
 repository, such as `docs/reviews/pr-<number>.md`. Reusable facts belong in the
 existing research ledger, SPEC or PROGRESS tracker as appropriate.
 
+## Attribution
+
+Every commit an agent writes, and every review report or PR comment it posts, ends with a line naming the agent and
+the model it is itself running as: `Co-Authored-By: <Agent> <Model> <vendor address>` (e.g. Codex with its model and
+OpenAI's address, if it has one). This applies to subagents and to any agent working under the user's instruction.
+Read the model from your own system prompt or environment. Never copy a trailer from a coordinator's brief or from
+another agent's commit, and if you can't tell which model you are, omit the model rather than guess. In a review
+or comment the line goes last, after the report. Claude sessions use the attribution lines their host provides
+(CLAUDE.md "Commit trailers"); where a host's own instructions rule out a model name somewhere, the host's rule wins
+there and the model is omitted.
+
 ## Host adaptations
 
 - Use the available Codex tools in place of Claude's Bash/Read/Write/Grep/Glob/

@@ -485,6 +485,21 @@ both guards that exist because of it (`projectionTrustMax`, and WT-09's PROJECTI
 `policyAdjust`, docs/wlm-design.md §9.12) instead of adding a third. Done when: the cause is recorded in
 docs/wlm-design.md with a verdict (artefact fixed, or real and explained).
 
+### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
+`list: wlm-truth · status: blocked: after WT-15 · priority: low · size: M · area: content`
+
+User request 2026-11-13. Once WT-15 has marked every finding fixed, parked or declined, split docs/wlm-design.md:
+- **kept** in docs/wlm-design.md, as a living design doc: real WLM with page citations (§3), the sim's model as built
+  (§5, as a description, not a change history), the invariants I1 … with the test that checks each (IDs unchanged),
+  and the approximations, known gaps and open questions;
+- **moved** to `docs/archive/wlm-audit-2026-11.md`, a grep-able file the design doc links to and agents do not read
+  by default: the W findings about the old model, the S-table baselines, §7 sequencing, §8 decisions (durable ones are
+  in PROGRESS.md), §9's per-entry results and review notes.
+References into the doc (code comments, BACKLOG.md, PROGRESS.md, SPEC.md, docs/research.md, skills such as `wlm-why`)
+are rewritten to the kept section or the archive in the same PR, or the kept sections keep their numbers. Done when:
+the design doc holds only the four kept parts, `rg 'wlm-design\.md'` finds no reference to a moved or renumbered
+section, and CLAUDE.md or the doc's head says the archive is for reference only.
+
 ## pr-followups
 
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
