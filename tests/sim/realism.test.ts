@@ -740,9 +740,9 @@ describe('event cards (SPEC §9)', () => {
 
   it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD, with adaptive WLM', () => {
     // From WT-08 to WT-10 the opposite held: MOBILE's DDFPRD#1, mostly waiting on Db2, was never assessed, and the
-    // extra TSO demand displaced DDFPRD#2 from above it (docs/wlm-design.md §9.9). Its CPU delay is assessed since WT-10.
+    // extra TSO demand displaced DDFPRD#2 from above it (docs/archive/wlm-audit-2026-11.md §9.9). Its CPU delay is assessed since WT-10.
     // Measured on PROD1, where the card's TSO work competes with MOBILE: since WT-09 the sysplex-wide figure is decided
-    // by an unrelated PROD2 donor episode in the run without the card (docs/wlm-design.md §9.12).
+    // by an unrelated PROD2 donor episode in the run without the card (docs/archive/wlm-audit-2026-11.md §9.12).
     const asIs = run([]);
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
@@ -1162,7 +1162,7 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 mostly waiting, CPU delay \d+ %: not WLM-fixable/.test(l))).toBe(true);
     // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
     // Under the cap a less important receiver may not pass more important work that is missing its goal and using
-    // CPU, which WLM never does (docs/wlm-design.md §9.4 point 5, user decision 2026-11-10): those raises are
+    // CPU, which WLM never does (docs/wlm-design.md §5.3 (the missing-goal rule), user decision 2026-11-10): those raises are
     // assessed and refused for that reason, and from 10:00 to 16:00 nothing less important reaches ONLHI's level.
     // On the ladder (WT-06) a receiver may still step above its own level's mates, which passes nobody more important.
     const passed = traces.flatMap((t) => t.candidates.filter((c) => c.importance > 1).flatMap((c) => c.trials))

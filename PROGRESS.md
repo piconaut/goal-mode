@@ -8,9 +8,22 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **WT-17 and WT-14 (2026-11-13): the `wlm-truth` list is closed.**
+  - docs/wlm-design.md is now the living design doc. It keeps the section numbers of the parts it retains:
+    - §1 sources;
+    - §3 real WLM;
+    - §5 the model as built, rewritten as a description: invariants, coefficients and approximations, what the
+      player sees, and known gaps (§5.13).
+  - The audit, findings, repros, order of work, decisions and per-entry results moved to
+    docs/archive/wlm-audit-2026-11.md (reference only). References across the repo are rewritten.
+  - WT-14 is dropped, not done. Receivers that meet their goals, small consumers and mean time to wait stay
+    unmodelled, documented as APPROX (§5.10, §5.13; SPEC §5.5.4 and §17; a comment at the receiver list in
+    `adjust.ts`).
+  - Loop and reviewer instruction lessons are saved as CL-09 (`blocked: user`, for later).
+
 - **WT-12 batch RT priority projections (2026-11-13):** a batch AVG/PCT period's base and trial PIs are its measured
   PI with the execution part scaled by measured ÷ projected execution velocity (`PI × (Q̄ + Ē × v_ref / v') / (Q̄ + Ē)`,
-  docs/wlm-design.md §9.15). The queue time is held fixed and there is no forecast of each job's remaining work.
+  docs/archive/wlm-audit-2026-11.md §9.15). The queue time is held fixed and there is no forecast of each job's remaining work.
   `rtQueueSumSec` keeps the queue split beside `rtSumSec`; `batchRt.ts` applies the formula only where that field is
   present and the period still has address-space work (`kind: 'AS'`), so a decayed queue split does not override the
   transaction projection when the class later serves transactions (review B1). Null with no completions or no running job;
@@ -48,12 +61,12 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
   consumption; zIIP service does not. Tests cover both priority cases and the trigger boundaries. No shipped
   policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12's later projection entry closes W11
   (top entry).
-- **WT-16 investigation (2026-11-13):** docs/wlm-design.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
+- **WT-16 investigation (2026-11-13):** docs/archive/wlm-audit-2026-11.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
   jump to address-space delay samples, despite a CP grant rising from 0 to 0.328816 engines. A two-slice fixed-demand
   counterexample excludes backlog, uplift, batch and server dependencies. S-1's DDF cases instead lose CPU when
   joining batch's level under the current fictional ready-unit counts. No simulation change; the correction followed
   in #331 (below).
-- **WT-16 correction (2026-11-13; docs/wlm-design.md §9.14):** offered-demand samples fix the capped-STCHI
+- **WT-16 correction (2026-11-13; docs/archive/wlm-audit-2026-11.md §9.14):** offered-demand samples fix the capped-STCHI
   velocity inversion; projections expose gains past the PI ceiling of 99, with the existing velocity floor and
   planner limits retained. S-1 … S-3 quick reversals are 1/0/8, from 1/0/4. User decision (2026-11-13, #331): the
   Harbourline cost of 8 (58 % below the original 19, against I13's 80 %) is accepted with the corrected model. WT-16
@@ -112,7 +125,7 @@ Notes from discussion:
   1. RT-00 … RT-15, committed: bot fix lookup by card (RT-00), bugs and missing pin sources, the counterfactual validator (RT-06), accepted answer
      sets (RT-07), wording (RT-09), pin relations and proof recipes (RT-12, RT-13), card footprints (RT-14),
      grouping by cause (RT-15);
-  2. a human playtest when RT-15 is merged. RT-14 waits for the `wlm-truth` core (WT-04 … WT-10; docs/wlm-design.md
+  2. a human playtest when RT-15 is merged. RT-14 waits for the `wlm-truth` core (WT-04 … WT-10; docs/archive/wlm-audit-2026-11.md
      §7), so run `dev-loop rca-truth,wlm-truth`: `rca-truth` alone "finishes" at RT-14. WT-04, WT-08 and WT-09 are
      gated for attended sessions (`blocked: user`), so the loop stops before them and "both lists finished" means
      WT-04's turn;
@@ -136,7 +149,7 @@ Notes from discussion:
 
 ### WLM policy adjustment audit (2026-11-10; WT-04 and WT-05 implemented 2026-11-11, WT-06 and WT-07 2026-11-12)
 
-[docs/wlm-design.md](docs/wlm-design.md) checks the whole adjustment loop (`src/sim/wlm/adjust.ts` and what feeds
+[docs/archive/wlm-audit-2026-11.md](docs/archive/wlm-audit-2026-11.md) checked the whole adjustment loop (`src/sim/wlm/adjust.ts` and what feeds
 it) against IBM's description, step by step, and proposes one target model. Fifteen findings with seed-42 repros;
 the four structural ones: receivers are chosen on the smoothed PI but every trial is judged on one tick's PI (W1);
 the DP ladder only climbs and collapses at the top of the managed range within a day or two on a stressed image
@@ -223,7 +236,7 @@ level or a separate toggle.
 - WT-05 sweep (2026-11-11, remote, Normal, seeds 1–10, WT-04 `ac84d6a` → WT-05 `e90a356`): Midwest 16.5 / 28 / 10,
   Revenue 20 / 27 / 10 (both unchanged); Harbourline 9.5 / 29 / 8 → 10 / 29 / 6, inside the bands with expert on the
   60 % edge. Seeds 7 and 9 freeze on D29 with the ladder at FC; the 6-interval skip clock is the cause (docs/
-  wlm-design.md §9.6). User decision: ship, and WT-06 checks those seeds.
+  docs/archive/wlm-audit-2026-11.md §9.6). User decision: ship, and WT-06 checks those seeds.
 - WT-06 sweep (2026-11-12, remote, Normal, seeds 1–10, WT-05 `2f614b5` → WT-06 `a0904ec`): Revenue 20 / 27 / 10
   (unchanged); Midwest 16.5 / 28 / 10 → 9.5 / 28 / 10 (MOBILE's goal is looser than its SLA, and the ladder no
   longer over-serves DDF; real behaviour); Harbourline 10 / 29 / 6 → 10.5 / 30.5 / 7 (seed 9 back; seed 7 lost to
@@ -273,7 +286,7 @@ level or a separate toggle.
 
   Before is WT-15's seeds 1–10 reference below. Every bot is inside its CI band; no coefficient was tuned and no
   balance entry is needed. I13's separate stability criterion: S-1 … S-3 quick reversals change 1/0/4 → 1/0/8, short
-  of the 80 % reduction on Harbourline; accepted by the user on 2026-11-13 (#331, docs/wlm-design.md §9.14).
+  of the 80 % reduction on Harbourline; accepted by the user on 2026-11-13 (#331, docs/archive/wlm-audit-2026-11.md §9.14).
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -541,13 +554,13 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   WLM Planning on 2026-11-10 ("normaliz", specialty processor service units) and not found; still open.
 - WLM audit 2026-11-10: the questions on secondary receivers and donors, a region class as receiver, equal-DP
   sharing, percentile PI with few completions and backlog in projections are settled in
-  docs/research.md ("WLM policy adjustment and dispatching") and docs/wlm-design.md §4 W15; their fixes are WT entries.
+  docs/research.md ("WLM policy adjustment and dispatching") and docs/archive/wlm-audit-2026-11.md §4 W15; their fixes are WT entries.
 - WLM audit: the numbers behind receiver value, the net value rule by importance and the 0.90 credit come from IBM's
   1994 patent (page-checked 2026-11-10, US 5,473,773 p.18–20) and Peter Enrico's slides; IBM's z/OS books state the
   tests without numbers, so they are the original design, not confirmed for z/OS 3.1. The skip clock's length, where the unbunched ladder sits in the
   managed range, and the priorities assigned at IPL or policy activation are not documented anywhere found.
 - WLM audit: the dispatching priority table differs between SG24-7621 (252–208 managed) and SG24-6472 (247–203 as of
-  z/OS 1.8); no z/OS book gives numbers (docs/wlm-design.md W12, §8 Q5).
+  z/OS 1.8); no z/OS book gives numbers (docs/archive/wlm-audit-2026-11.md W12, §8 Q5).
 - CICS: does WLM/RMF response time include MXT queue time? Currently treated as outside the work
   manager (like DBAT queueing before enclave creation). Verify against CICS performance docs.
 - TFP details (baseline commitment, overage pricing) are left deliberately abstract; is
@@ -566,7 +579,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - zIIP shortage as capacity: the CPU split measures general CPs only. Whether a full zIIP pool with CP white space
   under IIPHONORPRIORITY=NO is "capacity" or "policy" is a game-rule choice (docs/rca-design.md §4.3 treats it as
   policy); no IBM source decides it.
-- Waiting on the user: docs/rca-design.md §7 Q7, Q8a, Q8b, Q9 (after the RT-15 playtest); docs/wlm-design.md §8
+- Waiting on the user: docs/rca-design.md §7 Q7, Q8a, Q8b, Q9 (after the RT-15 playtest); docs/archive/wlm-audit-2026-11.md §8
   Q1–Q9 are decided (2026-11-10). #111 Q1–Q3 are decided.
 
 ## Known approximations and risks
@@ -597,12 +610,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   10.5 / 30 / 7. All inside the CI bands ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43277480009),
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43277480117),
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43277481255)). Harbourline expert seed 7 is still lost
-  on day 39: its D29 is a saturated PRDA, not W7 (docs/wlm-design.md §9.10).
+  on day 39: its D29 is a saturated PRDA, not W7 (docs/archive/wlm-audit-2026-11.md §9.10).
 - RF-03 (2026-11-12): the skip clock is IBM's 3 cycles and is not kept or started while five or fewer goal periods
   on the image miss their goals (Sinram, SHARE 2010 session 7777 p.11; APPROX per image). S-1 … S-3 assessed
   254/777/1 429 → 1 317/5 701/5 751, projections 1 241/2 953/4 820 → 6 700/20 624/19 648, `BUDGET` 0/0/1 →
   0/3/22; S-1/S-2 lose their clocks (1 162/3 701 → 0), S-3 keeps 552. Bench 9.41 → 10.76 s/day (+14 %).
-  Quick reversals rise 0/0/0 → 1/0/1 within two minutes (recorded in docs/wlm-design.md §9.11; the affected
+  Quick reversals rise 0/0/0 → 1/0/1 within two minutes (recorded in docs/archive/wlm-audit-2026-11.md §9.11; the affected
   realism tests allow the measured donor-at-goal boundary). The clock expiry is the first tick it may be assessed
   again (`now + 3 + 1`), so a rejection at tick 1 skips 2, 3 and 4; the review caught that `now + 3` skipped only
   two. Sweep, remote Normal seeds 1–10:
@@ -642,7 +655,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   a safe donor opens another receiver stage. Traces and statistics distinguish proposals, plans, retained steps
   and net rank reversals; canonical stored DP targets with split anchors address PR-14. WT-08 remains open in
   BACKLOG while draft #316 is validated and the unmet historical criteria and scenario changes are settled.
-  Audit, sweep and review results are recorded in docs/wlm-design.md §9.9 and M8.2 when complete.
+  Audit, sweep and review results are recorded in docs/archive/wlm-audit-2026-11.md §9.9 and M8.2 when complete.
 
 - 2026-11-12: WT-08 draft review fixes (`e4902b7`): aggregate NO_NET_VALUE names its largest equal-harm blocker;
   safe partial failures retain a player clue; new skip clocks log that clue off cadence; player explanations and
@@ -657,12 +670,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - 2026-11-12: WT-08 accepted (user decision after the #316 review): the legal happy-donor plans, the scenario and
   balance changes (Midwest do-nothing 9.5 → 16.5, back inside SPEC §16's target; online incidents 2/2/13 → 0/2/15;
   the shadow-IT card can help MOBILE under adaptive WLM), and the two unmet Done-when criteria with restated
-  targets (docs/wlm-design.md §9.9). The capped-PROD1 ONLHI OTHER episode is WT-10's; its test now bounds it.
+  targets (docs/archive/wlm-audit-2026-11.md §9.9). The capped-PROD1 ONLHI OTHER episode is WT-10's; its test now bounds it.
   Last review fixes: a plan's raise may no longer undo what its retained moves bought, and an unchanged skip-clock
   clue is logged at most every five minutes (seed 42 day 1: 105/66/25 → 33/40/20 lines on Midwest/Revenue/
   Harbourline).
 
-- 2026-11-12: design review of WT-04 … WT-08 by the design's author (docs/wlm-design.md §9.9). Fixed on #316: the
+- 2026-11-12: design review of WT-04 … WT-08 by the design's author (docs/archive/wlm-audit-2026-11.md §9.9). Fixed on #316: the
   planner now assesses the place above the next level when joining it is worse for the receiver (WLM Services p.707,
   code 630); the capped-PROD1 ONLHI episode is back to 30 adjustments, so it is not WT-10's. Criteria restated:
   WT-05 (a regression check by construction, §9.6), WT-08 (harm share dropped; assessed candidates ending in a plan
@@ -696,7 +709,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   and counts only footprint-wrong validator disagreements, not path effects. WT-16: a fix in the backlog boost
   replaces both backlog guards.
 
-- 2026-11-13: WT-09 (server periods, W3; docs/wlm-design.md §9.12). The server period `$SRMS001` holds the DP of an
+- 2026-11-13: WT-09 (server periods, W3; docs/archive/wlm-audit-2026-11.md §9.12). The server period `$SRMS001` holds the DP of an
   image's TRANSACTION regions and CICS transactions. The served classes are its goal receivers and donors (one donor
   per server period), they report its DP (the free ride), and the log names it: `RCVR=ONLMED#1 (regions $SRMS001)`.
   A region class with only server regions is neither receiver nor donor. REGION/BOTH are unchanged, an open gap:
@@ -724,7 +737,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 - 2026-11-12: shadow IT slows MOBILE again since WT-10 (111 against 80 ms in the adaptive realism test; WT-08 had
   117.61 → 83.74 ms). User decision: the restored behaviour stands and WT-08's acceptance of the improvement no
-  longer applies (docs/wlm-design.md §9.9 note, §9.10).
+  longer applies (docs/archive/wlm-audit-2026-11.md §9.9 note, §9.10).
 
 - 2026-11-12: WT-10 review (#318): the S-3 PRDD reversal within two minutes is three plans in a minute (a happy
   donor at its goal, then a more important receiver's plan that projects it at 25.36, then the donor raised back).
@@ -745,7 +758,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   `ASSESSED` episodes. WT-05's accepted episode counts measure trial-search retries; the capped-PROD1 example in
   #307 has 30 cheaper candidate checks over five minutes and one periodic no-action log entry. Clock and
   bottleneck policy remain separate model decisions, with the waits/delay question in WT-10.
-- 2026-11-12: WT-06, the canonical ladder (docs/wlm-design.md §5.6, §9.7): goal periods are an order of levels at
+- 2026-11-12: WT-06, the canonical ladder (docs/wlm-design.md §5.6; archive §9.7): goal periods are an order of levels at
   246, 244, … (unbunching, WLM Services p.139); receivers step one at a time, donors move to the receiver's level or
   just below (SMF 99 codes 530/540/620/635, p.706–707); the z/OS 1.8 DP table (managed 247–203; promotion 253 and the
   resource-group minimum 249 in the reserved range). S-1 … S-3: moves 13/29/49 → 25/26/44, undone within two
@@ -771,7 +784,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   (`ScpState.resumeSearch`), so twelve hopeless receivers at six projections each can no longer starve the receivers
   behind them; the delay test counts the goal PI's samples (transaction-server regions out, `srvDelayCap` added); a save from before `srvDelayCap` assumes its server history was all capping, so the test errs toward assessing).
   Neither fires in S-1 … S-3: one-day `compare` against the previous head is identical apart from the new fields.
-- 2026-11-11: WT-04, one PI basis (docs/wlm-design.md §5.2–§5.4, §9.5): receivers chosen on the management PI,
+- 2026-11-11: WT-04, one PI basis (docs/wlm-design.md §5.2–§5.4; archive §9.5): receivers chosen on the management PI,
   trials judged on projected PIs (`base` against `after`) at sustained demand (`src/sim/wlm/projection.ts`); a
   candidate with `base` ≤ 1 is `RECOVERING`; receiver value floor 0.05; a less important receiver never passes more
   important work that is missing its goal. From `proto/wlm-wt04`; the demand uplift and the backlog bound were
@@ -782,7 +795,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   User request 2026-11-11: WT-04 … WT-09 in one attended session, one PR each, in order.
   Review fixes (#295): the backlog bound hid a runaway on Midwest seed 2, so a receiver whose backlog the bound cut
   and that is measured over 4× its `base` is not raised (`projectionTrustMax`; measured against projecting its whole
-  backlog, docs/wlm-design.md §9.5; it rejects 39 % of S-2's and 68 % of S-3's trials, replacing other rejections
+  backlog, docs/archive/wlm-audit-2026-11.md §9.5; it rejects 39 % of S-2's and 68 % of S-3's trials, replacing other rejections
   without changing a move: WT-05's skip clock is what cuts those retries); running batch jobs are exact on every
   image and left out of sustained demand; `usedEngines` counts smoothed zIIP use. Seed 2 has no D2 incident now; the RT-06 tests moved to seed 3 (MOBILE, D2 13:00, RUNAWAY@1).
 
@@ -803,7 +816,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   judged on) was ≤ 0.9 or null, DP moves reversed by the period's next move, runs of 30 assessments without a
   receiver move, and with `--ladder` each system's DP ladder at a clock time each day (`--json` for scripts).
   `wlmStats` and `statsText` are pure and tested. On the audit's seed-42 Midwest file (D1 06:00 → D3 06:00) it
-  reproduces docs/wlm-design.md §1's S-1 column exactly: 69,120 adjustments, 67,101 with no candidate, 1,609
+  reproduces docs/archive/wlm-audit-2026-11.md §1's S-1 column exactly: 69,120 adjustments, 67,101 with no candidate, 1,609
   candidates assessed, 481 not fixable (all OTHER), 5,934 trials, 36 accepted moves, 3,447 MORE_IMPORTANT_HARMED,
   793 rejected with the receiver's own-tick PI ≤ 0.9, 12 reversed moves and 7 episodes. It replays faithfully: a
   logged `advance` stops where the play CLI stopped (a fresh ABEND, the end of a played day) and a log that ends
@@ -811,7 +824,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   applied at second precision, and `CPU_CRITICAL` trials now record the receiver's before PI (trace only). The
   episode rule matches S-1 but gives 3 (not 4) for Revenue and 22 (not 20) for Harbourline; every other cell
   reproduces, and §1 footnotes the difference rather than guessing the old harness's rule. Tooling only: no sim
-  behaviour change (`npm run compare` reports no differences). CLAUDE.md, docs/agents.md, docs/wlm-design.md §1 and
+  behaviour change (`npm run compare` reports no differences). CLAUDE.md, docs/agents.md, docs/archive/wlm-audit-2026-11.md §1 and
   the `wlm-why` skill list the verb.
 - 2026-11-11: RT-12 evidence baselines: moved the six-row lookback into
   `content/evidence.ts` as `EVIDENCE.baselineRows`, with a FICTIONAL note explaining the smoothing choice;
@@ -857,7 +870,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   Util % Total and PR/SM delay % (pinned) and capped % joined the partition rows. UI only: the `Mon3Cpc` view model,
   pin requests and RT-05 judging are unchanged. `play mon3`'s CPC section is BACKLOG CL-08.
 - 2026-11-10: WT-04 prototyped on branch `proto/wlm-wt04` (no PR, not merged; WT-04 stays
-  open): docs/wlm-design.md §9. `npm run check` passes there (851 tests, goldens regenerated); `npm run compare`
+  open): docs/archive/wlm-audit-2026-11.md §9. `npm run check` passes there (851 tests, goldens regenerated); `npm run compare`
   differs in all three scenarios as intended; Midwest seeds 1–5 sweep ends every run on the same day and cause as
   `dev`. The first revision was worse on Revenue (flat projected PIs hide harm); the fix is a rule now in §5.3.
   User decision on §9.4 point 5 (2026-11-10): keep the strict rule (no WLM move for less important work past more
@@ -959,7 +972,7 @@ SG24-7621 p.105. Tests cover I7 trace order, C-2 processor selection, smoothed h
 I5 (a happy more important donor must not be pushed past its goal). WT-07 deleted from BACKLOG; WT-08 remains
 attended and user-gated. Finished on the same branch: a period with no PI yet counts as missing its goal (it was the
 happiest donor); fixtures moved for the new order (one realism case: a happy STCHI holding Db2 donates and ONLHI is
-briefly wait-bound; the projection sees it but ONLHI's PI is at its 0.5 floor). S-table, R-1 and sweep in docs/wlm-design.md §9.8: moves 25/26/44 → 33/21/47,
+briefly wait-bound; the projection sees it but ONLHI's PI is at its 0.5 floor). S-table, R-1 and sweep in docs/archive/wlm-audit-2026-11.md §9.8: moves 25/26/44 → 33/21/47,
 nothing undone within two minutes, projections up to 1.7×, bench 1.53 → 1.58 ms per tick; sweep (Normal, seeds 1–10)
 Midwest and Revenue unchanged, Harbourline do-nothing 10.5 → 10, all inside the CI gate's bands (M8.2).
 Review fixes (#307 comments 6814997986 and 6815514698): a more important period at PI ≤ 1 can no longer be taken

@@ -30,7 +30,7 @@ function accWith(p: { completions?: number; rt?: number; queue?: number; using?:
   return a;
 }
 
-describe('batch response-time projection (docs/wlm-design.md §9.15)', () => {
+describe('batch response-time projection (docs/wlm-design.md §5.8)', () => {
   it('scales an AVG PI by the execution-speed change and holds the queue time (Sinram rule)', () => {
     // Q̄ = 20 s, Ē = 40 s. v_ref = 100/200 = 50 %, v' = 200/250 = 80 %.
     // 2 × (20 + 40 × 50/80) / 60 = 1.5.

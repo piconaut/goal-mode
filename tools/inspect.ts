@@ -201,7 +201,7 @@ export interface WlmStatsCounters {
   /** A period's DP move reversed by the next move of the same period … */
   reversed: number;
   /** … within two minutes (12 adjustments of that system): the flip-flop W1 is about, as opposed to work that gets
-   * a turn every few minutes on a full image (docs/wlm-design.md §9.4 point 6). Not counted here when another
+   * a turn every few minutes on a full image (docs/wlm-design.md §5.9 I13). Not counted here when another
    * receiver's plan in between projected the period past its goal (I13): conditions changed, it was not a flip-flop … */
   reversedWithin2Min: number;
   /** … but counted here: reversals within two minutes after such an intervening plan. */

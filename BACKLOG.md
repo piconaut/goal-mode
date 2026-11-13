@@ -273,7 +273,7 @@ a new baseline (seeds 1–5 of the three scenarios, Normal) is recorded in PROGR
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
 `list: rca-truth · status: blocked: after RT-25 · priority: high · size: L · area: game`
 
-Sequencing (user decision 2026-11-10, docs/wlm-design.md §7): footprints are measured on the WLM core of `wlm-truth`
+Sequencing (user decision 2026-11-10, docs/archive/wlm-audit-2026-11.md §7): footprints are measured on the WLM core of `wlm-truth`
 (WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
 
 User decision on Q5, 2026-11-10: yes. After WT-09 and WT-10 (WT-10 landed 2026-11-12). Replace `affects` matching with `footprint { resource, reach, direct }` on every card
@@ -313,7 +313,7 @@ maximum on the class or its server, with `DELAY_CAP` as its evidence (RMF Report
 `mechanismExplanation` name the judged host (A4–A6). Moves truth mechanisms and `buyCapacityForIncidents`: sweep.
 Done when: R-13 is CPU_PRIORITY/POLICY, R-2's basis names PROD2, U-9 … U-11 are tests, SPEC §10 and §17 are updated.
 Cross-note (WLM audit 2026-11-10): WT-09 makes CICS regions' CPU belong to a server period; do this entry after
-WT-09 and take "CP use by address-space role" and the hurt work's own servers from it (docs/wlm-design.md §7, §8 Q1).
+WT-09 and take "CP use by address-space role" and the hurt work's own servers from it (docs/archive/wlm-audit-2026-11.md §7, §8 Q1).
 Cross-note (#307 review, 2026-11-12): since WT-07 WLM also takes CPU from a happy more important period, down to its
 goal, while `capacityBasis` counts only less important CP; displaceable CP should count that headroom
 (`docs/rca-design.md` A4, SPEC §17 "Incident ground truth").
@@ -343,7 +343,7 @@ credited with the queue at the baseline hold time, not the unqueued time (R-15).
 THREAD_LIMIT). Done when: R-15's 20:00 incident is THREAD_LIMIT/POLICY and R-14 is one CAPPING group.
 Cross-note (WLM audit 2026-11-10): WT-09 (server periods) and WT-10 (waits are not delays) change the same
 per-period split of region CPU wait and other waits; do this entry after them and share one split
-(docs/wlm-design.md §7, §8 Q1). WT-10 (landed 2026-11-12) keeps WLM's split in `adjust.ts`: `managedDelays` (CPU,
+(docs/archive/wlm-audit-2026-11.md §7, §8 Q1). WT-10 (landed 2026-11-12) keeps WLM's split in `adjust.ts`: `managedDelays` (CPU,
 zIIP, I/O in velocity, storage, queue) and `waitingFrac` (waits over all samples); reuse them.
 
 ### RT-20 · Failure-only misses from the failure's source, not from a card
@@ -389,10 +389,12 @@ and §10 are rewritten for it, the sweep is recorded in PROGRESS.md, and the ban
 
 ## wlm-truth
 
-WLM policy adjustment: the work that makes the adjustment loop behave like IBM's description as one model. Source
-for every entry: the WLM audit of 2026-11-10, [docs/wlm-design.md](docs/wlm-design.md) (finding ids W-n, repro ids
-R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbered in dependency order.
-- **Sequencing against `rca-truth`** (user decision 2026-11-10, docs/wlm-design.md §7): the core WT-04 … WT-09 and
+WLM policy adjustment: the work that makes the adjustment loop behave like IBM's description as one model.
+**All entries are done** (WT-17, 2026-11-13); new WLM findings go here with the next free number (WT-18). Source
+for every entry: the WLM audit of 2026-11-10, now [docs/archive/wlm-audit-2026-11.md](docs/archive/wlm-audit-2026-11.md) (finding
+ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built and the invariants I-n are in
+[docs/wlm-design.md](docs/wlm-design.md). Entries are numbered in dependency order.
+- **Sequencing against `rca-truth`** (user decision 2026-11-10, docs/archive/wlm-audit-2026-11.md §7): the core WT-04 … WT-09 and
   WT-10 land after RT-06 (the counterfactual validator) and before RT-14 (card footprints), so footprints and
   balance are built once, on the WLM players will keep. Each of those PRs reports RT-06's validator differences.
 - **One at a time.** Each `sim` entry: goldens regenerated with a "Behaviour change" note, `npm run bench` before and
@@ -408,35 +410,11 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
   (WT-04 landed 2026-11-11), not the playtest cue. User request 2026-11-11: one attended session takes WT-04 …
   WT-09 in order, one PR each, so WT-05 … WT-07 are done there too rather than by `dev-loop`. User decision
   2026-11-12 (after the design review of WT-04 … WT-08): WT-10 goes before WT-09, in the same attended session.
-- **Coefficients** go to `src/content/wlm/tuning.ts` `POLICY_ADJUST` with `// FICTIONAL:` notes (names and starting
-  values in §5.10); approximations get `// APPROX:` (§5.10 list). Do not tune a coefficient to move a balance band
-  (§8 Q2).
+- **Coefficients** go to `src/content/wlm/tuning.ts` `POLICY_ADJUST` with `// FICTIONAL:` notes (names and values
+  in docs/wlm-design.md §5.10); approximations get `// APPROX:` (its list). Do not tune a coefficient to move a
+  balance band (archive §8 Q2).
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
-  S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
-
-### WT-14 · Receivers that meet their goals; small consumers; mean-time-to-wait (W2, W13)
-`list: wlm-truth · status: blocked: playtest (docs/wlm-design.md §8 Q3, Q8) · priority: low · size: M · area: sim`
-
-Parked (user decisions on §8 Q3 and Q8, 2026-11-10: not now; SPEC is corrected by WT-03). IBM's receiver order ends with periods meeting their goals, largest PI first (SG24-6472 p.63), which keeps
-the order improving when nobody misses; small consumers sit above the managed range and are neither receivers nor
-donors (WLM Services p.138); discretionary work is spread over 192–201 by mean time to wait (SG24-6472 p.66). Not
-modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a playtest finding that a stale order
-or equal-priority discretionary work misleads players.
-
-### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
-`list: wlm-truth · status: ready · priority: low · size: M · area: content`
-
-User request 2026-11-13. WT-16 (closed 2026-11-13, #331) recorded its verdict in §9.13–§9.14. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11) or deferred (WT-14); split docs/wlm-design.md:
-- **kept** in docs/wlm-design.md, as a living design doc: real WLM with page citations (§3), the sim's model as built
-  (§5, as a description, not a change history), the invariants I1 … with the test that checks each (IDs unchanged),
-  and the approximations, known gaps and open questions;
-- **moved** to `docs/archive/wlm-audit-2026-11.md`, a grep-able file the design doc links to and agents do not read
-  by default: the W findings about the old model, the S-table baselines, §7 sequencing, §8 decisions (durable ones are
-  in PROGRESS.md), §9's per-entry results and review notes.
-References into the doc (code comments, BACKLOG.md, PROGRESS.md, SPEC.md, docs/research.md, skills such as `wlm-why`)
-are rewritten to the kept section or the archive in the same PR, or the kept sections keep their numbers. Done when:
-the design doc holds only the four kept parts, `rg 'wlm-design\.md'` finds no reference to a moved or renumbered
-section, and CLAUDE.md or the doc's head says the archive is for reference only.
+  S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in the archive's §1).
 
 ## pr-followups
 
@@ -537,12 +515,12 @@ Change: add a separate streak metric to `inspect … wlm-stats` for at least 30 
 the same period on an image, with bottleneck, first/last tick and check count, exposed in text and JSON alongside
 the existing episode details. Preserve the accepted `ASSESSED` episode counter and label both populations clearly.
 End a streak when the outcome/bottleneck changes or the candidate is absent from an image's next adjustment.
-Update SPEC §5.5.4 and docs/wlm-design.md §9.6/§9.8 to distinguish candidate checks, trial-search assessments,
+Update SPEC §5.5.4 and docs/archive/wlm-audit-2026-11.md §9.6/§9.8 to distinguish candidate checks, trial-search assessments,
 skip-clock retries and periodic log entries. This reporting task does not extend skip clocks or change bottleneck
 selection. Since WT-10 (2026-11-12) waits no longer mask CPU or zIIP delay: the fixture's 14:00–14:04:50 run is ONLHI
 mostly waiting, assessed every interval while five or fewer periods miss their goals (RF-03) or once per skip clock
 otherwise, and `NOT_FIXABLE` is rare (S-1 … S-3: 0 / 0 / 22).
-The large unassessed population is now `RECOVERING` (646 / 3 431 / 9 608; docs/wlm-design.md §9.10), checked every
+The large unassessed population is now `RECOVERING` (646 / 3 431 / 9 608; docs/archive/wlm-audit-2026-11.md §9.10), checked every
 10 s with no trials: count streaks of any outcome without trials (`NOT_FIXABLE`, `RECOVERING`), not only
 `NOT_FIXABLE`. Any proposed
 suppression policy needs its own sourced sim entry and an explicit responsiveness/fairness decision.
@@ -602,7 +580,7 @@ when: the doc and the test cover both paths.
 
 From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. Tests only; no behaviour change:
 - S-4 (`tests/sim/wlm-realism.test.ts`) checks ≥ 4 distinct DPs below `MANAGED_MAX` at D8 12:00; assert canonical
-  spacing (`levelDp`) and the "7–8 levels from D1 to D8" of docs/wlm-design.md §9.7.
+  spacing (`levelDp`) and the "7–8 levels from D1 to D8" of docs/archive/wlm-audit-2026-11.md §9.7.
 - R-4 ("MKTDDF#2 second from the bottom on PRDD at D1 14:17", §9.7) has no test.
 - The capped-PROD1 realism test (`tests/sim/realism.test.ts`, "nothing less important is raised past it") reads the
   trace's `dps`, which `finish` records before the move; a move accepted in the last interval is missed. Check the
@@ -683,7 +661,7 @@ against Midwest's bands for reference only. The user accepted 5/10 for the relea
 for an expert player (event mix, Markets SLA tightness, the expert bot's blind spots such as never raising Db2 above
 CICS) and decide whether to tune content or the bot. Done when: a 20-seed three-bot Harbourline sweep is recorded in
 PROGRESS.md M8.2 with the decision, and any content change carries `// FICTIONAL:` notes.
-Cross-note: the `wlm-truth` core (WT-04 … WT-09) changes how equal-priority crowding arises (docs/wlm-design.md W2,
+Cross-note: the `wlm-truth` core (WT-04 … WT-09) changes how equal-priority crowding arises (docs/archive/wlm-audit-2026-11.md W2,
 §6.2); tuning before WT-09 would be redone (§8 Q2).
 
 ### BL-02 · Revenue: do-nothing survives close to textbook
@@ -694,7 +672,7 @@ its 8–22 band (it moved there with #167's G1 retune), but the gap to textbook 
 Harbourline's 19.5, so diagnosing earns less on Revenue. The textbook PREFILL losses around day 22 (PROGRESS.md
 M8.2 follow-ups) belong here too. Decide whether the spread is wanted; if not, tune G1/G2 pressure or the deadline
 week. Done when: a 20-seed three-bot Revenue sweep and the decision are recorded in PROGRESS.md M8.2.
-Cross-note: as BL-01, tune after WT-09 (docs/wlm-design.md §6.2, §8 Q2).
+Cross-note: as BL-01, tune after WT-09 (docs/archive/wlm-audit-2026-11.md §6.2, §8 Q2).
 
 ## cleanup
 
@@ -731,3 +709,39 @@ the section heading which pin each column takes (`pin CPC <lpar> LPAR_BUSY|PRSM_
 `CAPACITY_ADJ`). Leave `--json`, `mon3PastText` (the pin-history dump) and the `Mon3Cpc` view model unchanged:
 agents and pins read `busyPct` there. Weight and polarity stay in `play capacity`. Done when: `play mon3` and `play
 mon3 PROD1` show the new CPC section, `--json` output is unchanged, and the docs/agents.md example (if any) matches.
+
+### CL-09 · Loop and reviewer instructions: lessons from the WLM close-out (2026-11-13)
+`list: cleanup · status: blocked: user (saved for later, 2026-11-13) · priority: low · size: S · area: tooling`
+
+Source: lessons from the #331, #333 and WT-12 design rounds (session of 2026-11-13). All five edits are to
+instructions only (`.claude/skills/dev-loop`, `.claude/skills/pr-fix-loop`, `.claude/agents/pr-reviewer.md`,
+AGENTS.md).
+
+1. **pr-fix-loop reviews `needs-user` PRs and holds only the merge.**
+   - pr-fix-loop reviews them, and fixes or holds them as for any other PR, but never merges one.
+   - dev-loop still answers holds on them.
+   - Why: #331 sat unreviewed and went stale while it waited for the user's I13 decision.
+2. **dev-loop states a `blocked: design` question with options and a recommendation** (steps 2 and 3.3).
+   - Give two or three options.
+   - Check each with zos-docs, including whether real WLM has the data the option uses.
+   - Why: WT-12's question pointed toward a per-job forecast that WLM couldn't make.
+3. **Status marks in docs are claims.**
+   - dev-loop lists each finding mark it sets (W-n fixed, partial or open) in the PR body, checked against the
+     finding's own text.
+   - pr-reviewer verifies each mark as a claim.
+   - Why: #333 first marked W11 fixed.
+4. **Two adversarial-read prompts for pr-reviewer** (check 7).
+   - **New data in shared state:** when a new source feeds existing state, check every reader and how long the
+     data lives. That covers the AVG and PCT paths, measured and projected values, report classes, and counters
+     such as `missingGoals`. Why: #333's percentile PI never expired.
+   - **A test for each rule:** each new or changed rule names the test that fails when the rule is simplified
+     (sum → max, `<` → `<=`). Why: #331 N1.
+5. **AGENTS.md gets a "Reviews" section,** for agents that start from AGENTS.md (OpenCode's #333 review had none
+   of these):
+   - the exact `Automated <role> report …` header, with a role other than `pr-reviewer`/`pr-fixer` for ad hoc
+     reviews;
+   - the attribution line last;
+   - read CI rather than rerunning it, and use `npm run test:remote` if a rerun is needed.
+
+Done when: all five are in the named files, and the skills' reports and markers still parse (pr-fix-loop and
+dev-loop read markers by their exact text).

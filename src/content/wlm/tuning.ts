@@ -80,7 +80,7 @@ export const POLICY_ADJUST = {
   // multiple of its projected `base`. A projection that far below what is measured (a runaway: 56.6 against 1.15)
   // cannot show what draining that backlog does to others. Shape: only transaction work far behind is affected, and
   // it can still be helped by a donor move; a percentile PI stops at 4.0, so a percentile goal never trips it.
-  // Measured against projecting its whole backlog (docs/wlm-design.md §9.5).
+  // Measured against projecting its whole backlog (docs/wlm-design.md §5.4).
   projectionTrustMax: 4,
   // FICTIONAL: a period whose managed delay (CPU, zIIP, I/O in velocity, storage, queue) is under this share of its
   // samples is not assessed. IBM's rule is "no delay samples" (WLM Services p.144); a fluid model never has exactly none.
@@ -92,7 +92,7 @@ export const POLICY_ADJUST = {
   bottleneckMinFrac: 0.15,
   // IBM: a receiver whose every trial was rejected is skipped for 3 policy adjustment cycles (Sinram, SHARE 2010
   // session 7777 p.11; WLM Services p.145 documents the clock but not its length). One length on every difficulty
-  // (docs/wlm-design.md §8 Q9).
+  // (docs/wlm-design.md §5.10).
   rejectedSkipTicks: 3,
   // IBM: since z/OS 1.11 the skip clock is not honoured when 5 or fewer service class periods miss their performance
   // objectives (Sinram, SHARE 2010 session 7777 p.11). The check is `missing > skipClockMinMissing`: 5 means honour

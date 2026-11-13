@@ -1,4 +1,4 @@
-// Build the play-CLI file of a hands-off run: the docs/wlm-design.md repro recipe (seed 42, Normal, no player
+// Build the play-CLI file of a hands-off run: the repro recipe of docs/archive/wlm-audit-2026-11.md §1 (seed 42, Normal, no player
 // actions; per day `start`, `advance 24` until the day ends, `draft none`), played in-process through the play CLI's
 // own code path, so `inspect … wlm`, `wlm-stats` and `blame` can replay it.
 //
@@ -10,7 +10,7 @@ import type { DifficultyId } from '../src/content/difficulty';
 import { applyPlayCommand, clockText, newPlayFile, type PlayCommand, type PlayFile } from './playCore';
 import { writeSpectateFile } from './spectateFile';
 
-/** The audit's statistics runs (docs/wlm-design.md §1, the S-table). */
+/** The audit's statistics runs (docs/archive/wlm-audit-2026-11.md §1, the S-table). */
 export const REPRO_RUNS: Record<string, { scenario: string; days: number }> = {
   'S-1': { scenario: 'midwest', days: 2 },
   'S-2': { scenario: 'revenue', days: 3 },
