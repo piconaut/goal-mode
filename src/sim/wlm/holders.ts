@@ -5,7 +5,7 @@
 // the most important and most unhappy transactions they serve, so less important transactions in the same regions get
 // a free ride (SG24-6472-03 p.62–63). Every other goal period holds its own priority.
 
-import type { LparEvalInput } from './eval/types';
+import type { LparEvalInput, SliceSpec } from './eval/types';
 
 /** The image's one server period. APPROX: one per image, because the sim does not split a workload's transactions
  * between regions (IBM: one per set of regions serving the same classes). */
@@ -16,23 +16,44 @@ export interface HolderTopology {
   serverKey: string | null;
   /** Goal periods held by another holder → that holder. Absent = the period is its own holder. */
   heldBy: Readonly<Record<string, string>>;
+  /** Region classes in `heldBy`, sorted: every member on the image is a transaction-server region, so the class is
+   * ignored (SG24-6472-03 p.89: "The external service class of a server is ignored"). It takes the server period's DP
+   * but is neither receiver nor donor and gives the server period no importance. */
+  attached: readonly string[];
 }
 
-export const NO_SERVERS: HolderTopology = { serverKey: null, heldBy: {} };
+export const NO_SERVERS: HolderTopology = { serverKey: null, heldBy: {}, attached: [] };
 
 /**
  * The holders of an image's goal periods (`goalKeys`). CICS transaction periods are held by the server period while
  * any AOR is TRANSACTION (`regions.serverKey`). Under REGION or BOTH the transactions run at the region class's DP
  * and their classes keep a DP each, as before server periods (not a player lever: `wlmEdit.ts`).
  */
-export function holderTopology(regions: LparEvalInput['regions'], goalKeys: Iterable<string>): HolderTopology {
+export function holderTopology(
+  regions: LparEvalInput['regions'],
+  goalKeys: Iterable<string>,
+  slices: readonly Pick<SliceSpec, 'key' | 'scKey'>[] = [],
+): HolderTopology {
   const server = regions?.serverKey;
   if (!server) return NO_SERVERS;
   const goal = new Set(goalKeys);
   const heldBy: Record<string, string> = {};
   for (const k of regions!.keys) if (goal.has(k)) heldBy[k] = server;
-  return Object.keys(heldBy).length > 0 ? { serverKey: server, heldBy } : NO_SERVERS;
+  if (Object.keys(heldBy).length === 0) return NO_SERVERS;
+  // Structural, so idle regions do not change it; every such class, not only the first AOR's.
+  const srv = new Set(regions!.servers ?? []);
+  const candidates = new Set(slices.filter((x) => srv.has(x.key)).map((x) => x.scKey));
+  const attached: string[] = [];
+  for (const c of [...candidates].sort()) {
+    if (!goal.has(c) || heldBy[c] !== undefined) continue;
+    if (slices.every((x) => x.scKey !== c || srv.has(x.key))) attached.push(c);
+  }
+  for (const c of attached) heldBy[c] = server;
+  return { serverKey: server, heldBy, attached };
 }
+
+/** The goal periods a server period serves: its held periods less the attached region classes. */
+export const servedKeys = (t: HolderTopology): string[] => Object.keys(t.heldBy).filter((k) => !t.attached.includes(k));
 
 export const holderOf = (t: HolderTopology, k: string): string => t.heldBy[k] ?? k;
 

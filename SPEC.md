@@ -444,7 +444,8 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   resource receiver or donor (WLM Services p.138): a served class as receiver raises the server period, every class it
   serves moves with it (the free ride, SG24-6472-03 p.62–63), and as a donor it counts as meeting its goal only while
   all of them do. Served classes report the server period's DP. The region class is ignored for its server regions
-  (SG24-6472-03 p.89); with no other member it has no PI and is neither receiver nor donor. REGION and BOTH regions run
+  (SG24-6472-03 p.89); a region class with no other member on the image (each such class) has no PI, is neither
+  receiver nor donor, gives new work no level to be placed at, and reports the server period's DP. REGION and BOTH regions run
   at their class's DP. REGION
   regions don't report their transactions' response times to any service class, only to report classes, so WLM
   can't manage those classes; BOTH (meant for TORs) keeps tracking them (WLM Planning p.123). A transaction's

@@ -1069,9 +1069,11 @@ does not see the waits that hold the measured PI up.
   important class). CPU protection and the CPU-critical check work on holders (a server period is protected when a
   class it serves is). A blocker sharing the receiver's holder is never carried. REGION and BOTH are unchanged: the
   transactions run at the region class's DP and the served classes keep a DP each (not a player lever; holder = region
-  class, as §5.1 has it, would make transaction classes receivers that move a region managed to its own goal). A region
-  class with only server regions is attached to the server period: neither receiver nor donor, and it reports the
-  regions' DP: every member on the image is a transaction-server region, whether or not they used CPU this interval.
+  class, as §5.1 has it, would make transaction classes receivers that move a region managed to its own goal). Every
+  region class with only server regions is attached to the server period (`holderTopology`, the same in dispatch and
+  adjustment): neither receiver nor donor, no level on the ladder for placing new work, no importance for the server
+  period, and it reports the regions' DP: every member on the image is a transaction-server region, whether or not
+  they used CPU this interval.
 - **Resource-group minimum:** a group is *below its minimum and wanting* when its smoothed CP service is under the
   minimum and a member has CPU delay. Goal members: as today, while a member's `mLocal` > 1. A discretionary member:
   its share is dispatched at `MANAGED_MAX` while no goal period outside the group has `mLocal` > 1, else just below
@@ -1970,6 +1972,12 @@ Review of #324 (B1): the region class was attached only while its regions had us
 AOR left an importance-1 class with no PI on the ladder, where under CCIMP it was a protection floor that demoted
 batch. Attachment is now structural: every member of the region class on the image is a transaction-server region.
 Goldens and bench hashes are unchanged (no shipped region class holds only AORs).
+
+Second review of #324: attachment lived in adjustment only, so dispatch's placement still saw an attached class as a
+holder of its own: an importance-5 region class at the server's DP placed new importance-5 work at the regions'
+priority without an assessment (Midwest PROD2: F6, against EE on the base). And only the first AOR's region class was
+attached, so a second all-server class stayed a no-PI CPU-protection floor. `holderTopology` now attaches every
+qualifying class, and dispatch and adjustment both use it. Goldens and bench hashes are again unchanged.
 
 Sweep (remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged from RF-03;
 Harbourline 10 / 29 / 7 (textbook 1 victory), from 9 / 30 / 8. The expert losses are seeds 1 (day 40), 2 (day 33) and

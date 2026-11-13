@@ -265,6 +265,69 @@ describe('server periods (WT-09)', () => {
     expect(next.servers![0]!.dp).toBeGreaterThan(dpOf('DDFPRD#2'));
   });
 
+  it('attaches every region class whose members are all server regions, and gives them no say in placement (review #324)', () => {
+    const regions = { ...REGIONS, servers: ['aor', 'aor2'] };
+    const slices = [
+      { key: 'aor', scKey: 'STCHI#1' }, { key: 'mq', scKey: 'STCHI#1' }, { key: 'aor2', scKey: 'RGNTWO#1' }, { key: 'hi', scKey: 'ONLHI#1' },
+    ];
+    const t = holderTopology(regions, ['ONLHI#1', 'ONLMED#1', 'STCHI#1', 'RGNTWO#1', 'NEW5#1'], slices);
+    expect(t.attached).toEqual(['RGNTWO#1']);
+    expect(holderOf(t, 'RGNTWO#1')).toBe(SERVER_KEY);
+    expect(holderOf(t, 'STCHI#1')).toBe('STCHI#1'); // MQ is not a server region
+    // An attached importance-5 class at the server's DP is no level for new importance-5 work.
+    const def = policy(0.2, 0.2);
+    const five = { goal: { kind: 'VEL' as const, velocity: 10 }, importance: 5 as const, durationSu: null };
+    def.classes.push({ ...structuredClone(def.classes.find((c) => c.id === 'STCHI')!), id: 'RGNTWO', periods: [five] });
+    def.classes.push({ ...structuredClone(def.classes.find((c) => c.id === 'STCHI')!), id: 'NEW5', periods: [five] });
+    const held = { [SERVER_KEY]: 0xf6, 'ONLHI#1': 0xf6, 'ONLMED#1': 0xf6, 'RGNTWO#1': 0xf6, 'STCHI#1': 0xf2 };
+    expect(placeLateDp(def, held, 'NEW5#1', t)).toBeLessThan(0xf2);
+    const out = placeNewPeriods(def, held, ['NEW5#1'], t);
+    expect(out['NEW5#1']!).toBeLessThan(out['STCHI#1']!);
+    expect(out['RGNTWO#1']).toBe(out[SERVER_KEY]);
+  });
+
+  it('a second region class of server regions is attached too: no CPU protection floor for it (review #324)', () => {
+    const def = policy(100, 100);
+    def.classes.push({ ...structuredClone(def.classes.find((c) => c.id === 'STCHI')!), id: 'RGNTWO' });
+    const base = image(def, { ...REGIONS, servers: ['aor', 'aor2'] });
+    const evalInput = {
+      ...base,
+      slices: [...base.slices, sliceSpec({ key: 'aor2', scKey: 'RGNTWO#1', kind: 'AS', role: 'CICS.AOR', jobname: 'AOR2', cpEngines: 0.05, units: 1 })],
+    };
+    const dps: Record<string, number> = { 'ONLHI#1': 0xf4, 'ONLMED#1': 0xf4, [SERVER_KEY]: 0xf4, 'STCHI#1': 0xf6, 'RGNTWO#1': 0xf6, 'BATCHPRD#1': 0xf4 };
+    const current = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const system: WlmSystemState = {
+      lparId: 'SYS1', servers: [{ key: SERVER_KEY, dp: 0xf4 }],
+      scps: current.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
+    };
+    const out = policyAdjust({ def, system, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T', ccImp: 1 });
+    expect(out.protect ?? '').not.toContain('below RGNTWO#1');
+    expect(out.dps['RGNTWO#1']).toBe(out.dps[SERVER_KEY]);
+  });
+
+  it('new work is not placed at an attached region class\'s level through step() (review #324)', () => {
+    // The regions in their own importance-5 class while they serve importance-1 transactions; every goal loose.
+    let s = initState(42, MIDWEST);
+    const d = structuredClone(s.wlm.definition);
+    for (const c of d.classes) for (const p of c.periods) {
+      if (p.goal.kind === 'VEL') p.goal.velocity = 1;
+      else if (p.goal.kind === 'PCT' || p.goal.kind === 'AVG') p.goal.rtSec = 100;
+    }
+    const five = [{ goal: { kind: 'VEL' as const, velocity: 1 }, importance: 5 as const, durationSu: null }];
+    d.classes.push({ ...structuredClone(d.classes.find((c) => c.id === 'STCHI')!), id: 'REGONLY', periods: five });
+    d.subsystems.find((x) => x.subsystem === 'STC')!.rules.find((r) => r.pattern === 'CICS*')!.serviceClass = 'REGONLY';
+    s = { ...s, wlm: { ...s.wlm, definition: d } };
+    for (let i = 0; i < 12; i++) s = step(s, [], MIDWEST);
+    const d2 = structuredClone(s.wlm.definition);
+    d2.classes.push({ ...structuredClone(d2.classes.find((c) => c.id === 'REGONLY')!), id: 'NEW5' });
+    d2.subsystems.find((x) => x.subsystem === 'TSO')!.defaultServiceClass = 'NEW5';
+    s = step({ ...s, wlm: { ...s.wlm, definition: d2 } }, [], MIDWEST);
+    const prod2 = s.wlm.systems.find((x) => x.lparId === 'PROD2')!;
+    const dpOf = (k: string) => prod2.scps.find((x) => x.scKey === k)!.dp;
+    expect(dpOf('REGONLY#1')).toBe(prod2.servers![0]!.dp);
+    expect(dpOf('NEW5#1')).toBeLessThan(dpOf('STCMED#1'));
+  });
+
   it('a carry of a blocker that shares the receiver\'s holder is void', () => {
     const ladder = [['STCHI#1'], ['BAT#1'], [SERVER_KEY]];
     const plan = buildPlan({

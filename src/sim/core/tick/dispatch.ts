@@ -3,7 +3,7 @@ import { DB2 } from '../../subsys/db2';
 import { scKeyAtService } from '../../workload/slices';
 import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../../wlm/evaluate';
 import { decayInto, emptyAcc, goalInfo, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
-import { holderTopology } from '../../wlm/holders';
+import { holderTopology, servedKeys } from '../../wlm/holders';
 import type { LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
@@ -40,7 +40,7 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
   const regions = regionsOf(img, def, slices, workloadById, addressSpaces).regions;
   // DPs are per-tick state: periods the image has not dispatched before are placed on the ladder here (WT-06). The
   // ladder is of holders (WT-09): CICS transaction periods take their server period's DP.
-  const topo = holderTopology(regions, slices.filter((s) => isGoalPeriod(def, s.scKey)).map((s) => s.scKey));
+  const topo = holderTopology(regions, slices.filter((s) => isGoalPeriod(def, s.scKey)).map((s) => s.scKey), slices);
   const held: Record<string, number> = {};
   for (const s of prevSys?.scps ?? []) held[s.scKey] = s.dp;
   const server = topo.serverKey;
@@ -49,7 +49,7 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
     const kept = prevSys?.servers?.find((x) => x.key === server)?.dp;
     // A save from before server periods: the regions ran at the highest served DP.
     let top: number | undefined = kept;
-    if (top === undefined) for (const k of Object.keys(topo.heldBy)) if (held[k] !== undefined && (top === undefined || held[k]! > top)) top = held[k];
+    if (top === undefined) for (const k of servedKeys(topo)) if (held[k] !== undefined && (top === undefined || held[k]! > top)) top = held[k];
     if (top !== undefined) {
       held[server] = top;
       for (const k of Object.keys(topo.heldBy)) if (held[k] !== undefined && held[k] !== top) (fresh ??= []);

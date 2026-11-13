@@ -16,7 +16,7 @@ import { projectedPercentilePi } from './goals';
 import { ACC_DECAY, goalPi, goalInfo, srvDelayCapOf, tickPi, type ScpGoalInfo, type ScpState, type WlmSystemState } from './runtime';
 import { buildPlan, formatPlanMoves, type PlanAttempt, type PlanMove, type PlanAssessment } from './plan';
 import type { ServiceDefinition } from './types';
-import { expandHolderDps, holderOf, holderTopology, servedBy } from './holders';
+import { expandHolderDps, holderOf, holderTopology, servedBy, servedKeys } from './holders';
 
 /** A managed delay a receiver's plan can target (CPU, ZIIP) or that it is reported not fixable for (docs/wlm-design.md
  * §5.7). Capping and waits (`delayOther`) are not managed delays and are never a bottleneck. */
@@ -375,24 +375,15 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
     if (g && g.goal.kind !== 'DISC') info[s.scKey] = g;
   }
   // Holders (WT-09, docs/wlm-design.md §5.1): CICS transaction periods hold no DP of their own; their server period
-  // does. The region class is ignored while it serves only as the regions' class (SG24-6472-03 p.89: "The external
-  // service class of a server is ignored"): when every member on the image is a transaction-server region it is
-  // neither receiver nor donor and reports the regions' DP. Structural, so idle regions do not change it.
+  // does. A region class whose members on the image are all transaction-server regions is attached (`holderTopology`):
+  // neither receiver nor donor, and it reports the regions' DP.
   const regions = input.evalInput.regions;
-  let topo = holderTopology(regions, Object.keys(info));
+  const topo = holderTopology(regions, Object.keys(info), input.evalInput.slices);
   const server = topo.serverKey;
-  let attached: string | null = null;
-  if (server && regions && info[regions.regionKey] && topo.heldBy[regions.regionKey] === undefined) {
-    const members = input.evalInput.slices.filter((x) => x.scKey === regions.regionKey);
-    if (members.length > 0 && members.every((x) => regions.servers?.includes(x.key))) {
-      attached = regions.regionKey;
-      delete info[attached];
-    }
-  }
+  for (const k of topo.attached) delete info[k];
   if (server) {
     const kept = system.servers?.find((x) => x.key === server)?.dp;
-    held[server] = kept ?? Math.max(...Object.keys(topo.heldBy).map((k) => held[k] ?? 0));
-    if (attached) topo = { serverKey: server, heldBy: { ...topo.heldBy, [attached]: server } };
+    held[server] = kept ?? Math.max(...servedKeys(topo).map((k) => held[k] ?? 0));
   }
   const infoKeys = Object.keys(info).sort();
   const hold = (k: string) => holderOf(topo, k);

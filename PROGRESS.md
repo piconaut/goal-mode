@@ -609,7 +609,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   - BACKLOG: WT-09 deleted; RT-14 and WT-15 ready.
   - User decision (2026-11-13, #324): the adaptive shadow-IT test measured on PROD1 is fine; it replaces the
     sysplex-wide assertion of the 2026-11-12 decision. Review B1 fixed: the region class attaches structurally
-    (all members server regions), not only while its regions used CPU.
+    (all members server regions), not only while its regions used CPU. Second review: dispatch placement uses the
+    same attachment (an attached importance-5 region class no longer places new importance-5 work at the regions'
+    DP), and every all-server region class is attached, not only the first AOR's.
   - User decision (2026-11-13, #324 review M1): S-3's quick reversals 19 → 4 (79 %, one short of I13's per-scenario
     80 %) are accepted, not tuned.
 

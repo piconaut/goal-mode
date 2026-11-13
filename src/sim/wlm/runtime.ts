@@ -3,7 +3,7 @@
 import { decayMoved, mergeWorkManager, type MovedSamples, type WorkManagerSamples } from './reporting';
 import { DP } from '../zos/dispatcher';
 import { canonical, ladderOf, levelDp, levelOf, placeNew, type Ladder } from './ladder';
-import { NO_SERVERS, type HolderTopology } from './holders';
+import { NO_SERVERS, servedKeys, type HolderTopology } from './holders';
 import { POLICY_ADJUST } from '../../content/wlm/tuning';
 import { emptyBuckets, performanceIndex } from './goals';
 import type { ScpTick } from './evaluate';
@@ -154,7 +154,7 @@ function holderLadder(def: ServiceDefinition, dps: Readonly<Record<string, numbe
 } {
   const server = topo.serverKey;
   let serverImp: number | undefined;
-  for (const k of Object.keys(topo.heldBy)) {
+  for (const k of servedKeys(topo)) {
     const i = goalInfo(def, k)?.importance;
     if (i !== undefined && (serverImp === undefined || i < serverImp)) serverImp = i;
   }
