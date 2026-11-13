@@ -439,32 +439,10 @@ donors (WLM Services p.138); discretionary work is spread over 192–201 by mean
 modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a playtest finding that a stale order
 or equal-priority discretionary work misleads players.
 
-### WT-16 · Correct address-space delay samples when a better CPU grant worsens velocity
-`list: wlm-truth · status: ready · priority: high · size: M · area: sim`
-
-Investigation completed before a model change (2026-11-13, docs/wlm-design.md §9.13, measured on `2a59cd4`).
-Remaining: fix the grant-to-sample artefact in shared evaluation (`src/sim/wlm/eval/results.ts`, with the
-queue estimate in `src/sim/zos/dispatcher.ts` as needed). At fixed demand, granting STCHI 0.328816 CP engines
-instead of 0 raises its CP delay from 0.328816 to 16.440787 and its velocity PI from 4.2652 to 26.3789. The
-`cpUsing * qr + unmetCp` formula gives almost no CP delay at zero CP service and far more after a useful grant.
-A two-slice, no-backlog counterexample and the capped fixture's full recipe are in §9.13. Main agent model work;
-verify the correction with `zos-docs`, keep processor samples within ready units and avoid double-counting waits.
-Test that better CP service at fixed demand, fixed other-resource service and an unchanged saturated queue
-estimate cannot worsen velocity; cover zero CP service with continuing zIIP use, and the capped-PROD1 fixture.
-
-The S-1 DDF cases have a different explanation: DDF loses CPU when sharing with batch under the current fictional
-ready-unit counts (§9.13). They do not justify changing `shareByUnits` or treating DDF thread counts as verified.
-Backlog and uplift are excluded as the capped artefact's cause; add no third policy-adjustment guard, and do not
-remove `projectionTrustMax` or WT-09's holder guard without separate evidence that their backlog limitation is
-fixed. Report before/after bench hashes, regenerated goldens with a Behaviour change note, S-1 … S-3 statistics,
-RT-06 validator differences and three-scenario remote sweeps (seeds 1–10, Normal). Done when: the shared formula
-and regression tests remove the artefact, §9.13 records the correction and measured effects, and the checks pass.
-Then remove WT-16 and unblock WT-17.
-
 ### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
-`list: wlm-truth · status: blocked: after WT-16 · priority: low · size: M · area: content`
+`list: wlm-truth · status: ready · priority: low · size: M · area: content`
 
-User request 2026-11-13. After WT-16, which records its verdict in this document. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
+User request 2026-11-13. WT-16 (closed 2026-11-13, #331) recorded its verdict in §9.13–§9.14. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
 - **kept** in docs/wlm-design.md, as a living design doc: real WLM with page citations (§3), the sim's model as built
   (§5, as a description, not a change history), the invariants I1 … with the test that checks each (IDs unchanged),
   and the approximations, known gaps and open questions;
@@ -685,6 +663,26 @@ show queued DBAT requests per hour per Db2 member in a Db2 statistics / DISPLAY 
 `DBAT_QUEUE` from there (count per hour; THREAD_LIMIT; FICTIONAL notable line in `content/evidence.ts`). The sim's
 queue model does not change. Done when: the view, the pin and the clue texts that name the old column are updated,
 `tests/game/smf.test.ts` and the evidence tests cover it, and the two `docs/research.md` rows say "Matches".
+
+### RF-04 · The velocity floor sets a starved period's projected PI, and outweighs percentile periods
+`list: realism-fixes · status: ready · priority: low · size: S · area: sim`
+
+From the pr-reviewer report on #331 (WT-16, N2, 2026-11-13). Since WT-16, projections judge velocity before the PI
+ceiling of 99, so a starved velocity period's projected PI is set by the hard-coded 0.1 % velocity floor in
+`performanceIndex` (`src/sim/wlm/goals.ts`): `goal.velocity / 0.1`, i.e. 10 × its goal (VEL 74 → 740). A percentile
+PI stops at 4.0 and an average one at the timeout, so in net value's summed equal-importance harm and in the
+disparity test a starved velocity period outweighs any response-time period by two orders of magnitude, whatever
+its importance-equal rival's state. On #331's seed-1044 fixture G06 (VEL 74) goes 3.02 → 740.00 and turns the first
+trial into `EQUAL_DISPARITY`. No net-value rule changed, but the effective weights did. How real WLM scales a
+projected velocity PI near zero service is not documented in the books checked so far (unverified; check with
+`zos-docs` before choosing).
+Change: move the floor to `src/content/wlm/tuning.ts` with a `// FICTIONAL:` note describing the shape it should
+give, and decide whether projected harm should be bounded comparably across goal types (e.g. a projection ceiling
+for velocity like percentile's 4.0 past-the-mean scale, or harm counted on a common scale). That is a design call
+for the main agent; report before changing the rule. Done when: the floor is a named content coefficient, the
+choice is recorded in docs/wlm-design.md §5.10 and SPEC §5.5.4, a test shows a starved velocity period and a
+missing percentile period of equal importance traded on the chosen scale, and goldens, the S-1 … S-3 table and a
+three-scenario sweep (seeds 1–10) are recorded if behaviour changes.
 
 ## balance
 

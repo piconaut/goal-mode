@@ -105,15 +105,16 @@ export function velocityOf(usingSamples: number, delaySamples: number): number |
   return tot > 1e-12 ? (100 * usingSamples) / tot : null;
 }
 
-/** PI for a goal; null when there is no activity to judge. */
-export function performanceIndex(goal: Goal, x: PiInputs): number | null {
+/** PI for a goal; null when there is no activity to judge. Projections pass Infinity for the velocity ceiling;
+ * reported/management PIs keep 99. The existing 0.1% velocity floor keeps zero-service projections finite. */
+export function performanceIndex(goal: Goal, x: PiInputs, velocityPiMax = 99): number | null {
   switch (goal.kind) {
     case 'DISC':
       return DISCRETIONARY_PI;
     case 'VEL': {
       const v = velocityOf(x.usingSamples, x.delaySamples);
       if (v === null) return null;
-      return Math.min(goal.velocity / Math.max(v, 0.1), 99);
+      return Math.min(goal.velocity / Math.max(v, 0.1), velocityPiMax);
     }
     case 'AVG':
       return x.completions > 1e-9 ? x.rtSumSec / x.completions / goal.rtSec : null;

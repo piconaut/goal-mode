@@ -17,6 +17,8 @@ import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
 import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import * as wlmAdjust from '../../src/sim/wlm/adjust';
+import { projectionInput } from '../../src/sim/wlm/projection';
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { committedMoves } from '../helpers/wlmMoves';
 
@@ -1102,6 +1104,22 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
     const lines: string[] = [];
     const traces: WlmAdjustTrace[] = [];
+    const samples: { cp: number; zi: number; pi: number }[] = [];
+    const adjust = wlmAdjust.policyAdjust;
+    const probe = vi.spyOn(wlmAdjust, 'policyAdjust').mockImplementation((input) => {
+      if (input.system.lparId === 'PROD1' && input.clockText === 'D1 14:30:40') {
+        const dps = Object.fromEntries([...input.system.scps.map(p => [p.scKey, p.dp]), ...(input.system.servers ?? []).map(p => [p.key, p.dp])]);
+        const P = projectionInput(input.evalInput, input.system.scps, POLICY_ADJUST);
+        const serverDp = dps[P.regions!.serverKey!]!;
+        for (const dp of [serverDp - 1, serverDp, serverDp + 1]) {
+          const r = evaluateLpar({ ...P, dpOf: k => k === 'STCHI#1' ? dp : dps[k] ?? 196 });
+          const owned = r.slices.filter((_, i) => P.slices[i]!.scKey === 'STCHI#1' && !P.regions!.servers!.includes(P.slices[i]!.key));
+          const tick = r.scps.find(p => p.scKey === 'STCHI#1')!;
+          samples.push({ cp: owned.reduce((n, s) => n + s.cpGranted + s.iipcpGranted, 0), zi: owned.reduce((n, s) => n + s.ziipGranted, 0), pi: tickPi(goalInfo(input.def, 'STCHI#1')!.goal, tick, Infinity)! });
+        }
+      }
+      return adjust(input);
+    });
     setWlmTraceSink((t) => { if (t.lparId === 'PROD1' && / 1\d:\d\d:\d\d$/.test(t.clockText)) traces.push(t); });
     try {
       for (let t = 0; t < 10 * 360; t++) {
@@ -1114,6 +1132,7 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       }
     } finally {
       setWlmTraceSink(null);
+      probe.mockRestore();
     }
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
     // A clock is logged when it is set, unless the same clue was logged under 30 ticks before (`repeatsClue`).
@@ -1122,8 +1141,8 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     expect(clocks.some((t) => lines.some((l) => l.startsWith(`${t.clockText} PROD1 ONLHI#1`) && l.includes('no action with net value') && l.includes('rejected:')))).toBe(true);
     // Db2 is in STCHI here. A happy STCHI may donate (WT-07, SG24-6472 p.59–60), and ONLHI then mostly waits for it
     // (OTHER, not a managed delay: WT-10) until STCHI misses its goal and is raised back above ONLHI. That raise needs the move to the free priority above
-    // ONLHI, assessed even when joining ONLHI's level is worse for STCHI (WLM Services p.707, code 630; the design
-    // review of 2026-11-12 found WT-08 without it, OTHER to the 16:00 end of this window).
+    // ONLHI (WLM Services p.707, code 630). WT-16 keeps this recovery bound: offered-demand samples must include
+    // starved work, and the velocity PI reporting ceiling must not hide safe intermediate gains from the planner.
     let donated = false, other = 0;
     for (const t of traces) {
       const c = t.candidates.find((c) => c.scKey === 'ONLHI#1');
@@ -1156,6 +1175,12 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && !sameHolder && t.dps[k]! >= t.dps['ONLHI#1']!;
     }).map((k) => `${t.clockText} ${k}`));
     expect(reachedOnlhi).toEqual([]);
+    // WT-16: at this fixture's fixed demand, joining the regions' level restores Db2 CPU and improves velocity.
+    expect(samples).toHaveLength(3);
+    expect(samples[0]!.cp).toBeLessThan(samples[1]!.cp);
+    expect(samples[1]!.zi).toBeCloseTo(samples[0]!.zi, 9);
+    expect(samples[1]!.pi).toBeLessThan(samples[0]!.pi);
+    expect(samples[2]!.pi).toBeLessThanOrEqual(samples[1]!.pi);
   }, 180_000);
 });
 
