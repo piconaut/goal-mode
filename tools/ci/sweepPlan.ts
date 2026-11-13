@@ -4,9 +4,12 @@
 //   npx tsx tools/ci/sweepPlan.ts "<sweep args>" [shards]   # prints args=, seeds=, matrix= lines for $GITHUB_OUTPUT
 
 // Flags `npm run sweep` takes that are safe to set remotely; --out, --jobs and --resume are the workflow's own.
-const VALUE_FLAGS = ['bots', 'seeds', 'days', 'difficulty', 'scenario'];
+const VALUE_FLAGS = ['bots', 'seeds', 'days', 'difficulty', 'scenario', 'tune'];
 const BOOL_FLAGS = ['reader'];
 const VALUE = /^[A-Za-z0-9,._-]+$/;
+/** `--tune` (tools/tune.ts): key=number pairs, comma-separated. Defined here so the workflow can check it without
+ * importing the sim. */
+export const TUNE_SPEC = /^[A-Za-z]\w*=-?\d+(\.\d+)?(,[A-Za-z]\w*=-?\d+(\.\d+)?)*$/;
 export const DEFAULT_ARGS = '--bots donothing,textbook,expert --seeds 1-20';
 // A 4-vCPU runner does 3 bots × 5 seeds in ~16 min; 2 seeds (6 runs) per job keeps a 20-seed sweep near 8 min.
 const SEEDS_PER_SHARD = 2;
@@ -30,7 +33,7 @@ export function planSweep(text: string, shardsWanted?: number): SweepPlan {
       rest.push(t);
     } else if (VALUE_FLAGS.includes(name)) {
       const v = tokens[++i];
-      if (!v || !VALUE.test(v)) throw new Error(`bad value for ${t}: ${v ?? '(missing)'}`);
+      if (!v || !(name === 'tune' ? TUNE_SPEC : VALUE).test(v)) throw new Error(`bad value for ${t}: ${v ?? '(missing)'}`);
       if (name === 'seeds') seeds = v;
       else rest.push(t, v);
     } else {

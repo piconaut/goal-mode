@@ -97,8 +97,10 @@ describe('incidents and RCA', () => {
     r = advance(r, MIDWEST, content, 360 * 6); // 06:00 → 12:00
     const inc = r.incidents.find((i) => i.workloadId === 'RBANK');
     expect(inc).toBeDefined();
-    // Longer CICS tasks also push concurrency past MXT, so the queue can dominate.
-    expect(['CPU_CAPACITY', 'CPU_PRIORITY', 'QR_TCB', 'THREAD_LIMIT']).toContain(inc!.truth.mechanism);
+    // Longer CICS tasks also push concurrency past MXT, so the queue can dominate. Since WT-10 RBANK's CPU delay is
+    // assessed while it mostly waits on the QR TCB, and WLM may raise it past STCHI (Db2), which then starves until it
+    // is raised back: the hour's largest excess can be the dependency.
+    expect(['CPU_CAPACITY', 'CPU_PRIORITY', 'QR_TCB', 'THREAD_LIMIT', 'DEPENDENCY']).toContain(inc!.truth.mechanism);
     expect(r.trust.Retail).toBeLessThan(70);
     const scored = submitRca(r, inc!.id, inc!.truth.mechanism, inc!.truth.trigger);
     expect(scored.incidents.find((i) => i.id === inc!.id)!.rca!.points).toBe(5);
@@ -149,6 +151,10 @@ describe('incidents and RCA', () => {
     expect(r.reports.at(-1)!.batchMissed).toBe(true);
     const inc = r.incidents.find((i) => i.workloadId === 'BATCH')!;
     expect(inc.truth.mechanism).toBe('JOB_FAILURE');
+    // RT-04: the incident records the night's critical jobs' classes and images when it opens, before the day's
+    // report exists (the caller passes the night summary).
+    expect(inc.subjects).toBeDefined();
+    expect(inc.subjects!.hosts).toEqual(inc.subjects!.lpars);
     expect(inc.trustLost).toBeGreaterThanOrEqual(20);
     expect(r.nightHour).toBeNull();
     const after = submitRca(r, inc.id, 'JOB_FAILURE', inc.truth.trigger);

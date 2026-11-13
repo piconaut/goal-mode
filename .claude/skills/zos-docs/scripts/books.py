@@ -3,6 +3,7 @@
 
 Repo layout:   {x.y}/{id}_v{x}r{y}.pdf   z/OS library books
                redbooks/{sgNNNNNN|redpNNNN}.pdf   Redbooks / Redpapers (no release)
+               patents/{usNNNNNNN}.pdf   US patents (no release)
                products/{product}/{version}/{IBM file name}.pdf   other products
                plus .txt (page text, \\f-separated) and .toc (outline) caches
                beside each PDF, all committed.
@@ -10,6 +11,7 @@ Repo layout:   {x.y}/{id}_v{x}r{y}.pdf   z/OS library books
 Book IDs:
   z/OS library   short ID + release   ieag200 --release 3.1
   Redbooks       form number          sg246472, redp5092
+  patents        patent number        us5473773
   other products IBM's PDF file name  db2z_13_msgsbook, sit-reference_pdf, mq94.plan
 
 Commands:
@@ -141,12 +143,17 @@ def rel(release):
 
 
 REDBOOK_RX = re.compile(r"(sg\d{6}|redp\d{4})", re.I)
+PATENT_RX = re.compile(r"us\d{7}", re.I)
 ZOS_ID_RX = re.compile(r"[a-z][a-z0-9]{4,7}")
 UPLOAD_PREFIX_RX = re.compile(r"^[0-9a-f]{8}-")
 
 
 def is_redbook(book_id):
     return bool(REDBOOK_RX.fullmatch(book_id))
+
+
+def is_patent(book_id):
+    return bool(PATENT_RX.fullmatch(book_id))
 
 
 def is_zos_id(book_id):
@@ -158,11 +165,18 @@ def stem_paths(stem):
 
 
 def book_paths(book_id, release):
-    """Repo paths for a z/OS library book or a Redbook."""
+    """Repo paths for a z/OS library book, a Redbook or a patent."""
+    if is_patent(book_id):
+        return stem_paths(f"patents/{book_id}")
     if is_redbook(book_id):
         return stem_paths(f"redbooks/{book_id}")
     x, y = rel(release)
     return stem_paths(f"{x}.{y}/{book_id}_v{x}r{y}")
+
+
+def patent_page_url(book_id):
+    """Google Patents page; its PDF link is the only way to the patentimages PDF."""
+    return f"https://patents.google.com/patent/{book_id.upper()}A/en"
 
 
 def ibm_url(book_id, release):
@@ -209,7 +223,7 @@ def materialize(repo, paths):
 def resolve(repo, book):
     """Repo-relative PDF path for this book, or None."""
     low = book.lower()
-    if is_redbook(low) or is_zos_id(low):
+    if is_redbook(low) or is_patent(low) or is_zos_id(low):
         pdf = book_paths(low, ARGS_RELEASE)[0]
         if os.path.exists(os.path.join(repo, pdf)) or in_tree(repo, pdf):
             return pdf
@@ -242,6 +256,10 @@ def cmd_locate(a):
         print(os.path.join(repo, pdf))
         return 0
     low = a.id.lower()
+    if is_patent(low):
+        print(f"NOT IN REPO: patent {low.upper()}. Open {patent_page_url(low)} and download its PDF "
+              f"(the *Download PDF* link), then ingest it with `books.py ingest FILE.pdf --id {low}`.")
+        return 3
     if is_redbook(low) or is_zos_id(low):
         url = ibm_url(low, a.release)
         if not a.no_fetch:
@@ -334,16 +352,19 @@ def cmd_ingest(a):
         book_id, release = (a.id or "").lower() or None, a.release
         m = re.search(r"([a-z0-9]+)_v(\d+)r(\d+)\.pdf$", name, re.I)
         rb = REDBOOK_RX.search(name)
+        pat = PATENT_RX.search(name)
         if m:
             book_id = book_id or m.group(1).lower()
             release = release or f"{m.group(2)}.{m.group(3)}"
         elif rb and not book_id:
             book_id = rb.group(1).lower()
-        if not book_id or (not release and not is_redbook(book_id)):
+        elif pat and not book_id:
+            book_id = pat.group(0).lower()
+        if not book_id or (not release and not is_redbook(book_id) and not is_patent(book_id)):
             sys.exit("can't tell what book this is from the file name. For a z/OS book pass --id and "
                      "--release; for any other product pass --product and --version.")
         pdf, txt, toc = book_paths(book_id, release or "0.0")
-        label = "Redbook" if is_redbook(book_id) else f"z/OS {release}"
+        label = "patent" if is_patent(book_id) else ("Redbook" if is_redbook(book_id) else f"z/OS {release}")
 
     repo = get_clone()
     pull(repo)
@@ -398,6 +419,7 @@ IBM book PDFs for the zos-docs skill, each with committed text caches beside it:
 Layout:
 - `{x.y}/{bookid}_v{x}r{y}.pdf` - z/OS base library books
 - `redbooks/{sgNNNNNN|redpNNNN}.pdf` - Redbooks and Redpapers
+- `patents/{usNNNNNNN}.pdf` - US patents
 - `products/{product}/{version}/{IBM PDF file name}` - Db2, CICS, IMS, MQ, OMEGAMON, ...
 """
 

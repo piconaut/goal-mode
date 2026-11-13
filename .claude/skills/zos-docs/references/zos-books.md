@@ -227,6 +227,23 @@ Every ID below was seen as a real Redbooks URL in a search.
 | IBM CICS Performance Series: Effective Monitoring for CICS Performance Benchmarks | `redp5170` |
 | IBM CICS Performance Series: CICS TS V5.3 Benchmark on IBM z13 | `redp5320` |
 
+## Patents
+Stored as `patents/{id}.pdf`; ID = patent number lowercased (`us5473773`). Patents have no
+release, so `books.py locate us5473773` takes no `--release`. Their `patentimages` PDF URLs
+contain an opaque hash, so use the Google Patents page for identity and the linked PDF URL
+(with `#page=N`) for page citations. A patent is a point-in-time design disclosure (claims and
+embodiments), not product documentation: prefer the z/OS book when both cover a fact, and say
+when the source is a patent rather than the product library.
+
+| Patent | ID | PDF |
+|---|---|---|
+| Apparatus and method for managing a data processing system workload according to two or more distinct processing goals — US 5,473,773, filed 4 Apr 1994, issued 5 Dec 1995 (IBM: Aman, Eilert, King, Pierce, Yocom) | `us5473773` | [US5473773.pdf](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf) |
+
+This is the original WLM design patent: goal types and importance, performance index,
+receiver-class selection, bottleneck identification and control-element adjustment. Its
+[Google Patents page](https://patents.google.com/patent/US5473773A/en) confirms the number,
+title and dates; the PDF table link is the page target for citations.
+
 ## Other IBM products
 Stored in the repo as `products/{product}/{version}/{IBM PDF file name}`. The **book ID is
 IBM's PDF file name without `.pdf`**: `books.py locate db2z_13_msgsbook`. Ingest with
@@ -333,6 +350,15 @@ The file names are opaque, so check the title page once a book is in the repo.
 | Capacity Planning Guide and Reference (SC28-3213-01) | `C2832131` (older candidate `C2832130` remains unverified; see validation evidence) |
 | Guide to Reporting * | `C2832161` |
 | Other Version 3.1 books, exact filename-to-title mapping unverified * | `C2832181`, `C2832260` |
+
+### SHARE conference handouts — `--product share --version <event number>`
+IBM speakers' handouts from SHARE conferences, stored as `products/share/{event}/{file}.pdf` (event 115 = Boston,
+August 2010). They are presentations, not product documentation: cite them as the speaker's statement for that
+release, and prefer a manual when one says the same. The original `share.confex.com` handout links are dead; these
+copies came from an archive.
+| Handout | ID |
+|---|---|
+| z/OS Workload Management Update for z/OS V1.11 and V1.12 — Horst Sinram (IBM Germany Research & Development), SHARE Boston, session 7777, 2 Aug 2010 (WLM changes incl. the policy adjustment skip clock, p.11) | `S7777_WLM_Update` |
 
 ### Not yet listed
 For zSecure, Db2/IMS tools, z/OS Connect, and similar products: search

@@ -1,0 +1,102 @@
+# Remote test run (user request 2026-11-12): run `npx vitest run` (`npm test`) on GitHub's runners instead of a
+# session's cores, in one job. No PR needed.
+#   - push to a `test/**` branch: arguments from the head commit's `Test-Args:` trailer (`npm run test:remote` makes
+#     that commit and branch and fetches the result); the branch is deleted afterwards.
+#   - workflow_dispatch (Actions tab, once this file is on dev): pick the branch and type the arguments.
+# Result: artifact `test-result` (summary.md) and the run's job summary; the run fails when a test fails, a whole
+# test file fails, or nothing ran.
+name: Test
+
+on:
+  push:
+    branches: ['test/**']
+  workflow_dispatch:
+    inputs:
+      args:
+        description: 'Test selection (--suite golden,game,sim,tools,ui, or --filter <filename text>)'
+        default: ''
+
+permissions:
+  contents: write # only to delete the test/** branch when done
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          HEAD_MSG: ${{ github.event.head_commit.message }}
+          IN_ARGS: ${{ inputs.args }}
+        run: |
+          set -o pipefail
+          if [ "$EVENT" = push ]; then
+            raw=$(printf '%s\n' "$HEAD_MSG" | sed -n 's/^Test-Args: *//p' | head -1)
+          else
+            raw="$IN_ARGS"
+          fi
+          node --experimental-strip-types --no-warnings tools/ci/testPlan.ts "$raw" | tee -a "$GITHUB_OUTPUT"
+      - run: npm ci --no-audit --no-fund
+      # FILTERS is validated by testPlan.ts ([A-Za-z0-9._,/-]) and split on spaces on purpose.
+      - id: tests
+        name: Run vitest
+        env:
+          FILTERS: ${{ steps.plan.outputs.filters }}
+        run: |
+          mkdir -p runs/test
+          set -o pipefail
+          npx vitest run $FILTERS --reporter=default --reporter=json --outputFile.json=runs/test/report.json 2>&1 | tee runs/test/vitest.log
+      # Runs even when vitest failed, so the summary artifact and job summary always exist.
+      - if: always()
+        name: Summarise results
+        env:
+          RAW: ${{ steps.plan.outputs.raw }}
+          TESTS: ${{ steps.tests.outcome }}
+        run: |
+          mkdir -p runs/report
+          {
+            echo "### Remote tests: \`${RAW:-all files}\`"
+            echo
+            echo "Ref \`$GITHUB_REF_NAME\`, commit \`$GITHUB_SHA\`, run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+          } > runs/report/summary.md
+          status=0
+          if [ "$TESTS" = skipped ]; then
+            echo "❌ The test step did not run, so there is no report: an earlier step (argument plan or npm ci) failed; see the run log." >> runs/report/summary.md
+            status=1
+          else
+            node --experimental-strip-types --no-warnings tools/ci/testReport.ts runs/test/report.json "$PWD" >> runs/report/summary.md || status=$?
+            if [ "$TESTS" != success ]; then
+              echo >> runs/report/summary.md
+              echo "❌ The test step finished as $TESTS: the report above may be incomplete; the run log has the full output." >> runs/report/summary.md
+              status=1
+            fi
+          fi
+          cat runs/report/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-result
+          path: runs/report/
+          retention-days: 14
+
+  cleanup:
+    needs: [test]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - run: gh api -X DELETE "repos/$GITHUB_REPOSITORY/git/refs/heads/$GITHUB_REF_NAME" || true
+        env:
+          GH_TOKEN: ${{ github.token }}

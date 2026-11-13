@@ -1,7 +1,7 @@
 import { BASEPOL } from '../../src/content/wlm/basepol';
 import { BATCH_PROJECTION, PCT_PROJECTION_SIGMA } from '../../src/content/wlm/tuning';
 import { advanceJob, emptyBatch, jobCpuDemand, jobPacing, jobShape, releaseNetwork, type JobDef } from '../../src/sim/subsys/batch';
-import { policyAdjust } from '../../src/sim/wlm/adjust';
+import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { batchRecoveryAccepts, type BatchProjectionSlice } from '../../src/sim/wlm/batchProjection';
 import { evaluateLpar, prepareLpar, sliceSpec, type LparEvalInput, type LparEvalResult } from '../../src/sim/wlm/evaluate';
 import { projectedPercentilePi } from '../../src/sim/wlm/goals';
@@ -47,27 +47,30 @@ describe('cross-pool recovery during WLM projections', () => {
   it.each([true, false])('rejects the reproduced F2→F4 raise after zIIP service restores CP demand (CP help %s)', (help) => {
     const { def, dps, job, e, current, system, batch } = recoveryCase(help);
     const snapshot = JSON.stringify({ job, slices: e.slices, batch });
+    // On the ladder (WT-06) policy adjustment raises batch one step at a time: its first step joins STCLO, below
+    // ONLCARD, and is taken with or without recovery. The F2→F4 raise onto ONLCARD's level is checked directly.
     const frozen = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T' });
-    expect(frozen.dps['BATCHPRD#1']).toBe(244);
+    expect(frozen.dps['BATCHPRD#1']).toBe(frozen.dps['STCLO#1']);
+    expect(frozen.dps['BATCHPRD#1']!).toBeLessThan(frozen.dps['ONLCARD#1']!);
     const trial = { ...e, prepared: prepareLpar(e), dpOf: (k: string) => k === 'BATCHPRD#1' ? 244 : dps[k]! };
     const pis: number[] = [];
     expect(batchRecoveryAccepts(trial, batch, (r) => { pis.push(cardPi(r)); return cardPi(r) < 1; })).toBe(false);
     expect(pis).toEqual([.8, 2]);
     const corrected = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
-    expect(corrected.dps['BATCHPRD#1']).toBe(242);
+    expect(corrected.dps['BATCHPRD#1']!).toBeLessThan(corrected.dps['ONLCARD#1']!);
     expect(JSON.stringify({ job, slices: e.slices, batch })).toBe(snapshot);
   });
 
   it.each([true, false])('also catches zIIP demand restored by better CP service (CP help %s)', (help) => {
     const { def, dps, e, current, system, batch } = recoveryCase(help, true);
     const frozen = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T' });
-    expect(frozen.dps['BATCHPRD#1']).toBe(244);
+    expect(frozen.dps['BATCHPRD#1']).toBe(frozen.dps['STCLO#1']);
     const pis: number[] = [];
     expect(batchRecoveryAccepts({ ...e, dpOf: (k) => k === 'BATCHPRD#1' ? 244 : dps[k]! }, batch, (r) => { pis.push(cardPi(r)); return cardPi(r) < 1; })).toBe(false);
     expect(pis[0]).toBeLessThan(1);
     expect(pis[1]).toBeGreaterThan(1);
     const corrected = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
-    expect(corrected.dps['BATCHPRD#1']).toBe(242);
+    expect(corrected.dps['BATCHPRD#1']!).toBeLessThan(corrected.dps['ONLCARD#1']!);
   });
 
   it('still permits useful help when recovered demand has CP headroom', () => {
@@ -75,8 +78,11 @@ describe('cross-pool recovery during WLM projections', () => {
     const slices = e.slices.map((s) => s.key === 'fixed' ? { ...s, cpEngines: 2 } : s);
     const evalInput = { ...e, slices };
     const current = evaluateLpar(evalInput);
-    const out = policyAdjust({ def, system, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
-    expect(out.dps['BATCHPRD#1']).toBe(244);
+    // WLM projects at sustained demand: the lighter load has to be what the accumulators have seen too.
+    const settled = { ...system, scps: system.scps.map((s) => ({ ...s, acc: decayInto(emptyAcc(), current.scps.find((t) => t.scKey === s.scKey)!) })) };
+    const out = policyAdjust({ def, system: settled, evalInput, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
+    expect(out.log).toContain('RCVR=BATCHPRD#1');
+    expect(out.dps['BATCHPRD#1']).toBe(out.dps['STCLO#1']);
   });
 
   it.each(['LPAR', 'RG'])('keeps zIIP demand paced while CP service remains constrained by a %s cap', (cap) => {
@@ -90,6 +96,29 @@ describe('cross-pool recovery during WLM projections', () => {
       expect(r.slices[0]!.cpGranted).toBeLessThanOrEqual(.01);
       expect(r.slices[0]!.ziipGranted).toBeLessThan(.002);
     }
+  });
+
+  it('does not record an exhausted recovery trial as accepted (WT-02)', () => {
+    // Every accept callback says yes and the recovery still runs out of rounds, so the move is not taken: the trace
+    // must not call it ACCEPTED and the player log must not invent a rejection reason for it.
+    const { def, system, e, current, batch } = recoveryCase(true);
+    const traces: WlmAdjustTrace[] = [];
+    const rounds = BATCH_PROJECTION.maxRecoveryRounds;
+    BATCH_PROJECTION.maxRecoveryRounds = 0;
+    setWlmTraceSink((t) => traces.push(t));
+    let out;
+    try {
+      out = policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch });
+    } finally {
+      setWlmTraceSink(null);
+      BATCH_PROJECTION.maxRecoveryRounds = rounds;
+    }
+    expect(out.log).not.toContain('RCVR=');
+    // The clue may name a donor trial's real rejection (WT-07 tries a happy STCHI#1), never one for batch's own move.
+    expect(out.log).not.toMatch(/\(BATCHPRD#1 DP \S+ rejected/);
+    expect(out.dps['ONLCARD#1']).toBe(244);
+    const verdicts = traces[0]!.candidates.flatMap((c) => c.trials.map((t) => t.verdict));
+    expect(verdicts).not.toContain('ACCEPTED');
   });
 
   it('rejects an unsettled trial when its recovery budget is exhausted', () => {
@@ -145,7 +174,26 @@ describe('cross-pool recovery during WLM projections', () => {
     const system: WlmSystemState = { lparId: 'TEST', scps: current.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
     const trialOnly = batch.map((g) => ({ ...g, jobs: g.jobs.map((j) => ({ ...j, nextCp: j.cp, nextZi: j.zi })) }));
     const run = (b: BatchProjectionSlice[]) => policyAdjust({ def, system, evalInput: e, current: current.scps, sysplexPi: {}, clockText: 'T', batch: b });
-    expect(run(trialOnly).dps['BATCHPRD#1']).toBe(246);
-    expect(run(batch).dps['BATCHPRD#1']).toBe(242);
+    // Assess the same unsafe proposal directly, so changing the planner's search order cannot hide the bug.
+    // Ignoring old-DP next demand says ONLHI stays within goal; accounting for it rejects the second recovery round.
+    const trialDps: Record<string, number> = { 'STCHI#1': 246, 'BATCHPRD#1': 244, 'BATCHHI#1': 242, 'ONLHI#1': 240 };
+    const check = (b: BatchProjectionSlice[]) => {
+      const pis: number[] = [];
+      const ok = batchRecoveryAccepts({ ...e, dpOf: (k) => trialDps[k]! }, b, (r) => {
+        const t = r.scps.find((t) => t.scKey === 'ONLHI#1')!;
+        const pi = projectedPercentilePi(t.buckets, 99, t.completions, t.rtSumSec, .1, PCT_PROJECTION_SIGMA)!;
+        pis.push(pi); return pi <= 1;
+      });
+      return { ok, pis };
+    };
+    expect(check(trialOnly)).toEqual({ ok: true, pis: [.7, .8] });
+    const guarded = check(batch);
+    expect(guarded.ok).toBe(false);
+    expect(guarded.pis[0]).toBeLessThanOrEqual(1);
+    expect(guarded.pis[1]).toBeGreaterThan(100);
+    // Policy adjustment can still take a different, safe donor plan.
+    const recovered = run(batch);
+    expect(recovered.log).toContain('DONOR STCHI#1');
+    expect(recovered.dps).toMatchObject({ 'BATCHHI#1': 0xf6, 'ONLHI#1': 0xf4, 'STCHI#1': 0xf2, 'BATCHPRD#1': 0xf2 });
   });
 });

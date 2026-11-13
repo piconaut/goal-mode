@@ -36,13 +36,18 @@ npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + en
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
 npm run lab -- a.json b.json   # realism lab: A/B runs from JSON specs, side by side per RMF interval (format in tools/lab.ts)
 npm run bot -- --bot donothing|textbook|expert|spendtowin|oraclerca --seed 42 [--tfp sign] [--difficulty story|normal|hard|ironman] [--reader] [--spectate runs/bot.json --pace 2]   # full runs with strategy bots
-npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
-npm run sweep:remote -- --bots donothing,textbook,expert --seeds 1-20 [--scenario harbourline] [--difficulty hard] [--shards 4] [--no-wait]   # same sweep on GitHub Actions, sharded by seed, on committed HEAD (no PR); waits, then runs/remote/<sha7>/summary.md + sweep.csv; --fetch <sha> collects a --no-wait run
+npm run bot -- --bot expert --scenario harbourline --seed 9 --days 29 [--changes] [--trace-day 29] [--dump 'PRDA D29 10:0'] [--tune rejectedSkipTicks=0]   # investigations: the bot's changes; one day's WLM an hour at a time (moves, outcomes, SLA, DPs); every candidate and trial of matching adjustments; POLICY_ADJUST overrides (tools/tune.ts; not balance)
+npm run sweep -- --bots donothing,textbook --seeds 1-20 [--jobs 4] [--difficulty hard] [--resume] [--reader] [--tune k=v,...]  # bots over many seeds in parallel → CSV + summary; --resume continues a killed sweep from <out>.partial.jsonl; --reader adds a player who reads 5 reports/day and buys tools
+npm run sweep:remote -- --bots donothing,textbook,expert --seeds 1-20 [--scenario harbourline] [--difficulty hard] [--tune k=v,...] [--shards 4] [--no-wait]   # same sweep on GitHub Actions, sharded by seed, on committed HEAD (no PR); waits, then runs/remote/<sha7>/summary.md + sweep.csv; --fetch <sha> collects a --no-wait run
+npm run test:remote -- [--suite golden,game,sim,tools,ui | --filter <text>] [--no-wait]   # vitest (`npm test`) on GitHub Actions in one job, on committed HEAD (no PR); waits, then runs/remote-tests/<sha7>/summary.md; --fetch <sha> collects a --no-wait run
 npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI for agents (docs/agents.md)
 npm run play -- runs/a.json mon3 [system] [--json] [--at D2 10:40]   # Monitor III now or past: SYSINFO, CPC, DELAY, PROCU, ENCLAVE, SYSWKM, WFEX (text or --json); use it instead of ad-hoc scripts
 npm run play -- runs/a.json finance | capacity | batch   # bill and TFP pace per product (overage $/MSU-hour by LPAR); CPC MSU, LPARs, initiators, capacity changes; last batch night by stream
 npm run inspect -- runs/a.json dp PROD1 [--class ONL] [--from 'D19 20:00'] [--to 'D20 06:00']   # sim internals the player can't see (DPs per RMF interval): investigations only, never in player agents
 npm run inspect -- runs/a.json wlm PROD1 --at 'D19 22:00' [--ticks 6] [--class ONL]   # why WLM did or didn't move DPs: receivers in order, each trial and its verdict (play-CLI files replay to any past time; browser saves trace forward)
+npm run inspect -- runs/a.json blame [--json] [--incident N]   # counterfactual validator (RT-06): replay each online incident's opening hour once per card that affects the hurt workload, with the card ended at the hour start; report the game's blamed card against the cards whose removal met the SLA. Offline only (an hour of sim per card per incident); needs a play-CLI file
+npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--by-class] [--episodes] [--moves] [--json]   # policy adjustment statistics over a range (WT-01, the 2026-11 WLM audit's S-table, docs/archive/wlm-audit-2026-11.md §1): adjustments, candidates by outcome, trials by verdict, accepted and reversed moves, receivers assessed 30 adjustments without a move, and the DP ladder at a clock time; --by-class per period, --episodes lists the 30-assessment runs, --moves every accepted move. Needs a play-CLI file
+npm run repro -- runs/s2.json S-2 | --scenario midwest --days 8 [--seed 42] [--difficulty normal]   # hands-off play-CLI file (start, advance 24 to day end, draft none): S-1 Midwest 2 days, S-2 Revenue 3, S-3 Harbourline 3, for inspect wlm / wlm-stats / blame
 npm run compare -- [--base origin/dev] [--head <ref>] [--scenarios a,b] [--drop k1,k2]   # behaviour diff vs base: sim state (reporting excluded), game state, log, RMF report text/records, Monitor III views; exit 1 on any difference
 npx vite build && npx vite preview --port 4173 &                  # then:
 node tools/screenshot.mjs <outDir>                                 # headless UI screenshots
@@ -157,12 +162,25 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   Keep sim model changes, balance decisions and cross-layer work on the main agent, and review every subagent diff
   before committing. In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent;
   vetting and balance calls stay on the main agent.
+  Commit trailers: every agent-written commit (including a subagent's) ends with a `Co-Authored-By:` line naming the
+  agent and the model it is itself running as, read from its own system prompt or environment. Never copy a trailer
+  from a coordinator's brief or reminder, and if the agent can't tell which model it is, it omits the model name
+  rather than guessing. For Claude sessions the line is `Co-Authored-By: Claude <Model> <noreply@anthropic.com>`,
+  followed by a `Claude-Session:` line; the Anthropic address and `Claude-Session:` are specific to Claude sessions.
+  Other agents (e.g. Codex) use their own name, model and vendor address (none if they have none), and no
+  `Claude-Session:` line. Coordinators pass subagents only the session link and the PR/comment footer, never their
+  own `Co-Authored-By` line.
 - Loops (each tick of a scheduled task runs one skill, with its state in PR comment markers):
   - Review: `pr-fix-loop` (the Opus `pr-fixer` reviews each PR, fixes up to 5 mechanical findings itself or holds the
     PR for its author, then a Sonnet fix-check of the fixes against the whole PR, then it merges), or the older
     `pr-review-loop` (holds a PR on any finding, merges after a follow-up review shows them fixed).
   - Author: `dev-loop` implements the next ready entry of the named BACKLOG.md lists, answers a HOLD on its open PR,
     or skips.
+- Review comments: every review report an agent posts on a PR (any agent or vendor, any tool, a subagent or a
+  coordinator) starts with a header line `Automated <role> report (reference only, not a GitHub approval)`, naming
+  its role (`pr-reviewer`, `pr-fixer`, or e.g. `coordinated-review`). The loops find their reports by the exact
+  `pr-reviewer` and `pr-fixer` headers, so other reviewers use another role name. Agents' comments are posted under
+  the user's account, so a comment without such a header reads as the user's own decision.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
 - Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
@@ -172,4 +190,7 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   parallel shards, so the session's cores stay free and no worker session is needed. It sweeps the committed HEAD,
   pushed or not, through a throwaway `sweep/*` branch the workflow deletes. Start it with `run_in_background` (~10 min for 20 seeds);
   the summary prints when it finishes. Local `npm run sweep` stays for quick checks and offline work.
+- Full test runs go to `npm run test:remote` the same way (`--suite`/`--filter` narrow it, one job): it tests the
+  committed HEAD through a throwaway `test/*` branch and prints one summary. A busy shared host makes the full suite
+  hit its hook/test timeouts, so local `npm test` stays for quick checks.
 - After publishing an artifact, unwatch it.

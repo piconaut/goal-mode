@@ -71,6 +71,9 @@ export interface SliceSpec {
   /** Dispatchable units able to run this work (TCBs/SRBs, batch jobs): its weight against other work at the
    * same DP. 0 or absent: at least one for an address space; for transactions one per engine of new work. */
   units?: number;
+  /** Running batch jobs: demand is discrete and already exact, so WLM's projections never lift it and its sustained
+   * demand (`ScpAcc.demandCp`) leaves it out. */
+  fixedDemand?: boolean;
 }
 
 /** Builds a slice with every field present in one fixed order, so all slices share one hidden
@@ -106,6 +109,7 @@ export function sliceSpec(p: Pick<SliceSpec, 'key' | 'scKey' | 'kind'> & Partial
     mqQueueFrac: p.mqQueueFrac,
     maxQueueMsgs: p.maxQueueMsgs,
     units: p.units ?? 0,
+    fixedDemand: p.fixedDemand ?? false,
   };
 }
 
@@ -144,15 +148,15 @@ export interface LparEvalInput {
   capOf?: (slice: SliceSpec) => number;
   /** Resource group minimums in force this tick: CP engines per service-class period. */
   minOf?: Readonly<Record<string, number>>;
-  /** Periods in minOf that are discretionary: their minimum yields to goal work. */
+  /** Discretionary periods in minOf whose share must yield while a goal period outside their group misses. */
   discMin?: ReadonlySet<string>;
-  /** CICS work runs inside region address spaces, so it shares their dispatching priority: the most
-   * important served period's DP (TRANSACTION mode, the "free ride") or the region's own class (REGION/BOTH).
+  /** CICS work runs inside region address spaces, so it shares their dispatching priority: the server period's
+   * (`serverKey`, TRANSACTION mode; holders.ts) or the region's own class (REGION/BOTH).
    * `servers`: slice keys of the region address spaces managed as transaction servers (TRANSACTION); their own
    * CPU dispatches with the transactions, not at their service class's DP (WLM Planning p.122).
    * `rtTracked: false` (every region REGION): the transactions' response times reach their report classes only,
    * not their service classes (WLM Planning p.123), so WLM has no response time data to manage them. */
-  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; servers?: readonly string[]; rtTracked?: boolean; transactionKeys?: ReadonlySet<string>; targets?: CicsTargets; managedToTxn?: boolean };
+  regions?: { keys: readonly string[]; mode: 'TRANSACTION' | 'REGION'; regionKey: string; serverKey?: string; servers?: readonly string[]; rtTracked?: boolean; transactionKeys?: ReadonlySet<string>; targets?: CicsTargets; managedToTxn?: boolean };
   io: Record<IoClass, IoService>;
   /** WLM I/O priority management: I/O samples count in velocity. */
   ioPriority?: boolean;
@@ -230,15 +234,22 @@ export interface ScpTick {
   delayCap: number;
   /** Batch jobs queued for an initiator in a WLM-managed job class (WLMGL QMPL). */
   delayQueue?: number;
+  /** Arriving demand this tick, engines, without backlog: feeds WLM's sustained demand. */
+  demandCp?: number;
+  demandZi?: number;
   /** The part of usingIo / delayIo left out of velocity (I/O priority management off). */
   usingIoNoVel?: number;
   delayIoNoVel?: number;
   /** Velocity samples of transaction-server regions in this period: reported, but left out of its PI. */
   srvUsing?: number;
   srvDelay?: number;
+  /** The capping delay inside `srvDelay`. */
+  srvDelayCap?: number;
   completions: number;
   failed: number;
   rtSumSec: number;
+  /** Queue time inside `rtSumSec` for the batch completions this tick recorded (WT-12); absent elsewhere. */
+  rtQueueSumSec?: number;
   buckets: number[];
 }
 

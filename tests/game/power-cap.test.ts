@@ -49,7 +49,7 @@ describe('power-cap RCA scope', () => {
       },
     }, SCENARIOS[id]!, games[id]);
     expect(closed.incidents.find((i) => i.workloadId === workload)?.truth)
-      .toEqual({ mechanism: 'IO', trigger: 'GROWTH' });
+      .toMatchObject({ mechanism: 'IO', trigger: 'GROWTH' });
   });
 
   it.each([
@@ -71,7 +71,7 @@ describe('power-cap RCA scope', () => {
     }, SCENARIOS[id]!, games[id]);
     for (const workload of workloads) {
       expect(closed.incidents.find((i) => i.workloadId === workload)?.truth)
-        .toEqual({ mechanism: 'CPU_PRIORITY', trigger: 'HARDWARE_FAULT' });
+        .toMatchObject({ mechanism: 'CPU_PRIORITY', trigger: 'HARDWARE_FAULT' });
     }
   });
 

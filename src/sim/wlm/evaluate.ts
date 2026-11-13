@@ -35,8 +35,9 @@ export function evaluateLpar(input: LparEvalInput): LparEvalResult {
   const prepared = input.prepared ?? prepareLpar(input);
   const { sliceAgg, order } = prepared;
   const reg = input.regions;
-  // Transaction-server regions run at the DP of the most important transaction class they serve.
-  const txnDp = reg ? Math.max(...reg.keys.map((k) => input.dpOf(k))) : 0;
+  // Transaction-server regions and their transactions run at the server period's DP (holders.ts, I11): a served
+  // class's own stored DP plays no part. Without one (REGION/BOTH), the highest served class's, as before.
+  const txnDp = !reg ? 0 : reg.serverKey ? input.dpOf(reg.serverKey) : Math.max(...reg.keys.map((k) => input.dpOf(k)));
   const regionDp = reg ? (reg.mode === 'REGION' ? input.dpOf(reg.regionKey) : txnDp) : 0;
   // dpOf is pure: look each period up once. Reported DPs are the periods' own.
   const aggDp = order.map((k) => input.dpOf(baseKey(k)));

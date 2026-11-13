@@ -9,6 +9,8 @@ export const BUCKETS = BUCKET_BOUNDS.length;
 export const DISCRETIONARY_PI = 0.81;
 export const PI_MIN_PERCENTILE = 0.5;
 export const PI_MAX_PERCENTILE = 4.0;
+/** The existing velocity floor: keeps zero-service projections finite (0.1 %). */
+export const VELOCITY_FLOOR = 0.1;
 
 // Literal (packed) rather than new Array(n).fill(0), which is holey and slower to build and sum.
 export const emptyBuckets = (): number[] => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -105,20 +107,21 @@ export function velocityOf(usingSamples: number, delaySamples: number): number |
   return tot > 1e-12 ? (100 * usingSamples) / tot : null;
 }
 
-/** PI for a goal; null when there is no activity to judge. */
-export function performanceIndex(goal: Goal, x: PiInputs): number | null {
+/** PI for a goal; null when there is no activity to judge. Projections pass Infinity for the velocity ceiling;
+ * reported/management PIs keep 99. The existing 0.1% velocity floor keeps zero-service projections finite. */
+export function performanceIndex(goal: Goal, x: PiInputs, velocityPiMax = 99): number | null {
   switch (goal.kind) {
     case 'DISC':
       return DISCRETIONARY_PI;
     case 'VEL': {
       const v = velocityOf(x.usingSamples, x.delaySamples);
       if (v === null) return null;
-      return Math.min(goal.velocity / Math.max(v, 0.1), 99);
+      return Math.min(goal.velocity / Math.max(v, VELOCITY_FLOOR), velocityPiMax);
     }
     case 'AVG':
       return x.completions > 1e-9 ? x.rtSumSec / x.completions / goal.rtSec : null;
     case 'PCT':
-      return percentilePi(x.buckets, goal.pct);
+      return x.completions > 1e-9 ? percentilePi(x.buckets, goal.pct) : null;
   }
 }
 

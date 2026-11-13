@@ -1,4 +1,3 @@
-import { cpSpeed, suPerCpuSecOf, ziipSpeed } from '../../hw/cpc';
 import { poolEntitlement } from '../../hw/pools';
 import { jobCpuDemand, jobShape } from '../../subsys/batch';
 import { edsaInUseMb, effectiveMxt, qrTcb, storageCapTasks } from '../../subsys/cics';
@@ -11,26 +10,28 @@ import { pagingDelayFrac } from '../../zos/storage';
 import type { LparConfig, CicsStorageTick } from '../types';
 import { TICK_SEC } from '../units';
 import { type BatchSliceRef, DEFAULT_EFF_RATIO, type TickCtx, usesDb2 } from './ctx';
-import { applyCpuModifiers, cicsRegionCount, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
+import { atOrFind } from './plan';
+import { applyCpuModifiers, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
 
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
 export function lparDemand(t: TickCtx, l: LparConfig): void {
-  const { prev, scenario, def, env, config, clock, cpcOf, workloads, workloadById, addressSpaces, rates, io } = t;
+  const { prev, scenario, def, env, clock, workloads, workloadById, addressSpaces, rates, io } = t;
   const { cfStallSec, db2FailFrac, mqFailFrac, runningBy, slicesBy, batchRefsBy, swappedBy, pagingFrac } = t;
-  const cpc = cpcOf[l.cpcId]!;
+  const img = t.plan.byLparId[l.id]!;
+  const cpc = img.cpc;
   // This system's own CF service (link distance, its own sync→async conversion); plex average before the first CF tick.
   const cfSys = prev.env.cfBySystem?.[l.id];
   const cfServiceSec = cfSys ? cfSys.serviceSec + cfStallSec : t.cfServiceSec;
   const cfZosCpuSec = cfSys ? cfSys.zosCpuSec : t.cfZosCpuSec;
-  const cpSp = cpSpeed(cpc);
-  const zSp = ziipSpeed(cpc);
+  const cpSp = img.cpSpeed;
+  const zSp = img.ziipSpeed;
   const base = applyCpuModifiers(buildSlices({ def, cpc, lpar: l, workloads, rates, addressSpaces, scope: workloadScope.get(workloads) }), prev.mods);
 
-  const db2 = config.db2.find((d) => d.lparId === l.id);
+  const db2 = img.db2;
   const ioMult = db2
     ? bpIoMultiplier(db2.bufferPoolGb, (scenario.memory.db2WorkingSetGb[db2.ssid] ?? 100) * Math.pow(1 + DB2.workingSetGrowthPerDay, clock.day))
     : 1;
-  const aors = config.cics.filter((c) => c.lparId === l.id);
+  const aors = img.aors;
   // CICS QR TCB load per AOR (CICS work is spread evenly over the image's AORs).
   let cicsQrCpu = 0;
   let cicsRate = 0;
@@ -45,7 +46,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     const ioSvc = io[s.ioClass];
     const refRt = s.baseLatencySec + s.cpuSecPerTxn + s.ziipSecPerTxn + s.ioPerTxn * (ioSvc.rtSec - ioSvc.delaySec);
     // Slot hold time: last tick's in-region time without the CPU backlog wait; the unqueued time if nothing completed.
-    const lastHold = env.holdByWorkloadLpar?.[wlLparKey(w.id, l.id)] ?? 0;
+    const lastHold = env.holdByWorkloadLpar?.[img.wlKey[w.id] ?? wlLparKey(w.id, l.id)] ?? 0;
     const prevRt = lastHold > 0 ? lastHold : refRt;
     if (w.subsystem === 'CICS') {
       cicsQrCpu += s.rate * s.cpuSecPerTxn;
@@ -82,7 +83,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   // drains at limit / hold time, and times out (MAXCONQW for DDF).
   const slotQ = (kind: 'MXT' | 'DBAT', on: boolean, rate: number, holdW: number, refW: number, limit: number, timeoutSec: number) => {
     if (!on) return { waitSec: 0, refSec: 0, failFrac: 0 };
-    const key = `${l.id}:${kind}`;
+    const key = kind === 'MXT' ? img.mxtKey : img.dbatKey;
     const hold = rate > 0 ? holdW / rate : 0;
     const refHold = rate > 0 ? refW / rate : 0;
     const r = slotQueueStep(prev.env.slotQueue?.[key] ?? 0, rate, hold, limit, timeoutSec, TICK_SEC);
@@ -130,7 +131,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     let abendFrac = 0;
     if (db2FailFrac > 0 && db2Work) abendFrac = Math.max(abendFrac, db2FailFrac);
     if (mqFailFrac > 0 && w.mq) abendFrac = Math.max(abendFrac, mqFailFrac);
-    const regionFail = prev.mods.regionFailFrac?.[wlLparKey(w.id, l.id)];
+    const regionFail = prev.mods.regionFailFrac?.[img.wlKey[w.id] ?? wlLparKey(w.id, l.id)];
     if (regionFail) abendFrac = Math.max(abendFrac, regionFail);
     failFrac = Math.max(failFrac, abendFrac);
     if (t.failByWorkloadLpar) s.abendFrac = abendFrac;
@@ -150,7 +151,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const refs: Record<string, BatchSliceRef> = {};
   // Storage: base + Db2 buffer pools + CICS regions + queued MQ messages + running jobs. When it
   // overcommits real memory, SRM swaps out the least important batch jobs (MPL/swap delay).
-  const cicsRegions = cicsRegionCount(addressSpaces, l.id);
+  const cicsRegions = img.cicsRegionCount;
   const fixedGb =
     (scenario.memory.osBaseGb[l.id] ?? 20) + (db2?.bufferPoolGb ?? 0) + cicsRegions * scenario.memory.cicsRegionGb + queuedMsgGb(prev, workloadById, l.id);
   const running = runningBy[l.id] ?? [];
@@ -158,7 +159,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
   const swapped = swapOut(def, running, l.id, fixedGb, scenario.memory.batchJobGb, l.memoryGb, (j) => jobServiceSu(j, jobShape(j.def, cpSp, zSp, seqRt), cpc));
   if (swapped.size > 0) swappedBy[l.id] = swapped;
   let runningJobs = 0;
-  const hasZiips = l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
+  const hasZiips = img.hasZiips;
   for (const j of running) {
     if (swapped.has(j)) continue;
     runningJobs++;
@@ -174,6 +175,7 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
         slice: sliceSpec({
           key: `BATCH:${refKey}@${l.id}`,
           scKey,
+          fixedDemand: true,
           reportClass: cls.reportClass,
           kind: 'AS',
           workloadId: null,
@@ -224,12 +226,13 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
 /** After every image's slices exist, offer only dispatchable work (including its awake backlog) to PR/SM. */
 export function planLpar(t: TickCtx, l: LparConfig): void {
   const { prev, def, config, cpcOf, workloadById, slicesBy, demands } = t;
-  const cpc = cpcOf[l.cpcId]!;
+  const img = t.plan.byLparId[l.id]!;
+  const cpc = img.cpc;
   const all = slicesBy[l.id] ?? [];
-  const hasZiip = l.pools.some((p) => p.pool === 'ZIIP' && p.logical > 0);
+  const hasZiip = img.hasZiips;
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
   const cpShare = { entitlementEngines: poolEntitlement(cpc, config.lpars, l.id, 'CP') };
-  const capOf = combineCaps(resourceGroupCaps(def, all, cpShare, suPerCpuSecOf(cpc), plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}, !hasZiip), discretionaryCaps(def, all, prev.wlm.systems.find((s) => s.lparId === l.id)?.scps ?? []));
+  const capOf = combineCaps(resourceGroupCaps(def, all, cpShare, img.suPerCpuSec, plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}, !hasZiip), discretionaryCaps(def, all, atOrFind(prev.wlm.systems, img.zosIdx, (s) => s.lparId === l.id)?.scps ?? []));
   t.capOfBy[l.id] = capOf;
   let cp = 0;
   let zi = 0;
@@ -238,7 +241,7 @@ export function planLpar(t: TickCtx, l: LparConfig): void {
     cp += demand.cp;
     zi += demand.zi;
   }
-  const prevRt = prev.lpars.find((x) => x.id === l.id);
+  const prevRt = atOrFind(prev.lpars, img.rtIdx, (x) => x.id === l.id);
   const ratio = (pool: 'CP' | 'ZIIP') => {
     const r = prevRt?.pools.find((p) => p.pool === pool);
     return r && r.deliveredEngines > 1e-6 ? Math.max(0.5, r.effectiveEngines / r.deliveredEngines) : DEFAULT_EFF_RATIO;

@@ -5,6 +5,7 @@ import type { Scenario } from '../../src/sim/core/scenario';
 import { discretionaryCaps, resourceGroupCaps, rgSysplexShares, step } from '../../src/sim/core/step';
 import { planLpar } from '../../src/sim/core/tick/demand';
 import type { TickCtx } from '../../src/sim/core/tick/ctx';
+import { buildLparPlan } from '../../src/sim/core/tick/plan';
 import { msuPerCp, SU_PER_SEC_PER_MSU, suPerCpuSecOf } from '../../src/sim/hw/cpc';
 import { poolEntitlement } from '../../src/sim/hw/pools';
 import { dispatchableDemand, evaluateLpar, prepareLpar, sliceSpec } from '../../src/sim/wlm/evaluate';
@@ -145,7 +146,7 @@ describe('resource group dispatchability', () => {
     const waiting = { scKey: 'DEVBAT#1', dp: 150, starvedSec: 0, acc: { ...emptyAcc(), using: 1, delay: 9, cpuEngines: 1 } };
     prev.wlm.systems = [{ lparId: lpar.id, scps: [happy, waiting] }];
     const s = sliceSpec({ key: 'S', scKey: 'TSO#2', kind: 'AS', cpEngines: 1, ziipEngines: 3 });
-    const t = { prev, def: prev.wlm.definition, config: prev.config, cpcOf: Object.fromEntries(prev.config.cpcs.map((c) => [c.id, c])), workloadById: {}, slicesBy: { PROD2: [s] }, capOfBy: {}, demands: [] } as unknown as TickCtx;
+    const t = { prev, plan: buildLparPlan(prev.config, [], []), def: prev.wlm.definition, config: prev.config, cpcOf: Object.fromEntries(prev.config.cpcs.map((c) => [c.id, c])), workloadById: {}, slicesBy: { PROD2: [s] }, capOfBy: {}, demands: [] } as unknown as TickCtx;
     planLpar(t, lpar);
     const cap = discretionaryCaps(t.def, [s], [happy, waiting])!;
     expect(cap(s)).toBeCloseTo(0.5);

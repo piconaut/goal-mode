@@ -2,7 +2,7 @@ import type { DifficultyId } from '../content/difficulty';
 import { packOf } from '../content/packs';
 import { difficultyOf } from './difficulty';
 import { inquiriesView } from './inquiries';
-import { cicsGoalIssues, cicsTransactionClasses, type CicsGoalIssue } from './wlmEdit';
+import { serviceClassGoalIssues, cicsTransactionClasses, type GoalIssue } from './wlmEdit';
 import type { ResourceGroupDef, ServiceClassDef, ServiceDefinition } from '../sim/wlm/types';
 import type { RoutingPolicy } from '../sim/workload/routing';
 // View model: a compact, serialisable projection of RunState for the UI (posted from the
@@ -211,7 +211,7 @@ export interface ViewModel {
   inquiries: ReturnType<typeof inquiriesView>;
   ioPriorityManagement: boolean;
   cicsClasses: string[];
-  cicsIssues: CicsGoalIssue[];
+  goalIssues: GoalIssue[];
 }
 
 export function buildView(run: RunState, scenario: Scenario): ViewModel {
@@ -382,7 +382,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
     inquiries: inquiriesView(run, scenario),
     ioPriorityManagement: def.ioPriorityManagement !== false,
     cicsClasses: cicsTransactionClasses(def),
-    cicsIssues: cicsGoalIssues(def),
+    goalIssues: serviceClassGoalIssues(def),
   };
 }
 

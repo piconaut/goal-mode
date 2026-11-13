@@ -16,6 +16,11 @@ import { classify } from '../../src/sim/wlm/classify';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import { evaluateLpar, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { reportedTicks } from '../../src/sim/wlm/reporting';
+import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
+import * as wlmAdjust from '../../src/sim/wlm/adjust';
+import { projectionInput } from '../../src/sim/wlm/projection';
+import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
+import { committedMoves } from '../helpers/wlmMoves';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
 
@@ -66,6 +71,16 @@ describe('priority inversion through dependencies', () => {
     // the damage shows up as "other" delay that WLM cannot fix.
     expect(b.delayCpu).toBeLessThanOrEqual(g.delayCpu + 1e-9);
     expect(b.delayOther).toBeGreaterThan(10 * g.delayOther + 1e-9);
+    // WLM sees DDF mostly waiting, not delayed: no plan, and the log names the small CPU delay (WT-10, SPEC §5.5.4).
+    // Only DDF has a goal here, so its note is the interval's log line (a starved Db2 with a goal is helped first).
+    const def = structuredClone(BASEPOL);
+    const template = def.classes.find((c) => c.id === 'STCLO')!;
+    def.classes.push({ ...structuredClone(template), id: 'DDF', cpuCritical: false, periods: [{ goal: { kind: 'PCT', pct: 90, rtSec: 2 * g.rtMeanSec }, importance: 2, durationSu: null }] });
+    const dps = { 'DDF#1': 240, 'DB2#1': 210, 'BAT#1': 220 } as Record<string, number>;
+    const cur = evaluateLpar({ ...base, dpOf: (k) => dps[k]! }).scps;
+    const system = { lparId: 'SYS1', scps: cur.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })) };
+    const out = policyAdjust({ def, system, evalInput: base, current: cur, sysplexPi: {}, clockText: 'T' });
+    expect(out.log).toMatch(/^T SYS1 DDF#1 PI=\S+ mostly waiting, CPU delay \d+ %: not WLM-fixable/);
   });
 });
 
@@ -272,7 +287,8 @@ describe('resource group minimum', () => {
     expect(withMin.slices[0]!.cpGranted).toBeLessThan(without.slices[0]!.cpGranted - 1);
   });
 
-  it('serves a discretionary period only from capacity goal work does not want (WLM Planning p.59)', () => {
+  it('serves a discretionary minimum marked to yield only from spare capacity (WLM Planning p.59)', () => {
+    // discMin marks the fallback while outside goal work misses; WT-11's happy-goal case uses the higher share.
     const disc = evaluateLpar({ ...base, dpOf: (k: string) => (k === 'HI#1' ? 240 : 196), minOf: { 'LO#1': 1.5 }, discMin: new Set(['LO#1']) });
     expect(disc.slices[0]!.cpGranted).toBeGreaterThan(3.9);
     expect(disc.slices[1]!.cpGranted).toBeLessThan(0.2);
@@ -665,36 +681,72 @@ describe('event cards (SPEC §9)', () => {
   // 10:00 on day 0, then 30 minutes with and without the card's begin commands.
   let base = initState(42, MIDWEST);
   beforeAll(() => {
-    for (let i = 0; i < 4 * 360; i++) base = step(base, [], MIDWEST);
-  });
-  const run = (cmds: Parameters<typeof step>[1]) => {
-    let s = step(base, cmds, MIDWEST);
-    let qr = 0;
-    let n = 0;
-    let devtMsu = 0;
-    let mobRt = 0;
-    let mobN = 0;
-    let bookingDone = 0;
-    for (let i = 0; i < 180; i++) {
-      s = step(s, [], MIDWEST);
-      const m = s.last.workloads.find((x) => x.id === 'MOBILE')!;
-      mobRt += m.rtSumSec;
-      mobN += m.completions;
-      const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
-      qr += w.parts.qr ?? 0;
-      n += w.completions;
-      bookingDone += s.last.workloads.find((x) => x.id === 'BOOKING')?.completions ?? 0;
-      devtMsu += s.lpars.find((l) => l.id === 'DEVT')!.msuRate / 180;
+    // Build the common starting state on the pre-RF-03 clock: these are content tests, and the fixed-priority pair
+    // below must start from the same ladder it did before the extra quiet-hour assessments changed that history.
+    const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+    POLICY_ADJUST.skipClockMinMissing = -1;
+    try {
+      for (let i = 0; i < 4 * 360; i++) base = step(base, [], MIDWEST);
+    } finally {
+      POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
     }
-    return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN), bookingDone };
+  });
+  const run = (cmds: Parameters<typeof step>[1], holdPriorities = false) => {
+    const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+    // A fixed-policy pair isolates the card's CPU pressure from WLM's adaptive priority decisions. RF-03 ignores a
+    // skip clock while at most five periods miss their goals, so a held pair must turn that exception off; adaptive
+    // runs keep it.
+    if (holdPriorities) POLICY_ADJUST.skipClockMinMissing = -1;
+    try {
+      const held = holdPriorities ? { ...base, wlm: { ...base.wlm, systems: base.wlm.systems.map((sys) => ({
+        ...sys, scps: sys.scps.map((p) => ({ ...p, skipUntilTick: base.tick + 182 })),
+      })) } } : base;
+      let s = step(held, cmds, MIDWEST);
+      let qr = 0;
+      let n = 0;
+      let devtMsu = 0;
+      let mobRt = 0;
+      let mobN = 0;
+      let prod1Rt = 0;
+      let prod1N = 0;
+      let bookingDone = 0;
+      for (let i = 0; i < 180; i++) {
+        s = step(s, [], MIDWEST);
+        const m = s.last.workloads.find((x) => x.id === 'MOBILE')!;
+        mobRt += m.rtSumSec;
+        mobN += m.completions;
+        const p1 = s.last.lpars.find((l) => l.lparId === 'PROD1')!.scps.find((x) => x.scKey === 'DDFPRD#1');
+        prod1Rt += p1?.rtSumSec ?? 0;
+        prod1N += p1?.completions ?? 0;
+        const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
+        qr += w.parts.qr ?? 0;
+        n += w.completions;
+        bookingDone += s.last.workloads.find((x) => x.id === 'BOOKING')?.completions ?? 0;
+        devtMsu += s.lpars.find((l) => l.id === 'DEVT')!.msuRate / 180;
+      }
+      return { qrMsPerTxn: (1000 * qr) / Math.max(1, n), devtMsu, mobileRtMs: (1000 * mobRt) / Math.max(1, mobN), prod1MobileRtMs: (1000 * prod1Rt) / Math.max(1, prod1N), bookingDone };
+    } finally {
+      if (holdPriorities) POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
+    }
   };
   const card = (id: string) => MIDWEST_EVENTS.find((e) => e.id === id)!.begin;
 
-  it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD', () => {
+  it('shadow IT on TSO lifts DEVT MSU and slows mobile at fixed priorities', () => {
+    const asIs = run([], true);
+    const shadow = run(card('SHADOW_IT'), true);
+    expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
+    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+  }, 60_000);
+
+  it('shadow IT on TSO lifts DEVT MSU and slows mobile on PROD, with adaptive WLM', () => {
+    // From WT-08 to WT-10 the opposite held: MOBILE's DDFPRD#1, mostly waiting on Db2, was never assessed, and the
+    // extra TSO demand displaced DDFPRD#2 from above it (docs/archive/wlm-audit-2026-11.md §9.9). Its CPU delay is assessed since WT-10.
+    // Measured on PROD1, where the card's TSO work competes with MOBILE: since WT-09 the sysplex-wide figure is decided
+    // by an unrelated PROD2 donor episode in the run without the card (docs/archive/wlm-audit-2026-11.md §9.12).
     const asIs = run([]);
     const shadow = run(card('SHADOW_IT'));
     expect(shadow.devtMsu).toBeGreaterThan(1.2 * asIs.devtMsu);
-    expect(shadow.mobileRtMs).toBeGreaterThan(asIs.mobileRtMs);
+    expect(shadow.prod1MobileRtMs).toBeGreaterThan(asIs.prod1MobileRtMs);
   }, 60_000);
 
   it('a non-threadsafe release raises QR wait for teller transactions', () => {
@@ -735,19 +787,30 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('CICS short on storage in the PROD2 AORs queues work for task slots (MXT wait), not CPU', () => {
-    const run = (cmds: Parameters<typeof step>[1], part = 'outside') => {
-      let s = step(base, cmds, MIDWEST);
-      let out = 0;
-      let n = 0;
-      let failed = 0;
-      for (let i = 0; i < 180; i++) {
-        s = step(s, [], MIDWEST);
-        const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
-        out += w.parts[part] ?? 0;
-        n += w.completions;
-        failed += w.failed;
+    // Adaptive WLM (WT-09). RF-03 held priorities here; with server periods that pinned PROD2's regions where a happy
+    // donation had left them (below TSO and DDF), so CPU starvation, not the task limit, decided the failures.
+    const run = (cmds: Parameters<typeof step>[1], part = 'outside', hold = false) => {
+      const savedMinMissing = POLICY_ADJUST.skipClockMinMissing;
+      if (hold) POLICY_ADJUST.skipClockMinMissing = -1;
+      const held = hold ? { ...base, wlm: { ...base.wlm, systems: base.wlm.systems.map((sys) => ({
+        ...sys, scps: sys.scps.map((p) => ({ ...p, skipUntilTick: base.tick + 182 })),
+      })) } } : base;
+      try {
+        let s = step(held, cmds, MIDWEST);
+        let out = 0;
+        let n = 0;
+        let failed = 0;
+        for (let i = 0; i < 180; i++) {
+          s = step(s, [], MIDWEST);
+          const w = s.last.workloads.find((x) => x.id === 'TELLER')!;
+          out += w.parts[part] ?? 0;
+          n += w.completions;
+          failed += w.failed;
+        }
+        return { waitMs: (1000 * out) / Math.max(1, n), failed };
+      } finally {
+        if (hold) POLICY_ADJUST.skipClockMinMissing = savedMinMissing;
       }
-      return { waitMs: (1000 * out) / Math.max(1, n), failed };
     };
     // The card's leak an hour in: EDSA (default EDSALIM) holds about 15 tasks per region.
     const sos = (extra: Record<string, number> = {}) =>
@@ -841,8 +904,10 @@ describe('event cards (SPEC §9)', () => {
   }, 60_000);
 
   it('an SMF retention audit raises SMF address space CPU and total MSU, slowing work only on the CP-bound PROD2', () => {
-    const asIs = run([]);
-    const audit = run(card('SMF_AUDIT'));
+    // Fixed priorities: the card's extra CPU pressure on PROD2 is the subject. RF-03's extra quiet-hour assessments
+    // otherwise move the priorities it competes with, and the 30 % bound no longer measures the card alone.
+    const asIs = run([], true);
+    const audit = run(card('SMF_AUDIT'), true);
     const msu = (cmds: Parameters<typeof step>[1]) => {
       let s = step(base, cmds, MIDWEST);
       let m = 0;
@@ -939,17 +1004,28 @@ describe('IEAOPT CCIMP implicit CPU protection (Init & Tuning p.428)', () => {
       HARBOURLINE,
     );
     let n = 0;
-    for (let i = 0; i < 4320; i++) {
-      s = step(s, [], HARBOURLINE);
-      if (i % 60) continue;
-      for (const sys of s.wlm.systems) {
-        const imp = (k: string) => goalInfo(s.wlm.definition, k);
-        for (const p of sys.scps) {
-          const g = imp(p.scKey);
-          if (!g || g.goal.kind === 'DISC' || g.period !== 0 || g.importance !== 1) continue;
-          for (const q of sys.scps) if ((imp(q.scKey)?.importance ?? 0) > 1 && q.dp >= p.dp) n++;
+    // Less important CICS classes in the same regions share their server period's DP (the free ride, WT-09): that is
+    // one holder, not an inversion.
+    const heldBy: Record<string, Record<string, string>> = {};
+    setWlmTraceSink((t) => { if (t.heldBy) heldBy[t.lparId] = t.heldBy; });
+    try {
+      for (let i = 0; i < 4320; i++) {
+        s = step(s, [], HARBOURLINE);
+        if (i % 60) continue;
+        for (const sys of s.wlm.systems) {
+          const imp = (k: string) => goalInfo(s.wlm.definition, k);
+          const hold = (k: string) => heldBy[sys.lparId]?.[k] ?? k;
+          // A holder's importance is its most important class's (a server period serving MKTORD is importance 1).
+          const holderImp = (h: string) => Math.min(...sys.scps.filter((x) => hold(x.scKey) === h).map((x) => imp(x.scKey)?.importance ?? 99));
+          for (const p of sys.scps) {
+            const g = imp(p.scKey);
+            if (!g || g.goal.kind === 'DISC' || g.period !== 0 || g.importance !== 1) continue;
+            for (const q of sys.scps) if ((imp(q.scKey)?.importance ?? 0) > 1 && holderImp(hold(q.scKey)) > 1 && q.dp >= p.dp && hold(q.scKey) !== hold(p.scKey)) n++;
+          }
         }
       }
+    } finally {
+      setWlmTraceSink(null);
     }
     return n;
   };
@@ -1022,25 +1098,89 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
   // 4.0, but WLM's projection must still see the gain of a DP move, and the wait for its own regions is CPU delay.
   // ONLHI already ties with its regions and Db2 in STCHI, and equal-DP work shares by ready units, so the light
   // region and Db2 work keeps its CPU: lifting ONLHI over them would only starve the servers it waits for.
-  it('ONLHI stays CPU-bound on PROD1 once capped, and WLM helps the next receiver past PI 4.0', () => {
+  it('capped ONLHI logs its CPU rejection, and nothing less important is raised past it', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
     const lines: string[] = [];
-    for (let t = 0; t < 10 * 360 && !lines.some((l) => /RCVR=/.test(l)); t++) {
-      const prev = s.wlm.log;
-      s = step(s, [], MIDWEST);
-      if (s.wlm.log === prev) continue;
-      const last = prev[prev.length - 1];
-      const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
-      for (const l of s.wlm.log.slice(from)) if (/ 1\d:\d\d:\d\d PROD1 /.test(l)) lines.push(l);
+    const traces: WlmAdjustTrace[] = [];
+    const samples: { cp: number; zi: number; pi: number }[] = [];
+    const adjust = wlmAdjust.policyAdjust;
+    const probe = vi.spyOn(wlmAdjust, 'policyAdjust').mockImplementation((input) => {
+      if (input.system.lparId === 'PROD1' && input.clockText === 'D1 14:30:40') {
+        const dps = Object.fromEntries([...input.system.scps.map(p => [p.scKey, p.dp]), ...(input.system.servers ?? []).map(p => [p.key, p.dp])]);
+        const P = projectionInput(input.evalInput, input.system.scps, POLICY_ADJUST);
+        const serverDp = dps[P.regions!.serverKey!]!;
+        for (const dp of [serverDp - 1, serverDp, serverDp + 1]) {
+          const r = evaluateLpar({ ...P, dpOf: k => k === 'STCHI#1' ? dp : dps[k] ?? 196 });
+          const owned = r.slices.filter((_, i) => P.slices[i]!.scKey === 'STCHI#1' && !P.regions!.servers!.includes(P.slices[i]!.key));
+          const tick = r.scps.find(p => p.scKey === 'STCHI#1')!;
+          samples.push({ cp: owned.reduce((n, s) => n + s.cpGranted + s.iipcpGranted, 0), zi: owned.reduce((n, s) => n + s.ziipGranted, 0), pi: tickPi(goalInfo(input.def, 'STCHI#1')!.goal, tick, Infinity)! });
+        }
+      }
+      return adjust(input);
+    });
+    setWlmTraceSink((t) => { if (t.lparId === 'PROD1' && / 1\d:\d\d:\d\d$/.test(t.clockText)) traces.push(t); });
+    try {
+      for (let t = 0; t < 10 * 360; t++) {
+        const prev = s.wlm.log;
+        s = step(s, [], MIDWEST);
+        if (s.wlm.log === prev) continue;
+        const last = prev[prev.length - 1];
+        const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
+        for (const l of s.wlm.log.slice(from)) if (/ 1\d:\d\d:\d\d PROD1 /.test(l)) lines.push(l);
+      }
+    } finally {
+      setWlmTraceSink(null);
+      probe.mockRestore();
     }
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU/.test(l))).toBe(true);
-    expect(lines.some((l) => /ONLHI#1 .*BTLNK=OTHER/.test(l))).toBe(false);
+    // A clock is logged when it is set, unless the same clue was logged under 30 ticks before (`repeatsClue`).
+    const clocks = traces.filter((t) => t.candidates.some((c) => c.scKey === 'ONLHI#1' && c.outcome === 'ASSESSED' && c.skipUntilTick !== undefined));
+    expect(clocks.length).toBeGreaterThan(0);
+    expect(clocks.some((t) => lines.some((l) => l.startsWith(`${t.clockText} PROD1 ONLHI#1`) && l.includes('no action with net value') && l.includes('rejected:')))).toBe(true);
+    // Db2 is in STCHI here. A happy STCHI may donate (WT-07, SG24-6472 p.59–60), and ONLHI then mostly waits for it
+    // (OTHER, not a managed delay: WT-10) until STCHI misses its goal and is raised back above ONLHI. That raise needs the move to the free priority above
+    // ONLHI (WLM Services p.707, code 630). WT-16 keeps this recovery bound: offered-demand samples must include
+    // starved work, and the velocity PI reporting ceiling must not hide safe intermediate gains from the planner.
+    let donated = false, other = 0;
+    for (const t of traces) {
+      const c = t.candidates.find((c) => c.scKey === 'ONLHI#1');
+      if (c && (c.waitingFrac ?? 0) > 0.5) {
+        other++;
+        expect(donated, t.clockText).toBe(true);
+      }
+      if (t.candidates.some((c) => c.trials.some((tr) => tr.verdict === 'ACCEPTED' && tr.plan?.some((m) => m.kind === 'DONOR' && m.scKey === 'STCHI#1')))) donated = true;
+    }
+    expect(other).toBeGreaterThan(0);
+    expect(other).toBeLessThanOrEqual(60);
+    // Once assessed as a receiver below ONLHI, STCHI is back above ONLHI within five minutes (30 adjustments).
+    const first = traces.findIndex((t) => t.dps['STCHI#1']! < t.dps['ONLHI#1']! && t.candidates.some((c) => c.scKey === 'STCHI#1' && c.outcome === 'ASSESSED'));
+    expect(first).toBeGreaterThanOrEqual(0);
+    expect(traces.slice(first, first + 31).some((t) => t.dps['STCHI#1']! > t.dps['ONLHI#1']!), traces[first]!.clockText).toBe(true);
     expect(lines.some((l) => /ONLHI#1 PI=4\.00 BTLNK=CPU no action with net value/.test(l))).toBe(true);
-    // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106),
-    // so the first accepted move need not be another PI-4 class: it is a CPU fix with a DP move.
-    expect(lines.find((l) => /RCVR=/.test(l))).toMatch(/RCVR=\S+ PI=[\d.]+ BTLNK=CPU \S+ DP /);
+    expect(lines.some((l) => /ONLHI#1 PI=4\.00 mostly waiting, CPU delay \d+ %: not WLM-fixable/.test(l))).toBe(true);
+    // When no importance-1 receiver can be helped the search goes on at the next importance (SG24-7621 p.105–106).
+    // Under the cap a less important receiver may not pass more important work that is missing its goal and using
+    // CPU, which WLM never does (docs/wlm-design.md §5.3 (the missing-goal rule), user decision 2026-11-10): those raises are
+    // assessed and refused for that reason, and from 10:00 to 16:00 nothing less important reaches ONLHI's level.
+    // On the ladder (WT-06) a receiver may still step above its own level's mates, which passes nobody more important.
+    const passed = traces.flatMap((t) => t.candidates.filter((c) => c.importance > 1).flatMap((c) => c.trials))
+      .filter((tr) => tr.verdict === 'MORE_IMPORTANT_HARMED' && /missing its goal and would be passed/.test(tr.detail ?? ''));
+    expect(passed.length).toBeGreaterThan(0);
+    // A less important CICS class in ONLHI's regions rides at ONLHI's server period (the free ride, WT-09).
+    const reachedOnlhi = traces.flatMap((t) => Object.keys(t.dps).filter((k) => {
+      const g = goalInfo(s.wlm.definition, k);
+      const sameHolder = t.heldBy?.[k] !== undefined && t.heldBy[k] === t.heldBy['ONLHI#1'];
+      return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && !sameHolder && t.dps[k]! >= t.dps['ONLHI#1']!;
+    }).map((k) => `${t.clockText} ${k}`));
+    expect(reachedOnlhi).toEqual([]);
+    // WT-16: at this fixture's fixed demand, joining the regions' level restores Db2 CPU and improves velocity.
+    expect(samples).toHaveLength(3);
+    expect(samples[0]!.cp).toBeLessThan(samples[1]!.cp);
+    expect(samples[1]!.zi).toBeCloseTo(samples[0]!.zi, 9);
+    expect(samples[1]!.pi).toBeLessThan(samples[0]!.pi);
+    expect(samples[2]!.pi).toBeLessThanOrEqual(samples[1]!.pi);
   }, 180_000);
 });
 
@@ -1050,29 +1190,29 @@ describe('equal-importance donors (SG24-6472 p.60; Enrico, How WLM Works, slide 
   it('equally important classes do not keep taking DP from each other', () => {
     let s = initState(7, MIDWEST);
     s.config.lpars.find((l) => l.id === 'PROD1')!.definedCapacityMsu = 200;
-    const move = /PROD2 RCVR=(?:TSO#2|DDFPRD#2) .*?(TSO#2|DDFPRD#2) DP ([0-9A-F]+)→([0-9A-F]+)/;
-    const lines: string[] = [];
-    for (let t = 0; t < 4.5 * 360; t++) {
-      const prev = s.wlm.log;
-      s = step(s, [], MIDWEST);
-      if (s.wlm.log === prev) continue;
-      const last = prev[prev.length - 1];
-      const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
-      for (const l of s.wlm.log.slice(from)) if (/ (09|10):\d\d:\d\d /.test(l) && move.test(l)) lines.push(l);
+    const pair = ['TSO#2', 'DDFPRD#2'];
+    const traces: WlmAdjustTrace[] = [];
+    setWlmTraceSink((t) => {
+      if (t.lparId === 'PROD2' && / (09|10):\d\d:\d\d$/.test(t.clockText) && t.candidates.some((c) => pair.includes(c.scKey) && c.trials.some((tr) => tr.verdict === 'ACCEPTED'))) traces.push(t);
+    });
+    try {
+      for (let t = 0; t < 4.5 * 360; t++) s = step(s, [], MIDWEST);
+    } finally {
+      setWlmTraceSink(null);
     }
-    expect(lines.length).toBeGreaterThan(0);
-    const donorMoves = lines.filter((l) => /RCVR=TSO#2 .*DONOR DDFPRD#2|RCVR=DDFPRD#2 .*DONOR TSO#2/.test(l));
+    expect(traces.length).toBeGreaterThan(0);
+    const donorMoves = traces.flatMap((t) => t.candidates.filter((c) => pair.includes(c.scKey)).flatMap((c) => c.trials.filter((tr) => tr.verdict === 'ACCEPTED').flatMap((tr) => tr.plan!.filter((m) => m.kind === 'DONOR' && m.scKey !== c.scKey && pair.includes(m.scKey)))));
     expect(donorMoves.length).toBeLessThanOrEqual(1);
     // Neither class's DP goes down, up and down again.
     const reversals = (sc: string) => {
-      const dirs = lines.flatMap((l) => {
-        const m = move.exec(l)!;
-        return m[1] === sc ? [Math.sign(parseInt(m[3]!, 16) - parseInt(m[2]!, 16))] : [];
-      });
+      const dirs = traces.flatMap(committedMoves).filter((m) => m.who === sc).map((m) => m.dir);
       return dirs.filter((d, i) => i > 0 && d !== dirs[i - 1]).length;
     };
     expect(reversals('TSO#2')).toBeLessThanOrEqual(1);
-    expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(1);
+    // RF-03 assesses quiet-hour receivers every interval, so DDFPRD#2 gets one extra turn: after TSO#2's plan
+    // projects it past its goal (afterPis 4.84) it is raised, and later lowered again as a donor. The one-donor-move
+    // limit above still holds; this is two direction changes, not the repeated ED↔EB trading the gap test prevents.
+    expect(reversals('DDFPRD#2')).toBeLessThanOrEqual(2);
   }, 120_000);
 });
 

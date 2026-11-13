@@ -140,6 +140,10 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
 
 /** Service classes that CICS transactions are classified into (CICS rules and default), built-ins excluded. */
 export function cicsTransactionClasses(def: ServiceDefinition): string[] {
+  return subsystemClasses(def, 'CICS');
+}
+
+function subsystemClasses(def: ServiceDefinition, subsystem: SubsystemType): string[] {
   const ids = new Set<string>();
   const walk = (rules: readonly ClassificationRule[]) => {
     for (const r of rules) {
@@ -148,15 +152,16 @@ export function cicsTransactionClasses(def: ServiceDefinition): string[] {
     }
   };
   for (const ss of def.subsystems) {
-    if (ss.subsystem !== 'CICS') continue;
+    if (ss.subsystem !== subsystem) continue;
     if (ss.defaultServiceClass) ids.add(ss.defaultServiceClass);
     walk(ss.rules);
   }
   return def.classes.map((c) => c.id).filter((id) => ids.has(id));
 }
 
-export interface CicsGoalIssue {
+export interface GoalIssue {
   classId: string;
+  subsystem: 'CICS' | 'JES';
   severity: 'error' | 'warning';
   message: string;
 }
@@ -164,23 +169,35 @@ export interface CicsGoalIssue {
 /** CICS transaction classes take only single-period response-time goals and no resource group
  * (WLM Planning ch. 9–10, SG24-6472). IBM documents an ISPF error only for the resource group;
  * velocity and multi-period are just "not supported", so those stay warnings. */
-export function cicsGoalIssues(def: ServiceDefinition): CicsGoalIssue[] {
-  const out: CicsGoalIssue[] = [];
+export function cicsGoalIssues(def: ServiceDefinition): GoalIssue[] {
+  const out: GoalIssue[] = [];
   for (const id of cicsTransactionClasses(def)) {
     const c = def.classes.find((x) => x.id === id)!;
     if (c.resourceGroup)
-      out.push({ classId: id, severity: 'error', message: `${id} serves CICS transactions, which can't be in a resource group (WLM Planning). Take it out of ${c.resourceGroup} or classify the CICS work into another class.` });
+      out.push({ classId: id, subsystem: 'CICS', severity: 'error', message: `${id} serves CICS transactions, which can't be in a resource group (WLM Planning). Take it out of ${c.resourceGroup} or classify the CICS work into another class.` });
     if (c.periods.length > 1)
-      out.push({ classId: id, severity: 'warning', message: `${id} serves CICS transactions but has ${c.periods.length} periods: not supported (WLM Planning ch. 9–10). Service is accounted to the regions, so WLM can't track a period duration for a transaction.` });
+      out.push({ classId: id, subsystem: 'CICS', severity: 'warning', message: `${id} serves CICS transactions but has ${c.periods.length} periods: not supported (WLM Planning ch. 9–10). Service is accounted to the regions, so WLM can't track a period duration for a transaction.` });
     const kinds = [...new Set(c.periods.map((p) => p.goal.kind).filter((k) => k === 'VEL' || k === 'DISC'))];
     for (const k of kinds)
       out.push({
         classId: id,
+        subsystem: 'CICS',
         severity: 'warning',
         message: `${id} serves CICS transactions but has a ${k === 'VEL' ? 'velocity' : 'discretionary'} goal: not supported (WLM Planning ch. 9–10). ${k === 'VEL' ? 'Velocity data is accounted to the regions; ' : ''}CICS transactions take only response-time goals (average or percentile).`,
       });
   }
   return out;
+}
+
+/** Batch transactions are jobs; sparse completions are unsuitable for RT goals (WLM Planning 3.1 p.71). */
+export function batchGoalIssues(def: ServiceDefinition): GoalIssue[] {
+  const rtClasses = new Set(def.classes.filter((c) => c.periods.some((p) => p.goal.kind === 'AVG' || p.goal.kind === 'PCT')).map((c) => c.id));
+  return subsystemClasses(def, 'JES').filter((id) => rtClasses.has(id))
+    .map((id) => ({ classId: id, subsystem: 'JES', severity: 'warning', message: `${id} serves JES jobs with a response-time goal: needs at least three completions per 20 minutes (WLM Planning p.71); with fewer the PI is erratic.` }));
+}
+
+export function serviceClassGoalIssues(def: ServiceDefinition): GoalIssue[] {
+  return [...cicsGoalIssues(def), ...batchGoalIssues(def)];
 }
 
 function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | string {

@@ -11,7 +11,8 @@ import type { ActiveEvent, CapacityBasis, HourAcc, Incident, Mechanism, Trigger,
 export const BASELINE_DECAY = 0.8;
 
 /** Importance rank of a service class period for donor accounting: SYSTEM/SYSSTC 0, goal classes 1–5,
- * discretionary and SYSOTHER 6. APPROX: less important work is where policy adjustment finds CPU donors. */
+ * discretionary and SYSOTHER 6. APPROX: less important work is where policy adjustment finds CPU donors; since WT-07
+ * it also takes from happy more important work, which this does not count (RT-16). */
 export function importanceRank(def: ServiceDefinition, scKey: string): number {
   const [cls, n] = scKey.split('#');
   if (cls === SYSTEM || cls === SYSSTC) return 0;
@@ -123,19 +124,28 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[]): Ca
 }
 
 /** An incident whose hour failed its SLA only through failures (with none it would have met it) gets the
- * mechanism a running card affecting the workload declares for its failures; no delay grew to point at one. */
-export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: readonly ActiveEvent[]): Mechanism | null {
+ * mechanism a card affecting the workload declares for its failures; no delay grew to point at one. The card must
+ * overlap the incident's opening SLA hour (half-open, like triggerOf): a card fixed or expired inside the hour still
+ * names it, while one that ended at the hour's start does not. */
+export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: readonly ActiveEvent[], hour: HourAcc): Mechanism | null {
   if (h.failed <= 0 || !hourAttainment(w, { ...h, failed: 0 })?.met) return null;
-  return events.find((e) => e.started && !e.ended && e.failureMechanism && e.affects.includes(w.id))?.failureMechanism ?? null;
+  const startTick = hour.hourIndex * TICKS_PER_HOUR;
+  const endTick = startTick + TICKS_PER_HOUR;
+  return events.find((e) =>
+    e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
+    e.failureMechanism && e.affects.includes(w.id),
+  )?.failureMechanism ?? null;
 }
 
-export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
-  const startTick = hour.hourIndex * TICKS_PER_HOUR;
+export function blamedCard(events: readonly ActiveEvent[], workloadId: string, mechanism: Mechanism, hourIndex: number): ActiveEvent | undefined {
+  const startTick = hourIndex * TICKS_PER_HOUR;
   const endTick = startTick + TICKS_PER_HOUR;
   // A fix or natural expiry before hour close must not erase the card that caused the breach.
   const overlapTicks = (e: ActiveEvent) => Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick);
   const activeAtClose = (e: ActiveEvent) => e.endTick === null || e.endTick > endTick;
-  const ev = events.filter((e) =>
+  // A card active in a save written before RT-02 carries no `mechanisms`; treat that as "any mechanism" so the
+  // old save keeps its previous blame until the card ends (new cards always declare the list, RT-02).
+  return events.filter((e) =>
     e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
     (e.trigger !== 'NEW_WORKLOAD' || startTick < e.startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY) &&
     e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)),
@@ -143,6 +153,11 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
     Number(activeAtClose(b)) - Number(activeAtClose(a)) || overlapTicks(b) - overlapTicks(a) ||
     (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0),
   )[0];
+}
+
+export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
+  // The card the hour's truth blames, if any (the counterfactual validator reads the same choice, RT-06).
+  const ev = blamedCard(events, workloadId, mechanism, hour.hourIndex);
   if (ev) return ev.trigger;
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;
@@ -195,8 +210,12 @@ export function batchMissMechanism(night: NightSummary, nightHour: HourAcc, host
 }
 
 /** A card blamed for a missed night: one that affects BATCH, causes this mechanism and ran during the night. */
+export function batchMissCard(mechanism: Mechanism, events: readonly ActiveEvent[], nightStartTick: number): ActiveEvent | undefined {
+  return events.find((e) => e.started && e.affects.includes(BATCH_INCIDENT) && (!e.mechanisms || e.mechanisms.includes(mechanism)) && (!e.ended || (e.endTick ?? 0) >= nightStartTick));
+}
+
 export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEvent[], nightHour: HourAcc, nightStartTick: number, night?: NightSummary): Trigger {
-  const ev = events.find((e) => e.started && e.affects.includes(BATCH_INCIDENT) && (!e.mechanisms || e.mechanisms.includes(mechanism)) && (!e.ended || (e.endTick ?? 0) >= nightStartTick));
+  const ev = batchMissCard(mechanism, events, nightStartTick);
   if (ev) return ev.trigger;
   // A Db2 job failing to connect was sent to an image without Db2 by the initiator setup.
   if (mechanism === 'JOB_FAILURE' && Object.values(night?.criticalFailCodes ?? {}).includes(DB2_CONNECT_FAIL)) return 'POLICY';
@@ -215,7 +234,13 @@ export function updateBaseline(prev: Record<string, number> | undefined, parts: 
 export const MECHANISMS: Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'ROUTING', 'IO', 'STORAGE', 'JOB_FAILURE'];
 export const TRIGGERS: Trigger[] = ['DEMAND_SURGE', 'ACCESS_PATH_REGRESSION', 'RUNAWAY_WORK', 'BATCH_OVERLAP', 'POLICY', 'HARDWARE_FAULT', 'NEW_WORKLOAD', 'GROWTH', 'APPLICATION_ERROR'];
 
-/** RCA scoring: 3 points for the mechanism, 2 for the trigger. */
+/** The accepted answers of a truth: the primary alone in saves written before RT-07. */
+export function acceptedOf(truth: Incident['truth']): { mechanisms: Mechanism[]; triggers: Trigger[] } {
+  return truth.accepted ?? { mechanisms: [truth.mechanism], triggers: [truth.trigger] };
+}
+
+/** RCA scoring: 3 points for an accepted mechanism, 2 for an accepted trigger (RT-07; docs/rca-design.md §4.1). */
 export function scoreRca(truth: Incident['truth'], guess: { mechanism: Mechanism; trigger: Trigger }): number {
-  return (truth.mechanism === guess.mechanism ? 3 : 0) + (truth.trigger === guess.trigger ? 2 : 0);
+  const accepted = acceptedOf(truth);
+  return (accepted.mechanisms.includes(guess.mechanism) ? 3 : 0) + (accepted.triggers.includes(guess.trigger) ? 2 : 0);
 }

@@ -20,6 +20,8 @@ const ABCS_WLM: CodexSource = { label: 'IBM Redbook SG24-7621, ABCs of z/OS Syst
 const PAICE_WLM: CodexSource = { label: 'Colin Paice, One Minute MVS performance: looking at WLM reports', url: 'https://colinpaice.blog/2021/06/27/one-minute-mvs-performance-work-load-manager-looking-at-wlm-reports/' };
 const IEAOPT: CodexSource = { label: 'IBM docs: IEAOPTxx parameters', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieae200/spi.htm' };
 const GROUP_CAP: CodexSource = { label: 'IBM docs: Group capacity', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieaw100/grcap.htm' };
+const WLM_SERVICES_SMF99: CodexSource = { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, receivers, donors, net value, priority unbunching (pp. 137–139)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=137' };
+const WLM_GUIDE_PA: CodexSource = { label: 'IBM Redbook SG24-6472-03, System Programmer’s Guide to: Workload Manager (Mar 2008), §2.3.2 policy adjustment (pp. 59–60)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=59' };
 /** Run milestones that reveal entries (not events or tools). */
 export type CodexFlag = 'TFP_OFFER' | 'DB2_CONNECT_FAIL';
 
@@ -50,8 +52,8 @@ export const CODEX: CodexEntry[] = [
     id: 'perf-index',
     title: 'Performance index (PI)',
     category: 'WLM',
-    body: 'PI compares actual service with the goal: below 1 the goal is beaten, above 1 it is missed. For response-time goals it is actual ÷ goal; for percentile goals WLM uses its response-time buckets (so PI is clamped between 0.5 and 4.0); for velocity goals it is goal velocity ÷ actual velocity. Discretionary work is reported at 0.81.',
-    sources: [ABCS_WLM, PAICE_WLM],
+    body: 'PI compares actual service with the goal: below 1 the goal is beaten, above 1 it is missed. For response-time goals it is actual ÷ goal; for percentile goals WLM uses its response-time buckets (so PI is clamped between 0.5 and 4.0); for velocity goals it is goal velocity ÷ actual velocity. Discretionary work is reported at 0.81. For batch, each completed job is a transaction; a response-time goal needs at least three job completions per 20 minutes (WLM Planning p.71).',
+    sources: [ABCS_WLM, PAICE_WLM, { label: 'IBM z/OS 3.1 WLM Planning p.71: batch response-time goals', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=71' }],
     discover: { start: true },
   },
   {
@@ -90,8 +92,38 @@ export const CODEX: CodexEntry[] = [
     id: 'policy-adjustment',
     title: 'Policy adjustment',
     category: 'WLM',
-    body: 'Every 10 seconds WLM picks the most important period missing its goal (the receiver), finds its bottleneck, projects what raising its dispatching priority or lowering a donor’s would do, and makes at most one change that helps the receiver more than it hurts others. If the bottleneck is not something priority can fix (a lock, a server, I/O), WLM can only watch.',
-    sources: [ABCS_WLM],
+    body: 'Every 10 seconds WLM looks for one period to help, the receiver: the most important period missing its goal, sysplex PI before local PI, worst first. It finds the receiver’s bottleneck and, for CPU, works out a plan on the dispatching priority ladder: raise the receiver, lower one or more donors, or both, and sometimes move another period with it. Each step is projected from what WLM knows about the work, and the plan is made only if it helps the receiver enough to matter (receiver value) and does not hurt donors more than it helps (net value). WLM helps only one receiver per interval, though it may assess several before finding one it can help. “No action” is a normal outcome: the bottleneck may be something priority cannot fix (a lock, a server, I/O), every plan may harm more important work, or the gain may be too small. A receiver that could not be helped is skipped for a while (the skip clock). In GOAL MODE the WLM activity log shows each plan and, when nothing was done, the first move tried and why it was rejected. The sim projects with its own dispatcher model rather than IBM’s sampled plots, and limits a plan to six moves.',
+    sources: [WLM_GUIDE_PA, WLM_SERVICES_SMF99, ABCS_WLM],
+    discover: { tools: ['RMF_MON3'] },
+  },
+  {
+    id: 'donors-net-value',
+    title: 'Donors and net value',
+    category: 'WLM',
+    body: 'To give a receiver CPU, WLM takes priority from donors: periods running at or above the receiver’s dispatching priority that use the processor. It tries “happy” periods first, those meeting their goals, from the lowest PI up, and importance does not matter among them: a well-overachieving importance-1 class can donate to an importance-3 one if it is projected to stay comfortably within its goal. Donors are taken in the reverse of the receiver order, so periods missing their goals come last, least important first. Each donation must have net value: the projected harm to the donors may not exceed the projected improvement to the receiver. More important work must not be badly affected, and when the receiver and donor have the same importance and both miss their goals, WLM moves them closer together rather than trading one failure for another. A plan with too little receiver value is rejected so WLM can move on to other problems. In GOAL MODE more important work at its goal may not be pushed past it, a period missing its goal is never passed by less important work, at most three donors are tried for one receiver, and CPU protection is checked before anything is projected.',
+    sources: [WLM_GUIDE_PA, { label: 'IBM Redbook SG24-6472-03, §2.3.3 CPU management: no more important class badly affected (p. 66)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66' }, WLM_SERVICES_SMF99, { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, SMF 99 donor example (p. 147)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=147' }],
+    discover: { tools: ['RMF_MON3'] },
+  },
+  {
+    id: 'skip-clock',
+    title: 'The skip clock',
+    category: 'WLM',
+    body: 'If WLM assesses a receiver and every action that could help it is rejected, it sets a skip clock on that period, and the period is not selected as a receiver again until the clock expires: three policy adjustment cycles. That is done for efficiency and to help other work. Since z/OS 1.11 the clock is not honoured while five or fewer service class periods miss their goals: with so few problems, conditions in the next cycle might make it possible to help the period after all. In GOAL MODE a period that was helped gets no clock, the count of missing periods is per system, and the WLM activity log’s “no action” note for a clocked period ends with “next look” and the time it will be assessed again.',
+    sources: [
+      { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, action trace example (p. 145)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=145' },
+      { label: 'Horst Sinram (IBM), z/OS Workload Management Update for z/OS V1.11 and V1.12, SHARE 2010 session 7777 (p. 11)', url: 'https://github.com/piconaut/ibm-zos-books/blob/main/products/share/115/S7777_WLM_Update.pdf' },
+    ],
+    discover: { tools: ['RMF_MON3'] },
+  },
+  {
+    id: 'dispatching-priorities',
+    title: 'Dispatching priorities and unbunching',
+    category: 'WLM',
+    body: 'A dispatching priority (DP) is a number from 0 to 255 on an address space or enclave; in goal mode WLM sets it, not the installation. Since z/OS 1.8 the table is: 255 (FF) SYSTEM, 254 (FE) SYSSTC, 253–249 reserved, 248 (F8) small consumers, 247–203 (F7–CB) dynamically managed, 201–192 (C9–C0) discretionary, 191 quiesce. Only the order of the managed priorities matters: work at a higher DP is dispatched first, and work at the same DP takes turns. After a priority change WLM may renumber the periods so that an unoccupied priority sits between each occupied one (priority unbunching), which leaves room to move a period above or below another without moving everyone. A number can therefore change without the order changing. GOAL MODE shows DPs in hex in the WLM activity log; its managed levels are F6, F4, F2 and down, unbunched after every interval, and small consumers are not modelled.',
+    sources: [
+      { label: 'IBM Redbook SG24-6472-03, System Programmer’s Guide to: Workload Manager (Mar 2008), Table 2-2 dispatching priorities as of z/OS 1.8, rotation at one priority (pp. 65–66)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=65' },
+      { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, priority unbunching (p. 139)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=139' },
+    ],
     discover: { tools: ['RMF_MON3'] },
   },
   {
@@ -124,6 +156,18 @@ export const CODEX: CodexEntry[] = [
     category: 'Subsystems',
     body: 'CICS transactions are classified into service classes, but they run inside region address spaces, and WLM can only set a region’s dispatching priority. “Manage Region Using Goals Of” is a column of the STC and JES classification rules that catch the regions, so each region can have its own setting. TRANSACTION (the default): the region is a transaction server, managed to the goals of the transaction classes it serves. It runs at the priority the most demanding of them needs, so less important transactions in the same region get a “free ride”, and the region’s own service class is still reported but not used to manage it. Time a transaction spends waiting for a starved TRANSACTION region shows as its own CPU delay, so WLM helps the transaction class. REGION: the region is managed to its own service class goal, like any started task, and its transactions run at that priority; their response times are no longer reported in any service class (only in report classes), so WLM can’t manage the transaction classes. BOTH: managed to its own goal like REGION, but transaction completions are still tracked so the transaction classes keep their response-time management; IBM: “Option BOTH should be used only for CICS TORs. All AORs should remain at the default TRANSACTION.” IBM warns that using this option “limits WLM’s ability to manage the system” and may reduce overall throughput. Separating important and less important work into different regions is the usual fix for the free ride. In GOAL MODE every region is managed to TRANSACTION goals; the setting isn’t one of your levers.',
     sources: [{ label: 'IBM z/OS MVS Planning: Workload Management, “Manage Region Using Goals Of” (pp. 102, 191)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=122' }, { label: 'IBM Redbook SG24-7621, §3.31 CICS/IMS address space server topology (p. 126)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg247621.pdf#page=138' }],
+    discover: { start: true },
+  },
+  {
+    id: 'server-topology',
+    title: 'Server topology and the free ride ($SRMS001)',
+    category: 'WLM',
+    body: 'WLM never gives a CICS transaction a priority: it gives one to the regions the transaction runs in. It watches which external service classes each TRANSACTION-managed region serves, and groups the regions that serve the same set of classes into a dynamic internal service class period, named $SRMS001, $SRMS002 and so on, rebuilt about once a minute. That internal period holds the regions’ dispatching priority and collects their samples. The transaction classes are the goal receivers and donors, and the internal period is the resource receiver or donor: when ONLHI misses its goal, WLM raises $SRMS001, and every transaction class those regions serve moves with it. A less important class in the same regions gets a “free ride” on the priority the more important one needs. As a donor it is judged by the classes it serves: it counts as meeting its goal only while all of them do. The regions’ own service class (STCHI here) is ignored for them while they serve transactions. In z/OS the internal periods are visible only in SMF 99 trace data. GOAL MODE has one per system and shows it in the WLM activity log (“RCVR=ONLMED#1 (regions $SRMS001)”), while RMF reports show every served class at its regions’ priority. In real z/OS, routing important and less important transactions to different regions ends the free ride, because each set of regions gets its own internal period; GOAL MODE does not split a workload’s transactions between regions, so it has no such lever.',
+    sources: [
+      { label: 'IBM Redbook SG24-6472-03, System Programmer’s Guide to: Workload Manager (Mar 2008), §2.3.2 goal and resource receivers, the free ride (pp. 62–63)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=62' },
+      { label: 'IBM Redbook SG24-6472-03, §2.4.3 Dynamic Internal Service Class Period, server management (pp. 86–89)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=86' },
+      { label: 'IBM z/OS MVS Programming: Workload Management Services, resource receiver/donor (p. 138)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=138' },
+    ],
     discover: { start: true },
   },
   {
@@ -173,9 +217,11 @@ export const CODEX: CodexEntry[] = [
     id: 'resource-groups',
     title: 'Resource groups (minimum and maximum)',
     category: 'WLM',
-    body: 'A resource group limits or protects the CPU of the service classes in it. The maximum is always enforced, so work above it waits (capping delay) even when the CPC is idle. The minimum is honoured only while the group’s work misses its goals, and then even at the expense of more important work. Type 1 is service units per second across the sysplex, type 2 a percentage of the LPAR’s share, type 3 a number of CPs × 100. Service units are hard to judge: one MSU is a million service units per hour, about 277.8 SU/s, and a general CP delivers its MSU rating × 277.8 SU/s. A 100-MSU CP therefore provides about 27,800 SU/s, so a 100 SU/s limit is only ≈ 0.36 MSU, a fraction of one CP; the editor shows the MSU and per-CPC CP equivalents for type 1 limits.',
+    body: 'A resource group limits or protects the CPU of the service classes in it. The maximum is always enforced, so work above it waits (capping delay) even when the CPC is idle. For work with a goal, the minimum is honoured only while the group is below it and its work misses its goals, even at the expense of more important work. Discretionary work below its group’s minimum can receive CPU ahead of work meeting its goals, but yields while goal work outside the group misses its goals. Type 1 is service units per second across the sysplex, type 2 a percentage of the LPAR’s share, type 3 a number of CPs × 100. Service units are hard to judge: one MSU is a million service units per hour, about 277.8 SU/s, and a general CP delivers its MSU rating × 277.8 SU/s. A 100-MSU CP therefore provides about 27,800 SU/s, so a 100 SU/s limit is only ≈ 0.36 MSU, a fraction of one CP; the editor shows the MSU and per-CPC CP equivalents for type 1 limits.',
     sources: [
       ABCS_WLM,
+      { label: 'IBM, z/OS 3.1 MVS Planning: Workload Management, p.57–59', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=57' },
+      { label: 'IBM Redbook SG24-6472-03 (March 2008), p.63', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=63' },
       { label: 'IBM, z/OS 3.1 MVS Planning: Workload Management, p.251', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=251' },
     ],
     discover: { start: true },

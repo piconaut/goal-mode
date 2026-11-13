@@ -135,13 +135,22 @@ export function Procu({ rows, jobs, game }: { rows: Mon3Row[]; jobs: Mon3ProcJob
         {top.map((r) => (
           <tr key={r.scKey}>
             <td>{r.scKey}</td>
-            <td className="num">{p2(r.cpuEngines)}</td>
-            <td className="num">{p2(r.iipcpEngines)}</td>
+            <td className="num">
+              {p2(r.cpuEngines)}
+              <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'APPL_CP' }} label={`${r.scKey} time on CP`} />
+            </td>
+            <td className="num">
+              {p2(r.iipcpEngines)}
+              {r.iipcpEngines > 0 && <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'IIPCP' }} label={`${r.scKey} IIPCP`} />}
+            </td>
             <td className="num">
               {p2(r.cpuEngines)}
               <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'APPL' }} label={`${r.scKey} EAppl%`} />
             </td>
-            <td className="num">{p2(r.ziipEngines)}</td>
+            <td className="num">
+              {p2(r.ziipEngines)}
+              {r.ziipEngines > 0 && <PinButton game={game} req={{ source: 'MON3', system: r.system, scKey: r.scKey, metric: 'APPL_IIP' }} label={`${r.scKey} EAppl% IIP`} />}
+            </td>
             <td>{r.importance ?? (r.goal === 'system' ? 'sys' : 'disc')}</td>
           </tr>
         ))}

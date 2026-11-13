@@ -5,6 +5,7 @@ import { classify } from '../../wlm/classify';
 import { cpsmGoalShares, sameShares, wlmShares, type RegionStat, type RouteCandidate } from '../../workload/routing';
 import { ROUTING } from '../../../content/routing';
 import { cicsTargets } from '../../wlm/reporting';
+import { SERVER_KEY } from '../../wlm/holders';
 import { backlogCpSec, type LparEvalInput, type ScpTick, type SliceSpec } from '../../wlm/evaluate';
 import { emptyBuckets } from '../../wlm/goals';
 import { DISC_GOAL_MGMT, STORAGE_SWAP } from '../../../content/wlm/tuning';
@@ -40,22 +41,9 @@ export function byIdOf(workloads: readonly WorkloadDef[]): Record<string, Worklo
   return m;
 }
 
-// `${workloadId}@${lparId}` without building a new string every tick.
-export const wlLparKeys: Record<string, Record<string, string>> = {};
+/** `${workloadId}@${lparId}`; the tick stages read prebuilt ones from the plan (`ImagePlan.wlKey`). */
 export function wlLparKey(workloadId: string, lparId: string): string {
-  const m = (wlLparKeys[workloadId] ??= {});
-  return (m[lparId] ??= `${workloadId}@${lparId}`);
-}
-
-export const regionCountCache = new WeakMap<readonly AddressSpaceDef[], Record<string, number>>();
-export function cicsRegionCount(addressSpaces: readonly AddressSpaceDef[], lparId: string): number {
-  let m = regionCountCache.get(addressSpaces);
-  if (!m) {
-    m = {};
-    for (const a of addressSpaces) if (a.role?.startsWith('CICS.')) m[a.lparId] = (m[a.lparId] ?? 0) + 1;
-    regionCountCache.set(addressSpaces, m);
-  }
-  return m[lparId] ?? 0;
+  return `${workloadId}@${lparId}`;
 }
 
 /** Service a running job has consumed so far: CPU (incl. zIIP) seconds × SU per second, as the
@@ -367,8 +355,8 @@ export function discretionaryCaps(def: SimState['wlm']['definition'], slices: re
 /** CICS transactions on this image share the AOR regions' DP (SG24-7621 CICS/IMS region management). "Manage
  * Region Using Goals Of" is set per region on its STC/JES rule (WLM Planning 3.1 p.122, p.211). TRANSACTION regions
  * are transaction servers: their own CPU dispatches with the transactions. APPROX: the sim does not split a
- * workload's transactions between regions, so the transactions follow the AORs together: they ride the most
- * important served class's DP if any AOR on the image is TRANSACTION, else the first AOR's class DP. */
+ * workload's transactions between regions, so the transactions follow the AORs together: if any AOR on the image is
+ * TRANSACTION they run at the server period's DP (`serverKey`, holders.ts), else at the first AOR's class DP. */
 export function cicsRegions(
   def: SimState['wlm']['definition'],
   slices: readonly SliceSpec[],
@@ -411,7 +399,7 @@ export function cicsRegions(
   servers.sort();
   const regionKey = scKeyAtService(def, classify(def, { subsystem: aor.subsystem, TN: aor.jobname, SY: lparId }).serviceClass, Infinity);
   const transactionKeys = new Set(slices.filter((s) => s.kind === 'TXN' && s.workloadId && byId[s.workloadId]?.subsystem === 'CICS').map((s) => s.key));
-  return { regions: { keys, mode: txnMode, regionKey, servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey), ...(anyServer && managedToTxn ? { managedToTxn } : {}) } };
+  return { regions: { keys, mode: txnMode, regionKey, ...(txnMode === 'TRANSACTION' ? { serverKey: SERVER_KEY } : {}), servers, rtTracked, transactionKeys, targets: cicsTargets(slices, regionKey), ...(anyServer && managedToTxn ? { managedToTxn } : {}) } };
 }
 
 /** WLM Planning 3.1 p.122: only all served transaction classes Honor Priority NO prevents a
@@ -439,13 +427,13 @@ export function cicsHonorPriority(
   });
 }
 
-/** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly
- * waiting (APPROX: WLM's exact test for discretionary members is not documented here). */
+/** A goal period wants its minimum at local PI > 1; discretionary work wants CPU when it has CPU delay
+ * (SG24-6472 p.63, receiver cases 1–3). rgMin separately checks the group's smoothed service. */
 export function missingGoal(def: SimState['wlm']['definition'], st: ScpState | undefined, scKey: string): boolean {
   if (!st) return false;
   const g = goalInfo(def, scKey)?.goal;
   if (!g) return false;
-  if (g.kind === 'DISC') return st.acc.delay > st.acc.using;
+  if (g.kind === 'DISC') return st.acc.delayCpu > 0;
   const pi = goalPi(g, st.acc);
   return pi !== null && pi > 1;
 }
@@ -462,18 +450,34 @@ export function rgMin(
   const groups = def.resourceGroups.filter((g) => g.min !== null && g.min > 0);
   if (groups.length === 0) return {};
   const minOf: Record<string, number> = {};
+  const discMin = new Set<string>();
   for (const g of groups) {
     const demand: Record<string, number> = {};
     for (const s of slices) if (goalInfo(def, s.scKey)?.resourceGroup === g.id) demand[s.scKey] = (demand[s.scKey] ?? 0) + s.cpEngines;
     const keys = Object.keys(demand).sort();
     const total = keys.reduce((a, k) => a + demand[k]!, 0);
-    if (total <= 0 || !keys.some((k) => missingGoal(def, scps.find((x) => x.scKey === k), k))) continue;
+    if (total <= 0) continue;
     const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, plexShare[g.id] ?? 1);
-    for (const k of keys) minOf[k] = (min * demand[k]!) / total;
+    const members = scps.filter(s => goalInfo(def, s.scKey)?.resourceGroup === g.id)
+      .sort((a, b) => a.scKey < b.scKey ? -1 : a.scKey > b.scKey ? 1 : 0);
+    // cpuEngines already includes eligible work executed on CPs (IIPCP), but excludes zIIP service.
+    const used = members.reduce((sum, s) => sum + s.acc.cpuEngines, 0) * (1 - ACC_DECAY);
+    if (used >= min || !keys.some(k => missingGoal(def, members.find(s => s.scKey === k), k))) continue;
+    // Discretionary minima follow periods missing goals, before those meeting them (SG24-6472 p.63;
+    // WLM Planning p.57–59). APPROX: use measured local PI, not a projection of a new goal miss.
+    const outsideMissing = scps.some(s => {
+      const info = goalInfo(def, s.scKey);
+      if (!info || info.resourceGroup === g.id || info.goal.kind === 'DISC') return false;
+      const pi = goalPi(info.goal, s.acc);
+      return pi !== null && pi > 1;
+    });
+    for (const k of keys) {
+      minOf[k] = (min * demand[k]!) / total;
+      if (outsideMissing && goalInfo(def, k)?.goal.kind === 'DISC') discMin.add(k);
+    }
   }
   if (Object.keys(minOf).length === 0) return {};
-  const disc = Object.keys(minOf).filter((k) => goalInfo(def, k)?.goal.kind === 'DISC');
-  return disc.length > 0 ? { minOf, discMin: new Set(disc) } : { minOf };
+  return discMin.size > 0 ? { minOf, discMin } : { minOf };
 }
 
 export function resourceGroupCaps(

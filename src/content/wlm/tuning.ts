@@ -51,3 +51,57 @@ export const PCT_PROJECTION_SIGMA = 0.5;
 // larger of current demand and demand enabled by the grants. Unsettled trials are rejected, never accepted
 // using the final, possibly optimistic estimate. Tolerance is engines per job, not an IBM WLM threshold.
 export const BATCH_PROJECTION = { maxRecoveryRounds: 8, demandToleranceEngines: 1e-8 };
+
+// Policy adjustment (docs/wlm-design.md §5.10). IBM publishes none of these numbers; each note says where the
+// starting value comes from, not that IBM uses it.
+export const POLICY_ADJUST = {
+  // FICTIONAL: per-tick decay of WLM's accumulators. Shape: the management PI looks back about a minute.
+  accDecay: 0.85,
+  // FICTIONAL: a move must close this share of the receiver's distance to its goal (the 1994 patent's example).
+  receiverValueFrac: 0.1,
+  // FICTIONAL: … and never less than this PI improvement, so nothing moves for a hair (Enrico, slide 50; practitioner).
+  receiverValueMinPi: 0.05,
+  // FICTIONAL: PI below this earns the receiver nothing and costs a donor nothing (the 1994 patent).
+  creditFloor: 0.9,
+  // FICTIONAL: projected PI changes up to this are projection noise, not harm.
+  harmEps: 0.02,
+  // FICTIONAL: a period using less than this many engines holds nothing a priority move could take: not a donor.
+  donorMinEngines: 0.01,
+  // FICTIONAL: at most this many donors are tried for one receiver, bounding the search's cost.
+  donorsPerReceiver: 3,
+  // FICTIONAL: bound retained moves in one atomic plan; UP, CARRY and DONOR each count.
+  maxPlanSteps: 6,
+  // FICTIONAL: a quiet tick's demand is lifted to its smoothed level in projections, to at most this multiple.
+  demandUpliftMax: 2,
+  // FICTIONAL: work that has fallen behind is projected to want up to (1 + this) × its sustained demand, not its
+  // whole backlog in one interval.
+  backlogBoostFrac: 0.5,
+  // FICTIONAL: a receiver whose backlog the bound above cut is not raised while its management PI exceeds this
+  // multiple of its projected `base`. A projection that far below what is measured (a runaway: 56.6 against 1.15)
+  // cannot show what draining that backlog does to others. Shape: only transaction work far behind is affected, and
+  // it can still be helped by a donor move; a percentile PI stops at 4.0, so a percentile goal never trips it.
+  // Measured against projecting its whole backlog (docs/wlm-design.md §5.4).
+  projectionTrustMax: 4,
+  // FICTIONAL: a period whose managed delay (CPU, zIIP, I/O in velocity, storage, queue) is under this share of its
+  // samples is not assessed. IBM's rule is "no delay samples" (WLM Services p.144); a fluid model never has exactly none.
+  needsHelpDelayFrac: 0.02,
+  // FICTIONAL: CPU and zIIP are each tried as a receiver's bottleneck, largest delay first, when the delay is at least
+  // this share of its managed delay, even when I/O, storage or queue delay is larger (docs/wlm-design.md §5.7). Shape:
+  // a second bottleneck is tried only when it is a real share of the delay, so a period that is mostly I/O-bound with a
+  // trace of CPU delay is not raised for that trace.
+  bottleneckMinFrac: 0.15,
+  // IBM: a receiver whose every trial was rejected is skipped for 3 policy adjustment cycles (Sinram, SHARE 2010
+  // session 7777 p.11; WLM Services p.145 documents the clock but not its length). One length on every difficulty
+  // (docs/wlm-design.md §5.10).
+  rejectedSkipTicks: 3,
+  // IBM: since z/OS 1.11 the skip clock is not honoured when 5 or fewer service class periods miss their performance
+  // objectives (Sinram, SHARE 2010 session 7777 p.11). The check is `missing > skipClockMinMissing`: 5 means honour
+  // at six or more; a negative value forces the clock on (tests that need a hold). APPROX: counted per image from
+  // the periods' local management PI, as policy adjustment is per system; IBM does not say whether the count is per
+  // system or across the sysplex.
+  skipClockMinMissing: 5,
+  // FICTIONAL: projections (trial evaluations) per image per interval; the tick budget. When it is spent the search
+  // stops for the interval, with no skip clock, and the next interval's search starts where it stopped.
+  maxProjectionsPerInterval: 12,
+};
+

@@ -8,7 +8,7 @@
 import { mergeWorkManager, noResources, reportedAccs, reportedTicks, type WorkManagerSamples } from '../sim/wlm/reporting';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
-import { msuPerCp } from '../sim/hw/cpc';
+import { capacityLossPct, msuPerCp } from '../sim/hw/cpc';
 import { classify } from '../sim/wlm/classify';
 import { jobShape } from '../sim/subsys/batch';
 import { BUCKET_BOUNDS, goalText, velocityOf } from '../sim/wlm/goals';
@@ -107,6 +107,8 @@ export interface Mon3Cpc {
   prsmDelayPct: number;
   overheadPct: number;
   cappedPct: number;
+  /** 100 − SMF70CAI: capacity lost against the processor's normal setting (0 when not adjusted). */
+  capacityAdjPct?: number;
 }
 
 /** CPC report header, for one partition (RMF shows it for the partition the reporter runs on). */
@@ -378,6 +380,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
       logical,
       polarity: rt && l.hiperDispatch ? `${rt.vh}VH ${rt.vm}VM ${rt.vl}VL` : cfg?.dedicated ? 'DED' : 'SHARED',
       busyPct: logical > 0 ? (100 * total) / logical : 0,
+      capacityAdjPct: box ? capacityLossPct(box) : 0,
       prsmDelayPct: 100 * (rt?.prsmDelayFrac ?? 0),
       overheadPct: 100 * (rt?.overheadFrac ?? 0),
       cappedPct: 100 * (rt?.cappedFrac ?? 0),
@@ -707,16 +710,31 @@ const BTLNK_TEXT: Record<string, string> = {
   CPU: 'waiting for a general CP',
   ZIIP: 'waiting for a zIIP',
   IO: 'waiting for I/O',
+  STORAGE: 'delayed by paging or swapping',
+  QUEUE: 'queued for an initiator or MPL slot',
+  // Logs in saves from before WT-10, when waits and capping were bottlenecks.
   CAP: 'held back by capping',
   OTHER: 'waiting on a server or subsystem',
 };
 
 /** Plain-English reading of one WLM activity-log line ("why did ONLHI move?"). */
 export function explainWlmLog(line: string): string {
-  const head = /(\S+) RCVR=(\S+) PI=([\d.]+) BTLNK=(\S+) (.*)$/.exec(line);
+  const head = /(\S+) RCVR=(\S+)(?: \(regions (\S+)\))? PI=([\d.]+) BTLNK=(\S+) (.*)$/.exec(line);
   if (head) {
-    const [, sys, rcvr, pi, btl, action] = head as unknown as [string, string, string, string, string, string];
-    const why = `On ${sys}, ${rcvr} was the most important period missing its goal (PI ${pi}, mostly ${BTLNK_TEXT[btl] ?? btl}).`;
+    const [, sys, rcvr, server, pi, btl, action] = head as unknown as [string, string, string, string | undefined, string, string, string];
+    // A served CICS class is helped through its regions' server period (WT-09), so the moves name that period.
+    const regions = server
+      ? ` Its transactions run in CICS regions that WLM manages as server period ${server}, so WLM moves that period, and every transaction class those regions serve moves with it.`
+      : '';
+    const why = `On ${sys}, ${rcvr} was the most important period missing its goal (PI ${pi}, mostly ${BTLNK_TEXT[btl] ?? btl}).${regions}`;
+    const plan = [...action.matchAll(/(?:^|; )(UP|CARRY|DONOR) (\S+) DP (\w+)→(\w+)(?: \(above (\S+)\))?/g)];
+    if (plan.length) {
+      const steps = plan.map(([, kind, key, from, to, above]) => {
+        const role = kind === 'CARRY' ? `carried secondary receiver ${key}` : kind === 'DONOR' ? `lowered donor ${key}` : `raised ${key}`;
+        return above ? `${role} above ${above} (stored DP ${to})` : `${role} from DP ${from} to ${to}`;
+      });
+      return `${why} WLM committed one plan: ${steps.join('; ')}. The complete plan gave the receiver enough improvement while passing the net-value checks.`;
+    }
     const donor = /^DONOR (\S+) DP (\w+)→(\w+)/.exec(action);
     if (donor) return `${why} WLM lowered donor ${donor[1]} from DP ${donor[2]} to ${donor[3]} so the receiver gets the CPU first.`;
     const up = /DP (\w+)→(\w+)/.exec(action);
@@ -726,13 +744,16 @@ export function explainWlmLog(line: string): string {
   const prot = /(\S+) CPU PROTECTION (.*)$/.exec(line);
   if (prot)
     return `On ${prot[1]}, less important work held a dispatch priority equal to or above a CPU-protected period (CPU Critical or IEAOPT CCIMP), so WLM lowered it: ${prot[2]}. CPU protection is enforced before WLM helps any receiver.`;
+  const waiting = /(\S+) (\S+) PI=([\d.]+) mostly waiting, CPU delay (\d+) %: not WLM-fixable/.exec(line);
+  if (waiting)
+    return `On ${waiting[1]}, ${waiting[2]} misses its goal (PI ${waiting[3]}) but spends most of its time waiting on a server, lock or subsystem, not in a delay WLM manages (CPU delay only ${waiting[4]} % of its samples): dispatching priority can't fix that, so WLM leaves it. Look at what it waits for (DELAY, ENCLAVE, the server's own class).`;
   const notFix = /(\S+) (\S+) PI=([\d.]+) BTLNK=(\S+) not WLM-fixable/.exec(line);
   if (notFix)
     return `On ${notFix[1]}, ${notFix[2]} misses its goal (PI ${notFix[3]}) but is mostly ${BTLNK_TEXT[notFix[4]!] ?? notFix[4]}: dispatching priority can't fix that, so WLM skips it. Look at the delay's real cause.`;
   const noNet = /(\S+) (\S+) PI=([\d.]+) BTLNK=(\S+) no action with net value(?: \((.+) rejected: (.+)\))?/.exec(line);
   if (noNet) {
     const tried = noNet[5] ? ` First move tried: ${noNet[5]}, rejected ${noNet[6]}.` : '';
-    return `On ${noNet[1]}, ${noNet[2]} misses its goal (PI ${noNet[3]}) but every move WLM projected would hurt donors more than it helps.${tried} There isn't enough capacity to go round at this importance.`;
+    return `On ${noNet[1]}, ${noNet[2]} misses its goal (PI ${noNet[3]}) but WLM found no complete plan with enough receiver improvement that passed the net-value checks.${tried}`;
   }
   return line;
 }

@@ -9,9 +9,12 @@ import { addHour, capacityBasis, failureMechanismOf, hourAttainment, importanceR
 import {
   type CapacityDay,
   type HourAcc,
+  type IncidentTruth,
   type RunState
 } from '../types';
+import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
 import { allWorkloads, isNewWorkload } from '../workloads';
+import { incidentSubjects } from '../evidence';
 import type { GameContent } from './shared';
 import { toolOn } from './shared';
 import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
@@ -169,10 +172,22 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
-      const mechanism = failureMechanismOf(w, wh, r.events) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
+      const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
       const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(h, hosts) : null;
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
-      const truth = { mechanism, trigger: triggerOf(w.id, mechanism, r.events, h, isNew) };
+      const trigger = triggerOf(w.id, mechanism, r.events, h, isNew);
+      // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
+      const subjects = incidentSubjects(r, scenario, w.id, r.day);
+      const ctx: TruthContext = {
+        workloadId: w.id, mechanism, trigger, hour: h, events: r.events, basis, hosts,
+        servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew,
+      };
+      const { accepted, notes } = acceptedAnswers(ctx);
+      const truth: IncidentTruth = {
+        mechanism, trigger, accepted,
+        ...(Object.keys(notes).length > 0 ? { notes } : {}),
+        cause: truthCause(ctx),
+      };
       let aiops: Hypothesis[] | undefined;
       if (toolOn(r, 'AIOPS')) {
         aiops = aiopsHypotheses(truth, rankedMechanismGroups(parts, baselines[w.id] ?? {}), streamRng(r.seed, 'aiops', r.sim.tick, w.id));
@@ -191,6 +206,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
           truth,
           ...(basis ? { basis } : {}),
           ...(aiops ? { aiops } : {}),
+          subjects,
           rca: lead?.rca ?? null,
           trustLost: loss,
           ...(lead ? { rcaGroup: lead.id } : {}),

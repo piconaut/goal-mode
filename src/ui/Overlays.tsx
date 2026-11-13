@@ -8,7 +8,7 @@ import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
-import type { Mechanism, Trigger } from '../game/types';
+import type { IncidentTruth, Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
 import type { ViewModel } from '../game/view';
 import { piColor, seriesColor } from './colors';
@@ -501,6 +501,7 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
                 {i.rca!.explain}
               </div>
             )}
+            <AlsoAccepted truth={i.truth} />
             {(i.rca!.evidence ?? []).map((e) => (
               <div key={e.pinId} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
                 {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}
@@ -518,6 +519,27 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
           </div>
         ))}
       </div>
+    </>
+  );
+}
+
+/** The reply names the primary and the other accepted answers, one line of reasoning each (RT-07). */
+function AlsoAccepted({ truth }: { truth: IncidentTruth }) {
+  const accepted = truth.accepted;
+  if (!accepted) return null;
+  const rest: [string, string | undefined][] = [
+    ...accepted.mechanisms.filter((m) => m !== truth.mechanism).map((m): [string, string | undefined] => [m, truth.notes?.[m]]),
+    ...accepted.triggers.filter((t) => t !== truth.trigger).map((t): [string, string | undefined] => [t, truth.notes?.[t]]),
+  ];
+  if (rest.length === 0) return null;
+  return (
+    <>
+      {rest.map(([answer, why]) => (
+        <div key={answer} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
+          also accepted: <b>{answer}</b>
+          {why ? ` — ${why}` : ''}
+        </div>
+      ))}
     </>
   );
 }

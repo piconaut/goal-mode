@@ -5,10 +5,9 @@ import { DP, dispatch, shareByUnits, type DispatchDemand, type DispatchResult } 
 import type { LparEvalInput, PreparedLpar } from './types';
 
 /** Above every goal-managed period, below SYSTEM/SYSSTC and blocked-workload promotion. */
-const RG_MIN_DP = 252;
-/** Discretionary work gets its minimum only "if that action does not cause other work to miss its goal" (WLM
- * Planning p.59): above other discretionary work, below every goal-managed period. APPROX: it is served from
- * capacity no goal period wants, not only from goal periods that are meeting their goals. */
+const RG_MIN_DP = DP.RG_MINIMUM;
+/** A discretionary minimum yields while outside goal work misses its goal; otherwise rgMin selects RG_MIN_DP
+ * before happy goal work (SG24-6472 p.63, cases 2–3; WLM Planning p.59). APPROX: the gate is measured local PI. */
 const RG_MIN_DISC_DP = DP.MANAGED_MIN - 1;
 
 export interface LparGrants {
@@ -53,7 +52,7 @@ export function grantDispatch(input: LparEvalInput, prepared: PreparedLpar, runD
       const lift = Math.min(per * (cpShares?.[a] ?? 1), d.cpEngines);
       if (lift > 0) {
         d.cpEngines -= lift;
-        demands.push({ id: `${d.id}~promo`, dp: 253, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
+        demands.push({ id: `${d.id}~promo`, dp: DP.PROMOTED, cpEngines: lift, ziipEngines: 0, ziipMayOverflow: false });
       }
     }
   }

@@ -46,12 +46,21 @@ point-in-time snapshot by its authors, not product documentation, so:
 
 Redbooks have no release: `books.py locate sg246472` (the `--release` flag is ignored).
 Known ones are listed in `references/zos-books.md`.
+Patents likewise: `books.py locate us5473773`. Their `patentimages` PDF URLs can't be built
+from the patent number, so a missing patent prints the Google Patents page to download from
+instead of being fetched automatically.
 
 **Other products** (Db2, CICS, IMS, MQ, OMEGAMON, Z Performance and Capacity Analytics)
 are listed in the same file. Their book ID is IBM's PDF file name without `.pdf`
 (`db2z_13_msgsbook`, `sit-reference_pdf`, `IMS_15.5_System_Definition`, `mq94.plan`), and
 the table gives the URL and the `--product`/`--version` to use. Pick the version the user runs;
 if they haven't said, use the newest one listed and say so.
+
+**Patents** are stored as `patents/{id}.pdf` (ID = patent number lowercased, e.g. `us5473773`).
+They record how a mechanism was designed at filing time — useful for internals and rationale,
+not for current product behaviour. Cite the Google Patents page for identity and the PDF it
+links to for page citations, and prefer the z/OS book when both cover a fact. Known ones are
+listed in `references/zos-books.md`.
 
 ## 2. Get the book
 
@@ -103,18 +112,46 @@ Search for the most specific token first — a field name (`SMF70CPA`), member
 (`IEASYSxx`), message ID (`IXC402D`), code (`0C4`), keyword (`PERIOD`):
 
 ```bash
-python3 $S/pdf_find.py BOOK.pdf --grep SMF70CPA                  # hits with page + section
+python3 $S/pdf_find.py BOOK.pdf --grep CICS region --all --pages-only  # every matching page + section, one line each
+python3 $S/pdf_find.py BOOK.pdf --grep SMF70CPA                  # hits with page + section + lines
 python3 $S/pdf_find.py BOOK.pdf --grep "SMF30" "CPU time" --all  # pages containing both
 python3 $S/pdf_find.py BOOK.pdf --toc --filter "type 30"         # locate a section
 python3 $S/pdf_find.py BOOK.pdf --page 512 --to 513              # read the pages grep found
 ```
 
-Read whole pages only after grep has pointed at them, a page or two at a time. If the
-output gets truncated, narrow the search rather than raising the limits.
+A page costs about 1k tokens; a missed page can cost the whole answer. These rules keep
+the usual lookup cheap and spend more only where a miss would turn into a wrong answer:
+
+1. **Map before you read.** For a concept search (anything broader than one field, member,
+   message or code), run `--pages-only` first: it lists every matching page with its
+   section in a line each, so nothing gets cut off. Then read snippets or pages from that
+   list. Never pipe search output into `head` or `tail`: a cut-off list hides the pages
+   you didn't see. If the list is too long, narrow the patterns or add `--all`.
+2. **Read the section that owns the topic.** When hits land in the section that covers
+   the thing asked about (the CICS part of "Defining classification rules for each
+   subsystem", the SMF 30 processor accounting section), read the hit page and the page
+   before and after it in full, not just the lines around the match. The sentence that
+   answers the question often doesn't contain the search word.
+3. **Search in the book's words as well as the user's.** IBM's prose often names a thing
+   differently from how people ask about it. Try the book's term too:
+
+   | User says | Books also say |
+   |---|---|
+   | region | address space, server address space, server |
+   | rules, no rules | goals, not classified, no matching, default service class |
+   | transaction | work request, work, unit of work |
+   | LPAR | partition, logical partition, image |
+   | CPU | processor, CP, general purpose processor |
+   | delayed, waiting | delay, contention, queued |
+
+4. **Before any unverified claim, read more.** If the answer would rest on an inference
+   or on "not found", first read the owning section through (rule 2) with the book's
+   terms (rule 3). Only then fall back to "not found in BOOK under X or Y" or an inference
+   labelled as one.
 
 If you can't find support for part of the question, say that part isn't covered by what
-you found and name where you looked (book, search terms). An honest "not found in ieag200
-under X or Y" is a valid answer; a guess isn't.
+you found and name where you looked (book, sections read, search terms). An honest "not
+found in ieag200 under X or Y" is a valid answer; a guess isn't.
 
 ## 4. Answer
 
@@ -132,6 +169,10 @@ number when the table or the title page has one; the URL is the table's URL plus
 Redbook citation:
 
 `[IBM Redbook SG24-6472-03, System Programmer's Guide to: Workload Manager (Mar 2008), p.40 — Chapter 3 > …](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=40)`
+
+Patent citation (Google Patents page for identity, or its PDF with `#page=N` for a page):
+
+`[US 5,473,773 (IBM, issued 5 Dec 1995), p.2 — …](https://patentimages.storage.googleapis.com/cc/1c/48/91d9841e71b3bd/US5473773.pdf#page=2)`
 
 The page number and section breadcrumb come straight from `pdf_find.py` (`== p.N | …`);
 `#page=N` uses that same PDF page index. Form numbers are in the book table.

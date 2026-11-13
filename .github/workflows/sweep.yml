@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       args:
-        description: 'npm run sweep arguments (--bots --seeds --days --difficulty --scenario --reader)'
+        description: 'npm run sweep arguments (--bots --seeds --days --difficulty --scenario --reader --tune)'
         default: '--bots donothing,textbook,expert --seeds 1-20'
       shards:
         description: 'Parallel jobs (default: one per 2 seeds, at most 10)'
