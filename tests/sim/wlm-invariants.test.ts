@@ -237,6 +237,36 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     expect(recovering).toBeGreaterThan(5);
   });
 
+  it('I3 receiver order: importance first; at one importance sysplex-missing before local-only, worst PI first', () => {
+    let pairs = 0;
+    let mixed = 0;
+    for (const seed of SEEDS) {
+      const { input } = makeCase(seed, 'varied');
+      // A sysplex view for about half the periods, so both groups occur at one importance.
+      const u = (() => { const r = new Rng(seedRng(seed + 1000)); return () => r.nextU32() / 2 ** 32; })();
+      const sysplexPi: Record<string, number> = {};
+      for (const s of input.system.scps) if (u() < 0.5) sysplexPi[s.scKey] = 0.5 + u() * 3;
+      const { trace } = traced({ ...input, sysplexPi });
+      const key = (c: (typeof trace.candidates)[number]) => {
+        const plex = (c.sysplexPi ?? 0) > 1;
+        return { imp: c.importance, group: plex ? 0 : 1, pi: plex ? c.sysplexPi! : c.localPi ?? 0 };
+      };
+      const cs = trace.candidates.map(key);
+      for (let i = 1; i < cs.length; i++) {
+        const [a, b] = [cs[i - 1]!, cs[i]!];
+        pairs++;
+        expect(a.imp).toBeLessThanOrEqual(b.imp);
+        if (a.imp !== b.imp) continue;
+        expect(a.group).toBeLessThanOrEqual(b.group);
+        if (a.group !== b.group) { mixed++; continue; }
+        expect(a.pi).toBeGreaterThanOrEqual(b.pi);
+      }
+    }
+    // Both orderings have to be exercised for the property to mean anything.
+    expect(pairs).toBeGreaterThan(100);
+    expect(mixed).toBeGreaterThan(5);
+  });
+
   it('I4 receiver value: an accepted move closes a tenth of the gap to the goal and at least the floor', () => {
     let accepted = 0;
     for (const seed of SEEDS) {
