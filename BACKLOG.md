@@ -453,7 +453,7 @@ modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a 
 or equal-priority discretionary work misleads players.
 
 ### WT-16 · Joining a level projects much worse than staying below it (projection question)
-`list: wlm-truth · status: ready · priority: medium · size: S · area: sim`
+`list: wlm-truth · status: ready · priority: high · size: S · area: sim`
 
 From the design review of WT-04 … WT-08 (2026-11-12), unverified. On the capped-PROD1 fixture (Midwest seed 7,
 PROD1 defined capacity 200, DB* in STCHI), STCHI#1 (importance 1, holds Db2) projects 4.26 below ONLHI#1 and 26.37
@@ -476,9 +476,9 @@ both guards that exist because of it (`projectionTrustMax`, and WT-09's PROJECTI
 docs/wlm-design.md with a verdict (artefact fixed, or real and explained).
 
 ### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
-`list: wlm-truth · status: ready · priority: low · size: M · area: content`
+`list: wlm-truth · status: blocked: after WT-16 · priority: low · size: M · area: content`
 
-User request 2026-11-13. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
+User request 2026-11-13. After WT-16, which records its verdict in this document. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
 - **kept** in docs/wlm-design.md, as a living design doc: real WLM with page citations (§3), the sim's model as built
   (§5, as a description, not a change history), the invariants I1 … with the test that checks each (IDs unchanged),
   and the approximations, known gaps and open questions;
