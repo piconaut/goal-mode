@@ -12,7 +12,8 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
   PI with the execution part scaled by measured ÷ projected execution velocity (`PI × (Q̄ + Ē × v_ref / v') / (Q̄ + Ē)`,
   docs/wlm-design.md §9.15). The queue time is held fixed and there is no forecast of each job's remaining work.
   `rtQueueSumSec` keeps the queue split beside `rtSumSec`; `batchRt.ts` applies the formula only where that field is
-  present, so transaction RT periods keep their re-evaluated projections. Null with no completions or no running job;
+  present and the period still has address-space work (`kind: 'AS'`), so a decayed queue split does not override the
+  transaction projection when the class later serves transactions (review B1). Null with no completions or no running job;
   PCT uses the same factor on the extrapolated percentile PI; donors use the same formula. Tests: `tests/sim/batchRt.test.ts`.
   W11 is fixed for batch; started tasks still have no completions. No shipped policy gives batch an RT goal, so
   goldens, bench hashes and `npm run compare` are unchanged.

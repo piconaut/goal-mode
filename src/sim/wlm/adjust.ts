@@ -424,6 +424,11 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   for (const t of input.current) tickOf[t.scKey] = t;
   const accOf: Record<string, ScpState> = {};
   for (const s of system.scps) accOf[s.scKey] = s;
+  // Batch RT history can be projected only while the period still has address-space work in the evaluation. Without
+  // it, a decayed rtQueueSumSec from an old job must not displace the analytic transaction projection when the class
+  // serves transactions (B1: shared JES/DDF classification or a policy reclassification).
+  const addressSpaceKeys = new Set<string>();
+  for (const s of input.evalInput.slices) if (s.kind === 'AS') addressSpaceKeys.add(s.scKey);
   // Receiver value and donor harm use PIs before the reporting ceilings (percentile 4.0, velocity 99), or
   // improvements far past a goal look flat and a safe plan can exhaust its step limit without receiver value.
   const instPi = (ticks: readonly ScpTick[]) => {
@@ -437,7 +442,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       const acc = accOf[t.scKey]?.acc;
       // Batch RT goals manage by scaling the measured PI (WT-12, docs/wlm-design.md §9.15). A null projection
       // (no running job) stays null rather than falling back to the completionless address-space evaluation.
-      if ((g.goal.kind === 'AVG' || g.goal.kind === 'PCT') && acc?.rtQueueSumSec !== undefined) {
+      if (addressSpaceKeys.has(t.scKey) && (g.goal.kind === 'AVG' || g.goal.kind === 'PCT') && acc?.rtQueueSumSec !== undefined) {
         m[t.scKey] = projectBatchRtPi(g.goal, acc, t);
         continue;
       }

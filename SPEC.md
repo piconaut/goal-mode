@@ -867,7 +867,9 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   execution times of the completions and `v_ref`/`v'` the measured/current-DP execution velocities (no server or
   queue-delay samples; 0.1 % floor). A DP move changes only `Ē`. A null measured PI (completions expired) or no
   running job gives a null PI and no move. PCT goals use the same factor on the percentile PI, with the means for the
-  split; donors use the same formula. APPROX: no book gives the formula, response times cover whole job lives, and a
+  split; donors use the same formula. The batch path is used only while the period still has address-space work
+  (`kind: 'AS'`); a decayed queue split from an old job does not override the transaction projection when the class
+  now serves transactions. APPROX: no book gives the formula, response times cover whole job lives, and a
   mixed period takes the factor from all its samples (docs/wlm-design.md §9.15; `tests/sim/batchRt.test.ts`).
 - **Initiators:** JES-managed (fixed count per class) or **WLM-managed** (`MODE=WLM`; WLM
   starts initiators per service class from queue delay, importance and capacity). Too few

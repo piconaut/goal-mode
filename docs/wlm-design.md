@@ -2231,7 +2231,10 @@ path (`dispatch.ts`: start tick − queued tick), decayed beside `rtSumSec` (`ru
 (`src/sim/wlm/batchRt.ts`) applies the formula, gated on `rtQueueSumSec` being present, so transaction RT periods
 keep their existing re-evaluated projections. `policyAdjust`'s `instPi` uses it for every base and trial PI,
 including donors. Tests: `tests/sim/batchRt.test.ts` (AVG and PCT, non-null base/trials, gain, RECOVERING, null
-cases, donor harm and safeguards) plus the existing batch completion tests. No shipped policy gives batch an RT
+cases, donor harm and safeguards) plus the existing batch completion tests. The batch path is used only while the
+period still has address-space work in the evaluation (`kind: 'AS'`): a decayed `rtQueueSumSec` from an old job
+does not displace the transaction projection when the class now serves transactions (shared JES/DDF classification
+or a policy reclassification; review B1). No shipped policy gives batch an RT
 goal, so goldens, bench hashes and `npm run compare` are unchanged. An old save has no queue split until its next
 batch completion, so a batch RT period stays unmanaged until then; every other field loads unchanged. From that
 first completion until the old response-time history has decayed (about 25 minutes), `rtQueueSumSec` restarts at

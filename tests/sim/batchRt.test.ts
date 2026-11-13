@@ -3,7 +3,7 @@ import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { policyAdjust, setWlmTraceSink, type WlmAdjustTrace } from '../../src/sim/wlm/adjust';
 import { projectBatchRtPi } from '../../src/sim/wlm/batchRt';
 import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src/sim/wlm/evaluate';
-import { decayInto, emptyAcc, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
+import { decayInto, emptyAcc, tickPi, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
 import type { Goal } from '../../src/sim/wlm/types';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
@@ -211,5 +211,36 @@ describe('batch response-time goals in policy adjustment', () => {
     } finally {
       Object.assign(POLICY_ADJUST, saved);
     }
+  });
+
+  it('uses the transaction projection when only a decayed batch observation remains (B1)', () => {
+    const def = structuredClone(BASEPOL);
+    def.classes.find((c) => c.id === 'BATCHPRD')!.periods = [{ goal: { kind: 'AVG', rtSec: 3 }, importance: 4, durationSu: null }];
+    const slices: SliceSpec[] = [
+      sliceSpec({ key: 'txn', scKey: 'BATCHPRD#1', kind: 'TXN', workloadId: 'w', rate: 200, cpEngines: 3, cpuSecPerTxn: 3 / 200, baseLatencySec: 0.02, rtSigma: 0.5, timeoutSec: 30, goalRtSec: 3 }),
+      sliceSpec({ key: 'low', scKey: 'STCLO#1', kind: 'AS', cpEngines: 1.5, units: 4, fixedDemand: true }),
+    ];
+    const evalInput = { cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0, slices, backlog: {}, io: IO, pagingFrac: 0 };
+    const dps: Record<string, number> = { 'BATCHPRD#1': 240, 'STCLO#1': 246 };
+    const cur = evaluateLpar({ ...evalInput, dpOf: (k) => dps[k]! });
+    const recTick = cur.scps.find((t) => t.scKey === 'BATCHPRD#1')!;
+    const lowTick = cur.scps.find((t) => t.scKey === 'STCLO#1')!;
+    const rec = decayInto(emptyAcc(), recTick);
+    rec.completions = 2;
+    rec.rtSumSec = 80; // one old batch job: 40 s response, 20 s queue
+    rec.rtQueueSumSec = 40;
+    const system: WlmSystemState = {
+      lparId: 'SYS1',
+      scps: [
+        { scKey: 'BATCHPRD#1', dp: 240, starvedSec: 0, acc: rec },
+        { scKey: 'STCLO#1', dp: 246, starvedSec: 0, acc: accOfTick(lowTick) },
+      ],
+    };
+    const { traces } = runWith({ def, evalInput, cur, dps, system });
+    const c = traces[0]!.candidates.find((x) => x.scKey === 'BATCHPRD#1')!;
+    const goal = def.classes.find((x) => x.id === 'BATCHPRD')!.periods[0]!.goal;
+    expect(c.basePi).toBe(tickPi(goal, recTick, Infinity));
+    expect(c.basePi!).toBeLessThanOrEqual(1);
+    expect(c.trials).toEqual([]);
   });
 });
