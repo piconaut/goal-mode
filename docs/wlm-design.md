@@ -1088,7 +1088,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
 | I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11, RF-03). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget; it bites (`BUDGET` stops are counted) but leaves the clock bound meaningful |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 3, from 6 / 6 / 19) |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19) |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -1818,24 +1818,24 @@ Audit, same S-1 … S-3 recipes as §1 and §9.10 (`npm run repro` + `wlm-stats`
 
 | | S-1 Midwest | S-2 Revenue | S-3 Harbourline |
 |---|---|---|---|
-| candidates assessed | 254 → 1 317 | 777 → 5 701 | 1 429 → 5 801 |
-| … mostly waiting | 6 → 5 | 12 → 980 | 478 → 1 519 |
-| skip clock running | 1 162 → 0 | 3 701 → 0 | 6 193 → 472 |
-| projections | 1 241 → 6 700 | 2 953 → 20 624 | 4 820 → 18 197 |
-| `BUDGET` stops | 0 → 0 | 0 → 3 | 1 → 31 |
-| accepted plans | 21 → 35 | 24 → 24 | 107 → 139 |
-| reversed within two minutes | 0 → 1 | 0 → 0 | 0 → 3 |
-| … after another plan pushed it past its goal | 0 → 0 | 0 → 1 | 1 → 1 |
+| candidates assessed | 254 → 1 317 | 777 → 5 701 | 1 429 → 5 751 |
+| … mostly waiting | 6 → 5 | 12 → 980 | 478 → 1 511 |
+| skip clock running | 1 162 → 0 | 3 701 → 0 | 6 193 → 552 |
+| projections | 1 241 → 6 700 | 2 953 → 20 624 | 4 820 → 19 648 |
+| `BUDGET` stops | 0 → 0 | 0 → 3 | 1 → 22 |
+| accepted plans | 21 → 35 | 24 → 24 | 107 → 131 |
+| reversed within two minutes | 0 → 1 | 0 → 0 | 0 → 1 |
+| … after another plan pushed it past its goal | 0 → 0 | 0 → 1 | 1 → 0 |
 
 S-1 and S-2 rarely have more than five periods missing, so their clocks disappear: assessments rise 5× and 7×, and
 the projections with them (about 0.10 and 0.20 per adjustment, still below one, so the interval budget almost never
-bites). S-3 keeps clocks on its busy images (472) and its budget starts to bite (31 stops). The waiting note grows
-with the assessments: S-3's 1 519 mostly-waiting assessments are the WT-10 behaviour, now seen on every interval
+bites). S-3 keeps clocks on its busy images (552) and its budget starts to bite (22 stops). The waiting note grows
+with the assessments: S-3's 1 511 mostly-waiting assessments are the WT-10 behaviour, now seen on every interval
 rather than once per clock. The new quick reversals are a balance cost, not a clock bug: S-1's one is DDFPRD#1
 lowered as a donor at 10:30:10, projected to PI 1.00 (its goal), and helped back at 10:30:30 when its measured local
 PI is 1.20. The strict I13 exception ("past its goal") does not cover a projection exactly at the goal, so the test
-allows this one reversal and records it here; S-3's three are the same shape (a just-raised period taken down as a
-donor within 10–40 s, one after a harm). They are accepted as the price of reassessing quiet hours every interval,
+allows this one reversal and records it here; S-3's one is the same shape (a just-raised period taken down as a
+donor within 40 s, none after a harm). The +1 expiry fix reduces S-3's quick reversals from 3 to 1. They are accepted as the price of reassessing quiet hours every interval,
 not as a new alternation: no period goes up and down repeatedly in the window.
 
 Bench (Midwest seed 42, one day, `npm run bench -- --hash`): 9.41 s / 1.09 ms per tick → 10.76 s / 1.25 ms per tick
