@@ -4,9 +4,9 @@ Status: **implemented** (WT-04 … WT-10 and RF-03, closed by WT-15 on 2026-11-1
 entry landed differently: one PI basis, sustained demand and the missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
 budget (WT-05, §9.6; RF-03, §9.11); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07,
 §9.8); atomic plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). Every
-finding in §4 says whether it is fixed, settled, open with a ready entry (W10's discretionary half: WT-11; W11:
+finding in §4 says whether it is fixed, settled, open with a ready entry (W11:
 WT-12) or deferred to a playtest (W13: WT-14); §2 describes the sim as audited
-(2026-11-10), before any of them. Open: WT-11 and WT-12 (to be done), WT-16 (sample correction in §9.14; I13 acceptance open) and WT-17 (trim this document to the design
+(2026-11-10), before any of them. WT-11's discretionary minimum is implemented (§5.8), and WT-16's sample correction (§9.13, §9.14). Open: WT-12 (to be done) and WT-17 (trim this document to the design
 and archive the audit). The work is in [BACKLOG.md](../BACKLOG.md) list `wlm-truth`; §8 lists its questions and the
 user's decisions; §9 has each entry's results. This is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -766,9 +766,9 @@ by itself, which is when it no longer needs to be.
 
 ### W10. The resource-group minimum is dispatched inside the managed range (medium)
 
-*Open: the discretionary half is WT-11 (`wlm-truth`, ready, low priority, to be done).* *Collision fixed by WT-06:* a goal member's minimum runs at `DP.RG_MINIMUM` (249, in the reserved 253–249 range,
-APPROX), above all goal work; a discretionary member's at `MANAGED_MIN − 1` (202), above discretionary work only. The
-second paragraph (a discretionary member's minimum is weaker than in z/OS) still holds.
+*Fixed by WT-06 (the collision) and WT-11 (the discretionary minimum, §5.8).* A goal member's minimum runs at
+`DP.RG_MINIMUM` (249, in the reserved range, APPROX). A discretionary member uses that priority while no outside
+goal period has local PI > 1; otherwise its share runs at `MANAGED_MIN − 1` (202). The historical finding follows.
 
 `RG_MIN_DP` is 252 with the comment "above every goal-managed period", and 252 is `DP.MANAGED_MAX`
 (`eval/grants.ts`, `zos/dispatcher.ts`). Once a period reaches 252 (W2: day 2 on Midwest PROD2) the guaranteed share
@@ -1053,7 +1053,8 @@ the order alone, so two runs that reach the same order have the same DPs, and th
 `MANAGED_MAX` is left free (a sim choice: the free priority above the top level, as unbunching leaves one between
 levels). A goal member's resource-group minimum runs at `DP.RG_MINIMUM` (249) and blocked-workload promotion at 253,
 both in the reserved range and above all goal work (APPROX: IBM doesn't say where they run), which closes W10's
-collision; a discretionary member's minimum runs at 202, above discretionary work only.
+collision. Since WT-11 a discretionary member's minimum runs there too while no outside goal period has local
+PI > 1; otherwise it runs at 202, above discretionary work only.
 
 ### 5.7 Bottlenecks
 
@@ -1089,9 +1090,12 @@ does not see the waits that hold the measured PI up.
   period, and it reports the regions' DP: every member on the image is a transaction-server region, whether or not
   they used CPU this interval.
 - **Resource-group minimum:** a group is *below its minimum and wanting* when its smoothed CP service is under the
-  minimum and a member has CPU delay. Goal members: as today, while a member's `mLocal` > 1. A discretionary member:
-  its share is dispatched at `MANAGED_MAX` while no goal period outside the group has `mLocal` > 1, else just below
-  the managed range as today (IBM's order: after periods missing goals, before happy ones).
+  minimum and a discretionary member has CPU delay; goal members want the minimum while `mLocal` > 1. As built
+  (WT-11): service is the sum of every member's `ScpAcc.cpuEngines × (1 − ACC_DECAY)`, including IIPCP and excluding
+  zIIP, resolved against the same group types/sysplex share as dispatch. A discretionary share uses `DP.RG_MINIMUM`
+  (249) while no goal period outside the group has `mLocal` > 1, else 202 (IBM's order: after periods missing goals,
+  before happy ones; SG24-6472 p.63, WLM Planning p.57–59). APPROX: the gate uses measured local PI, not a projected
+  new goal miss. Tests: `tests/sim/resourceGroupMinimum.test.ts` and existing resource-group dispatch/realism tests.
 - **Batch response-time goals:** a job's end adds one completion with response time = queue + elapsed to its
   period's accumulator and buckets. The PI then exists for as long as the decayed completion count lasts (about 20
   minutes), and varies with single jobs, which is the behaviour behind IBM's "three completions per 20 minutes".
@@ -1116,7 +1120,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) (`tests/sim/wlm-servers.test.ts`) |
 | I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11, RF-03). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget; it bites (`BUDGET` stops are counted) but leaves the clock bound meaningful |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19; WT-09: 1 / 0 / 4, S-3 short by one, accepted by the user 2026-11-13, §9.12; WT-16 candidate: 1 / 0 / 8, acceptance open, §9.14) |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19; WT-09: 1 / 0 / 4, S-3 short by one, accepted by the user 2026-11-13, §9.12; WT-16: 1 / 0 / 8, accepted by the user 2026-11-13, #331, §9.14) |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -2117,12 +2121,12 @@ RT-06 validator: online incidents 0 / 2 / 16 → 0 / 2 / 15; reproduced counts m
 incident still agrees (1/1); Midwest has none, and Harbourline's incidents have no candidate cards under RT-06's
 current filter. No tested card attribution changes; this does not settle RT-14's collateral footprints.
 
-**I13 remains a decision, not a pass.** Eight Harbourline reversals is a 58% reduction against the original 19,
-short of the 80% criterion; 4 was previously accepted, 8 has not been. Five are STCMED raise/donation pairs on
-PRDC/PRDD (D1 09:58–09:59 and 14:18–14:19; D2 09:58–09:59), one is the server period at D1's 09:30 market open,
-and two are DDF donors raised again within two minutes (one projected exactly at its goal). No additional
-reversal is excluded from the counter and no tuning hides this result. WT-16 stays open for acceptance of this
-cost or further scoped stability work; WT-17 is not unblocked by this PR.
+**I13: accepted by the user (2026-11-13, #331).** Eight Harbourline reversals is a 58% reduction against the
+original 19, short of the 80% criterion; 4 was accepted under WT-09, and 8 is accepted with the corrected sample
+model. Five are STCMED raise/donation pairs on PRDC/PRDD (D1 09:58–09:59 and 14:18–14:19; D2 09:58–09:59), one is
+the server period at D1's 09:30 market open, and two are DDF donors raised again within two minutes (one projected
+exactly at its goal). No additional reversal is excluded from the counter and no tuning hides this result. WT-16 is
+closed; WT-17 is unblocked.
 
 Back-to-back one-day benchmarks (same box; before → after): Midwest 5.07 → 5.17 s (0.59 → 0.60 ms/tick),
 Harbourline 8.58 → 8.39 s (0.99 → 0.97 ms/tick), Revenue 4.71 → 4.81 s (0.55 → 0.56 ms/tick). State hashes:

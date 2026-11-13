@@ -8,11 +8,20 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **WT-11 (2026-11-13):** discretionary resource-group minima use smoothed CP consumption and CPU delay, run ahead
+  of goal work meeting its goals, and yield while an outside goal period has local PI > 1. IIPCP counts toward
+  consumption; zIIP service does not. Tests cover both priority cases and the trigger boundaries. No shipped
+  policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12 remains open.
+- **WT-16 investigation (2026-11-13):** docs/wlm-design.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
+  jump to address-space delay samples, despite a CP grant rising from 0 to 0.328816 engines. A two-slice fixed-demand
+  counterexample excludes backlog, uplift, batch and server dependencies. S-1's DDF cases instead lose CPU when
+  joining batch's level under the current fictional ready-unit counts. No simulation change; the correction followed
+  in #331 (below).
 - **WT-16 correction (2026-11-13; docs/wlm-design.md §9.14):** offered-demand samples fix the capped-STCHI
   velocity inversion; projections expose gains past the PI ceiling of 99, with the existing velocity floor and
-  planner limits retained. All targeted recovery/safety checks pass. S-1 … S-3 quick reversals are 1/0/8, from
-  1/0/4: I13's 80% reduction target is missed on Harbourline. WT-16 remains blocked for the user's acceptance of
-  this cost or further scoped stability work; WT-17 still waits. No coefficient or backlog-guard tuning.
+  planner limits retained. S-1 … S-3 quick reversals are 1/0/8, from 1/0/4. User decision (2026-11-13, #331): the
+  Harbourline cost of 8 (58 % below the original 19, against I13's 80 %) is accepted with the corrected model. WT-16
+  is closed and WT-17 is ready. No coefficient or backlog-guard tuning.
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
 - **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
@@ -204,6 +213,12 @@ level or a separate toggle.
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43253182591),
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43253182465)).
 
+- WT-11 (2026-11-13): no shipped policy defines a resource-group minimum. The discretionary minimum correction
+  leaves the Midwest/Revenue/Harbourline behaviour comparison unchanged and keeps both required one-day hashes
+  unchanged (Midwest `d929cb76fb5328df`, Harbourline `3c6b010e5243936c`). Goldens stay unchanged; no bot sweep is
+  needed for this entry (BACKLOG WT-11: no policy uses a minimum). Sources and the local-PI approximation are in
+  SPEC §5.5.6 and docs/research.md.
+
 - WT-16 correction (2026-11-13, model `624c8bb`; remote, Normal, seeds 1–10, all three bots):
 
   | Scenario | Do-nothing median day, before → after | Textbook median day, before → after | Expert victories |
@@ -213,9 +228,8 @@ level or a separate toggle.
   | [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43397637534) | 10 → 10.5 | 29 → 30 | 7 → 7 of 10 |
 
   Before is WT-15's seeds 1–10 reference below. Every bot is inside its CI band; no coefficient was tuned and no
-  balance entry is needed. This does **not** pass I13's separate stability criterion: S-1 … S-3 quick reversals
-  change 1/0/4 → 1/0/8. Acceptance of that cost or further stability work remains the user's WT-16 decision
-  (docs/wlm-design.md §9.14); WT-17 stays blocked.
+  balance entry is needed. I13's separate stability criterion: S-1 … S-3 quick reversals change 1/0/4 → 1/0/8, short
+  of the 80 % reduction on Harbourline; accepted by the user on 2026-11-13 (#331, docs/wlm-design.md §9.14).
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -482,7 +496,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX). Looked for in
   WLM Planning on 2026-11-10 ("normaliz", specialty processor service units) and not found; still open.
 - WLM audit 2026-11-10: the questions on secondary receivers and donors, a region class as receiver, equal-DP
-  sharing, percentile PI with few completions, the discretionary minimum and backlog in projections are settled in
+  sharing, percentile PI with few completions and backlog in projections are settled in
   docs/research.md ("WLM policy adjustment and dispatching") and docs/wlm-design.md §4 W15; their fixes are WT entries.
 - WLM audit: the numbers behind receiver value, the net value rule by importance and the 0.90 credit come from IBM's
   1994 patent (page-checked 2026-11-10, US 5,473,773 p.18–20) and Peter Enrico's slides; IBM's z/OS books state the

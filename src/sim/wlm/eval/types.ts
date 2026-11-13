@@ -148,7 +148,7 @@ export interface LparEvalInput {
   capOf?: (slice: SliceSpec) => number;
   /** Resource group minimums in force this tick: CP engines per service-class period. */
   minOf?: Readonly<Record<string, number>>;
-  /** Periods in minOf that are discretionary: their minimum yields to goal work. */
+  /** Discretionary periods in minOf whose share must yield while a goal period outside their group misses. */
   discMin?: ReadonlySet<string>;
   /** CICS work runs inside region address spaces, so it shares their dispatching priority: the server period's
    * (`serverKey`, TRANSACTION mode; holders.ts) or the region's own class (REGION/BOTH).

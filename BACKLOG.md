@@ -415,19 +415,6 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-11 · The resource-group minimum for discretionary work (W10)
-`list: wlm-truth · status: ready · priority: low · size: S · area: sim`
-
-Implements §5.8 in `rgMin` and `missingGoal` (`src/sim/core/tick/helpers.ts`) and `grantDispatch`
-(`eval/grants.ts`): a group is below its minimum and wanting when its smoothed CP service is under the minimum and
-a member has CPU delay (replaces `delay > using` for discretionary members); a discretionary member's share is
-dispatched at the minimum's priority while no goal period outside the group has local PI > 1, else just below the
-managed range as today. Cite SG24-6472 p.63 (receiver order, cases 1–3) and WLM Planning p.57. Tests: unit
-"discretionary minimum is served ahead of work meeting its goals", "… and yields while a goal period misses";
-existing resource-group tests. Goldens: unchanged unless a scenario gains a minimum (none ships one); say so.
-Done when: the two unit tests pass and the PROGRESS open question is removed. Bots: none (no policy uses a
-minimum).
-
 ### WT-12 · Response-time goals for batch: jobs are completions (W11)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`
 
@@ -452,26 +439,10 @@ donors (WLM Services p.138); discretionary work is spread over 192–201 by mean
 modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a playtest finding that a stale order
 or equal-priority discretionary work misleads players.
 
-### WT-16 · Decide the I13 stability cost of the sample correction
-`list: wlm-truth · status: blocked: user (accept the measured I13 gap, or scope further stability work) · priority: high · size: S · area: sim`
-
-Sample correction implemented (2026-11-13, model `624c8bb`; docs/wlm-design.md §9.14): offered-demand queue
-samples include starved work; velocity projections retain gains otherwise hidden by the reporting ceiling of 99. Monotonicity,
-ready-unit limits, the capped-PROD1 recovery and plan-safety regressions pass. No coefficients, planner limits or
-backlog guards changed. Goldens regenerated; S-1 … S-3 and RT-06 differences are in §9.14, sweep evidence in
-PROGRESS M8.2.
-
-Remaining user call before acceptance: Harbourline moves reversed within two minutes rise from the previously
-accepted 4 to 8 (Midwest 1 and Revenue 0 unchanged). Eight is a 58% fall from the original 19, missing I13's 80%
-criterion. Accept the corrected sample model with this recorded stability cost, or require further scoped
-stability work before accepting it? The eight pairs and their subjects/times are in §9.14; do not tune WLM
-coefficients or add a rejection guard merely to recover the old count. Done when: the user has decided, any
-required follow-up is scoped/implemented, this entry is removed and WT-17 is unblocked.
-
 ### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
-`list: wlm-truth · status: blocked: after WT-16 · priority: low · size: M · area: content`
+`list: wlm-truth · status: ready · priority: low · size: M · area: content`
 
-User request 2026-11-13. After WT-16, which records its verdict in this document. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
+User request 2026-11-13. WT-16 (closed 2026-11-13, #331) recorded its verdict in §9.13–§9.14. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
 - **kept** in docs/wlm-design.md, as a living design doc: real WLM with page citations (§3), the sim's model as built
   (§5, as a description, not a change history), the invariants I1 … with the test that checks each (IDs unchanged),
   and the approximations, known gaps and open questions;

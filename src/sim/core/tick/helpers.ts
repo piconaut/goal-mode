@@ -427,13 +427,13 @@ export function cicsHonorPriority(
   });
 }
 
-/** A period misses its goal for the minimum when PI > 1; discretionary work when it is mostly
- * waiting (APPROX: WLM's exact test for discretionary members is not documented here). */
+/** A goal period wants its minimum at local PI > 1; discretionary work wants CPU when it has CPU delay
+ * (SG24-6472 p.63, receiver cases 1–3). rgMin separately checks the group's smoothed service. */
 export function missingGoal(def: SimState['wlm']['definition'], st: ScpState | undefined, scKey: string): boolean {
   if (!st) return false;
   const g = goalInfo(def, scKey)?.goal;
   if (!g) return false;
-  if (g.kind === 'DISC') return st.acc.delay > st.acc.using;
+  if (g.kind === 'DISC') return st.acc.delayCpu > 0;
   const pi = goalPi(g, st.acc);
   return pi !== null && pi > 1;
 }
@@ -450,18 +450,34 @@ export function rgMin(
   const groups = def.resourceGroups.filter((g) => g.min !== null && g.min > 0);
   if (groups.length === 0) return {};
   const minOf: Record<string, number> = {};
+  const discMin = new Set<string>();
   for (const g of groups) {
     const demand: Record<string, number> = {};
     for (const s of slices) if (goalInfo(def, s.scKey)?.resourceGroup === g.id) demand[s.scKey] = (demand[s.scKey] ?? 0) + s.cpEngines;
     const keys = Object.keys(demand).sort();
     const total = keys.reduce((a, k) => a + demand[k]!, 0);
-    if (total <= 0 || !keys.some((k) => missingGoal(def, scps.find((x) => x.scKey === k), k))) continue;
+    if (total <= 0) continue;
     const min = resolveRgCapEngines(g.type, g.min!, cpRt, suPerSec, plexShare[g.id] ?? 1);
-    for (const k of keys) minOf[k] = (min * demand[k]!) / total;
+    const members = scps.filter(s => goalInfo(def, s.scKey)?.resourceGroup === g.id)
+      .sort((a, b) => a.scKey < b.scKey ? -1 : a.scKey > b.scKey ? 1 : 0);
+    // cpuEngines already includes eligible work executed on CPs (IIPCP), but excludes zIIP service.
+    const used = members.reduce((sum, s) => sum + s.acc.cpuEngines, 0) * (1 - ACC_DECAY);
+    if (used >= min || !keys.some(k => missingGoal(def, members.find(s => s.scKey === k), k))) continue;
+    // Discretionary minima follow periods missing goals, before those meeting them (SG24-6472 p.63;
+    // WLM Planning p.57–59). APPROX: use measured local PI, not a projection of a new goal miss.
+    const outsideMissing = scps.some(s => {
+      const info = goalInfo(def, s.scKey);
+      if (!info || info.resourceGroup === g.id || info.goal.kind === 'DISC') return false;
+      const pi = goalPi(info.goal, s.acc);
+      return pi !== null && pi > 1;
+    });
+    for (const k of keys) {
+      minOf[k] = (min * demand[k]!) / total;
+      if (outsideMissing && goalInfo(def, k)?.goal.kind === 'DISC') discMin.add(k);
+    }
   }
   if (Object.keys(minOf).length === 0) return {};
-  const disc = Object.keys(minOf).filter((k) => goalInfo(def, k)?.goal.kind === 'DISC');
-  return disc.length > 0 ? { minOf, discMin: new Set(disc) } : { minOf };
+  return discMin.size > 0 ? { minOf, discMin } : { minOf };
 }
 
 export function resourceGroupCaps(
