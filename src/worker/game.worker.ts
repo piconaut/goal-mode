@@ -21,7 +21,7 @@ import { askAround } from '../game/inquiries';
 import { adviseReportClasses, applyReportClassAdvice } from '../game/rcAdvisor';
 import { workOnProject } from '../game/projects';
 import { buildView } from '../game/view';
-import { applyWlmEdit, cicsGoalIssues, cicsTransactionClasses, pendingBase, playerWlmEditError } from '../game/wlmEdit';
+import { applyWlmEdit, serviceClassGoalIssues, cicsTransactionClasses, pendingBase, playerWlmEditError } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
 import { decodeRunFileText, decodeRunJson, encodeRunJson } from '../game/runFile';
@@ -95,7 +95,7 @@ function pendingView(): PendingPolicyView | null {
       ss.rules.map((r) => ({ subsystem: ss.subsystem, text: `${r.qualifier}=${r.pattern} → ${r.serviceClass ?? '(default)'}${r.regionMode ? ` [${r.regionMode}]` : ''}` })),
     ),
     cicsClasses: cicsTransactionClasses(pendingPolicy),
-    cicsIssues: cicsGoalIssues(pendingPolicy),
+    goalIssues: serviceClassGoalIssues(pendingPolicy),
   };
 }
 
@@ -136,7 +136,7 @@ const postPolicy = () => {
 };
 
 function activate(def: ServiceDefinition) {
-  const err = cicsGoalIssues(def).find((i) => i.severity === 'error');
+  const err = serviceClassGoalIssues(def).find((i) => i.severity === 'error');
   if (err) {
     post({ type: 'RESULT', ok: false, message: `Policy not installed: ${err.message}` });
     return;
@@ -577,8 +577,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       const res = playerWlmEditError(m.edit) ?? applyWlmEdit(base, m.edit);
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else {
-        const had = new Set(cicsGoalIssues(base).map((i) => i.message));
-        const warn = cicsGoalIssues(res).find((i) => !had.has(i.message));
+        const had = new Set(serviceClassGoalIssues(base).map((i) => i.message));
+        const warn = serviceClassGoalIssues(res).find((i) => !had.has(i.message));
         pendingPolicy = res;
         postPolicy();
         post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.${warn ? ` Warning: ${warn.message}` : ''}` });

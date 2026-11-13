@@ -8,10 +8,35 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **PR #333 review documentation (2026-11-13):** W11's no-PI/no-warning description is explicitly the state before
+  WT-12. The remaining no-completions limitation covers all started tasks, including temporary tasks; it is not
+  limited to indefinite tasks. No further model scope is claimed.
+
+- **PR #333 review M2 (2026-11-13):** goal issues identify their subsystem. The service-class editor marks the
+  CICS transaction tag bad only for CICS issues, while retaining JES advice in the combined issue list. Rendered
+  active/pending-policy regressions cover shared CICS/JES classes with and without a genuine CICS warning.
+
+- **PR #333 review M1 (2026-11-13):** completed AVG/PCT batch jobs now contribute the same completion, queue-plus-
+  elapsed response time and exact bucket to their assigned report class (WLM Planning 3.1 p.113, rechecked).
+  Regression cases cover AVG/PCT in first/later periods, separate report classes and unreported jobs, local and
+  sysplex RMF rows, and no duplicate completion. Report-class grouping/heterogeneity rules are unchanged.
+
+- **PR #333 review B1 (2026-11-13):** measured percentile PIs now use the same completion-count cutoff as average
+  PIs. A lone job's bucket ratio no longer keeps a period missing its goal after its completion history expires;
+  trial percentile projections retain their existing path. The AVG/PCT completion/25-minute-expiry regression
+  reproduces the stale PI before the fix and passes with it. The fixed decay/cutoff remains a sim approximation.
+
+- **WT-12 (2026-11-13):** completed batch jobs feed response-time goals with one queue-plus-elapsed observation
+  in the ending period. JES RT goals carry the three-completions-per-20-minutes advice in the editor and PI Codex
+  entry (WLM Planning 3.1 p.71). **W11 remains partially open:** batch-only AVG/PCT priority projections have no
+  completions, return null PI and skip CPU-starved receivers as RECOVERING. WT-12 retains that remainder blocked on
+  a projection design; this PR completes measurement/advice only. Started tasks remain without completions.
+
 - **WT-11 (2026-11-13):** discretionary resource-group minima use smoothed CP consumption and CPU delay, run ahead
   of goal work meeting its goals, and yield while an outside goal period has local PI > 1. IIPCP counts toward
   consumption; zIIP service does not. Tests cover both priority cases and the trigger boundaries. No shipped
-  policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12 remains open.
+  policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12 completes batch measurements/advice,
+  while W11's priority-projection gap stays open.
 - **WT-16 investigation (2026-11-13):** docs/wlm-design.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
   jump to address-space delay samples, despite a CP grant rising from 0 to 0.328816 engines. A two-slice fixed-demand
   counterexample excludes backlog, uplift, batch and server dependencies. S-1's DDF cases instead lose CPU when
@@ -105,8 +130,8 @@ it) against IBM's description, step by step, and proposes one target model. Fift
 the four structural ones: receivers are chosen on the smoothed PI but every trial is judged on one tick's PI (W1);
 the DP ladder only climbs and collapses at the top of the managed range within a day or two on a stressed image
 (W2); each served CICS class owns a DP and only the highest counts (W3); donors are picked by importance and CPU
-use, not by goal achievement (W4). The work is BACKLOG.md list `wlm-truth` (WT-01 … WT-15): WT-02 and WT-03 are
-ready (SPEC text, no behaviour change), and WT-12; WT-01's `inspect … wlm-stats` has landed. User decisions on §8 (2026-11-10): all as
+use, not by goal achievement (W4). The work is BACKLOG.md list `wlm-truth` (WT-01 … WT-15); WT-01's `inspect … wlm-stats` and
+WT-12's batch response-time measurements have landed. User decisions on §8 (2026-11-10): all as
 recommended, and the core (WT-04 … WT-10) lands after RT-06 and before RT-14, so RCA footprints and balance are
 built once on the new WLM; the RT-15 playtest follows the core (§7).
 
@@ -218,6 +243,14 @@ level or a separate toggle.
   unchanged (Midwest `d929cb76fb5328df`, Harbourline `3c6b010e5243936c`). Goldens stay unchanged; no bot sweep is
   needed for this entry (BACKLOG WT-11: no policy uses a minimum). Sources and the local-PI approximation are in
   SPEC §5.5.6 and docs/research.md.
+
+- WT-12 (2026-11-13, before integrating WT-16): no shipped policy gives batch an RT goal; goldens and the
+  three-scenario behaviour comparison were unchanged against `020ca0f`. Midwest/Harbourline one-day hashes were
+  `d929cb76fb5328df` / `3c6b010e5243936c`.
+  No bot sweep is required for this entry (BACKLOG WT-12: bots none); PR evidence records validation.
+  After integrating WT-16 from `dev` (`866b322`), the three-scenario comparison is still identical to that base;
+  hashes are Midwest `3988113566a9eb83`, Revenue `c7d26e933456fbf8`, Harbourline `3e0a8aa98af79e77`.
+  The accepted I13 decision and WT-12's remaining projection-design gap are both retained.
 
 - WT-16 correction (2026-11-13, model `624c8bb`; remote, Normal, seeds 1–10, all three bots):
 

@@ -395,7 +395,8 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - **Sequencing against `rca-truth`** (user decision 2026-11-10, docs/wlm-design.md §7): the core WT-04 … WT-09 and
   WT-10 land after RT-06 (the counterfactual validator) and before RT-14 (card footprints), so footprints and
   balance are built once, on the WLM players will keep. Each of those PRs reports RT-06's validator differences.
-  WT-12 changes no shipped behaviour and is ready.
+  WT-12 implements completion measurements and editor advice without changing shipped behaviour; its remaining
+  priority-projection work is blocked on design below.
 - **One at a time.** Each `sim` entry: goldens regenerated with a "Behaviour change" note, `npm run bench` before and
   after (tick budget, SPEC §15), a three-scenario `npm run sweep:remote` (seeds 1–10, Normal) recorded in
   PROGRESS.md M8.2, and the realism policy (cite docs/wlm-design.md §3's pages in code comments).
@@ -415,20 +416,26 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-12 · Response-time goals for batch: jobs are completions (W11)
-`list: wlm-truth · status: ready · priority: low · size: S · area: sim`
+### WT-12 · Batch response-time priority projections (remaining W11)
+`list: wlm-truth · status: blocked: design · priority: low · size: M · area: sim`
 
-Low priority, not optional (user decision 2026-11-13): W11 stays open until this lands.
+Partial implementation: completed jobs now supply one queue-plus-elapsed response-time observation and exact
+bucket to their ending period, with JES editor/Codex completion-rate advice. Those measurement/warning requirements
+are complete. W11 remains open for priority management (PR #333 review B1, 2026-11-13).
 
-User decision on §8 Q6, 2026-11-10: model job completions, and warn in the editor.
+Remaining: `policyAdjust` re-evaluates batch AS slices for its base/trial PIs; those evaluations have no job
+completions, so a batch-only AVG/PCT period has a null projected PI. Even with measured PI 4 and CPU delay,
+`adjust.ts` labels it RECOVERING and attempts no priority moves. Keep this limitation explicit until fixed.
 
-Implements §5.8. In `dispatchLpar` (`src/sim/core/tick/dispatch.ts`), a job ending this tick adds one completion,
-its response time (queued + elapsed, as `stepRmf`'s `JobEndRecord` computes) and one bucket entry to the `ScpTick`
-of the period it ended in, when that period has a response-time goal. The policy editor (`src/game/wlmEdit.ts`
-warnings) notes on a JES class with a response-time goal: "needs at least three completions per 20 minutes (WLM
-Planning p.71); with fewer the PI is erratic". Tests: unit "a batch class with an average goal has a PI after a job
-ends and none 25 minutes later"; unit for the warning. Goldens: unchanged (no shipped policy gives batch a
-response-time goal); prove with bench hashes. Bots: none. Codex: one line in the goals entry.
+Design question: how should a DP trial project a discrete job's response time, including already-spent queue and
+elapsed time, remaining CPU/I/O work and sparse completion history? Agree the projection rule and its approximation
+before implementation; copying a measured PI into each trial would provide no evidence of benefit or donor harm.
+Then implement the base/trial path in shared evaluation/adjustment and test both AVG and PCT batch-only receivers:
+non-null projected PIs, CPU-starved missing work reaches trials, a useful safe grant improves the projection, and
+existing receiver-value/donor safeguards still apply. Done when: the agreed model and tests cover those cases,
+W11's management gap can be closed, and SPEC §17/PROGRESS/research reflect the result. Retain the existing completion
+measurements and their tests. Prove shipped behavior with goldens, bench hashes and compare; bots none if no shipped
+policy has a batch RT goal and the change remains confined to that goal path.
 
 ### WT-14 · Receivers that meet their goals; small consumers; mean-time-to-wait (W2, W13)
 `list: wlm-truth · status: blocked: playtest (docs/wlm-design.md §8 Q3, Q8) · priority: low · size: M · area: sim`
