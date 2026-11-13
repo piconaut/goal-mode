@@ -39,6 +39,7 @@ npm run bench -- --hash                     # one headless day: timing + end-sta
 npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1   # headless sim + RMF reports
 npm run bot -- --bot textbook --seed 42 [--difficulty story|normal|hard]
 npm run sweep -- --bots donothing,textbook --seeds 1-20 --jobs 4 # bots over many seeds → CSV + summary
+npm run test:remote -- --suite sim         # the vitest suite on GitHub Actions; prints a summary
 ```
 
 Layout: `src/content` (scenarios, workloads, events, tools, prices, coefficients) → `src/sim` (the
