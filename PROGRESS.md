@@ -8,6 +8,10 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **WT-11 (2026-11-13):** discretionary resource-group minima use smoothed CP consumption and CPU delay, run ahead
+  of goal work meeting its goals, and yield while an outside goal period has local PI > 1. IIPCP counts toward
+  consumption; zIIP service does not. Tests cover both priority cases and the trigger boundaries. No shipped
+  policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12 remains open.
 - **WT-16 investigation (2026-11-13):** docs/wlm-design.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
   jump to address-space delay samples, despite a CP grant rising from 0 to 0.328816 engines. A two-slice fixed-demand
   counterexample excludes backlog, uplift, batch and server dependencies. S-1's DDF cases instead lose CPU when
@@ -203,6 +207,12 @@ level or a separate toggle.
   ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43253180617),
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43253182591),
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43253182465)).
+
+- WT-11 (2026-11-13): no shipped policy defines a resource-group minimum. The discretionary minimum correction
+  leaves the Midwest/Revenue/Harbourline behaviour comparison unchanged and keeps both required one-day hashes
+  unchanged (Midwest `d929cb76fb5328df`, Harbourline `3c6b010e5243936c`). Goldens stay unchanged; no bot sweep is
+  needed for this entry (BACKLOG WT-11: no policy uses a minimum). Sources and the local-PI approximation are in
+  SPEC §5.5.6 and docs/research.md.
 
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
@@ -469,7 +479,7 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Period switching sums CP and zIIP seconds × SU/s without normalising zIIP time to CP speed (APPROX). Looked for in
   WLM Planning on 2026-11-10 ("normaliz", specialty processor service units) and not found; still open.
 - WLM audit 2026-11-10: the questions on secondary receivers and donors, a region class as receiver, equal-DP
-  sharing, percentile PI with few completions, the discretionary minimum and backlog in projections are settled in
+  sharing, percentile PI with few completions and backlog in projections are settled in
   docs/research.md ("WLM policy adjustment and dispatching") and docs/wlm-design.md §4 W15; their fixes are WT entries.
 - WLM audit: the numbers behind receiver value, the net value rule by importance and the 0.90 credit come from IBM's
   1994 patent (page-checked 2026-11-10, US 5,473,773 p.18–20) and Peter Enrico's slides; IBM's z/OS books state the

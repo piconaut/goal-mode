@@ -4,9 +4,9 @@ Status: **implemented** (WT-04 … WT-10 and RF-03, closed by WT-15 on 2026-11-1
 entry landed differently: one PI basis, sustained demand and the missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
 budget (WT-05, §9.6; RF-03, §9.11); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07,
 §9.8); atomic plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). Every
-finding in §4 says whether it is fixed, settled, open with a ready entry (W10's discretionary half: WT-11; W11:
+finding in §4 says whether it is fixed, settled, open with a ready entry (W11:
 WT-12) or deferred to a playtest (W13: WT-14); §2 describes the sim as audited
-(2026-11-10), before any of them. Open: WT-11 and WT-12 (to be done), WT-16 (address-space delay-sample correction; investigation in §9.13) and WT-17 (trim this document to the design
+(2026-11-10), before any of them. WT-11's discretionary minimum is implemented (§5.8). Open: WT-12 (to be done), WT-16 (address-space delay-sample correction; investigation in §9.13) and WT-17 (trim this document to the design
 and archive the audit). The work is in [BACKLOG.md](../BACKLOG.md) list `wlm-truth`; §8 lists its questions and the
 user's decisions; §9 has each entry's results. This is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -766,9 +766,9 @@ by itself, which is when it no longer needs to be.
 
 ### W10. The resource-group minimum is dispatched inside the managed range (medium)
 
-*Open: the discretionary half is WT-11 (`wlm-truth`, ready, low priority, to be done).* *Collision fixed by WT-06:* a goal member's minimum runs at `DP.RG_MINIMUM` (249, in the reserved 253–249 range,
-APPROX), above all goal work; a discretionary member's at `MANAGED_MIN − 1` (202), above discretionary work only. The
-second paragraph (a discretionary member's minimum is weaker than in z/OS) still holds.
+*Fixed by WT-06 (the collision) and WT-11 (the discretionary minimum, §5.8).* A goal member's minimum runs at
+`DP.RG_MINIMUM` (249, in the reserved range, APPROX). A discretionary member uses that priority while no outside
+goal period has local PI > 1; otherwise its share runs at `MANAGED_MIN − 1` (202). The historical finding follows.
 
 `RG_MIN_DP` is 252 with the comment "above every goal-managed period", and 252 is `DP.MANAGED_MAX`
 (`eval/grants.ts`, `zos/dispatcher.ts`). Once a period reaches 252 (W2: day 2 on Midwest PROD2) the guaranteed share
@@ -1053,7 +1053,8 @@ the order alone, so two runs that reach the same order have the same DPs, and th
 `MANAGED_MAX` is left free (a sim choice: the free priority above the top level, as unbunching leaves one between
 levels). A goal member's resource-group minimum runs at `DP.RG_MINIMUM` (249) and blocked-workload promotion at 253,
 both in the reserved range and above all goal work (APPROX: IBM doesn't say where they run), which closes W10's
-collision; a discretionary member's minimum runs at 202, above discretionary work only.
+collision. Since WT-11 a discretionary member's minimum runs there too while no outside goal period has local
+PI > 1; otherwise it runs at 202, above discretionary work only.
 
 ### 5.7 Bottlenecks
 
@@ -1089,9 +1090,12 @@ does not see the waits that hold the measured PI up.
   period, and it reports the regions' DP: every member on the image is a transaction-server region, whether or not
   they used CPU this interval.
 - **Resource-group minimum:** a group is *below its minimum and wanting* when its smoothed CP service is under the
-  minimum and a member has CPU delay. Goal members: as today, while a member's `mLocal` > 1. A discretionary member:
-  its share is dispatched at `MANAGED_MAX` while no goal period outside the group has `mLocal` > 1, else just below
-  the managed range as today (IBM's order: after periods missing goals, before happy ones).
+  minimum and a discretionary member has CPU delay; goal members want the minimum while `mLocal` > 1. As built
+  (WT-11): service is the sum of every member's `ScpAcc.cpuEngines × (1 − ACC_DECAY)`, including IIPCP and excluding
+  zIIP, resolved against the same group types/sysplex share as dispatch. A discretionary share uses `DP.RG_MINIMUM`
+  (249) while no goal period outside the group has `mLocal` > 1, else 202 (IBM's order: after periods missing goals,
+  before happy ones; SG24-6472 p.63, WLM Planning p.57–59). APPROX: the gate uses measured local PI, not a projected
+  new goal miss. Tests: `tests/sim/resourceGroupMinimum.test.ts` and existing resource-group dispatch/realism tests.
 - **Batch response-time goals:** a job's end adds one completion with response time = queue + elapsed to its
   period's accumulator and buckets. The PI then exists for as long as the decayed completion count lasts (about 20
   minutes), and varies with single jobs, which is the behaviour behind IBM's "three completions per 20 minutes".

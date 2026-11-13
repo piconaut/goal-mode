@@ -6,9 +6,8 @@ import type { LparEvalInput, PreparedLpar } from './types';
 
 /** Above every goal-managed period, below SYSTEM/SYSSTC and blocked-workload promotion. */
 const RG_MIN_DP = DP.RG_MINIMUM;
-/** Discretionary work gets its minimum only "if that action does not cause other work to miss its goal" (WLM
- * Planning p.59): above other discretionary work, below every goal-managed period. APPROX: it is served from
- * capacity no goal period wants, not only from goal periods that are meeting their goals. */
+/** A discretionary minimum yields while outside goal work misses its goal; otherwise rgMin selects RG_MIN_DP
+ * before happy goal work (SG24-6472 p.63, cases 2–3; WLM Planning p.59). APPROX: the gate is measured local PI. */
 const RG_MIN_DISC_DP = DP.MANAGED_MIN - 1;
 
 export interface LparGrants {
