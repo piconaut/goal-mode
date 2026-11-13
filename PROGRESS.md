@@ -539,6 +539,20 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43362926036) 20.5/27/10, unchanged;
   [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43362925676) 10/29/7 (textbook 1 victory), from
   9/30/8. Expert loses seeds 1 (day 40), 2 and 7, as under WT-10. All inside the CI bands.
+- WT-15 closing sweep (2026-11-13, remote, Normal, **seeds 1–20**, `dev` `dd52ba8`, the sim WT-15 ships; its commits
+  change docs, Codex text and a test only). Do-nothing / textbook median day, expert victories:
+
+  | Scenario | Seeds 1–20 | Seeds 1–10 | Before WT-04 (`40b81dc`, seeds 1–10) |
+  | --- | --- | --- | --- |
+  | [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208) | 17 / 27 / 20 of 20 | 16.5 / 28 / 10 | 16.5 / 28 / 10 |
+  | [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) | 20.5 / 27 / 20 of 20 | 20.5 / 27 / 10 | 19 / 27 / 10 |
+  | [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43381747813) | 10 / 31 / 15 of 20 | 10 / 29 / 7 | 9.5 / 29 / 5 |
+
+  Every bot is inside its CI band in all three; no median is out of band, so no `balance` entry. Seeds 1–10 equal
+  WT-09's sweep exactly (the #324 review fixes changed no golden). Harbourline expert loses seeds 1 (day 40), 2 (33),
+  7 (39), 15 (37) and 20 (38), all trust; textbook wins 2 of 20. Midwest do-nothing (17) is inside SPEC §16's day
+  12–18 design target. Against the 2026-10-27 20-seed reference (older model): expert Midwest 19 → 20, Revenue
+  20 → 20, Harbourline 16 → 15 of 20.
 - zos-docs searches (2026-11-12): map hits with `pdf_find.py --grep … --pages-only` before reading, never cut search
   output with `head`, read the section that owns the topic (hit page ±1) and search in the book's words as well as
   the user's. A WLM answer missed ieaw100 3.1 p.61 ("no goals for CICS ⇒ region velocity goals") because the
@@ -588,6 +602,17 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   (225 / 1 703 / 5 636 → 646 / 3 431 / 9 608), PR-20 updated to count it. The DDFPRD#1 case on WT-07's state gets an
   accepted CPU plan. Shadow IT slows MOBILE again under adaptive WLM; the RT-06 test fixture moves to Revenue seed 6.
   Harbourline seed 7 does not come back: §9.7's W7 attribution corrected (§9.10).
+
+- 2026-11-13: WT-15 closes the `wlm-truth` core (docs/wlm-design.md status line). Codex: *Policy adjustment* rewritten
+  (one receiver, plans of several moves, why "no action"), new *Donors and net value*, *The skip clock*, *Dispatching
+  priorities and unbunching*, each checked against WLM Services p.137–139, 145, 147, SG24-6472-03 p.59–60, 65–66 and
+  SHARE 2010 session 7777 p.11. `wlm-why` verdict table rewritten for the model as built (the skip clock was "a
+  minute", and a fixed freeze bug was still listed). SPEC §5.5.4 gains WT-09's holder guard, §16 lists the
+  invariants and their tests, §17's policy adjustment row names holders. New I3 receiver-order property test (the one
+  invariant without a named test). Every finding W1 … W14 is marked fixed, settled, open or deferred. Sweep in M8.2.
+  - User decision (2026-11-13): W10's discretionary half (WT-11) and W11 (WT-12) stay **open**, not parked: low
+    priority but to be done, batch response-time goals especially. WT-15's Done-when listed them unnecessarily;
+    WT-15 and the sweep went first. WT-17 is ready.
 
 - 2026-11-13: RT-25 filed (user request, after reviewing what RT-06 has found): the counterfactual validator ends
   every active card, reports attainment gain against a noise floor from red-herring cards, and gives RT-14 a fixed
