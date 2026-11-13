@@ -252,7 +252,7 @@ with look-alike pins (surge against regression, capacity against priority), and 
 each common recipe.
 
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: blocked: after WT-09 · priority: high · size: L · area: game`
+`list: rca-truth · status: ready · priority: high · size: L · area: game`
 
 Sequencing (user decision 2026-11-10, docs/wlm-design.md §7): footprints are measured on the WLM core of `wlm-truth`
 (WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
@@ -388,35 +388,6 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-09 · Server periods hold the regions' priority (W3)
-`list: wlm-truth · status: blocked: user (attended session) · priority: high · size: L · area: sim`
-
-**Main agent (cross-layer).** Implements §5.1 holders and §5.8. `WlmSystemState.servers` (`runtime.ts`);
-`cicsRegions` (`tick/helpers.ts`) returns `serverKey` (`$SRMS001`) when any AOR on the image is TRANSACTION;
-`evaluateLpar` (`evaluate.ts`) takes `txnDp` from the server period instead of the maximum over `reg.keys`;
-`policyAdjust` maps a goal period to its holder for ladder, plan and `donorOrder` (a server period's goal periods are
-the classes it serves; `worst` and `imp` per §5.5); served periods' stored `dp` is written from the holder; the log
-names `(regions $SRMS001)` (§8 Q4). The region class keeps its PI without server regions' samples and is not on the
-ladder while it has no other member with samples. Old saves: `servers` created with the highest DP among served
-periods. Reporting: WLMGL/Monitor III DP of a served class is its holder's (no layout change). Tests:
-`wlm-invariants: I11 one priority per server` (C-3 a, b, c); realism `the free ride` (an importance-3 CICS class in
-regions that also serve a missing importance-1 class runs at the same DP and improves with it; SG24-6472 p.63);
-realism `the region class's goal does not move the regions` (R-2: STCHI is not a receiver for its CICS regions).
-Goldens: change. Done when: R-2 shows no `STCHI#1` move for the regions and ONLMED's reported DP equals ONLHI's on
-PROD2. Bots: CICS-heavy scenarios (Harbourline) move; record the sweep. Cross-note: **RT-16** ("CP use by
-address-space role", displaceable CPU) and **RT-19** (region CPU wait joins the CPU group) read the same topology;
-do them after this entry and take the regions' CPU from the server period (§8 Q1). SPEC §5.5.1 (region management),
-§5.6, §17 "CICS region management"; research.md rows on region management updated; Codex entry *server topology
-and the free ride*.
-Since CL-06: `cicsRegions` is built once per lookup plan (`regionsOf` in `tick/plan.ts`, called from `imageInput` in
-`tick/dispatch.ts`) and may only read slice template fields; `serverKey` belongs there, while the server period's DP
-and other per-tick region state stay out of the plan.
-WT-10 landed first (design review, 2026-11-12). Since WT-08 the ladder, `buildPlan`, the donor filter (`usedEngines`) and
-the missing-goal rule's "passed or joined" test read goal periods; each has to work on holders here, and a carry of
-a period that shares the receiver's holder is void. WT-09 does not change the capped-PROD1 case (Db2 in STCHI below
-its client): Db2 is not in the server topology, which is the CICS/IMS address spaces (SG24-6472-03 p.62). Done when
-also: the S-1 … S-3 table and RT-06 differences against WT-10.
-
 ### WT-11 · The resource-group minimum for discretionary work (W10)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`
 
@@ -453,7 +424,7 @@ modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a 
 or equal-priority discretionary work misleads players.
 
 ### WT-15 · Codex, SPEC, the `wlm-why` skill and the closing sweep
-`list: wlm-truth · status: blocked: after WT-09 · priority: high · size: M · area: content`
+`list: wlm-truth · status: ready · priority: high · size: M · area: content`
 
 Codex entries (`src/content/codex/`) with source links: *donors and net value*, *skip clock*, *dispatching
 priorities and unbunching*, and a revised policy adjustment entry (one receiver, a plan of several moves, why "no
@@ -481,7 +452,7 @@ less on another's level than strictly below it, so look elsewhere first: demand 
 (backlog boost; a client's demand rising once its server speeds up), transactions counted as one ready unit per
 engine of new work (may undercount DDF threads against batch jobs), and how the projected grant becomes a PI.
 Investigate with `npm run inspect` on a play-CLI copy of the fixture and the per-level grants in `evaluateLpar`. Report before any model change; if the sharing rule is wrong, the
-fix is a model change for the main agent, goes before WT-09 (whose regions share their holder's level), and needs
+fix is a model change for the main agent (WT-09 landed first, 2026-11-13: CICS regions now share their server period's level), and needs
 goldens, the S-1 … S-3 table and a sweep. Done when: the cause is recorded in docs/wlm-design.md with a verdict
 (artefact fixed, or real and explained).
 

@@ -3,8 +3,8 @@
 Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 and WT-10 are implemented**: one PI
 basis, sustained demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
 budget (WT-05, §9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic
-plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10). Server periods (WT-09) and the other remaining
-entries are not. Findings W2, W4, W5, W7, W10 and W12 below describe the sim before those entries; each says what
+plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). The other remaining
+entries are not. Findings W2 … W5, W7, W10 and W12 below describe the sim before those entries; each says what
 fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
 §9 has its results and the two changes it made to §5. The work it leads to is in
 [BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
@@ -649,6 +649,8 @@ without a priority of their own, and the region's own class is ignored (§3.11).
 transactions lifted by the regions' priority) is invisible in priorities although it is the documented behaviour
 players are meant to learn. PT-01's "two hopeless importance-1 receivers" was this finding plus W6.
 
+*Fixed by WT-09 (§5.1, §5.8, §9.12): the server period `$SRMS001` holds the regions' DP.*
+
 ### W4. Donors are picked by importance and CPU use, not by goal achievement (high)
 
 *Fixed by WT-07 (§5.5 `donorOrder`, §9.8).*
@@ -1010,10 +1012,11 @@ donorOrder(r, b, L, info, C):
   return the first C.donorsPerReceiver
 ```
 
-As implemented in WT-07 the pool is goal periods, not holders: until server periods exist (WT-09) every goal
-period is its own holder, so CICS transaction periods sharing regions are separate donors, and a donor move of one
-that is not the most important of the classes its regions serve changes no dispatching. A period with neither PI
-counts as missing its goal (`managementWorstPi`), here and in the "missing goals are not passed" rule.
+As built (WT-09): the pool is holders. A server period's entry (`holderDonorInfo`) takes the most important of the
+classes it serves, the worst of their PIs and the sum of their processor use (APPROX: the regions' own overhead
+stays in the region class's accumulators), and the receiver's own importance, not its holder's, decides the "more
+important and missing" drop. A period with neither PI counts as missing its goal (`managementWorstPi`), here and in
+the "missing goals are not passed" rule.
 
 Discretionary periods are fixed below the managed range and hold nothing a priority move could free, so they are
 not in the pool (they are IBM's "universal donor" for storage and through capping).
@@ -1060,6 +1063,15 @@ does not see the waits that hold the measured PI up.
   `RCVR=ONLMED#1 (regions $SRMS001) …`. Served classes report their holder's DP, so the free ride shows.
 - **Region class:** unchanged PI (without server regions' samples). With only server regions in it, it has no PI and
   is never a candidate.
+- *As built (WT-09, §9.12):* `src/sim/wlm/holders.ts` maps each goal period to its holder; `cicsRegions` sets
+  `serverKey` under TRANSACTION; `WlmSystemState.servers` holds the server period's DP, and dispatch places new
+  periods on the holder ladder (a new served class takes its server's DP; a new server period is placed by its most
+  important class). CPU protection and the CPU-critical check work on holders (a server period is protected when a
+  class it serves is). A blocker sharing the receiver's holder is never carried. REGION and BOTH are unchanged: the
+  transactions run at the region class's DP and the served classes keep a DP each (not a player lever; holder = region
+  class, as §5.1 has it, would make transaction classes receivers that move a region managed to its own goal). A region
+  class with only server regions is attached to the server period: neither receiver nor donor, and it reports the
+  regions' DP.
 - **Resource-group minimum:** a group is *below its minimum and wanting* when its smoothed CP service is under the
   minimum and a member has CPU delay. Goal members: as today, while a member's `mLocal` > 1. A discretionary member:
   its share is dispatched at `MANAGED_MAX` while no goal period outside the group has `mLocal` > 1, else just below
@@ -1086,7 +1098,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I8 | **One basis.** No plan is built for a receiver with `base ≤ 1`; every accept or reject compares `base` with `after` only | Property: every assessed candidate has `base > 1`. Unit: the tick-PI helper is gone from `policyAdjust` |
 | I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism (S-4): Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels (today seven periods on three), and nothing is at `MANAGED_MAX` |
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
-| I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
+| I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) (`tests/sim/wlm-servers.test.ts`) |
 | I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11, RF-03). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget; it bites (`BUDGET` stops are counted) but leaves the clock bound meaningful |
 | I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19) |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
