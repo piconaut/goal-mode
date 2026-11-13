@@ -573,10 +573,10 @@ for importance in 1..5:
   Each newly started skip clock logs the failed plan's reason once, including between periodic no-action log
   points; safe partial plans with insufficient final receiver value say "gain too small". Monitor III and
   `inspect --moves` describe the entire committed plan.
-- **Skip clock and the delay test.** A receiver whose every action was rejected is not selected again until its skip
-  clock expires, `rejectedSkipTicks` (3) intervals later; a helped receiver gets no clock and can be helped again 10 s
-  later (WLM Services p.145, p.148–149; the length is IBM's 3 policy adjustment cycles, Sinram, SHARE 2010 session
-  7777 p.11, one value on every difficulty). The clock is not honoured while at most `skipClockMinMissing` (5) goal
+- **Skip clock and the delay test.** A receiver whose every action was rejected skips the next `rejectedSkipTicks`
+  (3) adjustment cycles and is reassessed on the fourth; the clock stores the first tick it may be assessed again. A
+  helped receiver gets no clock and can be helped again 10 s later (WLM Services p.145, p.148–149; the length is
+  IBM's 3 policy adjustment cycles, Sinram, SHARE 2010 session 7777 p.11, one value on every difficulty). The clock is not honoured while at most `skipClockMinMissing` (5) goal
   periods on the image miss their goals (the z/OS 1.11 exception, same source; APPROX: the count is per image, as
   policy adjustment is, because IBM does not say whether it is per system or across the sysplex). A period whose
   managed delay is under `needsHelpDelayFrac` (2 %) of its samples is not assessed (WLM
@@ -584,7 +584,8 @@ for importance in 1..5:
   samples are the ones the goal PI is taken from: a transaction-server region's are left out, as they are managed to
   the goals of the transactions it serves (WLM Planning p.122), and so is its capping delay. The
   clock lives in `ScpState.skipUntilTick` and the log's no-action note ends `next look hh:mm:ss`. A clock set because
-  the trust limit rejected every raise lasts its 3 cycles (30 s) even if the other image's PI improves sooner.
+  the trust limit rejected every raise skips its next 3 cycles (30 s) and reassesses on the fourth even if the other
+  image's PI improves sooner.
 - **Projection budget.** Each projection re-runs §5.4, so the search makes at most `maxProjectionsPerInterval` (12)
   per image per interval, over all importances (the tick budget, I16). Rejections that need no projection (CPU
   protection, the missing-goal rule, the trust limit) cost none, and neither does a `RECOVERING` candidate.
