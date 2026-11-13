@@ -709,39 +709,3 @@ the section heading which pin each column takes (`pin CPC <lpar> LPAR_BUSY|PRSM_
 `CAPACITY_ADJ`). Leave `--json`, `mon3PastText` (the pin-history dump) and the `Mon3Cpc` view model unchanged:
 agents and pins read `busyPct` there. Weight and polarity stay in `play capacity`. Done when: `play mon3` and `play
 mon3 PROD1` show the new CPC section, `--json` output is unchanged, and the docs/agents.md example (if any) matches.
-
-### CL-09 · Loop and reviewer instructions: lessons from the WLM close-out (2026-11-13)
-`list: cleanup · status: blocked: user (saved for later, 2026-11-13) · priority: low · size: S · area: tooling`
-
-Source: lessons from the #331, #333 and WT-12 design rounds (session of 2026-11-13). All five edits are to
-instructions only (`.claude/skills/dev-loop`, `.claude/skills/pr-fix-loop`, `.claude/agents/pr-reviewer.md`,
-AGENTS.md).
-
-1. **pr-fix-loop reviews `needs-user` PRs and holds only the merge.**
-   - pr-fix-loop reviews them, and fixes or holds them as for any other PR, but never merges one.
-   - dev-loop still answers holds on them.
-   - Why: #331 sat unreviewed and went stale while it waited for the user's I13 decision.
-2. **dev-loop states a `blocked: design` question with options and a recommendation** (steps 2 and 3.3).
-   - Give two or three options.
-   - Check each with zos-docs, including whether real WLM has the data the option uses.
-   - Why: WT-12's question pointed toward a per-job forecast that WLM couldn't make.
-3. **Status marks in docs are claims.**
-   - dev-loop lists each finding mark it sets (W-n fixed, partial or open) in the PR body, checked against the
-     finding's own text.
-   - pr-reviewer verifies each mark as a claim.
-   - Why: #333 first marked W11 fixed.
-4. **Two adversarial-read prompts for pr-reviewer** (check 7).
-   - **New data in shared state:** when a new source feeds existing state, check every reader and how long the
-     data lives. That covers the AVG and PCT paths, measured and projected values, report classes, and counters
-     such as `missingGoals`. Why: #333's percentile PI never expired.
-   - **A test for each rule:** each new or changed rule names the test that fails when the rule is simplified
-     (sum → max, `<` → `<=`). Why: #331 N1.
-5. **AGENTS.md gets a "Reviews" section,** for agents that start from AGENTS.md (OpenCode's #333 review had none
-   of these):
-   - the exact `Automated <role> report …` header, with a role other than `pr-reviewer`/`pr-fixer` for ad hoc
-     reviews;
-   - the attribution line last;
-   - read CI rather than rerunning it, and use `npm run test:remote` if a rerun is needed.
-
-Done when: all five are in the named files, and the skills' reports and markers still parse (pr-fix-loop and
-dev-loop read markers by their exact text).

@@ -39,10 +39,13 @@ The argument is one or more list names, comma-separated. Read the list table at 
 Overlap guard: a `dev-loop/*` branch with no PR whose head commit is under 3 hours old means another tick is
 mid-implementation. Report `another tick running` and stop. An older orphan branch is abandoned: delete it and go on.
 
-## 2. Classify the open dev-loop PR
+## 2. Classify the open dev-loop PRs
 
-PRs labelled `needs-user` wait for the user: report them and don't count them below. At most one other `dev-loop`
-PR is open at a time. For it, find the **latest review marker**: the newest comment containing `<!-- pr-fix-loop`
+PRs labelled `needs-user` wait for a user decision, but the review loop still reviews them and only holds the merge
+(user request 2026-11-13). Classify them with the table like the others, and answer their holds. They don't block a
+new pick. At most one other `dev-loop` PR is open at a time.
+
+For each open `dev-loop` PR, find the **latest review marker**: the newest comment containing `<!-- pr-fix-loop`
 or `<!-- pr-review-loop`, and any later `<!-- pr-fix-loop-check` or `<!-- pr-fix-loop-note` comments. Find your
 **latest response**: the newest comment containing `<!-- dev-loop-response`.
 
@@ -53,7 +56,11 @@ or `<!-- pr-review-loop`, and any later `<!-- pr-fix-loop-check` or `<!-- pr-fix
 | **held** | marker `outcome: HOLD`, its `head` is the current head, no response of yours newer than it | address it, or close it on a backlog rule finding (step 3) |
 | **responded** | your response is newer than the HOLD, or the head moved past the HOLD's `head` | skip (the review loop re-reviews) |
 
-No open `dev-loop` PR (other than `needs-user` ones): go to step 4.
+Then do one thing:
+- A **held** PR: address it (step 3), and stop. If more than one is held, address the one without `needs-user`
+  first, then the oldest.
+- Otherwise, a PR without `needs-user` is open: skip, as its case says.
+- Otherwise (no open `dev-loop` PR, or only `needs-user` ones): go to step 4.
 
 ## 3. Address a hold
 
@@ -62,9 +69,18 @@ No open `dev-loop` PR (other than `needs-user` ones): go to step 4.
 2. **Backlog rule finding**: close the PR with a comment saying why (the entry was blocked, removed or claimed on
    `dev` since you picked it, or you picked wrongly), delete its branch, and stop. The next tick picks again.
 3. **A finding that needs the user** (a design or balance call, NEEDS USER, a change to what the entry asks for):
-   don't guess. Post a response comment stating the question and options, add the label `needs-user`, and stop.
+   don't guess. Post a response comment stating it as a **design question**, add the label `needs-user`, and stop.
+   A design question (here and in step 5.2) gives:
+   - the question;
+   - two or three options;
+   - your recommendation, and why.
+
+   Check each option with the zos-docs skill, citing pages. That includes whether real z/OS has the data the option
+   uses. (WT-12's question first pointed toward a per-job forecast of remaining work, which WLM can't make.) On a PR
+   already labelled `needs-user`, the user's open question is not a finding to fix: leave it open, and fix the rest.
 4. **Third response on this PR** (two `dev-loop-response` comments already): label `needs-user` with a comment
-   summarising the open findings, and stop. Two rounds that didn't settle it need a human.
+   summarising the open findings, and stop. Two rounds that didn't settle it need a human. If the PR is already
+   labelled `needs-user`, post nothing and skip: it waits for the user.
 5. Otherwise fix every open finding. Work in a fresh worktree of the **remote** PR branch: the review loop may have
    pushed commits since your last tick.
    - Run `git worktree add -B <branch> <dir> origin/<branch>`.
@@ -102,7 +118,8 @@ PR other than `needs-user` ones: the lists are finished.
 2. **Read.** Read the entry, CLAUDE.md, and the SPEC sections and files it names.
    - If it turns out to need a design or user call, or it's much bigger than its size, don't build it. Open a
      `dev-loop` PR that only edits BACKLOG.md: set the entry to `blocked: design` (or `user`) with the question, and
-     put `Backlog: <ID> (blocked)` in the body. Then stop.
+     put `Backlog: <ID> (blocked)` in the body. Then stop. State a design call as a design question (step 3.3), with
+     its options, zos-docs checks and recommendation.
 3. **Build it** as CLAUDE.md says, as if it were your own task:
    - realism policy with zos-docs citations;
    - units, layering and determinism;
@@ -112,6 +129,9 @@ PR other than `needs-user` ones: the lists are finished.
    `sim` work, balance calls and cross-layer work yourself.
    - In the same PR, delete the entry from BACKLOG.md; a partial fix rewrites it to what remains.
    - Record durable facts in SPEC §17/§18, docs/research.md, or a PROGRESS.md decision.
+   - A **status mark** you set in a doc is a claim. That includes a finding marked fixed, partial or open (e.g. `W11
+     fixed` in a design doc) and a ledger row set to modelled. List each mark in the PR body, with the finding's own
+     text you checked it against. (#333 first marked W11 fixed while the fix was partial.)
    - Commit with the attribution lines.
 4. **Verify:**
    - `npm run check` must pass.

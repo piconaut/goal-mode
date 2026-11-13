@@ -41,6 +41,19 @@ PR description or comments. Do not create or commit per-PR documents in the
 repository, such as `docs/reviews/pr-<number>.md`. Reusable facts belong in the
 existing research ledger, SPEC or PROGRESS tracker as appropriate.
 
+## Reviews
+
+When you post a review report on a PR, whether as a native role, as an ad hoc review the user asked for, or as a
+subagent:
+
+- Start it with the exact header line `Automated <role> report (reference only, not a GitHub approval)`.
+  - The loops find their own reports by the `pr-reviewer` and `pr-fixer` headers, so an ad hoc review uses another
+    role name, e.g. `codex-review`.
+  - Comments are posted under the user's account, so a review without the header reads as the user's own decision.
+- End it with the attribution line (below), after the report.
+- Read CI's results rather than rerunning `npm run check` (`.claude/agents/pr-reviewer.md` check 3). If a rerun is
+  needed, use `npm run test:remote` (CLAUDE.md), not the full suite locally.
+
 ## Attribution
 
 Every commit an agent writes, and every review report or PR comment it posts, ends with a line naming the agent and

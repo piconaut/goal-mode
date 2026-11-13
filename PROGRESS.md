@@ -8,6 +8,15 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **CL-09 (2026-11-13): loop and reviewer instructions, lessons from the WLM close-out.**
+  - pr-fix-loop reviews `needs-user` PRs and holds only the merge. pr-fixer doesn't count the user's pending
+    decision as a finding. dev-loop answers holds on those PRs and doesn't count them as blocking a pick.
+  - dev-loop states a design question with two or three options checked with zos-docs, plus a recommendation
+    (steps 3.3 and 5.2).
+  - Status marks in docs are claims: dev-loop lists them in the PR body, and pr-reviewer check 5 verifies them.
+  - pr-reviewer check 7 gains two prompts: new data in shared state, and a test for each rule.
+  - AGENTS.md gains a Reviews section: the header, attribution last, read CI rather than rerun.
+
 - **WT-17 and WT-14 (2026-11-13): the `wlm-truth` list is closed.**
   - docs/wlm-design.md is now the living design doc. It keeps the section numbers of the parts it retains:
     - §1 sources;
@@ -19,7 +28,6 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
   - WT-14 is dropped, not done. Receivers that meet their goals, small consumers and mean time to wait stay
     unmodelled, documented as APPROX (§5.10, §5.13; SPEC §5.5.4 and §17; a comment at the receiver list in
     `adjust.ts`).
-  - Loop and reviewer instruction lessons are saved as CL-09 (`blocked: user`, for later).
 
 - **WT-12 batch RT priority projections (2026-11-13):** a batch AVG/PCT period's base and trial PIs are its measured
   PI with the execution part scaled by measured ÷ projected execution velocity (`PI × (Q̄ + Ē × v_ref / v') / (Q̄ + Ē)`,
