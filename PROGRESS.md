@@ -10,12 +10,15 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 - **WT-12 (2026-11-13):** completed batch jobs feed response-time goals with one queue-plus-elapsed observation
   in the ending period. JES RT goals carry the three-completions-per-20-minutes advice in the editor and PI Codex
-  entry (WLM Planning 3.1 p.71). W11 is closed for batch; indefinite started tasks remain without completions.
+  entry (WLM Planning 3.1 p.71). **W11 remains partially open:** batch-only AVG/PCT priority projections have no
+  completions, return null PI and skip CPU-starved receivers as RECOVERING. WT-12 retains that remainder blocked on
+  a projection design; this PR completes measurement/advice only. Indefinite started tasks remain without completions.
 
 - **WT-11 (2026-11-13):** discretionary resource-group minima use smoothed CP consumption and CPU delay, run ahead
   of goal work meeting its goals, and yield while an outside goal period has local PI > 1. IIPCP counts toward
   consumption; zIIP service does not. Tests cover both priority cases and the trigger boundaries. No shipped
-  policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12 closes W11 for batch.
+  policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12 completes batch measurements/advice,
+  while W11's priority-projection gap stays open.
 - **WT-16 investigation (2026-11-13):** docs/wlm-design.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
   jump to address-space delay samples, despite a CP grant rising from 0 to 0.328816 engines. A two-slice fixed-demand
   counterexample excludes backlog, uplift, batch and server dependencies. S-1's DDF cases instead lose CPU when

@@ -4,9 +4,10 @@ Status: **implemented** (WT-04 … WT-10 and RF-03, closed by WT-15 on 2026-11-1
 entry landed differently: one PI basis, sustained demand and the missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
 budget (WT-05, §9.6; RF-03, §9.11); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07,
 §9.8); atomic plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). Every
-finding in §4 says whether it is fixed, settled or deferred to a playtest (W13: WT-14); W11 is fixed for batch
-(WT-12). §2 describes the sim as audited (2026-11-10), before any of them. WT-11's discretionary minimum and
-WT-12's batch completions are implemented (§5.8). Open: WT-16 (address-space delay-sample correction;
+finding in §4 says whether it is fixed, settled or deferred to a playtest (W13: WT-14); W11 is partially fixed
+by WT-12's batch measurements/advice, with priority management still open. §2 describes the sim as audited
+(2026-11-10), before any of them. WT-11's discretionary minimum and WT-12's batch completions are implemented
+(§5.8). Open: WT-12 (batch RT projections, blocked on design), WT-16 (address-space delay-sample correction;
 investigation in §9.13) and WT-17 (trim this document to the design
 and archive the audit). The work is in [BACKLOG.md](../BACKLOG.md) list `wlm-truth`; §8 lists its questions and the
 user's decisions; §9 has each entry's results. This is the WLM counterpart of [rca-design.md](rca-design.md).
@@ -782,12 +783,18 @@ batch with a minimum as a throughput goal" ([SG24-6472 p.68][r68]) is weaker in 
 
 ### W11. A response-time goal on batch or started tasks is never managed (medium)
 
-*Fixed for batch by WT-12 (§5.8). Indefinite started tasks have no transaction completions in the sim.*
+*Partially fixed by WT-12 (§5.8): batch completion measurements and editor advice. Priority management remains
+open in WT-12, blocked on projection design. Indefinite started tasks have no transaction completions in the sim.*
 
 By code reading (C-1): address-space slices report no completions (`sliceResults`), so an average or percentile
 goal on a batch or STC class has no PI: never a receiver, never "missing" for a minimum, no PI in WLMGL. IBM allows
 response-time goals for batch with at least three completions per 20 minutes ([WLM Planning p.71][wp71]). The policy
 editor accepts such a goal without comment.
+
+WT-12 adds the measurements and advice. It does not yet fix priority management: `policyAdjust` obtains its
+base and trial PIs by re-evaluating AS slices without discrete job completions. A batch-only AVG/PCT class therefore
+has a null projected PI even while its measured PI misses the goal, and `adjust.ts` skips it as RECOVERING without
+a trial. W11 stays open for this limitation; the remaining WT-12 entry records the projection design question.
 
 ### W12. Dispatching priorities use the table from before z/OS 1.8 (low)
 
@@ -1104,6 +1111,10 @@ does not see the waits that hold the measured PI up.
   and the PI Codex entry gives IBM's three-completions-per-20-minutes advice (WLM Planning 3.1 p.71). Tests:
   `tests/sim/batchResponseGoals.test.ts`, `tests/game/batchGoals.test.ts`. Indefinite started tasks still have no
   completions; no shipped policy gives batch an RT goal.
+  **Remaining management gap (W11):** these observations are added after dispatch evaluation. Base/trial
+  evaluations used by policy adjustment still have no completions for batch AS slices, so a batch-only RT
+  receiver has null projected PI and is skipped as RECOVERING, even with measured PI > 1 and CPU delay. The
+  deterministic projection of discrete jobs is not specified yet; WT-12 remains blocked on that design.
 
 ### 5.9 Invariants and their tests
 
