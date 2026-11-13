@@ -1,7 +1,7 @@
 // WLM internals that IBM doesn't publish as numbers.
 
 // Discretionary goal management: WLM caps over-achieving work with loose goals so discretionary work
-// gets cycles, holding the capped work's PI between 0.71 and 0.81 (SG24-6472-03 p.183; docs/research.md).
+// gets cycles, holding the capped work's PI between 0.71 and 0.81 (SG24-6472-03 p.58; docs/research.md).
 // FICTIONAL: capGainPerPi and minCapFrac. Shape: the further PI is below 0.81, the more is withheld, so a
 // capped period settles inside the 0.71–0.81 band and only a little CPU goes to discretionary work.
 export const DISC_GOAL_MGMT = {
