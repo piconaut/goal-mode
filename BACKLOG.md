@@ -431,6 +431,8 @@ minimum).
 ### WT-12 · Response-time goals for batch: jobs are completions (W11)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`
 
+Low priority, not optional (user decision 2026-11-13): W11 stays open until this lands.
+
 User decision on §8 Q6, 2026-11-10: model job completions, and warn in the editor.
 
 Implements §5.8. In `dispatchLpar` (`src/sim/core/tick/dispatch.ts`), a job ending this tick adds one completion,
@@ -442,25 +444,13 @@ ends and none 25 minutes later"; unit for the warning. Goldens: unchanged (no sh
 response-time goal); prove with bench hashes. Bots: none. Codex: one line in the goals entry.
 
 ### WT-14 · Receivers that meet their goals; small consumers; mean-time-to-wait (W2, W13)
-`list: wlm-truth · status: blocked: playtest (after WT-15; docs/wlm-design.md §8 Q3, Q8) · priority: low · size: M · area: sim`
+`list: wlm-truth · status: blocked: playtest (docs/wlm-design.md §8 Q3, Q8) · priority: low · size: M · area: sim`
 
 Parked (user decisions on §8 Q3 and Q8, 2026-11-10: not now; SPEC is corrected by WT-03). IBM's receiver order ends with periods meeting their goals, largest PI first (SG24-6472 p.63), which keeps
 the order improving when nobody misses; small consumers sit above the managed range and are neither receivers nor
 donors (WLM Services p.138); discretionary work is spread over 192–201 by mean time to wait (SG24-6472 p.66). Not
 modelled today (docs/wlm-design.md §5.10 approximation 5). Unblock only with a playtest finding that a stale order
 or equal-priority discretionary work misleads players.
-
-### WT-15 · Codex, SPEC, the `wlm-why` skill and the closing sweep
-`list: wlm-truth · status: ready · priority: high · size: M · area: content`
-
-Codex entries (`src/content/codex/`) with source links: *donors and net value*, *skip clock*, *dispatching
-priorities and unbunching*, and a revised policy adjustment entry (one receiver, a plan of several moves, why "no
-action"). `.claude/skills/wlm-why/SKILL.md`: the verdict table for the new outcomes and plan steps. SPEC §5.5.4,
-§16 (the invariants as realism tests) and §17 read as one description of the model of docs/wlm-design.md §5, and
-that document's status line says what is implemented. Then a 20-seed three-scenario sweep (`npm run sweep:remote`,
-Normal), recorded in PROGRESS.md M8.2 against the bands, with out-of-band medians filed as `balance` entries.
-Done when: the sweep table is in PROGRESS.md and every finding W1 … W11 in docs/wlm-design.md §4 is marked fixed,
-parked or declined.
 
 ### WT-16 · Joining a level projects much worse than staying below it (projection question)
 `list: wlm-truth · status: ready · priority: medium · size: S · area: sim`
@@ -486,9 +476,9 @@ both guards that exist because of it (`projectionTrustMax`, and WT-09's PROJECTI
 docs/wlm-design.md with a verdict (artefact fixed, or real and explained).
 
 ### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
-`list: wlm-truth · status: blocked: after WT-15 · priority: low · size: M · area: content`
+`list: wlm-truth · status: ready · priority: low · size: M · area: content`
 
-User request 2026-11-13. Once WT-15 has marked every finding fixed, parked or declined, split docs/wlm-design.md:
+User request 2026-11-13. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
 - **kept** in docs/wlm-design.md, as a living design doc: real WLM with page citations (§3), the sim's model as built
   (§5, as a description, not a change history), the invariants I1 … with the test that checks each (IDs unchanged),
   and the approximations, known gaps and open questions;

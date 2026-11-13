@@ -1,14 +1,14 @@
 # WLM policy adjustment: audit and target model
 
-Status: **design, decided by the user** (2026-11-10). **WT-04 … WT-08 and WT-10 are implemented**: one PI
-basis, sustained demand and the §5.3 missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
-budget (WT-05, §9.6); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07, §9.8); atomic
-plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). The other remaining
-entries are not. Findings W2 … W5, W7, W10 and W12 below describe the sim before those entries; each says what
-fixed it. §2 describes the sim as audited (2026-11-10), before any of them. WT-04 was prototyped on branch `proto/wlm-wt04`;
-§9 has its results and the two changes it made to §5. The work it leads to is in
-[BACKLOG.md](../BACKLOG.md) list `wlm-truth` (WT-01 … WT-15); §8 lists its questions and the user's decisions. This
-is the WLM counterpart of [rca-design.md](rca-design.md).
+Status: **implemented** (WT-04 … WT-10 and RF-03, closed by WT-15 on 2026-11-13). §5 is the model, with "as built" notes where an
+entry landed differently: one PI basis, sustained demand and the missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
+budget (WT-05, §9.6; RF-03, §9.11); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07,
+§9.8); atomic plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). Every
+finding in §4 says whether it is fixed, settled, open with a ready entry (W10's discretionary half: WT-11; W11:
+WT-12) or deferred to a playtest (W13: WT-14); §2 describes the sim as audited
+(2026-11-10), before any of them. Open: WT-11 and WT-12 (to be done), WT-16 (the projection question) and WT-17 (trim this document to the design
+and archive the audit). The work is in [BACKLOG.md](../BACKLOG.md) list `wlm-truth`; §8 lists its questions and the
+user's decisions; §9 has each entry's results. This is the WLM counterpart of [rca-design.md](rca-design.md).
 
 Scope: one policy adjustment interval, end to end, on `dev` at `c0b065f`: `src/sim/wlm/adjust.ts`, `evaluate.ts`,
 `eval/`, `goals.ts`, `runtime.ts`, `src/sim/zos/dispatcher.ts` and `src/sim/core/tick/`. Out of scope: WLM-managed
@@ -537,6 +537,8 @@ Trace lines are `inspect … wlm` output, shortened. `rcvr PI a→b` is the rece
 
 ### W1. Receivers are chosen on one PI and judged on another (high)
 
+*Fixed by WT-04 (§5.2, §9.5): receivers are chosen on the management PI and every trial is judged on projected PIs.*
+
 **Sim.** The receiver list uses the smoothed local and sysplex PI (§2.5). Every test of a trial uses the PI of the
 current tick alone (§2.10). The two differ whenever load changes within a minute, which is whenever WLM has
 something to do.
@@ -702,6 +704,8 @@ more important one is happy on the tick of the test (W1.3). Players see "harms X
 
 ### W6. No skip clock and no "needs help" test; a budget instead (medium)
 
+*Fixed by WT-05 and RF-03 (§5.3, §9.6, §9.11): skip clocks of 3 cycles, not honoured at five or fewer missing; the delay test; one projection budget per interval instead of two candidates per importance.*
+
 **Sim.** Every candidate is assessed again every 10 s. The projection cost is bounded by assessing two per
 importance (§2.5).
 
@@ -737,6 +741,8 @@ class a DP move would help.
 
 ### W8. Projections drain the whole backlog in one interval (medium)
 
+*Fixed by WT-04 (§5.4, §9.5): a backlog adds at most `backlogBoostFrac` of sustained demand. What the bound hides is guarded twice (`projectionTrustMax`, §9.5; the holder guard, §9.12); WT-16 may replace both.*
+
 **Sim.** §2.9: projected demand is this tick's arrivals plus the entire backlog. A backlogged receiver moved up is
 projected to take everything until the backlog is gone.
 
@@ -753,12 +759,14 @@ by itself, which is when it no longer needs to be.
 
 ### W9. Receiver value has no floor (low)
 
+*Fixed by WT-04 (§5.3): receiver value is the larger of 10 % of the gap and 0.05 (`receiverValueMinPi`).*
+
 `SMALL_GAIN` needs 10 % of the distance to the goal. Near the goal that is nothing: R-3 10:42:00 `needs ≥ 0.01`.
 *Practitioner:* Enrico slide 50 gives the larger of that and 0.05. Small moves near PI 1 add to the churn of W1.
 
 ### W10. The resource-group minimum is dispatched inside the managed range (medium)
 
-*Collision fixed by WT-06:* a goal member's minimum runs at `DP.RG_MINIMUM` (249, in the reserved 253–249 range,
+*Open: the discretionary half is WT-11 (`wlm-truth`, ready, low priority, to be done).* *Collision fixed by WT-06:* a goal member's minimum runs at `DP.RG_MINIMUM` (249, in the reserved 253–249 range,
 APPROX), above all goal work; a discretionary member's at `MANAGED_MIN − 1` (202), above discretionary work only. The
 second paragraph (a discretionary member's minimum is weaker than in z/OS) still holds.
 
@@ -772,6 +780,8 @@ periods missing goals and before happy ones (§3.15), so happy goal work does gi
 batch with a minimum as a throughput goal" ([SG24-6472 p.68][r68]) is weaker in the sim than in z/OS.
 
 ### W11. A response-time goal on batch or started tasks is never managed (medium)
+
+*Open: WT-12 (`wlm-truth`, ready, low priority, to be done; user decision 2026-11-13).*
 
 By code reading (C-1): address-space slices report no completions (`sliceResults`), so an average or percentile
 goal on a batch or STC class has no PI: never a receiver, never "missing" for a minimum, no PI in WLMGL. IBM allows
@@ -788,11 +798,15 @@ and `inspect`, and an expert knows F7 as the top managed priority. §8 Q5.
 
 ### W13. Small consumers and mean-time-to-wait are not modelled (low)
 
+*Deferred: WT-14 (`wlm-truth`, blocked on a playtest).*
+
 Every discretionary period runs at 196 (C4); SPEC §5.4 says 201–192 by mean time to wait. No period is ever a small
 consumer. Effects are small: discretionary work at one level shares by ready units, which already favours work that
 wants little.
 
 ### W14. SPEC and code disagree about the PI window (low, documentation)
+
+*Fixed (documentation): SPEC §5.5.3 describes the window as built; small-sample variability is settled as not modelled.*
 
 SPEC §5.5.3 says the sysplex PI is "a completion-weighted average of local PIs" and that the PI uses "an EWMA whose
 horizon grows when completions are sparse". The code sums the systems' accumulators and uses a fixed decay of 0.85

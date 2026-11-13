@@ -20,6 +20,8 @@ const ABCS_WLM: CodexSource = { label: 'IBM Redbook SG24-7621, ABCs of z/OS Syst
 const PAICE_WLM: CodexSource = { label: 'Colin Paice, One Minute MVS performance: looking at WLM reports', url: 'https://colinpaice.blog/2021/06/27/one-minute-mvs-performance-work-load-manager-looking-at-wlm-reports/' };
 const IEAOPT: CodexSource = { label: 'IBM docs: IEAOPTxx parameters', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieae200/spi.htm' };
 const GROUP_CAP: CodexSource = { label: 'IBM docs: Group capacity', url: 'https://www.ibm.com/support/knowledgecenter/SSLTBW_2.1.0/com.ibm.zos.v2r1.ieaw100/grcap.htm' };
+const WLM_SERVICES_SMF99: CodexSource = { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, receivers, donors, net value, priority unbunching (pp. 137–139)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=137' };
+const WLM_GUIDE_PA: CodexSource = { label: 'IBM Redbook SG24-6472-03, System Programmer’s Guide to: Workload Manager (Mar 2008), §2.3.2 policy adjustment (pp. 59–60)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=59' };
 /** Run milestones that reveal entries (not events or tools). */
 export type CodexFlag = 'TFP_OFFER' | 'DB2_CONNECT_FAIL';
 
@@ -90,8 +92,38 @@ export const CODEX: CodexEntry[] = [
     id: 'policy-adjustment',
     title: 'Policy adjustment',
     category: 'WLM',
-    body: 'Every 10 seconds WLM picks the most important period missing its goal (the receiver), finds its bottleneck, projects what raising its dispatching priority or lowering a donor’s would do, and makes at most one change that helps the receiver more than it hurts others. If the bottleneck is not something priority can fix (a lock, a server, I/O), WLM can only watch.',
-    sources: [ABCS_WLM],
+    body: 'Every 10 seconds WLM looks for one period to help, the receiver: the most important period missing its goal, sysplex PI before local PI, worst first. It finds the receiver’s bottleneck and, for CPU, works out a plan on the dispatching priority ladder: raise the receiver, lower one or more donors, or both, and sometimes move another period with it. Each step is projected from what WLM knows about the work, and the plan is made only if it helps the receiver enough to matter (receiver value) and does not hurt donors more than it helps (net value). WLM helps only one receiver per interval, though it may assess several before finding one it can help. “No action” is a normal outcome: the bottleneck may be something priority cannot fix (a lock, a server, I/O), every plan may harm more important work, or the gain may be too small. A receiver that could not be helped is skipped for a while (the skip clock). In GOAL MODE the WLM activity log shows each plan and, when nothing was done, the first move tried and why it was rejected. The sim projects with its own dispatcher model rather than IBM’s sampled plots, and limits a plan to six moves.',
+    sources: [WLM_GUIDE_PA, WLM_SERVICES_SMF99, ABCS_WLM],
+    discover: { tools: ['RMF_MON3'] },
+  },
+  {
+    id: 'donors-net-value',
+    title: 'Donors and net value',
+    category: 'WLM',
+    body: 'To give a receiver CPU, WLM takes priority from donors: periods running at or above the receiver’s dispatching priority that use the processor. It tries “happy” periods first, those meeting their goals, from the lowest PI up, and importance does not matter among them: a well-overachieving importance-1 class can donate to an importance-3 one if it is projected to stay comfortably within its goal. Donors are taken in the reverse of the receiver order, so periods missing their goals come last, least important first. Each donation must have net value: the projected harm to the donors may not exceed the projected improvement to the receiver. More important work must not be badly affected, and when the receiver and donor have the same importance and both miss their goals, WLM moves them closer together rather than trading one failure for another. A plan with too little receiver value is rejected so WLM can move on to other problems. In GOAL MODE more important work at its goal may not be pushed past it, a period missing its goal is never passed by less important work, at most three donors are tried for one receiver, and CPU protection is checked before anything is projected.',
+    sources: [WLM_GUIDE_PA, { label: 'IBM Redbook SG24-6472-03, §2.3.3 CPU management: no more important class badly affected (p. 66)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66' }, WLM_SERVICES_SMF99, { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, SMF 99 donor example (p. 147)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=147' }],
+    discover: { tools: ['RMF_MON3'] },
+  },
+  {
+    id: 'skip-clock',
+    title: 'The skip clock',
+    category: 'WLM',
+    body: 'If WLM assesses a receiver and every action that could help it is rejected, it sets a skip clock on that period, and the period is not selected as a receiver again until the clock expires: three policy adjustment cycles. That is done for efficiency and to help other work. Since z/OS 1.11 the clock is not honoured while five or fewer service class periods miss their goals: with so few problems, conditions in the next cycle might make it possible to help the period after all. In GOAL MODE a period that was helped gets no clock, the count of missing periods is per system, and the WLM activity log’s “no action” note for a clocked period ends with “next look” and the time it will be assessed again.',
+    sources: [
+      { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, action trace example (p. 145)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=145' },
+      { label: 'Horst Sinram (IBM), z/OS Workload Management Update for z/OS V1.11 and V1.12, SHARE 2010 session 7777 (p. 11)', url: 'https://github.com/piconaut/ibm-zos-books/blob/main/products/share/115/S7777_WLM_Update.pdf' },
+    ],
+    discover: { tools: ['RMF_MON3'] },
+  },
+  {
+    id: 'dispatching-priorities',
+    title: 'Dispatching priorities and unbunching',
+    category: 'WLM',
+    body: 'A dispatching priority (DP) is a number from 0 to 255 on an address space or enclave; in goal mode WLM sets it, not the installation. Since z/OS 1.8 the table is: 255 (FF) SYSTEM, 254 (FE) SYSSTC, 253–249 reserved, 248 (F8) small consumers, 247–203 (F7–CB) dynamically managed, 201–192 (C9–C0) discretionary, 191 quiesce. Only the order of the managed priorities matters: work at a higher DP is dispatched first, and work at the same DP takes turns. After a priority change WLM may renumber the periods so that an unoccupied priority sits between each occupied one (priority unbunching), which leaves room to move a period above or below another without moving everyone. A number can therefore change without the order changing. GOAL MODE shows DPs in hex in the WLM activity log; its managed levels are F6, F4, F2 and down, unbunched after every interval, and small consumers are not modelled.',
+    sources: [
+      { label: 'IBM Redbook SG24-6472-03, System Programmer’s Guide to: Workload Manager (Mar 2008), Table 2-2 dispatching priorities as of z/OS 1.8, rotation at one priority (pp. 65–66)', url: 'https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=65' },
+      { label: 'IBM z/OS 3.1 MVS Programming: Workload Management Services, priority unbunching (p. 139)', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw200_v3r1.pdf#page=139' },
+    ],
     discover: { tools: ['RMF_MON3'] },
   },
   {
