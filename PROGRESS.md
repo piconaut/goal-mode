@@ -710,6 +710,34 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     priority but to be done, batch response-time goals especially. WT-15's Done-when listed them unnecessarily;
     WT-15 and the sweep went first. WT-17 is ready.
 
+- 2026-11-13: RT-25, the counterfactual validator revised (user request; docs/rca-design.md §4.8). `inspect blame`
+  now ends **every card active in the incident hour**, one at a time, from the opening and closing state (a cap's
+  scope grows within the hour; a card may start inside it) instead of only cards whose `affects` names the hurt
+  workload. Each card reports its **attainment gain** (the hour with it ended, less as-run) and is a cause when the
+  gain clears the **noise floor** measured from red-herring controls (`CP_SPARING`, any card with no declared
+  `affects`), whether or not the SLA would then have been met; controls are never causes. The RT-06 verdict stays
+  (`causes`, `agrees`), with `gainPct`/`control` per card, `causesGain`/`agreesGain` per incident, and
+  `noiseFloor`/`cardsTested`/`withGainCause`/`agreeGain`/`disagreeGain` in `--json`; `--floor <pp>` applies a
+  scenario floor measured on a wider sample. Game attribution and the sim are untouched (tooling only;
+  `npm run compare` identical, bench hashes unchanged).
+  - New baseline (five passive days, seeds 1–5 of the three scenarios, Normal; 205 online incidents, 7 batch nights
+    skipped, 0 not reproduced, 0 failed): **midwest** 17 incidents, 5 with a card active, 5 cards tested, RT-06 5
+    with a met cause (1 agree, 4 disagree), RT-25 5 with a gain cause (1, 4); **revenue** 9, 8, 8, 8 (6, 2), 8
+    (6, 2); **harbourline** 179, 31, 31, 8 (23, 8), 23 (14, 17). Total: 21 incidents with a met cause against 36
+    with a gain cause — the 15 extra are the joint causes the binary verdict called bystanders — and 23 gain
+    disagreements (13 CAPPING/POLICY, 6 CPU_PRIORITY/POLICY, 4 QR_TCB/POLICY, 3 CPU_CAPACITY/POLICY), all with no
+    card blamed by the game.
+  - RT-14's material is those disagreements: Harbourline's MARKET_OPEN_SURGE on CAPPING hours (CARDS 27.0, MOBILE
+    23.6, RETAIL 22.1, PAYMENTS 13.6 pp in seed 4; 7.0/11.0/26.1/6.9 in seed 3) and small RUNAWAY gains (0.0–1.6 pp)
+    on QR_TCB and CPU_PRIORITY hours; Midwest seed 2's REGRESSION taking 41.4 (TELLER), 52.6 (MOBILE), 60.3
+    (CARDAUTH) and 100.0 (PAYMQ) pp off CPU hours it does not declare; Revenue's EFILE_REGRESSION (23.5) and
+    FILE_EARLY_CAMPAIGN (11.6) on EMPLOYER. The near-zero entries show why a calibrated floor matters.
+  - The floor is **unmeasured** in that sample: 0 control cards in 195 passive days. The only card with no declared
+    work that can run before day 8 is CP_SPARING (six minutes); its three appearances in the 15 runs overlapped no
+    incident hour, and HIRING_FREEZE (day 8), GREEN_IT_COD (8), VENDOR_PRICE/SMF_AUDIT (10) and AUDIT_UNCLASSIFIED
+    (12) are outside a five-day run. The tool reports the count and marks the gains uncalibrated; a measured floor
+    needs longer runs (or hundreds of seeds), which RT-14's refresh should do before reading small gains as causes.
+
 - 2026-11-13: RT-25 filed (user request, after reviewing what RT-06 has found): the counterfactual validator ends
   every active card, reports attainment gain against a noise floor from red-herring cards, and gives RT-14 a fixed
   baseline; RT-14 is blocked on it. RT-14 tests footprints on built fixtures (seed incidents move with WLM changes)

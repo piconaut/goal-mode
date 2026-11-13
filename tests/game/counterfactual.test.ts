@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { encodePlayFile, type PlayFile } from '../../tools/playCore';
 import { blameText } from '../../tools/inspect';
-import { blameIncident, counterfactualCandidates, endedAtHourStart, summarizeBlame } from '../../src/game/counterfactual';
+import { blameIncident, cardsActiveInHour, endedAtHourStart, judgeGains, noiseFloor, summarizeBlame, type IncidentBlame } from '../../src/game/counterfactual';
 import { advance, chooseDraft, newRun, startDay } from '../../src/game/run';
 import { scenarioFor } from '../../src/game/difficulty';
 import { packOf } from '../../src/content/packs';
@@ -52,7 +52,7 @@ const truthOf = (start: RunState, workloadId: string): Incident => {
   return inc!;
 };
 
-describe('counterfactual validator (RT-06)', () => {
+describe('counterfactual validator (RT-06, RT-25)', () => {
   it('clears a causal card, ignores a bystander on the same workload, and agrees with the game', () => {
     const incident = truthOf(file.run, VICTIM);
     // A card on the same workload that does nothing at all, and cannot be the CPU card the game blames.
@@ -69,17 +69,56 @@ describe('counterfactual validator (RT-06)', () => {
       started: true,
       ended: false,
     };
-    const run = { ...file.run, events: [...file.run.events, bystander] };
+    // A red herring by design: it declares no hurt work, so it is a control for the noise floor.
+    const redHerring: ActiveEvent = {
+      ...bystander,
+      uid: 'CP_SPARING@2',
+      defId: 'CP_SPARING',
+      name: 'CP failure, transparent sparing',
+      trigger: 'HARDWARE_FAULT',
+      affects: [],
+    };
+    const run = { ...file.run, events: [...file.run.events, bystander, redHerring] };
     const blame = blameIncident(run, scenario, pack.game, incident);
     expect(blame.reproduced).toBe(true);
     expect(blame.baseline.met).toBe(false);
-    // Both cards are tested; only the runaway's removal meets the SLA.
-    expect(blame.tested.map((t) => t.card.uid).sort()).toEqual(['BYSTANDER@1', CARD]);
-    expect(blame.tested.find((t) => t.card.uid === 'BYSTANDER@1')!.met).toBe(false);
+    // Every card active in the hour is tested, whatever work it declares; only the runaway has a real gain.
+    expect(blame.tested.map((t) => t.card.uid)).toEqual(expect.arrayContaining(['BYSTANDER@1', 'CP_SPARING@2', CARD]));
+    expect(blame.tested.find((t) => t.card.uid === 'BYSTANDER@1')).toMatchObject({ met: false, gainPct: 0 });
+    expect(blame.tested.find((t) => t.card.uid === 'CP_SPARING@2')).toMatchObject({ met: false, gainPct: 0, card: { control: true } });
+    expect(blame.tested.find((t) => t.card.uid === CARD)!.gainPct).toBeGreaterThan(0);
     expect(blame.causes.map((c) => c.uid)).toEqual([CARD]);
     expect(blame.blamed?.uid).toBe(CARD);
     expect(blame.agrees).toBe(true);
-    expect(summarizeBlame([blame])).toMatchObject({ incidents: 1, reproduced: 1, testable: 1, withCause: 1, agree: 1, disagree: 0 });
+    // The floor is the control's swing (zero), so the runaway's gain clears it and the red herring is no cause.
+    const floor = noiseFloor('revenue', [blame]);
+    expect(floor.controls).toBe(1);
+    const judged = judgeGains([blame], floor);
+    expect(judged[0]!.causesGain.map((c) => c.uid)).toEqual([CARD]);
+    expect(judged[0]!.agreesGain).toBe(true);
+    expect(summarizeBlame(judged)).toMatchObject({ incidents: 1, reproduced: 1, testable: 1, withCause: 1, agree: 1, disagree: 0, withGainCause: 1, agreeGain: 1, disagreeGain: 0 });
+  });
+
+  it('counts a joint cause by its gain, and a red herring below the noise floor as no cause', () => {
+    const card = (uid: string, control = false) => ({ uid, defId: uid, name: uid, trigger: 'POLICY' as const, control, startTick: HOUR_START, endTick: null });
+    const test = (uid: string, gainPct: number, met = false, control = false) => ({ card: card(uid, control), met, attainmentPct: 90 + gainPct, gainPct });
+    // Two cards that only breach together: ending either one raises attainment by 2 pp and neither meets the SLA.
+    const joint: IncidentBlame = {
+      id: 1, workloadId: VICTIM, day: 2, startTick: HOUR_START, truth: { mechanism: 'CAPPING', trigger: 'POLICY' },
+      blamed: null, baseline: { met: false, attainmentPct: 90 },
+      tested: [test('CARD_A', 2), test('CARD_B', 2), test('CP_SPARING@1', 0.2, false, true), test('RED_HERRING', 0.1)],
+      causes: [], reproduced: true, agrees: false,
+    };
+    const floor = noiseFloor('revenue', [joint]);
+    expect(floor).toEqual({ scenario: 'revenue', controls: 1, floorPct: 0.2 });
+    const [judged] = judgeGains([joint], floor);
+    expect(judged!.causesGain.map((c) => c.uid)).toEqual(['CARD_A', 'CARD_B']);
+    // The game blames no card, so both a joint cause and the RT-06 verdict (nothing met the SLA) disagree.
+    expect(judged!.agreesGain).toBe(false);
+    expect(summarizeBlame([judged!])).toMatchObject({ cardsTested: 4, withGainCause: 1, agreeGain: 0, disagreeGain: 1 });
+    // With no control in the sample the floor is unknown: the tool reports it and judges on a gain above zero.
+    expect(noiseFloor('revenue', [])).toEqual({ scenario: 'revenue', controls: 0, floorPct: null });
+    expect(judgeGains([joint], noiseFloor('revenue', []))[0]!.causesGain.map((c) => c.uid)).toEqual(['CARD_A', 'CARD_B', 'RED_HERRING']);
   });
 
   it('disagrees when the game blames no card but a card would have met the SLA', () => {
@@ -121,6 +160,13 @@ describe('counterfactual validator (RT-06)', () => {
     expect(text).toContain('AGREE: Runaway compliance query is a counterfactual cause');
   });
 
+  it('judges against a floor measured on a wider seed sample', () => {
+    const run = advance(structuredClone(file.run), scenario, pack.game, TICKS_PER_HOUR);
+    const text = blameText(encodePlayFile({ ...file, run }), { floorPct: 100 });
+    expect(text).toContain('noise floor 100.0 pp passed in');
+    expect(text).toContain("no card's gain cleared the floor");
+  });
+
   it('replays a log with a Monitor III pin at a past time', () => {
     // The pin reads the Monitor III history the play CLI records while it advances; the replay must record it too.
     const log = [
@@ -136,26 +182,25 @@ describe('counterfactual validator (RT-06)', () => {
     expect(text).not.toContain('failed');
   }, 120_000);
 
-  it('tests a cap whose scope grew during the hour and a card that put the workload live', () => {
+  it('tests every card active in the hour, whatever work it declares', () => {
     const cap = (uid: string, affects: string[]) => ({
       uid, defId: 'POWER_CAP', name: 'Power cap', startTick: HOUR_START, endTick: HOUR_START + 6 * TICKS_PER_HOUR,
       trigger: 'HARDWARE_FAULT' as const, affects, mechanisms: ['CPU_CAPACITY' as const], endCommands: [], started: true, ended: false,
     });
-    // The hour-start scope did not include MOBILE; the closing union does (a workload routed onto the capped CPC).
+    // The cap declares RBANK, not MOBILE: RT-25 tests it anyway (the card that hurts undeclared work is the point).
     const start = [cap('POWER_CAP@1', ['RBANK'])];
     const end = [cap('POWER_CAP@1', ['RBANK', 'MOBILE'])];
-    expect(counterfactualCandidates(start, end, 'MOBILE', HOUR_START, pack.game).map((e) => e.uid)).toEqual(['POWER_CAP@1']);
-    // A card that puts a workload live can declare only the old work in `affects`: its begin names the new id.
+    expect(cardsActiveInHour(start, end, HOUR_START).map((e) => e.uid)).toEqual(['POWER_CAP@1']);
+    // A card drawn for the day that starts inside the hour, and one that ended before it.
+    const inside = { ...cap('INSIDE@1', ['RBANK']), startTick: HOUR_START + 100 };
+    const before = { ...cap('BEFORE@1', ['RBANK']), startTick: HOUR_START - TICKS_PER_HOUR, endTick: HOUR_START };
+    expect(cardsActiveInHour([start[0]!, inside, before], [], HOUR_START).map((e) => e.uid)).toEqual(['POWER_CAP@1', 'INSIDE@1']);
+    // A card that puts a workload live is active in the hour like any other.
     const golive = {
       uid: 'FAKE@1', defId: 'FAKE', name: 'New app', startTick: HOUR_START, endTick: null,
       trigger: 'NEW_WORKLOAD' as const, affects: ['OLD'], endCommands: [], started: true, ended: false,
     };
-    const fake = {
-      ...pack.game,
-      events: [{ id: 'FAKE', affects: ['OLD'], begin: [{ kind: 'ADD_WORKLOAD', workload: { id: 'NEWWL' } }] } as unknown as (typeof pack.game.events)[number]],
-    };
-    expect(counterfactualCandidates([golive], [golive], 'NEWWL', HOUR_START, fake)).toHaveLength(1);
-    expect(counterfactualCandidates([golive], [golive], 'MOBILE', HOUR_START, fake)).toHaveLength(0);
+    expect(cardsActiveInHour([golive], [golive], HOUR_START)).toHaveLength(1);
   });
 
   it("reads an incident in the day's last hour, whose replay ends the day", () => {
