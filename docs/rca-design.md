@@ -411,8 +411,8 @@ Most discriminators also sit behind tier-2 tools (DB2_ACCT, CICS_MON, CF_DASD, S
   `CPU_PRIORITY/POLICY` from the fallback and is grouped with the day's MOBILE incident because the labels match.
 - Any critical ABEND makes the night `JOB_FAILURE`, even when the job was restarted at once and the window was lost
   to CPU.
-- The baseline is empty, so the largest absolute cause of lost time wins; the CPU split uses a 12-hour average and
-  the maximum capped tick of the night.
+- The baseline is empty, so the largest absolute cause of lost time wins; the CPU split uses a 12-hour average and,
+  since RT-08, the ticks of the night in which an image was capped.
 - Evidence for the delay shares is one tool (SMF30_BATCH). WLMGL pins on the critical jobs' classes count.
 
 ### A13. Grouping by label
