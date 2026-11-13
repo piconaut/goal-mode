@@ -421,8 +421,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
   const honourSkipClock = missingGoals > POLICY_ADJUST.skipClockMinMissing;
   const tickOf: Record<string, ScpTick> = {};
   for (const t of input.current) tickOf[t.scKey] = t;
-  // Receiver value and donor harm are judged on a percentile PI that is not clamped at 4.0, or a period far past
-  // its goal could never show a projected gain and would never be helped.
+  // Receiver value and donor harm use PIs before the reporting ceilings (percentile 4.0, velocity 99), or
+  // improvements far past a goal look flat and a safe plan can exhaust its step limit without receiver value.
   const instPi = (ticks: readonly ScpTick[]) => {
     const m: Record<string, number | null> = {};
     for (const t of ticks) {
@@ -431,7 +431,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
         ? null
         : g.goal.kind === 'PCT'
           ? projectedPercentilePi(t.buckets, g.goal.pct, t.completions, t.rtSumSec, g.goal.rtSec, PCT_PROJECTION_SIGMA)
-          : tickPi(g.goal, t);
+          : tickPi(g.goal, t, Infinity);
     }
     return m;
   };
