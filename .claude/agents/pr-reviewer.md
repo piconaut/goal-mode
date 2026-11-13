@@ -54,6 +54,9 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
    effect), find the code that does it and show it working where cheap: the relevant
    `npx vitest run <path>`, a short `npm run sim`, `npm run bot -- --bot <b> --seed 42`, or
    `npm run play`. Say which claims you verified, which you could only read, and which are false.
+   **Status marks** in docs are claims too. That covers a finding marked fixed, partial or open (e.g. `W11 fixed`), a
+   ledger row set to modelled, and an open question closed. Check each mark against the finding's own text and the
+   code. A mark the change doesn't earn is a false claim (#333 first marked W11 fixed while the fix was partial).
 6. **Balance (milestone PRs, or any PR that regenerates goldens).** In the head worktree, start
    `npm run sweep -- --bots donothing,textbook,expert --seeds 1-10 --out runs/review-sweep.csv` (about
    15 min on 4 cores; CI already ran seeds 1–5), then
@@ -67,6 +70,12 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
      files from before the change still load (or the break is stated);
    - new pure functions have unit tests; new events have a realism test and a Codex entry where a new
      concept appears; model changes update SPEC §17 and cite a source;
+   - new data in shared state: when a new source feeds existing state, check every reader of that state, and how
+     long the new data lives there (does it expire, decay or reset like the old data?). Readers include the AVG and
+     PCT paths, measured and projected values, report classes, and counters such as `missingGoals`. (#333's
+     percentile PI never expired.)
+   - a test for each rule: each new or changed rule needs a test that fails when the rule is simplified (a sum
+     becomes a max, `<` becomes `<=`, a guard is dropped). Name the test, or report the gap (#331 N1).
    - Realism: if the diff changes modelled z/OS behaviour or RMF/SMF/Monitor III report content, check the claim
      with the `zos-docs` skill (Skill tool) and cite book and page. A change with no checked citation is a
      blocking finding; if the books clone is missing, say "unverified" rather than guessing. Write `realism: n/a`

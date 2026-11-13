@@ -18,8 +18,14 @@ reviewed by hand or by `pr-review-loop`). Never push to a PR outside this scope.
 
 PRs labelled `dev-loop` come from the `dev-loop` skill, the author-side loop. Treat them like any other PR: when
 you HOLD one, `dev-loop` answers on its next tick by pushing fixes and a `<!-- dev-loop-response` comment, which
-is your **held, updated** case (the comment is an author comment, not a loop comment). Skip a `dev-loop` PR labelled
-`needs-user` (report `needs-user - skipped`). The backlog rule (pr-reviewer check 10) applies to these PRs.
+is your **held, updated** case (the comment is an author comment, not a loop comment). The backlog rule (pr-reviewer
+check 10) applies to these PRs.
+
+PRs labelled `needs-user` (any author) wait for a user decision. Review, fix or hold them like any other PR, but never
+merge one (user request 2026-11-13: #331 sat unreviewed and went stale while it waited for the user). The decision
+itself is not a finding: name it in the `pr-fixer` brief (step 2). An **approved** `needs-user` PR stays open: report
+`needs-user - merge waits`. Once the user removes the label, the next tick merges it, or re-reviews it if the head
+moved.
 
 Models: you (the coordinator) run on Sonnet and do bookkeeping, spawning and merging only; never review or edit
 diffs yourself. `pr-fixer` runs on its Opus default. Checks of fixes use `pr-reviewer` with `model: "sonnet"`.
@@ -54,7 +60,8 @@ PR number, title, head branch and SHA, base `dev`, a scratchpad directory per PR
 verbatim on a follow-up, the `Claude-Session:` line and the footer (not your own `Co-Authored-By` line: the subagent adds its own model's
 trailer, see CLAUDE.md), and: "Check z/OS behaviour claims against IBM docs with
 the zos-docs skill (Skill tool; cite pages); a z/OS behaviour or report change with no checked citation is a
-blocking finding."
+blocking finding." For a `needs-user` PR, add the question it waits on (from the comment that set the label) and:
+"This decision is the user's and not a finding; review everything else."
 
 Read its marker from the hand-back (or from the posted comment if the hand-back lacks one).
 
@@ -80,7 +87,8 @@ the merge: after merging, add each one to BACKLOG.md list `pr-followups` as an e
 
 ## 4. Merge
 
-Required checks: `check`, `balance`, `behaviour-note`, `perf-hash` on the head being merged.
+Required checks: `check`, `balance`, `behaviour-note`, `perf-hash` on the head being merged. Never merge a PR
+labelled `needs-user`, and don't enable auto-merge on one (see the scope notes above).
 
 - All green: squash-merge with `expectedHeadSha` = the approved head.
 - Some pending: enable auto-merge (squash). If the head moves before it merges, the next tick sees **moved after
@@ -95,5 +103,5 @@ one reviewed or checked. Never approve or close a PR.
 ## 5. Report
 
 End with one line per PR in scope or skipped:
-`#<n> <case> - <outcome: MERGE | FIXED <k> | HOLD (<reason>)> - <check PASS/FAIL/n-a> - <merged | auto-merge on | held | skipped>`.
+`#<n> <case> - <outcome: MERGE | FIXED <k> | HOLD (<reason>)> - <check PASS/FAIL/n-a> - <merged | auto-merge on | held | needs-user - merge waits | skipped>`.
 If nothing was open, say so in one line.
