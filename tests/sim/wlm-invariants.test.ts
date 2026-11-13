@@ -10,6 +10,7 @@ import { ladderOf, levelDp } from '../../src/sim/wlm/ladder';
 import { DP } from '../../src/sim/zos/dispatcher';
 import { evaluateLpar, sliceSpec, type ScpTick, type SliceSpec } from '../../src/sim/wlm/evaluate';
 import { projectedPercentilePi } from '../../src/sim/wlm/goals';
+import { projectBatchRtPi } from '../../src/sim/wlm/batchRt';
 import { ACC_DECAY, decayInto, emptyAcc, goalInfo, goalPi, tickPi, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
 import type { ServiceDefinition } from '../../src/sim/wlm/types';
 
@@ -76,6 +77,21 @@ function makeCase(seed: number, history: 'rest' | 'varied'): Case {
   return { def, input: { def, system, evalInput, current, sysplexPi: {}, clockText: 'T' } };
 }
 
+/** A makeCase image with its first address-space period changed to an AVG batch RT receiver: two completions at
+ * twice its goal, with a queue/execution split, and importance 1 so the seeded order reaches it. */
+function makeBatchRtCase(seed: number): Case {
+  const c = makeCase(seed, 'rest');
+  const as = c.input.evalInput.slices.find((s) => s.kind === 'AS');
+  if (!as) return c;
+  const cls = c.def.classes.find((x) => x.id === as.scKey.slice(0, -2))!;
+  cls.periods[0] = { goal: { kind: 'AVG', rtSec: 30 }, importance: 1, durationSu: null };
+  const acc = c.input.system.scps.find((p) => p.scKey === as.scKey)!.acc;
+  acc.completions = 2;
+  acc.rtSumSec = 120; // measured PI 2
+  acc.rtQueueSumSec = 40;
+  return c;
+}
+
 function traced(input: AdjustInput): { out: AdjustOutput; trace: WlmAdjustTrace } {
   const traces: WlmAdjustTrace[] = [];
   setWlmTraceSink((t) => traces.push(t));
@@ -84,6 +100,16 @@ function traced(input: AdjustInput): { out: AdjustOutput; trace: WlmAdjustTrace 
   } finally {
     setWlmTraceSink(null);
   }
+}
+
+/** The PI a tick projects to, independently of policyAdjust: the batch RT rule where the accumulators carry the
+ * queue split (WT-12), else the ordinary tick PI. */
+function tickProjection(def: ServiceDefinition, acc: ScpAcc | undefined, t: ScpTick): number | null {
+  const g = goalInfo(def, t.scKey)!.goal;
+  if ((g.kind === 'AVG' || g.kind === 'PCT') && acc?.rtQueueSumSec !== undefined) return projectBatchRtPi(g, acc, t);
+  return g.kind === 'PCT'
+    ? projectedPercentilePi(t.buckets, g.pct, t.completions, t.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA)
+    : tickPi(g, t, Infinity);
 }
 
 const SEEDS = Array.from({ length: 150 }, (_, i) => i + 1);
@@ -105,10 +131,8 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     expect(first.blockedBy).toBe('G02#1');
     expect(first.detail).toBe('gain 11.25 ≤ equal-importance harm 17.35');
     // The premise, from the projections themselves: every single harm is below the gain, the sum is not.
-    const piAt = (dps: Record<string, number>) => Object.fromEntries(evaluateLpar({ ...input.evalInput, dpOf: (k) => dps[k]! }).scps.map((x) => {
-      const g = goalInfo(input.def, x.scKey)!.goal;
-      return [x.scKey, g.kind === 'PCT' ? projectedPercentilePi(x.buckets, g.pct, x.completions, x.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, x, Infinity)];
-    }));
+    const accOf = Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.acc]));
+    const piAt = (dps: Record<string, number>) => Object.fromEntries(evaluateLpar({ ...input.evalInput, dpOf: (k) => dps[k]! }).scps.map((x) => [x.scKey, tickProjection(input.def, accOf[x.scKey], x)]));
     const trial = { ...trace.dps };
     for (const m of first.steps ?? []) trial[m.scKey] = m.toDp;
     const before = piAt(trace.dps), after = piAt(trial);
@@ -177,10 +201,8 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
       const { c, t } = plans[0]!;
       expect(t.plan!.length).toBeLessThanOrEqual(POLICY_ADJUST.maxPlanSteps);
       carried += t.plan!.filter((m) => m.kind === 'CARRY').length;
-      const piAt = (dps: Record<string, number>) => Object.fromEntries(evaluateLpar({ ...input.evalInput, dpOf: (k) => dps[k]! }).scps.map((s) => {
-        const g = goalInfo(input.def, s.scKey)!.goal;
-        return [s.scKey, g.kind === 'PCT' ? projectedPercentilePi(s.buckets, g.pct, s.completions, s.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, s, Infinity)];
-      }));
+      const accOf = Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.acc]));
+      const piAt = (dps: Record<string, number>) => Object.fromEntries(evaluateLpar({ ...input.evalInput, dpOf: (k) => dps[k]! }).scps.map((s) => [s.scKey, tickProjection(input.def, accOf[s.scKey], s)]));
       const before = piAt(trace.dps), after = piAt(out.dps);
       expect(t.afterPis).toEqual(after);
       const r0 = before[c.scKey]!, r1 = after[c.scKey]!;
@@ -332,14 +354,32 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
       for (const t of input.current) tickOf[t.scKey] = t;
       for (const c of trace.candidates) {
         if (c.basePi === undefined) continue;
-        const g = goalInfo(def, c.scKey)!.goal;
         const t = tickOf[c.scKey]!;
-        const now = g.kind === 'PCT' ? projectedPercentilePi(t.buckets, g.pct, t.completions, t.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, t, Infinity);
-        expect(c.basePi).toBe(now);
+        const acc = input.system.scps.find((p) => p.scKey === c.scKey)!.acc;
+        expect(c.basePi).toBe(tickProjection(def, acc, t));
         checked++;
       }
     }
     expect(checked).toBeGreaterThan(50);
+  });
+
+  it('I17 batch: a batch RT base PI uses the measured PI and the queue split (WT-12)', () => {
+    let checked = 0;
+    for (const seed of SEEDS) {
+      const { def, input } = makeBatchRtCase(seed);
+      const as = input.evalInput.slices.find((s) => s.kind === 'AS');
+      if (!as) continue;
+      const { trace } = traced(input);
+      if (trace.protection.length > 0) continue;
+      const c = trace.candidates.find((x) => x.scKey === as.scKey && x.basePi != null);
+      if (!c) continue;
+      const acc = input.system.scps.find((p) => p.scKey === as.scKey)!.acc;
+      const t = input.current.find((x) => x.scKey === as.scKey)!;
+      const g = goalInfo(def, as.scKey)!.goal;
+      expect(c.basePi).toBe(projectBatchRtPi(g, acc, t));
+      checked++;
+    }
+    expect(checked).toBeGreaterThan(0);
   });
 
   it('I1 determinism: the decision does not depend on the order of periods in state', () => {

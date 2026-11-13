@@ -7,12 +7,9 @@
 
 import { PCT_PROJECTION_SIGMA } from '../../content/wlm/tuning';
 import type { ScpTick } from './eval/types';
-import { projectedPercentilePi, velocityOf } from './goals';
+import { projectedPercentilePi, VELOCITY_FLOOR, velocityOf } from './goals';
 import { velDelay, velUsing, type ScpAcc } from './runtime';
 import type { Goal } from './types';
-
-/** The existing velocity floor from `performanceIndex` (goals.ts): 0.1 %. */
-const VELOCITY_FLOOR = 0.1;
 
 /** Execution velocity of a period's measured samples, without queue delay: the queue is in Q̄ already and queued
  * WLM-initiator jobs add `delayQueue` to measured ticks but not to projections. */
