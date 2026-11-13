@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { ViewModel } from '../../game/view';
 import type { Qualifier, SubsystemType, WorkAttributes } from '../../sim/wlm/types';
-import { cicsGoalIssues, cicsTransactionClasses } from '../../game/wlmEdit';
+import { serviceClassGoalIssues, cicsTransactionClasses } from '../../game/wlmEdit';
 import { CodexHints } from '../CodexHint';
 import { ServiceClasses } from '../ServiceClassEditor';
 import type { GameHandle } from '../useGame';
@@ -59,7 +59,7 @@ export function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: G
     classDefs: planned.classes,
     resourceGroups: planned.resourceGroups,
     cicsClasses: cicsTransactionClasses(planned),
-    cicsIssues: cicsGoalIssues(planned),
+    goalIssues: serviceClassGoalIssues(planned),
     ioPriorityManagement: planned.ioPriorityManagement !== false,
   } : v;
   return (

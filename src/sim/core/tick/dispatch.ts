@@ -4,6 +4,7 @@ import { scKeyAtService } from '../../workload/slices';
 import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../../wlm/evaluate';
 import { decayInto, emptyAcc, goalInfo, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
 import { holderTopology, servedKeys } from '../../wlm/holders';
+import { addToBuckets } from '../../wlm/goals';
 import type { LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
@@ -258,7 +259,7 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
       const fc = cpWant > 0 ? jr.cp / cpWant : 0;
       const fz = ziWant > 0 ? jr.zi / ziWant : 0;
       const lockStretch = jr.job.def.usesDb2 ? 1 + 0.4 * Math.min(2, env.lockIndex / 4) * Math.min(1, t.onlineDb2Rate / 2000) : 1;
-      advanceJob(
+      const ended = advanceJob(
         jr.job,
         jr.shape,
         {
@@ -272,6 +273,17 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
         },
         prev.tick,
       );
+      if (ended && jr.job.startTick !== null) {
+        const goal = goalInfo(def, ref.slice.scKey)?.goal;
+        if (goal?.kind === 'AVG' || goal?.kind === 'PCT') {
+          // A batch transaction is a job (WLM Planning 3.1 p.71); use stepRmf's queue + elapsed time.
+          const rtSec = (jr.job.endTick! - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
+          const measured = res.scps.find((x) => x.scKey === ref.slice.scKey)!;
+          measured.completions += 1;
+          measured.rtSumSec += rtSec;
+          addToBuckets(measured.buckets, goal.rtSec, 1, rtSec, 0);
+        }
+      }
       const ioNow = jr.shape.ioRate / Math.max(1, jr.job.stretch);
       sums.seqIops += ioNow;
       if (jr.job.def.usesDb2) {

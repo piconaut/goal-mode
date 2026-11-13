@@ -140,6 +140,10 @@ export function applyWlmEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinit
 
 /** Service classes that CICS transactions are classified into (CICS rules and default), built-ins excluded. */
 export function cicsTransactionClasses(def: ServiceDefinition): string[] {
+  return subsystemClasses(def, 'CICS');
+}
+
+function subsystemClasses(def: ServiceDefinition, subsystem: SubsystemType): string[] {
   const ids = new Set<string>();
   const walk = (rules: readonly ClassificationRule[]) => {
     for (const r of rules) {
@@ -148,14 +152,14 @@ export function cicsTransactionClasses(def: ServiceDefinition): string[] {
     }
   };
   for (const ss of def.subsystems) {
-    if (ss.subsystem !== 'CICS') continue;
+    if (ss.subsystem !== subsystem) continue;
     if (ss.defaultServiceClass) ids.add(ss.defaultServiceClass);
     walk(ss.rules);
   }
   return def.classes.map((c) => c.id).filter((id) => ids.has(id));
 }
 
-export interface CicsGoalIssue {
+export interface GoalIssue {
   classId: string;
   severity: 'error' | 'warning';
   message: string;
@@ -164,8 +168,8 @@ export interface CicsGoalIssue {
 /** CICS transaction classes take only single-period response-time goals and no resource group
  * (WLM Planning ch. 9–10, SG24-6472). IBM documents an ISPF error only for the resource group;
  * velocity and multi-period are just "not supported", so those stay warnings. */
-export function cicsGoalIssues(def: ServiceDefinition): CicsGoalIssue[] {
-  const out: CicsGoalIssue[] = [];
+export function cicsGoalIssues(def: ServiceDefinition): GoalIssue[] {
+  const out: GoalIssue[] = [];
   for (const id of cicsTransactionClasses(def)) {
     const c = def.classes.find((x) => x.id === id)!;
     if (c.resourceGroup)
@@ -181,6 +185,17 @@ export function cicsGoalIssues(def: ServiceDefinition): CicsGoalIssue[] {
       });
   }
   return out;
+}
+
+/** Batch transactions are jobs; sparse completions are unsuitable for RT goals (WLM Planning 3.1 p.71). */
+export function batchGoalIssues(def: ServiceDefinition): GoalIssue[] {
+  const rtClasses = new Set(def.classes.filter((c) => c.periods.some((p) => p.goal.kind === 'AVG' || p.goal.kind === 'PCT')).map((c) => c.id));
+  return subsystemClasses(def, 'JES').filter((id) => rtClasses.has(id))
+    .map((id) => ({ classId: id, severity: 'warning', message: `${id} serves JES jobs with a response-time goal: needs at least three completions per 20 minutes (WLM Planning p.71); with fewer the PI is erratic.` }));
+}
+
+export function serviceClassGoalIssues(def: ServiceDefinition): GoalIssue[] {
+  return [...cicsGoalIssues(def), ...batchGoalIssues(def)];
 }
 
 function applyEdit(def: ServiceDefinition, e: WlmEdit): ServiceDefinition | string {

@@ -52,8 +52,8 @@ export const CODEX: CodexEntry[] = [
     id: 'perf-index',
     title: 'Performance index (PI)',
     category: 'WLM',
-    body: 'PI compares actual service with the goal: below 1 the goal is beaten, above 1 it is missed. For response-time goals it is actual ÷ goal; for percentile goals WLM uses its response-time buckets (so PI is clamped between 0.5 and 4.0); for velocity goals it is goal velocity ÷ actual velocity. Discretionary work is reported at 0.81.',
-    sources: [ABCS_WLM, PAICE_WLM],
+    body: 'PI compares actual service with the goal: below 1 the goal is beaten, above 1 it is missed. For response-time goals it is actual ÷ goal; for percentile goals WLM uses its response-time buckets (so PI is clamped between 0.5 and 4.0); for velocity goals it is goal velocity ÷ actual velocity. Discretionary work is reported at 0.81. For batch, each completed job is a transaction; a response-time goal needs at least three job completions per 20 minutes (WLM Planning p.71).',
+    sources: [ABCS_WLM, PAICE_WLM, { label: 'IBM z/OS 3.1 WLM Planning p.71: batch response-time goals', url: 'https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaw100_v3r1.pdf#page=71' }],
     discover: { start: true },
   },
   {
