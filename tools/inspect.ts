@@ -13,9 +13,10 @@
 //     time. --by-class adds each period's outcomes, --episodes lists those 30-assessment runs, --moves lists every
 //     accepted move. A whole-run replay costs about 6 s per played day, like `blame`.
 //   npm run inspect -- runs/a.json blame [--json] [--incident N]
-//     Counterfactual validator (RT-06): every online incident's opening hour is replayed once per card that affects
-//     the hurt workload with that card ended at the hour start. Reports the game's trigger against the cards whose
-//     removal met the SLA. Costs an hour of sim per card per incident, so it is offline only; needs a play-CLI file.
+//     Counterfactual validator (RT-06, RT-25): every online incident's opening hour is replayed once per card active
+//     in it with that card ended at the hour start. Reports each card's attainment gain against a noise floor
+//     measured from red-herring cards, and keeps the RT-06 verdict (removal met the SLA) beside it. Costs an hour of
+//     sim per card per incident, so it is offline only; needs a play-CLI file.
 
 import { readFileSync } from 'node:fs';
 import { applyPlayCommand, decodePlayFile, clockText, newPlayFile, type PlayFile } from './playCore';
@@ -24,7 +25,7 @@ import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
 import { packOf } from '../src/content/packs';
 import { scenarioFor } from '../src/game/difficulty';
 import { advance } from '../src/game/run';
-import { blameIncident, summarizeBlame, type IncidentBlame } from '../src/game/counterfactual';
+import { blameIncident, judgeGains, noiseFloor, summarizeBlame, type IncidentBlame } from '../src/game/counterfactual';
 import { BATCH_INCIDENT } from '../src/game/sla';
 import type { Incident, RunState } from '../src/game/types';
 import { setWlmTraceSink, type WlmAdjustTrace, type WlmCandidateTrace, type WlmTrialVerdict } from '../src/sim/wlm/adjust';
@@ -801,7 +802,7 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
 
 const pctText = (x: number | null) => (x === null ? '-' : `${x.toFixed(1)}%`);
 
-/** Counterfactual validator over every online incident of a play file (RT-06). */
+/** Counterfactual validator over every online incident of a play file (RT-06, RT-25). */
 export function blameText(text: string, opts: { json?: boolean; incident?: number } = {}): string {
   const file = decodePlayFile(text);
   const batch = file.run.incidents.filter((i) => i.workloadId === BATCH_INCIDENT).length;
@@ -823,36 +824,50 @@ export function blameText(text: string, opts: { json?: boolean; incident?: numbe
   const reached = new Set(results.map((r) => r.id));
   const failedIds = new Set(failed.map((f) => f.id));
   const notReached = online.filter((i) => !reached.has(i.id) && !failedIds.has(i.id)).map((i) => i.id);
-  const summary = summarizeBlame(results);
-  if (opts.json) return JSON.stringify({ summary, batchSkipped: batch, notReached, failed, incidents: results }, null, 2);
+  // The floor comes from the sample's controls, so it is measured before the incidents are judged by it.
+  const floor = noiseFloor(file.run.scenarioId, results);
+  const judged = judgeGains(results, floor);
+  const summary = summarizeBlame(judged);
+  if (opts.json) return JSON.stringify({ summary, noiseFloor: floor, batchSkipped: batch, notReached, failed, incidents: judged }, null, 2);
+  const floorText = floor.floorPct === null
+    ? `scenario ${floor.scenario}: no control card (CP_SPARING or a card that declares no affected work) in the sample, so the noise floor is 0 and the gains are uncalibrated`
+    : `scenario ${floor.scenario}: noise floor ${floor.floorPct.toFixed(1)} pp from ${floor.controls} control card${floor.controls === 1 ? '' : 's'} (CP_SPARING and cards that declare no affected work)` +
+      (floor.controls < 10 ? '; fewer than 10 controls, so add seeds until there are' : '');
   const lines: string[] = [
-    `Counterfactual blame: each incident's opening hour replayed with one card ended at the hour start (one hour of sim per card per incident).`,
+    `Counterfactual blame: every card active in each incident's opening hour is ended at the hour start, one at a time (one hour of sim per card per incident).`,
+    floorText,
     `${summary.incidents} online incident${summary.incidents === 1 ? '' : 's'}` +
       (batch > 0 ? `, ${batch} batch night${batch === 1 ? '' : 's'} skipped` : '') +
       (notReached.length > 0 ? `, ${notReached.length} outside the replayed log` : '') +
       (failed.length > 0 ? `, ${failed.length} failed${failed[0] ? ` (${failed[0].message})` : ''}` : ''),
-    `${summary.reproduced} reproduced the miss; ${summary.testable} had a card to test; ${summary.withCause} had a counterfactual cause.`,
-    `${summary.agree} agree with the game's trigger, ${summary.disagree} disagree` +
+    `${summary.reproduced} reproduced the miss; ${summary.cardsTested} card${summary.cardsTested === 1 ? '' : 's'} tested; ${summary.withCause} had a card whose removal met the SLA (RT-06), ${summary.withGainCause} had a card whose gain cleared the floor (RT-25).`,
+    `RT-06: ${summary.agree} agree with the game's trigger, ${summary.disagree} disagree` +
       (summary.noCause > 0 ? `; ${summary.noCause} testable with no cause` : '') +
       (summary.noCandidates > 0 ? `; ${summary.noCandidates} with no card on the workload` : '') +
       (summary.notReproduced > 0 ? `; ${summary.notReproduced} not reproduced` : '') + '.',
+    `RT-25: ${summary.agreeGain} agree, ${summary.disagreeGain} disagree.`,
   ];
-  for (const r of results) {
+  for (const r of judged) {
     lines.push('');
     lines.push(`${clockText(r.startTick)}  ${r.workloadId} (incident ${r.id})  game: ${r.truth.mechanism}/${r.truth.trigger}` +
       (r.baseline.attainmentPct !== null ? `, hour ${pctText(r.baseline.attainmentPct)}` : ''));
     lines.push(r.blamed ? `  the game blames ${r.blamed.name} [${r.blamed.uid}] (${r.blamed.trigger})` : `  the game blames no card (${r.truth.trigger})`);
     for (const t of r.tested) {
-      const mark = t.met ? '  <- cause' : '';
-      lines.push(`  test ${t.card.name} [${t.card.uid}] (${t.card.trigger}): removed → ${t.met ? 'met' : 'missed'} ${pctText(t.attainmentPct)}${mark}`);
+      const gain = t.gainPct === null ? 'gain unknown' : `gain ${t.gainPct >= 0 ? '+' : ''}${t.gainPct.toFixed(1)} pp`;
+      const marks = [t.met ? 'RT-06 cause' : '', t.gainPct !== null && t.gainPct > (floor.floorPct ?? 0) ? 'gain cause' : ''].filter(Boolean);
+      lines.push(`  test ${t.card.name} [${t.card.uid}] (${t.card.trigger}${t.card.control ? ', no declared hurt work' : ''}): ended → ${t.met ? 'met' : 'missed'} ${pctText(t.attainmentPct)}, ${gain}${marks.length ? `  <- ${marks.join(', ')}` : ''}${t.card.control ? '  (control)' : ''}`);
     }
-    if (r.tested.length === 0) lines.push('  no card affected the workload in this hour');
+    if (r.tested.length === 0) lines.push('  no card was active in this hour');
     if (!r.reproduced) lines.push('  NOT REPRODUCED: the unchanged replay met the SLA, so no verdict');
     else if (r.tested.length > 0) {
       if (r.agrees) lines.push(r.blamed ? `  AGREE: ${r.blamed.name} is a counterfactual cause` : '  AGREE: no card is a counterfactual cause');
       else if (r.causes.length === 0) lines.push(`  DISAGREE: the game blames ${r.blamed?.name ?? 'no card'}, and no card's removal met the SLA`);
       else if (!r.blamed) lines.push(`  DISAGREE: the game blames no card, but ${r.causes.map((c) => c.name).join(', ')} would have met the SLA`);
       else lines.push(`  DISAGREE: the game blames ${r.blamed.name}, but ${r.causes.map((c) => c.name).join(', ')} would have met the SLA`);
+      if (r.agreesGain) lines.push(r.blamed ? `  gain: AGREE: ${r.blamed.name} is a cause by attainment gain` : `  gain: AGREE: no card's gain cleared the floor`);
+      else if (r.causesGain.length === 0) lines.push(`  gain: DISAGREE: the game blames ${r.blamed?.name ?? 'no card'}, and no card's gain cleared the floor`);
+      else if (!r.blamed) lines.push(`  gain: DISAGREE: the game blames no card, but ${r.causesGain.map((c) => c.name).join(', ')} cleared the floor`);
+      else lines.push(`  gain: DISAGREE: the game blames ${r.blamed.name}, but ${r.causesGain.map((c) => c.name).join(', ')} cleared the floor`);
     }
   }
   return lines.join('\n');

@@ -665,7 +665,11 @@ rule with the change as the "card".
   but costs an hour of sim (360 ticks) per qualifying card per incident, in the worker, against the 4 ms tick budget,
   and slows sweeps. Not recommended now. It is a good offline **validator** (built as RT-06:
   `npm run inspect -- <file> blame`): a headless tool that replays incidents both ways and reports where footprint
-  attribution and the counterfactual disagree would keep the footprints honest.
+  attribution and the counterfactual disagree would keep the footprints honest. RT-25 revises it: every card active
+  in the hour is ended, one at a time (so a card hurting work it never declares is found), and a card is a cause when
+  the hour's **attainment gain** clears a **noise floor** measured from red-herring cards (`CP_SPARING`, any card with
+  no declared `affects`), whether or not the SLA would then have been met (so a joint cause still counts). The RT-06
+  verdict stays in the output beside it, so the two can be compared.
 
 ## 5. D1 on top of it: fixes unlocked by proof
 

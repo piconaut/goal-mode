@@ -1,10 +1,13 @@
-// Offline counterfactual validator (RT-06, docs/rca-design.md §4.8): because the sim is deterministic, an incident's
-// opening SLA hour can be replayed from a kept state with one card ended at the hour start. A card whose removal
-// turns the miss into a met SLA is a cause; the game's trigger names a card only if it is one of them.
+// Offline counterfactual validator (RT-06, revised by RT-25; docs/rca-design.md §4.8): because the sim is
+// deterministic, an incident's opening SLA hour can be replayed from a kept state with one card ended at the hour
+// start. RT-06 tested only the cards whose `affects` names the hurt workload and judged a card by whether the SLA
+// would then have been met. RT-25 ends every card active in the hour (so it can see a card hurting work it never
+// declared) and judges by the hour's attainment gain against a noise floor measured from red-herring cards, whether
+// or not the SLA would then have been met (so a joint cause still counts).
 //
 // Developer tooling only: an hour of sim per card per incident is far too slow for the worker, and the output is
 // hidden truth. Never imported by the game. One card is removed at a time, so two cards that only breach together
-// look like bystanders: the validator keeps footprints honest, it is not an oracle for joint causes.
+// look like bystanders to the old verdict; the attainment gain is what makes each of them count.
 
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import type { Scenario } from '../sim/core/scenario';
@@ -22,15 +25,20 @@ export interface CardRef {
   trigger: Trigger;
   /** What the card declares it causes (absent = any mechanism: pre-RT-02 saves). */
   mechanisms?: Mechanism[];
+  /** The card declares no affected work, so it is a red herring by design: a control for the noise floor. */
+  control: boolean;
   startTick: number;
   endTick: number | null;
 }
 
 export interface CardTest {
   card: CardRef;
-  /** True when the workload's SLA was met with this card ended at the hour start. */
+  /** The RT-06 verdict: the workload's SLA was met with this card ended at the hour start. */
   met: boolean;
+  /** The hour's SLA attainment with this card ended (null = not measurable: no work in the hour). */
   attainmentPct: number | null;
+  /** That attainment less the as-run hour's, in percentage points (null = not measurable). */
+  gainPct: number | null;
 }
 
 export interface IncidentBlame {
@@ -43,15 +51,39 @@ export interface IncidentBlame {
   blamed: CardRef | null;
   /** The hour replayed unchanged: the incident's opening hour, re-derived. */
   baseline: { met: boolean; attainmentPct: number | null };
-  /** Every card that affects the hurt workload and overlaps the hour, tested one at a time. */
+  /** Every card active in the hour, tested one at a time. */
   tested: CardTest[];
-  /** Tested cards whose removal met the SLA. */
+  /** Tested cards whose removal met the SLA (the RT-06 verdict, kept so the two can be compared). */
   causes: CardRef[];
   /** True when the replay reproduces the miss (a branch result means nothing otherwise). */
   reproduced: boolean;
-  /** The card the game blames is a counterfactual cause (or it blames no card and none is causal). */
+  /** The RT-06 verdict: the card the game blames is a counterfactual cause (or it blames no card and none is). */
   agrees: boolean;
 }
+
+/** An incident judged on attainment gain against the sample's noise floor (RT-25). */
+export interface JudgedBlame extends IncidentBlame {
+  /** Cards whose attainment gain cleared the noise floor, whether or not the SLA would then have been met. */
+  causesGain: CardRef[];
+  /** The card the game blames is one of them (or the game blames no card and none cleared the floor). */
+  agreesGain: boolean;
+}
+
+/**
+ * The noise floor: the largest attainment swing a red-herring card produced in the sample. A card that by design
+ * hurts nothing (CP_SPARING, or any card with no declared `affects`) still moves the hour a little through the
+ * replay and WLM paths, and a gain must beat that to count as a cause.
+ */
+export interface NoiseFloor {
+  scenario: string;
+  /** How many control cards the sample held. Fewer than 10 is a weak estimate: the tool says so. */
+  controls: number;
+  /** The largest control gain in percentage points; null when the sample had no control to measure. */
+  floorPct: number | null;
+}
+
+/** A red herring by design: the card names no hurt work, so it cannot be the cause of an SLA miss. */
+const isControl = (e: ActiveEvent) => e.defId === 'CP_SPARING' || e.affects.length === 0;
 
 const ref = (e: ActiveEvent): CardRef => ({
   uid: e.uid,
@@ -59,36 +91,28 @@ const ref = (e: ActiveEvent): CardRef => ({
   name: e.name,
   trigger: e.trigger,
   ...(e.mechanisms ? { mechanisms: [...e.mechanisms] } : {}),
+  control: isControl(e),
   startTick: e.startTick,
   endTick: e.endTick,
 });
 
-/** A card whose `begin` puts the workload live: its `affects` names the old work, not the workload it adds. */
-function addsWorkload(e: ActiveEvent, content: GameContent, workloadId: string): boolean {
-  const def = content.events.find((d) => d.id === e.defId);
-  return def?.begin.some((c) => c.kind === 'ADD_WORKLOAD' && c.workload.id === workloadId) ?? false;
-}
-
 /**
- * The cards to test: any that affected the workload during the hour. `endEvents` is the hour's closing state — a
- * running power cap's scope is the union seen in the hour, so work routed onto the capped CPC mid-hour counts — and
- * `startEvents` supplies the state the branch starts from.
+ * Every card active in the hour that starts at `startTick`, from the opening and the closing state (a cap's scope
+ * changes within the hour, and a card drawn for the day may start inside it). They are tested one at a time, whatever
+ * work they declare: RT-25's point is finding a card that hurts work it does not name.
  */
-export function counterfactualCandidates(
-  startEvents: readonly ActiveEvent[],
-  endEvents: readonly ActiveEvent[],
-  workloadId: string,
-  startTick: number,
-  content: GameContent,
-): ActiveEvent[] {
+export function cardsActiveInHour(opening: readonly ActiveEvent[], closing: readonly ActiveEvent[], startTick: number): ActiveEvent[] {
   const endTick = startTick + TICKS_PER_HOUR;
-  const uids = new Set(
-    endEvents
-      .filter((e) => e.startTick < endTick && (e.endTick === null || e.endTick > startTick))
-      .filter((e) => e.affects.includes(workloadId) || addsWorkload(e, content, workloadId))
-      .map((e) => e.uid),
-  );
-  return startEvents.filter((e) => uids.has(e.uid));
+  const overlaps = (e: ActiveEvent) => e.startTick < endTick && (e.endTick === null || e.endTick > startTick);
+  const seen = new Set<string>();
+  const out: ActiveEvent[] = [];
+  // The opening state first: it is the one the branch is taken from.
+  for (const e of [...opening, ...closing]) {
+    if (!overlaps(e) || seen.has(e.uid)) continue;
+    seen.add(e.uid);
+    out.push(e);
+  }
+  return out.sort((a, b) => a.startTick - b.startTick || (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0));
 }
 
 /** The card did not exist for this hour: one that already ran is ended at the first tick, one that starts inside
@@ -102,8 +126,8 @@ function hourResult(run: RunState, scenario: Scenario, incident: Incident): { me
   const w = allWorkloads(scenario, run).find((x) => x.id === incident.workloadId);
   const wh = run.smfHours.at(-1)?.workloads[incident.workloadId];
   const att = w && wh ? hourAttainment(w, wh) : null;
-  // No work in the hour is no SLA to miss (a card whose end removes the workload): then no cause, and a baseline
-  // that loses the workload is reported as not reproduced (its attainment is unknown, not "met").
+  // No work in the hour is no SLA to miss (a card whose end removes the workload): then the gain is unknown, and a
+  // baseline that loses the workload is reported as not reproduced (its attainment is unknown, not "met").
   return att ? { met: att.met, attainmentPct: att.attainmentPct } : { met: true, attainmentPct: null };
 }
 
@@ -120,7 +144,7 @@ function replayHour(
 }
 
 /**
- * Replay one incident's opening hour once unchanged and once per qualifying card ended at the hour start.
+ * Replay one incident's opening hour once unchanged and once per card active in it, ended at the hour start.
  * `run` must be the state at `incident.startTick` (the tool replays the play log to that point).
  */
 export function blameIncident(run: RunState, scenario: Scenario, content: GameContent, incident: Incident): IncidentBlame {
@@ -128,12 +152,14 @@ export function blameIncident(run: RunState, scenario: Scenario, content: GameCo
   if (run.sim.tick !== incident.startTick) throw new Error(`Run is at tick ${run.sim.tick}, incident starts at ${incident.startTick}`);
   const baselineRun = replayHour(run, scenario, content, incident, null);
   const baseline = hourResult(baselineRun, scenario, incident);
-  // Candidates from the closing state, so a cap's expanded scope is included; branches from the opening state.
-  const candidates = counterfactualCandidates(run.events, baselineRun.events, incident.workloadId, incident.startTick, content);
+  // Candidates from the opening and closing state, so a cap's expanded scope and a card starting inside the hour
+  // are both in; branches from the opening state.
+  const candidates = cardsActiveInHour(run.events, baselineRun.events, incident.startTick);
   const blamedEvent = blamedCard(baselineRun.events, incident.workloadId, incident.truth.mechanism, Math.floor(incident.startTick / TICKS_PER_HOUR));
   const tested: CardTest[] = candidates.map((e) => {
     const out = hourResult(replayHour(run, scenario, content, incident, e), scenario, incident);
-    return { card: ref(e), met: out.met, attainmentPct: out.attainmentPct };
+    const gainPct = out.attainmentPct !== null && baseline.attainmentPct !== null ? out.attainmentPct - baseline.attainmentPct : null;
+    return { card: ref(e), met: out.met, attainmentPct: out.attainmentPct, gainPct };
   });
   const causes = tested.filter((t) => t.met).map((t) => t.card);
   const blamed = blamedEvent ? ref(blamedEvent) : null;
@@ -142,14 +168,39 @@ export function blameIncident(run: RunState, scenario: Scenario, content: GameCo
   return { id: incident.id, workloadId: incident.workloadId, day: incident.day, startTick: incident.startTick, truth: incident.truth, blamed, baseline, tested, causes, reproduced, agrees };
 }
 
+/** Measure the noise floor from the control cards the sample tested. */
+export function noiseFloor(scenario: string, results: readonly IncidentBlame[]): NoiseFloor {
+  const gains = results
+    .flatMap((r) => r.tested)
+    .filter((t) => t.card.control && t.gainPct !== null)
+    .map((t) => t.gainPct as number);
+  return { scenario, controls: gains.length, floorPct: gains.length > 0 ? Math.max(...gains) : null };
+}
+
+/**
+ * Judge every incident's cards by attainment gain. A card is a cause when its gain clears the floor, whether or not
+ * the SLA would then have been met; the game's card agrees when it is one of them. With no control to measure, the
+ * floor is 0 and the tool says the sample had none.
+ */
+export function judgeGains(results: readonly IncidentBlame[], floor: NoiseFloor): JudgedBlame[] {
+  const floorPct = floor.floorPct ?? 0;
+  return results.map((r) => {
+    // A control is a red herring by design: it is the yardstick, never a cause (and it is in the floor's sample).
+    const gainCause = (t: IncidentBlame['tested'][number]) => !t.card.control && t.gainPct !== null && t.gainPct > floorPct;
+    const causesGain = r.reproduced ? r.tested.filter(gainCause).map((t) => t.card) : [];
+    const agreesGain = r.reproduced && (r.blamed ? causesGain.some((c) => c.uid === r.blamed!.uid) : causesGain.length === 0);
+    return { ...r, causesGain, agreesGain };
+  });
+}
+
 export interface BlameSummary {
   /** Online incidents in the run (batch nights are out of scope). */
   incidents: number;
   /** Incidents whose opening hour the replay reproduced as a miss. */
   reproduced: number;
-  /** Incidents with at least one qualifying card to test. */
+  /** Incidents with at least one card to test. */
   testable: number;
-  /** Incidents where at least one card's removal met the SLA. */
+  /** Incidents where at least one card's removal met the SLA (RT-06). */
   withCause: number;
   agree: number;
   disagree: number;
@@ -157,11 +208,18 @@ export interface BlameSummary {
   noCause: number;
   noCandidates: number;
   notReproduced: number;
+  /** Cards tested across the sample (RT-25 tests every card active in an incident hour). */
+  cardsTested: number;
+  /** Incidents where at least one card's attainment gain cleared the noise floor (RT-25). */
+  withGainCause: number;
+  agreeGain: number;
+  disagreeGain: number;
 }
 
-export function summarizeBlame(results: readonly IncidentBlame[]): BlameSummary {
+export function summarizeBlame(results: readonly (IncidentBlame | JudgedBlame)[]): BlameSummary {
   const reproduced = results.filter((r) => r.reproduced);
   const testable = reproduced.filter((r) => r.tested.length > 0);
+  const judged = results.filter((r): r is JudgedBlame => 'causesGain' in r && 'agreesGain' in r);
   return {
     incidents: results.length,
     reproduced: reproduced.length,
@@ -172,5 +230,9 @@ export function summarizeBlame(results: readonly IncidentBlame[]): BlameSummary 
     noCause: testable.filter((r) => r.causes.length === 0).length,
     noCandidates: reproduced.filter((r) => r.tested.length === 0).length,
     notReproduced: results.length - reproduced.length,
+    cardsTested: results.reduce((n, r) => n + r.tested.length, 0),
+    withGainCause: judged.filter((r) => r.reproduced && r.tested.length > 0 && r.causesGain.length > 0).length,
+    agreeGain: judged.filter((r) => r.reproduced && r.tested.length > 0 && r.agreesGain).length,
+    disagreeGain: judged.filter((r) => r.reproduced && r.tested.length > 0 && !r.agreesGain).length,
   };
 }
