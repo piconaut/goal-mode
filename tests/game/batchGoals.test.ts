@@ -7,7 +7,7 @@ describe('batch goal advice (WLM Planning 3.1 p.71)', () => {
     const def = applyWlmEdit(BASEPOL, { op: 'SET_PERIOD', classId: 'BATCHPRD', period: 0, goal, importance: 4 });
     expect(typeof def).not.toBe('string');
     const issues = batchGoalIssues(def as ServiceDefinition);
-    expect(issues).toEqual([{ classId: 'BATCHPRD', severity: 'warning', message: 'BATCHPRD serves JES jobs with a response-time goal: needs at least three completions per 20 minutes (WLM Planning p.71); with fewer the PI is erratic.' }]);
+    expect(issues).toEqual([{ classId: 'BATCHPRD', subsystem: 'JES', severity: 'warning', message: 'BATCHPRD serves JES jobs with a response-time goal: needs at least three completions per 20 minutes (WLM Planning p.71); with fewer the PI is erratic.' }]);
     expect(serviceClassGoalIssues(def as ServiceDefinition)).toEqual(issues);
   });
 

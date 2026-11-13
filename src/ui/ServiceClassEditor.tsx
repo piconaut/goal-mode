@@ -52,7 +52,7 @@ export function ServiceClasses({ v, game }: { v: ViewModel; game: GameHandle }) 
                     <b>{c.id}</b>
                     {changed && <span className="tag warn"> edited</span>}
                     {cicsClasses.includes(c.id) && (
-                      <span className={`tag${goalIssues.some((i) => i.classId === c.id) ? ' bad' : ''}`} title="CICS transactions are classified into this class">
+                      <span className={`tag${goalIssues.some((i) => i.classId === c.id && i.subsystem === 'CICS') ? ' bad' : ''}`} title="CICS transactions are classified into this class">
                         {' '}
                         CICS txn
                       </span>
