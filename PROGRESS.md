@@ -8,6 +8,12 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **WT-12 projection rule agreed (2026-11-13; docs/wlm-design.md §9.15):** a batch RT period's projected PI is
+  its measured PI, with the execution part scaled by measured ÷ projected execution velocity. Queue time is held
+  fixed, and there is no forecast of each job's remaining work. WT-12 is `ready`.
+  - User decision: a fair few installations use batch RT goals despite IBM's advice, and the user may want to play
+    with them in game. Lower priority than the core WLM redesign, but the WLM work isn't complete without it.
+
 - **PR #333 review documentation (2026-11-13):** W11's no-PI/no-warning description is explicitly the state before
   WT-12. The remaining no-completions limitation covers all started tasks, including temporary tasks; it is not
   limited to indefinite tasks. No further model scope is claimed.
