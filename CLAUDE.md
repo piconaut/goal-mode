@@ -176,6 +176,11 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
     `pr-review-loop` (holds a PR on any finding, merges after a follow-up review shows them fixed).
   - Author: `dev-loop` implements the next ready entry of the named BACKLOG.md lists, answers a HOLD on its open PR,
     or skips.
+- Review comments: every review report an agent posts on a PR (any agent or vendor, any tool, a subagent or a
+  coordinator) starts with a header line `Automated <role> report (reference only, not a GitHub approval)`, naming
+  its role (`pr-reviewer`, `pr-fixer`, or e.g. `coordinated-review`). The loops find their reports by the exact
+  `pr-reviewer` and `pr-fixer` headers, so other reviewers use another role name. Agents' comments are posted under
+  the user's account, so a comment without such a header reads as the user's own decision.
 - Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
   them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
 - Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
