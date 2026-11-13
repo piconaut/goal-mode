@@ -94,6 +94,9 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     // costs more total harm than it gains; carrying G03 preserves the gain without that harm.
     const { input } = makeCase(1044, 'rest');
     for (const c of input.def.classes.filter((c) => c.id.startsWith('G'))) c.periods[0]!.importance = 2;
+    // This fixture isolates aggregate harm to G03. G06's old goal relied on the velocity PI ceiling to bound its
+    // harm; projections now expose that harm (WT-16), so give this unrelated rival an achievable low goal.
+    input.def.classes.find(c => c.id === 'G06')!.periods[0]!.goal = { kind: 'VEL', velocity: 9 };
     input.system.scps.forEach((p, i) => { p.dp = i % 3 === 0 ? 244 : 246; });
     const held = Object.fromEntries(input.system.scps.map((p) => [p.scKey, p.dp]));
     input.current = evaluateLpar({ ...input.evalInput, dpOf: (k) => held[k]! }).scps;
@@ -103,7 +106,7 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     expect(receiver.scKey).toBe('G00#1');
     expect(receiver.trials.map((t) => t.verdict)).toEqual(['NO_NET_VALUE', 'ACCEPTED']);
     expect(receiver.trials[0]!.blockedBy).toBe('G03#1');
-    expect(receiver.trials[0]!.detail).toBe('gain 149.37 ≤ equal-importance harm 192.30');
+    expect(receiver.trials[0]!.detail).toBe('gain 149.37 ≤ equal-importance harm 346.42');
     expect(receiver.trials[1]!.plan?.map((m) => [m.kind, m.scKey])).toEqual([['UP', 'G00#1'], ['CARRY', 'G03#1']]);
     expect(out.dps).toEqual({ 'G00#1': 244, 'G01#1': 246, 'G02#1': 246, 'G03#1': 244, 'G04#1': 246, 'G05#1': 246, 'G06#1': 242, 'G07#1': 246 });
     expect(receiver.trials[1]!.receiverPi![1]!).toBeCloseTo(90.90406894046295);
@@ -143,7 +146,7 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
       carried += t.plan!.filter((m) => m.kind === 'CARRY').length;
       const piAt = (dps: Record<string, number>) => Object.fromEntries(evaluateLpar({ ...input.evalInput, dpOf: (k) => dps[k]! }).scps.map((s) => {
         const g = goalInfo(input.def, s.scKey)!.goal;
-        return [s.scKey, g.kind === 'PCT' ? projectedPercentilePi(s.buckets, g.pct, s.completions, s.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, s)];
+        return [s.scKey, g.kind === 'PCT' ? projectedPercentilePi(s.buckets, g.pct, s.completions, s.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, s, Infinity)];
       }));
       const before = piAt(trace.dps), after = piAt(out.dps);
       expect(t.afterPis).toEqual(after);
@@ -298,7 +301,7 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
         if (c.basePi === undefined) continue;
         const g = goalInfo(def, c.scKey)!.goal;
         const t = tickOf[c.scKey]!;
-        const now = g.kind === 'PCT' ? projectedPercentilePi(t.buckets, g.pct, t.completions, t.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, t);
+        const now = g.kind === 'PCT' ? projectedPercentilePi(t.buckets, g.pct, t.completions, t.rtSumSec, g.rtSec, PCT_PROJECTION_SIGMA) : tickPi(g, t, Infinity);
         expect(c.basePi).toBe(now);
         checked++;
       }
