@@ -285,7 +285,8 @@ describe('resource group minimum', () => {
     expect(withMin.slices[0]!.cpGranted).toBeLessThan(without.slices[0]!.cpGranted - 1);
   });
 
-  it('serves a discretionary period only from capacity goal work does not want (WLM Planning p.59)', () => {
+  it('serves a discretionary minimum marked to yield only from spare capacity (WLM Planning p.59)', () => {
+    // discMin marks the fallback while outside goal work misses; WT-11's happy-goal case uses the higher share.
     const disc = evaluateLpar({ ...base, dpOf: (k: string) => (k === 'HI#1' ? 240 : 196), minOf: { 'LO#1': 1.5 }, discMin: new Set(['LO#1']) });
     expect(disc.slices[0]!.cpGranted).toBeGreaterThan(3.9);
     expect(disc.slices[1]!.cpGranted).toBeLessThan(0.2);
