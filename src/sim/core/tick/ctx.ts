@@ -2,7 +2,7 @@ import type { PoolDemand } from '../../hw/pools';
 import type { IoClass } from '../../io/dasd';
 import { jobShape, type JobRuntime } from '../../subsys/batch';
 import type { IoService, LparEvalInput, SliceSpec } from '../../wlm/evaluate';
-import type { WlmSystemState } from '../../wlm/runtime';
+import type { ServerPeriodState, WlmSystemState } from '../../wlm/runtime';
 import { clockAt } from '../clock';
 import type { Scenario } from '../scenario';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
@@ -102,6 +102,8 @@ export interface ImageEvalInput {
   promoted: Set<string>;
   plexShare: Record<string, number>;
   regions: LparEvalInput['regions'];
+  /** The image's server period and its DP this tick (holders.ts), carried into the new WlmSystemState. */
+  servers?: ServerPeriodState[];
 }
 
 /** Sums over all images, accumulated in image order. */

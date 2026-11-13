@@ -75,7 +75,7 @@ const shareText = (c: WlmCandidateTrace) =>
   SHARE_KEYS.map((k) => `${k} ${(100 * c.delayShares[k]).toFixed(0)}%`).join(' ');
 
 function candidateLines(c: WlmCandidateTrace, n: number): string[] {
-  const head = `  ${n}. ${c.scKey} imp ${c.importance} PI ${piText(c.sysplexPi)} (local ${piText(c.localPi)}) DP ${hexDp(c.dp)}${c.bottleneck ? ` BTLNK ${c.bottleneck}` : ''}`;
+  const head = `  ${n}. ${c.scKey}${c.holder ? ` (regions ${c.holder})` : ''} imp ${c.importance} PI ${piText(c.sysplexPi)} (local ${piText(c.localPi)}) DP ${hexDp(c.dp)}${c.bottleneck ? ` BTLNK ${c.bottleneck}` : ''}`;
   const waiting = c.waitingFrac !== undefined && c.waitingFrac > 0.5 ? [`       mostly waiting: waits are ${(100 * c.waitingFrac).toFixed(0)}% of all samples`] : [];
   const shares = [`       delay ${shareText(c)} of using + delay`, ...waiting];
   // To the second: a clock runs in 10-second intervals.
@@ -357,7 +357,8 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
     }
     for (const cand of t.candidates) for (const tr of cand.trials) {
       if (tr.verdict !== 'ACCEPTED' || !tr.afterPis) continue;
-      for (const [period, pi] of Object.entries(tr.afterPis)) if (period !== cand.scKey && pi !== null && pi > 1) harmedAt.set(period, at);
+      // A served period's moves are its holder's (the server period, WT-09): harm to it is harm to that holder.
+      for (const [period, pi] of Object.entries(tr.afterPis)) if (period !== cand.scKey && pi !== null && pi > 1) harmedAt.set(t.heldBy?.[period] ?? period, at);
     }
     // A committed plan ends the primary receiver's run, even if only its donors moved. Donating to another
     // receiver does not end the donor's own run; neither does an adjustment that skipped the period.

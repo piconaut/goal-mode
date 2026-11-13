@@ -44,7 +44,15 @@ export interface PlanResult {
  * APPROX: advance receiver steps until blocked, then try donors; one named secondary receiver may repair each raise.
  * maxSteps bounds retained moves (UP, CARRY and DONOR each count), not free rejections. */
 export function buildPlan(input: {
+  /** The receiver's holder: the ladder key its moves move (the receiver period itself unless a server period holds
+   * its DP, holders.ts). */
   receiver: string;
+  /** The receiver period's importance (default: `importanceOf(receiver)`); a served class can be less important
+   * than its holder. */
+  receiverImportance?: number;
+  /** A goal period's holder (default: itself). A blocker is carried as its holder; one that shares the receiver's
+   * holder already moves with it, so carrying it is void. */
+  holderOf?: (key: string) => string;
   ladder: Ladder;
   donors: readonly string[];
   maxSteps: number;
@@ -54,6 +62,8 @@ export function buildPlan(input: {
   receiverValue: (after: number) => boolean;
 }): PlanResult {
   const { receiver: r, ladder: original, donors, maxSteps, importanceOf, assess, receiverValue } = input;
+  const holderOf = input.holderOf ?? ((k: string) => k);
+  const rImp = input.receiverImportance ?? importanceOf(r);
   let L = original;
   let cur = input.basePi;
   let preferUp = true;
@@ -99,8 +109,9 @@ export function buildPlan(input: {
         const proposed = [step('UP', r, L, T)];
         let a = evaluate(T, proposed, 'UP');
         if (!a) return finish('BUDGET');
-        const k = a.blockedBy;
-        if (!a.ok && k && k !== r && importanceOf(k) <= importanceOf(r) && levelOf(T, k) >= levelOf(T, r) &&
+        const blocker = a.blockedBy;
+        const k = blocker === undefined ? undefined : holderOf(blocker);
+        if (!a.ok && blocker && k && k !== r && importanceOf(blocker) <= rImp && levelOf(T, k) >= levelOf(T, r) &&
             moves.length + 2 <= maxSteps) {
           const carried = moveToLevel(T, k, levelOf(T, r));
           if (JSON.stringify(carried) !== JSON.stringify(T) && !seen.has(JSON.stringify(carried))) {

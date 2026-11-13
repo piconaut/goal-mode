@@ -2,12 +2,18 @@ import { addJobDelay, advanceJob, jobShape } from '../../subsys/batch';
 import { DB2 } from '../../subsys/db2';
 import { scKeyAtService } from '../../workload/slices';
 import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../../wlm/evaluate';
-import { decayInto, emptyAcc, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
+import { decayInto, emptyAcc, goalInfo, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
+import { holderTopology } from '../../wlm/holders';
 import type { LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
 import { addParts, cicsHonorPriority, classifyJob, idleScpTick, jobServiceSu, rgMin, rgSysplexShares, wlLparKey } from './helpers';
 import { atOrFind, type ImagePlan, regionsOf } from './plan';
+
+const isGoalPeriod = (def: TickCtx['def'], k: string): boolean => {
+  const g = goalInfo(def, k);
+  return g !== null && g.goal.kind !== 'DISC';
+};
 
 /** This tick's PR/SM outcome for the image (`t.lpars` is in the plan's `rtIdx` order). */
 function runtimeOf(t: TickCtx, img: ImagePlan): LparRuntime {
@@ -31,15 +37,28 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
     for (const s of prevSys.scps) if (s.starvedSec >= sysCfg.blwlinthdSec) promoted.add(s.scKey);
   }
 
-  // DPs are per-tick state: periods the image has not dispatched before are placed on the ladder here (WT-06).
+  const regions = regionsOf(img, def, slices, workloadById, addressSpaces).regions;
+  // DPs are per-tick state: periods the image has not dispatched before are placed on the ladder here (WT-06). The
+  // ladder is of holders (WT-09): CICS transaction periods take their server period's DP.
+  const topo = holderTopology(regions, slices.filter((s) => isGoalPeriod(def, s.scKey)).map((s) => s.scKey));
   const held: Record<string, number> = {};
   for (const s of prevSys?.scps ?? []) held[s.scKey] = s.dp;
+  const server = topo.serverKey;
   let fresh: string[] | null = null;
+  if (server) {
+    const kept = prevSys?.servers?.find((x) => x.key === server)?.dp;
+    // A save from before server periods: the regions ran at the highest served DP.
+    let top: number | undefined = kept;
+    if (top === undefined) for (const k of Object.keys(topo.heldBy)) if (held[k] !== undefined && (top === undefined || held[k]! > top)) top = held[k];
+    if (top !== undefined) {
+      held[server] = top;
+      for (const k of Object.keys(topo.heldBy)) if (held[k] !== undefined && held[k] !== top) (fresh ??= []);
+    }
+  }
   for (const s of slices) if (held[s.scKey] === undefined) (fresh ??= []).push(s.scKey);
-  const dpMap = fresh ? placeNewPeriods(def, held, fresh) : held;
-  const dpOf = (k: string) => dpMap[k] ?? (dpMap[k] = placeLateDp(def, dpMap, k));
+  const dpMap = fresh ? placeNewPeriods(def, held, fresh, topo) : held;
+  const dpOf = (k: string) => dpMap[k] ?? (dpMap[k] = placeLateDp(def, dpMap, k, topo));
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
-  const regions = regionsOf(img, def, slices, workloadById, addressSpaces).regions;
   const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
   const out: ImageEvalInput = {
     prevSys,
@@ -48,6 +67,7 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
     promoted,
     plexShare,
     regions,
+    ...(server && dpMap[server] !== undefined ? { servers: [{ key: server, dp: dpMap[server]! }] } : {}),
   };
   t.imageInputs[l.id] = out;
   return out;
@@ -293,7 +313,8 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
     const dp = dpOf(p.scKey);
     scps.push({ ...p, dp, starvedSec: 0, acc: decayInto(p.acc, idleScpTick(p.scKey, dp)) });
   }
-  systems.push({ lparId: l.id, scps });
+  const srv = t.imageInputs[l.id]!.servers;
+  systems.push(srv ? { lparId: l.id, scps, servers: srv.map((x) => ({ ...x })) } : { lparId: l.id, scps });
   const cics = regions?.targets;
   const cicsStorage = t.cicsStorageBy[l.id];
   lparTicks.push({
