@@ -1,6 +1,7 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
+import { closeInterval } from '../../src/sim/measure/rmf';
 import type { JobRuntime } from '../../src/sim/subsys/batch';
 import { accPi } from '../../src/sim/wlm/runtime';
 import type { Goal } from '../../src/sim/wlm/types';
@@ -74,6 +75,42 @@ describe('batch response-time goals (WLM Planning 3.1 p.71)', () => {
     expect(measured(next).completions).toBe(2);
     expect(measured(next).rtSumSec).toBe(100);
     expect(measured(next).buckets.reduce((a, b) => a + b, 0)).toBe(2);
+  });
+
+  it.each([
+    { goal: { kind: 'AVG', rtSec: 100 } as Goal, secondPeriod: false },
+    { goal: { kind: 'PCT', rtSec: 100, pct: 90 } as Goal, secondPeriod: false },
+    { goal: { kind: 'AVG', rtSec: 100 } as Goal, secondPeriod: true },
+    { goal: { kind: 'PCT', rtSec: 100, pct: 90 } as Goal, secondPeriod: true },
+  ])('reports each completed $goal.kind job only in its assigned report class (later period: $secondPeriod)', ({ goal, secondPeriod }) => {
+    const { state, scenario } = fixture(goal, secondPeriod);
+    state.wlm.definition.reportClasses.push('BATCHRC', 'OTHERRC');
+    const jes = state.wlm.definition.subsystems.find((s) => s.subsystem === 'JES')!;
+    jes.rules.unshift(...['ONEJOB', 'TWOJOB'].map((pattern, i) => ({
+      qualifier: 'TN' as const, pattern, serviceClass: 'BATCHPRD', reportClass: i === 0 ? 'BATCHRC' : 'OTHERRC', children: [],
+    })));
+    for (const [name, queuedTick] of [['TWOJOB', 3], ['THREEJOB', 5]] as const) {
+      const job = structuredClone(state.batch.jobs[0]!);
+      job.def.name = name;
+      job.queuedTick = queuedTick;
+      // The third job waits zero ticks, then runs for 20 seconds.
+      if (name === 'THREEJOB') job.startTick = 5;
+      state.batch.jobs.push(job);
+    }
+    let next = step(state, [], scenario);
+    next = step(next, [], scenario); // finished jobs must not be counted again
+    const iv = closeInterval(next.rmf.acc, { def: next.wlm.definition, config: next.config, r4haByLpar: {}, jobs: [], endTick: next.tick });
+    const key = `BATCHPRD#${secondPeriod ? 2 : 1}`;
+    const service = iv.wlm.find((r) => r.lparId === 'PROD1' && r.scKey === key)!;
+    expect([service.ended, service.avgRtSec]).toEqual([3, 40]);
+    for (const system of ['PROD1', '*PLEX']) {
+      for (const [name, rtSec, pi] of [['BATCHRC', 60, .6], ['OTHERRC', 40, goal.kind === 'AVG' ? .4 : .5]] as const) {
+        const row = iv.wlmRc!.find((r) => r.lparId === system && r.scKey === name)!;
+        expect(row.members).toEqual([key]);
+        expect([row.ended, row.avgRtSec, row.pi]).toEqual([1, rtSec, pi]);
+        expect(row.buckets.reduce((a, b) => a + b, 0)).toBe(1);
+      }
+    }
   });
 
   it.each<Goal>([{ kind: 'VEL', velocity: 30 }, { kind: 'DISC' }])('keeps non-RT job accounting unchanged: $kind', (goal) => {

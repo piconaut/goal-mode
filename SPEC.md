@@ -505,6 +505,7 @@ priority they get.
 For fluid transactions we fill buckets from the log-normal response distribution, Φ((ln b − μ)/σ), times
 completions. A completed batch job contributes one observation to the bucket containing its queue-plus-elapsed
 response time, in the service-class period it ran in when it ended (WLM Planning 3.1 p.71; WT-12).
+Its assigned report class receives the same completion, response-time sum and bucket observation (p.113).
 
 PI is tracked **locally** (per system) and as a **sysplex PI**, computed from the systems' accumulators summed
 (completions, response-time sums, buckets, using and delay samples), then one PI (`sysplexPis`), not as an average of

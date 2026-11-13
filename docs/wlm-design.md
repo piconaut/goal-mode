@@ -1105,7 +1105,8 @@ does not see the waits that hold the measured PI up.
   before happy ones; SG24-6472 p.63, WLM Planning p.57–59). APPROX: the gate uses measured local PI, not a projected
   new goal miss. Tests: `tests/sim/resourceGroupMinimum.test.ts` and existing resource-group dispatch/realism tests.
 - **Batch response-time goals:** a job's end adds one completion with response time = queue + elapsed to its
-  period's accumulator, with one exact bucket observation (WT-12). Queue + elapsed uses the same tick-boundary
+  period's accumulator and its assigned report class, with one exact bucket observation in each (WT-12;
+  report-class completion/RT/bucket data: WLM Planning 3.1 p.113). Queue + elapsed uses the same tick-boundary
   clock as RMF's job-end record. Average and percentile measured PIs disappear when the decayed completion count
   reaches 1e-9 (within 25 minutes after a lone job); the fixed window and cutoff are still approximations. The JES editor warns on RT goals,
   and the PI Codex entry gives IBM's three-completions-per-20-minutes advice (WLM Planning 3.1 p.71). Tests:

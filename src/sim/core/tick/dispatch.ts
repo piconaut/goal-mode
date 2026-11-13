@@ -278,10 +278,14 @@ export function dispatchLpar(t: TickCtx, l: LparConfig, sums: TickSums): void {
         if (goal?.kind === 'AVG' || goal?.kind === 'PCT') {
           // A batch transaction is a job (WLM Planning 3.1 p.71); use stepRmf's queue + elapsed time.
           const rtSec = (jr.job.endTick! - (jr.job.queuedTick ?? jr.job.startTick)) * TICK_SEC;
-          const measured = res.scps.find((x) => x.scKey === ref.slice.scKey)!;
-          measured.completions += 1;
-          measured.rtSumSec += rtSec;
-          addToBuckets(measured.buckets, goal.rtSec, 1, rtSec, 0);
+          const measured = [res.scps.find((x) => x.scKey === ref.slice.scKey)!];
+          // Report classes carry completions, RT and buckets too (WLM Planning 3.1 p.113).
+          if (ref.slice.reportClass) measured.push(res.rcs!.find((x) => x.scKey === ref.slice.reportClass)!);
+          for (const target of measured) {
+            target.completions += 1;
+            target.rtSumSec += rtSec;
+            addToBuckets(target.buckets, goal.rtSec, 1, rtSec, 0);
+          }
         }
       }
       const ioNow = jr.shape.ioRate / Math.max(1, jr.job.stretch);

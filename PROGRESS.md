@@ -8,6 +8,11 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **PR #333 review M1 (2026-11-13):** completed AVG/PCT batch jobs now contribute the same completion, queue-plus-
+  elapsed response time and exact bucket to their assigned report class (WLM Planning 3.1 p.113, rechecked).
+  Regression cases cover AVG/PCT in first/later periods, separate report classes and unreported jobs, local and
+  sysplex RMF rows, and no duplicate completion. Report-class grouping/heterogeneity rules are unchanged.
+
 - **PR #333 review B1 (2026-11-13):** measured percentile PIs now use the same completion-count cutoff as average
   PIs. A lone job's bucket ratio no longer keeps a period missing its goal after its completion history expires;
   trial percentile projections retain their existing path. The AVG/PCT completion/25-minute-expiry regression
