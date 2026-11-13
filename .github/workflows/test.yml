@@ -70,11 +70,16 @@ jobs:
             echo
           } > runs/report/summary.md
           status=0
-          node --experimental-strip-types --no-warnings tools/ci/testReport.ts runs/test/report.json "$PWD" >> runs/report/summary.md || status=$?
-          if [ "$TESTS" != success ]; then
-            echo >> runs/report/summary.md
-            echo "❌ The test step finished as $TESTS: the report above may be incomplete; the run log has the full output." >> runs/report/summary.md
+          if [ "$TESTS" = skipped ]; then
+            echo "❌ The test step did not run, so there is no report: an earlier step (argument plan or npm ci) failed; see the run log." >> runs/report/summary.md
             status=1
+          else
+            node --experimental-strip-types --no-warnings tools/ci/testReport.ts runs/test/report.json "$PWD" >> runs/report/summary.md || status=$?
+            if [ "$TESTS" != success ]; then
+              echo >> runs/report/summary.md
+              echo "❌ The test step finished as $TESTS: the report above may be incomplete; the run log has the full output." >> runs/report/summary.md
+              status=1
+            fi
           fi
           cat runs/report/summary.md >> "$GITHUB_STEP_SUMMARY"
           exit $status

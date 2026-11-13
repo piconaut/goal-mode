@@ -46,7 +46,7 @@ const shorten = (s: string) => s.trim().split('\n').slice(0, MAX_MESSAGE_LINES).
 /** One markdown report for a run, with a short failure list. A missing report, a failed test file or no tests fail. */
 export function summarize(json: VitestJson | null, root = ''): Summary {
   if (!json) {
-    return { markdown: ['❌ No test report was written: vitest was killed or crashed before finishing (see the run log).'], ok: false };
+    return { markdown: ['❌ No test report was written (see the run log).'], ok: false };
   }
   const strip = (s: string) => (root ? s.split(`${root}/`).join('') : s);
   const total = json.numTotalTests ?? 0;
