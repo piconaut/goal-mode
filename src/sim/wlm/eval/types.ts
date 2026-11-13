@@ -248,6 +248,8 @@ export interface ScpTick {
   completions: number;
   failed: number;
   rtSumSec: number;
+  /** Queue time inside `rtSumSec` for the batch completions this tick recorded (WT-12); absent elsewhere. */
+  rtQueueSumSec?: number;
   buckets: number[];
 }
 

@@ -395,13 +395,11 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - **Sequencing against `rca-truth`** (user decision 2026-11-10, docs/wlm-design.md §7): the core WT-04 … WT-09 and
   WT-10 land after RT-06 (the counterfactual validator) and before RT-14 (card footprints), so footprints and
   balance are built once, on the WLM players will keep. Each of those PRs reports RT-06's validator differences.
-  WT-12 implemented completion measurements and editor advice without changing shipped behaviour. Its remaining
-  priority projection is ready below, with the rule agreed on 2026-11-13: lower priority than the core, but required.
 - **One at a time.** Each `sim` entry: goldens regenerated with a "Behaviour change" note, `npm run bench` before and
   after (tick budget, SPEC §15), a three-scenario `npm run sweep:remote` (seeds 1–10, Normal) recorded in
   PROGRESS.md M8.2, and the realism policy (cite docs/wlm-design.md §3's pages in code comments).
 - **Coupled core:** WT-04 and WT-08 are not to be split or delegated; the main agent implements them. WT-09 is
-  cross-layer and stays on the main agent too. The single-rule entries (WT-05, WT-07, WT-10, WT-11, WT-12) may go to
+  cross-layer and stays on the main agent too. The single-rule entries (WT-05, WT-07, WT-10, WT-11) may go to
   the Opus `realism-fixer` subagent, with the main agent reviewing and running the sweep (user decision on §8 Q7,
   2026-11-10; an exception to the rule that `sim` entries stay on the main agent).
 - **Attended sessions** (user decision 2026-11-10): WT-04, WT-08 and WT-09 are not for `dev-loop`. Each is done in
@@ -416,73 +414,6 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-12 · Batch response-time priority projections (remaining W11)
-`list: wlm-truth · status: ready · priority: low · size: M · area: sim`
-
-Batch response-time goals are against IBM's advice, the user may want
-to play with them in game. This entry has lower priority than the core WLM redesign, but the WLM work isn't complete
-without it (user, 2026-11-13).
-
-**Already done (#333).** A completed job adds a completion to its ending period: one queue-plus-elapsed response
-time and one exact bucket. It also has editor and Codex advice.
-
-**Remaining.** Base and trial PIs in `policyAdjust` come from re-evaluated address-space slices, which have no
-completions. So a batch-only AVG/PCT period has a null projected PI. Even at measured PI 4 with CPU delay, it is
-skipped as RECOVERING.
-
-**Rule** (agreed 2026-11-13, docs/wlm-design.md §9.15). For a goal period with an AVG or PCT goal and
-address-space samples, scale the measured PI by the projected change in execution speed of the elapsed part:
-
-```
-PI' = PI_measured × (Q̄ + Ē × v_ref / v') / (Q̄ + Ē)
-```
-
-- Q̄ and Ē are the decayed mean queue time and execution time of the period's completed jobs. Keep a new optional
-  `rtQueueSumSec` beside `rtSumSec` in `ScpAcc`/`ScpTick`. Write it only on WT-12's completion path, and decay it
-  the same way.
-- `v_ref` is the period's measured execution velocity, from its accumulators. `v'` is that velocity in the
-  evaluation at the base or trial DPs.
-  - Both exclude queue-delay samples. Queue time is already in Q̄, and queued WLM-initiator jobs add
-    `delayQueue` to measured ticks but not to projections.
-  - Both use the existing 0.1 % velocity floor.
-- A DP move changes only Ē, because JES initiator wait doesn't respond to a dispatching priority.
-- The base PI uses `v'` at the current DPs, so RECOVERING keeps its meaning: the period is recovering when the
-  sustained-demand speed already brings PI' ≤ 1.
-- A null input gives a null PI, and nothing moves:
-  - no measured PI (no completions in the window);
-  - no running job of the period (no samples in the evaluation).
-
-  That is correct: no DP can speed up work that isn't running.
-- PCT goals use the same factor on the percentile PI, with Q̄ and Ē from the means. Buckets keep no
-  queue/execution split. APPROX.
-- Use it on both sides: a batch RT donor's harm comes from the same formula.
-- Mark it `// APPROX:`. IBM names the plots WLM projects from (SG24-6472 p.62), but no book gives the formula.
-- Don't forecast each running job's remaining work. WLM doesn't know it, and RMF reports response times for ended
-  transactions only (RMF Report Analysis 3.1 p.148).
-
-**Known approximations to record:**
-- a job's response time covers its whole life, but a later period's samples cover only part of it;
-- a period that mixes batch with other address-space work takes the factor from all its samples;
-- the velocity floor carries RF-04's extreme into donor harm.
-
-**Tests**, for both AVG and PCT batch-only receivers:
-- non-null base and trial PIs;
-- a CPU-starved receiver missing its goal reaches trials;
-- a useful safe grant improves the projection, and its donor's projected harm follows the formula;
-- RECOVERING applies when `v'` at the current DPs already gives PI' ≤ 1;
-- null when no job is running, and when completions have expired;
-- receiver-value and donor safeguards still apply.
-
-Keep the existing completion measurements and their tests.
-
-**Done when:**
-- the rule is built with those tests;
-- W11 is marked fixed in docs/wlm-design.md;
-- SPEC §5.10.4 and §17, research.md rows 64/118 and PROGRESS reflect the result.
-
-Prove that shipped behaviour is unchanged with goldens, bench hashes and `npm run compare`. Bots: none, while no
-shipped policy has a batch RT goal and the change stays on that goal path.
-
 ### WT-14 · Receivers that meet their goals; small consumers; mean-time-to-wait (W2, W13)
 `list: wlm-truth · status: blocked: playtest (docs/wlm-design.md §8 Q3, Q8) · priority: low · size: M · area: sim`
 
@@ -495,7 +426,7 @@ or equal-priority discretionary work misleads players.
 ### WT-17 · Trim docs/wlm-design.md to the design; archive the audit and its history
 `list: wlm-truth · status: ready · priority: low · size: M · area: content`
 
-User request 2026-11-13. WT-16 (closed 2026-11-13, #331) recorded its verdict in §9.13–§9.14. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11, WT-12) or deferred (WT-14); split docs/wlm-design.md:
+User request 2026-11-13. WT-16 (closed 2026-11-13, #331) recorded its verdict in §9.13–§9.14. WT-15 (2026-11-13) marked every finding fixed, settled, open (WT-11) or deferred (WT-14); split docs/wlm-design.md:
 - **kept** in docs/wlm-design.md, as a living design doc: real WLM with page citations (§3), the sim's model as built
   (§5, as a description, not a change history), the invariants I1 … with the test that checks each (IDs unchanged),
   and the approximations, known gaps and open questions;

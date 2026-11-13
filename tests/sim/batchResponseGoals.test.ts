@@ -3,7 +3,7 @@ import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
 import { closeInterval } from '../../src/sim/measure/rmf';
 import type { JobRuntime } from '../../src/sim/subsys/batch';
-import { accPi } from '../../src/sim/wlm/runtime';
+import { accPi, ACC_DECAY } from '../../src/sim/wlm/runtime';
 import type { Goal } from '../../src/sim/wlm/types';
 
 function fixture(goal: Goal, secondPeriod = false) {
@@ -62,6 +62,14 @@ describe('batch response-time goals (WLM Planning 3.1 p.71)', () => {
     const next = step(state, [], scenario);
     expect(next.batch.jobs[0]!.status).toBe('RUNNING');
     expect(measured(next).completions).toBe(0);
+  });
+
+  it('keeps the queue part of each completion beside the response-time sum (WT-12)', () => {
+    const { state, scenario } = fixture({ kind: 'AVG', rtSec: 30 });
+    let next = step(state, [], scenario);
+    expect(measured(next).rtQueueSumSec).toBe(20);
+    next = step(next, [], scenario);
+    expect(measured(next).rtQueueSumSec).toBeCloseTo(20 * ACC_DECAY);
   });
 
   it('adds simultaneous job completions in the same period', () => {

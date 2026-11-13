@@ -9,6 +9,8 @@ export const BUCKETS = BUCKET_BOUNDS.length;
 export const DISCRETIONARY_PI = 0.81;
 export const PI_MIN_PERCENTILE = 0.5;
 export const PI_MAX_PERCENTILE = 4.0;
+/** The existing velocity floor: keeps zero-service projections finite (0.1 %). */
+export const VELOCITY_FLOOR = 0.1;
 
 // Literal (packed) rather than new Array(n).fill(0), which is holey and slower to build and sum.
 export const emptyBuckets = (): number[] => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -114,7 +116,7 @@ export function performanceIndex(goal: Goal, x: PiInputs, velocityPiMax = 99): n
     case 'VEL': {
       const v = velocityOf(x.usingSamples, x.delaySamples);
       if (v === null) return null;
-      return Math.min(goal.velocity / Math.max(v, 0.1), velocityPiMax);
+      return Math.min(goal.velocity / Math.max(v, VELOCITY_FLOOR), velocityPiMax);
     }
     case 'AVG':
       return x.completions > 1e-9 ? x.rtSumSec / x.completions / goal.rtSec : null;

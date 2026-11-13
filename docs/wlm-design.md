@@ -4,11 +4,11 @@ Status: **implemented** (WT-04 … WT-10 and RF-03, closed by WT-15 on 2026-11-1
 entry landed differently: one PI basis, sustained demand and the missing-goal rule (WT-04, §9.5); skip clocks, the delay test and the interval
 budget (WT-05, §9.6; RF-03, §9.11); the canonical ladder and the z/OS 1.8 DP table (WT-06, §9.7); donor order (WT-07,
 §9.8); atomic plans (WT-08, §9.9); managed bottlenecks in turn (WT-10, §9.10); server periods (WT-09, §9.12). Every
-finding in §4 says whether it is fixed, settled or deferred to a playtest (W13: WT-14); W11 is partially fixed
-by WT-12's batch measurements/advice, with priority management still open. §2 describes the sim as audited
-(2026-11-10), before any of them. WT-11's discretionary minimum and WT-12's batch completions are implemented
-(§5.8), as is WT-16's sample correction (§9.13–§9.14, with the I13 cost accepted by the user).
-Open: WT-12 (batch RT projections, ready with the rule agreed in §9.15) and WT-17 (trim this document to the design
+finding in §4 says whether it is fixed, settled or deferred to a playtest (W13: WT-14); W11 is fixed by WT-12's
+batch measurements, editor advice and priority projection (§9.15). §2 describes the sim as audited (2026-11-10),
+before any of them. WT-11's discretionary minimum and WT-12's batch response-time work are implemented (§5.8), as
+is WT-16's sample correction (§9.13–§9.14, with the I13 cost accepted by the user).
+Open: WT-17 (trim this document to the design
 and archive the audit). The work is in [BACKLOG.md](../BACKLOG.md) list `wlm-truth`; §8 lists its questions and the
 user's decisions; §9 has each entry's results. This is the WLM counterpart of [rca-design.md](rca-design.md).
 
@@ -783,19 +783,18 @@ batch with a minimum as a throughput goal" ([SG24-6472 p.68][r68]) is weaker in 
 
 ### W11. A response-time goal on batch or started tasks is never managed (medium)
 
-*Partially fixed by WT-12 (§5.8): batch completion measurements and editor advice. Priority management remains
-open in WT-12, ready with the projection rule of §9.15. Started tasks have no transaction completions in the sim.*
+*Fixed by WT-12 (§5.8, §9.15): batch completion measurements, editor advice and priority management. Started tasks
+have no transaction completions in the sim.*
 
 Before WT-12, code reading (C-1) found that address-space slices reported no completions (`sliceResults`), so an
 average or percentile goal on a batch or STC class had no PI: never a receiver, never "missing" for a minimum,
 no PI in WLMGL. The policy editor accepted such a goal without comment. IBM allows response-time goals for batch
 with at least three completions per 20 minutes ([WLM Planning p.71][wp71]).
 
-WT-12 adds batch measurements and advice; started tasks, including temporary ones, still contribute no completions.
-It does not yet fix batch priority management: `policyAdjust` obtains its
-base and trial PIs by re-evaluating AS slices without discrete job completions. A batch-only AVG/PCT class therefore
-has a null projected PI even while its measured PI misses the goal, and `adjust.ts` skips it as RECOVERING without
-a trial. W11 stays open for this limitation until WT-12 builds the projection rule agreed in §9.15.
+WT-12 adds batch measurements and advice, and its priority projection (§9.15) gives a batch-only AVG/PCT class a
+base and trial PI even though the re-evaluated AS slices carry no completions. Such a class can now be a receiver or
+a donor. Started tasks, including temporary ones, still contribute no completions, so a started-task response-time
+goal remains unmanaged.
 
 ### W12. Dispatching priorities use the table from before z/OS 1.8 (low)
 
@@ -1113,10 +1112,13 @@ does not see the waits that hold the measured PI up.
   editor warns on RT goals, and the PI Codex entry gives IBM's three-completions-per-20-minutes advice (WLM Planning 3.1 p.71). Tests:
   `tests/sim/batchResponseGoals.test.ts`, `tests/game/batchGoals.test.ts`. Started tasks still have no
   completions; no shipped policy gives batch an RT goal.
-  **Remaining management gap (W11):** these observations are added after dispatch evaluation. Base/trial
-  evaluations used by policy adjustment still have no completions for batch AS slices, so a batch-only RT
-  receiver has null projected PI and is skipped as RECOVERING, even with measured PI > 1 and CPU delay. The
-  projection rule was agreed on 2026-11-13 (§9.15); WT-12 builds it.
+  **Priority projection (W11 fixed, WT-12):** the base and trial PIs scale the measured PI by the projected change
+  in execution speed of the elapsed part (`projectBatchRtPi` in `batchRt.ts`, §9.15). The measured queue and
+  execution means come from `rtQueueSumSec`/`rtSumSec` and the completion count; the execution velocities from the
+  period's samples without server or queue-delay samples, with the existing 0.1 % floor. Null when no completion has
+  not expired or no job of the period is running. The same formula projects a batch RT donor's harm. APPROX: no
+  book gives the formula; whole-life response times, mixed periods and the velocity floor are the recorded
+  differences. Tests: `tests/sim/batchRt.test.ts`.
 
 ### 5.9 Invariants and their tests
 
@@ -2154,7 +2156,7 @@ Scripted goldens are regenerated for changed states and WLM choices. Sweep resul
 
 ### 9.15 WT-12 design: projecting a batch response-time PI
 
-Agreed with the user on 2026-11-13, after #333 built the measurements. Not built yet; BACKLOG WT-12 builds it.
+Agreed with the user on 2026-11-13, after #333 built the measurements; built by WT-12 on 2026-11-13.
 
 **Why it is needed.** IBM recommends velocity goals for batch, but a fair few installations give batch
 response-time goals anyway. The user may want to play with them in game. Without a projection, policy adjustment
@@ -2163,7 +2165,7 @@ can't manage such a period at all:
 - its base and trial evaluations re-run address-space slices that carry no completions, so the projected PI is null;
 - `adjust.ts` then skips the period as RECOVERING, with no trial.
 
-That is the open half of W11. It ranks below the core WLM redesign, but the WLM work isn't complete without it.
+That was the open half of W11. It ranked below the core WLM redesign, but the WLM work was not complete without it.
 
 **What the books give.** WLM projects a receiver's benefit and a donor's cost from resource plots. Among them are
 the period ready-user-average plot and the period proportional aggregate speed plot
@@ -2223,6 +2225,20 @@ So a batch RT goal manages less steadily than a velocity goal, which is the less
   cover only its part.
 - **Mixed periods.** A period mixing batch with other address-space work takes the factor from all its samples.
 - **Velocity floor.** The floor carries RF-04's extreme into donor harm.
+
+**As built.** `ScpAcc.rtQueueSumSec`/`ScpTick.rtQueueSumSec` are optional and written only on the batch completion
+path (`dispatch.ts`: start tick − queued tick), decayed beside `rtSumSec` (`runtime.ts`). `projectBatchRtPi`
+(`src/sim/wlm/batchRt.ts`) applies the formula, gated on `rtQueueSumSec` being present, so transaction RT periods
+keep their existing re-evaluated projections. `policyAdjust`'s `instPi` uses it for every base and trial PI,
+including donors. Tests: `tests/sim/batchRt.test.ts` (AVG and PCT, non-null base/trials, gain, RECOVERING, null
+cases, donor harm and safeguards) plus the existing batch completion tests. The batch path is used only while the
+period still has address-space work in the evaluation (`kind: 'AS'`): a decayed `rtQueueSumSec` from an old job
+does not displace the transaction projection when the class now serves transactions (shared JES/DDF classification
+or a policy reclassification; review B1). No shipped policy gives batch an RT
+goal, so goldens, bench hashes and `npm run compare` are unchanged. An old save has no queue split until its next
+batch completion, so a batch RT period stays unmanaged until then; every other field loads unchanged. From that
+first completion until the old response-time history has decayed (about 25 minutes), `rtQueueSumSec` restarts at
+0 while `rtSumSec` and the completion count still hold history, so Q̄/Ē are biased toward all-execution.
 
 Started tasks still have no completions and are out of scope.
 

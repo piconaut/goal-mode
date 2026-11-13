@@ -8,11 +8,17 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
-- **WT-12 projection rule agreed (2026-11-13; docs/wlm-design.md §9.15):** a batch RT period's projected PI is
-  its measured PI, with the execution part scaled by measured ÷ projected execution velocity. Queue time is held
-  fixed, and there is no forecast of each job's remaining work. WT-12 is `ready`.
+- **WT-12 batch RT priority projections (2026-11-13):** a batch AVG/PCT period's base and trial PIs are its measured
+  PI with the execution part scaled by measured ÷ projected execution velocity (`PI × (Q̄ + Ē × v_ref / v') / (Q̄ + Ē)`,
+  docs/wlm-design.md §9.15). The queue time is held fixed and there is no forecast of each job's remaining work.
+  `rtQueueSumSec` keeps the queue split beside `rtSumSec`; `batchRt.ts` applies the formula only where that field is
+  present and the period still has address-space work (`kind: 'AS'`), so a decayed queue split does not override the
+  transaction projection when the class later serves transactions (review B1). Null with no completions or no running job;
+  PCT uses the same factor on the extrapolated percentile PI; donors use the same formula. Tests: `tests/sim/batchRt.test.ts`.
+  W11 is fixed for batch; started tasks still have no completions. No shipped policy gives batch an RT goal, so
+  goldens, bench hashes and `npm run compare` are unchanged.
   - User decision: a fair few installations use batch RT goals despite IBM's advice, and the user may want to play
-    with them in game. Lower priority than the core WLM redesign, but the WLM work isn't complete without it.
+    with them in game. Lower priority than the core WLM redesign, but the WLM work is not complete without it.
 
 - **PR #333 review documentation (2026-11-13):** W11's no-PI/no-warning description is explicitly the state before
   WT-12. The remaining no-completions limitation covers all started tasks, including temporary tasks; it is not
@@ -34,15 +40,14 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 - **WT-12 (2026-11-13):** completed batch jobs feed response-time goals with one queue-plus-elapsed observation
   in the ending period. JES RT goals carry the three-completions-per-20-minutes advice in the editor and PI Codex
-  entry (WLM Planning 3.1 p.71). **W11 remains partially open:** batch-only AVG/PCT priority projections have no
-  completions, return null PI and skip CPU-starved receivers as RECOVERING. WT-12 retains that remainder blocked on
-  a projection design; this PR completes measurement/advice only. Started tasks remain without completions.
+  entry (WLM Planning 3.1 p.71). **Historical:** at this PR W11's batch priority projection was still open; the top
+  WT-12 entry closes it. Started tasks remain without completions.
 
 - **WT-11 (2026-11-13):** discretionary resource-group minima use smoothed CP consumption and CPU delay, run ahead
   of goal work meeting its goals, and yield while an outside goal period has local PI > 1. IIPCP counts toward
   consumption; zIIP service does not. Tests cover both priority cases and the trigger boundaries. No shipped
-  policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12 completes batch measurements/advice,
-  while W11's priority-projection gap stays open.
+  policy has a minimum; validation is recorded in the PR. W10 is closed; WT-12's later projection entry closes W11
+  (top entry).
 - **WT-16 investigation (2026-11-13):** docs/wlm-design.md §9.13 isolates the capped-STCHI 4.2652 → 26.3789 PI
   jump to address-space delay samples, despite a CP grant rising from 0 to 0.328816 engines. A two-slice fixed-demand
   counterexample excludes backlog, uplift, batch and server dependencies. S-1's DDF cases instead lose CPU when
