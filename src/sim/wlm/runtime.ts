@@ -340,14 +340,15 @@ export function goalPi(goal: Goal, a: ScpAcc): number | null {
   });
 }
 
-export function tickPi(goal: Goal, t: ScpTick): number | null {
+/** One interval's PI. Policy-adjustment projections lift the velocity PI ceiling (WT-16); reports keep it. */
+export function tickPi(goal: Goal, t: ScpTick, velocityPiMax = 99): number | null {
   return performanceIndex(goal, {
     completions: t.completions,
     rtSumSec: t.rtSumSec,
     buckets: t.buckets,
     usingSamples: t.usingCpu + t.usingZiip + t.usingIo - (t.usingIoNoVel ?? 0) - (t.srvUsing ?? 0),
     delaySamples: t.delayCpu + t.delayZiip + t.delayIo + t.delayStorage + t.delayCap + (t.delayQueue ?? 0) - (t.delayIoNoVel ?? 0) - (t.srvDelay ?? 0),
-  });
+  }, velocityPiMax);
 }
 
 /** Sysplex PI per scKey (the goal-management PI, see goalPi): merge every system's accumulators, then compute. */

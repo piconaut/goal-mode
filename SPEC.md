@@ -473,6 +473,12 @@ Per tick, per period, we derive "sample" fractions as if sampled every 250 ms:
   I/O samples are reported either way (WLM Planning p.115).
 - **Idle / unknown:** excluded from velocity.
 
+Address-space processor delay uses offered processor demand times the queue ratio plus unmet demand, bounded
+by the ready units left after using, I/O, storage and CAP states (WT-16; RMF Report Analysis 3.1 p.539–540).
+APPROX: unserved eligible work joins the CP demand estimate only when it may overflow (or no zIIP is online),
+otherwise the zIIP estimate; it is not counted in both. This keeps starved units visible: better service at fixed
+demand and queue estimates cannot worsen velocity. Transaction queue/response-time estimates are unchanged.
+
 ```
 EXEC VELOCITY % = USING / (USING + DELAY) × 100        (SG24-7621)
 ```
@@ -519,7 +525,7 @@ Modelled on SG24-7621 §3.12–3.15 and the WLM patents. Two kinds of PI, each w
 |---|---|---|
 | management PI: local | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list, donor "happy" test, "missing its goal", resource-group minimum, discretionary capping |
 | management PI: sysplex | all images' accumulators summed, then one PI (`sysplexPis`) | receiver list (first), "missing its goal", the WLM Activity log's `PI=` |
-| projected PI | the dispatcher model on the projection input (sustained demand, below), percentile goals through `projectedPercentilePi` (past 4.0 from the mean RT): `base` at the current DPs, `after` at a trial's | every test a trial is judged on: receiver value, donor harm, net value |
+| projected PI | the dispatcher model on the projection input (sustained demand, below), percentile goals through `projectedPercentilePi` (past 4.0 from the mean RT), velocity before the reporting ceiling of 99 (WT-16; existing 0.1% velocity floor retained): `base` at the current DPs, `after` at a trial's | every test a trial is judged on: receiver value, donor harm, net value |
 
 No test mixes them. A candidate whose `base` is already ≤ 1 (or unknown) is recovering by itself: it is traced
 `RECOVERING`, gets no trials and uses no projection budget. Real WLM uses the sysplex PI as the primary criterion
@@ -1868,7 +1874,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | R4HA (48 × 5 min), DC/GC enforcement, peak-of-sums MLC | **Real mechanics** | MVS Planning: WLM (R4HA zero at IPL, group shares by weight). Cap is a flat MSU limit, not phantom weight, so capping does not reduce HiperDispatch VH/VM counts (APPROX; real phantom-weight capping can, fix queued, M8.7). Prices fictional. SCRT-style hourly value = R4HA limited by DC, and a capacity group's members together limited to the group limit (pro-rata split APPROX) |
 | Tailored Fit Pricing (consumption) | **Simplified** | MSU-hours vs a committed monthly baseline, growth at 50% price; real contracts are multi-year with rollover. Month of signing prorated |
 | Vendor list-price changes | **Simplified** | One run-level multiplier on sub-capacity MLC (all products alike); applies to the whole month it is in force, no proration; TFP terms are fixed once signed |
-| Erlang-C CPU queueing | **Standard approximation; known sample artefact** | Real z/OS dispatching is more complex. WT-16 investigation (docs/wlm-design.md §9.13): address-space delay `using × queue ratio + unmet` can increase enough on a better CP grant to worsen velocity PI, even at fixed demand; shared evaluation needs correction. Equal-DP DDF/batch contention also depends on fictional ready-unit counts |
+| Erlang-C CPU queueing | **Standard approximation** | Real z/OS dispatching is more complex. WT-16 (docs/wlm-design.md §9.14): address-space queue samples use offered demand, including starved units, with eligible work assigned once across CP/zIIP; the ready-unit bound stays. Projections judge velocity before its PI ceiling of 99; management/reporting keep that ceiling. Equal-DP DDF/batch contention still depends on fictional ready-unit counts. Harbourline quick reversals rise 4 → 8, accepted by the user (2026-11-13, #331) |
 | Equal-DP sharing by ready units (max-min) | **Approximation** | Fluid processor sharing over time-averaged units, not task-level time slicing. Unit counts per address-space role are FICTIONAL; transactions count one unit per engine of new work, backlog excluded (`dispatcher.ts` `shareByUnits`) |
 | Measurement overhead (SMF 101/110 tracing, Monitor III gatherer) | **Plausible model** | Flat per-transaction CPU multiplier per subsystem (`mods.measureCpu`); real cost depends on trace classes and transaction profile |
 | WLMGL APPL% CP/IIPCP/IIP | **Matches** | CP includes all time executed on general CPs; IIPCP is its zIIP-eligible subset, and IIP is time executed on zIIPs (RMF Report Analysis 3.1 [p.534 Table 222](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534)). Service/report classes average engine use over the full interval; plex rows sum systems. APPL evidence adds CP + IIP, counting IIPCP once |

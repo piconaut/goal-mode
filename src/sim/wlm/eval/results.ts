@@ -95,8 +95,14 @@ export function sliceResults(
       // address space once, p.52–53), so processor delay is bounded by the ready units not in another state.
       // Without the bound a saturated pool's queue ratio (up to MAX_QUEUE_RATIO) on top of the unmet demand
       // counts the same wait twice: 12 batch jobs on 3.4 engines showed 140 delay samples, velocity 3 %.
-      let delayCpu = cpUsing * qr + unmetCp;
-      let delayZiip = ziipGranted * zq + unmetZiip;
+      // APPROX: queue samples use offered work, including units getting no service (RMF Report Analysis p.539–540).
+      // Using × queue ratio hides a starved CP pool while zIIPs still run; restoring CP service then worsens PI.
+      // Count eligible demand once: its unserved part can seek a CP only when overflow is allowed (dispatcher.ts).
+      const overflow = s.mayOverflow || input.ziipServers === 0;
+      const cpDemand = cpUsing + unmetCp + (overflow ? unmetZiip : 0);
+      const ziDemand = ziipGranted + (overflow ? 0 : unmetZiip);
+      let delayCpu = cpDemand * qr + unmetCp;
+      let delayZiip = ziDemand * zq + unmetZiip;
       const units = sliceUnits[i];
       if (units !== undefined) {
         const room = Math.max(0, units - cpUsing - ziipGranted - usingIo - delayIo - delayStorage - capDelay);

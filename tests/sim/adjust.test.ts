@@ -1009,7 +1009,8 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
       return { scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: t.scKey === 'R#1' ? { ...acc, delayCpu: 1.1 * acc.delayZiip, delay: acc.delay + 1.1 * acc.delayZiip } : acc };
     }) };
     const saved = { ...POLICY_ADJUST };
-    Object.assign(POLICY_ADJUST, { receiverValueMinPi: 100, skipClockMinMissing: -1 });
+    // Force both plans to be rejected regardless of PI scale (velocity projections no longer stop at 99, WT-16).
+    Object.assign(POLICY_ADJUST, { receiverValueMinPi: Infinity, skipClockMinMissing: -1 });
     const traces: WlmAdjustTrace[] = [];
     setWlmTraceSink((t) => traces.push(t));
     let out;
