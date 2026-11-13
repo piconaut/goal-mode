@@ -347,7 +347,7 @@ DP 253–249  reserved (real z/OS); the sim dispatches blocked-workload promotio
             minimum share at 249 (APPROX: IBM does not say where either runs), both above all goal work
 DP 248  "small consumer" (real z/OS; not modelled: no period is ever one)
 DP 247–203  managed periods (WLM-assigned, importance 1–5); goal periods only on 246, 244, …: the canonical ladder
-DP 202  unused (the sim serves a discretionary member's resource-group minimum here)
+DP 202  unused (the sim puts a discretionary minimum here while outside goal work misses its goal)
 DP 196  every discretionary period (real z/OS: 201–192 by mean-time-to-wait; not modelled)
 DP 191  quiesced work
 ```
@@ -662,6 +662,12 @@ receiver candidate.
   speed (`suPerCpuSecOf`); type 4 (MSU) is not modelled.
 - **Maximum** is always enforced (cap). **Minimum** is honoured only while the group's work
   misses goals, even if that hurts more important work (SG24-7621 §4.16–4.19).
+- **Minimum service check (WT-11):** the group's smoothed CP consumption (including IIPCP, excluding zIIP) must
+  be below its resolved minimum. Goal members require local PI > 1; a discretionary member requires CPU delay.
+  Its minimum share runs at 249 before goal work meeting its goals, or at 202 below goal work while any goal
+  period outside the group has local PI > 1 (SG24-6472-03 p.63, cases 1–3; WLM Planning 3.1 p.57–59).
+  APPROX: dispatch shares implement the receiver order, and current local PI gates discretionary priority rather
+  than a projection of whether the new allocation would make other work miss its goal.
 - Capped work is non-dispatchable during sleeping slices (*WLM Planning* 3.1 p.60 notes 4–5).
   PR/SM planning and z/OS dispatch share one cap calculation, including queued work. The fluid model
   applies the CP awake fraction to zIIP-eligible demand too; without online zIIPs, eligible work counts
@@ -1835,7 +1841,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | MQ queue depth (PAYMQ) | **Simplified** | One queue per queue manager; no timeout, put failures past MAXDEPTH (0–999 999 999); messages already queued above a lowered MAXDEPTH stay and drain (MQ 9.4 Administration Reference p.463); depth adds memory; no MQ SMF 115/116 |
 | WLM I/O priority management | **Simplified** | IOSQ reordered by DP per image and I/O class (priority M/M/1, mean conserved), on or off: NO sets I/O priority = DP (WLM Planning p.115). NO leaves I/O using/delay samples out of velocity (and velocity PI) only; WLMGL, WLM_DETAIL and Monitor III still report them (p.70, p.115). APPROX: YES (goal-based I/O priorities) also uses DP |
 | Discretionary goal management | **Simplified** | Eligibility per WLM Planning (velocity ≤ 30 or RT > 1 min, no resource group); small consumers skipped; other SG24-7621 Fig. 4-22 conditions not modelled. Starts at PI < 0.71 and stays capped below 0.81 (WLM's band); the cap grows with the distance below 0.81 (gain and 50 % floor FICTIONAL) |
-| Resource group types 1/2/3 semantics | **Real mechanics, fluid approximation** | MVS Planning: WLM ch. 7. CP service counts toward the cap; both pools honour its awake fraction (3.1 p.60 notes 4–5). Without zIIPs, eligible work counts on CPs. Planning and dispatch share the cap, including backlog; sleeping work consumes no CPU/MSU. Continuous awake fractions omit 1/256 granularity and recovery boost. Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum: member share dispatched above goal work while the group misses goals; a discretionary member's share sits just below goal work, so it only takes capacity no goal period wants (WLM Planning p.59; APPROX: not limited to periods meeting their goals). Type 1 is a sysplex SU/s budget split across systems by member demand including backlog (APPROX). A group on a region class caps the transactions hosted there (by host-region CPU share, APPROX) and slows the region's dependents |
+| Resource group types 1/2/3 semantics | **Real mechanics, fluid approximation** | MVS Planning: WLM ch. 7. CP service counts toward the cap; both pools honour its awake fraction (3.1 p.60 notes 4–5). Without zIIPs, eligible work counts on CPs. Planning and dispatch share the cap, including backlog; sleeping work consumes no CPU/MSU. Continuous awake fractions omit 1/256 granularity and recovery boost. Type 2 ignores a soft cap below the LPAR share (APPROX). Minimum (WT-11): smoothed CP service must be below the resolved minimum, with a goal member missing its goal or a discretionary member showing CPU delay. A discretionary share runs at 249 before happy goal work, or 202 while an outside goal period has local PI > 1 (SG24-6472 p.63; WLM Planning p.57–59). APPROX: current local PI gates the share instead of projected harm. Type 1 is a sysplex SU/s budget split across systems by member demand including backlog (APPROX). A group on a region class caps the transactions hosted there (by host-region CPU share, APPROX) and slows the region's dependents |
 | Period aging | **Real mechanics** | Transactions split analytically over periods by DUR; running batch jobs move period by the service they have consumed; long-running address spaces sit in the last period |
 | HiperDispatch polarity rules | **Real (published rule of thumb)**; E < 1 → 1 VM confirmed (PR #9); a soft cap lowers E for polarity (WLM Planning p.46) | Watson & Walker 2022 |
 | PR/SM overhead, short-engine effect | **Plausible model** | Coefficients invented, shape matches guidance (2:1 rule) |

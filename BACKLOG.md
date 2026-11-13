@@ -415,19 +415,6 @@ R-n, S-n, C-n, invariant ids I-n and section numbers are its). Entries are numbe
 - Statistics named in "Done when" are from `inspect … wlm-stats` (WT-01) on seed 42, Normal, no player actions:
   S-1 Midwest days 1–2, S-2 Revenue days 1–3, S-3 Harbourline days 1–3 (baseline numbers in §1).
 
-### WT-11 · The resource-group minimum for discretionary work (W10)
-`list: wlm-truth · status: ready · priority: low · size: S · area: sim`
-
-Implements §5.8 in `rgMin` and `missingGoal` (`src/sim/core/tick/helpers.ts`) and `grantDispatch`
-(`eval/grants.ts`): a group is below its minimum and wanting when its smoothed CP service is under the minimum and
-a member has CPU delay (replaces `delay > using` for discretionary members); a discretionary member's share is
-dispatched at the minimum's priority while no goal period outside the group has local PI > 1, else just below the
-managed range as today. Cite SG24-6472 p.63 (receiver order, cases 1–3) and WLM Planning p.57. Tests: unit
-"discretionary minimum is served ahead of work meeting its goals", "… and yields while a goal period misses";
-existing resource-group tests. Goldens: unchanged unless a scenario gains a minimum (none ships one); say so.
-Done when: the two unit tests pass and the PROGRESS open question is removed. Bots: none (no policy uses a
-minimum).
-
 ### WT-12 · Response-time goals for batch: jobs are completions (W11)
 `list: wlm-truth · status: ready · priority: low · size: S · area: sim`
 
