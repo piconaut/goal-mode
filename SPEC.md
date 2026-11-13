@@ -505,7 +505,7 @@ PI is tracked **locally** (per system) and as a **sysplex PI**, computed from th
 local PIs ([`docs/research.md`](docs/research.md) "The sysplex PI is the primary criterion…"). The PI window is one
 exponential decay, 0.85 per tick (`ACC_DECAY`, an effective window of 1 ÷ (1 − 0.85) ≈ 6.7 ticks, about 67 s); it
 does not lengthen when completions are sparse (real WLM keeps history rows of growing length; practitioner source,
-[`docs/research.md`](docs/research.md) "Net value at a high level…"). Transactions never show small-sample
+[`docs/research.md`](docs/research.md) "Net value at a high level…"). Fluid transactions never show small-sample
 variability: completions are fractional and every tick spreads a full distribution over the buckets, so a period
 with one completion a minute has a smooth PI where real WLM's would vary ([`docs/research.md`](docs/research.md)
 "Work with a response-time goal should have at least three completions…"; docs/wlm-design.md W14). Not modelled,
