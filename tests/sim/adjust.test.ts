@@ -363,7 +363,8 @@ describe('skip clock exception when few periods miss their goals (RF-03, z/OS 1.
     const { out, trace } = run(5, 1, 100);
     expect(trace.candidates.every((c) => c.outcome !== 'SKIP_CLOCK')).toBe(true);
     expect(trace.candidates.find((c) => c.scKey === 'K1#1')!.outcome).toBe('ASSESSED');
-    // The old clock is dropped, not carried, and the rejected receivers start no new clock.
+    // The old clock is dropped, not carried, and the rejected receivers start no new clock. The first clue still
+    // reaches the periodic log; the rest are in the trace (N3).
     expect(out.skipUntil).toEqual({});
     expect(out.clockNotes).toEqual([]);
     expect(out.log).not.toContain('next look');

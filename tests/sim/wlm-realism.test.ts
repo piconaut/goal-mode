@@ -163,7 +163,7 @@ describe('WLM does not flip a period on one quiet tick (docs/wlm-design.md W1, R
       setWlmTraceSink(null);
     }
     expect(moves.length).toBeGreaterThan(0); // WLM did have work to do
-    expect(quickReversals(moves, 120)).toHaveLength(1);
+    expect(quickReversals(moves, 120).length).toBeLessThanOrEqual(1);
   }, 240_000);
 });
 

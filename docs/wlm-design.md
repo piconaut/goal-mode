@@ -1088,7 +1088,7 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
 | I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11, RF-03). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget; it bites (`BUDGET` stops are counted) but leaves the clock bound meaningful |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has no move undone within two minutes (`tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" fall by at least 80 % |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 3, from 6 / 6 / 19) |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -1804,7 +1804,9 @@ miss their goals (local management PI > 1). The source is Sinram, *z/OS Workload
 and V1.12*, SHARE 2010 session 7777,
 [p.11](https://github.com/piconaut/ibm-zos-books/blob/main/products/share/115/S7777_WLM_Update.pdf): "the skip clock
 will no longer be honored if 5 or less service class periods do not meet their performance objectives". APPROX: the
-count is per image, as policy adjustment is; IBM does not say whether it is per system or across the sysplex. The
+count is per image, as policy adjustment is; IBM does not say whether it is per system or across the sysplex, and it
+is over the sim's managed goal periods (SYSTEM and SYSSTC have no goals and discretionary is excluded; real WLM could
+count two more per image, which would move the boundary). The
 exception also drops a running clock, not only a new one. A receiver that had the whole projection budget and ran out
 still starts no clock at five or fewer missing, so the next search starts after it (not on it), or it would spend the
 budget again every interval and the receivers behind it would never be reached.
@@ -1834,10 +1836,16 @@ donor within 10–40 s, one after a harm). They are accepted as the price of rea
 not as a new alternation: no period goes up and down repeatedly in the window.
 
 Bench (Midwest seed 42, one day, `npm run bench -- --hash`): 9.41 s / 1.09 ms per tick → 10.76 s / 1.25 ms per tick
-(+14 %; the state hash changes because the decisions change). Goldens are regenerated for the same reason. Tests: the
-clock fixtures that need a clock set `skipClockMinMissing = 0`; the RF-03 unit test covers both sides of the
-boundary (six missing honours a clock, five ignores it and starts none); I12 uses a 6-projection budget so the
-rotation leaves the clock bound meaningful; I16 turns the exception off for its all-clocked interval.
+(+14 % on this box; the review box measured 6.43 vs 6.26 s/day, +3–6 %, so the direction is the claim, not the size). The
+state hash changes because the decisions and the new off-cadence log lines change. Goldens are regenerated for the same reason. Tests: the
+clock fixtures that need a clock set `skipClockMinMissing = -1` (the check is `missing > value`, so a negative
+value forces the clock even when no period is missing; 0 would still drop it on a fully happy image); the RF-03
+unit test covers both sides of the
+boundary (six missing honours a clock, five ignores it and starts none); at five or fewer missing only `notes[0]`
+reaches the periodic player log, as before, and the other receivers' clues are in the `wlm`/`--dump` trace (logging
+them all at the cadence made the long replay tests exceed their timeout, so it is a follow-up); I12 uses a
+6-projection budget so the rotation leaves the clock bound meaningful; I16 turns the exception off for its
+all-clocked interval.
 
 Sweep (remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged from
 WT-10; Harbourline 9 / 30 / 8, from 9.5 / 30 / 7 (do-nothing 9.5 → 9, expert 7 → 8 victories), all inside the CI

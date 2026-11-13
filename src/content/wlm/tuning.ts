@@ -95,8 +95,10 @@ export const POLICY_ADJUST = {
   // (docs/wlm-design.md §8 Q9).
   rejectedSkipTicks: 3,
   // IBM: since z/OS 1.11 the skip clock is not honoured when 5 or fewer service class periods miss their performance
-  // objectives (Sinram, SHARE 2010 session 7777 p.11). APPROX: counted per image from the periods' local management
-  // PI, as policy adjustment is per system; IBM does not say whether the count is per system or across the sysplex.
+  // objectives (Sinram, SHARE 2010 session 7777 p.11). The check is `missing > skipClockMinMissing`: 5 means honour
+  // at six or more; a negative value forces the clock on (tests that need a hold). APPROX: counted per image from
+  // the periods' local management PI, as policy adjustment is per system; IBM does not say whether the count is per
+  // system or across the sysplex.
   skipClockMinMissing: 5,
   // FICTIONAL: projections (trial evaluations) per image per interval; the tick budget. When it is spent the search
   // stops for the interval, with no skip clock, and the next interval's search starts where it stopped.

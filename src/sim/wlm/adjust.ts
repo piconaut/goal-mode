@@ -729,7 +729,8 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       notes.push(note);
       clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
     } else {
-      // No clock: the note joins the ordinary five-minute no-action cadence instead of being logged when a clock starts.
+      // No clock: the note joins the ordinary five-minute no-action cadence instead of being logged when a clock
+      // starts. Only notes[0] reaches the player log; the other receivers' clues stay in the trace (`wlm`, `--dump`).
       notes.push(`${receiver} PI=${pi} ${noAction}`);
     }
     if (outOfBudget) {
