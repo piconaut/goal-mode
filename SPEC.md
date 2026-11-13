@@ -509,7 +509,9 @@ response time, in the service-class period it ran in when it ended (WLM Planning
 PI is tracked **locally** (per system) and as a **sysplex PI**, computed from the systems' accumulators summed
 (completions, response-time sums, buckets, using and delay samples), then one PI (`sysplexPis`), not as an average of
 local PIs ([`docs/research.md`](docs/research.md) "The sysplex PI is the primary criterion…"). The PI window is one
-exponential decay, 0.85 per tick (`ACC_DECAY`, an effective window of 1 ÷ (1 − 0.85) ≈ 6.7 ticks, about 67 s); it
+exponential decay, 0.85 per tick (`ACC_DECAY`, an effective window of 1 ÷ (1 − 0.85) ≈ 6.7 ticks, about 67 s).
+Average and percentile measured PIs are absent once the decayed completion count is at most 1e-9; this numerical
+cutoff is part of the sim's fixed-window approximation, not an IBM lifetime rule. The window
 does not lengthen when completions are sparse (real WLM keeps history rows of growing length; practitioner source,
 [`docs/research.md`](docs/research.md) "Net value at a high level…"). Fluid transactions never show small-sample
 variability: completions are fractional and every tick spreads a full distribution over the buckets, so a period
@@ -856,7 +858,7 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   I/O rates, transaction backlogs, pool capacities and caps remain at the measured snapshot.
 - **Response-time goals:** a completed job contributes one completion, its queue plus elapsed time (the same
   clock as the RMF job-end record), and one exact goal-relative bucket observation to its ending period. Average
-  PI disappears once the decayed completion count is at most 1e-9 (within 25 minutes without another job). The
+  and percentile PIs disappear once the decayed completion count is at most 1e-9 (within 25 minutes after a lone job). The
   editor warns on JES classes with average/percentile goals: at least three job completions per 20 minutes are
   recommended (WLM Planning 3.1 p.71). No such completions are synthesized for indefinite started tasks.
   **Management limitation (W11 / remaining WT-12):** policy adjustment base/trial evaluations of batch AS

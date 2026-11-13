@@ -26,8 +26,7 @@ const measured = (state: ReturnType<typeof initState>, key = 'BATCHPRD#1') =>
   state.wlm.systems.find((s) => s.lparId === 'PROD1')!.scps.find((s) => s.scKey === key)!.acc;
 
 describe('batch response-time goals (WLM Planning 3.1 p.71)', () => {
-  it('has an average PI after a job ends and none 25 minutes later', () => {
-    const goal: Goal = { kind: 'AVG', rtSec: 30 };
+  it.each<Goal>([{ kind: 'AVG', rtSec: 30 }, { kind: 'PCT', rtSec: 30, pct: 90 }])('has a $kind PI after a job ends and none 25 minutes later', (goal) => {
     const { state, scenario } = fixture(goal);
     let next = step(state, [], scenario);
     expect(next.batch.jobs[0]!.status).toBe('DONE');

@@ -8,6 +8,11 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **PR #333 review B1 (2026-11-13):** measured percentile PIs now use the same completion-count cutoff as average
+  PIs. A lone job's bucket ratio no longer keeps a period missing its goal after its completion history expires;
+  trial percentile projections retain their existing path. The AVG/PCT completion/25-minute-expiry regression
+  reproduces the stale PI before the fix and passes with it. The fixed decay/cutoff remains a sim approximation.
+
 - **WT-12 (2026-11-13):** completed batch jobs feed response-time goals with one queue-plus-elapsed observation
   in the ending period. JES RT goals carry the three-completions-per-20-minutes advice in the editor and PI Codex
   entry (WLM Planning 3.1 p.71). **W11 remains partially open:** batch-only AVG/PCT priority projections have no

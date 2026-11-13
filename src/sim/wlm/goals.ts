@@ -119,7 +119,7 @@ export function performanceIndex(goal: Goal, x: PiInputs, velocityPiMax = 99): n
     case 'AVG':
       return x.completions > 1e-9 ? x.rtSumSec / x.completions / goal.rtSec : null;
     case 'PCT':
-      return percentilePi(x.buckets, goal.pct);
+      return x.completions > 1e-9 ? percentilePi(x.buckets, goal.pct) : null;
   }
 }
 
