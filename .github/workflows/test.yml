@@ -39,6 +39,7 @@ jobs:
           HEAD_MSG: ${{ github.event.head_commit.message }}
           IN_ARGS: ${{ inputs.args }}
         run: |
+          set -o pipefail
           if [ "$EVENT" = push ]; then
             raw=$(printf '%s\n' "$HEAD_MSG" | sed -n 's/^Test-Args: *//p' | head -1)
           else
