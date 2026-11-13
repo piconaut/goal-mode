@@ -290,8 +290,12 @@ given with its tier. Section numbers match §2.
   [p.62][r62]; [WLM Services p.140–143][ws140]).
 - A **skip clock** per period: "If a receiver is assessed and all actions to help it are rejected, a skip clock
   (counter) is set and the service class period will not be selected as a receiver again until the skip clock
-  expires" ([WLM Services p.145][ws145]). Its length is not given. *Practitioner:* Enrico slide 53 describes a skip
-  counter set when a period was chosen as a receiver and help was given.
+  expires" ([WLM Services p.145][ws145]). Its length is 3 policy adjustment cycles, and since z/OS 1.11 it is not
+  honoured when 5 or fewer service class periods miss their performance objectives (Sinram, *z/OS Workload
+  Management Update for z/OS V1.11 and V1.12*, SHARE 2010 session 7777,
+  [p.11](https://github.com/piconaut/ibm-zos-books/blob/main/products/share/115/S7777_WLM_Update.pdf); modelled by
+  RF-03, §5.3, §5.10). *Practitioner:* Enrico slide 53 describes a skip counter set when a period was chosen as a
+  receiver and help was given.
 - *Practitioner:* histories are rows covering the last 10 s, 30 s, 60 s, 5 min, 15 min and the 15 min before, so
   WLM can go back far enough for representative data (Enrico slide 29). *Patent (1994), [p.18][pt18]:* the patent takes response-time
   data for "thirty seconds or accumulates ten samples, whichever is less", velocity data for at least thirty seconds and five hundred non-idle
@@ -866,24 +870,29 @@ policyAdjust(sys, def, tickInput, plexAcc, nowTick, C):
   L       ← ladderOf(sys)                                  // holders by level, from stored DPs
   L       ← enforceCpuProtection(L, info, ccImp)           // unchanged rule; logs CPU PROTECTION
   mLocal  ← { k: goalPi(goal_k, acc_k) };  mPlex ← { k: goalPi(goal_k, plexAcc_k) }
+  missing ← count(k in info: mLocal[k] > 1)                // per image; APPROX: IBM does not say per system or sysplex
   budget  ← C.maxProjectionsPerInterval
   base    ← not computed yet
 
   for r in receiverOrder(info, mPlex, mLocal):             // §2.5 order, unchanged: importance; sysplex then local; worst first; key
                                                            // after a BUDGET stop: from the receiver it stopped on, wrapping (resumeSearch)
-      if skipUntilTick[r] > nowTick:              trace SKIP_CLOCK;        continue
+      if skipUntilTick[r] > nowTick and missing > C.skipClockMinMissing:
+                                                  trace SKIP_CLOCK;        continue
       if managedDelayFrac(acc_r) < C.needsHelpDelayFrac:
                                                   trace NO_MANAGED_DELAY;  continue
       if base not computed: P ← projectionInput(tickInput, sys); base ← p(evaluate(P, L))
       if base[r] is null or base[r] ≤ 1:          trace RECOVERING;        continue
       tried ← false
       for b in fixableBottlenecks(acc_r, C):      // §5.7
-          if budget ≤ 0:                          trace BUDGET;            goto done     // no skip clock: the next search starts at r
+          if budget ≤ 0:                          trace BUDGET;            goto done     // no skip clock: the next search starts at r,
+                                                                                          // or after r when the clock is not honoured
           plan ← buildPlan(r, b, L, base, P, info, budget, C);  tried ← true
           if plan.accepted:
               L ← plan.ladder
               log "RCVR=r PI=… BTLNK=b" + plan.moves;                      goto done     // one change per interval
-      if tried: skipUntilTick[r] ← nowTick + C.rejectedSkipTicks; note the first rejected step and its reason
+      if tried:
+          if missing > C.skipClockMinMissing: skipUntilTick[r] ← nowTick + C.rejectedSkipTicks + 1  // first tick it may be assessed
+          note the first rejected step and its reason                       // no clock at ≤ 5 missing (z/OS 1.11)
       else:     note "r PI=… BTLNK=<largest delay> not WLM-fixable"
   done:
   L ← canonical(L)                                         // §5.6
@@ -1078,8 +1087,8 @@ periods with random goals, importances, demands and backlog on a 2–8 engine im
 | I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism (S-4): Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels (today seven periods on three), and nothing is at `MANAGED_MAX` |
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Existing tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit C-3 (a), (b), (c) |
-| I12 | **Skip clock, no starvation.** A receiver whose plans were all rejected is not assessed again before its clock expires; every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 100 intervals with five unfixable and one fixable candidate at one importance (R-4's shape): the fixable one is helped |
-| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has no move undone within two minutes (`tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" fall by at least 80 % |
+| I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11, RF-03). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget; it bites (`BUDGET` stops are counted) but leaves the clock bound meaningful |
+| I13 | **Settles.** With constant demand, DP changes stop: no move after `K` intervals. In a run, no period's move is undone by its next move within two minutes (§9.3: a slower alternation between a starving period and more important work is legitimate), unless another receiver's accepted plan in between projected the period past its goal: conditions changed, and undoing the move is the period being helped, not a flip-flop (user decision 2026-11-12, #318; `wlm-stats` counts those reversals apart) | Realism: Midwest 42, PROD2, day 1 06:00–14:00 has at most one move undone within two minutes (RF-03's donor-at-goal boundary, §9.11; `tests/sim/wlm-realism.test.ts`, written by the prototype); S-1 … S-3 "undone within two minutes" still fall by at least 80 % against `dev` (0 → 1, 0 → 0, 0 → 1, from 6 / 6 / 19) |
 | I14 | **Not fixable, not moved.** A receiver with no CPU or zIIP delay above `bottleneckMinFrac` causes no DP change and no projection beyond `base` | Property. Realism: the existing "Db2 MSTR starvation raises DDF response without DDF CPU delay" test still passes and logs the waiting note |
 | I15 | **Minimum above goal work.** A resource-group minimum's share is dispatched above every goal period | Unit C-4 on the dispatch demands |
 | I16 | **Cost bound.** At most `1 + maxProjectionsPerInterval` projections per image per interval; none when no candidate passes the skip clock and the delay test | Property: count `evaluateLpar` calls through the trace. `npm run bench` on the entries that touch it |
@@ -1100,7 +1109,8 @@ IBM uses it.
 | `harmEps` (from `adjust.ts`, 0.02) | 0.02 | projection noise is not harm | existing |
 | `needsHelpDelayFrac` | 0.02 | a period with no managed delay is not assessed | IBM's rule is "no delay samples"; a fluid model never has exactly none |
 | `bottleneckMinFrac` | 0.15 | a second bottleneck is tried only if it is a real share of the delay | invented |
-| `rejectedSkipTicks` | 6 | a hopeless receiver is looked at once a minute, not every 10 s | invented; IBM's is 3 cycles and not honoured when ≤ 5 periods miss goals (Sinram, SHARE 2010 session 7777 p.11; RF-03) |
+| `rejectedSkipTicks` | 3 | a hopeless receiver is looked at every fourth cycle (three skipped), not every 10 s | IBM: 3 policy adjustment cycles (Sinram, SHARE 2010 session 7777 p.11; WLM Services p.145 gives the clock but not its length) |
+| `skipClockMinMissing` | 5 | at five or fewer periods missing their goals, a quiet image reassesses every interval and starts no clock | IBM: z/OS 1.11 exception (Sinram, SHARE 2010 session 7777 p.11); APPROX: counted per image, as policy adjustment is |
 | `donorsPerReceiver` | 3 | bounds a plan's cost | existing |
 | `donorMinEngines` | 0.01 | a holder using almost none of the processor is no donor | IBM: small consumers are not donors |
 | `maxPlanSteps` | 6 | a plan is a handful of moves | invented |
@@ -1121,7 +1131,8 @@ Approximations, each marked `// APPROX:` where it is coded:
 6. Where the canonical ladder sits in the managed range; IBM only says occupied priorities are spaced.
 7. Equal-importance harm is summed over all such periods as well as tested per period (IBM: per donor).
 8. A discretionary minimum yields to any goal period missing its goal on the image, not to a receiver search.
-9. `needsHelpDelayFrac`, `rejectedSkipTicks`, `maxPlanSteps` stand in for rules IBM does not quantify.
+9. `needsHelpDelayFrac` and `maxPlanSteps` stand in for rules IBM does not quantify. `skipClockMinMissing`'s count is
+   per image, because IBM does not say whether it is per system or across the sysplex.
 
 ### 5.11 Cost
 
@@ -1145,7 +1156,7 @@ in the list carries its own three-scenario sweep.
 | Lever | Today | With the target model | Cost or trade-off that remains |
 |---|---|---|---|
 | **Importance** | Decides the receiver order, then fades: on a stressed image everything ends on two or three levels (W2) | Holds under stress: the ladder is an order, more important work is never pushed past its goal for less important work, and a struggling less important class is no longer the first donor | Raising a class's importance exposes everything below it; one change per 10 s still limits how fast many classes are sorted |
-| **Goal value** | Mostly decides whether a class is a receiver | Also decides who gives: the happiest period at or above the receiver donates first, whatever its importance (W4) | A goal that is easy to beat makes a class the first donor. A goal that cannot be met makes it a permanent receiver that blocks less important receivers from taking from it, and is revisited once a minute |
+| **Goal value** | Mostly decides whether a class is a receiver | Also decides who gives: the happiest period at or above the receiver donates first, whatever its importance (W4) | A goal that is easy to beat makes a class the first donor. A goal that cannot be met makes it a permanent receiver that blocks less important receivers from taking from it; it is revisited every fourth cycle while clocks run, and every interval when five or fewer periods miss (RF-03) |
 | **CPU Critical** | Protects against less important work | Same, and now also the way to stop an over-achieving important class from donating to less important work | It still removes WLM's freedom to trade; less important work waits longer |
 | **Splitting CICS classes** (a critical-path class) | The new class's DP is one of several, only the highest counts (W3) | The regions follow the most important unhappy class they serve; the free ride of the other classes is visible as their shared DP | The free ride is real: a critical class lifts everything in the same regions. Separating work for real needs separate regions (not a lever in the game) |
 | **The region class's goal and importance** (STCHI) | Looks like a lever, moves the top of the ladder, does not reach the regions | Ignored for regions managed to transaction goals, and it shows | None: it stops being a trap |
@@ -1242,7 +1253,7 @@ The playtest moves out by the core's six entries either way; this order builds f
 | Q6 | Batch response-time goals (W11): model job completions, or only warn in the editor? | **Model** (WT-12, small), plus a Codex line with IBM's three-completions advice |
 | Q7 | May the single-rule entries (WT-05, WT-07, WT-10, WT-11, WT-12) go to the Opus `realism-fixer` subagent? BACKLOG's rule keeps `sim` entries on the main agent | **Yes for those five,** with the main agent reviewing and running the sweep; never WT-04, WT-08, WT-09 |
 | Q8 | Small consumers and mean-time-to-wait (W13): leave unmodelled and correct SPEC §5.4? | **Yes** (WT-03 corrects the text) |
-| Q9 | `rejectedSkipTicks` is invented (IBM gives no length). One minute, or longer on Hard as a difficulty knob? | **One minute everywhere.** WLM's behaviour should not vary by difficulty. (2026-11-12: IBM's is 3 cycles, with a z/OS 1.11 exception; RF-03.) |
+| Q9 | `rejectedSkipTicks` is invented (IBM gives no length). One minute, or longer on Hard as a difficulty knob? | **IBM's 3 cycles everywhere, and not honoured at five or fewer missing periods** (Sinram, SHARE 2010 session 7777 p.11); WLM's behaviour does not vary by difficulty. (2026-11-12: length and z/OS 1.11 exception answered; RF-03.) |
 
 **User decisions (2026-11-10).** Q2–Q9 as recommended. Q1: the playtest after the core, and RT-16/RT-19 after
 WT-09, as recommended; in addition the core lands **before RT-14**, not after RT-15 (§7). Effects in BACKLOG.md:
@@ -1784,3 +1795,61 @@ online incidents 0 / 2 / 14 → 0 / 2 / 13; S-2's runaway still agrees. The RT-0
 11:00 on PRDA the receivers are assessed now (MKTORD#1, ONLHI#1 at 98 % CPU delay), and every plan projects no gain
 (ONLHI#1 82.33 → 82.33 for each raise and for STCHI#1 as donor). D29 is 78.7 %, as before: PRDA is saturated after
 the day's access-path regression, which policy adjustment cannot fix.
+
+### 9.11 RF-03: the skip clock is 3 cycles and not honoured when few periods miss goals
+
+Built on `78a0a21`. `rejectedSkipTicks` is now IBM's 3 policy adjustment cycles, and a new
+`skipClockMinMissing` (5) makes a skip clock neither kept nor started while at most five goal periods on the image
+miss their goals (local management PI > 1). The source is Sinram, *z/OS Workload Management Update for z/OS V1.11
+and V1.12*, SHARE 2010 session 7777,
+[p.11](https://github.com/piconaut/ibm-zos-books/blob/main/products/share/115/S7777_WLM_Update.pdf): "the skip clock
+will no longer be honored if 5 or less service class periods do not meet their performance objectives". APPROX: the
+count is per image, as policy adjustment is; IBM does not say whether it is per system or across the sysplex, and it
+is over the sim's managed goal periods (SYSTEM and SYSSTC have no goals and discretionary is excluded; real WLM could
+count two more per image, which would move the boundary). The
+exception also drops a running clock, not only a new one. `skipUntilTick` is the first tick the period may be
+assessed again, so the clock is `nowTick + rejectedSkipTicks + 1`: a rejection at tick 1 skips ticks 2, 3 and 4 and
+is reassessed at 5. The earlier `nowTick + rejectedSkipTicks` skipped only two cycles (review finding, 2026-11-13).
+A receiver that had the whole projection budget and ran out
+still starts no clock at five or fewer missing, so the next search starts after it (not on it), or it would spend the
+budget again every interval and the receivers behind it would never be reached.
+
+Audit, same S-1 … S-3 recipes as §1 and §9.10 (`npm run repro` + `wlm-stats`; base is `78a0a21`):
+
+| | S-1 Midwest | S-2 Revenue | S-3 Harbourline |
+|---|---|---|---|
+| candidates assessed | 254 → 1 317 | 777 → 5 701 | 1 429 → 5 751 |
+| … mostly waiting | 6 → 5 | 12 → 980 | 478 → 1 511 |
+| skip clock running | 1 162 → 0 | 3 701 → 0 | 6 193 → 552 |
+| projections | 1 241 → 6 700 | 2 953 → 20 624 | 4 820 → 19 648 |
+| `BUDGET` stops | 0 → 0 | 0 → 3 | 1 → 22 |
+| accepted plans | 21 → 35 | 24 → 24 | 107 → 131 |
+| reversed within two minutes | 0 → 1 | 0 → 0 | 0 → 1 |
+| … after another plan pushed it past its goal | 0 → 0 | 0 → 1 | 1 → 0 |
+
+S-1 and S-2 rarely have more than five periods missing, so their clocks disappear: assessments rise 5× and 7×, and
+the projections with them (about 0.10 and 0.20 per adjustment, still below one, so the interval budget almost never
+bites). S-3 keeps clocks on its busy images (552) and its budget starts to bite (22 stops). The waiting note grows
+with the assessments: S-3's 1 511 mostly-waiting assessments are the WT-10 behaviour, now seen on every interval
+rather than once per clock. The new quick reversals are a balance cost, not a clock bug: S-1's one is DDFPRD#1
+lowered as a donor at 10:30:10, projected to PI 1.00 (its goal), and helped back at 10:30:30 when its measured local
+PI is 1.20. The strict I13 exception ("past its goal") does not cover a projection exactly at the goal, so the test
+allows this one reversal and records it here; S-3's one is the same shape (a just-raised period taken down as a
+donor within 40 s, none after a harm). The +1 expiry fix reduces S-3's quick reversals from 3 to 1. They are accepted as the price of reassessing quiet hours every interval,
+not as a new alternation: no period goes up and down repeatedly in the window.
+
+Bench (Midwest seed 42, one day, `npm run bench -- --hash`): 9.41 s / 1.09 ms per tick → 10.76 s / 1.25 ms per tick
+(+14 % on this box; the review box measured 6.43 vs 6.26 s/day, +3–6 %, so the direction is the claim, not the size). The
+state hash changes because the decisions change. Goldens are regenerated for the same reason. Tests: the
+clock fixtures that need a clock set `skipClockMinMissing = -1` (the check is `missing > value`, so a negative
+value forces the clock even when no period is missing; 0 would still drop it on a fully happy image); the RF-03
+unit test covers both sides of the
+boundary (six missing honours a clock, five ignores it and starts none); a rejection at five or fewer missing logs
+its clue at the five-minute cadence, one per receiver, without a "next look"; I12 uses a 6-projection budget so the
+rotation leaves the clock bound meaningful; I16 turns the exception off for its all-clocked interval.
+
+Sweep (remote, Normal, seeds 1–10): Midwest 16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged from
+WT-10; Harbourline 9 / 30 / 8, from 9.5 / 30 / 7 (do-nothing 9.5 → 9, expert 7 → 8 victories), all inside the CI
+bands ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43327916254),
+[Revenue](https://github.com/piconaut/goal-mode/actions/runs/43327920681),
+[Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43327924751)).

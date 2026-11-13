@@ -587,7 +587,8 @@ End a streak when the outcome/bottleneck changes or the candidate is absent from
 Update SPEC §5.5.4 and docs/wlm-design.md §9.6/§9.8 to distinguish candidate checks, trial-search assessments,
 skip-clock retries and periodic log entries. This reporting task does not extend skip clocks or change bottleneck
 selection. Since WT-10 (2026-11-12) waits no longer mask CPU or zIIP delay: the fixture's 14:00–14:04:50 run is ONLHI
-mostly waiting, assessed once a minute with a skip clock between, and `NOT_FIXABLE` is rare (S-1 … S-3: 0 / 0 / 22).
+mostly waiting, assessed every interval while five or fewer periods miss their goals (RF-03) or once per skip clock
+otherwise, and `NOT_FIXABLE` is rare (S-1 … S-3: 0 / 0 / 22).
 The large unassessed population is now `RECOVERING` (646 / 3 431 / 9 608; docs/wlm-design.md §9.10), checked every
 10 s with no trials: count streaks of any outcome without trials (`NOT_FIXABLE`, `RECOVERING`), not only
 `NOT_FIXABLE`. Any proposed
@@ -671,23 +672,6 @@ shows the choice either way. Done when: SPEC §5.5.4, docs/wlm-design.md §5.5 a
 row agree with the code, and the test exists.
 
 ## realism-fixes
-
-### RF-03 · The skip clock lasts 3 cycles and is not honoured when few periods miss goals
-`list: realism-fixes · status: ready · priority: medium · size: S · area: sim`
-
-IBM (Sinram, *z/OS Workload Management Update for z/OS V1.11 and V1.12*, SHARE 2010 session 7777, p.11; in
-`ibm-zos-books` as `products/share/115/S7777_WLM_Update.pdf`): "If WLM cannot help a service class it sets a skip
-clock to not assess it in the next 3 policy adjustment cycles", and since z/OS 1.11 "the skip clock will no longer
-be honored if 5 or less service class periods do not meet their performance objectives". The sim uses 6 cycles
-(`rejectedSkipTicks`, chosen when IBM's length was unknown, docs/wlm-design.md §8 Q9) and always honours the clock.
-Change `rejectedSkipTicks` to 3 and skip the clock while at most `skipClockMinMissing` (5, content) goal periods on
-the image miss their goal (`m` > 1). APPROX: whether IBM counts periods per system or across the sysplex is not
-stated; per image matches the per-system policy adjustment. Expect more assessments in quiet hours (S-1's
-BATCHPRD#1 is retried each minute over two nights) and a projection-budget cost: measure `wlm-stats` S-1 … S-3
-(assessed, projections, `BUDGET` stops) and the bench before/after. Right after WT-10 (both change who is
-assessed; WT-10 landed 2026-11-12); before WT-09. Tests: unit "≤ 5 missing: a clocked receiver is assessed next interval"; I12
-updated for 3 cycles. Goldens: change. Done when: those pass, research.md's skip-clock row and §5.10 say modelled,
-SPEC §5.5's clock text matches, and a three-scenario sweep is in the PR.
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`

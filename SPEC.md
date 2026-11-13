@@ -532,7 +532,8 @@ for importance in 1..5:
     candidates = periods at this importance with sysplex PI > 1 (worst PI first),
                  then remaining periods with local PI > 1 (worst PI first)
     for receiver in candidates:
-        if receiver's skip clock has not expired: record SKIP_CLOCK & continue
+        if receiver's skip clock has not expired and > skipClockMinMissing (5) goal periods on the image
+           miss their goals: record SKIP_CLOCK & continue          // z/OS 1.11 exception: few missing, no clock
         if managed delay (CPU, zIIP, I/O in velocity, storage, queue) < needsHelpDelayFrac of samples
            (the goal PI's samples: transaction-server regions left out):
             record NO_MANAGED_DELAY & continue                                    // nothing a priority can help
@@ -552,7 +553,9 @@ for importance in 1..5:
             cap retained UP/CARRY/DONOR moves at maxPlanSteps (6); charge only real projections to the interval budget
             commit all moves together only with receiver value ≥ max(10% of (base − 1), 0.05)
             otherwise discard the complete plan; budget exhaustion preserves WT-05's clocks and resume cursor
-        every action rejected: skip clock = now + rejectedSkipTicks; next receiver
+        every action rejected: if > skipClockMinMissing goal periods miss their goals:
+            skip clock = now + rejectedSkipTicks + 1    // first tick it may be assessed again
+            next receiver
     // at most ONE receiver helped per interval per system
 ```
 
@@ -570,26 +573,32 @@ for importance in 1..5:
   Each newly started skip clock logs the failed plan's reason once, including between periodic no-action log
   points; safe partial plans with insufficient final receiver value say "gain too small". Monitor III and
   `inspect --moves` describe the entire committed plan.
-- **Skip clock and the delay test.** A receiver whose every action was rejected is not selected again until its skip
-  clock expires, `rejectedSkipTicks` (6) intervals later; a helped receiver gets no clock and can be helped again 10 s
-  later (WLM Services p.145, p.148–149; the length is not documented, so it is FICTIONAL and one value on every
-  difficulty). A period whose managed delay is under `needsHelpDelayFrac` (2 %) of its samples is not assessed (WLM
+- **Skip clock and the delay test.** A receiver whose every action was rejected skips the next `rejectedSkipTicks`
+  (3) adjustment cycles and is reassessed on the fourth; the clock stores the first tick it may be assessed again. A
+  helped receiver gets no clock and can be helped again 10 s later (WLM Services p.145, p.148–149; the length is
+  IBM's 3 policy adjustment cycles, Sinram, SHARE 2010 session 7777 p.11, one value on every difficulty). The clock is not honoured while at most `skipClockMinMissing` (5) goal
+  periods on the image miss their goals (the z/OS 1.11 exception, same source; APPROX: the count is per image, as
+  policy adjustment is, because IBM does not say whether it is per system or across the sysplex). A period whose
+  managed delay is under `needsHelpDelayFrac` (2 %) of its samples is not assessed (WLM
   Services p.144: no delay samples for a resource SRM manages, no help; a fluid model never has exactly none). The
   samples are the ones the goal PI is taken from: a transaction-server region's are left out, as they are managed to
   the goals of the transactions it serves (WLM Planning p.122), and so is its capping delay. The
   clock lives in `ScpState.skipUntilTick` and the log's no-action note ends `next look hh:mm:ss`. A clock set because
-  the trust limit rejected every raise lasts its minute even if the other image's PI improves sooner.
+  the trust limit rejected every raise skips its next 3 cycles (30 s) and reassesses on the fourth even if the other
+  image's PI improves sooner.
 - **Projection budget.** Each projection re-runs §5.4, so the search makes at most `maxProjectionsPerInterval` (12)
   per image per interval, over all importances (the tick budget, I16). Rejections that need no projection (CPU
   protection, the missing-goal rule, the trust limit) cost none, and neither does a `RECOVERING` candidate.
   This counts proposal projections, not evaluator calls: the shared base and a proposal's internal batch-recovery
   rounds are outside that count, preserving WT-05's accounting. When the proposal budget
   is spent the search stops (`BUDGET`) with no clock, and the next interval's search starts at the receiver it
-  stopped on (`ScpState.resumeSearch`), then wraps to the top. A search that restarted at the top every interval
+  stopped on (`ScpState.resumeSearch`), then wraps to the top; when the skip clock is not honoured (RF-03) it starts
+  after that receiver, which would otherwise spend the budget again every interval. A search that restarted at the top every interval
   could cycle through hopeless receivers forever, their clocks expiring just as the last were reached, and never get
   to the ones behind them. The cursor stays put when a move is accepted and is cleared when a search reaches the
-  end of the list. A receiver that had the whole budget and still ran out is clocked like a rejected one, or it
-  would keep everyone behind it out (I12). Real WLM examines every candidate at an importance before moving down (SG24-7621 p.105–106);
+  end of the list. A receiver that had the whole budget and still ran out is clocked like a rejected one when the
+  clock is honoured; at five or fewer missing periods it starts no clock and the search resumes after it (RF-03),
+  or it would keep everyone behind it out (I12). Real WLM examines every candidate at an importance before moving down (SG24-7621 p.105–106);
   with skip clocks the budget rarely binds.
 - **Donor order** (WT-07). Goal periods at or above the receiver using at least `donorMinEngines` (0.01) of the
   bottleneck's processor: smoothed CP + IIPCP for CPU, smoothed zIIP engines for zIIP (`acc × (1 − accDecay)`).
@@ -1797,7 +1806,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); Partition Data shows `CHANGE REASON=POWERSAVE (initiated by the user)` or `MACHINE (initiated by the machine)`. APPROX: real RMF puts CHANGE REASON on the CPU Activity report header (RMF Report Analysis p.391–392), which the sim does not render, and the Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98); SMF70CAI is kept on the interval for tooling but not printed. A power cap does not slow cycle speed |
 | PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
 | Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
-| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model at sustained demand (§5.5.4); exact IBM thresholds are not public beyond patents. One PI basis (WT-04): receivers are chosen on the management PI, every trial is judged on projected PIs (`base` at the current DPs against `after`), and a candidate whose `base` is ≤ 1 is left to recover. Receiver value is 10 % of the distance to the goal with a 0.05 floor. A less important receiver never passes more important work that is missing its goal (1994 patent; Enrico slide 52). A receiver whose transaction backlog the projection bounded and whose management PI is over 4 × its `base` is not raised (`projectionTrustMax`, APPROX: guards the sim's backlog bound). Between equal-importance periods a move must leave the projected PIs closer together and, when it harms, gain more than it harms (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Bottlenecks (WT-10): plans are built for CPU and then zIIP delay, largest first, each when it is at least 15 % of the managed delay (CPU, zIIP, I/O in velocity, storage, queue; WLM Services p.148 works delays largest first; SG24-6472 p.63–64), so waits and capping never outvote CPU delay; a period mostly waiting logs `mostly waiting, CPU delay n %: not WLM-fixable` (APPROX: only CPU and zIIP are fixed by policy adjustment). A receiver whose every move was rejected is skipped for a minute (skip clock, WLM Services p.145; length FICTIONAL), a period with under 2 % managed delay is not assessed (p.144), and proposal projections are bounded at 12 per image per interval. Atomic plans (WT-08) retain safe intermediate UP/CARRY/DONOR moves and commit only with whole-plan receiver value; one carry and a bounded join-and-split repair, at most six retained moves (APPROX; SG24-6472-03 p.67–68). Donors (WT-07) use the delayed processor: happy periods by lowest worst local/sysplex PI regardless of importance, then the rest from importance 5 up, lowest PI first; unhappy more important periods excluded, at most three donors (threshold and limit FICTIONAL) |
+| Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model at sustained demand (§5.5.4); exact IBM thresholds are not public beyond patents. One PI basis (WT-04): receivers are chosen on the management PI, every trial is judged on projected PIs (`base` at the current DPs against `after`), and a candidate whose `base` is ≤ 1 is left to recover. Receiver value is 10 % of the distance to the goal with a 0.05 floor. A less important receiver never passes more important work that is missing its goal (1994 patent; Enrico slide 52). A receiver whose transaction backlog the projection bounded and whose management PI is over 4 × its `base` is not raised (`projectionTrustMax`, APPROX: guards the sim's backlog bound). Between equal-importance periods a move must leave the projected PIs closer together and, when it harms, gain more than it harms (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Bottlenecks (WT-10): plans are built for CPU and then zIIP delay, largest first, each when it is at least 15 % of the managed delay (CPU, zIIP, I/O in velocity, storage, queue; WLM Services p.148 works delays largest first; SG24-6472 p.63–64), so waits and capping never outvote CPU delay; a period mostly waiting logs `mostly waiting, CPU delay n %: not WLM-fixable` (APPROX: only CPU and zIIP are fixed by policy adjustment). A receiver whose every move was rejected is skipped for 3 policy adjustment cycles while more than five goal periods on the image miss their goals (WLM Services p.145 gives the clock but not its length; Sinram, SHARE 2010 session 7777 p.11 gives 3 cycles and the z/OS 1.11 exception; APPROX: the count is per image), and is not skipped at five or fewer (RF-03); a period with under 2 % managed delay is not assessed (p.144), and proposal projections are bounded at 12 per image per interval. Atomic plans (WT-08) retain safe intermediate UP/CARRY/DONOR moves and commit only with whole-plan receiver value; one carry and a bounded join-and-split repair, at most six retained moves (APPROX; SG24-6472-03 p.67–68). Donors (WT-07) use the delayed processor: happy periods by lowest worst local/sysplex PI regardless of importance, then the rest from importance 5 up, lowest PI first; unhappy more important periods excluded, at most three donors (threshold and limit FICTIONAL) |
 | Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping, then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work, though since WT-07 a happy more important period can donate too; RT-16's displaceable CP replaces this) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | CFACT lock contention | **Approximation** | STRUCTURE SUMMARY in the Postprocessor-style CF Activity report shows CONTENTION % on the lock structure, a column borrowed from Monitor III CFACT (the real Postprocessor report shows -CONT / -FALSE CONT request counts instead, RMF Report Analysis p.373) from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
