@@ -247,7 +247,7 @@ export function advanceJob(j: JobRuntime, shape: ReturnType<typeof jobShape>, p:
   const eff = (shape.cpSec * Math.min(cpStretch, 1e4) + shape.zSec * Math.min(zStretch, 1e4) + shape.ioSec) * p.extraStretch;
   j.stretch = eff / shape.elapsed;
   // A job's CP and zIIP phases are sequential: CP work stuck behind a cap or CP shortage holds back its zIIP work
-  // (and vice versa); capping limits general purpose CPs only (WLM Planning p.182).
+  // (and vice versa); capping limits general purpose CPs only (WLM Planning p.57).
   j.cpPace = pace.cpPace;
   j.ziipPace = pace.ziipPace;
   j.progress += TICK_SEC / eff;
