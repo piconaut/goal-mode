@@ -211,7 +211,7 @@ export function Enclave({ m, system }: { m: Mon3View; system: string }) {
   );
 }
 
-/** SYSWKM Work Manager Delays (RMF Report Analysis p.204–207): one block per CICS transaction class period. */
+/** SYSWKM Work Manager Delays (RMF Report Analysis p.244–247): one block per CICS transaction class period. */
 export function Wkm({ m, game }: { m: Mon3View; game: GameHandle | null }) {
   const list = m.wkm ?? [];
   if (list.length === 0) return <Empty>No transaction class has work manager data (CICS regions managed as REGION report response times to report classes only).</Empty>;
