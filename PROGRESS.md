@@ -710,6 +710,20 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     priority but to be done, batch response-time goals especially. WT-15's Done-when listed them unnecessarily;
     WT-15 and the sweep went first. WT-17 is ready.
 
+- 2026-11-13: RT-08, CAPPING is a share of the hour's ticks, not its worst tick (docs/rca-design.md §4.3, A6).
+  `accumulateHour` now counts, per image, the ticks in which its CP demand was cut (`HourAcc.cappedTicksByLpar`,
+  `cappedFrac > 0`), and `cappedForHour` calls the hour capped when that count is at least `CAPPING.minHourShare`
+  (5 %, in `content/incidents.ts`) of the hour's ticks, so one tick in which 6 % of demand was cut no longer decides
+  it. Both readers of the old threshold use the helper: `mechanismOf`'s CPU split and the `DEPENDENCY` server
+  starvation test in `game/rcaTruth.ts`. `cappedByLpar` stays: an hour accumulated before RT-08 has no count (a
+  save loaded mid-hour), so it keeps its worst-tick reading, and a night that folds in such an hour (`addHour`) keeps
+  the worst-tick reading too; otherwise the night sums its hours' ticks, so a night is capped as time. Bench hashes
+  unchanged; `npm run compare` identical on all three scenarios except the new field in the hour accumulators
+  (game state same with `--drop hour,nightHour`), because a seed-42 day raises no capping verdict either way. Tests:
+  one capped tick → CPU split, 18 of 360 ticks (exactly 5 %) and 36 → CAPPING (with 17 not), night tick sums with
+  one hour under the line pulling the night under it, the old-hour fallback at both the night and the run level.
+  A sweep of the three scenarios is in the PR body.
+
 - 2026-11-13: RT-25, the counterfactual validator revised (user request; docs/rca-design.md §4.8). `inspect blame`
   now ends **every card active in the incident hour**, one at a time, from the opening and closing state (a cap's
   scope grows within the hour; a card may start inside it) instead of only cards whose `affects` names the hurt

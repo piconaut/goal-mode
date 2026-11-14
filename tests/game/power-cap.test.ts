@@ -4,8 +4,8 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { REVENUE_GAME } from '../../src/content/game-revenue';
 import { SCENARIOS } from '../../src/content/scenarios';
 import { advance, newRun, startDay } from '../../src/game/run';
-import { closeHour, newHour } from '../../src/game/run/hourly';
-import { triggerOf } from '../../src/game/sla';
+import { closeHour, accumulateHour, newHour } from '../../src/game/run/hourly';
+import { cappedForHour, triggerOf } from '../../src/game/sla';
 import { applyCommands, type Command } from '../../src/sim/core/commands';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
@@ -144,6 +144,33 @@ describe('power-cap RCA scope', () => {
     expect(run.events[0]!.affects).not.toContain('ACQBANK');
     const added = advance({ ...run, pendingCommands: [{ kind: 'ADD_WORKLOAD', workload: ACQUIRED_APP }] }, SCENARIOS.midwest!, MIDWEST_GAME, 1);
     expect(added.events[0]!.affects).toContain('ACQBANK');
+  });
+
+  it('counts the ticks an image was capped, not only its worst tick (RT-08)', () => {
+    const run = startCap('harbourline');
+    const played = advance(run, SCENARIOS.harbourline!, HARBOURLINE_GAME, TICKS_PER_HOUR - 2);
+    expect(played.hour!.ticks).toBe(TICKS_PER_HOUR - 1);
+    // One tick in which PRDA's CP demand was cut 20 %: the hour keeps the worst fraction, and counts the tick.
+    const capped = (r: typeof played) => ({
+      ...r,
+      sim: {
+        ...r.sim,
+        lpars: r.sim.lpars.map((l) => (l.id === 'PRDA'
+          ? { ...l, pools: l.pools.map((p) => (p.pool === 'CP' ? { ...p, cappedFrac: 0.2 } : p)) }
+          : l)),
+      },
+    });
+    const next = accumulateHour(capped(played));
+    expect(next.hour!.cappedByLpar.PRDA).toBe(0.2);
+    expect(next.hour!.cappedTicksByLpar?.PRDA).toBe(1);
+    expect(next.hour!.cappedTicksByLpar?.PRDC).toBeUndefined();
+    // 1 of 360 ticks is not 5 % of the hour: the CPU split decides, not CAPPING.
+    expect(cappedForHour(next.hour!, 'PRDA')).toBe(false);
+    // An hour accumulated before RT-08 has no count and keeps its worst-tick reading.
+    const { cappedTicksByLpar: _count, ...old } = played.hour!;
+    const nextOld = accumulateHour(capped({ ...played, hour: old }));
+    expect(nextOld.hour!.cappedTicksByLpar).toBeUndefined();
+    expect(cappedForHour(nextOld.hour!, 'PRDA')).toBe(true);
   });
 
   it('uses pending routing changes applied on the cap-start tick', () => {

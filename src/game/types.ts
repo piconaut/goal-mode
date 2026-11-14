@@ -144,6 +144,9 @@ export interface HourAcc {
   maxCappedFrac: number;
   /** Max capped fraction per LPAR during the hour. */
   cappedByLpar: Record<string, number>;
+  /** Per LPAR: ticks of the hour in which the image's CP demand was capped (`cappedFrac > 0`). Absent in an hour
+   * accumulated before RT-08 (a save loaded mid-hour), which keeps the `cappedByLpar` reading of its worst tick. */
+  cappedTicksByLpar?: Record<string, number>;
   cpcBusySum: number;
   /** Per CPC: sum over the hour's ticks of general-CP busy (absent in older saves). */
   cpcBusyById?: Record<string, number>;
