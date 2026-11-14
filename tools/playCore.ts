@@ -29,7 +29,7 @@ import { EVIDENCE_METRICS } from '../src/content/evidence';
 import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, pendingBase, playerWlmEditError, type WlmEdit } from '../src/game/wlmEdit';
-import { policyEditSource } from '../src/game/policies';
+import { plannedPolicy, policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { acceptedOf, hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
@@ -220,13 +220,13 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         if (!buildView(run, sc(run)).reports.some((x) => x.index === index)) return fail(`No RMF interval ${c.intervalId}; ${intervalList(run)}`);
         req = { ...req, index };
       }
-      if (req.source === 'DB2' || req.source === 'CICS') {
+      if (req.source === 'DB2' || req.source === 'CICS' || req.source === 'CICS_STORAGE') {
         const hour = smfHourKey(run, req.hour);
-        if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
+        if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source === 'CICS_STORAGE' ? 'CICS' : req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
         req = { ...req, hour };
       }
       if (c.at !== undefined) {
-        if (req.source !== 'MON3' && !(req.source === 'CPC' && req.index === undefined)) return fail('--at takes a Monitor III time (pin MON3 or pin CPC without an interval id)');
+        if (req.source !== 'MON3' && req.source !== 'PROCU' && !(req.source === 'CPC' && req.index === undefined)) return fail('--at takes a Monitor III time (pin MON3, pin PROCU, or pin CPC without an interval id)');
         const tick = tickOfClock(c.at);
         if (tick === null) return fail(`No time ${c.at}; write it as clockText does, e.g. D2 10:40 (D1 = first played day, 06:00 to 06:00)`);
         if (tick > run.sim.tick) return fail(`${c.at} is in the future; it is ${clockText(run.sim.tick)}`);
@@ -349,6 +349,11 @@ function batchText(b: object): string {
   return [table([Object.fromEntries(scalars)]), ...lists.flatMap(([k, v]) => ['', k, table(v)]), '', legend].join('\n');
 }
 
+/** When the planned policy takes over (BRIEFING: at day start; LIVE: the next tick's queued command). */
+function plannedWhen(phase: RunState['phase']): string {
+  return phase === 'LIVE' ? 'queued; V WLM,POLICY= applies at the next tick' : 'activates when the day starts';
+}
+
 /** What the player can see: the same fields the browser shows, never the incident ground truth. */
 export function statusText(file: PlayFile): string {
   const run = file.run;
@@ -360,6 +365,7 @@ export function statusText(file: PlayFile): string {
   out.push(budgetLine(v.mlcEstimate, v.opexSpent, v.opexBudget), R4HA_BILLING_NOTE);
   if (run.sim.cost.bills.length > run.billsSeen) out.push(BUDGET_MONTH_BOUNDARY_NOTE);
   out.push(`policy ${v.policyName}${file.pendingPolicy ? `  (pending policy edits in ${file.pendingPolicy.policyName}: activate in BRIEFING or LIVE)` : ''}  tools ${v.tools.filter((t) => t.owned).map((t) => (t.trialLastDay !== null ? `${t.id}(trial to day ${t.trialLastDay + 1})` : t.id)).join(' ') || 'none'}`);
+  if (v.plannedPolicy) out.push(`planned policy ${v.plannedPolicy.policyName} (${plannedWhen(v.phase)})`);
   out.push(`CPC busy ${v.cpcBusyPct.toFixed(0)}%  ` + v.lpars.map((l) => `${l.id} ${l.cpBusyPct.toFixed(0)}%`).join('  '));
   if (v.phase === 'LIVE') {
     const hot = v.piHeat.filter((p) => p.pi !== null && p.pi > 1).map((p) => `${p.scKey} ${p.pi!.toFixed(2)}`);
@@ -515,6 +521,9 @@ export function policyText(file: PlayFile, pending: boolean): string {
   if (pending && !file.pendingPolicy) return 'No pending policy edits.';
   const def = pending ? file.pendingPolicy! : run.sim.wlm.definition;
   const out = [`${pending ? 'pending' : 'active'} policy ${def.policyName}  I/O priority management ${def.ioPriorityManagement === false ? 'NO' : 'YES'}${def.cicsRegionMode === 'REGION' ? '  manage regions using goals of REGION (rules without their own setting)' : ''}`];
+  // The policy the WLM schedule or a queued activation will install, so `policy` says what `status` says.
+  const planned = plannedPolicy(run);
+  if (planned && (planned.policyName !== def.policyName || !pending)) out.push(`planned policy ${planned.policyName} (${plannedWhen(run.phase)})`);
   out.push('service classes (period: goal, duration SU):');
   for (const c of def.classes) {
     const periods = c.periods.map((p, i) => `#${i + 1} ${goalText(p)}${p.durationSu !== null ? ` DUR ${p.durationSu}` : ''}`).join('; ');

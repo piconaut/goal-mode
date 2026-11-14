@@ -6,11 +6,12 @@ import { formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
+import { workManagerStatePct } from '../sim/wlm/reporting';
 import { buildMon3 } from './mon3';
 import type { Mon3PinLookup, Mon3PinView } from './mon3PinHistory';
 import { BATCH_INCIDENT } from './sla';
 import type { NightSummary } from '../sim/subsys/batch';
-import { cicsMonitoring, db2Accounting } from './smf';
+import { cicsMonitoring, cicsStorageStats, db2Accounting } from './smf';
 import type { CpuRecord, WlmRecord } from '../sim/measure/rmf';
 import type { Incident, IncidentSubjects, RunState } from './types';
 import { allWorkloads } from './workloads';
@@ -57,6 +58,11 @@ export type PinRequest =
    * `index`, the latest interval. */
   | { source: 'DASD'; lcuId: string; metric: DasdMetric; index?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
+  /** SMF 110 region storage (RT-11): an AOR's minutes short on storage in that hour, subject the region. */
+  | { source: 'CICS_STORAGE'; hour: string; region: string }
+  /** Monitor III PROCU (RT-11): one address space's EAppl CPU, subject the jobname. A past `tick` needs a view
+   * whose history kept the job rows (the browser's, not the CLI's trimmed one). */
+  | { source: 'PROCU'; system: string; jobname: string; tick?: number }
   /** SMF 30 for the batch night that followed played day `day` (critical jobs' delay accounting). */
   | { source: 'BATCH'; day: number; metric: EvidenceMetric };
 
@@ -96,6 +102,9 @@ function wlmMetric(w: WlmRecord, metric: EvidenceMetric): number | null | undefi
     DELAY_STO: w.delayPct.storage,
     DELAY_CAP: w.delayPct.cap,
     DELAY_OTHER: w.delayPct.other,
+    // Work manager states (RT-11): the shares the WLMGL report prints, from the same helper.
+    WM_LOCK: w.workManager ? workManagerStatePct(w.workManager, 'lock') : undefined,
+    WM_READY: w.workManager ? workManagerStatePct(w.workManager, 'ready') : undefined,
   };
   return v[metric];
 }
@@ -125,6 +134,9 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if (!iv || !w) return 'No such report row';
       if (w.resourceSamples === false && (APPL_METRICS.has(req.metric) || req.metric.startsWith('DELAY_')))
         return `CICS resource samples are reported with the regions' classes: ${w.workManager?.regionKeys.join(', ') ?? 'see the region service classes'}`;
+      // Work manager states belong to the transactions, not their regions (RMF Report Analysis p.536–537, RT-11).
+      if ((req.metric === 'WM_LOCK' || req.metric === 'WM_READY') && !w.workManager)
+        return 'That row has no work manager states (CICS transaction classes only)';
       const value = wlmMetric(w, req.metric);
       if (value === undefined || value === null) return 'That metric is not in the Workload Activity report';
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index)
@@ -264,6 +276,27 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         : median(earlier.map((h) => read(`${h.day}:${h.hourOfDay}`)?.[req.metric]).filter(NUM));
       return { source: req.source === 'DB2' ? 'Db2 101' : 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, value, ...(baseline !== undefined ? { baseline } : {}) };
     }
+    case 'CICS_STORAGE': {
+      const tick = hourEndTick(run, req.hour);
+      if (tick === null) return 'No such hour';
+      const read = (key: string): number | undefined => cicsStorageStats(run, key).find((x) => x.region === req.region)?.sosSec;
+      const sec = read(req.hour);
+      if (sec === undefined) return 'No such region row';
+      const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
+      const upto = i < 0 ? run.smfHours.length : i;
+      const earlier = run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
+      const baseline = median(earlier.map((h) => read(`${h.day}:${h.hourOfDay}`)).map((x) => (x === undefined ? undefined : x / 60)).filter(NUM));
+      return { source: 'CICS 110', metric: 'SOS_MIN', subject: req.region, system: '*PLEX', tick, value: sec / 60, ...(baseline !== undefined ? { baseline } : {}) };
+    }
+    case 'PROCU': {
+      const m = mon3(req.tick);
+      if (typeof m === 'string') return m;
+      if (!m.view.procJobs) return 'This Monitor III range keeps no job rows; pin the job from the current view';
+      const j = m.view.procJobs.find((x) => x.system === req.system && x.jobname === req.jobname);
+      if (!j) return 'No such job row';
+      // PROCU's EAppl % CP: enclave CPU included, 100 = one engine (RMF Report Analysis p.189).
+      return { source: 'PROCU', metric: 'JOB_APPL', subject: req.jobname, system: req.system, tick: m.tick, value: 100 * j.eapplCpEngines };
+    }
     case 'BATCH': {
       const night = run.reports.find((x) => x.day === req.day)?.batch;
       if (!night) return 'No batch night for that day';
@@ -391,10 +424,19 @@ export function pinRelation(run: RunState, inc: Incident, p: EvidencePin, s: Inc
   switch (p.source) {
     case 'SYSWKM':
       return s.servers.some((a) => p.subject === a.jobname && p.system === a.lparId) ? 'server' : null;
-    case 'Db2 101':
     case 'CICS 110':
+      // A region's storage row names the region, not the workload (RT-11): a serving AOR is the work's server.
+      return p.metric === 'SOS_MIN'
+        ? s.servers.some((a) => a.jobname === p.subject) ? 'server' : null
+        : p.subject === inc.workloadId ? 'self' : null;
+    case 'Db2 101':
     case 'SMF 30':
       return p.subject === inc.workloadId ? 'self' : null;
+    // A PROCU job row is the work's own region when it serves it, otherwise a specific competitor on that image.
+    case 'PROCU':
+      return s.servers.some((a) => a.jobname === p.subject && a.lparId === p.system)
+        ? 'server'
+        : s.hosts.includes(p.system) ? 'competitor' : null;
     // CF and DASD rows are the infrastructure serving the work's Db2 and I/O (RT-10): a server-side clue.
     case 'CF':
     case 'DASD':

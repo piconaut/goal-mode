@@ -205,24 +205,14 @@ Done when: `tests/game/rcaVocabulary.test.ts` covers the new texts, the Codex en
 replays a play file written with the old id and gets the same state, and no `ACCESS_PATH_REGRESSION` remains outside
 the aliases.
 
-### RT-11 · Pin CICS region storage, top-consumer jobs and work-manager states
-`list: rca-truth · status: ready · priority: low · size: M · area: game`
-
-Three more clues the cards' texts name but the board cannot hold (A11): `SOS_MIN` (minutes short on storage in the
-hour, from the SMF 110 region storage view; THREAD_LIMIT, STORAGE, APPLICATION_ERROR; notable 1), `JOB_APPL` (CPU of
-one address space from the Monitor III job rows, subject the jobname; CPU_PRIORITY, CPU_CAPACITY, RUNAWAY_WORK;
-notable 25 % of an engine), and the WLMGL work-manager states of a CICS transaction class (`WM_LOCK` waiting for
-lock → LOCK_CONTENTION; `WM_READY` → CPU_PRIORITY, CPU_CAPACITY, QR_TCB at half weight; RMF Report Analysis
-p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §10.
-
 ### RT-13 · Proof recipes: evidence as a discriminating pair
 `list: rca-truth · status: ready · priority: high · size: L · area: game`
 
 User decision on Q3, 2026-11-10: yes. After RT-12. Recipes per mechanism and trigger in
 `content/evidence.ts` (§4.6 table), judged over the up-to-three attached pins. Every common recipe (CPU family,
 DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) has a path that needs only tier-0/1 tools, so early-game
-players can complete a proof. The CF and DASD recipes use RT-10's `CF_*`/`DASD_*` pins; the CICS-storage one needs
-RT-11: whichever of RT-11 and RT-13 lands last adds it. A complete recipe for the filed, accepted mechanism replaces today's
+players can complete a proof. The CF and DASD recipes use RT-10's `CF_*`/`DASD_*` pins and the CICS-storage one
+RT-11's `SOS_MIN` (all landed). A complete recipe for the filed, accepted mechanism replaces today's
 relevance sum, a second for the trigger makes the evidence strong; the reply shows each predicate ticked or not.
 Note: `ENDED_RATE` is `self`/`server` only today, so the DEMAND_SURGE recipe's "on the surging workload" and §4.4's
 collateral-victim surrogate (a co-hosted workload's rate) need it widened to `competitor` here.
@@ -401,26 +391,6 @@ edits are uninstalled and visible). Done when: the message says so.
 
 From #180. When a later install succeeds after an earlier one failed at day start, the play CLI's day-start text and
 the mail don't say that the earlier install's edits went live through the later one. Done when: both say so.
-
-### PR-04 · Planned-policy labels
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #178. CLASSIFY flags the planned policy only as `pending` (`src/worker/game.worker.ts` CLASSIFIED); the play CLI
-`status` and `policy` output don't show the planned (queued or briefing) policy at all. Done when: both show it.
-
-### PR-05 · The import dialog reads its result from toast wording
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #181. The dialog (`src/ui/RunFiles.tsx`) matches `Loaded run:` / `Import failed:` toast text. Since #185,
-`submittedToast.current = toast` (after the confirmation wait) stores the toast from before the prompt opened, which is
-harmless only because results are matched by prefix. Give the worker an explicit import-result message.
-Done when: the dialog no longer reads toasts.
-
-### PR-06 · Closing during an in-flight import still replaces the run
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #181, after the player has already confirmed. Done when: closing the dialog cancels the import, or the dialog
-can't be closed until the import ends.
 
 ### PR-07 · The open modal scrolls with the page
 `list: pr-followups · status: ready · priority: low · size: S · area: ui`

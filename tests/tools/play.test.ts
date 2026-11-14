@@ -276,6 +276,26 @@ describe('headless play interface', () => {
     expect(policyText(newPlayFile(7), true)).toBe('No pending policy edits.');
   });
 
+  it('status and policy name the planned policy, in the briefing and once it is queued', () => {
+    const edit: PlayCommand = {
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId: 'ONLHI', period: 0, goal: { kind: 'AVG', rtSec: 0.4 }, importance: 2 },
+    };
+    // BRIEFING: the activation is a planned change for today, so both say when it takes over.
+    let f = run(newPlayFile(7), [edit, { cmd: 'activate' }]);
+    expect(statusText(f)).toContain('planned policy BASEPOL2 (activates when the day starts)');
+    expect(policyText(f, false)).toContain('planned policy BASEPOL2 (activates when the day starts)');
+    // Day start queues it for the first tick: it is still not active, and both say it is queued.
+    f = run(f, [{ cmd: 'start' }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL');
+    expect(statusText(f)).toContain('planned policy BASEPOL2 (queued; V WLM,POLICY= applies at the next tick)');
+    expect(policyText(f, false)).toContain('planned policy BASEPOL2 (queued; V WLM,POLICY= applies at the next tick)');
+    // Once the tick runs, the policy is active and no longer planned.
+    f = run(f, [{ cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL2');
+    expect(statusText(f)).not.toContain('planned policy');
+    expect(policyText(f, false)).not.toContain('planned policy');
+  });
+
   it('notes are logged without touching the run; hour-by-hour advance (--pace) ends in the same state', () => {
     const base = run(newPlayFile(7), [{ cmd: 'start' }]);
     const noted = run(base, [{ cmd: 'note', text: 'watching PROD2' }]);
@@ -309,5 +329,18 @@ describe('headless play interface', () => {
     expect(applyPlayCommand(f, { cmd: 'pin', req: { source: 'MON3', system: 'PRDA', scKey: 'MKTORD', metric: 'PI' }, at: 'D1 09:00' }).text).toContain('in the future');
     expect(applyPlayCommand(f, { cmd: 'pin', req: { source: 'DB2', hour: '7', workloadId: 'X', metric: 'PI' }, at: 'D1 07:00' }).ok).toBe(false);
     expect(applyPlayCommand(f, { cmd: 'new', seed: 1 }).file.mon3).toBeUndefined();
+  });
+
+  it('pins region SOS minutes and a PROCU job row now, and refuses a past job row from the trimmed history', () => {
+    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const sos = run(f, [{ cmd: 'pin', req: { source: 'CICS_STORAGE', hour: '7', region: 'CICSAOR1' } }]);
+    expect(sos.run.pins.at(-1)!.text).toMatch(/^CICS 110 D1 \d\d:00–\d\d:00 CICSAOR1 SOS minutes/);
+    const job = run(f, [{ cmd: 'pin', req: { source: 'PROCU', system: 'PROD1', jobname: 'CICSAOR1' } }]);
+    expect(job.run.pins.at(-1)!.text).toMatch(/^PROCU D1 \d\d:\d\d PROD1 CICSAOR1 job EAppl CPU/);
+    // The CLI's history keeps no job rows (like SYSWKM), so a past PROCU pin needs the browser.
+    const h = run(newPlayFile(7, 'NORMAL', 'harbourline'), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const past = applyPlayCommand(h, { cmd: 'pin', req: { source: 'PROCU', system: 'PRDA', jobname: 'CICSAOR1' }, at: 'D1 07:00' });
+    expect(past.ok).toBe(false);
+    expect(past.text).toContain('no job rows');
   });
 });
