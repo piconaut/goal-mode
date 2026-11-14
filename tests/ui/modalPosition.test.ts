@@ -72,13 +72,14 @@ function compounds(selector: string): Compound[] {
 function matches(selector: string, type: string, classes: string[], open: boolean): boolean | 'unmodelled' {
   const parts = compounds(selector);
   const last = parts.at(-1)!;
-  const pseudoOk = (p: string) => (open && p === ':modal') || (open && /^:(hover|focus|active|focus-visible)/.test(p));
+  const supportedPseudo = (p: string) => /^:(modal|hover|focus|active|focus-visible)$/.test(p);
   if (last.odd || parts.some((p) => p.odd)) return 'unmodelled';
-  // Interactive pseudo-classes are false at rest, so such a rule never applies; :modal is true for an open modal.
+  if (parts.some((p) => p.pseudos.some((pseudo) => !supportedPseudo(pseudo)))) return 'unmodelled';
+  // Conservatively include interactive states; :modal is true for an open modal.
   const matchesSelf =
     (last.tag === undefined || last.tag === type) &&
     last.classes.every((c) => classes.includes(c)) &&
-    last.pseudos.every(pseudoOk);
+    last.pseudos.every((p) => open && supportedPseudo(p));
   if (!matchesSelf) return false;
   // Ancestor compounds are assumed to be able to match; only selectors we can read count.
   if (parts.slice(0, -1).some((p) => p.pseudos.length > 0)) return 'unmodelled';
@@ -97,6 +98,13 @@ const modalTargets: [string, string[]][] = [
 ];
 
 describe('modal placement', () => {
+  it.each(['dialog.modal:not(.closed)', 'dialog.modal:has(button)', 'dialog.modal:future-state'])(
+    'refuses an unsupported pseudo-class rather than silently skipping %s',
+    (selector) => {
+      expect(matches(selector, 'dialog', ['modal'], true)).toBe('unmodelled');
+    },
+  );
+
   it('an open <dialog class="modal"> stays fixed to the viewport', () => {
     // Both dialogs gain the class while open: the import/export dialog and the confirmation dialog.
     expect(winner('dialog', ['modal'])?.position).toBe('fixed');
