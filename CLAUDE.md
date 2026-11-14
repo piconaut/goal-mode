@@ -118,6 +118,13 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 - **Golden runs** (`tests/golden/`): seeded scripted runs hashed per day. If you change model
   behaviour intentionally, regenerate the goldens in the same commit and explain why in the
   commit message.
+- **Cross-report invariants** (`tests/sim/report-invariants.test.ts`, SPEC §16): every figure a player can read in RMF,
+  Partition Data, Monitor III, the SMF views and Finance must agree with the others and with the sim state it comes
+  from, on every scenario in `SCENARIOS`. A new or changed report field joins an identity in
+  `tests/helpers/reportIdentities.ts` in the same change (real z/OS behaviour with book and page, or a stated game
+  rule; every tolerance with its reason; no scenario, LPAR, class or workload names). An identity that fails is a
+  finding: fix a small reporting bug in its own commit, or file a BACKLOG entry and leave that identity out with a
+  comment naming it. Never loosen or skip one to get green.
 - **Behaviour claims:** back "report-only", "pure refactor" or "output-identical" with `npm run compare` and paste its
   summary in the PR. `--drop` names new reporting-only state fields so they don't count as a sim difference.
 - Balance changes: run the headless strategy bots (SPEC §16) and record outcomes in
