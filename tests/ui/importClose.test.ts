@@ -16,8 +16,10 @@ describe('closing the import dialog', () => {
 
   it('still closes when no import is in flight', () => {
     const src = dialog();
-    // The guard is the first line of the handler, not an unconditional return.
-    expect(src).toMatch(/if \(loading\) return;\s*session\.current\+\+;/);
+    // The loading guard is the first line of the handler, not an unconditional return, and a later guard (PR-08's
+    // already-closing check) still lets a real close reach the session bump.
+    expect(src).toMatch(/const close = \(\) => \{[\s\S]{0,300}?if \(loading\) return;/);
+    expect(src).toMatch(/if \(loading\) return;[\s\S]{0,200}?session\.current\+\+;/);
     expect(src).not.toMatch(/const close = \(\) => \{\s*return;/);
   });
 });

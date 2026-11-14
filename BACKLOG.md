@@ -392,12 +392,6 @@ edits are uninstalled and visible). Done when: the message says so.
 From #180. When a later install succeeds after an earlier one failed at day start, the play CLI's day-start text and
 the mail don't say that the earlier install's edits went live through the later one. Done when: both say so.
 
-### PR-08 · One unstyled frame on programmatic close
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #183. The `modal` class drops when state resets but `el.close()` runs in a passive `useEffect`; `useLayoutEffect`
-would avoid the frame. `close()` also runs twice on cancel (harmless).
-
 ### PR-09 · No automated test for the dialog lifecycle
 `list: pr-followups · status: ready · priority: low · size: M · area: ui`
 

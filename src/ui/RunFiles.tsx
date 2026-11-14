@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { GameHandle } from './useGame';
 import { useConfirmation } from './Confirmation';
 import { importOutcome } from './importDialog';
@@ -22,6 +22,8 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
     // An import already confirmed cannot be abandoned half-done: the worker replaces the run on its own, so the
     // dialog stays open until IMPORT_RESULT arrives (PR-06).
     if (loading) return;
+    // Already closing: Escape calls close() and the resulting close event calls it again.
+    if (mode === null) return;
     session.current++;
     setMode(null);
     setLoading(false);
@@ -38,7 +40,9 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
     setMode(next);
   };
 
-  useEffect(() => {
+  // Layout effect: the open/close must land in the same commit that adds or drops the `modal` class. In a passive
+  // effect the class is already gone while the dialog is still open, so one frame paints with no dialog styling (PR-08).
+  useLayoutEffect(() => {
     const el = dialog.current;
     if (!el) return;
     if (mode && !el.open) el.showModal();
