@@ -392,14 +392,6 @@ edits are uninstalled and visible). Done when: the message says so.
 From #180. When a later install succeeds after an earlier one failed at day start, the play CLI's day-start text and
 the mail don't say that the earlier install's edits went live through the later one. Done when: both say so.
 
-### PR-05 · The import dialog reads its result from toast wording
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #181. The dialog (`src/ui/RunFiles.tsx`) matches `Loaded run:` / `Import failed:` toast text. Since #185,
-`submittedToast.current = toast` (after the confirmation wait) stores the toast from before the prompt opened, which is
-harmless only because results are matched by prefix. Give the worker an explicit import-result message.
-Done when: the dialog no longer reads toasts.
-
 ### PR-06 · Closing during an in-flight import still replaces the run
 `list: pr-followups · status: ready · priority: low · size: S · area: ui`
 
