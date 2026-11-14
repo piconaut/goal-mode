@@ -34,6 +34,10 @@ export type EvidenceMetric =
   | 'DASD_DISC'
   | 'DASD_IOSQ'
   | 'DASD_RESP'
+  | 'SOS_MIN'
+  | 'JOB_APPL'
+  | 'WM_LOCK'
+  | 'WM_READY'
   | 'DBAT_QUEUE'
   | 'QR_WAIT'
   | 'MXT_WAIT'
@@ -113,6 +117,19 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   DASD_DISC: { label: 'DISC time', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 0.14, notableMultiple: 2, weight: 1, relations: ['server'] },
   DASD_IOSQ: { label: 'IOSQ time', unit: 'ms', mechanisms: ['IO'], triggers: ['DEMAND_SURGE', 'BATCH_OVERLAP'], notableAt: 0.1, notableMultiple: 2, weight: 1, relations: ['server'] },
   DASD_RESP: { label: 'device response time', unit: 'ms', mechanisms: ['IO'], triggers: [], notableAt: 0.44, notableMultiple: 2, weight: 1, relations: ['server'] },
+  // CICS region storage, top-consumer job and work-manager states (RT-11, A11). SOS time is the region's, so its row
+  // is the server's; a job's CPU is a specific consumer (a competitor, or a region serving the work); the two state
+  // shares are the transaction class's own. READY estimates QR dispatch waits, so it is half weight (RMF Report
+  // Analysis p.536–537). Lines measured on day 0 over seeds 1–5: SOS 0 min normal, 35+ min under CICS_SOS; a job
+  // 10–14 % (MONAGENT) normal, 90 % under XLOG_LOOP and 30–37 % of an engine under MONITOR_CREEP (the decayed window
+  // reads about 30 % an hour after the card starts and settles in the low-to-mid 30s; the reading moves with how much
+  // of the window the card fills); READY max 2.5 % midwest / 1.3 % revenue / 85 % harbourline (rows whose healthy
+  // scale differs, hence the row's own baseline too); LOCK max 27.9 / 22.5 / 34.5 % normal and 39–54 % under
+  // LOCK_ESCALATION; FICTIONAL.
+  SOS_MIN: { label: 'SOS minutes', unit: 'min', mechanisms: ['THREAD_LIMIT', 'STORAGE'], triggers: ['APPLICATION_ERROR'], notableAt: 1, weight: 1, relations: ['server'] },
+  JOB_APPL: { label: 'job EAppl CPU', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK'], notableAt: 25, weight: 1, relations: ['server', 'competitor'] },
+  WM_LOCK: { label: 'LOCK state', unit: '%', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 35, weight: 1, relations: OWN },
+  WM_READY: { label: 'READY state', unit: '%', mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY', 'QR_TCB'], triggers: [], notableAt: 5, notableMultiple: 2, weight: 0.5, relations: OWN },
   DBAT_QUEUE: { label: 'DBAT queue ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   QR_WAIT: { label: 'QR wait ms/txn', unit: 'ms', mechanisms: ['QR_TCB'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   MXT_WAIT: { label: 'MXT wait ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },

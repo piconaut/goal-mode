@@ -710,6 +710,33 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     priority but to be done, batch response-time goals especially. WT-15's Done-when listed them unnecessarily;
     WT-15 and the sweep went first. WT-17 is ready.
 
+- 2026-11-13: RT-11, three more pin sources: CICS region storage, PROCU job rows and the WLMGL work-manager states
+  (docs/rca-design.md A11).
+  - `SOS_MIN`: an AOR's minutes short on storage in the hour, from the SMF 110 region storage view; THREAD_LIMIT and
+    STORAGE, with APPLICATION_ERROR as a trigger; notable 1 minute; a `server` clue (the row names the region, and
+    only a region serving the work matches it). Measured: 0 min on every normal day; CICS_SOS (the PROD2 AOR leak)
+    puts 35+ min in the hour.
+  - `JOB_APPL`: one address space's EAppl % CP from Monitor III PROCU; CPU_CAPACITY and CPU_PRIORITY with
+    RUNAWAY_WORK; notable 25 % of an engine; the work's `server` when the jobname is one of its serving AORs,
+    otherwise a specific `competitor` on an image it runs on. Measured: MONAGENT 10–14 % normal, CICSXLOG 90 %
+    (XLOG_LOOP) and MONAGENT 30–37 % (MONITOR_CREEP; the decayed Monitor III window reads about 30 % an hour after
+    the card starts and settles in the low-to-mid 30s, seeds 1–5), so the 25 % line is cleared by 5–12 points — the
+    ~120 % first quoted here was the card's pre-dispatch intent (0.03 engines ×12), not the EAppl the report and the
+    pin show.
+  - `WM_LOCK` and `WM_READY`: the transaction class's LOCK and READY shares of RMF's STATE SAMPLES BREAKDOWN, read by
+    the same `workManagerStatePct` helper the WLMGL report and Monitor III's SYSWKM panel print with (one formula, no
+    drift). LOCK_CONTENTION for
+    LOCK; CPU_PRIORITY, CPU_CAPACITY and QR_TCB for READY at half weight, because READY estimates QR dispatch waits.
+    Lines: LOCK 35 % (normal maxima 27.9 / 22.5 / 34.5 % on midwest/revenue/harbourline; LOCK_ESCALATION 39–54 %);
+    READY 5 % with 2× the row's own baseline (midwest and revenue normal maxima 2.5 / 1.3 %; QR_RELEASE 6–13 % on
+    PROD1 — but harbourline's own READY runs to 85 %, so that row needs its baseline, and recipes (RT-13) are where
+    this weak half-weight clue is really sorted out).
+  - CLI `pin CICS <hour> <AOR> SOS_MIN` and `pin PROCU <system> <jobname>` (with `--at`), plus the pin buttons on the
+    SMF storage rows, PROCU job rows and the Workload Activity metric list.
+  - Not done: EDSA peak against EDSALIM stays a displayed fact without a metric, and a past PROCU pin needs the
+    browser, whose history keeps the full Monitor III view; the CLI's trimmed history has no job rows (as for
+    SYSWKM).
+
 - 2026-11-13: RT-10, the CF Activity and DASD Activity rows are pin sources (docs/rca-design.md §4.6, A11). Five new
   metrics, all `server` clues for the infrastructure the work's Db2 and I/O wait on: `CF_SYNC` (a CF's sync service
   time, µs; CF_SERVICE, HARDWARE_FAULT), `CF_ASYNC_PCT` (its async conversion, %; CF_SERVICE), and `DASD_DISC`

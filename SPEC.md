@@ -1335,7 +1335,8 @@ accepted mechanism earns evidence points too. The reply names the primary and gi
 answer. Old saves carry no accepted set and are scored on the primary alone.
 
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
-Monitor III, Db2 101, CICS 110, Partition Data, and the CF Activity and DASD Activity rows: a CF's sync service
+Monitor III — class rows, SYSWKM server rows and PROCU job rows — Db2 101, CICS 110 (transactions and the region
+storage view's SOS time), Partition Data, and the CF Activity and DASD Activity rows: a CF's sync service
 time or async conversion, the DASD volume summary's DISC, and an LCU's IOSQ, DISC or response time). A pin is
 relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
@@ -1353,7 +1354,10 @@ and a pin outside them scores nothing whatever its size: the work's own service 
 `CPU_VS_BASE`, the Db2/CICS waits) accept `self` and `server`; `APPL` and its CP/zIIP split also accept `competitor`
 at half weight, because it shows a contender existed, not that it was ahead; the image and processor facts
 (`PRSM_DELAY`, `CAPPED`, `CAPACITY_ADJ`, and `CPC_BUSY`/`LPAR_BUSY`, notable 90/95) are `host` only; the batch job
-metrics are `self` only; the CF and DASD rows are `server` clues, the infrastructure the work's Db2 and I/O wait on.
+metrics are `self` only; the CF and DASD rows are `server` clues, the infrastructure the work's Db2 and I/O wait on;
+a region's SOS time is `server` (the AOR's row names the region); a PROCU job is the work's `server` when it serves
+it and otherwise a specific `competitor` on that image. The work-manager states (`WM_LOCK`, and `WM_READY` at half
+weight because READY estimates CICS QR dispatch waits) are the transaction class's own (`self`/`server`).
 PI and velocity are symptoms that accept any relation but never score. So another class's
 CPU-delay row on a production image is not evidence about the hurt workload (only its `APPL` share is), and a
 server-side clue (`SYSWKM`) still needs the exact serving image. Class rows must name an image the work runs on or `*PLEX` in every relation, so the work's own class on an image

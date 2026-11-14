@@ -44,7 +44,7 @@ export function Monitor({ v, game, openAnalytics }: { v: ViewModel; game: GameHa
   const m = at === null ? v.mon3 : (past?.view ?? null);
   // A pin on a past range carries its end tick; the worker reads that range from its history.
   const pins: GameHandle | null =
-    at === null ? game : past ? { ...game, send: (msg) => game.send(msg.type === 'PIN' && (msg.req.source === 'MON3' || msg.req.source === 'CPC') ? { ...msg, req: { ...msg.req, tick: past.tick } } : msg) } : null;
+    at === null ? game : past ? { ...game, send: (msg) => game.send(msg.type === 'PIN' && (msg.req.source === 'MON3' || msg.req.source === 'CPC' || msg.req.source === 'PROCU') ? { ...msg, req: { ...msg.req, tick: past.tick } } : msg) } : null;
   if (!v.mon3)
     return (
       <div className="panel">
