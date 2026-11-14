@@ -121,9 +121,10 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   // is the server's; a job's CPU is a specific consumer (a competitor, or a region serving the work); the two state
   // shares are the transaction class's own. READY estimates QR dispatch waits, so it is half weight (RMF Report
   // Analysis p.536–537). Lines measured on day 0 over seeds 1–5: SOS 0 min normal, 35+ min under CICS_SOS; a job
-  // 10 % (MONAGENT) normal and 90 %+ under XLOG_LOOP/MONITOR_CREEP; READY max 2.5 % midwest / 1.3 % revenue /
-  // 64.3 % harbourline (rows whose healthy scale differs, hence the row's own baseline too); LOCK max 27.9 / 22.5 /
-  // 34.5 % normal and 39–54 % under LOCK_ESCALATION; FICTIONAL.
+  // 10–14 % (MONAGENT) normal, 90 % under XLOG_LOOP and 33–37 % of an engine under MONITOR_CREEP once the card has
+  // run an hour (its first hour is transitional); READY max 2.5 % midwest / 1.3 % revenue / 85 % harbourline (rows
+  // whose healthy scale differs, hence the row's own baseline too); LOCK max 27.9 / 22.5 / 34.5 % normal and 39–54 %
+  // under LOCK_ESCALATION; FICTIONAL.
   SOS_MIN: { label: 'SOS minutes', unit: 'min', mechanisms: ['THREAD_LIMIT', 'STORAGE'], triggers: ['APPLICATION_ERROR'], notableAt: 1, weight: 1, relations: ['server'] },
   JOB_APPL: { label: 'job EAppl CPU', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK'], notableAt: 25, weight: 1, relations: ['server', 'competitor'] },
   WM_LOCK: { label: 'LOCK state', unit: '%', mechanisms: ['LOCK_CONTENTION'], triggers: [], notableAt: 35, weight: 1, relations: OWN },

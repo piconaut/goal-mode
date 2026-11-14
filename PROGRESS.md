@@ -718,14 +718,17 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     puts 35+ min in the hour.
   - `JOB_APPL`: one address space's EAppl % CP from Monitor III PROCU; CPU_CAPACITY and CPU_PRIORITY with
     RUNAWAY_WORK; notable 25 % of an engine; the work's `server` when the jobname is one of its serving AORs,
-    otherwise a specific `competitor` on an image it runs on. Measured: MONAGENT 10–11 % normal, CICSXLOG 90 %
-    (XLOG_LOOP) and MONAGENT ~120 % (MONITOR_CREEP).
+    otherwise a specific `competitor` on an image it runs on. Measured: MONAGENT 10–14 % normal, CICSXLOG 90 %
+    (XLOG_LOOP) and MONAGENT 33–37 % (MONITOR_CREEP, settled an hour after the card starts; its first hour is
+    transitional), so the 25 % line is cleared by 8–12 points — the ~120 % first quoted here was the card's
+    pre-dispatch intent (0.03 engines ×12), not the EAppl the report and the pin show.
   - `WM_LOCK` and `WM_READY`: the transaction class's LOCK and READY shares of RMF's STATE SAMPLES BREAKDOWN, read by
-    the same `workManagerStatePct` helper the WLMGL report prints with (one formula, no drift). LOCK_CONTENTION for
+    the same `workManagerStatePct` helper the WLMGL report and Monitor III's SYSWKM panel print with (one formula, no
+    drift). LOCK_CONTENTION for
     LOCK; CPU_PRIORITY, CPU_CAPACITY and QR_TCB for READY at half weight, because READY estimates QR dispatch waits.
     Lines: LOCK 35 % (normal maxima 27.9 / 22.5 / 34.5 % on midwest/revenue/harbourline; LOCK_ESCALATION 39–54 %);
     READY 5 % with 2× the row's own baseline (midwest and revenue normal maxima 2.5 / 1.3 %; QR_RELEASE 6–13 % on
-    PROD1 — but harbourline's own READY runs to 64 %, so that row needs its baseline, and recipes (RT-13) are where
+    PROD1 — but harbourline's own READY runs to 85 %, so that row needs its baseline, and recipes (RT-13) are where
     this weak half-weight clue is really sorted out).
   - CLI `pin CICS <hour> <AOR> SOS_MIN` and `pin PROCU <system> <jobname>` (with `--at`), plus the pin buttons on the
     SMF storage rows, PROCU job rows and the Workload Activity metric list.

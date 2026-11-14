@@ -105,6 +105,15 @@ describe('PROCU job CPU (RT-11)', () => {
     expect(verdict(devt, incident(devt, cause('CPU_PRIORITY', 'POLICY')))).toMatchObject({ relevance: 0, why: 'not about RBANK' });
     expect(addPin(regressed, MIDWEST, { source: 'PROCU', system: 'PROD1', jobname: 'NOJOB' }).message).toBe('No such job row');
   });
+
+  it("counts a serving AOR's own CPU as the work's server, and another image's as not about it", () => {
+    // CARDAUTH runs in CICSAOR1/3 on PROD1 and CICSAOR2/4 on PROD2 (incidentSubjects records them as servers).
+    const r = pin(regressed, { source: 'PROCU', system: 'PROD1', jobname: 'CICSAOR1' });
+    const cardauth = incident(r, { workloadId: 'CARDAUTH' });
+    expect(verdict(r, cardauth)).toMatchObject({ relevance: 1, why: 'points at the cause' });
+    // The same AOR row says nothing about ADHOC work, which runs on PROD2 only.
+    expect(verdict(r, incident(r, { workloadId: 'ADHOC' }))).toMatchObject({ relevance: 0, why: 'not about ADHOC' });
+  });
 });
 
 describe('WLMGL work-manager states (RT-11)', () => {
@@ -151,6 +160,31 @@ describe('WLMGL work-manager states (RT-11)', () => {
     // A normal dispatch wait (midwest's day-0 maxima are under 3 %) is not evidence.
     const calm = pin(withStates({ active: 0.99, ready: 0.01 }), { source: 'WLMGL', index: index(), system: 'PROD1', scKey: 'ONLHI#1', metric: 'WM_READY' });
     expect(verdict(calm, incident(calm, cause('QR_TCB', 'POLICY')))).toMatchObject({ relevance: 0, why: 'value is unremarkable' });
+  });
+
+  it("raises READY's line with the row's own baseline, not just its 5 % floor", () => {
+    // A row whose normal READY share is 8 % has a 16 % line (2× its median), so a 10 % reading is still its own
+    // normal even though it is above the 5 % floor: only a reading above 16 % is evidence.
+    const normal = { active: 0.92, ready: 0.08 };
+    const everyInterval = (measured: Partial<WorkManagerSamples>) => {
+      const i = index();
+      const intervals = regressed.sim.rmf.intervals.map((iv, k) => ({
+        ...iv,
+        wlm: iv.wlm.map((r) =>
+          r.lparId === 'PROD1' && r.scKey === 'ONLHI#1'
+            ? { ...r, workManager: { idle: 0, waitingIo: 0, waitingLock: 0, waitingProd: 0, waitingMisc: 0, regionKeys: ['STCHI'], ...normal, ...(k === i ? measured : {}) } }
+            : r,
+        ),
+      }));
+      return { ...regressed, sim: { ...regressed.sim, rmf: { ...regressed.sim.rmf, intervals } } };
+    };
+    const pinReady = (run: RunState) => pin(run, { source: 'WLMGL', index: index(), system: 'PROD1', scKey: 'ONLHI#1', metric: 'WM_READY' });
+    const quiet = pinReady(everyInterval({ active: 0.9, ready: 0.1 }));
+    expect(quiet.pins.at(-1)!.baseline).toBeCloseTo(8);
+    expect(verdict(quiet, incident(quiet, cause('QR_TCB', 'POLICY')))).toMatchObject({ relevance: 0, why: 'value is unremarkable' });
+    const busy = pinReady(everyInterval({ active: 0.78, ready: 0.22 }));
+    expect(busy.pins.at(-1)!.value).toBeCloseTo(22);
+    expect(verdict(busy, incident(busy, cause('QR_TCB', 'POLICY'))).relevance).toBe(0.5);
   });
 
   it('rejects the states on a row that has none (region classes, not transactions)', () => {

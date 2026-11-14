@@ -294,7 +294,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if (!m.view.procJobs) return 'This Monitor III range keeps no job rows; pin the job from the current view';
       const j = m.view.procJobs.find((x) => x.system === req.system && x.jobname === req.jobname);
       if (!j) return 'No such job row';
-      // PROCU's EAppl % CP: enclave CPU included, 100 = one engine (RMF Report Analysis p.188).
+      // PROCU's EAppl % CP: enclave CPU included, 100 = one engine (RMF Report Analysis p.189).
       return { source: 'PROCU', metric: 'JOB_APPL', subject: req.jobname, system: req.system, tick: m.tick, value: 100 * j.eapplCpEngines };
     }
     case 'BATCH': {
