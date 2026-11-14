@@ -59,12 +59,15 @@ export interface RmfAcc {
   dasd: { ticks: number; iops: number; rtRandom: number; iosq: number; pend: number; disc: number; conn: number; rtSeq: number };
   /** Per LCU: I/O counts and I/O-weighted IOSQ/DISC/response sums. */
   lcus: Record<string, { ios: number; iosqW: number; discW: number; rtW: number; aliasesPerHot: number; ticks: number }>;
-  cf: Record<string, { busy: number; rate: number; sync: number; async: number; service: number; ticks: number }>;
+  /** Per CF: `sync`, `async` and `service` are sums of per-tick averages (an idle interval's figures); `syncReq`,
+   * `syncSecW` and `serviceSecW` weight by requests, like the structure lines below, so the CF line is the
+   * request-weighted figure of its structures (absent in an interval begun by an older save). */
+  cf: Record<string, { busy: number; rate: number; sync: number; async: number; service: number; ticks: number; syncReq?: number; syncSecW?: number; serviceSecW?: number }>;
   /** Per structure: request-weighted sums (rate × value) so interval averages weight busy ticks. */
   /** Keyed by name, or name|SEC for a duplexed secondary copy. */
   cfStructures: Record<string, { name?: string; role?: 'PRIM' | 'SEC'; type: string; cfLparId: string; rate: number; syncReq: number; syncSecW: number; serviceSecW: number; ticks: number }>;
   /** Per connected system and CF (Subchannel Activity), keyed system|cf: request-weighted sums of its CF service. */
-  cfSystems?: Record<string, { system?: string; cfLparId?: string; distKm: number; rate: number; syncSecW: number; asyncW: number; serviceSecW: number; ticks: number }>;
+  cfSystems?: Record<string, { system?: string; cfLparId?: string; distKm: number; rate: number; syncSecW: number; asyncW: number; serviceSecW: number; ticks: number; /** Synchronous requests and their service time (absent in an interval begun by an older save). */ syncReq?: number; syncReqSecW?: number }>;
   /** Per structure copy and connected system (Structure Activity), keyed name|role|system. */
   cfStructSystems?: Record<string, CfStructSystemAcc>;
   /** Report classes, keyed lpar|name (only once the policy assigns any). */
@@ -276,6 +279,20 @@ export function accumulateTick(
         service = all.reduce((x, st) => x + st.requestRate * st.serviceSec, 0) / rate;
       }
     }
+    // Request-weighted, as RMF's averages are per request: time-averaging the per-tick averages would let a quiet
+    // tick count as much as a busy one, and the CF line would not be the weighted figure of its structure lines.
+    const weighted = a.ticks === 0 || a.syncReq !== undefined;
+    let syncReq = 0;
+    let syncSecW = 0;
+    let serviceSecW = 0;
+    if (weighted) {
+      for (const st of r.secondaries ? [...r.structures, ...r.secondaries] : r.structures) {
+        const syncRate = st.requestRate * (1 - st.asyncFrac);
+        syncReq += syncRate;
+        syncSecW += syncRate * st.syncSec;
+        serviceSecW += st.requestRate * st.serviceSec;
+      }
+    }
     c[r.lparId] = {
       busy: a.busy + r.busyFrac,
       rate: a.rate + rate,
@@ -283,6 +300,7 @@ export function accumulateTick(
       async: a.async + async,
       service: a.service + service,
       ticks: a.ticks + 1,
+      ...(weighted ? { syncReq: (a.syncReq ?? 0) + syncReq, syncSecW: (a.syncSecW ?? 0) + syncSecW, serviceSecW: (a.serviceSecW ?? 0) + serviceSecW } : {}),
     };
   }
   const cs = { ...(acc.cfStructures ?? {}) };
@@ -320,7 +338,11 @@ export function accumulateTick(
         // Subchannel Activity: this system's requests to that CF, over every structure copy there.
         const sk = `${id}|${x.cfLparId}`;
         const a = sy[sk] ?? { system: id, cfLparId: x.cfLparId, distKm: 0, rate: 0, syncSecW: 0, asyncW: 0, serviceSecW: 0, ticks: 0 };
-        sy[sk] = { ...a, distKm: x.distKm, rate: a.rate + x.requestRate, syncSecW: a.syncSecW + x.requestRate * x.syncSec, asyncW: a.asyncW + x.requestRate * x.asyncFrac, serviceSecW: a.serviceSecW + x.requestRate * x.serviceSec, ticks: a.ticks + (touched.has(sk) ? 0 : 1) };
+        const bySync = a.rate === 0 || a.syncReq !== undefined;
+        sy[sk] = {
+          ...a, distKm: x.distKm, rate: a.rate + x.requestRate, syncSecW: a.syncSecW + x.requestRate * x.syncSec, asyncW: a.asyncW + x.requestRate * x.asyncFrac, serviceSecW: a.serviceSecW + x.requestRate * x.serviceSec, ticks: a.ticks + (touched.has(sk) ? 0 : 1),
+          ...(bySync ? { syncReq: (a.syncReq ?? 0) + syncRate, syncReqSecW: (a.syncReqSecW ?? 0) + syncRate * x.syncSec } : {}),
+        };
         touched.add(sk);
       }
     }
@@ -548,14 +570,18 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
     wlm,
     ...(wlmRc ? { wlmRc } : {}),
     dasd: { iops: acc.dasd.iops / dt, rtRandomMs: ms(acc.dasd.rtRandom), rtSeqMs: ms(acc.dasd.rtSeq), iosqMs: ms(acc.dasd.iosq), pendMs: ms(acc.dasd.pend), discMs: ms(acc.dasd.disc), connMs: ms(acc.dasd.conn) },
-    cf: Object.entries(acc.cf).map(([lparId, a]) => ({
-      lparId,
-      busyPct: (100 * a.busy) / a.ticks,
-      reqPerSec: a.rate / a.ticks,
-      syncUs: (1e6 * a.sync) / a.ticks,
-      asyncPct: (100 * a.async) / a.ticks,
-      serviceUs: (1e6 * a.service) / a.ticks,
-    })),
+    cf: Object.entries(acc.cf).map(([lparId, a]) => {
+      // With requests in the interval: per-request averages (synchronous service over the synchronous requests).
+      const w = a.syncReq !== undefined && a.rate > 0;
+      return {
+        lparId,
+        busyPct: (100 * a.busy) / a.ticks,
+        reqPerSec: a.rate / a.ticks,
+        syncUs: w ? (a.syncReq! > 0 ? (1e6 * a.syncSecW!) / a.syncReq! : 0) : (1e6 * a.sync) / a.ticks,
+        asyncPct: w ? (100 * (a.rate - a.syncReq!)) / a.rate : (100 * a.async) / a.ticks,
+        serviceUs: w ? (1e6 * a.serviceSecW!) / a.rate : (1e6 * a.service) / a.ticks,
+      };
+    }),
     lcus: ctx.config.dasd.lcus.map((l) => {
       const a = acc.lcus?.[l.id];
       return {
@@ -591,7 +617,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
               cfLparId: a.cfLparId ?? '',
               distKm: a.distKm,
               reqPerSec: a.rate / Math.max(1, a.ticks),
-              syncUs: (1e6 * a.syncSecW) / a.rate,
+              syncUs: a.syncReq === undefined ? (1e6 * a.syncSecW) / a.rate : a.syncReq > 0 ? (1e6 * a.syncReqSecW!) / a.syncReq : 0,
               asyncPct: (100 * a.asyncW) / a.rate,
               serviceUs: (1e6 * a.serviceSecW) / a.rate,
             }))
