@@ -1335,7 +1335,9 @@ accepted mechanism earns evidence points too. The reply names the primary and gi
 answer. Old saves carry no accepted set and are scored on the primary alone.
 
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
-Monitor III, Db2 101, CICS 110). A pin is relevant when it falls in the incident window (± 1 h), concerns the
+Monitor III, Db2 101, CICS 110, Partition Data, and the CF Activity and DASD Activity rows: a CF's sync service
+time or async conversion, the DASD volume summary's DISC, and an LCU's IOSQ, DISC or response time). A pin is
+relevant when it falls in the incident window (± 1 h), concerns the
 hurt workload (or is a server-side clue), is notable, and its metric is evidence for the true mechanism or
 trigger (`content/evidence.ts`). Evidence is judged against the incident's own subjects — the service classes, the serving region classes
 (`serverClasses`, kept apart so a region's row is the server's), images and serving regions recorded when it opened
@@ -1351,13 +1353,17 @@ and a pin outside them scores nothing whatever its size: the work's own service 
 `CPU_VS_BASE`, the Db2/CICS waits) accept `self` and `server`; `APPL` and its CP/zIIP split also accept `competitor`
 at half weight, because it shows a contender existed, not that it was ahead; the image and processor facts
 (`PRSM_DELAY`, `CAPPED`, `CAPACITY_ADJ`, and `CPC_BUSY`/`LPAR_BUSY`, notable 90/95) are `host` only; the batch job
-metrics are `self` only; PI and velocity are symptoms that accept any relation but never score. So another class's
+metrics are `self` only; the CF and DASD rows are `server` clues, the infrastructure the work's Db2 and I/O wait on.
+PI and velocity are symptoms that accept any relation but never score. So another class's
 CPU-delay row on a production image is not evidence about the hurt workload (only its `APPL` share is), and a
 server-side clue (`SYSWKM`) still needs the exact serving image. Class rows must name an image the work runs on or `*PLEX` in every relation, so the work's own class on an image
 it never ran on does not count either. Pins also store a `baseline` where the report gives one — the median of the
 same row's six preceding report intervals (or closed SMF hours), or 1 for the CPU-per-transaction ratio — so a
 predicate can ask whether the value is normal; Monitor III pins carry none, because that view normalises APPL and
-ended/s differently (`docs/rca-design.md` §4.6). PI is a symptom and never counts. Evidence points need
+ended/s differently (`docs/rca-design.md` §4.6). A metric whose healthy scale differs by row (a coupling facility's
+own engine, one LCU among several) also has a `notableMultiple`: the value must clear that multiple of its own
+baseline as well as the absolute line, so a chronically slow row does not count as evidence for every incident.
+PI is a symptom and never counts. Evidence points need
 an accepted mechanism.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
@@ -1892,7 +1898,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Multi-day projects (threadsafe, zIIP-enable, compression, SQL tuning, archive) | **Plausible model** | Flat per-transaction multipliers on CPU, I/O and zIIP eligibility; sizes FICTIONAL. Events can also cut eligibility (`ziipEligMult`, moves zIIP time back to CP) |
 | Report classes in WLMGL (homogeneous / heterogeneous) | **Faithful simplification** | One row per report class; goal and PI only for a single service-class period (RMF would show report class periods) |
 | WLM service policies and scheduled V WLM,POLICY= switches | **Faithful simplification** | Whole policies are swapped; policy overrides within one policy are not modelled separately |
-| DASD per LCU, HyperPAV alias pools, 256 devices per LCU | **Faithful simplification** | Aliases pooled per LCU (real HyperPAV); hot volumes = top 10% with a skew; utility I/O lands on hot volumes; batch sees class-level SEQ response (APPROX) |
+| DASD per LCU, HyperPAV alias pools, 256 devices per LCU | **Faithful simplification** | Aliases pooled per LCU (real HyperPAV); hot volumes = top 10% with a skew; utility I/O lands on hot volumes; batch sees class-level SEQ response (APPROX). The LCU summary's IOSQ, DISC and response are the model's per-LCU figures, I/O-mix weighted |
 | CF structures (LOCK/CACHE/LIST), placement, sync→async by type | **Faithful simplification** | z/OS 1.2+ heuristic: every structure type converts once its sync time passes a per-type threshold (lock threshold FICTIONAL ×1.5); thresholds not scaled by sender CP speed (APPROX) |
 | SMF 101/110 views | **Faithful simplification** | From the sim's per-transaction response-time parts; all transaction CPU shown as class 1 CPU; CF time stands in for GBP/lock-structure suspensions |
 | SMF 113 counters, LSPR category | **Plausible model / real table** | L1MP/RNI/CPI are FICTIONAL functions of polarity mix and CPC busy; the LOW/AVERAGE/HIGH table is IBM's |

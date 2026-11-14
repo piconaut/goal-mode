@@ -29,6 +29,11 @@ export type EvidenceMetric =
   | 'LOCK_WAIT'
   | 'SYNC_IO'
   | 'CF_WAIT'
+  | 'CF_SYNC'
+  | 'CF_ASYNC_PCT'
+  | 'DASD_DISC'
+  | 'DASD_IOSQ'
+  | 'DASD_RESP'
   | 'DBAT_QUEUE'
   | 'QR_WAIT'
   | 'MXT_WAIT'
@@ -48,6 +53,9 @@ export interface EvidenceMetricDef {
   triggers: Trigger[];
   /** Below this the value is not notable enough to count as evidence. */
   notableAt: number;
+  /** Also require this multiple of the pin's own recent baseline, where one exists: one absolute line cannot serve
+   * rows whose healthy scale differs (CF02's chronically slow ICF engine, one LCU against another). FICTIONAL. */
+  notableMultiple?: number;
   /** Specific clues count fully; catch-all ones (other/UNK delay) count half. */
   weight: number;
   /** The relations this metric is evidence for; a pin outside them scores nothing, whatever its size. */
@@ -96,6 +104,15 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   LOCK_WAIT: { label: 'lock wait ms/txn', unit: 'ms', mechanisms: ['LOCK_CONTENTION'], triggers: ['BATCH_OVERLAP'], notableAt: 2, weight: 1, relations: OWN },
   SYNC_IO: { label: 'sync I/O ms/txn', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
   CF_WAIT: { label: 'CF ms/txn', unit: 'ms', mechanisms: ['CF_SERVICE'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
+  // CF Activity and DASD Activity (RT-10, A11): the resource the work waits on, so `server` clues. The CF row's own
+  // recent normal is the second line (CF02 runs on a weak shared ICF), and so is the LCU's: a normal rate on one LCU
+  // must not count for another's problem. Lines start at twice the busiest scenario's day-0 value (18–23 µs sync,
+  // 0 % async, 0.07 ms DISC, 0 ms IOSQ, 0.22 ms response); FICTIONAL.
+  CF_SYNC: { label: 'CF sync service time', unit: 'µs', mechanisms: ['CF_SERVICE'], triggers: ['HARDWARE_FAULT'], notableAt: 50, notableMultiple: 2, weight: 1, relations: ['server'] },
+  CF_ASYNC_PCT: { label: 'CF async conversion', unit: '%', mechanisms: ['CF_SERVICE'], triggers: [], notableAt: 1, notableMultiple: 2, weight: 1, relations: ['server'] },
+  DASD_DISC: { label: 'DISC time', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 0.14, notableMultiple: 2, weight: 1, relations: ['server'] },
+  DASD_IOSQ: { label: 'IOSQ time', unit: 'ms', mechanisms: ['IO'], triggers: ['DEMAND_SURGE', 'BATCH_OVERLAP'], notableAt: 0.1, notableMultiple: 2, weight: 1, relations: ['server'] },
+  DASD_RESP: { label: 'device response time', unit: 'ms', mechanisms: ['IO'], triggers: [], notableAt: 0.44, notableMultiple: 2, weight: 1, relations: ['server'] },
   DBAT_QUEUE: { label: 'DBAT queue ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   QR_WAIT: { label: 'QR wait ms/txn', unit: 'ms', mechanisms: ['QR_TCB'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
   MXT_WAIT: { label: 'MXT wait ms/txn', unit: 'ms', mechanisms: ['THREAD_LIMIT'], triggers: [], notableAt: 5, weight: 1, relations: OWN },

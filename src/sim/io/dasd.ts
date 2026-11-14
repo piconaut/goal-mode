@@ -53,6 +53,8 @@ export interface LcuResult {
   iops: number;
   /** I/O-weighted IOSQ across classes. */
   iosqSec: number;
+  /** I/O-weighted disconnected (cache-miss) time across classes: the DISC column of the DASD Activity LCU summary. */
+  discSec: number;
   rtSec: number;
   hotRatePerVol: number;
   aliasesPerHotVolume: number;
@@ -116,7 +118,9 @@ export function evaluateDasd(cfg: DasdConfig, iops: Record<IoClass, number>): Da
     }
     const iosqSec = lTotal > 0 ? iosqW / lTotal : 0;
     const svcAvg = lTotal > 0 ? (io.RANDOM * service.RANDOM.svc + io.SEQ * service.SEQ.svc) / lTotal : service.RANDOM.svc;
-    return { id: l.id, iops: lTotal, iosqSec, rtSec: iosqSec + svcAvg, hotRatePerVol, aliasesPerHotVolume: aliasesPerHot };
+    // Reporting only: the LCU's own cache-miss time, its I/O mix weighted (the class DISC a back-end degradation moves).
+    const discAvg = lTotal > 0 ? (io.RANDOM * service.RANDOM.disc + io.SEQ * service.SEQ.disc) / lTotal : service.RANDOM.disc;
+    return { id: l.id, iops: lTotal, iosqSec, discSec: discAvg, rtSec: iosqSec + svcAvg, hotRatePerVol, aliasesPerHotVolume: aliasesPerHot };
   });
 
   const classes = {} as Record<IoClass, IoClassResult>;

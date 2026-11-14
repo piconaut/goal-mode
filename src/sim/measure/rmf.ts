@@ -57,8 +57,8 @@ export interface RmfAcc {
   scps: Record<string, ScpIntervalAcc>;
   lpars: Record<string, LparIntervalAcc>;
   dasd: { ticks: number; iops: number; rtRandom: number; iosq: number; pend: number; disc: number; conn: number; rtSeq: number };
-  /** Per LCU: I/O counts and I/O-weighted IOSQ/response sums. */
-  lcus: Record<string, { ios: number; iosqW: number; rtW: number; aliasesPerHot: number; ticks: number }>;
+  /** Per LCU: I/O counts and I/O-weighted IOSQ/DISC/response sums. */
+  lcus: Record<string, { ios: number; iosqW: number; discW: number; rtW: number; aliasesPerHot: number; ticks: number }>;
   cf: Record<string, { busy: number; rate: number; sync: number; async: number; service: number; ticks: number }>;
   /** Per structure: request-weighted sums (rate × value) so interval averages weight busy ticks. */
   /** Keyed by name, or name|SEC for a duplexed secondary copy. */
@@ -165,7 +165,7 @@ export interface RmfInterval {
   /** Report class rows (only when the policy assigns report classes). */
   wlmRc?: WlmRecord[];
   dasd: { iops: number; rtRandomMs: number; rtSeqMs: number; iosqMs: number; pendMs: number; discMs: number; connMs: number };
-  lcus: { id: string; label: string; volumes: number; aliases: number; iops: number; iosqMs: number; rtMs: number; aliasesPerHotVol: number }[];
+  lcus: { id: string; label: string; volumes: number; aliases: number; iops: number; iosqMs: number; discMs: number; rtMs: number; aliasesPerHotVol: number }[];
   cf: { lparId: string; busyPct: number; reqPerSec: number; syncUs: number; asyncPct: number; serviceUs: number }[];
   /** Usage Summary: every structure copy; a synchronously duplexed pair shows as PRIM and SEC (RMF Report Analysis p.365). */
   cfStructures: { name: string; role?: 'PRIM' | 'SEC'; type: string; cfLparId: string; reqPerSec: number; syncPct: number; syncUs: number; serviceUs: number }[];
@@ -256,8 +256,8 @@ export function accumulateTick(
   }
   const lc = { ...(acc.lcus ?? {}) };
   for (const l of dasd?.lcus ?? []) {
-    const a = lc[l.id] ?? { ios: 0, iosqW: 0, rtW: 0, aliasesPerHot: 0, ticks: 0 };
-    lc[l.id] = { ios: a.ios + l.iops, iosqW: a.iosqW + l.iops * l.iosqSec, rtW: a.rtW + l.iops * l.rtSec, aliasesPerHot: a.aliasesPerHot + l.aliasesPerHotVolume, ticks: a.ticks + 1 };
+    const a = lc[l.id] ?? { ios: 0, iosqW: 0, discW: 0, rtW: 0, aliasesPerHot: 0, ticks: 0 };
+    lc[l.id] = { ios: a.ios + l.iops, iosqW: a.iosqW + l.iops * l.iosqSec, discW: a.discW + l.iops * l.discSec, rtW: a.rtW + l.iops * l.rtSec, aliasesPerHot: a.aliasesPerHot + l.aliasesPerHotVolume, ticks: a.ticks + 1 };
   }
   const c = { ...acc.cf };
   for (const r of cf) {
@@ -565,6 +565,7 @@ export function closeInterval(acc: RmfAcc, ctx: CloseContext): RmfInterval {
         aliases: l.aliases,
         iops: a ? a.ios / Math.max(1, a.ticks) : 0,
         iosqMs: a && a.ios > 0 ? (1000 * a.iosqW) / a.ios : 0,
+        discMs: a && a.ios > 0 ? (1000 * a.discW) / a.ios : 0,
         rtMs: a && a.ios > 0 ? (1000 * a.rtW) / a.ios : 0,
         aliasesPerHotVol: a ? a.aliasesPerHot / Math.max(1, a.ticks) : 0,
       };
