@@ -18,7 +18,7 @@ import { endReport, type EndReport } from './endReport';
 import { plannedPolicy, type ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
-import { buildMon3, type Mon3View } from './mon3';
+import { buildMon3, reportedBySystem, softCapped, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
 import { db2AboveItsClients, installedPolicy } from './tutorial';
 import { formatClock, clockAt } from '../sim/core/clock';
@@ -239,19 +239,21 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
       msu: rt?.msuRate ?? 0,
       r4ha: r4?.r4ha ?? null,
       definedCapacity: l.definedCapacityMsu,
-      capped: r4?.capped ?? false,
+      capped: l.kind === 'ZOS' && softCapped(sim, l.id),
       memoryGb: l.memoryGb,
     };
   });
   const cpEngines = sim.config.cpcs.reduce((a, x) => a + x.engines.CP, 0);
   const delivered = sim.lpars.reduce((a, l) => a + (l.pools.find((p) => p.pool === 'CP')?.deliveredEngines ?? 0), 0);
 
-  // PI heat map: sysplex PI per service-class period from WLM's smoothed accumulators.
+  // PI heat map: sysplex PI per service-class period from WLM's smoothed accumulators, with the samples where
+  // the reports show them (CICS transaction samples with the region classes), so it is Monitor III's SYSSUM PI.
   const keys = [...new Set(sim.wlm.systems.flatMap((s) => s.scps.map((p) => p.scKey)))].sort();
+  const reported = reportedBySystem(sim);
   const piHeat: PiCell[] = keys.flatMap((k) => {
     const g = goalInfo(def, k);
     if (!g) return [];
-    const accs = sim.wlm.systems.flatMap((s) => s.scps.filter((p) => p.scKey === k).map((p) => p.acc));
+    const accs = sim.wlm.systems.flatMap((s) => (reported[s.lparId]![k] ? [reported[s.lparId]![k]!] : []));
     const per = def.classes.find((x) => x.id === g.serviceClass)?.periods[g.period];
     return [{ scKey: k, goal: per ? goalText(per) : 'DISCRETIONARY', importance: g.goal.kind === 'DISC' ? null : g.importance, pi: accPi(g.goal, sumAcc(accs)) }];
   });
