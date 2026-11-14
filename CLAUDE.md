@@ -115,8 +115,6 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
   capping, MLC, dependency health, classification matching).
 - **Realism tests** (`tests/sim/realism.test.ts`): behavioural assertions from SPEC §16, e.g.
   "Db2 MSTR starvation raises DDF response time without raising DDF CPU delay".
-- **Full test suites run on CI**, not on the working machine: commit, then `npm run test:remote` (user request
-  2026-11-13). Local runs are for the few test files a change touches; `npm run check` stays the CI gate's job.
 - **Golden runs** (`tests/golden/`): seeded scripted runs hashed per day. If you change model
   behaviour intentionally, regenerate the goldens in the same commit and explain why in the
   commit message.
