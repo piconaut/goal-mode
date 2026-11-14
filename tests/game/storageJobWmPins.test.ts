@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
-import { addPin, judgeEvidence } from '../../src/game/evidence';
+import { addPin, incidentSubjects, judgeEvidence, pinRelation } from '../../src/game/evidence';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { Incident, Mechanism, RunState, Trigger } from '../../src/game/types';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
@@ -106,11 +106,16 @@ describe('PROCU job CPU (RT-11)', () => {
     expect(addPin(regressed, MIDWEST, { source: 'PROCU', system: 'PROD1', jobname: 'NOJOB' }).message).toBe('No such job row');
   });
 
-  it("counts a serving AOR's own CPU as the work's server, and another image's as not about it", () => {
+  it("counts a serving AOR's own CPU as the work's server, and a non-serving job as a competitor", () => {
     // CARDAUTH runs in CICSAOR1/3 on PROD1 and CICSAOR2/4 on PROD2 (incidentSubjects records them as servers).
     const r = pin(regressed, { source: 'PROCU', system: 'PROD1', jobname: 'CICSAOR1' });
     const cardauth = incident(r, { workloadId: 'CARDAUTH' });
+    // The server relation itself, not just the verdict: forcing the server branch false must fail this.
+    expect(pinRelation(r, cardauth, r.pins.at(-1)!, incidentSubjects(r, MIDWEST, 'CARDAUTH', 0))).toBe('server');
     expect(verdict(r, cardauth)).toMatchObject({ relevance: 1, why: 'points at the cause' });
+    // A job that does not serve CARDAUTH, on an image it runs on, is a specific competitor instead.
+    const agentRun = pin(regressed, { source: 'PROCU', system: 'PROD1', jobname: 'MONAGENT' });
+    expect(pinRelation(agentRun, cardauth, agentRun.pins.at(-1)!, incidentSubjects(agentRun, MIDWEST, 'CARDAUTH', 0))).toBe('competitor');
     // The same AOR row says nothing about ADHOC work, which runs on PROD2 only.
     expect(verdict(r, incident(r, { workloadId: 'ADHOC' }))).toMatchObject({ relevance: 0, why: 'not about ADHOC' });
   });
