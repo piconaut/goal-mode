@@ -719,9 +719,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   - `JOB_APPL`: one address space's EAppl % CP from Monitor III PROCU; CPU_CAPACITY and CPU_PRIORITY with
     RUNAWAY_WORK; notable 25 % of an engine; the work's `server` when the jobname is one of its serving AORs,
     otherwise a specific `competitor` on an image it runs on. Measured: MONAGENT 10–14 % normal, CICSXLOG 90 %
-    (XLOG_LOOP) and MONAGENT 33–37 % (MONITOR_CREEP, settled an hour after the card starts; its first hour is
-    transitional), so the 25 % line is cleared by 8–12 points — the ~120 % first quoted here was the card's
-    pre-dispatch intent (0.03 engines ×12), not the EAppl the report and the pin show.
+    (XLOG_LOOP) and MONAGENT 30–37 % (MONITOR_CREEP; the decayed Monitor III window reads about 30 % an hour after
+    the card starts and settles in the low-to-mid 30s, seeds 1–5), so the 25 % line is cleared by 5–12 points — the
+    ~120 % first quoted here was the card's pre-dispatch intent (0.03 engines ×12), not the EAppl the report and the
+    pin show.
   - `WM_LOCK` and `WM_READY`: the transaction class's LOCK and READY shares of RMF's STATE SAMPLES BREAKDOWN, read by
     the same `workManagerStatePct` helper the WLMGL report and Monitor III's SYSWKM panel print with (one formula, no
     drift). LOCK_CONTENTION for
