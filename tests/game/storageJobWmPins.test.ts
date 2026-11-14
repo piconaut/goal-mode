@@ -27,7 +27,7 @@ const incident = (r: RunState, over: Partial<Incident> = {}): Incident => ({
   endTick: null,
   hours: 1,
   worstAttainmentPct: 80,
-  truth: { mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' },
+  truth: { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' },
   rca: null,
   trustLost: 0,
   ...over,

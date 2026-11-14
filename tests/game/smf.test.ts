@@ -62,7 +62,7 @@ describe('vs base (PT-13)', () => {
 
   it('does not learn the healthy baseline from an hour a card disturbed', () => {
     const base = startDay(newRun(MIDWEST, content, 7), content);
-    const card: RunState['events'][number] = { uid: 'REGRESSION@0', defId: 'REGRESSION', name: 'REGRESSION', startTick: 0, endTick: 100_000, trigger: 'ACCESS_PATH_REGRESSION', affects: ['RBANK'], endCommands: [], started: true, ended: false };
+    const card: RunState['events'][number] = { uid: 'REGRESSION@0', defId: 'REGRESSION', name: 'REGRESSION', startTick: 0, endTick: 100_000, trigger: 'CHANGE_REGRESSION', affects: ['RBANK'], endCommands: [], started: true, ended: false };
     const quiet = advance(base, MIDWEST, content, HOUR);
     const disturbed = advance({ ...base, events: [card] }, MIDWEST, content, HOUR);
     expect(quiet.baselines.RBANK).toBeDefined();

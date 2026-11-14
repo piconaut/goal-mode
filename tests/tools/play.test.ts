@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { openPlayFile, applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { startTfp } from '../../src/sim/cost/mlc';
 import { quoteTfp } from '../../src/game/tfp';
@@ -16,6 +16,36 @@ function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   }
   return file;
 }
+
+describe('RT-09 trigger alias in play files', () => {
+  /** A capture of an old file: the incident and its AIOps hypothesis name the retired trigger id. */
+  const oldFile = (): PlayFile => {
+    const base = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    const incident: PlayFile['run']['incidents'][number] = {
+      id: 999, workloadId: 'RBANK', day: 0, startTick: 0, endTick: 360, hours: 1, worstAttainmentPct: 80,
+      truth: { mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never, accepted: { mechanisms: ['CPU_CAPACITY'], triggers: ['ACCESS_PATH_REGRESSION' as never] } },
+      aiops: [{ mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never, confidence: 0.6 }],
+      rca: null, trustLost: 0,
+    };
+    return { ...base, run: { ...base.run, incidents: [incident] }, log: [] };
+  };
+
+  it('loads an old file with its ids mapped, so a replay scores the answer right, not wrong', () => {
+    // The CLI's own load path (playCore.openPlayFile), not a hand-rolled normalize.
+    const loaded = openPlayFile(encodePlayFile(oldFile()));
+    const inc = loaded.run.incidents[0]!;
+    expect(inc.truth.trigger).toBe('CHANGE_REGRESSION');
+    expect(inc.truth.accepted!.triggers).toEqual(['CHANGE_REGRESSION']);
+    expect(inc.aiops![0]!.trigger).toBe('CHANGE_REGRESSION');
+    const filed = applyPlayCommand(loaded, { cmd: 'rca', incidentId: 999, mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never });
+    expect(filed.ok, filed.text).toBe(true);
+    expect(filed.text).not.toMatch(/trigger wrong/);
+    expect(filed.file.run.incidents[0]!.rca!.trigger).toBe('CHANGE_REGRESSION');
+    // The replayed log records the canonical id, so the file no longer carries the retired one.
+    expect(filed.file.log.at(-1)).toMatchObject({ cmd: 'rca', incidentId: 999, trigger: 'CHANGE_REGRESSION' });
+    expect(encodePlayFile(filed.file)).not.toContain('ACCESS_PATH_REGRESSION');
+  });
+});
 
 describe('headless play interface', () => {
   it('a run file round-trips bit-identically, Infinity included, and keeps the command log', () => {

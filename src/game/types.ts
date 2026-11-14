@@ -38,7 +38,7 @@ export type Mechanism =
 
 export type Trigger =
   | 'DEMAND_SURGE'
-  | 'ACCESS_PATH_REGRESSION'
+  | 'CHANGE_REGRESSION'
   | 'RUNAWAY_WORK'
   | 'BATCH_OVERLAP'
   | 'POLICY'

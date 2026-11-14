@@ -32,6 +32,8 @@ import { applyWlmEdit, pendingBase, playerWlmEditError, type WlmEdit } from '../
 import { plannedPolicy, policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { acceptedOf, hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
+import { TRIGGER_LABEL, canonicalTrigger, triggerLabel } from '../src/content/rca';
+import { normalizeRun } from '../src/game/tools';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
@@ -99,6 +101,13 @@ function needs(feature: ToolFeature, what: string): string {
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
 export const decodePlayFile = (text: string): PlayFile => decodeRunFileText<PlayFile>(text);
 
+/** Load a play file as the CLI does: a file written before RT-09 has its trigger ids mapped like the worker's import,
+ * so a replay scores the same answers rather than turning a formerly right one into a wrong one. */
+export const openPlayFile = (text: string): PlayFile => {
+  const f = decodePlayFile(text);
+  return { ...f, run: normalizeRun(f.run, packOf(f.run.scenarioId).scenario) };
+};
+
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', scenario = 'midwest'): PlayFile {
   const pack = packOf(scenario);
   return { version: 1, run: newRun(pack.scenario, pack.game, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty, ...(scenario !== 'midwest' ? { scenario } : {}) }] };
@@ -106,7 +115,9 @@ export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', s
 
 export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
   const out = apply(file, c);
-  return out.ok ? { ...out, file: { ...out.file, log: [...file.log, c] } } : out;
+  // A log written before RT-09 names the old trigger id; replay accepts it and records the canonical one.
+  const logged = c.cmd === 'rca' && canonicalTrigger(c.trigger) ? { ...c, trigger: canonicalTrigger(c.trigger)! } : c;
+  return out.ok ? { ...out, file: { ...out.file, log: [...file.log, logged] } } : out;
 }
 
 function apply(file: PlayFile, c: PlayCommand): PlayResult {
@@ -174,14 +185,16 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(chooseDraft(run, content, c.optionId), c.optionId ? `Drafted ${c.optionId}.` : 'Draft skipped.');
     }
     case 'rca': {
-      if (!MECHANISMS.includes(c.mechanism) || !TRIGGERS.includes(c.trigger)) return fail(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
+      // Play files written before RT-09 log the old trigger id; replay accepts it.
+      const cTrigger = canonicalTrigger(c.trigger) ?? c.trigger;
+      if (!MECHANISMS.includes(c.mechanism) || !TRIGGERS.includes(cTrigger)) return fail(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
       const inc = run.incidents.find((i) => i.id === c.incidentId);
       if (!inc) return fail(`No incident ${idText('incident', c.incidentId)}`);
       if (inc.rca) return fail(`Incident ${idText('incident', c.incidentId)} already has an RCA`);
       const missing = (c.evidenceIds ?? []).filter((id) => !run.pins.some((p) => p.id === id));
       if (missing.length && !run.pins.length) return fail('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without --evidence.');
       if (missing.length) return fail(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${run.pins.map((p) => idText('pin', p.id)).join(' ')}`);
-      const r = submitRca(run, c.incidentId, c.mechanism, c.trigger, sc(run), c.evidenceIds ?? []);
+      const r = submitRca(run, c.incidentId, c.mechanism, cTrigger, sc(run), c.evidenceIds ?? []);
       const covered = r.incidents.filter((i) => i.id !== c.incidentId && i.rca && rcaLeadId(i) === rcaLeadId(inc))
         .map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
       const rca = r.incidents.find((i) => i.id === c.incidentId)?.rca;
@@ -190,9 +203,11 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const pts = rca?.points ?? 0;
       const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
       // An accepted alternate is a right answer, so the reply must say so and give its reason (RT-07).
-      const also = [...accepted.mechanisms.filter((m) => m !== t.mechanism), ...accepted.triggers.filter((x) => x !== t.trigger)]
-        .map((answer) => (t.notes?.[answer] ? `${answer} (${t.notes[answer]})` : answer));
-      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(c.trigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${t.trigger})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
+      // Answers are shown with the trigger's display name; the ids stay what a command types (RT-09).
+      const answerText = (answer: string) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${t.notes?.[answer] ? ` (${t.notes[answer]})` : ''}`;
+      const also = [...accepted.mechanisms.filter((m) => m !== t.mechanism), ...accepted.triggers.filter((x) => x !== cTrigger)]
+        .map(answerText);
+      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cTrigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
     }
     case 'ask': {
       const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));
