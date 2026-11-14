@@ -242,7 +242,7 @@ with look-alike pins (surge against regression, capacity against priority), and 
 each common recipe.
 
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: ready · priority: high · size: L · area: game`
+`list: rca-truth · status: blocked: (needs user-attended session) · priority: high · size: L · area: game`
 
 Sequencing (user decision 2026-11-10, docs/archive/wlm-audit-2026-11.md §7): footprints are measured on the WLM core of `wlm-truth`
 (WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
