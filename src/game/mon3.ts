@@ -231,6 +231,14 @@ export interface Mon3ProcJob {
   eapplZiipEngines: number;
 }
 
+/** Each system's WLM accumulators as the reports show them: CICS transaction samples with the region classes, as
+ * in WLMGL (reporting.ts). Every PI the player sees (SYSSUM, the header heat map) is taken from these. */
+export function reportedBySystem(sim: RunState['sim']): Record<string, Record<string, ScpAcc>> {
+  return Object.fromEntries(
+    sim.wlm.systems.map((s) => [s.lparId, reportedAccs(Object.fromEntries(s.scps.map((p) => [p.scKey, p.acc])), sim.last.lpars.find((l) => l.lparId === s.lparId)?.cics)]),
+  );
+}
+
 /** WLM is soft-capping the image: its own R4HA is above its defined capacity, or its capacity group's is above the
  * group limit (the two conditions `softCap` applies in the sim; MVS Planning: WLM 3.1 p.44–47). */
 export function softCapped(sim: RunState['sim'], lparId: string): boolean {
@@ -342,10 +350,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of reportedTicks(l.scps, l.cics, false, l.iipcpReported ?? true)) if (t.scKey === scKey) addSplit(o, t);
     return o;
   };
-  // CICS transaction samples shown with the region classes, as in WLMGL (reporting.ts).
-  const reported = Object.fromEntries(
-    sim.wlm.systems.map((s) => [s.lparId, reportedAccs(Object.fromEntries(s.scps.map((p) => [p.scKey, p.acc])), sim.last.lpars.find((l) => l.lparId === s.lparId)?.cics)]),
-  );
+  const reported = reportedBySystem(sim);
   const rows: Mon3Row[] = [];
   for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, reported[s.lparId]![p.scKey]!, lastBy(s.lparId, p.scKey)));
   // Sysplex rows, like Monitor III's sysplex-wide SYSSUM.
