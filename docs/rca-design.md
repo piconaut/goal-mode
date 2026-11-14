@@ -191,7 +191,7 @@ Direct calls (the SLA hour is `[t, t+1h)`; cards are built from their definition
 | U-3 | `triggerOf('MOBILE','CPU_PRIORITY', [CAMPAIGN t+20min…t+2h, MONITOR_CREEP t−5h…t+43h])` | `POLICY` at audit time; `CHANGE_REGRESSION` since RT-09 (MONITOR_CREEP covers MOBILE) |
 | U-4 | `triggerOf('MOBILE','LOCK_CONTENTION', [RETRY_STORM t…t+3h])`, lock index 5 | `DEMAND_SURGE` |
 | U-5 | `triggerOf('CARDAUTH', m, [REGRESSION t−3h…t+27h])` for `m` = CPU_PRIORITY, CPU_CAPACITY | `POLICY`, `GROWTH` |
-| U-6 | `triggerOf('MOBILE', m, [ZIIP_LOSS])` for `m` = CPU_PRIORITY, CAPPING | `POLICY` both (the fallback, not the card) |
+| U-6 | `triggerOf('MOBILE', m, [ZIIP_LOSS])` for `m` = CPU_PRIORITY, CAPPING | `CHANGE_REGRESSION` both (ZIIP_LOSS matches those mechanisms since RT-02 and carries that trigger since RT-09; without the card the fallback would be `POLICY`) |
 | U-7 | `triggerOf(w, m, [])` for each mechanism | CPU_CAPACITY, IO, STORAGE, CF_SERVICE, LOCK_CONTENTION (lock index ≤ 1) → `GROWTH`; the rest → `POLICY` |
 | U-8 | `failureMechanismOf` for a failure-only hour, SICK_AOR running at close; the same with `ended: true` at t+50min | `ROUTING` both (RT-01: the card overlaps the opening hour) |
 | U-9 | `mechanismOf({cpuQueue: 1}, {}, hour with cappedByLpar {PROD2: 0.06}, hosts PROD1 and PROD2)` | `CAPPING` |
