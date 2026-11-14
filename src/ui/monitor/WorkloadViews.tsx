@@ -107,7 +107,10 @@ export function Procu({ rows, jobs, game }: { rows: Mon3Row[]; jobs: Mon3ProcJob
                 </td>
                 <td className="num">{p2(j.cpEngines)}</td>
                 <td className="num">{p2(j.iipcpEngines)}</td>
-                <td className="num">{p2(j.eapplCpEngines)}</td>
+                <td className="num">
+                  {p2(j.eapplCpEngines)}
+                  <PinButton game={game} req={{ source: 'PROCU', system: j.system, jobname: j.jobname }} label={`${j.jobname} EAppl CPU`} />
+                </td>
                 <td className="num">{p2(j.eapplZiipEngines)}</td>
               </tr>
             ))}

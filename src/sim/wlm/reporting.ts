@@ -25,6 +25,25 @@ export interface WorkManagerSamples {
   managedToTxn?: boolean;
 }
 
+/** The states RMF shows in STATE SAMPLES BREAKDOWN (RMF Report Analysis p.536–537); IDLE and CONV are not modelled. */
+export type WorkManagerState = 'active' | 'ready' | 'lock' | 'io' | 'prod' | 'misc';
+
+const STATE_SAMPLES: Record<WorkManagerState, keyof WorkManagerSamples> = {
+  active: 'active',
+  ready: 'ready',
+  lock: 'waitingLock',
+  io: 'waitingIo',
+  prod: 'waitingProd',
+  misc: 'waitingMisc',
+};
+
+/** One state's share of the breakdown, %, or null when the row has no samples: the report's column and the RCA pin
+ * (RT-11) read the same figure. */
+export function workManagerStatePct(w: WorkManagerSamples, state: WorkManagerState): number | null {
+  const total = w.active + w.ready + w.idle + w.waitingIo + w.waitingLock + w.waitingProd + w.waitingMisc;
+  return total > 0 ? (100 * (w[STATE_SAMPLES[state]] as number)) / total : null;
+}
+
 const SAMPLE_FIELDS = ['cpEngines', 'ziipEngines', 'iipcpEngines', 'usingCpu', 'usingZiip', 'usingIo', 'delayCpu', 'delayZiip', 'delayIo', 'delayOther', 'delayStorage', 'delayCap'] as const;
 const NOVEL_FIELDS = ['usingIoNoVel', 'delayIoNoVel'] as const;
 

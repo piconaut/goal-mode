@@ -205,24 +205,14 @@ Done when: `tests/game/rcaVocabulary.test.ts` covers the new texts, the Codex en
 replays a play file written with the old id and gets the same state, and no `ACCESS_PATH_REGRESSION` remains outside
 the aliases.
 
-### RT-11 · Pin CICS region storage, top-consumer jobs and work-manager states
-`list: rca-truth · status: ready · priority: low · size: M · area: game`
-
-Three more clues the cards' texts name but the board cannot hold (A11): `SOS_MIN` (minutes short on storage in the
-hour, from the SMF 110 region storage view; THREAD_LIMIT, STORAGE, APPLICATION_ERROR; notable 1), `JOB_APPL` (CPU of
-one address space from the Monitor III job rows, subject the jobname; CPU_PRIORITY, CPU_CAPACITY, RUNAWAY_WORK;
-notable 25 % of an engine), and the WLMGL work-manager states of a CICS transaction class (`WM_LOCK` waiting for
-lock → LOCK_CONTENTION; `WM_READY` → CPU_PRIORITY, CPU_CAPACITY, QR_TCB at half weight; RMF Report Analysis
-p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §10.
-
 ### RT-13 · Proof recipes: evidence as a discriminating pair
 `list: rca-truth · status: ready · priority: high · size: L · area: game`
 
 User decision on Q3, 2026-11-10: yes. After RT-12. Recipes per mechanism and trigger in
 `content/evidence.ts` (§4.6 table), judged over the up-to-three attached pins. Every common recipe (CPU family,
 DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) has a path that needs only tier-0/1 tools, so early-game
-players can complete a proof. The CF and DASD recipes use RT-10's `CF_*`/`DASD_*` pins; the CICS-storage one needs
-RT-11: whichever of RT-11 and RT-13 lands last adds it. A complete recipe for the filed, accepted mechanism replaces today's
+players can complete a proof. The CF and DASD recipes use RT-10's `CF_*`/`DASD_*` pins and the CICS-storage one
+RT-11's `SOS_MIN` (all landed). A complete recipe for the filed, accepted mechanism replaces today's
 relevance sum, a second for the trigger makes the evidence strong; the reply shows each predicate ticked or not.
 Note: `ENDED_RATE` is `self`/`server` only today, so the DEMAND_SURGE recipe's "on the surging workload" and §4.4's
 collateral-victim surrogate (a co-hosted workload's rate) need it widened to `competitor` here.

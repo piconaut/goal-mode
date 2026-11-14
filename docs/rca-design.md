@@ -43,9 +43,9 @@ The judging is not trustworthy enough to gate fixes on, and the reasons are stru
    CPU incident, while the discriminating facts for most cards (CPC busy, capacity change, CP vs zIIP split, CF and
    DASD reports, region storage, a flat CPU per transaction) cannot be pinned or are rejected as "unremarkable".
    Pins are also judged against the classification and routing at *filing* time, so the player's own remediation
-   turns good pins into "not about X" (§3 A9–A11). RT-12 replaced the subject test with pin relations; the proof
-   recipes (RT-13) and the missing pin sources (RT-05's busy figures and RT-10's CF/DASD rows are done; RT-11)
-   close the rest.
+   turns good pins into "not about X" (§3 A9–A11). RT-12 replaced the subject test with pin relations; the missing
+   pin sources (RT-05's busy figures, RT-10's CF/DASD rows, RT-11's storage/job/work-manager rows) are done, and
+   the proof recipes (RT-13) close the rest.
 6. **A campaign and a retry storm are byte-identical in every report** (R-5). The D1 example fix cannot be proven
    by any data the game has today (§2, §5.3).
 
@@ -396,9 +396,9 @@ class and no longer match — the price of a stable subject for the hour that op
 | CP against IIP APPL %, IIPCP | ZIIP_LOSS, RUNAWAY on PROD2, H2 | `APPL_CP`, `APPL_IIP`, `IIPCP` since RT-05, at half weight beside `APPL` |
 | CF Activity: sync service time, async conversion | CF_LINK, CF_FAILURE, F8 | `CF_SYNC`, `CF_ASYNC_PCT` per CF since RT-10 |
 | DASD Activity: DISC, IOSQ, per LCU | DASD_DEGRADED against HSM against REORG | `DASD_DISC` (ALL VOLUMES row), `DASD_IOSQ`/`DASD_RESP` per LCU since RT-10 |
-| CICS region storage: EDSA at EDSALIM, SOS time | CICS_SOS against low MXT | shown (SMF tab), no pin |
-| Top consumer job in a class (Mon III job rows) | XLOG_LOOP, MONITOR_CREEP, SMF_AUDIT | only SYSWKM server velocity |
-| WLMGL work-manager states (waiting for lock, ready) | LOCK, QR against CPU | not a metric |
+| CICS region storage: EDSA at EDSALIM, SOS time | CICS_SOS against low MXT | `SOS_MIN` (the AOR's minutes short, a `server` clue) since RT-11; EDSA peak against EDSALIM is shown but not a metric |
+| Top consumer job in a class (Mon III job rows) | XLOG_LOOP, MONITOR_CREEP, SMF_AUDIT | `JOB_APPL` (PROCU EAppl % CP per jobname) since RT-11 |
+| WLMGL work-manager states (waiting for lock, ready) | LOCK, QR against CPU | `WM_LOCK` and `WM_READY` (half weight) since RT-11 |
 | A flat or lower CPU per transaction | surge against regression against bots | rejected by `notableAt` |
 | WLMGL CAP delay | resource-group capping | maps to `CAPPING`, which the truth produces only for LPAR capping; since the sim stopped posting LPAR capping as CAP delay (RMF Report Analysis p.540) this pin can never score for a `CAPPING` incident (R-14: Partition Data capped 29–84 %, WLMGL CAP delay 0), and a resource-group cap goes through the CPU split, never `CAPPING` (by code reading) |
 
@@ -707,16 +707,16 @@ occurrence or with a tip. That is a visible nerf to preparation and needs the us
 | REGRESSION (REBIND_REVERT) | change regression on a package | CPU per transaction ≥ ×1.3 on the workload; its ended rate flat. The forewarning or Db2 Whisperer tip may stand in for the first | CICS_MON or DB2_ACCT; tier 0 with a per-workload report class: service per transaction from WLMGL |
 | BOT_ATTACK (BLOCK_BOTS) | surge of cheap requests | ended rate ≥ ×2; CPU per transaction ≤ ×0.7 | DB2_ACCT, or WLMGL service per transaction |
 | RETRY_STORM (MOBILE_BACKOFF) | surge that is retries | ended rate ≥ ×2 at flat CPU per transaction; **a retry discriminator that does not exist yet** (§5.3) | — |
-| XLOG_LOOP (CANCEL_XLOG) | runaway job in a class | STCHI APPL up ≥ half an engine with CICS ended rates flat; the job named as top consumer (new pin) | RMF_MON3 |
+| XLOG_LOOP (CANCEL_XLOG) | runaway job in a class | STCHI APPL up ≥ half an engine with CICS ended rates flat; the job named as top consumer (`JOB_APPL` since RT-11) | RMF_MON3 |
 | ENCRYPTION_MANDATE (SCOPE_ENCRYPTION), VENDOR_PRICE (NEGOTIATE_MLC_PRICE), SMF_AUDIT (SCOPE_SMF_AUDIT) | — | Not gated: these are negotiations with a stakeholder about an announced demand, not diagnoses | — |
 | REORG_OVERRUN (TERM_UTILITY) | utility I/O on the batch volumes | LCU 21 IOSQ up (new DASD pin); critical jobs' I/O wait share ≥ 25 % or batch class I/O delay | CF_DASD; SMF30_BATCH or WLMGL |
-| MONITOR_CREEP (ROLLBACK_MONITOR) | change regression in an agent | STCMED APPL up on every image; MONAGENT as top consumer (new pin). The forewarning stands in for one | RMF_MON3 |
+| MONITOR_CREEP (ROLLBACK_MONITOR) | change regression in an agent | STCMED APPL up on every image; MONAGENT as top consumer (`JOB_APPL` since RT-11). The forewarning stands in for one | RMF_MON3 |
 | LOCK_ESCALATION (COMMIT_SETTLEMENT_OFTEN) | batch holding locks | lock wait per transaction up; the hurt class's CPU delay low | DB2_ACCT; tier 0 |
 | SHADOW_IT (STOP_SHADOW_IT) | runaway or new TSO work | TSO APPL ≥ ×3 with ended rate flat; DEVT or PROD image share up (Partition Data) | PARTITION_DATA |
 | QR_RELEASE (ROLLBACK_TELLER_RELEASE) | QR TCB after a release | QR wait up on the PROD1 regions; PROD2 regions normal. The forewarning stands in for one | CICS_MON |
 | HSM_RECALL_STORM (HOLD_HSM_RECALLS) | I/O surge on the system LCU | LCU 30 IOSQ up; Db2 LCUs normal (new DASD pins) | CF_DASD |
 | ZIIP_LOSS (NATIVE_SQL_PROCS) | zIIP eligibility lost | DDFPRD CP APPL up and IIP APPL down (new split pin); ended rate flat. The forewarning stands in for one | tier 0 |
-| CICS_SOS (RECYCLE_PROD2_AORS) | short on storage | MXT wait up on PROD2 regions; EDSA at EDSALIM or SOS time (new pin) | CICS_MON |
+| CICS_SOS (RECYCLE_PROD2_AORS) | short on storage | MXT wait up on PROD2 regions; EDSA at EDSALIM or SOS time (`SOS_MIN` since RT-11) | CICS_MON |
 | SICK_AOR (RECYCLE_SICK_AOR) | a region failing fast | failed share ≥ 1 % on one region; its response time normal or better | CICS_MON |
 
 Revenue's twins follow their originals. Harbourline's fix-less adaptations are unaffected.

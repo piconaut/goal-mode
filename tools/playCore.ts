@@ -220,13 +220,13 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         if (!buildView(run, sc(run)).reports.some((x) => x.index === index)) return fail(`No RMF interval ${c.intervalId}; ${intervalList(run)}`);
         req = { ...req, index };
       }
-      if (req.source === 'DB2' || req.source === 'CICS') {
+      if (req.source === 'DB2' || req.source === 'CICS' || req.source === 'CICS_STORAGE') {
         const hour = smfHourKey(run, req.hour);
-        if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
+        if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source === 'CICS_STORAGE' ? 'CICS' : req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
         req = { ...req, hour };
       }
       if (c.at !== undefined) {
-        if (req.source !== 'MON3' && !(req.source === 'CPC' && req.index === undefined)) return fail('--at takes a Monitor III time (pin MON3 or pin CPC without an interval id)');
+        if (req.source !== 'MON3' && req.source !== 'PROCU' && !(req.source === 'CPC' && req.index === undefined)) return fail('--at takes a Monitor III time (pin MON3, pin PROCU, or pin CPC without an interval id)');
         const tick = tickOfClock(c.at);
         if (tick === null) return fail(`No time ${c.at}; write it as clockText does, e.g. D2 10:40 (D1 = first played day, 06:00 to 06:00)`);
         if (tick > run.sim.tick) return fail(`${c.at} is in the future; it is ${clockText(run.sim.tick)}`);

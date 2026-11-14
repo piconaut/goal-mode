@@ -9,6 +9,7 @@
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric> [--at D2 10:40]
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED|LPAR_BUSY|CPC_BUSY|CAPACITY_ADJ [interval id: Partition Data; none = Monitor III now or --at] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
 //   npm run play -- runs/a.json pin CF <cfLparId> CF_SYNC|CF_ASYNC_PCT [interval id; none = latest] | pin DASD <LCU|ALL> DASD_DISC|DASD_IOSQ|DASD_RESP [interval id; none = latest]   (RMF CF/DASD Activity)
+//   npm run play -- runs/a.json pin CICS <hour> <AOR region> SOS_MIN   (SMF 110 region storage) | pin PROCU <system> <jobname> [--at "D2 10:40"]   (Monitor III job rows; no --at = now)
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
 //   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
@@ -82,9 +83,14 @@ function pinRequest(a: string[]): PinRequest {
     if (!DASD_METRICS.includes(metric)) throw new Error(`DASD metric: ${DASD_METRICS.join(' | ')}`);
     return { source: 'DASD', lcuId: a[1] ?? 'ALL', metric, ...(a[3] !== undefined ? { index: Number(a[3]) } : {}) };
   }
-  if (src === 'DB2' || src === 'CICS') return { source: src, hour: a[1] ?? '', workloadId: a[2] ?? '', metric: a[3] as EvidenceMetric };
+  if (src === 'DB2' || src === 'CICS') {
+    // `pin CICS <hour> <region> SOS_MIN` names the region storage row, not a transaction row (RT-11).
+    if (String(a[3] ?? '').toUpperCase() === 'SOS_MIN') return { source: 'CICS_STORAGE', hour: a[1] ?? '', region: a[2] ?? '' };
+    return { source: src, hour: a[1] ?? '', workloadId: a[2] ?? '', metric: a[3] as EvidenceMetric };
+  }
+  if (src === 'PROCU') return { source: 'PROCU', system: a[1] ?? '', jobname: a[2] ?? '' };
   if (src === 'BATCH') return { source: 'BATCH', day: Number(String(a[1] ?? '').replace(/^D/i, '')) - 1, metric: a[2] as EvidenceMetric };
-  throw new Error('pin source: WLMGL | MON3 | CPC | CF | DASD | DB2 | CICS | BATCH');
+  throw new Error('pin source: WLMGL | MON3 | CPC | CF | DASD | DB2 | CICS | PROCU | BATCH');
 }
 
 /** wlmlog [system] [--grep text] */

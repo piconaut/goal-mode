@@ -310,4 +310,17 @@ describe('headless play interface', () => {
     expect(applyPlayCommand(f, { cmd: 'pin', req: { source: 'DB2', hour: '7', workloadId: 'X', metric: 'PI' }, at: 'D1 07:00' }).ok).toBe(false);
     expect(applyPlayCommand(f, { cmd: 'new', seed: 1 }).file.mon3).toBeUndefined();
   });
+
+  it('pins region SOS minutes and a PROCU job row now, and refuses a past job row from the trimmed history', () => {
+    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const sos = run(f, [{ cmd: 'pin', req: { source: 'CICS_STORAGE', hour: '7', region: 'CICSAOR1' } }]);
+    expect(sos.run.pins.at(-1)!.text).toMatch(/^CICS 110 D1 \d\d:00–\d\d:00 CICSAOR1 SOS minutes/);
+    const job = run(f, [{ cmd: 'pin', req: { source: 'PROCU', system: 'PROD1', jobname: 'CICSAOR1' } }]);
+    expect(job.run.pins.at(-1)!.text).toMatch(/^PROCU D1 \d\d:\d\d PROD1 CICSAOR1 job EAppl CPU/);
+    // The CLI's history keeps no job rows (like SYSWKM), so a past PROCU pin needs the browser.
+    const h = run(newPlayFile(7, 'NORMAL', 'harbourline'), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const past = applyPlayCommand(h, { cmd: 'pin', req: { source: 'PROCU', system: 'PRDA', jobname: 'CICSAOR1' }, at: 'D1 07:00' });
+    expect(past.ok).toBe(false);
+    expect(past.text).toContain('no job rows');
+  });
 });

@@ -190,7 +190,10 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                     <td>{r.region}</td>
                     <td className="num">{r.peakMb.toFixed(0)}</td>
                     <td className="num">{r.limitMb}</td>
-                    <td className={`num${r.sosSec > 0 ? ' bad' : ''}`}>{r.sosSec > 0 ? `${(r.sosSec / 60).toFixed(0)} min (DFHSM0133)` : '0'}</td>
+                    <td className={`num${r.sosSec > 0 ? ' bad' : ''}`}>
+                      {r.sosSec > 0 ? `${(r.sosSec / 60).toFixed(0)} min (DFHSM0133)` : '0'}
+                      <PinButton game={game} req={{ source: 'CICS_STORAGE', hour: h, region: r.region }} label={`${r.region} SOS time`} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
