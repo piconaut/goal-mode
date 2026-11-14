@@ -392,12 +392,6 @@ edits are uninstalled and visible). Done when: the message says so.
 From #180. When a later install succeeds after an earlier one failed at day start, the play CLI's day-start text and
 the mail don't say that the earlier install's edits went live through the later one. Done when: both say so.
 
-### PR-04 · Planned-policy labels
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #178. CLASSIFY flags the planned policy only as `pending` (`src/worker/game.worker.ts` CLASSIFIED); the play CLI
-`status` and `policy` output don't show the planned (queued or briefing) policy at all. Done when: both show it.
-
 ### PR-05 · The import dialog reads its result from toast wording
 `list: pr-followups · status: ready · priority: low · size: S · area: ui`
 
