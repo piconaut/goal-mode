@@ -511,8 +511,9 @@ export const IDENTITIES: Identity[] = [
         const cfg = o.end.sim.config;
         const billable: Record<string, number> = {};
         for (const r of o.iv.cpu) billable[r.lparId] = r.definedCapacityMsu !== null ? Math.min(r.r4ha, r.definedCapacityMsu) : r.r4ha;
-        for (const g of o.config.capacityGroups) {
-          const members = o.config.lpars.filter((l) => l.capacityGroup === g.id).map((l) => l.id);
+        // The configuration in force at the hour's last tick: what the hourly sample and the interval's close both saw.
+        for (const g of cfg.capacityGroups) {
+          const members = cfg.lpars.filter((l) => l.capacityGroup === g.id).map((l) => l.id);
           const total = sum(members.map((id) => billable[id] ?? 0));
           if (total > g.limitMsu) for (const id of members) billable[id] = ((billable[id] ?? 0) * g.limitMsu) / total;
         }
@@ -521,7 +522,6 @@ export const IDENTITIES: Identity[] = [
           const series = f.hourly.series[p.id] ?? [];
           c.close(series.at(-1) ?? NaN, sum(p.lpars.map((id) => billable[id] ?? 0)), ROUNDING, () => `${at(o)} ${p.id}`);
           c.ok(series.length === f.hourly.labels.length, () => `${at(o)} ${p.id} hourly labels`);
-          c.ok(cfg === o.config || !o.steady, () => `${at(o)} configuration changed inside a steady interval`);
         }
       }
     },
@@ -1221,7 +1221,11 @@ export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   'I/O priority management off': (run) => run.intervals.some((o) => o.steady && o.def.ioPriorityManagement === false),
   'RMF intervals of two lengths': (run) => new Set(run.intervals.map((o) => o.iv.intervalSec)).size > 1,
   'Tailored Fit Pricing over the baseline rate, with a list-price change': (run) => !!run.final.sim.cost.tfp && run.final.sim.cost.priceMult !== undefined,
-  'batch jobs ended in a class with a response time goal': (run) => run.intervals.some((o) => o.iv.jobs.length > 0 && o.iv.wlm.some((r) => r.lparId !== '*PLEX' && r.goalText.startsWith('AVG') && r.ended > 0 && !r.workManager && Number.isInteger(Math.round(r.ended * 1e6) / 1e6) && o.iv.jobs.some((j) => j.lparId === r.lparId))),
+  'batch jobs ended in a class with a response time goal': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
+    const rt = o.end.sim.batch.jobs.find((x) => x.def.name === j.name && x.endTick === j.endTick);
+    const sc = rt && classify(o.def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;
+    return !!o.def.classes.find((x) => x.id === sc)?.periods.every((p) => p.goal.kind === 'AVG' || p.goal.kind === 'PCT');
+  })),
   'failed transactions': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.failed > 1)),
   'a closed SMF hour with CICS and Db2 rows': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && cicsMonitoring(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0 && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0; }),
   'a percentile-goal period past its goal': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.pi !== null && r.pi > 1 && r.goalText.includes('<'))),
