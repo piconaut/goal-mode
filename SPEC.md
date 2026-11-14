@@ -1774,7 +1774,9 @@ keyboard-first.
   Import confirms replacement of the current run and saved run and reports failures without discarding the input.
   Save replacement and planned-change restart confirmations use in-app dialogs, so they work in embeds that
   block browser `confirm()`. Cancel or Escape preserves the existing run/work; only explicit confirmation proceeds.
-  Pasted text uses the same tolerant decoder as uploaded files, including surrounding backticks.
+  After an import is confirmed the dialog can no longer be dismissed: the worker replaces the run on its own, so it
+  stays open (Close disabled, Escape ignored) until the import result arrives. Pasted text uses the same tolerant
+  decoder as uploaded files, including surrounding backticks.
 
 ```
 src/
