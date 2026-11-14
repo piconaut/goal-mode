@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { GameHandle } from './useGame';
 import { useConfirmation } from './Confirmation';
+import { importOutcome } from './importDialog';
 
 export function RunFileButtons({ game }: { game: GameHandle }) {
   const ask = useConfirmation();
@@ -43,13 +44,13 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
 
   useEffect(() => {
     // The worker's explicit import outcome, not a toast's wording (PR-05).
-    const result = game.importResult;
-    if (!loading || !result || result === submittedResult.current) return;
+    const outcome = importOutcome(loading, game.importResult, submittedResult.current);
+    if (!outcome) return;
     setLoading(false);
-    if (result.ok) {
+    if ('close' in outcome) {
       session.current++;
       setMode(null);
-    } else setNotice(result.message);
+    } else setNotice(outcome.notice);
   }, [loading, game.importResult]);
 
   const selectText = () => {

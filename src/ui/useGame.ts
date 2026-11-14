@@ -73,6 +73,11 @@ export function useGame(): GameHandle {
   const [importResult, setImportResult] = useState<GameHandle['importResult']>(null);
   const [results, setResults] = useState<GameHandle['results']>([]);
   const clockRef = useRef('');
+  const reportResult = useCallback((ok: boolean, message: string) => {
+    setToast({ ok, message });
+    setResults((r) => [...r, { ok, message, clock: clockRef.current }].slice(-50));
+    window.setTimeout(() => setToast(null), 4000);
+  }, []);
   const [spectateName, setSpectateName] = useState(() => new URLSearchParams(window.location.search).get('spectate'));
   const [spectate, setSpectate] = useState<GameHandle['spectate']>(spectateName ? { name: spectateName, last: '', note: '', error: null } : null);
 
@@ -106,12 +111,12 @@ export function useGame(): GameHandle {
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
       else if (m.type === 'RUN_FILE') setRunFile({ name: m.name, text: m.text });
-      else if (m.type === 'IMPORT_RESULT') setImportResult({ ok: m.ok, message: m.message });
-      else if (m.type === 'RESULT') {
-        setToast({ ok: m.ok, message: m.message });
-        setResults((r) => [...r, { ok: m.ok, message: m.message, clock: clockRef.current }].slice(-50));
-        window.setTimeout(() => setToast(null), 4000);
+      else if (m.type === 'IMPORT_RESULT') {
+        // The dialog reads this object (PR-05); the toast and Results history stay as they were for an import.
+        setImportResult({ ok: m.ok, message: m.message });
+        reportResult(m.ok, m.message);
       }
+      else if (m.type === 'RESULT') reportResult(m.ok, m.message);
     };
     // Start at the player's last running speed (never paused: a reload shouldn't leave the clock stopped).
     const stored = Number(readPref(SPEED_KEY));
