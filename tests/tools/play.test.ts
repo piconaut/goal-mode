@@ -276,6 +276,26 @@ describe('headless play interface', () => {
     expect(policyText(newPlayFile(7), true)).toBe('No pending policy edits.');
   });
 
+  it('status and policy name the planned policy, in the briefing and once it is queued', () => {
+    const edit: PlayCommand = {
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId: 'ONLHI', period: 0, goal: { kind: 'AVG', rtSec: 0.4 }, importance: 2 },
+    };
+    // BRIEFING: the activation is a planned change for today, so both say when it takes over.
+    let f = run(newPlayFile(7), [edit, { cmd: 'activate' }]);
+    expect(statusText(f)).toContain('planned policy BASEPOL2 (activates when the day starts)');
+    expect(policyText(f, false)).toContain('planned policy BASEPOL2 (activates when the day starts)');
+    // Day start queues it for the first tick: it is still not active, and both say it is queued.
+    f = run(f, [{ cmd: 'start' }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL');
+    expect(statusText(f)).toContain('planned policy BASEPOL2 (queued; V WLM,POLICY= applies at the next tick)');
+    expect(policyText(f, false)).toContain('planned policy BASEPOL2 (queued; V WLM,POLICY= applies at the next tick)');
+    // Once the tick runs, the policy is active and no longer planned.
+    f = run(f, [{ cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL2');
+    expect(statusText(f)).not.toContain('planned policy');
+    expect(policyText(f, false)).not.toContain('planned policy');
+  });
+
   it('notes are logged without touching the run; hour-by-hour advance (--pace) ends in the same state', () => {
     const base = run(newPlayFile(7), [{ cmd: 'start' }]);
     const noted = run(base, [{ cmd: 'note', text: 'watching PROD2' }]);
