@@ -662,11 +662,16 @@ Partition Data / PROCU, `2` a paid analytics report), the test asserts every opt
 that the seven common recipes (the CPU family, DEPENDENCY, DEMAND_SURGE, CHANGE_REGRESSION, RUNAWAY_WORK) complete
 with tier-0/1 pins only, and no option ever needs tier 3 (§5.5).
 
-- The CPU family's symptom predicate accepts a CPU-delay share, a CPU-per-transaction ratio or an arrival-rate rise on
-  the hurt work, and a pin may satisfy a predicate of both the mechanism's and the trigger's recipe: that is how the
-  entry's "two recipes can share the symptom pin" keeps a mechanism+trigger proof inside the three-pin limit (a test
-  proves five representative pairs, including CPU_CAPACITY × CHANGE_REGRESSION and CPU_PRIORITY × DEMAND_SURGE, in
-  three pins).
+- The CPU family's symptom predicate accepts a CPU-delay share, a CPU-per-transaction ratio, an arrival-rate rise, a
+  single class or job at half an engine, or a batch night's CPU wait on the hurt work. The mechanisms that are not
+  CPU share a `WORK_NORMAL` ruling-out predicate (no CPU wait, or a normal rate, or a normal cost per transaction) with
+  the trigger recipes' normal half (`NOT_CHANGED`), so a pin may satisfy a predicate of both the mechanism's and the
+  trigger's recipe — the entry's "two recipes can share the symptom pin", generalised to the shared normal reading.
+  A test enumerates every mechanism × trigger (108 claims) and shows each co-occurring pair — including the audit's
+  own combos: a power cap at priority, the lost-structure aftermath, a vendor creep's collateral work and a lock
+  dinner during growth — is provable strong in three pins. Only three pairs need a fourth observation, and none of
+  them co-occurs: an application error never carries CPU_CAPACITY or CAPPING, and a hardware fault's CPU truth is
+  CPU_CAPACITY, never CAPPING (§2.1).
 - `CPU_PER_TXN` is new: Workload Activity's APPL% ÷ END/S against the row's own six preceding intervals, the division
   the Codex END/S entry teaches. A CICS transaction row reports no resource samples, so its quotient uses the serving
   regions' class row (also the Codex's path); a row with no ended transactions has none. APPROX: the report prints the
@@ -674,11 +679,22 @@ with tier-0/1 pins only, and no option ever needs tier 3 (§5.5).
 - `ENDED_RATE` now accepts `competitor` besides `self`/`server`, so a co-hosted workload's rate is the collateral
   victim's surrogate for a surge (§4.4).
 - Scoring: a complete recipe for the filed, accepted mechanism replaces the relevance sum and is worth three fully
-  specific pins (`EVIDENCE.recipeRelevance`); a complete recipe for the filed, accepted trigger on top makes the
-  evidence strong (the 5-Insight bonus). A claim the game does not accept earns nothing however well it is proven
-  (RT-07's rule), a lone notable symptom pin is worth the half weight a non-specific pin earns, and incomplete
+  specific pins (`EVIDENCE.recipeRelevance`); a complete recipe for the filed, accepted trigger makes the evidence
+  strong (the 5-Insight bonus), and so does the relevance line the same pins cleared before RT-13, so completing a
+  recipe never pays less than leaving the pins loose. A claim the game does not accept earns nothing however well it is
+  proven (RT-07's rule), a lone notable symptom pin is worth the half weight a non-specific pin earns, and incomplete
   recipes keep their pins' own weights. The RCA stores the two recipes with each predicate ticked, and the reply (RCA
-  card and `play rca`) shows them in report terms.
+  card and `play rca`) shows them in report terms. Every recipe metric a tier-0 path uses is offered by the Workload
+  Activity report's pin form, which a test checks.
+
+- Where the wording above is narrower or wider than the code: DEPENDENCY's "work-manager state waiting" alternate is
+  not modelled (the review has no wait-state row), so its ruling-out half is the shared normal reading; THREAD_LIMIT's
+  "CPU per transaction and QR wait normal" is the same shared reading; HARDWARE_FAULT's "rate **and** CPU per
+  transaction normal" is one predicate, so those two normal readings are alternatives; GROWTH's second predicate is a
+  rise in arrivals alone (a flat cost is what a regression looks like, not growth); POLICY's symptom half is any
+  report's hurt, because the fallback trigger accompanies every mechanism; NEW_WORKLOAD puts the newcomer's share
+  first and the normal reading second; and BATCH_OVERLAP counts a batch night's CPU wait as batch on the machine,
+  since the same collision shows as locks or as CPU.
 
 ### 4.7 Incidents caused by the player
 

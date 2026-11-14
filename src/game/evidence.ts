@@ -367,7 +367,10 @@ export function incidentSubjects(
     };
   }
   const w = allWorkloads(scenario, run).find((x) => x.id === workloadId);
-  const classes = w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
+  const cls = w ? classify(run.sim.wlm.definition, w.work) : null;
+  // A report class is a row about this work alone (RC_ADVISOR gives one per workload in a shared service class), so
+  // its row is the work's own, not an unknown class.
+  const classes = [cls?.serviceClass, cls?.reportClass].filter((x): x is string => !!x);
   const routing = run.sim.routing[workloadId] ?? w?.routing ?? {};
   const lpars = Object.keys(routing);
   // Images the work actually runs on. A static routing table keeps a 0 weight for an image it was routed away from
@@ -580,7 +583,7 @@ function testHolds(t: PredicateTest, p: EvidencePin): boolean {
   const base = p.baseline;
   switch (t.kind) {
     case 'atLeast':
-      return Math.abs(p.value) >= t.value;
+      return Math.abs(p.value) >= Math.max(t.value, t.multipleOf !== undefined && base !== undefined && base > 0 ? t.multipleOf * base : 0);
     case 'atMost':
       return Math.abs(p.value) <= t.value;
     case 'multipleAtLeast':
@@ -660,6 +663,9 @@ export function scoreEvidence(
   const completeTrigger = accepted.triggers.includes(filed.trigger) && proof.some((p) => p.claim === 'trigger' && p.complete);
   const symptom = ranked.some((r) => r.symptom);
   const points = completeMechanism ? EVIDENCE.recipeRelevance : relevance > 0 ? relevance : symptom ? EVIDENCE.symptomRelevance : 0;
-  const strong = completeMechanism ? completeTrigger : points > 0 && relevance >= EVIDENCE.strongAt;
+  // Strong evidence: the trigger's own recipe, or the relevance line the same pins cleared before RT-13 — so
+  // completing a recipe never pays less than leaving the pins loose (the recipe's three points replace the sum, not
+  // the strong bonus).
+  const strong = completeMechanism ? completeTrigger || relevance >= EVIDENCE.strongAt : points > 0 && relevance >= EVIDENCE.strongAt;
   return { verdicts, proof, relevance, points, strong };
 }

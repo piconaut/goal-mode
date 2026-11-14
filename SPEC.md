@@ -1382,8 +1382,12 @@ RUNAWAY_WORK — completes with Workload Activity, Monitor III or Partition Data
 still prove it, and no option ever needs a tier-3 tool. `CPU_PER_TXN` is that tier-0 path: APPL% ÷ END/S against the
 row's own six preceding intervals (a CICS transaction row takes its APPL from the serving regions' class row). A
 complete recipe for the filed, accepted mechanism replaces the relevance sum and pays what three fully specific pins
-pay; a complete recipe for the filed, accepted trigger makes the evidence strong (the Insight bonus). The reply shows
-both recipes with every predicate ticked or not, in report terms.
+pay; a complete recipe for the filed, accepted trigger makes the evidence strong (the Insight bonus), as does the
+relevance line the same pins cleared before RT-13, so a completed proof never pays less than loose pins. The mechanisms
+that are not CPU share a normal-reading ruling-out predicate with the trigger recipes (no CPU wait, or a normal rate,
+or a normal cost per transaction), which keeps a mechanism+trigger proof inside the three-pin limit. The reply shows
+both recipes with every predicate ticked or not, in report terms, and every metric a tier-0 recipe path uses is offered
+by the Workload Activity report's own pin form.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one

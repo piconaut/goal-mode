@@ -184,8 +184,10 @@ export const EVIDENCE = {
 
 /** How a recipe predicate tests one pinned value (RT-13, docs/rca-design.md §4.6). */
 export type PredicateTest =
-  /** The value is at least this big: a symptom or a specific clue. */
-  | { kind: 'atLeast'; value: number }
+  /** The value is at least this big: a symptom or a specific clue. `multipleOf` also requires that multiple of the
+   * row's own recent normal where a baseline exists, as the metric's `notableMultiple` does (a chronically slow CF
+   * or LCU must clear its own line too). */
+  | { kind: 'atLeast'; value: number; multipleOf?: number }
   /** The value is this small or smaller: a ruling-out pin ("the work's own CPU delay stayed low"). */
   | { kind: 'atMost'; value: number }
   /** The value is at least this multiple of the row's own recent normal: an arrival rate or a regression. */
@@ -224,8 +226,8 @@ const HOST: PinRelation[] = ['host'];
 const COMPETITOR: PinRelation[] = ['competitor'];
 const SELF_SERVER_COMPETITOR: PinRelation[] = ['self', 'server', 'competitor'];
 
-const atLeast = (metric: EvidenceMetric, relations: PinRelation[], value: number, tier: RecipeOption['tier']): RecipeOption =>
-  ({ metric, relations, test: { kind: 'atLeast', value }, tier });
+const atLeast = (metric: EvidenceMetric, relations: PinRelation[], value: number, tier: RecipeOption['tier'], multipleOf?: number): RecipeOption =>
+  ({ metric, relations, test: { kind: 'atLeast', value, ...(multipleOf !== undefined ? { multipleOf } : {}) }, tier });
 const atMost = (metric: EvidenceMetric, relations: PinRelation[], value: number, tier: RecipeOption['tier']): RecipeOption =>
   ({ metric, relations, test: { kind: 'atMost', value }, tier });
 const multipleAtLeast = (metric: EvidenceMetric, relations: PinRelation[], multiple: number, tier: RecipeOption['tier']): RecipeOption =>
@@ -243,12 +245,49 @@ const CPU_HURT: RecipePredicate = {
     atLeast('DELAY_ZIIP', SELF_SERVER, 10, 0),
     atLeast('CPU_PER_TXN', SELF, 1.3, 0),
     multipleAtLeast('ENDED_RATE', SELF_SERVER, 1.25, 0),
+    // A single class or job using half an engine (the runaway's own signature), and a batch night losing a quarter
+    // of its critical-path time to CPU waits (the batch overlap's): both show the machine's shortage on the work.
+    atLeast('APPL', SELF_SERVER_COMPETITOR, 50, 0),
+    atLeast('JOB_CPU', SELF, 25, 2),
   ],
 };
-/** "Nothing held it but CPU": the ruling-out half of the waits that are not CPU. */
-const NOT_HELD_FOR_CPU: RecipePredicate = {
-  label: "the work's own CPU delay stayed low",
-  options: [atMost('DELAY_CPU', SELF, 10, 0)],
+/** "The work itself was not the problem": the ruling-out half of the mechanisms that are not CPU. A normal reading in
+ * any of these dimensions rules out the look-alike it belongs to (a CPU wait, a change, a surge), so one pin can also
+ * satisfy a trigger recipe's normal half — that is how a mechanism+trigger proof stays inside the three-pin limit. */
+const WORK_NORMAL: RecipePredicate = {
+  label: 'the work itself was not the problem: no CPU wait, and its rate or cost per transaction was its normal',
+  options: [atMost('DELAY_CPU', SELF, 10, 0), within('ENDED_RATE', SELF, 0.15, 0), within('CPU_PER_TXN', SELF, 0.15, 0)],
+};
+/** "The work was hurt", in any report's terms: the fallback trigger accompanies every mechanism, so its symptom half
+ * cannot name one resource. */
+const HURT: RecipePredicate = {
+  label: "the work was hurt in some report's terms",
+  options: [
+    atLeast('PI', SELF_SERVER, 1.2, 0),
+    atLeast('DELAY_CPU', SELF_SERVER, 10, 0),
+    atLeast('DELAY_ZIIP', SELF_SERVER, 10, 0),
+    atLeast('DELAY_IO', SELF_SERVER, 10, 0),
+    atLeast('DELAY_STO', SELF_SERVER, 5, 0),
+    atLeast('DELAY_CAP', SELF_SERVER, 5, 0),
+    atLeast('DELAY_OTHER', SELF, 20, 0),
+    atLeast('CPU_PER_TXN', SELF, 1.3, 0),
+    multipleAtLeast('ENDED_RATE', SELF_SERVER, 1.25, 0),
+    atLeast('APPL', SELF_SERVER_COMPETITOR, 50, 0),
+    atLeast('LOCK_WAIT', SELF, 2, 2),
+    atLeast('QR_WAIT', SELF, 5, 2),
+    atLeast('MXT_WAIT', SELF, 5, 2),
+    atLeast('DBAT_QUEUE', SELF, 5, 2),
+    atLeast('FAIL_PCT', SELF, 1, 2),
+    atLeast('SOS_MIN', SERVER, 1, 2),
+    atLeast('JOB_ABEND', SELF, 1, 2),
+    atLeast('JOB_CPU', SELF, 25, 2),
+  ],
+};
+
+/** "Nothing about the work changed": POLICY's and a hardware fault's second half. */
+const NOT_CHANGED: RecipePredicate = {
+  label: 'nothing about the work changed: its rate or its cost per transaction was its normal',
+  options: [within('ENDED_RATE', SELF, 0.15, 0), within('CPU_PER_TXN', SELF, 0.15, 0)],
 };
 
 /**
@@ -310,7 +349,7 @@ export const RECIPES: ProofRecipe[] = [
           atLeast('DELAY_OTHER', SELF, 20, 0),
         ],
       },
-      NOT_HELD_FOR_CPU,
+            WORK_NORMAL,
     ],
   },
   {
@@ -325,8 +364,8 @@ export const RECIPES: ProofRecipe[] = [
         ],
       },
       {
-        label: 'the wait was not CPU',
-        options: [atLeast('DELAY_OTHER', SELF, 20, 0), atMost('DELAY_CPU', SELF, 10, 0)],
+        label: 'the wait was not CPU and nothing about the work changed',
+        options: [...WORK_NORMAL.options, atLeast('DELAY_OTHER', SELF, 20, 0)],
       },
     ],
   },
@@ -335,11 +374,11 @@ export const RECIPES: ProofRecipe[] = [
     predicates: [
       {
         label: 'CF requests were slow',
-        options: [atLeast('CF_WAIT', SELF, 5, 2), atLeast('CF_SYNC', SERVER, 50, 2)],
+        options: [atLeast('CF_WAIT', SELF, 5, 2), atLeast('CF_SYNC', SERVER, 50, 2, 2)],
       },
       {
-        label: "the work's own CPU was not the limit",
-        options: [atMost('DELAY_CPU', SELF, 10, 0), atLeast('DELAY_OTHER', SELF, 20, 0)],
+        label: 'the work itself was not the limit',
+        options: [...WORK_NORMAL.options, atLeast('DELAY_OTHER', SELF, 20, 0)],
       },
     ],
   },
@@ -348,8 +387,8 @@ export const RECIPES: ProofRecipe[] = [
     predicates: [
       { label: 'QR TCB dispatch waits were high', options: [atLeast('QR_WAIT', SELF, 5, 2)] },
       {
-        label: 'the wait was neither CPU nor a thread limit',
-        options: [atMost('DELAY_CPU', SELF, 10, 0), atMost('MXT_WAIT', SELF, 5, 2)],
+        label: 'the work was neither short of CPU nor queued for a task slot',
+        options: [...WORK_NORMAL.options, atMost('MXT_WAIT', SELF, 5, 2)],
       },
     ],
   },
@@ -365,14 +404,14 @@ export const RECIPES: ProofRecipe[] = [
           atLeast('SOS_MIN', SERVER, 1, 2),
         ],
       },
-      NOT_HELD_FOR_CPU,
+            WORK_NORMAL,
     ],
   },
   {
     claim: { mechanism: 'ROUTING' },
     predicates: [
       { label: 'one region or route failed work', options: [atLeast('FAIL_PCT', SELF, 1, 2)] },
-      NOT_HELD_FOR_CPU,
+            WORK_NORMAL,
     ],
   },
   {
@@ -384,10 +423,10 @@ export const RECIPES: ProofRecipe[] = [
           atLeast('DELAY_IO', SELF_SERVER, 10, 0),
           atLeast('SYNC_IO', SELF, 5, 2),
           atLeast('JOB_IO', SELF, 25, 2),
-          atLeast('DASD_IOSQ', SERVER, 0.1, 2),
+          atLeast('DASD_IOSQ', SERVER, 0.1, 2, 2),
         ],
       },
-      NOT_HELD_FOR_CPU,
+            WORK_NORMAL,
     ],
   },
   {
@@ -401,14 +440,14 @@ export const RECIPES: ProofRecipe[] = [
           atLeast('SOS_MIN', SERVER, 1, 2),
         ],
       },
-      NOT_HELD_FOR_CPU,
+            WORK_NORMAL,
     ],
   },
   {
     claim: { mechanism: 'JOB_FAILURE' },
     predicates: [
       { label: 'critical jobs abended', options: [atLeast('JOB_ABEND', SELF, 1, 2)] },
-      { label: 'they did not lose their time to waits', options: [atMost('JOB_CPU', SELF, 25, 2)] },
+      { label: 'they did not lose their time to waits, and nothing about the work changed', options: [atMost('JOB_CPU', SELF, 25, 2), ...NOT_CHANGED.options] },
     ],
   },
   {
@@ -444,7 +483,7 @@ export const RECIPES: ProofRecipe[] = [
       {
         label: 'one class or job used at least half an engine',
         // The runaway can be a class of its own (a competitor on the host) as easily as the hurt work's.
-        options: [atLeast('APPL', SELF_SERVER_COMPETITOR, 50, 0), atLeast('JOB_APPL', ['server', 'competitor'], 25, 1)],
+        options: [atLeast('APPL', SELF_SERVER_COMPETITOR, 50, 0), atLeast('JOB_APPL', ['server', 'competitor'], 50, 1)],
       },
       {
         label: "that work's rate did not rise",
@@ -456,26 +495,26 @@ export const RECIPES: ProofRecipe[] = [
     claim: { trigger: 'BATCH_OVERLAP' },
     predicates: [
       {
-        label: 'the work waited on a lock',
+        label: 'the work waited on a lock, or the batch night lost its time to CPU waits',
         options: [
           atLeast('WM_LOCK', SELF, 35, 0),
           atLeast('LOCK_WAIT', SELF, 2, 2),
           atLeast('JOB_LOCK', SELF, 25, 2),
+          atLeast('JOB_CPU', SELF, 25, 2),
         ],
       },
-      {
-        label: 'the wait was not CPU',
-        options: [atMost('DELAY_CPU', SELF, 10, 0)],
-      },
+      NOT_CHANGED,
     ],
   },
   {
     claim: { trigger: 'POLICY' },
     predicates: [
-      CPU_HURT,
+      HURT,
       {
-        label: 'the machine had room, so the configuration passed the work over',
-        options: [atMost('CPC_BUSY', HOST, 90, 1), atMost('LPAR_BUSY', HOST, 95, 1)],
+        // The fallback claim: the work was hurt while nothing about it changed, so the configuration as set — no
+        // headroom, a goal or importance that passed it over, a cap, routing — is what is left.
+        label: 'nothing about the work changed, so the configuration as set was what was left',
+        options: NOT_CHANGED.options,
       },
     ],
   },
@@ -485,26 +524,28 @@ export const RECIPES: ProofRecipe[] = [
       {
         label: "the resource's own report showed a fault",
         options: [
-          atLeast('CF_SYNC', SERVER, 50, 2),
-          atLeast('DASD_DISC', SERVER, 0.14, 2),
+          atLeast('CF_SYNC', SERVER, 50, 2, 2),
+          atLeast('DASD_DISC', SERVER, 0.14, 2, 2),
           atLeast('CAPACITY_ADJ', HOST, 1, 1),
           atLeast('FAIL_PCT', SELF, 1, 2),
         ],
       },
       {
-        label: 'the work ran normally otherwise',
-        options: [within('ENDED_RATE', SELF, 0.15, 0), within('CPU_PER_TXN', SELF, 0.15, 0)],
+        // The report shows the resource, not the work's share of it: a fault shows while nothing about the work
+        // changed, and one predicate can only hold one of those normal readings.
+        label: 'nothing about the work changed',
+        options: NOT_CHANGED.options,
       },
     ],
   },
   {
     claim: { trigger: 'NEW_WORKLOAD' },
     predicates: [
-      CPU_HURT,
       {
-        label: 'new work was using a host image',
+        label: 'work that was not there before was using a host image',
         options: [atLeast('APPL', COMPETITOR, 5, 0)],
       },
+      NOT_CHANGED,
     ],
   },
   {
@@ -512,8 +553,10 @@ export const RECIPES: ProofRecipe[] = [
     predicates: [
       CPU_HURT,
       {
-        label: 'more work arrived and each transaction still cost the same',
-        options: [multipleAtLeast('ENDED_RATE', SELF, 1.05, 0), within('CPU_PER_TXN', SELF, 0.15, 0)],
+        // Growth is a rise in arrivals that the work's own recent hour does not explain. One predicate, so the
+        // options are alternatives: an arrival rise is the signature, and a flat cost alone is not.
+        label: 'more work arrived than its normal hour',
+        options: [multipleAtLeast('ENDED_RATE', SELF, 1.05, 0)],
       },
     ],
   },
@@ -524,7 +567,7 @@ export const RECIPES: ProofRecipe[] = [
         label: 'work failed or a region ran short of its own storage',
         options: [atLeast('FAIL_PCT', SELF, 1, 2), atLeast('JOB_ABEND', SELF, 1, 2), atLeast('SOS_MIN', SERVER, 1, 2)],
       },
-      NOT_HELD_FOR_CPU,
+            WORK_NORMAL,
     ],
   },
 ];
