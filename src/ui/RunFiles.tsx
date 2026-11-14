@@ -19,6 +19,9 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
   const { runFile } = game;
 
   const close = () => {
+    // An import already confirmed cannot be abandoned half-done: the worker replaces the run on its own, so the
+    // dialog stays open until IMPORT_RESULT arrives (PR-06).
+    if (loading) return;
     session.current++;
     setMode(null);
     setLoading(false);
@@ -96,14 +99,19 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
         className={mode ? 'modal' : undefined}
         aria-labelledby={titleId}
         style={{ maxHeight: '90vh', overflow: 'auto', color: 'var(--text)' }}
-        onCancel={close}
+        onCancel={(e) => {
+          if (loading) e.preventDefault();
+          else close();
+        }}
         onClose={() => {
           // A queued close event can arrive after the dialog has reopened.
           if (!dialog.current?.open) close();
         }}
       >
         <h2 id={titleId}>{mode === 'export' ? 'Export run' : 'Import run'}</h2>
-        <button className="modal-close" onClick={close}>Close</button>
+        <button className="modal-close" onClick={close} disabled={loading} title={loading ? 'Wait for the import to finish' : undefined}>
+          Close
+        </button>
         {mode === 'export' && (
           <>
             <p className="muted">Save this text to transfer or inspect your run. Past Monitor III ranges are not included.</p>
