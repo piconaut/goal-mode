@@ -91,4 +91,12 @@ describe('RT-09 retired id', () => {
       .filter((f) => /\bACCESS_PATH_REGRESSION\b/.test(readFileSync(f, 'utf8')));
     expect(offenders).toEqual([]);
   });
+
+  it('and in src/content/rca.ts only on the alias declaration', () => {
+    // Excluding the whole file above would let a stray id in its help text or a comment pass; only the one
+    // TRIGGER_ALIASES line may name it.
+    const lines = readFileSync('src/content/rca.ts', 'utf8').split('\n').filter((l) => /\bACCESS_PATH_REGRESSION\b/.test(l));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/TRIGGER_ALIASES/);
+  });
 });
