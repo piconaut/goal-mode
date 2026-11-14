@@ -49,8 +49,7 @@ export interface IntervalObs {
   def: ServiceDefinition;
   steady: boolean;
   lpars: Record<string, LparSum>;
-  /** Completions and failures per workload, summed from the sim's per-tick workload results. */
-  workloads: Record<string, { completions: number; failed: number }>;
+  /** The I/O rate the sim's DASD model was given, summed over the interval's ticks. */
   dasdIops: number;
   /** CF requests per second the z/OS images sent, per tick, summed. */
   cfRequests: number;
@@ -84,9 +83,7 @@ export interface ReportRun {
   final: RunState;
   /** Report class generated for each service class by the report-class policy. */
   reportClassOf: Record<string, string>;
-  /** Service classes that hold work no classification rule reaches (forced SYSTEM, subsystems without rules). */
-  unruledClasses: string[];
-  /** The resource group the run put on its largest goal class, and the type it had in each phase. */
+  /** The resource group the run put on its largest goal class (its type changes from phase to phase). */
   resourceGroup: { serviceClass: string; id: string } | null;
 }
 
@@ -362,15 +359,15 @@ const emptyLparSum = (): LparSum => ({ deliveredCp: 0, effectiveCp: 0, delivered
  * hours after the day's start. */
 export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour = 16): ReportRun {
   // The scenario's own game content without its event deck: the stress comes from the phases below, so a new
-  // card cannot change what this suite covers.
+  // card cannot change what this suite covers. (A scenario with no pack yet runs on the default pack's budgets,
+  // which the reports don't depend on.)
   const content: GameContent = { ...packOf(scenario.id).game, events: [] };
   let run = startDay(newRun(scenario, content, seed), content);
-  const out: ReportRun = { scenario, content, seed, intervals: [], windows: [], hours: [], phases: [], tfpStart: null, final: run, reportClassOf: {}, unruledClasses: [], resourceGroup: null };
+  const out: ReportRun = { scenario, content, seed, intervals: [], windows: [], hours: [], phases: [], tfpStart: null, final: run, reportClassOf: {}, resourceGroup: null };
   const note = { reportClassOf: out.reportClassOf, resourceGroup: null as ReportRun['resourceGroup'] };
 
   let phase = 'baseline';
   let lpars: Record<string, LparSum> = {};
-  let ivWorkloads: Record<string, { completions: number; failed: number }> = {};
   let hourWorkloads: Record<string, { completions: number; failed: number }> = {};
   let dasdIops = 0;
   let cfRequests = 0;
@@ -407,11 +404,9 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
       }
     }
     for (const w of sim.last.workloads) {
-      for (const acc of [ivWorkloads, hourWorkloads]) {
-        const a = (acc[w.id] ??= { completions: 0, failed: 0 });
-        a.completions += w.completions;
-        a.failed += w.failed;
-      }
+      const a = (hourWorkloads[w.id] ??= { completions: 0, failed: 0 });
+      a.completions += w.completions;
+      a.failed += w.failed;
     }
     dasdIops += sim.env.dasd?.totalIops ?? 0;
     cfRequests += (sim.env.cf ?? []).reduce((a, r) => a + r.requestRate, 0);
@@ -419,11 +414,10 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
 
     const closed = sim.rmf.intervals.at(-1);
     if (closed && closed.endTick === sim.tick) {
-      out.intervals.push({ phase, iv: closed, end: run, mon3: buildMon3(run, scenario), config: ivConfig, def: ivDef, steady, lpars, workloads: ivWorkloads, dasdIops, cfRequests });
+      out.intervals.push({ phase, iv: closed, end: run, mon3: buildMon3(run, scenario), config: ivConfig, def: ivDef, steady, lpars, dasdIops, cfRequests });
       if (window) out.windows.push({ phase, iv: closed, views: window });
       window = null;
       lpars = {};
-      ivWorkloads = {};
       dasdIops = 0;
       cfRequests = 0;
       ivConfig = sim.config;

@@ -122,7 +122,8 @@ export const IDENTITIES: Identity[] = [
     id: 'wlmgl-sysplex-sum',
     title: 'WLMGL: a sysplex row is the sum of its systems (ENDED, FAILED, APPL%, response time, distribution)',
     basis: 'z/OS',
-    source: 'RMF Report Analysis',
+    // WLMGL is a sysplex report: "the data from all systems is combined in one report" (SYSRPTS(WLMGL), SYSNAM).
+    source: "RMF User's Guide 3.1 p.179; RMF Report Analysis 3.1 p.538 (*ALL line)",
     check: (run, c) => {
       for (const o of run.intervals) {
         plexSum(c, o, o.iv.wlm, 'service class');
@@ -143,7 +144,10 @@ export const IDENTITIES: Identity[] = [
     id: 'wlmgl-states-100',
     title: 'WLMGL: USING %, DELAY % and UNKNOWN of a period add up to 100 % of its state samples',
     basis: 'z/OS',
-    source: 'RMF Report Analysis',
+    // R723CTSA, total execution samples, "is the sum of R723CTOU, R723CTOT, R723CUNK, R723CIDL", and each state is
+    // reported as a percentage of it. The sim has no idle state (SPEC §17 "WLM samples"), so using + delay + unknown
+    // is the whole. Real RMF prints only the seven largest delays and keeps quiesce outside this total.
+    source: "MVS SMF 3.1 p.645–646 (R723CTSA); RMF User's Guide 3.1 p.203–204; RMF Report Analysis 3.1 p.539–541",
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const r of [...o.iv.wlm, ...(o.iv.wlmRc ?? [])]) {
@@ -158,7 +162,9 @@ export const IDENTITIES: Identity[] = [
     id: 'wlmgl-velocity',
     title: 'WLMGL: EX VEL% is USING ÷ (USING + DELAY), I/O counted only with I/O priority management',
     basis: 'z/OS',
-    source: 'WLM Planning',
+    // "velocity = using samples ÷ (using samples + delay samples) × 100"; I/O samples "are not included" when I/O
+    // priority management is off, though still reported; capping delay is in the delay total (R723CCCA in R723CTOT).
+    source: 'WLM Planning 3.1 p.70–71, p.115; RMF Report Analysis 3.1 p.54, p.538; MVS SMF 3.1 p.645–646',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -177,7 +183,12 @@ export const IDENTITIES: Identity[] = [
     id: 'wlmgl-pi',
     title: "WLMGL: PERF INDX follows from the row's goal and its actual velocity, response time or distribution",
     basis: 'z/OS',
-    source: 'WLM Planning',
+    // Velocity: goal ÷ actual. Response time: actual ÷ goal; for a percentile the actual is the bound of the bucket
+    // where the goal percentage of transactions is reached, 14 buckets from 50 % to over 400 % of the goal, so at
+    // most 4 (and at least 0.5: SG24-7621). A heterogeneous report class has no PI. Discretionary is 0.81 (SG24-6472
+    // p.29). RMF takes the bucket whose cumulative count is "greater than" the goal count, the Redbooks "equal to or
+    // above": the sim follows the Redbooks (docs/research.md).
+    source: 'RMF Report Analysis 3.1 p.238–239, p.538, p.541; MVS SMF 3.1 p.650–651; SG24-7621 p.99–102',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -206,7 +217,8 @@ export const IDENTITIES: Identity[] = [
     id: 'wlmgl-distribution',
     title: 'WLMGL: the response time distribution of a percentile-goal period holds every ended transaction',
     basis: 'z/OS',
-    source: 'RMF Report Analysis',
+    // "# TRANSACTIONS ... Number of transactions that completed for this period", CUM TOTAL "so far" and IN BUCKET.
+    source: 'RMF Report Analysis 3.1 p.541–542',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -239,7 +251,10 @@ export const IDENTITIES: Identity[] = [
     id: 'wlmgl-appl-vs-dispatch',
     title: "WLMGL: an image's APPL% adds up to the CPU its work was dispatched for, never more than Partition Data's engines",
     basis: 'game',
-    source: 'SPEC §5.12, §17 "WLMGL APPL% CP/IIPCP/IIP"; captured time against dispatch time',
+    // Captured against total CPU time: real RMF states no such sum; the Redbooks define the capture ratio as
+    // captured ÷ total busy time (SG24-6645 p.183). In the sim an image's captured time is exactly its effective
+    // dispatch time, and LPAR management and polarity loss are the rest of PHYS ENG.
+    source: 'SPEC §5.12, §17 "WLMGL APPL% CP/IIPCP/IIP"; RMF Report Analysis 3.1 p.534',
     check: (run, c) => {
       for (const o of run.intervals) {
         const n = o.iv.intervalSec / TICK_SEC;
@@ -263,7 +278,8 @@ export const IDENTITIES: Identity[] = [
     id: 'partition-lpar-busy',
     title: 'Partition Data: LPAR BUSY % is the dispatched engines over the online logical CPs, never above them',
     basis: 'z/OS',
-    source: 'RMF Report Analysis 3.1 p.389',
+    // "LPAR Busy Time(%) = CPU time / Online time * 100", CPU time being the dispatch time.
+    source: 'RMF Report Analysis 3.1 p.389, p.393 (Table 153)',
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const r of o.iv.cpu) {
@@ -280,7 +296,10 @@ export const IDENTITIES: Identity[] = [
     id: 'partition-physical-busy',
     title: "Partition Data: a CPC pool's PHYSICAL BUSY is its partitions' dispatched engines over the installed engines",
     basis: 'z/OS',
-    source: 'RMF Report Analysis',
+    // PHYSICAL PROCESSORS TOTAL = "Total Dispatch Time / (# Physical Processors * Interval Time) * 100" per processor
+    // group, and the TOTAL line is "the total utilization of the PR/SM physical processor resource by all configured
+    // partitions". APPROX: the sim has no *PHYSICAL* partition line.
+    source: 'RMF Report Analysis 3.1 p.398–403 (Table 155)',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -315,10 +334,45 @@ export const IDENTITIES: Identity[] = [
     },
   },
   {
+    id: 'capacity-adjustment',
+    title: 'Partition Data: a reduced capacity setting shows as SMF70CAI below 100 with a reason, in step with the MSU per CP and Monitor III',
+    basis: 'z/OS',
+    // SMF70CAI is 1–99 while capacity is reduced against the normal setting (100 = normal), SMF70CCR its reason.
+    source: 'MVS SMF 3.1 p.589; SPEC §17 "Capacity adjustment"',
+    check: (run, c) => {
+      const msuPerCpOf = (o: IntervalObs, cpcId: string) => {
+        const h = o.mon3.cpcHeaders.find((x) => x.cpcId === cpcId);
+        const cpc = o.end.sim.config.cpcs.find((x) => x.id === cpcId)!;
+        return h && cpc.engines.CP > 0 ? h.cpcCapacityMsu / cpc.engines.CP : null;
+      };
+      const normal: Record<string, number> = {};
+      for (const o of run.intervals) {
+        if (!o.steady) continue;
+        for (const b of o.iv.cpcBusy) {
+          if (b.pool !== 'CP') continue;
+          const now = msuPerCpOf(o, b.cpcId);
+          const loss = o.mon3.cpc.find((x) => x.cpcId === b.cpcId)?.capacityAdjPct ?? 0;
+          if (b.capacityAdjustmentPct === undefined) {
+            if (now !== null) normal[b.cpcId] = now;
+            c.ok(loss === 0 && b.capacityReasonCode === undefined, () => `${at(o)} ${b.cpcId} Monitor III shows ${loss} % capacity lost, Partition Data none`);
+            continue;
+          }
+          c.ok(b.capacityAdjustmentPct >= 1 && b.capacityAdjustmentPct <= 99 && (b.capacityReasonCode ?? 0) >= 1, () => `${at(o)} ${b.cpcId} SMF70CAI ${b.capacityAdjustmentPct} reason ${b.capacityReasonCode}`);
+          c.close(loss, 100 - b.capacityAdjustmentPct, ROUNDING, () => `${at(o)} ${b.cpcId} Monitor III capacity lost vs 100 − SMF70CAI`);
+          // CAI is a whole percentage of the normal capacity: the MSU per CP fell by that ratio.
+          if (now !== null && normal[b.cpcId] !== undefined) c.close(b.capacityAdjustmentPct, (100 * now) / normal[b.cpcId]!, printed(0), () => `${at(o)} ${b.cpcId} SMF70CAI vs MSU per CP now ÷ before`);
+        }
+      }
+    },
+  },
+  {
     id: 'partition-r4ha',
     title: "Partition Data: R4HA is the average of the MSU AVG of the last four hours' intervals (zero before the start)",
     basis: 'z/OS',
-    source: 'WLM Planning',
+    // WLM tracks "the partition's CPU usage and continually averaging it over the past 4 hours"; "At IPL ... the
+    // four-hour rolling average starts with zero"; 48 sample intervals of five minutes. APPROX: real RMF prints the
+    // 4-hour average in Monitor III CPC (4h Avg) and keeps it in SMF70LAC, not on Partition Data (docs/research.md).
+    source: 'WLM Planning 3.1 p.44–47; RMF Report Analysis 3.1 p.98',
     check: (run, c) => {
       const window = R4HA_SLOTS * TICKS_PER_R4HA_SLOT;
       const first = run.intervals[0]!.iv.startTick;
@@ -342,7 +396,10 @@ export const IDENTITIES: Identity[] = [
     id: 'partition-capping',
     title: 'Partition Data: WLM% needs a defined capacity or capacity group and is part of the capping; capping needs a cap',
     basis: 'z/OS',
-    source: 'RMF Report Analysis 3.1 p.401',
+    // CAPPING DEF/WLM%: WLM% is the "Percentage of time when WLM capped the partition" (soft capping only).
+    // Left out: WLM% equal to the share of the interval WLM capped the image. The sim reports the share of demand
+    // the cap removed instead (BACKLOG RF-06).
+    source: 'RMF Report Analysis 3.1 p.401–402; WLM Planning 3.1 p.44–47',
     check: (run, c) => {
       for (const o of run.intervals) {
         const n = o.iv.intervalSec / TICK_SEC;
@@ -368,9 +425,11 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'soft-cap-flag',
-    title: 'Soft capping: an image is capped exactly while its R4HA is above its defined capacity, and every view says so',
+    title: 'Soft capping: an image is capped exactly while its R4HA is above its defined capacity (or its group is capped), and every view says so',
     basis: 'z/OS',
-    source: 'WLM Planning',
+    // "When this four-hour average goes over the defined capacity limit, then WLM caps the partition ... until the
+    // average drops below the limit." Monitor III CPC: 4h Avg, 4h Max ("can be greater than the defined capacity").
+    source: 'WLM Planning 3.1 p.44; RMF Report Analysis 3.1 p.96–99 (Table 16)',
     check: (run, c) => {
       for (const o of run.intervals) {
         const view = buildView({ ...o.end, tools: ['RMF_MON3'] }, run.scenario);
@@ -379,8 +438,13 @@ export const IDENTITIES: Identity[] = [
           const sys = o.mon3.systems.find((x) => x.system === r.lparId)!;
           const head = o.mon3.cpcHeaders.find((x) => x.lparId === r.lparId)!;
           const lv = view.lpars.find((x) => x.id === r.lparId)!;
-          // Decided at each 5-minute boundary, which every interval end is.
-          c.ok(sys.capped === (r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu), () => `${at(o)} ${r.lparId} capped ${sys.capped}, R4HA ${r.r4ha}, DEF CAP ${r.definedCapacityMsu}`);
+          // Decided at each 5-minute boundary, which every interval end is. A capacity group caps its members when
+          // the group's own average passes its limit. Left out: that average against the limit, which no report shows
+          // (real RMF prints the group's AVAILABLE MSU; BACKLOG RF-08), so the group's state is read from the sim.
+          const l = o.end.sim.config.lpars.find((x) => x.id === r.lparId)!;
+          const group = l.capacityGroup !== null && !!o.end.sim.capping.groups.find((g) => g.id === l.capacityGroup)?.capped;
+          c.ok(sys.capped === ((r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu) || group), () => `${at(o)} ${r.lparId} capped ${sys.capped}, R4HA ${r.r4ha}, DEF CAP ${r.definedCapacityMsu}, group capped ${group}`);
+          c.ok(head.group === l.capacityGroup && head.groupLimitMsu === (o.end.sim.config.capacityGroups.find((g) => g.id === l.capacityGroup)?.limitMsu ?? null), () => `${at(o)} ${r.lparId} CPC header group ${head.group} limit ${head.groupLimitMsu}`);
           c.ok(lv.capped === sys.capped, () => `${at(o)} ${r.lparId} header capped ${lv.capped}, Monitor III ${sys.capped}`);
           c.close(head.r4haMsu, r.r4ha, ROUNDING, () => `${at(o)} ${r.lparId} Monitor III 4h avg vs Partition Data R4HA`);
           c.close(lv.r4ha ?? 0, r.r4ha, ROUNDING, () => `${at(o)} ${r.lparId} header R4HA vs Partition Data`);
@@ -423,8 +487,10 @@ export const IDENTITIES: Identity[] = [
   {
     id: 'partition-mvs-busy',
     title: 'Partition Data: MVS BUSY % is never below LPAR BUSY %',
-    basis: 'z/OS',
-    source: 'RMF Report Analysis 3.1 p.389',
+    basis: 'game',
+    // The book states no inequality. It follows from its two formulas while dispatched time is at most the time not
+    // in wait: LPAR BUSY = dispatch ÷ online, MVS BUSY = (online − wait − parked) ÷ (online − parked).
+    source: 'Derived from the formulas of RMF Report Analysis 3.1 p.389; SPEC §17 "LPAR BUSY vs MVS BUSY"',
     check: (run, c) => {
       for (const o of run.intervals) for (const r of o.iv.cpu) if (r.logicalCps > 0 && o.steady) c.atMost(r.logicalBusyPct, r.mvsBusyPct ?? 0, ROUNDING, () => `${at(o)} ${r.lparId} LPAR BUSY above MVS BUSY`);
     },
@@ -434,7 +500,11 @@ export const IDENTITIES: Identity[] = [
     id: 'bill-hourly-from-r4ha',
     title: "Finance: each hour's product MSU is the sum of its images' R4HA, limited by defined capacity and group limit",
     basis: 'z/OS',
-    source: 'SCRT',
+    // Each hour SCRT "compares the 4-hour rolling average utilization ... to the defined capacity, if set ... and
+    // chooses the lesser"; the peak is "the sum of the utilization for all LPARs in which a particular product ran in
+    // a given hour"; a capped group's capacity is what its LPARs are assigned. APPROX: the sim samples the R4HA on
+    // the hour (SCRT averages the hour's SMF70LAC values) and splits a group limit pro rata (SPEC §17).
+    source: 'SCRT 30.1 (SC23-6845-22) p.35, p.37–38, p.519–521',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (o.iv.endTick % TICKS_PER_HOUR !== 0) continue;
@@ -530,7 +600,8 @@ export const IDENTITIES: Identity[] = [
     id: 'dasd-response-time',
     title: 'DASD Activity: response time is IOSQ + PEND + DISC + CONN',
     basis: 'z/OS',
-    source: 'RMF Report Analysis',
+    // "AVG RESP TIME = AVG ACT TIME + AVG IOSQ TIME", active time being connect + disconnect + pending.
+    source: 'RMF Report Analysis 3.1 p.422–424 (Table 167)',
     check: (run, c) => {
       for (const o of run.intervals) {
         const d = o.iv.dasd;
@@ -543,7 +614,8 @@ export const IDENTITIES: Identity[] = [
     id: 'dasd-activity-rate',
     title: "DASD Activity: the LCUs' activity rates add up to the total, which is the I/O rate the sim's workloads drove",
     basis: 'z/OS',
-    source: 'RMF Report Analysis',
+    // "In the LCU summary line, this field contains the sum of the rates for each individual device."
+    source: 'RMF Report Analysis 3.1 p.422 (Table 167)',
     check: (run, c) => {
       for (const o of run.intervals) {
         const n = o.iv.intervalSec / TICK_SEC;
@@ -559,9 +631,12 @@ export const IDENTITIES: Identity[] = [
   // ---------------------------------------------------------------- Coupling Facility Activity (SMF 74.4)
   {
     id: 'cf-requests-add-up',
-    title: 'CF Activity: structure requests add up to their CF, systems to each structure copy and to each subchannel line',
+    title: 'CF Activity: structure requests add up to their CF and to the requests the systems sent, systems to each structure copy and subchannel line',
     basis: 'z/OS',
-    source: 'RMF Report Analysis 3.1 p.365–378',
+    // Usage Summary # REQ "is the same number as appears in the TOTAL line of the Coupling Facility Structure
+    // Activity report", which lists each connected system. APPROX: a real subchannel line "will usually be greater
+    // than the sum of the individual structure values" (facility management commands, not modelled): here it is equal.
+    source: 'RMF Report Analysis 3.1 p.365–378 (Tables 144–146)',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -571,6 +646,8 @@ export const IDENTITIES: Identity[] = [
           c.close(sum((iv.cfSystems ?? []).filter((s) => s.cfLparId === cf.lparId).map((s) => s.reqPerSec)), cf.reqPerSec, ROUNDING, () => `${at(o)} ${cf.lparId} Σ systems vs CF`);
           c.ok(cf.busyPct >= 0 && cf.busyPct <= 100 && cf.asyncPct >= -1e-9 && cf.asyncPct <= 100 + 1e-9, () => `${at(o)} ${cf.lparId} UTIL% / ASYNC % outside 0–100`);
         }
+        // Against the source: the requests the z/OS images sent (a duplexed request also drives its SEC copy).
+        c.close(sum(iv.cf.map((x) => x.reqPerSec)) - sum(iv.cfStructures.filter((x) => x.role === 'SEC').map((x) => x.reqPerSec)), o.cfRequests / (iv.intervalSec / TICK_SEC), ROUNDING, () => `${at(o)} requests to primary copies vs the sim's CF requests`);
         for (const st of iv.cfStructures) {
           c.close(sum((iv.cfStructSystems ?? []).filter((x) => x.name === st.name && x.role === st.role).map((x) => x.reqPerSec)), st.reqPerSec, ROUNDING, () => `${at(o)} ${st.name} ${st.role ?? ''} Σ systems vs structure`);
           c.ok(iv.cf.some((cf) => cf.lparId === st.cfLparId), () => `${at(o)} ${st.name} in ${st.cfLparId}, which has no CF line`);
@@ -583,19 +660,29 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'cf-service-times',
-    title: "CF Activity: a CF's ASYNC % and service times are the request-weighted figures of its structures and of its systems",
+    title: "CF Activity: a CF line's and a subchannel line's ASYNC % and service times are the request-weighted figures of the structure lines under them",
     basis: 'game',
-    source: 'One CF line read against the Structure Summary and Subchannel Activity below it',
+    source: 'SPEC §5.12 (SMF 74.4); RMF reports service times per request (RMF Report Analysis 3.1 p.374–378)',
     check: (run, c) => {
+      const weigh = (c: Check, lines: readonly { reqPerSec: number; syncPct: number; syncUs: number }[], got: { asyncPct: number; syncUs: number }, where: (x: string) => () => string) => {
+        const req = sum(lines.map((s) => s.reqPerSec));
+        const syncReq = sum(lines.map((s) => (s.reqPerSec * s.syncPct) / 100));
+        if (req <= 0) return;
+        c.close(got.asyncPct, (100 * (req - syncReq)) / req, WEIGHTED, where('ASYNC %'));
+        if (syncReq > 0) c.close(got.syncUs, sum(lines.map((s) => ((s.reqPerSec * s.syncPct) / 100) * s.syncUs)) / syncReq, WEIGHTED, where('SYNC SERV'));
+      };
       for (const o of run.intervals) {
         if (!o.steady) continue;
         const iv = o.iv;
         for (const cf of iv.cf) {
           const sts = iv.cfStructures.filter((s) => s.cfLparId === cf.lparId);
           const req = sum(sts.map((s) => s.reqPerSec));
-          if (req <= 0) continue;
-          c.close(cf.asyncPct, sum(sts.map((s) => s.reqPerSec * (100 - s.syncPct))) / req, ROUNDING, () => `${at(o)} ${cf.lparId} ASYNC % vs structures`);
-          c.close(cf.serviceUs, sum(sts.map((s) => s.reqPerSec * s.serviceUs)) / req, ROUNDING, () => `${at(o)} ${cf.lparId} AVG SERV vs structures`);
+          const where = (x: string) => () => `${at(o)} ${cf.lparId} ${x} vs structures`;
+          weigh(c, sts, cf, where);
+          if (req > 0) c.close(cf.serviceUs, sum(sts.map((s) => s.reqPerSec * s.serviceUs)) / req, WEIGHTED, where('AVG SERV'));
+        }
+        for (const s of iv.cfSystems ?? []) {
+          weigh(c, (iv.cfStructSystems ?? []).filter((x) => x.cfLparId === s.cfLparId && x.system === s.system), s, (x) => () => `${at(o)} ${s.system}→${s.cfLparId} ${x} vs its structure lines`);
         }
       }
     },
@@ -603,8 +690,10 @@ export const IDENTITIES: Identity[] = [
   {
     id: 'cf-failed',
     title: 'CF Activity: a failed CF reports no requests and holds no structure; a duplexed structure shows PRIM and SEC in two CFs',
-    basis: 'z/OS',
-    source: 'RMF Report Analysis 3.1 p.365',
+    basis: 'game',
+    // STATUS ACTIVE PRIM / ACTIVE SEC, each instance in its own CF's report, is RMF's (p.365, p.367). The book does
+    // not say that a duplexed request counts on both instances: SEC at or under PRIM is the sim's duplexing model.
+    source: 'SPEC §5.9, §17 "CF failure, structure rebuild, duplexing"; RMF Report Analysis 3.1 p.365–367',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -627,7 +716,10 @@ export const IDENTITIES: Identity[] = [
     id: 'resource-group-maximum',
     title: "WLMGL: the general-CP time of a resource group's classes stays within the group's maximum",
     basis: 'z/OS',
-    source: 'WLM Planning',
+    // The maximum "applies to all service classes in that resource group combined. Maximum is enforced." Type 1:
+    // unweighted CPU service units per second, sysplex; type 2: percentage of the LPAR share; type 3: hundredths of a
+    // CP, both per system. By default specialty processor consumption is ignored. Type 4 (MSU) is not modelled.
+    source: 'WLM Planning 3.1 p.57–60',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
@@ -677,7 +769,10 @@ export const IDENTITIES: Identity[] = [
     id: 'report-class-rollup',
     title: "WLMGL: a report class that takes all of a service class's work shows that class's totals, and its goal and PI when it is one period",
     basis: 'z/OS',
-    source: 'WLM Planning 3.1 p.113',
+    // "A report class period is called homogeneous if all its transactions are being assigned to the same service
+    // class period"; GOAL and the PI are N/A for a heterogeneous one. APPROX: one row per report class, not per
+    // report class period (SPEC §17).
+    source: 'WLM Planning 3.1 p.113; RMF Report Analysis 3.1 p.527–528, p.538',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady || !o.iv.wlmRc || Object.keys(run.reportClassOf).length === 0) continue;
@@ -714,7 +809,9 @@ export const IDENTITIES: Identity[] = [
     id: 'smf30-job-times',
     title: 'SMF 30: a job ran from its start to its end, queued before that, and ended inside the interval that reports it',
     basis: 'game',
-    source: 'SPEC §5.10.4, §5.12 (job-end records)',
+    // SMF30RST (reader start), SMF30SIT (initiator selected the job) and the record's time stamp give queue and
+    // elapsed time (MVS SMF 3.1 p.337); that they add up here is the sim's bookkeeping.
+    source: 'SPEC §5.10.4, §5.12 (job-end records); MVS SMF 3.1 p.326–337',
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const j of o.iv.jobs) {
@@ -737,7 +834,11 @@ export const IDENTITIES: Identity[] = [
     id: 'smf30-vs-wlmgl',
     title: 'SMF 30 against WLMGL: a batch class with a response time goal ends one transaction per job, at queue + elapsed time',
     basis: 'z/OS',
-    source: 'WLM Planning 3.1 p.71',
+    // "The number of batch transactions equals number of jobs"; the response time includes the "Time waiting for an
+    // Initiator" (TRANS-TIME ACTUAL = execution + queued + ...).
+    // Left out: the same count for batch classes with a velocity or discretionary goal. RMF's ENDED has no goal-type
+    // condition, but the sim counts job ends only into response-time-goal periods (BACKLOG RF-07).
+    source: 'WLM Planning 3.1 p.71; JES2 Initialization and Tuning Guide 3.1 p.113–114; RMF Report Analysis 3.1 p.530–531',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady || o.iv.jobs.length === 0) continue;
@@ -869,9 +970,12 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'mon3-sysplex-sum',
-    title: 'Monitor III: a sysplex row is the sum of its systems (CPU, zIIP, ended rate, users using and delayed)',
+    title: 'Monitor III: a sysplex row is the sum of its systems (CPU, ended rate, active and delayed users)',
     basis: 'z/OS',
-    source: 'RMF Report Analysis',
+    // Sysplex reports show an *ALL summary line over one row per system.
+    // Left out: zIIP and IIPCP engines and the users using PROC and DEV, which the sim splits by the last tick's mix,
+    // per row, so the sysplex row is not the sum of the systems' (BACKLOG CL-10).
+    source: 'RMF Report Analysis 3.1 p.62, p.229–240',
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const p of o.mon3.rows.filter((r) => r.system === '*PLEX')) {
@@ -879,12 +983,8 @@ export const IDENTITIES: Identity[] = [
           const w = (f: string) => () => `${at(o)} ${p.scKey} ${f}`;
           const add = (f: (r: Mon3Row) => number) => sum(parts.map(f));
           c.close(p.cpuEngines, add((r) => r.cpuEngines), DECAYED, w('CP engines'));
-          c.close(p.ziipEngines, add((r) => r.ziipEngines), DECAYED, w('zIIP engines'));
-          c.close(p.iipcpEngines, add((r) => r.iipcpEngines), DECAYED, w('IIPCP engines'));
           c.close(p.endedPerSec, add((r) => r.endedPerSec), DECAYED, w('ended/s'));
           c.close(p.avgUsers.active, add((r) => r.avgUsers.active), DECAYED, w('active users'));
-          c.close(p.avgUsers.proc, add((r) => r.avgUsers.proc), DECAYED, w('users using PROC'));
-          c.close(p.avgUsers.dev, add((r) => r.avgUsers.dev), DECAYED, w('users using DEV'));
           c.close(p.avgUsers.delayProc, add((r) => r.avgUsers.delayProc), DECAYED, w('users delayed PROC'));
           c.close(p.avgUsers.delayDev, add((r) => r.avgUsers.delayDev), DECAYED, w('users delayed DEV'));
           c.close(p.avgUsers.delayStor, add((r) => r.avgUsers.delayStor), DECAYED, w('users delayed STOR'));
@@ -894,9 +994,14 @@ export const IDENTITIES: Identity[] = [
   },
   {
     id: 'mon3-delay-states',
-    title: 'Monitor III DELAY: USG, DLY and UKN add up to the active samples, the delay columns to DLY, the user counts to both',
-    basis: 'z/OS',
-    source: 'RMF Report Analysis 3.1 p.106–110',
+    title: 'Monitor III DELAY: USG, DLY and UKN add up to the active samples, the delay columns and capping to DLY, the delayed users to both',
+    basis: 'game',
+    // RMF gives USG %, DLY % and IDL % the same sample count as denominator but lets a job be using one resource and
+    // delayed for another in one sample, so the book has no such sum; the sim's samples are exclusive states. That
+    // DLY % exceeds the delay columns by the WLM capping delay is RMF's (p.109).
+    // Left out: users using PROC + DEV equal to USG, which the last tick's mix breaks when that tick had no using
+    // sample (BACKLOG CL-10).
+    source: 'SPEC §17 "WLM samples", "Monitor III views"; RMF Report Analysis 3.1 p.106–110',
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const r of o.mon3.rows) {
@@ -907,7 +1012,7 @@ export const IDENTITIES: Identity[] = [
           c.close(r.usingFrac + r.delayFrac + r.unknownFrac, 1, DECAYED, w('USG + DLY + UKN'));
           c.close(r.delay.cpu + r.delay.ziip + r.delay.io + r.delay.stor + r.delay.cap, r.delayFrac, DECAYED, w('delay columns + capping vs DLY'));
           c.close(r.delay.other, r.unknownFrac, DECAYED, w('UKN'));
-          c.close(r.avgUsers.proc + r.avgUsers.dev, r.usingFrac * a, DECAYED, w('users using vs USG'));
+          c.atMost(r.avgUsers.proc + r.avgUsers.dev, r.usingFrac * a, DECAYED, w('users using above USG'));
           c.close(r.avgUsers.delayProc, (r.delay.cpu + r.delay.ziip) * a, DECAYED, w('users delayed PROC'));
           c.close(r.avgUsers.delayDev, r.delay.io * a, DECAYED, w('users delayed DEV'));
           c.close(r.avgUsers.delayStor, r.delay.stor * a, DECAYED, w('users delayed STOR'));
@@ -919,11 +1024,15 @@ export const IDENTITIES: Identity[] = [
     id: 'mon3-velocity-and-pi',
     title: "Monitor III SYSSUM: velocity is USG ÷ (USG + DLY), and the PI follows from the row's goal and actuals; WFEX speed is the same velocity",
     basis: 'z/OS',
-    source: 'RMF Report Analysis 3.1 p.50–55; WLM Planning',
+    // "Execution Velocity (%) = # Using samples / (# Using Samples + # Delay Samples) * 100"; "Perf Indx = Goal % /
+    // Actual %", "Actual (sec) / Goal (sec)". APPROX: real workflow % uses RMF's own samples and velocity WLM's, so
+    // the two can differ for a job; the sim has one set of samples.
+    source: 'RMF Report Analysis 3.1 p.50–54, p.238–239',
     check: (run, c) => {
       for (const o of run.intervals) {
         if (!o.steady) continue;
-        const io = o.def.ioPriorityManagement !== false;
+        // Samples taken while I/O priority management was off stay out of velocity until they have decayed away.
+        const io = run.intervals.every((x) => x.iv.endTick > o.iv.endTick || x.iv.endTick <= o.iv.endTick - TICKS_PER_HOUR / 2 || (x.steady && x.def.ioPriorityManagement !== false));
         for (const r of o.mon3.rows) {
           const w = (f: string) => () => `${at(o)} ${r.system} ${r.scKey} ${f}`;
           if (io && r.velocity !== null) c.close(r.velocity, (100 * r.usingFrac) / (r.usingFrac + r.delayFrac), DECAYED_PCT, w('velocity vs USG ÷ (USG + DLY)'));
@@ -946,7 +1055,12 @@ export const IDENTITIES: Identity[] = [
     id: 'mon3-sysinfo-cpc',
     title: 'Monitor III SYSINFO and CPC: EAppl% is the rows’ CPU over the online CPs, CPU Util% the CPC report’s logical total, physical total = LPAR + effective',
     basis: 'z/OS',
-    source: 'RMF Report Analysis 3.1 p.97–98',
+    // SYSINFO Avg CPU Util% = LPAR CPU time ÷ online time; Appl% (address spaces) and EAppl% (plus enclaves) are
+    // divided by the logical processors. CPC: Physical Util % LPAR = (total − effective) ÷ (physical × range); MSU Act
+    // is "based on the logical processor effective dispatch time".
+    // Left out: MSU Act equal to the MSU the header, Partition Data, the R4HA and the bill use. Those count total
+    // dispatch time, LPAR management included, where RMF's MSU is from effective time (BACKLOG RF-05).
+    source: 'RMF Report Analysis 3.1 p.96–99 (Table 16), p.222–224 (Table 84)',
     check: (run, c) => {
       for (const o of run.intervals) {
         const view = buildView({ ...o.end, tools: ['RMF_MON3'] }, run.scenario);
@@ -983,7 +1097,9 @@ export const IDENTITIES: Identity[] = [
     id: 'mon3-procu',
     title: 'Monitor III PROCU: the jobs’ EAppl % adds up to their service classes’ CPU, and Time on CP is within EAppl',
     basis: 'game',
-    source: 'SPEC §17 "Monitor III views": PROCU shares each class row’s CPU among its jobs (APPROX)',
+    // RMF: Time on CP % IIP "a subset of the Total percentage"; EAppl % adds the enclave CPU time consumed within the
+    // address space (p.188–190). That the jobs add up to their class rows is the sim's sharing rule.
+    source: 'SPEC §17 "Monitor III views": PROCU shares each class row’s CPU among its jobs (APPROX); RMF Report Analysis 3.1 p.188–190',
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const s of o.mon3.systems) {
@@ -1079,8 +1195,37 @@ export const IDENTITIES: Identity[] = [
   },
 ];
 
+/** Weighted averages rebuilt from rates, shares and averages that were each divided out and multiplied back: a few
+ * more rounding steps than a plain sum. */
+const WEIGHTED: Tol = { rel: 1e-8, abs: 1e-9 };
+
 /** Shares of decayed sums, in percent: the same rounding, a hundred times larger. */
 const DECAYED_PCT: Tol = { rel: 1e-6, abs: 1e-4 };
+
+/** Situations the stress phases are meant to produce. Each must be reached by at least one scenario, so an identity
+ * that only bites in that situation cannot pass because the situation never came up. */
+export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
+  'an image soft-capped by its defined capacity': (run) => run.intervals.some((o) => zos(o.config).some((l) => l.definedCapacityMsu !== null && (o.lpars[l.id]?.softCappedTicks ?? 0) > 0)),
+  'an image soft-capped by its capacity group': (run) => run.intervals.some((o) => zos(o.config).some((l) => l.capacityGroup !== null && l.definedCapacityMsu === null && (o.lpars[l.id]?.softCappedTicks ?? 0) > 0)),
+  'an image capped, but not by WLM': (run) => run.intervals.some((o) => o.iv.cpu.some((r) => r.cappedPct > 0 && (r.wlmCappingPct ?? 0) === 0)),
+  'an hour billed under a defined capacity': (run) => run.intervals.some((o) => o.iv.endTick % TICKS_PER_HOUR === 0 && o.iv.cpu.some((r) => r.definedCapacityMsu !== null && r.r4ha > r.definedCapacityMsu)),
+  'an hour billed under a group limit': (run) => run.intervals.some((o) => o.iv.endTick % TICKS_PER_HOUR === 0 && o.end.sim.capping.groups.some((g) => g.capped)),
+  'CAP delay from a resource group of each type': (run) => [1, 2, 3].every((type) => run.intervals.some((o) => o.steady && o.def.resourceGroups.some((g) => g.type === type && g.max !== null) && o.iv.wlm.some((r) => r.delayPct.cap > 1))),
+  'report classes, one period and several': (run) => run.intervals.some((o) => (o.iv.wlmRc ?? []).some((r) => r.members?.length === 1)) && run.intervals.some((o) => (o.iv.wlmRc ?? []).some((r) => (r.members?.length ?? 0) > 1)),
+  'CICS transaction rows with work manager states': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.workManager && r.resourceSamples === false)),
+  'a failed coupling facility': (run) => run.intervals.some((o) => o.steady && o.config.cfs.some((x) => x.failed)),
+  'a duplexed structure': (run) => run.intervals.some((o) => o.iv.cfStructures.some((s) => s.role === 'SEC')),
+  'CF requests converted to asynchronous': (run) => run.intervals.some((o) => o.iv.cf.some((x) => x.asyncPct > 0 && x.asyncPct < 100)),
+  'zIIP-eligible work on CPs with zIIPs lost': (run) => run.intervals.some((o) => o.steady && o.config.cpcs.some((x) => x.engines.ZIIP === 0) && o.iv.wlm.some((r) => r.applIipcpPct > 0)),
+  'a reduced capacity setting': (run) => run.intervals.some((o) => o.iv.cpcBusy.some((b) => b.capacityAdjustmentPct !== undefined)),
+  'I/O priority management off': (run) => run.intervals.some((o) => o.steady && o.def.ioPriorityManagement === false),
+  'RMF intervals of two lengths': (run) => new Set(run.intervals.map((o) => o.iv.intervalSec)).size > 1,
+  'Tailored Fit Pricing over the baseline rate, with a list-price change': (run) => !!run.final.sim.cost.tfp && run.final.sim.cost.priceMult !== undefined,
+  'batch jobs ended in a class with a response time goal': (run) => run.intervals.some((o) => o.iv.jobs.length > 0 && o.iv.wlm.some((r) => r.lparId !== '*PLEX' && r.goalText.startsWith('AVG') && r.ended > 0 && !r.workManager && Number.isInteger(Math.round(r.ended * 1e6) / 1e6) && o.iv.jobs.some((j) => j.lparId === r.lparId))),
+  'failed transactions': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.failed > 1)),
+  'a closed SMF hour with CICS and Db2 rows': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && cicsMonitoring(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0 && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0; }),
+  'a percentile-goal period past its goal': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.pi !== null && r.pi > 1 && r.goalText.includes('<'))),
+};
 
 /** Resource-group capping works on the group's service over time, so one interval can run a little over. */
 const RG_SLACK: Tol = { rel: 0.02, abs: 1e-6 };

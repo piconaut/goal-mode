@@ -576,6 +576,72 @@ choice is recorded in docs/wlm-design.md §5.10 and SPEC §5.5.4, a test shows a
 missing percentile period of equal importance traded on the chosen scale, and goldens, the S-1 … S-3 table and a
 three-scenario sweep (seeds 1–10) are recorded if behaviour changes.
 
+### RF-05 · MSU is counted from total dispatch time, LPAR management included
+`list: realism-fixes · status: blocked: balance · priority: low · size: M · area: sim`
+
+Source: cross-report invariant suite (2026-11-14; identity `mon3-sysinfo-cpc`, left-out part). Real RMF computes a
+partition's MSU from effective dispatch time: Partition Data `MSU ACT` is the "actual consumption based on the logical
+processor effective dispatch time", and Monitor III CPC `MSU Act` likewise (RMF Report Analysis 3.1 p.402, p.98). The
+sim's Monitor III CPC `msuAct` already does that, but `LparRuntime.msuRate` (`src/sim/core/tick/dispatch.ts`) is
+`deliveredEngines × msuPerCp`, total dispatch time with LPAR management and polarity loss in it, and it feeds the
+header MSU, Partition Data MSU AVG, the R4HA, soft capping, the SCRT-style bill and TFP MSU-hours. So one image has
+two MSU figures at one moment (Midwest seed 7, 11:20: PROD2 CPC MSU Act 644, header 663, LPAR management 2.9 %).
+Change: take `msuRate` from effective dispatch time; keep `deliveredEngines` for LPAR BUSY and physical busy. This
+lowers every R4HA and bill by the overhead share, so it is a balance change: goldens, a Behaviour change note and a
+three-scenario sweep. Done when: the identity "MSU Act = header MSU = Partition Data MSU AVG at the same time" is
+added to `tests/helpers/reportIdentities.ts`, the docs/research.md row says "Matches", SPEC §17 is updated and the
+sweep is recorded.
+
+### RF-06 · Partition Data WLM% is the share of demand removed, not the share of time capped
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
+
+Source: cross-report invariant suite (2026-11-14; identity `partition-capping`, left-out part). Real `WLM%` is the
+"Percentage of time when WLM capped the partition" (RMF Report Analysis 3.1 p.401–402): the samples in which "WLM
+considers to cap" over all samples (SMF70NSW ÷ SMF70DSA, RMF User's Guide 3.1 p.186). Monitor III CPC `WLM Capping %`
+has the same definition (p.98), and the Group Capacity report adds `ACT%` for the samples where capping actually
+limited usage (SMF70NCA, p.406). The sim's `wlmCappingPct` (`src/sim/measure/rmf.ts`) and Monitor III
+`wlmCappingPct` average `softCappedFrac`, the share of CP demand the cap removed. On Midwest seed 7 with a defined
+capacity at 60 % of the R4HA, PROD1 was capped for the whole interval and showed WLM% 57; DEVT, capped all interval
+but under its cap, showed 0. Change: carry "soft cap in force" on the image's CP pool runtime (a new `LparPoolRuntime`
+field, so sim state changes shape though no behaviour does), report WLM% as the share of ticks it was in force, and
+keep the share of demand removed as its own figure (the evidence metric and alerts read `cappedPct`, which does not
+change). Done when: the identity "WLM% = share of the interval the image was capped" is in
+`tests/helpers/reportIdentities.ts`, the Codex and clue texts that read WLM% as a size are checked, the
+docs/research.md row says "Matches", and `npm run compare` shows only the reporting difference.
+
+### RF-07 · WLMGL ENDED counts job ends only for batch classes with a response time goal
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
+
+Source: cross-report invariant suite (2026-11-14; identity `smf30-vs-wlmgl`, left-out part). "The number of batch
+transactions equals number of jobs" (WLM Planning 3.1 p.71) and RMF's ENDED is "the number of transactions that ended
+during the interval" with no condition on the goal type; the book's own velocity-goal sample shows ENDED 9 (RMF
+Report Analysis 3.1 p.530, p.522). The sim adds a completion, its response time and a bucket observation only when the
+job's period has an AVG or PCT goal (`src/sim/core/tick/dispatch.ts`, added with WT-12), so every shipped batch class
+(velocity or discretionary) shows ENDED 0 and no response time while SMF 30 lists its job ends (Midwest seed 7: 20
+jobs ended in a discretionary class, WLMGL ENDED 0). Change: count every ended job as an ended transaction with its
+queue + elapsed response time in its ending period and report class; response-time buckets stay for response time
+goals (RMF also prints a per-system distribution for velocity periods: docs/research.md, not modelled). `acc.completions`
+feeds no velocity PI, but it is WLM state, so goldens change: check with `npm run compare` that DPs, the WLM log and SLA
+results are unchanged. Done when: the left-out part of `smf30-vs-wlmgl` is restored for every goal type, Monitor III
+shows the ended rate, and docs/research.md and SPEC §17 "Batch response-time goals" are updated.
+
+### RF-08 · A capacity group's 4-hour average is on no report, and starts empty when the group is defined
+`list: realism-fixes · status: blocked: research · priority: low · size: M · area: sim`
+
+Source: cross-report invariant suite (2026-11-14; identity `soft-cap-flag`, left-out part). The Partition Data header
+shows GROUP NAME, LIMIT and `AVAILABLE`, the "long-term average of CPU service in MSUs/h which would be allowed by the
+limit of the capacity group but is not used by its members. If the value is negative, the group is capped" (RMF Report
+Analysis 3.1 p.399–400); LIMIT is flagged with `*` when the partition joined its group less than four hours ago. The
+game shows the group and its limit (Monitor III CPC header) but not the group's average, so a player cannot work out
+from any report why a group is or is not capping: the members' R4HAs do not add up to it, because the sim starts a
+new group's window empty (`newR4ha(g.id)` in `src/sim/core/tick/control.ts`), as if the group had been IPLed. In the
+suite's runs a group limit at 60 % of its members' summed R4HA never capped within an hour for that reason.
+Research first (zos-docs): how WLM builds the group's average when a group is defined or a member joins (WLM Planning
+3.1 p.46–47 says capping starts "when the 4-hour rolling average for the combined usage exceeds" the limit; whether
+that is the sum of the members' own averages is not stated on the pages read). Then: show AVAILABLE (and the `*`) on
+Partition Data and the CPC header, and build the group average as research says. Done when: the suite's `soft-cap-flag`
+reads the group's state from a report instead of the sim, and docs/research.md has the row.
+
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.
@@ -639,3 +705,18 @@ the section heading which pin each column takes (`pin CPC <lpar> LPAR_BUSY|PRSM_
 `CAPACITY_ADJ`). Leave `--json`, `mon3PastText` (the pin-history dump) and the `Mon3Cpc` view model unchanged:
 agents and pins read `busyPct` there. Weight and polarity stay in `play capacity`. Done when: `play mon3` and `play
 mon3 PROD1` show the new CPC section, `--json` output is unchanged, and the docs/agents.md example (if any) matches.
+
+### CL-10 · Monitor III splits by the last tick's mix don't add up
+`list: cleanup · status: ready · priority: low · size: M · area: game`
+
+Source: cross-report invariant suite (2026-11-14; identities `mon3-sysplex-sum` and `mon3-delay-states`, left-out
+parts). WLM's smoothed accumulator keeps total Using and total CP time, so `row()` in `src/game/mon3.ts` splits them
+by the last tick's mix (APPROX, SPEC §17): zIIP and IIPCP engines, and the users using PROC and DEV. Two things then
+don't add up for the player: a sysplex row is split by the pooled mix, so it is not the sum of its systems' rows
+(Midwest seed 7, 06:30, DDFPRD#1 zIIP 0.06222 against 0.06225); and when the last tick had no using sample the users
+using PROC + DEV are 0 while USG % is not (DEVBAT#1 after its job ended: 0 users using, USG 30 %). PROCU and
+ENCLAVE inherit both. Change: keep the decayed components the views need (using CPU, zIIP and I/O; zIIP and IIPCP
+engines; the moved CICS parts with them) as reporting-only accumulator fields and read the split from them, dropping
+`LastSplit`. Not a model change: `npm run compare -- --base origin/dev --drop <new fields>` must show sim state, game
+state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
+restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.

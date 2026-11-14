@@ -8,6 +8,34 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **Cross-report invariant suite (2026-11-14, direct user request, not a BACKLOG pick).**
+  - `tests/sim/report-invariants.test.ts`: 43 identities (24 real z/OS reporting behaviour, cited to book and page
+    with the zos-docs skill; 19 game consistency rules) over one seeded headless day per scenario in `SCENARIOS`,
+    shared by every identity. The run (`tests/helpers/reportRun.ts`) plays the scenario as shipped for four hours,
+    then 16 stress phases derived from its own configuration through ordinary commands, then the evening batch.
+    Identities are in `tests/helpers/reportIdentities.ts`. No assertion names a scenario, LPAR, class or workload.
+    Two coverage tests fail if an identity, or one of 20 stress situations, is reached by no scenario.
+  - All 43 hold on Midwest, Revenue and Harbourline (seed 7). About 37 s locally for the three runs.
+  - Three reporting bugs found and fixed, each in its own commit, `npm run compare -- --base origin/dev`: sim
+    state, game state, run log and Monitor III views the same on all three scenarios; RMF records differ only in the
+    CF lines named below.
+    - SYSINFO, WFEX and the header did not show an image as capped under capacity-group capping.
+    - The header's PI heat map used WLM's raw samples, Monitor III and WLMGL the reported ones: a CICS region class
+      had two PIs at once (Midwest STCHI#1 0.61 against 0.63).
+    - A CF line's service times and ASYNC % were time-averaged, its structure lines request-weighted; a subchannel
+      line's SYNC SERV was weighted by all requests. Goldens regenerated (the run hash includes the RMF accumulator).
+  - Five divergences filed and their identities left out with a comment naming the entry: RF-05 (MSU from total
+    dispatch time; RMF's is from effective), RF-06 (WLM% is the share of demand removed, not of time), RF-07 (WLMGL
+    ENDED counts job ends only under a response time goal), RF-08 (a capacity group's average is on no report and
+    starts empty), CL-10 (Monitor III's last-tick splits don't add up).
+  - Decisions: the run uses the scenario's game content without its event deck, so a new card cannot change what
+    the suite covers; stress phases run at a 5-minute RMF interval (10 when the scenario's own is 5), which gives
+    each half-hour phase six intervals and makes the per-tick Monitor III window cheap; a failing identity is a
+    finding to triage (CLAUDE.md "Testing expectations"), never loosened.
+  - Not covered: the play CLI's text layouts (they render the same view models; the suite checks the report
+    renderers print no NaN/Infinity/undefined), CF and DASD activity against per-transaction request counts (those
+    coefficients are not player-visible), and generated configurations (optional in the request; not added).
+
 - **CL-09 (2026-11-13): loop and reviewer instructions, lessons from the WLM close-out.**
   - pr-fix-loop reviews `needs-user` PRs and holds only the merge. pr-fixer doesn't count the user's pending
     decision as a finding. dev-loop answers holds on those PRs and doesn't count them as blocking a pick.
