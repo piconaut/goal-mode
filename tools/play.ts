@@ -21,6 +21,7 @@ import { parseIdText } from '../src/game/ids';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { DIFFICULTIES, type DifficultyId } from '../src/content/difficulty';
 import { SCENARIOS } from '../src/content/scenarios';
+import { canonicalTrigger } from '../src/content/rca';
 import type { Mechanism, Trigger } from '../src/game/types';
 import type { CfMetric, CpcMetric, DasdMetric, PinRequest } from '../src/game/evidence';
 import type { EvidenceMetric } from '../src/content/evidence';
@@ -127,7 +128,9 @@ function parse(): PlayCommand | ReadOnly {
     case 'draft': return { cmd: 'draft', optionId: rest[0] && rest[0] !== 'none' ? rest[0] : null };
     case 'rca': {
       const ev = rest.indexOf('--evidence');
-      return { cmd: 'rca', incidentId: parseIdText('incident', rest[0] ?? ''), mechanism: rest[1] as Mechanism, trigger: rest[2] as Trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map((x) => parseIdText('pin', x)) : [] };
+      // Older play files and habits name the pre-RT-09 trigger id; it maps to CHANGE_REGRESSION.
+      const trigger = canonicalTrigger(rest[2] ?? '') ?? (rest[2] as Trigger);
+      return { cmd: 'rca', incidentId: parseIdText('incident', rest[0] ?? ''), mechanism: rest[1] as Mechanism, trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map((x) => parseIdText('pin', x)) : [] };
     }
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
     case 'project': return { cmd: 'project', id: rest[0] ?? '', hours: Number(rest[1] ?? 1) };

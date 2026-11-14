@@ -247,7 +247,7 @@ export function updateBaseline(prev: Record<string, number> | undefined, parts: 
 }
 
 export const MECHANISMS: Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'ROUTING', 'IO', 'STORAGE', 'JOB_FAILURE'];
-export const TRIGGERS: Trigger[] = ['DEMAND_SURGE', 'ACCESS_PATH_REGRESSION', 'RUNAWAY_WORK', 'BATCH_OVERLAP', 'POLICY', 'HARDWARE_FAULT', 'NEW_WORKLOAD', 'GROWTH', 'APPLICATION_ERROR'];
+export const TRIGGERS: Trigger[] = ['DEMAND_SURGE', 'CHANGE_REGRESSION', 'RUNAWAY_WORK', 'BATCH_OVERLAP', 'POLICY', 'HARDWARE_FAULT', 'NEW_WORKLOAD', 'GROWTH', 'APPLICATION_ERROR'];
 
 /** The accepted answers of a truth: the primary alone in saves written before RT-07. */
 export function acceptedOf(truth: Incident['truth']): { mechanisms: Mechanism[]; triggers: Trigger[] } {

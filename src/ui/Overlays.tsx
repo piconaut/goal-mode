@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { PACKS } from '../content/packs';
 import { DIFFICULTIES, type DifficultyId } from '../content/difficulty';
 import { EVIDENCE } from '../content/evidence';
-import { MECHANISM_HELP, TRIGGER_HELP } from '../content/rca';
+import { MECHANISM_HELP, TRIGGER_HELP, TRIGGER_LABEL, triggerLabel } from '../content/rca';
 import type { Hypothesis } from '../game/aiops';
 import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
@@ -490,10 +490,10 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
             <div className="row">
               <span>
                 #{i.id} {i.workloadId}
-                {linked(i.id)}: you said {i.rca!.mechanism}/{i.rca!.trigger}
+                {linked(i.id)}: you said {i.rca!.mechanism}/{triggerLabel(i.rca!.trigger)}
               </span>
               <span className={`tag ${i.rca!.points >= 3 ? 'good' : 'bad'}`}>
-                +{i.rca!.points} (was {i.truth.mechanism}/{i.truth.trigger})
+                +{i.rca!.points} (was {i.truth.mechanism}/{triggerLabel(i.truth.trigger)})
               </span>
             </div>
             {i.rca!.explain && (
@@ -536,7 +536,7 @@ function AlsoAccepted({ truth }: { truth: IncidentTruth }) {
     <>
       {rest.map(([answer, why]) => (
         <div key={answer} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
-          also accepted: <b>{answer}</b>
+          also accepted: <b>{TRIGGER_LABEL[answer as Trigger] ?? answer}</b>
           {why ? ` — ${why}` : ''}
         </div>
       ))}
@@ -569,7 +569,7 @@ function RcaVocabulary() {
           <b>Trigger</b>
           {TRIGGERS.map((x) => (
             <div key={x} style={{ margin: '2px 0' }}>
-              <span className="tag">{x}</span> <span className="muted">{TRIGGER_HELP[x]}</span>
+              <b>{triggerLabel(x)}</b> <span className="tag">{x}</span> <span className="muted">{TRIGGER_HELP[x]}</span>
             </div>
           ))}
         </div>
@@ -604,7 +604,7 @@ function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; l
           <b>{m}</b>: {MECHANISM_HELP[m]}
         </div>
         <div>
-          <b>{t}</b>: {TRIGGER_HELP[t]}
+          <b>{triggerLabel(t)}</b>: {TRIGGER_HELP[t]}
         </div>
       </div>
       {hypotheses.length > 0 && (
@@ -613,7 +613,7 @@ function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; l
           {hypotheses.map((h, k) => (
             <div key={k} className="form" style={{ margin: '2px 0' }}>
               <span>
-                {k + 1}. {h.mechanism} / {h.trigger} · {Math.round(h.confidence * 100)}%
+                {k + 1}. {h.mechanism} / {triggerLabel(h.trigger)} · {Math.round(h.confidence * 100)}%
               </span>
               <button
                 onClick={() => {

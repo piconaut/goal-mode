@@ -27,7 +27,7 @@ const incident = (r: RunState, over: Partial<Incident> = {}): Incident => ({
   endTick: null,
   hours: 1,
   worstAttainmentPct: 80,
-  truth: { mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' },
+  truth: { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' },
   rca: null,
   trustLost: 0,
   ...over,
@@ -97,10 +97,10 @@ describe('evidence pins', () => {
     r = pin(r, { source: 'CICS', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' });
     const ids = r.pins.slice(-2).map((p) => p.id);
     const withInc = { ...r, incidents: [incident(r)] };
-    const right = submitRca(withInc, 999, 'CPU_CAPACITY', 'ACCESS_PATH_REGRESSION', MIDWEST, ids);
+    const right = submitRca(withInc, 999, 'CPU_CAPACITY', 'CHANGE_REGRESSION', MIDWEST, ids);
     expect(right.incidents[0]!.rca!.evidencePoints).toBe(2);
     expect(right.insight - withInc.insight).toBe(5 + 2 + EVIDENCE.strongInsight);
-    const wrong = submitRca(withInc, 999, 'LOCK_CONTENTION', 'ACCESS_PATH_REGRESSION', MIDWEST, ids);
+    const wrong = submitRca(withInc, 999, 'LOCK_CONTENTION', 'CHANGE_REGRESSION', MIDWEST, ids);
     expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
   });
 

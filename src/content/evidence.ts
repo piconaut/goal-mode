@@ -84,11 +84,11 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   // existed, not that it was ahead (RT-12 makes that relation explicit; §4.6's recipe is RT-13's). A competitor's row
   // must be pinned from an image the hurt work runs on or not at all: a `*PLEX` row cannot show where it ran. A row
   // below 5 % is too small to be the contender ("SYSP SYSTEM#1 APPL 3.4 %" says nothing about MOBILE).
-  APPL: { label: 'APPL %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'ACCESS_PATH_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
+  APPL: { label: 'APPL %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
   // The CP/zIIP split of APPL% (A11, ZIIP_LOSS): IIPCP is the zIIP-eligible time that ran on general CPs.
-  APPL_CP: { label: 'APPL % CP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'ACCESS_PATH_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
-  APPL_IIP: { label: 'APPL % IIP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'ACCESS_PATH_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
-  IIPCP: { label: 'APPL % IIPCP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'ACCESS_PATH_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
+  APPL_CP: { label: 'APPL % CP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
+  APPL_IIP: { label: 'APPL % IIP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
+  IIPCP: { label: 'APPL % IIPCP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
   ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5, relations: OWN },
   DELAY_CPU: { label: 'CPU delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'DEPENDENCY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_ZIIP: { label: 'zIIP delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
@@ -104,7 +104,7 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   LPAR_BUSY: { label: 'image busy %', unit: '%', mechanisms: ['CPU_CAPACITY'], triggers: [], notableAt: 95, weight: 1, relations: HOST_ONLY },
   /** 100 − SMF70CAI: how much capacity the processor lost against its normal setting (POWER_CAP). */
   CAPACITY_ADJ: { label: 'capacity adjusted %', unit: '%', mechanisms: ['CPU_CAPACITY'], triggers: ['HARDWARE_FAULT'], notableAt: 1, weight: 1, relations: HOST_ONLY },
-  CPU_VS_BASE: { label: 'CPU/txn vs baseline', unit: '×', mechanisms: ['CPU_CAPACITY'], triggers: ['ACCESS_PATH_REGRESSION', 'RUNAWAY_WORK'], notableAt: 1.3, weight: 1, relations: OWN },
+  CPU_VS_BASE: { label: 'CPU/txn vs baseline', unit: '×', mechanisms: ['CPU_CAPACITY'], triggers: ['CHANGE_REGRESSION', 'RUNAWAY_WORK'], notableAt: 1.3, weight: 1, relations: OWN },
   LOCK_WAIT: { label: 'lock wait ms/txn', unit: 'ms', mechanisms: ['LOCK_CONTENTION'], triggers: ['BATCH_OVERLAP'], notableAt: 2, weight: 1, relations: OWN },
   SYNC_IO: { label: 'sync I/O ms/txn', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
   CF_WAIT: { label: 'CF ms/txn', unit: 'ms', mechanisms: ['CF_SERVICE'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },

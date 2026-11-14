@@ -65,9 +65,9 @@ export function textbookPolicy(): ServiceDefinition {
 }
 
 // Frozen set of card ids the textbook/expert "obvious" rule fixes. Membership is pinned to the cards whose
-// trigger is RUNAWAY_WORK or ACCESS_PATH_REGRESSION as of 2026-11-10 (RUNAWAY, REGRESSION, XLOG_LOOP and their
+// trigger is RUNAWAY_WORK or CHANGE_REGRESSION as of 2026-11-10 (RUNAWAY, REGRESSION, XLOG_LOOP and their
 // deck adaptations RUNAWAY_COMPLIANCE, EFILE_REGRESSION), so RT-09's trigger relabelling (which moves
-// ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT onto ACCESS_PATH_REGRESSION) does not
+// ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT onto CHANGE_REGRESSION) does not
 // silently pull those cards into the bots' fix path. Each card's own `fix` is taken from its definition, so the
 // agency exception (EFILE_REGRESSION -> EFILE_REBIND_REVERT) needs no special map. Do not regenerate this set
 // from triggers; that would undo the freeze.
@@ -274,7 +274,8 @@ const MAXDBAT_CEILING = 2000;
 const MXT_CEILING = 1000;
 const QR_FLOOR_FRAC = 0.1;
 
-/** Yesterday's incidents with no event behind them (trigger POLICY) are the analyst's to tune away, read
+/** Yesterday's incidents with no event behind them (trigger POLICY; RT-09 moved the five change cards off POLICY,
+ * so a card-caused CHANGE_REGRESSION incident is deliberately not tuned) are the analyst's to tune away, read
  * from the report each mechanism points at: DBAT or MXT queueing (THREAD_LIMIT) raises MAXDBAT or MXT on
  * the images the workload runs on, and QR TCB saturation moves more of its AORs' work off QR.
  * CPU_PRIORITY is left alone: raising importance traded one workload's incidents for another's in trials. */

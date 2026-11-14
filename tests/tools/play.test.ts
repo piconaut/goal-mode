@@ -17,6 +17,24 @@ function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   return file;
 }
 
+describe('RT-09 trigger alias in play files', () => {
+  it('accepts the renamed trigger id, so an older play file replays to the same state', () => {
+    const base = newPlayFile(7);
+    const incident = (): PlayFile['run']['incidents'][number] => ({
+      id: 999, workloadId: 'RBANK', day: 0, startTick: 0, endTick: 360, hours: 1, worstAttainmentPct: 80,
+      truth: { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' }, rca: null, trustLost: 0,
+    });
+    const file = (trigger: string): PlayFile => ({ ...base, run: { ...run(base, [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]).run, incidents: [incident()] }, log: [] });
+    const filed = (trigger: string) => applyPlayCommand(file(trigger), { cmd: 'rca', incidentId: 999, mechanism: 'CPU_CAPACITY', trigger: trigger as never });
+    const old = filed('ACCESS_PATH_REGRESSION');
+    const now = filed('CHANGE_REGRESSION');
+    expect(old.ok, old.text).toBe(true);
+    expect(now.ok, now.text).toBe(true);
+    expect(encodePlayFile(old.file)).toBe(encodePlayFile(now.file));
+    expect(old.file.run.incidents[0]!.rca!.trigger).toBe('CHANGE_REGRESSION');
+  });
+});
+
 describe('headless play interface', () => {
   it('a run file round-trips bit-identically, Infinity included, and keeps the command log', () => {
     const a = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);

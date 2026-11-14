@@ -7,7 +7,8 @@ import { allWorkloads } from './workloads';
 import { emptyAlerts } from './alerts';
 import { emptyAutomation } from './automation';
 import { emptyPolicyBook } from './policies';
-import type { RunState } from './types';
+import type { RunState, Trigger } from './types';
+import { canonicalTrigger } from '../content/rca';
 
 /** Fill fields added after a run was saved (IndexedDB autosaves outlive releases). */
 export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
@@ -27,8 +28,23 @@ export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
   }
   // Saves from before per-LCU DASD: take the scenario's LCU layout.
   if (scenario && !config.dasd.lcus) config = { ...config, dasd: { ...structuredClone(scenario.world.dasd), backendDegrade: config.dasd.backendDegrade ?? 1 } };
+  // Saves written before RT-09 carry the old trigger id in incidents, their accepted answers and active cards.
+  const trig = (id: string): Trigger => canonicalTrigger(id) ?? (id as Trigger);
+  const renameKeys = (notes: Record<string, string> | undefined) =>
+    notes && Object.fromEntries(Object.entries(notes).map(([k, v]) => [trig(k), v]));
   return {
     ...run,
+    events: run.events.map((e) => ({ ...e, trigger: trig(e.trigger) })),
+    incidents: run.incidents.map((i) => ({
+      ...i,
+      truth: {
+        ...i.truth,
+        trigger: trig(i.truth.trigger),
+        ...(i.truth.accepted ? { accepted: { ...i.truth.accepted, triggers: i.truth.accepted.triggers.map(trig) } } : {}),
+        ...(i.truth.notes ? { notes: renameKeys(i.truth.notes) } : {}),
+      },
+      ...(i.rca ? { rca: { ...i.rca, trigger: trig(i.rca.trigger) } } : {}),
+    })),
     tools: run.tools ?? [],
     toolsOff: run.toolsOff ?? [],
     reportsOpenedToday: run.reportsOpenedToday ?? [],

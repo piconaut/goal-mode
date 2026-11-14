@@ -8,7 +8,7 @@ export const MECHANISM_HELP: Record<Mechanism, string> = {
     'Not enough general-purpose CPU where the work ran: the CPC or the image was full, so more capacity was needed rather than a policy change.',
   CPU_PRIORITY:
     'The policy gave this work too little importance or dispatching priority against the work it shared an image with.',
-  CAPPING: 'A cap held the image back from the CPU it wanted: defined capacity, an absolute cap or a soft cap.',
+  CAPPING: 'A cap held the image or the class back from the CPU it wanted: defined capacity, an absolute cap, a soft cap or a resource-group maximum.',
   DEPENDENCY: 'The work waited on a server it depends on, typically a Db2 address space that was slow or starved.',
   LOCK_CONTENTION: 'The work waited on a lock held by other work, typically batch holding Db2 locks during the day.',
   CF_SERVICE: 'Coupling facility requests were slow, so the structure or the link to it was the bottleneck.',
@@ -16,18 +16,45 @@ export const MECHANISM_HELP: Record<Mechanism, string> = {
   THREAD_LIMIT: 'Work queued for a thread or task slot before it could start: MXT in CICS, MAXDBAT in Db2, an initiator for batch.',
   ROUTING: 'Work was sent to a target that handled it badly (a failing region, the wrong image or link), not slowed where it ran.',
   IO: 'DASD response was slower than usual, so the work waited on I/O.',
-  STORAGE: 'The image was short of storage and paged, so the work waited for storage.',
+  STORAGE:
+    'The image was short of storage and paged, or a subsystem ran short of its own storage (CICS short on storage), so the work waited for storage.',
   JOB_FAILURE: 'Critical work stopped rather than running late: a job abended, for example an S0C7 or a failed Db2 connect.',
 };
 
 export const TRIGGER_HELP: Record<Trigger, string> = {
   DEMAND_SURGE: 'More work arrived than usual: a burst, campaign or market event, not a change to the system.',
-  ACCESS_PATH_REGRESSION: 'A change made the same work cost more, typically a Db2 access path that regressed after a REBIND.',
+  CHANGE_REGRESSION:
+    'A software or configuration change made the same work cost more or behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate.',
   RUNAWAY_WORK: 'One piece of work ran out of control: a loop, a runaway query or a runaway address space.',
   BATCH_OVERLAP: 'Batch and online work collided, for example night batch holding locks or CPU while online work needed them.',
-  POLICY: 'The WLM policy as configured caused it: classification, goals, importance, capping or scheduling, not a fault.',
+  POLICY:
+    'The configuration as set caused it: WLM classification, goals and importance, PR/SM weights and caps, routing, subsystem limits, not a fault.',
   HARDWARE_FAULT: 'Hardware failed or degraded: an engine, a coupling facility, a link or a DASD volume.',
   NEW_WORKLOAD: 'Newly added work appeared on the system and was not planned for.',
   GROWTH: 'Steady growth in existing work crossed what the system could serve.',
   APPLICATION_ERROR: 'A software defect: a program leaked storage, failed transactions or otherwise misbehaved.',
 };
+
+/** Display names for the trigger ids (docs/rca-design.md §4.4(5)); the id stays the value in saves, JSON and commands. */
+export const TRIGGER_LABEL: Record<Trigger, string> = {
+  DEMAND_SURGE: 'Demand surge',
+  CHANGE_REGRESSION: 'Change regression',
+  RUNAWAY_WORK: 'Runaway work',
+  BATCH_OVERLAP: 'Batch overlap',
+  POLICY: 'Policy or configuration',
+  HARDWARE_FAULT: 'Hardware fault',
+  NEW_WORKLOAD: 'New workload',
+  GROWTH: 'Growth',
+  APPLICATION_ERROR: 'Application error',
+};
+
+export const triggerLabel = (t: Trigger): string => TRIGGER_LABEL[t] ?? t;
+
+/** Trigger ids that older saves and play files used, mapped to the id they mean now (RT-09). Nothing else here. */
+const TRIGGER_ALIASES: Record<string, Trigger> = { ACCESS_PATH_REGRESSION: 'CHANGE_REGRESSION' };
+
+/** The canonical trigger id for a name read from a save, a play file or a CLI argument; null when unknown. */
+export function canonicalTrigger(id: string): Trigger | null {
+  if (Object.hasOwn(TRIGGER_LABEL, id)) return id as Trigger;
+  return Object.hasOwn(TRIGGER_ALIASES, id) ? TRIGGER_ALIASES[id]! : null;
+}

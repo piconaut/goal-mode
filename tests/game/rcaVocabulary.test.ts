@@ -1,6 +1,8 @@
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import { REVENUE_EVENTS } from '../../src/content/events/revenue-events';
-import { MECHANISM_HELP, TRIGGER_HELP } from '../../src/content/rca';
+import { HARBOURLINE_EVENTS } from '../../src/content/events/harbourline-events';
+import { MECHANISM_HELP, TRIGGER_HELP, TRIGGER_LABEL, triggerLabel } from '../../src/content/rca';
+import { CODEX } from '../../src/content/codex/entries';
 import { MECHANISMS, TRIGGERS } from '../../src/game/sla';
 
 describe('RCA vocabulary', () => {
@@ -10,6 +12,30 @@ describe('RCA vocabulary', () => {
     for (const text of [...Object.values(MECHANISM_HELP), ...Object.values(TRIGGER_HELP)]) {
       expect(text.trim().length).toBeGreaterThan(20);
     }
+  });
+
+  it('shows the renamed trigger and the policy trigger under the labels the user chose (RT-09)', () => {
+    expect(TRIGGER_LABEL.CHANGE_REGRESSION).toBe('Change regression');
+    expect(TRIGGER_LABEL.POLICY).toBe('Policy or configuration');
+    expect(triggerLabel('CHANGE_REGRESSION')).toBe('Change regression');
+    for (const t of TRIGGERS) expect(TRIGGER_LABEL[t], t).toBeTruthy();
+  });
+
+  it('moves the five change-made-work-cost-more cards to change regression (RT-09)', () => {
+    const moved = ['ENCRYPTION_MANDATE', 'MONITOR_CREEP', 'QR_RELEASE', 'ZIIP_LOSS', 'SMF_AUDIT'];
+    for (const events of [MIDWEST_EVENTS, REVENUE_EVENTS, HARBOURLINE_EVENTS])
+      for (const e of events.filter((x) => moved.includes(x.id))) expect(e.trigger, `${e.id} in ${e.name}`).toBe('CHANGE_REGRESSION');
+    // The list above must actually exist in the base pack, or this test would pass vacuously.
+    for (const id of moved) expect(MIDWEST_EVENTS.some((e) => e.id === id), id).toBe(true);
+  });
+
+  it('widens the STORAGE and CAPPING help as the audit asked', () => {
+    expect(MECHANISM_HELP.STORAGE).toMatch(/subsystem ran short of its own storage/);
+    expect(MECHANISM_HELP.CAPPING).toMatch(/image or the class/);
+  });
+
+  it('names no retired trigger id in the Codex', () => {
+    for (const e of CODEX) expect(`${e.title} ${e.body}`).not.toContain('ACCESS_PATH_REGRESSION');
   });
 
   it('labels the CICS program storage leak as a software defect, not a policy choice', () => {

@@ -94,11 +94,11 @@ brackets (tier 0 has WLMGL only).
 |---|---|---|---|---|---|
 | 1 | CAMPAIGN | CPU (capacity or priority by headroom) × DEMAND_SURGE: mobile END/S ×2.5 at flat CPU per transaction, forewarned by Digital | MOBILE: `CPU_PRIORITY/DEMAND_SURGE` (R-1: CPC 89 % against the 90 % line, donors 12 % against 10 %). Collateral CICS work: `DEPENDENCY/POLICY` (R-9) | END/S up: `ENDED_RATE` pinnable (WLMGL), half weight. CPU per transaction flat: `CPU_VS_BASE` [DB2_ACCT] is rejected as "unremarkable" below ×1.3, so the ruling-out half cannot count | **agrees** for MOBILE (on a knife edge, A5); **game wrong** for collateral (A2) |
 | 2 | RUNAWAY | CPU_PRIORITY × RUNAWAY_WORK: one enclave's CPU soars with its end rate flat; it shares DDFPRD with MOBILE (F3) and runs on CPs on PROD2 (F7) | MOBILE, ADHOC: CPU split / `RUNAWAY_WORK`. Other PROD2 work: fallback | DDFPRD#2 `APPL` pinnable (half weight). The ENCLAVE view and IIPCP are not pinnable | **agrees** for listed work; **game wrong** for collateral |
-| 3 | REGRESSION | CPU or DEPENDENCY × ACCESS_PATH_REGRESSION for everything sharing the regions and the image | RBANK: any mechanism / `ACCESS_PATH_REGRESSION` for 30 h. R-3: RBANK had **no** incident; CARDAUTH did, `DEPENDENCY/POLICY` (Db2 in STCMED starved on PROD2: STCMED#1 PI 1.65, CPU delay 76 %) | `CPU_VS_BASE` ×3 on RBANK [DB2_ACCT or CICS_MON]. For the CARDAUTH incident that pin is "not about CARDAUTH" | **game wrong** (collateral, A2); long unfiltered card (A3) |
+| 3 | REGRESSION | CPU or DEPENDENCY × CHANGE_REGRESSION for everything sharing the regions and the image | RBANK: any mechanism / `CHANGE_REGRESSION` for 30 h. R-3: RBANK had **no** incident; CARDAUTH did, `DEPENDENCY/POLICY` (Db2 in STCMED starved on PROD2: STCMED#1 PI 1.65, CPU delay 76 %) | `CPU_VS_BASE` ×3 on RBANK [DB2_ACCT or CICS_MON]. For the CARDAUTH incident that pin is "not about CARDAUTH" | **game wrong** (collateral, A2); long unfiltered card (A3) |
 | 4 | BOT_ATTACK | CPU or THREAD_LIMIT (DBATs) × DEMAND_SURGE: END/S ×4 at *lower* CPU per transaction | MOBILE: any mechanism / `DEMAND_SURGE` (no incident on R day 12) | The discriminator against a campaign is CPU per transaction ×0.4: `CPU_VS_BASE` 0.4 is below the ×1.3 notable line, so "unremarkable" | label **agrees**; **unpinnable** |
 | 5 | RETRY_STORM | CPU × DEMAND_SURGE, or APPLICATION_ERROR (clients retrying without backoff) | MOBILE: `CPU_PRIORITY/DEMAND_SURGE` (R-2: CPC 99 %, donors 12 %) | None exists. R-5: with the same start hour the WLMGL and Partition Data rows of RETRY_STORM and CAMPAIGN are identical to the last digit (both are `rate ×2.5`). Only the campaign's inbox forewarning separates them | **ambiguous by nature** (§5.3) |
 | 6 | XLOG_LOOP | CPU_PRIORITY × RUNAWAY_WORK *or* POLICY: a looping STC in STCHI because the `CICS*` rule is too broad. The card's two fixes are "cancel it" and "add a classification rule" | TELLER, PAYMQ: CPU split / `RUNAWAY_WORK`. RBANK, CARDAUTH, MOBILE on PROD1: fallback. The victim is importance 2 and the loop importance 1, so the loop is never a "donor": at a full CPC the verdict is `CPU_CAPACITY` (U-11 shape) | STCHI `APPL` up with CICS END/S flat: pinnable at half weight. "CICSXLOG is the top consumer" (Mon III job row) is not pinnable | **defensible but unfair** (A1, A4) |
-| 7 | ENCRYPTION_MANDATE | CPU × "a change made the same work cost more". By the form's own help text that is ACCESS_PATH_REGRESSION; GROWTH is arguable | `…/POLICY` on every later incident of CARDAUTH, TELLER, PAYMQ, whatever the mechanism, for the rest of the run, and it outranks any other card that covers the hour (U-1, R-8) | CPU per transaction ×1.06 is below the notable line | **game wrong** (A3); label **defensible but unfair** (A8) |
+| 7 | ENCRYPTION_MANDATE | CPU × "a change made the same work cost more". By the form's own help text that is CHANGE_REGRESSION; GROWTH is arguable | `…/POLICY` on every later incident of CARDAUTH, TELLER, PAYMQ, whatever the mechanism, for the rest of the run, and it outranks any other card that covers the hour (U-1, R-8) | CPU per transaction ×1.06 is below the notable line | **game wrong** (A3); label **defensible but unfair** (A8) |
 | 8 | VENDOR_PRICE | no performance effect | none (`affects` empty) | Finance tab | **n/a** |
 | 9 | GREEN_IT_COD | no performance effect | none | change desk refusal | **n/a** |
 | 10 | CF_LINK | CF_SERVICE × HARDWARE_FAULT (announced). Also extra z/OS CPU per Db2 transaction from slow sync requests | CF or lock mechanism / `HARDWARE_FAULT`. A CPU incident from the extra CPU is filtered out by `mechanisms` and falls to `POLICY`/`GROWTH` | `CF_WAIT` [DB2_ACCT]. CF Activity [CF_DASD] is not pinnable | **agrees** on CF; **game wrong** for its CPU side-effect |
@@ -181,7 +181,7 @@ Direct calls (the SLA hour is `[t, t+1h)`; cards are built from their definition
 | Id | Call | Result |
 |---|---|---|
 | U-1 | `triggerOf('CARDAUTH','CPU_PRIORITY', [POWER_CAP t−1h…t+5h with CARDAUTH in scope, ENCRYPTION_MANDATE since t−50h])` | `POLICY` |
-| U-2 | `triggerOf('RBANK','IO', [DASD_DEGRADED t+20min…t+3h, REGRESSION t−3h…t+27h])` | `ACCESS_PATH_REGRESSION` |
+| U-2 | `triggerOf('RBANK','IO', [DASD_DEGRADED t+20min…t+3h, REGRESSION t−3h…t+27h])` | `CHANGE_REGRESSION` |
 | U-3 | `triggerOf('MOBILE','CPU_PRIORITY', [CAMPAIGN t+20min…t+2h, MONITOR_CREEP t−5h…t+43h])` | `POLICY` |
 | U-4 | `triggerOf('MOBILE','LOCK_CONTENTION', [RETRY_STORM t…t+3h])`, lock index 5 | `DEMAND_SURGE` |
 | U-5 | `triggerOf('CARDAUTH', m, [REGRESSION t−3h…t+27h])` for `m` = CPU_PRIORITY, CPU_CAPACITY | `POLICY`, `GROWTH` |
@@ -327,7 +327,7 @@ gives `failureMechanismOf` the hour and the same half-open overlap test, so both
 - `GROWTH` is never tested against growth. It is the label for "a resource mechanism with no card".
 - `POLICY` is defined in the form as "the WLM policy as configured", but it is also the trigger of an encryption
   mandate, a vendor agent upgrade, a non-threadsafe release, a stored-procedure redeploy and an audit. The form's
-  text for ACCESS_PATH_REGRESSION ("a change made the same work cost more") describes four of those better.
+  text for CHANGE_REGRESSION ("a change made the same work cost more") describes four of those better.
 - A player's own change has no special rule. It comes out as `POLICY` for most mechanisms (R-14, R-15 at 12:00),
   which is right, but the reply cannot say which change.
 
@@ -577,12 +577,15 @@ CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores
      workload's were.
    - Otherwise `GROWTH` and `POLICY` are **both accepted**; the primary is as today. "Growth crossed the headroom"
      and "the configuration has no headroom" describe the same state, and no visible data separates them.
-5. **Vocabulary** (labels and help text only; ids unchanged, so saves and bots are untouched):
-   - `ACCESS_PATH_REGRESSION` is shown as **Change regression**: "a software or configuration change made the same
-     work cost more or behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate".
-     ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT move to it.
+5. **Vocabulary** (RT-09: labels, help text, and one rename):
+   - `CHANGE_REGRESSION` (renamed from `ACCESS_PATH_REGRESSION`, which saves, play files and the CLI still accept as an
+     alias) is shown as **Change regression**: "a software or configuration change made the same work cost more or
+     behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate". The old id was a misnomer once the
+     cards below moved. ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT move to it, so their
+     incidents carry that trigger (goldens regenerated, three-scenario sweep).
    - `POLICY` is shown as **Policy or configuration**: WLM policy, PR/SM weights and caps, routing, subsystem limits.
-   - `STORAGE` help adds "or a subsystem ran short of its own storage (CICS short on storage)", and CICS_SOS accepts it.
+   - `STORAGE` help adds "or a subsystem ran short of its own storage (CICS short on storage)", and CICS_SOS accepts it;
+     `CAPPING` says "the image or the class" (§4.3(3)).
 
 ### 4.5 Grouping by cause
 
