@@ -27,6 +27,8 @@ describe('RCA vocabulary', () => {
       for (const e of events.filter((x) => moved.includes(x.id))) expect(e.trigger, `${e.id} in ${e.name}`).toBe('CHANGE_REGRESSION');
     // The list above must actually exist in the base pack, or this test would pass vacuously.
     for (const id of moved) expect(MIDWEST_EVENTS.some((e) => e.id === id), id).toBe(true);
+    // The agency pack's own encryption card (an adapt of ENCRYPTION_MANDATE): an override must not leave it on POLICY.
+    expect(REVENUE_EVENTS.find((e) => e.id === 'TAXDATA_ENCRYPTION')?.trigger).toBe('CHANGE_REGRESSION');
   });
 
   it('widens the STORAGE and CAPPING help as the audit asked', () => {
@@ -34,7 +36,13 @@ describe('RCA vocabulary', () => {
     expect(MECHANISM_HELP.CAPPING).toMatch(/image or the class/);
   });
 
-  it('names no retired trigger id in the Codex', () => {
+  it('the Codex names only trigger ids the form offers (the retired one included in the check)', () => {
+    // The audit found no Codex text that names the renamed trigger, so this is a guard, not a migration: a future
+    // entry that writes an id the form no longer offers (or the retired one) fails here.
+    const retired = ['ACCESS_PATH_REGRESSION'];
+    const known = new Set<string>([...TRIGGERS, ...retired]);
+    const named = CODEX.flatMap((e) => `${e.title} ${e.body}`.match(/[A-Z][A-Z_]{5,}/g) ?? []);
+    for (const id of named) if (known.has(id)) expect(TRIGGERS, id).toContain(id);
     for (const e of CODEX) expect(`${e.title} ${e.body}`).not.toContain('ACCESS_PATH_REGRESSION');
   });
 

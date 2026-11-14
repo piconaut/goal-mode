@@ -33,6 +33,7 @@ import { plannedPolicy, policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { acceptedOf, hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import { TRIGGER_LABEL, canonicalTrigger, triggerLabel } from '../src/content/rca';
+import { normalizeRun } from '../src/game/tools';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
@@ -99,6 +100,13 @@ function needs(feature: ToolFeature, what: string): string {
 
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
 export const decodePlayFile = (text: string): PlayFile => decodeRunFileText<PlayFile>(text);
+
+/** Load a play file as the CLI does: a file written before RT-09 has its trigger ids mapped like the worker's import,
+ * so a replay scores the same answers rather than turning a formerly right one into a wrong one. */
+export const openPlayFile = (text: string): PlayFile => {
+  const f = decodePlayFile(text);
+  return { ...f, run: normalizeRun(f.run, packOf(f.run.scenarioId).scenario) };
+};
 
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', scenario = 'midwest'): PlayFile {
   const pack = packOf(scenario);

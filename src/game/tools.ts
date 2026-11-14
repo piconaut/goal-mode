@@ -37,6 +37,7 @@ export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
     events: run.events.map((e) => ({ ...e, trigger: trig(e.trigger) })),
     incidents: run.incidents.map((i) => ({
       ...i,
+      ...(i.aiops ? { aiops: i.aiops.map((h) => ({ ...h, trigger: trig(h.trigger) })) } : {}),
       truth: {
         ...i.truth,
         trigger: trig(i.truth.trigger),

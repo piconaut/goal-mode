@@ -73,7 +73,8 @@ describe('RT-09 trigger alias', () => {
 
   it('normalizeRun leaves a current save untouched', () => {
     const r = startDay(newRun(MIDWEST, MIDWEST_GAME, 7), MIDWEST_GAME);
-    expect(same(normalizeRun(r, MIDWEST), normalizeRun(r, MIDWEST))).toBe(true);
+    // Not `normalize(x) === normalize(x)`: that would pass on a lossy normalisation. A current save loads as itself.
+    expect(normalizeRun(r, MIDWEST)).toEqual(r);
   });
 });
 

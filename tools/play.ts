@@ -30,7 +30,7 @@ import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { writeSpectateFile } from './spectateFile';
 import { decodeRunJson } from '../src/game/runFile';
 import type { Mon3PinHistory } from '../src/game/mon3PinHistory';
-import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, decodePlayFile, mon3Text, policyText, statusText, wlmLogText, type PlayCommand } from './playCore';
+import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, statusText, wlmLogText, type PlayCommand } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
@@ -159,7 +159,7 @@ try {
 const isNew = typeof c === 'object' && c.cmd === 'new';
 if (!isNew && !existsSync(path)) throw new Error(`${path} does not exist; start with: new <seed>`);
 const mon3Path = path.replace(/\.json$/, '') + '.mon3.json';
-let file = isNew ? null : decodePlayFile(readFileSync(path, 'utf8'));
+let file = isNew ? null : openPlayFile(readFileSync(path, 'utf8'));
 const mon3Loaded = file && existsSync(mon3Path) ? decodeRunJson<Mon3PinHistory>(readFileSync(mon3Path, 'utf8')) : undefined;
 if (file && mon3Loaded) file = { ...file, mon3: mon3Loaded };
 if (typeof c === 'string') {

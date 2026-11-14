@@ -90,6 +90,12 @@ brackets (tier 0 has WLMGL only).
 
 ### 2.1 Midwest Mutual, 27 cards
 
+> **RT-09 (2026-11-14):** this table records the 2026-11-09 audit. Since RT-09 the five change cards — row 7
+> ENCRYPTION_MANDATE, 15 MONITOR_CREEP, 18 QR_RELEASE, 22 ZIIP_LOSS and 26 SMF_AUDIT — carry
+> `CHANGE_REGRESSION` for the work in their `affects`, where these rows read `POLICY`. Work they hurt without
+> covering keeps the no-card fallback, so row 18's "same as the no-card fallback, so co-hosted CICS work agrees" no
+> longer holds: covered victims get `CHANGE_REGRESSION`, co-hosted ones still `POLICY`.
+
 | # | Card | Expert: mechanism × trigger, and why | Game truth | Discriminating evidence; pinnable? | Verdict |
 |---|---|---|---|---|---|
 | 1 | CAMPAIGN | CPU (capacity or priority by headroom) × DEMAND_SURGE: mobile END/S ×2.5 at flat CPU per transaction, forewarned by Digital | MOBILE: `CPU_PRIORITY/DEMAND_SURGE` (R-1: CPC 89 % against the 90 % line, donors 12 % against 10 %). Collateral CICS work: `DEPENDENCY/POLICY` (R-9) | END/S up: `ENDED_RATE` pinnable (WLMGL), half weight. CPU per transaction flat: `CPU_VS_BASE` [DB2_ACCT] is rejected as "unremarkable" below ×1.3, so the ruling-out half cannot count | **agrees** for MOBILE (on a knife edge, A5); **game wrong** for collateral (A2) |
@@ -180,9 +186,9 @@ Direct calls (the SLA hour is `[t, t+1h)`; cards are built from their definition
 
 | Id | Call | Result |
 |---|---|---|
-| U-1 | `triggerOf('CARDAUTH','CPU_PRIORITY', [POWER_CAP t−1h…t+5h with CARDAUTH in scope, ENCRYPTION_MANDATE since t−50h])` | `POLICY` |
+| U-1 | `triggerOf('CARDAUTH','CPU_PRIORITY', [POWER_CAP t−1h…t+5h with CARDAUTH in scope, ENCRYPTION_MANDATE since t−50h])` | `POLICY` at audit time; `CHANGE_REGRESSION` since RT-09 when the encryption card is the one blamed |
 | U-2 | `triggerOf('RBANK','IO', [DASD_DEGRADED t+20min…t+3h, REGRESSION t−3h…t+27h])` | `CHANGE_REGRESSION` |
-| U-3 | `triggerOf('MOBILE','CPU_PRIORITY', [CAMPAIGN t+20min…t+2h, MONITOR_CREEP t−5h…t+43h])` | `POLICY` |
+| U-3 | `triggerOf('MOBILE','CPU_PRIORITY', [CAMPAIGN t+20min…t+2h, MONITOR_CREEP t−5h…t+43h])` | `POLICY` at audit time; `CHANGE_REGRESSION` since RT-09 (MONITOR_CREEP covers MOBILE) |
 | U-4 | `triggerOf('MOBILE','LOCK_CONTENTION', [RETRY_STORM t…t+3h])`, lock index 5 | `DEMAND_SURGE` |
 | U-5 | `triggerOf('CARDAUTH', m, [REGRESSION t−3h…t+27h])` for `m` = CPU_PRIORITY, CPU_CAPACITY | `POLICY`, `GROWTH` |
 | U-6 | `triggerOf('MOBILE', m, [ZIIP_LOSS])` for `m` = CPU_PRIORITY, CAPPING | `POLICY` both (the fallback, not the card) |
@@ -325,9 +331,11 @@ gives `failureMechanismOf` the hour and the same half-open overlap test, so both
 - `DEMAND_SURGE` needs a card. Payday, month-end and the Revenue deadline week are announced surges applied as
   modifiers outside the deck.
 - `GROWTH` is never tested against growth. It is the label for "a resource mechanism with no card".
-- `POLICY` is defined in the form as "the WLM policy as configured", but it is also the trigger of an encryption
-  mandate, a vendor agent upgrade, a non-threadsafe release, a stored-procedure redeploy and an audit. The form's
-  text for CHANGE_REGRESSION ("a change made the same work cost more") describes four of those better.
+- `POLICY` was defined in the form as "the WLM policy as configured", but it was also the trigger of an encryption
+  mandate, a vendor agent upgrade, a non-threadsafe release, a stored-procedure redeploy and an audit. RT-09 fixed
+  that: those five moved to `CHANGE_REGRESSION`, which the form describes as "a software or configuration change
+  made the same work cost more or behave worse", and `POLICY` now shows as "Policy or configuration" (WLM, PR/SM,
+  routing, subsystem limits).
 - A player's own change has no special rule. It comes out as `POLICY` for most mechanisms (R-14, R-15 at 12:00),
   which is right, but the reply cannot say which change.
 
@@ -582,7 +590,8 @@ CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores
      alias) is shown as **Change regression**: "a software or configuration change made the same work cost more or
      behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate". The old id was a misnomer once the
      cards below moved. ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT move to it, so their
-     incidents carry that trigger (goldens regenerated, three-scenario sweep).
+     incidents carry that trigger (goldens unchanged — the scripted windows do not fire these cards — and a
+     three-scenario sweep ran).
    - `POLICY` is shown as **Policy or configuration**: WLM policy, PR/SM weights and caps, routing, subsystem limits.
    - `STORAGE` help adds "or a subsystem ran short of its own storage (CICS short on storage)", and CICS_SOS accepts it;
      `CAPPING` says "the image or the class" (§4.3(3)).
@@ -822,7 +831,7 @@ judged against accepted sets and recipes, not against the primary label.
 | # | Question | Recommendation | Decision (user) | Unblocks |
 |---|---|---|---|---|
 | Q1 | §4.1: accept a set of answers at full credit, with the primary named in the reply? Add the 1-point family credit? | Yes; yes | Yes to accepted sets; **no** family credit (2026-11-10) | RT-07 |
-| Q2 | §4.4(5): relabel the two triggers and move five cards to "Change regression"? | Yes (labels only) | Yes (2026-11-10) | RT-09 |
+| Q2 | §4.4(5): relabel the two triggers and move five cards to "Change regression"? | Yes (labels only) | Yes (2026-11-10), and the user added a rename of the regression trigger's id (same day) | RT-09 |
 | Q3 | §4.6: evidence as two-predicate recipes, pin relations instead of `anySubject`? | Yes | Yes, and every common recipe needs a tier-0/1 path (2026-11-10) | RT-12, RT-13 |
 | Q4 | §4.5: group by cause identity; stop silent inheritance across different causes? | Yes | Yes, with two refinements: card causes group across the played day (the two-hour window applies only to non-card causes), and RT-15 lands after RT-14 (2026-11-10) | RT-15 |
 | Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | Yes (2026-11-10); the fallback half (RT-18) is parked until the playtest | RT-14, RT-18 |
