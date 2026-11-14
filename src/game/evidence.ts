@@ -1,7 +1,8 @@
 // RCA evidence (SPEC §10): pin data points from reports, attach up to three to an RCA, and score
 // each against the incident's hidden truth, its time window and the work it hurt.
 
-import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, type EvidenceMetric, type PinRelation } from '../content/evidence';
+import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, recipeFor, type EvidenceMetric, type PinRelation, type PredicateTest, type RecipePredicate } from '../content/evidence';
+import { mechanismLabel, triggerLabel } from '../content/rca';
 import { formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
@@ -9,11 +10,11 @@ import { classify } from '../sim/wlm/classify';
 import { workManagerStatePct } from '../sim/wlm/reporting';
 import { buildMon3 } from './mon3';
 import type { Mon3PinLookup, Mon3PinView } from './mon3PinHistory';
-import { BATCH_INCIDENT } from './sla';
+import { BATCH_INCIDENT, acceptedOf } from './sla';
 import type { NightSummary } from '../sim/subsys/batch';
 import { cicsMonitoring, cicsStorageStats, db2Accounting } from './smf';
 import type { CpuRecord, WlmRecord } from '../sim/measure/rmf';
-import type { Incident, IncidentSubjects, RunState } from './types';
+import type { Incident, IncidentSubjects, Mechanism, RcaProof, RunState, Trigger } from './types';
 import { allWorkloads } from './workloads';
 import { idText } from './ids';
 
@@ -87,6 +88,21 @@ function median(xs: number[]): number | undefined {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
+/** Workload Activity's service per transaction: APPL% (CP, including the IIPCP subset; 100 = one engine) divided by
+ * END/S, which is how the Codex END/S entry teaches reading the two columns together (RT-13). A CICS transaction row
+ * reports no resource samples: its CPU is on the regions' class rows, so the quotient uses those (the Codex's "use
+ * those rows" path). Null when the row reported no ended transactions. */
+function wlmCpuPerTxn(w: WlmRecord, rows: readonly WlmRecord[]): number | null {
+  if (w.endPerSec <= 0) return null;
+  const regions = w.resourceSamples === false
+    ? (w.workManager?.regionKeys ?? []).reduce((a, key) => {
+        const r = rows.find((x) => x.lparId === w.lparId && x.scKey === key);
+        return a + (r ? r.applCpPct + r.applIipPct : 0);
+      }, 0)
+    : w.applCpPct + w.applIipPct;
+  return regions > 0 ? regions / 100 / w.endPerSec : null;
+}
+
 /** One Workload Activity row's value for a metric, or null when the row has none. */
 function wlmMetric(w: WlmRecord, metric: EvidenceMetric): number | null | undefined {
   const v: Partial<Record<EvidenceMetric, number | null>> = {
@@ -137,6 +153,18 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       // Work manager states belong to the transactions, not their regions (RMF Report Analysis p.536–537, RT-11).
       if ((req.metric === 'WM_LOCK' || req.metric === 'WM_READY') && !w.workManager)
         return 'That row has no work manager states (CICS transaction classes only)';
+      // The tier-0 service-per-transaction path (RT-13): the quotient against the row's own six preceding intervals.
+      if (req.metric === 'CPU_PER_TXN') {
+        const quote = (x: (typeof sim.rmf.intervals)[number]): number | null => {
+          const row = x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey);
+          return row ? wlmCpuPerTxn(row, x.wlm) : null;
+        };
+        const now = quote(iv);
+        if (now === null) return 'That row reported no ended transactions, so it has no CPU per transaction';
+        const base = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index).map(quote).filter(NUM));
+        if (base === undefined || base <= 0) return 'That row has no earlier hours to compare its CPU per transaction with';
+        return { source: 'WLMGL', metric: 'CPU_PER_TXN', subject: req.scKey, system: req.system, tick: iv.endTick, value: now / base, baseline: 1 };
+      }
       const value = wlmMetric(w, req.metric);
       if (value === undefined || value === null) return 'That metric is not in the Workload Activity report';
       const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index)
@@ -407,6 +435,8 @@ export interface PinVerdict {
 interface RankedVerdict {
   verdict: PinVerdict;
   checksPassed: number;
+  /** A notable symptom pin (PI, velocity): worth nothing itself, but a lone one earns half a non-specific pin. */
+  symptom: boolean;
 }
 
 const RELATION_TEXT: Record<PinRelation, string> = {
@@ -474,28 +504,46 @@ function notRelatedWhy(run: RunState, inc: Incident, p: EvidencePin, s: Incident
   return `not about ${inc.workloadId}`;
 }
 
-function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): RankedVerdict[] {
+/** One pin seen against one incident: what it relates to, and whether it is inside the incident's window (RT-13
+ * shares this judgement between the pin verdicts and the proof recipes, so the two cannot disagree). */
+interface AssessedPin {
+  pin: EvidencePin;
+  relation: PinRelation | null;
+  inWindow: boolean;
+}
+
+function assessIncidentPins(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): AssessedPin[] {
   // Judged against what the incident recorded when it opened (RT-04), so a reclassification or rerouting after the
   // fact keeps the verdicts a player would have got at the time; incidents from old saves derive them now.
   const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
   const lo = inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR;
   const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
-  return pins.map((p) => {
+  return pins.map((pin) => ({ pin, relation: pinRelation(run, inc, pin, subjects), inWindow: pin.tick >= lo && pin.tick <= hi }));
+}
+
+function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): RankedVerdict[] {
+  const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
+  const assessed = assessIncidentPins(run, scenario, inc, pins);
+  return pins.map((p, i) => {
     const d = EVIDENCE_METRICS[p.metric];
-    const result = (relevance: number, why: string, checksPassed: number): RankedVerdict => ({
-      verdict: { pinId: p.id, text: p.text, relevance, why }, checksPassed,
+    const result = (relevance: number, why: string, checksPassed: number, symptom = false): RankedVerdict => ({
+      verdict: { pinId: p.id, text: p.text, relevance, why }, checksPassed, symptom,
     });
-    if (p.tick < lo || p.tick > hi) return result(0, 'outside the incident window', 0);
+    const a = assessed[i]!;
+    if (!a.inWindow) return result(0, 'outside the incident window', 0);
     // The metric says which relations it is evidence for (RT-12): a competitor's CPU delay is not the hurt work's own,
     // and the work's own delay is not the host's busy.
-    const relation = pinRelation(run, inc, p, subjects);
-    if (relation === null) return result(0, notRelatedWhy(run, inc, p, subjects), 1);
-    if (!d.relations.includes(relation))
-      return result(0, relation === 'competitor' ? "another class's row, not the hurt work's" : `about ${RELATION_TEXT[relation]}, not ${inc.workloadId}'s own work`, 1);
-    if (d.weight === 0) return result(0, 'a symptom, not a cause', 2);
+    if (a.relation === null) return result(0, notRelatedWhy(run, inc, p, subjects), 1);
+    if (!d.relations.includes(a.relation))
+      return result(0, a.relation === 'competitor' ? "another class's row, not the hurt work's" : `about ${RELATION_TEXT[a.relation]}, not ${inc.workloadId}'s own work`, 1);
     // Notable against the metric's line, and against the row's own recent normal where both exist (RT-10): one line
     // cannot serve rows whose healthy scale differs (CF02's weak ICF engine, one LCU among several).
     const floor = Math.max(d.notableAt, d.notableMultiple !== undefined && p.baseline !== undefined ? d.notableMultiple * p.baseline : 0);
+    // A symptom says the work was hurt, not why: it scores nothing itself, but a lone one is worth half a non-specific
+    // pin (RT-13, §4.6), so the caller needs to know it was notable.
+    if (d.weight === 0) return Math.abs(p.value) >= floor && Math.abs(p.value) > 0
+      ? result(0, 'a symptom, not a cause', 2, true)
+      : result(0, 'value is unremarkable', 3);
     if (Math.abs(p.value) < floor) return result(0, 'value is unremarkable', 3);
     const hit = d.mechanisms.includes(inc.truth.mechanism) || d.triggers.includes(inc.truth.trigger);
     return result(hit ? d.weight : 0, hit ? (d.weight < 1 ? 'consistent with the cause (but not specific)' : 'points at the cause') : 'points elsewhere', 4);
@@ -508,11 +556,110 @@ export function judgeEvidence(run: RunState, scenario: Scenario, inc: Incident, 
 }
 
 /** Highest relevance per pin; on ties, prefer the most informative failure, then the first incident. */
-export function judgeGroupEvidence(run: RunState, scenario: Scenario, group: readonly Incident[], pins: readonly EvidencePin[]): PinVerdict[] {
+export function judgeGroupEvidenceRanked(run: RunState, scenario: Scenario, group: readonly Incident[], pins: readonly EvidencePin[]): RankedVerdict[] {
   return group.map((inc) => judgeEvidenceRanked(run, scenario, inc, pins)).reduce<RankedVerdict[]>((best, verdicts) =>
     verdicts.map((v, k) => {
       const b = best[k];
       return !b || v.verdict.relevance > b.verdict.relevance ||
         (v.verdict.relevance === b.verdict.relevance && v.checksPassed > b.checksPassed) ? v : b;
-    }), []).map((v) => v.verdict);
+    }), []);
+}
+
+export function judgeGroupEvidence(run: RunState, scenario: Scenario, group: readonly Incident[], pins: readonly EvidencePin[]): PinVerdict[] {
+  return judgeGroupEvidenceRanked(run, scenario, group, pins).map((v) => v.verdict);
+}
+
+/** Does one pin satisfy a recipe predicate? The metric and relation must match an option, the pin must be inside the
+ * incident's window, and its value (or its ratio to the row's own baseline) must pass the option's test. */
+function predicateHolds(a: AssessedPin, pred: RecipePredicate): boolean {
+  if (!a.inWindow || a.relation === null) return false;
+  return pred.options.some((o) => o.metric === a.pin.metric && o.relations.includes(a.relation!) && testHolds(o.test, a.pin));
+}
+
+function testHolds(t: PredicateTest, p: EvidencePin): boolean {
+  const base = p.baseline;
+  switch (t.kind) {
+    case 'atLeast':
+      return Math.abs(p.value) >= t.value;
+    case 'atMost':
+      return Math.abs(p.value) <= t.value;
+    case 'multipleAtLeast':
+      return base !== undefined && base > 0 && p.value >= t.multiple * base;
+    case 'within':
+      return base !== undefined && base > 0 && Math.abs(p.value - base) <= t.frac * base;
+  }
+}
+
+/** The proof recipe for one filed claim, each predicate ticked when one of the attached pins satisfies it (RT-13,
+ * §4.6). A predicate may be satisfied by a different incident of the group, as a pin may be evidence for any of
+ * them. */
+export function judgeRecipe(
+  run: RunState,
+  scenario: Scenario,
+  incidents: readonly Incident[],
+  pins: readonly EvidencePin[],
+  claim: { mechanism: Mechanism } | { trigger: Trigger },
+): RcaProof | null {
+  const recipe = recipeFor(claim);
+  if (!recipe) return null;
+  const assessed = incidents.map((inc) => assessIncidentPins(run, scenario, inc, pins));
+  const predicates = recipe.predicates.map((pred) => {
+    for (const incidentPins of assessed) {
+      const hit = incidentPins.find((a) => predicateHolds(a, pred));
+      if (hit) return { label: pred.label, ok: true, pinId: hit.pin.id };
+    }
+    return { label: pred.label, ok: false };
+  });
+  const id = 'mechanism' in claim ? claim.mechanism : claim.trigger;
+  return { claim: 'mechanism' in claim ? 'mechanism' : 'trigger', id, label: 'mechanism' in claim ? mechanismLabel(claim.mechanism) : triggerLabel(claim.trigger), predicates, complete: predicates.every((p) => p.ok) };
+}
+
+/** The proof recipes for the two claims a player filed: the mechanism's and the trigger's, in that order. */
+export function judgeProof(
+  run: RunState,
+  scenario: Scenario,
+  incidents: readonly Incident[],
+  pins: readonly EvidencePin[],
+  filed: { mechanism: Mechanism; trigger: Trigger },
+): RcaProof[] {
+  return [
+    judgeRecipe(run, scenario, incidents, pins, { mechanism: filed.mechanism }),
+    judgeRecipe(run, scenario, incidents, pins, { trigger: filed.trigger }),
+  ].filter((p): p is RcaProof => p !== null);
+}
+
+export interface EvidenceScore {
+  verdicts: PinVerdict[];
+  proof: RcaProof[];
+  /** The pins' own total: what the old relevance sum pays when no recipe is complete. */
+  relevance: number;
+  /** Evidence points for the filed mechanism: a complete recipe's fixed worth, else the relevance sum (or half for a
+   * lone symptom pin). The caller pays it only when the mechanism is accepted. */
+  points: number;
+  /** Strong evidence: a complete trigger recipe on top of the mechanism's, or the old relevance line when no recipe is
+   * complete. */
+  strong: boolean;
+}
+
+/** Score an RCA's pins: the pin verdicts, the proof recipes for the filed claims, and the points (RT-13, §4.6). */
+export function scoreEvidence(
+  run: RunState,
+  scenario: Scenario,
+  inc: Incident,
+  group: readonly Incident[],
+  filed: { mechanism: Mechanism; trigger: Trigger },
+  pins: readonly EvidencePin[],
+): EvidenceScore {
+  const ranked = judgeGroupEvidenceRanked(run, scenario, group, pins);
+  const verdicts = ranked.map((r) => r.verdict);
+  const relevance = verdicts.reduce((a, v) => a + v.relevance, 0);
+  const proof = judgeProof(run, scenario, group, pins, filed);
+  const accepted = acceptedOf(inc.truth);
+  // A recipe is only proof of what the game accepts: a defensible reading counts, a wrong claim earns nothing (RT-07).
+  const completeMechanism = accepted.mechanisms.includes(filed.mechanism) && proof.some((p) => p.claim === 'mechanism' && p.complete);
+  const completeTrigger = accepted.triggers.includes(filed.trigger) && proof.some((p) => p.claim === 'trigger' && p.complete);
+  const symptom = ranked.some((r) => r.symptom);
+  const points = completeMechanism ? EVIDENCE.recipeRelevance : relevance > 0 ? relevance : symptom ? EVIDENCE.symptomRelevance : 0;
+  const strong = completeMechanism ? completeTrigger : points > 0 && relevance >= EVIDENCE.strongAt;
+  return { verdicts, proof, relevance, points, strong };
 }

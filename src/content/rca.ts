@@ -50,6 +50,25 @@ export const TRIGGER_LABEL: Record<Trigger, string> = {
 
 export const triggerLabel = (t: Trigger): string => TRIGGER_LABEL[t] ?? t;
 
+/** Short display names for the mechanisms, beside the long help text. Used by the proof recipes' reply (RT-13) and
+ * anywhere a sentence needs the mechanism's name rather than the option's paragraph of help. */
+export const MECHANISM_LABEL: Record<Mechanism, string> = {
+  CPU_CAPACITY: 'CPU capacity',
+  CPU_PRIORITY: 'CPU priority',
+  CAPPING: 'Capping',
+  DEPENDENCY: 'Dependency',
+  LOCK_CONTENTION: 'Lock contention',
+  CF_SERVICE: 'CF service',
+  QR_TCB: 'QR TCB',
+  THREAD_LIMIT: 'Thread limit',
+  ROUTING: 'Routing',
+  IO: 'I/O',
+  STORAGE: 'Storage',
+  JOB_FAILURE: 'Job failure',
+};
+
+export const mechanismLabel = (m: Mechanism): string => MECHANISM_LABEL[m] ?? m;
+
 /** Trigger ids that older saves and play files used, mapped to the id they mean now (RT-09). Nothing else here. */
 const TRIGGER_ALIASES: Record<string, Trigger> = { ACCESS_PATH_REGRESSION: 'CHANGE_REGRESSION' };
 

@@ -207,7 +207,11 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const answerText = (answer: string) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${t.notes?.[answer] ? ` (${t.notes[answer]})` : ''}`;
       const also = [...accepted.mechanisms.filter((m) => m !== t.mechanism), ...accepted.triggers.filter((x) => x !== cTrigger)]
         .map(answerText);
-      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cTrigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
+      // The proof the pins make for the filed claims, each predicate ticked or not, in report terms (RT-13, §4.6).
+      const proofText = (rca?.proof ?? [])
+        .map((pr) => `${pr.complete ? 'complete' : 'incomplete'} proof for ${pr.label}: ${pr.predicates.map((x) => `${x.ok ? '✓' : '✗'} ${x.label}`).join('; ')}`)
+        .join('. ');
+      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cTrigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${proofText ? ` ${proofText}.` : ''}${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
     }
     case 'ask': {
       const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));

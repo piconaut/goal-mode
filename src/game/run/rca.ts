@@ -1,6 +1,6 @@
 import { EVIDENCE } from '../../content/evidence';
 import type { Scenario } from '../../sim/core/scenario';
-import { judgeGroupEvidence } from '../evidence';
+import { scoreEvidence } from '../evidence';
 import { mechanismExplanation } from '../rcaExplain';
 import { acceptedOf, scoreRca } from '../sla';
 import {
@@ -25,19 +25,18 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const points = scoreRca(inc.truth, { mechanism, trigger });
   const pins = (run.pins ?? []).filter((p) => evidenceIds.includes(p.id)).slice(0, EVIDENCE.perRca);
   // A pin counts if it is evidence for any incident in the group (each has its own workload and window).
-  const verdicts = scenario
-    ? judgeGroupEvidence(run, scenario, group, pins)
-    : [];
-  const relevance = verdicts.reduce((a, v) => a + v.relevance, 0);
+  const scored = scenario
+    ? scoreEvidence(run, scenario, inc, group, { mechanism, trigger }, pins)
+    : { verdicts: [], proof: [], relevance: 0, points: 0, strong: false };
   // Evidence only earns points when it supports an accepted mechanism (RT-07): a defensible reading is proof too.
-  const evidencePoints = acceptedOf(inc.truth).mechanisms.includes(mechanism) ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
-  const strong = evidencePoints > 0 && relevance >= EVIDENCE.strongAt;
+  const evidencePoints = acceptedOf(inc.truth).mechanisms.includes(mechanism) ? scored.points : 0;
+  const strong = evidencePoints > 0 && scored.strong;
   const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
   const trust = mapTrust(run, (t) => t + facetTrust / 2);
   const total = points + evidencePoints;
   const explain = mechanismExplanation(inc);
-  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(explain ? { explain } : {}) };
+  const rca = { mechanism, trigger, points: total, evidence: scored.verdicts, evidencePoints, proof: scored.proof, ...(explain ? { explain } : {}) };
   return {
     ...run,
     trust,

@@ -650,8 +650,36 @@ a frozen row's verdict (A10). Each metric carries `relations` (`SYMPTOM` = all, 
 not listed before it looks at size or mechanism. Pins also carry an optional `baseline`: the median of the same row
 over the six preceding report intervals (each `rmfIntervalMin` long) or closed SMF hours, or 1 for `CPU_VS_BASE`
 (already a ratio). Monitor III pins carry none: that view normalises APPL and ended/s differently from Workload
-Activity, and its history only holds the pinned range, so a baseline from another view would not compare. No recipe
-reads the baseline yet — that is RT-13.
+Activity, and its history only holds the pinned range, so a baseline from another view would not compare.
+
+**As built (RT-13).** `RECIPES` in `content/evidence.ts` holds one two-predicate recipe per mechanism and trigger the
+form offers (a vocabulary test keeps the two lists in step, so no claim can be filed without one). A predicate is
+satisfied by any attached pin whose metric, relation and value pass one of its options; the predicate tests are
+`atLeast`/`atMost` (an absolute line, the ruling-out half where no report shows the cause directly) and
+`multipleAtLeast`/`within` (against the pin's own stored baseline, so "flat" and "×1.3 its normal" are judged
+without a second pin). Each option carries the tool tier its report needs (`0` Workload Activity, `1` Monitor III /
+Partition Data / PROCU, `2` a paid analytics report), the test asserts every option's tier against the pin source and
+that the seven common recipes (the CPU family, DEPENDENCY, DEMAND_SURGE, CHANGE_REGRESSION, RUNAWAY_WORK) complete
+with tier-0/1 pins only, and no option ever needs tier 3 (§5.5).
+
+- The CPU family's symptom predicate accepts a CPU-delay share, a CPU-per-transaction ratio or an arrival-rate rise on
+  the hurt work, and a pin may satisfy a predicate of both the mechanism's and the trigger's recipe: that is how the
+  entry's "two recipes can share the symptom pin" keeps a mechanism+trigger proof inside the three-pin limit (a test
+  proves five representative pairs, including CPU_CAPACITY × CHANGE_REGRESSION and CPU_PRIORITY × DEMAND_SURGE, in
+  three pins).
+- `CPU_PER_TXN` is new: Workload Activity's APPL% ÷ END/S against the row's own six preceding intervals, the division
+  the Codex END/S entry teaches. A CICS transaction row reports no resource samples, so its quotient uses the serving
+  regions' class row (also the Codex's path); a row with no ended transactions has none. APPROX: the report prints the
+  two columns, not their quotient.
+- `ENDED_RATE` now accepts `competitor` besides `self`/`server`, so a co-hosted workload's rate is the collateral
+  victim's surrogate for a surge (§4.4).
+- Scoring: a complete recipe for the filed, accepted mechanism replaces the relevance sum and is worth three fully
+  specific pins (`EVIDENCE.recipeRelevance`); a complete recipe for the filed, accepted trigger on top makes the
+  evidence strong (the 5-Insight bonus). A claim the game does not accept earns nothing however well it is proven
+  (RT-07's rule), a lone notable symptom pin is worth the half weight a non-specific pin earns, and incomplete
+  recipes keep their pins' own weights. The RCA stores the two recipes with each predicate ticked, and the reply (RCA
+  card and `play rca`) shows them in report terms.
+
 ### 4.7 Incidents caused by the player
 
 Covered by §4.4(4): the trigger is POLICY, the reply names the change, and under D1 nothing is gated (there is no

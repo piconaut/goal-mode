@@ -1350,15 +1350,17 @@ Every pin gets a **relation** to the incident, derived from those subjects: `sel
 its Db2/CICS accounting, its SMF 30 night), `server` (a CICS region serving it, or a region class), `competitor`
 (another class — and only placeable from an image the work runs on, because a `*PLEX` roll-up cannot say where that
 class ran) or `host` (an image or processor of the incident). Each metric lists the relations it is evidence for,
-and a pin outside them scores nothing whatever its size: the work's own service metrics (`DELAY_*`, `ENDED_RATE`,
-`CPU_VS_BASE`, the Db2/CICS waits) accept `self` and `server`; `APPL` and its CP/zIIP split also accept `competitor`
+and a pin outside them scores nothing whatever its size: the work's own service metrics (`DELAY_*`, `CPU_VS_BASE`,
+the Db2/CICS waits) accept `self` and `server`, and `ENDED_RATE` also accepts `competitor` (a co-hosted workload's
+rate is the collateral victim's surrogate for a surge, RT-13); `APPL` and its CP/zIIP split also accept `competitor`
 at half weight, because it shows a contender existed, not that it was ahead; the image and processor facts
 (`PRSM_DELAY`, `CAPPED`, `CAPACITY_ADJ`, and `CPC_BUSY`/`LPAR_BUSY`, notable 90/95) are `host` only; the batch job
 metrics are `self` only; the CF and DASD rows are `server` clues, the infrastructure the work's Db2 and I/O wait on;
 a region's SOS time is `server` (the AOR's row names the region); a PROCU job is the work's `server` when it serves
 it and otherwise a specific `competitor` on that image. The work-manager states (`WM_LOCK`, and `WM_READY` at half
 weight because READY estimates CICS QR dispatch waits) are the transaction class's own (`self`/`server`).
-PI and velocity are symptoms that accept any relation but never score. So another class's
+PI and velocity are symptoms that accept any relation and score nothing themselves; a lone notable one is worth the
+half weight of a non-specific pin (RT-13). So another class's
 CPU-delay row on a production image is not evidence about the hurt workload (only its `APPL` share is), and a
 server-side clue (`SYSWKM`) still needs the exact serving image. Class rows must name an image the work runs on or `*PLEX` in every relation, so the work's own class on an image
 it never ran on does not count either. Pins also store a `baseline` where the report gives one — the median of the
@@ -1367,8 +1369,21 @@ predicate can ask whether the value is normal; Monitor III pins carry none, beca
 ended/s differently (`docs/rca-design.md` §4.6). A metric whose healthy scale differs by row (a coupling facility's
 own engine, one LCU among several) also has a `notableMultiple`: the value must clear that multiple of its own
 baseline as well as the absolute line, so a chronically slow row does not count as evidence for every incident.
-PI is a symptom and never counts. Evidence points need
+PI is a symptom and never counts on its own. Evidence points need
 an accepted mechanism.
+
+A claim's evidence is a **proof recipe** (RT-13, `docs/rca-design.md` §4.6): two predicates that separate it from its
+nearest look-alike, one per mechanism and trigger, satisfied by the pins attached to the RCA (up to three, and one pin
+may satisfy a predicate of both the mechanism's and the trigger's recipe). A predicate is an absolute line (a CPU
+delay share, a busy CPC, a capped image, an APPL share, an ended rate against its baseline) or a comparison with the
+pin's own stored baseline ("the rate stayed flat", "each transaction cost ×1.3 its normal"), and each option names the
+tool tier its report needs: every common recipe — the CPU family, DEPENDENCY, DEMAND_SURGE, CHANGE_REGRESSION and
+RUNAWAY_WORK — completes with Workload Activity, Monitor III or Partition Data pins, so a player without analytics can
+still prove it, and no option ever needs a tier-3 tool. `CPU_PER_TXN` is that tier-0 path: APPL% ÷ END/S against the
+row's own six preceding intervals (a CICS transaction row takes its APPL from the serving regions' class row). A
+complete recipe for the filed, accepted mechanism replaces the relevance sum and pays what three fully specific pins
+pay; a complete recipe for the filed, accepted trigger makes the evidence strong (the Insight bonus). The reply shows
+both recipes with every predicate ticked or not, in report terms.
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one

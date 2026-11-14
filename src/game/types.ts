@@ -207,6 +207,26 @@ export interface IncidentTruth {
   cause?: string;
 }
 
+/** One predicate of an evidence proof recipe, ticked or not (RT-13, docs/rca-design.md §4.6). */
+export interface RcaProofPredicate {
+  /** The predicate in report terms, e.g. "each transaction cost more CPU". */
+  label: string;
+  ok: boolean;
+  /** The pin that satisfied it, when one did. */
+  pinId?: number;
+}
+
+/** The proof recipe for one filed claim: the mechanism or the trigger, its predicates, and whether both hold. */
+export interface RcaProof {
+  claim: 'mechanism' | 'trigger';
+  /** The mechanism or trigger id the recipe is for. */
+  id: string;
+  /** Its display name, from `mechanismLabel`/`triggerLabel`. */
+  label: string;
+  predicates: RcaProofPredicate[];
+  complete: boolean;
+}
+
 export interface Incident {
   id: number;
   workloadId: string;
@@ -223,8 +243,17 @@ export interface Incident {
   aiops?: Hypothesis[];
   /** Classes, images and serving regions as they were when the incident opened (RT-04; absent in old saves). */
   subjects?: IncidentSubjects;
-  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). */
-  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; explain?: string } | null;
+  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves); `proof` is the
+   * recipe for the filed mechanism and trigger with each predicate ticked or not (RT-13, absent in old saves). */
+  rca: {
+    mechanism: Mechanism;
+    trigger: Trigger;
+    points: number;
+    evidence?: PinVerdict[];
+    evidencePoints?: number;
+    explain?: string;
+    proof?: RcaProof[];
+  } | null;
   trustLost: number;
   /** Id of the first incident that day with the same root cause: one RCA covers the group, scored once (SPEC §10). */
   rcaGroup?: number;

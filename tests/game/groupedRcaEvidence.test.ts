@@ -31,7 +31,6 @@ function file(r: RunState, incidentId = 1): RunState {
 describe('grouped RCA evidence verdicts', () => {
   it.each([
     { metric: 'CPU_VS_BASE', value: 2, why: 'points elsewhere' },
-    { metric: 'PI', value: 4, why: 'a symptom, not a cause' },
     { metric: 'SYNC_IO', value: 1, why: 'value is unremarkable' },
   ] as const)('shows the CARDAUTH rejection when all scores are zero: $why', ({ metric, value, why }) => {
     const r = grouped();
@@ -48,6 +47,22 @@ describe('grouped RCA evidence verdicts', () => {
       const reversed = file({ ...r, incidents: [...r.incidents].reverse() }, incidentId);
       expect(reversed.incidents[0]!.rca).toEqual(scored.incidents[0]!.rca);
     }
+  });
+
+  it('pays half a non-specific pin\'s worth for a lone symptom pin (RT-13, §4.6)', () => {
+    // A PI row on a covered incident proves the work was hurt and nothing about why: it satisfies no recipe predicate,
+    // so it earns the half weight the design gives a lone symptom, not the zero it earned before RT-13.
+    const r = grouped();
+    r.pins = [pin(r, { metric: 'PI', value: 4 })];
+    expect(judgeEvidence(r, MIDWEST, r.incidents[1]!, r.pins)[0]!.why).toBe('a symptom, not a cause');
+    const noEvidence = file({ ...r, pins: [] });
+    const scored = file(r);
+    expect(scored.incidents[0]!.rca!.evidencePoints).toBe(EVIDENCE.symptomRelevance);
+    expect(scored.incidents[0]!.rca!.proof!.every((p) => !p.complete)).toBe(true);
+    expect(scored.insight - noEvidence.insight).toBe(EVIDENCE.symptomRelevance);
+    expect(scored.score - noEvidence.score).toBe(EVIDENCE.symptomRelevance);
+    // Not strong evidence: one symptom pin is nothing like a completed recipe.
+    expect(scored.insight - noEvidence.insight).toBeLessThan(EVIDENCE.strongInsight);
   });
 
   it('prefers an in-window subject rejection over an out-of-window rejection', () => {

@@ -26,6 +26,7 @@ export type EvidenceMetric =
   | 'APPL_IIP'
   | 'IIPCP'
   | 'CPU_VS_BASE'
+  | 'CPU_PER_TXN'
   | 'LOCK_WAIT'
   | 'SYNC_IO'
   | 'CF_WAIT'
@@ -89,7 +90,9 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   APPL_CP: { label: 'APPL % CP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
   APPL_IIP: { label: 'APPL % IIP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
   IIPCP: { label: 'APPL % IIPCP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
-  ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5, relations: OWN },
+  // The arrival rate is the surging work's own row, a region serving it, or (RT-13, §4.4) a co-hosted workload's:
+  // collateral work pays for a burst that is not its own, and the rate is the only visible trace of it there.
+  ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5, relations: ['self', 'server', 'competitor'] },
   DELAY_CPU: { label: 'CPU delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'DEPENDENCY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_ZIIP: { label: 'zIIP delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_IO: { label: 'I/O delay %', unit: '%', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 10, weight: 1, relations: OWN },
@@ -105,6 +108,12 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   /** 100 − SMF70CAI: how much capacity the processor lost against its normal setting (POWER_CAP). */
   CAPACITY_ADJ: { label: 'capacity adjusted %', unit: '%', mechanisms: ['CPU_CAPACITY'], triggers: ['HARDWARE_FAULT'], notableAt: 1, weight: 1, relations: HOST_ONLY },
   CPU_VS_BASE: { label: 'CPU/txn vs baseline', unit: '×', mechanisms: ['CPU_CAPACITY'], triggers: ['CHANGE_REGRESSION', 'RUNAWAY_WORK'], notableAt: 1.3, weight: 1, relations: OWN },
+  // The tier-0 service-per-transaction path (RT-13): the Workload Activity report prints APPL% (CP, including the
+  // IIPCP subset) and END/S, and CPU per transaction is the first divided by the second at 100 % = one engine — the
+  // division the Codex END/S entry teaches. The pin is that quotient against the same row's six preceding intervals,
+  // so it follows the work's own recent cost without needing Db2 or CICS accounting. APPROX: the report prints the
+  // two columns, not their quotient, and a report class row needs RC_ADVISOR to stand alone.
+  CPU_PER_TXN: { label: 'APPL÷ENDED vs baseline', unit: '×', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['CHANGE_REGRESSION', 'RUNAWAY_WORK'], notableAt: 1.3, weight: 1, relations: OWN },
   LOCK_WAIT: { label: 'lock wait ms/txn', unit: 'ms', mechanisms: ['LOCK_CONTENTION'], triggers: ['BATCH_OVERLAP'], notableAt: 2, weight: 1, relations: OWN },
   SYNC_IO: { label: 'sync I/O ms/txn', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
   CF_WAIT: { label: 'CF ms/txn', unit: 'ms', mechanisms: ['CF_SERVICE'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
@@ -157,12 +166,380 @@ export const EVIDENCE = {
   baselineRows: 6,
   /** A pin counts if taken within this many hours of the incident window. */
   windowHours: 1,
-  /** Score points per unit of evidence relevance (only with the right mechanism). */
-  pointsPerRelevance: 1,
+  // RT-13 replaced the per-unit line: a complete mechanism recipe pays `recipeRelevance`, an incomplete one its pins'
+  // own weights (`pointsPerRelevance` would have been the multiplier and is gone with the sum it multiplied).
   /** Extra Insight for "strong evidence": total relevance at least this. */
   strongAt: 2,
   strongInsight: 5,
+  // FICTIONAL: what a complete proof recipe is worth, i.e. three fully specific pins (RT-13, §4.6). A complete recipe
+  // for the trigger on top of it makes the evidence strong.
+  recipeRelevance: 3,
+  // FICTIONAL: a lone symptom pin (PI, velocity) proves nothing about a cause, so it is worth the half weight a
+  // non-specific pin earns (§4.6).
+  symptomRelevance: 0.5,
   // FICTIONAL: a grouped RCA (one cause, several incidents) earns its trust reward once per incident it covers, so
   // grouping removes the write-ups but not the credit (user decision 2026-10-27). Penalties are not scaled.
   groupTrustPerIncident: 1,
 };
+
+/** How a recipe predicate tests one pinned value (RT-13, docs/rca-design.md §4.6). */
+export type PredicateTest =
+  /** The value is at least this big: a symptom or a specific clue. */
+  | { kind: 'atLeast'; value: number }
+  /** The value is this small or smaller: a ruling-out pin ("the work's own CPU delay stayed low"). */
+  | { kind: 'atMost'; value: number }
+  /** The value is at least this multiple of the row's own recent normal: an arrival rate or a regression. */
+  | { kind: 'multipleAtLeast'; multiple: number }
+  /** The value is within this fraction of the row's own recent normal: "each transaction still cost the same". */
+  | { kind: 'within'; frac: number };
+
+/** One row that can satisfy a predicate, and the cheapest tool that reports it. */
+export interface RecipeOption {
+  metric: EvidenceMetric;
+  /** The pin relations this option accepts (RT-12): the same row means different things by whose it is. */
+  relations: PinRelation[];
+  test: PredicateTest;
+  /** 0 = Workload Activity (WLMGL, no tool), 1 = Monitor III or Partition Data, 2 = a paid analytics report.
+   * The gate must never need tier 3 (§5.5), and every common recipe has a tier-0/1 path (user decision Q3). */
+  tier: 0 | 1 | 2;
+}
+
+/** Half of a proof: a symptom on the right subject, or the discriminator that separates the claim from its
+ * nearest look-alike. Satisfied when any attached pin matches one of its options. */
+export interface RecipePredicate {
+  label: string;
+  options: RecipeOption[];
+}
+
+/** Two predicates that together prove a mechanism or a trigger from pinned report data (§4.6). */
+export interface ProofRecipe {
+  claim: { mechanism: Mechanism } | { trigger: Trigger };
+  predicates: [RecipePredicate, RecipePredicate];
+}
+
+const SELF: PinRelation[] = ['self'];
+const SELF_SERVER: PinRelation[] = ['self', 'server'];
+const SERVER: PinRelation[] = ['server'];
+const HOST: PinRelation[] = ['host'];
+const COMPETITOR: PinRelation[] = ['competitor'];
+const SELF_SERVER_COMPETITOR: PinRelation[] = ['self', 'server', 'competitor'];
+
+const atLeast = (metric: EvidenceMetric, relations: PinRelation[], value: number, tier: RecipeOption['tier']): RecipeOption =>
+  ({ metric, relations, test: { kind: 'atLeast', value }, tier });
+const atMost = (metric: EvidenceMetric, relations: PinRelation[], value: number, tier: RecipeOption['tier']): RecipeOption =>
+  ({ metric, relations, test: { kind: 'atMost', value }, tier });
+const multipleAtLeast = (metric: EvidenceMetric, relations: PinRelation[], multiple: number, tier: RecipeOption['tier']): RecipeOption =>
+  ({ metric, relations, test: { kind: 'multipleAtLeast', multiple }, tier });
+const within = (metric: EvidenceMetric, relations: PinRelation[], frac: number, tier: RecipeOption['tier']): RecipeOption =>
+  ({ metric, relations, test: { kind: 'within', frac }, tier });
+
+/** The symptom half of the CPU family, from Workload Activity alone: a delay share, a cost per transaction that
+ * rose, or more arrivals than the work's normal hour. The three are how the same shortage shows on the hurt work, and
+ * a pin already attached for the trigger's recipe may satisfy this one too (the three-pin limit, §4.6). */
+const CPU_HURT: RecipePredicate = {
+  label: 'the work was hurt: CPU delay, more CPU per transaction, or more arrivals than normal',
+  options: [
+    atLeast('DELAY_CPU', SELF_SERVER, 10, 0),
+    atLeast('DELAY_ZIIP', SELF_SERVER, 10, 0),
+    atLeast('CPU_PER_TXN', SELF, 1.3, 0),
+    multipleAtLeast('ENDED_RATE', SELF_SERVER, 1.25, 0),
+  ],
+};
+/** "Nothing held it but CPU": the ruling-out half of the waits that are not CPU. */
+const NOT_HELD_FOR_CPU: RecipePredicate = {
+  label: "the work's own CPU delay stayed low",
+  options: [atMost('DELAY_CPU', SELF, 10, 0)],
+};
+
+/**
+ * The proof recipes (RT-13, docs/rca-design.md §4.6): one per mechanism and trigger the RCA form offers. Predicate 1
+ * puts the symptom on the right subject; predicate 2 is the discriminator against the nearest look-alike, or a
+ * ruling-out reading where no report can show the cause directly. Every threshold here is FICTIONAL and matches the
+ * design table; the metric-level `notableAt` lines stay the scoring lines (§4.6). A claim with no recipe would let
+ * evidence pass with nothing ticked, so the vocabulary test asserts the two lists have the same claims.
+ */
+export const RECIPES: ProofRecipe[] = [
+  {
+    claim: { mechanism: 'CPU_CAPACITY' },
+    predicates: [
+      CPU_HURT,
+      {
+        label: 'the processor or the image was full',
+        options: [
+          atLeast('CPC_BUSY', HOST, 90, 1),
+          atLeast('LPAR_BUSY', HOST, 95, 1),
+          atLeast('PRSM_DELAY', HOST, 8, 1),
+          atLeast('CAPACITY_ADJ', HOST, 1, 1),
+        ],
+      },
+    ],
+  },
+  {
+    claim: { mechanism: 'CPU_PRIORITY' },
+    predicates: [
+      CPU_HURT,
+      {
+        label: 'another class was using a host image',
+        options: [
+          atLeast('APPL', COMPETITOR, 10, 0),
+          atLeast('APPL_CP', COMPETITOR, 10, 0),
+          atLeast('IIPCP', COMPETITOR, 10, 0),
+          atLeast('JOB_APPL', COMPETITOR, 25, 1),
+        ],
+      },
+    ],
+  },
+  {
+    claim: { mechanism: 'CAPPING' },
+    predicates: [
+      CPU_HURT,
+      {
+        label: 'a cap held the image or the class',
+        options: [atLeast('CAPPED', HOST, 5, 1), atLeast('DELAY_CAP', SELF_SERVER, 5, 0)],
+      },
+    ],
+  },
+  {
+    claim: { mechanism: 'DEPENDENCY' },
+    predicates: [
+      {
+        label: "a server's class was delayed",
+        options: [
+          atLeast('DELAY_CPU', SERVER, 10, 0),
+          atMost('VELOCITY', SERVER, 90, 1),
+          atLeast('DELAY_OTHER', SELF, 20, 0),
+        ],
+      },
+      NOT_HELD_FOR_CPU,
+    ],
+  },
+  {
+    claim: { mechanism: 'LOCK_CONTENTION' },
+    predicates: [
+      {
+        label: 'the work waited on locks',
+        options: [
+          atLeast('WM_LOCK', SELF, 35, 0),
+          atLeast('LOCK_WAIT', SELF, 2, 2),
+          atLeast('JOB_LOCK', SELF, 25, 2),
+        ],
+      },
+      {
+        label: 'the wait was not CPU',
+        options: [atLeast('DELAY_OTHER', SELF, 20, 0), atMost('DELAY_CPU', SELF, 10, 0)],
+      },
+    ],
+  },
+  {
+    claim: { mechanism: 'CF_SERVICE' },
+    predicates: [
+      {
+        label: 'CF requests were slow',
+        options: [atLeast('CF_WAIT', SELF, 5, 2), atLeast('CF_SYNC', SERVER, 50, 2)],
+      },
+      {
+        label: "the work's own CPU was not the limit",
+        options: [atMost('DELAY_CPU', SELF, 10, 0), atLeast('DELAY_OTHER', SELF, 20, 0)],
+      },
+    ],
+  },
+  {
+    claim: { mechanism: 'QR_TCB' },
+    predicates: [
+      { label: 'QR TCB dispatch waits were high', options: [atLeast('QR_WAIT', SELF, 5, 2)] },
+      {
+        label: 'the wait was neither CPU nor a thread limit',
+        options: [atMost('DELAY_CPU', SELF, 10, 0), atMost('MXT_WAIT', SELF, 5, 2)],
+      },
+    ],
+  },
+  {
+    claim: { mechanism: 'THREAD_LIMIT' },
+    predicates: [
+      {
+        label: 'work queued for a thread, task slot or the region storage',
+        options: [
+          atLeast('MXT_WAIT', SELF, 5, 2),
+          atLeast('DBAT_QUEUE', SELF, 5, 2),
+          atLeast('JOB_INIT', SELF, 25, 2),
+          atLeast('SOS_MIN', SERVER, 1, 2),
+        ],
+      },
+      NOT_HELD_FOR_CPU,
+    ],
+  },
+  {
+    claim: { mechanism: 'ROUTING' },
+    predicates: [
+      { label: 'one region or route failed work', options: [atLeast('FAIL_PCT', SELF, 1, 2)] },
+      NOT_HELD_FOR_CPU,
+    ],
+  },
+  {
+    claim: { mechanism: 'IO' },
+    predicates: [
+      {
+        label: 'I/O waits or I/O queueing were high',
+        options: [
+          atLeast('DELAY_IO', SELF_SERVER, 10, 0),
+          atLeast('SYNC_IO', SELF, 5, 2),
+          atLeast('JOB_IO', SELF, 25, 2),
+          atLeast('DASD_IOSQ', SERVER, 0.1, 2),
+        ],
+      },
+      NOT_HELD_FOR_CPU,
+    ],
+  },
+  {
+    claim: { mechanism: 'STORAGE' },
+    predicates: [
+      {
+        label: 'the work waited on storage',
+        options: [
+          atLeast('DELAY_STO', SELF_SERVER, 5, 0),
+          atLeast('JOB_SWAP', SELF, 25, 2),
+          atLeast('SOS_MIN', SERVER, 1, 2),
+        ],
+      },
+      NOT_HELD_FOR_CPU,
+    ],
+  },
+  {
+    claim: { mechanism: 'JOB_FAILURE' },
+    predicates: [
+      { label: 'critical jobs abended', options: [atLeast('JOB_ABEND', SELF, 1, 2)] },
+      { label: 'they did not lose their time to waits', options: [atMost('JOB_CPU', SELF, 25, 2)] },
+    ],
+  },
+  {
+    claim: { trigger: 'DEMAND_SURGE' },
+    predicates: [
+      {
+        label: 'the work arrived faster than its normal hour',
+        // The surging work, a region serving it, or the co-hosted work that paid for the burst (§4.4).
+        options: [multipleAtLeast('ENDED_RATE', SELF_SERVER_COMPETITOR, 1.25, 0)],
+      },
+      {
+        label: 'each transaction still cost its normal CPU',
+        options: [within('CPU_PER_TXN', SELF, 0.15, 0), within('CPU_VS_BASE', SELF, 0.15, 2)],
+      },
+    ],
+  },
+  {
+    claim: { trigger: 'CHANGE_REGRESSION' },
+    predicates: [
+      {
+        label: 'each transaction cost more CPU',
+        options: [atLeast('CPU_PER_TXN', SELF, 1.3, 0), atLeast('CPU_VS_BASE', SELF, 1.3, 2)],
+      },
+      {
+        label: 'the work did not arrive faster',
+        options: [within('ENDED_RATE', SELF, 0.15, 0)],
+      },
+    ],
+  },
+  {
+    claim: { trigger: 'RUNAWAY_WORK' },
+    predicates: [
+      {
+        label: 'one class or job used at least half an engine',
+        // The runaway can be a class of its own (a competitor on the host) as easily as the hurt work's.
+        options: [atLeast('APPL', SELF_SERVER_COMPETITOR, 50, 0), atLeast('JOB_APPL', ['server', 'competitor'], 25, 1)],
+      },
+      {
+        label: "that work's rate did not rise",
+        options: [within('ENDED_RATE', SELF, 0.15, 0)],
+      },
+    ],
+  },
+  {
+    claim: { trigger: 'BATCH_OVERLAP' },
+    predicates: [
+      {
+        label: 'the work waited on a lock',
+        options: [
+          atLeast('WM_LOCK', SELF, 35, 0),
+          atLeast('LOCK_WAIT', SELF, 2, 2),
+          atLeast('JOB_LOCK', SELF, 25, 2),
+        ],
+      },
+      {
+        label: 'the wait was not CPU',
+        options: [atMost('DELAY_CPU', SELF, 10, 0)],
+      },
+    ],
+  },
+  {
+    claim: { trigger: 'POLICY' },
+    predicates: [
+      CPU_HURT,
+      {
+        label: 'the machine had room, so the configuration passed the work over',
+        options: [atMost('CPC_BUSY', HOST, 90, 1), atMost('LPAR_BUSY', HOST, 95, 1)],
+      },
+    ],
+  },
+  {
+    claim: { trigger: 'HARDWARE_FAULT' },
+    predicates: [
+      {
+        label: "the resource's own report showed a fault",
+        options: [
+          atLeast('CF_SYNC', SERVER, 50, 2),
+          atLeast('DASD_DISC', SERVER, 0.14, 2),
+          atLeast('CAPACITY_ADJ', HOST, 1, 1),
+          atLeast('FAIL_PCT', SELF, 1, 2),
+        ],
+      },
+      {
+        label: 'the work ran normally otherwise',
+        options: [within('ENDED_RATE', SELF, 0.15, 0), within('CPU_PER_TXN', SELF, 0.15, 0)],
+      },
+    ],
+  },
+  {
+    claim: { trigger: 'NEW_WORKLOAD' },
+    predicates: [
+      CPU_HURT,
+      {
+        label: 'new work was using a host image',
+        options: [atLeast('APPL', COMPETITOR, 5, 0)],
+      },
+    ],
+  },
+  {
+    claim: { trigger: 'GROWTH' },
+    predicates: [
+      CPU_HURT,
+      {
+        label: 'more work arrived and each transaction still cost the same',
+        options: [multipleAtLeast('ENDED_RATE', SELF, 1.05, 0), within('CPU_PER_TXN', SELF, 0.15, 0)],
+      },
+    ],
+  },
+  {
+    claim: { trigger: 'APPLICATION_ERROR' },
+    predicates: [
+      {
+        label: 'work failed or a region ran short of its own storage',
+        options: [atLeast('FAIL_PCT', SELF, 1, 2), atLeast('JOB_ABEND', SELF, 1, 2), atLeast('SOS_MIN', SERVER, 1, 2)],
+      },
+      NOT_HELD_FOR_CPU,
+    ],
+  },
+];
+
+/** The claims whose recipe must be provable with tier-0/1 reports only (user decision Q3, 2026-11-10): the CPU
+ * family, a dependency, and the three triggers the early cards carry. A test enforces the path. */
+export const COMMON_RECIPES: ProofRecipe['claim'][] = [
+  { mechanism: 'CPU_CAPACITY' },
+  { mechanism: 'CPU_PRIORITY' },
+  { mechanism: 'CAPPING' },
+  { mechanism: 'DEPENDENCY' },
+  { trigger: 'DEMAND_SURGE' },
+  { trigger: 'CHANGE_REGRESSION' },
+  { trigger: 'RUNAWAY_WORK' },
+];
+
+export const recipeFor = (claim: ProofRecipe['claim']): ProofRecipe | undefined =>
+  RECIPES.find((r) => ('mechanism' in claim ? 'mechanism' in r.claim && r.claim.mechanism === claim.mechanism : 'trigger' in r.claim && r.claim.trigger === claim.trigger));

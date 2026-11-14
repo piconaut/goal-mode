@@ -507,6 +507,12 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
                 {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}
               </div>
             ))}
+            {(i.rca!.proof ?? []).map((pr) => (
+              <div key={pr.claim} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
+                {pr.complete ? '✓' : '✗'} proof for {pr.label}:{' '}
+                {pr.predicates.map((x) => `${x.ok ? '✓' : '✗'} ${x.label}`).join('; ')}
+              </div>
+            ))}
             {(i.rca!.evidencePoints ?? 0) > 0 && <div style={{ fontSize: 12, paddingLeft: 12 }}>Evidence +{i.rca!.evidencePoints}</div>}
           </div>
         ))}
