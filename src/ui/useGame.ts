@@ -39,6 +39,8 @@ export interface GameHandle {
   mon3At: { tick: number; view: Mon3View | null } | null;
   rules: { active: ClassificationExplain; pending: ClassificationExplain | null; classIds: string[]; advice: RcAdvice[] | null } | null;
   toast: { ok: boolean; message: string } | null;
+  /** The last IMPORT_RUN outcome, as its own message so the import dialog never reads toast wording. */
+  importResult: { ok: boolean; message: string } | null;
   /** Every change-board result this session, newest last (toasts vanish; this doesn't). */
   results: { ok: boolean; message: string; clock: string }[];
   /** Change Desk basket: kept here so it survives leaving the tab. */
@@ -68,6 +70,7 @@ export function useGame(): GameHandle {
   const [mon3At, setMon3At] = useState<GameHandle['mon3At']>(null);
   const [rules, setRules] = useState<GameHandle['rules']>(null);
   const [toast, setToast] = useState<GameHandle['toast']>(null);
+  const [importResult, setImportResult] = useState<GameHandle['importResult']>(null);
   const [results, setResults] = useState<GameHandle['results']>([]);
   const clockRef = useRef('');
   const [spectateName, setSpectateName] = useState(() => new URLSearchParams(window.location.search).get('spectate'));
@@ -103,6 +106,7 @@ export function useGame(): GameHandle {
       else if (m.type === 'REPORT') setReport(m.text);
       else if (m.type === 'POLICY') setPolicy(m.json);
       else if (m.type === 'RUN_FILE') setRunFile({ name: m.name, text: m.text });
+      else if (m.type === 'IMPORT_RESULT') setImportResult({ ok: m.ok, message: m.message });
       else if (m.type === 'RESULT') {
         setToast({ ok: m.ok, message: m.message });
         setResults((r) => [...r, { ok: m.ok, message: m.message, clock: clockRef.current }].slice(-50));
@@ -172,7 +176,7 @@ export function useGame(): GameHandle {
     window.history.replaceState(null, '', url);
   }, []);
 
-  return { spectate, adoptSpectated, view, report, policy, runFile, prepareRunFile, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, mon3Range, mon3At, rules, toast, results, basket, setBasket, send };
+  return { spectate, adoptSpectated, view, report, policy, runFile, prepareRunFile, history, savedRunDay, pending, classified, smf, finance, whatIf, speed, career, charts, mon3Range, mon3At, rules, toast, importResult, results, basket, setBasket, send };
 }
 
 const SPEED_KEY = 'goalmode.speed';

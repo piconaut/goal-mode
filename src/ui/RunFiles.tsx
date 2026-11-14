@@ -8,14 +8,14 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const exportText = useRef<HTMLTextAreaElement>(null);
   const session = useRef(0);
-  const submittedToast = useRef(game.toast);
+  const submittedResult = useRef(game.importResult);
   const titleId = useId();
   const [mode, setMode] = useState<'export' | 'import' | null>(null);
   const [text, setText] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [reading, setReading] = useState(false);
-  const { runFile, toast } = game;
+  const { runFile } = game;
 
   const close = () => {
     session.current++;
@@ -42,16 +42,15 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
   }, [mode]);
 
   useEffect(() => {
-    if (!loading || !toast || toast === submittedToast.current) return;
-    if (toast.ok && toast.message.startsWith('Loaded run:')) {
+    // The worker's explicit import outcome, not a toast's wording (PR-05).
+    const result = game.importResult;
+    if (!loading || !result || result === submittedResult.current) return;
+    setLoading(false);
+    if (result.ok) {
       session.current++;
-      setLoading(false);
       setMode(null);
-    } else if (toast.message.startsWith('Import failed:')) {
-      setNotice(toast.message);
-      setLoading(false);
-    }
-  }, [loading, toast]);
+    } else setNotice(result.message);
+  }, [loading, game.importResult]);
 
   const selectText = () => {
     exportText.current?.focus();
@@ -79,7 +78,7 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
     }
     const opened = session.current;
     if (!(await ask(`Load ${name}? It replaces the current run and the saved run.`, 'Load save')) || opened !== session.current) return;
-    submittedToast.current = toast;
+    submittedResult.current = game.importResult;
     setNotice('');
     setLoading(true);
     game.send({ type: 'IMPORT_RUN', text: saveText });
