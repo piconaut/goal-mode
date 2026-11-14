@@ -392,12 +392,6 @@ edits are uninstalled and visible). Done when: the message says so.
 From #180. When a later install succeeds after an earlier one failed at day start, the play CLI's day-start text and
 the mail don't say that the earlier install's edits went live through the later one. Done when: both say so.
 
-### PR-07 · The open modal scrolls with the page
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #181. `.modal { position: relative }` in `src/ui/styles.css`: the open modal dialog computes to position absolute
-and scrolls with the page instead of staying fixed. Done when: it stays fixed (check at phone width).
-
 ### PR-08 · One unstyled frame on programmatic close
 `list: pr-followups · status: ready · priority: low · size: S · area: ui`
 
