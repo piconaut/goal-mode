@@ -36,6 +36,10 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
     renderers print no NaN/Infinity/undefined), CF and DASD activity against per-transaction request counts (those
     coefficients are not player-visible), and generated configurations (optional in the request; not added).
 
+- **PR-07 modal placement (2026-11-14):** native modal dialogs use the shared fixed-position rule; the overlay card
+  remains relative. The source-level cascade regression rejects unsupported pseudo-classes instead of silently
+  ignoring their placement rules. Native-browser lifecycle coverage remains the separate PR-09 backlog entry.
+
 - **CL-09 (2026-11-13): loop and reviewer instructions, lessons from the WLM close-out.**
   - pr-fix-loop reviews `needs-user` PRs and holds only the merge. pr-fixer doesn't count the user's pending
     decision as a finding. dev-loop answers holds on those PRs and doesn't count them as blocking a pick.

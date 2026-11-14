@@ -53,7 +53,7 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
         className={pending ? 'modal' : undefined}
         aria-labelledby={`${id}-title`}
         aria-describedby={`${id}-message`}
-        style={{ position: 'fixed', maxHeight: '90vh', overflow: 'auto', color: 'var(--text)' }}
+        style={{ maxHeight: '90vh', overflow: 'auto', color: 'var(--text)' }}
         onKeyDown={(event) => event.stopPropagation()}
         onCancel={() => settle(false)}
         onClose={() => {
