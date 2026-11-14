@@ -22,7 +22,7 @@ is your **held, updated** case (the comment is an author comment, not a loop com
 check 10) applies to these PRs.
 
 PRs labelled `needs-user` (any author) wait for a user decision. Review, fix or hold them like any other PR, but never
-merge one (user request 2026-11-13: #331 sat unreviewed and went stale while it waited for the user). The decision
+merge one (user request 2026-11-13: a PR left unreviewed while it waits goes stale). The decision
 itself is not a finding: name it in the `pr-fixer` brief (step 2). An **approved** `needs-user` PR stays open: report
 `needs-user - merge waits`. Once the user removes the label, the next tick merges it, or re-reviews it if the head
 moved.

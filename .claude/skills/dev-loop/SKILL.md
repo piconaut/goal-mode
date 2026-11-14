@@ -76,7 +76,7 @@ Then do one thing:
    - your recommendation, and why.
 
    Check each option with the zos-docs skill, citing pages. That includes whether real z/OS has the data the option
-   uses. (WT-12's question first pointed toward a per-job forecast of remaining work, which WLM can't make.) On a PR
+   uses. On a PR
    already labelled `needs-user`, the user's open question is not a finding to fix: leave it open, and fix the rest.
 4. **Third response on this PR** (two `dev-loop-response` comments already): label `needs-user` with a comment
    summarising the open findings, and stop. Two rounds that didn't settle it need a human. If the PR is already
@@ -129,9 +129,9 @@ PR other than `needs-user` ones: the lists are finished.
    `sim` work, balance calls and cross-layer work yourself.
    - In the same PR, delete the entry from BACKLOG.md; a partial fix rewrites it to what remains.
    - Record durable facts in SPEC §17/§18, docs/research.md, or a PROGRESS.md decision.
-   - A **status mark** you set in a doc is a claim. That includes a finding marked fixed, partial or open (e.g. `W11
-     fixed` in a design doc) and a ledger row set to modelled. List each mark in the PR body, with the finding's own
-     text you checked it against. (#333 first marked W11 fixed while the fix was partial.)
+   - A **status mark** you set in a doc is a claim. That includes a finding marked fixed, partial or open (e.g. a
+     finding marked fixed in a design doc) and a ledger row set to modelled. List each mark in the PR body, with the finding's own
+     text you checked it against. A partial fix is marked partial, not fixed.
    - Commit with the attribution lines.
 4. **Verify:**
    - `npm run check` must pass.

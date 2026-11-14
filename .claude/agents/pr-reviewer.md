@@ -59,13 +59,12 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
    normal/card-active table, a threshold's headroom), it is not background: re-measure it from the state the
    PR describes (a small `tsx` probe, or the PR's own test setup) or report it as read only in the `Claims:`
    line — never pass it through as verified because the line it feeds still passes. A wrong magnitude can
-   clear its threshold and stay invisible to code, tests and hashes (#345: `MONITOR_CREEP` "~120 %" measured
-   ~32–35 %, and the 25 % line passed either way, so no test, hash or behaviour check could catch it). When
+   clear its threshold and stay invisible to code, tests and hashes. When
    the body calls a line FICTIONAL but measured, check the magnitude against the card's own modifiers (its
    `asCpu` value and the address space's base).
-   **Status marks** in docs are claims too. That covers a finding marked fixed, partial or open (e.g. `W11 fixed`), a
+   **Status marks** in docs are claims too. That covers a finding marked fixed, partial or open, a
    ledger row set to modelled, and an open question closed. Check each mark against the finding's own text and the
-   code. A mark the change doesn't earn is a false claim (#333 first marked W11 fixed while the fix was partial).
+   code. A mark the change doesn't earn is a false claim (a partial fix marked fixed).
 6. **Balance (milestone PRs, or any PR that regenerates goldens).** In the head worktree, start
    `npm run sweep -- --bots donothing,textbook,expert --seeds 1-10 --out runs/review-sweep.csv` (about
    15 min on 4 cores; CI already ran seeds 1–5), then
@@ -81,10 +80,9 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
      concept appears; model changes update SPEC §17 and cite a source;
    - new data in shared state: when a new source feeds existing state, check every reader of that state, and how
      long the new data lives there (does it expire, decay or reset like the old data?). Readers include the AVG and
-     PCT paths, measured and projected values, report classes, and counters such as `missingGoals`. (#333's
-     percentile PI never expired.)
+     PCT paths, measured and projected values, report classes, and counters such as `missingGoals`.
    - a test for each rule: each new or changed rule needs a test that fails when the rule is simplified (a sum
-     becomes a max, `<` becomes `<=`, a guard is dropped). Name the test, or report the gap (#331 N1).
+     becomes a max, `<` becomes `<=`, a guard is dropped). Name the test, or report the gap.
    - Realism: if the diff changes modelled z/OS behaviour or RMF/SMF/Monitor III report content, check the claim
      with the `zos-docs` skill (Skill tool) and cite book and page. A change with no checked citation is a
      blocking finding; if the books clone is missing, say "unverified" rather than guessing. Write `realism: n/a`

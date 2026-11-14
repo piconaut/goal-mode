@@ -125,7 +125,7 @@ npm run sweep:remote -- --ref <SHA> --bots donothing,textbook,expert --seeds 1-1
 It prints the summary and the balance gate report when done (`runs/remote/<sha7>/` keeps the CSV; read it for the
 expert seeds that did not end in victory). A non-zero exit with no summary is an infrastructure failure: rerun once.
 
-When a sweep finishes, compare with the last recorded sweep for that scenario in PROGRESS.md. Gate red or expert down by ≥ 2 victories: diagnose (bot gap like #107, or the fix itself), push the cure
+When a sweep finishes, compare with the last recorded sweep for that scenario in PROGRESS.md. Gate red or expert down by ≥ 2 victories: diagnose (a bot gap, or the fix itself), push the cure
 to the same draft PR and re-sweep the affected scenarios on the new head. When every scenario's sweep is judged
 fine, finish Land step 4 (ready for review).
 
