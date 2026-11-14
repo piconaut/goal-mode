@@ -16,8 +16,13 @@ describe('closing the import dialog', () => {
 
   it('still closes when no import is in flight', () => {
     const src = dialog();
-    // The guard is the first line of the handler, not an unconditional return.
-    expect(src).toMatch(/if \(loading\) return;\s*session\.current\+\+;/);
+    const body = /const close = \(\) => \{([\s\S]*?)\n  \};/.exec(src)?.[1] ?? '';
+    // A later guard (PR-08's already-closing check) may follow, but the loading guard must come before any reset, or
+    // a confirmed import could be dismissed by a close() whose guard runs too late.
+    const guard = body.indexOf('if (loading) return;');
+    expect(guard).toBeGreaterThanOrEqual(0);
+    for (const reset of ['session.current++', 'setMode(null)', 'setLoading(false)', 'setReading(false)'])
+      expect(guard).toBeLessThan(body.indexOf(reset));
     expect(src).not.toMatch(/const close = \(\) => \{\s*return;/);
   });
 });
