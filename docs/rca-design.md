@@ -44,7 +44,8 @@ The judging is not trustworthy enough to gate fixes on, and the reasons are stru
    DASD reports, region storage, a flat CPU per transaction) cannot be pinned or are rejected as "unremarkable".
    Pins are also judged against the classification and routing at *filing* time, so the player's own remediation
    turns good pins into "not about X" (§3 A9–A11). RT-12 replaced the subject test with pin relations; the proof
-   recipes (RT-13) and the missing pin sources (RT-05's busy figures are done; RT-10, RT-11) close the rest.
+   recipes (RT-13) and the missing pin sources (RT-05's busy figures and RT-10's CF/DASD rows are done; RT-11)
+   close the rest.
 6. **A campaign and a retry storm are byte-identical in every report** (R-5). The D1 example fix cannot be proven
    by any data the game has today (§2, §5.3).
 
@@ -393,8 +394,8 @@ class and no longer match — the price of a stable subject for the hour that op
 | CPC busy, LPAR busy, MSU (Partition Data) | CPU_CAPACITY from CPU_PRIORITY | `CPC_BUSY` (90) and `LPAR_BUSY` (95) since RT-05; MSU not a metric |
 | CHANGE REASON / capacity adjustment | POWER_CAP | `CAPACITY_ADJ` since RT-05 (100 − SMF70CAI, notable 1) |
 | CP against IIP APPL %, IIPCP | ZIIP_LOSS, RUNAWAY on PROD2, H2 | `APPL_CP`, `APPL_IIP`, `IIPCP` since RT-05, at half weight beside `APPL` |
-| CF Activity: sync service time, async conversion | CF_LINK, CF_FAILURE, F8 | no pin source |
-| DASD Activity: DISC, IOSQ, per LCU | DASD_DEGRADED against HSM against REORG | no pin source |
+| CF Activity: sync service time, async conversion | CF_LINK, CF_FAILURE, F8 | `CF_SYNC`, `CF_ASYNC_PCT` per CF since RT-10 |
+| DASD Activity: DISC, IOSQ, per LCU | DASD_DEGRADED against HSM against REORG | `DASD_DISC` (ALL VOLUMES row), `DASD_IOSQ`/`DASD_RESP` per LCU since RT-10 |
 | CICS region storage: EDSA at EDSALIM, SOS time | CICS_SOS against low MXT | shown (SMF tab), no pin |
 | Top consumer job in a class (Mon III job rows) | XLOG_LOOP, MONITOR_CREEP, SMF_AUDIT | only SYSWKM server velocity |
 | WLMGL work-manager states (waiting for lock, ready) | LOCK, QR against CPU | not a metric |

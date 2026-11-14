@@ -301,9 +301,9 @@ export function renderDasdSummary(iv: RmfInterval): string {
   ];
   if ((iv.lcus ?? []).length) {
     out.push('', 'LOGICAL CONTROL UNIT SUMMARY (HyperPAV aliases are pooled per LCU)');
-    out.push('LCU  CONTENTS               VOLS  ALIASES  ACTIVITY RATE  AVG RESP(ms)   IOSQ(ms)  ALIASES/HOT VOL');
+    out.push('LCU  CONTENTS               VOLS  ALIASES  ACTIVITY RATE  AVG RESP(ms)   IOSQ(ms)  DISC(ms)  ALIASES/HOT VOL');
     for (const l of iv.lcus) {
-      out.push(`${padR(l.id, 4)} ${padR(l.label, 22)} ${f(l.volumes, 0, 4)} ${f(l.aliases, 0, 8)} ${f(l.iops, 0, 14)} ${f(l.rtMs, 3, 13)} ${f(l.iosqMs, 3, 10)} ${f(l.aliasesPerHotVol, 2, 16)}`);
+      out.push(`${padR(l.id, 4)} ${padR(l.label, 22)} ${f(l.volumes, 0, 4)} ${f(l.aliases, 0, 8)} ${f(l.iops, 0, 14)} ${f(l.rtMs, 3, 13)} ${f(l.iosqMs, 3, 10)} ${f(l.discMs, 3, 9)} ${f(l.aliasesPerHotVol, 2, 16)}`);
     }
   }
   return out.join('\n');

@@ -710,6 +710,26 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
     priority but to be done, batch response-time goals especially. WT-15's Done-when listed them unnecessarily;
     WT-15 and the sweep went first. WT-17 is ready.
 
+- 2026-11-13: RT-10, the CF Activity and DASD Activity rows are pin sources (docs/rca-design.md §4.6, A11). Five new
+  metrics, all `server` clues for the infrastructure the work's Db2 and I/O wait on: `CF_SYNC` (a CF's sync service
+  time, µs; CF_SERVICE, HARDWARE_FAULT), `CF_ASYNC_PCT` (its async conversion, %; CF_SERVICE), and `DASD_DISC`
+  (DISC, ms; IO, HARDWARE_FAULT), `DASD_IOSQ` (ms; IO, DEMAND_SURGE and BATCH_OVERLAP) and `DASD_RESP` (response,
+  ms; IO) per LCU, with DISC also on the ALL VOLUMES row. Pinned from the RMF CF/DASD interval (`pin CF <cf> …`,
+  `pin DASD <LCU|ALL> …`, and the pin forms on those two report tabs), sized with the row's own baseline where the
+  report has six earlier intervals.
+  - New `notableMultiple` in `content/evidence.ts`: the two CF metrics and three DASD ones must clear a multiple
+    (2×) of the row's own recent baseline as well as the absolute line. One line cannot serve rows whose healthy
+    scale differs: CF02 runs on a weak shared ICF engine at 1.4 ms sync service, so without the second line a
+    normal CF02 row would count for every CF incident. Measured day-0 norms (midwest, revenue, harbourline): sync
+    17–23 µs (CF02 1368), async 0 % (CF02 98), DISC 0.07 ms, LCU IOSQ 0 ms, response 0.22–0.23 ms; the cards take
+    CF01 sync to 109 µs with 69 % async (CF_LINK), DISC to 0.37 (DASD_DEGRADED), LCU 21 IOSQ to 21.5 (REORG),
+    LCU 30 response to 0.48 (HSM). Lines: 50 µs, 1 %, 0.14 ms, 0.1 ms, 0.44 ms.
+  - The DASD Activity LCU summary gains a DISC(ms) column (REPORT text change only): the sim already computed each
+    class's DISC, so `LcuResult.discSec` now weights it by the LCU's I/O mix and `RmfInterval.lcus[].discMs`
+    carries it. Pins read the same figure, so a pinned value is one the player can see.
+  - Not done here: CF_FAILURE's "CF missing from the report" has no metric (A11's residue), and recipes (RT-13) are
+    where these look-alikes get separated into pairs.
+
 - 2026-11-13: RT-08, CAPPING is a share of the hour's ticks, not its worst tick (docs/rca-design.md §4.3, A6).
   `accumulateHour` now counts, per image, the ticks in which its CP demand was cut (`HourAcc.cappedTicksByLpar`,
   `cappedFrac > 0`), and `cappedForHour` calls the hour capped when that count is at least `CAPPING.minHourShare`

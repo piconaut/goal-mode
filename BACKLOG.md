@@ -205,17 +205,6 @@ Done when: `tests/game/rcaVocabulary.test.ts` covers the new texts, the Codex en
 replays a play file written with the old id and gets the same state, and no `ACCESS_PATH_REGRESSION` remains outside
 the aliases.
 
-### RT-10 · Pin CF Activity and DASD Activity rows
-`list: rca-truth · status: ready · priority: low · size: M · area: game`
-
-CF_LINK, CF_FAILURE, F8, DASD_DEGRADED, HSM_RECALL_STORM and REORG_OVERRUN are told apart only in reports that have
-no pin source (A11). Add `CF_SYNC` (structure or CF sync service time, µs; CF_SERVICE, HARDWARE_FAULT),
-`CF_ASYNC_PCT` (requests converted to async; CF_SERVICE), `DASD_DISC`, `DASD_IOSQ` and `DASD_RESP` per LCU (ms; IO;
-`DASD_DISC` also HARDWARE_FAULT, `DASD_IOSQ` also DEMAND_SURGE and BATCH_OVERLAP), pinned from an RMF interval of the
-CF_DASD reports, subject the CF or LCU, counted as server-side clues for work that uses Db2 or does I/O. Notable
-lines are FICTIONAL and go in `content/evidence.ts` (start at twice the scenario's day-0 value). Done when: pinnable
-from the CLI and UI, tested, and listed in SPEC §10.
-
 ### RT-11 · Pin CICS region storage, top-consumer jobs and work-manager states
 `list: rca-truth · status: ready · priority: low · size: M · area: game`
 
@@ -232,8 +221,8 @@ p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §
 User decision on Q3, 2026-11-10: yes. After RT-12. Recipes per mechanism and trigger in
 `content/evidence.ts` (§4.6 table), judged over the up-to-three attached pins. Every common recipe (CPU family,
 DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) has a path that needs only tier-0/1 tools, so early-game
-players can complete a proof. The CF, DASD and CICS-storage recipes need RT-10 and RT-11: whichever of RT-10, RT-11
-and RT-13 lands last adds them; a complete recipe for the filed, accepted mechanism replaces today's
+players can complete a proof. The CF and DASD recipes use RT-10's `CF_*`/`DASD_*` pins; the CICS-storage one needs
+RT-11: whichever of RT-11 and RT-13 lands last adds it. A complete recipe for the filed, accepted mechanism replaces today's
 relevance sum, a second for the trigger makes the evidence strong; the reply shows each predicate ticked or not.
 Note: `ENDED_RATE` is `self`/`server` only today, so the DEMAND_SURGE recipe's "on the surging workload" and §4.4's
 collateral-victim surrogate (a co-hosted workload's rate) need it widened to `competitor` here.

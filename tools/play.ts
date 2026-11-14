@@ -8,6 +8,7 @@
 //   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n> | restart <JOB>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric> [--at D2 10:40]
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED|LPAR_BUSY|CPC_BUSY|CAPACITY_ADJ [interval id: Partition Data; none = Monitor III now or --at] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
+//   npm run play -- runs/a.json pin CF <cfLparId> CF_SYNC|CF_ASYNC_PCT [interval id; none = latest] | pin DASD <LCU|ALL> DASD_DISC|DASD_IOSQ|DASD_RESP [interval id; none = latest]   (RMF CF/DASD Activity)
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
 //   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
@@ -20,7 +21,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { DIFFICULTIES, type DifficultyId } from '../src/content/difficulty';
 import { SCENARIOS } from '../src/content/scenarios';
 import type { Mechanism, Trigger } from '../src/game/types';
-import type { CpcMetric, PinRequest } from '../src/game/evidence';
+import type { CfMetric, CpcMetric, DasdMetric, PinRequest } from '../src/game/evidence';
 import type { EvidenceMetric } from '../src/content/evidence';
 import type { InquiryKind } from '../src/content/inquiries';
 import type { ReportKind, SmfKind } from '../src/worker/protocol';
@@ -53,10 +54,14 @@ if (!path || !verb) {
 
 function pinCommand(a: string[]): PlayCommand {
   const req = pinRequest(a);
-  return req.source === 'WLMGL' || (req.source === 'CPC' && req.index !== undefined) ? { cmd: 'pin', req, intervalId: req.index } : { cmd: 'pin', req, ...(at !== undefined ? { at } : {}) };
+  return req.source === 'WLMGL' || ((req.source === 'CPC' || req.source === 'CF' || req.source === 'DASD') && req.index !== undefined)
+    ? { cmd: 'pin', req, intervalId: req.index }
+    : { cmd: 'pin', req, ...(at !== undefined ? { at } : {}) };
 }
 
 const CPC_METRICS: readonly CpcMetric[] = ['PRSM_DELAY', 'CAPPED', 'LPAR_BUSY', 'CPC_BUSY', 'CAPACITY_ADJ'];
+const CF_METRICS: readonly CfMetric[] = ['CF_SYNC', 'CF_ASYNC_PCT'];
+const DASD_METRICS: readonly DasdMetric[] = ['DASD_DISC', 'DASD_IOSQ', 'DASD_RESP'];
 
 function pinRequest(a: string[]): PinRequest {
   const src = (a[0] ?? '').toUpperCase();
@@ -67,9 +72,19 @@ function pinRequest(a: string[]): PinRequest {
     if (!CPC_METRICS.includes(metric)) throw new Error(`CPC metric: ${CPC_METRICS.join(' | ')}`);
     return { source: 'CPC', lparId: a[1] ?? '', metric, ...(a[3] !== undefined ? { index: Number(a[3]) } : {}) };
   }
+  if (src === 'CF') {
+    const metric = (a[2] ?? 'CF_SYNC').toUpperCase() as CfMetric;
+    if (!CF_METRICS.includes(metric)) throw new Error(`CF metric: ${CF_METRICS.join(' | ')}`);
+    return { source: 'CF', cfLparId: a[1] ?? '', metric, ...(a[3] !== undefined ? { index: Number(a[3]) } : {}) };
+  }
+  if (src === 'DASD') {
+    const metric = (a[2] ?? 'DASD_DISC').toUpperCase() as DasdMetric;
+    if (!DASD_METRICS.includes(metric)) throw new Error(`DASD metric: ${DASD_METRICS.join(' | ')}`);
+    return { source: 'DASD', lcuId: a[1] ?? 'ALL', metric, ...(a[3] !== undefined ? { index: Number(a[3]) } : {}) };
+  }
   if (src === 'DB2' || src === 'CICS') return { source: src, hour: a[1] ?? '', workloadId: a[2] ?? '', metric: a[3] as EvidenceMetric };
   if (src === 'BATCH') return { source: 'BATCH', day: Number(String(a[1] ?? '').replace(/^D/i, '')) - 1, metric: a[2] as EvidenceMetric };
-  throw new Error('pin source: WLMGL | MON3 | CPC | DB2 | CICS | BATCH');
+  throw new Error('pin source: WLMGL | MON3 | CPC | CF | DASD | DB2 | CICS | BATCH');
 }
 
 /** wlmlog [system] [--grep text] */

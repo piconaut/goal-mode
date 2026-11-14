@@ -39,6 +39,10 @@ export interface EvidencePin {
 /** Metrics a Partition Data or Monitor III CPC row can pin. */
 export type CpcMetric = 'PRSM_DELAY' | 'CAPPED' | 'CPC_BUSY' | 'LPAR_BUSY' | 'CAPACITY_ADJ';
 
+/** Metrics a CF Activity row (one CF) or a DASD Activity row (an LCU, or ALL for the volume summary) can pin. */
+export type CfMetric = 'CF_SYNC' | 'CF_ASYNC_PCT';
+export type DasdMetric = 'DASD_DISC' | 'DASD_IOSQ' | 'DASD_RESP';
+
 export type PinRequest =
   | { source: 'WLMGL'; index: number; system: string; scKey: string; metric: EvidenceMetric }
   /** tick: a past Monitor III range (the one ending at or before it, from the history); without it, now. */
@@ -47,6 +51,11 @@ export type PinRequest =
   /** index: an RMF interval (Partition Data); without it, the Monitor III CPC view (now, or at `tick`).
    * The partition names the row; CPC_BUSY and CAPACITY_ADJ are about the CPC it runs on (the pin's subject). */
   | { source: 'CPC'; lparId: string; metric: CpcMetric; index?: number; tick?: number }
+  /** CF Activity (RT-10): the CF's sync service time or async conversion. Without `index`, the latest interval. */
+  | { source: 'CF'; cfLparId: string; metric: CfMetric; index?: number }
+  /** DASD Activity (RT-10): an LCU's IOSQ/response/DISC, or `ALL` for the ALL VOLUMES row (DISC only). Without
+   * `index`, the latest interval. */
+  | { source: 'DASD'; lcuId: string; metric: DasdMetric; index?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
   /** SMF 30 for the batch night that followed played day `day` (critical jobs' delay accounting). */
   | { source: 'BATCH'; day: number; metric: EvidenceMetric };
@@ -197,6 +206,36 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       }
       const value = req.metric === 'CAPPED' ? c.cappedPct : req.metric === 'LPAR_BUSY' ? c.busyPct! : c.prsmDelayPct;
       return { source: 'CPC', metric: req.metric, subject: req.lparId, system: req.lparId, tick: m.tick, value };
+    }
+    case 'CF': {
+      const index = req.index ?? sim.rmf.intervals.length - 1;
+      const iv = sim.rmf.intervals[index];
+      const c = iv?.cf.find((x) => x.lparId === req.cfLparId);
+      if (!iv || !c) return 'No such CF Activity row';
+      const read = (x: (typeof sim.rmf.intervals)[number]) => {
+        const row = x.cf.find((y) => y.lparId === req.cfLparId);
+        return row === undefined ? null : req.metric === 'CF_SYNC' ? row.syncUs : row.asyncPct;
+      };
+      const value = req.metric === 'CF_SYNC' ? c.syncUs : c.asyncPct;
+      const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
+      return { source: 'CF', metric: req.metric, subject: req.cfLparId, system: req.cfLparId, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+    }
+    case 'DASD': {
+      const index = req.index ?? sim.rmf.intervals.length - 1;
+      const iv = sim.rmf.intervals[index];
+      if (!iv) return 'No such DASD Activity row';
+      const read = (x: (typeof sim.rmf.intervals)[number]): number | null => {
+        if (req.lcuId === 'ALL') return req.metric === 'DASD_DISC' ? (x.dasd.discMs ?? null) : null;
+        const l = x.lcus.find((y) => y.id === req.lcuId);
+        if (!l) return null;
+        const v = req.metric === 'DASD_DISC' ? l.discMs : req.metric === 'DASD_IOSQ' ? l.iosqMs : l.rtMs;
+        return typeof v === 'number' && Number.isFinite(v) ? v : null;
+      };
+      const value = read(iv);
+      if (value === null)
+        return req.lcuId === 'ALL' ? 'The ALL VOLUMES row has DISC only: pin an LCU for IOSQ or response time' : 'No such LCU row';
+      const baseline = median(sim.rmf.intervals.slice(Math.max(0, index - EVIDENCE.baselineRows), index).map(read).filter(NUM));
+      return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
     }
     case 'DB2':
     case 'CICS': {
@@ -356,6 +395,10 @@ export function pinRelation(run: RunState, inc: Incident, p: EvidencePin, s: Inc
     case 'CICS 110':
     case 'SMF 30':
       return p.subject === inc.workloadId ? 'self' : null;
+    // CF and DASD rows are the infrastructure serving the work's Db2 and I/O (RT-10): a server-side clue.
+    case 'CF':
+    case 'DASD':
+      return 'server';
     case 'CPC':
       return s.hosts.includes(p.subject) ||
         s.hosts.some((lparId) => run.sim.config.lpars.find((l) => l.id === lparId)?.cpcId === p.subject)
@@ -408,7 +451,10 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
     if (!d.relations.includes(relation))
       return result(0, relation === 'competitor' ? "another class's row, not the hurt work's" : `about ${RELATION_TEXT[relation]}, not ${inc.workloadId}'s own work`, 1);
     if (d.weight === 0) return result(0, 'a symptom, not a cause', 2);
-    if (Math.abs(p.value) < d.notableAt) return result(0, 'value is unremarkable', 3);
+    // Notable against the metric's line, and against the row's own recent normal where both exist (RT-10): one line
+    // cannot serve rows whose healthy scale differs (CF02's weak ICF engine, one LCU among several).
+    const floor = Math.max(d.notableAt, d.notableMultiple !== undefined && p.baseline !== undefined ? d.notableMultiple * p.baseline : 0);
+    if (Math.abs(p.value) < floor) return result(0, 'value is unremarkable', 3);
     const hit = d.mechanisms.includes(inc.truth.mechanism) || d.triggers.includes(inc.truth.trigger);
     return result(hit ? d.weight : 0, hit ? (d.weight < 1 ? 'consistent with the cause (but not specific)' : 'points at the cause') : 'points elsewhere', 4);
   });

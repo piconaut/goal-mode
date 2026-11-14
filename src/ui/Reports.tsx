@@ -90,8 +90,59 @@ export function Reports({ v, game }: { v: ViewModel; game: GameHandle }) {
       {(kind === 'WLM_SUMMARY' || (kind === 'WLM_DETAIL' && scKeys.includes(scKey))) && sel !== null && (
         <PinFromReport index={sel} system={system} scKeys={scKeys} initial={kind === 'WLM_DETAIL' ? scKey : undefined} game={game} />
       )}
+      {(kind === 'CF' || kind === 'DASD') && sel !== null && (
+        <PinFromCfDasd kind={kind} index={sel} cfs={v.config.lpars.filter((l) => l.kind === 'CF').map((l) => l.id)} lcus={v.config.dasd.lcus.map((l) => l.id)} game={game} />
+      )}
       <div className="green">{game.report}</div>
     </div>
+  );
+}
+
+/** Pin one value from a CF Activity or DASD Activity interval as RCA evidence (RT-10). The CF (or LCU) row names the
+ * subject; the ALL VOLUMES row has DISC only. */
+function PinFromCfDasd({ kind, index, cfs, lcus, game }: { kind: 'CF' | 'DASD'; index: number; cfs: string[]; lcus: string[]; game: GameHandle }) {
+  const [cf, setCf] = useState(cfs[0] ?? '');
+  const [lcu, setLcu] = useState(lcus[0] ?? 'ALL');
+  const [metric, setMetric] = useState<EvidenceMetric>(kind === 'CF' ? 'CF_SYNC' : 'DASD_DISC');
+  const metrics: EvidenceMetric[] = kind === 'CF' ? ['CF_SYNC', 'CF_ASYNC_PCT'] : ['DASD_DISC', 'DASD_IOSQ', 'DASD_RESP'];
+  // The ALL VOLUMES row reports DISC only; IOSQ and response need an LCU.
+  const subjects = kind === 'CF' ? cfs : ['ALL', ...lcus];
+  return (
+    <form
+      className="form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        game.send({
+          type: 'PIN',
+          req: kind === 'CF'
+            ? { source: 'CF', cfLparId: cf, metric: metric as 'CF_SYNC' | 'CF_ASYNC_PCT', index }
+            : { source: 'DASD', lcuId: lcu, metric: metric as 'DASD_DISC' | 'DASD_IOSQ' | 'DASD_RESP', index },
+        });
+      }}
+    >
+      <span className="muted">📌 Pin from this interval:</span>
+      <select aria-label={kind === 'CF' ? 'Coupling facility to pin' : 'LCU to pin'} value={kind === 'CF' ? cf : lcu}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (kind === 'CF') setCf(v);
+          else {
+            setLcu(v);
+            if (v === 'ALL') setMetric('DASD_DISC');
+          }
+        }}>
+        {subjects.map((s) => (
+          <option key={s}>{s}</option>
+        ))}
+      </select>
+      <select aria-label="Metric to pin" value={metric} onChange={(e) => setMetric(e.target.value as EvidenceMetric)}>
+        {metrics.filter((m) => kind === 'CF' || lcu !== 'ALL' || m === 'DASD_DISC').map((m) => (
+          <option key={m} value={m}>
+            {EVIDENCE_METRICS[m].label}
+          </option>
+        ))}
+      </select>
+      <button type="submit">Pin {kind === 'CF' ? cf : lcu}</button>
+    </form>
   );
 }
 
