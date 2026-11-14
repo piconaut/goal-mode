@@ -57,8 +57,8 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
    **A "measured" figure the PR introduces or restates is a claim too.** When the body, or a PROGRESS entry
    or code comment the PR adds or restates, gives a number from a run ("measured on day 0 over seeds 1–5", a
    normal/card-active table, a threshold's headroom), it is not background: re-measure it from the state the
-   PR describes (a small `tsx` probe, or the PR's own test setup) or list it under "not verified" in the
-   report — never pass it through as verified because the line it feeds still passes. A wrong magnitude can
+   PR describes (a small `tsx` probe, or the PR's own test setup) or report it as read only in the `Claims:`
+   line — never pass it through as verified because the line it feeds still passes. A wrong magnitude can
    clear its threshold and stay invisible to code, tests and hashes (#345: `MONITOR_CREEP` "~120 %" measured
    ~32–35 %, and the 25 % line passed either way, so no test, hash or behaviour check could catch it). When
    the body calls a line FICTIONAL but measured, check the magnitude against the card's own modifiers (its
