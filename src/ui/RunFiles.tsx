@@ -140,6 +140,7 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
             </div>
           </>
         )}
+        {loading && <p role="status">Loading the save; the dialog closes when the import finishes.</p>}
         {notice && <p role="status">{notice}</p>}
       </dialog>
       <input
