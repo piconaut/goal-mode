@@ -18,7 +18,7 @@ import { endReport, type EndReport } from './endReport';
 import { plannedPolicy, type ScheduleEntry } from './policies';
 import { capacityForecasts, type Forecast } from './planner';
 import { smfHourRefs, type SmfHourRef } from './smf';
-import { buildMon3, type Mon3View } from './mon3';
+import { buildMon3, softCapped, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
 import { db2AboveItsClients, installedPolicy } from './tutorial';
 import { formatClock, clockAt } from '../sim/core/clock';
@@ -239,7 +239,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
       msu: rt?.msuRate ?? 0,
       r4ha: r4?.r4ha ?? null,
       definedCapacity: l.definedCapacityMsu,
-      capped: r4?.capped ?? false,
+      capped: l.kind === 'ZOS' && softCapped(sim, l.id),
       memoryGb: l.memoryGb,
     };
   });

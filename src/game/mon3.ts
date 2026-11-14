@@ -231,6 +231,14 @@ export interface Mon3ProcJob {
   eapplZiipEngines: number;
 }
 
+/** WLM is soft-capping the image: its own R4HA is above its defined capacity, or its capacity group's is above the
+ * group limit (the two conditions `softCap` applies in the sim; MVS Planning: WLM 3.1 p.44–47). */
+export function softCapped(sim: RunState['sim'], lparId: string): boolean {
+  const l = sim.config.lpars.find((x) => x.id === lparId);
+  if (sim.capping.lpars.find((x) => x.id === lparId)?.capped && l?.definedCapacityMsu != null) return true;
+  return !!l?.capacityGroup && !!sim.capping.groups.find((g) => g.id === l.capacityGroup)?.capped;
+}
+
 /** The resource behind DELAY's Primary Reason: the largest % Delayed for above 2%, capping included (p.110). */
 export function primaryDelayOf(delay: Mon3Row['delay']): Mon3DelayResource | null {
   const by: [Mon3DelayResource, number][] = [
@@ -438,7 +446,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
         eapplPct: lcp > 0 ? (100 * eappl) / lcp : 0,
         applIipPct: lzi > 0 ? (100 * mine.reduce((a, r) => a + r.ziipEngines, 0)) / lzi : null,
         msu: rt?.msuRate ?? 0,
-        capped: sim.capping.lpars.find((x) => x.id === l.id)?.capped ?? false,
+        capped: softCapped(sim, l.id),
         worstPi: pis.length ? Math.max(...pis) : null,
       };
     });
