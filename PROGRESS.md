@@ -8,6 +8,10 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **Agent instructions pruned of incident notes (2026-11-14, direct user request, not a BACKLOG pick).** Skills and
+  agents state each rule on its own; the PR or entry that prompted a rule (#107, #331, #333, #345, WT-12) stays in git
+  history and this file, not in the instructions, so the rule lists don't grow with every incident. Report-format
+  examples with sample PR numbers and the `wlm-why` mechanic tags (WT-07…) are kept: they're examples and lookups.
 - **Cross-report invariant suite (2026-11-14, direct user request, not a BACKLOG pick).**
   - `tests/sim/report-invariants.test.ts`: 43 identities (24 real z/OS reporting behaviour, cited to book and page
     with the zos-docs skill; 19 game consistency rules) over one seeded headless day per scenario in `SCENARIOS`,
