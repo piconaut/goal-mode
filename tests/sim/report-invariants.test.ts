@@ -28,8 +28,9 @@ describe.each(Object.keys(SCENARIOS))('report invariants: %s', (id) => {
   it.each(IDENTITIES.map((i) => [i.id, i.basis, i.title, i] as const))('%s [%s] %s', (_id, _basis, _title, identity) => {
     const c = new Check();
     identity.check(run, c);
-    expect(c.failures).toEqual([]);
+    // Recorded before the assertion: a failing identity was exercised, and must not also fail the coverage test.
     if (c.n > 0) exercised[identity.id]!.push(id);
+    expect(c.failures).toEqual([]);
   });
 });
 
