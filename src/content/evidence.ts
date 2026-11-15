@@ -65,6 +65,9 @@ export interface EvidenceMetricDef {
   weight: number;
   /** The relations this metric is evidence for; a pin outside them scores nothing, whatever its size. */
   relations: PinRelation[];
+  /** Which earlier rows a pin's baseline is the median of: the six preceding report intervals or SMF hours (default),
+   * or for a metric that follows the time of day the same interval or hour on earlier days (§4.4's slot baseline). */
+  baseline?: 'slot';
 }
 
 /** Symptom metrics: they say the work was hurt, not why, so any relation is "about" the incident (weight 0). */
@@ -92,7 +95,8 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   IIPCP: { label: 'APPL % IIPCP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
   // A co-hosted workload's arrivals are the surge that hurt its neighbour (§4.4's collateral victim), so another class's
   // ended rate is accepted too (RT-13).
-  ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5, relations: OWN_OR_COMPETITOR },
+  // Arrivals follow the time of day: the six preceding rows would read a morning ramp as a 1.7× surge (RT-13).
+  ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5, relations: OWN_OR_COMPETITOR, baseline: 'slot' },
   DELAY_CPU: { label: 'CPU delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'DEPENDENCY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_ZIIP: { label: 'zIIP delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_IO: { label: 'I/O delay %', unit: '%', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 10, weight: 1, relations: OWN },
@@ -209,9 +213,9 @@ export interface PredicateOption {
   /** The row's period must be less important than the hurt work's (a higher importance number, or discretionary):
    * work WLM could have taken the CPU from. */
   displaceable?: true;
-  /** The pin must read the same row (image and class, or workload) as a pin meeting predicate 0: the two halves of a
-   * surge or a regression describe one piece of work. Only 0 exists today. */
-  sameWorkAs?: 0;
+  /** The pin must read the same row (image and class, or workload) as a pin meeting the recipe's first predicate: the
+   * two halves of a surge or a regression describe one piece of work. */
+  sameWork?: true;
 }
 
 export interface ProofPredicate {
@@ -251,15 +255,20 @@ export const PROOF = {
   partialPoints: 0.5,
 };
 
-const at = (metric: EvidenceMetric, value: number, relations: PinRelation[], extra: Partial<PredicateOption> = {}): PredicateOption => ({ metric, relations, test: { kind: 'atLeast', value }, ...extra });
+const at = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'atLeast', value } });
 const below = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'below', value } });
 const notable = (metric: EvidenceMetric, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'notable' } });
 const normal = (metric: EvidenceMetric, relations: PinRelation[], reading?: 'rate'): PredicateOption => ({ metric, relations, test: { kind: 'normal', band: PROOF.normalBand }, ...(reading ? { reading } : {}) });
-/** The same work as predicate 0 showed (see `sameWorkAs`). */
-const same = (o: PredicateOption): PredicateOption => ({ ...o, sameWorkAs: 0 });
+/** The same work as the first predicate showed (see `sameWork`). */
+const same = (o: PredicateOption): PredicateOption => ({ ...o, sameWork: true });
+/** A class's CPU share (APPL, and its CP part) under one test. */
+const appl = (test: PinTest, relations: PinRelation[], extra: Partial<PredicateOption> = {}): PredicateOption[] =>
+  (['APPL', 'APPL_CP'] as const).map((metric) => ({ metric, relations, test, ...extra }));
 const ratio = (metric: EvidenceMetric, r: number, relations: PinRelation[], reading?: 'rate'): PredicateOption => ({ metric, relations, test: { kind: 'ratioAtLeast', ratio: r }, ...(reading ? { reading } : {}) });
 
 const SELF: PinRelation[] = ['self'];
+/** The work's own CPU per transaction at its normal: the Workload Activity quotient, or Db2/CICS accounting's ratio. */
+const COST_NORMAL: PredicateOption[] = [normal('CPU_PER_TXN', SELF), normal('CPU_VS_BASE', SELF)];
 const SELF_OR_COMPETITOR: PinRelation[] = ['self', 'competitor'];
 
 /** The hurt work waited for CPU: its own row or its regions' (a CICS transaction row has no CPU delay of its own). */
@@ -290,10 +299,10 @@ const HURT: ProofPredicate = {
 /** Neither more work nor costlier work: the row's ended rate or CPU per transaction at its recent normal. */
 const DEMAND_NORMAL: ProofPredicate = {
   label: 'the work itself unchanged: its ended/s or CPU per transaction within ±15 % of normal (WLMGL, Db2 101, CICS 110)',
-  options: [normal('ENDED_RATE', SELF), normal('CPU_PER_TXN', SELF), normal('CPU_VS_BASE', SELF), normal('CPU_PER_TXN', SELF, 'rate'), normal('CPU_VS_BASE', SELF, 'rate')],
+  options: [normal('ENDED_RATE', SELF), ...COST_NORMAL, normal('CPU_PER_TXN', SELF, 'rate'), normal('CPU_VS_BASE', SELF, 'rate')],
 };
 
-const mechanismRecipes: Record<Mechanism, ProofRecipe> = {
+export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
   CPU_CAPACITY: { predicates: [CPU_DELAYED, {
     label: 'the processor full: CPC or image busy ≥ 90 %, or a capacity adjustment below 100 (Partition Data, CPC)',
     options: [at('CPC_BUSY', PROOF.busyPct, HOST_ONLY), at('LPAR_BUSY', PROOF.busyPct, HOST_ONLY), at('CAPACITY_ADJ', 1, HOST_ONLY)],
@@ -303,8 +312,7 @@ const mechanismRecipes: Record<Mechanism, ProofRecipe> = {
   CPU_PRIORITY: { predicates: [CPU_DELAYED, {
     label: 'a displaceable consumer on that host: a less important class or job using ≥ 10 % of the image (WLMGL APPL, PROCU)',
     options: [
-      { metric: 'APPL', relations: SELF_OR_COMPETITOR, test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
-      { metric: 'APPL_CP', relations: SELF_OR_COMPETITOR, test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
+      ...appl({ kind: 'shareOfImage', frac: PROOF.imageShareFrac }, SELF_OR_COMPETITOR, { displaceable: true }),
       { metric: 'JOB_APPL', relations: ['competitor'], test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
     ],
   }] },
@@ -312,7 +320,7 @@ const mechanismRecipes: Record<Mechanism, ProofRecipe> = {
   // absolute cap on a zIIP pool exists but no card here sets one).
   CAPPING: { predicates: [{
     label: 'CPU delay ≥ 10 % on the hurt class or its regions (WLMGL, DELAY), or the critical jobs\' CPU wait ≥ 25 % (SMF 30)',
-    options: [at('DELAY_CPU', PROOF.delayPct, OWN), at('JOB_CPU', PROOF.jobWaitPct, SELF)],
+    options: CPU_DELAYED.options.filter((o) => o.metric !== 'DELAY_ZIIP'),
   }, {
     label: 'a cap held it: the image capped ≥ 5 % of the interval (Partition Data), or CAP delay ≥ 5 % on the class (WLMGL)',
     options: [at('CAPPED', PROOF.cappedPct, HOST_ONLY), at('DELAY_CAP', PROOF.capDelayPct, SELF)],
@@ -344,14 +352,14 @@ const mechanismRecipes: Record<Mechanism, ProofRecipe> = {
     options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
   }, {
     label: 'not slower work holding the slots: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',
-    options: [normal('CPU_VS_BASE', SELF), normal('CPU_PER_TXN', SELF), below('QR_WAIT', 5, SELF), below('JOB_CPU', PROOF.jobWaitPct, SELF)],
+    options: [...COST_NORMAL, below('QR_WAIT', 5, SELF), below('JOB_CPU', PROOF.jobWaitPct, SELF)],
   }] },
   ROUTING: { predicates: [{
     label: 'transactions failed: failed share ≥ 1 % (CICS 110)',
     options: [notable('FAIL_PCT', SELF)],
   }, {
     label: 'the work itself unchanged: its CPU per transaction within ±15 % of normal (CICS 110, Db2 101)',
-    options: [normal('CPU_VS_BASE', SELF), normal('CPU_PER_TXN', SELF)],
+    options: COST_NORMAL,
   }] },
   IO: { predicates: [{
     label: 'I/O waits on the hurt work: I/O delay ≥ 10 % (WLMGL), sync I/O ≥ 5 ms/txn or past its normal band (Db2 101), or the jobs\' I/O wait ≥ 25 % (SMF 30)',
@@ -373,7 +381,7 @@ const mechanismRecipes: Record<Mechanism, ProofRecipe> = {
   }] },
 };
 
-const triggerRecipes: Record<Trigger, ProofRecipe> = {
+export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = {
   DEMAND_SURGE: { predicates: [{
     label: 'more work: ended/s ≥ 1.25 × its recent normal on the hurt or a co-hosted workload',
     options: [
@@ -395,13 +403,12 @@ const triggerRecipes: Record<Trigger, ProofRecipe> = {
   RUNAWAY_WORK: { predicates: [{
     label: 'one class or job up by half an engine: APPL ≥ 50 points over its normal (WLMGL), or a job at ≥ 50 % EAppl CP (PROCU)',
     options: [
-      { metric: 'APPL', relations: SELF_OR_COMPETITOR, test: { kind: 'riseBy', points: PROOF.runawayPoints } },
-      { metric: 'APPL_CP', relations: SELF_OR_COMPETITOR, test: { kind: 'riseBy', points: PROOF.runawayPoints } },
+      ...appl({ kind: 'riseBy', points: PROOF.runawayPoints }, SELF_OR_COMPETITOR),
       at('JOB_APPL', PROOF.runawayPoints, ['server', 'competitor']),
     ],
   }, {
     label: 'without more work to show for it: that class\'s ended/s flat, or the hurt work\'s own CPU per transaction within ±15 % of normal',
-    options: [same(normal('ENDED_RATE', ['competitor'])), normal('CPU_PER_TXN', SELF), normal('CPU_VS_BASE', SELF)],
+    options: [same(normal('ENDED_RATE', ['competitor'])), ...COST_NORMAL],
   }] },
   BATCH_OVERLAP: { predicates: [{
     label: 'lock or I/O waits on the hurt work (Db2 lock wait, LOCK state, I/O delay, the jobs\' lock wait), or IOSQ past twice normal (DASD Activity)',
@@ -409,8 +416,7 @@ const triggerRecipes: Record<Trigger, ProofRecipe> = {
   }, {
     label: 'batch running then: a batch class using ≥ 10 % of the image (WLMGL APPL)',
     options: [
-      { metric: 'APPL', relations: SELF_OR_COMPETITOR, test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, batchClass: true },
-      { metric: 'APPL_CP', relations: SELF_OR_COMPETITOR, test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, batchClass: true },
+      ...appl({ kind: 'shareOfImage', frac: PROOF.imageShareFrac }, SELF_OR_COMPETITOR, { batchClass: true }),
     ],
   }] },
   POLICY: { predicates: [HURT, DEMAND_NORMAL] },
@@ -427,8 +433,7 @@ const triggerRecipes: Record<Trigger, ProofRecipe> = {
   NEW_WORKLOAD: { predicates: [HURT, {
     label: 'work with no history: a class or workload row with no earlier report rows (WLMGL, Db2 101, CICS 110)',
     options: [
-      { metric: 'APPL', relations: SELF_OR_COMPETITOR, test: { kind: 'noHistory' } },
-      { metric: 'APPL_CP', relations: SELF_OR_COMPETITOR, test: { kind: 'noHistory' } },
+      ...appl({ kind: 'noHistory' }, SELF_OR_COMPETITOR),
       { metric: 'ENDED_RATE', relations: SELF_OR_COMPETITOR, test: { kind: 'noHistory' } },
     ],
   }] },
@@ -438,8 +443,6 @@ const triggerRecipes: Record<Trigger, ProofRecipe> = {
   }, DEMAND_NORMAL] },
 };
 
-export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = mechanismRecipes;
-export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = triggerRecipes;
 
 /** The lowest tool tier that can pin each metric (0 = Workload Activity, free): the tier-0/1 path test reads it, and a
  * test checks it against the pin sources. WLMGL (0); Monitor III, Partition Data, PROCU (1, RMF Monitor III and the

@@ -141,7 +141,7 @@ function pinFor(r: RunState, kind: Kind, o: PredicateOption, id: number, only?: 
 
 const KINDS: Kind[] = ['CICS', 'DDF', 'BATCH'];
 
-/** Predicate-0 pins on the same row as `pin` (any option, any relation): the anchor a `sameWorkAs` option needs. */
+/** Predicate-0 pins on the same row as `pin` (any option, any relation): the anchor a `sameWork` option needs. */
 function anchorFor(r: RunState, kind: Kind, pred: ProofPredicate, pin: EvidencePin, id: number): EvidencePin | undefined {
   for (const o of pred.options) for (const rel of o.relations) {
     const p = pinFor(r, kind, o, id, rel);
@@ -151,13 +151,13 @@ function anchorFor(r: RunState, kind: Kind, pred: ProofPredicate, pin: EvidenceP
 }
 
 /** One pin per predicate of a two-predicate recipe for this incident kind, or null. An option tied to predicate 0's
- * work (`sameWorkAs`) gets a predicate-0 pin on the same row. */
+ * work (`sameWork`) gets a predicate-0 pin on the same row. */
 function fixturePins(r: RunState, kind: Kind, preds: readonly ProofPredicate[]): EvidencePin[] | null {
   const first = preds[0]!.options.map((o) => pinFor(r, kind, o, 1000)).find((p) => p !== null);
   for (const o of preds[1]!.options) {
     const second = pinFor(r, kind, o, 1001);
     if (!second) continue;
-    const anchor = o.sameWorkAs === 0 ? anchorFor(r, kind, preds[0]!, second, 1000) : first;
+    const anchor = o.sameWork ? anchorFor(r, kind, preds[0]!, second, 1000) : first;
     if (anchor) return [anchor, second];
   }
   return null;
@@ -191,8 +191,8 @@ describe('proof recipe vocabulary (RT-13)', () => {
         const pin = pinFor(fixtureRun, kind, o, 1000);
         if (!pin) return false;
         // A tied option needs predicate 0 shown on the same row.
-        const anchor = o.sameWorkAs === 0 ? anchorFor(fixtureRun, kind, recipeOf(claim).predicates[0], pin, 999) : undefined;
-        if (o.sameWorkAs === 0 && !anchor) return false;
+        const anchor = o.sameWork ? anchorFor(fixtureRun, kind, recipeOf(claim).predicates[0], pin, 999) : undefined;
+        if (o.sameWork && !anchor) return false;
         const inc = fixtureIncident(fixtureRun, kind, { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
         const proof = judgeProof(fixtureRun, MIDWEST, [inc], MECHANISMS.includes(claim as Mechanism) ? claim as Mechanism : 'CPU_PRIORITY',
           TRIGGERS.includes(claim as Trigger) ? claim as Trigger : 'POLICY', anchor ? [anchor, pin] : [pin]);

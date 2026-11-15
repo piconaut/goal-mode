@@ -7,10 +7,10 @@ import type { Hypothesis } from '../game/aiops';
 import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
-import { acceptedOf, MECHANISMS, TRIGGERS } from '../game/sla';
+import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { IncidentTruth, Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
-import type { ProofResult } from '../game/proof';
+import { predicateText, recipeHeading, type ProofResult } from '../game/proof';
 import { idText } from '../game/ids';
 import type { ViewModel } from '../game/view';
 import { piColor, seriesColor } from './colors';
@@ -510,7 +510,7 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
                 {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}
               </div>
             ))}
-            {i.rca!.proof && <ProofView proof={i.rca!.proof} accepted={acceptedOf(i.truth)} />}
+            {i.rca!.proof && <ProofView proof={i.rca!.proof} />}
             {(i.rca!.evidencePoints ?? 0) > 0 && (
               <div style={{ fontSize: 12, paddingLeft: 12 }}>
                 Evidence +{i.rca!.evidencePoints}
@@ -532,23 +532,16 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
   );
 }
 
-/** Each filed claim's proof recipe, its two predicates ticked or not (RT-13). */
-function ProofView({ proof, accepted }: { proof: ProofResult; accepted: { mechanisms: Mechanism[]; triggers: Trigger[] } }) {
+/** Each filed claim's proof recipe, its two predicates ticked or not (RT-13), worded as the play CLI's reply. */
+function ProofView({ proof }: { proof: ProofResult }) {
   return (
     <>
       {([['Mechanism', proof.mechanism], ['Trigger', proof.trigger]] as const).map(([what, c]) => (
         <div key={what} style={{ fontSize: 12, paddingLeft: 12 }}>
-          <div>
-            {what} {what === 'Trigger' ? triggerLabel(c.claim as Trigger) : c.claim}: {c.complete ? 'proven' : 'not proven'}
-            {/* A proof of a claim the truth does not accept earns nothing: say so rather than leave "proven" alone. */}
-            {c.complete && !(what === 'Mechanism' ? accepted.mechanisms.includes(c.claim as Mechanism) : accepted.triggers.includes(c.claim as Trigger))
-              ? ', but it was not the cause, so it earns nothing'
-              : ''}
-          </div>
+          <div>{recipeHeading(c, what)}</div>
           {c.predicates.map((x, k) => (
             <div key={k} className="muted" style={{ paddingLeft: 12 }}>
-              {x.met ? '✓' : '✗'} {x.label}
-              {x.met ? ` (${x.pinIds.map((id) => idText('pin', id)).join(', ')})` : ''}
+              {predicateText(x, (id) => idText('pin', id))}
             </div>
           ))}
         </div>

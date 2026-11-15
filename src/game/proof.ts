@@ -2,22 +2,17 @@
 // of its recipe in content/evidence.ts. The mechanism's complete recipe replaces the old relevance sum; the trigger's
 // makes the evidence strong. Pure; judged against the incident's recorded subjects like the per-pin verdicts.
 
-import {
-  EVIDENCE,
-  EVIDENCE_METRICS,
-  MECHANISM_RECIPES,
-  TRIGGER_RECIPES,
-  type PredicateOption,
-  type ProofRecipe,
-} from '../content/evidence';
+import { MECHANISM_RECIPES, TRIGGER_RECIPES, type PinRelation, type PredicateOption, type ProofRecipe } from '../content/evidence';
+import { triggerLabel } from '../content/rca';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
-import type { ClassificationRule } from '../sim/wlm/types';
-import { hourEndTick, incidentSubjects, pinRelation, type EvidencePin } from './evidence';
 import { classify } from '../sim/wlm/classify';
+import { incidentSubjects, incidentWindow, notableFloor, pinRelation, smfHourEndTick, type EvidencePin } from './evidence';
+import { importanceRank } from './sla';
 import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from './types';
+import { subsystemClasses } from './wlmEdit';
 
-export interface PredicateCheck {
+interface PredicateCheck {
   label: string;
   met: boolean;
   /** The attached pins that satisfy it. */
@@ -28,29 +23,13 @@ export interface RecipeCheck {
   claim: Mechanism | Trigger;
   complete: boolean;
   predicates: PredicateCheck[];
+  /** Whether the truth accepts the claim, set when the RCA is scored (absent in saves from before it). */
+  accepted?: boolean;
 }
 
 export interface ProofResult {
   mechanism: RecipeCheck;
   trigger: RecipeCheck;
-}
-
-/** Service classes a JES rule assigns, the policy's batch classes (BATCH_OVERLAP's "batch running then"). APPROX: read
- * from the definition active at review time, not the one in force when the row was written. */
-export function batchClasses(run: RunState): Set<string> {
-  const out = new Set<string>();
-  const walk = (rules: readonly ClassificationRule[]) => {
-    for (const r of rules) {
-      if (r.serviceClass) out.add(r.serviceClass);
-      walk(r.children);
-    }
-  };
-  for (const s of run.sim.wlm.definition.subsystems) {
-    if (s.subsystem !== 'JES') continue;
-    if (s.defaultServiceClass) out.add(s.defaultServiceClass);
-    walk(s.rules);
-  }
-  return out;
 }
 
 /** The pinned image's online general CPs, so an APPL% share can be read as a share of the image. */
@@ -74,7 +53,7 @@ function withoutHistory(run: RunState, p: EvidencePin): boolean {
     return ivs.length > 0 && fresh(ivs[0]!.startTick, first?.endTick);
   }
   if (p.source === 'Db2 101' || p.source === 'CICS 110') {
-    const hours = run.smfHours.map((h) => ({ h, end: hourEndTick(run, `${h.day}:${h.hourOfDay}`) ?? Infinity })).filter((x) => x.end <= p.tick);
+    const hours = run.smfHours.map((h, i) => ({ h, end: smfHourEndTick(run, i) })).filter((x) => x.end <= p.tick);
     const first = hours.find((x) => (x.h.workloads[p.subject]?.completions ?? 0) > 0);
     return hours.length > 0 && fresh(hours[0]!.end - TICKS_PER_HOUR, first?.end);
   }
@@ -82,22 +61,24 @@ function withoutHistory(run: RunState, p: EvidencePin): boolean {
 }
 
 /** What an option reads beyond the pin itself. */
-export interface ProofContext {
+interface ProofContext {
   run: RunState;
-  /** The policy's batch classes (BATCH_OVERLAP). */
+  /** The policy's batch classes: those a JES rule assigns (BATCH_OVERLAP's "batch running then"). APPROX: read from
+   * the definition active at review time, not the one in force when the row was written. */
   batch: Set<string>;
   /** The hurt work's most important period importance (null when none of its classes is in the definition). */
   ownImportance: number | null;
   scenario: Scenario;
 }
 
-/** A class row's period importance, discretionary as 6; null for a class the definition does not hold (SYSTEM,
- * SYSSTC, or one a later policy dropped). APPROX: read from the definition active at review time (§4.6's A10 note). */
+/** A class row's period importance as donor accounting ranks it (SYSTEM and SYSSTC 0, discretionary 6); null for a
+ * period the definition does not hold (SYSOTHER, or a class a later policy dropped), which is never displaceable.
+ * APPROX: read from the definition active at review time (§4.6's A10 note). */
 function periodImportance(run: RunState, scKey: string): number | null {
+  const def = run.sim.wlm.definition;
   const [cls, n] = scKey.split('#');
-  const period = run.sim.wlm.definition.classes.find((c) => c.id === cls)?.periods[Math.max(0, Number(n ?? 1) - 1)];
-  if (!period) return null;
-  return period.goal.kind === 'DISC' ? 6 : period.importance;
+  const builtIn = cls === 'SYSTEM' || cls === 'SYSSTC';
+  return builtIn || def.classes.find((c) => c.id === cls)?.periods[Number(n) - 1] ? importanceRank(def, scKey) : null;
 }
 
 /** A PROCU job's importance: its address space classified as the STC rules would (SYSTEM and SYSSTC rank above
@@ -118,9 +99,9 @@ function ownImportance(run: RunState, s: IncidentSubjects): number | null {
 }
 
 /** Does this pin, in this relation, satisfy this predicate option? */
-export function optionHolds(ctx: ProofContext, p: EvidencePin, relation: string | null, o: PredicateOption): boolean {
+function optionHolds(ctx: ProofContext, p: EvidencePin, relation: PinRelation | null, o: PredicateOption): boolean {
   const { run } = ctx;
-  if (p.metric !== o.metric || relation === null || !o.relations.includes(relation as never)) return false;
+  if (p.metric !== o.metric || relation === null || !o.relations.includes(relation)) return false;
   if (o.batchClass && !ctx.batch.has(p.subject.split('#')[0]!)) return false;
   if (o.displaceable) {
     // A job row (PROCU's EAppl per jobname) by its job; any class row, Monitor III's PROCU class rows included, by its
@@ -138,8 +119,7 @@ export function optionHolds(ctx: ProofContext, p: EvidencePin, relation: string 
     case 'below':
       return value < t.value;
     case 'notable': {
-      const d = EVIDENCE_METRICS[o.metric];
-      const floor = Math.max(d.notableAt, d.notableMultiple !== undefined && baseline !== undefined ? d.notableMultiple * baseline : 0);
+      const floor = notableFloor(o.metric, baseline);
       // A line of 0 would count any reading: the metric needs a row multiple and a baseline to be notable.
       return floor > 0 && value >= floor;
     }
@@ -162,29 +142,22 @@ export function optionHolds(ctx: ProofContext, p: EvidencePin, relation: string 
  * workload's accounting row. */
 const workOf = (p: EvidencePin): string => `${p.system}|${p.subject}`;
 
-function checkRecipe(
-  run: RunState,
-  members: readonly { inc: Incident; subjects: IncidentSubjects; ctx: ProofContext }[],
-  claim: Mechanism | Trigger,
-  recipe: ProofRecipe,
-  pins: readonly EvidencePin[],
-): RecipeCheck {
-  // Each pin is judged against each incident of the group in that incident's window and subjects; a predicate is met
-  // when any pin meets it for any of them, since they share one cause (SPEC §10's grouping).
-  const related = members.flatMap(({ inc, subjects, ctx }) => {
-    const lo = inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR;
-    const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
-    return pins.filter((p) => p.tick >= lo && p.tick <= hi).map((p) => ({ p, ctx, relation: pinRelation(run, inc, p, subjects) }));
-  });
+interface Related {
+  p: EvidencePin;
+  ctx: ProofContext;
+  relation: PinRelation | null;
+}
+
+function checkRecipe(related: readonly Related[], claim: Mechanism | Trigger, recipe: ProofRecipe, pins: readonly EvidencePin[]): RecipeCheck {
   const holding = (pred: ProofRecipe['predicates'][number], ok: (o: PredicateOption, p: EvidencePin) => boolean) =>
     new Set(related.filter(({ p, ctx, relation }) => pred.options.some((o) => ok(o, p) && optionHolds(ctx, p, relation, o))).map(({ p }) => p.id));
-  // An option marked `sameWorkAs` must read the same row (image and class, or workload) as a pin meeting that predicate:
-  // a cost rise on one class and a flat rate on another are not one regression. Group pooling is untouched, since
-  // the tie is between pins, whichever incident each was judged for.
+  // An option marked `sameWork` must read the same row (image and class, or workload) as a pin meeting the first
+  // predicate: a cost rise on one class and a flat rate on another are not one regression. Group pooling is untouched,
+  // since the tie is between pins, whichever incident each was judged for.
   const first = holding(recipe.predicates[0], () => true);
   const firstWork = new Set(pins.filter((p) => first.has(p.id)).map(workOf));
   const predicates = recipe.predicates.map((pred, k): PredicateCheck => {
-    const ids = k === 0 ? first : holding(pred, (o, p) => o.sameWorkAs === undefined || firstWork.has(workOf(p)));
+    const ids = k === 0 ? first : holding(pred, (o, p) => !o.sameWork || firstWork.has(workOf(p)));
     const pinIds = pins.map((p) => p.id).filter((id) => ids.has(id));
     return { label: pred.label, met: pinIds.length > 0, pinIds };
   });
@@ -193,7 +166,8 @@ function checkRecipe(
 
 /**
  * The filed claims' recipes over the attached pins, for an RCA covering `group` (each incident with its own workload,
- * window and recorded subjects). Pure.
+ * window and recorded subjects). Each pin is judged against each incident in that incident's window and subjects; a
+ * predicate is met when any pin meets it for any of them, since they share one cause (SPEC §10's grouping). Pure.
  */
 export function judgeProof(
   run: RunState,
@@ -203,22 +177,33 @@ export function judgeProof(
   trigger: Trigger,
   pins: readonly EvidencePin[],
 ): ProofResult {
-  const batch = batchClasses(run);
-  const members = group.map((inc) => {
+  const batch = new Set(subsystemClasses(run.sim.wlm.definition, 'JES'));
+  const related = group.flatMap((inc): Related[] => {
     const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
-    return { inc, subjects, ctx: { run, batch, ownImportance: ownImportance(run, subjects), scenario } };
+    const ctx: ProofContext = { run, batch, ownImportance: ownImportance(run, subjects), scenario };
+    const { lo, hi } = incidentWindow(run, inc);
+    return pins.filter((p) => p.tick >= lo && p.tick <= hi).map((p) => ({ p, ctx, relation: pinRelation(run, inc, p, subjects) }));
   });
   return {
-    mechanism: checkRecipe(run, members, mechanism, MECHANISM_RECIPES[mechanism], pins),
-    trigger: checkRecipe(run, members, trigger, TRIGGER_RECIPES[trigger], pins),
+    mechanism: checkRecipe(related, mechanism, MECHANISM_RECIPES[mechanism], pins),
+    trigger: checkRecipe(related, trigger, TRIGGER_RECIPES[trigger], pins),
   };
 }
 
-/** One line per recipe for the reply: the claim, then each predicate ticked or not with the pins that showed it. */
+/** A recipe's heading in the reply: the claim, whether the pins prove it, and whether a proof earns anything. */
+export function recipeHeading(c: RecipeCheck, what: 'Mechanism' | 'Trigger'): string {
+  const name = what === 'Trigger' ? triggerLabel(c.claim as Trigger) : c.claim;
+  const unearned = c.complete && c.accepted === false ? ', but it was not the cause, so it earns nothing' : '';
+  return `${what} ${name} ${c.complete ? 'proven' : 'not proven'}${unearned}`;
+}
+
+/** One predicate in the reply: ticked or not, in report terms, with the pins that showed it. */
+export function predicateText(x: PredicateCheck, pinLabel: (id: number) => string): string {
+  return `${x.met ? '✓' : '✗'} ${x.label}${x.met ? ` (${x.pinIds.map(pinLabel).join(', ')})` : ''}`;
+}
+
+/** One line per recipe for the play CLI's reply. */
 export function proofLines(r: ProofResult, pinLabel: (id: number) => string = (id) => `#${id}`): string[] {
-  const line = (c: RecipeCheck, what: string) =>
-    `${what} ${c.claim} ${c.complete ? 'proven' : 'not proven'}: ${c.predicates
-      .map((x) => `${x.met ? '✓' : '✗'} ${x.label}${x.met ? ` (${x.pinIds.map(pinLabel).join(', ')})` : ''}`)
-      .join('; ')}`;
+  const line = (c: RecipeCheck, what: 'Mechanism' | 'Trigger') => `${recipeHeading(c, what)}: ${c.predicates.map((x) => predicateText(x, pinLabel)).join('; ')}`;
   return [line(r.mechanism, 'Mechanism'), line(r.trigger, 'Trigger')];
 }

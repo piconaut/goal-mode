@@ -32,13 +32,19 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   // Evidence is a proof (RT-13, docs/rca-design.md §4.6): a complete recipe for the filed mechanism earns what three
   // fully relevant pins did, one predicate shown earns what a non-specific pin did, and a complete recipe for the filed
   // trigger on top makes the evidence strong. Only for accepted answers (RT-07): proving a wrong claim earns nothing.
-  const proof = scenario && pins.length > 0 ? judgeProof(run, scenario, group, mechanism, trigger, pins) : null;
   const accepted = acceptedOf(inc.truth);
-  const mechanismShown = proof?.mechanism.predicates.some((x) => x.met) ?? false;
-  const evidencePoints = !proof || !accepted.mechanisms.includes(mechanism)
-    ? 0
-    : proof.mechanism.complete ? PROOF.recipePoints : mechanismShown ? PROOF.partialPoints : 0;
-  const strong = evidencePoints >= PROOF.recipePoints && accepted.triggers.includes(trigger) && (proof?.trigger.complete ?? false);
+  const mechanismAccepted = accepted.mechanisms.includes(mechanism);
+  const triggerAccepted = accepted.triggers.includes(trigger);
+  const judged = scenario && pins.length > 0 ? judgeProof(run, scenario, group, mechanism, trigger, pins) : null;
+  // The reply says whether a proof earned anything, so record which claims the truth accepts beside the recipes.
+  const proof = judged && {
+    mechanism: { ...judged.mechanism, accepted: mechanismAccepted },
+    trigger: { ...judged.trigger, accepted: triggerAccepted },
+  };
+  const mechanismProven = mechanismAccepted && !!proof?.mechanism.complete;
+  const mechanismShown = mechanismAccepted && !!proof?.mechanism.predicates.some((x) => x.met);
+  const evidencePoints = mechanismProven ? PROOF.recipePoints : mechanismShown ? PROOF.partialPoints : 0;
+  const strong = mechanismProven && triggerAccepted && !!proof?.trigger.complete;
   const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
   const trust = mapTrust(run, (t) => t + facetTrust / 2);
