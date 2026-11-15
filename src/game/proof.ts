@@ -11,7 +11,7 @@ import {
   type ProofRecipe,
 } from '../content/evidence';
 import type { Scenario } from '../sim/core/scenario';
-import { TICKS_PER_HOUR } from '../sim/core/units';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import type { ClassificationRule } from '../sim/wlm/types';
 import { hourEndTick, incidentSubjects, pinRelation, type EvidencePin } from './evidence';
 import { classify } from '../sim/wlm/classify';
@@ -59,22 +59,23 @@ function imageCps(run: RunState, lparId: string): number {
   return l?.pools.filter((p) => p.pool === 'CP').reduce((a, p) => a + p.logical, 0) ?? 0;
 }
 
-/** New work's first rows: a Workload Activity row, or a workload's Db2 101/CICS 110 row, that no earlier interval
- * or closed hour the report holds carries, pinned once the report had history for other rows. Read from the rows
- * themselves, not from the pin's baseline: an ended rate's slot baseline is absent all through day 1. */
+/** New work's rows: a Workload Activity row, or a workload's Db2 101/CICS 110 row, that first appeared within the day
+ * before the pin and at least the baseline window after the report's first interval or hour, so the report shows
+ * time without it. Read from the rows themselves, not from the pin's baseline: an ended rate's slot baseline is absent
+ * all through day 1 for every row. */
 function withoutHistory(run: RunState, p: EvidencePin): boolean {
+  const fresh = (firstSeen: number, count: number) => firstSeen >= EVIDENCE.baselineRows && firstSeen < count;
   if (p.source === 'WLMGL') {
-    const index = run.sim.rmf.intervals.findIndex((iv) => iv.endTick === p.tick);
-    if (index < EVIDENCE.baselineRows) return false;
-    return !run.sim.rmf.intervals.slice(0, index).some((iv) => iv.wlm.some((w) => w.lparId === p.system && w.scKey === p.subject));
+    const ivs = run.sim.rmf.intervals;
+    const index = ivs.findIndex((iv) => iv.endTick === p.tick);
+    if (index < 0) return false;
+    const first = ivs.findIndex((iv) => iv.wlm.some((w) => w.lparId === p.system && w.scKey === p.subject));
+    return fresh(first, index + 1) && p.tick - ivs[first]!.endTick < TICKS_PER_DAY;
   }
   if (p.source === 'Db2 101' || p.source === 'CICS 110') {
-    const earlier = run.smfHours.filter((h) => {
-      const end = hourEndTick(run, `${h.day}:${h.hourOfDay}`);
-      return end !== null && end < p.tick;
-    });
-    if (earlier.length < EVIDENCE.baselineRows) return false;
-    return !earlier.some((h) => (h.workloads[p.subject]?.completions ?? 0) > 0);
+    const hours = run.smfHours.map((h) => ({ h, end: hourEndTick(run, `${h.day}:${h.hourOfDay}`) ?? Infinity })).filter((x) => x.end <= p.tick);
+    const first = hours.findIndex((x) => (x.h.workloads[p.subject]?.completions ?? 0) > 0);
+    return fresh(first, hours.length) && p.tick - hours[first]!.end < TICKS_PER_DAY;
   }
   return false;
 }

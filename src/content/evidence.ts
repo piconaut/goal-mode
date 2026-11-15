@@ -230,13 +230,18 @@ export const PROOF = {
   busyPct: 90,
   cappedPct: 5,
   capDelayPct: 5,
-  otherDelayPct: 20,
   readyLowPct: 5,
   normalBand: 0.15,
   surgeRatio: 1.25,
   regressionRatio: 1.3,
   /** Half an engine, in APPL% points. */
   runawayPoints: 50,
+  /** A wait per transaction past its own normal band: one absolute line cannot serve rows whose healthy scale differs
+   * (a CF link fault takes Db2 CF time 3.5 → 4.2 ms, a DASD fault sync I/O 0.9 → 2.1 ms, both under the RT-10 lines). */
+  waitRiseRatio: 1.15,
+  /** The work's other/UNK share up this many points over its normal: a healthy DDF row already spends 50–75 % there
+   * (its time in Db2), so a fixed line would pass every DDF row. */
+  otherRisePoints: 10,
   /** A complete recipe for the filed, accepted mechanism is worth this many points (three fully relevant pins). */
   recipePoints: 3,
   /** A recipe with one predicate shown is worth what one non-specific pin was (§4.6: "a lone symptom pin"). */
@@ -308,16 +313,16 @@ const mechanismRecipes: Record<Mechanism, ProofRecipe> = {
     options: [at('CAPPED', PROOF.cappedPct, HOST_ONLY), at('DELAY_CAP', PROOF.capDelayPct, SELF)],
   }] },
   DEPENDENCY: { predicates: [{
-    label: 'the server slow: a serving region delayed ≥ 10 %, the work waiting outside CPU and I/O (other/UNK ≥ 20 %), or the jobs waiting on Db2 ≥ 25 %',
-    options: [at('DELAY_CPU', PROOF.delayPct, ['server']), at('DELAY_ZIIP', PROOF.delayPct, ['server']), at('DELAY_OTHER', PROOF.otherDelayPct, SELF), at('JOB_DB2', PROOF.jobWaitPct, SELF)],
+    label: 'the server slow: a serving region delayed ≥ 10 %, the work waiting outside CPU and I/O (other/UNK up ≥ 10 points over its normal), or the jobs waiting on Db2 ≥ 25 %',
+    options: [at('DELAY_CPU', PROOF.delayPct, ['server']), at('DELAY_ZIIP', PROOF.delayPct, ['server']), { metric: 'DELAY_OTHER', relations: SELF, test: { kind: 'riseBy', points: PROOF.otherRisePoints } }, at('JOB_DB2', PROOF.jobWaitPct, SELF)],
   }, OWN_CPU_LOW] },
   LOCK_CONTENTION: { predicates: [{
     label: 'lock waits on the hurt work: Db2 lock wait ≥ 2 ms/txn (Db2 101), LOCK state ≥ 35 % (WLMGL), or the jobs\' lock wait ≥ 25 % (SMF 30)',
     options: [notable('LOCK_WAIT', SELF), notable('WM_LOCK', SELF), notable('JOB_LOCK', SELF)],
   }, OWN_CPU_LOW] },
   CF_SERVICE: { predicates: [{
-    label: 'CF time per transaction ≥ 5 ms (Db2 101)',
-    options: [notable('CF_WAIT', SELF)],
+    label: 'CF time per transaction ≥ 5 ms or past its normal band (Db2 101)',
+    options: [notable('CF_WAIT', SELF), ratio('CF_WAIT', PROOF.waitRiseRatio, SELF)],
   }, {
     label: 'the CF itself slow: sync service time or async conversion past twice its normal (CF Activity)',
     options: [notable('CF_SYNC', ['server']), notable('CF_ASYNC_PCT', ['server'])],
@@ -344,8 +349,8 @@ const mechanismRecipes: Record<Mechanism, ProofRecipe> = {
     options: [normal('CPU_VS_BASE', SELF), normal('CPU_PER_TXN', SELF)],
   }] },
   IO: { predicates: [{
-    label: 'I/O waits on the hurt work: I/O delay ≥ 10 % (WLMGL), sync I/O ≥ 5 ms/txn (Db2 101), or the jobs\' I/O wait ≥ 25 % (SMF 30)',
-    options: [notable('DELAY_IO', SELF), notable('SYNC_IO', SELF), notable('JOB_IO', SELF)],
+    label: 'I/O waits on the hurt work: I/O delay ≥ 10 % (WLMGL), sync I/O ≥ 5 ms/txn or past its normal band (Db2 101), or the jobs\' I/O wait ≥ 25 % (SMF 30)',
+    options: [notable('DELAY_IO', SELF), notable('SYNC_IO', SELF), ratio('SYNC_IO', PROOF.waitRiseRatio, SELF), notable('JOB_IO', SELF)],
   }, {
     label: 'DASD itself slow: DISC, IOSQ or response time past twice its normal on an LCU or all volumes (DASD Activity)',
     options: [notable('DASD_DISC', ['server']), notable('DASD_IOSQ', ['server']), notable('DASD_RESP', ['server'])],

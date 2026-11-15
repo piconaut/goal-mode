@@ -1393,7 +1393,10 @@ reports no service consumption (p.524), so a CICS workload's cost comes from CIC
 is the **same interval (or SMF hour) on earlier days**, the slot baseline of §4.4, because the six preceding rows read
 the morning ramp as a surge; on the first day it has none, and rate predicates cannot hold. The common recipes (CPU
 family, DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) each have a path through tier-0/1 reports only
-(WLMGL, Monitor III, Partition Data; `METRIC_TIER`). Every mechanism × trigger pair fits in three pins except 29 whose
+(WLMGL, Monitor III, Partition Data; `METRIC_TIER`). Waits whose healthy scale differs by row (Db2 CF time, sync I/O,
+DDF's other/UNK share) are read against the row's own normal as well as a fixed line, and "no history" (new work) is
+read from when the row first appears. Every claim is proven from a replayed card in the tests. Every mechanism ×
+trigger pair fits in three pins except 29 whose
 four facts no row combines (listed in `tests/game/proofRecipes.test.ts`; BACKLOG RT-27).
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and

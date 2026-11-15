@@ -663,11 +663,12 @@ claim. Where the build differs from the table:
 
 - **CPU_PRIORITY's consumer** must be *displaceable*: a period less important than the hurt work's (or
   discretionary), which includes a lower period of the work's own class (ADHOC's DDFPRD#2 behind MOBILE's DDFPRD#1,
-  a `self` row), or a PROCU job. Without it any busy image proves priority. APPROX: importance is read from the
+  a `self` row), or a PROCU job whose address space classifies to such a period (SYSTEM and SYSSTC never do). Without it any busy image proves priority. APPROX: importance is read from the
   definition active at review time.
 - **CAPPING's symptom** is CP delay only (no zIIP delay): defined and group capacity limit general-CP MSU.
 - **DEPENDENCY** reads the server's delay where one is a recorded server (a CICS region class), or the work's own
-  other/UNK delay ≥ 20 % (DDF's wait on a starved Db2 shows there, not as its CPU delay), against its own CPU delay
+  other/UNK delay up ≥ 10 points over its normal (DDF's wait on a starved Db2 shows there, not as its CPU delay; a
+  healthy DDF row already spends 50–75 % there, so the table's fixed line would pass every DDF row), against its own CPU delay
   < 10 % or a CICS class's READY < 5 %. SYSWKM velocity under goal is not an option: the pin does not carry the goal.
 - **THREAD_LIMIT's ruling-out half** and HARDWARE_FAULT's are *or*, not *and*: either normal reading counts, so the
   recipe stays two pins. HARDWARE_FAULT's second half also accepts the work's own CPU delay low.
@@ -681,6 +682,15 @@ claim. Where the build differs from the table:
 - **An ended rate's baseline is the slot baseline** (§4.4): the same interval or SMF hour on earlier days the report
   still holds (300 RMF intervals, 48 SMF hours), not the six preceding rows, which read the morning ramp as a 1.7×
   surge (measured: MOBILE on PROD2 at noon on day 1, seed 7: 145 against 84 ended/s). Day 1 has no rate baseline. Other metrics keep RT-12's baseline.
+- **CF_SERVICE's and IO's symptoms** also accept the wait past its normal band (≥ 1.15 × the row's normal): in the
+  sim a CF link fault takes Db2 CF time 3.5 → 4.2 ms/txn and a DASD fault sync I/O 0.9 → 2.1 ms/txn, both under the
+  RT-10 lines, while the CF and DASD reports themselves are far past twice normal. Those reports' own lines are
+  RT-10's: two hours into a fault the row's six-interval normal holds the fault, so the fault's early rows prove it.
+- **NEW_WORKLOAD's "no history"** is read from the rows: the row (or the workload's SMF hour) first appears at least
+  the baseline window after the report's first, and within the day before the pin.
+- **Every claim is proven from a replay** (`tests/game/proofRecipes.test.ts`): a card's own commands on midwest day
+  2, pins through `addPin`. The ±15 % rate band is tight against day-to-day noise for some workloads (MOBILE's same
+  hour moves 10–16 % between days; RBANK's under 1 %).
 - **RUNAWAY_WORK**'s flat half is the runaway class's ended rate *or* the hurt work's own cost normal (a looping job
   has no transactions); **BATCH_OVERLAP**'s discriminator is a batch class (one a JES rule assigns) at ≥ 10 % of the
   image; **NEW_WORKLOAD**'s is a row with no history once the report has some; **POLICY** and **GROWTH** share one
