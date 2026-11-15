@@ -7,6 +7,9 @@ import type { ServiceDefinition } from '../../src/sim/wlm/types';
 import type { ActiveEvent, HourAcc } from '../../src/game/types';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
+/** No footprint scope: only cards that list the workload qualify. */
+const NO_SCOPE = { hosts: [] };
+
 const hour = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cpcBusySum: 0, lockIndexSum: 0 } as HourAcc;
 const card = (over: Partial<ActiveEvent>): ActiveEvent => ({
   uid: 'X@1', defId: 'X', name: 'X', startTick: 0, endTick: 10, trigger: 'DEMAND_SURGE', affects: ['RBANK'], endCommands: [], started: true, ended: false, ...over,
@@ -14,28 +17,28 @@ const card = (over: Partial<ActiveEvent>): ActiveEvent => ({
 
 describe('triggerOf', () => {
   it('blames an active card that lists the workload', () => {
-    expect(triggerOf('RBANK', 'CPU_CAPACITY', [card({})], hour, false)).toBe('DEMAND_SURGE');
+    expect(triggerOf('RBANK', 'CPU_CAPACITY', [card({})], hour, false, NO_SCOPE)).toBe('DEMAND_SURGE');
   });
 
   it('skips a card whose mechanisms do not match the incident', () => {
     const io = card({ trigger: 'HARDWARE_FAULT', mechanisms: ['IO'] });
-    expect(triggerOf('RBANK', 'CPU_CAPACITY', [io], hour, false)).toBe('GROWTH');
-    expect(triggerOf('RBANK', 'IO', [io], hour, false)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('RBANK', 'CPU_CAPACITY', [io], hour, false, NO_SCOPE)).toBe('GROWTH');
+    expect(triggerOf('RBANK', 'IO', [io], hour, false, NO_SCOPE)).toBe('HARDWARE_FAULT');
   });
 
   it('calls a lock clash batch overlap, but a CPU priority or dependency miss the policy, even with batch running', () => {
     const night = { ...hour, ticks: 10, lockIndexSum: 30 };
-    expect(triggerOf('RBANK', 'LOCK_CONTENTION', [], night, false)).toBe('BATCH_OVERLAP');
-    expect(triggerOf('RBANK', 'CPU_PRIORITY', [], night, false)).toBe('POLICY');
-    expect(triggerOf('CARDAUTH', 'DEPENDENCY', [], night, false)).toBe('POLICY');
+    expect(triggerOf('RBANK', 'LOCK_CONTENTION', [], night, false, NO_SCOPE)).toBe('BATCH_OVERLAP');
+    expect(triggerOf('RBANK', 'CPU_PRIORITY', [], night, false, NO_SCOPE)).toBe('POLICY');
+    expect(triggerOf('CARDAUTH', 'DEPENDENCY', [], night, false, NO_SCOPE)).toBe('POLICY');
   });
 
   it('keeps cards that ended within the opening SLA hour, including at its end', () => {
     const h = { ...hour, hourIndex: 1 };
     for (const endTick of [TICKS_PER_HOUR + 1, 2 * TICKS_PER_HOUR]) {
-      expect(triggerOf('RBANK', 'CPU_PRIORITY', [card({ startTick: TICKS_PER_HOUR - 5, endTick, ended: true })], h, false)).toBe('DEMAND_SURGE');
+      expect(triggerOf('RBANK', 'CPU_PRIORITY', [card({ startTick: TICKS_PER_HOUR - 5, endTick, ended: true })], h, false, NO_SCOPE)).toBe('DEMAND_SURGE');
     }
-    expect(triggerOf('RBANK', 'CPU_PRIORITY', [card({ startTick: TICKS_PER_HOUR + 1, endTick: null })], h, false)).toBe('DEMAND_SURGE');
+    expect(triggerOf('RBANK', 'CPU_PRIORITY', [card({ startTick: TICKS_PER_HOUR + 1, endTick: null })], h, false, NO_SCOPE)).toBe('DEMAND_SURGE');
   });
 
   it('ignores cards outside the opening SLA hour, including touching boundaries', () => {
@@ -48,15 +51,15 @@ describe('triggerOf', () => {
       { startTick: TICKS_PER_HOUR, endTick: TICKS_PER_HOUR, ended: true },
       { startTick: TICKS_PER_HOUR, endTick: null, started: false },
     ]) {
-      expect(triggerOf('RBANK', 'CPU_PRIORITY', [card(over)], h, false)).toBe('POLICY');
+      expect(triggerOf('RBANK', 'CPU_PRIORITY', [card(over)], h, false, NO_SCOPE)).toBe('POLICY');
     }
   });
 
   it('still filters ended overlapping cards by workload and mechanism', () => {
     const ended = card({ ended: true });
-    expect(triggerOf('RBANK', 'CPU_CAPACITY', [{ ...ended, affects: ['MOBILE'] }], hour, false)).toBe('GROWTH');
-    expect(triggerOf('RBANK', 'CPU_CAPACITY', [{ ...ended, mechanisms: ['IO'] }], hour, false)).toBe('GROWTH');
-    expect(triggerOf('RBANK', 'IO', [{ ...ended, mechanisms: ['IO'] }], hour, false)).toBe('DEMAND_SURGE');
+    expect(triggerOf('RBANK', 'CPU_CAPACITY', [{ ...ended, affects: ['MOBILE'] }], hour, false, NO_SCOPE)).toBe('GROWTH');
+    expect(triggerOf('RBANK', 'CPU_CAPACITY', [{ ...ended, mechanisms: ['IO'] }], hour, false, NO_SCOPE)).toBe('GROWTH');
+    expect(triggerOf('RBANK', 'IO', [{ ...ended, mechanisms: ['IO'] }], hour, false, NO_SCOPE)).toBe('DEMAND_SURGE');
   });
 
   it('ranks by overlap with the hour, not by whether a card is still active at close (RT-14)', () => {
@@ -64,7 +67,7 @@ describe('triggerOf', () => {
     const active = card({ uid: 'A_ACTIVE@1', startTick: 2 * TICKS_PER_HOUR - 1, endTick: null, trigger: 'HARDWARE_FAULT' });
     const ended = card({ uid: 'Z_ENDED@1', startTick: 0, endTick: 2 * TICKS_PER_HOUR - 10, ended: true });
     for (const events of [[ended, active], [active, ended]]) {
-      expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
+      expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false, NO_SCOPE)).toBe('DEMAND_SURGE');
     }
   });
 
@@ -74,7 +77,7 @@ describe('triggerOf', () => {
       const longer = card({ uid: 'Z_LONG@1', startTick: 0, endTick, ended: endTick === 2 * TICKS_PER_HOUR });
       const shorter = card({ ...longer, uid: 'A_SHORT@1', startTick: TICKS_PER_HOUR + 1, trigger: 'HARDWARE_FAULT' });
       for (const events of [[shorter, longer], [longer, shorter]]) {
-        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
+        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false, NO_SCOPE)).toBe('DEMAND_SURGE');
       }
     }
   });
@@ -85,13 +88,13 @@ describe('triggerOf', () => {
     const late = card({ uid: 'A_LATE@1', startTick: TICKS_PER_HOUR, endTick: null, trigger: 'HARDWARE_FAULT' });
     for (const events of [[late, early], [early, late]]) {
       const original = [...events];
-      expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
+      expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false, NO_SCOPE)).toBe('DEMAND_SURGE');
       expect(events).toEqual(original);
     }
     const first = card({ uid: 'Z@1', startTick: 0, endTick: null });
     const second = card({ ...first, uid: 'A@1', trigger: 'HARDWARE_FAULT' });
-    expect(triggerOf('RBANK', 'CPU_PRIORITY', [first, second], h, false)).toBe('DEMAND_SURGE');
-    expect(triggerOf('RBANK', 'CPU_PRIORITY', [second, first], h, false)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('RBANK', 'CPU_PRIORITY', [first, second], h, false, NO_SCOPE)).toBe('DEMAND_SURGE');
+    expect(triggerOf('RBANK', 'CPU_PRIORITY', [second, first], h, false, NO_SCOPE)).toBe('HARDWARE_FAULT');
   });
 });
 
@@ -205,15 +208,15 @@ describe('missed batch window truth', () => {
 
   it('blames a card that affects BATCH and ran during the night, even if it has ended', () => {
     const abend = card({ trigger: 'APPLICATION_ERROR', affects: ['BATCH'], mechanisms: ['JOB_FAILURE'], startTick: 100, endTick: 100, ended: true });
-    expect(batchMissTrigger('JOB_FAILURE', [abend], hour, 50)).toBe('APPLICATION_ERROR');
-    expect(batchMissTrigger('JOB_FAILURE', [abend], hour, 200)).toBe('GROWTH');
-    expect(batchMissTrigger('IO', [abend], hour, 50)).toBe('GROWTH');
+    expect(batchMissTrigger('JOB_FAILURE', [abend], hour, 50, NO_SCOPE)).toBe('APPLICATION_ERROR');
+    expect(batchMissTrigger('JOB_FAILURE', [abend], hour, 200, NO_SCOPE)).toBe('GROWTH');
+    expect(batchMissTrigger('IO', [abend], hour, 50, NO_SCOPE)).toBe('GROWTH');
   });
 
   it('reads a Db2 connect failure (DSNE100I) without a card as policy: the initiator setup sent the job there', () => {
     const night = { day: 0, jobs: 1, done: 0, criticalJobs: 1, criticalDone: 0, criticalEndSec: null, missedDeadline: true, criticalAbended: ['GLF01'], criticalFailCodes: { GLF01: 'DSNE100I' } };
-    expect(batchMissTrigger('JOB_FAILURE', [], hour, 50, night)).toBe('POLICY');
-    expect(batchMissTrigger('JOB_FAILURE', [], hour, 50, { ...night, criticalFailCodes: { GLF01: 'S0C7' } })).not.toBe('POLICY');
+    expect(batchMissTrigger('JOB_FAILURE', [], hour, 50, NO_SCOPE, night)).toBe('POLICY');
+    expect(batchMissTrigger('JOB_FAILURE', [], hour, 50, NO_SCOPE, { ...night, criticalFailCodes: { GLF01: 'S0C7' } })).not.toBe('POLICY');
   });
 
   it('reads an S0C7 abend as an application error, not policy', () => {

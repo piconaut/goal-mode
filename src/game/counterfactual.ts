@@ -13,7 +13,7 @@ import { TICKS_PER_HOUR } from '../sim/core/units';
 import type { Scenario } from '../sim/core/scenario';
 import type { GameContent } from './run/shared';
 import { advance } from './run';
-import { BATCH_INCIDENT, hourAttainment, qualifyingCards } from './sla';
+import { BATCH_INCIDENT, hourAttainment, hourWindow, qualifyingCards, workScopeOf } from './sla';
 import { allWorkloads } from './workloads';
 import type { ActiveEvent, Incident, Mechanism, RunState, Trigger } from './types';
 
@@ -88,7 +88,7 @@ export interface NoiseFloor {
 
 /** A red herring by design: the card has no footprint (RT-14: it causes no mechanism), so it cannot be the cause of an
  * SLA miss. */
-const isControl = (e: ActiveEvent) => e.defId === 'CP_SPARING' || !e.mechanisms || e.mechanisms.length === 0;
+const isControl = (e: ActiveEvent) => !e.mechanisms?.length;
 
 const ref = (e: ActiveEvent): CardRef => ({
   uid: e.uid,
@@ -160,8 +160,8 @@ export function blameIncident(run: RunState, scenario: Scenario, content: GameCo
   // Candidates from the opening and closing state, so a cap's expanded scope and a card starting inside the hour
   // are both in; branches from the opening state.
   const candidates = cardsActiveInHour(run.events, baselineRun.events, incident.startTick);
-  const scope = { hosts: (incident.subjects?.hosts ?? []).map((lparId) => ({ lparId })), servers: incident.subjects?.servers ?? [] };
-  const window = { startTick: incident.startTick, endTick: incident.startTick + TICKS_PER_HOUR };
+  const scope = workScopeOf(incident.subjects ?? { hosts: [] });
+  const window = hourWindow(Math.floor(incident.startTick / TICKS_PER_HOUR));
   const qualified = qualifyingCards(baselineRun.events, incident.workloadId, incident.truth.mechanism, window, scope);
   const blamedEvent = qualified[0]?.card;
   const tested: CardTest[] = candidates.map((e) => {

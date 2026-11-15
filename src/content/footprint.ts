@@ -28,7 +28,13 @@ export type FootprintReach =
   | { images: string[] }
   | { regions: string[] }; // these CICS regions: collateral when the work's servers include one
 
-const CPU_SIDE: Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY'];
+/** Every incident mechanism, in the order the RCA form and AIOps list them. */
+export const ALL_MECHANISMS: readonly Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'ROUTING', 'IO', 'STORAGE', 'JOB_FAILURE'];
+
+/** The CPU family: one machine's shortage, seen three ways. */
+export const CPU_FAMILY: readonly Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING'];
+
+const CPU_SIDE: Mechanism[] = [...CPU_FAMILY, 'DEPENDENCY'];
 
 /** The mechanisms each resource can cause; a card's `mechanisms` derive from its resource. */
 export const RESOURCE_MECHANISMS: Record<FootprintResource, readonly Mechanism[]> = {
@@ -44,7 +50,8 @@ export const RESOURCE_MECHANISMS: Record<FootprintResource, readonly Mechanism[]
   CICS_STORAGE: ['THREAD_LIMIT'],
   REGION_FAILURES: ['ROUTING'],
   BATCH_JOBS: ['JOB_FAILURE'],
-  NEW_WORK: [...CPU_SIDE, 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'ROUTING', 'IO', 'STORAGE'],
+  // A batch job failure is the batch night's own; new online work can cause every other mechanism.
+  NEW_WORK: ALL_MECHANISMS.filter((m) => m !== 'JOB_FAILURE'),
 };
 
 /** The mechanisms a card causes (none for a card with no footprint: it hurts no work). */

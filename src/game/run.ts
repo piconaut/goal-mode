@@ -31,7 +31,7 @@ import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
 import { incidentSubjects } from './evidence';
 import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
-import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet } from './sla';
+import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet, nightStartTick, workScopeOf } from './sla';
 import { tfpAtDayEnd } from './tfp';
 import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
@@ -45,7 +45,8 @@ import {
   type RunState
 } from './types';
 import { allWorkloads } from './workloads';
-import { resolveReach } from './footprint';
+import { hourUnion, resolveReach, type ReachWorld } from './footprint';
+import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/helpers';
 
 export type { GameContent } from './run/shared';
 export { allWorkloads } from './workloads';
@@ -160,6 +161,7 @@ const chartsActive = (r: RunState) => toolOn(r, 'MON3_CHARTS') && toolOn(r, 'RMF
 /** Advance the live day by up to `ticks` ticks. Ends the day automatically at 06:00. */
 export function advance(run: RunState, baseScenario: Scenario, content: GameContent, ticks: number): RunState {
   const scenario = scenarioFor(baseScenario, run.difficulty);
+  const defs = new Map(content.events.map((d) => [d.id, d]));
   let r = run;
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
@@ -177,7 +179,7 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     const resolvedEnd = new Map<string, Command[]>();
     const resolvedCpcs = new Map<string, Set<string>>();
     for (const e of events) {
-      const def = content.events.find((d) => d.id === e.defId);
+      const def = defs.get(e.defId);
       if (!e.started && e.startTick <= tick) {
         cmds.push(...scaleEventCommands(def?.begin ?? [], difficultyOf(r.difficulty).eventSeverityMult));
         if (def?.capacityDrop) {
@@ -236,21 +238,20 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
     const affectsHour = new Map<string, number>();
     const running = (e: RunState['events'][number]) =>
       (e.started || e.startTick <= tick) && !e.ended && !armedEnded.has(e.uid) && (e.endTick === null || e.endTick > tick);
-    for (const e of events) {
-      if (!e.capacityCpcs || !running(e)) continue;
-      const now = scopeOf(new Set(e.capacityCpcs));
-      resolvedAffects.set(e.uid, e.affectsHour === hourStartTick ? [...new Set([...e.affects, ...now])] : now);
-      affectsHour.set(e.uid, hourStartTick);
-    }
     // Every running card's footprint reach follows the routing and address spaces the same way, with the hour keeping
-    // the union of what it reached in it (RT-14).
+    // the union of what it reached in it (RT-14). The world is built only on a tick with such a card.
     const resolvedReach = new Map<string, string[]>();
-    const world = { sim, workloads: allWorkloads(scenario, { ...r, sim }), addressSpaces: [...scenario.addressSpaces, ...sim.extraAddressSpaces] };
+    let world: ReachWorld | undefined;
     for (const e of events) {
-      const reach = content.events.find((d) => d.id === e.defId)?.reach;
-      if (!reach || !running(e)) continue;
-      const now = resolveReach(reach, { ...world, capacityCpcs: [...(resolvedCpcs.get(e.uid) ?? e.capacityCpcs ?? [])] });
-      resolvedReach.set(e.uid, e.affectsHour === hourStartTick && e.reach ? [...new Set([...e.reach, ...now])].sort() : now);
+      const reach = defs.get(e.defId)?.reach;
+      if ((!e.capacityCpcs && !reach) || !running(e)) continue;
+      const sameHour = e.affectsHour === hourStartTick;
+      if (e.capacityCpcs) resolvedAffects.set(e.uid, hourUnion(e.affects, sameHour, scopeOf(new Set(e.capacityCpcs))));
+      if (reach) {
+        world ??= { sim, workloads: effectiveWorkloads(scenario, sim), addressSpaces: effectiveAddressSpaces(scenario, sim) };
+        const now = resolveReach(reach, world, reach === 'capacityCpcs' ? [...(resolvedCpcs.get(e.uid) ?? e.capacityCpcs ?? [])] : []);
+        resolvedReach.set(e.uid, hourUnion(e.reach, sameHour, now).sort());
+      }
       affectsHour.set(e.uid, hourStartTick);
     }
     events = events.map((e) => ({
@@ -302,19 +303,19 @@ function batchMissIncident(r: RunState, scenario: Scenario, night: NightSummary,
     const sc = classify(r.sim.wlm.definition, { subsystem: 'JES', TN: j.name, TC: j.jobClass, SY: j.lparId }).serviceClass;
     return { lparId: j.lparId, cpcId: r.sim.config.lpars.find((l) => l.id === j.lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
   });
-  const nightStartTick = r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
-  const nightHour = r.nightHour ?? newHour(nightStartTick);
+  const nightStart = nightStartTick(r.day);
+  const nightHour = r.nightHour ?? newHour(nightStart);
   const mechanism = batchMissMechanism(night, nightHour, hosts);
   const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(nightHour, hosts) : null;
   // BATCH's footprint scope is the critical jobs' images (RT-14: BATCH is a workload like any other).
   const scope = { hosts };
-  const trigger = batchMissTrigger(mechanism, r.events, nightHour, nightStartTick, night, scope);
+  const trigger = batchMissTrigger(mechanism, r.events, nightHour, nightStart, scope, night);
   const subjects = incidentSubjects(r, scenario, BATCH_INCIDENT, r.day, night);
-  const card = batchMissCard(mechanism, r.events, nightStartTick, scope);
+  const card = batchMissCard(mechanism, r.events, nightStart, scope);
   const ctx: TruthContext = {
     workloadId: BATCH_INCIDENT, mechanism, trigger, hour: nightHour, events: r.events, ...(card ? { card } : {}),
     // The night runs 18:00 to the day end: a card starting at 20:00 is a card for this incident, not one for 18:00.
-    window: { startTick: nightStartTick, endTick: r.sim.tick },
+    window: { startTick: nightStart, endTick: r.sim.tick },
     basis, hosts, servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew: false,
   };
   const { accepted, notes } = acceptedAnswers(ctx);
@@ -328,7 +329,7 @@ function batchMissIncident(r: RunState, scenario: Scenario, night: NightSummary,
     id: r.nextId,
     workloadId: BATCH_INCIDENT,
     day: r.day,
-    startTick: nightStartTick,
+    startTick: nightStart,
     endTick: r.sim.tick,
     hours: 12,
     worstAttainmentPct: 0,
@@ -378,8 +379,8 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   } else if (night) {
     trust.Regulator = clampTrust(trust.Regulator! + 1);
     // A met night: cards already running at 18:00 are background for BATCH from now on (RT-14).
-    const batchHosts = { hosts: (night.criticalHosts ?? []).map((j) => ({ lparId: j.lparId })) };
-    r = { ...r, events: markMet(r.events, [BATCH_INCIDENT], r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR, () => batchHosts) };
+    const batchHosts = workScopeOf({ hosts: (night.criticalHosts ?? []).map((j) => j.lparId) });
+    r = { ...r, events: markMet(r.events, [BATCH_INCIDENT], nightStartTick(r.day), () => batchHosts) };
   }
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
   const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);

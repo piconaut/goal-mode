@@ -5,7 +5,8 @@ import type { Scenario } from '../../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
 import { classify } from '../../sim/wlm/classify';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
-import { addHour, capacityBasis, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline, type WorkScope } from '../sla';
+import { activeIn, addHour, capacityBasis, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
+import { hostImages } from '../footprint';
 import {
   type CapacityDay,
   type HourAcc,
@@ -154,15 +155,14 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
   const scopeOf = (workloadId: string): WorkScope => {
     let sc = scopes.get(workloadId);
     if (!sc) {
-      const s = incidentSubjects(r, scenario, workloadId, r.day);
-      sc = { hosts: s.hosts.map((lparId) => ({ lparId })), servers: s.servers };
+      sc = workScopeOf(incidentSubjects(r, scenario, workloadId, r.day));
       scopes.set(workloadId, sc);
     }
     return sc;
   };
-  const inHour = (e: RunState['events'][number]) => e.started && e.startTick < hourEnd && (e.endTick === null || e.endTick > hourStart);
+  const window = { startTick: hourStart, endTick: hourEnd };
   const disturbed = (workloadId: string) =>
-    r.events.some((e) => inHour(e) && !(e.endTick === null && e.metWith?.includes(workloadId)) && footprintRelation(e, workloadId, scopeOf(workloadId)) !== null);
+    r.events.some((e) => activeIn(e, window) && !(e.endTick === null && e.metWith?.includes(workloadId)) && footprintRelation(e, workloadId, scopeOf(workloadId)) !== null);
   const metHour: string[] = [];
   for (const w of workloads) {
     const wh = h.workloads[w.id];
@@ -187,9 +187,8 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       const inc = incidents[openIdx]!;
       incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
     } else {
-      const hosts = Object.entries(r.sim.routing[w.id] ?? w.routing)
-        .filter(([, f]) => f > 0)
-        .map(([lparId]) => {
+      const hosts = hostImages(r.sim.routing[w.id] ?? w.routing)
+        .map((lparId) => {
           const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });

@@ -6,14 +6,14 @@
 // hand-listed answer per incident, and each accepted answer carries the one line the reply shows for it.
 
 import { CPU_BANDS, CPU_CAPACITY } from '../content/incidents';
-import { TICKS_PER_HOUR } from '../sim/core/units';
+import { CPU_FAMILY } from '../content/footprint';
 import type { GameContent } from './run/shared';
-import { cappedForHour, fallbackTrigger, footprintRelation, qualifyingCards, type WorkScope } from './sla';
+import { activeIn, cappedForHour, fallbackTrigger, footprintRelation, hourWindow, qualifyingCards, type WorkScope } from './sla';
 import type { ActiveEvent, CapacityBasis, HourAcc, IncidentTruth, Mechanism, Trigger } from './types';
 
-/** The CPU family: one machine's shortage, seen three ways. Used for the cause's identity and to scope the
- * capacity-card rule (a machine that lost capacity explains CPU work, not an I/O or storage miss). */
-export const CPU_FAMILY: readonly Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING'];
+/** The CPU family (content/footprint.ts): used here for the cause's identity and to scope the capacity-card rule (a
+ * machine that lost capacity explains CPU work, not an I/O or storage miss). */
+export { CPU_FAMILY };
 
 export interface TruthContext {
   workloadId: string;
@@ -40,12 +40,6 @@ export interface TruthContext {
 }
 
 const pct = (x: number) => `${x.toFixed(1)} %`;
-
-/** The work's images and serving regions, for the cards' footprints. */
-const scopeOf = (ctx: { hosts: readonly { lparId: string }[]; servers?: readonly { jobname: string; lparId: string }[] }): WorkScope => ({
-  hosts: ctx.hosts,
-  ...(ctx.servers ? { servers: ctx.servers } : {}),
-});
 
 /**
  * The accepted set for a truth, with one line of reasoning per answer that is not the primary.
@@ -75,11 +69,11 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     notes[t] = why;
   };
 
-  const window = ctx.window ?? { startTick: ctx.hour.hourIndex * TICKS_PER_HOUR, endTick: (ctx.hour.hourIndex + 1) * TICKS_PER_HOUR };
-  const scope = scopeOf(ctx);
+  const window = ctx.window ?? hourWindow(ctx.hour.hourIndex);
+  // The context's hosts and servers are the work's footprint scope.
+  const scope: WorkScope = ctx;
   const ranked = qualifyingCards(ctx.events, ctx.workloadId, ctx.mechanism, window, scope);
   const card = ctx.card ?? ranked[0]?.card;
-  const overlaps = (e: ActiveEvent) => e.started && e.startTick < window.endTick && (e.endTick === null || e.endTick > window.startTick);
   const defOf = (e: ActiveEvent) => ctx.content.events.find((d) => d.id === e.defId);
 
   // The card's own declared alternates: a looping archiver is also the policy that ran it, a storage shortage is
@@ -110,7 +104,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   // storage, lock or thread-limit miss, and accepting CPU_CAPACITY there would teach a cause the data cannot support.
   const cpuSide = CPU_FAMILY.includes(ctx.mechanism) || ctx.mechanism === 'DEPENDENCY';
   const capCard = cpuSide
-    ? ctx.events.find((e) => overlaps(e) && (footprintRelation(e, ctx.workloadId, scope) !== null || e.uid === card?.uid) && (defOf(e)?.capacityDrop ?? 0) > 0)
+    ? ctx.events.find((e) => activeIn(e, window) && (footprintRelation(e, ctx.workloadId, scope) !== null || e.uid === card?.uid) && (defOf(e)?.capacityDrop ?? 0) > 0)
     : undefined;
   if (capCard) offerMechanism('CPU_CAPACITY', `${capCard.name} lowered the processor's capacity`);
 
@@ -175,8 +169,8 @@ export function truthCause(ctx: {
   window?: { startTick: number; endTick: number };
   isNew: boolean;
 }): string {
-  const window = ctx.window ?? { startTick: ctx.hour.hourIndex * TICKS_PER_HOUR, endTick: (ctx.hour.hourIndex + 1) * TICKS_PER_HOUR };
-  const card = ctx.card ?? qualifyingCards(ctx.events, ctx.workloadId, ctx.mechanism, window, scopeOf(ctx))[0]?.card;
+  const window = ctx.window ?? hourWindow(ctx.hour.hourIndex);
+  const card = ctx.card ?? qualifyingCards(ctx.events, ctx.workloadId, ctx.mechanism, window, ctx)[0]?.card;
   if (card) return card.uid;
   if (ctx.isNew || ctx.trigger === 'NEW_WORKLOAD') return `new:${ctx.workloadId}`;
   const family = CPU_FAMILY.includes(ctx.mechanism) ? 'CPU' : ctx.mechanism;

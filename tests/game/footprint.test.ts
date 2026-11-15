@@ -129,8 +129,8 @@ describe('qualification by footprint', () => {
   it('BATCH is a workload like any other: a card on a critical job image reaches it', () => {
     const night = T;
     const creep = card('MONITOR_CREEP', { startTick: night - H, reach: ['PROD1'] });
-    expect(batchMissTrigger('CPU_PRIORITY', [creep], hour, night, undefined, on('PROD1'))).toBe('CHANGE_REGRESSION');
-    expect(batchMissTrigger('CPU_PRIORITY', [creep], hour, night, undefined, on('DEVT'))).toBe('POLICY');
+    expect(batchMissTrigger('CPU_PRIORITY', [creep], hour, night, on('PROD1'))).toBe('CHANGE_REGRESSION');
+    expect(batchMissTrigger('CPU_PRIORITY', [creep], hour, night, on('DEVT'))).toBe('POLICY');
   });
 
   it('SMF_AUDIT has a footprint now: extra CP in the SMF address spaces, which can only fill a full machine', () => {
@@ -199,7 +199,7 @@ describe('reach at run time', () => {
     expect(resolveReach({ images: ['PROD1', 'NOPE'] }, world)).toEqual(['PROD1']);
     expect(resolveReach('sysplex', world)).toEqual(r.sim.config.lpars.map((l) => l.id).sort());
     const cpc = r.sim.config.lpars[0]!.cpcId;
-    expect(resolveReach('capacityCpcs', { ...world, capacityCpcs: [cpc] })).toEqual(r.sim.config.lpars.filter((l) => l.cpcId === cpc).map((l) => l.id).sort());
+    expect(resolveReach('capacityCpcs', world, [cpc])).toEqual(r.sim.config.lpars.filter((l) => l.cpcId === cpc).map((l) => l.id).sort());
   });
 
   it('a running card keeps the union of the images it reached in the hour after a routing move', () => {

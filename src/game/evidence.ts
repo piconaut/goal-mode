@@ -1,6 +1,7 @@
 // RCA evidence (SPEC §10): pin data points from reports, attach up to three to an RCA, and score
 // each against the incident's hidden truth, its time window and the work it hurt.
 
+import { hostImages } from './footprint';
 import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, type EvidenceMetric, type PinRelation } from '../content/evidence';
 import { clockAt, formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
@@ -373,9 +374,8 @@ export function incidentSubjects(
   const classes = w ? [classify(run.sim.wlm.definition, w.work).serviceClass].filter((x): x is string => !!x) : [];
   const routing = run.sim.routing[workloadId] ?? w?.routing ?? {};
   const lpars = Object.keys(routing);
-  // Images the work actually runs on. A static routing table keeps a 0 weight for an image it was routed away from
-  // (`SET_ROUTING`), and that image is not a host of the work any more.
-  const hosts = Object.entries(routing).filter(([, share]) => share > 0).map(([id]) => id);
+  // Images the work actually runs on (the routing rule the footprints use too).
+  const hosts = hostImages(routing);
   const servers: { jobname: string; lparId: string }[] = [];
   // Resource evidence on a CICS region class is evidence about its hosted transactions, not about a class of its own
   // (RT-12 keeps the two apart so a region's row is a `server` pin, not the work's own).
