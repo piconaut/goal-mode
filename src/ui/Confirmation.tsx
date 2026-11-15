@@ -1,20 +1,23 @@
 import { createContext, useCallback, useContext, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
-type RequestConfirmation = (message: string, actionLabel?: string) => Promise<boolean>;
+/** The action button's shared button style: `primary` for an ordinary confirmation, `danger` for one that discards
+ * work (PR-10). */
+type ConfirmTone = 'primary' | 'danger';
+type RequestConfirmation = (message: string, actionLabel?: string, tone?: ConfirmTone) => Promise<boolean>;
 const ConfirmationContext = createContext<RequestConfirmation | null>(null);
 
 export function ConfirmationProvider({ children }: { children: ReactNode }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const resolver = useRef<((confirmed: boolean) => void) | null>(null);
   const mounted = useRef(true);
-  const [pending, setPending] = useState<{ message: string; actionLabel: string } | null>(null);
+  const [pending, setPending] = useState<{ message: string; actionLabel: string; tone: ConfirmTone } | null>(null);
   const id = useId();
 
-  const request = useCallback<RequestConfirmation>((message, actionLabel = 'Confirm') => {
+  const request = useCallback<RequestConfirmation>((message, actionLabel = 'Confirm', tone: ConfirmTone = 'primary') => {
     if (!mounted.current || resolver.current) return Promise.resolve(false);
     return new Promise<boolean>((resolve) => {
       resolver.current = resolve;
-      setPending({ message, actionLabel });
+      setPending({ message, actionLabel, tone });
     });
   }, []);
 
@@ -65,7 +68,9 @@ export function ConfirmationProvider({ children }: { children: ReactNode }) {
         <p id={`${id}-message`}>{pending?.message}</p>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <button type="button" autoFocus onClick={() => settle(false)}>Cancel</button>
-          <button type="button" onClick={() => settle(true)}>{pending?.actionLabel ?? 'Confirm'}</button>
+          <button type="button" className={pending?.tone === 'danger' ? 'danger' : 'primary'} onClick={() => settle(true)}>
+            {pending?.actionLabel ?? 'Confirm'}
+          </button>
         </div>
       </dialog>
     </ConfirmationContext.Provider>

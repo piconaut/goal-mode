@@ -375,12 +375,6 @@ the mail don't say that the earlier install's edits went live through the later 
 #181/#183/#185 were verified by hand with Playwright. Cover the save dialogs and the in-app confirmation
 (`src/ui/Confirmation.tsx`): open, close, Escape, reopen, delayed close events, confirm/cancel.
 
-### PR-10 · Confirmation polish
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #185. During a file import the button still reads "Reading file…" while the prompt is open; the confirm button has
-no primary/danger styling.
-
 ### PR-13 · One abended-job set for the play CLI and the `inspect` replays
 `list: pr-followups · status: ready · priority: low · size: S · area: tooling`
 
