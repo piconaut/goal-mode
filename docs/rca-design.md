@@ -663,7 +663,8 @@ claim. Where the build differs from the table:
 
 - **CPU_PRIORITY's consumer** must be *displaceable*: a period less important than the hurt work's (or
   discretionary), which includes a lower period of the work's own class (ADHOC's DDFPRD#2 behind MOBILE's DDFPRD#1,
-  a `self` row), or a PROCU job whose address space classifies to such a period (SYSTEM and SYSSTC never do). Without it any busy image proves priority. APPROX: importance is read from the
+  a `self` row), or a PROCU job whose service class (stored on the pin from the PROCU row, so batch jobs and TSO users
+  count too) is such a period; SYSTEM and SYSSTC never are. Without it any busy image proves priority. APPROX: importance is read from the
   definition active at review time.
 - **CAPPING's symptom** is CP delay only (no zIIP delay): defined and group capacity limit general-CP MSU.
 - **DEPENDENCY** reads the server's delay where one is a recorded server (a CICS region class), or the work's own
@@ -686,8 +687,10 @@ claim. Where the build differs from the table:
   sim a CF link fault takes Db2 CF time 3.5 → 4.2 ms/txn and a DASD fault sync I/O 0.9 → 2.1 ms/txn, both under the
   RT-10 lines, while the CF and DASD reports themselves are far past twice normal. Those reports' own lines are
   RT-10's: two hours into a fault the row's six-interval normal holds the fault, so the fault's early rows prove it.
-- **NEW_WORKLOAD's "no history"** is read from the rows: the row (or the workload's SMF hour) first appears at least
-  the baseline window after the report's first, and within the day before the pin.
+- **NEW_WORKLOAD's "no history"** is read from the rows: the row (or the workload's SMF hour) first appears within
+  the day before the pin, after the report had held a full day without it. A day, because work with a daily shape
+  (the first batch night, a morning peak) first appears hours into the report and is not new; day 1 cannot show new
+  work this way.
 - **Every claim is proven from a replay** (`tests/game/proofRecipes.test.ts`): a card's own commands on midwest day
   2, pins through `addPin`. The ±15 % rate band is tight against day-to-day noise for some workloads (MOBILE's same
   hour moves 10–16 % between days; RBANK's under 1 %).

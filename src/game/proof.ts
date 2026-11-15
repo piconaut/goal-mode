@@ -60,22 +60,23 @@ function imageCps(run: RunState, lparId: string): number {
 }
 
 /** New work's rows: a Workload Activity row, or a workload's Db2 101/CICS 110 row, that first appeared within the day
- * before the pin and at least the baseline window after the report's first interval or hour, so the report shows
- * time without it. Read from the rows themselves, not from the pin's baseline: an ended rate's slot baseline is absent
- * all through day 1 for every row. */
+ * before the pin, after the report had held a full day without it. A day, because work with a daily shape (the batch
+ * night, a morning peak) first appears hours into the report and is not new. Read from the rows themselves, not from
+ * the pin's baseline: an ended rate's slot baseline is absent all through day 1 for every row. Day 1 cannot show new
+ * work this way. */
 function withoutHistory(run: RunState, p: EvidencePin): boolean {
-  const fresh = (firstSeen: number, count: number) => firstSeen >= EVIDENCE.baselineRows && firstSeen < count;
+  const fresh = (reportStart: number, firstSeen: number | undefined) =>
+    firstSeen !== undefined && firstSeen - reportStart >= TICKS_PER_DAY && p.tick - firstSeen < TICKS_PER_DAY;
   if (p.source === 'WLMGL') {
     const ivs = run.sim.rmf.intervals;
-    const index = ivs.findIndex((iv) => iv.endTick === p.tick);
-    if (index < 0) return false;
-    const first = ivs.findIndex((iv) => iv.wlm.some((w) => w.lparId === p.system && w.scKey === p.subject));
-    return fresh(first, index + 1) && p.tick - ivs[first]!.endTick < TICKS_PER_DAY;
+    if (!ivs.some((iv) => iv.endTick === p.tick)) return false;
+    const first = ivs.find((iv) => iv.endTick <= p.tick && iv.wlm.some((w) => w.lparId === p.system && w.scKey === p.subject));
+    return ivs.length > 0 && fresh(ivs[0]!.startTick, first?.endTick);
   }
   if (p.source === 'Db2 101' || p.source === 'CICS 110') {
     const hours = run.smfHours.map((h) => ({ h, end: hourEndTick(run, `${h.day}:${h.hourOfDay}`) ?? Infinity })).filter((x) => x.end <= p.tick);
-    const first = hours.findIndex((x) => (x.h.workloads[p.subject]?.completions ?? 0) > 0);
-    return fresh(first, hours.length) && p.tick - hours[first]!.end < TICKS_PER_DAY;
+    const first = hours.find((x) => (x.h.workloads[p.subject]?.completions ?? 0) > 0);
+    return hours.length > 0 && fresh(hours[0]!.end - TICKS_PER_HOUR, first?.end);
   }
   return false;
 }
@@ -102,6 +103,8 @@ function periodImportance(run: RunState, scKey: string): number | null {
 /** A PROCU job's importance: its address space classified as the STC rules would (SYSTEM and SYSSTC rank above
  * every period, so they are never displaceable). */
 function jobImportance(ctx: ProofContext, p: EvidencePin): number | null {
+  // The PROCU row names the job's service class (batch jobs and TSO users as well as started tasks).
+  if (p.serviceClass !== undefined) return periodImportance(ctx.run, `${p.serviceClass}#1`);
   const a = [...ctx.scenario.addressSpaces, ...ctx.run.sim.extraAddressSpaces].find((x) => x.jobname === p.subject && x.lparId === p.system);
   if (!a) return null;
   const sc = classify(ctx.run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;

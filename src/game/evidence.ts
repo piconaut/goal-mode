@@ -38,6 +38,9 @@ export interface EvidencePin {
    * row it comes from prints that rate beside it (END/S, transactions per second), with the same row's recent normal.
    * A recipe can read it, so one row shows "more work at the same cost" or "the same work costing more". */
   rate?: { value: number; baseline?: number };
+  /** A PROCU job's service class, as the row shows it, so a recipe can ask whether the job was displaceable. Absent on
+   * other pins and on PROCU pins from saves written before it. */
+  serviceClass?: string;
   text: string;
 }
 
@@ -321,7 +324,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const j = m.view.procJobs.find((x) => x.system === req.system && x.jobname === req.jobname);
       if (!j) return 'No such job row';
       // PROCU's EAppl % CP: enclave CPU included, 100 = one engine (RMF Report Analysis p.189).
-      return { source: 'PROCU', metric: 'JOB_APPL', subject: req.jobname, system: req.system, tick: m.tick, value: 100 * j.eapplCpEngines };
+      return { source: 'PROCU', metric: 'JOB_APPL', subject: req.jobname, system: req.system, tick: m.tick, value: 100 * j.eapplCpEngines, ...(j.serviceClass ? { serviceClass: j.serviceClass } : {}) };
     }
     case 'BATCH': {
       const night = run.reports.find((x) => x.day === req.day)?.batch;
