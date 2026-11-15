@@ -133,10 +133,15 @@ describe('qualification by footprint', () => {
     expect(batchMissTrigger('CPU_PRIORITY', [creep], hour, night, undefined, on('DEVT'))).toBe('POLICY');
   });
 
-  it('SMF_AUDIT has a footprint now: the SMF address space on every image', () => {
+  it('SMF_AUDIT has a footprint now: extra CP in the SMF address spaces, which can only fill a full machine', () => {
     const def = MIDWEST_GAME.events.find((d) => d.id === 'SMF_AUDIT')!;
-    expect(def.resource).toBe('CP');
     expect(def.reach).toEqual({ jobs: ['SMF'] });
+    expect(cardMechanisms(def)).toEqual(['CPU_CAPACITY']);
+    const audit = card('SMF_AUDIT', { reach: ['PROD1', 'PROD2'] });
+    expect(triggerOf('CARDAUTH', 'CPU_CAPACITY', [audit], hour, false, on('PROD1'))).toBe('CHANGE_REGRESSION');
+    for (const m of ['CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'] as const) {
+      expect(triggerOf('CARDAUTH', m, [audit], hour, false, on('PROD1'))).not.toBe('CHANGE_REGRESSION');
+    }
   });
 });
 
@@ -144,10 +149,13 @@ describe('background cards (§4.4(2))', () => {
   it('markMet makes a card background only for work that met a goal with it already running', () => {
     const running = card('REGRESSION', { startTick: T - H });
     const starting = card('CAMPAIGN', { startTick: T + 10 });
-    const out = markMet([running, starting], ['TELLER', 'CARDAUTH'], T);
+    const reached = () => on('PROD2');
+    const out = markMet([{ ...running, reach: ['PROD2'] }, { ...starting, reach: ['PROD2'] }], ['TELLER', 'CARDAUTH'], T, reached);
     expect(out[0]!.metWith).toEqual(['CARDAUTH', 'TELLER']);
     expect(out[1]!.metWith).toBeUndefined();
-    expect(markMet(out, ['CARDAUTH'], T + H)[0]).toBe(out[0]);
+    expect(markMet(out, ['CARDAUTH'], T + H, reached)[0]).toBe(out[0]);
+    // Work the card did not reach stays fresh for it: a later routing move into its reach is news.
+    expect(markMet([{ ...running, reach: ['PROD2'] }], ['TELLER'], T, () => on('PROD1'))[0]!.metWith).toBeUndefined();
   });
 
   it('a permanent card stops disturbing the baseline once it is background; a time-limited one does not', () => {
@@ -172,6 +180,11 @@ describe('background cards (§4.4(2))', () => {
     const limited = baselineAfter({ ...mandate, endTick: 10 * H }, 2);
     expect(limited.card.metWith).toContain('TELLER');
     expect(limited.seen).toEqual([undefined, undefined]);
+    // Collateral work too (§4.4(1), A2): a regression on RBANK loads CP on TELLER's images, so TELLER's degraded but
+    // passing hours stay out of its healthy baseline while the card runs.
+    const neighbour = baselineAfter(card('REGRESSION', { startTick: 0, endTick: 10 * H }), 2);
+    expect(neighbour.card.reach).toEqual(expect.arrayContaining(['PROD1', 'PROD2']));
+    expect(neighbour.seen).toEqual([undefined, undefined]);
   });
 });
 

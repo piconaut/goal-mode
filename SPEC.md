@@ -1266,8 +1266,9 @@ At end of day, each **incident** (an SLA breach episode) can be investigated wit
 Ground truth for the trigger comes from the cards' **footprints** (RT-14, docs/rca-design.md §4.4(1–3)). Every card
 that can hurt work declares one in content (`content/footprint.ts`): the shared **resource** it loads, its **reach**
 (where it loads it) and its **direct** set (`affects`: the workloads whose own demand or path it changes). The card's
-`mechanisms` derive from the resource: CP (demand and CPU-per-transaction cards, runaway and looping work, agent and
-SMF overheads) names the CPU family, DEPENDENCY and THREAD_LIMIT; a CPC's capacity (POWER_CAP) and zIIP loss the CPU
+`mechanisms` derive from the resource: CP (demand and CPU-per-transaction cards, runaway and looping work, agent
+overhead) names the CPU family, DEPENDENCY and THREAD_LIMIT; a small system address space's overhead (SMF_AUDIT's SMF
+address spaces) only CPU_CAPACITY, since it can fill a full machine but starves no period; a CPC's capacity (POWER_CAP) and zIIP loss the CPU
 family and DEPENDENCY; CF cards CF_SERVICE, LOCK_CONTENTION, DEPENDENCY, CPU_CAPACITY and CPU_PRIORITY (a sync CF
 request spins on the z/OS CP until the CF answers, so a slow CF burns z/OS CPU, SG24-7817-00 p.56; a lost structure
 fails Db2 work); DASD cards IO; Db2 locks LOCK_CONTENTION; a region's QR TCB QR_TCB and THREAD_LIMIT; a region's storage

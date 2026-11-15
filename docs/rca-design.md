@@ -605,7 +605,8 @@ CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores
 - **Power cap.** POWER_CAP's direct set is the work routed onto the capped CPCs (user decision 2026-11-15). So a fresh cap beats a background mandate (U-1).
 - **Background state.** Background is `ActiveEvent.metWith`, written when a workload closes a met hour (or BATCH a met night) with the card already running at its start.
 - **Baseline.** `disturbed` uses the footprint, and drops a card once it is background only when the card is permanent (user decision 2026-11-15). Time-limited cards keep their whole run out of the baseline (PT-13).
-- **Unchanged.** The resource lists reproduce today's per-card mechanism lists. The exception is SMF_AUDIT, which now has a CP footprint where it had none.
+- **Unchanged.** The resource lists reproduce today's per-card mechanism lists. The exception is SMF_AUDIT, which now has a footprint (`CP_OVERHEAD`: the SMF address spaces on every image, CPU_CAPACITY only, its old list) where it had none.
+- **Background.** A card becomes background only for work its footprint reached (`markMet` takes the work's scope), so work routed into its reach later finds it fresh.
 - **Not built here.** The tested fallbacks of (4) are RT-18's.
 
 ### 4.5 Grouping by cause

@@ -705,7 +705,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   - Deviation from §4.4's wording: the footprint is three `EventDef` fields, not a `footprint` object. `affects`
     keeps its name so saves and `adapt()` overrides carry on unchanged.
   - The resource lists reproduce the old per-card mechanism lists. The exception is SMF_AUDIT: it was never blamed,
-    and now has a CP footprint on the SMF address spaces.
+    and now has a `CP_OVERHEAD` footprint on the SMF address spaces (CPU_CAPACITY only, its old list; #359 review N1).
+  - A card is background only for work its footprint reached (#359 review N2).
   - Validator (RT-25 sample: five passive days, seeds 1–5, three scenarios, Normal):
     - gain disagreements fall from 23 to 6 (midwest 0, revenue 0, harbourline 6);
     - footprint-wrong: 0;

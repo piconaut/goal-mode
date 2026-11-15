@@ -215,12 +215,14 @@ export function qualifyingCards(
 export const tiedCards = (a: QualifiedCard, b: QualifiedCard): boolean =>
   a.direct === b.direct && a.background === b.background && a.overlapTicks === b.overlapTicks;
 
-/** Record that these workloads met a goal over a period that opened at `fromTick` with each running card already
- * running: those cards are background for them from now on (§4.4(2)). Sorted, so state stays order-independent. */
-export function markMet(events: readonly ActiveEvent[], workloadIds: readonly string[], fromTick: number): ActiveEvent[] {
+/** Record that these workloads met a goal over a period that opened at `fromTick` with a card already running whose
+ * footprint reached them: that card is background for them from now on (§4.4(2)). A card that did not reach the work
+ * stays fresh for it, so a later routing change that brings the work into its reach still finds it news. Sorted, so
+ * state stays order-independent. */
+export function markMet(events: readonly ActiveEvent[], workloadIds: readonly string[], fromTick: number, scopeOf: (workloadId: string) => WorkScope): ActiveEvent[] {
   return events.map((e) => {
     if (!e.started || e.startTick > fromTick || (e.endTick !== null && e.endTick <= fromTick)) return e;
-    const add = workloadIds.filter((w) => !(e.metWith ?? []).includes(w));
+    const add = workloadIds.filter((w) => !(e.metWith ?? []).includes(w) && footprintRelation(e, w, scopeOf(w)) !== null);
     return add.length > 0 ? { ...e, metWith: [...(e.metWith ?? []), ...add].sort() } : e;
   });
 }

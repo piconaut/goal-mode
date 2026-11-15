@@ -7,6 +7,7 @@ import type { Mechanism } from '../game/types';
 
 export type FootprintResource =
   | 'CP' // general CP demand on the reach's images
+  | 'CP_OVERHEAD' // a small system address space's extra CP: it can fill a full machine, not starve a period
   | 'CPC' // a CPC's capacity (a power cap)
   | 'ZIIP' // zIIP-eligible work pushed onto CPs
   | 'CF' // a coupling facility, its links or structures
@@ -33,6 +34,7 @@ const CPU_SIDE: Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPEN
 export const RESOURCE_MECHANISMS: Record<FootprintResource, readonly Mechanism[]> = {
   // A CP hog also starves the regions' task dispatching, so MXT queues can grow behind it.
   CP: [...CPU_SIDE, 'THREAD_LIMIT'],
+  CP_OVERHEAD: ['CPU_CAPACITY'],
   CPC: CPU_SIDE,
   ZIIP: CPU_SIDE,
   CF: ['CF_SERVICE', 'LOCK_CONTENTION', 'DEPENDENCY', 'CPU_CAPACITY', 'CPU_PRIORITY'],

@@ -661,7 +661,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 0.7,
     trigger: 'CHANGE_REGRESSION',
     affects: [],
-    resource: 'CP',
+    resource: 'CP_OVERHEAD',
     reach: { jobs: ['SMF'] },
     startHour: [6, 6.5],
     durationHours: 3 * 24,

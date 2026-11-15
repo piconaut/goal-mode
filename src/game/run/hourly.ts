@@ -237,8 +237,8 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       r = logLine(r, `INCIDENT ${w.id}: SLA missed (${att.attainmentPct.toFixed(1)}%)`);
     }
   }
-  // Cards already running when the hour opened become background for the work that met its goal through it.
-  if (metHour.length > 0) r = { ...r, events: markMet(r.events, metHour, hourStart) };
+  // Cards already running when the hour opened become background for the work they reached that met its goal.
+  if (metHour.length > 0) r = { ...r, events: markMet(r.events, metHour, hourStart, scopeOf) };
   r = { ...r, capacityToday: hourPeaks(r, h) };
   const hourOfDay = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
   if (hourOfDay >= 18 || hourOfDay < 6) r = { ...r, nightHour: addHour(r.nightHour, h) };

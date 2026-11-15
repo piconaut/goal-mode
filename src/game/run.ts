@@ -378,7 +378,8 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   } else if (night) {
     trust.Regulator = clampTrust(trust.Regulator! + 1);
     // A met night: cards already running at 18:00 are background for BATCH from now on (RT-14).
-    r = { ...r, events: markMet(r.events, [BATCH_INCIDENT], r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR) };
+    const batchHosts = { hosts: (night.criticalHosts ?? []).map((j) => ({ lparId: j.lparId })) };
+    r = { ...r, events: markMet(r.events, [BATCH_INCIDENT], r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR, () => batchHosts) };
   }
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
   const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
