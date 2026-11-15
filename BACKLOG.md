@@ -177,38 +177,15 @@ direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-des
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
 - **RT-00 … RT-15 are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
-  in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 waits for the `wlm-truth` core
-  (WT-04 … WT-10, user decision 2026-11-10): run `dev-loop rca-truth,wlm-truth`, or `rca-truth` alone stops at RT-14
-  and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
+  in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 (card footprints) landed after the
+  `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: blocked: (needs user-attended session) · priority: high · size: L · area: game`
-
-Sequencing (user decision 2026-11-10, docs/archive/wlm-audit-2026-11.md §7): footprints are measured on the WLM core of `wlm-truth`
-(WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
-
-User decision on Q5, 2026-11-10: yes. After WT-09 and WT-10 (WT-10 landed 2026-11-12). Replace `affects` matching with `footprint { resource, reach, direct }` on every card
-(§4.4(1)), generalising PT-04's routing-based scope; rank direct before collateral, fresh before background, then
-overlap, and accept both on a tie (no `uid` order); collateral victims accept the card's trigger and the fallback;
-`disturbed` uses the footprint; BATCH is in reach like any workload; SMF_AUDIT gets a footprint. Moves truth
-triggers: sweep.
-Tests are built fixtures (a card, a footprint, an incident with a given mechanism on a given host), not replayed seed
-incidents: those move with every WLM change (WT-09 moved RT-06's online incidents 0/1/14 → 0/2/16). R-3, R-8 and R-9
-are checked once with the validator and the result recorded in the PR, not kept as standing assertions. Each
-validator disagreement is classified: **footprint wrong** (the card loaded its resource on the hurt work's host or
-its servers' hosts, and the footprint leaves it out, or the reverse) or **path effect** (the gain comes from a
-changed WLM path, e.g. sysplex PIs, with the card's resource not loaded where the work waited); only the first
-counts. Done when: U-1 … U-3 and the footprint fixtures are tests, R-3, R-8 and R-9 give the card's trigger to the
-collateral incidents (validator output in the PR), the validator (RT-25) on seeds 1–5 of the three scenarios shows
-fewer footprint-wrong disagreements than RT-25's baseline (path effects listed in the PR), and SPEC §9 and §10
-describe footprints.
-
 ### RT-15 · Group incidents by cause, not by equal labels
-`list: rca-truth · status: blocked: after RT-14 · priority: high · size: M · area: game`
+`list: rca-truth · status: ready · priority: high · size: M · area: game`
 
 User decision on Q4, 2026-11-10: yes, with two refinements. After RT-14 (before footprints, collateral victims
 have no card cause and would still split off). `rcaGroup` links incidents with the same `truth.cause`: for a card
@@ -608,7 +585,7 @@ Tune after the RT entries that move truth labels have landed (RT-00, RT-02, RT-0
 the strategy bots do (docs/rca-design.md §4.8); tuning before them would be redone.
 
 ### BL-01 · Harbourline expert wins 5 of 10
-`list: balance · status: blocked: after RT-14 · priority: low · size: M · area: content`
+`list: balance · status: ready · priority: low · size: M · area: content`
 
 Release sweep 2026-11-10 (dev `1300e69`, Normal, seeds 1–10): expert 5/10. All five losses are trust losses, mostly
 on Markets (seeds 1, 2, 4, 7, 9); seed 4 (day 38) is new against the 6/10 the user accepted. Harbourline is gated
@@ -620,7 +597,7 @@ Cross-note: the `wlm-truth` core (WT-04 … WT-09) changes how equal-priority cr
 §6.2); tuning before WT-09 would be redone (§8 Q2).
 
 ### BL-02 · Revenue: do-nothing survives close to textbook
-`list: balance · status: blocked: after RT-14 · priority: low · size: M · area: content`
+`list: balance · status: ready · priority: low · size: M · area: content`
 
 Release sweep 2026-11-10: do-nothing median day 19 (p10 16, p90 23), textbook 27, expert 10/10. Do-nothing is inside
 its 8–22 band (it moved there with #167's G1 retune), but the gap to textbook is 8 days against Midwest's 11 and
