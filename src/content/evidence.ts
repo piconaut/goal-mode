@@ -209,6 +209,9 @@ export interface PredicateOption {
   /** The row's period must be less important than the hurt work's (a higher importance number, or discretionary):
    * work WLM could have taken the CPU from. */
   displaceable?: true;
+  /** The pin must read the same row (image and class, or workload) as a pin meeting predicate 0: the two halves of a
+   * surge or a regression describe one piece of work. Only 0 exists today. */
+  sameWorkAs?: 0;
 }
 
 export interface ProofPredicate {
@@ -252,6 +255,8 @@ const at = (metric: EvidenceMetric, value: number, relations: PinRelation[], ext
 const below = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'below', value } });
 const notable = (metric: EvidenceMetric, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'notable' } });
 const normal = (metric: EvidenceMetric, relations: PinRelation[], reading?: 'rate'): PredicateOption => ({ metric, relations, test: { kind: 'normal', band: PROOF.normalBand }, ...(reading ? { reading } : {}) });
+/** The same work as predicate 0 showed (see `sameWorkAs`). */
+const same = (o: PredicateOption): PredicateOption => ({ ...o, sameWorkAs: 0 });
 const ratio = (metric: EvidenceMetric, r: number, relations: PinRelation[], reading?: 'rate'): PredicateOption => ({ metric, relations, test: { kind: 'ratioAtLeast', ratio: r }, ...(reading ? { reading } : {}) });
 
 const SELF: PinRelation[] = ['self'];
@@ -377,15 +382,15 @@ const triggerRecipes: Record<Trigger, ProofRecipe> = {
       ratio('CPU_VS_BASE', PROOF.surgeRatio, SELF, 'rate'),
     ],
   }, {
-    label: 'at the same cost: CPU per transaction within ±15 % of normal',
-    options: [normal('CPU_PER_TXN', SELF_OR_COMPETITOR), normal('CPU_VS_BASE', SELF)],
+    label: 'at the same cost: that work\'s CPU per transaction within ±15 % of normal',
+    options: [same(normal('CPU_PER_TXN', SELF_OR_COMPETITOR)), same(normal('CPU_VS_BASE', SELF))],
   }] },
   CHANGE_REGRESSION: { predicates: [{
     label: 'the same work costs more: CPU per transaction ≥ 1.3 × its normal (WLMGL CP ms/txn, Db2 101, CICS 110)',
     options: [ratio('CPU_PER_TXN', PROOF.regressionRatio, SELF_OR_COMPETITOR), ratio('CPU_VS_BASE', PROOF.regressionRatio, SELF)],
   }, {
-    label: 'not more of it: its ended/s within ±15 % of normal',
-    options: [normal('ENDED_RATE', SELF_OR_COMPETITOR), normal('CPU_PER_TXN', SELF_OR_COMPETITOR, 'rate'), normal('CPU_VS_BASE', SELF, 'rate')],
+    label: 'not more of it: that work\'s ended/s within ±15 % of normal',
+    options: [same(normal('ENDED_RATE', SELF_OR_COMPETITOR)), same(normal('CPU_PER_TXN', SELF_OR_COMPETITOR, 'rate')), same(normal('CPU_VS_BASE', SELF, 'rate'))],
   }] },
   RUNAWAY_WORK: { predicates: [{
     label: 'one class or job up by half an engine: APPL ≥ 50 points over its normal (WLMGL), or a job at ≥ 50 % EAppl CP (PROCU)',
@@ -396,7 +401,7 @@ const triggerRecipes: Record<Trigger, ProofRecipe> = {
     ],
   }, {
     label: 'without more work to show for it: that class\'s ended/s flat, or the hurt work\'s own CPU per transaction within ±15 % of normal',
-    options: [normal('ENDED_RATE', ['competitor']), normal('CPU_PER_TXN', SELF), normal('CPU_VS_BASE', SELF)],
+    options: [same(normal('ENDED_RATE', ['competitor'])), normal('CPU_PER_TXN', SELF), normal('CPU_VS_BASE', SELF)],
   }] },
   BATCH_OVERLAP: { predicates: [{
     label: 'lock or I/O waits on the hurt work (Db2 lock wait, LOCK state, I/O delay, the jobs\' lock wait), or IOSQ past twice normal (DASD Activity)',

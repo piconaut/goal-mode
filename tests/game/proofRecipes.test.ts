@@ -11,6 +11,7 @@ import {
   TRIGGER_RECIPES,
   type EvidenceMetric,
   type PredicateOption,
+  type ProofPredicate,
   type ProofRecipe,
 } from '../../src/content/evidence';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
@@ -124,8 +125,9 @@ function readingFor(o: PredicateOption): [number, number | undefined] {
 }
 
 /** A pin satisfying the option for an incident of this kind, or null when the option's rows don't exist for it. */
-function pinFor(r: RunState, kind: Kind, o: PredicateOption, id: number): EvidencePin | null {
+function pinFor(r: RunState, kind: Kind, o: PredicateOption, id: number, only?: string): EvidencePin | null {
   for (const relation of o.relations) {
+    if (only !== undefined && relation !== only) continue;
     const place = placeFor(kind, o, relation);
     if (!place) continue;
     const [value, baseline] = readingFor(o);
@@ -138,6 +140,28 @@ function pinFor(r: RunState, kind: Kind, o: PredicateOption, id: number): Eviden
 }
 
 const KINDS: Kind[] = ['CICS', 'DDF', 'BATCH'];
+
+/** Predicate-0 pins on the same row as `pin` (any option, any relation): the anchor a `sameWorkAs` option needs. */
+function anchorFor(r: RunState, kind: Kind, pred: ProofPredicate, pin: EvidencePin, id: number): EvidencePin | undefined {
+  for (const o of pred.options) for (const rel of o.relations) {
+    const p = pinFor(r, kind, o, id, rel);
+    if (p && p.system === pin.system && p.subject === pin.subject) return p;
+  }
+  return undefined;
+}
+
+/** One pin per predicate of a two-predicate recipe for this incident kind, or null. An option tied to predicate 0's
+ * work (`sameWorkAs`) gets a predicate-0 pin on the same row. */
+function fixturePins(r: RunState, kind: Kind, preds: readonly ProofPredicate[]): EvidencePin[] | null {
+  const first = preds[0]!.options.map((o) => pinFor(r, kind, o, 1000)).find((p) => p !== null);
+  for (const o of preds[1]!.options) {
+    const second = pinFor(r, kind, o, 1001);
+    if (!second) continue;
+    const anchor = o.sameWorkAs === 0 ? anchorFor(r, kind, preds[0]!, second, 1000) : first;
+    if (anchor) return [anchor, second];
+  }
+  return null;
+}
 
 describe('proof recipe vocabulary (RT-13)', () => {
   it('gives every mechanism and trigger a two-predicate recipe with options on known metrics', () => {
@@ -166,9 +190,12 @@ describe('proof recipe vocabulary (RT-13)', () => {
       const ok = KINDS.some((kind) => {
         const pin = pinFor(fixtureRun, kind, o, 1000);
         if (!pin) return false;
+        // A tied option needs predicate 0 shown on the same row.
+        const anchor = o.sameWorkAs === 0 ? anchorFor(fixtureRun, kind, recipeOf(claim).predicates[0], pin, 999) : undefined;
+        if (o.sameWorkAs === 0 && !anchor) return false;
         const inc = fixtureIncident(fixtureRun, kind, { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
         const proof = judgeProof(fixtureRun, MIDWEST, [inc], MECHANISMS.includes(claim as Mechanism) ? claim as Mechanism : 'CPU_PRIORITY',
-          TRIGGERS.includes(claim as Trigger) ? claim as Trigger : 'POLICY', [pin]);
+          TRIGGERS.includes(claim as Trigger) ? claim as Trigger : 'POLICY', anchor ? [anchor, pin] : [pin]);
         const check = MECHANISMS.includes(claim as Mechanism) ? proof.mechanism : proof.trigger;
         return check.predicates[recipeOf(claim).predicates.indexOf(pred)]!.met;
       });
@@ -180,8 +207,8 @@ describe('proof recipe vocabulary (RT-13)', () => {
   it.each(CLAIMS)('completes the %s recipe from fixture pins and not from one predicate alone', (claim) => {
     const isMech = MECHANISMS.includes(claim as Mechanism);
     const done = KINDS.some((kind) => {
-      const pins = recipeOf(claim).predicates.map((pred, k) => pred.options.map((o) => pinFor(fixtureRun, kind, o, 1000 + k)).find((p) => p !== null) ?? null);
-      if (pins.some((p) => p === null)) return false;
+      const pins = fixturePins(fixtureRun, kind, recipeOf(claim).predicates);
+      if (!pins) return false;
       const inc = fixtureIncident(fixtureRun, kind, { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' });
       const judge = (ps: EvidencePin[]) => {
         const r = judgeProof(fixtureRun, MIDWEST, [inc], isMech ? claim as Mechanism : 'CPU_PRIORITY', isMech ? 'POLICY' : claim as Trigger, ps);
@@ -265,8 +292,8 @@ describe('tier-0/1 paths (RT-13)', () => {
     expect(cheap.every((p) => p.options.length > 0), claim).toBe(true);
     // And one such pin set really completes it (the fixture rows are WLMGL, CPC and PROCU).
     const done = KINDS.some((kind) => {
-      const pins = cheap.map((pred, k) => pred.options.map((o) => pinFor(fixtureRun, kind, o, 1000 + k)).find((p) => p !== null) ?? null);
-      if (pins.some((p) => p === null)) return false;
+      const pins = fixturePins(fixtureRun, kind, cheap);
+      if (!pins) return false;
       expect(pins.every((p) => ['WLMGL', 'CPC', 'PROCU'].includes(p!.source)), claim).toBe(true);
       const isMech = MECHANISMS.includes(claim as Mechanism);
       const r = judgeProof(fixtureRun, MIDWEST, [fixtureIncident(fixtureRun, kind, { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' })],
@@ -296,8 +323,8 @@ describe('tier-0/1 paths (RT-13)', () => {
 // Replays: real report rows from a midwest day, a change pushed at noon and an hour run on.
 
 describe('proofs from replayed incidents (RT-13)', () => {
-  const after = (mod: 'cpu' | 'rate', key: string, value: number): RunState =>
-    advance({ ...day2, pendingCommands: [{ kind: 'SET_MODIFIER', mod, key, value }] }, MIDWEST, content, HOUR);
+  const after = (mod: 'cpu' | 'rate', key: string, value: number, hours = 1): RunState =>
+    advance({ ...day2, pendingCommands: [{ kind: 'SET_MODIFIER', mod, key, value }] }, MIDWEST, content, hours * HOUR);
   const mobileIncident = (r: RunState, truth: Incident['truth']): Incident =>
     ({ ...fixtureIncident(r, 'DDF', truth), subjects: incidentSubjects(day2, MIDWEST, 'MOBILE', day2.day) });
 
@@ -421,6 +448,34 @@ describe('proofs from replayed incidents (RT-13)', () => {
   it('gives an open-hour Db2 101 cost pin the same hour yesterday as its rate baseline', () => {
     const { pins } = pinAll(advance(day2, MIDWEST, content, 120), [{ source: 'DB2', hour: 'current', workloadId: 'MOBILE', metric: 'CPU_VS_BASE' }]);
     expect(pins[0]!.rate!.baseline).toBeGreaterThan(0);
+  });
+
+  it('judges a Monitor III class pin by its period, not as a job (codex review 1)', () => {
+    // D2 12:30, half an hour into ADHOC ×10: Monitor III's PROCU view pins DDFPRD#2's CPU as a class row.
+    const r = after('cpu', 'ADHOC', 10, 0.5);
+    const { run, pins } = pinAll(r, [
+      { source: 'WLMGL', index: last(r), system: 'PROD2', scKey: 'DDFPRD#1', metric: 'DELAY_CPU' },
+      { source: 'MON3', system: 'PROD2', scKey: 'DDFPRD#2', metric: 'APPL_CP' },
+    ]);
+    expect(pins[1]!.source).toBe('PROCU');
+    const inc = mobileIncident(run, { mechanism: 'CPU_PRIORITY', trigger: 'RUNAWAY_WORK' });
+    expect(judgeProof(run, MIDWEST, [inc], 'CPU_PRIORITY', 'RUNAWAY_WORK', pins).mechanism.complete).toBe(true);
+  });
+
+  it('ties the two halves of a regression to one row: another class\'s normal rate does not complete it (codex review 2)', () => {
+    const r = advance({ ...day2, pendingCommands: [
+      { kind: 'SET_MODIFIER', mod: 'cpu', key: 'MOBILE', value: 2 },
+      { kind: 'SET_MODIFIER', mod: 'rate', key: 'MOBILE', value: 1.8 },
+    ] }, MIDWEST, content, HOUR);
+    const { run, pins } = pinAll(r, [
+      { source: 'WLMGL', index: last(r), system: 'PROD2', scKey: 'DDFPRD#1', metric: 'CPU_PER_TXN' },
+      { source: 'WLMGL', index: last(r), system: 'PROD1', scKey: 'ONLHI#1', metric: 'ENDED_RATE' },
+    ]);
+    const inc = mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' });
+    const proof = judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'CHANGE_REGRESSION', pins).trigger;
+    // The cost doubled on DDFPRD#1, but its own rate moved too; ONLHI#1's normal rate is another class's.
+    expect(proof.predicates[0]!.met).toBe(true);
+    expect(proof.complete).toBe(false);
   });
 
   it('refuses the tier-0 cost for a CICS transaction row: its CPU is reported with the regions', () => {

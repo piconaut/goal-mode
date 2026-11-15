@@ -1386,7 +1386,7 @@ it (the RCA card, `play rca`), and the proof is stored on the RCA (`rca.proof`, 
 Notable recipes: CPU_CAPACITY reads a full processor (CPC/image busy ≥ 90 %, or a capacity adjustment), CPU_PRIORITY a
 displaceable consumer (a less important period, or a job, at ≥ 10 % of the image), CAPPING a capped image or CAP delay;
 DEMAND_SURGE is the ended rate ≥ 1.25 × its normal at a flat CPU per transaction, and a change regression the reverse
-(≥ 1.3 ×, rate flat). Cost pins (`CPU_PER_TXN`, and Db2 101/CICS 110 `CPU_VS_BASE`) carry the ended rate printed on
+(≥ 1.3 ×, rate flat), both halves on the same row (the same class on the same image, or the same workload). Cost pins (`CPU_PER_TXN`, and Db2 101/CICS 110 `CPU_VS_BASE`) carry the ended rate printed on
 the same row (`pin.rate`), so one row proves either. `CPU_PER_TXN` is Workload Activity's APPL% CP ÷ END/S in CP
 ms per transaction (RMF Report Analysis 3.1 p.530, p.534), the tier-0 cost: refused on a CICS transaction row, which
 reports no service consumption (p.524), so a CICS workload's cost comes from CICS monitoring. An ended rate's normal

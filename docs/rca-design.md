@@ -674,7 +674,10 @@ claim. Where the build differs from the table:
 - **THREAD_LIMIT's ruling-out half** and HARDWARE_FAULT's are *or*, not *and*: either normal reading counts, so the
   recipe stays two pins. HARDWARE_FAULT's second half also accepts the work's own CPU delay low.
 - **Cost pins carry their row's rate** (`pin.rate`), so DEMAND_SURGE and a change regression are each provable from
-  one Workload Activity, Db2 101 or CICS 110 row. `CPU_PER_TXN` is new: APPL% CP ÷ END/S (RMF Report Analysis 3.1
+  one Workload Activity, Db2 101 or CICS 110 row. When two pins prove them, the second half must read the **same row**
+  as the first (`sameWorkAs`: the same class on the same image, WLMGL or Monitor III, or the same workload's
+  accounting): a cost rise on one class and a normal rate on another are not one regression. RUNAWAY_WORK's "that
+  class's ended/s flat" is tied the same way; its "the hurt work's own cost normal" is deliberately another row. `CPU_PER_TXN` is new: APPL% CP ÷ END/S (RMF Report Analysis 3.1
   [p.530](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=530) END/S,
   [p.534](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534) APPL% CP with IIPCP as its subset),
   refused on a CICS transaction row, which reports no service consumption

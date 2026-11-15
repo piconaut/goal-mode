@@ -123,7 +123,9 @@ export function optionHolds(ctx: ProofContext, p: EvidencePin, relation: string 
   if (p.metric !== o.metric || relation === null || !o.relations.includes(relation as never)) return false;
   if (o.batchClass && !ctx.batch.has(p.subject.split('#')[0]!)) return false;
   if (o.displaceable) {
-    const theirs = p.source === 'PROCU' ? jobImportance(ctx, p) : periodImportance(run, p.subject);
+    // A job row (PROCU's EAppl per jobname) by its job; any class row, Monitor III's PROCU class rows included, by its
+    // period.
+    const theirs = p.metric === 'JOB_APPL' ? jobImportance(ctx, p) : periodImportance(run, p.subject);
     if (theirs === null || ctx.ownImportance === null || theirs <= ctx.ownImportance) return false;
   }
   const reading = o.reading === 'rate' ? p.rate : { value: p.value, baseline: p.baseline };
@@ -156,6 +158,10 @@ export function optionHolds(ctx: ProofContext, p: EvidencePin, relation: string 
   }
 }
 
+/** The row a pin reads, across report views: the same class on the same image (WLMGL or Monitor III), or the same
+ * workload's accounting row. */
+const workOf = (p: EvidencePin): string => `${p.system}|${p.subject}`;
+
 function checkRecipe(
   run: RunState,
   members: readonly { inc: Incident; subjects: IncidentSubjects; ctx: ProofContext }[],
@@ -170,8 +176,15 @@ function checkRecipe(
     const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
     return pins.filter((p) => p.tick >= lo && p.tick <= hi).map((p) => ({ p, ctx, relation: pinRelation(run, inc, p, subjects) }));
   });
-  const predicates = recipe.predicates.map((pred): PredicateCheck => {
-    const ids = new Set(related.filter(({ p, ctx, relation }) => pred.options.some((o) => optionHolds(ctx, p, relation, o))).map(({ p }) => p.id));
+  const holding = (pred: ProofRecipe['predicates'][number], ok: (o: PredicateOption, p: EvidencePin) => boolean) =>
+    new Set(related.filter(({ p, ctx, relation }) => pred.options.some((o) => ok(o, p) && optionHolds(ctx, p, relation, o))).map(({ p }) => p.id));
+  // An option marked `sameWorkAs` must read the same row (image and class, or workload) as a pin meeting that predicate:
+  // a cost rise on one class and a flat rate on another are not one regression. Group pooling is untouched, since
+  // the tie is between pins, whichever incident each was judged for.
+  const first = holding(recipe.predicates[0], () => true);
+  const firstWork = new Set(pins.filter((p) => first.has(p.id)).map(workOf));
+  const predicates = recipe.predicates.map((pred, k): PredicateCheck => {
+    const ids = k === 0 ? first : holding(pred, (o, p) => o.sameWorkAs === undefined || firstWork.has(workOf(p)));
     const pinIds = pins.map((p) => p.id).filter((id) => ids.has(id));
     return { label: pred.label, met: pinIds.length > 0, pinIds };
   });
