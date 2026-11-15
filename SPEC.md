@@ -1259,7 +1259,8 @@ At end of day, each **incident** (an SLA breach episode) can be investigated wit
    thread/MXT, QR TCB} × Mechanism {demand surge, misclassification, priority inversion,
    capping, PR/SM, hardware fault, software regression, batch overlap, dependency starvation}.
 3. Attach **evidence**: pin 1–3 data points from reports (e.g. *WLMGL 10:30 DB2STC
-   CPU delay 38%*). Evidence is scored for relevance against the event's hidden "clue set".
+   CPU delay 38%*). Evidence is scored as a **proof**: the pins must satisfy the filed mechanism's and trigger's
+   recipes (below, "Proof recipes").
 4. Propose a **remediation** (it links to a change on the calendar).
 
 Ground truth for the trigger: an event card active at any time during the incident's opening SLA hour that lists
@@ -1367,8 +1368,33 @@ predicate can ask whether the value is normal; Monitor III pins carry none, beca
 ended/s differently (`docs/rca-design.md` §4.6). A metric whose healthy scale differs by row (a coupling facility's
 own engine, one LCU among several) also has a `notableMultiple`: the value must clear that multiple of its own
 baseline as well as the absolute line, so a chronically slow row does not count as evidence for every incident.
-PI is a symptom and never counts. Evidence points need
-an accepted mechanism.
+PI is a symptom and never counts on its own.
+
+**Proof recipes (RT-13, `docs/rca-design.md` §4.6):** the per-pin verdicts above are shown, but points come from a
+proof. Each mechanism and trigger has a recipe in `content/evidence.ts` (`MECHANISM_RECIPES`, `TRIGGER_RECIPES`): two
+predicates, the symptom on the right subject first and then the discriminator against the nearest look-alike, or a
+ruling-out reading ("its own CPU delay < 10 %") where no report shows the cause directly. A predicate lists options
+(metric, accepted relations, a test: at least, below, notable, a ratio to the row's normal, within ±15 % of it, a rise
+of so many APPL% points, a share of the image's logical CPs, or a row with no history), and a pin in the incident
+window meets it when one option holds; a group's incidents pool their pins. A pin may serve one predicate in each of
+the two recipes, which is how three pins carry both. Scoring, only for accepted answers (RT-07): a complete recipe for
+the filed mechanism earns 3 evidence points (`PROOF.recipePoints`, what three fully relevant pins earned before), one
+predicate shown earns 0.5 (`PROOF.partialPoints`, a lone non-specific pin's old weight), and a complete recipe for
+the filed, accepted trigger on top makes the evidence **strong** (+5 Insight). Two delay rows of the work's own class
+no longer reach strong evidence for any CPU incident (A9). The reply ticks each predicate and names the pins that met
+it (the RCA card, `play rca`), and the proof is stored on the RCA (`rca.proof`, absent in older saves).
+Notable recipes: CPU_CAPACITY reads a full processor (CPC/image busy ≥ 90 %, or a capacity adjustment), CPU_PRIORITY a
+displaceable consumer (a less important period, or a job, at ≥ 10 % of the image), CAPPING a capped image or CAP delay;
+DEMAND_SURGE is the ended rate ≥ 1.25 × its normal at a flat CPU per transaction, and a change regression the reverse
+(≥ 1.3 ×, rate flat). Cost pins (`CPU_PER_TXN`, and Db2 101/CICS 110 `CPU_VS_BASE`) carry the ended rate printed on
+the same row (`pin.rate`), so one row proves either. `CPU_PER_TXN` is Workload Activity's APPL% CP ÷ END/S in CP
+ms per transaction (RMF Report Analysis 3.1 p.530, p.534), the tier-0 cost: refused on a CICS transaction row, which
+reports no service consumption (p.524), so a CICS workload's cost comes from CICS monitoring. An ended rate's normal
+is the **same interval (or SMF hour) on earlier days**, the slot baseline of §4.4, because the six preceding rows read
+the morning ramp as a surge; on the first day it has none, and rate predicates cannot hold. The common recipes (CPU
+family, DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) each have a path through tier-0/1 reports only
+(WLMGL, Monitor III, Partition Data; `METRIC_TIER`). Every mechanism × trigger pair fits in three pins except 29 whose
+four facts no row combines (listed in `tests/game/proofRecipes.test.ts`; BACKLOG RT-27).
 
 **One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
 trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one

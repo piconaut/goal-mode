@@ -9,6 +9,7 @@ import type { AutomationState } from './automation';
 import type { PolicyBook } from './policies';
 import type { ProjectState } from './projects';
 import type { EvidencePin, PinVerdict } from './evidence';
+import type { ProofResult } from './proof';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
 import type { SimState } from '../sim/core/types';
@@ -223,8 +224,10 @@ export interface Incident {
   aiops?: Hypothesis[];
   /** Classes, images and serving regions as they were when the incident opened (RT-04; absent in old saves). */
   subjects?: IncidentSubjects;
-  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). */
-  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; explain?: string } | null;
+  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). `proof` is the
+   * filed claims' recipes over the attached pins (RT-13; absent in saves written before it and when no pin was
+   * attached). */
+  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string } | null;
   trustLost: number;
   /** Id of the first incident that day with the same root cause: one RCA covers the group, scored once (SPEC §10). */
   rcaGroup?: number;

@@ -34,6 +34,10 @@ export interface EvidencePin {
    * Monitor III pin, whose view normalises APPL and ended/s differently from Workload Activity and whose history only
    * carries the pinned range — a baseline from another view would not compare. */
   baseline?: number;
+  /** A cost pin's ended rate (RT-13): a `CPU_PER_TXN` or `CPU_VS_BASE` pin is a cost per ended transaction, and the
+   * row it comes from prints that rate beside it (END/S, transactions per second), with the same row's recent normal.
+   * A recipe can read it, so one row shows "more work at the same cost" or "the same work costing more". */
+  rate?: { value: number; baseline?: number };
   text: string;
 }
 
@@ -73,7 +77,7 @@ type Located = Omit<EvidencePin, 'id' | 'text'>;
 const TRIM_HISTORY = 'This Monitor III range keeps PI, CPU, ended rate and delay shares only; pin the value from a Partition Data interval';
 
 /** Metrics that are a class's CPU total: a CICS region class reports the regions', not its transactions'. */
-const APPL_METRICS = new Set<EvidenceMetric>(['APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP']);
+const APPL_METRICS = new Set<EvidenceMetric>(['APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP', 'CPU_PER_TXN']);
 
 
 const NUM = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -87,6 +91,11 @@ function median(xs: number[]): number | undefined {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
+/** The intervals that ended at the same time of day as `endTick` on earlier days, oldest first. */
+function slotIntervals<T extends { endTick: number }>(intervals: readonly T[], endTick: number): T[] {
+  return intervals.filter((x) => x.endTick < endTick && (endTick - x.endTick) % TICKS_PER_DAY === 0);
+}
+
 /** One Workload Activity row's value for a metric, or null when the row has none. */
 function wlmMetric(w: WlmRecord, metric: EvidenceMetric): number | null | undefined {
   const v: Partial<Record<EvidenceMetric, number | null>> = {
@@ -96,6 +105,8 @@ function wlmMetric(w: WlmRecord, metric: EvidenceMetric): number | null | undefi
     APPL_IIP: w.applIipPct,
     IIPCP: w.applIipcpPct,
     ENDED_RATE: w.endPerSec,
+    // CP milliseconds per ended transaction: APPL% CP is CP seconds per second × 100 (RT-13).
+    CPU_PER_TXN: w.endPerSec > 0 && w.applCpPct > 0 ? (10 * w.applCpPct) / w.endPerSec : null,
     DELAY_CPU: w.delayPct.cpu,
     DELAY_ZIIP: w.delayPct.ziip,
     DELAY_IO: w.delayPct.io,
@@ -138,12 +149,19 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if ((req.metric === 'WM_LOCK' || req.metric === 'WM_READY') && !w.workManager)
         return 'That row has no work manager states (CICS transaction classes only)';
       const value = wlmMetric(w, req.metric);
+      if (req.metric === 'CPU_PER_TXN' && (value === undefined || value === null))
+        return w.endPerSec > 0 ? 'That row used no CP time in the interval' : 'No transactions ended in that interval, so there is no CPU per transaction';
       if (value === undefined || value === null) return 'That metric is not in the Workload Activity report';
-      const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index)
-        .map((x) => x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey))
-        .map((r) => (r ? wlmMetric(r, req.metric) : null))
-        .filter(NUM));
-      return { source: 'WLMGL', metric: req.metric, subject: req.scKey, system: req.system, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      const rowOf = (x: (typeof sim.rmf.intervals)[number]) => x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey);
+      const earlier = sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index).map(rowOf);
+      // Arrivals follow the time of day, so an ended rate's normal is the same interval on the earlier days the report
+      // still holds (§4.4's slot baseline); the preceding rows would read a morning ramp as a surge (RT-13).
+      const slot = slotIntervals(sim.rmf.intervals, iv.endTick).map(rowOf);
+      const baselineOf = (m: EvidenceMetric) => median((m === 'ENDED_RATE' ? slot : earlier).map((r) => (r ? wlmMetric(r, m) : null)).filter(NUM));
+      const baseline = baselineOf(req.metric);
+      const rateBaseline = baselineOf('ENDED_RATE');
+      const rate = req.metric === 'CPU_PER_TXN' ? { rate: { value: w.endPerSec, ...(rateBaseline !== undefined ? { baseline: rateBaseline } : {}) } } : {};
+      return { source: 'WLMGL', metric: req.metric, subject: req.scKey, system: req.system, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}), ...rate };
     }
     case 'MON3': {
       const m = mon3(req.tick);
@@ -271,10 +289,17 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
       const upto = i < 0 ? run.smfHours.length : i;
       const earlier = run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
-      const baseline = req.metric === 'CPU_VS_BASE'
-        ? 1
-        : median(earlier.map((h) => read(`${h.day}:${h.hourOfDay}`)?.[req.metric]).filter(NUM));
-      return { source: req.source === 'DB2' ? 'Db2 101' : 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      // The ended rate's normal is the same hour on earlier days, as for Workload Activity rows (RT-13).
+      const pinned = run.smfHours[upto];
+      const sameHour = pinned ? run.smfHours.slice(0, upto).filter((h) => h.hourOfDay === pinned.hourOfDay && h.day < pinned.day) : [];
+      const earlierOf = (m: EvidenceMetric) => median((m === 'ENDED_RATE' ? sameHour : earlier).map((h) => read(`${h.day}:${h.hourOfDay}`)?.[m]).filter(NUM));
+      const baseline = req.metric === 'CPU_VS_BASE' ? 1 : earlierOf(req.metric);
+      // The cost row's transaction rate, read beside it (RT-13).
+      const rateBaseline = earlierOf('ENDED_RATE');
+      const rate = req.metric === 'CPU_VS_BASE' && NUM(row.ENDED_RATE)
+        ? { rate: { value: row.ENDED_RATE, ...(rateBaseline !== undefined ? { baseline: rateBaseline } : {}) } }
+        : {};
+      return { source: req.source === 'DB2' ? 'Db2 101' : 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, value, ...(baseline !== undefined ? { baseline } : {}), ...rate };
     }
     case 'CICS_STORAGE': {
       const tick = hourEndTick(run, req.hour);
@@ -380,7 +405,8 @@ const pinWhen = (p: Located): string =>
     : formatClock(p.tick).slice(0, -3);
 
 export function pinText(p: Located): string {
-  return `${p.source} ${pinWhen(p)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}`;
+  const rate = p.rate ? ` at ${fmtValue('ENDED_RATE', p.rate.value)}` : '';
+  return `${p.source} ${pinWhen(p)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${rate}`;
 }
 
 /** history: where a pin with a past `tick` reads its Monitor III range (the worker's or the play CLI's history). */

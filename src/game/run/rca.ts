@@ -1,6 +1,7 @@
-import { EVIDENCE } from '../../content/evidence';
+import { EVIDENCE, PROOF } from '../../content/evidence';
 import type { Scenario } from '../../sim/core/scenario';
 import { judgeGroupEvidence } from '../evidence';
+import { judgeProof } from '../proof';
 import { mechanismExplanation } from '../rcaExplain';
 import { acceptedOf, scoreRca } from '../sla';
 import {
@@ -28,16 +29,22 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const verdicts = scenario
     ? judgeGroupEvidence(run, scenario, group, pins)
     : [];
-  const relevance = verdicts.reduce((a, v) => a + v.relevance, 0);
-  // Evidence only earns points when it supports an accepted mechanism (RT-07): a defensible reading is proof too.
-  const evidencePoints = acceptedOf(inc.truth).mechanisms.includes(mechanism) ? Math.round(relevance * EVIDENCE.pointsPerRelevance * 2) / 2 : 0;
-  const strong = evidencePoints > 0 && relevance >= EVIDENCE.strongAt;
+  // Evidence is a proof (RT-13, docs/rca-design.md §4.6): a complete recipe for the filed mechanism earns what three
+  // fully relevant pins did, one predicate shown earns what a non-specific pin did, and a complete recipe for the filed
+  // trigger on top makes the evidence strong. Only for accepted answers (RT-07): proving a wrong claim earns nothing.
+  const proof = scenario && pins.length > 0 ? judgeProof(run, scenario, group, mechanism, trigger, pins) : null;
+  const accepted = acceptedOf(inc.truth);
+  const mechanismShown = proof?.mechanism.predicates.some((x) => x.met) ?? false;
+  const evidencePoints = !proof || !accepted.mechanisms.includes(mechanism)
+    ? 0
+    : proof.mechanism.complete ? PROOF.recipePoints : mechanismShown ? PROOF.partialPoints : 0;
+  const strong = evidencePoints >= PROOF.recipePoints && accepted.triggers.includes(trigger) && (proof?.trigger.complete ?? false);
   const baseTrust = points >= 3 ? 2 : points > 0 ? 0.5 : -1;
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
   const trust = mapTrust(run, (t) => t + facetTrust / 2);
   const total = points + evidencePoints;
   const explain = mechanismExplanation(inc);
-  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(explain ? { explain } : {}) };
+  const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(strong ? { strong } : {}), ...(proof ? { proof } : {}), ...(explain ? { explain } : {}) };
   return {
     ...run,
     trust,

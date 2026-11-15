@@ -1,4 +1,4 @@
-import { EVIDENCE } from '../../src/content/evidence';
+import { EVIDENCE, PROOF } from '../../src/content/evidence';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import type { EvidencePin } from '../../src/game/evidence';
@@ -68,17 +68,23 @@ describe('grouped RCA evidence verdicts', () => {
   it('selects evidence independently per pin and awards group points and bonuses once', () => {
     const r = grouped();
     r.incidents = r.incidents.map((inc) => ({ ...inc, truth: { mechanism: 'CPU_CAPACITY', trigger: 'POLICY' } }));
-    r.pins = [pin(r, { id: 10, subject: 'RBANK' }), pin(r, { id: 11, subject: 'CARDAUTH' })];
+    // RBANK's region class waiting for CPU on PROD1 (also the POLICY symptom), CPCA full, and CARDAUTH's own rate at
+    // its normal: the CPU_CAPACITY and POLICY recipes over the group's two incidents (RT-13).
+    r.pins = [
+      pin(r, { id: 10, source: 'WLMGL', metric: 'DELAY_CPU', subject: 'STCHI#1', system: 'PROD1', value: 25 }),
+      pin(r, { id: 11, source: 'CPC', metric: 'CPC_BUSY', subject: 'CPCA', system: 'CPCA', value: 95 }),
+      pin(r, { id: 12, metric: 'ENDED_RATE', value: 100, baseline: 100 }),
+    ];
     const noEvidence = file({ ...r, pins: [] });
     const scored = file(r);
     const rca = scored.incidents[0]!.rca!;
-    expect(rca.evidence!.map((v) => [v.pinId, v.relevance, v.why])).toEqual([
-      [10, 1, 'points at the cause'], [11, 1, 'points at the cause'],
-    ]);
-    expect(rca.evidencePoints).toBe(2);
-    expect(rca.points).toBe(7);
-    expect(scored.score - r.score).toBe(7);
-    expect(scored.insight - r.insight).toBe(7 + EVIDENCE.strongInsight);
+    expect(rca.evidence!.map((v) => [v.pinId, v.relevance])).toEqual([[10, 1], [11, 1], [12, 0]]);
+    expect(rca.proof!.mechanism.complete).toBe(true);
+    expect(rca.proof!.trigger.complete).toBe(true);
+    expect(rca.evidencePoints).toBe(PROOF.recipePoints);
+    expect(rca.points).toBe(5 + PROOF.recipePoints);
+    expect(scored.score - r.score).toBe(5 + PROOF.recipePoints);
+    expect(scored.insight - r.insight).toBe(5 + PROOF.recipePoints + EVIDENCE.strongInsight);
     expect(scored.trust).toEqual(noEvidence.trust);
     expect(scored.incidents[1]!.rca).toBe(rca);
     expect(file(scored, 2)).toBe(scored);

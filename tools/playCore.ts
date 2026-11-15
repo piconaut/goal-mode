@@ -25,7 +25,8 @@ import { idText } from '../src/game/ids';
 import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
 import { addPin, removePin, type PinRequest } from '../src/game/evidence';
-import { EVIDENCE_METRICS } from '../src/content/evidence';
+import { EVIDENCE, EVIDENCE_METRICS } from '../src/content/evidence';
+import { proofLines } from '../src/game/proof';
 import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, pendingBase, playerWlmEditError, type WlmEdit } from '../src/game/wlmEdit';
@@ -207,7 +208,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const answerText = (answer: string) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${t.notes?.[answer] ? ` (${t.notes[answer]})` : ''}`;
       const also = [...accepted.mechanisms.filter((m) => m !== t.mechanism), ...accepted.triggers.filter((x) => x !== cTrigger)]
         .map(answerText);
-      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cTrigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
+      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cTrigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${rca?.proof ? `\n${proofLines(rca.proof, (id) => idText('pin', id)).join('\n')}` : ''}`);
     }
     case 'ask': {
       const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));
