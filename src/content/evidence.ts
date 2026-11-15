@@ -93,7 +93,9 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   // The arrival rate is the surging work's own row, a region serving it, or (RT-13, §4.4) a co-hosted workload's:
   // collateral work pays for a burst that is not its own, and the rate is the only visible trace of it there.
   ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5, relations: ['self', 'server', 'competitor'] },
-  DELAY_CPU: { label: 'CPU delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'DEPENDENCY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
+  // A capped image shows its cap as CPU delay too; the specific clue is DELAY_CAP. The CPU family is one machine's
+  // shortage seen three ways (game/rcaTruth's CPU_FAMILY), so the shares belong to all three.
+  DELAY_CPU: { label: 'CPU delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_ZIIP: { label: 'zIIP delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_IO: { label: 'I/O delay %', unit: '%', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 10, weight: 1, relations: OWN },
   DELAY_STO: { label: 'storage delay %', unit: '%', mechanisms: ['STORAGE'], triggers: [], notableAt: 5, weight: 1, relations: OWN },
@@ -247,7 +249,7 @@ const CPU_HURT: RecipePredicate = {
     multipleAtLeast('ENDED_RATE', SELF_SERVER, 1.25, 0),
     // A single class or job using half an engine (the runaway's own signature), and a batch night losing a quarter
     // of its critical-path time to CPU waits (the batch overlap's): both show the machine's shortage on the work.
-    atLeast('APPL', SELF_SERVER_COMPETITOR, 50, 0),
+    atLeast('APPL', SELF_SERVER, 50, 0),
     atLeast('JOB_CPU', SELF, 25, 2),
   ],
 };
@@ -255,7 +257,7 @@ const CPU_HURT: RecipePredicate = {
  * any of these dimensions rules out the look-alike it belongs to (a CPU wait, a change, a surge), so one pin can also
  * satisfy a trigger recipe's normal half — that is how a mechanism+trigger proof stays inside the three-pin limit. */
 const WORK_NORMAL: RecipePredicate = {
-  label: 'the work itself was not the problem: no CPU wait, and its rate or cost per transaction was its normal',
+  label: 'the work itself was not the problem: no CPU wait, or its rate or cost per transaction was its normal',
   options: [atMost('DELAY_CPU', SELF, 10, 0), within('ENDED_RATE', SELF, 0.15, 0), within('CPU_PER_TXN', SELF, 0.15, 0)],
 };
 /** "The work was hurt", in any report's terms: the fallback trigger accompanies every mechanism, so its symptom half
@@ -272,7 +274,7 @@ const HURT: RecipePredicate = {
     atLeast('DELAY_OTHER', SELF, 20, 0),
     atLeast('CPU_PER_TXN', SELF, 1.3, 0),
     multipleAtLeast('ENDED_RATE', SELF_SERVER, 1.25, 0),
-    atLeast('APPL', SELF_SERVER_COMPETITOR, 50, 0),
+    atLeast('APPL', SELF_SERVER, 50, 0),
     atLeast('LOCK_WAIT', SELF, 2, 2),
     atLeast('QR_WAIT', SELF, 5, 2),
     atLeast('MXT_WAIT', SELF, 5, 2),
@@ -334,7 +336,7 @@ export const RECIPES: ProofRecipe[] = [
       CPU_HURT,
       {
         label: 'a cap held the image or the class',
-        options: [atLeast('CAPPED', HOST, 5, 1), atLeast('DELAY_CAP', SELF_SERVER, 5, 0)],
+        options: [atLeast('CAPPED', HOST, 5, 1), atLeast('DELAY_CAP', SELF_SERVER, 5, 0), atLeast('CAPACITY_ADJ', HOST, 1, 1)],
       },
     ],
   },
@@ -447,7 +449,7 @@ export const RECIPES: ProofRecipe[] = [
     claim: { mechanism: 'JOB_FAILURE' },
     predicates: [
       { label: 'critical jobs abended', options: [atLeast('JOB_ABEND', SELF, 1, 2)] },
-      { label: 'they did not lose their time to waits, and nothing about the work changed', options: [atMost('JOB_CPU', SELF, 25, 2), ...NOT_CHANGED.options] },
+      { label: "the night's CPU wait was low, or nothing about the work changed", options: [atMost('JOB_CPU', SELF, 25, 2), ...NOT_CHANGED.options] },
     ],
   },
   {
@@ -551,7 +553,18 @@ export const RECIPES: ProofRecipe[] = [
   {
     claim: { trigger: 'GROWTH' },
     predicates: [
-      CPU_HURT,
+      {
+        // The same shortage as CPU_HURT, without the arrival-rate option: a rise proves the growth half, so it cannot
+        // also be the symptom, or one pin would prove the whole claim.
+        label: 'the work was hurt for CPU',
+        options: [
+          atLeast('DELAY_CPU', SELF_SERVER, 10, 0),
+          atLeast('DELAY_ZIIP', SELF_SERVER, 10, 0),
+          atLeast('CPU_PER_TXN', SELF, 1.3, 0),
+          atLeast('APPL', SELF_SERVER, 50, 0),
+          atLeast('JOB_CPU', SELF, 25, 2),
+        ],
+      },
       {
         // Growth is a rise in arrivals that the work's own recent hour does not explain. One predicate, so the
         // options are alternatives: an arrival rise is the signature, and a flat cost alone is not.

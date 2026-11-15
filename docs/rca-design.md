@@ -667,11 +667,13 @@ with tier-0/1 pins only, and no option ever needs tier 3 (§5.5).
   CPU share a `WORK_NORMAL` ruling-out predicate (no CPU wait, or a normal rate, or a normal cost per transaction) with
   the trigger recipes' normal half (`NOT_CHANGED`), so a pin may satisfy a predicate of both the mechanism's and the
   trigger's recipe — the entry's "two recipes can share the symptom pin", generalised to the shared normal reading.
-  A test enumerates every mechanism × trigger (108 claims) and shows each co-occurring pair — including the audit's
-  own combos: a power cap at priority, the lost-structure aftermath, a vendor creep's collateral work and a lock
-  dinner during growth — is provable strong in three pins. Only three pairs need a fourth observation, and none of
-  them co-occurs: an application error never carries CPU_CAPACITY or CAPPING, and a hardware fault's CPU truth is
-  CPU_CAPACITY, never CAPPING (§2.1).
+  A test enumerates every mechanism × trigger (108 claims) and shows each one earns the strong bonus inside three
+  pins, including the audit's own combos (a power cap at priority, the lost-structure aftermath, a vendor creep's
+  collateral work, a lock dinner during growth). For 102 of the pairs that is both recipes; for six the trigger's
+  recipe needs a fourth observation (a capacity adjustment beside a contender, a newcomer beside a busy machine, an
+  application error filed on a retry storm), so strong arrives by the mechanism's recipe plus the pins' own relevance
+  line and the reply shows one trigger predicate unticked. Whether the limit should allow that fourth pin for a
+  paired proof is RT-26's design question.
 - `CPU_PER_TXN` is new: Workload Activity's APPL% ÷ END/S against the row's own six preceding intervals, the division
   the Codex END/S entry teaches. A CICS transaction row reports no resource samples, so its quotient uses the serving
   regions' class row (also the Codex's path); a row with no ended transactions has none. APPROX: the report prints the

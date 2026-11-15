@@ -292,6 +292,21 @@ RETRY_STORM and CAMPAIGN are the same command and identical in every report (R-5
 timeouts; not confirmed, see §5.3), add a ledger row, then model it on the card. Until then MOBILE_BACKOFF and
 REFSTAT_BACKOFF are not gated by RT-24.
 
+### RT-26 · A paired proof's fourth pin
+`list: rca-truth · status: blocked: design · priority: low · size: S · area: game`
+
+RT-13's three-pin limit keeps a mechanism's and a trigger's recipe inside one RCA wherever the two can share a row
+(a shared symptom or normal reading). Six claim pairs cannot: CAPPING×APPLICATION_ERROR, CAPPING×NEW_WORKLOAD,
+CPU_CAPACITY×APPLICATION_ERROR, CPU_CAPACITY×NEW_WORKLOAD, CPU_PRIORITY×APPLICATION_ERROR and
+CPU_PRIORITY×HARDWARE_FAULT (the last is real: R-7's power cap at 98 % busy is filed at priority). They need a fourth
+observation, so the trigger's recipe shows one predicate unticked; the strong bonus still arrives by the mechanism's
+recipe plus the pins' own relevance line, so nothing is lost but the tick.
+
+Question for the user (docs/rca-design.md §4.6): (1) allow a fourth pin when both halves are filed — recommended,
+because the extra pin is more attention, not less, and the limit exists to price attention; (2) leave it, so those
+six pairs show a partial trigger proof; (3) drop the trigger recipe's separate display. The pins in every option are
+real report rows already cited in the research ledger, so no realism check separates the options.
+
 ### RT-24 · D1: targeted fixes unlocked by proof
 `list: rca-truth · status: blocked: user (decision on docs/rca-design.md §5, Q8b, and PT-20) · priority: low · size: L · area: game`
 

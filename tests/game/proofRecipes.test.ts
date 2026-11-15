@@ -16,7 +16,7 @@ import {
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { TOOLS, type ToolFeature } from '../../src/content/tools';
-import { addPin, incidentSubjects, judgeRecipe, type EvidencePin } from '../../src/game/evidence';
+import { addPin, incidentSubjects, judgeRecipe, scoreEvidence, type EvidencePin } from '../../src/game/evidence';
 import { REPORT_FEATURE, SMF_FEATURE } from '../../src/game/tools';
 import { WLM_METRICS } from '../../src/ui/Reports';
 import { advance, newRun, startDay, submitRca } from '../../src/game/run';
@@ -65,6 +65,10 @@ const incident = (over: Partial<Incident> = {}): Incident => ({
   trustLost: 0,
   ...over,
 });
+
+/** The batch night's incident shape: SMF 30 rows, a critical job's service class and the image it ran on. */
+const batchIncident = (): Incident =>
+  incident({ id: 998, workloadId: 'BATCH', subjects: { classes: ['BATCHPRD'], lpars: ['PROD1'], hosts: ['PROD1'], servers: [] } });
 
 /** A value (and baseline) that passes one predicate test. */
 function valueFor(t: PredicateTest, metric: EvidenceMetric): { value: number; baseline?: number } {
@@ -116,8 +120,13 @@ function pinFor(inc: Incident, option: RecipeOption): EvidencePin {
   if (metric === 'CPU_VS_BASE' || metric === 'LOCK_WAIT' || metric === 'SYNC_IO' || metric === 'CF_WAIT' || metric === 'DBAT_QUEUE')
     return source('Db2 101', inc.workloadId, '*PLEX');
   if (metric === 'QR_WAIT' || metric === 'MXT_WAIT' || metric === 'FAIL_PCT') return source('CICS 110', inc.workloadId, '*PLEX');
-  if (metric.startsWith('JOB_')) return source('SMF 30', inc.workloadId, '*PLEX');
-  return source('WLMGL', inc.workloadId, host);
+  if (metric.startsWith('JOB_')) {
+    // SMF 30 is the batch night's record: an online incident has no such row to pin.
+    if (inc.workloadId !== 'BATCH') throw new Error(`${metric} needs a batch incident, not ${inc.workloadId}`);
+    return source('SMF 30', inc.workloadId, '*PLEX');
+  }
+  // A WLMGL row on the work is its service class row (a batch night's is a critical job's class).
+  return source('WLMGL', s.classes.find((c) => !(s.serverClasses ?? []).includes(c)) ?? inc.workloadId, host);
 }
 
 /** A pin for one explicit metric, relation and test (for the look-alike pairs). */
@@ -164,20 +173,43 @@ function mergeValue(variants: PinVariant[]): { value: number; baseline?: number 
 /** The first set of at most three pins that completes both recipes: one option per predicate, each option tried on
  * every relation it accepts, and options that name the same report row merged into one pin whose value satisfies all
  * of them (a shared symptom, or a shared normal reading). Undefined when no such set exists. */
-function threePinProof(inc: Incident, mechanism: Mechanism, trigger: Trigger): EvidencePin[] | undefined {
+function threePinProof(mechanism: Mechanism, trigger: Trigger, accept?: (inc: Incident, pins: EvidencePin[]) => boolean): { inc: Incident; pins: EvidencePin[] } | undefined {
+  for (const inc of [incident(), batchIncident()]) {
+    const found = threePinProofOn(inc, mechanism, trigger, accept);
+    if (found) return { inc, pins: found };
+  }
+  return undefined;
+}
+
+/** Strong evidence: a complete mechanism recipe that pays, and either the trigger's recipe or the pins' own relevance
+ * line (RT-13's second route), judged exactly as filing the RCA would. */
+const strong = (inc: Incident, pins: EvidencePin[], mechanism: Mechanism, trigger: Trigger): boolean => {
+  const filed = { ...inc, truth: { mechanism, trigger } };
+  const scored = scoreEvidence(run, MIDWEST, filed, [filed], { mechanism, trigger }, pins);
+  return scored.points === EVIDENCE.recipeRelevance && scored.strong;
+};
+
+function threePinProofOn(inc: Incident, mechanism: Mechanism, trigger: Trigger, accept?: (inc: Incident, pins: EvidencePin[]) => boolean): EvidencePin[] | undefined {
   const mr = recipeFor({ mechanism })!;
   const tr = recipeFor({ trigger })!;
   const variants = (o: RecipeOption): PinVariant[] =>
-    o.relations.map((rel) => {
+    inc.workloadId !== 'BATCH' && o.metric.startsWith('JOB_') ? [] : o.relations.map((rel) => {
       const p = pinFor(inc, { ...o, relations: [rel] });
       return { key: `${p.source}|${p.subject}|${p.system}|${o.metric}`, source: p.source, subject: p.subject, system: p.system, metric: o.metric, test: o.test };
     });
-  for (const m1 of mr.predicates[0].options.flatMap(variants))
-    for (const m2 of mr.predicates[1].options.flatMap(variants))
-      for (const t1 of tr.predicates[0].options.flatMap(variants))
-        for (const t2 of tr.predicates[1].options.flatMap(variants)) {
+  const mine = mr.predicates[0].options.flatMap(variants);
+  const mine2 = mr.predicates[1].options.flatMap(variants);
+  const theirs = tr.predicates[0].options.flatMap(variants);
+  const theirs2 = tr.predicates[1].options.flatMap(variants);
+  // The mechanism's two predicates alone, which can still earn strong by the relevance line; then the four-way sets
+  // that may complete both recipes with a shared row.
+  const trials: PinVariant[][] = [];
+  for (const m1 of mine) for (const m2 of mine2) trials.push([m1, m2]);
+  for (const m1 of mine) for (const m2 of mine2) for (const t1 of theirs) for (const t2 of theirs2) trials.push([m1, m2, t1, t2]);
+  for (const trial of trials) {
+    {
           const groups = new Map<string, PinVariant[]>();
-          for (const v of [m1, m2, t1, t2]) groups.set(v.key, [...(groups.get(v.key) ?? []), v]);
+          for (const v of trial) groups.set(v.key, [...(groups.get(v.key) ?? []), v]);
           if (groups.size > EVIDENCE.perRca) continue;
           const pins: EvidencePin[] = [];
           let ok = true;
@@ -191,9 +223,10 @@ function threePinProof(inc: Incident, mechanism: Mechanism, trigger: Trigger): E
             pins.push({ id: 1000 + pins.length, source: first.source, metric: first.metric, subject: first.subject, system: first.system, tick: run.sim.tick, text: '', ...merged });
           }
           if (!ok) continue;
-          if (judgeRecipe(run, MIDWEST, [inc], pins, { mechanism })!.complete && judgeRecipe(run, MIDWEST, [inc], pins, { trigger })!.complete)
-            return pins;
-        }
+          const complete = judgeRecipe(run, MIDWEST, [inc], pins, { mechanism })!.complete && judgeRecipe(run, MIDWEST, [inc], pins, { trigger })!.complete;
+          if (accept ? accept(inc, pins) : complete) return pins;
+    }
+  }
   return undefined;
 }
 
@@ -210,19 +243,21 @@ describe('proof recipes (RT-13)', () => {
         for (const opt of pred.options) {
           // Every option is tried on its own: the pin it makes must satisfy that predicate, at that predicate's
           // position (a pin on the wrong relation, test or predicate index fails here).
-          const proof = judgeRecipe(run, MIDWEST, [inc], [pinFor(inc, opt)], recipe.claim)!;
+          const pinInc = opt.metric.startsWith('JOB_') ? batchIncident() : inc;
+          const proof = judgeRecipe(run, MIDWEST, [pinInc], [pinFor(pinInc, opt)], recipe.claim)!;
           expect(proof.predicates[index]!.ok, `${claimName(recipe.claim)} / ${pred.label} / ${opt.metric}`).toBe(true);
           // The option's tool tier must cover the pin source the recipe can actually be read from.
-          const pin = pinFor(inc, opt);
+          const pin = pinFor(pinInc, opt);
           expect(SOURCE_TIER[pin.source]!, `${claimName(recipe.claim)} ${opt.metric} from ${pin.source}`).toBeLessThanOrEqual(opt.tier);
           // A tier-0 option is a Workload Activity row, and the Workload Activity pin form must offer it (RT-13):
           // a metric only the tests and the CLI can pin is not a player's tier-0 path.
           if (opt.tier === 0) expect(WLM_METRICS, `${claimName(recipe.claim)} ${opt.metric}`).toContain(opt.metric);
         }
       }
-      // Both predicates together complete the recipe.
-      const pins = recipe.predicates.map((pred) => pinFor(inc, pred.options[0]!));
-      const proof = judgeRecipe(run, MIDWEST, [inc], pins, recipe.claim)!;
+      // Both predicates together complete the recipe, on the incident kind that carries its rows.
+      const recipeInc = recipe.predicates.some((p) => p.options[0]!.metric.startsWith('JOB_')) ? batchIncident() : inc;
+      const pins = recipe.predicates.map((pred) => pinFor(recipeInc, pred.options[0]!));
+      const proof = judgeRecipe(run, MIDWEST, [recipeInc], pins, recipe.claim)!;
       expect(proof.complete, `${claimName(recipe.claim)}: ${JSON.stringify(proof.predicates)}`).toBe(true);
     }
   });
@@ -323,27 +358,42 @@ describe('proof recipes (RT-13)', () => {
       ['QR_TCB', 'POLICY'],
       ['THREAD_LIMIT', 'POLICY'],
     ];
-    const inc = incident();
     for (const [mechanism, trigger] of pairs) {
-      const pins = threePinProof(inc, mechanism, trigger);
-      expect(pins, `${mechanism}/${trigger}: no three-pin proof`).toBeDefined();
-      expect(pins!.length, `${mechanism}/${trigger}`).toBeLessThanOrEqual(EVIDENCE.perRca);
-      const mech = judgeRecipe(run, MIDWEST, [inc], pins!, { mechanism })!;
-      const trig = judgeRecipe(run, MIDWEST, [inc], pins!, { trigger })!;
-      expect(mech.complete, `${mechanism}: ${JSON.stringify(mech.predicates)}`).toBe(true);
-      expect(trig.complete, `${trigger}: ${JSON.stringify(trig.predicates)}`).toBe(true);
+      const found = threePinProof(mechanism, trigger, (inc, pins) => strong(inc, pins, mechanism, trigger));
+      expect(found, `${mechanism}/${trigger}: no strong three-pin proof`).toBeDefined();
+      expect(found!.pins.length, `${mechanism}/${trigger}`).toBeLessThanOrEqual(EVIDENCE.perRca);
+      expect(judgeRecipe(run, MIDWEST, [found!.inc], found!.pins, { mechanism })!.complete, mechanism).toBe(true);
     }
   });
 
-  it('leaves only the claim pairs that never co-occur unprovable in three pins', () => {
-    // Exhaustive: every mechanism against every trigger. The three that need a fourth observation are claims the
-    // game never puts together — an application error carries STORAGE or THREAD_LIMIT, and a hardware fault's CPU
-    // truth is CPU_CAPACITY, never CAPPING (§2.1) — so a real incident always has a three-pin strong proof.
-    const inc = incident();
-    const unprovable: string[] = [];
+  it('earns strong evidence for every mechanism × trigger pair — the bonus — inside three pins', () => {
+    // The bonus is reachable for every pair, two ways: most complete both recipes; the rest complete the mechanism's
+    // recipe and clear the pins' own relevance line (RT-13's second route), which is what strong meant before.
+    const pairs: [Mechanism, Trigger][] = [];
+    for (const mechanism of MECHANISMS) for (const trigger of TRIGGERS) pairs.push([mechanism, trigger]);
+    for (const [mechanism, trigger] of pairs) {
+      const found = threePinProof(mechanism, trigger, (inc, pins) => strong(inc, pins, mechanism, trigger));
+      expect(found, `${mechanism}/${trigger}: no strong three-pin proof`).toBeDefined();
+      expect(found!.pins.length).toBeLessThanOrEqual(EVIDENCE.perRca);
+    }
+  });
+
+  it('names the pairs whose trigger recipe needs a fourth observation', () => {
+    // For these the two recipes need four distinct rows (a capacity adjustment beside a contender, a newcomer beside a
+    // busy machine), so the trigger's recipe cannot tick fully in three pins. The strong bonus still arrives by the
+    // relevance line above; the reply just shows one trigger predicate unticked. BACKLOG RT-26 asks whether the limit
+    // should allow a paired proof's fourth pin.
+    const needFour: string[] = [];
     for (const mechanism of MECHANISMS)
-      for (const trigger of TRIGGERS) if (!threePinProof(inc, mechanism, trigger)) unprovable.push(`${mechanism}/${trigger}`);
-    expect(unprovable.sort()).toEqual(['CAPPING/APPLICATION_ERROR', 'CAPPING/HARDWARE_FAULT', 'CPU_CAPACITY/APPLICATION_ERROR']);
+      for (const trigger of TRIGGERS) if (!threePinProof(mechanism, trigger)) needFour.push(`${mechanism}/${trigger}`);
+    expect(needFour.sort()).toEqual([
+      'CAPPING/APPLICATION_ERROR',
+      'CAPPING/NEW_WORKLOAD',
+      'CPU_CAPACITY/APPLICATION_ERROR',
+      'CPU_CAPACITY/NEW_WORKLOAD',
+      'CPU_PRIORITY/APPLICATION_ERROR',
+      'CPU_PRIORITY/HARDWARE_FAULT',
+    ]);
   });
 
   it('pays a complete mechanism recipe three pins worth, and never less than the same pins did loose', () => {
@@ -357,8 +407,11 @@ describe('proof recipes (RT-13)', () => {
     const complete = submitRca(r, inc.id, 'CPU_CAPACITY', 'CHANGE_REGRESSION', MIDWEST, [cpu.id, busy.id]);
     expect(complete.incidents[0]!.rca!.evidencePoints).toBe(EVIDENCE.recipeRelevance);
     expect(complete.insight - r.insight).toBe(5 + EVIDENCE.recipeRelevance + EVIDENCE.strongInsight);
-    // The same two pins left loose never pay more than the completed recipe.
-    const loose = submitRca(r, inc.id, 'CPU_CAPACITY', 'CHANGE_REGRESSION', MIDWEST, []);
+    // The same two pins left loose (a pair that does not complete a recipe) never pay more than the completed one.
+    const loosePair = [pinFor(inc, option('DELAY_CPU', ['self'], { kind: 'atLeast', value: 10 })), pinFor(inc, option('DELAY_ZIIP', ['self'], { kind: 'atLeast', value: 10 }))];
+    r.pins = loosePair;
+    const loose = submitRca(r, inc.id, 'CPU_CAPACITY', 'CHANGE_REGRESSION', MIDWEST, loosePair.map((p) => p.id));
+    expect(loose.incidents[0]!.rca!.proof!.find((p) => p.claim === 'mechanism')!.complete).toBe(false);
     expect(complete.insight).toBeGreaterThanOrEqual(loose.insight);
   });
 
