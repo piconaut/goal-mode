@@ -70,6 +70,21 @@ const incident = (over: Partial<Incident> = {}): Incident => ({
 const batchIncident = (): Incident =>
   incident({ id: 998, workloadId: 'BATCH', subjects: { classes: ['BATCHPRD'], lpars: ['PROD1'], hosts: ['PROD1'], servers: [] } });
 
+/** A DDF workload's incident: its own Workload Activity row carries resource samples, so CPU_PER_TXN is pinnable. */
+const ddfIncident = (): Incident => incident({ id: 997, workloadId: 'ADHOC', subjects: incidentSubjects(run, MIDWEST, 'ADHOC', 0) });
+
+/** The scenario's own knowledge of a workload's subsystem, used to keep the test's pins to rows a player can pin. */
+const subsystemOf = (inc: Incident): string | undefined => MIDWEST.workloads.find((w) => w.id === inc.workloadId)?.subsystem;
+
+/** Is this metric pinnable on the incident's own rows? A batch job metric needs a batch night; CPU_PER_TXN needs a row
+ * that reports its own resource usage, so not a CICS transaction row (RT-13 review). A batch class row does report
+ * both columns, though its ENDED counts jobs, so its quotient is CPU per job. */
+const pinnable = (inc: Incident, metric: EvidenceMetric): boolean => {
+  if (metric.startsWith('JOB_')) return inc.workloadId === 'BATCH';
+  if (metric === 'CPU_PER_TXN') return subsystemOf(inc) !== 'CICS';
+  return true;
+};
+
 /** A value (and baseline) that passes one predicate test. */
 function valueFor(t: PredicateTest, metric: EvidenceMetric): { value: number; baseline?: number } {
   const base = EVIDENCE_METRICS[metric].unit === '×' ? 1 : 100;
@@ -114,6 +129,8 @@ function pinFor(inc: Incident, option: RecipeOption): EvidencePin {
     if (metric.startsWith('DASD_')) return source('DASD', 'LCU 21', '*PLEX');
     if (metric === 'SOS_MIN') return source('CICS 110', s.servers[0]?.jobname ?? 'CICSAOR1', '*PLEX');
     if (metric === 'VELOCITY') return source('SYSWKM', s.servers[0]?.jobname ?? 'CICSAOR1', s.servers[0]?.lparId ?? host);
+    // A server's CPU is Monitor III PROCU's EAppl (RT-11); the Workload Activity report has no job rows.
+    if (metric === 'JOB_APPL') return source('PROCU', s.servers[0]?.jobname ?? 'CICSAOR1', s.servers[0]?.lparId ?? host);
     return source('WLMGL', s.serverClasses?.[0] ?? 'STCHI#1', host);
   }
   // self
@@ -174,7 +191,7 @@ function mergeValue(variants: PinVariant[]): { value: number; baseline?: number 
  * every relation it accepts, and options that name the same report row merged into one pin whose value satisfies all
  * of them (a shared symptom, or a shared normal reading). Undefined when no such set exists. */
 function threePinProof(mechanism: Mechanism, trigger: Trigger, accept?: (inc: Incident, pins: EvidencePin[]) => boolean): { inc: Incident; pins: EvidencePin[] } | undefined {
-  for (const inc of [incident(), batchIncident()]) {
+  for (const inc of [incident(), ddfIncident(), batchIncident()]) {
     const found = threePinProofOn(inc, mechanism, trigger, accept);
     if (found) return { inc, pins: found };
   }
@@ -185,6 +202,9 @@ function threePinProof(mechanism: Mechanism, trigger: Trigger, accept?: (inc: In
  * line (RT-13's second route), judged exactly as filing the RCA would. */
 const strong = (inc: Incident, pins: EvidencePin[], mechanism: Mechanism, trigger: Trigger): boolean => {
   const filed = { ...inc, truth: { mechanism, trigger } };
+  // The mechanism's recipe must actually complete: `points` is also the plain relevance sum, so it alone would let a
+  // sum of exactly three stand in for a proof (RT-13 review).
+  if (!judgeRecipe(run, MIDWEST, [filed], pins, { mechanism })!.complete) return false;
   const scored = scoreEvidence(run, MIDWEST, filed, [filed], { mechanism, trigger }, pins);
   return scored.points === EVIDENCE.recipeRelevance && scored.strong;
 };
@@ -193,7 +213,7 @@ function threePinProofOn(inc: Incident, mechanism: Mechanism, trigger: Trigger, 
   const mr = recipeFor({ mechanism })!;
   const tr = recipeFor({ trigger })!;
   const variants = (o: RecipeOption): PinVariant[] =>
-    inc.workloadId !== 'BATCH' && o.metric.startsWith('JOB_') ? [] : o.relations.map((rel) => {
+    !pinnable(inc, o.metric) ? [] : o.relations.map((rel) => {
       const p = pinFor(inc, { ...o, relations: [rel] });
       return { key: `${p.source}|${p.subject}|${p.system}|${o.metric}`, source: p.source, subject: p.subject, system: p.system, metric: o.metric, test: o.test };
     });
@@ -243,19 +263,23 @@ describe('proof recipes (RT-13)', () => {
         for (const opt of pred.options) {
           // Every option is tried on its own: the pin it makes must satisfy that predicate, at that predicate's
           // position (a pin on the wrong relation, test or predicate index fails here).
-          const pinInc = opt.metric.startsWith('JOB_') ? batchIncident() : inc;
+          const pinInc = opt.metric.startsWith('JOB_') ? batchIncident() : opt.metric === 'CPU_PER_TXN' ? ddfIncident() : inc;
+          expect(pinnable(pinInc, opt.metric), `${claimName(recipe.claim)} ${opt.metric} on ${pinInc.workloadId}`).toBe(true);
           const proof = judgeRecipe(run, MIDWEST, [pinInc], [pinFor(pinInc, opt)], recipe.claim)!;
           expect(proof.predicates[index]!.ok, `${claimName(recipe.claim)} / ${pred.label} / ${opt.metric}`).toBe(true);
-          // The option's tool tier must cover the pin source the recipe can actually be read from.
+          // The option's tier must be its report's own tier, both ways: an overstated tier would tell a player the
+          // gate needs a tool it does not (RT-13 review).
           const pin = pinFor(pinInc, opt);
-          expect(SOURCE_TIER[pin.source]!, `${claimName(recipe.claim)} ${opt.metric} from ${pin.source}`).toBeLessThanOrEqual(opt.tier);
+          expect(SOURCE_TIER[pin.source]!, `${claimName(recipe.claim)} ${opt.metric} from ${pin.source}`).toBe(opt.tier);
           // A tier-0 option is a Workload Activity row, and the Workload Activity pin form must offer it (RT-13):
           // a metric only the tests and the CLI can pin is not a player's tier-0 path.
           if (opt.tier === 0) expect(WLM_METRICS, `${claimName(recipe.claim)} ${opt.metric}`).toContain(opt.metric);
         }
       }
       // Both predicates together complete the recipe, on the incident kind that carries its rows.
-      const recipeInc = recipe.predicates.some((p) => p.options[0]!.metric.startsWith('JOB_')) ? batchIncident() : inc;
+      const recipeInc = recipe.predicates.some((p) => p.options[0]!.metric.startsWith('JOB_'))
+        ? batchIncident()
+        : recipe.predicates.some((p) => p.options[0]!.metric === 'CPU_PER_TXN') ? ddfIncident() : inc;
       const pins = recipe.predicates.map((pred) => pinFor(recipeInc, pred.options[0]!));
       const proof = judgeRecipe(run, MIDWEST, [recipeInc], pins, recipe.claim)!;
       expect(proof.complete, `${claimName(recipe.claim)}: ${JSON.stringify(proof.predicates)}`).toBe(true);
@@ -263,7 +287,8 @@ describe('proof recipes (RT-13)', () => {
   });
 
   it('rejects the look-alikes the entry names: a surge is not a regression and a regression is not a surge', () => {
-    const inc = incident();
+    // A DDF workload: its own Workload Activity row carries both columns, so a player can pin either of these.
+    const inc = ddfIncident();
     const surge = [
       pinFor(inc, option('ENDED_RATE', ['self'], { kind: 'multipleAtLeast', multiple: 1.25 })),
       pinFor(inc, option('CPU_PER_TXN', ['self'], { kind: 'within', frac: 0.15 })),
@@ -305,17 +330,27 @@ describe('proof recipes (RT-13)', () => {
   });
 
   it('gives every common recipe a path that needs no tool beyond tier 1', () => {
-    const inc = incident();
+    // The witness is the incident kind whose report rows carry those cheap options: a CICS transaction row has no
+    // CPU per transaction (RT-13 review), so CHANGE_REGRESSION is witnessed on a DDF workload, whose own Workload
+    // Activity row does carry it. The claim keeps a tier-0/1 path; the CICS workload reads that one column from CICS
+    // monitoring, as on a real system.
     for (const claim of COMMON_RECIPES) {
       const recipe = recipeFor(claim)!;
-      const pins = recipe.predicates.map((pred) => {
-        const cheap = pred.options.find((o) => o.tier <= 1);
-        expect(cheap, `${claimName(claim)} / ${pred.label}`).toBeDefined();
-        const p = pinFor(inc, cheap!);
-        expect(SOURCE_TIER[p.source]!, `${claimName(claim)} / ${pred.label} from ${p.source}`).toBeLessThanOrEqual(1);
-        return p;
-      });
-      expect(judgeRecipe(run, MIDWEST, [inc], pins, claim)!.complete, claimName(claim)).toBe(true);
+      let witness: { inc: Incident; pins: EvidencePin[] } | undefined;
+      for (const inc of [incident(), ddfIncident(), batchIncident()]) {
+        const picked = recipe.predicates.map((pred) => {
+          const cheap = pred.options.find((o) => o.tier <= 1 && pinnable(inc, o.metric));
+          return cheap ? pinFor(inc, cheap) : null;
+        });
+        if (picked.some((x) => x === null)) continue;
+        const pins = picked as EvidencePin[];
+        if (judgeRecipe(run, MIDWEST, [inc], pins, claim)!.complete) {
+          witness = { inc, pins };
+          break;
+        }
+      }
+      expect(witness, `${claimName(claim)}: no tier-0/1 witness`).toBeDefined();
+      for (const p of witness!.pins) expect(SOURCE_TIER[p.source]!, `${claimName(claim)} from ${p.source}`).toBeLessThanOrEqual(1);
     }
     // A later report may be needed somewhere, but the gate must never require a tier-3 tool (§5.5).
     for (const recipe of RECIPES) for (const pred of recipe.predicates) for (const o of pred.options) expect(o.tier).toBeLessThan(3);
@@ -418,8 +453,9 @@ describe('proof recipes (RT-13)', () => {
   it('makes the evidence strong when the trigger recipe completes, even under the relevance line', () => {
     // The competitor's APPL share is half weight, so this pair's own relevance is below the strong line: only the
     // trigger's recipe can make the evidence strong.
-    const inc = incident({ truth: { mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' } });
-    const r = { ...run, incidents: [inc] };
+    const inc = ddfIncident();
+    const filed = { ...inc, truth: { mechanism: 'CPU_PRIORITY' as const, trigger: 'DEMAND_SURGE' as const } };
+    const r = { ...run, incidents: [filed] };
     const rate = pinFor(inc, option('ENDED_RATE', ['self'], { kind: 'multipleAtLeast', multiple: 1.25 }));
     const contender = pinFor(inc, option('APPL', ['competitor'], { kind: 'atLeast', value: 10 }));
     const cost = pinFor(inc, option('CPU_PER_TXN', ['self'], { kind: 'within', frac: 0.15 }));
@@ -470,7 +506,7 @@ describe('proof recipes (RT-13)', () => {
   });
 
   it('does not prove growth from a flat cost alone, and does from an arrival rise', () => {
-    const inc = incident();
+    const inc = ddfIncident();
     const cpu = pinFor(inc, option('DELAY_CPU', ['self'], { kind: 'atLeast', value: 10 }));
     const cost = pinFor(inc, option('CPU_PER_TXN', ['self'], { kind: 'within', frac: 0.15 }));
     expect(judgeRecipe(run, MIDWEST, [inc], [cpu, cost], { trigger: 'GROWTH' })!.complete).toBe(false);
@@ -480,18 +516,26 @@ describe('proof recipes (RT-13)', () => {
 
   it('reads the work\'s report class row as its own (RC_ADVISOR)', () => {
     // The advisor gives a workload its own report class inside a shared service class; that row is about this work,
-    // so a pin from it is `self` and not an unknown class (RT-13, §5.2's per-workload report class path).
+    // so a pin from it is `self` and not an unknown class (RT-13, §5.2's per-workload report class path). A DDF
+    // workload, because its report class row carries the resource samples the cost pin reads.
     const def = structuredClone(run.sim.wlm.definition);
-    const cics = def.subsystems.find((s) => s.subsystem === 'CICS')!;
-    cics.defaultReportClass = 'RRBANK';
+    const ddf = def.subsystems.find((s) => s.subsystem === 'DDF')!;
+    ddf.rules.push({ qualifier: 'UI', pattern: 'MOBAPI', serviceClass: 'DDFPRD', reportClass: 'RMOBILE', children: [] });
     const r = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition: def } } };
-    const subjects = incidentSubjects(r, MIDWEST, 'RBANK', 0);
-    expect(subjects.classes).toContain('RRBANK');
-    const inc = incident({ subjects });
-    const reportRow = { ...pinFor(inc, option('CPU_PER_TXN', ['self'], { kind: 'atLeast', value: 1.3 })), subject: 'RRBANK#1', system: 'PROD1' };
-    const rate = { ...pinFor(inc, option('ENDED_RATE', ['self'], { kind: 'within', frac: 0.15 })), subject: 'RRBANK#1', system: 'PROD1' };
+    const subjects = incidentSubjects(r, MIDWEST, 'MOBILE', 0);
+    expect(subjects.classes).toContain('RMOBILE');
+    const inc = incident({ workloadId: 'MOBILE', subjects });
+    const reportRow = { ...pinFor(inc, option('CPU_PER_TXN', ['self'], { kind: 'atLeast', value: 1.3 })), subject: 'RMOBILE#1', system: 'PROD1' };
+    const rate = { ...pinFor(inc, option('ENDED_RATE', ['self'], { kind: 'within', frac: 0.15 })), subject: 'RMOBILE#1', system: 'PROD1' };
     const proof = judgeRecipe(r, MIDWEST, [inc], [reportRow, rate], { trigger: 'CHANGE_REGRESSION' })!;
     expect(proof.complete, JSON.stringify(proof.predicates)).toBe(true);
+    // A player can point a second rule at the same report class (Rules editor). That row then aggregates another
+    // workload's work, so it is not about MOBILE alone and must not relate as `self` (RT-13 review).
+    const shared = structuredClone(def);
+    shared.subsystems.find((s) => s.subsystem === 'DDF')!.rules
+      .push({ qualifier: 'UI', pattern: 'BIUSER', serviceClass: 'DDFPRD', reportClass: 'RMOBILE', children: [] });
+    const rShared = { ...run, sim: { ...run.sim, wlm: { ...run.sim.wlm, definition: shared } } };
+    expect(incidentSubjects(rShared, MIDWEST, 'MOBILE', 0).classes).not.toContain('RMOBILE');
   });
 
   it('pins the tier-0 service-per-transaction path from Workload Activity on a replayed regression', () => {
@@ -522,30 +566,136 @@ describe('proof recipes (RT-13)', () => {
     const inc = incident({ workloadId: 'ADHOC', startTick: tripled.sim.tick - HOUR, subjects });
     const proof = judgeRecipe(tripled, MIDWEST, [inc], [cpuPin, rate.run.pins.at(-1)!], { trigger: 'CHANGE_REGRESSION' })!;
     expect(proof.complete, JSON.stringify(proof.predicates)).toBe(true);
-    // A CICS transaction row reports no resource samples: its quotient comes from the regions' class row, and a row
-    // with no ended transactions has none at all.
-    const cics = incident();
-    const cicsClass = cics.subjects!.classes[0]!;
-    const cicsRow = run.sim.rmf.intervals[run.sim.rmf.intervals.length - 1]!.wlm.find((w) => cics.subjects!.hosts.includes(w.lparId) && w.scKey.startsWith(`${cicsClass}#`) && w.endPerSec > 0)!;
-    const cicsPin = addPin(run, MIDWEST, { source: 'WLMGL', index: run.sim.rmf.intervals.length - 1, system: cicsRow.lparId, scKey: cicsRow.scKey, metric: 'CPU_PER_TXN' });
-    expect(cicsPin.ok, cicsPin.message).toBe(true);
-    const emptyRow = run.sim.rmf.intervals[run.sim.rmf.intervals.length - 1]!.wlm.find((w) => w.endPerSec === 0)!;
-    expect(addPin(run, MIDWEST, { source: 'WLMGL', index: run.sim.rmf.intervals.length - 1, system: emptyRow.lparId, scKey: emptyRow.scKey, metric: 'CPU_PER_TXN' }).ok).toBe(false);
+    // A CICS transaction row reports no resource usage (RMF Report Analysis p.524): its CPU is the regions'
+    // address-space CPU, most of it other work, so the pin is refused and the answer names CICS monitoring. A region
+    // class row has the address spaces' CPU but no transactions, so it has no quotient either.
+    const last = run.sim.rmf.intervals.length - 1;
+    const cicsRow = run.sim.rmf.intervals[last]!.wlm.find((w) => w.resourceSamples === false && w.endPerSec > 0)!;
+    const refused = addPin(run, MIDWEST, { source: 'WLMGL', index: last, system: cicsRow.lparId, scKey: cicsRow.scKey, metric: 'CPU_PER_TXN' });
+    expect(refused.ok).toBe(false);
+    expect(refused.message).toMatch(/CICS monitoring/);
+    const regionRow = run.sim.rmf.intervals[last]!.wlm.find((w) => w.resourceSamples !== false && w.endPerSec === 0 && w.applCpPct > 0)!;
+    const noRate = addPin(run, MIDWEST, { source: 'WLMGL', index: last, system: regionRow.lparId, scKey: regionRow.scKey, metric: 'CPU_PER_TXN' });
+    expect(noRate.ok).toBe(false);
+    expect(noRate.message).toMatch(/no ended transactions/);
+  });
+
+  it('counts general-purpose CPU per transaction, not zIIP time', () => {
+    // Two runs that differ only in the newest interval's zIIP column: the quotient is APPL% CP ÷ END/S, so the pin
+    // must not move. Adding the zIIP column would multiply it by the row's CP:IIP ratio (RT-13 review).
+    const index = run.sim.rmf.intervals.length - 1;
+    const target = run.sim.rmf.intervals[index]!;
+    const row = target.wlm.find((w) => w.resourceSamples !== false && w.endPerSec > 0 && w.applCpPct > 0)!;
+    const withZiip: RunState = {
+      ...run,
+      sim: {
+        ...run.sim,
+        rmf: {
+          ...run.sim.rmf,
+          intervals: [...run.sim.rmf.intervals.slice(0, index), { ...target, wlm: target.wlm.map((w) => (w === row ? { ...w, applIipPct: w.applCpPct * 20 } : w)) }],
+        },
+      },
+    };
+    const pinOf = (r: RunState): EvidencePin => {
+      const out = addPin(r, MIDWEST, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'CPU_PER_TXN' });
+      expect(out.ok, out.message).toBe(true);
+      return out.run.pins.at(-1)!;
+    };
+    expect(pinOf(withZiip).value).toBe(pinOf(run).value);
+  });
+
+  it('earns strong from a complete trigger recipe even when the mechanism recipe is incomplete', () => {
+    // A filed, accepted trigger proved end to end is a discriminating reading; the mechanism's own recipe may still
+    // have a predicate unticked (RT-13 review; §4.6 promises the trigger recipe makes the evidence strong).
+    const filed = { ...ddfIncident(), truth: { mechanism: 'CAPPING' as const, trigger: 'DEMAND_SURGE' as const } };
+    const rate = pinFor(filed, option('ENDED_RATE', ['self'], { kind: 'multipleAtLeast', multiple: 1.5 }));
+    const cost = pinFor(filed, option('CPU_PER_TXN', ['self'], { kind: 'within', frac: 0.15 }));
+    const scored = scoreEvidence(run, MIDWEST, filed, [filed], { mechanism: 'CAPPING', trigger: 'DEMAND_SURGE' }, [rate, cost]);
+    expect(scored.proof.find((p) => p.claim === 'trigger')!.complete).toBe(true);
+    expect(scored.proof.find((p) => p.claim === 'mechanism')!.complete).toBe(false);
+    expect(scored.points).toBeGreaterThan(0);
+    expect(scored.strong).toBe(true);
+    // A wrong mechanism still earns nothing, however well the trigger is proven: the bonus rides on the points.
+    const wrong = { ...filed, truth: { mechanism: 'IO' as const, trigger: 'DEMAND_SURGE' as const } };
+    const r = { ...run, incidents: [wrong], pins: [rate, cost] };
+    const filedWrong = submitRca(r, wrong.id, 'CAPPING', 'DEMAND_SURGE', MIDWEST, [rate.id, cost.id]);
+    expect(filedWrong.incidents[0]!.rca!.evidencePoints).toBe(0);
+    expect(filedWrong.insight - r.insight).toBe(2);
+  });
+
+  it('keeps the scoring numbers the design and the reply quote', () => {
+    // A deliberate tripwire (RT-13 review): these literals are in docs/rca-design.md §4.6, SPEC §10 and the reply, so
+    // changing one without its documentation is a finding, not a refactor.
+    expect(EVIDENCE.recipeRelevance).toBe(3);
+    expect(EVIDENCE.strongInsight).toBe(5);
+    expect(EVIDENCE.symptomRelevance).toBe(0.5);
+    expect(EVIDENCE.strongAt).toBe(2);
+    expect(EVIDENCE.perRca).toBe(3);
+    // One complete proof, nothing loose: the mechanism's 3, the trigger recipe's strong 5, and the answer's 3 + 2.
+    const inc = incident({ truth: { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' } });
+    const r = { ...run, incidents: [inc] };
+    const pins = [
+      pinFor(inc, option('DELAY_CPU', ['self'], { kind: 'atLeast', value: 10 })),
+      pinFor(inc, option('CPC_BUSY', ['host'], { kind: 'atLeast', value: 90 }, 1)),
+      pinFor(inc, option('ENDED_RATE', ['self'], { kind: 'within', frac: 0.15 })),
+    ];
+    r.pins = pins;
+    const out = submitRca(r, inc.id, 'CPU_CAPACITY', 'CHANGE_REGRESSION', MIDWEST, pins.map((p) => p.id));
+    expect(out.incidents[0]!.rca!.points).toBe(3 + 2 + 3);
+    expect(out.insight - r.insight).toBe(3 + 2 + 3 + 5);
+  });
+
+  it('keeps every recipe\'s predicates in the design\'s order: the symptom, then the discriminator', () => {
+    // The design table, the reply and the proof lines all read the first predicate as "the work was hurt" and the
+    // second as the discriminator. A golden table so swapping a recipe's halves cannot pass (RT-13 review).
+    const labels = Object.fromEntries(RECIPES.map((r) => [claimName(r.claim), r.predicates.map((p) => p.label)]));
+    expect(labels).toEqual({
+      CPU_CAPACITY: ['the work was hurt: CPU delay, more CPU per transaction, or more arrivals than normal', 'the processor or the image was full'],
+      CPU_PRIORITY: ['the work was hurt: CPU delay, more CPU per transaction, or more arrivals than normal', 'another class was using a host image'],
+      CAPPING: ['the work was hurt: CPU delay, more CPU per transaction, or more arrivals than normal', 'a cap held the image or the class'],
+      DEPENDENCY: ["a server's class was delayed", 'the work itself was not the problem: no CPU wait, or its rate or cost per transaction was its normal'],
+      LOCK_CONTENTION: ['the work waited on locks', 'the wait was not CPU and nothing about the work changed'],
+      CF_SERVICE: ['CF requests were slow', 'the work itself was not the limit'],
+      QR_TCB: ['QR TCB dispatch waits were high', 'the work was neither short of CPU nor queued for a task slot'],
+      THREAD_LIMIT: ['work queued for a thread, task slot or the region storage', 'the work itself was not the problem: no CPU wait, or its rate or cost per transaction was its normal'],
+      ROUTING: ['one region or route failed work', 'the work itself was not the problem: no CPU wait, or its rate or cost per transaction was its normal'],
+      IO: ['I/O waits or I/O queueing were high', 'the work itself was not the problem: no CPU wait, or its rate or cost per transaction was its normal'],
+      STORAGE: ['the work waited on storage', 'the work itself was not the problem: no CPU wait, or its rate or cost per transaction was its normal'],
+      JOB_FAILURE: ['critical jobs abended', "the night's CPU wait was low, or nothing about the work changed"],
+      DEMAND_SURGE: ['the work arrived faster than its normal hour', 'each transaction still cost its normal CPU'],
+      CHANGE_REGRESSION: ['each transaction cost more CPU', 'the work did not arrive faster'],
+      RUNAWAY_WORK: ['one class or job used at least half an engine', "that work's rate did not rise"],
+      BATCH_OVERLAP: ['the work waited on a lock, or the batch night lost its time to CPU waits', 'nothing about the work changed: its rate or its cost per transaction was its normal'],
+      POLICY: ["the work was hurt in some report's terms", 'nothing about the work changed, so the configuration as set was what was left'],
+      HARDWARE_FAULT: ["the resource's own report showed a fault", 'nothing about the work changed'],
+      NEW_WORKLOAD: ['work that was not there before was using a host image', 'nothing about the work changed: its rate or its cost per transaction was its normal'],
+      GROWTH: ['the work was hurt for CPU', 'more work arrived than its normal hour'],
+      APPLICATION_ERROR: ['work failed or a region ran short of its own storage', 'the work itself was not the problem: no CPU wait, or its rate or cost per transaction was its normal'],
+    });
   });
 
   it('pins a surge and its flat cost per transaction from the same report', () => {
+    // A DDF workload's own WLMGL row carries both columns (a CICS transaction row has no cost to read).
     const noon = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 6 * HOUR);
-    const surged = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'rate', key: 'RBANK', value: 1.6 }] }, MIDWEST, content, HOUR);
+    const surged = advance({ ...noon, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'rate', key: 'ADHOC', value: 1.6 }] }, MIDWEST, content, HOUR);
     const index = surged.sim.rmf.intervals.length - 1;
-    const subjects = incidentSubjects(surged, MIDWEST, 'RBANK', 0);
+    const subjects = incidentSubjects(surged, MIDWEST, 'ADHOC', 0);
     const cls = subjects.classes[0]!;
-    const row = surged.sim.rmf.intervals[index]!.wlm.find((w) => subjects.hosts.includes(w.lparId) && w.scKey.startsWith(`${cls}#`) && w.endPerSec > 0)!;
-    const rate = addPin(surged, MIDWEST, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'ENDED_RATE' });
-    expect(rate.ok, rate.message).toBe(true);
-    const cost = addPin(rate.run, MIDWEST, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'CPU_PER_TXN' });
-    expect(cost.ok, cost.message).toBe(true);
-    const inc = incident({ startTick: surged.sim.tick - HOUR });
-    const proof = judgeRecipe(surged, MIDWEST, [inc], [rate.run.pins.at(-1)!, cost.run.pins.at(-1)!], { trigger: 'DEMAND_SURGE' })!;
-    expect(proof.complete, JSON.stringify(proof.predicates)).toBe(true);
+    const rows = surged.sim.rmf.intervals[index]!.wlm.filter((w) => subjects.hosts.includes(w.lparId) && w.scKey.startsWith(`${cls}#`) && w.endPerSec > 0);
+    expect(rows.length).toBeGreaterThan(0);
+    let proven = false;
+    for (const row of rows) {
+      const rate = addPin(surged, MIDWEST, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'ENDED_RATE' });
+      expect(rate.ok, rate.message).toBe(true);
+      const cost = addPin(rate.run, MIDWEST, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'CPU_PER_TXN' });
+      expect(cost.ok, cost.message).toBe(true);
+      const inc = incident({ workloadId: 'ADHOC', startTick: surged.sim.tick - HOUR, subjects });
+      const proof = judgeRecipe(surged, MIDWEST, [inc], [rate.run.pins.at(-1)!, cost.run.pins.at(-1)!], { trigger: 'DEMAND_SURGE' })!;
+      if (proof.complete) {
+        proven = true;
+        break;
+      }
+    }
+    expect(proven, 'no ADHOC class row showed the surge and its flat cost').toBe(true);
   });
 });
