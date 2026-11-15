@@ -1381,14 +1381,17 @@ tool tier its report needs: every common recipe — the CPU family, DEPENDENCY, 
 RUNAWAY_WORK — completes with Workload Activity, Monitor III or Partition Data pins, so a player without analytics can
 still prove it — each claim witnessed on the incident kind whose report rows carry those pins — and no option ever
 needs a tier-3 tool. `CPU_PER_TXN` is that tier-0 path: APPL% CP ÷ END/S against the row's own six preceding intervals
-(CP only; zIIP time is its own column). A CICS transaction row reports no resource usage at all, and its regions'
-class APPL is the address spaces' CPU rather than its transactions', so that row is refused and a CICS workload reads
-its CPU per transaction from CICS monitoring; a batch class row's ENDED counts jobs, so its quotient is CPU per job. A
-complete recipe for the filed, accepted mechanism replaces the relevance sum and pays what three fully specific pins
-pay; a complete recipe for the filed, accepted trigger makes the evidence strong (the Insight bonus), as does the
-relevance line the same pins cleared before RT-13, so a completed proof never pays less than loose pins. The mechanisms
-that are not CPU share a normal-reading ruling-out predicate with the trigger recipes (no CPU wait, or a normal rate,
-or a normal cost per transaction), which keeps a mechanism+trigger proof inside the three-pin limit. The reply shows
+(CP only; zIIP time is its own column). A CICS transaction row reports no service consumption of its own, and its
+regions' class APPL is the address spaces' CPU rather than its transactions', so that row is refused and a CICS
+workload reads its CPU per transaction from CICS monitoring. A batch class row prints both columns only when its goal
+is an average or percentile response time; the shipped batch classes are velocity or discretionary, so their ENDED is
+0 and the pin is refused until RF-07. A complete recipe for the filed, accepted mechanism replaces the relevance sum
+and pays what three fully specific pins pay; a complete recipe for the filed, accepted trigger makes the evidence
+strong (the Insight bonus), as does the relevance line the same pins cleared before RT-13, so a completed proof never
+pays less than loose pins. The mechanisms that are not CPU share a normal-reading ruling-out predicate with the trigger
+recipes (no CPU wait, or a normal rate, or a normal cost per transaction), extended where a report shows the specific
+wait instead: a lock or CF claim also accepts `DELAY_OTHER`, QR_TCB a low `MXT_WAIT`, and JOB_FAILURE its own low
+night CPU wait; any one reading ticks the predicate. That keeps a mechanism+trigger proof inside the three-pin limit. The reply shows
 both recipes with every predicate ticked or not, in report terms, and every metric a tier-0 recipe path uses is offered
 by the Workload Activity report's own pin form.
 
