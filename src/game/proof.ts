@@ -103,7 +103,8 @@ function periodImportance(run: RunState, scKey: string): number | null {
 /** A PROCU job's importance: its address space classified as the STC rules would (SYSTEM and SYSSTC rank above
  * every period, so they are never displaceable). */
 function jobImportance(ctx: ProofContext, p: EvidencePin): number | null {
-  // The PROCU row names the job's service class (batch jobs and TSO users as well as started tasks).
+  // The PROCU row names the job's service class (batch jobs and TSO users as well as started tasks). APPROX: it prints
+  // no period, so the job is judged at period 1 (a TSO user in period 2 reads as more important than it is).
   if (p.serviceClass !== undefined) return periodImportance(ctx.run, `${p.serviceClass}#1`);
   const a = [...ctx.scenario.addressSpaces, ...ctx.run.sim.extraAddressSpaces].find((x) => x.jobname === p.subject && x.lparId === p.system);
   if (!a) return null;

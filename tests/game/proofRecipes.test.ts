@@ -209,6 +209,40 @@ const FOUR_PIN_PAIRS = [
   'IO×APPLICATION_ERROR', 'STORAGE×RUNAWAY_WORK', 'STORAGE×BATCH_OVERLAP', 'JOB_FAILURE×RUNAWAY_WORK', 'JOB_FAILURE×BATCH_OVERLAP',
 ];
 
+describe('documented values (RT-13)', () => {
+  it('scores what SPEC §10 states: 3 for a recipe, 0.5 for one predicate, +5 Insight for strong evidence', () => {
+    expect([PROOF.recipePoints, PROOF.partialPoints, EVIDENCE.strongInsight, EVIDENCE.perRca]).toEqual([3, 0.5, 5, 3]);
+  });
+
+  it('puts the symptom first and the discriminator second in every recipe', () => {
+    // The first words of each predicate's label: the symptom (what hurt the work), then what tells the cause apart.
+    const order = Object.fromEntries(CLAIMS.map((c) => [c, recipeOf(c).predicates.map((p) => p.label.split(/[:(]/)[0]!.trim())]));
+    expect(order).toEqual({
+      CPU_CAPACITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'the processor full'],
+      CPU_PRIORITY: ['CPU or zIIP delay ≥ 10 % on the hurt class or its regions', 'a displaceable consumer on that host'],
+      CAPPING: ['CPU delay ≥ 10 % on the hurt class or its regions', 'a cap held it'],
+      DEPENDENCY: ['the server slow', 'the hurt class\'s own CPU delay < 10 %'],
+      LOCK_CONTENTION: ['lock waits on the hurt work', 'the hurt class\'s own CPU delay < 10 %'],
+      CF_SERVICE: ['CF time per transaction ≥ 5 ms or past its normal band', 'the CF itself slow'],
+      QR_TCB: ['QR TCB wait ≥ 5 ms/txn', 'not the task limit or the CPU'],
+      THREAD_LIMIT: ['queued for a slot', 'not slower work holding the slots'],
+      ROUTING: ['transactions failed', 'the work itself unchanged'],
+      IO: ['I/O waits on the hurt work', 'DASD itself slow'],
+      STORAGE: ['storage waits', 'the hurt class\'s own CPU delay < 10 %'],
+      JOB_FAILURE: ['critical jobs ABENDed', 'they failed rather than ran late'],
+      DEMAND_SURGE: ['more work', 'at the same cost'],
+      CHANGE_REGRESSION: ['the same work costs more', 'not more of it'],
+      RUNAWAY_WORK: ['one class or job up by half an engine', 'without more work to show for it'],
+      BATCH_OVERLAP: ['lock or I/O waits on the hurt work', 'batch running then'],
+      POLICY: ['the hurt work delayed', 'the work itself unchanged'],
+      HARDWARE_FAULT: ['the resource\'s own report', 'the work itself unchanged'],
+      NEW_WORKLOAD: ['the hurt work delayed', 'work with no history'],
+      GROWTH: ['the hurt work delayed', 'the work itself unchanged'],
+      APPLICATION_ERROR: ['the software misbehaved', 'the work itself unchanged'],
+    });
+  });
+});
+
 describe('the three-pin limit (RT-13)', () => {
   it('carries both recipes in three pins for every mechanism × trigger pair but the listed ones', () => {
     expect(EVIDENCE.perRca).toBe(3);
@@ -350,7 +384,7 @@ describe('proofs from replayed incidents (RT-13)', () => {
     const db2 = pinAll(advance(day2, MIDWEST, content, 120), [{ source: 'DB2', hour: 'current', workloadId: 'MOBILE', metric: 'ENDED_RATE' }]);
     for (const [run, pins] of [[wlm.run, wlm.pins], [db2.run, db2.pins]] as const) {
       const inc = mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'NEW_WORKLOAD' });
-      expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'NEW_WORKLOAD', pins).trigger.predicates[1]!.met).toBe(false);
+      expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'NEW_WORKLOAD', pins).trigger.predicates.find((x) => /no history/.test(x.label))!.met).toBe(false);
     }
   });
 
@@ -360,7 +394,13 @@ describe('proofs from replayed incidents (RT-13)', () => {
     expect(day2.sim.rmf.intervals[index]!.wlm.some((w) => w.lparId === 'PROD1' && w.scKey === 'BATCHPRD#1')).toBe(true);
     const { run, pins } = pinAll(day2, [{ source: 'WLMGL', index, system: 'PROD1', scKey: 'BATCHPRD#1', metric: 'APPL' }]);
     const inc = { ...mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'NEW_WORKLOAD' }), startTick: 17 * HOUR, endTick: 18 * HOUR };
-    expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'NEW_WORKLOAD', pins).trigger.predicates[1]!.met).toBe(false);
+    expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'NEW_WORKLOAD', pins).trigger.predicates.find((x) => /no history/.test(x.label))!.met).toBe(false);
+  });
+
+  it('stores the PROCU row\'s service class on a real job pin', () => {
+    const out = addPin(day2, MIDWEST, { source: 'PROCU', system: 'PROD1', jobname: 'MONAGENT' });
+    expect(out.ok, out.message).toBe(true);
+    expect(out.run.pins.at(-1)).toMatchObject({ metric: 'JOB_APPL', subject: 'MONAGENT', serviceClass: 'STCMED' });
   });
 
   it('judges a PROCU job by the service class its row shows: a batch job is displaceable, a started task above the work is not', () => {
