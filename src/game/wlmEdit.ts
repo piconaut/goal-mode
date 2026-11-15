@@ -143,7 +143,8 @@ export function cicsTransactionClasses(def: ServiceDefinition): string[] {
   return subsystemClasses(def, 'CICS');
 }
 
-function subsystemClasses(def: ServiceDefinition, subsystem: SubsystemType): string[] {
+/** Service classes a subsystem's rules assign (its default and every rule's class), defined classes only. */
+export function subsystemClasses(def: ServiceDefinition, subsystem: SubsystemType): string[] {
   const ids = new Set<string>();
   const walk = (rules: readonly ClassificationRule[]) => {
     for (const r of rules) {

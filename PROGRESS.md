@@ -692,6 +692,16 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-15: RT-13 proof recipes (user decision on Q3; docs/rca-design.md §4.6 "As built (RT-13)"). Evidence now
+  scores as a proof: `MECHANISM_RECIPES`/`TRIGGER_RECIPES` (two predicates each, symptom then discriminator) judged by
+  `game/proof.ts` over the attached pins; a complete recipe for the accepted mechanism earns 3, one predicate 0.5,
+  and the accepted trigger's recipe on top makes it strong (+5 Insight). New tier-0 pin `CPU_PER_TXN` (APPL% CP ÷
+  END/S, refused on CICS transaction rows, RMF Report Analysis p.524/530/534); cost pins carry their row's rate, so
+  one row proves a surge or a regression; `ENDED_RATE` accepts a competitor's row. Decisions: an ended rate's
+  baseline is the slot baseline (same interval on earlier days), because the six preceding rows read the morning ramp
+  as a 1.7× surge (seed 7); CPU_PRIORITY needs a *displaceable* (less important) consumer; 29 pairs need four pins and cannot
+  reach strong evidence (RT-27, blocked: design). Bots attach no pins, so balance cannot move. Built independently
+  of PR #356, which implements the same entry, at the user's request.
 - 2026-11-12: WT-08 implements atomic policy plans (`buildPlan`): original-base net value, whole-plan receiver
   value, secondary carries, bounded join-and-split repair, six retained moves, and real-projection budget checks
   before every retry. Rejected/uncommitted plans leave live DPs untouched. Receiver stages advance until blocked;

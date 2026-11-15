@@ -1,9 +1,8 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
-import { EVIDENCE } from '../../src/content/evidence';
+import { EVIDENCE, PROOF } from '../../src/content/evidence';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, judgeEvidence, judgeGroupEvidence, pinRelation, type EvidencePin } from '../../src/game/evidence';
 import { buildMon3 } from '../../src/game/mon3';
-import { cicsMonitoring } from '../../src/game/smf';
 import { advance, newRun, requestChange, startDay, submitRca } from '../../src/game/run';
 import type { Incident, RunState } from '../../src/game/types';
 
@@ -92,14 +91,18 @@ describe('evidence pins', () => {
     expect(late[0]!.why).toMatch(/window/);
   });
 
-  it('pays evidence points only with the right mechanism', () => {
+  it('pays nothing for cost pins that do not show where the time went (RT-13)', () => {
     let r = pin(regressed, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' });
     r = pin(r, { source: 'CICS', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' });
     const ids = r.pins.slice(-2).map((p) => p.id);
     const withInc = { ...r, incidents: [incident(r)] };
     const right = submitRca(withInc, 999, 'CPU_CAPACITY', 'CHANGE_REGRESSION', MIDWEST, ids);
-    expect(right.incidents[0]!.rca!.evidencePoints).toBe(2);
-    expect(right.insight - withInc.insight).toBe(5 + 2 + EVIDENCE.strongInsight);
+    // Each pin points at the trigger, and the cost rise is the regression's first predicate; but neither is a CPU
+    // delay or a full processor, so the mechanism is unproven and the relevance sum no longer pays (A9).
+    expect(right.incidents[0]!.rca!.evidence!.map((v) => v.relevance)).toEqual([1, 1]);
+    expect(right.incidents[0]!.rca!.proof!.trigger.predicates[0]!.met).toBe(true);
+    expect(right.incidents[0]!.rca!.evidencePoints).toBe(0);
+    expect(right.insight - withInc.insight).toBe(5);
     const wrong = submitRca(withInc, 999, 'LOCK_CONTENTION', 'CHANGE_REGRESSION', MIDWEST, ids);
     expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
   });
@@ -176,7 +179,7 @@ describe('evidence pins', () => {
     expect(judgeEvidence(r, MIDWEST, inc, [own])[0]).toMatchObject({ relevance: 1, why: 'points at the cause' });
   });
 
-  it.each(['CPU_PRIORITY', 'CPU_CAPACITY'] as const)('awards two zIIP pins for a %s incident', (mechanism) => {
+  it.each(['CPU_PRIORITY', 'CPU_CAPACITY'] as const)('pays two zIIP pins for a %s incident as one predicate, not a proof (A9, RT-13)', (mechanism) => {
     const pins = ['WLMGL', 'DELAY'].map((source, i) => ({
       id: 1000 + i, source, metric: 'DELAY_ZIIP' as const, subject: `DDFPRD#${i + 1}`,
       system: '*PLEX', tick: regressed.sim.tick, value: 10 + i, text: 'zIIP delay',
@@ -187,9 +190,10 @@ describe('evidence pins', () => {
       .toEqual([[1, 'points at the cause'], [1, 'points at the cause']]);
     const ids = pins.map((p) => p.id);
     const right = submitRca(r, inc.id, mechanism, 'POLICY', MIDWEST, ids);
-    expect(right.incidents[0]!.rca!.evidencePoints).toBe(2);
-    expect(right.incidents[0]!.rca!.points).toBe(7);
-    expect(right.insight - r.insight).toBe(7 + EVIDENCE.strongInsight);
+    expect(right.incidents[0]!.rca!.proof!.mechanism.predicates.map((x) => x.met)).toEqual([true, false]);
+    expect(right.incidents[0]!.rca!.evidencePoints).toBe(PROOF.partialPoints);
+    expect(right.incidents[0]!.rca!.points).toBe(5 + PROOF.partialPoints);
+    expect(right.insight - r.insight).toBe(5 + PROOF.partialPoints);
     const wrong = submitRca(r, inc.id, 'IO', 'POLICY', MIDWEST, ids);
     expect(wrong.incidents[0]!.rca!.evidencePoints).toBe(0);
   });
@@ -629,16 +633,11 @@ describe('pin relations (RT-12, docs/rca-design.md §4.6)', () => {
     // CPU per transaction is already a ratio to the baseline.
     const db2 = pin(regressed, { source: 'DB2', hour: hourKey, workloadId: 'RBANK', metric: 'CPU_VS_BASE' }).pins.at(-1)!;
     expect(db2.baseline).toBe(1);
-    // A rate's baseline is the median of the closed hours before the pinned one, which the pinned hour is not part of.
+    // A rate's baseline is the same hour on earlier days (RT-13's slot baseline, §4.4): the first day has none, since
+    // the hours before it are the morning ramp, not its normal.
     const rate = pin(regressed, { source: 'CICS', hour: hourKey, workloadId: 'CARDAUTH', metric: 'ENDED_RATE' }).pins.at(-1)!;
-    expect(rate.baseline).toBeGreaterThan(0);
-    const hourIndex = regressed.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === hourKey);
-    const earlierRates = regressed.smfHours.slice(Math.max(0, hourIndex - 6), hourIndex)
-      .map((h) => cicsMonitoring(regressed, MIDWEST, `${h.day}:${h.hourOfDay}`).find((x) => x.workloadId === 'CARDAUTH')?.txnPerSec)
-      .filter((x): x is number => x !== undefined)
-      .sort((a, b) => a - b);
-    const rateMid = earlierRates.length >> 1;
-    expect(rate.baseline).toBeCloseTo(earlierRates.length % 2 === 1 ? earlierRates[rateMid]! : (earlierRates[rateMid - 1]! + earlierRates[rateMid]!) / 2);
+    expect(rate.value).toBeGreaterThan(0);
+    expect(rate.baseline).toBeUndefined();
     // A Workload Activity share's baseline is the median of the report intervals before the pinned one.
     const iv = regressed.sim.rmf.intervals.length - 1;
     const row = regressed.sim.rmf.intervals[iv]!.wlm.find((x) => x.lparId !== '*PLEX' && x.applCpPct + x.applIipPct > 5)!;

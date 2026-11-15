@@ -185,21 +185,6 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-13 · Proof recipes: evidence as a discriminating pair
-`list: rca-truth · status: ready · priority: high · size: L · area: game`
-
-User decision on Q3, 2026-11-10: yes. After RT-12. Recipes per mechanism and trigger in
-`content/evidence.ts` (§4.6 table), judged over the up-to-three attached pins. Every common recipe (CPU family,
-DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) has a path that needs only tier-0/1 tools, so early-game
-players can complete a proof. The CF and DASD recipes use RT-10's `CF_*`/`DASD_*` pins and the CICS-storage one
-RT-11's `SOS_MIN` (all landed). A complete recipe for the filed, accepted mechanism replaces today's
-relevance sum, a second for the trigger makes the evidence strong; the reply shows each predicate ticked or not.
-Note: `ENDED_RATE` is `self`/`server` only today, so the DEMAND_SURGE recipe's "on the surging workload" and §4.4's
-collateral-victim surrogate (a co-hosted workload's rate) need it widened to `competitor` here.
-Done when: every mechanism and trigger has a recipe a test satisfies from a replayed incident, and one a test fails
-with look-alike pins (surge against regression, capacity against priority), and a test shows a tier-0/1 path for
-each common recipe.
-
 ### RT-14 · Card footprints: blame by resource and reach, fresh before background
 `list: rca-truth · status: blocked: (needs user-attended session) · priority: high · size: L · area: game`
 
@@ -316,6 +301,18 @@ Q8a decides problem records (RT-22), Q8b the gating itself, including whether ar
 ladder of §5.5 with difficulty and Mentor; strategy bots diagnose from report data before fixing (§5.7). Balance: a
 three-scenario sweep and a re-tune call on the main agent. Start with REGRESSION and XLOG_LOOP. Done when: SPEC §9
 and §10 are rewritten for it, the sweep is recorded in PROGRESS.md, and the bands are restored or re-decided.
+
+### RT-27 · Strong evidence for the pairs three pins cannot prove
+`list: rca-truth · status: blocked: design · priority: low · size: S · area: game`
+
+Source: RT-13 (`tests/game/proofRecipes.test.ts` `FOUR_PIN_PAIRS`; docs/rca-design.md §4.6 "As built (RT-13)"). (RT-26
+is skipped: an open PR for the same entry uses it.) 29 of the 108 mechanism × trigger pairs need four separate facts,
+so with `EVIDENCE.perRca` = 3 they earn the mechanism's 3 points but never strong evidence. Those a shipped card can
+produce: CPU_CAPACITY, CAPPING and DEPENDENCY × RUNAWAY_WORK (RUNAWAY, SHADOW_IT), CPU_PRIORITY and CAPPING ×
+HARDWARE_FAULT (POWER_CAP, CF_LINK, CF_FAILURE), and the CPU family and DEPENDENCY × APPLICATION_ERROR (RETRY_STORM's
+alternate, unprovable anyway until RT-23). Options: a fourth pin for strong evidence only; a trigger predicate that a
+mechanism pin can also meet where the data honestly shows both; or accept the gap. Done when: the user decides and
+the test's list matches the decision.
 
 ## wlm-truth
 

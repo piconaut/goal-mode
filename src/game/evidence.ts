@@ -2,7 +2,7 @@
 // each against the incident's hidden truth, its time window and the work it hurt.
 
 import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, type EvidenceMetric, type PinRelation } from '../content/evidence';
-import { formatClock } from '../sim/core/clock';
+import { clockAt, formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
@@ -34,6 +34,13 @@ export interface EvidencePin {
    * Monitor III pin, whose view normalises APPL and ended/s differently from Workload Activity and whose history only
    * carries the pinned range — a baseline from another view would not compare. */
   baseline?: number;
+  /** A cost pin's ended rate (RT-13): a `CPU_PER_TXN` or `CPU_VS_BASE` pin is a cost per ended transaction, and the
+   * row it comes from prints that rate beside it (END/S, transactions per second), with the same row's recent normal.
+   * A recipe can read it, so one row shows "more work at the same cost" or "the same work costing more". */
+  rate?: { value: number; baseline?: number };
+  /** A PROCU job's service class, as the row shows it, so a recipe can ask whether the job was displaceable. Absent on
+   * other pins and on PROCU pins from saves written before it. */
+  serviceClass?: string;
   text: string;
 }
 
@@ -73,7 +80,7 @@ type Located = Omit<EvidencePin, 'id' | 'text'>;
 const TRIM_HISTORY = 'This Monitor III range keeps PI, CPU, ended rate and delay shares only; pin the value from a Partition Data interval';
 
 /** Metrics that are a class's CPU total: a CICS region class reports the regions', not its transactions'. */
-const APPL_METRICS = new Set<EvidenceMetric>(['APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP']);
+const APPL_METRICS = new Set<EvidenceMetric>(['APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP', 'CPU_PER_TXN']);
 
 
 const NUM = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -87,6 +94,15 @@ function median(xs: number[]): number | undefined {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
+/** A value with its baseline, the baseline left out when there is none. */
+const withBaseline = (value: number, baseline: number | undefined): { value: number; baseline?: number } =>
+  baseline !== undefined ? { value, baseline } : { value };
+
+/** The intervals that ended at the same time of day as `endTick` on earlier days, oldest first. */
+function slotIntervals<T extends { endTick: number }>(intervals: readonly T[], endTick: number): T[] {
+  return intervals.filter((x) => x.endTick < endTick && (endTick - x.endTick) % TICKS_PER_DAY === 0);
+}
+
 /** One Workload Activity row's value for a metric, or null when the row has none. */
 function wlmMetric(w: WlmRecord, metric: EvidenceMetric): number | null | undefined {
   const v: Partial<Record<EvidenceMetric, number | null>> = {
@@ -96,6 +112,8 @@ function wlmMetric(w: WlmRecord, metric: EvidenceMetric): number | null | undefi
     APPL_IIP: w.applIipPct,
     IIPCP: w.applIipcpPct,
     ENDED_RATE: w.endPerSec,
+    // CP milliseconds per ended transaction: APPL% CP is CP seconds per second × 100 (RT-13).
+    CPU_PER_TXN: w.endPerSec > 0 && w.applCpPct > 0 ? (10 * w.applCpPct) / w.endPerSec : null,
     DELAY_CPU: w.delayPct.cpu,
     DELAY_ZIIP: w.delayPct.ziip,
     DELAY_IO: w.delayPct.io,
@@ -138,12 +156,19 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       if ((req.metric === 'WM_LOCK' || req.metric === 'WM_READY') && !w.workManager)
         return 'That row has no work manager states (CICS transaction classes only)';
       const value = wlmMetric(w, req.metric);
+      if (req.metric === 'CPU_PER_TXN' && (value === undefined || value === null))
+        return w.endPerSec > 0 ? 'That row used no CP time in the interval' : 'No transactions ended in that interval, so there is no CPU per transaction';
       if (value === undefined || value === null) return 'That metric is not in the Workload Activity report';
-      const baseline = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index)
-        .map((x) => x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey))
-        .map((r) => (r ? wlmMetric(r, req.metric) : null))
-        .filter(NUM));
-      return { source: 'WLMGL', metric: req.metric, subject: req.scKey, system: req.system, tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      const rowOf = (x: (typeof sim.rmf.intervals)[number]) => x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey);
+      // A metric's normal is its row's six preceding intervals, or for a time-of-day metric (`baseline: 'slot'`) the same
+      // interval on the earlier days the report still holds (§4.4's slot baseline, RT-13).
+      const rowsFor = (m: EvidenceMetric) => EVIDENCE_METRICS[m].baseline === 'slot'
+        ? slotIntervals(sim.rmf.intervals, iv.endTick)
+        : sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index);
+      const baselineOf = (m: EvidenceMetric) => median(rowsFor(m).map(rowOf).map((r) => (r ? wlmMetric(r, m) : null)).filter(NUM));
+      const baseline = baselineOf(req.metric);
+      const rate = req.metric === 'CPU_PER_TXN' ? { rate: withBaseline(w.endPerSec, baselineOf('ENDED_RATE')) } : {};
+      return { source: 'WLMGL', metric: req.metric, subject: req.scKey, system: req.system, tick: iv.endTick, ...withBaseline(value, baseline), ...rate };
     }
     case 'MON3': {
       const m = mon3(req.tick);
@@ -270,11 +295,17 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         return req.source === 'DB2' ? 'That metric is not in Db2 accounting' : 'That metric is not in CICS monitoring';
       const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
       const upto = i < 0 ? run.smfHours.length : i;
-      const earlier = run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
-      const baseline = req.metric === 'CPU_VS_BASE'
-        ? 1
-        : median(earlier.map((h) => read(`${h.day}:${h.hourOfDay}`)?.[req.metric]).filter(NUM));
-      return { source: req.source === 'DB2' ? 'Db2 101' : 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, value, ...(baseline !== undefined ? { baseline } : {}) };
+      // As for Workload Activity rows: the six closed hours before, or for a slot metric the same hour on earlier days.
+      // The open hour ('current') is not in the list yet: it is the clock's hour of the played day.
+      const pinned = run.smfHours[upto] ?? (i < 0 ? { day: run.day, hourOfDay: Math.floor(clockAt(run.sim.tick).hourOfDay) } : undefined);
+      const hoursFor = (m: EvidenceMetric) => EVIDENCE_METRICS[m].baseline === 'slot'
+        ? (pinned ? run.smfHours.slice(0, upto).filter((h) => h.hourOfDay === pinned.hourOfDay && h.day < pinned.day) : [])
+        : run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
+      const earlierOf = (m: EvidenceMetric) => median(hoursFor(m).map((h) => read(`${h.day}:${h.hourOfDay}`)?.[m]).filter(NUM));
+      const baseline = req.metric === 'CPU_VS_BASE' ? 1 : earlierOf(req.metric);
+      // The cost row's transaction rate, read beside it (RT-13).
+      const rate = req.metric === 'CPU_VS_BASE' && NUM(row.ENDED_RATE) ? { rate: withBaseline(row.ENDED_RATE, earlierOf('ENDED_RATE')) } : {};
+      return { source: req.source === 'DB2' ? 'Db2 101' : 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, ...withBaseline(value, baseline), ...rate };
     }
     case 'CICS_STORAGE': {
       const tick = hourEndTick(run, req.hour);
@@ -295,7 +326,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const j = m.view.procJobs.find((x) => x.system === req.system && x.jobname === req.jobname);
       if (!j) return 'No such job row';
       // PROCU's EAppl % CP: enclave CPU included, 100 = one engine (RMF Report Analysis p.189).
-      return { source: 'PROCU', metric: 'JOB_APPL', subject: req.jobname, system: req.system, tick: m.tick, value: 100 * j.eapplCpEngines };
+      return { source: 'PROCU', metric: 'JOB_APPL', subject: req.jobname, system: req.system, tick: m.tick, value: 100 * j.eapplCpEngines, ...(j.serviceClass ? { serviceClass: j.serviceClass } : {}) };
     }
     case 'BATCH': {
       const night = run.reports.find((x) => x.day === req.day)?.batch;
@@ -362,10 +393,28 @@ export function incidentSubjects(
 function hourEndTick(run: RunState, key: string): number | null {
   if (key === 'current') return run.sim.tick;
   const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === key);
-  if (i < 0) return null;
-  // Closed hours are stored in order, the newest ending at the most recent hour boundary.
+  return i < 0 ? null : smfHourEndTick(run, i);
+}
+
+/** End tick of closed SMF hour `i`: closed hours are stored in order, the newest ending at the most recent hour
+ * boundary. */
+export function smfHourEndTick(run: RunState, i: number): number {
   const newestEnd = Math.floor(run.sim.tick / TICKS_PER_HOUR) * TICKS_PER_HOUR;
   return newestEnd - (run.smfHours.length - 1 - i) * TICKS_PER_HOUR;
+}
+
+/** The ticks a pin may come from to count for an incident: its window, an hour either side. */
+export function incidentWindow(run: RunState, inc: Incident): { lo: number; hi: number } {
+  return {
+    lo: inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR,
+    hi: (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR,
+  };
+}
+
+/** A metric's notable line for a row: its absolute line, and its row multiple of the baseline where both exist (RT-10). */
+export function notableFloor(metric: EvidenceMetric, baseline: number | undefined): number {
+  const d = EVIDENCE_METRICS[metric];
+  return Math.max(d.notableAt, d.notableMultiple !== undefined && baseline !== undefined ? d.notableMultiple * baseline : 0);
 }
 
 const fmtValue = (m: EvidenceMetric, v: number) => {
@@ -380,7 +429,8 @@ const pinWhen = (p: Located): string =>
     : formatClock(p.tick).slice(0, -3);
 
 export function pinText(p: Located): string {
-  return `${p.source} ${pinWhen(p)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}`;
+  const rate = p.rate ? ` at ${fmtValue('ENDED_RATE', p.rate.value)}` : '';
+  return `${p.source} ${pinWhen(p)} ${p.system !== p.subject && p.system !== '*PLEX' ? `${p.system} ` : ''}${p.subject} ${EVIDENCE_METRICS[p.metric].label.replace(/ %$/, '')} ${fmtValue(p.metric, p.value)}${rate}`;
 }
 
 /** history: where a pin with a past `tick` reads its Monitor III range (the worker's or the play CLI's history). */
@@ -478,8 +528,7 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
   // Judged against what the incident recorded when it opened (RT-04), so a reclassification or rerouting after the
   // fact keeps the verdicts a player would have got at the time; incidents from old saves derive them now.
   const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
-  const lo = inc.startTick - EVIDENCE.windowHours * TICKS_PER_HOUR;
-  const hi = (inc.endTick ?? run.sim.tick) + EVIDENCE.windowHours * TICKS_PER_HOUR;
+  const { lo, hi } = incidentWindow(run, inc);
   return pins.map((p) => {
     const d = EVIDENCE_METRICS[p.metric];
     const result = (relevance: number, why: string, checksPassed: number): RankedVerdict => ({
@@ -495,8 +544,7 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
     if (d.weight === 0) return result(0, 'a symptom, not a cause', 2);
     // Notable against the metric's line, and against the row's own recent normal where both exist (RT-10): one line
     // cannot serve rows whose healthy scale differs (CF02's weak ICF engine, one LCU among several).
-    const floor = Math.max(d.notableAt, d.notableMultiple !== undefined && p.baseline !== undefined ? d.notableMultiple * p.baseline : 0);
-    if (Math.abs(p.value) < floor) return result(0, 'value is unremarkable', 3);
+    if (Math.abs(p.value) < notableFloor(p.metric, p.baseline)) return result(0, 'value is unremarkable', 3);
     const hit = d.mechanisms.includes(inc.truth.mechanism) || d.triggers.includes(inc.truth.trigger);
     return result(hit ? d.weight : 0, hit ? (d.weight < 1 ? 'consistent with the cause (but not specific)' : 'points at the cause') : 'points elsewhere', 4);
   });

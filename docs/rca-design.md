@@ -652,6 +652,64 @@ over the six preceding report intervals (each `rmfIntervalMin` long) or closed S
 (already a ratio). Monitor III pins carry none: that view normalises APPL and ended/s differently from Workload
 Activity, and its history only holds the pinned range, so a baseline from another view would not compare. No recipe
 reads the baseline yet — that is RT-13.
+
+**As built (RT-13).** `MECHANISM_RECIPES` and `TRIGGER_RECIPES` in `content/evidence.ts`, judged by `judgeProof`
+(`game/proof.ts`) and scored in `submitRca`. Each predicate is a list of options (metric, relations, test); the tests
+are at-least, below (ruling out), notable (the metric's own line and row multiple), a ratio to the row's normal, within
+±15 % of it, a rise in APPL% points, a share of the pinned image's logical CPs, and "no history" (new work). A pin may
+serve one predicate in each recipe; a group pools its incidents' pins. Scoring is as above: 3 for the mechanism's
+complete recipe, 0.5 for one predicate, strong when the trigger's recipe completes too, nothing for an unaccepted
+claim. Where the build differs from the table:
+
+- **CPU_PRIORITY's consumer** must be *displaceable*: a period less important than the hurt work's (or
+  discretionary), which includes a lower period of the work's own class (ADHOC's DDFPRD#2 behind MOBILE's DDFPRD#1,
+  a `self` row), or a PROCU job whose service class (stored on the pin from the PROCU row, so batch jobs and TSO users
+  count too) is such a period; SYSTEM and SYSSTC never are. Without it any busy image proves priority. APPROX: importance is read from the
+  definition active at review time.
+- **CAPPING's symptom** is CP delay only (no zIIP delay): defined and group capacity limit general-CP MSU.
+- **DEPENDENCY** reads the server's delay where one is a recorded server (a CICS region class), or the work's own
+  other/UNK delay up ≥ 10 points over its normal (DDF's wait on a starved Db2 shows there, not as its CPU delay; a
+  healthy DDF row already spends 50–75 % there, so the table's fixed line would pass every DDF row), against its own CPU delay
+  < 10 % or a CICS class's READY < 5 %. SYSWKM velocity under goal is not an option: the pin does not carry the goal.
+- **THREAD_LIMIT's ruling-out half** and HARDWARE_FAULT's are *or*, not *and*: either normal reading counts, so the
+  recipe stays two pins. HARDWARE_FAULT's second half also accepts the work's own CPU delay low.
+- **Cost pins carry their row's rate** (`pin.rate`), so DEMAND_SURGE and a change regression are each provable from
+  one Workload Activity, Db2 101 or CICS 110 row. When two pins prove them, the second half must read the **same row**
+  as the first (`sameWork`: the same class on the same image, WLMGL or Monitor III, or the same workload's
+  accounting): a cost rise on one class and a normal rate on another are not one regression. RUNAWAY_WORK's "that
+  class's ended/s flat" is tied the same way; its "the hurt work's own cost normal" is deliberately another row. `CPU_PER_TXN` is new: APPL% CP ÷ END/S (RMF Report Analysis 3.1
+  [p.530](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=530) END/S,
+  [p.534](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534) APPL% CP with IIPCP as its subset),
+  refused on a CICS transaction row, which reports no service consumption
+  ([p.524](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=524)). Batch rows have none: the sim
+  counts a job end only for a period with a response-time goal (RF-07), and every shipped batch class has a velocity or
+  discretionary goal, so their END/S is 0 and the pin is refused there.
+- **An ended rate's baseline is the slot baseline** (§4.4): the same interval or SMF hour on earlier days the report
+  still holds (300 RMF intervals, 48 SMF hours), not the six preceding rows, which read the morning ramp as a 1.7×
+  surge (measured: MOBILE on PROD2 at noon on day 1, seed 7: 145 against 84 ended/s). Day 1 has no rate baseline. Other metrics keep RT-12's baseline.
+- **CF_SERVICE's and IO's symptoms** also accept the wait past its normal band (≥ 1.15 × the row's normal): in the
+  sim a CF link fault takes Db2 CF time 3.5 → 4.2 ms/txn and a DASD fault sync I/O 0.9 → 2.1 ms/txn, both under the
+  RT-10 lines, while the CF and DASD reports themselves are far past twice normal. Those reports' own lines are
+  RT-10's: two hours into a fault the row's six-interval normal holds the fault, so the fault's early rows prove it.
+- **NEW_WORKLOAD's "no history"** is read from the rows: the row (or the workload's SMF hour) first appears within
+  the day before the pin, after the report had held a full day without it. A day, because work with a daily shape
+  (the first batch night, a morning peak) first appears hours into the report and is not new; day 1 cannot show new
+  work this way.
+- **Every claim is proven from a replay** (`tests/game/proofRecipes.test.ts`): sim commands on midwest day 2, pins
+  through `addPin`. Most are a card's own commands; four are a card's command kind with another key or value (a
+  rate or cost modifier on MOBILE, SICK_AOR's region-failure modifier on RBANK) or a player lever (a defined capacity).
+  Some replays would pass without the change: evening batch alone gives the lock and batch-overlap proofs, and the
+  CPU delay on PROD2 alone gives POLICY and GROWTH, so those claims are shown from the scenario's own state. The ±15 % rate band is tight against day-to-day noise for some workloads (MOBILE's same
+  hour moves 10–16 % between days; RBANK's under 1 %).
+- **RUNAWAY_WORK**'s flat half is the runaway class's ended rate *or* the hurt work's own cost normal (a looping job
+  has no transactions); **BATCH_OVERLAP**'s discriminator is a batch class (one a JES rule assigns) at ≥ 10 % of the
+  image; **NEW_WORKLOAD**'s is a row with no history once the report has some; **POLICY** and **GROWTH** share one
+  recipe (hurt, with arrivals or cost at normal), since §4.4(4) says no data separates them.
+- **Three pins**: the symbolic solver (`tests/helpers/proofPins.ts`) shows 29 of the 108 pairs need four separate
+  facts; for the other 79 it finds no reason to need more than three, which is a lower bound (it ignores which rows
+  each incident kind has), not a demonstration with real rows. The 29 (e.g. CPU_CAPACITY ×
+  RUNAWAY_WORK: the work's CPU delay, a full processor, the runaway's rise, its flat rate); they earn the mechanism's 3
+  points but not strong evidence. BACKLOG RT-27 holds the design question.
 ### 4.7 Incidents caused by the player
 
 Covered by §4.4(4): the trigger is POLICY, the reply names the change, and under D1 nothing is gated (there is no

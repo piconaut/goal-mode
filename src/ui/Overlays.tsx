@@ -10,6 +10,8 @@ import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { IncidentTruth, Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
+import { predicateText, recipeHeading, type ProofResult } from '../game/proof';
+import { idText } from '../game/ids';
 import type { ViewModel } from '../game/view';
 import { piColor, seriesColor } from './colors';
 import { LineChart } from './LineChart';
@@ -471,7 +473,8 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
           <h3>Root-cause analysis</h3>
           <p className="muted">
             Today&apos;s RMF data is now in the Reports tab. Name where the time went and what set it off, and attach up to {EVIDENCE.perRca} pinned
-            data points that prove it. Correct answers earn trust and Insight; evidence that points at the real cause earns more.
+            data points that prove it: the symptom on the hurt work, and the reading that tells the cause from its look-alike. Correct answers earn trust and Insight; a
+            proof of the right mechanism earns more, and proving the trigger too makes it strong.
           </p>
           <RcaVocabulary />
           <div className="form">
@@ -507,7 +510,13 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
                 {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}
               </div>
             ))}
-            {(i.rca!.evidencePoints ?? 0) > 0 && <div style={{ fontSize: 12, paddingLeft: 12 }}>Evidence +{i.rca!.evidencePoints}</div>}
+            {i.rca!.proof && <ProofView proof={i.rca!.proof} />}
+            {(i.rca!.evidencePoints ?? 0) > 0 && (
+              <div style={{ fontSize: 12, paddingLeft: 12 }}>
+                Evidence +{i.rca!.evidencePoints}
+                {i.rca!.strong ? ` · strong evidence, +${EVIDENCE.strongInsight} Insight` : ''}
+              </div>
+            )}
           </div>
         ))}
       <h3>Pick one</h3>
@@ -519,6 +528,24 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
           </div>
         ))}
       </div>
+    </>
+  );
+}
+
+/** Each filed claim's proof recipe, its two predicates ticked or not (RT-13), worded as the play CLI's reply. */
+function ProofView({ proof }: { proof: ProofResult }) {
+  return (
+    <>
+      {([['Mechanism', proof.mechanism], ['Trigger', proof.trigger]] as const).map(([what, c]) => (
+        <div key={what} style={{ fontSize: 12, paddingLeft: 12 }}>
+          <div>{recipeHeading(c, what)}</div>
+          {c.predicates.map((x, k) => (
+            <div key={k} className="muted" style={{ paddingLeft: 12 }}>
+              {predicateText(x, (id) => idText('pin', id))}
+            </div>
+          ))}
+        </div>
+      ))}
     </>
   );
 }

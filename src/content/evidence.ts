@@ -26,6 +26,7 @@ export type EvidenceMetric =
   | 'APPL_IIP'
   | 'IIPCP'
   | 'CPU_VS_BASE'
+  | 'CPU_PER_TXN'
   | 'LOCK_WAIT'
   | 'SYNC_IO'
   | 'CF_WAIT'
@@ -64,6 +65,9 @@ export interface EvidenceMetricDef {
   weight: number;
   /** The relations this metric is evidence for; a pin outside them scores nothing, whatever its size. */
   relations: PinRelation[];
+  /** Which earlier rows a pin's baseline is the median of: the six preceding report intervals or SMF hours (default),
+   * or for a metric that follows the time of day the same interval or hour on earlier days (§4.4's slot baseline). */
+  baseline?: 'slot';
 }
 
 /** Symptom metrics: they say the work was hurt, not why, so any relation is "about" the incident (weight 0). */
@@ -89,7 +93,10 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   APPL_CP: { label: 'APPL % CP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
   APPL_IIP: { label: 'APPL % IIP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
   IIPCP: { label: 'APPL % IIPCP', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: ['RUNAWAY_WORK', 'DEMAND_SURGE', 'CHANGE_REGRESSION'], notableAt: 5, weight: 0.5, relations: OWN_OR_COMPETITOR },
-  ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5, relations: OWN },
+  // A co-hosted workload's arrivals are the surge that hurt its neighbour (§4.4's collateral victim), so another class's
+  // ended rate is accepted too (RT-13).
+  // Arrivals follow the time of day: the six preceding rows would read a morning ramp as a 1.7× surge (RT-13).
+  ENDED_RATE: { label: 'ended/s', unit: '/s', mechanisms: [], triggers: ['DEMAND_SURGE'], notableAt: 0, weight: 0.5, relations: OWN_OR_COMPETITOR, baseline: 'slot' },
   DELAY_CPU: { label: 'CPU delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'DEPENDENCY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_ZIIP: { label: 'zIIP delay %', unit: '%', mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY'], triggers: [], notableAt: 10, weight: 1, relations: OWN },
   DELAY_IO: { label: 'I/O delay %', unit: '%', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 10, weight: 1, relations: OWN },
@@ -105,6 +112,10 @@ export const EVIDENCE_METRICS: Record<EvidenceMetric, EvidenceMetricDef> = {
   /** 100 − SMF70CAI: how much capacity the processor lost against its normal setting (POWER_CAP). */
   CAPACITY_ADJ: { label: 'capacity adjusted %', unit: '%', mechanisms: ['CPU_CAPACITY'], triggers: ['HARDWARE_FAULT'], notableAt: 1, weight: 1, relations: HOST_ONLY },
   CPU_VS_BASE: { label: 'CPU/txn vs baseline', unit: '×', mechanisms: ['CPU_CAPACITY'], triggers: ['CHANGE_REGRESSION', 'RUNAWAY_WORK'], notableAt: 1.3, weight: 1, relations: OWN },
+  // Workload Activity's APPL% CP over END/S (RT-13): the tier-0 CPU per transaction, in CP milliseconds, judged against
+  // the row's own recent normal. CP only: APPL% CP already holds the IIPCP subset, and work that lost its zIIP
+  // offload costs more CP per transaction (RMF Report Analysis p.530 END/S, p.534 APPL%). FICTIONAL line.
+  CPU_PER_TXN: { label: 'CP ms/txn', unit: 'ms', mechanisms: [], triggers: ['CHANGE_REGRESSION'], notableAt: 0, notableMultiple: 1.3, weight: 1, relations: OWN_OR_COMPETITOR },
   LOCK_WAIT: { label: 'lock wait ms/txn', unit: 'ms', mechanisms: ['LOCK_CONTENTION'], triggers: ['BATCH_OVERLAP'], notableAt: 2, weight: 1, relations: OWN },
   SYNC_IO: { label: 'sync I/O ms/txn', unit: 'ms', mechanisms: ['IO'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
   CF_WAIT: { label: 'CF ms/txn', unit: 'ms', mechanisms: ['CF_SERVICE'], triggers: ['HARDWARE_FAULT'], notableAt: 5, weight: 1, relations: OWN },
@@ -157,12 +168,290 @@ export const EVIDENCE = {
   baselineRows: 6,
   /** A pin counts if taken within this many hours of the incident window. */
   windowHours: 1,
-  /** Score points per unit of evidence relevance (only with the right mechanism). */
-  pointsPerRelevance: 1,
-  /** Extra Insight for "strong evidence": total relevance at least this. */
-  strongAt: 2,
+  /** Extra Insight for "strong evidence": both filed claims proven by their recipes (RT-13; PROOF has the points). */
   strongInsight: 5,
   // FICTIONAL: a grouped RCA (one cause, several incidents) earns its trust reward once per incident it covers, so
   // grouping removes the write-ups but not the credit (user decision 2026-10-27). Penalties are not scaled.
   groupTrustPerIncident: 1,
+};
+
+// ---------------------------------------------------------------------------------------------------------------
+// Proof recipes (RT-13, docs/rca-design.md §4.6): evidence supports a claim when the attached pins satisfy both
+// predicates of the claim's recipe, the symptom on the right subject and the discriminator against its nearest
+// look-alike (or a ruling-out reading where no report shows the cause directly). A pin may serve a predicate in each
+// of the two recipes an RCA is judged on (the mechanism's and the trigger's), which is how three pins carry both.
+
+/** How a predicate reads one pin's value. `rate` reads the ended rate printed on the same row as a cost pin (a
+ * `CPU_PER_TXN` or `CPU_VS_BASE` pin carries it), so one Workload Activity or Db2 101 row can show "more work at the
+ * same cost" or "the same work at more cost" on its own. */
+export type PinTest =
+  /** value ≥ v */
+  | { kind: 'atLeast'; value: number }
+  /** value < v: a ruling-out reading ("its CPU delay was low"). */
+  | { kind: 'below'; value: number }
+  /** past the metric's own notable line (and its row multiple, where the metric has one) */
+  | { kind: 'notable' }
+  /** value ≥ ratio × the row's recent normal (a ratio metric's normal is 1) */
+  | { kind: 'ratioAtLeast'; ratio: number }
+  /** within ±band of the row's recent normal */
+  | { kind: 'normal'; band: number }
+  /** value − the row's recent normal ≥ points (APPL% points: 100 = one engine) */
+  | { kind: 'riseBy'; points: number }
+  /** value ≥ frac of the pinned image's online logical CPs (APPL% and EAppl %: 100 = one engine) */
+  | { kind: 'shareOfImage'; frac: number }
+  /** a Workload Activity or SMF row with no earlier report rows, pinned after the report had them for other rows */
+  | { kind: 'noHistory' };
+
+export interface PredicateOption {
+  metric: EvidenceMetric;
+  relations: PinRelation[];
+  test: PinTest;
+  /** Judge the row's ended rate rather than the pinned value (cost pins only). */
+  reading?: 'rate';
+  /** The row must be a batch class: one a JES classification rule assigns. */
+  batchClass?: true;
+  /** The row's period must be less important than the hurt work's (a higher importance number, or discretionary):
+   * work WLM could have taken the CPU from. */
+  displaceable?: true;
+  /** The pin must read the same row (image and class, or workload) as a pin meeting the recipe's first predicate: the
+   * two halves of a surge or a regression describe one piece of work. */
+  sameWork?: true;
+}
+
+export interface ProofPredicate {
+  /** What the player must show, in report terms; the reply ticks it. */
+  label: string;
+  options: PredicateOption[];
+}
+
+export interface ProofRecipe {
+  /** Symptom first, discriminator second. */
+  predicates: [ProofPredicate, ProofPredicate];
+}
+
+// FICTIONAL lines, the design's (§4.6 table): roughly where an analyst would call the reading abnormal or flat.
+export const PROOF = {
+  delayPct: 10,
+  jobWaitPct: 25,
+  imageShareFrac: 0.1,
+  busyPct: 90,
+  cappedPct: 5,
+  capDelayPct: 5,
+  readyLowPct: 5,
+  normalBand: 0.15,
+  surgeRatio: 1.25,
+  regressionRatio: 1.3,
+  /** Half an engine, in APPL% points. */
+  runawayPoints: 50,
+  /** A wait per transaction past its own normal band: one absolute line cannot serve rows whose healthy scale differs
+   * (a CF link fault takes Db2 CF time 3.5 → 4.2 ms, a DASD fault sync I/O 0.9 → 2.1 ms, both under the RT-10 lines). */
+  waitRiseRatio: 1.15,
+  /** The work's other/UNK share up this many points over its normal: a healthy DDF row already spends 50–75 % there
+   * (its time in Db2), so a fixed line would pass every DDF row. */
+  otherRisePoints: 10,
+  /** A complete recipe for the filed, accepted mechanism is worth this many points (three fully relevant pins). */
+  recipePoints: 3,
+  /** A recipe with one predicate shown is worth what one non-specific pin was (§4.6: "a lone symptom pin"). */
+  partialPoints: 0.5,
+};
+
+const at = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'atLeast', value } });
+const below = (metric: EvidenceMetric, value: number, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'below', value } });
+const notable = (metric: EvidenceMetric, relations: PinRelation[]): PredicateOption => ({ metric, relations, test: { kind: 'notable' } });
+const normal = (metric: EvidenceMetric, relations: PinRelation[], reading?: 'rate'): PredicateOption => ({ metric, relations, test: { kind: 'normal', band: PROOF.normalBand }, ...(reading ? { reading } : {}) });
+/** The same work as the first predicate showed (see `sameWork`). */
+const same = (o: PredicateOption): PredicateOption => ({ ...o, sameWork: true });
+/** A class's CPU share (APPL, and its CP part) under one test. */
+const appl = (test: PinTest, relations: PinRelation[], extra: Partial<PredicateOption> = {}): PredicateOption[] =>
+  (['APPL', 'APPL_CP'] as const).map((metric) => ({ metric, relations, test, ...extra }));
+const ratio = (metric: EvidenceMetric, r: number, relations: PinRelation[], reading?: 'rate'): PredicateOption => ({ metric, relations, test: { kind: 'ratioAtLeast', ratio: r }, ...(reading ? { reading } : {}) });
+
+const SELF: PinRelation[] = ['self'];
+/** The work's own CPU per transaction at its normal: the Workload Activity quotient, or Db2/CICS accounting's ratio. */
+const COST_NORMAL: PredicateOption[] = [normal('CPU_PER_TXN', SELF), normal('CPU_VS_BASE', SELF)];
+const SELF_OR_COMPETITOR: PinRelation[] = ['self', 'competitor'];
+
+/** The hurt work waited for CPU: its own row or its regions' (a CICS transaction row has no CPU delay of its own). */
+const CPU_DELAYED: ProofPredicate = {
+  label: 'CPU or zIIP delay ≥ 10 % on the hurt class or its regions (WLMGL, DELAY), or the critical jobs\' CPU wait ≥ 25 % (SMF 30)',
+  options: [at('DELAY_CPU', PROOF.delayPct, OWN), at('DELAY_ZIIP', PROOF.delayPct, OWN), at('JOB_CPU', PROOF.jobWaitPct, SELF)],
+};
+
+/** A ruling-out reading: the hurt work was not waiting for CPU itself. READY is a CICS transaction class's own
+ * CPU-dispatch share (its row carries no CPU delay, RMF Report Analysis p.536–537). */
+const OWN_CPU_LOW: ProofPredicate = {
+  label: 'the hurt class\'s own CPU delay < 10 % (WLMGL), its READY state < 5 % (CICS), or the jobs\' CPU wait < 25 % (SMF 30)',
+  options: [below('DELAY_CPU', PROOF.delayPct, SELF), below('WM_READY', PROOF.readyLowPct, SELF), below('JOB_CPU', PROOF.jobWaitPct, SELF)],
+};
+
+/** The hurt work missed: its goal, or a delay or wait past that metric's own line, on its own rows. */
+const HURT: ProofPredicate = {
+  label: 'the hurt work delayed: PI ≥ 1.2, or any delay or wait past its line, on its own row',
+  options: [
+    notable('PI', SELF),
+    ...(['DELAY_CPU', 'DELAY_ZIIP', 'DELAY_IO', 'DELAY_STO', 'DELAY_CAP', 'DELAY_OTHER', 'WM_LOCK', 'WM_READY', 'LOCK_WAIT', 'SYNC_IO', 'CF_WAIT', 'QR_WAIT', 'MXT_WAIT', 'DBAT_QUEUE', 'FAIL_PCT'] as const)
+      .map((m) => notable(m, OWN)),
+    ...(['JOB_CPU', 'JOB_IO', 'JOB_LOCK', 'JOB_DB2', 'JOB_SWAP', 'JOB_INIT', 'JOB_ABEND'] as const).map((m) => notable(m, SELF)),
+    notable('SOS_MIN', ['server']),
+  ],
+};
+
+/** Neither more work nor costlier work: the row's ended rate or CPU per transaction at its recent normal. */
+const DEMAND_NORMAL: ProofPredicate = {
+  label: 'the work itself unchanged: its ended/s or CPU per transaction within ±15 % of normal (WLMGL, Db2 101, CICS 110)',
+  options: [normal('ENDED_RATE', SELF), ...COST_NORMAL, normal('CPU_PER_TXN', SELF, 'rate'), normal('CPU_VS_BASE', SELF, 'rate')],
+};
+
+export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
+  CPU_CAPACITY: { predicates: [CPU_DELAYED, {
+    label: 'the processor full: CPC or image busy ≥ 90 %, or a capacity adjustment below 100 (Partition Data, CPC)',
+    options: [at('CPC_BUSY', PROOF.busyPct, HOST_ONLY), at('LPAR_BUSY', PROOF.busyPct, HOST_ONLY), at('CAPACITY_ADJ', 1, HOST_ONLY)],
+  }] },
+  // A less important period of the work's own class counts too (ADHOC's long queries in DDFPRD#2 behind MOBILE's
+  // DDFPRD#1): the row relates as `self`, but WLM could have taken its CPU.
+  CPU_PRIORITY: { predicates: [CPU_DELAYED, {
+    label: 'a displaceable consumer on that host: a less important class or job using ≥ 10 % of the image (WLMGL APPL, PROCU)',
+    options: [
+      ...appl({ kind: 'shareOfImage', frac: PROOF.imageShareFrac }, SELF_OR_COMPETITOR, { displaceable: true }),
+      { metric: 'JOB_APPL', relations: ['competitor'], test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
+    ],
+  }] },
+  // APPROX: defined capacity and group capacity limit general-CP MSU, so the cap's symptom is CP delay, not zIIP (an
+  // absolute cap on a zIIP pool exists but no card here sets one).
+  CAPPING: { predicates: [{
+    label: 'CPU delay ≥ 10 % on the hurt class or its regions (WLMGL, DELAY), or the critical jobs\' CPU wait ≥ 25 % (SMF 30)',
+    options: CPU_DELAYED.options.filter((o) => o.metric !== 'DELAY_ZIIP'),
+  }, {
+    label: 'a cap held it: the image capped ≥ 5 % of the interval (Partition Data), or CAP delay ≥ 5 % on the class (WLMGL)',
+    options: [at('CAPPED', PROOF.cappedPct, HOST_ONLY), at('DELAY_CAP', PROOF.capDelayPct, SELF)],
+  }] },
+  DEPENDENCY: { predicates: [{
+    label: 'the server slow: a serving region delayed ≥ 10 %, the work waiting outside CPU and I/O (other/UNK up ≥ 10 points over its normal), or the jobs waiting on Db2 ≥ 25 %',
+    options: [at('DELAY_CPU', PROOF.delayPct, ['server']), at('DELAY_ZIIP', PROOF.delayPct, ['server']), { metric: 'DELAY_OTHER', relations: SELF, test: { kind: 'riseBy', points: PROOF.otherRisePoints } }, at('JOB_DB2', PROOF.jobWaitPct, SELF)],
+  }, OWN_CPU_LOW] },
+  LOCK_CONTENTION: { predicates: [{
+    label: 'lock waits on the hurt work: Db2 lock wait ≥ 2 ms/txn (Db2 101), LOCK state ≥ 35 % (WLMGL), or the jobs\' lock wait ≥ 25 % (SMF 30)',
+    options: [notable('LOCK_WAIT', SELF), notable('WM_LOCK', SELF), notable('JOB_LOCK', SELF)],
+  }, OWN_CPU_LOW] },
+  CF_SERVICE: { predicates: [{
+    label: 'CF time per transaction ≥ 5 ms or past its normal band (Db2 101)',
+    options: [notable('CF_WAIT', SELF), ratio('CF_WAIT', PROOF.waitRiseRatio, SELF)],
+  }, {
+    label: 'the CF itself slow: sync service time or async conversion past twice its normal (CF Activity)',
+    options: [notable('CF_SYNC', ['server']), notable('CF_ASYNC_PCT', ['server'])],
+  }] },
+  QR_TCB: { predicates: [{
+    label: 'QR TCB wait ≥ 5 ms/txn (CICS 110), or the READY state past twice its normal (WLMGL)',
+    options: [notable('QR_WAIT', SELF), notable('WM_READY', SELF)],
+  }, {
+    label: 'not the task limit or the CPU: MXT wait < 5 ms/txn (CICS 110), or the regions\' CPU delay < 10 % (WLMGL)',
+    options: [below('MXT_WAIT', 5, SELF), below('DELAY_CPU', PROOF.delayPct, ['server'])],
+  }] },
+  THREAD_LIMIT: { predicates: [{
+    label: 'queued for a slot: MXT wait or DBAT queue ≥ 5 ms/txn, the region short on storage (SOS), or the jobs\' initiator wait ≥ 25 %',
+    options: [notable('MXT_WAIT', SELF), notable('DBAT_QUEUE', SELF), notable('SOS_MIN', ['server']), notable('JOB_INIT', SELF)],
+  }, {
+    label: 'not slower work holding the slots: CPU per transaction within ±15 % of normal, QR wait < 5 ms/txn, or the jobs\' CPU wait < 25 %',
+    options: [...COST_NORMAL, below('QR_WAIT', 5, SELF), below('JOB_CPU', PROOF.jobWaitPct, SELF)],
+  }] },
+  ROUTING: { predicates: [{
+    label: 'transactions failed: failed share ≥ 1 % (CICS 110)',
+    options: [notable('FAIL_PCT', SELF)],
+  }, {
+    label: 'the work itself unchanged: its CPU per transaction within ±15 % of normal (CICS 110, Db2 101)',
+    options: COST_NORMAL,
+  }] },
+  IO: { predicates: [{
+    label: 'I/O waits on the hurt work: I/O delay ≥ 10 % (WLMGL), sync I/O ≥ 5 ms/txn or past its normal band (Db2 101), or the jobs\' I/O wait ≥ 25 % (SMF 30)',
+    options: [notable('DELAY_IO', SELF), notable('SYNC_IO', SELF), ratio('SYNC_IO', PROOF.waitRiseRatio, SELF), notable('JOB_IO', SELF)],
+  }, {
+    label: 'DASD itself slow: DISC, IOSQ or response time past twice its normal on an LCU or all volumes (DASD Activity)',
+    options: [notable('DASD_DISC', ['server']), notable('DASD_IOSQ', ['server']), notable('DASD_RESP', ['server'])],
+  }] },
+  STORAGE: { predicates: [{
+    label: 'storage waits: storage delay ≥ 5 % (WLMGL), a serving region short on storage (CICS SOS), or the jobs\' swap wait ≥ 25 %',
+    options: [notable('DELAY_STO', SELF), notable('SOS_MIN', ['server']), notable('JOB_SWAP', SELF)],
+  }, OWN_CPU_LOW] },
+  JOB_FAILURE: { predicates: [{
+    label: 'critical jobs ABENDed (SMF 30)',
+    options: [at('JOB_ABEND', 1, SELF)],
+  }, {
+    label: 'they failed rather than ran late: the jobs\' CPU or I/O wait < 25 % (SMF 30)',
+    options: [below('JOB_CPU', PROOF.jobWaitPct, SELF), below('JOB_IO', PROOF.jobWaitPct, SELF)],
+  }] },
+};
+
+export const TRIGGER_RECIPES: Readonly<Record<Trigger, ProofRecipe>> = {
+  DEMAND_SURGE: { predicates: [{
+    label: 'more work: ended/s ≥ 1.25 × its recent normal on the hurt or a co-hosted workload',
+    options: [
+      ratio('ENDED_RATE', PROOF.surgeRatio, SELF_OR_COMPETITOR),
+      ratio('CPU_PER_TXN', PROOF.surgeRatio, SELF_OR_COMPETITOR, 'rate'),
+      ratio('CPU_VS_BASE', PROOF.surgeRatio, SELF, 'rate'),
+    ],
+  }, {
+    label: 'at the same cost: that work\'s CPU per transaction within ±15 % of normal',
+    options: [same(normal('CPU_PER_TXN', SELF_OR_COMPETITOR)), same(normal('CPU_VS_BASE', SELF))],
+  }] },
+  CHANGE_REGRESSION: { predicates: [{
+    label: 'the same work costs more: CPU per transaction ≥ 1.3 × its normal (WLMGL CP ms/txn, Db2 101, CICS 110)',
+    options: [ratio('CPU_PER_TXN', PROOF.regressionRatio, SELF_OR_COMPETITOR), ratio('CPU_VS_BASE', PROOF.regressionRatio, SELF)],
+  }, {
+    label: 'not more of it: that work\'s ended/s within ±15 % of normal',
+    options: [same(normal('ENDED_RATE', SELF_OR_COMPETITOR)), same(normal('CPU_PER_TXN', SELF_OR_COMPETITOR, 'rate')), same(normal('CPU_VS_BASE', SELF, 'rate'))],
+  }] },
+  RUNAWAY_WORK: { predicates: [{
+    label: 'one class or job up by half an engine: APPL ≥ 50 points over its normal (WLMGL), or a job at ≥ 50 % EAppl CP (PROCU)',
+    options: [
+      ...appl({ kind: 'riseBy', points: PROOF.runawayPoints }, SELF_OR_COMPETITOR),
+      at('JOB_APPL', PROOF.runawayPoints, ['server', 'competitor']),
+    ],
+  }, {
+    label: 'without more work to show for it: that class\'s ended/s flat, or the hurt work\'s own CPU per transaction within ±15 % of normal',
+    options: [same(normal('ENDED_RATE', ['competitor'])), ...COST_NORMAL],
+  }] },
+  BATCH_OVERLAP: { predicates: [{
+    label: 'lock or I/O waits on the hurt work (Db2 lock wait, LOCK state, I/O delay, the jobs\' lock wait), or IOSQ past twice normal (DASD Activity)',
+    options: [notable('LOCK_WAIT', SELF), notable('WM_LOCK', SELF), notable('DELAY_IO', SELF), notable('JOB_LOCK', SELF), notable('DASD_IOSQ', ['server'])],
+  }, {
+    label: 'batch running then: a batch class using ≥ 10 % of the image (WLMGL APPL)',
+    options: [
+      ...appl({ kind: 'shareOfImage', frac: PROOF.imageShareFrac }, SELF_OR_COMPETITOR, { batchClass: true }),
+    ],
+  }] },
+  POLICY: { predicates: [HURT, DEMAND_NORMAL] },
+  // Growth and the configuration are the same state when no card explains the hour (§4.4(4)): no visible data
+  // separates them, so they share the recipe "hurt with nothing changed in the work".
+  GROWTH: { predicates: [HURT, DEMAND_NORMAL] },
+  HARDWARE_FAULT: { predicates: [{
+    label: 'the resource\'s own report: CF sync time or async conversion, DASD DISC/IOSQ/response past twice normal, or a capacity adjustment below 100',
+    options: [notable('CF_SYNC', ['server']), notable('CF_ASYNC_PCT', ['server']), notable('DASD_DISC', ['server']), notable('DASD_IOSQ', ['server']), notable('DASD_RESP', ['server']), at('CAPACITY_ADJ', 1, HOST_ONLY)],
+  }, {
+    label: 'the work itself unchanged: its ended/s or CPU per transaction within ±15 % of normal, or its own CPU delay low',
+    options: [...DEMAND_NORMAL.options, ...OWN_CPU_LOW.options],
+  }] },
+  NEW_WORKLOAD: { predicates: [HURT, {
+    label: 'work with no history: a class or workload row with no earlier report rows (WLMGL, Db2 101, CICS 110)',
+    options: [
+      ...appl({ kind: 'noHistory' }, SELF_OR_COMPETITOR),
+      { metric: 'ENDED_RATE', relations: SELF_OR_COMPETITOR, test: { kind: 'noHistory' } },
+    ],
+  }] },
+  APPLICATION_ERROR: { predicates: [{
+    label: 'the software misbehaved: failed transactions ≥ 1 % (CICS 110), a region short on storage (SOS), or critical jobs ABENDed (SMF 30)',
+    options: [notable('FAIL_PCT', SELF), notable('SOS_MIN', ['server']), at('JOB_ABEND', 1, SELF)],
+  }, DEMAND_NORMAL] },
+};
+
+
+/** The lowest tool tier that can pin each metric (0 = Workload Activity, free): the tier-0/1 path test reads it, and a
+ * test checks it against the pin sources. WLMGL (0); Monitor III, Partition Data, PROCU (1, RMF Monitor III and the
+ * Partition Data report); CF/DASD Activity, Db2 101, CICS 110, SMF 30 (2). */
+export const METRIC_TIER: Record<EvidenceMetric, 0 | 1 | 2> = {
+  PI: 0, VELOCITY: 1, APPL: 0, APPL_CP: 0, APPL_IIP: 0, IIPCP: 0, ENDED_RATE: 0, CPU_PER_TXN: 0,
+  DELAY_CPU: 0, DELAY_ZIIP: 0, DELAY_IO: 0, DELAY_STO: 0, DELAY_CAP: 0, DELAY_OTHER: 0, WM_LOCK: 0, WM_READY: 0,
+  PRSM_DELAY: 1, CAPPED: 1, CPC_BUSY: 1, LPAR_BUSY: 1, CAPACITY_ADJ: 1, JOB_APPL: 1,
+  CPU_VS_BASE: 2, LOCK_WAIT: 2, SYNC_IO: 2, CF_WAIT: 2, CF_SYNC: 2, CF_ASYNC_PCT: 2, DASD_DISC: 2, DASD_IOSQ: 2, DASD_RESP: 2,
+  SOS_MIN: 2, DBAT_QUEUE: 2, QR_WAIT: 2, MXT_WAIT: 2, FAIL_PCT: 2,
+  JOB_CPU: 2, JOB_IO: 2, JOB_LOCK: 2, JOB_DB2: 2, JOB_SWAP: 2, JOB_INIT: 2, JOB_ABEND: 2,
 };
