@@ -692,6 +692,23 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-15: RT-15 grouping by cause (user decision on Q4; docs/rca-design.md §4.5, A13). Incidents now link to the
+  day's earlier incident with the same `truth.cause` (game/run/grouping.ts): a card's victims group across the played
+  day whatever mechanisms they show, and a cause with no card (`new:`, `change:`, `none:`) only while the incidents
+  overlap or follow within two hours (`GROUP_FOLLOW_HOURS`). A filed RCA is inherited only through the same card; a
+  later incident of a filed no-card cause is listed as new, so an RCA filed at 10:00 cannot silently cover four at
+  13:00. The group's accepted set is the union of its members' and its primary the lead's: `groupAcceptedOf` (scoring,
+  the reply and the review) and `alsoAcceptedOf` (the "also accepted" lines) replace the per-incident score, whose
+  `scoreRca` wrapper is gone; `rcaGroupOf` reads a group lead-first from any member's id. Cause prefixes (`CAUSE_PREFIX`,
+  `fallbackCause`) live beside `truthCause` so writing and parsing cannot drift, and `groupIncident` is the one place a
+  new incident takes its `rcaGroup`/inherited `rca`. Saves written before RT-07 have no cause and keep the labels'
+  grouping. R-7 is now one group (MOBILE CPU_PRIORITY and CARDAUTH DEPENDENCY under one cap), R-9's 13:00 campaign
+  incidents are separate from the creep's 10:00 RCA, and R-6's night joins the day only when the card reached the
+  critical jobs; tests/game/groupingByCause.test.ts covers each, including one through `closeHour`, and
+  tests/game/groupedRcaEvidence.test.ts gains the union's scoring and reply order. Scoring-only: goldens
+  (bfee79653dfa04fa, 22318c84ac8a4396) and the bench hash are unchanged, so no sweep; `npm run check` is CI's job and
+  no `balance` band can move (no bot but oraclerca files, and it reads no score).
+
 - 2026-11-15: RT-14 card footprints (user decision on Q5; docs/rca-design.md §4.4 "As built (RT-14)"). Every card
   that can hurt work declares a `resource` (content/footprint.ts; its `mechanisms` derive from it) and a `reach`. Its
   `affects` stays as the direct set. Running cards resolve their reach each tick to images (and `JOB@LPAR` regions),

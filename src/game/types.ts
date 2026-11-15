@@ -202,17 +202,25 @@ export interface IncidentSubjects {
   serverClasses?: string[];
 }
 
+/** The answers a fair expert could defend from visible data, always including the primary (RT-07): one incident's, or
+ * the union of a group's (RT-15). */
+export interface Accepted {
+  mechanisms: readonly Mechanism[];
+  triggers: readonly Trigger[];
+}
+
 /** An incident's hidden ground truth: the primary answer, the accepted set, and the cause's identity. */
 export interface IncidentTruth {
   mechanism: Mechanism;
   trigger: Trigger;
   /** Answers a fair expert could defend from visible data, always including the primary (RT-07). Absent in saves
    * written before RT-07: read it through `acceptedOf` (game/sla.ts), which falls back to the primary alone. */
-  accepted?: { mechanisms: Mechanism[]; triggers: Trigger[] };
+  accepted?: Accepted;
   /** One line per accepted answer that is not the primary, keyed by the answer, for the post-RCA reply. */
   notes?: Record<string, string>;
-  /** Identity of the cause for grouping (docs/rca-design.md §4.5): the blamed card's `uid`, `new:<workload>`, or
-   * `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. */
+  /** Identity of the cause for grouping (docs/rca-design.md §4.5): the blamed card's `uid`, `new:<workload>`,
+   * `change:<id>`, or `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. Absent in
+   * saves written before RT-07, which group by equal mechanism and trigger. */
   cause?: string;
 }
 
@@ -237,7 +245,8 @@ export interface Incident {
    * attached). */
   rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string } | null;
   trustLost: number;
-  /** Id of the first incident that day with the same root cause: one RCA covers the group, scored once (SPEC §10). */
+  /** Id of the group's lead, the first incident of its cause (docs/rca-design.md §4.5): one RCA covers the group,
+   * scored once (SPEC §10). Absent on a lead and on an incident listed as new. */
   rcaGroup?: number;
 }
 

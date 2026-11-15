@@ -176,24 +176,13 @@ RCA judging and incident truth: the work that makes RCA verdicts fair and eviden
 direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
-- **RT-00 … RT-15 are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
-  in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 (card footprints) landed after the
-  `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
+- **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. RT-16 … RT-21 wait for a human playtest: the list
+  "finishing" in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 (card footprints) landed
+  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
-
-### RT-15 · Group incidents by cause, not by equal labels
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-User decision on Q4, 2026-11-10: yes, with two refinements. After RT-14 (before footprints, collateral victims
-have no card cause and would still split off). `rcaGroup` links incidents with the same `truth.cause`: for a card
-cause, any incident of the same played day; for the other causes (`new:`, `change:`, `none:`), incidents that
-overlap or follow within two hours. The group's accepted set is the union; an incident inherits a filed RCA only for the same card `uid` (A13). Done when:
-R-7 is one group, R-9's 13:00 incidents do not inherit a 10:00 RCA, R-6's batch night does not join the midday
-incident unless the card reached it, a 48-hour MONITOR_CREEP hurting MOBILE at 09:00 and RBANK at 15:00 is one group,
-and `tests/game/groupedRcaEvidence.test.ts` is updated.
 
 ### RT-16 · CPU split on the host of the delay, by displaceable CPU, with bands
 `list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`

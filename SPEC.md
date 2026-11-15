@@ -1415,14 +1415,19 @@ read from when the row first appears. Every claim is proven from replayed report
 of them a card's own). Every mechanism × trigger pair fits in three pins, by a symbolic lower bound, except 29 whose
 four facts no row combines (listed in `tests/game/proofRecipes.test.ts`; BACKLOG RT-27).
 
-**One RCA per root cause:** an incident that opens on the same played day with the same ground truth (mechanism and
-trigger) as an earlier one is linked to it (`rcaGroup`). The review lists the group once ("same cause: MKTQRY, …"); one
-RCA covers every incident in it and is scored, rewarded and counted in the day score once, except its trust reward,
-which counts once per incident in the group at filing time (`EVIDENCE.groupTrustPerIncident`; a wrong RCA's penalty is
-not scaled; user decision 2026-10-27). A pin counts as evidence if
-it supports any incident in the group. An incident that joins a group after its RCA was filed inherits that RCA. Real
-incident management correlates alerts the same way; one cause should not mean five near-identical write-ups (playtest
-round 1, design item C).
+**One RCA per root cause:** an incident is linked (`rcaGroup`) to the earlier incident with the same cause
+(`truth.cause`: the blamed card's `uid`, `new:<workload>`, `change:<id>`, or `none:<family>:<host>`; `docs/rca-design.md`
+§4.5). A card's incidents group across the played day, whatever mechanisms its victims show (one power cap is one cause
+for a CPU-priority victim and a dependency one); a cause with no card groups only while the incidents overlap or follow
+within two hours. The review lists the group once ("same cause: MKTQRY, …"); one RCA covers every incident in it and is
+scored, rewarded and counted in the day score once, except its trust reward, which counts once per incident in the group
+at filing time (`EVIDENCE.groupTrustPerIncident`; a wrong RCA's penalty is not scaled; user decision 2026-10-27). The
+group's accepted answers are the union of its members', its primary is the lead's, so a mechanism or trigger accepted for
+any victim scores in full. A pin counts as evidence if it supports any incident in the group. An incident that joins a
+group after its RCA was filed inherits it only when the cause is that card: a later incident of a no-card cause is listed
+as new, so an RCA filed at 10:00 cannot silently cover four at 13:00 (A13). Saves written before RT-07 carry no cause and
+group by equal mechanism and trigger. Real incident management correlates alerts the same way; one cause should not mean
+five near-identical write-ups (playtest round 1, design item C).
 
 **A missed batch window is an incident:** when the critical path misses its deadline, the day end opens a `BATCH`
 incident for the night (18:00–06:00) carrying the Regulator and batch-facet trust it cost. Its ground truth comes from

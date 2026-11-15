@@ -10,7 +10,7 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { streamRng } from '../../src/sim/core/rng';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
 import { applyCommands } from '../../src/sim/core/commands';
-import { scoreRca } from '../../src/game/sla';
+import { acceptedOf, scoreAccepted } from '../../src/game/sla';
 import type { RunState } from '../../src/game/types';
 
 const content = { ...MIDWEST_GAME, events: [] }; // deterministic: no random events
@@ -165,10 +165,13 @@ describe('incidents and RCA', () => {
     let r = startDay(fresh(), content);
     r = { ...r, pendingCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'RBANK', value: 12 }] };
     r = advance(r, MIDWEST, content, 360 * 6);
+    // RT-15 groups by the cause, not the labels: a victim may show a different mechanism from the lead's.
     for (const i of r.incidents.filter((x) => x.rcaGroup !== undefined)) {
       const lead = r.incidents.find((x) => x.id === i.rcaGroup)!;
       expect(lead.rcaGroup).toBeUndefined();
-      expect([lead.day, lead.truth.mechanism, lead.truth.trigger]).toEqual([i.day, i.truth.mechanism, i.truth.trigger]);
+      expect(lead.day).toBe(i.day);
+      expect(lead.truth.cause).toBeDefined();
+      expect(lead.truth.cause).toBe(i.truth.cause);
     }
   });
 
@@ -189,8 +192,9 @@ describe('incidents and RCA', () => {
   });
 
   it('RCA scoring gives partial credit', () => {
-    expect(scoreRca({ mechanism: 'CF_SERVICE', trigger: 'HARDWARE_FAULT' }, { mechanism: 'CF_SERVICE', trigger: 'GROWTH' })).toBe(3);
-    expect(scoreRca({ mechanism: 'CF_SERVICE', trigger: 'HARDWARE_FAULT' }, { mechanism: 'IO', trigger: 'HARDWARE_FAULT' })).toBe(2);
+    const truth = acceptedOf({ mechanism: 'CF_SERVICE', trigger: 'HARDWARE_FAULT' });
+    expect(scoreAccepted(truth, { mechanism: 'CF_SERVICE', trigger: 'GROWTH' })).toBe(3);
+    expect(scoreAccepted(truth, { mechanism: 'IO', trigger: 'HARDWARE_FAULT' })).toBe(2);
   });
 });
 

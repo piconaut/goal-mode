@@ -10,6 +10,7 @@ import { hostImages } from '../footprint';
 import {
   type CapacityDay,
   type HourAcc,
+  type Incident,
   type IncidentTruth,
   type RunState
 } from '../types';
@@ -17,6 +18,7 @@ import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
 import { allWorkloads, isNewWorkload } from '../workloads';
 import { incidentSubjects } from '../evidence';
 import type { GameContent } from './shared';
+import { groupIncident } from './grouping';
 import { toolOn } from './shared';
 import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
 
@@ -212,26 +214,25 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       if (toolOn(r, 'AIOPS')) {
         aiops = aiopsHypotheses(truth, rankedMechanismGroups(parts, baselines[w.id] ?? {}), streamRng(r.seed, 'aiops', r.sim.tick, w.id));
       }
-      const lead = incidents.find((i) => i.day === r.day && i.rcaGroup === undefined && i.truth.mechanism === truth.mechanism && i.truth.trigger === truth.trigger);
-      incidents = [
-        ...incidents,
-        {
-          id: r.nextId,
-          workloadId: w.id,
-          day: r.day,
-          startTick: r.sim.tick - TICKS_PER_HOUR,
-          endTick: null,
-          hours: 1,
-          worstAttainmentPct: att.attainmentPct,
-          truth,
-          ...(basis ? { basis } : {}),
-          ...(aiops ? { aiops } : {}),
-          subjects,
-          rca: lead?.rca ?? null,
-          trustLost: loss,
-          ...(lead ? { rcaGroup: lead.id } : {}),
-        },
-      ];
+      const inc: Incident = {
+        id: r.nextId,
+        workloadId: w.id,
+        day: r.day,
+        startTick: r.sim.tick - TICKS_PER_HOUR,
+        endTick: null,
+        hours: 1,
+        worstAttainmentPct: att.attainmentPct,
+        truth,
+        ...(basis ? { basis } : {}),
+        ...(aiops ? { aiops } : {}),
+        subjects,
+        rca: null,
+        trustLost: loss,
+      };
+      // One RCA per root cause (RT-15, docs/rca-design.md §4.5): a card's victims group across the played day, a
+      // fallback cause's while they overlap or follow within two hours, and a filed RCA is inherited only from the
+      // same card.
+      incidents = [...incidents, groupIncident(incidents, inc)];
       r = { ...r, nextId: r.nextId + 1 };
       r = logLine(r, `INCIDENT ${w.id}: SLA missed (${att.attainmentPct.toFixed(1)}%)`);
     }

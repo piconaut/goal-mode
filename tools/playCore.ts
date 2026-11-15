@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
@@ -32,7 +32,8 @@ import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, pendingBase, playerWlmEditError, type WlmEdit } from '../src/game/wlmEdit';
 import { plannedPolicy, policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
-import { acceptedOf, hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
+import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
+import { alsoAcceptedOf, groupAcceptedOf, rcaGroupOf } from '../src/game/run/rca';
 import { TRIGGER_LABEL, canonicalTrigger, triggerLabel } from '../src/content/rca';
 import { normalizeRun } from '../src/game/tools';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
@@ -196,18 +197,18 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (missing.length && !run.pins.length) return fail('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without --evidence.');
       if (missing.length) return fail(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${run.pins.map((p) => idText('pin', p.id)).join(' ')}`);
       const r = submitRca(run, c.incidentId, c.mechanism, cTrigger, sc(run), c.evidenceIds ?? []);
-      const covered = r.incidents.filter((i) => i.id !== c.incidentId && i.rca && rcaLeadId(i) === rcaLeadId(inc))
-        .map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
+      // One RCA covers the group: its primary is the lead's and its accepted answers are the union of the members'
+      // (RT-15, docs/rca-design.md §4.5).
+      const group = rcaGroupOf(r.incidents, c.incidentId);
+      const covered = group.filter((i) => i.id !== c.incidentId && i.rca).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
       const rca = r.incidents.find((i) => i.id === c.incidentId)?.rca;
-      const t = inc.truth;
-      const accepted = acceptedOf(t);
+      const t = group[0]!.truth;
+      const accepted = groupAcceptedOf(group);
       const pts = rca?.points ?? 0;
       const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
       // An accepted alternate is a right answer, so the reply must say so and give its reason (RT-07).
       // Answers are shown with the trigger's display name; the ids stay what a command types (RT-09).
-      const answerText = (answer: string) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${t.notes?.[answer] ? ` (${t.notes[answer]})` : ''}`;
-      const also = [...accepted.mechanisms.filter((m) => m !== t.mechanism), ...accepted.triggers.filter((x) => x !== cTrigger)]
-        .map(answerText);
+      const also = alsoAcceptedOf(group).map(({ answer, why }) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${why ? ` (${why})` : ''}`);
       return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cTrigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${rca?.proof ? `\n${proofLines(rca.proof, (id) => idText('pin', id)).join('\n')}` : ''}`);
     }
     case 'ask': {
@@ -417,7 +418,7 @@ export function statusText(file: PlayFile): string {
   }
   const open = v.incidents.filter((i) => !i.rca && i.rcaGroup === undefined);
   const linked = (id: number) => {
-    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
+    const ws = rcaGroupOf(v.incidents, id).slice(1).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
     return ws.length ? ` (same cause, one RCA covers: ${ws.join(', ')})` : '';
   };
   if (open.length) out.push('incidents without RCA: ' + open.map((i) => `${idText('incident', i.id)} ${i.workloadId} day ${i.day + 1} from ${clockText(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%${linked(i.id)}`).join('; '));

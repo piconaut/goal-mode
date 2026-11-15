@@ -154,6 +154,15 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
   return { accepted: { mechanisms, triggers }, notes };
 }
 
+/** The prefixes of the causes that are not a card's `uid` (§4.5): new work, the player's own change (§4.7), or what
+ * the configuration was short of. Written here and read by grouping (game/run/grouping.ts), so the two cannot drift. */
+export const CAUSE_PREFIX = { new: 'new:', change: 'change:', none: 'none:' } as const;
+
+/** Whether a cause is one of those rather than a card's `uid`. */
+export function fallbackCause(cause: string): boolean {
+  return Object.values(CAUSE_PREFIX).some((prefix) => cause.startsWith(prefix));
+}
+
 /** The cause's identity for grouping (docs/rca-design.md §4.5): the blamed card, new work, or what was short. §4.5's
  * `change:<id>` (an incident the player's own change caused, §4.7) arrives with RT-18's tested player-change trigger. */
 export function truthCause(ctx: {
@@ -172,8 +181,8 @@ export function truthCause(ctx: {
   const window = ctx.window ?? hourWindow(ctx.hour.hourIndex);
   const card = ctx.card ?? qualifyingCards(ctx.events, ctx.workloadId, ctx.mechanism, window, ctx)[0]?.card;
   if (card) return card.uid;
-  if (ctx.isNew || ctx.trigger === 'NEW_WORKLOAD') return `new:${ctx.workloadId}`;
+  if (ctx.isNew || ctx.trigger === 'NEW_WORKLOAD') return `${CAUSE_PREFIX.new}${ctx.workloadId}`;
   const family = CPU_FAMILY.includes(ctx.mechanism) ? 'CPU' : ctx.mechanism;
   const host = ctx.basis?.lparId ?? ctx.hosts[0]?.lparId ?? '';
-  return `none:${family}:${host}`;
+  return `${CAUSE_PREFIX.none}${family}:${host}`;
 }

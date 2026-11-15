@@ -4,6 +4,7 @@ import { MIDWEST } from '../../src/content/scenarios';
 import type { EvidencePin } from '../../src/game/evidence';
 import { judgeEvidence } from '../../src/game/evidence';
 import { newRun, submitRca } from '../../src/game/run';
+import { alsoAcceptedOf } from '../../src/game/run/rca';
 import type { Incident, RunState } from '../../src/game/types';
 
 function grouped(): RunState {
@@ -57,12 +58,34 @@ describe('grouped RCA evidence verdicts', () => {
     expect(file(r).incidents[0]!.rca!.evidence![0]!.why).toBe('not about CARDAUTH');
   });
 
-  it('keeps the first incident when score and evidence checks tie', () => {
+  it('keeps the group lead when score and evidence checks tie', () => {
     const r = grouped();
     r.pins = [pin(r, { subject: 'UNRELATED' })];
     expect(file(r).incidents[0]!.rca!.evidence![0]!.why).toBe('not about RBANK');
+    // The group is read lead-first (RT-15), so a save whose array order differs still ties on the lead's rejection.
     const reversed = file({ ...r, incidents: [...r.incidents].reverse() });
-    expect(reversed.incidents[0]!.rca!.evidence![0]!.why).toBe('not about CARDAUTH');
+    expect(reversed.incidents[0]!.rca!.evidence![0]!.why).toBe('not about RBANK');
+  });
+
+  it('scores an answer accepted by another incident of the group (the union, §4.5)', () => {
+    const r = grouped();
+    const [a, b] = r.incidents;
+    // One cause, two victims: each truth accepts a different answer, so either is a full answer for the group.
+    r.incidents = [
+      { ...a!, truth: { ...a!.truth, accepted: { mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY'], triggers: ['POLICY'] }, notes: { CPU_CAPACITY: 'the machine may have been the constraint' } } },
+      { ...b!, truth: { ...b!.truth, accepted: { mechanisms: ['DEPENDENCY'], triggers: ['BATCH_OVERLAP'] } } },
+    ];
+    // The reply and the review show the union too, led by the lead's own alternates and their reasons.
+    expect(alsoAcceptedOf(r.incidents)).toEqual([
+      { answer: 'CPU_CAPACITY', why: 'the machine may have been the constraint' },
+      { answer: 'DEPENDENCY', why: undefined },
+      { answer: 'BATCH_OVERLAP', why: undefined },
+    ]);
+    const alone = submitRca({ ...r, incidents: [r.incidents[0]!] }, 1, 'DEPENDENCY', 'BATCH_OVERLAP');
+    expect(alone.incidents[0]!.rca!.points).toBe(0);
+    const scored = submitRca(r, 1, 'DEPENDENCY', 'BATCH_OVERLAP');
+    expect(scored.incidents[0]!.rca!.points).toBe(5);
+    expect(scored.incidents[1]!.rca).toBe(scored.incidents[0]!.rca);
   });
 
   it('selects evidence independently per pin and awards group points and bonuses once', () => {
