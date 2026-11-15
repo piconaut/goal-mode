@@ -1,3 +1,4 @@
+import { cardMechanisms } from '../../src/content/footprint';
 import { ACQUIRED_APP } from '../../src/content/events/midwest-events';
 import { HARBOURLINE_GAME } from '../../src/content/game-harbourline';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
@@ -22,7 +23,7 @@ function startCap(id: keyof typeof games, commands: Command[] = [], pendingComma
     pendingCommands: [...run.pendingCommands, ...pendingCommands],
     events: [{
       uid: 'POWER_CAP@0', defId: def.id, name: def.name, startTick: 0, endTick: 6 * TICKS_PER_HOUR,
-      trigger: def.trigger, affects: def.affects, mechanisms: def.mechanisms,
+      trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def),
       endCommands: def.end, started: false, ended: false,
     }],
   }, scenario, game, 1);

@@ -13,7 +13,7 @@ import { TICKS_PER_HOUR } from '../sim/core/units';
 import type { Scenario } from '../sim/core/scenario';
 import type { GameContent } from './run/shared';
 import { advance } from './run';
-import { BATCH_INCIDENT, blamedCard, hourAttainment } from './sla';
+import { BATCH_INCIDENT, hourAttainment, qualifyingCards } from './sla';
 import { allWorkloads } from './workloads';
 import type { ActiveEvent, Incident, Mechanism, RunState, Trigger } from './types';
 
@@ -25,7 +25,7 @@ export interface CardRef {
   trigger: Trigger;
   /** What the card declares it causes (absent = any mechanism: pre-RT-02 saves). */
   mechanisms?: Mechanism[];
-  /** The card declares no affected work, so it is a red herring by design: a control for the noise floor. */
+  /** The card has no footprint, so it is a red herring by design: a control for the noise floor. */
   control: boolean;
   startTick: number;
   endTick: number | null;
@@ -39,6 +39,10 @@ export interface CardTest {
   attainmentPct: number | null;
   /** That attainment less the as-run hour's, in percentage points (null = not measurable). */
   gainPct: number | null;
+  /** How the card's footprint meets the incident for its mechanism (RT-14): the work is listed, or collateral to
+   * its reach; null = the card cannot be blamed for it. A gain cause outside the footprint, or a blamed card with no
+   * gain, is a disagreement to classify (footprint wrong, or a path effect). */
+  footprint: 'direct' | 'collateral' | null;
 }
 
 export interface IncidentBlame {
@@ -71,7 +75,7 @@ export interface JudgedBlame extends IncidentBlame {
 
 /**
  * The noise floor: the largest attainment swing a red-herring card produced in the sample. A card that by design
- * hurts nothing (CP_SPARING, or any card with no declared `affects`) still moves the hour a little through the
+ * hurts nothing (CP_SPARING, or any card with no footprint) still moves the hour a little through the
  * replay and WLM paths, and a gain must beat that to count as a cause.
  */
 export interface NoiseFloor {
@@ -82,8 +86,9 @@ export interface NoiseFloor {
   floorPct: number | null;
 }
 
-/** A red herring by design: the card names no hurt work, so it cannot be the cause of an SLA miss. */
-const isControl = (e: ActiveEvent) => e.defId === 'CP_SPARING' || e.affects.length === 0;
+/** A red herring by design: the card has no footprint (RT-14: it causes no mechanism), so it cannot be the cause of an
+ * SLA miss. */
+const isControl = (e: ActiveEvent) => e.defId === 'CP_SPARING' || !e.mechanisms || e.mechanisms.length === 0;
 
 const ref = (e: ActiveEvent): CardRef => ({
   uid: e.uid,
@@ -155,11 +160,15 @@ export function blameIncident(run: RunState, scenario: Scenario, content: GameCo
   // Candidates from the opening and closing state, so a cap's expanded scope and a card starting inside the hour
   // are both in; branches from the opening state.
   const candidates = cardsActiveInHour(run.events, baselineRun.events, incident.startTick);
-  const blamedEvent = blamedCard(baselineRun.events, incident.workloadId, incident.truth.mechanism, Math.floor(incident.startTick / TICKS_PER_HOUR));
+  const scope = { hosts: (incident.subjects?.hosts ?? []).map((lparId) => ({ lparId })), servers: incident.subjects?.servers ?? [] };
+  const window = { startTick: incident.startTick, endTick: incident.startTick + TICKS_PER_HOUR };
+  const qualified = qualifyingCards(baselineRun.events, incident.workloadId, incident.truth.mechanism, window, scope);
+  const blamedEvent = qualified[0]?.card;
   const tested: CardTest[] = candidates.map((e) => {
     const out = hourResult(replayHour(run, scenario, content, incident, e), scenario, incident);
     const gainPct = out.attainmentPct !== null && baseline.attainmentPct !== null ? out.attainmentPct - baseline.attainmentPct : null;
-    return { card: ref(e), met: out.met, attainmentPct: out.attainmentPct, gainPct };
+    const q = qualified.find((x) => x.card.uid === e.uid);
+    return { card: ref(e), met: out.met, attainmentPct: out.attainmentPct, gainPct, footprint: q ? (q.direct ? 'direct' : 'collateral') : null };
   });
   const causes = tested.filter((t) => t.met).map((t) => t.card);
   const blamed = blamedEvent ? ref(blamedEvent) : null;

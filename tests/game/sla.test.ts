@@ -59,14 +59,12 @@ describe('triggerOf', () => {
     expect(triggerOf('RBANK', 'IO', [{ ...ended, mechanisms: ['IO'] }], hour, false)).toBe('DEMAND_SURGE');
   });
 
-  it('prefers a card still active at hour close over an ended card regardless of list order or overlap length', () => {
+  it('ranks by overlap with the hour, not by whether a card is still active at close (RT-14)', () => {
     const h = { ...hour, hourIndex: 1 };
-    const active = card({ uid: 'Z_ACTIVE@1', startTick: 2 * TICKS_PER_HOUR - 1, endTick: null });
-    for (const endTick of [TICKS_PER_HOUR + 1, 2 * TICKS_PER_HOUR]) {
-      const ended = card({ uid: 'A_ENDED@1', endTick, ended: true, trigger: 'HARDWARE_FAULT' });
-      for (const events of [[ended, active], [active, ended]]) {
-        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
-      }
+    const active = card({ uid: 'A_ACTIVE@1', startTick: 2 * TICKS_PER_HOUR - 1, endTick: null, trigger: 'HARDWARE_FAULT' });
+    const ended = card({ uid: 'Z_ENDED@1', startTick: 0, endTick: 2 * TICKS_PER_HOUR - 10, ended: true });
+    for (const events of [[ended, active], [active, ended]]) {
+      expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
     }
   });
 
@@ -81,16 +79,19 @@ describe('triggerOf', () => {
     }
   });
 
-  it('breaks equal activity and overlap ties by ascending card uid, without changing the event list', () => {
-    for (const endTick of [10, null]) {
-      const first = card({ uid: 'A@1', endTick, ended: endTick !== null });
-      const second = card({ ...first, uid: 'B@1', trigger: 'HARDWARE_FAULT' });
-      for (const events of [[second, first], [first, second]]) {
-        const original = [...events];
-        expect(triggerOf('RBANK', 'CPU_PRIORITY', events, hour, false)).toBe('DEMAND_SURGE');
-        expect(events).toEqual(original);
-      }
+  it('breaks an overlap tie by the earlier start, then by the card order of the run, never by uid (RT-14)', () => {
+    const h = { ...hour, hourIndex: 1 };
+    const early = card({ uid: 'Z_EARLY@1', startTick: 0, endTick: null });
+    const late = card({ uid: 'A_LATE@1', startTick: TICKS_PER_HOUR, endTick: null, trigger: 'HARDWARE_FAULT' });
+    for (const events of [[late, early], [early, late]]) {
+      const original = [...events];
+      expect(triggerOf('RBANK', 'CPU_PRIORITY', events, h, false)).toBe('DEMAND_SURGE');
+      expect(events).toEqual(original);
     }
+    const first = card({ uid: 'Z@1', startTick: 0, endTick: null });
+    const second = card({ ...first, uid: 'A@1', trigger: 'HARDWARE_FAULT' });
+    expect(triggerOf('RBANK', 'CPU_PRIORITY', [first, second], h, false)).toBe('DEMAND_SURGE');
+    expect(triggerOf('RBANK', 'CPU_PRIORITY', [second, first], h, false)).toBe('HARDWARE_FAULT');
   });
 });
 

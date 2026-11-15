@@ -862,7 +862,7 @@ export function blameText(text: string, opts: { json?: boolean; incident?: numbe
     for (const t of r.tested) {
       const gain = t.gainPct === null ? 'gain unknown' : `gain ${t.gainPct >= 0 ? '+' : ''}${t.gainPct.toFixed(1)} pp`;
       const marks = [t.met ? 'RT-06 cause' : '', !t.card.control && t.gainPct !== null && t.gainPct > (floor.floorPct ?? 0) ? 'gain cause' : ''].filter(Boolean);
-      lines.push(`  test ${t.card.name} [${t.card.uid}] (${t.card.trigger}${t.card.control ? ', no declared hurt work' : ''}): ended → ${t.met ? 'met' : 'missed'} ${pctText(t.attainmentPct)}, ${gain}${marks.length ? `  <- ${marks.join(', ')}` : ''}${t.card.control ? '  (control)' : ''}`);
+      lines.push(`  test ${t.card.name} [${t.card.uid}] (${t.card.trigger}${t.card.control ? ', no footprint' : ''}${t.footprint ? `, ${t.footprint}` : ', outside its footprint'}): ended → ${t.met ? 'met' : 'missed'} ${pctText(t.attainmentPct)}, ${gain}${marks.length ? `  <- ${marks.join(', ')}` : ''}${t.card.control ? '  (control)' : ''}`);
     }
     if (r.tested.length === 0) lines.push('  no card was active in this hour');
     if (!r.reproduced) lines.push('  NOT REPRODUCED: the unchanged replay met the SLA, so no verdict');

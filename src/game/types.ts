@@ -79,7 +79,15 @@ export interface ActiveEvent {
   /** null = persists until fixed. */
   endTick: number | null;
   trigger: Trigger;
+  /** The footprint's direct set (RT-14): the workloads whose own demand or path the card changes. */
   affects: string[];
+  /** The footprint's reach while the card runs: image ids, and `JOB@LPAR` for a region reach. Re-resolved every tick
+   * and kept as the union over the hour (`affectsHour`), like a power cap's scope (absent = direct only: saves from
+   * before RT-14, and cards that load nothing shared). */
+  reach?: string[];
+  /** Workloads that closed a met SLA hour (or BATCH a met night) with the card already running at its start: the card
+   * is background for them, and ranks after a fresh one (docs/rca-design.md §4.4(2)). Sorted. */
+  metWith?: string[];
   /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
   mechanisms?: Mechanism[];
   /** Mechanism the card causes through failures rather than delay (copied from the card). */
@@ -90,7 +98,7 @@ export interface ActiveEvent {
    * from the effective routing every tick while the cap runs, and each hour keeps the union of the scopes seen
    * in it, so a mid-cap move or added workload is attributed for that hour. */
   capacityCpcs?: string[];
-  /** Start tick of the hour whose union `affects` holds (a power cap's scope follows the routing). */
+  /** Start tick of the hour whose union `affects` (a power cap's scope follows the routing) and `reach` hold. */
   affectsHour?: number;
   endCommands: Command[];
   started: boolean;

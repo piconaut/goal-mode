@@ -3,6 +3,7 @@
 import type { Command } from '../../sim/core/commands';
 import type { Mechanism, Trigger } from '../../game/types';
 import type { WorkloadDef } from '../../sim/workload/types';
+import type { FootprintReach, FootprintResource } from '../footprint';
 
 export interface EventDef {
   id: string;
@@ -12,9 +13,13 @@ export interface EventDef {
   /** Draw weight (scaled by run progress for harder cards). */
   weight: number;
   trigger: Trigger;
+  /** The footprint's direct set (RT-14): the workloads whose own demand or path the card changes. */
   affects: string[];
-  /** Mechanisms the card causes; RCA ground truth blames it only for incidents with one of these (absent = any). */
-  mechanisms?: Mechanism[];
+  /** The footprint's resource (content/footprint.ts): the card causes only the mechanisms it can (absent = a card that
+   * hurts no work, e.g. a price change or a transparent spare). */
+  resource?: FootprintResource;
+  /** Where the resource is loaded; work there is collateral to the card (absent = the direct set only). */
+  reach?: FootprintReach;
   /** Answers a fair expert could also defend for this card, added to the RCA's accepted set (RT-07). A card that is
    * both a runaway and a policy decision declares the other trigger here; a card that starves storage also accepts
    * STORAGE here. Neither changes the primary. */
@@ -125,7 +130,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 3,
     trigger: 'DEMAND_SURGE',
     affects: ['MOBILE'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { hostsOf: ['MOBILE'] },
     startHour: [11, 18],
     durationHours: 2,
     begin: [mod('rate', 'MOBILE', 2.5)],
@@ -143,7 +149,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 3,
     trigger: 'RUNAWAY_WORK',
     affects: ['MOBILE', 'ADHOC'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { hostsOf: ['ADHOC'] },
     startHour: [9, 15],
     durationHours: 5, // Db2 RLF governor eventually cancels it
     begin: [mod('cpu', 'ADHOC', 10)],
@@ -161,7 +168,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 2,
     trigger: 'CHANGE_REGRESSION',
     affects: ['RBANK'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { hostsOf: ['RBANK'] },
     startHour: [6.5, 8],
     durationHours: 30, // someone on the DBA team notices eventually
     begin: [mod('cpu', 'RBANK', 3)],
@@ -180,7 +188,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 2,
     trigger: 'DEMAND_SURGE',
     affects: ['MOBILE'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { hostsOf: ['MOBILE'] },
     startHour: [0, 23],
     durationHours: 1.5,
     begin: [mod('rate', 'MOBILE', 4), mod('cpu', 'MOBILE', 0.4)],
@@ -201,7 +210,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.5,
     trigger: 'DEMAND_SURGE',
     affects: ['MOBILE'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { hostsOf: ['MOBILE'] },
     alsoTriggers: ['APPLICATION_ERROR'],
     startHour: [11, 14],
     durationHours: 3, // the card network recovers
@@ -223,7 +233,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'RUNAWAY_WORK',
     affects: ['TELLER', 'PAYMQ'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { jobs: ['CICSXLOG'] },
     alsoTriggers: ['POLICY'],
     startHour: [8, 16],
     durationHours: 6, // the on-call eventually notices and cancels it
@@ -247,7 +258,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 0.8,
     trigger: 'CHANGE_REGRESSION',
     affects: ['CARDAUTH', 'TELLER', 'PAYMQ'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { hostsOf: ['CARDAUTH', 'TELLER', 'PAYMQ'] },
     startHour: [6, 6.5],
     durationHours: null, // a mandate stays; the fix narrows its scope
     oncePerRun: true,
@@ -308,7 +320,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.5,
     trigger: 'HARDWARE_FAULT',
     affects: ['RBANK', 'CARDAUTH', 'MOBILE', 'TELLER', 'PAYMQ'],
-    mechanisms: ['CF_SERVICE', 'LOCK_CONTENTION', 'DEPENDENCY', 'CPU_CAPACITY', 'CPU_PRIORITY'],
+    resource: 'CF',
+    reach: 'sysplex',
     startHour: [7, 20],
     durationHours: 4,
     begin: [{ kind: 'SET_CF', lparId: 'CF01', degrade: 6 }],
@@ -326,7 +339,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 0.6,
     trigger: 'HARDWARE_FAULT',
     affects: ['RBANK', 'CARDAUTH', 'MOBILE', 'TELLER', 'PAYMQ'],
-    mechanisms: ['CF_SERVICE', 'LOCK_CONTENTION', 'DEPENDENCY', 'CPU_CAPACITY', 'CPU_PRIORITY'],
+    resource: 'CF',
+    reach: 'sysplex',
     startHour: [8, 18],
     durationHours: 3,
     begin: [{ kind: 'FAIL_CF', lparId: 'CF01', failed: true }],
@@ -344,7 +358,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'HARDWARE_FAULT',
     affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
-    mechanisms: ['IO'],
+    resource: 'DASD',
+    reach: 'sysplex',
     startHour: [8, 22],
     durationHours: 3,
     begin: [{ kind: 'SET_DASD', changes: { backendDegrade: 5 } }],
@@ -362,7 +377,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1,
     trigger: 'BATCH_OVERLAP',
     affects: ['BATCH'],
-    mechanisms: ['IO'],
+    resource: 'DASD',
+    reach: 'sysplex',
     startHour: [20.5, 22.5],
     durationHours: 3,
     // FICTIONAL magnitude: enough utility I/O on LCU 21's hot volumes to exhaust its 21 aliases.
@@ -381,7 +397,7 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 2.5,
     trigger: 'APPLICATION_ERROR',
     affects: ['BATCH'],
-    mechanisms: ['JOB_FAILURE'],
+    resource: 'BATCH_JOBS',
     startHour: [21, 26],
     durationHours: 0,
     begin: [{ kind: 'ABEND_JOB', critical: true }],
@@ -399,7 +415,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1,
     trigger: 'CHANGE_REGRESSION',
     affects: ['MOBILE', 'RBANK'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { jobs: ['MONAGENT'] },
     startHour: [6, 7],
     durationHours: 48,
     begin: [mod('asCpu', 'MONAGENT', 12)],
@@ -417,7 +434,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'BATCH_OVERLAP',
     affects: ['RBANK', 'CARDAUTH'],
-    mechanisms: ['LOCK_CONTENTION'],
+    resource: 'DB2_LOCKS',
+    reach: 'sysplex',
     startHour: [20.5, 23],
     durationHours: 3,
     begin: [{ kind: 'SET_LOCK_BOOST', value: 6 }],
@@ -437,7 +455,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.5,
     trigger: 'NEW_WORKLOAD',
     affects: ['MOBILE', 'RBANK'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'THREAD_LIMIT'],
+    resource: 'CP',
+    reach: { hostsOf: ['TSO'] },
     alsoTriggers: ['RUNAWAY_WORK'],
     startHour: [8, 11],
     durationHours: 8,
@@ -457,7 +476,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'CHANGE_REGRESSION',
     affects: ['TELLER', 'RBANK'],
-    mechanisms: ['QR_TCB', 'THREAD_LIMIT'],
+    resource: 'CICS_QR',
+    reach: { regions: ['CICSAOR1', 'CICSAOR3'] },
     startHour: [6.5, 7.5],
     durationHours: 36,
     begin: [
@@ -482,7 +502,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1.2,
     trigger: 'NEW_WORKLOAD',
     affects: ['BOOKING'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'ROUTING', 'IO', 'STORAGE'],
+    resource: 'NEW_WORK',
+    reach: { hostsOf: ['BOOKING'] },
     startHour: [8, 10],
     durationHours: null, // the app stays; the fix is a classification rule
     oncePerRun: true,
@@ -502,7 +523,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 0.8,
     trigger: 'HARDWARE_FAULT',
     affects: ['MOBILE', 'RBANK'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY'],
+    resource: 'CPC',
+    reach: 'capacityCpcs',
     startHour: [12, 16],
     durationHours: 6,
     capacityDrop: 1,
@@ -524,7 +546,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     trigger: 'DEMAND_SURGE',
     // I/O only: without the mechanism filter this card stole the blame for an unrelated CPU meltdown (textbook seed 7).
     affects: ['RBANK', 'TELLER', 'PAYMQ', 'MOBILE'],
-    mechanisms: ['IO'],
+    resource: 'DASD',
+    reach: 'sysplex',
     alsoTriggers: ['POLICY'],
     startHour: [7, 10],
     durationHours: 2.5,
@@ -547,7 +570,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1,
     trigger: 'CHANGE_REGRESSION',
     affects: ['MOBILE'],
-    mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY'],
+    resource: 'ZIIP',
+    reach: { hostsOf: ['MOBILE'] },
     startHour: [6.5, 8],
     durationHours: 48,
     // FICTIONAL magnitude: 70% of the mobile API's zIIP time moves back to general CPs.
@@ -571,7 +595,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 1,
     trigger: 'APPLICATION_ERROR',
     affects: ['TELLER', 'RBANK', 'CARDAUTH', 'PAYMQ'],
-    mechanisms: ['THREAD_LIMIT'],
+    resource: 'CICS_STORAGE',
+    reach: { regions: ['CICSAOR2', 'CICSAOR4'] },
     alsoMechanisms: ['STORAGE'],
     startHour: [9, 14],
     durationHours: 4,
@@ -636,7 +661,8 @@ export const MIDWEST_EVENTS: EventDef[] = [
     weight: 0.7,
     trigger: 'CHANGE_REGRESSION',
     affects: [],
-    mechanisms: ['CPU_CAPACITY'],
+    resource: 'CP',
+    reach: { jobs: ['SMF'] },
     startHour: [6, 6.5],
     durationHours: 3 * 24,
     oncePerRun: true,

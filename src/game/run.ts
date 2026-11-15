@@ -31,7 +31,7 @@ import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
 import { incidentSubjects } from './evidence';
 import { acceptedAnswers, truthCause, type TruthContext } from './rcaTruth';
-import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank } from './sla';
+import { BATCH_INCIDENT, batchMissCard, batchMissMechanism, batchMissTrigger, capacityBasis, importanceRank, markMet } from './sla';
 import { tfpAtDayEnd } from './tfp';
 import { expireToolTrials, measurementCommands, trialTool } from './tools';
 import {
@@ -45,6 +45,7 @@ import {
   type RunState
 } from './types';
 import { allWorkloads } from './workloads';
+import { resolveReach } from './footprint';
 
 export type { GameContent } from './run/shared';
 export { allWorkloads } from './workloads';
@@ -241,9 +242,21 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
       resolvedAffects.set(e.uid, e.affectsHour === hourStartTick ? [...new Set([...e.affects, ...now])] : now);
       affectsHour.set(e.uid, hourStartTick);
     }
+    // Every running card's footprint reach follows the routing and address spaces the same way, with the hour keeping
+    // the union of what it reached in it (RT-14).
+    const resolvedReach = new Map<string, string[]>();
+    const world = { sim, workloads: allWorkloads(scenario, { ...r, sim }), addressSpaces: [...scenario.addressSpaces, ...sim.extraAddressSpaces] };
+    for (const e of events) {
+      const reach = content.events.find((d) => d.id === e.defId)?.reach;
+      if (!reach || !running(e)) continue;
+      const now = resolveReach(reach, { ...world, capacityCpcs: [...(resolvedCpcs.get(e.uid) ?? e.capacityCpcs ?? [])] });
+      resolvedReach.set(e.uid, e.affectsHour === hourStartTick && e.reach ? [...new Set([...e.reach, ...now])].sort() : now);
+      affectsHour.set(e.uid, hourStartTick);
+    }
     events = events.map((e) => ({
       ...e,
       affects: resolvedAffects.get(e.uid) ?? e.affects,
+      ...(resolvedReach.has(e.uid) ? { reach: resolvedReach.get(e.uid) } : {}),
       endCommands: resolvedEnd.get(e.uid) ?? e.endCommands,
       started: e.started || e.startTick <= tick,
       ended: e.ended || armedEnded.has(e.uid) || (e.started && e.endTick !== null && e.endTick <= tick),
@@ -293,9 +306,11 @@ function batchMissIncident(r: RunState, scenario: Scenario, night: NightSummary,
   const nightHour = r.nightHour ?? newHour(nightStartTick);
   const mechanism = batchMissMechanism(night, nightHour, hosts);
   const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(nightHour, hosts) : null;
-  const trigger = batchMissTrigger(mechanism, r.events, nightHour, nightStartTick, night);
+  // BATCH's footprint scope is the critical jobs' images (RT-14: BATCH is a workload like any other).
+  const scope = { hosts };
+  const trigger = batchMissTrigger(mechanism, r.events, nightHour, nightStartTick, night, scope);
   const subjects = incidentSubjects(r, scenario, BATCH_INCIDENT, r.day, night);
-  const card = batchMissCard(mechanism, r.events, nightStartTick);
+  const card = batchMissCard(mechanism, r.events, nightStartTick, scope);
   const ctx: TruthContext = {
     workloadId: BATCH_INCIDENT, mechanism, trigger, hour: nightHour, events: r.events, ...(card ? { card } : {}),
     // The night runs 18:00 to the day end: a card starting at 20:00 is a card for this incident, not one for 18:00.
@@ -360,7 +375,11 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
     if (hurt in trust) trust[hurt] = clampTrust(trust[hurt]! - 4);
     r = msg(r, 'Regulator', 'Batch deadline missed', 'Critical batch did not complete on time. A second consecutive miss will trigger a formal review.');
     r = batchMissIncident(r, scenario, night, (trustBefore.Regulator! - trust.Regulator!) + (hurt in trust ? trustBefore[hurt]! - trust[hurt]! : 0), content);
-  } else if (night) trust.Regulator = clampTrust(trust.Regulator! + 1);
+  } else if (night) {
+    trust.Regulator = clampTrust(trust.Regulator! + 1);
+    // A met night: cards already running at 18:00 are background for BATCH from now on (RT-14).
+    r = { ...r, events: markMet(r.events, [BATCH_INCIDENT], r.day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR) };
+  }
   // Regulator audit cards: SYSOTHER service on any LPAR today is a finding.
   const auditing = r.events.some((e) => e.started && !e.ended && content.events.find((d) => d.id === e.defId)?.auditUnclassified);
   if (auditing) {

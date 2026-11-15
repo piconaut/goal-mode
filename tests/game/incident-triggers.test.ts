@@ -1,3 +1,4 @@
+import { cardMechanisms } from '../../src/content/footprint';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { HARBOURLINE_GAME } from '../../src/content/game-harbourline';
 import { REVENUE_GAME } from '../../src/content/game-revenue';
@@ -62,7 +63,7 @@ describe('card mechanisms', () => {
   const hour = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cpcBusySum: 0, lockIndexSum: 0 } as HourAcc;
   const cardOf = (defId: string, over: Partial<ActiveEvent> = {}): ActiveEvent => {
     const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
-    return { uid: `${defId}@1`, defId, name: def.name, startTick: 0, endTick: 10, trigger: def.trigger, affects: def.affects, mechanisms: def.mechanisms, endCommands: [], started: true, ended: false, ...over };
+    return { uid: `${defId}@1`, defId, name: def.name, startTick: 0, endTick: 10, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def), endCommands: [], started: true, ended: false, ...over };
   };
 
   it('U-2: a 30-hour CPU regression does not take an I/O incident from the DASD fault', () => {
@@ -78,10 +79,10 @@ describe('card mechanisms', () => {
     expect(triggerOf('MOBILE', 'LOCK_CONTENTION', [cardOf('RETRY_STORM')], clash, false)).toBe('BATCH_OVERLAP');
   });
 
-  it('every card in the three decks with non-empty affects declares its mechanisms', () => {
+  it('every card in the three decks with non-empty affects declares a footprint resource (RT-14)', () => {
     const decks = [MIDWEST_GAME, HARBOURLINE_GAME, REVENUE_GAME];
     const missing = decks.flatMap((d) => d.events
-      .filter((e) => e.affects.length > 0 && (!e.mechanisms || e.mechanisms.length === 0))
+      .filter((e) => e.affects.length > 0 && !e.resource)
       .map((e) => e.id));
     expect(missing).toEqual([]);
   });
