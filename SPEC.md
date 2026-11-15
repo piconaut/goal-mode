@@ -1211,7 +1211,7 @@ that wording. A forewarning is a day-before planning note and does not name the 
 ### 9.3 Hardware events
 | Event | Hidden mechanic | Clues |
 |---|---|---|
-| CP failure, sparing (`CP_SPARING`) | Transparent: a spare PU takes over; only a log note and an announcement (day ≥ 3, any hour, ~6 min; `affects` empty so it is never blamed for an incident) | HMC message only; a red herring |
+| CP failure, sparing (`CP_SPARING`) | Transparent: a spare PU takes over; only a log note and an announcement (day ≥ 3, any hour, ~6 min; no footprint, so it is never blamed for an incident) | HMC message only; a red herring |
 | DFSMShsm recall storm (`HSM_RECALL_STORM`) | Month-old migration policy change: 60k random I/O/s of recalls on LCU 30 (system + catalogs) for 2.5 h, exhausting its aliases; rumoured, trigger `DEMAND_SURGE` | DASD Activity: LCU 30 IOSQ/RESP up, Db2 LCUs normal; anything opening data sets slows. Fixes: hold HSM recalls (Retail trust −1), or move aliases to LCU 30 |
 | Power cap (`POWER_CAP`) | Cooling fault: CPC one capacity setting below its current one for ~6 h, then back to that setting, not rumoured | SYSINFO / Partition Data: same engines, less MSU per LPAR; CPU delay ↑ everywhere. Fixes: cap/quiesce DEVT, defer discretionary batch, protect imp-1 work |
 | CF link degraded | CF sync time ↑, async conversion | CF Activity |
@@ -1263,28 +1263,41 @@ At end of day, each **incident** (an SLA breach episode) can be investigated wit
    recipes (below, "Proof recipes").
 4. Propose a **remediation** (it links to a change on the calendar).
 
-Ground truth for the trigger: an event card active at any time during the incident's opening SLA hour that lists
-the hurt workload and whose declared `mechanisms` include the incident's mechanism; otherwise new work, batch overlap
-(lock index), policy or growth. Every card with a non-empty `affects` must declare `mechanisms` (a content test
-enforces it; a card with empty `affects`, such as SMF_AUDIT, has nothing to blame): demand and CPU-per-transaction
-cards name the CPU family and THREAD_LIMIT, CF cards name CF_SERVICE, LOCK_CONTENTION, DEPENDENCY, CPU_CAPACITY
-and CPU_PRIORITY (a sync CF request spins on the z/OS CP until the CF answers, so a slow CF burns z/OS CPU, SG24-7817-00
-p.56; a lost structure fails Db2 work), SICK_AOR names ROUTING, and
-NEW_APP_GOLIVE can be blamed for every mechanism except JOB_FAILURE. New work (including a persistent go-live
-card) counts for the first two simulated days after go-live (`content/sla.ts`), judged at the opening SLA hour; later
-incidents use the remaining fallback rules. APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND,
-an S0C7 data exception, a CICS program leaking EDSA storage). Without the mechanism check an I/O card could take the
-blame for an unrelated CPU meltdown.
-POWER_CAP matches CPU_CAPACITY, CPU_PRIORITY, CAPPING and DEPENDENCY only. Its workload scope is the workloads whose
-effective routing puts them on the CPCs whose capacity actually drops (same-tick commands and workloads added at the
-start included). It is re-resolved every tick while the cap runs, and each hour keeps the union of the scopes seen in
-it: a workload routed onto a capped CPC or added during the hour is attributed for that hour, and one moved off loses
-the cap from the next hour, so remediation during the hour (including on its last tick) does not erase its trigger.
-The last hour's scope is retained after expiry.
+Ground truth for the trigger comes from the cards' **footprints** (RT-14, docs/rca-design.md §4.4(1–3)). Every card
+that can hurt work declares one in content (`content/footprint.ts`): the shared **resource** it loads, its **reach**
+(where it loads it) and its **direct** set (`affects`: the workloads whose own demand or path it changes). The card's
+`mechanisms` derive from the resource: CP (demand and CPU-per-transaction cards, runaway and looping work, agent
+overhead) names the CPU family, DEPENDENCY and THREAD_LIMIT; a small system address space's overhead (SMF_AUDIT's SMF
+address spaces) only CPU_CAPACITY, since it can fill a full machine but starves no period; a CPC's capacity (POWER_CAP) and zIIP loss the CPU
+family and DEPENDENCY; CF cards CF_SERVICE, LOCK_CONTENTION, DEPENDENCY, CPU_CAPACITY and CPU_PRIORITY (a sync CF
+request spins on the z/OS CP until the CF answers, so a slow CF burns z/OS CPU, SG24-7817-00 p.56; a lost structure
+fails Db2 work); DASD cards IO; Db2 locks LOCK_CONTENTION; a region's QR TCB QR_TCB and THREAD_LIMIT; a region's storage
+THREAD_LIMIT; region failures (SICK_AOR) ROUTING; a failing job JOB_FAILURE; and new work (NEW_APP_GOLIVE) every
+mechanism except JOB_FAILURE. A card with no footprint (CP_SPARING, VENDOR_PRICE, GREEN_IT_COD, HIRING_FREEZE,
+AUDIT_UNCLASSIFIED) hurts no work and is never blamed. The reach is the images the named workloads are routed to, the
+images the named address spaces run on, named images, named CICS regions, the CPCs a capacity drop lowered, or the
+whole sysplex (CF, DASD and LCU cards, Db2 locks: LCU I/O is spread over every workload's I/O). It is re-resolved
+every tick while the card runs, and each hour keeps the union of what it reached, so routing work away during the hour
+does not erase the card for that hour.
+
+A card qualifies for an incident when it was active at any time during the incident's opening SLA hour, its mechanisms
+include the incident's, and the hurt work is **direct** (listed) or **collateral**: one of its images, or one of the
+images or CICS regions serving it, is in the reach. BATCH is a workload like any other here, with the critical jobs'
+images as its hosts. POWER_CAP's direct set is the workloads whose effective routing puts them on the CPCs whose
+capacity actually drops (same-tick commands and workloads added at the start included), re-resolved every tick with
+the hour's union kept, and retained after expiry. New work (including a persistent go-live card) counts for the first
+two simulated days after go-live (`content/sla.ts`), judged at the opening SLA hour; later incidents use the remaining
+fallback rules. APPLICATION_ERROR has no fallback rule: only a card declares it (JOB_ABEND, an S0C7 data exception, a
+CICS program leaking EDSA storage). Without the mechanism check an I/O card could take the blame for an unrelated CPU
+meltdown.
 Card activity and the SLA hour are half-open intervals: a card ending at the hour's start or starting at its end
 does not overlap. Expiry or remediation during the hour (including remediation at its end) does not erase its trigger.
-When several cards qualify, prefer a card still active at hour close, then the longest overlap with the opening
-hour, then the ascending card `uid` as a deterministic tie-breaker independent of event-list order.
+When several cards qualify they rank **direct before collateral**, then **fresh before background** (a card is
+background for a workload once that workload has closed a met SLA hour, or BATCH a met night, with the card already
+running at its start: a long-running card is the new normal, and a card that starts later is the news), then the
+longer overlap with the opening hour. Cards still equal are a tie: every qualifying card's trigger is accepted, and the
+earlier-starting card is the primary (then the run's card order; there is no alphabetical tie-break). Otherwise the
+trigger is new work, batch overlap (lock index), policy or growth.
 
 Ground truth for the mechanism: the response-time component group that grew most against the workload's healthy
 baseline. Queueing for MXT or DBATs also grows when something slowed the tasks, since slower tasks hold their slot longer
@@ -1303,8 +1316,9 @@ workload's service class (WLM had no donors left), otherwise CPU_PRIORITY: the p
 Both thresholds are FICTIONAL.
 
 The healthy baseline is an EWMA (×0.8 per hour) folded only from closed hours in which the workload met its SLA
-*and* no card affected it: a card's own effect must not become the new normal, or a regression is absorbed within a
-few hours. The SMF 101/110 "vs base" ratio is frozen when its hour closes, against the baseline in force during that
+*and* no card's footprint reached it (direct or collateral): a card's own effect must not become the new normal, or a
+regression is absorbed within a few hours. A permanent card (no end, such as ENCRYPTION_MANDATE) is the exception once
+it is background for the workload: its cost then belongs in the baseline (user decision 2026-11-15). The SMF 101/110 "vs base" ratio is frozen when its hour closes, against the baseline in force during that
 hour, so a past row keeps its ratio however later hours move the baseline. That matches the records it is read
 from: CICS completes a task's performance class data when the task terminates (*CICS TS 6 Monitoring CICS*, p.19,
 https://www.ibm.com/docs/en/SSJL4D_6.x/pdf/monitoring-reference_pdf.pdf#page=19) and Db2 writes the accounting record
@@ -1313,7 +1327,7 @@ https://www.ibm.com/docs/en/SSEPEK_13.0.0/pdf/db2z_13_perfbook.pdf#page=144), so
 afterwards. The baseline and its learning rule are game rules, not IBM behaviour.
 
 A miss caused by failures alone (with no failed transactions the hour would have met its SLA) has no delay group to
-point at, so a card that affects the workload and overlaps the incident's opening SLA hour (the same half-open test
+point at, so a card that lists the workload directly and overlaps the incident's opening SLA hour (the same half-open test
 as the trigger: a card fixed or expired during the hour still names it, one that ended at its start does not) names
 the mechanism (`failureMechanism`). SICK_AOR names
 ROUTING: CICSPlex SM keeps routing to a region that fails transactions fast, because without abend thresholds a
@@ -1328,7 +1342,9 @@ what the primary does; there is no partial credit for the right resource with th
 docs/rca-design.md §4.1). The set is produced by rule when the truth is set, never listed per incident, and always
 contains the primary: the blamed card's declared alternates (`alsoTriggers`/`alsoMechanisms`: XLOG_LOOP and
 HSM_RECALL_STORM also POLICY, SHADOW_IT also RUNAWAY_WORK, RETRY_STORM and SICK_AOR also APPLICATION_ERROR, CICS_SOS
-also STORAGE); a card that lowered the processor's capacity (POWER_CAP) adds CPU_CAPACITY; a CPU verdict inside the
+also STORAGE); every other qualifying card's trigger (a lower-ranked or tied card whose footprint reaches the work);
+for a collateral victim, the fallback trigger as well (the policy or headroom that left it exposed to its neighbour's
+card); a card that lowered the processor's capacity (POWER_CAP) adds CPU_CAPACITY; a CPU verdict inside the
 §4.3 bands adds the other side of the capacity/priority split; a DEPENDENCY incident whose server image was itself
 short of CPU adds CPU_PRIORITY; and an incident with no card to blame accepts GROWTH and POLICY together, because no
 visible data separates growth that crossed the headroom from a configuration without headroom. Authentication from an
@@ -1415,8 +1431,9 @@ zIIP starvation), Db2 lock waits, Db2 health (dependency), DASD queueing and pen
 time), swapped-out time and initiator wait (queued → started). A critical job that ABENDed makes it JOB_FAILURE (a
 mechanism only batch incidents have); otherwise the largest cause maps onto the online mechanisms (CPU, LOCK_CONTENTION,
 DEPENDENCY, IO, STORAGE, THREAD_LIMIT for initiators), with the CPU split from the night's summed hours and the critical
-jobs' images. The trigger is a card that affects `BATCH`, causes that mechanism and ran during the night (JOB_ABEND,
-REORG_OVERRUN), else the online fallback rules. It groups for RCA like any other incident. Evidence for it is pinned
+jobs' images. The trigger is a card whose footprint reaches `BATCH` (listed, as JOB_ABEND and REORG_OVERRUN are, or
+loading a critical job's image), causes that mechanism and ran during the night, ranked as above, else the online
+fallback rules. It groups for RCA like any other incident. Evidence for it is pinned
 from the night's SMF 30 job records (SMF tab, Batch; `pin BATCH <day> <metric>`): each cause's share of the critical
 jobs' lost time (`JOB_CPU`, `JOB_IO`, `JOB_LOCK`, `JOB_DB2`, `JOB_SWAP`, `JOB_INIT`; notable at 25 %) and the count of
 critical ABENDs (`JOB_ABEND`). WLMGL and Monitor III pins on the critical jobs' service classes and images also count
@@ -1920,7 +1937,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
 | Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
 | Policy adjustment (one receiver per 10 s, donors, net value / receiver value) | **Faithful simplification** | Projection uses our dispatcher model at sustained demand (§5.5.4); exact IBM thresholds are not public beyond patents. One PI basis (WT-04): receivers are chosen on the management PI, every trial is judged on projected PIs (`base` at the current DPs against `after`), and a candidate whose `base` is ≤ 1 is left to recover. Receiver value is 10 % of the distance to the goal with a 0.05 floor. A less important receiver never passes more important work that is missing its goal (1994 patent; Enrico slide 52). A receiver whose transaction backlog the projection bounded and whose management PI is over 4 × its `base` is not raised (`projectionTrustMax`, APPROX: guards the sim's backlog bound). Between equal-importance periods a move must leave the projected PIs closer together and, when it harms, gain more than it harms (SG24-6472 p.60; Enrico, *How WLM Works*, slide 52). Bottlenecks (WT-10): plans are built for CPU and then zIIP delay, largest first, each when it is at least 15 % of the managed delay (CPU, zIIP, I/O in velocity, storage, queue; WLM Services p.148 works delays largest first; SG24-6472 p.63–64), so waits and capping never outvote CPU delay; a period mostly waiting logs `mostly waiting, CPU delay n %: not WLM-fixable` (APPROX: only CPU and zIIP are fixed by policy adjustment). Only periods missing their goals are receivers: IBM's last case, a period meeting its goal chosen by largest PI (SG24-6472 p.63), is not modelled, so the order is not tuned while every period meets its goal (APPROX). A receiver whose every move was rejected is skipped for 3 policy adjustment cycles while more than five goal periods on the image miss their goals (WLM Services p.145 gives the clock but not its length; Sinram, SHARE 2010 session 7777 p.11 gives 3 cycles and the z/OS 1.11 exception; APPROX: the count is per image), and is not skipped at five or fewer (RF-03); a period with under 2 % managed delay is not assessed (p.144), and proposal projections are bounded at 12 per image per interval. Atomic plans (WT-08) retain safe intermediate UP/CARRY/DONOR moves and commit only with whole-plan receiver value; one carry and a bounded join-and-split repair, at most six retained moves (APPROX; SG24-6472-03 p.67–68). Donors (WT-07) use the delayed processor: happy periods by lowest worst local/sysplex PI regardless of importance, then the rest from importance 5 up, lowest PI first; unhappy more important periods excluded, at most three donors (threshold and limit FICTIONAL). The ladder, CPU protection and the donor pool are of holders (WT-09): a CICS transaction class served by TRANSACTION regions is a goal receiver or donor, and its server period moves (row "CICS region management"). No trial puts a holder below work missing its goal with a backlog the projection bounded (APPROX, the same guard of the sim's bound) |
-| Incident ground truth (mechanism, trigger) | **Game rule** | Largest response-time component growth against baseline; CPU split by host-LPAR capping (capped in ≥ 5 % of the hour's ticks), then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work, though since WT-07 a happy more important period can donate too; RT-16's displaceable CP replaces this) |
+| Incident ground truth (mechanism, trigger) | **Game rule** | Trigger by card footprint (RT-14: resource, reach, direct set; direct before collateral, fresh before background, then overlap). Mechanism: largest response-time component growth against baseline; CPU split by host-LPAR capping (capped in ≥ 5 % of the hour's ticks), then full (CPC hour-average busy ≥ 90 % or the image ≥ 95 % of its available CP) and less-important CP share < 10 % on the image (all FICTIONAL; APPROX: donors are less important work, though since WT-07 a happy more important period can donate too; RT-16's displaceable CP replaces this) |
 | CF failure, structure rebuild, duplexing | **Simplified** | Rebuild by preference list and white space, fixed rebuild times, lost-structure effects as failure fractions; duplexing as a sync multiplier and extra CF CPU; CF Activity shows the secondary as its own SEC row with its request rate (RMF Report Analysis p.365) |
 | CFACT lock contention | **Approximation** | STRUCTURE SUMMARY in the Postprocessor-style CF Activity report shows CONTENTION % on the lock structure, a column borrowed from Monitor III CFACT (the real Postprocessor report shows -CONT / -FALSE CONT request counts instead, RMF Report Analysis p.373) from the sysplex lock index (running batch lock intensity), 5 % per index unit capped at 90 % (FICTIONAL; RMF Report Analysis p.85 defines it as delayed requests). No serialized LIST contention, no false contention, and contention is not request-type weighted |
 | Sysplex distributor WLM weights | **Simplified** | Shares recomputed each minute from the previous tick: BASEWLM ∝ idle CP capacity; SERVERWLM ∝ capacity displaceable at the work's DP, blended CP/zIIP by zIIP fraction (IP Config Guide p.555). PROCTYPE, PROCXCOST, server health term not modelled |

@@ -6,14 +6,14 @@
 // hand-listed answer per incident, and each accepted answer carries the one line the reply shows for it.
 
 import { CPU_BANDS, CPU_CAPACITY } from '../content/incidents';
-import { TICKS_PER_HOUR } from '../sim/core/units';
+import { CPU_FAMILY } from '../content/footprint';
 import type { GameContent } from './run/shared';
-import { blamedCard, cappedForHour } from './sla';
+import { activeIn, cappedForHour, fallbackTrigger, footprintRelation, hourWindow, qualifyingCards, type WorkScope } from './sla';
 import type { ActiveEvent, CapacityBasis, HourAcc, IncidentTruth, Mechanism, Trigger } from './types';
 
-/** The CPU family: one machine's shortage, seen three ways. Used for the cause's identity and to scope the
- * capacity-card rule (a machine that lost capacity explains CPU work, not an I/O or storage miss). */
-export const CPU_FAMILY: readonly Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING'];
+/** The CPU family (content/footprint.ts): used here for the cause's identity and to scope the capacity-card rule (a
+ * machine that lost capacity explains CPU work, not an I/O or storage miss). */
+export { CPU_FAMILY };
 
 export interface TruthContext {
   workloadId: string;
@@ -46,6 +46,8 @@ const pct = (x: number) => `${x.toFixed(1)} %`;
  *
  * Sources (docs/rca-design.md §4.1), all of which leave the primary alone:
  *  - the blamed card's declared alternates (`alsoTriggers`/`alsoMechanisms` in content);
+ *  - every other card whose footprint reaches the work for this mechanism, and for a collateral victim the fallback
+ *    (RT-14, §4.4(3));
  *  - a card that lowered the processor's capacity adds CPU_CAPACITY;
  *  - a CPU verdict inside the §4.3 band adds the other side of the capacity/priority split;
  *  - DEPENDENCY on a server whose own image was short of CPU adds CPU_PRIORITY;
@@ -67,11 +69,11 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     notes[t] = why;
   };
 
-  const card = ctx.card ?? blamedCard(ctx.events, ctx.workloadId, ctx.mechanism, ctx.hour.hourIndex);
-  const [windowStart, windowEnd] = ctx.window
-    ? [ctx.window.startTick, ctx.window.endTick]
-    : [ctx.hour.hourIndex * TICKS_PER_HOUR, (ctx.hour.hourIndex + 1) * TICKS_PER_HOUR];
-  const overlaps = (e: ActiveEvent) => e.started && e.startTick < windowEnd && (e.endTick === null || e.endTick > windowStart);
+  const window = ctx.window ?? hourWindow(ctx.hour.hourIndex);
+  // The context's hosts and servers are the work's footprint scope.
+  const scope: WorkScope = ctx;
+  const ranked = qualifyingCards(ctx.events, ctx.workloadId, ctx.mechanism, window, scope);
+  const card = ctx.card ?? ranked[0]?.card;
   const defOf = (e: ActiveEvent) => ctx.content.events.find((d) => d.id === e.defId);
 
   // The card's own declared alternates: a looping archiver is also the policy that ran it, a storage shortage is
@@ -82,12 +84,27 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
     for (const t of def.alsoTriggers ?? []) offerTrigger(t, `the ${def.name} card can read as ${t} too`);
   }
 
+  // Every other card whose footprint reaches the work and causes this mechanism (RT-14, §4.4(3)): it ranked lower
+  // (collateral, background or a shorter overlap) or tied, but it loaded what the work waited for.
+  for (const q of ranked) {
+    if (q.card.uid === card?.uid) continue;
+    const how = q.direct ? 'changed this work' : 'loaded what this work waited for';
+    offerTrigger(q.card.trigger, `${q.card.name} ${q.background ? 'had been running' : 'was running'} and ${how}`);
+  }
+
+  // A collateral victim: the card loaded a shared resource, and the policy or headroom that left this work exposed to
+  // it is the other half of the cause (§4.4(3)).
+  const lead = ranked.find((q) => q.card.uid === card?.uid);
+  if (lead && !lead.direct) {
+    offerTrigger(fallbackTrigger(ctx.mechanism, ctx.hour, ctx.isNew), `${lead.card.name} hit it as a neighbour: the policy or headroom left it exposed`);
+  }
+
   // A card that lowered capacity: the machine, not the policy, decided the hour, whatever the bands say. §4.3 scopes
   // this to a CPU-family verdict or a server-CPU dependency: a machine with fewer engines does not explain an I/O,
   // storage, lock or thread-limit miss, and accepting CPU_CAPACITY there would teach a cause the data cannot support.
   const cpuSide = CPU_FAMILY.includes(ctx.mechanism) || ctx.mechanism === 'DEPENDENCY';
   const capCard = cpuSide
-    ? ctx.events.find((e) => overlaps(e) && (e.affects.includes(ctx.workloadId) || e.uid === card?.uid) && (defOf(e)?.capacityDrop ?? 0) > 0)
+    ? ctx.events.find((e) => activeIn(e, window) && (footprintRelation(e, ctx.workloadId, scope) !== null || e.uid === card?.uid) && (defOf(e)?.capacityDrop ?? 0) > 0)
     : undefined;
   if (capCard) offerMechanism('CPU_CAPACITY', `${capCard.name} lowered the processor's capacity`);
 
@@ -148,9 +165,12 @@ export function truthCause(ctx: {
   card?: ActiveEvent;
   basis?: CapacityBasis | null;
   hosts: readonly { lparId: string }[];
+  servers?: readonly { jobname: string; lparId: string }[];
+  window?: { startTick: number; endTick: number };
   isNew: boolean;
 }): string {
-  const card = ctx.card ?? blamedCard(ctx.events, ctx.workloadId, ctx.mechanism, ctx.hour.hourIndex);
+  const window = ctx.window ?? hourWindow(ctx.hour.hourIndex);
+  const card = ctx.card ?? qualifyingCards(ctx.events, ctx.workloadId, ctx.mechanism, window, ctx)[0]?.card;
   if (card) return card.uid;
   if (ctx.isNew || ctx.trigger === 'NEW_WORKLOAD') return `new:${ctx.workloadId}`;
   const family = CPU_FAMILY.includes(ctx.mechanism) ? 'CPU' : ctx.mechanism;

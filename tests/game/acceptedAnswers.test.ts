@@ -1,3 +1,4 @@
+import { cardMechanisms } from '../../src/content/footprint';
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
@@ -17,7 +18,7 @@ function card(defId: string, startTick = 0, endTick: number | null = null): Acti
   const def = MIDWEST_GAME.events.find((d) => d.id === defId)!;
   return {
     uid: `${defId}@1`, defId, name: def.name, startTick, endTick, trigger: def.trigger,
-    affects: def.affects, mechanisms: def.mechanisms, endCommands: def.end, started: true, ended: false,
+    affects: def.affects, mechanisms: cardMechanisms(def), endCommands: def.end, started: true, ended: false,
   };
 }
 
@@ -173,7 +174,7 @@ describe('accepted answer sets (RT-07)', () => {
       ...started,
       events: [{
         uid: 'POWER_CAP@0', defId: def.id, name: def.name, startTick: 0, endTick: 6 * TICKS_PER_HOUR,
-        trigger: def.trigger, affects: def.affects, mechanisms: def.mechanisms,
+        trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def),
         endCommands: def.end, started: false, ended: false,
       }],
     }, MIDWEST, MIDWEST_GAME, 1);

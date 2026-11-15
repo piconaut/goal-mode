@@ -692,6 +692,38 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
+- 2026-11-15: RT-14 card footprints (user decision on Q5; docs/rca-design.md §4.4 "As built (RT-14)"). Every card
+  that can hurt work declares a `resource` (content/footprint.ts; its `mechanisms` derive from it) and a `reach`. Its
+  `affects` stays as the direct set. Running cards resolve their reach each tick to images (and `JOB@LPAR` regions),
+  and each hour keeps the union. Cards qualify for direct or collateral work (the work's images, or its servers'
+  images or regions, in the reach). They rank direct, then fresh before background (`metWith`), then overlap; ties
+  accept both triggers, with the earlier start as primary. Every qualifying card's trigger is accepted, and a
+  collateral victim also accepts the fallback. BATCH uses the critical jobs' images. `disturbed` uses the footprint.
+  - User decisions this session:
+    - POWER_CAP's routed workloads are its direct set (so U-1 is HARDWARE_FAULT).
+    - Only a permanent card stops disturbing a baseline once it is background; time-limited cards keep PT-13's rule.
+  - Deviation from §4.4's wording: the footprint is three `EventDef` fields, not a `footprint` object. `affects`
+    keeps its name so saves and `adapt()` overrides carry on unchanged.
+  - The resource lists reproduce the old per-card mechanism lists. The exception is SMF_AUDIT: it was never blamed,
+    and now has a `CP_OVERHEAD` footprint on the SMF address spaces (CPU_CAPACITY only, its old list; #359 review N1).
+  - A card is background only for work its footprint reached (#359 review N2).
+  - User decision 2026-11-15 (#359 review B1): keep footprint-based `disturbed`, so collateral work's baseline also
+    freezes while a card reaches it, though it moves mechanisms as well as triggers (1 of 212 in the RT-25 sample).
+    Staleness from long, wide cards belongs to RT-17's per-hour baseline. If a playtest shows odd mechanisms first,
+    the fallback is to freeze collateral work only for narrow reaches, not sysplex-wide ones.
+  - Validator (RT-25 sample: five passive days, seeds 1–5, three scenarios, Normal):
+    - gain disagreements fall from 23 to 6 (midwest 0, revenue 0, harbourline 6);
+    - footprint-wrong: 0;
+    - path effects: RUNAWAY blamed as collateral on CARDS (CPU_PRIORITY) and MKTQRY (CAPPING) at −0.1 and −0.6 pp;
+    - noise: four QR_TCB hours where a CP card shows +0.1 to +0.3 pp, under an unmeasured floor.
+  - R-3, R-8, R-9 replayed on Midwest 42 day 12:
+    - R-8: all three power-cap victims are HARDWARE_FAULT, with CHANGE_REGRESSION also accepted (was CARDAUTH
+      CHANGE_REGRESSION alone);
+    - R-9: CARDAUTH at 13:00 is DEMAND_SURGE, collateral to the campaign (was POLICY); CARDAUTH at 09:00 and the BATCH
+      night take MONITOR_CREEP's trigger;
+    - R-3: raises no incident on today's dev (the WLM core moved it), so it is covered by the fixture test instead.
+  - Goldens and the bench hash are unchanged (ff6e21b2171a2586).
+
 - 2026-11-15: RT-13 proof recipes (user decision on Q3; docs/rca-design.md §4.6 "As built (RT-13)"). Evidence now
   scores as a proof: `MECHANISM_RECIPES`/`TRIGGER_RECIPES` (two predicates each, symptom then discriminator) judged by
   `game/proof.ts` over the attached pins; a complete recipe for the accepted mechanism earns 3, one predicate 0.5,

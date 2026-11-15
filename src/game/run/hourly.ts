@@ -5,7 +5,8 @@ import type { Scenario } from '../../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_HOUR } from '../../sim/core/units';
 import { classify } from '../../sim/wlm/classify';
 import { aiopsHypotheses, type Hypothesis } from '../aiops';
-import { addHour, capacityBasis, failureMechanismOf, hourAttainment, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline } from '../sla';
+import { activeIn, addHour, capacityBasis, failureMechanismOf, footprintRelation, hourAttainment, markMet, importanceRank, mechanismOf, perTxnParts, rankedMechanismGroups, triggerOf, updateBaseline, workScopeOf, type WorkScope } from '../sla';
+import { hostImages } from '../footprint';
 import {
   type CapacityDay,
   type HourAcc,
@@ -146,10 +147,23 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     if (!wh || wh.completions <= 0 || base <= 0) continue;
     cpuVsBase[w.id] = (perTxnParts(wh).cpu ?? 0) / base;
   }
-  // A card running in the hour disturbs its workloads' response-time parts, so that hour teaches nothing about
-  // the healthy baseline; otherwise the EWMA absorbs a regression as the new normal within a few hours (PT-13).
+  // A card whose footprint reaches the work (direct or collateral, RT-14) disturbs its response-time parts while it
+  // runs, so that hour teaches nothing about the healthy baseline; otherwise the EWMA absorbs a regression as the new
+  // normal within a few hours (PT-13). A permanent card stops disturbing work it is background for: its cost is then
+  // the new normal (docs/rca-design.md §4.4(2)).
+  const scopes = new Map<string, WorkScope>();
+  const scopeOf = (workloadId: string): WorkScope => {
+    let sc = scopes.get(workloadId);
+    if (!sc) {
+      sc = workScopeOf(incidentSubjects(r, scenario, workloadId, r.day));
+      scopes.set(workloadId, sc);
+    }
+    return sc;
+  };
+  const window = { startTick: hourStart, endTick: hourEnd };
   const disturbed = (workloadId: string) =>
-    r.events.some((e) => e.started && e.startTick < hourEnd && (e.endTick === null || e.endTick > hourStart) && e.affects.includes(workloadId));
+    r.events.some((e) => activeIn(e, window) && !(e.endTick === null && e.metWith?.includes(workloadId)) && footprintRelation(e, workloadId, scopeOf(workloadId)) !== null);
+  const metHour: string[] = [];
   for (const w of workloads) {
     const wh = h.workloads[w.id];
     if (!wh) continue;
@@ -161,6 +175,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     incidents = incidents.map((i) => (i.workloadId === w.id && i.endTick === null && i.day !== r.day ? { ...i, endTick: hourStart } : i));
     const openIdx = incidents.findIndex((i) => i.workloadId === w.id && i.endTick === null);
     if (att.met) {
+      metHour.push(w.id);
       if (!disturbed(w.id)) baselines[w.id] = updateBaseline(baselines[w.id], parts);
       if (openIdx >= 0) incidents[openIdx] = { ...incidents[openIdx]!, endTick: r.sim.tick };
       continue;
@@ -172,18 +187,17 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       const inc = incidents[openIdx]!;
       incidents[openIdx] = { ...inc, hours: inc.hours + 1, worstAttainmentPct: Math.min(inc.worstAttainmentPct, att.attainmentPct), trustLost: inc.trustLost + loss };
     } else {
-      const hosts = Object.entries(r.sim.routing[w.id] ?? w.routing)
-        .filter(([, f]) => f > 0)
-        .map(([lparId]) => {
+      const hosts = hostImages(r.sim.routing[w.id] ?? w.routing)
+        .map((lparId) => {
           const sc = classify(r.sim.wlm.definition, { ...w.work, SY: lparId }).serviceClass;
           return { lparId, cpcId: r.sim.config.lpars.find((l) => l.id === lparId)?.cpcId ?? '', importance: importanceRank(r.sim.wlm.definition, `${sc}#1`) };
         });
       const mechanism = failureMechanismOf(w, wh, r.events, h) ?? mechanismOf(parts, baselines[w.id] ?? {}, h, hosts);
       const basis = mechanism === 'CPU_CAPACITY' || mechanism === 'CPU_PRIORITY' ? capacityBasis(h, hosts) : null;
       const isNew = isNewWorkload(r, content, w.id, h.hourIndex);
-      const trigger = triggerOf(w.id, mechanism, r.events, h, isNew);
       // What the evidence judge sees now, so a later policy or routing change cannot rewrite it (RT-04).
       const subjects = incidentSubjects(r, scenario, w.id, r.day);
+      const trigger = triggerOf(w.id, mechanism, r.events, h, isNew, { hosts, servers: subjects.servers });
       const ctx: TruthContext = {
         workloadId: w.id, mechanism, trigger, hour: h, events: r.events, basis, hosts,
         servers: subjects.servers, lpars: r.sim.config.lpars, content, isNew,
@@ -222,6 +236,8 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       r = logLine(r, `INCIDENT ${w.id}: SLA missed (${att.attainmentPct.toFixed(1)}%)`);
     }
   }
+  // Cards already running when the hour opened become background for the work they reached that met its goal.
+  if (metHour.length > 0) r = { ...r, events: markMet(r.events, metHour, hourStart, scopeOf) };
   r = { ...r, capacityToday: hourPeaks(r, h) };
   const hourOfDay = Math.floor(clockAt(r.sim.tick - TICKS_PER_HOUR).hourOfDay);
   if (hourOfDay >= 18 || hourOfDay < 6) r = { ...r, nightHour: addHour(r.nightHour, h) };

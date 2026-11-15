@@ -1,4 +1,5 @@
 import { type EventDef } from '../../content/events/midwest-events';
+import { cardMechanisms } from '../../content/footprint';
 import { STORY_BEAT_HINTS } from '../../content/hints';
 import { EVENT_RUMOURS } from '../../content/inquiries';
 import { Rng, streamRng } from '../../sim/core/rng';
@@ -50,7 +51,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       endTick,
       trigger: def.trigger,
       affects: def.affects,
-      ...(def.mechanisms ? { mechanisms: def.mechanisms } : {}),
+      ...(def.resource ? { mechanisms: cardMechanisms(def) } : {}),
       ...(def.failureMechanism ? { failureMechanism: def.failureMechanism } : {}),
       ...(def.blocksHardware ? { blocksHardware: def.blocksHardware } : {}),
       endCommands: def.end,

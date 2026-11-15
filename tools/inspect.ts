@@ -837,8 +837,8 @@ export function blameText(text: string, opts: { json?: boolean; incident?: numbe
   const floorText = opts.floorPct !== undefined
     ? `scenario ${floor.scenario}: noise floor ${floor.floorPct!.toFixed(1)} pp passed in (measured on a wider seed sample); this file's own controls: ${measured.controls}`
     : floor.floorPct === null
-      ? `scenario ${floor.scenario}: no control card (CP_SPARING or a card that declares no affected work) in the sample, so the noise floor is 0 and the gains are uncalibrated`
-      : `scenario ${floor.scenario}: noise floor ${floor.floorPct.toFixed(1)} pp from ${floor.controls} control card${floor.controls === 1 ? '' : 's'} (CP_SPARING and cards that declare no affected work)` +
+      ? `scenario ${floor.scenario}: no control card (a card with no footprint) in the sample, so the noise floor is 0 and the gains are uncalibrated`
+      : `scenario ${floor.scenario}: noise floor ${floor.floorPct.toFixed(1)} pp from ${floor.controls} control card${floor.controls === 1 ? '' : 's'} (cards with no footprint)` +
         (floor.controls < 10 ? '; fewer than 10 controls, so add seeds until there are' : '');
   const lines: string[] = [
     `Counterfactual blame: every card active in each incident's opening hour is ended at the hour start, one at a time (one hour of sim per card per incident).`,
@@ -862,7 +862,7 @@ export function blameText(text: string, opts: { json?: boolean; incident?: numbe
     for (const t of r.tested) {
       const gain = t.gainPct === null ? 'gain unknown' : `gain ${t.gainPct >= 0 ? '+' : ''}${t.gainPct.toFixed(1)} pp`;
       const marks = [t.met ? 'RT-06 cause' : '', !t.card.control && t.gainPct !== null && t.gainPct > (floor.floorPct ?? 0) ? 'gain cause' : ''].filter(Boolean);
-      lines.push(`  test ${t.card.name} [${t.card.uid}] (${t.card.trigger}${t.card.control ? ', no declared hurt work' : ''}): ended → ${t.met ? 'met' : 'missed'} ${pctText(t.attainmentPct)}, ${gain}${marks.length ? `  <- ${marks.join(', ')}` : ''}${t.card.control ? '  (control)' : ''}`);
+      lines.push(`  test ${t.card.name} [${t.card.uid}] (${t.card.trigger}, ${t.card.control ? 'no footprint' : t.footprint ?? 'outside its footprint'}): ended → ${t.met ? 'met' : 'missed'} ${pctText(t.attainmentPct)}, ${gain}${marks.length ? `  <- ${marks.join(', ')}` : ''}${t.card.control ? '  (control)' : ''}`);
     }
     if (r.tested.length === 0) lines.push('  no card was active in this hour');
     if (!r.reproduced) lines.push('  NOT REPRODUCED: the unchanged replay met the SLA, so no verdict');

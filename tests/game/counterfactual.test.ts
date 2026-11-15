@@ -69,9 +69,11 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
       started: true,
       ended: false,
     };
-    // A red herring by design: it declares no hurt work, so it is a control for the noise floor.
+    // A red herring by design: like the real CP_SPARING it has no footprint (no resource, so no mechanisms and no
+    // hurt work), so it is a control for the noise floor.
+    const { mechanisms: _unused, ...noFootprint } = bystander;
     const redHerring: ActiveEvent = {
-      ...bystander,
+      ...noFootprint,
       uid: 'CP_SPARING@2',
       defId: 'CP_SPARING',
       name: 'CP failure, transparent sparing',
@@ -101,7 +103,7 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
 
   it('counts a joint cause by its gain, and a red herring below the noise floor as no cause', () => {
     const card = (uid: string, control = false) => ({ uid, defId: uid, name: uid, trigger: 'POLICY' as const, control, startTick: HOUR_START, endTick: null });
-    const test = (uid: string, gainPct: number, met = false, control = false) => ({ card: card(uid, control), met, attainmentPct: 90 + gainPct, gainPct });
+    const test = (uid: string, gainPct: number, met = false, control = false) => ({ card: card(uid, control), met, attainmentPct: 90 + gainPct, gainPct, footprint: null });
     // Two cards that only breach together: ending either one raises attainment by 2 pp and neither meets the SLA.
     const joint: IncidentBlame = {
       id: 1, workloadId: VICTIM, day: 2, startTick: HOUR_START, truth: { mechanism: 'CAPPING', trigger: 'POLICY' },

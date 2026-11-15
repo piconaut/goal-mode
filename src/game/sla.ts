@@ -6,6 +6,8 @@ import { DB2_CONNECT_FAIL, type NightSummary } from '../sim/subsys/batch';
 import type { WorkloadDef } from '../sim/workload/types';
 import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/types';
 import { CAPPING, CPU_CAPACITY } from '../content/incidents';
+import { ALL_MECHANISMS } from '../content/footprint';
+import { regionKey } from './footprint';
 import type { ActiveEvent, CapacityBasis, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
 
 export const BASELINE_DECAY = 0.8;
@@ -138,36 +140,101 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[]): Ca
  * names it, while one that ended at the hour's start does not. */
 export function failureMechanismOf(w: WorkloadDef, h: WorkloadHour, events: readonly ActiveEvent[], hour: HourAcc): Mechanism | null {
   if (h.failed <= 0 || !hourAttainment(w, { ...h, failed: 0 })?.met) return null;
-  const startTick = hour.hourIndex * TICKS_PER_HOUR;
-  const endTick = startTick + TICKS_PER_HOUR;
-  return events.find((e) =>
-    e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
-    e.failureMechanism && e.affects.includes(w.id),
-  )?.failureMechanism ?? null;
+  const window = hourWindow(hour.hourIndex);
+  return events.find((e) => activeIn(e, window) && e.failureMechanism && e.affects.includes(w.id))?.failureMechanism ?? null;
 }
 
-export function blamedCard(events: readonly ActiveEvent[], workloadId: string, mechanism: Mechanism, hourIndex: number): ActiveEvent | undefined {
-  const startTick = hourIndex * TICKS_PER_HOUR;
-  const endTick = startTick + TICKS_PER_HOUR;
-  // A fix or natural expiry before hour close must not erase the card that caused the breach.
-  const overlapTicks = (e: ActiveEvent) => Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick);
-  const activeAtClose = (e: ActiveEvent) => e.endTick === null || e.endTick > endTick;
-  // A card active in a save written before RT-02 carries no `mechanisms`; treat that as "any mechanism" so the
-  // old save keeps its previous blame until the card ends (new cards always declare the list, RT-02).
-  return events.filter((e) =>
-    e.started && e.startTick < endTick && (e.endTick === null || e.endTick > startTick) &&
-    (e.trigger !== 'NEW_WORKLOAD' || startTick < e.startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY) &&
-    e.affects.includes(workloadId) && (!e.mechanisms || e.mechanisms.includes(mechanism)),
-  ).sort((a, b) =>
-    Number(activeAtClose(b)) - Number(activeAtClose(a)) || overlapTicks(b) - overlapTicks(a) ||
-    (a.uid < b.uid ? -1 : a.uid > b.uid ? 1 : 0),
-  )[0];
+/** Where the hurt work runs, for a card's footprint: its images, and the CICS regions serving it (RT-04's snapshot). */
+export interface WorkScope {
+  hosts: readonly { lparId: string }[];
+  servers?: readonly { jobname: string; lparId: string }[];
 }
 
-export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean): Trigger {
-  // The card the hour's truth blames, if any (the counterfactual validator reads the same choice, RT-06).
-  const ev = blamedCard(events, workloadId, mechanism, hour.hourIndex);
-  if (ev) return ev.trigger;
+/** The scope of work recorded by image id (an incident's `subjects`, a night's critical-job images). */
+export function workScopeOf(s: { hosts: readonly string[]; servers?: readonly { jobname: string; lparId: string }[] }): WorkScope {
+  return { hosts: s.hosts.map((lparId) => ({ lparId })), ...(s.servers ? { servers: s.servers } : {}) };
+}
+
+/** An SLA hour as a tick window, half-open. */
+export const hourWindow = (hourIndex: number): { startTick: number; endTick: number } =>
+  ({ startTick: hourIndex * TICKS_PER_HOUR, endTick: (hourIndex + 1) * TICKS_PER_HOUR });
+
+/** A card was active in a half-open window: one ending at its start or starting at its end does not overlap, and a
+ * card fixed or expired inside it still does (SPEC §10). */
+export const activeIn = (e: ActiveEvent, w: { startTick: number; endTick: number }): boolean =>
+  e.started && e.startTick < w.endTick && (e.endTick === null || e.endTick > w.startTick);
+
+/** How a card's footprint (RT-14, docs/rca-design.md §4.4(1)) meets the work: listed (direct), or the work's images or
+ * its servers' images or regions are in the card's reach (collateral). */
+export function footprintRelation(e: ActiveEvent, workloadId: string, scope: WorkScope): 'direct' | 'collateral' | null {
+  if (e.affects.includes(workloadId)) return 'direct';
+  const reach = e.reach;
+  if (!reach || reach.length === 0) return null;
+  const hit = scope.hosts.some((h) => reach.includes(h.lparId)) ||
+    (scope.servers ?? []).some((s) => reach.includes(s.lparId) || reach.includes(regionKey(s.jobname, s.lparId)));
+  return hit ? 'collateral' : null;
+}
+
+export interface QualifiedCard {
+  card: ActiveEvent;
+  direct: boolean;
+  /** The work closed a met hour with the card already running: the card is the new normal for it. */
+  background: boolean;
+  overlapTicks: number;
+}
+
+/**
+ * The cards that can explain a mechanism in the work in a window, ranked (docs/rca-design.md §4.4(2)): direct before
+ * collateral, fresh before background, then longer overlap with the window. Cards equal on all three are a tie: each
+ * trigger is accepted and the earlier-starting card leads (then the run's card order, which is the draw order; no
+ * alphabetical tie-break).
+ */
+export function qualifyingCards(
+  events: readonly ActiveEvent[],
+  workloadId: string,
+  mechanism: Mechanism,
+  window: { startTick: number; endTick: number },
+  scope: WorkScope,
+): QualifiedCard[] {
+  const { startTick, endTick } = window;
+  const out: QualifiedCard[] = [];
+  for (const e of events) {
+    // A fix or natural expiry before the window closes must not erase the card that caused the breach.
+    if (!activeIn(e, window)) continue;
+    if (e.trigger === 'NEW_WORKLOAD' && startTick >= e.startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY) continue;
+    // A card active in a save written before RT-02 carries no `mechanisms`; treat that as "any mechanism" so the
+    // old save keeps its previous blame until the card ends (new cards always derive the list, RT-14).
+    if (e.mechanisms && !e.mechanisms.includes(mechanism)) continue;
+    const rel = footprintRelation(e, workloadId, scope);
+    if (!rel) continue;
+    out.push({
+      card: e,
+      direct: rel === 'direct',
+      background: e.metWith?.includes(workloadId) ?? false,
+      overlapTicks: Math.min(e.endTick ?? endTick, endTick) - Math.max(e.startTick, startTick),
+    });
+  }
+  return out.sort((a, b) =>
+    Number(b.direct) - Number(a.direct) || Number(a.background) - Number(b.background) ||
+    b.overlapTicks - a.overlapTicks || a.card.startTick - b.card.startTick,
+  );
+}
+
+/** Record that these workloads met a goal over a period that opened at `fromTick` with a card already running whose
+ * footprint reached them: that card is background for them from now on (§4.4(2)). A card that did not reach the work
+ * stays fresh for it, so a later routing change that brings the work into its reach still finds it news. Sorted, so
+ * state stays order-independent. */
+export function markMet(events: readonly ActiveEvent[], workloadIds: readonly string[], fromTick: number, scopeOf: (workloadId: string) => WorkScope): ActiveEvent[] {
+  return events.map((e) => {
+    if (!e.started || e.startTick > fromTick || (e.endTick !== null && e.endTick <= fromTick)) return e;
+    const add = workloadIds.filter((w) => !(e.metWith ?? []).includes(w) && footprintRelation(e, w, scopeOf(w)) !== null);
+    return add.length > 0 ? { ...e, metWith: [...(e.metWith ?? []), ...add].sort() } : e;
+  });
+}
+
+/** The trigger with no card to blame (and the one a collateral victim also accepts: the policy or headroom that left
+ * it exposed, §4.4(3)). */
+export function fallbackTrigger(mechanism: Mechanism, hour: HourAcc, isNew: boolean): Trigger {
   if (isNew) return 'NEW_WORKLOAD';
   const lock = hour.ticks > 0 ? hour.lockIndexSum / hour.ticks : 0;
   // Batch overlap is the lock clash between batch and online (the DASD/lock clue path). Without a card, a CPU
@@ -176,6 +243,11 @@ export function triggerOf(workloadId: string, mechanism: Mechanism, events: read
   if (lock > 1 && mechanism === 'LOCK_CONTENTION') return 'BATCH_OVERLAP';
   if (mechanism === 'DEPENDENCY' || mechanism === 'CPU_PRIORITY' || mechanism === 'CAPPING' || mechanism === 'QR_TCB' || mechanism === 'THREAD_LIMIT' || mechanism === 'ROUTING') return 'POLICY';
   return 'GROWTH';
+}
+
+export function triggerOf(workloadId: string, mechanism: Mechanism, events: readonly ActiveEvent[], hour: HourAcc, isNew: boolean, scope: WorkScope): Trigger {
+  // The card the hour's truth blames, if any (the counterfactual validator reads the same choice, RT-06).
+  return qualifyingCards(events, workloadId, mechanism, hourWindow(hour.hourIndex), scope)[0]?.card.trigger ?? fallbackTrigger(mechanism, hour, isNew);
 }
 
 /** Pseudo-workload id of a missed batch window's incident. */
@@ -224,17 +296,22 @@ export function batchMissMechanism(night: NightSummary, nightHour: HourAcc, host
   return mechanismOf({ cpuQueue: d.cpu, lock: d.lock, dependency: d.db2, io: d.io, paging: d.swap, outsideRef: d.init }, {}, nightHour, hosts);
 }
 
-/** A card blamed for a missed night: one that affects BATCH, causes this mechanism and ran during the night. */
-export function batchMissCard(mechanism: Mechanism, events: readonly ActiveEvent[], nightStartTick: number): ActiveEvent | undefined {
-  return events.find((e) => e.started && e.affects.includes(BATCH_INCIDENT) && (!e.mechanisms || e.mechanisms.includes(mechanism)) && (!e.ended || (e.endTick ?? 0) >= nightStartTick));
+/** A played day's batch night starts at 18:00, twelve hours after the day's 06:00 start, and runs to the day end. */
+export const nightStartTick = (day: number): number => day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
+export const nightWindow = (startTick: number) => ({ startTick, endTick: startTick + 12 * TICKS_PER_HOUR });
+
+/** A card blamed for a missed night: one whose footprint reaches BATCH (listed, or on a critical job's image), causes
+ * this mechanism and ran during the night (RT-14: BATCH is a workload like any other). */
+export function batchMissCard(mechanism: Mechanism, events: readonly ActiveEvent[], nightStart: number, scope: WorkScope): ActiveEvent | undefined {
+  return qualifyingCards(events, BATCH_INCIDENT, mechanism, nightWindow(nightStart), scope)[0]?.card;
 }
 
-export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEvent[], nightHour: HourAcc, nightStartTick: number, night?: NightSummary): Trigger {
-  const ev = batchMissCard(mechanism, events, nightStartTick);
+export function batchMissTrigger(mechanism: Mechanism, events: readonly ActiveEvent[], nightHour: HourAcc, nightStart: number, scope: WorkScope, night?: NightSummary): Trigger {
+  const ev = batchMissCard(mechanism, events, nightStart, scope);
   if (ev) return ev.trigger;
   // A Db2 job failing to connect was sent to an image without Db2 by the initiator setup.
   if (mechanism === 'JOB_FAILURE' && Object.values(night?.criticalFailCodes ?? {}).includes(DB2_CONNECT_FAIL)) return 'POLICY';
-  return triggerOf(BATCH_INCIDENT, mechanism, [], nightHour, false);
+  return fallbackTrigger(mechanism, nightHour, false);
 }
 
 export function updateBaseline(prev: Record<string, number> | undefined, parts: Record<string, number>): Record<string, number> {
@@ -246,7 +323,7 @@ export function updateBaseline(prev: Record<string, number> | undefined, parts: 
   return out;
 }
 
-export const MECHANISMS: Mechanism[] = ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY', 'LOCK_CONTENTION', 'CF_SERVICE', 'QR_TCB', 'THREAD_LIMIT', 'ROUTING', 'IO', 'STORAGE', 'JOB_FAILURE'];
+export const MECHANISMS: Mechanism[] = [...ALL_MECHANISMS];
 export const TRIGGERS: Trigger[] = ['DEMAND_SURGE', 'CHANGE_REGRESSION', 'RUNAWAY_WORK', 'BATCH_OVERLAP', 'POLICY', 'HARDWARE_FAULT', 'NEW_WORKLOAD', 'GROWTH', 'APPLICATION_ERROR'];
 
 /** The accepted answers of a truth: the primary alone in saves written before RT-07. */
