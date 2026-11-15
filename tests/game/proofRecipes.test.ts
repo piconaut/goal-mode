@@ -77,15 +77,20 @@ const ddfIncident = (): Incident => incident({ id: 997, workloadId: 'ADHOC', sub
 /** The scenario's own knowledge of a workload's subsystem, used to keep the test's pins to rows a player can pin. */
 const subsystemOf = (inc: Incident): string | undefined => MIDWEST.workloads.find((w) => w.id === inc.workloadId)?.subsystem;
 
+/** What a batch night's own class rows carry: Workload Activity's resource and delay columns for the critical jobs'
+ * classes. They print no END/S until RF-07 counts job ends (RT-13 review), and Db2 101/CICS 110 rows are per
+ * workload — the night's incident is 'BATCH', which has no such row (`addPin` answers "No such package row"). */
+const BATCH_CLASS_METRICS: EvidenceMetric[] = [
+  'PI', 'APPL', 'APPL_CP', 'APPL_IIP', 'IIPCP', 'DELAY_CPU', 'DELAY_ZIIP', 'DELAY_IO', 'DELAY_STO', 'DELAY_CAP', 'DELAY_OTHER',
+];
+
 /** Is this metric pinnable on the incident's own rows in this relation? A batch job metric needs a batch night.
  * CPU_PER_TXN needs a row that reports its own resource usage and an ended rate: not a CICS transaction row (RT-13
- * review; p.524), and not a batch class row as shipped, because the sim counts a job end only in a period with a
- * response-time goal and every shipped batch class is velocity or discretionary (RF-07, RT-13 review). A batch
- * incident's DEMAND_SURGE rate therefore has to come from a competitor's online row on the same image, which reports
- * its own END/S; a batch row's own `within`/`multipleAtLeast` reading would compare 0 with 0. */
+ * review; p.524), and not a batch class row as shipped (RF-07). A batch incident's own rows are its class rows and
+ * SMF 30 only, so a rate or a competitor-based reading has to come from a competitor's online row on the same image. */
 const pinnable = (inc: Incident, metric: EvidenceMetric, relation: PinRelation = 'self'): boolean => {
   if (metric.startsWith('JOB_')) return inc.workloadId === 'BATCH';
-  if (inc.workloadId === 'BATCH') return metric !== 'CPU_PER_TXN' && (metric !== 'ENDED_RATE' || relation === 'competitor');
+  if (inc.workloadId === 'BATCH') return relation === 'competitor' ? metric !== 'CPU_PER_TXN' : BATCH_CLASS_METRICS.includes(metric);
   if (metric === 'CPU_PER_TXN') return subsystemOf(inc) !== 'CICS';
   return true;
 };
@@ -128,7 +133,13 @@ function pinFor(inc: Incident, option: RecipeOption): EvidencePin {
     ...(baseline !== undefined ? { baseline } : {}),
   });
   if (relation === 'host') return source('CPC', cpcBusy ? cpc : host, cpcBusy ? cpc : host);
-  if (relation === 'competitor') return metric === 'JOB_APPL' ? source('PROCU', 'MONAGENT', host) : source('WLMGL', 'BATCHHI#1', host);
+  if (relation === 'competitor') {
+    if (metric === 'JOB_APPL') return source('PROCU', 'MONAGENT', host);
+    // Another workload's online class row on the incident's image: a batch class row would report END/S 0 (RF-07), and
+    // the work's own class would not relate as a competitor at all.
+    const other = ['ONLHI#1', 'ONLMED#1', 'DDFPRD#1', 'TSO#1'].find((c) => !s.classes.includes(c.split('#')[0]!)) ?? 'BATCHHI#1';
+    return source('WLMGL', other, host);
+  }
   if (relation === 'server') {
     if (metric === 'CF_SYNC' || metric === 'CF_ASYNC_PCT') return source('CF', 'CF02', 'CF02');
     if (metric.startsWith('DASD_')) return source('DASD', 'LCU 21', '*PLEX');
@@ -436,24 +447,27 @@ describe('proof recipes (RT-13)', () => {
     }
   });
 
-  it('earns strong evidence for 104 of the 108 pairs inside three pins, the four batch failures waiting on RF-07', () => {
+  it('earns strong evidence for 102 of the 108 pairs inside three pins, the six batch failures waiting on RF-07', () => {
     // The bonus is reachable two ways: most pairs complete both recipes; the rest complete the mechanism's recipe and
     // clear the pins' own relevance line (RT-13's second route), which is what strong meant before. A batch failure
     // is the exception, because a batch incident's own rows report no END/S until RF-07 counts job ends.
-    // The four that cannot are all batch failures: their trigger's half needs a rate or a newcomer's share, and the
-    // only pins that point at JOB_FAILURE are SMF 30's job metrics, so the batch night's WLMGL row scores nothing
-    // ("points elsewhere") and a competitor's rate is half weight (RT-13 review, B1). RF-07 gives batch rows their
-    // END/S and lifts all four.
-    const noProof = ['JOB_FAILURE/POLICY', 'JOB_FAILURE/NEW_WORKLOAD', 'JOB_FAILURE/GROWTH', 'JOB_FAILURE/DEMAND_SURGE'];
+    // The six that cannot are all batch failures: their trigger's half needs a rate, a newcomer's share or a hardware
+    // report, and the only pins that point at JOB_FAILURE are SMF 30's job metrics (the batch class row's delay and PI
+    // score "points elsewhere"), while a competitor's rate is half weight (RT-13 review, B1). RF-07 gives batch rows
+    // their END/S, which makes the batch workload's own cost per transaction pinnable and lifts all six.
+    const noProof = [
+      'JOB_FAILURE/CHANGE_REGRESSION',
+      'JOB_FAILURE/DEMAND_SURGE',
+      'JOB_FAILURE/GROWTH',
+      'JOB_FAILURE/HARDWARE_FAULT',
+      'JOB_FAILURE/NEW_WORKLOAD',
+      'JOB_FAILURE/POLICY',
+    ];
     const pairs: [Mechanism, Trigger][] = [];
     for (const mechanism of MECHANISMS) for (const trigger of TRIGGERS) pairs.push([mechanism, trigger]);
     let proved = 0;
     for (const [mechanism, trigger] of pairs) {
       const found = threePinProof(mechanism, trigger, (inc, pins) => strong(inc, pins, mechanism, trigger));
-      if (mechanism === 'JOB_FAILURE' && trigger === 'DEMAND_SURGE') {
-        expect(found, 'JOB_FAILURE/DEMAND_SURGE must not be provable from a row the sim cannot make').toBeUndefined();
-        continue;
-      }
       if (noProof.includes(`${mechanism}/${trigger}`)) {
         expect(found, `${mechanism}/${trigger} must not be provable from a row the sim cannot make`).toBeUndefined();
         continue;
@@ -462,7 +476,7 @@ describe('proof recipes (RT-13)', () => {
       expect(found!.pins.length).toBeLessThanOrEqual(EVIDENCE.perRca);
       proved += 1;
     }
-    expect(proved).toBe(104);
+    expect(proved).toBe(102);
   });
 
   it('names the pairs the two recipes cannot both prove inside three pins', () => {
@@ -504,8 +518,10 @@ describe('proof recipes (RT-13)', () => {
       return !threePinProof(mechanism, trigger, (inc, pins) => strong(inc, pins, mechanism, trigger));
     });
     expect(cannotBeStrong.sort()).toEqual([
+      'JOB_FAILURE/CHANGE_REGRESSION',
       'JOB_FAILURE/DEMAND_SURGE',
       'JOB_FAILURE/GROWTH',
+      'JOB_FAILURE/HARDWARE_FAULT',
       'JOB_FAILURE/NEW_WORKLOAD',
       'JOB_FAILURE/POLICY',
     ]);
@@ -681,6 +697,20 @@ describe('proof recipes (RT-13)', () => {
     const pin = addPin(night, MIDWEST, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'CPU_PER_TXN' });
     expect(pin.ok).toBe(false);
     expect(pin.message).toMatch(/no ended transactions or jobs/);
+  });
+
+  it('has no Db2 or CICS workload row for the batch night, so those metrics are not a batch witness', () => {
+    // `pinnable`'s batch clause rests on this: the night's incident is 'BATCH', and Db2 accounting and CICS monitoring
+    // are per workload, so a Db2 101 / CICS 110 row for it does not exist. If the sim ever reports one, this fails and
+    // the batch clause (and the pair counts §4.6 quotes) must be revisited.
+    const night = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 20 * HOUR);
+    const hour = `${night.smfHours.at(-1)!.day}:${night.smfHours.at(-1)!.hourOfDay}`;
+    const db2 = addPin(night, MIDWEST, { source: 'DB2', hour, workloadId: 'BATCH', metric: 'CPU_VS_BASE' });
+    expect(db2.ok).toBe(false);
+    expect(db2.message).toMatch(/No such package row/);
+    const cics = addPin(night, MIDWEST, { source: 'CICS', hour, workloadId: 'BATCH', metric: 'QR_WAIT' });
+    expect(cics.ok).toBe(false);
+    expect(cics.message).toMatch(/No such transaction row/);
   });
 
   it('counts general-purpose CPU per transaction, not zIIP time', () => {

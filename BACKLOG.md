@@ -303,7 +303,7 @@ CPU_PRIORITY×HARDWARE_FAULT (the last is real: R-7's power cap at 98 % busy is 
 cap, the delay and the lock pin because a batch night's own rate row cannot carry it (RF-07). They need a fourth
 observation, so the trigger's recipe shows one predicate unticked; the strong bonus still arrives by the mechanism's
 recipe plus the pins' own relevance line, so nothing is lost but the tick. (RT-13's re-review also found eight
-batch-failure pairs whose trigger half has no row until RF-07, four of which cannot reach strong at all; a fourth pin
+batch-failure pairs whose trigger half has no row until RF-07, six of which cannot reach strong at all; a fourth pin
 does not help them either, so they are not part of this question.)
 
 Question for the user (docs/rca-design.md §4.6): (1) allow a fourth pin when both halves are filed — recommended,

@@ -672,17 +672,18 @@ batch class is velocity or discretionary and reports ENDED 0 until RF-07, so it 
   trigger's recipe — the entry's "two recipes can share the symptom pin", generalised to the shared normal reading.
   A test enumerates every mechanism × trigger (108 claims) and shows each one earns the strong bonus inside three
   pins, including the audit's own combos (a power cap at priority, the lost-structure aftermath, a vendor creep's
-  collateral work, a lock dinner during growth). Of the 108 pairs, **104** earn the bonus inside three pins. A second
+  collateral work, a lock dinner during growth). Of the 108 pairs, **102** earn the bonus inside three pins. A second
   test measures how many can complete **both** recipes in that limit: **91**. Seventeen cannot, in two groups. Nine
   need a fourth observation for the trigger's recipe — the six where the two recipes need four distinct rows (a
   capacity adjustment beside a contender, a newcomer beside a busy machine, an application error filed on a retry
   storm) and three × BATCH_OVERLAP pairs, whose "nothing changed" half is a fourth row beside the cap, the delay and
   the lock pin; whether the limit should allow that fourth pin for a paired proof is RT-26's design question. Eight
-  are batch-failure pairs whose trigger half needs a rate a shipped batch class cannot report until RF-07. Thirteen
-  of the seventeen still reach strong by the mechanism's recipe plus the pins' own relevance line (the reply shows one
-  trigger predicate unticked); the four that do not are batch failures whose filed mechanism leaves no
-  mechanism-relevant symptom to pin — JOB_FAILURE with POLICY, NEW_WORKLOAD, GROWTH and DEMAND_SURGE — and RF-07 lifts
-  them with the batch row's END/S.
+  are batch-failure pairs whose trigger half needs a rate a shipped batch class cannot report until RF-07. Eleven of
+  the seventeen still reach strong by the mechanism's recipe plus the pins' own relevance line (the reply shows one
+  trigger predicate unticked); the six that do not are batch failures whose trigger half has no row this simulation
+  can make, because a batch incident's own rows are its class rows (whose delay and PI say nothing about a job
+  failure) and SMF 30's job metrics: JOB_FAILURE with CHANGE_REGRESSION, DEMAND_SURGE, GROWTH, HARDWARE_FAULT,
+  NEW_WORKLOAD and POLICY. RF-07, which gives a batch class row its END/S, lifts all six.
 - `CPU_PER_TXN` is new: Workload Activity's APPL% CP ÷ END/S against the row's own six preceding intervals, the division
   the Codex END/S entry teaches, and the CP-only cost the game's Db2 and CICS accounting report (zIIP time is its own
   column, APPL% IIP). A CICS transaction row reports no service consumption of its own (RMF Report Analysis p.524; it
