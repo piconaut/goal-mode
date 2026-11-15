@@ -40,13 +40,20 @@ describe('confirmation polish', () => {
     const src = runFiles();
     const handler = /onChange=\{async \(e\) => \{([\s\S]*?)\n        \}\}/.exec(src)?.[1] ?? '';
     expect(handler).not.toBe('');
+    const read = handler.indexOf('await file.text();');
     const clear = handler.indexOf('setReading(false);');
     const prompt = handler.indexOf('await load(fileText, file.name);');
-    expect(clear).toBeGreaterThanOrEqual(0);
+    expect(read).toBeGreaterThanOrEqual(0);
+    expect(clear).toBeGreaterThan(read);
     expect(prompt).toBeGreaterThan(clear);
+    // A read that fails (or a dialog that moved on) still clears the state: the handler's `finally` keeps the reset,
+    // guarded so a closed dialog's session cannot be touched.
+    expect(handler).toMatch(/finally \{\s*if \(opened === session\.current\) setReading\(false\);\s*\}/);
     // `load` asks first and only then starts the import, so a cancel leaves the button idle and a confirm shows
     // "Loading…" from the same click.
     const load = /const load = async \([\s\S]*?\n  \};/.exec(src)?.[0] ?? '';
-    expect(load.indexOf('await ask(')).toBeLessThan(load.indexOf('setLoading(true);'));
+    const askAt = load.indexOf('await ask(');
+    expect(askAt).toBeGreaterThanOrEqual(0);
+    expect(askAt).toBeLessThan(load.indexOf('setLoading(true);'));
   });
 });
