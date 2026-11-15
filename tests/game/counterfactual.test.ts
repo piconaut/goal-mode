@@ -69,9 +69,11 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
       started: true,
       ended: false,
     };
-    // A red herring by design: it declares no hurt work, so it is a control for the noise floor.
+    // A red herring by design: like the real CP_SPARING it has no footprint (no resource, so no mechanisms and no
+    // hurt work), so it is a control for the noise floor.
+    const { mechanisms: _unused, ...noFootprint } = bystander;
     const redHerring: ActiveEvent = {
-      ...bystander,
+      ...noFootprint,
       uid: 'CP_SPARING@2',
       defId: 'CP_SPARING',
       name: 'CP failure, transparent sparing',
