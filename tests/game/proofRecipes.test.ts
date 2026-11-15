@@ -10,6 +10,7 @@ import {
   COMMON_RECIPES,
   recipeFor,
   type EvidenceMetric,
+  type PinRelation,
   type PredicateTest,
   type RecipeOption,
 } from '../../src/content/evidence';
@@ -76,13 +77,16 @@ const ddfIncident = (): Incident => incident({ id: 997, workloadId: 'ADHOC', sub
 /** The scenario's own knowledge of a workload's subsystem, used to keep the test's pins to rows a player can pin. */
 const subsystemOf = (inc: Incident): string | undefined => MIDWEST.workloads.find((w) => w.id === inc.workloadId)?.subsystem;
 
-/** Is this metric pinnable on the incident's own rows? A batch job metric needs a batch night; CPU_PER_TXN needs a row
- * that reports its own resource usage and an ended rate, so neither a CICS transaction row (RT-13 review; p.524) nor a
- * batch class row as shipped: the sim counts a job end only in a period with a response-time goal, and every shipped
- * batch class is velocity or discretionary, so its ENDED is 0 until RF-07 (RT-13 review, B3). */
-const pinnable = (inc: Incident, metric: EvidenceMetric): boolean => {
+/** Is this metric pinnable on the incident's own rows in this relation? A batch job metric needs a batch night.
+ * CPU_PER_TXN needs a row that reports its own resource usage and an ended rate: not a CICS transaction row (RT-13
+ * review; p.524), and not a batch class row as shipped, because the sim counts a job end only in a period with a
+ * response-time goal and every shipped batch class is velocity or discretionary (RF-07, RT-13 review). A batch
+ * incident's DEMAND_SURGE rate therefore has to come from a competitor's online row on the same image, which reports
+ * its own END/S; a batch row's own `within`/`multipleAtLeast` reading would compare 0 with 0. */
+const pinnable = (inc: Incident, metric: EvidenceMetric, relation: PinRelation = 'self'): boolean => {
   if (metric.startsWith('JOB_')) return inc.workloadId === 'BATCH';
-  if (metric === 'CPU_PER_TXN') return inc.workloadId !== 'BATCH' && subsystemOf(inc) !== 'CICS';
+  if (inc.workloadId === 'BATCH') return metric !== 'CPU_PER_TXN' && (metric !== 'ENDED_RATE' || relation === 'competitor');
+  if (metric === 'CPU_PER_TXN') return subsystemOf(inc) !== 'CICS';
   return true;
 };
 
@@ -214,7 +218,7 @@ function threePinProofOn(inc: Incident, mechanism: Mechanism, trigger: Trigger, 
   const mr = recipeFor({ mechanism })!;
   const tr = recipeFor({ trigger })!;
   const variants = (o: RecipeOption): PinVariant[] =>
-    !pinnable(inc, o.metric) ? [] : o.relations.map((rel) => {
+    o.relations.filter((rel) => pinnable(inc, o.metric, rel)).map((rel) => {
       const p = pinFor(inc, { ...o, relations: [rel] });
       return { key: `${p.source}|${p.subject}|${p.system}|${o.metric}`, source: p.source, subject: p.subject, system: p.system, metric: o.metric, test: o.test };
     });
@@ -223,10 +227,9 @@ function threePinProofOn(inc: Incident, mechanism: Mechanism, trigger: Trigger, 
   const theirs = tr.predicates[0].options.flatMap(variants);
   const theirs2 = tr.predicates[1].options.flatMap(variants);
   // The mechanism's two predicates alone, which can still earn strong by the relevance line; then the four-way sets
-  // that may complete both recipes with a shared row; then the three-pin sets that carry one of the trigger's pins.
-  // That last shape is a real filing where the trigger's other half has no row to pin (a batch incident's cost pin
-  // needs a batch class that reports job ends, RF-07): the mechanism's recipe completes and the other pin's own
-  // relevance carries the bonus, which is §4.6's second route.
+  // that may complete both recipes with a shared row; then the three-pin sets that carry one of the trigger's pins as
+  // a real symptom reading (a batch night's CPU-wait share against a batch failure's trigger, whose own normal half
+  // has no row to read until RF-07). The bonus then comes by the relevance line, which is §4.6's second route.
   const trials: PinVariant[][] = [];
   for (const m1 of mine) for (const m2 of mine2) trials.push([m1, m2]);
   for (const m1 of mine) for (const m2 of mine2) for (const t1 of theirs) for (const t2 of theirs2) trials.push([m1, m2, t1, t2]);
@@ -350,6 +353,11 @@ describe('proof recipes (RT-13)', () => {
     expect(healthy.predicates.map((p) => p.ok)).toEqual([false, true]);
     const scored = submitRca(r, filed.id, 'DEPENDENCY', 'DEMAND_SURGE', MIDWEST, [velocity.id, flat.id]);
     expect(scored.incidents[0]!.rca!.evidencePoints).toBeLessThan(EVIDENCE.recipeRelevance);
+    // A healthy PI (0.70 is the quiet hour's PROD1 STCHI#1 reading) is not a delayed server either, so the line is
+    // a real threshold rather than any reading (RT-13 review).
+    const healthyPi = { ...pinFor(filed, option('PI', ['server'], { kind: 'atLeast', value: 1.2 })), value: 0.7 };
+    const quiet = { ...r, pins: [healthyPi, flat] };
+    expect(judgeRecipe(quiet, MIDWEST, [filed], quiet.pins, { mechanism: 'DEPENDENCY' })!.predicates.map((p) => p.ok)).toEqual([false, true]);
     // The same server class under its goal (PI > 1.2) is the delayed server the recipe asks for.
     const delayed = pinFor(filed, option('PI', ['server'], { kind: 'atLeast', value: 1.2 }));
     const under = { ...r, pins: [delayed, flat] };
@@ -428,18 +436,33 @@ describe('proof recipes (RT-13)', () => {
     }
   });
 
-  it('earns strong evidence for every mechanism × trigger pair — the bonus — inside three pins', () => {
-    // The bonus is reachable for every pair, two ways: most complete both recipes; the rest complete the mechanism's
-    // recipe and clear the pins' own relevance line (RT-13's second route), which is what strong meant before.
+  it('earns strong evidence for 104 of the 108 pairs inside three pins, the four batch failures waiting on RF-07', () => {
+    // The bonus is reachable two ways: most pairs complete both recipes; the rest complete the mechanism's recipe and
+    // clear the pins' own relevance line (RT-13's second route), which is what strong meant before. A batch failure
+    // is the exception, because a batch incident's own rows report no END/S until RF-07 counts job ends.
+    // The four that cannot are all batch failures: their trigger's half needs a rate or a newcomer's share, and the
+    // only pins that point at JOB_FAILURE are SMF 30's job metrics, so the batch night's WLMGL row scores nothing
+    // ("points elsewhere") and a competitor's rate is half weight (RT-13 review, B1). RF-07 gives batch rows their
+    // END/S and lifts all four.
+    const noProof = ['JOB_FAILURE/POLICY', 'JOB_FAILURE/NEW_WORKLOAD', 'JOB_FAILURE/GROWTH', 'JOB_FAILURE/DEMAND_SURGE'];
     const pairs: [Mechanism, Trigger][] = [];
     for (const mechanism of MECHANISMS) for (const trigger of TRIGGERS) pairs.push([mechanism, trigger]);
+    let proved = 0;
     for (const [mechanism, trigger] of pairs) {
       const found = threePinProof(mechanism, trigger, (inc, pins) => strong(inc, pins, mechanism, trigger));
+      if (mechanism === 'JOB_FAILURE' && trigger === 'DEMAND_SURGE') {
+        expect(found, 'JOB_FAILURE/DEMAND_SURGE must not be provable from a row the sim cannot make').toBeUndefined();
+        continue;
+      }
+      if (noProof.includes(`${mechanism}/${trigger}`)) {
+        expect(found, `${mechanism}/${trigger} must not be provable from a row the sim cannot make`).toBeUndefined();
+        continue;
+      }
       expect(found, `${mechanism}/${trigger}: no strong three-pin proof`).toBeDefined();
       expect(found!.pins.length).toBeLessThanOrEqual(EVIDENCE.perRca);
+      proved += 1;
     }
-    // Which route a witness takes is this search's order, not a game fact; the next test measures the game fact — how
-    // many pairs can complete both recipes inside three pins.
+    expect(proved).toBe(104);
   });
 
   it('names the pairs the two recipes cannot both prove inside three pins', () => {
@@ -457,12 +480,34 @@ describe('proof recipes (RT-13)', () => {
       for (const trigger of TRIGGERS) if (!threePinProof(mechanism, trigger)) needMore.push(`${mechanism}/${trigger}`);
     expect(needMore.sort()).toEqual([
       'CAPPING/APPLICATION_ERROR',
+      'CAPPING/BATCH_OVERLAP',
       'CAPPING/NEW_WORKLOAD',
       'CPU_CAPACITY/APPLICATION_ERROR',
+      'CPU_CAPACITY/BATCH_OVERLAP',
       'CPU_CAPACITY/NEW_WORKLOAD',
       'CPU_PRIORITY/APPLICATION_ERROR',
+      'CPU_PRIORITY/BATCH_OVERLAP',
       'CPU_PRIORITY/HARDWARE_FAULT',
+      'JOB_FAILURE/BATCH_OVERLAP',
+      'JOB_FAILURE/CHANGE_REGRESSION',
       'JOB_FAILURE/DEMAND_SURGE',
+      'JOB_FAILURE/GROWTH',
+      'JOB_FAILURE/HARDWARE_FAULT',
+      'JOB_FAILURE/NEW_WORKLOAD',
+      'JOB_FAILURE/POLICY',
+      'JOB_FAILURE/RUNAWAY_WORK',
+    ]);
+    // Of the seventeen, thirteen still reach strong by the relevance line; the four batch failures whose trigger half
+    // needs a mechanism-relevant symptom do not, until RF-07 gives a batch row its END/S.
+    const cannotBeStrong = needMore.filter((pair) => {
+      const [mechanism, trigger] = pair.split('/') as [Mechanism, Trigger];
+      return !threePinProof(mechanism, trigger, (inc, pins) => strong(inc, pins, mechanism, trigger));
+    });
+    expect(cannotBeStrong.sort()).toEqual([
+      'JOB_FAILURE/DEMAND_SURGE',
+      'JOB_FAILURE/GROWTH',
+      'JOB_FAILURE/NEW_WORKLOAD',
+      'JOB_FAILURE/POLICY',
     ]);
   });
 
@@ -622,15 +667,20 @@ describe('proof recipes (RT-13)', () => {
     const noRate = addPin(run, MIDWEST, { source: 'WLMGL', index: last, system: regionRow.lparId, scKey: regionRow.scKey, metric: 'CPU_PER_TXN' });
     expect(noRate.ok).toBe(false);
     expect(noRate.message).toMatch(/no ended transactions or jobs/);
-    // The same refusal covers a shipped batch class: a job end is counted only in a period with a response-time goal,
-    // and every shipped batch class is velocity or discretionary, so its row reports ENDED 0 (RF-07; RT-13 review).
-    const batchRow = run.sim.rmf.intervals[last]!.wlm.find((w) => w.scKey.startsWith('BATCH') && w.resourceSamples !== false && w.applCpPct > 0);
-    if (batchRow) {
-      expect(batchRow.endPerSec).toBe(0);
-      const batchPin = addPin(run, MIDWEST, { source: 'WLMGL', index: last, system: batchRow.lparId, scKey: batchRow.scKey, metric: 'CPU_PER_TXN' });
-      expect(batchPin.ok).toBe(false);
-      expect(batchPin.message).toMatch(/no ended transactions or jobs/);
-    }
+
+  });
+
+  it('refuses a batch class row\'s cost per transaction until RF-07 counts job ends', () => {
+    // The night's own BATCHPRD row (velocity goal 30 %) prints APPL% CP and END/S 0, because the sim counts a job end
+    // only in a period with a response-time goal (RF-07). So the tier-0 cost pin a batch workload would use does not
+    // exist yet, and the answer says so instead of dividing by zero (RT-13 review, B3).
+    const night = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 20 * HOUR);
+    const index = night.sim.rmf.intervals.length - 1;
+    const row = night.sim.rmf.intervals[index]!.wlm.find((w) => w.scKey.startsWith('BATCH') && w.resourceSamples !== false && w.applCpPct > 0)!;
+    expect(row.endPerSec).toBe(0);
+    const pin = addPin(night, MIDWEST, { source: 'WLMGL', index, system: row.lparId, scKey: row.scKey, metric: 'CPU_PER_TXN' });
+    expect(pin.ok).toBe(false);
+    expect(pin.message).toMatch(/no ended transactions or jobs/);
   });
 
   it('counts general-purpose CPU per transaction, not zIIP time', () => {

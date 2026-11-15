@@ -296,13 +296,15 @@ REFSTAT_BACKOFF are not gated by RT-24.
 `list: rca-truth · status: blocked: design · priority: low · size: S · area: game`
 
 RT-13's three-pin limit keeps a mechanism's and a trigger's recipe inside one RCA wherever the two can share a row
-(a shared symptom or normal reading). Six claim pairs cannot: CAPPING×APPLICATION_ERROR, CAPPING×NEW_WORKLOAD,
-CPU_CAPACITY×APPLICATION_ERROR, CPU_CAPACITY×NEW_WORKLOAD, CPU_PRIORITY×APPLICATION_ERROR and
-CPU_PRIORITY×HARDWARE_FAULT (the last is real: R-7's power cap at 98 % busy is filed at priority). They need a fourth
+(a shared symptom or normal reading). Nine claim pairs cannot: CAPPING×APPLICATION_ERROR, CAPPING×NEW_WORKLOAD,
+CPU_CAPACITY×APPLICATION_ERROR, CPU_CAPACITY×NEW_WORKLOAD, CPU_PRIORITY×APPLICATION_ERROR,
+CPU_PRIORITY×HARDWARE_FAULT (the last is real: R-7's power cap at 98 % busy is filed at priority), and the three
+×BATCH_OVERLAP pairs (CAPPING, CPU_CAPACITY, CPU_PRIORITY), whose "nothing changed" half is a fourth row beside the
+cap, the delay and the lock pin because a batch night's own rate row cannot carry it (RF-07). They need a fourth
 observation, so the trigger's recipe shows one predicate unticked; the strong bonus still arrives by the mechanism's
-recipe plus the pins' own relevance line, so nothing is lost but the tick. (RT-13's re-review found a seventh pair that
-cannot complete both recipes in three pins, JOB_FAILURE×DEMAND_SURGE, because a shipped batch class reports ENDED 0
-until RF-07 — a fourth pin would not help it, so it is not part of this question.)
+recipe plus the pins' own relevance line, so nothing is lost but the tick. (RT-13's re-review also found eight
+batch-failure pairs whose trigger half has no row until RF-07, four of which cannot reach strong at all; a fourth pin
+does not help them either, so they are not part of this question.)
 
 Question for the user (docs/rca-design.md §4.6): (1) allow a fourth pin when both halves are filed — recommended,
 because the extra pin is more attention, not less, and the limit exists to price attention; (2) leave it, so those

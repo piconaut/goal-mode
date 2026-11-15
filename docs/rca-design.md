@@ -616,8 +616,8 @@ out) the discriminator. Recipes live in `content/evidence.ts` beside the metrics
 | CPU_PRIORITY | CPU delay ≥ 10 % on the hurt class, its regions or its server, on the judged host | a displaceable consumer on that host: APPL of another class ≥ 10 % of the image |
 | CPU_CAPACITY | as above | CPC busy ≥ 90 %, the image busy ≥ 95 %, partition delay ≥ 8 %, or a capacity adjustment below 100 |
 | CAPPING | as above | Partition Data capped (WLM%) ≥ 5 % on that host, or CAP delay on the class |
-| DEPENDENCY | the server's class delayed (CPU delay ≥ 10 %, or its PI > 1.2 — velocity or response time more than 20 % past goal), or the hurt work's own DELAY_OTHER ≥ 20 % | the hurt class's own CPU delay low (< 10 %), or its rate or cost per transaction normal |
-| THREAD_LIMIT | MXT wait or queued-DBAT count up | CPU per transaction and QR wait normal (a ruling-out pin) |
+| DEPENDENCY | the server's class delayed (CPU delay ≥ 10 %, or its PI > 1.2 — about 17 % short of a velocity goal, 20 % over a response-time goal), or the hurt work's own DELAY_OTHER ≥ 20 % | the hurt class's own CPU delay low (< 10 %), or its rate or cost per transaction normal |
+| THREAD_LIMIT | MXT wait or queued-DBAT count up | its CPU delay, rate and cost per transaction normal (a ruling-out pin) |
 | DEMAND_SURGE | ended rate ≥ 1.25 × baseline on the surging workload | its CPU per transaction within ±15 % of baseline |
 | Change regression | CPU per transaction ≥ 1.3 × baseline | its ended rate within ±15 % of baseline |
 | RUNAWAY_WORK | APPL of one class or job up by ≥ half an engine | that work's ended rate flat |
@@ -672,22 +672,26 @@ batch class is velocity or discretionary and reports ENDED 0 until RF-07, so it 
   trigger's recipe — the entry's "two recipes can share the symptom pin", generalised to the shared normal reading.
   A test enumerates every mechanism × trigger (108 claims) and shows each one earns the strong bonus inside three
   pins, including the audit's own combos (a power cap at priority, the lost-structure aftermath, a vendor creep's
-  collateral work, a lock dinner during growth). A second test measures how many pairs can complete **both** recipes
-  inside three pins: 101 of the 108. Six of the rest need a fourth observation for the trigger's recipe (a capacity
-  adjustment beside a contender, a newcomer beside a busy machine, an application error filed on a retry storm), so
-  strong arrives by the mechanism's recipe plus the pins' own relevance line and the reply shows one trigger predicate
-  unticked; whether the limit should allow that fourth pin for a paired proof is RT-26's design question. The seventh,
-  JOB_FAILURE with DEMAND_SURGE, has no batch row to read a cost per transaction from until RF-07, so no fourth pin
-  would help it either.
+  collateral work, a lock dinner during growth). Of the 108 pairs, **104** earn the bonus inside three pins. A second
+  test measures how many can complete **both** recipes in that limit: **91**. Seventeen cannot, in two groups. Nine
+  need a fourth observation for the trigger's recipe — the six where the two recipes need four distinct rows (a
+  capacity adjustment beside a contender, a newcomer beside a busy machine, an application error filed on a retry
+  storm) and three × BATCH_OVERLAP pairs, whose "nothing changed" half is a fourth row beside the cap, the delay and
+  the lock pin; whether the limit should allow that fourth pin for a paired proof is RT-26's design question. Eight
+  are batch-failure pairs whose trigger half needs a rate a shipped batch class cannot report until RF-07. Thirteen
+  of the seventeen still reach strong by the mechanism's recipe plus the pins' own relevance line (the reply shows one
+  trigger predicate unticked); the four that do not are batch failures whose filed mechanism leaves no
+  mechanism-relevant symptom to pin — JOB_FAILURE with POLICY, NEW_WORKLOAD, GROWTH and DEMAND_SURGE — and RF-07 lifts
+  them with the batch row's END/S.
 - `CPU_PER_TXN` is new: Workload Activity's APPL% CP ÷ END/S against the row's own six preceding intervals, the division
   the Codex END/S entry teaches, and the CP-only cost the game's Db2 and CICS accounting report (zIIP time is its own
   column, APPL% IIP). A CICS transaction row reports no service consumption of its own (RMF Report Analysis p.524; it
-  still prints END/S and the work-manager states), and its regions' class APPL is those address spaces' CPU — most of it
-  other work in the class — so dividing it by the transactions' END/S tracks 1/END/S; that row is refused and the
-  answer names CICS monitoring. A batch class row prints both columns only when its goal is an AVG or PCT response
-  time, because the sim counts a job end only in such a period: the shipped batch classes are velocity or
-  discretionary, so their rows report ENDED 0 and the pin is refused with "no ended transactions or jobs" until RF-07
-  lands. APPROX: the report prints the two columns, not their quotient.
+  still prints END/S and the work-manager states), and its regions' class APPL is those address spaces' CPU — on
+  harbourline mostly other work in the class — so dividing it by the transactions' END/S tracks 1/END/S; that row is
+  refused and the answer names CICS monitoring. A batch class row always prints APPL% CP, but its END/S counts ended
+  jobs only in an AVG or PCT period, because the sim adds a completion only there: the shipped batch classes are
+  velocity or discretionary, so that column reads 0 and the pin is refused with "no ended transactions or jobs" until
+  RF-07 lands. APPROX: the report prints the two columns, not their quotient.
 - `ENDED_RATE` now accepts `competitor` besides `self`/`server`, so a co-hosted workload's rate is the collateral
   victim's surrogate for a surge (§4.4).
 - Scoring: a complete recipe for the filed, accepted mechanism replaces the relevance sum and is worth three fully
@@ -704,8 +708,8 @@ batch class is velocity or discretionary and reports ENDED 0 until RF-07, so it 
   half also accepts the hurt work's own `DELAY_OTHER` ≥ 20 % (a wait outside CPU, zIIP, I/O, storage and capping); an
   absolute velocity line is no longer an option, because a velocity goal is met at every reading above it (a quiet
   day's 60 % goal read 83–96 %), so the server half tests PI > 1.2 instead — the reports' own goal-to-achieved ratio;
-  THREAD_LIMIT's "CPU per transaction and QR wait normal" is the shared normal reading unchanged (the low-MXT-wait
-  option is QR_TCB's, not THREAD_LIMIT's); HARDWARE_FAULT's "rate **and** CPU per transaction normal" is one predicate,
+  THREAD_LIMIT's second half is the shared normal reading unchanged — CPU delay, rate and cost per transaction, with
+  no QR-wait term (the low-MXT-wait option is QR_TCB's, not THREAD_LIMIT's); HARDWARE_FAULT's "rate **and** CPU per transaction normal" is one predicate,
   so those two normal readings are alternatives; GROWTH's second predicate is a rise in arrivals alone (a flat cost is
   what a regression looks like, not growth); POLICY's symptom half is any report's hurt, because the fallback trigger
   accompanies every mechanism; NEW_WORKLOAD puts the newcomer's share first and the normal reading second;
