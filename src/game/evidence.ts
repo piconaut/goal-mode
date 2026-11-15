@@ -91,9 +91,10 @@ function median(xs: number[]): number | undefined {
 /** Workload Activity's CPU per transaction: APPL% CP (100 % = one engine; it includes the IIPCP subset, RMF Report
  * Analysis p.534) divided by END/S (p.530) — the division the Codex END/S entry teaches, and the same CP cost the
  * game's Db2 and CICS accounting report (zIIP time is its own column, APPL% IIP, not part of "CPU"). A CICS transaction
- * row reports no resource usage at all (RMF Report Analysis p.524): its CPU is the regions' address-space CPU, most of
- * it other work in that class, so the row has no CPU per transaction — a CICS transaction's cost comes from CICS
- * monitoring. Null otherwise when the row has no CP time or no ended transactions. */
+ * row reports no service consumption and no execution delays (RMF Report Analysis p.524; it still prints END/S and the
+ * work-manager states): its CPU is reported with the regions' service classes, which is those address spaces' CPU, so
+ * the row has no CPU per transaction — a CICS transaction's cost comes from CICS monitoring. Null otherwise when the
+ * row has no CP time or no ended transactions. */
 function wlmCpuPerTxn(w: WlmRecord): number | null {
   if (w.resourceSamples === false || w.endPerSec <= 0 || w.applCpPct <= 0) return null;
   return w.applCpPct / 100 / w.endPerSec;
@@ -151,10 +152,10 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         return 'That row has no work manager states (CICS transaction classes only)';
       // The tier-0 service-per-transaction path (RT-13): the quotient against the row's own six preceding intervals.
       if (req.metric === 'CPU_PER_TXN') {
-        // A transaction class reports work-manager states and no resource usage: its CPU is the regions' address space,
-        // which is not these transactions' cost (RT-13 review; RMF Report Analysis p.524).
+        // A transaction class reports work-manager states and no service consumption: its CPU is with its regions'
+        // address spaces, which is not these transactions' cost (RT-13 review; RMF Report Analysis p.524).
         if (w.resourceSamples === false)
-          return "A CICS transaction row reports no resource usage: its CPU is its regions' address-space CPU, so read CPU per transaction from CICS monitoring (CICS 110)";
+          return "A CICS transaction row reports no service consumption: its CPU is reported with its regions' classes, so read CPU per transaction from CICS monitoring (CICS 110)";
         const quote = (x: (typeof sim.rmf.intervals)[number]): number | null => {
           const row = x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey);
           return row ? wlmCpuPerTxn(row) : null;
@@ -162,7 +163,7 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         const now = quote(iv);
         if (now === null)
           return w.endPerSec <= 0
-            ? 'That row reported no ended transactions, so it has no CPU per transaction'
+            ? 'That row reported no ended transactions or jobs, so it has no CPU per transaction'
             : 'That row reported no general-purpose CPU in the interval, so it has no CPU per transaction';
         const base = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index).map(quote).filter(NUM));
         if (base === undefined || base <= 0) return 'That row has no earlier hours to compare its CPU per transaction with';
@@ -371,18 +372,23 @@ export function incidentSubjects(
   }
   const w = allWorkloads(scenario, run).find((x) => x.id === workloadId);
   const cls = w ? classify(run.sim.wlm.definition, w.work) : null;
-  // A report class is the work's own row only when the policy gives it to this workload alone: RC_ADVISOR names one per
-  // workload, but the Rules editor can point another workload at the same report class, and that row then aggregates
-  // both (RT-13 review). Its row is the work's own, not an unknown class, when no other workload lands in it.
-  const rc = cls?.reportClass;
-  const rcOwn = rc !== undefined && rc !== null &&
-    allWorkloads(scenario, run).every((x) => x.id === workloadId || classify(run.sim.wlm.definition, x.work).reportClass !== rc);
-  const classes = [cls?.serviceClass, rcOwn ? rc : null].filter((x): x is string => !!x);
   const routing = run.sim.routing[workloadId] ?? w?.routing ?? {};
   const lpars = Object.keys(routing);
   // Images the work actually runs on. A static routing table keeps a 0 weight for an image it was routed away from
   // (`SET_ROUTING`), and that image is not a host of the work any more.
   const hosts = Object.entries(routing).filter(([, share]) => share > 0).map(([id]) => id);
+  // A report class is the work's own row only when the policy gives it to this workload alone on the images this work
+  // runs on: RC_ADVISOR names one per workload, but the Rules editor can point another workload at the same report
+  // class, and a row from a shared image then aggregates both (RT-13 review). A workload that shares the name but is
+  // routed only to another image does not touch this work's rows there.
+  const sharesImage = (x: (typeof scenario.workloads)[number] & { routing?: Record<string, number> }): boolean =>
+    Object.entries(run.sim.routing[x.id] ?? x.routing ?? {}).some(([id, share]) => share > 0 && hosts.includes(id));
+  const rc = cls?.reportClass;
+  const rcOwn = rc !== undefined && rc !== null &&
+    allWorkloads(scenario, run).every((x) => x.id === workloadId
+      || classify(run.sim.wlm.definition, x.work).reportClass !== rc
+      || !sharesImage(x));
+  const classes = [cls?.serviceClass, rcOwn ? rc : null].filter((x): x is string => !!x);
   const servers: { jobname: string; lparId: string }[] = [];
   // Resource evidence on a CICS region class is evidence about its hosted transactions, not about a class of its own
   // (RT-12 keeps the two apart so a region's row is a `server` pin, not the work's own).
@@ -647,8 +653,8 @@ export interface EvidenceScore {
   /** Evidence points for the filed mechanism: a complete recipe's fixed worth, else the relevance sum (or half for a
    * lone symptom pin). The caller pays it only when the mechanism is accepted. */
   points: number;
-  /** Strong evidence: a complete trigger recipe on top of the mechanism's, or the old relevance line when no recipe is
-   * complete. */
+  /** Strong evidence: a complete recipe for the filed, accepted trigger (with or without the mechanism's recipe), or
+   * the old relevance line when no recipe is complete. An unaccepted claim earns no points, so it earns no bonus. */
   strong: boolean;
 }
 

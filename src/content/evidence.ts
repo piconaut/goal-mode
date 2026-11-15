@@ -174,7 +174,7 @@ export const EVIDENCE = {
   strongAt: 2,
   strongInsight: 5,
   // FICTIONAL: what a complete proof recipe is worth, i.e. three fully specific pins (RT-13, §4.6). A complete recipe
-  // for the trigger on top of it makes the evidence strong.
+  // for the trigger makes the evidence strong, with or without the mechanism's recipe (a wrong mechanism still earns 0).
   recipeRelevance: 3,
   // FICTIONAL: a lone symptom pin (PI, velocity) proves nothing about a cause, so it is worth the half weight a
   // non-specific pin earns (§4.6).
@@ -344,14 +344,20 @@ export const RECIPES: ProofRecipe[] = [
     claim: { mechanism: 'DEPENDENCY' },
     predicates: [
       {
-        label: "a server's class was delayed",
+        // The label names the alternatives the options really are: a server row, or the hurt work's own delay outside
+        // CPU, zIIP, I/O, storage and capping (RT-13 review).
+        label: "a server's class was delayed, or the work's wait was elsewhere",
         options: [
           atLeast('DELAY_CPU', SERVER, 10, 0),
-          atMost('VELOCITY', SERVER, 90, 1),
+          // "Velocity under goal" (§4.6): PI is the reports' own goal-to-achieved ratio, so > 1.2 is a server class more
+          // than 20 % short of its velocity or response-time goal. An absolute velocity line cannot say that — a 30 %
+          // velocity goal is met at every reading above it, and a quiet hour reads 76–86 % on a healthy region
+          // (RT-13 review).
+          atLeast('PI', SERVER, 1.2, 0),
           atLeast('DELAY_OTHER', SELF, 20, 0),
         ],
       },
-            WORK_NORMAL,
+      WORK_NORMAL,
     ],
   },
   {
@@ -366,7 +372,8 @@ export const RECIPES: ProofRecipe[] = [
         ],
       },
       {
-        label: 'the wait was not CPU and nothing about the work changed',
+        // Any one option ticks it, so the label is an "or", as the options are (RT-13 review).
+        label: 'the wait was not CPU, or nothing about the work changed',
         options: [...WORK_NORMAL.options, atLeast('DELAY_OTHER', SELF, 20, 0)],
       },
     ],
@@ -406,14 +413,14 @@ export const RECIPES: ProofRecipe[] = [
           atLeast('SOS_MIN', SERVER, 1, 2),
         ],
       },
-            WORK_NORMAL,
+      WORK_NORMAL,
     ],
   },
   {
     claim: { mechanism: 'ROUTING' },
     predicates: [
       { label: 'one region or route failed work', options: [atLeast('FAIL_PCT', SELF, 1, 2)] },
-            WORK_NORMAL,
+      WORK_NORMAL,
     ],
   },
   {
@@ -428,7 +435,7 @@ export const RECIPES: ProofRecipe[] = [
           atLeast('DASD_IOSQ', SERVER, 0.1, 2, 2),
         ],
       },
-            WORK_NORMAL,
+      WORK_NORMAL,
     ],
   },
   {
@@ -442,7 +449,7 @@ export const RECIPES: ProofRecipe[] = [
           atLeast('SOS_MIN', SERVER, 1, 2),
         ],
       },
-            WORK_NORMAL,
+      WORK_NORMAL,
     ],
   },
   {
@@ -580,7 +587,7 @@ export const RECIPES: ProofRecipe[] = [
         label: 'work failed or a region ran short of its own storage',
         options: [atLeast('FAIL_PCT', SELF, 1, 2), atLeast('JOB_ABEND', SELF, 1, 2), atLeast('SOS_MIN', SERVER, 1, 2)],
       },
-            WORK_NORMAL,
+      WORK_NORMAL,
     ],
   },
 ];
