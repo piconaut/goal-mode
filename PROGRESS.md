@@ -707,6 +707,10 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   - The resource lists reproduce the old per-card mechanism lists. The exception is SMF_AUDIT: it was never blamed,
     and now has a `CP_OVERHEAD` footprint on the SMF address spaces (CPU_CAPACITY only, its old list; #359 review N1).
   - A card is background only for work its footprint reached (#359 review N2).
+  - User decision 2026-11-15 (#359 review B1): keep footprint-based `disturbed`, so collateral work's baseline also
+    freezes while a card reaches it, though it moves mechanisms as well as triggers (1 of 212 in the RT-25 sample).
+    Staleness from long, wide cards belongs to RT-17's per-hour baseline. If a playtest shows odd mechanisms first,
+    the fallback is to freeze collateral work only for narrow reaches, not sysplex-wide ones.
   - Validator (RT-25 sample: five passive days, seeds 1–5, three scenarios, Normal):
     - gain disagreements fall from 23 to 6 (midwest 0, revenue 0, harbourline 6);
     - footprint-wrong: 0;
