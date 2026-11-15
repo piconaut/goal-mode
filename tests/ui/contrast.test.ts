@@ -36,6 +36,7 @@ describe('theme contrast', () => {
       for (const fg of ['text', 'muted', 'accent', 'good', 'warn', 'bad', 'crit'])
         for (const bg of ['bg', 'panel', 'panel-2']) expect(contrast(t[fg]!, t[bg]!), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
       expect(contrast(t.bg!, t.accent!), 'primary button label').toBeGreaterThanOrEqual(4.5);
+      expect(contrast(t.bg!, t.crit!), 'danger button label').toBeGreaterThanOrEqual(4.5);
     });
   }
 });

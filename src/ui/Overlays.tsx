@@ -46,7 +46,7 @@ export function PhaseActions({ v, game, open, setOpen }: { v: ViewModel; game: G
           <button
           className={v.weekendDay ? '' : 'primary'}
           onClick={async () => {
-            if (game.savedRunDay !== null && v.day === 0 && !(await ask(`Start this new run? Your saved run (day ${game.savedRunDay + 1}) is replaced at the end of today. Continue it or export it first to keep it.`, 'Start new run'))) return;
+            if (game.savedRunDay !== null && v.day === 0 && !(await ask(`Start this new run? Your saved run (day ${game.savedRunDay + 1}) is replaced at the end of today. Continue it or export it first to keep it.`, 'Start new run', 'danger'))) return;
             game.send({ type: 'START_DAY' });
           }}
         >
@@ -332,7 +332,7 @@ function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
   const plannedAny = v.changes.length > 0;
   const [seed, setSeed] = useState('');
   const restart = async (scenario: string, difficulty: DifficultyId, daily: boolean, typed = '') => {
-    if (plannedAny && !(await ask('Restart? Planned changes are discarded.', 'Restart run'))) return;
+    if (plannedAny && !(await ask('Restart? Planned changes are discarded.', 'Restart run', 'danger'))) return;
     const today = new Date().toISOString().slice(0, 10);
     game.send(
       daily

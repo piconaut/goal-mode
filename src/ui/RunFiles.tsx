@@ -85,7 +85,7 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
       return;
     }
     const opened = session.current;
-    if (!(await ask(`Load ${name}? It replaces the current run and the saved run.`, 'Load save')) || opened !== session.current) return;
+    if (!(await ask(`Load ${name}? It replaces the current run and the saved run.`, 'Load save', 'danger')) || opened !== session.current) return;
     submittedResult.current = game.importResult;
     setNotice('');
     setLoading(true);
@@ -163,6 +163,9 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
             const fileText = await file.text();
             if (opened !== session.current) return;
             setText(fileText);
+            // The file is read: from here only the player's confirmation is pending, so the button must not go on
+            // saying "Reading file…" while the prompt is open (PR-10).
+            setReading(false);
             await load(fileText, file.name);
           } catch (error) {
             if (opened === session.current) setNotice(`Could not read ${file.name}: ${String(error)}`);
