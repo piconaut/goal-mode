@@ -531,7 +531,6 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
   );
 }
 
-/** The reply names the primary and the other accepted answers, one line of reasoning each (RT-07). */
 /** Each filed claim's proof recipe, its two predicates ticked or not (RT-13). */
 function ProofView({ proof }: { proof: ProofResult }) {
   return (
@@ -553,6 +552,7 @@ function ProofView({ proof }: { proof: ProofResult }) {
   );
 }
 
+/** The reply names the primary and the other accepted answers, one line of reasoning each (RT-07). */
 function AlsoAccepted({ truth }: { truth: IncidentTruth }) {
   const accepted = truth.accepted;
   if (!accepted) return null;

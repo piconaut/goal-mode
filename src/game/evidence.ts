@@ -2,7 +2,7 @@
 // each against the incident's hidden truth, its time window and the work it hurt.
 
 import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, type EvidenceMetric, type PinRelation } from '../content/evidence';
-import { formatClock } from '../sim/core/clock';
+import { clockAt, formatClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
@@ -290,7 +290,8 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       const upto = i < 0 ? run.smfHours.length : i;
       const earlier = run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
       // The ended rate's normal is the same hour on earlier days, as for Workload Activity rows (RT-13).
-      const pinned = run.smfHours[upto];
+      // The open hour ('current') is not in the list yet: it is the clock's hour of the played day.
+      const pinned = run.smfHours[upto] ?? (i < 0 ? { day: run.day, hourOfDay: Math.floor(clockAt(run.sim.tick).hourOfDay) } : undefined);
       const sameHour = pinned ? run.smfHours.slice(0, upto).filter((h) => h.hourOfDay === pinned.hourOfDay && h.day < pinned.day) : [];
       const earlierOf = (m: EvidenceMetric) => median((m === 'ENDED_RATE' ? sameHour : earlier).map((h) => read(`${h.day}:${h.hourOfDay}`)?.[m]).filter(NUM));
       const baseline = req.metric === 'CPU_VS_BASE' ? 1 : earlierOf(req.metric);
@@ -384,7 +385,7 @@ export function incidentSubjects(
   return { classes, lpars, hosts, servers, ...(serverClasses.length > 0 ? { serverClasses } : {}) };
 }
 
-function hourEndTick(run: RunState, key: string): number | null {
+export function hourEndTick(run: RunState, key: string): number | null {
   if (key === 'current') return run.sim.tick;
   const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === key);
   if (i < 0) return null;

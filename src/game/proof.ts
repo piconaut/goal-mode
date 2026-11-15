@@ -13,7 +13,8 @@ import {
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import type { ClassificationRule } from '../sim/wlm/types';
-import { incidentSubjects, pinRelation, type EvidencePin } from './evidence';
+import { hourEndTick, incidentSubjects, pinRelation, type EvidencePin } from './evidence';
+import { classify } from '../sim/wlm/classify';
 import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from './types';
 
 export interface PredicateCheck {
@@ -58,14 +59,23 @@ function imageCps(run: RunState, lparId: string): number {
   return l?.pools.filter((p) => p.pool === 'CP').reduce((a, p) => a + p.logical, 0) ?? 0;
 }
 
-/** A Workload Activity row with no earlier rows, pinned once the report had history: new work's first rows. */
+/** New work's first rows: a Workload Activity row, or a workload's Db2 101/CICS 110 row, that no earlier interval
+ * or closed hour the report holds carries, pinned once the report had history for other rows. Read from the rows
+ * themselves, not from the pin's baseline: an ended rate's slot baseline is absent all through day 1. */
 function withoutHistory(run: RunState, p: EvidencePin): boolean {
-  if (p.baseline !== undefined) return false;
   if (p.source === 'WLMGL') {
     const index = run.sim.rmf.intervals.findIndex((iv) => iv.endTick === p.tick);
-    return index >= EVIDENCE.baselineRows;
+    if (index < EVIDENCE.baselineRows) return false;
+    return !run.sim.rmf.intervals.slice(0, index).some((iv) => iv.wlm.some((w) => w.lparId === p.system && w.scKey === p.subject));
   }
-  if (p.source === 'Db2 101' || p.source === 'CICS 110') return run.smfHours.length > EVIDENCE.baselineRows;
+  if (p.source === 'Db2 101' || p.source === 'CICS 110') {
+    const earlier = run.smfHours.filter((h) => {
+      const end = hourEndTick(run, `${h.day}:${h.hourOfDay}`);
+      return end !== null && end < p.tick;
+    });
+    if (earlier.length < EVIDENCE.baselineRows) return false;
+    return !earlier.some((h) => (h.workloads[p.subject]?.completions ?? 0) > 0);
+  }
   return false;
 }
 
@@ -76,6 +86,7 @@ export interface ProofContext {
   batch: Set<string>;
   /** The hurt work's most important period importance (null when none of its classes is in the definition). */
   ownImportance: number | null;
+  scenario: Scenario;
 }
 
 /** A class row's period importance, discretionary as 6; null for a class the definition does not hold (SYSTEM,
@@ -85,6 +96,15 @@ function periodImportance(run: RunState, scKey: string): number | null {
   const period = run.sim.wlm.definition.classes.find((c) => c.id === cls)?.periods[Math.max(0, Number(n ?? 1) - 1)];
   if (!period) return null;
   return period.goal.kind === 'DISC' ? 6 : period.importance;
+}
+
+/** A PROCU job's importance: its address space classified as the STC rules would (SYSTEM and SYSSTC rank above
+ * every period, so they are never displaceable). */
+function jobImportance(ctx: ProofContext, p: EvidencePin): number | null {
+  const a = [...ctx.scenario.addressSpaces, ...ctx.run.sim.extraAddressSpaces].find((x) => x.jobname === p.subject && x.lparId === p.system);
+  if (!a) return null;
+  const sc = classify(ctx.run.sim.wlm.definition, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId }).serviceClass;
+  return sc ? periodImportance(ctx.run, `${sc}#1`) : null;
 }
 
 function ownImportance(run: RunState, s: IncidentSubjects): number | null {
@@ -98,7 +118,7 @@ export function optionHolds(ctx: ProofContext, p: EvidencePin, relation: string 
   if (p.metric !== o.metric || relation === null || !o.relations.includes(relation as never)) return false;
   if (o.batchClass && !ctx.batch.has(p.subject.split('#')[0]!)) return false;
   if (o.displaceable) {
-    const theirs = periodImportance(run, p.subject);
+    const theirs = p.source === 'PROCU' ? jobImportance(ctx, p) : periodImportance(run, p.subject);
     if (theirs === null || ctx.ownImportance === null || theirs <= ctx.ownImportance) return false;
   }
   const reading = o.reading === 'rate' ? p.rate : { value: p.value, baseline: p.baseline };
@@ -168,7 +188,7 @@ export function judgeProof(
   const batch = batchClasses(run);
   const members = group.map((inc) => {
     const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
-    return { inc, subjects, ctx: { run, batch, ownImportance: ownImportance(run, subjects) } };
+    return { inc, subjects, ctx: { run, batch, ownImportance: ownImportance(run, subjects), scenario } };
   });
   return {
     mechanism: checkRecipe(run, members, mechanism, MECHANISM_RECIPES[mechanism], pins),

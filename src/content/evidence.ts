@@ -291,11 +291,11 @@ const mechanismRecipes: Record<Mechanism, ProofRecipe> = {
   // A less important period of the work's own class counts too (ADHOC's long queries in DDFPRD#2 behind MOBILE's
   // DDFPRD#1): the row relates as `self`, but WLM could have taken its CPU.
   CPU_PRIORITY: { predicates: [CPU_DELAYED, {
-    label: 'a displaceable consumer on that host: a less important class, or a job, using ≥ 10 % of the image (WLMGL APPL, PROCU)',
+    label: 'a displaceable consumer on that host: a less important class or job using ≥ 10 % of the image (WLMGL APPL, PROCU)',
     options: [
       { metric: 'APPL', relations: SELF_OR_COMPETITOR, test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
       { metric: 'APPL_CP', relations: SELF_OR_COMPETITOR, test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
-      { metric: 'JOB_APPL', relations: ['competitor'], test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac } },
+      { metric: 'JOB_APPL', relations: ['competitor'], test: { kind: 'shareOfImage', frac: PROOF.imageShareFrac }, displaceable: true },
     ],
   }] },
   // APPROX: defined capacity and group capacity limit general-CP MSU, so the cap's symptom is CP delay, not zIIP (an

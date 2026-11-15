@@ -679,8 +679,8 @@ claim. Where the build differs from the table:
   ([p.524](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=524)). APPROX: a batch class row's END/S
   counts jobs, so its quotient is CP per job.
 - **An ended rate's baseline is the slot baseline** (§4.4): the same interval or SMF hour on earlier days the report
-  still holds (300 RMF intervals, 48 SMF hours), not the six preceding rows, which read the morning ramp as a 1.6×
-  surge (measured: MOBILE on PROD2 at noon, day 1). Day 1 has no rate baseline. Other metrics keep RT-12's baseline.
+  still holds (300 RMF intervals, 48 SMF hours), not the six preceding rows, which read the morning ramp as a 1.7×
+  surge (measured: MOBILE on PROD2 at noon on day 1, seed 7: 145 against 84 ended/s). Day 1 has no rate baseline. Other metrics keep RT-12's baseline.
 - **RUNAWAY_WORK**'s flat half is the runaway class's ended rate *or* the hurt work's own cost normal (a looping job
   has no transactions); **BATCH_OVERLAP**'s discriminator is a batch class (one a JES rule assigns) at ≥ 10 % of the
   image; **NEW_WORKLOAD**'s is a row with no history once the report has some; **POLICY** and **GROWTH** share one

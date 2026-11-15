@@ -63,6 +63,8 @@ function placeFor(kind: Kind, o: PredicateOption, relation: string): Pick<Eviden
   const workloadId = kind === 'CICS' ? 'RBANK' : kind === 'DDF' ? 'MOBILE' : 'BATCH';
   const m = o.metric;
   if (WLM_FAMILY.has(m)) {
+    // New work's row: a class no earlier interval carried (the work's own classes always have history here).
+    if (o.test.kind === 'noHistory') return relation === 'competitor' ? { source: 'WLMGL', subject: 'NEWAPP#1', system: 'PROD1' } : null;
     // A displaceable row of the work's own class is a less important period: only DDFPRD has one.
     if (relation === 'self') return o.displaceable ? (kind === 'DDF' ? { source: 'WLMGL', subject: 'DDFPRD#2', system: 'PROD1' } : null) : { source: 'WLMGL', subject: `${own}#1`, system: 'PROD1' };
     if (relation === 'server') return kind === 'CICS' ? { source: 'WLMGL', subject: 'STCHI#1', system: 'PROD1' } : null;
@@ -81,7 +83,8 @@ function placeFor(kind: Kind, o: PredicateOption, relation: string): Pick<Eviden
   if (m === 'SOS_MIN') return relation === 'server' && kind === 'CICS' ? { source: 'CICS 110', subject: 'CICSAOR1', system: '*PLEX' } : null;
   if (m === 'JOB_APPL') {
     if (relation === 'server') return kind === 'CICS' ? { source: 'PROCU', subject: 'CICSAOR1', system: 'PROD1' } : null;
-    if (relation === 'competitor') return { source: 'PROCU', subject: 'HOGJOB', system: 'PROD1' };
+    // MONAGENT runs in STCMED (importance 3), below every hurt class here.
+    if (relation === 'competitor') return { source: 'PROCU', subject: 'MONAGENT', system: 'PROD1' };
     return null;
   }
   if (m.startsWith('JOB_')) return relation === 'self' && kind === 'BATCH' ? { source: 'SMF 30', subject: 'BATCH', system: '*PLEX' } : null;
@@ -306,13 +309,36 @@ describe('proofs from replayed incidents (RT-13)', () => {
     // taken the CPU from, on an image whose processor is not reported full by these pins.
     const runaway = after('cpu', 'ADHOC', 10);
     // The first full interval of the runaway (12:30): the next one's six-row normal already holds two runaway rows.
-    const hog = pinAll(runaway, [{ source: 'WLMGL', index: last(runaway) - 1, system: 'PROD2', scKey: 'DDFPRD#2', metric: 'APPL_CP' }]);
+    // MOBILE's DDFPRD#1 waits for CPU there (25 %) while ADHOC's DDFPRD#2 takes an engine.
+    const j = last(runaway) - 1;
+    const hog = pinAll(runaway, [
+      { source: 'WLMGL', index: j, system: 'PROD2', scKey: 'DDFPRD#1', metric: 'DELAY_CPU' },
+      { source: 'WLMGL', index: j, system: 'PROD2', scKey: 'DDFPRD#2', metric: 'APPL_CP' },
+    ]);
     const adhoc = mobileIncident(hog.run, { mechanism: 'CPU_PRIORITY', trigger: 'RUNAWAY_WORK' });
     const pr = judgeProof(hog.run, MIDWEST, [adhoc], 'CPU_PRIORITY', 'RUNAWAY_WORK', hog.pins);
-    expect(pr.mechanism.predicates[1]!.met).toBe(true);
-    expect(judgeProof(hog.run, MIDWEST, [adhoc], 'CPU_CAPACITY', 'RUNAWAY_WORK', hog.pins).mechanism.predicates[1]!.met).toBe(false);
+    expect(pr.mechanism.complete).toBe(true);
+    expect(pr.mechanism.predicates[1]!.pinIds).toEqual([hog.pins[1]!.id]);
+    expect(judgeProof(hog.run, MIDWEST, [adhoc], 'CPU_CAPACITY', 'RUNAWAY_WORK', hog.pins).mechanism.complete).toBe(false);
     // The runaway's APPL rose by more than half an engine over its own recent rows.
     expect(pr.trigger.predicates[0]!.met).toBe(true);
+  });
+
+  it('does not read long-standing work as new: day-1 rates and the open hour have no slot baseline, but have history', () => {
+    // Day 1 noon: MOBILE's own row has no ended-rate baseline yet, and many earlier rows.
+    const wlm = pinAll(noon, [{ source: 'WLMGL', index: last(noon), system: 'PROD2', scKey: 'DDFPRD#1', metric: 'ENDED_RATE' }]);
+    expect(wlm.pins[0]!.baseline).toBeUndefined();
+    // Day 2, 20 minutes into the open hour of Db2 accounting.
+    const db2 = pinAll(advance(day2, MIDWEST, content, 120), [{ source: 'DB2', hour: 'current', workloadId: 'MOBILE', metric: 'ENDED_RATE' }]);
+    for (const [run, pins] of [[wlm.run, wlm.pins], [db2.run, db2.pins]] as const) {
+      const inc = mobileIncident(run, { mechanism: 'CPU_CAPACITY', trigger: 'NEW_WORKLOAD' });
+      expect(judgeProof(run, MIDWEST, [inc], 'CPU_CAPACITY', 'NEW_WORKLOAD', pins).trigger.predicates[1]!.met).toBe(false);
+    }
+  });
+
+  it('gives an open-hour Db2 101 cost pin the same hour yesterday as its rate baseline', () => {
+    const { pins } = pinAll(advance(day2, MIDWEST, content, 120), [{ source: 'DB2', hour: 'current', workloadId: 'MOBILE', metric: 'CPU_VS_BASE' }]);
+    expect(pins[0]!.rate!.baseline).toBeGreaterThan(0);
   });
 
   it('refuses the tier-0 cost for a CICS transaction row: its CPU is reported with the regions', () => {

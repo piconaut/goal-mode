@@ -1,6 +1,9 @@
 // The fewest pins that can satisfy a set of proof predicates (RT-13 tests): a symbolic reading of the recipe tables,
 // in which one pin may serve several options when they read the same metric in a shared relation and their tests can
 // hold together on one value (a cost pin's rate reading is a second value on the same row).
+// It is a lower bound, not a witness: it ignores which incident kinds have the rows an option reads (Db2 101 for a
+// CICS or DDF workload, SMF 30 for a batch night) and the `batchClass`/`displaceable` filters, so a pair it fits in
+// three pins could still need a fourth for some incident. The per-claim fixture tests cover reachability.
 import type { PredicateOption, ProofPredicate } from '../../src/content/evidence';
 
 type Direction = 'up' | 'down' | 'normal' | 'fresh';
