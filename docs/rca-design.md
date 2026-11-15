@@ -660,7 +660,9 @@ satisfied by any attached pin whose metric, relation and value pass one of its o
 without a second pin). Each option carries the tool tier its report needs (`0` Workload Activity, `1` Monitor III /
 Partition Data / PROCU, `2` a paid analytics report), the test asserts every option's tier against the pin source and
 that the seven common recipes (the CPU family, DEPENDENCY, DEMAND_SURGE, CHANGE_REGRESSION, RUNAWAY_WORK) complete
-with tier-0/1 pins only, and no option ever needs tier 3 (§5.5).
+with tier-0/1 pins only, and no option ever needs tier 3 (§5.5). The witness is the incident kind whose report rows
+carry those pins: a CICS transaction row has no CPU per transaction (below), so CHANGE_REGRESSION's cost pin is
+Workload Activity on a DDF or batch workload and CICS monitoring for a CICS workload, as on a real system.
 
 - The CPU family's symptom predicate accepts a CPU-delay share, a CPU-per-transaction ratio, an arrival-rate rise, a
   single class or job at half an engine, or a batch night's CPU wait on the hurt work. The mechanisms that are not
@@ -674,10 +676,13 @@ with tier-0/1 pins only, and no option ever needs tier 3 (§5.5).
   application error filed on a retry storm), so strong arrives by the mechanism's recipe plus the pins' own relevance
   line and the reply shows one trigger predicate unticked. Whether the limit should allow that fourth pin for a
   paired proof is RT-26's design question.
-- `CPU_PER_TXN` is new: Workload Activity's APPL% ÷ END/S against the row's own six preceding intervals, the division
-  the Codex END/S entry teaches. A CICS transaction row reports no resource samples, so its quotient uses the serving
-  regions' class row (also the Codex's path); a row with no ended transactions has none. APPROX: the report prints the
-  two columns, not their quotient.
+- `CPU_PER_TXN` is new: Workload Activity's APPL% CP ÷ END/S against the row's own six preceding intervals, the division
+  the Codex END/S entry teaches, and the CP-only cost the game's Db2 and CICS accounting report (zIIP time is its own
+  column, APPL% IIP). A CICS transaction row reports no resource usage at all (RMF Report Analysis p.524), and its
+  regions' class APPL is those address spaces' CPU — most of it other work in the class — so dividing it by the
+  transactions' END/S tracks 1/END/S; that row is refused and the answer names CICS monitoring. A batch class row does
+  print both columns, but its ENDED counts jobs, so its quotient is CPU per job. APPROX: the report prints the two
+  columns, not their quotient.
 - `ENDED_RATE` now accepts `competitor` besides `self`/`server`, so a co-hosted workload's rate is the collateral
   victim's surrogate for a surge (§4.4).
 - Scoring: a complete recipe for the filed, accepted mechanism replaces the relevance sum and is worth three fully
@@ -691,12 +696,14 @@ with tier-0/1 pins only, and no option ever needs tier 3 (§5.5).
 
 - Where the wording above is narrower or wider than the code: DEPENDENCY's "work-manager state waiting" alternate is
   not modelled (the review has no wait-state row), so its ruling-out half is the shared normal reading; THREAD_LIMIT's
-  "CPU per transaction and QR wait normal" is the same shared reading; HARDWARE_FAULT's "rate **and** CPU per
-  transaction normal" is one predicate, so those two normal readings are alternatives; GROWTH's second predicate is a
-  rise in arrivals alone (a flat cost is what a regression looks like, not growth); POLICY's symptom half is any
-  report's hurt, because the fallback trigger accompanies every mechanism; NEW_WORKLOAD puts the newcomer's share
-  first and the normal reading second; and BATCH_OVERLAP counts a batch night's CPU wait as batch on the machine,
-  since the same collision shows as locks or as CPU.
+  "CPU per transaction and QR wait normal" is that shared reading (its second predicate also accepts a low MXT wait);
+  HARDWARE_FAULT's "rate **and** CPU per transaction normal" is one predicate, so those two normal readings are
+  alternatives; GROWTH's second predicate is a rise in arrivals alone (a flat cost is what a regression looks like,
+  not growth); POLICY's symptom half is any report's hurt, because the fallback trigger accompanies every mechanism;
+  NEW_WORKLOAD puts the newcomer's share first and the normal reading second; BATCH_OVERLAP counts a batch night's CPU
+  wait as batch on the machine, since the same collision shows as locks or as CPU; LOCK_CONTENTION and CF_SERVICE add
+  DELAY_OTHER to the shared normal reading, QR_TCB adds a low MXT wait, and JOB_FAILURE's second predicate is a low
+  night CPU wait or one of the normal readings.
 
 ### 4.7 Incidents caused by the player
 
@@ -762,7 +769,7 @@ occurrence or with a tip. That is a visible nerf to preparation and needs the us
 | Card (fix) | Unlock claim | Proof: both needed | Tool for the second pin |
 |---|---|---|---|
 | RUNAWAY (CANCEL_RUNAWAY) | runaway work in DDF | APPL of the DDF period up ≥ half an engine; ended rate of that work flat | tier 0 (WLMGL) |
-| REGRESSION (REBIND_REVERT) | change regression on a package | CPU per transaction ≥ ×1.3 on the workload; its ended rate flat. The forewarning or Db2 Whisperer tip may stand in for the first | CICS_MON or DB2_ACCT; tier 0 with a per-workload report class: service per transaction from WLMGL |
+| REGRESSION (REBIND_REVERT) | change regression on a package | CPU per transaction ≥ ×1.3 on the workload; its ended rate flat. The forewarning or Db2 Whisperer tip may stand in for the first | CICS_MON or DB2_ACCT for a CICS workload (a transaction row reports no service consumption); tier 0 for a DDF, TSO or batch workload, whose own row prints APPL and END/S |
 | BOT_ATTACK (BLOCK_BOTS) | surge of cheap requests | ended rate ≥ ×2; CPU per transaction ≤ ×0.7 | DB2_ACCT, or WLMGL service per transaction |
 | RETRY_STORM (MOBILE_BACKOFF) | surge that is retries | ended rate ≥ ×2 at flat CPU per transaction; **a retry discriminator that does not exist yet** (§5.3) | — |
 | XLOG_LOOP (CANCEL_XLOG) | runaway job in a class | STCHI APPL up ≥ half an engine with CICS ended rates flat; the job named as top consumer (`JOB_APPL` since RT-11) | RMF_MON3 |

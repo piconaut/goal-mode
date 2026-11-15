@@ -1379,8 +1379,11 @@ delay share, a busy CPC, a capped image, an APPL share, an ended rate against it
 pin's own stored baseline ("the rate stayed flat", "each transaction cost ×1.3 its normal"), and each option names the
 tool tier its report needs: every common recipe — the CPU family, DEPENDENCY, DEMAND_SURGE, CHANGE_REGRESSION and
 RUNAWAY_WORK — completes with Workload Activity, Monitor III or Partition Data pins, so a player without analytics can
-still prove it, and no option ever needs a tier-3 tool. `CPU_PER_TXN` is that tier-0 path: APPL% ÷ END/S against the
-row's own six preceding intervals (a CICS transaction row takes its APPL from the serving regions' class row). A
+still prove it — each claim witnessed on the incident kind whose report rows carry those pins — and no option ever
+needs a tier-3 tool. `CPU_PER_TXN` is that tier-0 path: APPL% CP ÷ END/S against the row's own six preceding intervals
+(CP only; zIIP time is its own column). A CICS transaction row reports no resource usage at all, and its regions'
+class APPL is the address spaces' CPU rather than its transactions', so that row is refused and a CICS workload reads
+its CPU per transaction from CICS monitoring; a batch class row's ENDED counts jobs, so its quotient is CPU per job. A
 complete recipe for the filed, accepted mechanism replaces the relevance sum and pays what three fully specific pins
 pay; a complete recipe for the filed, accepted trigger makes the evidence strong (the Insight bonus), as does the
 relevance line the same pins cleared before RT-13, so a completed proof never pays less than loose pins. The mechanisms

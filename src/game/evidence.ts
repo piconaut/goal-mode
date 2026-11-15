@@ -88,19 +88,15 @@ function median(xs: number[]): number | undefined {
   return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1]! + sorted[mid]!) / 2;
 }
 
-/** Workload Activity's service per transaction: APPL% (CP, including the IIPCP subset; 100 = one engine) divided by
- * END/S, which is how the Codex END/S entry teaches reading the two columns together (RT-13). A CICS transaction row
- * reports no resource samples: its CPU is on the regions' class rows, so the quotient uses those (the Codex's "use
- * those rows" path). Null when the row reported no ended transactions. */
-function wlmCpuPerTxn(w: WlmRecord, rows: readonly WlmRecord[]): number | null {
-  if (w.endPerSec <= 0) return null;
-  const regions = w.resourceSamples === false
-    ? (w.workManager?.regionKeys ?? []).reduce((a, key) => {
-        const r = rows.find((x) => x.lparId === w.lparId && x.scKey === key);
-        return a + (r ? r.applCpPct + r.applIipPct : 0);
-      }, 0)
-    : w.applCpPct + w.applIipPct;
-  return regions > 0 ? regions / 100 / w.endPerSec : null;
+/** Workload Activity's CPU per transaction: APPL% CP (100 % = one engine; it includes the IIPCP subset, RMF Report
+ * Analysis p.534) divided by END/S (p.530) — the division the Codex END/S entry teaches, and the same CP cost the
+ * game's Db2 and CICS accounting report (zIIP time is its own column, APPL% IIP, not part of "CPU"). A CICS transaction
+ * row reports no resource usage at all (RMF Report Analysis p.524): its CPU is the regions' address-space CPU, most of
+ * it other work in that class, so the row has no CPU per transaction — a CICS transaction's cost comes from CICS
+ * monitoring. Null otherwise when the row has no CP time or no ended transactions. */
+function wlmCpuPerTxn(w: WlmRecord): number | null {
+  if (w.resourceSamples === false || w.endPerSec <= 0 || w.applCpPct <= 0) return null;
+  return w.applCpPct / 100 / w.endPerSec;
 }
 
 /** One Workload Activity row's value for a metric, or null when the row has none. */
@@ -155,12 +151,19 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
         return 'That row has no work manager states (CICS transaction classes only)';
       // The tier-0 service-per-transaction path (RT-13): the quotient against the row's own six preceding intervals.
       if (req.metric === 'CPU_PER_TXN') {
+        // A transaction class reports work-manager states and no resource usage: its CPU is the regions' address space,
+        // which is not these transactions' cost (RT-13 review; RMF Report Analysis p.524).
+        if (w.resourceSamples === false)
+          return "A CICS transaction row reports no resource usage: its CPU is its regions' address-space CPU, so read CPU per transaction from CICS monitoring (CICS 110)";
         const quote = (x: (typeof sim.rmf.intervals)[number]): number | null => {
           const row = x.wlm.find((r) => r.lparId === req.system && r.scKey === req.scKey);
-          return row ? wlmCpuPerTxn(row, x.wlm) : null;
+          return row ? wlmCpuPerTxn(row) : null;
         };
         const now = quote(iv);
-        if (now === null) return 'That row reported no ended transactions, so it has no CPU per transaction';
+        if (now === null)
+          return w.endPerSec <= 0
+            ? 'That row reported no ended transactions, so it has no CPU per transaction'
+            : 'That row reported no general-purpose CPU in the interval, so it has no CPU per transaction';
         const base = median(sim.rmf.intervals.slice(Math.max(0, req.index - EVIDENCE.baselineRows), req.index).map(quote).filter(NUM));
         if (base === undefined || base <= 0) return 'That row has no earlier hours to compare its CPU per transaction with';
         return { source: 'WLMGL', metric: 'CPU_PER_TXN', subject: req.scKey, system: req.system, tick: iv.endTick, value: now / base, baseline: 1 };
@@ -368,9 +371,13 @@ export function incidentSubjects(
   }
   const w = allWorkloads(scenario, run).find((x) => x.id === workloadId);
   const cls = w ? classify(run.sim.wlm.definition, w.work) : null;
-  // A report class is a row about this work alone (RC_ADVISOR gives one per workload in a shared service class), so
-  // its row is the work's own, not an unknown class.
-  const classes = [cls?.serviceClass, cls?.reportClass].filter((x): x is string => !!x);
+  // A report class is the work's own row only when the policy gives it to this workload alone: RC_ADVISOR names one per
+  // workload, but the Rules editor can point another workload at the same report class, and that row then aggregates
+  // both (RT-13 review). Its row is the work's own, not an unknown class, when no other workload lands in it.
+  const rc = cls?.reportClass;
+  const rcOwn = rc !== undefined && rc !== null &&
+    allWorkloads(scenario, run).every((x) => x.id === workloadId || classify(run.sim.wlm.definition, x.work).reportClass !== rc);
+  const classes = [cls?.serviceClass, rcOwn ? rc : null].filter((x): x is string => !!x);
   const routing = run.sim.routing[workloadId] ?? w?.routing ?? {};
   const lpars = Object.keys(routing);
   // Images the work actually runs on. A static routing table keeps a 0 weight for an image it was routed away from
@@ -544,9 +551,10 @@ function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, p
     const floor = Math.max(d.notableAt, d.notableMultiple !== undefined && p.baseline !== undefined ? d.notableMultiple * p.baseline : 0);
     // A symptom says the work was hurt, not why: it scores nothing itself, but a lone one is worth half a non-specific
     // pin (RT-13, §4.6), so the caller needs to know it was notable.
+    // Both symptom readings keep 2 checks passed, so the group tie-break orders them as it did before RT-13.
     if (d.weight === 0) return Math.abs(p.value) >= floor && Math.abs(p.value) > 0
       ? result(0, 'a symptom, not a cause', 2, true)
-      : result(0, 'value is unremarkable', 3);
+      : result(0, 'value is unremarkable', 2);
     if (Math.abs(p.value) < floor) return result(0, 'value is unremarkable', 3);
     const hit = d.mechanisms.includes(inc.truth.mechanism) || d.triggers.includes(inc.truth.trigger);
     return result(hit ? d.weight : 0, hit ? (d.weight < 1 ? 'consistent with the cause (but not specific)' : 'points at the cause') : 'points elsewhere', 4);
@@ -663,9 +671,9 @@ export function scoreEvidence(
   const completeTrigger = accepted.triggers.includes(filed.trigger) && proof.some((p) => p.claim === 'trigger' && p.complete);
   const symptom = ranked.some((r) => r.symptom);
   const points = completeMechanism ? EVIDENCE.recipeRelevance : relevance > 0 ? relevance : symptom ? EVIDENCE.symptomRelevance : 0;
-  // Strong evidence: the trigger's own recipe, or the relevance line the same pins cleared before RT-13 — so
-  // completing a recipe never pays less than leaving the pins loose (the recipe's three points replace the sum, not
-  // the strong bonus).
-  const strong = completeMechanism ? completeTrigger || relevance >= EVIDENCE.strongAt : points > 0 && relevance >= EVIDENCE.strongAt;
+  // Strong evidence: a complete recipe for the filed, accepted trigger, or the relevance line the same pins cleared
+  // before RT-13 — so a completed trigger proof earns it and completing a recipe never pays less than loose pins
+  // (the recipe's three points replace the sum, not the strong bonus). A wrong mechanism earns nothing (`points` 0).
+  const strong = points > 0 && (completeTrigger || relevance >= EVIDENCE.strongAt);
   return { verdicts, proof, relevance, points, strong };
 }
