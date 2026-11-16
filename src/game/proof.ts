@@ -7,7 +7,7 @@ import { triggerLabel } from '../content/rca';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
-import { incidentSubjects, incidentWindow, notableFloor, pinRelation, smfHourEndTick, type EvidencePin } from './evidence';
+import { incidentWindow, notableFloor, pinRelation, smfHourEndTick, type EvidencePin } from './evidence';
 import { importanceRank } from './sla';
 import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from './types';
 import { subsystemClasses } from './wlmEdit';
@@ -94,7 +94,7 @@ function jobImportance(ctx: ProofContext, p: EvidencePin): number | null {
 }
 
 function ownImportance(run: RunState, s: IncidentSubjects): number | null {
-  const own = s.classes.filter((c) => !(s.serverClasses ?? []).includes(c)).map((c) => periodImportance(run, `${c}#1`)).filter((x): x is number => x !== null);
+  const own = s.classes.filter((c) => !s.serverClasses.includes(c)).map((c) => periodImportance(run, `${c}#1`)).filter((x): x is number => x !== null);
   return own.length > 0 ? Math.min(...own) : null;
 }
 
@@ -179,7 +179,7 @@ export function judgeProof(
 ): ProofResult {
   const batch = new Set(subsystemClasses(run.sim.wlm.definition, 'JES'));
   const related = group.flatMap((inc): Related[] => {
-    const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
+    const subjects = inc.subjects;
     const ctx: ProofContext = { run, batch, ownImportance: ownImportance(run, subjects), scenario };
     const { lo, hi } = incidentWindow(run, inc);
     return pins.filter((p) => p.tick >= lo && p.tick <= hi).map((p) => ({ p, ctx, relation: pinRelation(run, inc, p, subjects) }));

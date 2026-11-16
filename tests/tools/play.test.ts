@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, openPlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
-import { OLD_SAVE_MESSAGE } from '../../src/game/runFile';
+import { OLD_SAVE_MESSAGE, SAVE_VERSION } from '../../src/game/runFile';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { startTfp } from '../../src/sim/cost/mlc';
 import { quoteTfp } from '../../src/game/tfp';
@@ -56,7 +56,7 @@ describe('headless play interface', () => {
   });
 
   it('new starts a run from an empty play file, as the CLI does, and refuses an unknown scenario', () => {
-    const empty = { version: 2, log: [] } as unknown as PlayFile;
+    const empty = { version: SAVE_VERSION, log: [] } as unknown as PlayFile;
     const r = applyPlayCommand(empty, { cmd: 'new', seed: 3, difficulty: 'NORMAL', scenario: 'harbourline' });
     expect(r.ok).toBe(true);
     expect(r.file.run.scenarioId).toBe('harbourline');

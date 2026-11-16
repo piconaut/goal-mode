@@ -726,7 +726,7 @@ const BTLNK_TEXT: Record<string, string> = {
   IO: 'waiting for I/O',
   STORAGE: 'delayed by paging or swapping',
   QUEUE: 'queued for an initiator or MPL slot',
-  // Logs in saves from before WT-10, when waits and capping were bottlenecks.
+  // The pre-WT-10 token, when waits and capping were bottlenecks; kept so such a line still reads.
   CAP: 'held back by capping',
   OTHER: 'waiting on a server or subsystem',
 };

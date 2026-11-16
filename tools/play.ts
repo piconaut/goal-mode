@@ -29,6 +29,7 @@ import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { writeSpectateFile } from './spectateFile';
 import { decodeRunJson } from '../src/game/runFile';
 import type { Mon3PinHistory } from '../src/game/mon3PinHistory';
+import { SAVE_VERSION } from '../src/game/runFile';
 import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
@@ -181,7 +182,7 @@ if (typeof c === 'string') {
 } else {
   // --pace: advance one hour at a time, saving after each so a spectator sees every step (same end state).
   const steps: PlayCommand[] = paceMs > 0 && c.cmd === 'advance' ? Array.from({ length: Math.max(1, Math.min(24, Math.floor(c.hours))) }, () => ({ cmd: 'advance', hours: 1 })) : [c];
-  let res = { file: file ?? ({ version: 2, log: [] } as never), ok: true, text: '' };
+  let res = { file: file ?? ({ version: SAVE_VERSION, log: [] } as never), ok: true, text: '' };
   for (const [i, step] of steps.entries()) {
     if (i > 0 && (res.file.run.phase !== 'LIVE' || !res.ok || res.text.includes('\nSTOPPED:'))) break;
     if (i > 0) await new Promise((r) => setTimeout(r, paceMs));

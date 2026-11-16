@@ -63,7 +63,7 @@ describe('incident trigger history', () => {
 });
 
 describe('card mechanisms', () => {
-  const hour = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cpcBusySum: 0, lockIndexSum: 0 } as HourAcc;
+  const hour: HourAcc = { ...newHour(0), ticks: 1 };
   const cardOf = (defId: string, over: Partial<ActiveEvent> = {}): ActiveEvent => {
     const def = MIDWEST_GAME.events.find((e) => e.id === defId)!;
     return { uid: `${defId}@1`, defId, name: def.name, startTick: 0, endTick: 10, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: [], started: true, ended: false, ...over };
@@ -82,10 +82,12 @@ describe('card mechanisms', () => {
     expect(triggerOf('MOBILE', 'LOCK_CONTENTION', [cardOf('RETRY_STORM')], clash, false, NO_SCOPE)).toBe('BATCH_OVERLAP');
   });
 
-  it('every card in the three decks with non-empty affects declares a footprint resource (RT-14)', () => {
+  it('every card in the three decks that can hurt work declares a footprint resource (RT-14)', () => {
+    // A card with no resource declares no mechanism (and now blames nothing); one that reaches work or a region must
+    // say what it causes, or it would silently stop being a cause.
     const decks = [MIDWEST_GAME, HARBOURLINE_GAME, REVENUE_GAME];
     const missing = decks.flatMap((d) => d.events
-      .filter((e) => e.affects.length > 0 && !e.resource)
+      .filter((e) => (e.affects.length > 0 || e.reach !== undefined) && !e.resource)
       .map((e) => e.id));
     expect(missing).toEqual([]);
   });

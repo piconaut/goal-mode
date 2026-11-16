@@ -659,9 +659,9 @@ export function replayTraces(file: PlayFile, from: number, to: number, sink: (t:
   const first = file.log[0];
   if (first?.cmd !== 'new') throw new Error('wlm-stats needs a play-CLI file (seed + command log); a browser save has no log to replay past hours');
   let f = newPlayFile(first.seed, first.difficulty, first.scenario);
-  const same = (a: string | undefined, b: string | undefined) => (a ?? 'NORMAL') === (b ?? 'NORMAL');
+  const same = (a: string, b: string) => a === b;
   if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed || !same(f.run.difficulty, file.run.difficulty)) {
-    throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty ?? 'NORMAL'}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty ?? 'NORMAL'})`);
+    throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty})`);
   }
   const step = (): boolean => {
     if (f.run.sim.tick >= to) return false;
@@ -752,9 +752,9 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
   for (const i of incidents) byTick.set(i.startTick, [...(byTick.get(i.startTick) ?? []), i]);
   const last = Math.max(...byTick.keys());
   let f = newPlayFile(first.seed, first.difficulty, first.scenario);
-  const same = (a: string | undefined, b: string | undefined) => (a ?? 'NORMAL') === (b ?? 'NORMAL');
+  const same = (a: string, b: string) => a === b;
   if (f.run.scenarioId !== file.run.scenarioId || f.run.seed !== file.run.seed || !same(f.run.difficulty, file.run.difficulty)) {
-    throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty ?? 'NORMAL'}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty ?? 'NORMAL'})`);
+    throw new Error(`the play log starts a different run (${f.run.scenarioId}/seed ${f.run.seed}/${f.run.difficulty}) than the saved state (${file.run.scenarioId}/seed ${file.run.seed}/${file.run.difficulty})`);
   }
   /** One hour through the play CLI's own advance, so the Monitor III history a later `pin … --at` reads is recorded. */
   const stepHour = () => {

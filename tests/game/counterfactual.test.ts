@@ -6,8 +6,9 @@ import { advance } from '../../src/game/run';
 import { scenarioFor } from '../../src/game/difficulty';
 import { packOf } from '../../src/content/packs';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
-import type { ActiveEvent, Incident, RunState } from '../../src/game/types';
+import type { ActiveEvent, Incident, Mechanism, RunState } from '../../src/game/types';
 import { REVENUE_INCIDENT_HOUR, revenueIncidentHour } from '../helpers/fixtureCache';
+import { SAVE_VERSION } from '../../src/game/runFile';
 import { EMPTY_SUBJECTS, truthOf } from '../helpers/truth';
 
 const pack = packOf('revenue');
@@ -26,7 +27,7 @@ const VICTIM = 'EFILE';
 let file: PlayFile;
 beforeAll(() => {
   file = {
-    version: 2,
+    version: SAVE_VERSION,
     run: revenueIncidentHour(),
     pendingPolicy: null,
     log: [
@@ -98,7 +99,7 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
   });
 
   it('counts a joint cause by its gain, and a red herring below the noise floor as no cause', () => {
-    const card = (uid: string, control = false) => ({ uid, defId: uid, name: uid, trigger: 'POLICY' as const, control, startTick: HOUR_START, endTick: null });
+    const card = (uid: string, control = false) => ({ uid, defId: uid, name: uid, trigger: 'POLICY' as const, mechanisms: [] as Mechanism[], control, startTick: HOUR_START, endTick: null });
     const test = (uid: string, gainPct: number, met = false, control = false) => ({ card: card(uid, control), met, attainmentPct: 90 + gainPct, gainPct, footprint: null });
     // Two cards that only breach together: ending either one raises attainment by 2 pp and neither meets the SLA.
     const joint: IncidentBlame = {

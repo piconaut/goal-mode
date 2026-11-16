@@ -56,7 +56,7 @@ export function accumulateHour(run: RunState): RunState {
   const cappedByLpar = { ...h.cappedByLpar };
   const cappedTicksByLpar = { ...h.cappedTicksByLpar };
   const deliveredByCpc: Record<string, number> = {};
-  const lparBusyById = { ...(h.lparBusyById ?? {}) };
+  const lparBusyById = { ...h.lparBusyById };
   for (const l of run.sim.lpars) {
     const cp = l.pools.find((p) => p.pool === 'CP');
     if (!cp) continue;
@@ -73,7 +73,7 @@ export function accumulateHour(run: RunState): RunState {
   for (const c of run.sim.config.cpcs) {
     if (c.engines.CP > 0) cpcBusyById[c.id] = (cpcBusyById[c.id] ?? 0) + (deliveredByCpc[c.id] ?? 0) / c.engines.CP;
   }
-  const cpByImportance = { ...(h.cpByImportance ?? {}) };
+  const cpByImportance = { ...h.cpByImportance };
   const def = run.sim.wlm.definition;
   for (const lt of run.sim.last.lpars) {
     const acc = [...(cpByImportance[lt.lparId] ?? [0, 0, 0, 0, 0, 0, 0])];

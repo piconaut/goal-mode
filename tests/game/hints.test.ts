@@ -125,7 +125,7 @@ describe('morning hints in a run', () => {
     const second = hintsOf(run).slice(first.length);
     expect(first.length + second.length).toBeGreaterThan(0);
     expect(second.every((m) => m.day === 2)).toBe(true);
-    expect(Object.keys(run.reports[0]!.piWorst ?? {}).length).toBeGreaterThan(3);
+    expect(Object.keys(run.reports[0]!.piWorst).length).toBeGreaterThan(3);
     const forewarnings = run.inbox.filter((m) => m.subject === 'For day 2');
     expect(forewarnings.every((m) => m.day === 1)).toBe(true);
   }, 120_000);

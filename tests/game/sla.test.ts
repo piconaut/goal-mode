@@ -10,7 +10,7 @@ import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 /** No footprint scope: only cards that list the workload qualify. */
 const NO_SCOPE = { hosts: [] };
 
-const hour: HourAcc = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cappedTicksByLpar: {}, cpcBusySum: 0, cpcBusyById: {}, lockIndexSum: 0 };
+const hour: HourAcc = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cappedTicksByLpar: {}, cpcBusySum: 0, cpcBusyById: {}, lparBusyById: {}, cpByImportance: {}, lockIndexSum: 0 };
 const card = (over: Partial<ActiveEvent>): ActiveEvent => ({
   uid: 'X@1', defId: 'X', name: 'X', startTick: 0, endTick: 10, trigger: 'DEMAND_SURGE', affects: ['RBANK'], mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY'], endCommands: [], started: true, ended: false, ...over,
 });

@@ -382,9 +382,9 @@ describe("evidence against the incident's own subjects (RT-04, A10)", () => {
   it('records the classes, images and serving regions when an incident opens', () => {
     const inc = regressed.incidents[0]!;
     expect(inc.subjects).toEqual(incidentSubjects(regressed, MIDWEST, inc.workloadId, inc.day));
-    expect(inc.subjects!.classes).toContain('ONLHI');
-    expect(inc.subjects!.lpars).toEqual(expect.arrayContaining(['PROD1', 'PROD2']));
-    expect(inc.subjects!.servers.map((s) => s.jobname)).toContain('CICSAOR1');
+    expect(inc.subjects.classes).toContain('ONLHI');
+    expect(inc.subjects.lpars).toEqual(expect.arrayContaining(['PROD1', 'PROD2']));
+    expect(inc.subjects.servers.map((s) => s.jobname)).toContain('CICSAOR1');
   });
 
   it('keeps the verdicts after a reclassification and a rerouting', () => {
@@ -425,8 +425,8 @@ describe("evidence against the incident's own subjects (RT-04, A10)", () => {
 
     // Judged against what the incident recorded: the same verdicts as before the edits.
     expect(verdicts(edited, { subjects })).toEqual([[1, 'points at the cause'], [1, 'points at the cause']]);
-    // Judged against today's values (an incident from an old save has no subjects): the A10 defect, now with the
-    // relation's own reasons: DDFPRD is another class, and a *PLEX row cannot place it.
+    // Judged with empty recorded subjects (a fixture that recorded no classes or images): the A10 defect, now with
+    // the relation's own reasons: DDFPRD is another class, and a *PLEX row cannot place it.
     expect(verdicts(edited, {})).toEqual([
       [0, 'a *PLEX row does not show which image the class ran on'],
       [0, 'not on a system MOBILE runs on'],

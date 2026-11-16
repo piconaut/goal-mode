@@ -91,6 +91,14 @@ describe('qualification by footprint', () => {
     expect(footprintRelation(regression, 'TELLER', scope)).toBe('collateral');
   });
 
+  it('a card that declares no mechanism can never be the cause', () => {
+    const card_ = card('REGRESSION', { reach: ['PROD2'] });
+    const silent = { ...card_, mechanisms: [] };
+    expect(qualifyingCards([silent], 'RBANK', 'CPU_PRIORITY', { startTick: T, endTick: T + H }, on('PROD1'))).toEqual([]);
+    // The same card with its resource's real mechanisms does qualify: the empty list is the difference.
+    expect(qualifyingCards([card_], 'RBANK', 'CPU_PRIORITY', { startTick: T, endTick: T + H }, on('PROD1'))).toHaveLength(1);
+  });
+
   it('the mechanism must be one the resource causes', () => {
     expect(triggerOf('CARDAUTH', 'IO', [regression], hour, false, on('PROD2'))).toBe('GROWTH');
     expect(RESOURCE_MECHANISMS.CP).not.toContain('IO');

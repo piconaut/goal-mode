@@ -113,8 +113,8 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[]): Ca
   let best: CapacityBasis | null = null;
   for (const h of hosts) {
     const cpc = avg(hour.cpcBusyById[h.cpcId]);
-    const lpar = avg(hour.lparBusyById?.[h.lparId]);
-    const byImp = hour.cpByImportance?.[h.lparId] ?? [];
+    const lpar = avg(hour.lparBusyById[h.lparId]);
+    const byImp = hour.cpByImportance[h.lparId] ?? [];
     const total = byImp.reduce((a, x) => a + x, 0);
     const donor = byImp.slice(h.importance + 1).reduce((a, x) => a + x, 0);
     const donorFrac = total > 0 ? donor / total : 0;
@@ -261,8 +261,8 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
   const cappedByLpar = { ...acc.cappedByLpar };
   for (const [k, v] of Object.entries(h.cappedByLpar)) cappedByLpar[k] = Math.max(cappedByLpar[k] ?? 0, v);
   const cappedTicksByLpar = sum(acc.cappedTicksByLpar, h.cappedTicksByLpar);
-  const cpByImportance = { ...(acc.cpByImportance ?? {}) };
-  for (const [k, v] of Object.entries(h.cpByImportance ?? {})) cpByImportance[k] = v.map((x, i) => x + (cpByImportance[k]?.[i] ?? 0));
+  const cpByImportance = { ...acc.cpByImportance };
+  for (const [k, v] of Object.entries(h.cpByImportance)) cpByImportance[k] = v.map((x, i) => x + (cpByImportance[k]?.[i] ?? 0));
   return {
     hourIndex: acc.hourIndex,
     ticks: acc.ticks + h.ticks,

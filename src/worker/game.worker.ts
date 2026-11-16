@@ -179,8 +179,8 @@ function recordCareer() {
   if ((run.phase !== 'GAMEOVER' && run.phase !== 'VICTORY') || run.careerRecorded || !storageReady) return;
   const rep = buildView(run, sc()).endReport;
   if (!rep) return;
-  lastRunXp = runXp(rep, run.difficulty ?? 'NORMAL');
-  career = recordRun(career, rep, run.difficulty ?? 'NORMAL');
+  lastRunXp = runXp(rep, run.difficulty);
+  career = recordRun(career, rep, run.difficulty);
   run = { ...run, careerRecorded: true };
   void saveCareer(career);
   postCareer();

@@ -20,7 +20,7 @@ import { applyReportClassAdvice } from '../src/game/rcAdvisor';
 import { clockAt, formatClock, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads, runWorkItems } from '../src/game/workloads';
 import { decideTfp } from '../src/game/tfp';
-import { assertSaveVersion, decodeRunFileText, encodeRunJson } from '../src/game/runFile';
+import { SAVE_VERSION, assertSaveVersion, decodeRunFileText, encodeRunJson } from '../src/game/runFile';
 import { idText } from '../src/game/ids';
 import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
@@ -75,7 +75,7 @@ export type PlayCommand =
 
 export interface PlayFile {
   /** `SAVE_VERSION` (src/game/runFile.ts): a play file of another version is refused at load. */
-  version: 2;
+  version: typeof SAVE_VERSION;
   run: RunState;
   pendingPolicy: ServiceDefinition | null;
   log: PlayCommand[];
@@ -112,7 +112,7 @@ export const openPlayFile = (text: string): PlayFile => decodePlayFile(text);
 
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', scenario = 'midwest'): PlayFile {
   const pack = packOf(scenario);
-  return { version: 2, run: newRun(pack.scenario, pack.game, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty, ...(scenario !== 'midwest' ? { scenario } : {}) }] };
+  return { version: SAVE_VERSION, run: newRun(pack.scenario, pack.game, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty, ...(scenario !== 'midwest' ? { scenario } : {}) }] };
 }
 
 export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {

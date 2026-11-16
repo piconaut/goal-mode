@@ -24,6 +24,7 @@ import { applyTune } from './tune';
 import { addTrace, candidateDump, dumpDay, emptyHour, hourLines } from './botTrace';
 import { setWlmTraceSink } from '../src/sim/wlm/adjust';
 import { clockText } from './playCore';
+import { SAVE_VERSION } from '../src/game/runFile';
 
 const pack = packOf(arg('scenario', 'midwest'));
 const scenario = pack.scenario;
@@ -48,7 +49,7 @@ function spectate(r: RunState) {
   seenChanges = r.changes.length;
   if (fresh.length) spectateLog.push({ cmd: 'note', text: `${botName}: ${fresh.join('; ')}` });
   spectateLog.push({ cmd: 'advance', text: `${botName} day ${r.day + 1} ${r.phase}` });
-  writeSpectateFile(spectatePath, { version: 2, run: r, pendingPolicy: null, log: spectateLog.slice(-50) });
+  writeSpectateFile(spectatePath, { version: SAVE_VERSION, run: r, pendingPolicy: null, log: spectateLog.slice(-50) });
   if (paceSec > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, paceSec * 1000);
 }
 

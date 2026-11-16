@@ -506,9 +506,9 @@ export function pinRelation(run: RunState, inc: Incident, p: EvidencePin, s: Inc
       // The work's own rows and its regions' may come from the sysplex roll-up (the report views' default filter);
       // a competitor's must name a host image, because the roll-up cannot say where that class ran.
       const onHost = s.hosts.includes(p.system);
-      if (p.subject === inc.workloadId || (s.classes.includes(cls) && !(s.serverClasses ?? []).includes(cls)))
+      if (p.subject === inc.workloadId || (s.classes.includes(cls) && !s.serverClasses.includes(cls)))
         return onHost || p.system === '*PLEX' ? 'self' : null;
-      if ((s.serverClasses ?? []).includes(cls)) return onHost || p.system === '*PLEX' ? 'server' : null;
+      if (s.serverClasses.includes(cls)) return onHost || p.system === '*PLEX' ? 'server' : null;
       // Any other class row is a competitor, whether or not today's definition still has the class: judging it from
       // the live policy would let an `ACTIVATE_POLICY` change a frozen row's verdict (A10).
       return (p.subject.includes('#') || knownClass(run, cls)) && onHost ? 'competitor' : null;

@@ -388,10 +388,11 @@ R-16, same pins, after three remediations a player would plausibly make before t
 
 All three punished the player for fixing the incident before the review. RT-04 stores the incident's classes, hosts
 (and the positive-weight hosts the relation test needs) and serving regions when it opens, and judges against that
-snapshot; incidents from old saves still derive them from the present. RT-12 added the serving regions' classes
+snapshot, and a file from another build is refused rather than judged against the present (CL-20). RT-12 added the
+serving regions' classes
 (`serverClasses`), so a region's row is a `server` relation rather than the work's own. `tests/game/evidence.test.ts`
 pins a class row, reclassifies the workload and reroutes it, and gets the pre-edit verdicts from the recorded
-subjects (and the old defect from the live values). The snapshot is taken at the hour's close, so a change made
+subjects (and the defect an empty subject list gives). The snapshot is taken at the hour's close, so a change made
 during the breaching hour is already in it, and rows from a later hour of a still-open incident sit under the new
 class and no longer match — the price of a stable subject for the hour that opened the incident.
 
@@ -624,8 +625,7 @@ is held to it. No group crosses the 06:00 roll, where an open incident is closed
 written up on its own (the review files one RCA per played day). `game/run/grouping.ts` decides it at incident
 creation; `addGroupedIncident` is the only writer of `rcaGroup` and an inherited `rca`, and a retrospective
 incident that spans two unfiled episodes of one cause (the batch night) coalesces them. The union is a product: a mechanism
-accepted for one victim and a trigger accepted for another is a full answer. A save written before RT-07 has no cause
-and keeps the labels' grouping.
+accepted for one victim and a trigger accepted for another is a full answer.
 
 ### 4.6 What "evidence for a mechanism" means
 

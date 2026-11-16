@@ -170,6 +170,8 @@ describe('power-cap RCA scope', () => {
     expect(next.hour!.cappedTicksByLpar?.PRDC).toBeUndefined();
     // 1 of 360 ticks is not 5 % of the hour: the CPU split decides, not CAPPING.
     expect(cappedForHour(next.hour!, 'PRDA')).toBe(false);
+    // An accumulator with no ticks (a fresh hour) is not capped by the vacuous 0 >= 0 either.
+    expect(cappedForHour({ ...next.hour!, ticks: 0, cappedTicksByLpar: {} }, 'PRDA')).toBe(false);
   });
 
   it('uses pending routing changes applied on the cap-start tick', () => {
