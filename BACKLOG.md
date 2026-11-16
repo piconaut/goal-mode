@@ -314,15 +314,6 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
-### PR-01 · A scheduled activation overrides a queued install
-`list: pr-followups · status: ready · priority: high · size: S · area: game`
-
-From the #179 review. `advance` pushes the policy-schedule activation after `pendingCommands` in the same tick
-(`src/game/run.ts` `scheduledActivation`). So if the game is paused on an hour with a schedule entry (including 06:00
-at day start), the scheduled policy replaces the player's queued install while the editor still says "Queued for next
-tick: X". Show the scheduled entry in `plannedPolicy`, or apply the schedule before player commands.
-Done when: the editor and the outcome agree, with a test.
-
 ### PR-02 · Cancel B then A leaves A's edit pending silently
 `list: pr-followups · status: ready · priority: low · size: S · area: game`
 
