@@ -33,6 +33,13 @@ function started(hours: number, scenario = 'midwest'): PlayFile {
   return decodePlayFile(encodePlayFile(base));
 }
 
+/** A played file with Monitor III owned: buy it if the scenario doesn't start with it. */
+function withMon3(base: PlayFile): PlayFile {
+  const f = { ...base, run: { ...base.run, insight: Math.max(base.run.insight, 50) } };
+  const buy = applyPlayCommand(f, { cmd: 'buy', toolId: 'RMF_MON3' });
+  return buy.ok ? buy.file : f;
+}
+
 describe('save version', () => {
   it('refuses a play file from an older build with one message, not a partial load', () => {
     const old = { ...newPlayFile(7), version: 1 } as unknown as PlayFile;
@@ -171,6 +178,86 @@ describe('headless play interface', () => {
     const delayCols = mon3Text(f).split('\n').find((l) => l.startsWith('system ') && l.includes(' DLY '))!;
     expect(delayCols).toMatch(/USG\s+DLY\s+IDL\s+UKN\s+PRC\s+DEV\s+STR\s+SUB\s+OPR\s+ENQ\s+primaryReason$/);
     expect(delayCols).not.toMatch(/\bCAP\b|delay\.cap|delay\.ziip/);
+  });
+
+  it('mon3 CPC table prints the browser columns with *CP/*ICF group rows and the capacity-adjusted line', () => {
+    const f = run(withMon3(started(1)), [{ cmd: 'advance', hours: 1 }]);
+    const section = (t: string) => {
+      const lines = t.split('\n');
+      const i = lines.indexOf('CPC');
+      return lines.slice(i, lines.indexOf('', i));
+    };
+    const s = section(mon3Text(f));
+    // RMF's two-level header: the partition table's grouped columns, and no weight/polarity/busy table.
+    const leaf = s.find((l) => l.startsWith('Partition '))!;
+    expect(leaf).toMatch(/^Partition\s+Def\s+Act\s+Proc Num\s+Effect\s+Total\s+LPAR\s+Effect\s+Total\s+PR\/SM delay %\s+capped %$/);
+    const group = s[s.indexOf(leaf) - 1]!;
+    expect(group.trim()).toMatch(/^MSU\s+Logical Util %\s+Physical Util %$/);
+    // Each group label starts over its first sub-column, not merely somewhere on the line.
+    expect(group.indexOf('MSU')).toBe(leaf.indexOf('Def'));
+    expect(group.indexOf('Logical Util %')).toBe(leaf.indexOf('Effect'));
+    expect(group.indexOf('Physical Util %')).toBe(leaf.indexOf('LPAR'));
+    // A group row sums the partitions of its processor type, in the browser's column order.
+    const rows = mon3Text(f, { json: true })
+      .split('\n')
+      .filter((l) => l.startsWith('{') && l.includes('"lparId"'))
+      .map((l) => JSON.parse(l) as Record<string, number | string>);
+    const sums = (kind: string) => {
+      const part = rows.filter((r) => r.kind === kind);
+      const sum = (k: string) => part.reduce((a, r) => a + (r[k] as number), 0).toFixed(1);
+      return [sum('procNum'), sum('physLparPct'), sum('physEffectPct'), sum('physTotalPct')];
+    };
+    for (const [kind, label] of [['ZOS', '*CP'], ['CF', '*ICF']] as const) {
+      const line = s.find((l) => l.startsWith(label + ' '))!;
+      expect(line.trim().split(/\s+/), label).toEqual([label, ...sums(kind)]);
+    }
+    // The capacity-adjusted line appears once per CPC and names the pin that reads it.
+    const adj = s.filter((l) => l.includes('capacity adjusted'));
+    expect(adj).toHaveLength(1);
+    expect(adj[0]).toMatch(/^CPC \S+: capacity adjusted \d+\.\d % \(pin CPC \S+ CAPACITY_ADJ\)$/);
+    // A system filter selects the CPC that system runs on and prints the whole of it, as the browser does, so the
+    // group rows stay the CPC's totals (what CPC_BUSY reads); --json keeps only the partition asked for.
+    for (const system of ['PROD1', 'CF01']) {
+      const filtered = section(mon3Text(f, { system }));
+      expect(filtered.includes(s.find((l) => l.startsWith('*CP '))!), system).toBe(true);
+      expect(filtered.includes(s.find((l) => l.startsWith('*ICF '))!), system).toBe(true);
+      expect(mon3Text(f, { system, json: true }).split('\n').filter((l) => l.includes('"lparId"')), system).toHaveLength(1);
+    }
+    // --json keeps the whole view model: agents and pins read busyPct there, and weight/polarity stay readable.
+    expect(rows[0]).toMatchObject({ busyPct: expect.any(Number), weight: expect.any(Number), polarity: expect.any(String) });
+  });
+
+  it('mon3 CPC table labels each CPC and keeps its group rows and capacity line on its own partitions', () => {
+    const f = run(withMon3(started(1, 'harbourline')), [{ cmd: 'advance', hours: 1 }]);
+    const lines = mon3Text(f).split('\n');
+    const i = lines.indexOf('CPC');
+    const s = lines.slice(i, lines.indexOf('', i));
+    const labels = s.filter((l) => /^CPC \S+$/.test(l));
+    expect(labels).toHaveLength(2);
+    const rows = mon3Text(f, { json: true })
+      .split('\n')
+      .filter((l) => l.startsWith('{') && l.includes('"lparId"'))
+      .map((l) => JSON.parse(l) as Record<string, number | string>);
+    for (const [k, label] of labels.entries()) {
+      const id = label.slice(4);
+      const block = s.slice(s.indexOf(label) + 1, k + 1 < labels.length ? s.indexOf(labels[k + 1]!) : s.length);
+      const of = rows.filter((r) => r.cpcId === id);
+      const zos = of.filter((r) => r.kind === 'ZOS');
+      const sum = (key: string) => zos.reduce((a, r) => a + (r[key] as number), 0).toFixed(1);
+      expect(block.find((l) => l.startsWith('*CP '))!.trim().split(/\s+/), id).toEqual(['*CP', sum('procNum'), sum('physLparPct'), sum('physEffectPct'), sum('physTotalPct')]);
+      // The capacity line names a partition of this CPC, not the other CPC's first partition.
+      const cap = block.find((l) => l.includes('capacity adjusted'))!;
+      expect(of.map((r) => r.lparId), id).toContain(cap.match(/pin CPC (\S+) CAPACITY_ADJ/)![1]);
+    }
+    // A filter naming a partition of one CPC prints that CPC whole and leaves the other out.
+    const firstId = labels[0]!.slice(4);
+    const firstLpar = rows.find((r) => r.cpcId === firstId)!.lparId as string;
+    const oneLines = mon3Text(f, { system: firstLpar }).split('\n');
+    const one = oneLines.slice(oneLines.indexOf('CPC'), oneLines.indexOf('', oneLines.indexOf('CPC')));
+    expect(one.filter((l) => /^CPC \S+$/.test(l))).toHaveLength(0);
+    expect(one.filter((l) => l.includes('capacity adjusted'))).toHaveLength(1);
+    expect(one.find((l) => l.startsWith('*CP '))).toBe(s.find((l) => l.startsWith('*CP ')));
+    expect(one.some((l) => l.includes('CPC ' + labels[1]!.slice(4)))).toBe(false);
   });
 
   it('clock text names the weekday: the small hours still belong to the played day that began at 06:00', () => {

@@ -39,7 +39,7 @@ import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
 import { TICK_SEC, TICKS_PER_HOUR } from '../src/sim/core/units';
-import { buildMon3, type Mon3Row } from '../src/game/mon3';
+import { buildMon3, type Mon3Cpc, type Mon3Row } from '../src/game/mon3';
 import { emptyMon3PinHistory, mon3PinRange, mon3PinsAt, recordMon3Pins, type Mon3PinHistory } from '../src/game/mon3PinHistory';
 import type { SmfKind } from '../src/worker/protocol';
 
@@ -447,6 +447,74 @@ function delayRow(r: Mon3Row): object {
   return { ...head, ...states, PRC: d.cpu + d.ziip, DEV: d.io, STR: d.stor, SUB: 0, OPR: 0, ENQ: 0, primaryReason: r.primaryReason };
 }
 
+const CPC_HEAD =
+  'CPC (RMF Report Analysis p.97–98): *CP and *ICF group the partitions by processor type. Pin CPC <lpar> LPAR_BUSY for Logical Util % Total, PRSM_DELAY for PR/SM delay % (the game\'s short-engine wait, not an RMF column) and CAPPED for capped %; CPC <lpar> CPC_BUSY is the *CP row\'s Physical Util % Total, CAPACITY_ADJ the capacity-adjusted line. --json has every field; weight is in `play capacity`, weight and polarity are in the Partition Data report.';
+
+/**
+ * The browser's single CPC table (src/ui/monitor/Cpc.tsx) as text: one group row per processor type with the
+ * partition rows under it, and RMF's two-level header (Partition, MSU, Proc Num, Logical/Physical Util %).
+ */
+function cpcText(rows: Mon3Cpc[]): string[] {
+  if (!rows.length) return ['none'];
+  const ids = [...new Set(rows.map((c) => c.cpcId))];
+  const out: string[] = [];
+  for (const id of ids) {
+    const part = rows.filter((c) => c.cpcId === id);
+    if (ids.length > 1) out.push(`CPC ${id}`);
+    out.push(cpcTable(part));
+    const first = part.find((c) => c.kind === 'ZOS');
+    if (first) out.push(`CPC ${id}: capacity adjusted ${(first.capacityAdjPct ?? 0).toFixed(1)} % (pin CPC ${first.lparId} CAPACITY_ADJ)`);
+  }
+  return out;
+}
+
+function cpcTable(rows: Mon3Cpc[]): string {
+  const groups = [
+    { label: 'Partition', cols: [''] },
+    { label: 'MSU', cols: ['Def', 'Act'] },
+    { label: 'Proc Num', cols: [''] },
+    { label: 'Logical Util %', cols: ['Effect', 'Total'] },
+    { label: 'Physical Util %', cols: ['LPAR', 'Effect', 'Total'] },
+    { label: 'PR/SM delay %', cols: [''] },
+    { label: 'capped %', cols: [''] },
+  ];
+  const n1 = (x: number) => x.toFixed(1);
+  const partRow = (c: Mon3Cpc) => [
+    c.lparId,
+    c.kind === 'CF' ? '' : c.msuDef == null ? 'N/A' : String(c.msuDef),
+    c.msuAct === null ? '' : c.msuAct.toFixed(0),
+    n1(c.procNum),
+    n1(c.logicalEffectPct),
+    n1(c.logicalTotalPct),
+    n1(c.physLparPct),
+    n1(c.physEffectPct),
+    n1(c.physTotalPct),
+    c.kind === 'ZOS' ? n1(c.prsmDelayPct) : '',
+    c.kind === 'ZOS' ? c.cappedPct.toFixed(0) : '',
+  ];
+  const groupRow = (kind: 'ZOS' | 'CF', label: string) => {
+    const part = rows.filter((c) => c.kind === kind);
+    if (!part.length) return null;
+    const sum = (f: (c: Mon3Cpc) => number) => part.reduce((a, c) => a + f(c), 0);
+    return [label, '', '', n1(sum((c) => c.procNum)), '', '', n1(sum((c) => c.physLparPct)), n1(sum((c) => c.physEffectPct)), n1(sum((c) => c.physTotalPct)), '', ''];
+  };
+  const body = (['ZOS', 'CF'] as const).flatMap((kind) => {
+    const g = groupRow(kind, kind === 'ZOS' ? '*CP' : '*ICF');
+    return g ? [g, ...rows.filter((c) => c.kind === kind).map(partRow)] : [];
+  });
+  const leaf = groups.flatMap((g) => g.cols.map((c) => c || g.label));
+  const width = leaf.map((h, i) => Math.max(h.length, ...body.map((r) => r[i]!.length)));
+  const offset = (gi: number) => groups.slice(0, gi).reduce((a, x) => a + x.cols.length, 0);
+  const spanW = (gi: number) => groups[gi]!.cols.reduce((a, _, i) => a + width[offset(gi) + i]!, 0) + 2 * (groups[gi]!.cols.length - 1);
+  // A group label spans its columns; widen the last one if the label is longer than the span.
+  groups.forEach((g, gi) => {
+    if (g.cols.length > 1 && g.label.length > spanW(gi)) width[offset(gi) + g.cols.length - 1]! += g.label.length - spanW(gi);
+  });
+  const line = (cells: string[]) => cells.map((x, i) => x.padEnd(width[i]!)).join('  ').trimEnd();
+  const groupLine = groups.map((g, gi) => (g.cols.length === 1 ? ''.padEnd(width[offset(gi)]!) : g.label.padEnd(spanW(gi)))).join('  ').trimEnd();
+  return [groupLine, line(leaf), ...body.map(line)].join('\n');
+}
+
 /** Monitor III (tool MON3): SYSINFO, CPC, DELAY, enclave and WFEX tables for the current range (or JSON lines). */
 export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean; at?: string } = {}): string {
   const run = file.run;
@@ -457,12 +525,17 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
   const pick = <T,>(xs: T[], id: (x: T) => string) => (sys ? xs.filter((x) => id(x).toUpperCase() === sys) : xs);
   const systems = pick(m.systems, (x) => x.system);
   const cpc = pick(m.cpc, (x) => x.lparId);
+  // The CPC table is the CPC's, as in the browser (Cpc.tsx prints every partition of the CPC it shows), so a
+  // system filter picks the CPC that system runs on and keeps the whole CPC: the *CP/*ICF rows stay the CPC's
+  // totals, which is what the CPC_BUSY pin reads. --json keeps the per-partition rows the filter asked for.
+  const cpcIds = new Set(m.cpc.filter((x) => x.lparId.toUpperCase() === sys).map((x) => x.cpcId));
+  const cpcRows = sys ? m.cpc.filter((x) => cpcIds.has(x.cpcId)) : m.cpc;
   const rows = pick(m.rows, (x) => x.system);
   if (sys && !systems.length && !cpc.length) return `No system ${opts.system}; systems: ${m.systems.map((x) => x.system).join(' ')}`;
   const when = run.phase === 'LIVE' ? `range ending ${clockText(run.sim.tick)}` : `snapshot from ${clockText(run.sim.tick)} (not live: phase ${run.phase})`;
   const head = `Monitor III, last ${m.rangeSec}s, ${when}. Policy ${m.policy}. CPC logical:physical CP ratio ${m.logicalToPhysical.toFixed(2)}.`;
   if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...(m.wkm ?? []).map((x) => 'SYSWKM ' + JSON.stringify(x)), ...pick(m.procJobs ?? [], (x) => x.system).map((x) => 'PROCU ' + JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
-  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', table(cpc), '', DELAY_HEAD, table(rows.filter((r) => r.resourceSamples !== false).map(delayRow))];
+  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', CPC_HEAD, ...cpcText(cpcRows), '', DELAY_HEAD, table(rows.filter((r) => r.resourceSamples !== false).map(delayRow))];
   // PROCU lists jobs by EAppl % CP (RMF Report Analysis p.188); percentages are of one engine.
   const procu = pick(m.procJobs ?? [], (x) => x.system).filter((j) => j.eapplCpEngines + j.eapplZiipEngines > 0.0005);
   const p1 = (e: number) => Number((e * 100).toFixed(1));

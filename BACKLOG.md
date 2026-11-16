@@ -589,20 +589,6 @@ Cross-note: as BL-01, tune after WT-09 (docs/archive/wlm-audit-2026-11.md §6.2,
 
 ## cleanup
 
-### CL-08 · `play mon3` CPC table: same columns as the browser's CPC view
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: the single-table Monitor III CPC view (2026-11-11). The browser now shows one partition table (MSU Def/Act,
-Proc Num, Logical Util % Effect/Total, Physical Util % LPAR/Effect/Total, PR/SM delay %, capped %) and dropped the
-old second table (weight, polarity, busy %). `mon3Text` (`tools/playCore.ts`) still prints the CPC section as
-`table(cpc)`, every `Mon3Cpc` field: `busyPct` (same formula as `logicalTotalPct`), `logical` (same as `procNum`),
-`weight`, `polarity`, `overheadPct`, `capacityAdjPct`, `kind`, `cpcId`. Print the browser's columns with RMF-style
-headers (*CP / *ICF group rows as in `src/ui/monitor/Cpc.tsx`), plus the capacity-adjusted line once per CPC; say in
-the section heading which pin each column takes (`pin CPC <lpar> LPAR_BUSY|PRSM_DELAY|CAPPED`, `CPC_BUSY`,
-`CAPACITY_ADJ`). Leave `--json`, `mon3PastText` (the pin-history dump) and the `Mon3Cpc` view model unchanged:
-agents and pins read `busyPct` there. Weight and polarity stay in `play capacity`. Done when: `play mon3` and `play
-mon3 PROD1` show the new CPC section, `--json` output is unchanged, and the docs/agents.md example (if any) matches.
-
 ### CL-10 · Monitor III splits by the last tick's mix don't add up
 `list: cleanup · status: ready · priority: low · size: M · area: game`
 
