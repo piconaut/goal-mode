@@ -115,17 +115,26 @@ describe('morning hints in a run', () => {
     const { TICKS_PER_DAY } = await import('../../src/sim/core/units');
     // Each day's hints are dated for the next morning (day index 1 after day 0, 2 after day 1). Checked day by day so
     // the test doesn't depend on which day of a seed happens to be quiet.
+    // Two full days stay (CL-16): a hint is stamped when the day closes (day + 1), so two consecutive dates need two
+    // day closes, and the first close is the earliest a hint can appear. Seed 11 puts a hint at each close; seed 5's
+    // first day was quiet, which left the day-1 check vacuous. A cached two-day state would only move the same play
+    // into a recipe that every cold CI cache pays again; a cached partial-day start helps only a warm cache (the cache
+    // lives under node_modules/.cache, empty after npm ci), so neither shortens the suite.
     const hintsOf = (r: typeof run) => r.inbox.filter((m) => m.subject === 'A thought for this morning');
-    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 5, 'NORMAL'), MIDWEST_GAME);
+    let run = startDay(newRun(SCENARIOS.midwest!, MIDWEST_GAME, 11, 'NORMAL'), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
     const first = hintsOf(run);
+    expect(first.length).toBeGreaterThan(0);
     expect(first.every((m) => m.day === 1)).toBe(true);
     run = startDay(chooseDraft(run, MIDWEST_GAME, null), MIDWEST_GAME);
     run = advance(run, SCENARIOS.midwest!, MIDWEST_GAME, TICKS_PER_DAY);
     const second = hintsOf(run).slice(first.length);
+    expect(second.length).toBeGreaterThan(0);
     expect(first.length + second.length).toBeGreaterThan(0);
     expect(second.every((m) => m.day === 2)).toBe(true);
     expect(Object.keys(run.reports[0]!.piWorst).length).toBeGreaterThan(3);
+    // No visited seed draws a forewarned card in two days, so this passes on an empty list; a forewarned card is
+    // stamped at the previous day's close, so it never needed the second day either.
     const forewarnings = run.inbox.filter((m) => m.subject === 'For day 2');
     expect(forewarnings.every((m) => m.day === 1)).toBe(true);
   }, 120_000);
