@@ -89,7 +89,10 @@ export function submitRca(run: RunState, incidentId: number, mechanism: Mechanis
   const facetTrust = baseTrust > 0 ? baseTrust * (1 + (group.length - 1) * EVIDENCE.groupTrustPerIncident) : baseTrust;
   const trust = mapTrust(run, (t) => t + facetTrust / 2);
   const total = points + evidencePoints;
-  const explain = mechanismExplanation(inc);
+  // The line describes the hour that backs the filed mechanism: in a group the victims' hours differ, and the lead's
+  // would otherwise rule out an answer another victim proves (N1). A single incident keeps the unlabelled wording.
+  const explainInc = group.find((m) => m.truth.mechanism === mechanism) ?? group[0]!;
+  const explain = mechanismExplanation(explainInc, group.length > 1 ? explainInc.workloadId : undefined);
   const rca = { mechanism, trigger, points: total, evidence: verdicts, evidencePoints, ...(strong ? { strong } : {}), ...(proof ? { proof } : {}), ...(explain ? { explain } : {}) };
   return {
     ...run,

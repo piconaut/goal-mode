@@ -4,12 +4,13 @@
 import { cardMechanisms } from '../../src/content/footprint';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
-import { advance, newRun, startDay } from '../../src/game/run';
-import { GROUP_FOLLOW_HOURS, groupLead, sameCause } from '../../src/game/run/grouping';
+import { advance, newRun, startDay, submitRca } from '../../src/game/run';
+import { GROUP_FOLLOW_HOURS, addGroupedIncident, groupLead, sameCause } from '../../src/game/run/grouping';
+import { rcaLeadId } from '../../src/game/run/rca';
 import { fallbackCause } from '../../src/game/rcaTruth';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import type { Incident, IncidentTruth } from '../../src/game/types';
-import { TICKS_PER_HOUR } from '../../src/sim/core/units';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const at = (hours: number) => hours * TICKS_PER_HOUR;
 const filed = { mechanism: 'CPU_PRIORITY' as const, trigger: 'POLICY' as const, points: 5 };
@@ -89,6 +90,64 @@ describe('grouping incidents by cause (RT-15)', () => {
     // The member must share the cause: another cause's open incident does not stretch this one.
     const other = { ...rbank, truth: { ...none, cause: 'none:CPU:PROD2' } };
     expect(groupLead([morning, other], cardauth)).toBeNull();
+  });
+
+  it('a retrospective incident that spans two unfiled episodes of one cause merges them into one group', () => {
+    const none: IncidentTruth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY', cause: 'none:CPU:PROD1' };
+    // The played day opens at 06:00: 18:00–19:00 and 22:00–23:00 are three hours apart, so two episodes and two leads.
+    const mobile = inc(1, 'MOBILE', none, { startTick: at(12), endTick: at(13) });
+    const rbank = inc(2, 'RBANK', none, { startTick: at(16), endTick: at(17) });
+    expect(sameCause(mobile, rbank)).toBe(false);
+    expect(groupLead([mobile], rbank)).toBeNull();
+    // The batch night spans 18:00–06:00 and overlaps both: one cause must still mean one group.
+    const night = inc(3, 'BATCH', none, { startTick: at(12), endTick: at(24) });
+    expect(addGroupedIncident([mobile, rbank], night).map((i) => i.rcaGroup ?? i.id)).toEqual([1, 1, 1]);
+  });
+
+  it('leaves a filed episode alone when a retrospective incident bridges it and an unfiled one', () => {
+    const none: IncidentTruth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY', cause: 'none:CPU:PROD1' };
+    const scored = { ...inc(1, 'MOBILE', none, { startTick: at(12), endTick: at(13) }), rca: filed };
+    const rbank = inc(2, 'RBANK', none, { startTick: at(16), endTick: at(17) });
+    const night = inc(3, 'BATCH', none, { startTick: at(12), endTick: at(24) });
+    const after = addGroupedIncident([scored, rbank], night);
+    // The night joins the unfiled episode and inherits nothing; the filed one keeps its RCA and its own group (A13).
+    expect(after.map((i) => i.rcaGroup ?? i.id)).toEqual([1, 2, 2]);
+    expect(after[0]!.rca).not.toBeNull();
+    expect(after[2]!.rca).toBeNull();
+  });
+
+  it("the day's batch night coalesces two unfiled episodes of one cause through the real day end", () => {
+    // B1's repro: no cards, MOBILE 18:00–19:00 and RBANK 22:00–23:00 both `none:CPU:PROD1` and unfiled, then a missed
+    // critical batch window spanning 18:00–06:00. It used to link the night to one episode and leave the other a second
+    // lead, so one cause earned two RCAs.
+    const none: IncidentTruth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY', cause: 'none:CPU:PROD1' };
+    let run = startDay(newRun(MIDWEST, MIDWEST_GAME, 3), MIDWEST_GAME);
+    run = {
+      ...run,
+      incidents: [inc(1, 'MOBILE', none, { startTick: at(12), endTick: at(13) }), inc(2, 'RBANK', none, { startTick: at(16), endTick: at(17) })],
+      nextId: 3,
+      sim: {
+        ...run.sim,
+        tick: TICKS_PER_DAY - 1,
+        batch: {
+          ...run.sim.batch,
+          nights: [{
+            day: 0, jobs: 10, done: 10, criticalJobs: 10, criticalDone: 9, criticalEndSec: null, missedDeadline: true,
+            criticalDelaySec: { cpu: 1000, io: 0, lock: 0, db2: 0, swap: 0, init: 0 },
+            criticalHosts: [{ lparId: 'PROD1', name: 'BATCH1', jobClass: 'A' }],
+          }],
+        },
+      },
+    };
+    const after = advance(run, MIDWEST, MIDWEST_GAME, 1);
+    const batch = after.incidents.find((i) => i.workloadId === 'BATCH')!;
+    expect(batch.truth.cause).toBe('none:CPU:PROD1');
+    expect(after.incidents.map((i) => rcaLeadId(i))).toEqual([1, 1, 1]);
+    expect(after.incidents.filter((i) => i.rcaGroup === undefined)).toHaveLength(1);
+    // One cause, one RCA: five points for the group, not ten for two leads, and every victim is covered.
+    const filed = submitRca(after, batch.rcaGroup!, batch.truth.mechanism, batch.truth.trigger);
+    expect(filed.score - after.score).toBe(5);
+    expect(filed.incidents.every((i) => i.rca)).toBe(true);
   });
 
   it('never groups across the 06:00 roll, where an open incident is closed and the new day needs its own RCA', () => {

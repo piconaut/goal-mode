@@ -18,7 +18,7 @@ import { acceptedAnswers, truthCause, type TruthContext } from '../rcaTruth';
 import { allWorkloads, isNewWorkload } from '../workloads';
 import { incidentSubjects } from '../evidence';
 import type { GameContent } from './shared';
-import { groupIncident } from './grouping';
+import { addGroupedIncident } from './grouping';
 import { toolOn } from './shared';
 import { clampTrust, FACET_WEIGHT, facetOf, logLine } from './shared';
 
@@ -232,7 +232,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
       // One RCA per root cause (RT-15, docs/rca-design.md §4.5): a card's victims group across the played day, a
       // fallback cause's while they overlap or follow within two hours, and a filed RCA is inherited only from the
       // same card.
-      incidents = [...incidents, groupIncident(incidents, inc)];
+      incidents = addGroupedIncident(incidents, inc);
       r = { ...r, nextId: r.nextId + 1 };
       r = logLine(r, `INCIDENT ${w.id}: SLA missed (${att.attainmentPct.toFixed(1)}%)`);
     }

@@ -10,8 +10,14 @@ const pct = (v: number) => `${v.toFixed(1)} %`;
 
 /** One line explaining the CPU mechanism verdict, e.g. "CPC CPCA averaged 81.2 % busy, below the 90 % capacity
  * line: capacity was not the constraint." When the hour's bands accept both capacity and priority (RT-07), it says so
- * instead of ruling the other answer out. Null for other mechanisms or an incident recorded before the basis. */
-export function mechanismExplanation(inc: Incident): string | null {
+ * instead of ruling the other answer out. Null for other mechanisms or an incident recorded before the basis. `label`
+ * names the victim whose hour the line describes, for a group whose victims differ (RT-15). */
+export function mechanismExplanation(inc: Incident, label?: string): string | null {
+  const line = verdictLine(inc);
+  return line !== null && label ? `${label}: ${line}` : line;
+}
+
+function verdictLine(inc: Incident): string | null {
   const b = inc.basis;
   const mech = inc.truth.mechanism;
   if (!b || (mech !== 'CPU_CAPACITY' && mech !== 'CPU_PRIORITY')) return null;

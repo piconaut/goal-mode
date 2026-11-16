@@ -702,8 +702,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   and never be listed for an RCA. The group's accepted set is the union of its members' and its primary the lead's: `groupAcceptedOf` (scoring,
   the reply and the review) and `alsoAcceptedOf` (the "also accepted" lines) replace the per-incident score, whose
   `scoreRca` wrapper is gone; `rcaGroupOf` reads a group lead-first from any member's id. Cause prefixes (`CAUSE_PREFIX`,
-  `fallbackCause`) live beside `truthCause` so writing and parsing cannot drift, and `groupIncident` is the one place a
-  new incident takes its `rcaGroup`/inherited `rca`. Saves written before RT-07 have no cause and keep the labels'
+  `fallbackCause`) live beside `truthCause` so writing and parsing cannot drift, and `addGroupedIncident` is the one
+  place a new incident takes its `rcaGroup`/inherited `rca` — coalescing the unfiled episodes a retrospective batch
+  night bridges, which the post-merge review caught splitting into two rewarded RCAs. Saves written before RT-07 have no cause and keep the labels'
   grouping. R-7 is now one group (MOBILE CPU_PRIORITY and CARDAUTH DEPENDENCY under one cap), R-9's 13:00 campaign
   incidents are separate from the creep's 10:00 RCA, and R-6's night joins the day only when the card reached the
   critical jobs; tests/game/groupingByCause.test.ts covers each, including one through `closeHour`, and

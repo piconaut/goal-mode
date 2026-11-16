@@ -58,6 +58,23 @@ describe('grouped RCA evidence verdicts', () => {
     expect(file(r).incidents[0]!.rca!.evidence![0]!.why).toBe('not about CARDAUTH');
   });
 
+  it("names the victim whose hour backs a group answer, not the lead's contradictory line (N1)", () => {
+    const basis = (over: Partial<NonNullable<Incident['basis']>>) => ({
+      lparId: 'PROD1', cpcId: 'CPCA', lparBusyPct: 50, cpcBusyPct: 50, donorPct: 30, full: false, ...over,
+    });
+    const r = grouped();
+    r.incidents = [
+      // The lead's hour has room, so its line rules capacity out; the member's hour is full, which is what makes the
+      // union accept it.
+      { ...r.incidents[0]!, basis: basis({}), truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY', accepted: { mechanisms: ['CPU_PRIORITY'], triggers: ['POLICY'] } } },
+      { ...r.incidents[1]!, basis: basis({ cpcBusyPct: 99, donorPct: 0, full: true }), truth: { mechanism: 'CPU_CAPACITY', trigger: 'POLICY', accepted: { mechanisms: ['CPU_CAPACITY'], triggers: ['POLICY'] } } },
+    ];
+    const rca = submitRca(r, 1, 'CPU_CAPACITY', 'POLICY').incidents[0]!.rca!;
+    expect(rca.points).toBe(5);
+    expect(rca.explain).toMatch(/^CARDAUTH: /);
+    expect(rca.explain).toMatch(/machine, not the policy/);
+  });
+
   it('keeps the group lead when score and evidence checks tie', () => {
     const r = grouped();
     r.pins = [pin(r, { subject: 'UNRELATED' })];

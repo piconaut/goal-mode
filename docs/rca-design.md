@@ -622,7 +622,8 @@ day's card only when that card reached it.
 whole played day (R-7's two mechanisms, a 48-hour creep at 09:00 and 15:00) and only a `new:`/`change:`/`none:` cause
 is held to it. No group crosses the 06:00 roll, where an open incident is closed and the new day's continuation is
 written up on its own (the review files one RCA per played day). `game/run/grouping.ts` decides it at incident
-creation; `groupIncident` is the only writer of `rcaGroup` and an inherited `rca`. The union is a product: a mechanism
+creation; `addGroupedIncident` is the only writer of `rcaGroup` and an inherited `rca`, and a retrospective
+incident that spans two unfiled episodes of one cause (the batch night) coalesces them. The union is a product: a mechanism
 accepted for one victim and a trigger accepted for another is a full answer. A save written before RT-07 has no cause
 and keeps the labels' grouping.
 

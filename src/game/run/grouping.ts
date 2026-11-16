@@ -37,26 +37,36 @@ export function sameCause(a: CausedIncident, b: CausedIncident): boolean {
 }
 
 /**
- * The earlier incident a new one joins, if any, and whose RCA then covers it. A filed RCA is inherited only through the
- * same card; a fallback cause whose group is filed is listed as new instead (§4.5).
+ * The groups the new incident joins, earliest first: every group of its cause that it overlaps or follows, measured
+ * from any member — a fallback episode is as long as its group, not its lead. A filed fallback group is left out: its
+ * RCA is not inherited and it is not merged into a new one (A13).
  */
-export function groupLead(incidents: readonly Incident[], candidate: CausedIncident): Incident | null {
-  const cause = candidate.truth.cause;
-  const fallback = cause !== undefined && fallbackCause(cause);
-  for (const lead of incidents) {
-    if (lead.rcaGroup !== undefined) continue;
-    // A filed fallback group is no longer the same episode (A13), so a later incident joins an unfiled one of it.
-    if (fallback && lead.rca !== null) continue;
-    // A fallback episode is as long as its group: a later incident that overlaps or follows any member joins it, not
-    // only one near the lead.
-    const joins = sameCause(lead, candidate) || (fallback && incidents.some((m) => m.rcaGroup === lead.id && m.truth.cause === cause && sameCause(m, candidate)));
-    if (joins) return lead;
-  }
-  return null;
+function joinableGroups(incidents: readonly Incident[], candidate: CausedIncident): Incident[] {
+  const fallback = candidate.truth.cause !== undefined && fallbackCause(candidate.truth.cause);
+  const ids = new Set<number>();
+  for (const i of incidents) if (sameCause(i, candidate)) ids.add(i.rcaGroup ?? i.id);
+  return [...ids]
+    .map((id) => incidents.find((i) => i.id === id))
+    .filter((lead): lead is Incident => lead !== undefined)
+    .filter((lead) => !(fallback && lead.rca !== null))
+    .sort((a, b) => a.id - b.id);
 }
 
-/** The incident with its group link and, when the group already has an RCA, that RCA (§4.5). */
-export function groupIncident(incidents: readonly Incident[], inc: Incident): Incident {
-  const lead = groupLead(incidents, inc);
-  return lead ? { ...inc, rca: lead.rca, rcaGroup: lead.id } : inc;
+/** The earliest group the new incident joins, if any: the group whose RCA then covers it (§4.5). */
+export function groupLead(incidents: readonly Incident[], candidate: CausedIncident): Incident | null {
+  return joinableGroups(incidents, candidate)[0] ?? null;
+}
+
+/**
+ * `incidents` with `inc` added to its cause's group (§4.5). A retrospective incident — the batch night, which spans
+ * hours that hold two unfiled episodes of one cause — coalesces those episodes into one group instead of leaving two
+ * RCAs for one cause.
+ */
+export function addGroupedIncident(incidents: readonly Incident[], inc: Incident): Incident[] {
+  const groups = joinableGroups(incidents, inc);
+  const root = groups[0];
+  if (!root) return [...incidents, inc];
+  const superseded = new Set(groups.slice(1).map((g) => g.id));
+  const relink = (i: Incident): Incident => (superseded.has(i.rcaGroup ?? i.id) ? { ...i, rcaGroup: root.id } : i);
+  return [...incidents.map(relink), { ...inc, rca: root.rca, rcaGroup: root.id }];
 }
