@@ -21,8 +21,21 @@ import * as wlmAdjust from '../../src/sim/wlm/adjust';
 import { projectionInput } from '../../src/sim/wlm/projection';
 import { POLICY_ADJUST } from '../../src/content/wlm/tuning';
 import { committedMoves } from '../helpers/wlmMoves';
+import type { SimState } from '../../src/sim/core/types';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
+
+// The CF, project-modifier and report-class blocks all start from the same seed-42 Midwest midday state
+// (six sim-hours). Build it once, and hand each block its own copy so no block sees another's changes.
+let middayState: SimState | null = null;
+function midday(): SimState {
+  if (!middayState) {
+    let s = initState(42, MIDWEST);
+    for (let i = 0; i < 6 * 360; i++) s = step(s, [], MIDWEST);
+    middayState = s;
+  }
+  return structuredClone(middayState);
+}
 
 const txn = (over: Partial<SliceSpec>): SliceSpec => ({
   key: 'T',
@@ -189,9 +202,9 @@ describe('determinism', () => {
 
 describe('CF structure placement', () => {
   // Midday state once, then three placements for 30 minutes each.
-  let base = initState(42, MIDWEST);
+  let base: SimState;
   beforeAll(() => {
-    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    base = midday();
   });
   const run = (cmds: Parameters<typeof step>[1]) => {
     let s = step(base, cmds, MIDWEST);
@@ -220,8 +233,7 @@ describe('CF structure placement', () => {
 
 describe('project modifiers', () => {
   it('efficiency lowers CPU; zIIP shift moves MOBILE work from CPs to zIIPs', () => {
-    let base = initState(42, MIDWEST);
-    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    const base = midday();
     const run = (cmds: Parameters<typeof step>[1]) => {
       let s = step(base, cmds, MIDWEST);
       for (let i = 0; i < 30; i++) s = step(s, [], MIDWEST);
@@ -238,8 +250,7 @@ describe('project modifiers', () => {
 
 describe('report classes (F6)', () => {
   it('split mixed work for reporting without changing how WLM manages it', () => {
-    let base = initState(42, MIDWEST);
-    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    const base = midday();
     const policy = (withRc: boolean) => {
       const d = structuredClone(BASEPOL);
       d.policyName = 'RCPOL';
@@ -460,9 +471,9 @@ describe('MPL / swap (storage overcommit)', () => {
 });
 
 describe('CF failure, rebuild and duplexing', () => {
-  let base = initState(42, MIDWEST);
+  let base: SimState;
   beforeAll(() => {
-    for (let i = 0; i < 6 * 360; i++) base = step(base, [], MIDWEST);
+    base = midday();
   });
   const rbankCfMs = (s: typeof base) => {
     const w = s.last.workloads.find((x) => x.id === 'RBANK')!;
