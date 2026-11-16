@@ -953,19 +953,6 @@ and a `defineGame()` that supplies the defaults (`maxDays`, `facets`, …) so ea
 Done when: `npm run compare -- --scenarios midwest,revenue,harbourline` shows no difference, and the bench hashes are
 unchanged.
 
-### CL-40 · CLAUDE.md: everyday commands only, full list in docs/tools.md
-`list: cleanup · status: ready · priority: high · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). The CLAUDE.md commands block is about 5.1k characters, 28 % of the file that
-every session loads. Lines run to 560 characters, and many are investigation or CI-gate commands (`wlm-stats`,
-`blame`, `repro`, `tools/ci/*`). The heading still says "Stack (planned…)" and "Commands, once scaffolded".
-`npm run build` and `test:watch` are missing. Change: move the full list, unchanged, to `docs/tools.md` (add
-`build`, `test:watch` and `tools/lab-examples/`). In CLAUDE.md keep the everyday commands (`test`, `typecheck`,
-`check`, `bench --hash`, `play`, `compare`, `sweep:remote`, `test:remote`) and a link. Rename the heading. First grep
-skills, agents and docs for references to the CLAUDE.md commands list, and repoint them. Done when: CLAUDE.md is at
-least 3k characters shorter, nothing that pointed at the old list is left dangling, and docs/tools.md is linked from
-README.md.
-
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
 `list: cleanup · status: ready · priority: low · size: M · area: tooling`
 
