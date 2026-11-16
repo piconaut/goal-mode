@@ -680,19 +680,6 @@ Source: codebase survey (2026-11-16). Several files play the same run twice to c
 and drop the per-file pairs. First check that no other assertion reads the dropped runs' output. Done when: every
 scenario in `SCENARIOS` keeps a determinism check; `npm run check` is green; the timings are in the PR.
 
-### CL-15 · Measure and cut per-file test overhead
-`list: cleanup · status: ready · priority: high · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). One local full run (4 cores, `--reporter=json`) took 234 s of wall time for
-585 s of summed file time. That is well over the 146 s that 4 workers would need, so import, transform and collect
-time per file is probably large; each file imports the whole sim afresh. Change: measure first. Run vitest's default
-reporter and record its `Duration (transform … setup … collect … tests …)` line, then profile one cheap file. Based
-on the numbers, try what fits: `deps.optimizer` / `server.deps.inline` settings, `pool: 'threads'` against `forks`,
-`maxWorkers`, or merging the tiniest files. Don't use `isolate: false`: tests change module-level settings
-(`POLICY_ADJUST` overrides, `setWlmTraceSink`). Done when: the breakdown and every setting tried, each with its wall
-time, are in the PR and in docs/headless-performance-options.md "Results". Any config change that is kept is in
-`vite.config.ts`, and `npm run check` and `npm run test:remote` are green.
-
 ### CL-16 · Hints dating test plays two days
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 
@@ -1033,3 +1020,16 @@ describes `.claude/agents/` as "game-playing agent definitions", though it also 
 Change: a short "Where to start" block in README.md (play `npm run dev`, `npm run check`, SPEC §0–1, BACKLOG.md,
 docs/tools.md and docs/agents.md, CLAUDE.md), a one-paragraph index of `docs/`, and SPEC §15 brought up to date.
 Done when: every doc in the index exists, and no "planned" wording remains in §15 for things that are built.
+
+### CL-46 · Split `tests/sim/realism.test.ts`, the suite's wall floor
+`list: cleanup · status: ready · priority: high · size: M · area: tooling`
+
+Source: CL-15 (2026-11-16; measurements in docs/headless-performance-options.md). The full suite takes 278 s of wall
+time on 8 CPUs, and its longest file sets the floor: `tests/sim/realism.test.ts` is 206.5 s alone (next
+`wlm-realism.test.ts` 166.8 s, `counterfactual.test.ts` 148.5 s). A file runs on one worker, so no pool or
+`maxWorkers` setting can take the suite below its longest file (`--pool=threads` 297 s, `--maxWorkers=4` 356 s).
+Change: split `realism.test.ts` along its `describe` blocks into 2–3 files that each stay under ~100 s. Each file
+builds its own start state (CL-13's midday cache is module-level, so the split pays one ~3 s build per file at most).
+`tests/sim/wlm-realism.test.ts` stays as it is (user decision 2026-11-16, quoted in CL-13). Done when: the same
+assertions pass, `npm run check` is green, and the PR has the full-suite wall time before and after (the floor should
+fall to `wlm-realism`).
