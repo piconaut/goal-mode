@@ -1,6 +1,7 @@
-import { applyPlayCommand, encodePlayFile, newPlayFile } from '../../tools/playCore';
+import { applyPlayCommand, catalogText, encodePlayFile, newPlayFile, type PlayCommand } from '../../tools/playCore';
 import { classRows, moveRows, replayAdvance, statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
 import type { WlmAdjustTrace, WlmCandidateTrace, WlmTrialTrace } from '../../src/sim/wlm/adjust';
+import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const trial = (over: Partial<WlmTrialTrace> = {}): WlmTrialTrace => ({
   move: 'A#1 DP 20→21', verdict: 'NO_RECEIVER_GAIN', receiverPi: [1.4, 1.3], ...over,
@@ -323,7 +324,7 @@ describe('inspect … wlm-stats over a play file', () => {
 describe('inspect … wlm-stats stops where the play CLI stopped', () => {
   it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
     let f = newPlayFile(7);
-    const run = (c: { cmd: 'start' } | { cmd: 'advance'; hours: number } | { cmd: 'restart'; name: string } | { cmd: 'change'; req: { label: string; commands: { kind: 'SET_JOB_CLASS'; jobClass: string; initiators: Record<string, number> }[] } }) => {
+    const run = (c: Extract<PlayCommand, { cmd: 'start' | 'advance' | 'restart' | 'change' }>) => {
       const out = applyPlayCommand(f, c);
       expect(out.ok, out.text).toBe(true);
       f = out.file;
@@ -334,6 +335,8 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     // first stream it starts in the first batch night — an ordinary change, not a 41-hour wait for the day-2 card.
     const classA = (initiators: Record<string, number>) => run({ cmd: 'change', req: { label: `Class A initiators on ${Object.keys(initiators).join(' ') || 'none'}`, commands: [{ kind: 'SET_JOB_CLASS', jobClass: 'A', initiators }] } });
     run({ cmd: 'start' });
+    // Live, so these are emergency changes: 1 h each from the day's 8, a trust cost, and a seeded 3 % chance of
+    // failing (labelled by their text). Planned in the briefing instead, seed 7's 06:00 apply fails, so keep them here.
     classA({ PROD1: 12, PROD2: 10, SYSP: 8 });
     // Seed 7, Midwest: the first class-A job on SYSP abends at 21:00, so the CLI stops the 24-hour advance 15 hours in.
     const stopped = run({ cmd: 'advance', hours: 24 }).text;
@@ -346,15 +349,17 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     expect(stats.range.to).toBe('D1 Mon 21:00');
     expect(stats.total.adjustments).toBe(stats.systems.length * 15 * 360);
     // Restarting the job and taking the initiators back off SYSP clears the cause; the next advance runs through. The
-    // replay side of that (a restart mid-log does not stop it) is the injected test above (PR-12), so one replay is
-    // enough here. A second full replay is what made this test cost 43 s.
+    // restart has to be checked directly: the pass-through alone also holds with the initiator change alone. The
+    // replay side of a restart mid-log is the injected test above (PR-12), which is why one replay is enough here.
+    const stopTick = f.run.sim.tick;
     run({ cmd: 'restart', name: abended });
     classA({ PROD1: 12, PROD2: 10 });
     const after = run({ cmd: 'advance', hours: 3 }).text;
     expect(after).not.toContain('STOPPED:');
-    // All three hours ran: the CLI reached midnight, not the 21:00 it stopped at.
-    expect(after).toContain('Advanced to D1 00:00:00');
-    // 18 played hours plus one replay of the same log: ~10 s alone on the shared host (was 43 s for 41 hours and
-    // two replays).
+    expect(f.run.sim.tick - stopTick).toBe(3 * TICKS_PER_HOUR); // all three hours ran, not one
+    // The restarted job is no longer abended; the other jobs that abended on SYSP still are.
+    expect(catalogText(f)).not.toContain(`abended now: ${abended}`);
+    // 18 played hours plus one replay of the same log: ~12–15 s alone on the shared host (was 43 s for 41 hours
+    // and two replays).
   }, 120_000);
 });

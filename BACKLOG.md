@@ -448,6 +448,19 @@ sysplex PI and keep the worse-of only for the "more important and missing its go
 shows the choice either way. Done when: SPEC §5.5.4, docs/wlm-design.md §5.5 and the `docs/research.md` sysplex-PI
 row agree with the code, and the test exists.
 
+### PR-21 · No test replays a play log that contains a restart
+`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
+
+Source: CL-11 (2026-11-16, #368) dropped the B1 test's second `wlmStatsText` replay, which was the only test that
+replayed a play log *containing* a `restart` and read the counters across it (`after.range.to === clockText(tick)`).
+`replayAdvance`'s stop rule around a restart is covered by injected sets ("replays a logged advance through a restart
+without stopping (PR-12)", `tests/tools/inspect.test.ts`), and CL-11 keeps the CLI-level pass-through, but nothing
+runs `replayTraces` over a restarting log any more, so a divergence between the CLI and the replay there is
+invisible. Change: one cheap integration test, e.g. `start`, a Db2-less-image change to force an abend (CL-11's
+SYSP initiator change), one advance, `restart`, one short advance, then a single replay from before the restart to
+after it, asserting it does not stop at the restarted job and its counters cover the played hours. Done when: such a
+test exists and costs a few seconds.
+
 ## realism-fixes
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header
