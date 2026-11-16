@@ -17,10 +17,24 @@ function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   return file;
 }
 
+// A played start state costs a sim hour per 360 ticks, and most tests below only read one. Build each
+// distinct start once, then hand out decoded copies, so a test that edits its file cannot affect another
+// (a reload between commands is what the persistence tests already do).
+const startedCache = new Map<string, PlayFile>();
+function started(hours: number, scenario = 'midwest'): PlayFile {
+  const key = `${scenario}:${hours}`;
+  let base = startedCache.get(key);
+  if (!base) {
+    base = run(newPlayFile(7, 'NORMAL', scenario), [{ cmd: 'start' }, { cmd: 'advance', hours }]);
+    startedCache.set(key, base);
+  }
+  return decodePlayFile(encodePlayFile(base));
+}
+
 describe('RT-09 trigger alias in play files', () => {
   /** A capture of an old file: the incident and its AIOps hypothesis name the retired trigger id. */
   const oldFile = (): PlayFile => {
-    const base = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    const base = started(1);
     const incident: PlayFile['run']['incidents'][number] = {
       id: 999, workloadId: 'RBANK', day: 0, startTick: 0, endTick: 360, hours: 1, worstAttainmentPct: 80,
       truth: { mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never, accepted: { mechanisms: ['CPU_CAPACITY'], triggers: ['ACCESS_PATH_REGRESSION' as never] } },
@@ -49,7 +63,7 @@ describe('RT-09 trigger alias in play files', () => {
 
 describe('headless play interface', () => {
   it('a run file round-trips bit-identically, Infinity included, and keeps the command log', () => {
-    const a = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    const a = started(1);
     const b = decodePlayFile(encodePlayFile(a));
     const next = (f: PlayFile) => encodePlayFile(run(f, [{ cmd: 'advance', hours: 1 }]));
     expect(next(b)).toBe(next(a));
@@ -79,7 +93,7 @@ describe('headless play interface', () => {
   });
 
   it('wlmlog shows the Monitor WLM activity log, live only with Monitor III', () => {
-    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    let f = started(1);
     expect(wlmLogText(f)).toContain('needs the RMF_MON3 tool');
     f = { ...f, run: { ...f.run, sim: { ...f.run.sim, wlm: { ...f.run.sim.wlm, log: ['D1 06:10:00 PRDA RCVR=ONLHI#1 PI=1.20 BTLNK=CPU ONLHI#1 DP F4→F6', 'D1 06:10:00 PRDB ONLHI#1 PI=1.20 BTLNK=CPU no action with net value'] } } } };
     f = { ...f, run: { ...f.run, insight: 50 } };
@@ -92,7 +106,7 @@ describe('headless play interface', () => {
   });
 
   it('finance shows the sub-capacity bill, then TFP pace and overage price per LPAR', () => {
-    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    let f = started(2);
     expect(financeText(f)).toMatch(/pricing SUBCAP[\s\S]*peakR4haMsu/);
     const terms = quoteTfp(f.run, scenarioFor(packOf('midwest').scenario, f.run.difficulty)).terms;
     f = { ...f, run: { ...f.run, sim: { ...f.run.sim, cost: startTfp(f.run.sim.cost, terms, f.run.sim.tick) } } };
@@ -137,7 +151,7 @@ describe('headless play interface', () => {
   });
 
   it('inspect dp lists dispatching priorities per RMF interval, highest first', () => {
-    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    const f = started(1);
     const t = dpText(encodePlayFile(f), 'PROD1', { cls: 'SYS' });
     const line = t.split('\n')[1]!;
     expect(line).toMatch(/SYSTEM#1=FF SYSSTC#1=FE/);
@@ -145,7 +159,7 @@ describe('headless play interface', () => {
   });
 
   it('inspect wlm replays a play log to a past time and traces each policy adjustment there', () => {
-    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const f = started(2);
     const t = wlmText(encodePlayFile(f), 'PROD1', { at: 'D1 06:30', ticks: 2 }).split('\n');
     expect(t[0]).toContain('replayed from seed + log');
     expect(t.filter((l) => /^D1 06:30:(00|10) PROD1  → /.test(l))).toHaveLength(2);
@@ -180,7 +194,7 @@ describe('headless play interface', () => {
   });
 
   it('RMF intervals have stable ids for report and pin; a bare class name means period 1', () => {
-    let f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    let f = started(2);
     expect(applyPlayCommand(f, { cmd: 'report', kind: 'WLM_SUMMARY' }).ok, 'today is hidden without Monitor III').toBe(false);
     f = run(f, [{ cmd: 'advance', hours: 24 }]);
     const iv = f.run.sim.rmf.intervals[0]!;
@@ -362,13 +376,13 @@ describe('headless play interface', () => {
   });
 
   it('pins region SOS minutes and a PROCU job row now, and refuses a past job row from the trimmed history', () => {
-    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const f = started(2);
     const sos = run(f, [{ cmd: 'pin', req: { source: 'CICS_STORAGE', hour: '7', region: 'CICSAOR1' } }]);
     expect(sos.run.pins.at(-1)!.text).toMatch(/^CICS 110 D1 \d\d:00–\d\d:00 CICSAOR1 SOS minutes/);
     const job = run(f, [{ cmd: 'pin', req: { source: 'PROCU', system: 'PROD1', jobname: 'CICSAOR1' } }]);
     expect(job.run.pins.at(-1)!.text).toMatch(/^PROCU D1 \d\d:\d\d PROD1 CICSAOR1 job EAppl CPU/);
     // The CLI's history keeps no job rows (like SYSWKM), so a past PROCU pin needs the browser.
-    const h = run(newPlayFile(7, 'NORMAL', 'harbourline'), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const h = started(2, 'harbourline');
     const past = applyPlayCommand(h, { cmd: 'pin', req: { source: 'PROCU', system: 'PRDA', jobname: 'CICSAOR1' }, at: 'D1 07:00' });
     expect(past.ok).toBe(false);
     expect(past.text).toContain('no job rows');

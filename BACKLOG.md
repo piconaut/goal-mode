@@ -676,17 +676,6 @@ the shared one (`encodeRunJson`), and keep any file whose start differs on its o
 the cache; a cold run passes and a warm run is faster; deleting the cache directory or editing a `src/` file rebuilds
 it; the per-file timings, cold and warm, are in the PR.
 
-### CL-13 · Build once per file: realism midday base, play-file prefixes
-`list: cleanup · status: ready · priority: high · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). `tests/sim/realism.test.ts` builds the seed-42 Midwest midday state four times
-(the `describe` blocks around `:194`, `:224`, `:242` and `:465`; 24 sim-hours). `tests/tools/play.test.ts` rebuilds
-"new file, seed 7, start, advance 1–2 h" in about 15 tests. Change: one lazily built, module-level copy of each,
-handed out as `structuredClone` copies (play files: decoded copies). Leave the `:689` base alone, because it sets
-`POLICY_ADJUST.skipClockMinMissing` first. Leave `tests/sim/wlm-realism.test.ts` unchanged too (user decision
-2026-11-16: the ladder test stays as it is for now). Done when: no test asserts against a state another test
-mutated; `npm run check` is green; the file timings, before and after, are in the PR.
-
 ### CL-14 · One short determinism pair per scenario
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 
