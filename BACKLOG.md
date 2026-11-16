@@ -716,25 +716,6 @@ generate the code, or measure that a table loop stays within budget. No behaviou
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
 difference; per-tick timing before and after (`npm run bench`) in the PR.
 
-### CL-20 · Delete legacy save fallbacks: game, tools and UI
-`list: cleanup · status: ready · priority: high · size: M · area: game`
-
-Source: codebase survey (2026-11-16). User decision 2026-11-16: old saves need not load; delete the compatibility code
-to keep things simple. About 35 comments in `src/game`, `src/ui` and `tools` explain a fallback for saves or play
-files "from before" a change. Examples:
-- `proof.ts` `accepted?`;
-- the RT-09 trigger alias: `canonicalTrigger` in `tools/playCore.ts` load and `rca`, and the worker's import mapping;
-- the `?? []` / `?? {}` guards on fields that `newRun` always sets (about 107 fallbacks in `src/game` in all; some are
-  genuinely optional).
-
-Change: make those `RunState` / `PlayFile` fields required, delete the guards and alias paths that exist only for old
-saves, and delete their tests (e.g. `tests/game/triggerAlias.test.ts`, if nothing else is in it). Add a save format
-version to the browser save and the play file. A file from an older build then fails to load with one clear message
-("saved by an older build; start a new run"), not a crash later on. Keep each optional field that is optional for a
-reason other than old saves, and say so in the PR. Done when: a grep for "before RT-", "old saves" and "written
-before" finds nothing in `src/game`, `src/ui` or `tools`; `npm run compare` shows no difference for new runs; an
-older play file gets the clear message (tested).
-
 ### CL-21 · Delete legacy save fallbacks: sim state
 `list: cleanup · status: ready · priority: low · size: S · area: sim`
 

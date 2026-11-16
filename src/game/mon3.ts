@@ -209,9 +209,10 @@ export interface Mon3View {
   enclaves: Mon3Enclave[];
   speed: Mon3Speed[];
   exceptions: Mon3Exception[];
-  /** SYSWKM: CICS transaction classes with work manager data (absent in old pin snapshots). */
+  /** SYSWKM: CICS transaction classes with work manager data (absent from the CLI's trimmed history, which keeps
+   * only what a pin reads; a past SYSWKM pin needs the browser). */
   wkm?: Mon3Wkm[];
-  /** PROCU: jobs using a processor, by descending EAppl % CP (absent in old pin snapshots). */
+  /** PROCU: jobs using a processor, by descending EAppl % CP (absent from the CLI's trimmed history, like SYSWKM). */
   procJobs?: Mon3ProcJob[];
 }
 
@@ -725,8 +726,6 @@ const BTLNK_TEXT: Record<string, string> = {
   IO: 'waiting for I/O',
   STORAGE: 'delayed by paging or swapping',
   QUEUE: 'queued for an initiator or MPL slot',
-  // Logs in saves from before WT-10, when waits and capping were bottlenecks.
-  CAP: 'held back by capping',
   OTHER: 'waiting on a server or subsystem',
 };
 

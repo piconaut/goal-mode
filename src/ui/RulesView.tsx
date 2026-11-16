@@ -82,7 +82,8 @@ function Subsystem({ ss, active, classIds, game }: { ss: SubsystemExplain; activ
   const edit = (e: Parameters<GameHandle['send']>[0]) => game.send(e);
   const sub = ss.subsystem;
   // "Manage Region Using Goals Of" exists only on STC and JES rules (WLM Planning p.211). The game fixes it at
-  // TRANSACTION (not a player lever); the column only appears for old saves whose rules set something else.
+  // TRANSACTION (not a player lever); the column appears only for a policy that sets something else (the realism lab
+  // and its tests still can).
   const regions = (sub === 'STC' || sub === 'JES') && ss.rows.some((r) => r.regionMode && r.regionMode !== 'TRANSACTION');
   return (
     <div className="subsys">

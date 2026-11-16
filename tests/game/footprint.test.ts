@@ -24,7 +24,7 @@ function card(defId: string, over: Partial<ActiveEvent> = {}): ActiveEvent {
   const def = MIDWEST_GAME.events.find((d) => d.id === defId)!;
   return {
     uid: `${defId}@1`, defId, name: def.name, startTick: T - 3 * H, endTick: null, trigger: def.trigger,
-    affects: def.affects, mechanisms: cardMechanisms(def), endCommands: [], started: true, ended: false, ...over,
+    affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: [], started: true, ended: false, ...over,
   };
 }
 
@@ -89,6 +89,14 @@ describe('qualification by footprint', () => {
   it('the work collateral through a server image alone', () => {
     const scope = { ...on('PROD1'), servers: [{ jobname: 'CICSAOR2', lparId: 'PROD2' }] };
     expect(footprintRelation(regression, 'TELLER', scope)).toBe('collateral');
+  });
+
+  it('a card that declares no mechanism can never be the cause', () => {
+    const card_ = card('REGRESSION', { reach: ['PROD2'] });
+    const silent = { ...card_, mechanisms: [] };
+    expect(qualifyingCards([silent], 'RBANK', 'CPU_PRIORITY', { startTick: T, endTick: T + H }, on('PROD1'))).toEqual([]);
+    // The same card with its resource's real mechanisms does qualify: the empty list is the difference.
+    expect(qualifyingCards([card_], 'RBANK', 'CPU_PRIORITY', { startTick: T, endTick: T + H }, on('PROD1'))).toHaveLength(1);
   });
 
   it('the mechanism must be one the resource causes', () => {

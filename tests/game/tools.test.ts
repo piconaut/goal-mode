@@ -2,11 +2,20 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { INSIGHT } from '../../src/content/tools';
 import { advance, chooseDraft, newRun, startDay } from '../../src/game/run';
-import { buyTool, features, measurementCommands, normalizeRun, noteReportOpened, setToolActive } from '../../src/game/tools';
+import { buyTool, features, measurementCommands, normalizeDefinition, noteReportOpened, setToolActive } from '../../src/game/tools';
 import type { RunState } from '../../src/game/types';
 
 const content = { ...MIDWEST_GAME, events: [] };
 const fresh = (insight = 0): RunState => ({ ...newRun(MIDWEST, content, 7), insight });
+
+describe('normalizeDefinition', () => {
+  it('fills a hand-edited policy period without durationSu with null, and leaves a complete one as is', () => {
+    const def = structuredClone(newRun(MIDWEST, content, 3).sim.wlm.definition);
+    expect(normalizeDefinition(def)).toBe(def);
+    delete (def.classes[0]!.periods[0] as { durationSu?: number | null }).durationSu;
+    expect(normalizeDefinition(def).classes[0]!.periods[0]!.durationSu).toBeNull();
+  });
+});
 
 describe('tool tree', () => {
   it('enforces Insight and prerequisites', () => {
@@ -69,25 +78,5 @@ describe('tier 2 availability', () => {
       r = out.run;
     }
     expect([...features(r)]).toEqual(expect.arrayContaining(['DB2_ACCOUNTING', 'CICS_MONITORING', 'BATCH_GANTT', 'SMF113']));
-  });
-});
-
-describe('save migration', () => {
-  it('fills a missing period duration with null', () => {
-    const r = newRun(MIDWEST, content, 3);
-    const def = structuredClone(r.sim.wlm.definition);
-    delete (def.classes[0]!.periods[0] as { durationSu?: number | null }).durationSu;
-    const n = normalizeRun({ ...r, sim: { ...r.sim, wlm: { ...r.sim.wlm, definition: def } } });
-    expect(n.sim.wlm.definition.classes[0]!.periods[0]!.durationSu).toBeNull();
-  });
-});
-
-describe('save migration: CF structures', () => {
-  it('fills size, preference list and loss impact on structures saved before they existed', () => {
-    const r = newRun(MIDWEST, content, 3);
-    const old = r.sim.config.cfStructures.map(({ sizeGb: _s, prefList: _p, lostImpact: _l, ...rest }) => rest);
-    const n = normalizeRun({ ...r, sim: { ...r.sim, config: { ...r.sim.config, cfStructures: old } } }, MIDWEST);
-    const lock = n.sim.config.cfStructures.find((x) => x.name === 'DB1G_LOCK1')!;
-    expect(lock).toMatchObject({ sizeGb: 2, prefList: ['CF01', 'CF02'], lostImpact: 'DB2_DOWN' });
   });
 });

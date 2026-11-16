@@ -6,6 +6,7 @@ import type { Incident, Mechanism, RunState, Trigger } from '../../src/game/type
 import { midwestContent, midwestNoonRbank } from '../helpers/fixtureCache';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import type { WorkManagerSamples } from '../../src/sim/wlm/reporting';
+import { truthOf } from '../helpers/truth';
 
 const content = midwestContent;
 const HOUR = 360;
@@ -18,21 +19,25 @@ beforeAll(() => {
   hourKey = `${h.day}:${h.hourOfDay}`;
 });
 
-const incident = (r: RunState, over: Partial<Incident> = {}): Incident => ({
-  id: 999,
-  workloadId: 'RBANK',
-  day: 0,
-  startTick: r.sim.tick - HOUR,
-  endTick: null,
-  hours: 1,
-  worstAttainmentPct: 80,
-  truth: { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' },
-  rca: null,
-  trustLost: 0,
-  ...over,
-});
+const incident = (r: RunState, over: Partial<Incident> = {}): Incident => {
+  const workloadId = over.workloadId ?? 'RBANK';
+  return {
+    id: 999,
+    workloadId,
+    day: 0,
+    startTick: r.sim.tick - HOUR,
+    endTick: null,
+    hours: 1,
+    worstAttainmentPct: 80,
+    truth: truthOf('CPU_CAPACITY', 'CHANGE_REGRESSION'),
+    subjects: incidentSubjects(r, MIDWEST, workloadId, over.day ?? 0),
+    rca: null,
+    trustLost: 0,
+    ...over,
+  };
+};
 
-const cause = (mechanism: Mechanism, trigger: Trigger) => ({ truth: { mechanism, trigger } });
+const cause = (mechanism: Mechanism, trigger: Trigger) => ({ truth: truthOf(mechanism, trigger) });
 
 function pin(r: RunState, req: Parameters<typeof addPin>[2]): RunState {
   const out = addPin(r, MIDWEST, req);

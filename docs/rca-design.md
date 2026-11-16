@@ -388,10 +388,11 @@ R-16, same pins, after three remediations a player would plausibly make before t
 
 All three punished the player for fixing the incident before the review. RT-04 stores the incident's classes, hosts
 (and the positive-weight hosts the relation test needs) and serving regions when it opens, and judges against that
-snapshot; incidents from old saves still derive them from the present. RT-12 added the serving regions' classes
+snapshot, and a file from another build is refused rather than judged against the present (CL-20). RT-12 added the
+serving regions' classes
 (`serverClasses`), so a region's row is a `server` relation rather than the work's own. `tests/game/evidence.test.ts`
 pins a class row, reclassifies the workload and reroutes it, and gets the pre-edit verdicts from the recorded
-subjects (and the old defect from the live values). The snapshot is taken at the hour's close, so a change made
+subjects (and the defect an empty subject list gives). The snapshot is taken at the hour's close, so a change made
 during the breaching hour is already in it, and rows from a later hour of a still-open incident sit under the new
 class and no longer match — the price of a stable subject for the hour that opened the incident.
 
@@ -586,8 +587,8 @@ CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores
    - Otherwise `GROWTH` and `POLICY` are **both accepted**; the primary is as today. "Growth crossed the headroom"
      and "the configuration has no headroom" describe the same state, and no visible data separates them.
 5. **Vocabulary** (RT-09: labels, help text, and one rename):
-   - `CHANGE_REGRESSION` (renamed from `ACCESS_PATH_REGRESSION`, which saves, play files and the CLI still accept as an
-     alias) is shown as **Change regression**: "a software or configuration change made the same work cost more or
+   - `CHANGE_REGRESSION` (renamed from `ACCESS_PATH_REGRESSION`; a file that still says the old id is from an older
+     save version and no longer loads, CL-20) is shown as **Change regression**: "a software or configuration change made the same work cost more or
      behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate". The old id was a misnomer once the
      cards below moved. ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT move to it, so their
      incidents carry that trigger (goldens unchanged — the scripted windows do not fire these cards — and a
@@ -624,8 +625,7 @@ is held to it. No group crosses the 06:00 roll, where an open incident is closed
 written up on its own (the review files one RCA per played day). `game/run/grouping.ts` decides it at incident
 creation; `addGroupedIncident` is the only writer of `rcaGroup` and an inherited `rca`, and a retrospective
 incident that spans two unfiled episodes of one cause (the batch night) coalesces them. The union is a product: a mechanism
-accepted for one victim and a trigger accepted for another is a full answer. A save written before RT-07 has no cause
-and keeps the labels' grouping.
+accepted for one victim and a trigger accepted for another is a full answer.
 
 ### 4.6 What "evidence for a mechanism" means
 

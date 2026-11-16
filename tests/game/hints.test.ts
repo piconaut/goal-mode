@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { hintLevelFor, morningHints } from '../../src/game/hints';
 import type { Incident, Mechanism } from '../../src/game/types';
+import { EMPTY_SUBJECTS, truthOf } from '../helpers/truth';
 
 const inc = (workloadId: string, mechanism: Mechanism, hours: number, worstAttainmentPct = 90): Incident => ({
   id: 0, workloadId, day: 3, startTick: 0, endTick: 1, hours, worstAttainmentPct,
-  truth: { mechanism, trigger: 'GROWTH' }, rca: null, trustLost: 0,
+  truth: truthOf(mechanism, 'GROWTH'), subjects: EMPTY_SUBJECTS, rca: null, trustLost: 0,
 });
 const onTime = { missed: false, criticalEndSec: 3 * 3600, deadlineSec: 6 * 3600 };
 
@@ -124,7 +125,7 @@ describe('morning hints in a run', () => {
     const second = hintsOf(run).slice(first.length);
     expect(first.length + second.length).toBeGreaterThan(0);
     expect(second.every((m) => m.day === 2)).toBe(true);
-    expect(Object.keys(run.reports[0]!.piWorst ?? {}).length).toBeGreaterThan(3);
+    expect(Object.keys(run.reports[0]!.piWorst).length).toBeGreaterThan(3);
     const forewarnings = run.inbox.filter((m) => m.subject === 'For day 2');
     expect(forewarnings.every((m) => m.day === 1)).toBe(true);
   }, 120_000);

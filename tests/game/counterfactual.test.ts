@@ -6,8 +6,10 @@ import { advance } from '../../src/game/run';
 import { scenarioFor } from '../../src/game/difficulty';
 import { packOf } from '../../src/content/packs';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
-import type { ActiveEvent, Incident, RunState } from '../../src/game/types';
+import type { ActiveEvent, Incident, Mechanism, RunState } from '../../src/game/types';
 import { REVENUE_INCIDENT_HOUR, revenueIncidentHour } from '../helpers/fixtureCache';
+import { SAVE_VERSION } from '../../src/game/runFile';
+import { EMPTY_SUBJECTS, truthOf } from '../helpers/truth';
 
 const pack = packOf('revenue');
 const scenario = scenarioFor(pack.scenario, 'NORMAL');
@@ -25,7 +27,7 @@ const VICTIM = 'EFILE';
 let file: PlayFile;
 beforeAll(() => {
   file = {
-    version: 1,
+    version: SAVE_VERSION,
     run: revenueIncidentHour(),
     pendingPolicy: null,
     log: [
@@ -40,7 +42,7 @@ beforeAll(() => {
   expect(file.run.sim.tick).toBe(HOUR_START);
 }, 60_000);
 
-const truthOf = (start: RunState, workloadId: string): Incident => {
+const incidentAt = (start: RunState, workloadId: string): Incident => {
   const after = advance(structuredClone(start), scenario, pack.game, TICKS_PER_HOUR);
   const inc = after.incidents.find((i) => i.startTick === start.sim.tick && i.workloadId === workloadId);
   expect(inc, `no ${workloadId} incident at ${start.sim.tick}`).toBeDefined();
@@ -49,7 +51,7 @@ const truthOf = (start: RunState, workloadId: string): Incident => {
 
 describe('counterfactual validator (RT-06, RT-25)', () => {
   it('clears a causal card, ignores a bystander on the same workload, and agrees with the game', () => {
-    const incident = truthOf(file.run, VICTIM);
+    const incident = incidentAt(file.run, VICTIM);
     // A card on the same workload that does nothing at all, and cannot be the CPU card the game blames.
     const bystander: ActiveEvent = {
       uid: 'BYSTANDER@1',
@@ -66,14 +68,14 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
     };
     // A red herring by design: like the real CP_SPARING it has no footprint (no resource, so no mechanisms and no
     // hurt work), so it is a control for the noise floor.
-    const { mechanisms: _unused, ...noFootprint } = bystander;
     const redHerring: ActiveEvent = {
-      ...noFootprint,
+      ...bystander,
       uid: 'CP_SPARING@2',
       defId: 'CP_SPARING',
       name: 'CP failure, transparent sparing',
       trigger: 'HARDWARE_FAULT',
       affects: [],
+      mechanisms: [],
     };
     const run = { ...file.run, events: [...file.run.events, bystander, redHerring] };
     const blame = blameIncident(run, scenario, pack.game, incident);
@@ -97,11 +99,11 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
   });
 
   it('counts a joint cause by its gain, and a red herring below the noise floor as no cause', () => {
-    const card = (uid: string, control = false) => ({ uid, defId: uid, name: uid, trigger: 'POLICY' as const, control, startTick: HOUR_START, endTick: null });
+    const card = (uid: string, control = false) => ({ uid, defId: uid, name: uid, trigger: 'POLICY' as const, mechanisms: [] as Mechanism[], control, startTick: HOUR_START, endTick: null });
     const test = (uid: string, gainPct: number, met = false, control = false) => ({ card: card(uid, control), met, attainmentPct: 90 + gainPct, gainPct, footprint: null });
     // Two cards that only breach together: ending either one raises attainment by 2 pp and neither meets the SLA.
     const joint: IncidentBlame = {
-      id: 1, workloadId: VICTIM, day: 2, startTick: HOUR_START, truth: { mechanism: 'CAPPING', trigger: 'POLICY' },
+      id: 1, workloadId: VICTIM, day: 2, startTick: HOUR_START, truth: truthOf('CAPPING', 'POLICY'),
       blamed: null, baseline: { met: false, attainmentPct: 90 },
       tested: [test('CARD_A', 2), test('CARD_B', 2), test('CP_SPARING@1', 0.2, false, true), test('RED_HERRING', 0.1)],
       causes: [], reproduced: true, agrees: false,
@@ -119,11 +121,11 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
   });
 
   it('disagrees when the game blames no card but a card would have met the SLA', () => {
-    const real = truthOf(file.run, VICTIM);
+    const real = incidentAt(file.run, VICTIM);
     // The same hour read as a policy incident: every card declares CPU_PRIORITY only, so none can be blamed for
     // CAPPING, while the runaway is still the cause.
     const events = file.run.events.map((e) => ({ ...e, mechanisms: ['CPU_PRIORITY' as const] }));
-    const mislabeled: Incident = { ...real, truth: { mechanism: 'CAPPING', trigger: 'POLICY' } };
+    const mislabeled: Incident = { ...real, truth: truthOf('CAPPING', 'POLICY') };
     const blame = blameIncident({ ...file.run, events }, scenario, pack.game, mislabeled);
     expect(blame.blamed).toBeNull();
     expect(blame.causes.map((c) => c.uid)).toEqual([CARD]);
@@ -195,7 +197,7 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
     // A card that puts a workload live is active in the hour like any other.
     const golive = {
       uid: 'FAKE@1', defId: 'FAKE', name: 'New app', startTick: HOUR_START, endTick: null,
-      trigger: 'NEW_WORKLOAD' as const, affects: ['OLD'], endCommands: [], started: true, ended: false,
+      trigger: 'NEW_WORKLOAD' as const, affects: ['OLD'], mechanisms: [], endCommands: [], started: true, ended: false,
     };
     expect(cardsActiveInHour([golive], [golive], HOUR_START)).toHaveLength(1);
   });
@@ -210,7 +212,8 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
       endTick: null,
       hours: 1,
       worstAttainmentPct: 0,
-      truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' },
+      truth: truthOf('CPU_PRIORITY', 'POLICY'),
+      subjects: EMPTY_SUBJECTS,
       rca: null,
       trustLost: 0,
     };
@@ -222,7 +225,7 @@ describe('counterfactual validator (RT-06, RT-25)', () => {
   });
 
   it('removes an already-running card at the first tick and a card that starts inside the hour before it begins', () => {
-    const ev = { uid: 'C@1', defId: 'C', name: 'Change', startTick: HOUR_START - TICKS_PER_HOUR, endTick: HOUR_START + TICKS_PER_HOUR, trigger: 'POLICY' as const, affects: ['MOBILE'], endCommands: [], started: true, ended: false };
+    const ev = { uid: 'C@1', defId: 'C', name: 'Change', startTick: HOUR_START - TICKS_PER_HOUR, endTick: HOUR_START + TICKS_PER_HOUR, trigger: 'POLICY' as const, affects: ['MOBILE'], mechanisms: [], endCommands: [], started: true, ended: false };
     // Ran before the hour: its end commands apply at the first tick.
     expect(endedAtHourStart(ev, HOUR_START)).toMatchObject({ startTick: HOUR_START - TICKS_PER_HOUR, endTick: HOUR_START, started: true, ended: false });
     // Starts at or inside the hour: marked run and ended so its begin never applies.

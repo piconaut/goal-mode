@@ -3,9 +3,9 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, judgeEvidence, judgeGroupEvidence, pinRelation, type EvidencePin } from '../../src/game/evidence';
 import { buildMon3 } from '../../src/game/mon3';
 import { advance, requestChange, submitRca } from '../../src/game/run';
-import type { Incident, RunState } from '../../src/game/types';
+import type { Incident, IncidentSubjects, RunState } from '../../src/game/types';
 import { midwestContent, midwestNoonRbank } from '../helpers/fixtureCache';
-
+import { truthOf } from '../helpers/truth';
 const content = midwestContent;
 const HOUR = 360;
 let regressed: RunState;
@@ -17,19 +17,23 @@ beforeAll(() => {
   hourKey = `${h.day}:${h.hourOfDay}`;
 });
 
-const incident = (r: RunState, over: Partial<Incident> = {}): Incident => ({
-  id: 999,
-  workloadId: 'RBANK',
-  day: 0,
-  startTick: r.sim.tick - HOUR,
-  endTick: null,
-  hours: 1,
-  worstAttainmentPct: 80,
-  truth: { mechanism: 'CPU_CAPACITY', trigger: 'CHANGE_REGRESSION' },
-  rca: null,
-  trustLost: 0,
-  ...over,
-});
+const incident = (r: RunState, over: Partial<Incident> = {}): Incident => {
+  const workloadId = over.workloadId ?? 'RBANK';
+  return {
+    id: 999,
+    workloadId,
+    day: 0,
+    startTick: r.sim.tick - HOUR,
+    endTick: null,
+    hours: 1,
+    worstAttainmentPct: 80,
+    truth: truthOf('CPU_CAPACITY', 'CHANGE_REGRESSION'),
+    subjects: incidentSubjects(r, MIDWEST, workloadId, over.day ?? 0),
+    rca: null,
+    trustLost: 0,
+    ...over,
+  };
+};
 
 function pin(r: RunState, req: Parameters<typeof addPin>[2]): RunState {
   const out = addPin(r, MIDWEST, req);
@@ -74,7 +78,7 @@ describe('evidence pins', () => {
     const h = failing.smfHours.at(-1)!;
     const r = pin(failing, { source: 'CICS', hour: `${h.day}:${h.hourOfDay}`, workloadId: 'RBANK', metric: 'FAIL_PCT' });
     expect(r.pins.at(-1)!.value).toBeGreaterThan(5);
-    const [j] = judgeEvidence(r, MIDWEST, incident(r, { truth: { mechanism: 'ROUTING', trigger: 'POLICY' } }), r.pins.slice(-1));
+    const [j] = judgeEvidence(r, MIDWEST, incident(r, { truth: truthOf('ROUTING', 'POLICY') }), r.pins.slice(-1));
     expect(j!.relevance).toBe(1);
   });
 
@@ -108,13 +112,13 @@ describe('evidence pins', () => {
 
   it('counts a competing class\'s CPU from a host image, and a *PLEX row cannot place it (playtest D4/D19, RT-12)', () => {
     const p = { id: 1000, source: 'WLMGL', metric: 'APPL' as const, subject: 'BATCHHI#1', system: 'PROD2', tick: regressed.sim.tick, value: 442, text: 'BATCHHI#1 APPL 442%' };
-    const inc = incident(regressed, { workloadId: 'CARDAUTH', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
+    const inc = incident(regressed, { workloadId: 'CARDAUTH', truth: truthOf('CPU_PRIORITY', 'POLICY') });
     expect(judgeEvidence(regressed, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 0.5, why: 'consistent with the cause (but not specific)' });
     // A `*PLEX` row is the roll-up of every image: it cannot say the competitor shared the hurt work's host.
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...p, system: '*PLEX' }])[0])
       .toMatchObject({ relevance: 0, why: 'a *PLEX row does not show which image the class ran on' });
     // Still nothing for a mechanism where high APPL is not the cause, and still inside the window.
-    expect(judgeEvidence(regressed, MIDWEST, incident(regressed, { truth: { mechanism: 'IO', trigger: 'POLICY' } }), [p])[0]!.why).toBe('points elsewhere');
+    expect(judgeEvidence(regressed, MIDWEST, incident(regressed, { truth: truthOf('IO', 'POLICY') }), [p])[0]!.why).toBe('points elsewhere');
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...p, tick: regressed.sim.tick + 10 * HOUR }])[0]!.why).toMatch(/window/);
   });
 
@@ -123,7 +127,7 @@ describe('evidence pins', () => {
       id: 1000, source: 'WLMGL', metric: 'DELAY_CPU', subject: 'X', system: '*PLEX',
       tick: regressed.sim.tick, value: 20, text: '', ...over,
     });
-    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' } });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: truthOf('CPU_PRIORITY', 'DEMAND_SURGE') });
     const pins = [
       // R-16's residual: PROD2 is a MOBILE host, but the row is TSO's delay, not MOBILE's. Only a competitor's *CPU*
       // (APPL) is the policy evidence; another class's delay says nothing about why MOBILE waited.
@@ -146,7 +150,7 @@ describe('evidence pins', () => {
       id: 1000, source: 'WLMGL', metric: 'APPL', subject: 'BATCHHI#1', system: 'PROD2',
       tick: regressed.sim.tick, value: 442, text: '', ...over,
     });
-    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: truthOf('CPU_PRIORITY', 'POLICY') });
     expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({})])[0]).toMatchObject({ relevance: 0.5, why: 'consistent with the cause (but not specific)' });
     expect(judgeEvidence(regressed, MIDWEST, inc, [pinOf({ value: 3.4 })])[0]!.why).toBe('value is unremarkable');
     // A sysplex-wide row cannot show which image the class ran on, and a test image is not a host of production work.
@@ -163,9 +167,10 @@ describe('evidence pins', () => {
   });
 
   it('does not treat an image the work was routed away from as a host image', () => {
-    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
     // SET_ROUTING keeps the zero weight, so PROD2 is still a key in the routing table but hosts no MOBILE work.
     const r = { ...regressed, sim: { ...regressed.sim, routing: { ...regressed.sim.routing, MOBILE: { PROD1: 1, PROD2: 0 } } } };
+    // The incident opens after the reroute, so its recorded subjects say PROD1 is the host (RT-04).
+    const inc = incident(r, { workloadId: 'MOBILE', truth: truthOf('CPU_PRIORITY', 'POLICY') });
     const pinOn = (system: string): EvidencePin => ({
       id: 1000, source: 'WLMGL', metric: 'DELAY_CPU', subject: 'TSO#1', system,
       tick: regressed.sim.tick, value: 25, text: '',
@@ -183,7 +188,7 @@ describe('evidence pins', () => {
       id: 1000 + i, source, metric: 'DELAY_ZIIP' as const, subject: `DDFPRD#${i + 1}`,
       system: '*PLEX', tick: regressed.sim.tick, value: 10 + i, text: 'zIIP delay',
     }));
-    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism, trigger: 'POLICY' } });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: truthOf(mechanism, 'POLICY') });
     const r = { ...regressed, pins, incidents: [inc] };
     expect(judgeEvidence(r, MIDWEST, inc, pins).map((v) => [v.relevance, v.why]))
       .toEqual([[1, 'points at the cause'], [1, 'points at the cause']]);
@@ -230,7 +235,7 @@ describe('evidence pins', () => {
       system: '*PLEX', tick: regressed.sim.tick, value: 20, text: 'zIIP delay', ...over,
     };
     if (over.tick !== undefined) p.tick += regressed.sim.tick;
-    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism, trigger: 'POLICY' } });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: truthOf(mechanism, 'POLICY') });
     const r = { ...regressed, pins: [p], incidents: [inc] };
     expect(judgeEvidence(r, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 0, why });
     expect(submitRca(r, inc.id, mechanism, 'POLICY', MIDWEST, [p.id]).incidents[0]!.rca!.evidencePoints).toBe(0);
@@ -243,7 +248,7 @@ describe('evidence pins on a missed batch night', () => {
   const night = (r: RunState): RunState => ({
     ...r,
     reports: [...r.reports, {
-      day: 0, sla: [], batchMissed: true, trustDelta: {} as never, score: 0, mlcEstimate: 0, events: [],
+      day: 0, sla: [], batchMissed: true, trustDelta: {} as never, score: 0, mlcEstimate: 0, events: [], piWorst: {},
       batch: {
         day: 0, jobs: 40, done: 38, criticalJobs: 14, criticalDone: 13, criticalEndSec: null, missedDeadline: true,
         criticalDelaySec: { cpu: 300, io: 200, lock: 1400, db2: 100, swap: 0, init: 0 },
@@ -264,17 +269,17 @@ describe('evidence pins on a missed batch night', () => {
     expect(lock!.value).toBeCloseTo(70);
     expect(lock!.source).toBe('SMF 30');
     expect(abend!.value).toBe(1);
-    const v = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'LOCK_CONTENTION', trigger: 'BATCH_OVERLAP' }), [lock!, abend!, swap!]);
+    const v = judgeEvidence(r, MIDWEST, batchInc(r, truthOf('LOCK_CONTENTION', 'BATCH_OVERLAP')), [lock!, abend!, swap!]);
     expect(v.map((x) => x.relevance)).toEqual([1, 0, 0]);
     expect(v[2]!.why).toMatch(/unremarkable/);
-    const failed = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'JOB_FAILURE', trigger: 'BATCH_OVERLAP' }), [abend!]);
+    const failed = judgeEvidence(r, MIDWEST, batchInc(r, truthOf('JOB_FAILURE', 'BATCH_OVERLAP')), [abend!]);
     expect(failed[0]!.relevance).toBe(1);
   });
 
   it('counts WLMGL-style pins on the critical jobs\' service class as about BATCH', () => {
     const r = night(regressed);
     const p = { id: 1, source: 'WLMGL', metric: 'PI' as const, subject: 'BATCHPRD#1', system: '*PLEX', tick: 20 * HOUR, value: 3, text: '' };
-    const v = judgeEvidence(r, MIDWEST, batchInc(r, { mechanism: 'CPU_PRIORITY', trigger: 'BATCH_OVERLAP' }), [p]);
+    const v = judgeEvidence(r, MIDWEST, batchInc(r, truthOf('CPU_PRIORITY', 'BATCH_OVERLAP')), [p]);
     expect(v[0]!.why).not.toMatch(/not about/);
   });
 
@@ -334,7 +339,9 @@ describe('CICS resource evidence on region classes', () => {
     const inc = incident(r, { workloadId: 'CARDAUTH' });
     expect(judgeEvidence(r, MIDWEST, inc, [JSON.parse(saved) as typeof p])[0])
       .toMatchObject({ relevance: 0, why: 'a symptom, not a cause' });
-    expect(judgeEvidence(regressed, MIDWEST, inc, [p])[0]!.why).toBe('not about CARDAUTH');
+    // An incident recorded before the AOR was added keeps its saved subjects, so the new region's row is not about it.
+    const before = incident(regressed, { workloadId: 'CARDAUTH' });
+    expect(judgeEvidence(regressed, MIDWEST, before, [p])[0]!.why).toBe('not about CARDAUTH');
     expect(judgeEvidence(r, MIDWEST, inc, [{ ...p, subject: 'CICSAOR1', system: 'PROD1' }])[0]!.why)
       .toBe('not about CARDAUTH');
     expect(JSON.stringify(p)).toBe(saved);
@@ -361,7 +368,7 @@ describe('CICS resource evidence on region classes', () => {
 
   it('accepts cap delay on a hosted region class as relevant to the CICS incident', () => {
     const p = { id: 1, source: 'WLMGL', metric: 'DELAY_CAP' as const, subject: 'STCHI#1', system: 'PROD1', tick: regressed.sim.tick, value: 80, text: 'Region CPU delay' };
-    const inc = incident(regressed, { truth: { mechanism: 'CAPPING', trigger: 'POLICY' } });
+    const inc = incident(regressed, { truth: truthOf('CAPPING', 'POLICY') });
     const [v] = judgeEvidence(regressed, MIDWEST, inc, [p]);
     expect(v!.relevance).toBeGreaterThan(0);
     const [unrelated] = judgeEvidence(regressed, MIDWEST, inc, [{ ...p, subject: 'DEVONLY#1' }]);
@@ -370,14 +377,14 @@ describe('CICS resource evidence on region classes', () => {
 });
 
 describe("evidence against the incident's own subjects (RT-04, A10)", () => {
-  const MOBILE_TRUTH = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } as const;
+  const MOBILE_TRUTH = truthOf('CPU_PRIORITY', 'POLICY');
 
   it('records the classes, images and serving regions when an incident opens', () => {
     const inc = regressed.incidents[0]!;
     expect(inc.subjects).toEqual(incidentSubjects(regressed, MIDWEST, inc.workloadId, inc.day));
-    expect(inc.subjects!.classes).toContain('ONLHI');
-    expect(inc.subjects!.lpars).toEqual(expect.arrayContaining(['PROD1', 'PROD2']));
-    expect(inc.subjects!.servers.map((s) => s.jobname)).toContain('CICSAOR1');
+    expect(inc.subjects.classes).toContain('ONLHI');
+    expect(inc.subjects.lpars).toEqual(expect.arrayContaining(['PROD1', 'PROD2']));
+    expect(inc.subjects.servers.map((s) => s.jobname)).toContain('CICSAOR1');
   });
 
   it('keeps the verdicts after a reclassification and a rerouting', () => {
@@ -418,8 +425,8 @@ describe("evidence against the incident's own subjects (RT-04, A10)", () => {
 
     // Judged against what the incident recorded: the same verdicts as before the edits.
     expect(verdicts(edited, { subjects })).toEqual([[1, 'points at the cause'], [1, 'points at the cause']]);
-    // Judged against today's values (an incident from an old save has no subjects): the A10 defect, now with the
-    // relation's own reasons: DDFPRD is another class, and a *PLEX row cannot place it.
+    // Judged with empty recorded subjects (a fixture that recorded no classes or images): the A10 defect, now with
+    // the relation's own reasons: DDFPRD is another class, and a *PLEX row cannot place it.
     expect(verdicts(edited, {})).toEqual([
       [0, 'a *PLEX row does not show which image the class ran on'],
       [0, 'not on a system MOBILE runs on'],
@@ -503,9 +510,9 @@ describe('capacity and processor-split pins (RT-05, A11)', () => {
     expect(p.value).toBeGreaterThan(1);
     expect(p.value).toBeLessThan(100);
     // It is evidence for a capacity incident and for a hardware fault, not for priority.
-    const inc = incident(reduced, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' } });
+    const inc = incident(reduced, { workloadId: 'MOBILE', truth: truthOf('CPU_CAPACITY', 'HARDWARE_FAULT') });
     expect(judgeEvidence(reduced, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 1, why: 'points at the cause' });
-    const priority = incident(reduced, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
+    const priority = incident(reduced, { workloadId: 'MOBILE', truth: truthOf('CPU_PRIORITY', 'POLICY') });
     expect(judgeEvidence(reduced, MIDWEST, priority, [p])[0]).toMatchObject({ relevance: 0, why: 'points elsewhere' });
     // A past range uses the adjustment recorded with it, not the present capacity setting.
     const past = addPin(reduced, MIDWEST, { source: 'CPC', lparId: 'PROD1', metric: 'CAPACITY_ADJ', tick: reduced.sim.tick - 360 }, () => ({
@@ -518,7 +525,7 @@ describe('capacity and processor-split pins (RT-05, A11)', () => {
 
   it('a CPC pin relates through the images the incident runs on', () => {
     const p: EvidencePin = { id: 1000, source: 'CPC', metric: 'CPC_BUSY', subject: 'CPCA', system: 'CPCA', tick: regressed.sim.tick, value: 96, text: '' };
-    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_CAPACITY', trigger: 'GROWTH' } });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: truthOf('CPU_CAPACITY', 'GROWTH') });
     expect(judgeEvidence(regressed, MIDWEST, inc, [p])[0]).toMatchObject({ relevance: 1, why: 'points at the cause' });
     // Another processor is not about this incident, and an idle one is unremarkable.
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...p, subject: 'CPCZ', system: 'CPCZ' }])[0]!.why).toBe('not about MOBILE');
@@ -537,7 +544,7 @@ describe('capacity and processor-split pins (RT-05, A11)', () => {
     // Below the 5 % line the split is unremarkable; a real overflow counts half, like APPL, on any class of a host
     // image (the split is about the processor, not the class). Values set explicitly: the run's own IIPCP moves with
     // WLM's choices.
-    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_CAPACITY', trigger: 'POLICY' } });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: truthOf('CPU_CAPACITY', 'POLICY') });
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...iipcp, value: 2 }])[0]!.why).toBe('value is unremarkable');
     expect(judgeEvidence(regressed, MIDWEST, inc, [{ ...iipcp, value: 20 }])[0]).toMatchObject({ relevance: 0.5, why: 'consistent with the cause (but not specific)' });
   });
@@ -588,11 +595,11 @@ describe('pin relations (RT-12, docs/rca-design.md §4.6)', () => {
     expect(card.serverClasses).toEqual(['STCHI']);
     expect(card.classes).toEqual(expect.arrayContaining(['ONLHI', 'STCHI']));
     // A workload with no regions records none, so every class it has is its own.
-    expect(subjects('MOBILE').serverClasses).toBeUndefined();
+    expect(subjects('MOBILE').serverClasses).toEqual([]);
   });
 
   it('counts only the relations the metric is evidence for', () => {
-    const inc = incident(regressed, { workloadId: 'MOBILE', truth: { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } });
+    const inc = incident(regressed, { workloadId: 'MOBILE', truth: truthOf('CPU_PRIORITY', 'POLICY') });
     // R-16's residual: TSO ran on a MOBILE image, but its own CPU delay is not MOBILE's delay.
     const tsoDelay = pinOf({ subject: 'TSO#1', system: 'PROD2', value: 19.7 });
     expect(judgeEvidence(regressed, MIDWEST, inc, [tsoDelay])[0])
@@ -608,7 +615,7 @@ describe('pin relations (RT-12, docs/rca-design.md §4.6)', () => {
 
   it('posits no relation for an own-class row from an image the work was routed away from', () => {
     const r = { ...regressed, sim: { ...regressed.sim, routing: { ...regressed.sim.routing, CARDAUTH: { PROD1: 0, PROD2: 1 } } } };
-    const inc = incident(r, { workloadId: 'CARDAUTH', truth: { mechanism: 'CPU_PRIORITY', trigger: 'DEMAND_SURGE' } });
+    const inc = incident(r, { workloadId: 'CARDAUTH', truth: truthOf('CPU_PRIORITY', 'DEMAND_SURGE') });
     // A DDF/TSO row of another class on the abandoned image is not the work's own delay, and neither is its own class's
     // row there: only PROD2 hosts CARDAUTH now.
     expect(judgeEvidence(r, MIDWEST, inc, [pinOf({ subject: 'ONLHI#1', system: 'PROD1' })])[0])
@@ -621,9 +628,9 @@ describe('pin relations (RT-12, docs/rca-design.md §4.6)', () => {
     }
   });
 
-  it('reads a region class as the work\'s own when the incident predates RT-12', () => {
+  it('reads a class row as the work\'s own when no region class was recorded', () => {
     const card = subjects('CARDAUTH');
-    const { serverClasses: _drop, ...old } = card;
+    const old: IncidentSubjects = { ...card, serverClasses: [] };
     const inc = incident(regressed, { workloadId: 'CARDAUTH', subjects: old });
     expect(pinRelation(regressed, inc, pinOf({ subject: 'STCHI#1', system: 'PROD1' }), old)).toBe('self');
   });

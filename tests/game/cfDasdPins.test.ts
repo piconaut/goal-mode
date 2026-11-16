@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
-import { addPin, judgeEvidence } from '../../src/game/evidence';
+import { addPin, incidentSubjects, judgeEvidence } from '../../src/game/evidence';
 import { newRun } from '../../src/game/run';
 import type { Incident, Mechanism, RunState, Trigger } from '../../src/game/types';
 import type { RmfInterval } from '../../src/sim/measure/rmf';
+import { truthOf } from '../helpers/truth';
 
 const content = { ...MIDWEST_GAME, events: [] };
 const run = newRun(MIDWEST, content, 7);
@@ -48,7 +49,8 @@ const incident = (mechanism: Mechanism, trigger: Trigger, r: RunState = run): In
   endTick: 3600,
   hours: 1,
   worstAttainmentPct: 80,
-  truth: { mechanism, trigger },
+  truth: truthOf(mechanism, trigger),
+  subjects: incidentSubjects(r, MIDWEST, 'RBANK', 0),
   rca: null,
   trustLost: 0,
 });

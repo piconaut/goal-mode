@@ -1,6 +1,18 @@
 // Run files as text (headless play CLI, spectator mode). JSON has no Infinity/NaN and the sim uses Infinity
 // for "uncapped", so non-finite numbers are tagged to keep the state bit-identical.
 
+/** The save format this build writes. A file of any other version is refused rather than repaired (user decision
+ * 2026-11-16: a save need not load across releases). */
+export const SAVE_VERSION = 2 as const;
+
+/** What a file of another version gets: one message, instead of a partial load that breaks later. */
+export const OLD_SAVE_MESSAGE = 'This run was saved by an older build of GOAL MODE; start a new run.';
+
+/** Throws `OLD_SAVE_MESSAGE` unless the value is a save this build wrote. */
+export function assertSaveVersion(value: { version?: number } | null | undefined): void {
+  if (value?.version !== SAVE_VERSION) throw new Error(OLD_SAVE_MESSAGE);
+}
+
 export function encodeRunJson(value: unknown): string {
   return JSON.stringify(value, (_k, v: unknown) => (typeof v === 'number' && !Number.isFinite(v) ? { $num: String(v) } : v));
 }

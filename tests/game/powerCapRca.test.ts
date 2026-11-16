@@ -7,6 +7,7 @@ import { applyCommand } from '../../src/sim/core/commands';
 import { initState } from '../../src/sim/core/init';
 import { accumulateTick, closeInterval, newRmfAcc } from '../../src/sim/measure/rmf';
 import { renderPartitionData } from '../../src/sim/measure/reports';
+import { EMPTY_SUBJECTS, truthOf } from '../helpers/truth';
 
 const incumbent = (mechanism: Incident['truth']['mechanism'], basis?: CapacityBasis): Incident => ({
   id: 1,
@@ -16,7 +17,8 @@ const incumbent = (mechanism: Incident['truth']['mechanism'], basis?: CapacityBa
   endTick: 300,
   hours: 1,
   worstAttainmentPct: 90,
-  truth: { mechanism, trigger: 'HARDWARE_FAULT' },
+  truth: truthOf(mechanism, 'HARDWARE_FAULT'),
+  subjects: EMPTY_SUBJECTS,
   ...(basis ? { basis } : {}),
   rca: null,
   trustLost: 0,

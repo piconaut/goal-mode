@@ -363,7 +363,7 @@ DPs are a function of it. Level *i* from the top is dispatched at `MANAGED_MAX �
 unoccupied priority lies between occupied ones and `MANAGED_MAX` (247) is never occupied: "after a dispatching
 priority change, service class periods may be remapped … such that there is an unoccupied priority between each
 occupied priority" (WLM Services p.139, priority unbunching). Policy adjustment ends every interval with the ladder
-renumbered this way (an old save's on its first interval, order kept). A period seen for the first time joins the
+renumbered this way (a run saved mid-interval keeps the order it was saved with). A period seen for the first time joins the
 level of the lowest period of its importance, else a new level directly below the lowest level that holds a more
 important period (the top if there is none); a new image's first ladder is one level per importance present. APPROX:
 more than 22 levels (no shipped policy has 22 active goal periods on an image) merge from the bottom.
@@ -452,8 +452,8 @@ delay*), `ziipUsing`, `ziipDelay`, `iipcp`, `cappingDelay`.
   wait for TRANSACTION regions counts as its CPU delay, so a starved region makes its transaction class a CPU
   receiver (SG24-7621 p.81, p.126); a wait for REGION/BOTH regions stays a dependency (OTHER) delay.
   **Not a player lever** (user decision 2026-11-05, game simplicity): the sim models all three, but the policy
-  editor and play CLI refuse setting a rule's mode (clearing one back to the default is allowed, for old saves);
-  every scenario ships with all regions at TRANSACTION. The realism lab and tests still drive REGION/BOTH.
+  editor and play CLI refuse setting a rule's mode (clearing one back to the default is allowed, since TRANSACTION is
+  the only mode a player can reach); every scenario ships with all regions at TRANSACTION. The realism lab and tests still drive REGION/BOTH.
 - CICS transaction classes (any class a CICS rule or the CICS default points at) take one period with a
   response-time goal. The editor warns on velocity, discretionary or multi-period goals ("not supported",
   WLM Planning ch. 9–10) and refuses a resource group on such a class, the one case IBM documents the ISPF
@@ -1351,7 +1351,7 @@ card); a card that lowered the processor's capacity (POWER_CAP) adds CPU_CAPACIT
 short of CPU adds CPU_PRIORITY; and an incident with no card to blame accepts GROWTH and POLICY together, because no
 visible data separates growth that crossed the headroom from a configuration without headroom. Authentication from an
 accepted mechanism earns evidence points too. The reply names the primary and gives one line for each other accepted
-answer. Old saves carry no accepted set and are scored on the primary alone.
+answer. Every truth carries its accepted set (`acceptedAnswers`), and the primary is always part of it.
 
 **Implementation:** evidence is pinned from structured report data (Workload Activity/WLMGL interval rows,
 Monitor III — class rows, SYSWKM server rows and PROCU job rows — Db2 101, CICS 110 (transactions and the region
@@ -1362,7 +1362,8 @@ hurt workload (or is a server-side clue), is notable, and its metric is evidence
 trigger (`content/evidence.ts`). Evidence is judged against the incident's own subjects — the service classes, the serving region classes
 (`serverClasses`, kept apart so a region's row is the server's), images and serving regions recorded when it opened
 (`closeHour`, `batchMissIncident`) — so a policy activation or a routing change made after it opened cannot turn a pin that was
-good at the time into "not about" the work; incidents from old saves derive the subjects from the present. The
+good at the time into "not about" the work; every incident carries the subjects it recorded, and a file from another
+build is refused rather than judged against the present (CL-20). The
 record is taken at the hour's close, so a change applied during that same hour is already in it, and a later hour
 of a still-open incident keeps the subjects it opened with.
 Every pin gets a **relation** to the incident, derived from those subjects: `self` (the work's own class or period,
@@ -1400,7 +1401,7 @@ the filed mechanism earns 3 evidence points (`PROOF.recipePoints`, what three fu
 predicate shown earns 0.5 (`PROOF.partialPoints`, a lone non-specific pin's old weight), and a complete recipe for
 the filed, accepted trigger on top makes the evidence **strong** (+5 Insight). Two delay rows of the work's own class
 no longer reach strong evidence for any CPU incident (A9). The reply ticks each predicate and names the pins that met
-it (the RCA card, `play rca`), and the proof is stored on the RCA (`rca.proof`, absent in older saves).
+it (the RCA card, `play rca`), and the proof is stored on the RCA (`rca.proof`, absent when no pin was attached).
 Notable recipes: CPU_CAPACITY reads a full processor (CPC/image busy ≥ 90 %, or a capacity adjustment), CPU_PRIORITY a
 displaceable consumer (a less important period, or a job, at ≥ 10 % of the image), CAPPING a capped image or CAP delay;
 DEMAND_SURGE is the ended rate ≥ 1.25 × its normal at a flat CPU per transaction, and a change regression the reverse
@@ -1428,8 +1429,8 @@ at filing time (`EVIDENCE.groupTrustPerIncident`; a wrong RCA's penalty is not s
 group's accepted answers are the union of its members', its primary is the lead's, so a mechanism or trigger accepted for
 any victim scores in full. A pin counts as evidence if it supports any incident in the group. An incident that joins a
 group after its RCA was filed inherits it only when the cause is that card: a later incident of a no-card cause is listed
-as new, so an RCA filed at 10:00 cannot silently cover four at 13:00 (A13). Saves written before RT-07 carry no cause and
-group by equal mechanism and trigger. Real incident management correlates alerts the same way; one cause should not mean
+as new, so an RCA filed at 10:00 cannot silently cover four at 13:00 (A13). Real incident management correlates alerts
+the same way; one cause should not mean
 five near-identical write-ups (playtest round 1, design item C).
 
 **A missed batch window is an incident:** when the critical path misses its deadline, the day end opens a `BATCH`

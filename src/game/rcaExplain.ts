@@ -3,7 +3,6 @@
 // hour that decided the verdict, whatever the player does before filing the RCA.
 
 import { CPU_CAPACITY } from '../content/incidents';
-import { acceptedOf } from './sla';
 import type { Incident } from './types';
 
 const pct = (v: number) => `${v.toFixed(1)} %`;
@@ -21,7 +20,7 @@ function verdictLine(inc: Incident): string | null {
   const b = inc.basis;
   const mech = inc.truth.mechanism;
   if (!b || (mech !== 'CPU_CAPACITY' && mech !== 'CPU_PRIORITY')) return null;
-  const mechanisms = acceptedOf(inc.truth).mechanisms;
+  const mechanisms = inc.truth.accepted.mechanisms;
   const both = mechanisms.includes('CPU_CAPACITY') && mechanisms.includes('CPU_PRIORITY');
   const cpcLine = Math.round(CPU_CAPACITY.cpcBusyFrac * 100);
   const lparLine = Math.round(CPU_CAPACITY.lparBusyFrac * 100);

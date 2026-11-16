@@ -53,7 +53,7 @@ const MAX_RT_SEC = 24 * 3600;
 /** Edits the sim models but the game doesn't offer the player (user decision 2026-11-05: every region is managed
  * to TRANSACTION goals, for game simplicity). The realism lab and tests still use them through applyWlmEdit. */
 export function playerWlmEditError(e: WlmEdit): string | null {
-  // Clearing a rule's setting (back to TRANSACTION) stays allowed, for old saves that set one.
+  // Clearing a rule's setting (back to TRANSACTION) stays allowed: it is the game's fixed mode anyway.
   if (e.op === 'SET_RULE_REGION_MODE' && e.mode !== null) return 'Manage Region Using Goals Of is fixed at TRANSACTION in this game';
   return null;
 }

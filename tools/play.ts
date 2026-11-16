@@ -21,7 +21,6 @@ import { parseIdText } from '../src/game/ids';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { DIFFICULTIES, type DifficultyId } from '../src/content/difficulty';
 import { SCENARIOS } from '../src/content/scenarios';
-import { canonicalTrigger } from '../src/content/rca';
 import type { Mechanism, Trigger } from '../src/game/types';
 import type { CfMetric, CpcMetric, DasdMetric, PinRequest } from '../src/game/evidence';
 import type { EvidenceMetric } from '../src/content/evidence';
@@ -30,7 +29,8 @@ import type { ReportKind, SmfKind } from '../src/worker/protocol';
 import { writeSpectateFile } from './spectateFile';
 import { decodeRunJson } from '../src/game/runFile';
 import type { Mon3PinHistory } from '../src/game/mon3PinHistory';
-import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, statusText, wlmLogText, type PlayCommand } from './playCore';
+import { SAVE_VERSION } from '../src/game/runFile';
+import { applyPlayCommand, batchStreamsText, capacityText, catalogText, financeText, mon3Text, openPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from './playCore';
 
 // Piping into head closes stdout early; that is not an error.
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
@@ -128,8 +128,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'draft': return { cmd: 'draft', optionId: rest[0] && rest[0] !== 'none' ? rest[0] : null };
     case 'rca': {
       const ev = rest.indexOf('--evidence');
-      // Older play files and habits name the pre-RT-09 trigger id; it maps to CHANGE_REGRESSION.
-      const trigger = canonicalTrigger(rest[2] ?? '') ?? (rest[2] as Trigger);
+      const trigger = (rest[2] ?? '') as Trigger;
       return { cmd: 'rca', incidentId: parseIdText('incident', rest[0] ?? ''), mechanism: rest[1] as Mechanism, trigger, evidenceIds: ev >= 0 ? (rest[ev + 1] ?? '').split(',').filter(Boolean).map((x) => parseIdText('pin', x)) : [] };
     }
     case 'ask': return { cmd: 'ask', topic: (rest[0] ?? '').toUpperCase() as InquiryKind, workloadId: rest[1] ?? null };
@@ -159,7 +158,14 @@ try {
 const isNew = typeof c === 'object' && c.cmd === 'new';
 if (!isNew && !existsSync(path)) throw new Error(`${path} does not exist; start with: new <seed>`);
 const mon3Path = path.replace(/\.json$/, '') + '.mon3.json';
-let file = isNew ? null : openPlayFile(readFileSync(path, 'utf8'));
+let file: PlayFile | null;
+try {
+  file = isNew ? null : openPlayFile(readFileSync(path, 'utf8'));
+} catch (e) {
+  // A file of another save version (or damaged JSON): one line, not a stack trace.
+  console.log(`REFUSED: ${(e as Error).message}`);
+  process.exit(2);
+}
 const mon3Loaded = file && existsSync(mon3Path) ? decodeRunJson<Mon3PinHistory>(readFileSync(mon3Path, 'utf8')) : undefined;
 if (file && mon3Loaded) file = { ...file, mon3: mon3Loaded };
 if (typeof c === 'string') {
@@ -176,7 +182,7 @@ if (typeof c === 'string') {
 } else {
   // --pace: advance one hour at a time, saving after each so a spectator sees every step (same end state).
   const steps: PlayCommand[] = paceMs > 0 && c.cmd === 'advance' ? Array.from({ length: Math.max(1, Math.min(24, Math.floor(c.hours))) }, () => ({ cmd: 'advance', hours: 1 })) : [c];
-  let res = { file: file ?? ({ version: 1, log: [] } as never), ok: true, text: '' };
+  let res = { file: file ?? ({ version: SAVE_VERSION, log: [] } as never), ok: true, text: '' };
   for (const [i, step] of steps.entries()) {
     if (i > 0 && (res.file.run.phase !== 'LIVE' || !res.ok || res.text.includes('\nSTOPPED:'))) break;
     if (i > 0) await new Promise((r) => setTimeout(r, paceMs));

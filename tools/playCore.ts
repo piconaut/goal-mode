@@ -20,7 +20,7 @@ import { applyReportClassAdvice } from '../src/game/rcAdvisor';
 import { clockAt, formatClock, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads, runWorkItems } from '../src/game/workloads';
 import { decideTfp } from '../src/game/tfp';
-import { decodeRunFileText, encodeRunJson } from '../src/game/runFile';
+import { SAVE_VERSION, assertSaveVersion, decodeRunFileText, encodeRunJson } from '../src/game/runFile';
 import { idText } from '../src/game/ids';
 import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
@@ -34,8 +34,7 @@ import { plannedPolicy, policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import { alsoAcceptedOf, groupAcceptedOf, rcaGroupOf } from '../src/game/run/rca';
-import { TRIGGER_LABEL, canonicalTrigger, triggerLabel } from '../src/content/rca';
-import { normalizeRun } from '../src/game/tools';
+import { TRIGGER_LABEL, triggerLabel } from '../src/content/rca';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
@@ -75,7 +74,8 @@ export type PlayCommand =
   | { cmd: 'note'; text: string };
 
 export interface PlayFile {
-  version: 1;
+  /** `SAVE_VERSION` (src/game/runFile.ts): a play file of another version is refused at load. */
+  version: typeof SAVE_VERSION;
   run: RunState;
   pendingPolicy: ServiceDefinition | null;
   log: PlayCommand[];
@@ -101,25 +101,23 @@ function needs(feature: ToolFeature, what: string): string {
 }
 
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
-export const decodePlayFile = (text: string): PlayFile => decodeRunFileText<PlayFile>(text);
-
-/** Load a play file as the CLI does: a file written before RT-09 has its trigger ids mapped like the worker's import,
- * so a replay scores the same answers rather than turning a formerly right one into a wrong one. */
-export const openPlayFile = (text: string): PlayFile => {
-  const f = decodePlayFile(text);
-  return { ...f, run: normalizeRun(f.run, packOf(f.run.scenarioId).scenario) };
+export const decodePlayFile = (text: string): PlayFile => {
+  const f = decodeRunFileText<PlayFile>(text);
+  assertSaveVersion(f);
+  return f;
 };
+
+/** Load a play file as the CLI does: the current save version, decoded and checked. */
+export const openPlayFile = (text: string): PlayFile => decodePlayFile(text);
 
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', scenario = 'midwest'): PlayFile {
   const pack = packOf(scenario);
-  return { version: 1, run: newRun(pack.scenario, pack.game, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty, ...(scenario !== 'midwest' ? { scenario } : {}) }] };
+  return { version: SAVE_VERSION, run: newRun(pack.scenario, pack.game, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty, ...(scenario !== 'midwest' ? { scenario } : {}) }] };
 }
 
 export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
   const out = apply(file, c);
-  // A log written before RT-09 names the old trigger id; replay accepts it and records the canonical one.
-  const logged = c.cmd === 'rca' && canonicalTrigger(c.trigger) ? { ...c, trigger: canonicalTrigger(c.trigger)! } : c;
-  return out.ok ? { ...out, file: { ...out.file, log: [...file.log, logged] } } : out;
+  return out.ok ? { ...out, file: { ...out.file, log: [...file.log, c] } } : out;
 }
 
 function apply(file: PlayFile, c: PlayCommand): PlayResult {
@@ -187,8 +185,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(chooseDraft(run, content, c.optionId), c.optionId ? `Drafted ${c.optionId}.` : 'Draft skipped.');
     }
     case 'rca': {
-      // Play files written before RT-09 log the old trigger id; replay accepts it.
-      const cTrigger = canonicalTrigger(c.trigger) ?? c.trigger;
+      const cTrigger = c.trigger;
       if (!MECHANISMS.includes(c.mechanism) || !TRIGGERS.includes(cTrigger)) return fail(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
       const inc = run.incidents.find((i) => i.id === c.incidentId);
       if (!inc) return fail(`No incident ${idText('incident', c.incidentId)}`);
