@@ -131,7 +131,8 @@ level or a separate toggle.
   Harbourline −3.7 %, Midwest −7.6 %, Revenue −6.9 % (7 pairs each). The re-profile puts `evaluateLpar` as the largest
   remaining share (25–27 %): option 3's trigger. Option 2 (RMF/state copying, ~13 %) still waits for the user.
   Option 1 in total: about −10 % Harbourline, −14 % Midwest, −20 % Revenue. Leftovers (classification results and
-  period indices in the plan, two commands the plan test lists but never runs) are BACKLOG CL-07, measure-first.
+  period indices in the plan) were measured in CL-07 (2026-11-16, #378): under 1 % of the profile, so no plan fields
+  were added; the plan test now runs `RESTART_JOB` and `SET_PRICING`.
 - Evidence and current proposal: [docs/headless-performance.md](docs/headless-performance.md), raw results in
   [docs/performance/](docs/performance/). Preserve pure snapshots and exact hashes for optimizations.
 
