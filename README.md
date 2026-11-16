@@ -42,6 +42,8 @@ npm run sweep -- --bots donothing,textbook --seeds 1-20 --jobs 4 # bots over man
 npm run test:remote -- --suite sim         # the vitest suite on GitHub Actions; prints a summary
 ```
 
+Every script and headless tool, with its flags: [`docs/tools.md`](docs/tools.md).
+
 Layout: `src/content` (scenarios, workloads, events, tools, prices, coefficients) → `src/sim` (the
 deterministic tick engine) ← `src/game` (run state, days, scoring) ← `src/ui` (React). `src/worker` hosts
 the sim in a Web Worker; `tools/` holds the headless runners and strategy bots.
@@ -53,6 +55,7 @@ the sim in a Web Worker; `tools/` holds the headless runners and strategy bots.
 - [`PROGRESS.md`](PROGRESS.md): milestones, decisions, balance results and open questions.
 - [`BACKLOG.md`](BACKLOG.md): scoped work ready to pick up, in named lists.
 - [`CLAUDE.md`](CLAUDE.md): architecture rules and conventions for contributors (human or AI).
+- [`docs/tools.md`](docs/tools.md): every npm script and headless tool, with its flags.
 - [`AGENTS.md`](AGENTS.md): Codex entry point; [`docs/codex.md`](docs/codex.md) explains native agent roles.
 - [`docs/agents.md`](docs/agents.md): the headless play CLI and the AI agents that play the game through it.
 - [`docs/wlm-design.md`](docs/wlm-design.md): WLM policy adjustment, real z/OS against the sim's model as built,
