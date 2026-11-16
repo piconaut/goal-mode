@@ -364,9 +364,10 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     return { atStop, final: f, after, abended, stopTick };
   };
 
+  // The 18 played hours run here, not in the tests, so the hook carries the long timeout (default hookTimeout 30 s).
   beforeAll(() => {
     played = playToAbend();
-  });
+  }, 120_000);
 
   it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
     const p = played;
