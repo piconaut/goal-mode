@@ -551,7 +551,8 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     for (const seed of SEEDS) {
       const { def, input } = makeCase(seed, 'varied');
       // Work outside goal management on the same image: SYSSTC and discretionary keep their DPs.
-      const fixed = [{ scKey: 'SYSSTC#1', dp: DP.SYSSTC }, { scKey: 'SYSOTHER#1', dp: 196 }];
+      // Fixed DPs: SYSTEM/SYSSTC and discretionary work, including a class period the policy defines as DISC.
+      const fixed = [{ scKey: 'SYSTEM#1', dp: DP.SYSTEM }, { scKey: 'SYSSTC#1', dp: DP.SYSSTC }, { scKey: 'SYSOTHER#1', dp: 196 }, { scKey: 'DEVBAT#1', dp: 196 }];
       const system = { ...input.system, scps: [...input.system.scps, ...fixed.map((f) => ({ ...f, starvedSec: 0, acc: emptyAcc() }))] };
       const out = policyAdjust({ ...input, system, ccImp: seed % 3 });
       if (out.log?.includes('RCVR=')) moved++;

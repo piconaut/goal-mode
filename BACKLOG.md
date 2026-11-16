@@ -382,21 +382,6 @@ use `DELAY_CPU` or restrict the example to the CPU mechanisms. This is a documen
 change. Done when: A9's example matches the accepted mechanisms and relation/notability rules, preserving its
 explanation of the remaining proof-recipe gap.
 
-### PR-15 · A policy edit can leave discretionary work on the ladder, or a new goal at the bottom
-`list: pr-followups · status: ready · priority: high · size: M · area: sim`
-
-From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. DPs are carried by period key (`held` in `src/sim/core/tick/dispatch.ts` `imageInput`; `control.ts` applies
-`out.dps[k] ?? s.dp`), and `policyAdjust` only ladders goal periods, so a period whose goal kind changes in an
-activated policy (`src/game/wlmEdit.ts` allows a discretionary last period) keeps its old DP:
-- goal → discretionary: `DEVBAT#1` held at 246 stays at 246, on the top level (SPEC §5.4: discretionary runs at 196);
-- discretionary → goal: held at 196, `placeNewPeriods` skips it (`held[k] !== undefined`, `src/sim/wlm/runtime.ts`)
-  and `canonical` puts an importance-1 goal at the bottom.
-Older than WT-06 (DPs were always carried by key), but WT-06's I9 and WT-07's donor comment ("discretionary work is
-fixed below the managed ladder") assume it can't happen. Reset non-goal periods to `initialDp` (server periods
-excepted) and place a held period whose goal kind changed, or whose DP is outside its range, as new; `initialDp`'s
-dead goal branch can go. Done when: tests for both edits (policy activation mid-run), I9 checks non-goal periods at
-their fixed DPs, goldens unchanged unless a golden run edits a goal kind (say which).
-
 ### PR-16 · `placeLateDp` can return MANAGED_MAX
 `list: pr-followups · status: ready · priority: low · size: S · area: sim`
 

@@ -2,11 +2,12 @@ import { addJobDelay, advanceJob, jobShape } from '../../subsys/batch';
 import { DB2 } from '../../subsys/db2';
 import { scKeyAtService } from '../../workload/slices';
 import { emptyScpTick, evaluateLpar, prepareLpar, type LparEvalInput } from '../../wlm/evaluate';
-import { decayInto, emptyAcc, goalInfo, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
+import { decayInto, emptyAcc, goalInfo, initialDp, placeLateDp, placeNewPeriods, type ScpState } from '../../wlm/runtime';
 import { holderTopology, servedKeys } from '../../wlm/holders';
 import { addToBuckets } from '../../wlm/goals';
 import type { LparConfig, LparRuntime } from '../types';
 import { TICK_SEC } from '../units';
+import { DP } from '../../zos/dispatcher';
 import { type ImageEvalInput, type TickCtx, type TickSums, servers, usesDb2 } from './ctx';
 import { addParts, cicsHonorPriority, classifyJob, idleScpTick, jobServiceSu, rgMin, rgSysplexShares, wlLparKey } from './helpers';
 import { atOrFind, type ImagePlan, regionsOf } from './plan';
@@ -46,6 +47,23 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
   for (const s of prevSys?.scps ?? []) held[s.scKey] = s.dp;
   const server = topo.serverKey;
   let fresh: string[] | null = null;
+  // A period's DP is carried by key, but a policy activation can change what the period is (PR-15): a period that is
+  // no longer goal-managed gets its fixed DP back (discretionary work runs below the managed range, 192–201; goal
+  // periods use 203–247: SG24-6472 p.66), and a goal period whose carried DP is off the managed ladder (it was
+  // discretionary) is placed as new by its importance below. A server period and the periods it serves (the region
+  // classes and the transactions inside those regions) keep following their holder: the sim dispatches a region's
+  // transactions at the holder's DP (WT-09), so a discretionary transaction period does not become 196.
+  const served = new Set(regions?.keys ?? []);
+  for (const [k, dp] of Object.entries(held)) {
+    if (k === server || topo.heldBy[k] !== undefined || served.has(k)) continue;
+    const g = goalInfo(def, k);
+    if (!g) continue;
+    if (g.goal.kind === 'DISC') held[k] = initialDp(k);
+    else if (dp < DP.MANAGED_MIN || dp >= DP.MANAGED_MAX) {
+      delete held[k];
+      (fresh ??= []).push(k);
+    }
+  }
   if (server) {
     const kept = prevSys?.servers?.find((x) => x.key === server)?.dp;
     // A save from before server periods: the regions ran at the highest served DP.

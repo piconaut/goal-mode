@@ -133,14 +133,13 @@ function goalInfoUncached(def: ServiceDefinition, scKey: string): ScpGoalInfo | 
   return { serviceClass, period, goal: p.goal, importance: p.importance, cpuCritical: c.cpuCritical, resourceGroup: c.resourceGroup };
 }
 
-export function initialDp(def: ServiceDefinition, scKey: string): number {
+export function initialDp(scKey: string): number {
   const { serviceClass } = parseScKey(scKey);
   if (serviceClass === SYSTEM) return DP.SYSTEM;
   if (serviceClass === SYSSTC) return DP.SYSSTC;
-  const g = goalInfo(def, scKey);
-  if (!g || g.goal.kind === 'DISC') return 196;
-  // The first ladder: one level per importance (docs/wlm-design.md §5.6); the interval's end makes it canonical.
-  return levelDp(g.importance - 1);
+  // Only a period that is not goal-managed asks for its first DP: discretionary work runs at 196 (SPEC §5.4). Goal
+  // periods are placed on the ladder by importance (placeNew).
+  return 196;
 }
 
 const isGoal = (def: ServiceDefinition, k: string): boolean => {
@@ -193,7 +192,7 @@ export function placeNewPeriods(
         L = placeNew(L, server!, lad.imp(server!)!, lad.imp);
         placed = true;
       }
-    } else if (!isGoal(def, k)) out[k] = initialDp(def, k);
+    } else if (!isGoal(def, k)) out[k] = initialDp(k);
     else {
       L = placeNew(L, k, lad.imp(k)!, lad.imp);
       placed = true;
@@ -211,7 +210,7 @@ export function placeNewPeriods(
  * period takes its server period's DP.
  */
 export function placeLateDp(def: ServiceDefinition, dps: Readonly<Record<string, number>>, k: string, topo: HolderTopology = NO_SERVERS): number {
-  if (!isGoal(def, k)) return initialDp(def, k);
+  if (!isGoal(def, k)) return initialDp(k);
   const server = topo.heldBy[k];
   if (server !== undefined && dps[server] !== undefined) return dps[server]!;
   const { L: L0, imp, goal } = holderLadder(def, dps, topo);
