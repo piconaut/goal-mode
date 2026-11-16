@@ -5,7 +5,7 @@ session. **Work ready to pick up is in [BACKLOG.md](BACKLOG.md)**, not here: not
 Completed implementation details, superseded decisions, playtest rounds, sweep rows and maintenance notes are in Git
 history: `git log -p -- PROGRESS.md`. The dated notes up to 2026-11-16 were deleted by the commit "PROGRESS: delete
 dated history (CL-42)"; read them at its parent. Older full trackers: `1d9d5a2:PROGRESS.md`, `3fd1762:PROGRESS.md`.
-Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/research.md).
+Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/research.md).
 
 ## Current status
 
@@ -398,7 +398,3 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   output with `head`, read the section that owns the topic (hit page ±1) and search in the book's words as well as
   the user's. A WLM answer missed ieaw100 3.1 p.61 ("no goals for CICS ⇒ region velocity goals") because the
   page says "address spaces", not "region", and the truncated hit list hid the pages around it. Rules in SKILL.md §3.
-
-## Latest maintenance
-
-Short dated notes on recent work, newest first. Older notes are in Git history.

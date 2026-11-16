@@ -12,7 +12,11 @@ keep SLAs green and software cost down while workload grows and events pile up.
 - **`SPEC.md`** is the design source of truth. Read the relevant section before implementing
   anything. If you deviate, update SPEC.md in the same change and log why in PROGRESS.md.
 - **`PROGRESS.md`** tracks milestones, status, decisions and open questions. Update it at the
-  end of every working session: add decisions, note what's next.
+  end of every working session: add decisions, note what's next. It is a snapshot, not a log (user request
+  2026-11-16): keep it under 450 lines. "Current status" is one line per item (date, what, PR) for about the last ten
+  days; a new sweep replaces the M8.2 reference instead of adding a row; narratives, per-PR results and investigation
+  detail go in the PR body, `docs/` (e.g. `docs/audit-loops/`, `docs/playtests/`) or BACKLOG entries. A change that
+  would take it past 450 lines deletes the oldest status lines in the same change; Git history keeps them.
 - **`BACKLOG.md`** is the only list of work to pick up (user request 2026-11-09): scoped entries in named lists
   (`playtest-fixes`, `pr-followups`, `realism-fixes`, `cleanup`), each with a status. Implement only `status: ready`
   entries, and only from a list you were given; a vague request ("work through PROGRESS") isn't a list, so ask.

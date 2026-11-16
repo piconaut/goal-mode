@@ -58,5 +58,5 @@ What the player saw â†’ what the sim did (numbers, with the interval or tick) â†
 When asked (or at the end of a playtest round): add each open finding to BACKLOG.md as an entry in list
 `playtest-fixes` (format and rules at the top of BACKLOG.md; source = the round). Mark it `blocked: design` when it
 needs a design call rather than a fix, and set "Done when". Put the round's narrative (player, build, incidents) in
-PROGRESS.md under a new "Playtest round N" heading, and research verdicts in docs/research.md. Entries, not code. Commit on the session branch and open the PR into `dev` per CLAUDE.md, unless the user says to
+`docs/playtests/round-N.md` with one PROGRESS.md "Current status" line linking it, and research verdicts in docs/research.md. Entries, not code. Commit on the session branch and open the PR into `dev` per CLAUDE.md, unless the user says to
 hold the PR.
