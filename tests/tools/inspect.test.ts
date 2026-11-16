@@ -382,10 +382,10 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     // The restarted job is no longer abended; the other jobs that abended on SYSP still are.
     expect(catalogText(p.final)).not.toContain(`abended now: ${p.abended}`);
     // 15 played hours plus one replay of the same log: ~12-15 s alone on the shared host (was 43 s for 41 hours
-    // and two replays). The restart coverage the second replay used to give is the test below (PR-21).
+    // and two replays). The restart coverage the second replay used to give is the test below.
   }, 120_000);
 
-  it('replays a log that restarts the abended job without stopping there (PR-21)', () => {
+  it('replays a log that restarts the abended job without stopping there', () => {
     const p = played;
     // The replay crosses the restart: it reaches the CLI's own clock (midnight) rather than stopping at the 21:00
     // abend, and counts all 18 played hours across the restart. replayAdvance's stop rule around a restart has an
