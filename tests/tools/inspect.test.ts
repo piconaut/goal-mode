@@ -381,7 +381,10 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     expect(p.after).not.toContain('STOPPED:');
     expect(p.final.run.sim.tick - p.stopTick).toBe(3 * TICKS_PER_HOUR); // all three hours ran, not one
     // The restarted job is no longer abended; the other jobs that abended on SYSP still are.
-    expect(catalogText(p.final)).not.toContain(`abended now: ${p.abended}`);
+    const abendedNow = (f: PlayFile) => (/abended now: (.*)$/m.exec(catalogText(f))?.[1] ?? '').split(' ');
+    expect(abendedNow(p.atStop)).toContain(p.abended);
+    expect(abendedNow(p.final)).not.toContain(p.abended);
+    expect(abendedNow(p.final).filter((x) => x && x !== 'none').length).toBeGreaterThan(0);
     // 15 played hours plus one replay of the same log: ~12-15 s alone on the shared host (was 43 s for 41 hours
     // and two replays). The restart coverage the second replay used to give is the test below.
   }, 120_000);
