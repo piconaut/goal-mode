@@ -813,10 +813,10 @@ clean and `npm run check` is green.
 ### CL-23 · `src/content` imports from `src/game`; enforce the layering
 `list: cleanup · status: ready · priority: high · size: S · area: content`
 
-Source: codebase survey (2026-11-16). CLAUDE.md's layering is `content → sim ← game ← ui`, but nine content files
+Source: codebase survey (2026-11-16). CLAUDE.md's layering is `content → sim ← game ← ui`, but ten content files
 import types from `game`: `game-midwest.ts`, `game-revenue.ts`, `game-harbourline.ts` and `packs.ts` (`GameContent`
-from `../game/run`); `rca.ts`, `evidence.ts`, `footprint.ts` and `hints.ts` (`Mechanism`, `Trigger` from
-`../game/types`); `draft.ts` (`DraftOption`). Change: move those types, and the types they need, to a content-side
+from `../game/run`); `rca.ts`, `evidence.ts`, `footprint.ts`, `hints.ts` and `events/midwest-events.ts`
+(`Mechanism`, `Trigger` from `../game/types`); `draft.ts` (`DraftOption`). Change: move those types, and the types they need, to a content-side
 module (e.g. `src/content/types.ts`), with `src/game` re-exporting them where convenient. Extend
 `tests/sim/purity.test.ts` so it also fails when `src/content` imports from `game`, `ui` or `worker`. Done when: the
 purity test covers `src/content` and passes, and typecheck is clean.
