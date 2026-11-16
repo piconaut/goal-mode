@@ -4,6 +4,7 @@ import { lsprCategory } from '../../src/content/smf';
 import { advance, newRun, startDay } from '../../src/game/run';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../../src/game/smf';
 import type { RunState } from '../../src/game/types';
+import { midwestNoon } from '../helpers/fixtureCache';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 
 const content = { ...MIDWEST_GAME, events: [] };
@@ -11,7 +12,7 @@ const HOUR = 360;
 let noon: RunState;
 
 beforeAll(() => {
-  noon = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 6 * HOUR);
+  noon = midwestNoon();
 }, 60_000);
 
 describe('LSPR category table', () => {

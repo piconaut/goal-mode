@@ -2,11 +2,12 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { encodePlayFile, type PlayFile } from '../../tools/playCore';
 import { blameText } from '../../tools/inspect';
 import { blameIncident, cardsActiveInHour, endedAtHourStart, judgeGains, noiseFloor, summarizeBlame, type IncidentBlame } from '../../src/game/counterfactual';
-import { advance, chooseDraft, newRun, startDay } from '../../src/game/run';
+import { advance } from '../../src/game/run';
 import { scenarioFor } from '../../src/game/difficulty';
 import { packOf } from '../../src/content/packs';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import type { ActiveEvent, Incident, RunState } from '../../src/game/types';
+import { REVENUE_INCIDENT_HOUR, revenueIncidentHour } from '../helpers/fixtureCache';
 
 const pack = packOf('revenue');
 const scenario = scenarioFor(pack.scenario, 'NORMAL');
@@ -15,7 +16,7 @@ const scenario = scenarioFor(pack.scenario, 'NORMAL');
 // 11:17, hurting EFILE). Midwest's runaways were the fixture before WT-10 (seed 2 before WT-04, then seed 3); since
 // WT-10 WLM helps MOBILE's CPU delay while it mostly waits on Db2, and no Midwest runaway in seeds 1–30 breaks it.
 const DAY = 1;
-const HOURS = 5;
+const HOURS = REVENUE_INCIDENT_HOUR;
 const HOUR_START = DAY * TICKS_PER_DAY + HOURS * TICKS_PER_HOUR;
 const CARD = 'RUNAWAY_COMPLIANCE@1';
 const VICTIM = 'EFILE';
@@ -23,15 +24,9 @@ const VICTIM = 'EFILE';
 /** D1 played to its review, D2 started, at the incident's hour start; the log replays it. */
 let file: PlayFile;
 beforeAll(() => {
-  let run = newRun(pack.scenario, pack.game, 6);
-  run = startDay(run, pack.game);
-  run = advance(run, scenario, pack.game, 24 * 360);
-  run = chooseDraft(run, pack.game, null);
-  run = startDay(run, pack.game);
-  run = advance(run, scenario, pack.game, HOURS * 360);
   file = {
     version: 1,
-    run,
+    run: revenueIncidentHour(),
     pendingPolicy: null,
     log: [
       { cmd: 'new', seed: 6, difficulty: 'NORMAL', scenario: 'revenue' },
@@ -42,7 +37,7 @@ beforeAll(() => {
       { cmd: 'advance', hours: HOURS },
     ],
   };
-  expect(run.sim.tick).toBe(HOUR_START);
+  expect(file.run.sim.tick).toBe(HOUR_START);
 }, 60_000);
 
 const truthOf = (start: RunState, workloadId: string): Incident => {

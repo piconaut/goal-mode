@@ -19,10 +19,11 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, type EvidencePin } from '../../src/game/evidence';
 import { judgeProof, proofLines } from '../../src/game/proof';
 import { db2Accounting } from '../../src/game/smf';
-import { advance, chooseDraft, newRun, startDay, submitRca } from '../../src/game/run';
+import { advance, chooseDraft, startDay, submitRca } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../../src/game/sla';
 import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from '../../src/game/types';
+import { midwestNoon } from '../helpers/fixtureCache';
 import { minPins } from '../helpers/proofPins';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { Command } from '../../src/sim/core/commands';
@@ -37,7 +38,7 @@ let fixtureRun: RunState;
 let day2: RunState;
 
 beforeAll(() => {
-  noon = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 6 * HOUR);
+  noon = midwestNoon();
   // A critical job ABENDs at 22:00 on day 1 (JOB_ABEND's command), so the night has a failure to pin.
   const late = advance(noon, MIDWEST, content, 10 * HOUR);
   const night = advance({ ...late, pendingCommands: [{ kind: 'ABEND_JOB', critical: true }] }, MIDWEST, content, TICKS_PER_DAY);

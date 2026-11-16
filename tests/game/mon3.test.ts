@@ -3,13 +3,14 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { buildMon3, explainWlmLog, type Mon3Row } from '../../src/game/mon3';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
+import { midwestNoon } from '../helpers/fixtureCache';
 import { buildView } from '../../src/game/view';
 
 const content = { ...MIDWEST_GAME, events: [] };
 let noon: RunState;
 
 beforeAll(() => {
-  noon = advance(startDay(newRun(MIDWEST, content, 7), content), MIDWEST, content, 6 * 360); // 12:00
+  noon = midwestNoon(); // 12:00
 });
 
 describe('Monitor III views', () => {
