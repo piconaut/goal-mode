@@ -26,7 +26,7 @@ function startCap(id: keyof typeof games, commands: Command[] = [], pendingComma
     pendingCommands: [...run.pendingCommands, ...pendingCommands],
     events: [{
       uid: 'POWER_CAP@0', defId: def.id, name: def.name, startTick: 0, endTick: 6 * TICKS_PER_HOUR,
-      trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def),
+      trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [],
       endCommands: def.end, started: false, ended: false,
     }],
   }, scenario, game, 1);
@@ -170,11 +170,6 @@ describe('power-cap RCA scope', () => {
     expect(next.hour!.cappedTicksByLpar?.PRDC).toBeUndefined();
     // 1 of 360 ticks is not 5 % of the hour: the CPU split decides, not CAPPING.
     expect(cappedForHour(next.hour!, 'PRDA')).toBe(false);
-    // An hour accumulated before RT-08 has no count and keeps its worst-tick reading.
-    const { cappedTicksByLpar: _count, ...old } = played.hour!;
-    const nextOld = accumulateHour(capped({ ...played, hour: old }));
-    expect(nextOld.hour!.cappedTicksByLpar).toBeUndefined();
-    expect(cappedForHour(nextOld.hour!, 'PRDA')).toBe(true);
   });
 
   it('uses pending routing changes applied on the cap-start tick', () => {

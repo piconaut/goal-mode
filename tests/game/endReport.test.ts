@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { endReport, gradeFor } from '../../src/game/endReport';
 import type { RunState } from '../../src/game/types';
+import { truthOf } from '../helpers/truth';
 
 describe('gradeFor', () => {
   it('rewards surviving the quarter most, then SLA, then trust', () => {
@@ -16,7 +17,7 @@ describe('endReport', () => {
   it('builds the timeline, the biggest incident and the best RCA from run records', () => {
     const inc = (id: number, workloadId: string, hours: number, rcaPoints: number | null) => ({
       id, workloadId, day: id, startTick: 0, endTick: 1, hours, worstAttainmentPct: 80,
-      truth: { mechanism: 'CAPPING', trigger: 'POLICY' },
+      truth: truthOf('CAPPING', 'POLICY'),
       rca: rcaPoints === null ? null : { mechanism: 'CAPPING', trigger: 'POLICY', points: rcaPoints },
       trustLost: 0,
     });

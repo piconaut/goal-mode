@@ -4,66 +4,9 @@ import type { Command } from '../sim/core/commands';
 import type { Scenario } from '../sim/core/scenario';
 import type { ChangeOutcome } from './run';
 import { allWorkloads } from './workloads';
-import { emptyAlerts } from './alerts';
-import { emptyAutomation } from './automation';
-import { emptyPolicyBook } from './policies';
-import type { RunState, Trigger } from './types';
-import { canonicalTrigger } from '../content/rca';
+import type { RunState } from './types';
 
-/** Fill fields added after a run was saved (IndexedDB autosaves outlive releases). */
-export function normalizeRun(run: RunState, scenario?: Scenario): RunState {
-  let config = run.sim.config.cfStructures || !scenario ? run.sim.config : { ...run.sim.config, cfStructures: structuredClone(scenario.world.cfStructures) };
-  // Saves from before CF failure/duplexing: structures lack size, preference list and loss impact.
-  if (scenario && config.cfStructures.some((x) => x.sizeGb === undefined || x.prefList === undefined || x.lostImpact === undefined)) {
-    const def = (name: string) => scenario.world.cfStructures.find((x) => x.name === name);
-    config = {
-      ...config,
-      cfStructures: config.cfStructures.map((x) => ({
-        ...x,
-        sizeGb: x.sizeGb ?? def(x.name)?.sizeGb,
-        prefList: x.prefList ?? (def(x.name)?.prefList ? [...def(x.name)!.prefList!] : undefined),
-        lostImpact: x.lostImpact ?? def(x.name)?.lostImpact,
-      })),
-    };
-  }
-  // Saves from before per-LCU DASD: take the scenario's LCU layout.
-  if (scenario && !config.dasd.lcus) config = { ...config, dasd: { ...structuredClone(scenario.world.dasd), backendDegrade: config.dasd.backendDegrade ?? 1 } };
-  // Saves written before RT-09 carry the old trigger id in incidents, their accepted answers and active cards.
-  const trig = (id: string): Trigger => canonicalTrigger(id) ?? (id as Trigger);
-  const renameKeys = (notes: Record<string, string> | undefined) =>
-    notes && Object.fromEntries(Object.entries(notes).map(([k, v]) => [trig(k), v]));
-  return {
-    ...run,
-    events: run.events.map((e) => ({ ...e, trigger: trig(e.trigger) })),
-    incidents: run.incidents.map((i) => ({
-      ...i,
-      ...(i.aiops ? { aiops: i.aiops.map((h) => ({ ...h, trigger: trig(h.trigger) })) } : {}),
-      truth: {
-        ...i.truth,
-        trigger: trig(i.truth.trigger),
-        ...(i.truth.accepted ? { accepted: { ...i.truth.accepted, triggers: i.truth.accepted.triggers.map(trig) } } : {}),
-        ...(i.truth.notes ? { notes: renameKeys(i.truth.notes) } : {}),
-      },
-      ...(i.rca ? { rca: { ...i.rca, trigger: trig(i.rca.trigger) } } : {}),
-    })),
-    tools: run.tools ?? [],
-    toolsOff: run.toolsOff ?? [],
-    reportsOpenedToday: run.reportsOpenedToday ?? [],
-    codexReports: run.codexReports ?? [],
-    smfHours: run.smfHours ?? [],
-    mon3Charts: run.mon3Charts ?? null,
-    pins: run.pins ?? [],
-    alerts: run.alerts ?? emptyAlerts(),
-    automation: run.automation ?? emptyAutomation(),
-    policies: run.policies ?? emptyPolicyBook(),
-    projects: run.projects ?? [],
-    capacityDays: run.capacityDays ?? [],
-    capacityToday: run.capacityToday ?? null,
-    sim: { ...run.sim, config, mods: { ...run.sim.mods, measureCpu: run.sim.mods.measureCpu ?? {} }, wlm: { ...run.sim.wlm, definition: normalizeDefinition(run.sim.wlm.definition) } },
-  };
-}
-
-/** Older saves (and hand-edited policy JSON) can lack a period's durationSu; the model means null. */
+/** A hand-edited policy JSON can lack a period's durationSu; the model means null. */
 export function normalizeDefinition(d: ServiceDefinition): ServiceDefinition {
   if (d.classes.every((c) => c.periods.every((p) => p.durationSu !== undefined))) return d;
   return { ...d, classes: d.classes.map((c) => ({ ...c, periods: c.periods.map((p) => ({ ...p, durationSu: p.durationSu ?? null })) })) };

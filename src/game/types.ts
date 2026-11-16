@@ -59,14 +59,15 @@ export interface ActiveEvent {
   /** The footprint's direct set (RT-14): the workloads whose own demand or path the card changes. */
   affects: string[];
   /** The footprint's reach while the card runs: image ids, and `JOB@LPAR` for a region reach. Re-resolved every tick
-   * and kept as the union over the hour (`affectsHour`), like a power cap's scope (absent = direct only: saves from
-   * before RT-14, and cards that load nothing shared). */
+   * and kept as the union over the hour (`affectsHour`), like a power cap's scope (absent = direct only: a card that
+   * loads nothing shared). */
   reach?: string[];
   /** Workloads that closed a met SLA hour (or BATCH a met night) with the card already running at its start: the card
    * is background for them, and ranks after a fresh one (docs/rca-design.md §4.4(2)). Sorted. */
   metWith?: string[];
-  /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
-  mechanisms?: Mechanism[];
+  /** Mechanisms the card causes; it only takes the blame for incidents with one of these (empty = none, so a card
+   * whose footprint loads nothing never takes blame). */
+  mechanisms: Mechanism[];
   /** Mechanism the card causes through failures rather than delay (copied from the card). */
   failureMechanism?: Mechanism;
   /** Hardware items refused while the card runs (copied from the card). */
@@ -96,9 +97,9 @@ export interface SmfHour {
   hourOfDay: number;
   workloads: Record<string, WorkloadHour>;
   /** Per workload, CPU per transaction ÷ the healthy baseline in force at close. Frozen when the hour closes so
-   * a past row keeps its "vs base" ratio however later hours move the EWMA (absent in older saves). */
+   * a past row keeps its "vs base" ratio however later hours move the EWMA (absent when no workload closed a rate). */
   cpuVsBase?: Record<string, number>;
-  /** CICS storage manager statistics per AOR (absent in older saves). */
+  /** CICS storage manager statistics per AOR (absent without the CICS monitoring tool). */
   cicsStorage?: Record<string, CicsStorageHour>;
 }
 
@@ -130,12 +131,11 @@ export interface HourAcc {
   maxCappedFrac: number;
   /** Max capped fraction per LPAR during the hour. */
   cappedByLpar: Record<string, number>;
-  /** Per LPAR: ticks of the hour in which the image's CP demand was capped (`cappedFrac > 0`). Absent in an hour
-   * accumulated before RT-08 (a save loaded mid-hour), which keeps the `cappedByLpar` reading of its worst tick. */
-  cappedTicksByLpar?: Record<string, number>;
+  /** Per LPAR: ticks of the hour in which the image's CP demand was capped (`cappedFrac > 0`). */
+  cappedTicksByLpar: Record<string, number>;
   cpcBusySum: number;
-  /** Per CPC: sum over the hour's ticks of general-CP busy (absent in older saves). */
-  cpcBusyById?: Record<string, number>;
+  /** Per CPC: sum over the hour's ticks of general-CP busy. */
+  cpcBusyById: Record<string, number>;
   /** Per LPAR: sum over the hour's ticks of CP delivered ÷ CP available to it (logical CPs, weight, white space). */
   lparBusyById?: Record<string, number>;
   /** Per LPAR: sum of CP engines consumed by importance rank 0–6 (see `importanceRank`). */
@@ -174,9 +174,8 @@ export interface IncidentSubjects {
   hosts: string[];
   /** CICS regions (AOR/TOR) serving the transactions, by jobname and image. */
   servers: { jobname: string; lparId: string }[];
-  /** The region classes among `classes` (RT-12): a row on one of them is the server's, not the hurt work's. Absent in
-   * saves written before RT-12, which then treat every recorded class as the work's own. */
-  serverClasses?: string[];
+  /** The region classes among `classes` (RT-12): a row on one of them is the server's, not the hurt work's. */
+  serverClasses: string[];
 }
 
 /** The answers a fair expert could defend from visible data, always including the primary (RT-07): one incident's, or
@@ -190,15 +189,13 @@ export interface Accepted {
 export interface IncidentTruth {
   mechanism: Mechanism;
   trigger: Trigger;
-  /** Answers a fair expert could defend from visible data, always including the primary (RT-07). Absent in saves
-   * written before RT-07: read it through `acceptedOf` (game/sla.ts), which falls back to the primary alone. */
-  accepted?: Accepted;
+  /** Answers a fair expert could defend from visible data, always including the primary (RT-07). */
+  accepted: Accepted;
   /** One line per accepted answer that is not the primary, keyed by the answer, for the post-RCA reply. */
   notes?: Record<string, string>;
   /** Identity of the cause for grouping (docs/rca-design.md §4.5): the blamed card's `uid`, `new:<workload>`,
-   * `change:<id>`, or `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. Absent in
-   * saves written before RT-07, which group by equal mechanism and trigger. */
-  cause?: string;
+   * `change:<id>`, or `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. */
+  cause: string;
 }
 
 export interface Incident {
@@ -211,15 +208,14 @@ export interface Incident {
   worstAttainmentPct: number;
   truth: IncidentTruth;
   /** The capacity figures behind a CPU mechanism verdict, taken when the truth was set (absent for other
-   * mechanisms and in old saves). */
+   * mechanisms). */
   basis?: CapacityBasis;
   /** AIOps hypotheses when the incident opened (tool AIOPS), best first. */
   aiops?: Hypothesis[];
-  /** Classes, images and serving regions as they were when the incident opened (RT-04; absent in old saves). */
-  subjects?: IncidentSubjects;
-  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). `proof` is the
-   * filed claims' recipes over the attached pins (RT-13; absent in saves written before it and when no pin was
-   * attached). */
+  /** Classes, images and serving regions as they were when the incident opened (RT-04). */
+  subjects: IncidentSubjects;
+  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed. `proof` is the filed claims' recipes
+   * over the attached pins (RT-13; absent when no pin was attached). */
   rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string } | null;
   trustLost: number;
   /** Id of the group's lead, the first incident of its cause (docs/rca-design.md §4.5): one RCA covers the group,
@@ -243,8 +239,8 @@ export interface DayReport {
   score: number;
   mlcEstimate: number;
   events: string[];
-  /** Worst sysplex PI per service-class period over the day's RMF intervals (absent in old saves). */
-  piWorst?: Record<string, number>;
+  /** Worst sysplex PI per service-class period over the day's RMF intervals. */
+  piWorst: Record<string, number>;
 }
 
 export interface Message {
@@ -255,10 +251,10 @@ export interface Message {
 }
 
 export interface RunState {
-  version: 1;
+  /** `SAVE_VERSION` (game/runFile.ts): another version is refused at load. */
+  version: 2;
   scenarioId: string;
-  /** Absent in saves from before difficulty presets (= Normal). */
-  difficulty?: DifficultyId;
+  difficulty: DifficultyId;
   seed: number;
   /** ISO date (UTC) when this is a daily-challenge run. */
   daily?: string;

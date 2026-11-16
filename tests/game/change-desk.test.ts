@@ -1,11 +1,13 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
+import { cardMechanisms } from '../../src/content/footprint';
 import { DASD_REBALANCE } from '../../src/content/hardware-catalog';
 import { previewChange } from '../../src/game/catalog';
 import { addToBasket, basketAfterFailure, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../../src/game/changeDesk';
 import { cancelChange, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
 import { buildView } from '../../src/game/view';
 import type { Command } from '../../src/sim/core/commands';
+import type { Mechanism } from '../../src/game/types';
 
 const content = { ...MIDWEST_GAME, events: [] };
 const fresh = () => newRun(MIDWEST, content, 7);
@@ -38,7 +40,7 @@ describe('change preview', () => {
     const sos = MIDWEST_GAME.events.find((e) => e.id === 'CICS_SOS')!;
     const started = {
       ...r,
-      events: [{ uid: 'CICS_SOS@0', defId: sos.id, name: sos.name, startTick: 0, endTick: null, trigger: sos.trigger, affects: sos.affects, endCommands: sos.end, started: true, ended: false }],
+      events: [{ uid: 'CICS_SOS@0', defId: sos.id, name: sos.name, startTick: 0, endTick: null, trigger: sos.trigger, affects: sos.affects, mechanisms: cardMechanisms(sos) ?? [], endCommands: sos.end, started: true, ended: false }],
     };
     const drawn = { ...started, events: started.events.map((e) => ({ ...e, started: false })) };
     expect(buildView(started, MIDWEST).fixIds).toContain('RECYCLE_PROD2_AORS');
@@ -54,7 +56,7 @@ describe('change preview', () => {
     const enc = MIDWEST_GAME.events.find((e) => e.id === 'ENCRYPTION_MANDATE')!;
     const forewarned = {
       ...r,
-      events: [{ uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, endCommands: enc.end, started: false, ended: false }],
+      events: [{ uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, mechanisms: cardMechanisms(enc) ?? [], endCommands: enc.end, started: false, ended: false }],
     };
     expect(buildView(r, MIDWEST).fixIds).not.toContain('SCOPE_ENCRYPTION');
     expect(buildView(forewarned, MIDWEST).fixIds).toContain('SCOPE_ENCRYPTION');
@@ -63,7 +65,7 @@ describe('change preview', () => {
   it('reveals a fix when the card was only rumoured through Ask Around', () => {
     const r = newRun(MIDWEST, MIDWEST_GAME, 7);
     const enc = MIDWEST_GAME.events.find((e) => e.id === 'ENCRYPTION_MANDATE')!;
-    const card = { uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, endCommands: enc.end, started: false, ended: false };
+    const card = { uid: 'ENCRYPTION_MANDATE@1', defId: enc.id, name: enc.name, startTick: 999, endTick: null, trigger: enc.trigger, affects: enc.affects, mechanisms: cardMechanisms(enc) ?? [], endCommands: enc.end, started: false, ended: false };
     const rumoured = { ...r, events: [card], inquiries: { pending: [], revealed: [`ev:${card.uid}`] } };
     expect(buildView(rumoured, MIDWEST).fixIds).toContain('SCOPE_ENCRYPTION');
   });
@@ -78,7 +80,7 @@ describe('change preview', () => {
 
   it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {
     const r = fresh();
-    const card = { uid: 'e1', defId: 'GREEN_IT_COD', name: 'Data centre power budget', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [] as string[], blocksHardware: ['COD_CP'], endCommands: [] as Command[] };
+    const card = { uid: 'e1', defId: 'GREEN_IT_COD', name: 'Data centre power budget', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [] as string[], mechanisms: [] as Mechanism[], blocksHardware: ['COD_CP'], endCommands: [] as Command[] };
     const running = { ...r, events: [{ ...card, started: true, ended: false }] };
     expect(previewChange(previewContext(running), { hardwareId: 'COD_CP' }).reason).toMatch(/power budget/);
     expect(previewChange(previewContext(running), { hardwareId: 'ADD_ZIIP' }).ok).toBe(true);

@@ -63,8 +63,8 @@ export function endReport(run: RunState, overallTrust: number): EndReport {
     const pts = i.rca?.points ?? 0; // already includes evidence points
     if (i.rca && pts > 0 && (!bestRca || pts > bestRca.points)) bestRca = { workloadId: i.workloadId, day: i.day, points: pts, cause: causeOf(i.truth.mechanism, i.truth.trigger) };
   }
-  const scKeys = [...new Set(reports.flatMap((r) => Object.keys(r.piWorst ?? {})))].sort();
-  const piHeat = { scKeys, byDay: scKeys.map((k) => reports.map((r) => r.piWorst?.[k] ?? null)) };
+  const scKeys = [...new Set(reports.flatMap((r) => Object.keys(r.piWorst)))].sort();
+  const piHeat = { scKeys, byDay: scKeys.map((k) => reports.map((r) => r.piWorst[k] ?? null)) };
   const capDays = new Map((run.capacityDays ?? []).map((c) => [c.day, c.peakR4ha]));
   const lparIds = [...new Set([...capDays.values()].flatMap((p) => Object.keys(p)))].sort();
   const r4haByLpar = { lparIds, byDay: lparIds.map((id) => reports.map((r) => capDays.get(r.day)?.[id] ?? null)) };

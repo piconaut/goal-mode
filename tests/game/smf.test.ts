@@ -1,4 +1,6 @@
 import { MIDWEST } from '../../src/content/scenarios';
+import { MIDWEST_GAME } from '../../src/content/game-midwest';
+import { cardMechanisms } from '../../src/content/footprint';
 import { lsprCategory } from '../../src/content/smf';
 import { advance, newRun, startDay } from '../../src/game/run';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../../src/game/smf';
@@ -62,7 +64,8 @@ describe('vs base (PT-13)', () => {
 
   it('does not learn the healthy baseline from an hour a card disturbed', () => {
     const base = startDay(newRun(MIDWEST, content, 7), content);
-    const card: RunState['events'][number] = { uid: 'REGRESSION@0', defId: 'REGRESSION', name: 'REGRESSION', startTick: 0, endTick: 100_000, trigger: 'CHANGE_REGRESSION', affects: ['RBANK'], endCommands: [], started: true, ended: false };
+    const regression = MIDWEST_GAME.events.find((e) => e.id === 'REGRESSION')!;
+    const card: RunState['events'][number] = { uid: 'REGRESSION@0', defId: 'REGRESSION', name: 'REGRESSION', startTick: 0, endTick: 100_000, trigger: 'CHANGE_REGRESSION', affects: ['RBANK'], mechanisms: cardMechanisms(regression) ?? [], endCommands: [], started: true, ended: false };
     const quiet = advance(base, MIDWEST, content, HOUR);
     const disturbed = advance({ ...base, events: [card] }, MIDWEST, content, HOUR);
     expect(quiet.baselines.RBANK).toBeDefined();
@@ -127,7 +130,7 @@ describe('SMF 30 batch', () => {
     const withReport: RunState = {
       ...r,
       reports: [...r.reports, {
-        day: 0, sla: [], batchMissed: false, trustDelta: {} as never, score: 0, mlcEstimate: 0, events: [],
+        day: 0, sla: [], batchMissed: false, trustDelta: {} as never, score: 0, mlcEstimate: 0, events: [], piWorst: {},
         batch: {
           day: 0, jobs: 40, done: 40, criticalJobs: 14, criticalDone: 14, criticalEndSec: null, missedDeadline: false,
           criticalDelaySec: { cpu: 300, io: 200, lock: 400, db2: 100, swap: 0, init: 0 },

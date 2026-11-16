@@ -54,9 +54,7 @@ export function accumulateHour(run: RunState): RunState {
   let capped = 0;
   let delivered = 0;
   const cappedByLpar = { ...h.cappedByLpar };
-  // An hour loaded from a save written before RT-08 has no tick count; leave it absent so its verdict keeps the
-  // worst-tick reading instead of counting only the ticks played after the load.
-  const cappedTicksByLpar = h.cappedTicksByLpar ? { ...h.cappedTicksByLpar } : undefined;
+  const cappedTicksByLpar = { ...h.cappedTicksByLpar };
   const deliveredByCpc: Record<string, number> = {};
   const lparBusyById = { ...(h.lparBusyById ?? {}) };
   for (const l of run.sim.lpars) {
@@ -64,14 +62,14 @@ export function accumulateHour(run: RunState): RunState {
     if (!cp) continue;
     capped = Math.max(capped, cp.cappedFrac);
     cappedByLpar[l.id] = Math.max(cappedByLpar[l.id] ?? 0, cp.cappedFrac);
-    if (cp.cappedFrac > 0 && cappedTicksByLpar) cappedTicksByLpar[l.id] = (cappedTicksByLpar[l.id] ?? 0) + 1;
+    if (cp.cappedFrac > 0) cappedTicksByLpar[l.id] = (cappedTicksByLpar[l.id] ?? 0) + 1;
     delivered += cp.deliveredEngines;
     if (cp.availableEngines > 0) lparBusyById[l.id] = (lparBusyById[l.id] ?? 0) + Math.min(1, cp.deliveredEngines / cp.availableEngines);
     const cpcId = run.sim.config.lpars.find((x) => x.id === l.id)?.cpcId;
     if (cpcId) deliveredByCpc[cpcId] = (deliveredByCpc[cpcId] ?? 0) + cp.deliveredEngines;
   }
   const engines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
-  const cpcBusyById = { ...(h.cpcBusyById ?? {}) };
+  const cpcBusyById = { ...h.cpcBusyById };
   for (const c of run.sim.config.cpcs) {
     if (c.engines.CP > 0) cpcBusyById[c.id] = (cpcBusyById[c.id] ?? 0) + (deliveredByCpc[c.id] ?? 0) / c.engines.CP;
   }
@@ -98,7 +96,7 @@ export function accumulateHour(run: RunState): RunState {
       workloads,
       maxCappedFrac: Math.max(h.maxCappedFrac, capped),
       cappedByLpar,
-      ...(cappedTicksByLpar ? { cappedTicksByLpar } : {}),
+      cappedTicksByLpar,
       cpcBusySum: h.cpcBusySum + (engines > 0 ? delivered / engines : 0),
       cpcBusyById,
       lparBusyById,

@@ -48,7 +48,7 @@ function spectate(r: RunState) {
   seenChanges = r.changes.length;
   if (fresh.length) spectateLog.push({ cmd: 'note', text: `${botName}: ${fresh.join('; ')}` });
   spectateLog.push({ cmd: 'advance', text: `${botName} day ${r.day + 1} ${r.phase}` });
-  writeSpectateFile(spectatePath, { version: 1, run: r, pendingPolicy: null, log: spectateLog.slice(-50) });
+  writeSpectateFile(spectatePath, { version: 2, run: r, pendingPolicy: null, log: spectateLog.slice(-50) });
   if (paceSec > 0) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, paceSec * 1000);
 }
 

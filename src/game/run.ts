@@ -45,6 +45,7 @@ import {
   type PlannedChange,
   type RunState
 } from './types';
+import { SAVE_VERSION } from './runFile';
 import { allWorkloads } from './workloads';
 import { hourUnion, resolveReach, type ReachWorld } from './footprint';
 import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/helpers';
@@ -57,7 +58,7 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
   const scenario = scenarioFor(baseScenario, difficulty);
   const trust = Object.fromEntries((content.facets?.map((f) => f.id) ?? FACETS).map((f) => [f, diff.startTrust])) as Record<Facet, number>;
   let run: RunState = {
-    version: 1,
+    version: SAVE_VERSION,
     scenarioId: scenario.id,
     difficulty,
     seed,
@@ -464,7 +465,7 @@ function endDay(run: RunState, scenario: Scenario, content: GameContent): RunSta
   if (endReason) return { ...r, phase: 'GAMEOVER', endReason };
   if (day >= r.maxDays - 1 && r.endlessFromDay === undefined) return { ...r, phase: 'VICTORY', endReason: 'Quarter closed. You kept the bank running.' };
 
-  const hid = wlmHidSlides(r, scenario, dayIncidents, report.piWorst ?? {});
+  const hid = wlmHidSlides(r, scenario, dayIncidents, report.piWorst);
   const strained = strainedClasses(r, scenario, dayIncidents, worstPiOfDay(r.sim.rmf.intervals, day, STRAIN.minEnded), r.reports.at(-2)?.piWorst);
   for (const h of morningHints(hintLevelFor(difficultyOf(r.difficulty).hints, r.perks), dayIncidents, night ? { missed, criticalEndSec: night.criticalEndSec, deadlineSec: r.batchDeadlineSec } : null, hid, strained))
     r = msg(r, HINT_SENDER, 'A thought for this morning', h, day + 1);

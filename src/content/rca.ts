@@ -50,11 +50,3 @@ export const TRIGGER_LABEL: Record<Trigger, string> = {
 
 export const triggerLabel = (t: Trigger): string => TRIGGER_LABEL[t] ?? t;
 
-/** Trigger ids that older saves and play files used, mapped to the id they mean now (RT-09). Nothing else here. */
-const TRIGGER_ALIASES: Record<string, Trigger> = { ACCESS_PATH_REGRESSION: 'CHANGE_REGRESSION' };
-
-/** The canonical trigger id for a name read from a save, a play file or a CLI argument; null when unknown. */
-export function canonicalTrigger(id: string): Trigger | null {
-  if (Object.hasOwn(TRIGGER_LABEL, id)) return id as Trigger;
-  return Object.hasOwn(TRIGGER_ALIASES, id) ? TRIGGER_ALIASES[id]! : null;
-}

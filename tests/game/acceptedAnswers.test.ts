@@ -5,8 +5,9 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { acceptedAnswers, truthCause, type TruthContext } from '../../src/game/rcaTruth';
 import { advance, newRun, startDay, submitRca } from '../../src/game/run';
 import { closeHour, newHour } from '../../src/game/run/hourly';
-import { acceptedOf, importanceRank, scoreAccepted } from '../../src/game/sla';
+import { importanceRank, scoreAccepted } from '../../src/game/sla';
 import type { ActiveEvent } from '../../src/game/types';
+import { EMPTY_SUBJECTS, truthOf } from '../helpers/truth';
 import { applyPlayCommand, newPlayFile } from '../../tools/playCore';
 import { classify } from '../../src/sim/wlm/classify';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
@@ -18,7 +19,7 @@ function card(defId: string, startTick = 0, endTick: number | null = null): Acti
   const def = MIDWEST_GAME.events.find((d) => d.id === defId)!;
   return {
     uid: `${defId}@1`, defId, name: def.name, startTick, endTick, trigger: def.trigger,
-    affects: def.affects, mechanisms: cardMechanisms(def), endCommands: def.end, started: true, ended: false,
+    affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false,
   };
 }
 
@@ -65,7 +66,7 @@ describe('accepted answer sets (RT-07)', () => {
     }));
     expect(accepted.mechanisms).toEqual(['CPU_PRIORITY', 'CPU_CAPACITY']);
     expect(accepted.triggers).toEqual(['HARDWARE_FAULT']);
-    expect(scoreAccepted(accepted, { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
+    expect(scoreAccepted(accepted, truthOf('CPU_CAPACITY', 'HARDWARE_FAULT'))).toBe(5);
     // A capacity verdict also accepts priority inside the same band, and only the band widens it.
     const cap = acceptedAnswers(ctx({ mechanism: 'CPU_CAPACITY', basis: basis() }));
     expect(cap.accepted.mechanisms).toEqual(['CPU_CAPACITY', 'CPU_PRIORITY']);
@@ -131,13 +132,6 @@ describe('accepted answer sets (RT-07)', () => {
     expect(fresh.accepted.triggers).toEqual(['NEW_WORKLOAD']);
   });
 
-  it('a save written before RT-07 scores the primary alone', () => {
-    const old = { mechanism: 'CPU_CAPACITY' as const, trigger: 'HARDWARE_FAULT' as const };
-    expect(acceptedOf(old)).toEqual({ mechanisms: ['CPU_CAPACITY'], triggers: ['HARDWARE_FAULT'] });
-    expect(scoreAccepted(acceptedOf(old), { mechanism: 'CPU_PRIORITY', trigger: 'HARDWARE_FAULT' })).toBe(2);
-    expect(scoreAccepted(acceptedOf(old), { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
-  });
-
   it('names the cause: the blamed card, new work, or what was short', () => {
     expect(truthCause(ctx({ events: [card('POWER_CAP')], trigger: 'HARDWARE_FAULT' }))).toBe('POWER_CAP@1');
     expect(truthCause(ctx({ isNew: true, trigger: 'NEW_WORKLOAD' }))).toBe('new:MOBILE');
@@ -149,11 +143,11 @@ describe('accepted answer sets (RT-07)', () => {
     const file = newPlayFile(3);
     const incident = {
       id: 7, workloadId: 'MOBILE', day: 0, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80,
-      truth: {
-        mechanism: 'CPU_PRIORITY' as const, trigger: 'HARDWARE_FAULT' as const,
+      truth: truthOf('CPU_PRIORITY', 'HARDWARE_FAULT', {
         accepted: { mechanisms: ['CPU_PRIORITY' as const, 'CPU_CAPACITY' as const], triggers: ['HARDWARE_FAULT' as const] },
         notes: { CPU_CAPACITY: 'the machine may have been the constraint' },
-      },
+      }),
+      subjects: EMPTY_SUBJECTS,
       rca: null, trustLost: 1,
     };
     const out = applyPlayCommand({ ...file, run: { ...file.run, incidents: [incident], nextId: 8 } }, {
@@ -173,7 +167,7 @@ describe('accepted answer sets (RT-07)', () => {
       ...started,
       events: [{
         uid: 'POWER_CAP@0', defId: def.id, name: def.name, startTick: 0, endTick: 6 * TICKS_PER_HOUR,
-        trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def),
+        trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [],
         endCommands: def.end, started: false, ended: false,
       }],
     }, MIDWEST, MIDWEST_GAME, 1);
@@ -208,7 +202,7 @@ describe('accepted answer sets (RT-07)', () => {
     // 12 % at a rank below the hurt work's (or all of it, if that rank is already the lowest): either way the donor
     // line is crossed, so the hour is not a capacity verdict.
     expect(inc.basis!.donorPct).toBeGreaterThanOrEqual(10);
-    expect(scoreAccepted(acceptedOf(inc.truth), { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
+    expect(scoreAccepted(inc.truth.accepted, truthOf('CPU_CAPACITY', 'HARDWARE_FAULT'))).toBe(5);
     const filed = submitRca(closed, inc.id, 'CPU_CAPACITY', 'HARDWARE_FAULT');
     expect(filed.incidents.find((i) => i.id === inc.id)!.rca!.points).toBe(5);
   });

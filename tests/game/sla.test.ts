@@ -10,9 +10,9 @@ import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 /** No footprint scope: only cards that list the workload qualify. */
 const NO_SCOPE = { hosts: [] };
 
-const hour = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cpcBusySum: 0, lockIndexSum: 0 } as HourAcc;
+const hour: HourAcc = { hourIndex: 0, ticks: 1, workloads: {}, maxCappedFrac: 0, cappedByLpar: {}, cappedTicksByLpar: {}, cpcBusySum: 0, cpcBusyById: {}, lockIndexSum: 0 };
 const card = (over: Partial<ActiveEvent>): ActiveEvent => ({
-  uid: 'X@1', defId: 'X', name: 'X', startTick: 0, endTick: 10, trigger: 'DEMAND_SURGE', affects: ['RBANK'], endCommands: [], started: true, ended: false, ...over,
+  uid: 'X@1', defId: 'X', name: 'X', startTick: 0, endTick: 10, trigger: 'DEMAND_SURGE', affects: ['RBANK'], mechanisms: ['CPU_PRIORITY', 'CPU_CAPACITY'], endCommands: [], started: true, ended: false, ...over,
 });
 
 describe('triggerOf', () => {
@@ -138,10 +138,10 @@ describe('mechanismOf CPU split', () => {
   const cpu = { cpuQueue: 1 };
   // LPAR A1 on CPCA; CP engines consumed this hour by importance rank 0–6.
   const at = (busy: number, byImp: number[], capped: Record<string, number> = {}, lparBusy = 0.5) =>
-    ({ ...hour, ticks: 360, cpcBusySum: 0.5 * 360, cpcBusyById: { CPCA: busy * 360 }, lparBusyById: { A1: lparBusy * 360 }, cpByImportance: { A1: byImp }, cappedByLpar: capped }) as HourAcc;
+    ({ ...hour, ticks: 360, cpcBusySum: 0.5 * 360, cpcBusyById: { CPCA: busy * 360 }, lparBusyById: { A1: lparBusy * 360 }, cpByImportance: { A1: byImp }, cappedByLpar: capped, cappedTicksByLpar: {} });
   // The same hour with the tick count RT-08 adds: `ticksCapped` of its 360 ticks were capped.
   const ticks = (ticksCapped: number, busy = 0.7, byImp = [10, 200, 300, 0, 0, 0, 0], lparBusy = 0.5) =>
-    ({ ...at(busy, byImp, { A1: 0.2 }, lparBusy), cappedTicksByLpar: { A1: ticksCapped } }) as HourAcc;
+    ({ ...at(busy, byImp, { A1: 0.2 }, lparBusy), cappedTicksByLpar: { A1: ticksCapped } });
   const host = (importance: number) => [{ lparId: 'A1', cpcId: 'CPCA', importance }];
 
   it('is capacity when the host CPC is full and almost nothing less important runs there', () => {
@@ -168,10 +168,6 @@ describe('mechanismOf CPU split', () => {
 
   it('is still priority on a saturated image when less important work there could donate', () => {
     expect(mechanismOf(cpu, {}, at(0.86, [10, 200, 100, 150, 0, 0, 40], {}, 0.97), host(2))).toBe('CPU_PRIORITY');
-  });
-
-  it('still prefers capping of a host LPAR in an hour with no tick count (a save written before RT-08)', () => {
-    expect(mechanismOf(cpu, {}, at(0.95, [10, 200, 300, 0, 0, 0, 0], { A1: 0.2 }), host(2))).toBe('CAPPING');
   });
 
   it('does not call an hour capped because one tick was (18 ticks is the 5 % line)', () => {
@@ -242,17 +238,5 @@ describe('missed batch window truth', () => {
     // One hour well under the line pulls the night below it, however bad the other hour was.
     const short = addHour(addHour(null, h(35)), h(0));
     expect(mechanismOf({ cpuQueue: 1 }, {}, short, [{ lparId: 'A1', cpcId: 'C', importance: 2 }])).toBe('CPU_PRIORITY');
-  });
-
-  it('leaves the tick count off a night that folds in an hour accumulated before RT-08', () => {
-    const counted = { ...hour, ticks: 360, cappedByLpar: { A1: 0.2 }, cappedTicksByLpar: { A1: 9 } };
-    const old = { ...hour, ticks: 360, cappedByLpar: { A1: 0.02 } };
-    const hosts = [{ lparId: 'A1', cpcId: 'C', importance: 2 }];
-    // 2.5 % of the hour's ticks: the time reading is not capping, though one tick cut 20 % of the demand.
-    expect(mechanismOf({ cpuQueue: 1 }, {}, counted, hosts)).toBe('CPU_PRIORITY');
-    // Folded with an hour that has no count, the night keeps the worst-tick reading it was working to.
-    const acc = addHour(addHour(null, counted), old);
-    expect(acc.cappedTicksByLpar).toBeUndefined();
-    expect(mechanismOf({ cpuQueue: 1 }, {}, acc, hosts)).toBe('CAPPING');
   });
 });

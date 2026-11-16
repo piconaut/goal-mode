@@ -23,10 +23,6 @@ export type CausedIncident = Pick<Incident, 'day' | 'startTick' | 'endTick' | 't
 export function sameCause(a: CausedIncident, b: CausedIncident): boolean {
   const ca = a.truth.cause;
   const cb = b.truth.cause;
-  // Saves written before RT-07 carry no cause: keep the labels' grouping they were judged by.
-  if (ca === undefined || cb === undefined) {
-    return a.day === b.day && a.truth.mechanism === b.truth.mechanism && a.truth.trigger === b.truth.trigger;
-  }
   // One RCA per played day, so a group never crosses the 06:00 roll: an incident left open there is closed and the
   // new day's continuation is written up on its own.
   if (ca !== cb || a.day !== b.day) return false;

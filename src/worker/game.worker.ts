@@ -7,7 +7,7 @@ import { packOf } from '../content/packs';
 import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
 import type { RunState } from '../game/types';
-import { buyTool, noteReportOpened, normalizeDefinition, normalizeRun, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
+import { buyTool, noteReportOpened, normalizeDefinition, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
@@ -24,7 +24,7 @@ import { buildView } from '../game/view';
 import { applyWlmEdit, serviceClassGoalIssues, cicsTransactionClasses, pendingBase, playerWlmEditError } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
-import { decodeRunFileText, decodeRunJson, encodeRunJson } from '../game/runFile';
+import { OLD_SAVE_MESSAGE, SAVE_VERSION, assertSaveVersion, decodeRunFileText, decodeRunJson, encodeRunJson } from '../game/runFile';
 import { basketAfterFailure } from '../game/changeDesk';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { buildMon3 } from '../game/mon3';
@@ -241,13 +241,14 @@ function saveNow() {
 
 /** Same shape as tools/playCore.ts PlayFile, so `npm run play -- <file> status` and spectator mode can read it. */
 function runFileText(): string {
-  return encodeRunJson({ version: 1, run, pendingPolicy, log: [{ cmd: 'note', text: `Exported from the browser on day ${run.day + 1}` }] });
+  return encodeRunJson({ version: SAVE_VERSION, run, pendingPolicy, log: [{ cmd: 'note', text: `Exported from the browser on day ${run.day + 1}` }] });
 }
 
 function importRun(text: string) {
   const f = decodeRunFileText<{ run?: RunState; pendingPolicy?: ServiceDefinition | null }>(text);
   if (!f?.run?.sim || !f.run.scenarioId) throw new Error('Not a GOAL MODE run file');
-  run = normalizeRun(f.run, packOf(f.run.scenarioId).scenario);
+  assertSaveVersion(f.run);
+  run = f.run;
   lastPhase = run.phase;
   speed = 0;
   whatIf = null;
@@ -267,7 +268,8 @@ function importRun(text: string) {
 void Promise.all([loadRun(), loadDesk(), loadCareer()]).then(([r, d, c]) => {
   career = c ?? EMPTY_CAREER;
   postCareer();
-  saved = r ? normalizeRun(r, packOf(r.scenarioId).scenario) : null;
+  if (r && r.version !== SAVE_VERSION) post({ type: 'RESULT', ok: false, message: OLD_SAVE_MESSAGE });
+  saved = r && r.version === SAVE_VERSION ? r : null;
   savedDesk = d;
   storageReady = true;
   sendView();
@@ -322,7 +324,8 @@ const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'EXPORT_RUN', 'SPECT
 
 function spectate(text: string) {
   const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null }>(text);
-  const next = normalizeRun(f.run, packOf(f.run.scenarioId).scenario);
+  assertSaveVersion(f.run);
+  const next = f.run;
   // Same run moving forward: extend the charts; otherwise (new run, earlier file) start them over.
   const sameRun = spectating && next.seed === run.seed && next.sim.tick >= run.sim.tick;
   spectating = true;
@@ -346,7 +349,11 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
   if (spectating && !SPECTATOR_OK.has(m.type)) return;
   switch (m.type) {
     case 'SPECTATE':
-      spectate(m.text);
+      try {
+        spectate(m.text);
+      } catch (e) {
+        post({ type: 'RESULT', ok: false, message: `Spectate failed: ${(e as Error).message}` });
+      }
       break;
     case 'SPECTATE_ADOPT':
       if (!spectating) break;

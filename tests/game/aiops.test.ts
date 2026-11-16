@@ -1,9 +1,10 @@
 import { AIOPS } from '../../src/content/alerts';
 import { aiopsHypotheses } from '../../src/game/aiops';
 import { Rng, seedRng } from '../../src/sim/core/rng';
+import { truthOf } from '../helpers/truth';
 
 describe('AIOps hypotheses', () => {
-  const truth = { mechanism: 'LOCK_CONTENTION' as const, trigger: 'BATCH_OVERLAP' as const };
+  const truth = truthOf('LOCK_CONTENTION', 'BATCH_OVERLAP');
   const groups = ['LOCK_CONTENTION', 'CPU', 'IO', 'CF_SERVICE'];
   it('is right about as often as configured, and always lists the truth in the top two', () => {
     let right = 0;

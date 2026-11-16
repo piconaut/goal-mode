@@ -1,4 +1,5 @@
 import { PACKS } from '../../src/content/packs';
+import { cardMechanisms } from '../../src/content/footprint';
 import { PROJECTS } from '../../src/content/projects';
 import { failRiskFor } from '../../src/game/catalog';
 import { workOnProject } from '../../src/game/projects';
@@ -18,7 +19,7 @@ describe('Operations command delivery', () => {
       r = {
         ...r, phase,
         sim: applyCommands(r.sim, def.begin),
-        events: [{ uid: `${def.id}@0`, defId: def.id, name: def.name, startTick: 0, endTick: null, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: true, ended: false }],
+        events: [{ uid: `${def.id}@0`, defId: def.id, name: def.name, startTick: 0, endTick: null, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false }],
       };
       const expected = applyCommands(r.sim, def.end);
       const out = requestChange(r, pack.game, { label: label(r), fixId: def.fix! });
@@ -44,7 +45,7 @@ describe('Operations command delivery', () => {
     r = {
       ...r,
       sim: { ...applyCommands(r.sim, def.begin), tick: 1, batch },
-      events: [{ uid: 'regression', defId: def.id, name: def.name, startTick: 0, endTick: null, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: true, ended: false }],
+      events: [{ uid: 'regression', defId: def.id, name: def.name, startTick: 0, endTick: null, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false }],
       projects: [{ id: 'SQL_TUNING', hoursDone: PROJECTS.find((p) => p.id === 'SQL_TUNING')!.hours - 2, hoursToday: 0, day: 0, done: false }],
     };
     const project = workOnProject(r, 'SQL_TUNING', 2);

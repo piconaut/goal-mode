@@ -23,7 +23,7 @@ export interface RecipeCheck {
   claim: Mechanism | Trigger;
   complete: boolean;
   predicates: PredicateCheck[];
-  /** Whether the truth accepts the claim, set when the RCA is scored (absent in saves from before it). */
+  /** Whether the truth accepts the claim: set when the RCA is scored (a bare `judgeProof` result has not been). */
   accepted?: boolean;
 }
 

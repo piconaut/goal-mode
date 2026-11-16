@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { cardMechanisms } from '../../src/content/footprint';
 import { ACQUIRED_APP, BOOKING_APP } from '../../src/content/events/midwest-events';
 import { PREFILL_APP, REVENUE_STORY } from '../../src/content/events/revenue-events';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
@@ -19,7 +20,7 @@ const golive = MIDWEST_GAME.events.find((e) => e.id === 'NEW_APP_GOLIVE')!;
 const eventStart = 10 * TICKS_PER_DAY + 2 * TICKS_PER_HOUR + 72;
 const event: ActiveEvent = {
   uid: 'NEW_APP_GOLIVE@10', defId: golive.id, name: golive.name, trigger: golive.trigger,
-  startTick: eventStart, endTick: null, started: true, ended: false, affects: golive.affects, endCommands: [],
+  startTick: eventStart, endTick: null, started: true, ended: false, affects: golive.affects, mechanisms: cardMechanisms(golive) ?? [], endCommands: [],
 };
 
 function breach(w: WorkloadDef, hourStart: number, events: ActiveEvent[] = []): RunState {
@@ -89,20 +90,6 @@ describe('new-workload incident window', () => {
   it('expires a persistent card exactly on an hour-aligned go-live boundary', () => {
     const aligned = { ...event, startTick: eventStart - 72 };
     expect(truth(breach(BOOKING_APP, aligned.startTick + windowTicks, [aligned])).trigger).toBe('POLICY');
-  });
-
-  it('recovers old saves without difficulty or added age metadata, without changing prior incidents', () => {
-    const old = breach(ACQUIRED_APP, storyStart + windowTicks);
-    delete old.difficulty;
-    const recent = truth(breach(ACQUIRED_APP, storyStart));
-    const saved = JSON.parse(JSON.stringify({ ...old, incidents: [{
-      id: 123, workloadId: ACQUIRED_APP.id, day: 26, startTick: storyStart, endTick: storyStart + TICKS_PER_HOUR,
-      hours: 1, worstAttainmentPct: 0, truth: recent, rca: null, trustLost: 1,
-    }] })) as RunState;
-    const closed = closeHour(saved, MIDWEST, MIDWEST_GAME);
-    expect(closed.incidents[0]!.truth.trigger).toBe('NEW_WORKLOAD');
-    expect(closed.incidents.at(-1)!.truth.trigger).toBe('POLICY');
-    expect(truth(JSON.parse(JSON.stringify(breach(BOOKING_APP, eventStart - 72, [event])))).trigger).toBe('NEW_WORKLOAD');
   });
 
   it('does not invent an age for unknown origins, undelivered events or original scenario workloads', () => {

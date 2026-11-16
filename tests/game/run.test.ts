@@ -10,8 +10,10 @@ import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { streamRng } from '../../src/sim/core/rng';
 import type { RmfInterval, WlmRecord } from '../../src/sim/measure/rmf';
 import { applyCommands } from '../../src/sim/core/commands';
-import { acceptedOf, scoreAccepted } from '../../src/game/sla';
-import type { RunState } from '../../src/game/types';
+import { scoreAccepted } from '../../src/game/sla';
+import type { Mechanism, RunState } from '../../src/game/types';
+import { cardMechanisms } from '../../src/content/footprint';
+import { EMPTY_SUBJECTS, truthOf } from '../helpers/truth';
 
 const content = { ...MIDWEST_GAME, events: [] }; // deterministic: no random events
 
@@ -109,14 +111,14 @@ describe('incidents and RCA', () => {
 
   it('same-day incidents with the same root cause share one RCA, scored once', () => {
     const r0 = fresh();
-    const base = { day: r0.day, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80, rca: null, trustLost: 0 };
-    const truth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } as const;
+    const base = { day: r0.day, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80, rca: null, trustLost: 0, subjects: EMPTY_SUBJECTS };
+    const truth = truthOf('CPU_PRIORITY', 'POLICY');
     const r = {
       ...r0,
       incidents: [
         { ...base, id: 1, workloadId: 'RBANK', truth },
         { ...base, id: 2, workloadId: 'MKTQRY', truth, rcaGroup: 1 },
-        { ...base, id: 3, workloadId: 'ATM', truth: { ...truth, trigger: 'GROWTH' } as const },
+        { ...base, id: 3, workloadId: 'ATM', truth: truthOf('CPU_PRIORITY', 'GROWTH') },
       ],
     };
     const scored = submitRca(r, 2, 'CPU_PRIORITY', 'POLICY');
@@ -127,14 +129,14 @@ describe('incidents and RCA', () => {
 
   it('a grouped RCA earns its trust reward once per incident; a wrong one is penalised once', () => {
     const r0 = fresh();
-    const base = { day: r0.day, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80, rca: null, trustLost: 0 };
-    const truth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY' } as const;
+    const base = { day: r0.day, startTick: 0, endTick: null, hours: 1, worstAttainmentPct: 80, rca: null, trustLost: 0, subjects: EMPTY_SUBJECTS };
+    const truth = truthOf('CPU_PRIORITY', 'POLICY');
     const r = {
       ...r0,
       incidents: [
         { ...base, id: 1, workloadId: 'RBANK', truth },
         { ...base, id: 2, workloadId: 'MKTQRY', truth, rcaGroup: 1 },
-        { ...base, id: 3, workloadId: 'ATM', truth: { ...truth, trigger: 'GROWTH' } as const },
+        { ...base, id: 3, workloadId: 'ATM', truth: truthOf('CPU_PRIORITY', 'GROWTH') },
       ],
     };
     const gain = (id: number, ...a: Parameters<typeof submitRca> extends [unknown, unknown, infer M, infer T, ...unknown[]] ? [M, T] : never) => overallTrust(submitRca(r, id, ...a)) - overallTrust(r);
@@ -192,9 +194,9 @@ describe('incidents and RCA', () => {
   });
 
   it('RCA scoring gives partial credit', () => {
-    const truth = acceptedOf({ mechanism: 'CF_SERVICE', trigger: 'HARDWARE_FAULT' });
-    expect(scoreAccepted(truth, { mechanism: 'CF_SERVICE', trigger: 'GROWTH' })).toBe(3);
-    expect(scoreAccepted(truth, { mechanism: 'IO', trigger: 'HARDWARE_FAULT' })).toBe(2);
+    const truth = truthOf('CF_SERVICE', 'HARDWARE_FAULT');
+    expect(scoreAccepted(truth.accepted, truthOf('CF_SERVICE', 'GROWTH'))).toBe(3);
+    expect(scoreAccepted(truth.accepted, truthOf('IO', 'HARDWARE_FAULT'))).toBe(2);
   });
 });
 
@@ -221,7 +223,7 @@ describe('events', () => {
     return {
       ...r,
       sim: applyCommands(r.sim, def.begin),
-      events: [{ uid: `${def.id}@0`, defId: def.id, name: def.name, startTick: 0, endTick: 100, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: true, ended: false }],
+      events: [{ uid: `${def.id}@0`, defId: def.id, name: def.name, startTick: 0, endTick: 100, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: true, ended: false }],
     };
   };
 
@@ -276,7 +278,7 @@ describe('events', () => {
     const startTick = r.day * TICKS_PER_DAY + hours * TICKS_PER_HOUR;
     return {
       ...r,
-      events: [{ uid: `${defId}@${r.day}`, defId, name: def.name, startTick, endTick: startTick + TICKS_PER_DAY, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false }],
+      events: [{ uid: `${defId}@${r.day}`, defId, name: def.name, startTick, endTick: startTick + TICKS_PER_DAY, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: false, ended: false }],
     };
   };
   /** A label whose 06:00 activation roll passes, so the test sees the arming rather than the failure risk. */
@@ -368,6 +370,7 @@ describe('events', () => {
           endTick: null,
           trigger: 'RUNAWAY_WORK',
           affects: ['ADHOC'],
+          mechanisms: [],
           endCommands: [{ kind: 'SET_MODIFIER', mod: 'cpu', key: 'ADHOC', value: 1 }],
           started: false,
           ended: false,
@@ -388,7 +391,7 @@ describe('event cards resolved at start', () => {
   const withCard = (defId: string, setting: 4 | 5 | 6 | 7) => {
     let r = startDay(newRun(sc, MIDWEST_GAME, 3), MIDWEST_GAME);
     r = { ...r, events: [], sim: applyCommands(r.sim, [{ kind: 'SET_CPC_CAPACITY', cpcId: 'CPCA', capacitySetting: setting }]) };
-    const ev = { uid: `${defId}@0`, defId, name: defId, startTick: r.sim.tick, endTick: r.sim.tick + 2, trigger: 'HARDWARE_FAULT' as const, affects: [], endCommands: [], started: false, ended: false };
+    const ev = { uid: `${defId}@0`, defId, name: defId, startTick: r.sim.tick, endTick: r.sim.tick + 2, trigger: 'HARDWARE_FAULT' as const, affects: [], mechanisms: [] as Mechanism[], endCommands: [], started: false, ended: false };
     return { ...r, events: [ev] };
   };
 
@@ -425,7 +428,7 @@ describe('event cards resolved at start', () => {
     const game = MIDWEST_GAME;
     const def = game.events.find((e) => e.id === 'VENDOR_PRICE')!;
     let r = startDay(newRun(sc, game, 3), game);
-    r = { ...r, events: [{ uid: 'VENDOR_PRICE@0', defId: def.id, name: def.name, startTick: 1, endTick: null, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false }] };
+    r = { ...r, events: [{ uid: 'VENDOR_PRICE@0', defId: def.id, name: def.name, startTick: 1, endTick: null, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: false, ended: false }] };
     r = advance(r, sc, game, 5);
     expect(r.sim.cost.priceMult).toBe(1.08);
     r = requestChange(r, game, { label: 'negotiate', fixId: 'NEGOTIATE_MLC_PRICE' }).run;
@@ -457,7 +460,7 @@ describe('event log disclosure', () => {
     let r = startDay(opts.charts ? { ...base, tools: [...base.tools, 'RMF_MON3', 'MON3_CHARTS'] } : base, MIDWEST_GAME);
     r = {
       ...r,
-      events: [{ uid: `${defId}@0`, defId, name: def.name, startTick: r.sim.tick, endTick: r.sim.tick + 2, trigger: def.trigger, affects: def.affects, endCommands: def.end, started: false, ended: false }],
+      events: [{ uid: `${defId}@0`, defId, name: def.name, startTick: r.sim.tick, endTick: r.sim.tick + 2, trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: def.end, started: false, ended: false }],
       ...(opts.perks ? { perks: opts.perks } : {}),
       ...(opts.revealed ? { inquiries: { pending: [], revealed: opts.revealed } } : {}),
     };
@@ -517,7 +520,7 @@ describe('regulator audit of unclassified work', () => {
   // Start one tick before the day boundary so advance runs endDay on its next tick.
   const atBoundary = (sysother: number, audit = true) => {
     let r = startDay(newRun(sc, MIDWEST_GAME, 3), MIDWEST_GAME);
-    const ev = { uid: 'AUDIT_UNCLASSIFIED@0', defId: 'AUDIT_UNCLASSIFIED', name: 'Audit', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [], endCommands: [], started: true, ended: false };
+    const ev = { uid: 'AUDIT_UNCLASSIFIED@0', defId: 'AUDIT_UNCLASSIFIED', name: 'Audit', startTick: 0, endTick: null, trigger: 'POLICY' as const, affects: [], mechanisms: [] as Mechanism[], endCommands: [], started: true, ended: false };
     const rmf = { ...r.sim.rmf, intervals: [iv(TICKS_PER_DAY - 6, sysother > 0 ? [row('PROD1', 'SYSOTHER', sysother)] : [row('PROD1', 'ONLHI', 20)])] };
     r = { ...r, events: audit ? [ev] : [], trust: { ...r.trust, Regulator: 50 }, sim: { ...r.sim, tick: TICKS_PER_DAY - 1, rmf } };
     return advance(r, sc, MIDWEST_GAME, 1);

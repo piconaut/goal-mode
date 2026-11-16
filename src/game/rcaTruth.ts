@@ -137,7 +137,7 @@ export function acceptedAnswers(ctx: TruthContext): Required<Pick<IncidentTruth,
       const cpcId = ctx.lpars.find((l) => l.id === s.lparId)?.cpcId ?? '';
       return capped
         || avg(ctx.hour.lparBusyById?.[s.lparId]) >= CPU_CAPACITY.lparBusyFrac
-        || avg(ctx.hour.cpcBusyById?.[cpcId]) >= CPU_CAPACITY.cpcBusyFrac;
+        || avg(ctx.hour.cpcBusyById[cpcId]) >= CPU_CAPACITY.cpcBusyFrac;
     });
     if (starved) offerMechanism('CPU_PRIORITY', `${starved.jobname} on ${starved.lparId} was short of CPU itself`);
   }

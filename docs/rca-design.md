@@ -586,8 +586,8 @@ CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores
    - Otherwise `GROWTH` and `POLICY` are **both accepted**; the primary is as today. "Growth crossed the headroom"
      and "the configuration has no headroom" describe the same state, and no visible data separates them.
 5. **Vocabulary** (RT-09: labels, help text, and one rename):
-   - `CHANGE_REGRESSION` (renamed from `ACCESS_PATH_REGRESSION`, which saves, play files and the CLI still accept as an
-     alias) is shown as **Change regression**: "a software or configuration change made the same work cost more or
+   - `CHANGE_REGRESSION` (renamed from `ACCESS_PATH_REGRESSION`; a file that still says the old id is from an older
+     save version and no longer loads, CL-20) is shown as **Change regression**: "a software or configuration change made the same work cost more or
      behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate". The old id was a misnomer once the
      cards below moved. ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT move to it, so their
      incidents carry that trigger (goldens unchanged — the scripted windows do not fire these cards — and a

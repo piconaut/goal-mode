@@ -51,7 +51,7 @@ export function drawEvents(run: RunState, content: GameContent, day: number): Ru
       endTick,
       trigger: def.trigger,
       affects: def.affects,
-      ...(def.resource ? { mechanisms: cardMechanisms(def) } : {}),
+      mechanisms: (def.resource ? cardMechanisms(def) : []) ?? [],
       ...(def.failureMechanism ? { failureMechanism: def.failureMechanism } : {}),
       ...(def.blocksHardware ? { blocksHardware: def.blocksHardware } : {}),
       endCommands: def.end,

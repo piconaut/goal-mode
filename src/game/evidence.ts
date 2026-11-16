@@ -40,7 +40,7 @@ export interface EvidencePin {
    * A recipe can read it, so one row shows "more work at the same cost" or "the same work costing more". */
   rate?: { value: number; baseline?: number };
   /** A PROCU job's service class, as the row shows it, so a recipe can ask whether the job was displaceable. Absent on
-   * other pins and on PROCU pins from saves written before it. */
+   * pins of any other source. */
   serviceClass?: string;
   text: string;
 }
@@ -368,6 +368,7 @@ export function incidentSubjects(
       lpars,
       hosts: [...lpars],
       servers: [],
+      serverClasses: [],
     };
   }
   const w = allWorkloads(scenario, run).find((x) => x.id === workloadId);
@@ -387,7 +388,7 @@ export function incidentSubjects(
     if (sc && !classes.includes(sc)) classes.push(sc);
     if (sc && !serverClasses.includes(sc)) serverClasses.push(sc);
   }
-  return { classes, lpars, hosts, servers, ...(serverClasses.length > 0 ? { serverClasses } : {}) };
+  return { classes, lpars, hosts, servers, serverClasses };
 }
 
 function hourEndTick(run: RunState, key: string): number | null {
@@ -526,8 +527,8 @@ function notRelatedWhy(run: RunState, inc: Incident, p: EvidencePin, s: Incident
 
 function judgeEvidenceRanked(run: RunState, scenario: Scenario, inc: Incident, pins: readonly EvidencePin[]): RankedVerdict[] {
   // Judged against what the incident recorded when it opened (RT-04), so a reclassification or rerouting after the
-  // fact keeps the verdicts a player would have got at the time; incidents from old saves derive them now.
-  const subjects = inc.subjects ?? incidentSubjects(run, scenario, inc.workloadId, inc.day);
+  // fact keeps the verdicts a player would have got at the time.
+  const subjects = inc.subjects;
   const { lo, hi } = incidentWindow(run, inc);
   return pins.map((p) => {
     const d = EVIDENCE_METRICS[p.metric];

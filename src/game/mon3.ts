@@ -209,9 +209,10 @@ export interface Mon3View {
   enclaves: Mon3Enclave[];
   speed: Mon3Speed[];
   exceptions: Mon3Exception[];
-  /** SYSWKM: CICS transaction classes with work manager data (absent in old pin snapshots). */
+  /** SYSWKM: CICS transaction classes with work manager data (absent from the CLI's trimmed history, which keeps
+   * only what a pin reads; a past SYSWKM pin needs the browser). */
   wkm?: Mon3Wkm[];
-  /** PROCU: jobs using a processor, by descending EAppl % CP (absent in old pin snapshots). */
+  /** PROCU: jobs using a processor, by descending EAppl % CP (absent from the CLI's trimmed history, like SYSWKM). */
   procJobs?: Mon3ProcJob[];
 }
 

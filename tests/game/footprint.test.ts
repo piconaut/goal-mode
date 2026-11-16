@@ -24,7 +24,7 @@ function card(defId: string, over: Partial<ActiveEvent> = {}): ActiveEvent {
   const def = MIDWEST_GAME.events.find((d) => d.id === defId)!;
   return {
     uid: `${defId}@1`, defId, name: def.name, startTick: T - 3 * H, endTick: null, trigger: def.trigger,
-    affects: def.affects, mechanisms: cardMechanisms(def), endCommands: [], started: true, ended: false, ...over,
+    affects: def.affects, mechanisms: cardMechanisms(def) ?? [], endCommands: [], started: true, ended: false, ...over,
   };
 }
 

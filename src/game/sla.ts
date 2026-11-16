@@ -8,7 +8,7 @@ import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/typ
 import { CAPPING, CPU_CAPACITY } from '../content/incidents';
 import { ALL_MECHANISMS } from '../content/footprint';
 import { regionKey } from './footprint';
-import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
+import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, Mechanism, Trigger, WorkloadHour } from './types';
 
 export const BASELINE_DECAY = 0.8;
 
@@ -78,11 +78,10 @@ export function rankedMechanismGroups(parts: Record<string, number>, baseline: R
 
 /** Was this image capped for enough of the hour that the hour counts as capped? A time measure, not the worst tick
  * (SPEC §10, docs/rca-design.md §4.3): the ticks in which its CP demand was cut, at least `CAPPING.minHourShare` of
- * the hour. An hour accumulated before RT-08 has no tick count, so it keeps the reading it was decided on. */
+ * the hour. */
 export function cappedForHour(hour: HourAcc, lparId: string): boolean {
-  const ticksCapped = hour.cappedTicksByLpar?.[lparId];
-  if (ticksCapped === undefined || hour.ticks <= 0) return (hour.cappedByLpar[lparId] ?? 0) > CAPPING.minHourShare;
-  return ticksCapped >= CAPPING.minHourShare * hour.ticks;
+  if (hour.ticks <= 0) return false;
+  return (hour.cappedTicksByLpar[lparId] ?? 0) >= CAPPING.minHourShare * hour.ticks;
 }
 
 /** Which mechanism grew most relative to the workload's healthy baseline. */
@@ -113,7 +112,7 @@ export function capacityBasis(hour: HourAcc, hosts: readonly IncidentHost[]): Ca
   const avg = (sum: number | undefined) => (hour.ticks > 0 ? (sum ?? 0) / hour.ticks : 0);
   let best: CapacityBasis | null = null;
   for (const h of hosts) {
-    const cpc = avg(hour.cpcBusyById?.[h.cpcId]);
+    const cpc = avg(hour.cpcBusyById[h.cpcId]);
     const lpar = avg(hour.lparBusyById?.[h.lparId]);
     const byImp = hour.cpByImportance?.[h.lparId] ?? [];
     const total = byImp.reduce((a, x) => a + x, 0);
@@ -202,9 +201,7 @@ export function qualifyingCards(
     // A fix or natural expiry before the window closes must not erase the card that caused the breach.
     if (!activeIn(e, window)) continue;
     if (e.trigger === 'NEW_WORKLOAD' && startTick >= e.startTick + NEW_WORKLOAD_DAYS * TICKS_PER_DAY) continue;
-    // A card active in a save written before RT-02 carries no `mechanisms`; treat that as "any mechanism" so the
-    // old save keeps its previous blame until the card ends (new cards always derive the list, RT-14).
-    if (e.mechanisms && !e.mechanisms.includes(mechanism)) continue;
+    if (!e.mechanisms.includes(mechanism)) continue;
     const rel = footprintRelation(e, workloadId, scope);
     if (!rel) continue;
     out.push({
@@ -263,11 +260,7 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
   };
   const cappedByLpar = { ...acc.cappedByLpar };
   for (const [k, v] of Object.entries(h.cappedByLpar)) cappedByLpar[k] = Math.max(cappedByLpar[k] ?? 0, v);
-  // A night with any hour accumulated before RT-08 has no tick count for that hour, so it keeps the worst-tick
-  // reading the whole night was working to (a night is decided once, at its end).
-  const cappedTicksByLpar = acc.cappedTicksByLpar && h.cappedTicksByLpar
-    ? sum(acc.cappedTicksByLpar, h.cappedTicksByLpar)
-    : undefined;
+  const cappedTicksByLpar = sum(acc.cappedTicksByLpar, h.cappedTicksByLpar);
   const cpByImportance = { ...(acc.cpByImportance ?? {}) };
   for (const [k, v] of Object.entries(h.cpByImportance ?? {})) cpByImportance[k] = v.map((x, i) => x + (cpByImportance[k]?.[i] ?? 0));
   return {
@@ -276,7 +269,7 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
     workloads: {},
     maxCappedFrac: Math.max(acc.maxCappedFrac, h.maxCappedFrac),
     cappedByLpar,
-    ...(cappedTicksByLpar ? { cappedTicksByLpar } : {}),
+    cappedTicksByLpar,
     cpcBusySum: acc.cpcBusySum + h.cpcBusySum,
     cpcBusyById: sum(acc.cpcBusyById, h.cpcBusyById),
     lparBusyById: sum(acc.lparBusyById, h.lparBusyById),
@@ -325,11 +318,6 @@ export function updateBaseline(prev: Record<string, number> | undefined, parts: 
 
 export const MECHANISMS: Mechanism[] = [...ALL_MECHANISMS];
 export const TRIGGERS: Trigger[] = ['DEMAND_SURGE', 'CHANGE_REGRESSION', 'RUNAWAY_WORK', 'BATCH_OVERLAP', 'POLICY', 'HARDWARE_FAULT', 'NEW_WORKLOAD', 'GROWTH', 'APPLICATION_ERROR'];
-
-/** The accepted answers of a truth: the primary alone in saves written before RT-07. */
-export function acceptedOf(truth: Incident['truth']): Accepted {
-  return truth.accepted ?? { mechanisms: [truth.mechanism], triggers: [truth.trigger] };
-}
 
 /** RCA scoring: 3 points for an accepted mechanism, 2 for an accepted trigger (RT-07; docs/rca-design.md §4.1). For a
  * group, `accepted` is the union of its members' (§4.5). */

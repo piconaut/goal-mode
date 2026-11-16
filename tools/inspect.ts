@@ -912,12 +912,22 @@ if (process.argv[1]?.endsWith('inspect.ts')) {
     process.exit(0);
   }
   if (path && verb === 'wlm' && system && at) {
-    console.log(wlmText(readFileSync(path, 'utf8'), system, { at, ...(ticks ? { ticks: Number(ticks) } : {}), ...(cls ? { cls } : {}) }));
+    try {
+      console.log(wlmText(readFileSync(path, 'utf8'), system, { at, ...(ticks ? { ticks: Number(ticks) } : {}), ...(cls ? { cls } : {}) }));
+    } catch (e) {
+      console.error(`wlm: ${(e as Error).message}`);
+      process.exit(1);
+    }
     process.exit(0);
   }
   if (!path || verb !== 'dp' || !system) {
     console.log(readFileSync(new URL(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).join('\n'));
     process.exit(1);
   }
-  console.log(dpText(readFileSync(path, 'utf8'), system, { ...(cls ? { cls } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}) }));
+  try {
+    console.log(dpText(readFileSync(path, 'utf8'), system, { ...(cls ? { cls } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}) }));
+  } catch (e) {
+    console.error(`dp: ${(e as Error).message}`);
+    process.exit(1);
+  }
 }
