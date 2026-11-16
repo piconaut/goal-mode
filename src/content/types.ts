@@ -4,6 +4,8 @@
 // these for its own callers (`src/game/types.ts`, `src/game/run/shared.ts`).
 import type { Command } from '../sim/core/commands';
 import type { DifficultyId } from './difficulty';
+// Type-only, like every import here: the module emits nothing, so this edge cannot become a runtime cycle
+// (midwest-events and footprint import types back from this file). Keep it type-only.
 import type { EventDef, ScriptedBeat } from './events/midwest-events';
 
 /** A stakeholder whose trust is tracked. Scenarios name their own; every scenario has Finance and Regulator. */
