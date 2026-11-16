@@ -531,6 +531,13 @@ a period seen for the first time: the level of the lowest period of its importan
 - **Placement of new work.** New periods are placed on the holder ladder:
   - a new served class takes its server's DP;
   - a new server period is placed by its most important class.
+- **A policy edit.** DPs are carried by period key across an activation (the ladder belongs to the image, not the
+  policy), so an activation reconciles what the edit changed: a period now defined as discretionary returns to the
+  fixed 196, and a period now goal-managed whose carried DP is off the managed ladder (it was discretionary) is
+  placed as new. A CICS transaction period keeps following its holder even when its own goal becomes discretionary —
+  the one place a discretionary period does not run at 196, because the sim dispatches a region's transactions at the
+  holder's DP (§5.8) — and a goal whose kind changes while staying managed keeps its level: placement depends on
+  importance, not on the kind of goal (PR-15).
 - **Reserved range.** A goal member's resource-group minimum runs at `DP.RG_MINIMUM` (249), and blocked-workload
   promotion at 253. Both are in the reserved range, above all goal work (APPROX: IBM doesn't say where they run).
   A discretionary member's minimum runs at 249 while no outside goal period has local PI > 1; otherwise at 202,
@@ -642,7 +649,7 @@ Each invariant is a named test in one of these files:
 | I6 | **Equal-importance convergence.** When an accepted plan harms an equally important period, the two projected PIs are closer than before and the receiver gains more than the sum of such harms | Property. Realism: two equal classes on a saturated image end within 0.3 PI of each other and stop moving |
 | I7 | **Donor order.** The n-th donor tried is the n-th of `donorOrder`; a happy holder is tried before any unhappy one; a zIIP bottleneck never selects a donor with no zIIP use | Property on the trace; unit test |
 | I8 | **One basis.** No plan is built for a receiver with `base ≤ 1`; every accept or reject compares `base` with `after` only | Property: every assessed candidate has `base > 1` |
-| I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change | Property. Realism: Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels, and nothing is at `MANAGED_MAX` |
+| I9 | **Canonical ladder.** After every interval the occupied managed DPs are `MANAGED_MAX − 1 − 2i`; no goal period is at `MANAGED_MAX` or outside the managed range; SYSTEM, SYSSTC and discretionary DPs never change once set (a period edited to discretionary is set back to 196) | Property. Realism: Midwest seed 42, eight days: PROD2's goal holders at D8 12:00 are on at least four levels, and nothing is at `MANAGED_MAX` |
 | I10 | **CPU protection.** After every interval no less important holder is at or above a CPU-protected period's level | Unit and realism tests, on the ladder |
 | I11 | **One priority per server.** TRANSACTION regions and the CICS transactions of an image are dispatched at their server period's DP; changing a served class's stored `dp` alone changes nothing | Unit (`tests/sim/wlm-servers.test.ts`) |
 | I12 | **Skip clock, no starvation.** While more than five goal periods on the image miss their goals, a receiver whose plans were all rejected is not assessed again before its clock expires; at five or fewer the clock is not honoured (z/OS 1.11). With the budget not stopping the search, every candidate with `m` > 1 is assessed, skipped by clock, or found recovering within `rejectedSkipTicks + 2` intervals | Property over 40 intervals on generated images with a 6-projection budget |
