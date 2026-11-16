@@ -119,12 +119,6 @@ about an earlier moment (INC126 D29, asked from the D40 save) can't be answered.
 start-of-day state and its commands in the save. Measure the size cost first and put the numbers in the PR.
 Done when: `inspect wlm --at` works on a browser save for any time in its current day.
 
-### PT-18 · Imported saves lack Monitor III history
-`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
-
-`mon3 --at` on an imported save shows nothing for past ranges. Replay forward to rebuild it, or include the history in
-the export. Done when: `play mon3 --at` on an imported save shows earlier ranges of its current day.
-
 ### PT-19 · Inbox change notices are always bad news
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: content`
 
