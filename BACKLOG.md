@@ -741,8 +741,8 @@ goldens and the play/bot tests pass unchanged.
 Source: codebase survey (2026-11-16). `src/worker/game.worker.ts` (47 message cases) and `tools/playCore.ts` `apply`
 both turn player commands into `RunState` changes by calling `src/game/*` themselves, each with its own validation
 and its own wording. They have already drifted:
-- only the CLI validates an RCA's mechanism, trigger, incident and evidence pins, and spreads one RCA over its
-  incident group;
+- only the CLI validates an RCA's mechanism, trigger, incident and evidence pins, and only its reply names the
+  same-cause incidents the RCA also covers (the spreading itself is shared, in `submitRca`);
 - the two word WLM-edit, activation and failed-policy results differently.
 
 Change: `src/game/commands.ts`, `applyGameCommand(run, pending, cmd, content, sc) → { run, pending, ok, message }`,
