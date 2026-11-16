@@ -1,4 +1,4 @@
-import type { GameContent } from '../game/run';
+import type { GameContent } from './types';
 import { REVENUE_EVENTS, REVENUE_STORY } from './events/revenue-events';
 
 /** FICTIONAL budgets for the State Revenue Agency run. */

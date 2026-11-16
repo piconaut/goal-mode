@@ -1,7 +1,7 @@
 // FICTIONAL event deck for Midwest Mutual (SPEC §9). Every event has symptoms, clues and fixes.
 
 import type { Command } from '../../sim/core/commands';
-import type { Mechanism, Trigger } from '../../game/types';
+import type { Mechanism, Trigger } from '../types';
 import type { WorkloadDef } from '../../sim/workload/types';
 import type { FootprintReach, FootprintResource } from '../footprint';
 

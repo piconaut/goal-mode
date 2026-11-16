@@ -1,4 +1,4 @@
-import type { GameContent } from '../game/run';
+import type { GameContent } from './types';
 import { MIDWEST_EVENTS, MIDWEST_STORY } from './events/midwest-events';
 
 /** FICTIONAL budgets for the Midwest Mutual run. */

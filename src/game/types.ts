@@ -14,39 +14,16 @@ import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
 import type { SimState } from '../sim/core/types';
 import type { NightSummary } from '../sim/subsys/batch';
+import type { Facet, DraftOption, Mechanism, Trigger } from '../content/types';
 
 export type Phase = 'BRIEFING' | 'LIVE' | 'REVIEW' | 'GAMEOVER' | 'VICTORY';
-/** A stakeholder whose trust is tracked. Scenarios name their own; every scenario has Finance and Regulator. */
-export type Facet = string;
+// The content layer owns this vocabulary (src/content/types.ts) so it need not import from the game layer.
+export type { DraftOption, Facet, Mechanism, Trigger } from '../content/types';
+
 /** Midwest Mutual's facets (the default when a scenario names none). */
 export const FACETS: readonly Facet[] = ['Retail', 'Cards', 'Digital', 'Payments', 'Finance', 'Regulator'];
 /** The facets this run tracks, in display order. */
 export const facetsOf = (run: { trust: Record<Facet, number> }): Facet[] => Object.keys(run.trust);
-
-export type Mechanism =
-  | 'CPU_CAPACITY'
-  | 'CPU_PRIORITY'
-  | 'CAPPING'
-  | 'DEPENDENCY'
-  | 'LOCK_CONTENTION'
-  | 'CF_SERVICE'
-  | 'QR_TCB'
-  | 'THREAD_LIMIT'
-  | 'ROUTING'
-  | 'IO'
-  | 'STORAGE'
-  | 'JOB_FAILURE';
-
-export type Trigger =
-  | 'DEMAND_SURGE'
-  | 'CHANGE_REGRESSION'
-  | 'RUNAWAY_WORK'
-  | 'BATCH_OVERLAP'
-  | 'POLICY'
-  | 'HARDWARE_FAULT'
-  | 'NEW_WORKLOAD'
-  | 'GROWTH'
-  | 'APPLICATION_ERROR';
 
 export interface PlannedChange {
   id: number;
@@ -275,12 +252,6 @@ export interface Message {
   from: string;
   subject: string;
   body: string;
-}
-
-export interface DraftOption {
-  id: string;
-  title: string;
-  description: string;
 }
 
 export interface RunState {

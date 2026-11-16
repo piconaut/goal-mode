@@ -1,6 +1,6 @@
 // Playable scenarios: the sim scenario plus its game content (budgets, story, event deck, facets).
 
-import type { GameContent } from '../game/run';
+import type { GameContent } from './types';
 import type { Scenario } from '../sim/core/scenario';
 import { HARBOURLINE_GAME } from './game-harbourline';
 import { MIDWEST_GAME } from './game-midwest';
