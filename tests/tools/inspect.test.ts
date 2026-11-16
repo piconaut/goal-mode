@@ -1,4 +1,4 @@
-import { applyPlayCommand, clockText, encodePlayFile, newPlayFile } from '../../tools/playCore';
+import { applyPlayCommand, encodePlayFile, newPlayFile } from '../../tools/playCore';
 import { classRows, moveRows, replayAdvance, statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
 import type { WlmAdjustTrace, WlmCandidateTrace, WlmTrialTrace } from '../../src/sim/wlm/adjust';
 
@@ -322,32 +322,39 @@ describe('inspect … wlm-stats over a play file', () => {
 
 describe('inspect … wlm-stats stops where the play CLI stopped', () => {
   it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
-    let f = newPlayFile(42);
-    const run = (c: { cmd: 'start' } | { cmd: 'advance'; hours: number } | { cmd: 'draft'; optionId: null } | { cmd: 'restart'; name: string }) => {
+    let f = newPlayFile(7);
+    const run = (c: { cmd: 'start' } | { cmd: 'advance'; hours: number } | { cmd: 'restart'; name: string } | { cmd: 'change'; req: { label: string; commands: { kind: 'SET_JOB_CLASS'; jobClass: string; initiators: Record<string, number> }[] } }) => {
       const out = applyPlayCommand(f, c);
       expect(out.ok, out.text).toBe(true);
       f = out.file;
       return out;
     };
+    // A Db2 job that starts on an image without a Db2 subsystem abends at connect (DSNE100I, Db2 13 Messages p.140;
+    // src/sim/subsys/batch.ts). Class A runs on PROD1/PROD2 only, so giving it initiators on SYSP (no Db2) abends the
+    // first stream it starts in the first batch night — an ordinary change, not a 41-hour wait for the day-2 card.
+    const classA = (initiators: Record<string, number>) => run({ cmd: 'change', req: { label: `Class A initiators on ${Object.keys(initiators).join(' ') || 'none'}`, commands: [{ kind: 'SET_JOB_CLASS', jobClass: 'A', initiators }] } });
     run({ cmd: 'start' });
-    run({ cmd: 'advance', hours: 24 });
-    run({ cmd: 'draft', optionId: null });
-    run({ cmd: 'start' });
-    // Seed 42, Midwest, day 2: STL004 abends, so the CLI stops the advance 17 hours in.
-    expect(run({ cmd: 'advance', hours: 24 }).text).toContain('STOPPED:');
-    // One replay: the range reports that the log, not the request, ended it, and the counters cover the 41 hours the
-    // CLI actually played (24 + 17), not the 48 asked for.
-    const stats = JSON.parse(wlmStatsText(encodePlayFile(f), { to: 'D3 06:00', json: true }));
+    classA({ PROD1: 12, PROD2: 10, SYSP: 8 });
+    // Seed 7, Midwest: the first class-A job on SYSP abends at 21:00, so the CLI stops the 24-hour advance 15 hours in.
+    const stopped = run({ cmd: 'advance', hours: 24 }).text;
+    expect(stopped).toContain('STOPPED:');
+    const abended = /STOPPED: (\S+)/.exec(stopped)![1]!;
+    // One replay: the range reports that the log, not the request, ended it, and the counters cover the 15 hours the
+    // CLI actually played, not the 24 asked for.
+    const stats = JSON.parse(wlmStatsText(encodePlayFile(f), { to: 'D2 06:00', json: true }));
     expect(stats.range.covered).toBe(false);
-    expect(stats.range.to).toMatch(/^D2 /);
-    expect(stats.total.adjustments).toBe(stats.systems.length * 41 * 360);
-    // Restarting the job clears the abend during the next advance; the CLI does not stop for that, so neither does
-    // the replay: it covers all three hours (D2 23:00 → D3 02:00), not one.
-    run({ cmd: 'restart', name: 'STL004' });
-    expect(run({ cmd: 'advance', hours: 3 }).text).not.toContain('STOPPED:');
-    const after = JSON.parse(wlmStatsText(encodePlayFile(f), { from: 'D2 22:00', to: 'D3 06:00', json: true }));
-    expect(after.range.to).toBe(clockText(f.run.sim.tick));
-    expect(after.total.adjustments).toBe(after.systems.length * 4 * 360);
-    // About 43 played hours plus two replays: ~27 s alone, so over the 30 s default under a parallel CI load.
+    expect(stats.range.to).toBe('D1 Mon 21:00');
+    expect(stats.total.adjustments).toBe(stats.systems.length * 15 * 360);
+    // Restarting the job and taking the initiators back off SYSP clears the cause; the next advance runs through. The
+    // replay side of that (a restart mid-log does not stop it) is the injected test above (PR-12), so one replay is
+    // enough here. A second full replay is what made this test cost 43 s.
+    run({ cmd: 'restart', name: abended });
+    classA({ PROD1: 12, PROD2: 10 });
+    const after = run({ cmd: 'advance', hours: 3 }).text;
+    expect(after).not.toContain('STOPPED:');
+    // All three hours ran: the CLI reached midnight, not the 21:00 it stopped at.
+    expect(after).toContain('Advanced to D1 00:00:00');
+    // 18 played hours plus one replay of the same log: ~10 s alone on the shared host (was 43 s for 41 hours and
+    // two replays).
   }, 120_000);
 });

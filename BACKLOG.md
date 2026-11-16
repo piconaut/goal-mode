@@ -637,19 +637,6 @@ engines; the moved CICS parts with them) as reporting-only accumulator fields an
 state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
 restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.
 
-### CL-11 · Shorter `inspect wlm-stats` ABEND test (B1)
-`list: cleanup · status: ready · priority: high · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16, user request: cut CPU-heavy tests without losing coverage). The B1 test in
-`tests/tools/inspect.test.ts` (`does not invent hours after an ABEND cut the logged advance`) takes 45 s, the second
-slowest test in the suite. It plays 41 hours of Midwest seed 42 to reach STL004's day-2 ABEND, then replays the file
-twice. `replayAdvance` and `stoppedEarly` already have injected unit tests (same file, the tests before it). Change:
-reach an ABEND in the first batch night instead, with ordinary play commands (e.g. a `change` that forces an ABEND,
-or a seed or scenario whose first night abends), and keep all three assertions: the range is reported as not
-covered, its counters cover the hours played and not those requested, and a `restart` then lets the next advance run
-through. Done when: the test asserts the same three things, takes under 15 s locally (before and after timings in
-the PR), and `npm run check` is green.
-
 ### CL-12 · Disk-cached test fixtures for shared start states
 `list: cleanup · status: ready · priority: high · size: M · area: tooling`
 
