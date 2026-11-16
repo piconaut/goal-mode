@@ -1,4 +1,4 @@
-import { applyPlayCommand, catalogText, encodePlayFile, newPlayFile, type PlayCommand } from '../../tools/playCore';
+import { applyPlayCommand, catalogText, clockText, encodePlayFile, newPlayFile, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { classRows, moveRows, replayAdvance, statsText, stoppedEarly, wlmStats, wlmStatsText } from '../../tools/inspect';
 import type { WlmAdjustTrace, WlmCandidateTrace, WlmTrialTrace } from '../../src/sim/wlm/adjust';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
@@ -322,7 +322,21 @@ describe('inspect … wlm-stats over a play file', () => {
 });
 
 describe('inspect … wlm-stats stops where the play CLI stopped', () => {
-  it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
+  // Both tests read one played log: the 15 hours to the abend are the expensive part, so they are played once and
+  // each test replays the same file for its own claim. Played lazily, because the first test to run builds it.
+  interface Played {
+    /** The file where the CLI stopped at the abend (D1 21:00, 15 hours in). */
+    atStop: PlayFile;
+    /** The file after the restart and the three hours that followed. */
+    final: PlayFile;
+    stopped: string;
+    after: string;
+    abended: string;
+    stopTick: number;
+  }
+  let played: Played | null = null;
+  const playToAbend = (): Played => {
+    if (played) return played;
     let f = newPlayFile(7);
     const run = (c: Extract<PlayCommand, { cmd: 'start' | 'advance' | 'restart' | 'change' }>) => {
       const out = applyPlayCommand(f, c);
@@ -342,24 +356,40 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     const stopped = run({ cmd: 'advance', hours: 24 }).text;
     expect(stopped).toContain('STOPPED:');
     const abended = /STOPPED: (\S+)/.exec(stopped)![1]!;
-    // One replay: the range reports that the log, not the request, ended it, and the counters cover the 15 hours the
-    // CLI actually played, not the 24 asked for.
-    const stats = JSON.parse(wlmStatsText(encodePlayFile(f), { to: 'D2 06:00', json: true }));
-    expect(stats.range.covered).toBe(false);
-    expect(stats.range.to).toBe('D1 Mon 21:00');
-    expect(stats.total.adjustments).toBe(stats.systems.length * 15 * 360);
-    // Restarting the job and taking the initiators back off SYSP clears the cause; the next advance runs through. The
-    // restart has to be checked directly: the pass-through alone also holds with the initiator change alone. The
-    // replay side of a restart mid-log is the injected test above (PR-12), which is why one replay is enough here.
+    const atStop = f;
     const stopTick = f.run.sim.tick;
+    // Restarting the job and taking the initiators back off SYSP clears the cause; the next advance runs through.
     run({ cmd: 'restart', name: abended });
     classA({ PROD1: 12, PROD2: 10 });
     const after = run({ cmd: 'advance', hours: 3 }).text;
-    expect(after).not.toContain('STOPPED:');
-    expect(f.run.sim.tick - stopTick).toBe(3 * TICKS_PER_HOUR); // all three hours ran, not one
+    played = { atStop, final: f, stopped, after, abended, stopTick };
+    return played;
+  };
+
+  it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
+    const p = playToAbend();
+    // One replay of where the CLI stopped: the range reports that the log, not the request, ended it, and the
+    // counters cover the 15 hours the CLI actually played, not the 24 asked for.
+    const stats = JSON.parse(wlmStatsText(encodePlayFile(p.atStop), { to: 'D2 06:00', json: true }));
+    expect(stats.range.covered).toBe(false);
+    expect(stats.range.to).toBe('D1 Mon 21:00');
+    expect(stats.total.adjustments).toBe(stats.systems.length * 15 * 360);
+    // The restart has to be checked directly: the pass-through also holds with the initiator change alone.
+    expect(p.after).not.toContain('STOPPED:');
+    expect(p.final.run.sim.tick - p.stopTick).toBe(3 * TICKS_PER_HOUR); // all three hours ran, not one
     // The restarted job is no longer abended; the other jobs that abended on SYSP still are.
-    expect(catalogText(f)).not.toContain(`abended now: ${abended}`);
-    // 18 played hours plus one replay of the same log: ~12–15 s alone on the shared host (was 43 s for 41 hours
-    // and two replays).
+    expect(catalogText(p.final)).not.toContain(`abended now: ${p.abended}`);
+    // 15 played hours plus one replay of the same log: ~12-15 s alone on the shared host (was 43 s for 41 hours
+    // and two replays). The restart coverage the second replay used to give is the test below (PR-21).
+  }, 120_000);
+
+  it('replays a log that restarts the abended job without stopping there (PR-21)', () => {
+    const p = playToAbend();
+    // The replay crosses the restart: it reaches the CLI's own clock (midnight) rather than stopping at the 21:00
+    // abend, and counts all 18 played hours across the restart. replayAdvance's stop rule around a restart has an
+    // injected test (PR-12); this is the one that runs replayTraces over a log that restarts.
+    const stats = JSON.parse(wlmStatsText(encodePlayFile(p.final), { to: 'D2 06:00', json: true }));
+    expect(stats.range.to).toBe(clockText(p.final.run.sim.tick));
+    expect(stats.total.adjustments).toBe(stats.systems.length * 18 * 360);
   }, 120_000);
 });
