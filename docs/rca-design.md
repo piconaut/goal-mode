@@ -43,8 +43,9 @@ The judging is not trustworthy enough to gate fixes on, and the reasons are stru
    CPU incident, while the discriminating facts for most cards (CPC busy, capacity change, CP vs zIIP split, CF and
    DASD reports, region storage, a flat CPU per transaction) cannot be pinned or are rejected as "unremarkable".
    Pins are also judged against the classification and routing at *filing* time, so the player's own remediation
-   turns good pins into "not about X" (§3 A9–A11). RT-12 replaced the subject test with pin relations; the proof
-   recipes (RT-13) and the missing pin sources (RT-05's busy figures are done; RT-10, RT-11) close the rest.
+   turns good pins into "not about X" (§3 A9–A11). RT-12 replaced the subject test with pin relations; the missing
+   pin sources (RT-05's busy figures, RT-10's CF/DASD rows, RT-11's storage/job/work-manager rows) are done, and
+   the proof recipes (RT-13) close the rest.
 6. **A campaign and a retry storm are byte-identical in every report** (R-5). The D1 example fix cannot be proven
    by any data the game has today (§2, §5.3).
 
@@ -89,15 +90,21 @@ brackets (tier 0 has WLMGL only).
 
 ### 2.1 Midwest Mutual, 27 cards
 
+> **RT-09 (2026-11-14):** this table records the 2026-11-09 audit. Since RT-09 the five change cards — row 7
+> ENCRYPTION_MANDATE, 15 MONITOR_CREEP, 18 QR_RELEASE, 22 ZIIP_LOSS and 26 SMF_AUDIT — carry
+> `CHANGE_REGRESSION` for the work in their `affects`, where these rows read `POLICY`. Work they hurt without
+> covering keeps the no-card fallback, so row 18's "same as the no-card fallback, so co-hosted CICS work agrees" no
+> longer holds: covered victims get `CHANGE_REGRESSION`, co-hosted ones still `POLICY`.
+
 | # | Card | Expert: mechanism × trigger, and why | Game truth | Discriminating evidence; pinnable? | Verdict |
 |---|---|---|---|---|---|
 | 1 | CAMPAIGN | CPU (capacity or priority by headroom) × DEMAND_SURGE: mobile END/S ×2.5 at flat CPU per transaction, forewarned by Digital | MOBILE: `CPU_PRIORITY/DEMAND_SURGE` (R-1: CPC 89 % against the 90 % line, donors 12 % against 10 %). Collateral CICS work: `DEPENDENCY/POLICY` (R-9) | END/S up: `ENDED_RATE` pinnable (WLMGL), half weight. CPU per transaction flat: `CPU_VS_BASE` [DB2_ACCT] is rejected as "unremarkable" below ×1.3, so the ruling-out half cannot count | **agrees** for MOBILE (on a knife edge, A5); **game wrong** for collateral (A2) |
 | 2 | RUNAWAY | CPU_PRIORITY × RUNAWAY_WORK: one enclave's CPU soars with its end rate flat; it shares DDFPRD with MOBILE (F3) and runs on CPs on PROD2 (F7) | MOBILE, ADHOC: CPU split / `RUNAWAY_WORK`. Other PROD2 work: fallback | DDFPRD#2 `APPL` pinnable (half weight). The ENCLAVE view and IIPCP are not pinnable | **agrees** for listed work; **game wrong** for collateral |
-| 3 | REGRESSION | CPU or DEPENDENCY × ACCESS_PATH_REGRESSION for everything sharing the regions and the image | RBANK: any mechanism / `ACCESS_PATH_REGRESSION` for 30 h. R-3: RBANK had **no** incident; CARDAUTH did, `DEPENDENCY/POLICY` (Db2 in STCMED starved on PROD2: STCMED#1 PI 1.65, CPU delay 76 %) | `CPU_VS_BASE` ×3 on RBANK [DB2_ACCT or CICS_MON]. For the CARDAUTH incident that pin is "not about CARDAUTH" | **game wrong** (collateral, A2); long unfiltered card (A3) |
+| 3 | REGRESSION | CPU or DEPENDENCY × CHANGE_REGRESSION for everything sharing the regions and the image | RBANK: any mechanism / `CHANGE_REGRESSION` for 30 h. R-3: RBANK had **no** incident; CARDAUTH did, `DEPENDENCY/POLICY` (Db2 in STCMED starved on PROD2: STCMED#1 PI 1.65, CPU delay 76 %) | `CPU_VS_BASE` ×3 on RBANK [DB2_ACCT or CICS_MON]. For the CARDAUTH incident that pin is "not about CARDAUTH" | **game wrong** (collateral, A2); long unfiltered card (A3) |
 | 4 | BOT_ATTACK | CPU or THREAD_LIMIT (DBATs) × DEMAND_SURGE: END/S ×4 at *lower* CPU per transaction | MOBILE: any mechanism / `DEMAND_SURGE` (no incident on R day 12) | The discriminator against a campaign is CPU per transaction ×0.4: `CPU_VS_BASE` 0.4 is below the ×1.3 notable line, so "unremarkable" | label **agrees**; **unpinnable** |
 | 5 | RETRY_STORM | CPU × DEMAND_SURGE, or APPLICATION_ERROR (clients retrying without backoff) | MOBILE: `CPU_PRIORITY/DEMAND_SURGE` (R-2: CPC 99 %, donors 12 %) | None exists. R-5: with the same start hour the WLMGL and Partition Data rows of RETRY_STORM and CAMPAIGN are identical to the last digit (both are `rate ×2.5`). Only the campaign's inbox forewarning separates them | **ambiguous by nature** (§5.3) |
 | 6 | XLOG_LOOP | CPU_PRIORITY × RUNAWAY_WORK *or* POLICY: a looping STC in STCHI because the `CICS*` rule is too broad. The card's two fixes are "cancel it" and "add a classification rule" | TELLER, PAYMQ: CPU split / `RUNAWAY_WORK`. RBANK, CARDAUTH, MOBILE on PROD1: fallback. The victim is importance 2 and the loop importance 1, so the loop is never a "donor": at a full CPC the verdict is `CPU_CAPACITY` (U-11 shape) | STCHI `APPL` up with CICS END/S flat: pinnable at half weight. "CICSXLOG is the top consumer" (Mon III job row) is not pinnable | **defensible but unfair** (A1, A4) |
-| 7 | ENCRYPTION_MANDATE | CPU × "a change made the same work cost more". By the form's own help text that is ACCESS_PATH_REGRESSION; GROWTH is arguable | `…/POLICY` on every later incident of CARDAUTH, TELLER, PAYMQ, whatever the mechanism, for the rest of the run, and it outranks any other card that covers the hour (U-1, R-8) | CPU per transaction ×1.06 is below the notable line | **game wrong** (A3); label **defensible but unfair** (A8) |
+| 7 | ENCRYPTION_MANDATE | CPU × "a change made the same work cost more". By the form's own help text that is CHANGE_REGRESSION; GROWTH is arguable | `…/POLICY` on every later incident of CARDAUTH, TELLER, PAYMQ, whatever the mechanism, for the rest of the run, and it outranks any other card that covers the hour (U-1, R-8) | CPU per transaction ×1.06 is below the notable line | **game wrong** (A3); label **defensible but unfair** (A8) |
 | 8 | VENDOR_PRICE | no performance effect | none (`affects` empty) | Finance tab | **n/a** |
 | 9 | GREEN_IT_COD | no performance effect | none | change desk refusal | **n/a** |
 | 10 | CF_LINK | CF_SERVICE × HARDWARE_FAULT (announced). Also extra z/OS CPU per Db2 transaction from slow sync requests | CF or lock mechanism / `HARDWARE_FAULT`. A CPU incident from the extra CPU is filtered out by `mechanisms` and falls to `POLICY`/`GROWTH` | `CF_WAIT` [DB2_ACCT]. CF Activity [CF_DASD] is not pinnable | **agrees** on CF; **game wrong** for its CPU side-effect |
@@ -112,7 +119,7 @@ brackets (tier 0 has WLMGL only).
 | 19 | NEW_APP_GOLIVE | CPU_PRIORITY × NEW_WORKLOAD (unclassified work in SYSOTHER), POLICY after the first days | BOOKING: `CPU_PRIORITY/NEW_WORKLOAD` (R-4), fallback after two days. Mechanism is judged against an empty baseline (A6, U-13) | SYSOTHER `DELAY_CPU` (WLMGL) | **agrees** |
 | 20 | POWER_CAP | CPU_CAPACITY × HARDWARE_FAULT (announced; SMF70CAI). CPU_PRIORITY also valid where the policy could have protected the work | R-7: MOBILE `CPU_PRIORITY/HARDWARE_FAULT` at CPC **98 %** busy (donors 12 %); CARDAUTH `DEPENDENCY/HARDWARE_FAULT`. One cause, two truths, neither is capacity | CHANGE REASON=MACHINE is not pinnable; `PRSM_DELAY`, `DELAY_CPU` are | **defensible but unfair** (playtest D12; A1, A4) |
 | 21 | HSM_RECALL_STORM | IO × POLICY (a month-old migration policy change) or DEMAND_SURGE | `IO/DEMAND_SURGE` ("closest existing trigger", per the card's comment) | LCU 30 IOSQ in the DASD report: not pinnable. `DELAY_IO` counts for the mechanism | **defensible but unfair** (A1) |
-| 22 | ZIIP_LOSS | CPU × an application redeploy that lost zIIP eligibility | `mechanisms: ['CPU_CAPACITY']` only. A `CPU_PRIORITY` or `CAPPING` incident does not match the card and gets `POLICY` from the fallback (U-6): the same label by coincidence | The clue is CP up and IIP down at flat total. `APPL` is CP + IIP (flat) and `CPU_VS_BASE` is CP + zIIP per transaction (flat): both show nothing | **unpinnable**; label **defensible but unfair** (A8) |
+| 22 | ZIIP_LOSS | CPU × an application redeploy that lost zIIP eligibility | `mechanisms: ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY']` on MOBILE since RT-02, and `CHANGE_REGRESSION` since RT-09 (U-6): a CPU_PRIORITY, CAPPING or DEPENDENCY incident on MOBILE matches the card. Without the card, the fallback would be `POLICY` (or `GROWTH` for CPU_CAPACITY) | The clue is CP up and IIP down at flat total. `APPL` is CP + IIP (flat) and `CPU_VS_BASE` is CP + zIIP per transaction (flat): both show nothing | **unpinnable**; label **defensible but unfair** (A8) |
 | 23 | CICS_SOS | THREAD_LIMIT × APPLICATION_ERROR. An expert may well file STORAGE: the region is short on storage | `THREAD_LIMIT/APPLICATION_ERROR`, four incidents in one group (R-4) | `MXT_WAIT` [CICS_MON]. The fact that separates it from a low MXT or QR (EDSA at EDSALIM, SOS time) is shown but not pinnable | **defensible but unfair** (STORAGE scores 0); **unpinnable** |
 | 24 | CP_SPARING | none: transparent sparing, a red herring | never blamed (`affects` empty) | HMC message | **agrees** |
 | 25 | HIRING_FREEZE | no performance effect | none | briefing | **n/a** |
@@ -179,12 +186,12 @@ Direct calls (the SLA hour is `[t, t+1h)`; cards are built from their definition
 
 | Id | Call | Result |
 |---|---|---|
-| U-1 | `triggerOf('CARDAUTH','CPU_PRIORITY', [POWER_CAP t−1h…t+5h with CARDAUTH in scope, ENCRYPTION_MANDATE since t−50h])` | `POLICY` |
-| U-2 | `triggerOf('RBANK','IO', [DASD_DEGRADED t+20min…t+3h, REGRESSION t−3h…t+27h])` | `ACCESS_PATH_REGRESSION` |
-| U-3 | `triggerOf('MOBILE','CPU_PRIORITY', [CAMPAIGN t+20min…t+2h, MONITOR_CREEP t−5h…t+43h])` | `POLICY` |
+| U-1 | `triggerOf('CARDAUTH','CPU_PRIORITY', [POWER_CAP t−1h…t+5h with CARDAUTH in scope, ENCRYPTION_MANDATE since t−50h])` | `POLICY` at audit time; `CHANGE_REGRESSION` since RT-09 when the encryption card is the one blamed |
+| U-2 | `triggerOf('RBANK','IO', [DASD_DEGRADED t+20min…t+3h, REGRESSION t−3h…t+27h])` | `CHANGE_REGRESSION` |
+| U-3 | `triggerOf('MOBILE','CPU_PRIORITY', [CAMPAIGN t+20min…t+2h, MONITOR_CREEP t−5h…t+43h])` | `POLICY` at audit time; `CHANGE_REGRESSION` since RT-09 (MONITOR_CREEP covers MOBILE) |
 | U-4 | `triggerOf('MOBILE','LOCK_CONTENTION', [RETRY_STORM t…t+3h])`, lock index 5 | `DEMAND_SURGE` |
 | U-5 | `triggerOf('CARDAUTH', m, [REGRESSION t−3h…t+27h])` for `m` = CPU_PRIORITY, CPU_CAPACITY | `POLICY`, `GROWTH` |
-| U-6 | `triggerOf('MOBILE', m, [ZIIP_LOSS])` for `m` = CPU_PRIORITY, CAPPING | `POLICY` both (the fallback, not the card) |
+| U-6 | `triggerOf('MOBILE', m, [ZIIP_LOSS])` for `m` = CPU_PRIORITY, CAPPING | `CHANGE_REGRESSION` both (ZIIP_LOSS matches those mechanisms since RT-02 and carries that trigger since RT-09; without the card the fallback would be `POLICY`) |
 | U-7 | `triggerOf(w, m, [])` for each mechanism | CPU_CAPACITY, IO, STORAGE, CF_SERVICE, LOCK_CONTENTION (lock index ≤ 1) → `GROWTH`; the rest → `POLICY` |
 | U-8 | `failureMechanismOf` for a failure-only hour, SICK_AOR running at close; the same with `ended: true` at t+50min | `ROUTING` both (RT-01: the card overlaps the opening hour) |
 | U-9 | `mechanismOf({cpuQueue: 1}, {}, hour with cappedByLpar {PROD2: 0.06}, hosts PROD1 and PROD2)` | `CAPPING` |
@@ -280,8 +287,11 @@ after filing; it did not make them less arbitrary.
   where its delay arose. U-9: a workload with any share on a host that was capped 6 % in one tick is `CAPPING`. The
   recorded basis is the first host of the busiest CPC: in R-2 and R-7 the explanation line names PROD1 (DDFPRD#1 PI
   0.5, CPU delay 3 %) while the incident is on PROD2 (PI 4.0, CPU delay 89 %).
-- **Capping is the maximum of any tick.** `cappedByLpar` keeps `max(cappedFrac)`, where `cappedFrac` is the share of
-  that tick's demand cut. SPEC §10 says "capped over 5 % of the hour". One capped tick decides the hour.
+- **Capping was the maximum of any tick.** `cappedByLpar` kept `max(cappedFrac)`, where `cappedFrac` is the share of
+  that tick's demand cut, while SPEC §10 says "capped over 5 % of the hour": one capped tick decided the hour.
+  Fixed by RT-08, which counts the ticks in which the image's demand was cut (`cappedTicksByLpar`) and calls the
+  hour capped at `CAPPING.minHourShare` (5 %) of its ticks; `cappedByLpar` stays so an hour accumulated before
+  RT-08 keeps its worst-tick reading.
 - **The CPU refinement applies only to the workload's own queue.** Server starvation under the same cap or the same
   full CPC is `DEPENDENCY`. R-14: one soft cap on PROD2 gives `DEPENDENCY/POLICY` for TELLER and `CAPPING/POLICY`
   for PAYMQ and BATCH, in different groups. R-7 likewise.
@@ -321,9 +331,11 @@ gives `failureMechanismOf` the hour and the same half-open overlap test, so both
 - `DEMAND_SURGE` needs a card. Payday, month-end and the Revenue deadline week are announced surges applied as
   modifiers outside the deck.
 - `GROWTH` is never tested against growth. It is the label for "a resource mechanism with no card".
-- `POLICY` is defined in the form as "the WLM policy as configured", but it is also the trigger of an encryption
-  mandate, a vendor agent upgrade, a non-threadsafe release, a stored-procedure redeploy and an audit. The form's
-  text for ACCESS_PATH_REGRESSION ("a change made the same work cost more") describes four of those better.
+- `POLICY` was defined in the form as "the WLM policy as configured", but it was also the trigger of an encryption
+  mandate, a vendor agent upgrade, a non-threadsafe release, a stored-procedure redeploy and an audit. RT-09 fixed
+  that: those five moved to `CHANGE_REGRESSION`, which the form describes as "a software or configuration change
+  made the same work cost more or behave worse", and `POLICY` now shows as "Policy or configuration" (WLM, PR/SM,
+  routing, subsystem limits).
 - A player's own change has no special rule. It comes out as `POLICY` for most mechanisms (R-14, R-15 at 12:00),
   which is right, but the reply cannot say which change.
 
@@ -390,11 +402,11 @@ class and no longer match — the price of a stable subject for the hour that op
 | CPC busy, LPAR busy, MSU (Partition Data) | CPU_CAPACITY from CPU_PRIORITY | `CPC_BUSY` (90) and `LPAR_BUSY` (95) since RT-05; MSU not a metric |
 | CHANGE REASON / capacity adjustment | POWER_CAP | `CAPACITY_ADJ` since RT-05 (100 − SMF70CAI, notable 1) |
 | CP against IIP APPL %, IIPCP | ZIIP_LOSS, RUNAWAY on PROD2, H2 | `APPL_CP`, `APPL_IIP`, `IIPCP` since RT-05, at half weight beside `APPL` |
-| CF Activity: sync service time, async conversion | CF_LINK, CF_FAILURE, F8 | no pin source |
-| DASD Activity: DISC, IOSQ, per LCU | DASD_DEGRADED against HSM against REORG | no pin source |
-| CICS region storage: EDSA at EDSALIM, SOS time | CICS_SOS against low MXT | shown (SMF tab), no pin |
-| Top consumer job in a class (Mon III job rows) | XLOG_LOOP, MONITOR_CREEP, SMF_AUDIT | only SYSWKM server velocity |
-| WLMGL work-manager states (waiting for lock, ready) | LOCK, QR against CPU | not a metric |
+| CF Activity: sync service time, async conversion | CF_LINK, CF_FAILURE, F8 | `CF_SYNC`, `CF_ASYNC_PCT` per CF since RT-10 |
+| DASD Activity: DISC, IOSQ, per LCU | DASD_DEGRADED against HSM against REORG | `DASD_DISC` (ALL VOLUMES row), `DASD_IOSQ`/`DASD_RESP` per LCU since RT-10 |
+| CICS region storage: EDSA at EDSALIM, SOS time | CICS_SOS against low MXT | `SOS_MIN` (the AOR's minutes short, a `server` clue) since RT-11; EDSA peak against EDSALIM is shown but not a metric |
+| Top consumer job in a class (Mon III job rows) | XLOG_LOOP, MONITOR_CREEP, SMF_AUDIT | `JOB_APPL` (PROCU EAppl % CP per jobname) since RT-11 |
+| WLMGL work-manager states (waiting for lock, ready) | LOCK, QR against CPU | `WM_LOCK` and `WM_READY` (`WM_READY` at half weight) since RT-11 |
 | A flat or lower CPU per transaction | surge against regression against bots | rejected by `notableAt` |
 | WLMGL CAP delay | resource-group capping | maps to `CAPPING`, which the truth produces only for LPAR capping; since the sim stopped posting LPAR capping as CAP delay (RMF Report Analysis p.540) this pin can never score for a `CAPPING` incident (R-14: Partition Data capped 29–84 %, WLMGL CAP delay 0), and a resource-group cap goes through the CPU split, never `CAPPING` (by code reading) |
 
@@ -408,8 +420,8 @@ Most discriminators also sit behind tier-2 tools (DB2_ACCT, CICS_MON, CF_DASD, S
   `CPU_PRIORITY/POLICY` from the fallback and is grouped with the day's MOBILE incident because the labels match.
 - Any critical ABEND makes the night `JOB_FAILURE`, even when the job was restarted at once and the window was lost
   to CPU.
-- The baseline is empty, so the largest absolute cause of lost time wins; the CPU split uses a 12-hour average and
-  the maximum capped tick of the night.
+- The baseline is empty, so the largest absolute cause of lost time wins; the CPU split uses a 12-hour average and,
+  since RT-08, the ticks of the night in which an image was capped.
 - Evidence for the delay shares is one tool (SMF30_BATCH). WLMGL pins on the critical jobs' classes count.
 
 ### A13. Grouping by label
@@ -513,7 +525,8 @@ For a CPU-family primary, or a `serverCpu` dependency:
 2. **Pool.** If the excess is zIIP queueing, measure busy and displaceable use on the zIIP pool, and treat "zIIP work
    may not overflow" (IIPHONORPRIORITY=NO, Init & Tuning p.430) as a policy cause.
 3. **Capping** when the host was capped for at least 5 % of the hour's ticks (time, not the worst tick), by defined
-   capacity, group or absolute cap. Add: CAPPING also when the hurt class or its server was held by a resource-group
+   capacity, group or absolute cap (built as RT-08: `cappedTicksByLpar`, `CAPPING.minHourShare`). Add: CAPPING also
+   when the hurt class or its server was held by a resource-group
    maximum (WLMGL CAP delay, RMF Report Analysis p.540), with trigger POLICY. The form's help for CAPPING changes
    from "the image" to "the image or the class".
 4. **Capacity or priority by displaceable CPU.** Replace "CP used by lower importance" with **displaceable CP**: CP
@@ -572,12 +585,29 @@ CPU_PRIORITY accepted; both in one group (§4.5). The player's D12 answer scores
      workload's were.
    - Otherwise `GROWTH` and `POLICY` are **both accepted**; the primary is as today. "Growth crossed the headroom"
      and "the configuration has no headroom" describe the same state, and no visible data separates them.
-5. **Vocabulary** (labels and help text only; ids unchanged, so saves and bots are untouched):
-   - `ACCESS_PATH_REGRESSION` is shown as **Change regression**: "a software or configuration change made the same
-     work cost more or behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate".
-     ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT move to it.
+5. **Vocabulary** (RT-09: labels, help text, and one rename):
+   - `CHANGE_REGRESSION` (renamed from `ACCESS_PATH_REGRESSION`, which saves, play files and the CLI still accept as an
+     alias) is shown as **Change regression**: "a software or configuration change made the same work cost more or
+     behave worse: a REBIND, a release, a redeploy, an agent upgrade, a mandate". The old id was a misnomer once the
+     cards below moved. ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT move to it, so their
+     incidents carry that trigger (goldens unchanged — the scripted windows do not fire these cards — and a
+     three-scenario sweep ran).
    - `POLICY` is shown as **Policy or configuration**: WLM policy, PR/SM weights and caps, routing, subsystem limits.
-   - `STORAGE` help adds "or a subsystem ran short of its own storage (CICS short on storage)", and CICS_SOS accepts it.
+   - `STORAGE` help adds "or a subsystem ran short of its own storage (CICS short on storage)", and CICS_SOS accepts it;
+     `CAPPING` says "the image or the class" (§4.3(3)).
+
+**As built (RT-14, 2026-11-15).**
+- **Footprint fields.** The footprint is three fields on `EventDef`:
+  - `resource`, from `content/footprint.ts`; `mechanisms` derive from it;
+  - `reach`;
+  - `affects`, which keeps its name as the direct set (saves and `adapt()` overrides).
+- **Reach at run time.** Every running card's reach is re-resolved each tick to images (and `JOB@LPAR` for a region reach), with the hour's union kept on `ActiveEvent.reach`. This is PT-04's scope rule, made general.
+- **Power cap.** POWER_CAP's direct set is the work routed onto the capped CPCs (user decision 2026-11-15). So a fresh cap beats a background mandate (U-1).
+- **Background state.** Background is `ActiveEvent.metWith`, written when a workload closes a met hour (or BATCH a met night) with the card already running at its start.
+- **Baseline.** `disturbed` uses the footprint, and drops a card once it is background only when the card is permanent (user decision 2026-11-15). Time-limited cards keep their whole run out of the baseline (PT-13).
+- **Unchanged.** The resource lists reproduce today's per-card mechanism lists. The exception is SMF_AUDIT, which now has a footprint (`CP_OVERHEAD`: the SMF address spaces on every image, CPU_CAPACITY only, its old list) where it had none.
+- **Background.** A card becomes background only for work its footprint reached (`markMet` takes the work's scope), so work routed into its reach later finds it fresh.
+- **Not built here.** The tested fallbacks of (4) are RT-18's.
 
 ### 4.5 Grouping by cause
 
@@ -587,6 +617,15 @@ the union of its members'; its primary is the lead's. Joining a group whose RCA 
 for the same card `uid`; otherwise the incident is listed as new. Effects: a power cap is one group whatever
 mechanisms its victims show; two unrelated policy misses on different images stay apart; the batch night joins the
 day's card only when that card reached it.
+
+**As built (RT-15, 2026-11-15).** The two-hour window is the user's Q4 refinement: a *card* cause groups across the
+whole played day (R-7's two mechanisms, a 48-hour creep at 09:00 and 15:00) and only a `new:`/`change:`/`none:` cause
+is held to it. No group crosses the 06:00 roll, where an open incident is closed and the new day's continuation is
+written up on its own (the review files one RCA per played day). `game/run/grouping.ts` decides it at incident
+creation; `addGroupedIncident` is the only writer of `rcaGroup` and an inherited `rca`, and a retrospective
+incident that spans two unfiled episodes of one cause (the batch night) coalesces them. The union is a product: a mechanism
+accepted for one victim and a trigger accepted for another is a full answer. A save written before RT-07 has no cause
+and keeps the labels' grouping.
 
 ### 4.6 What "evidence for a mechanism" means
 
@@ -635,6 +674,64 @@ over the six preceding report intervals (each `rmfIntervalMin` long) or closed S
 (already a ratio). Monitor III pins carry none: that view normalises APPL and ended/s differently from Workload
 Activity, and its history only holds the pinned range, so a baseline from another view would not compare. No recipe
 reads the baseline yet — that is RT-13.
+
+**As built (RT-13).** `MECHANISM_RECIPES` and `TRIGGER_RECIPES` in `content/evidence.ts`, judged by `judgeProof`
+(`game/proof.ts`) and scored in `submitRca`. Each predicate is a list of options (metric, relations, test); the tests
+are at-least, below (ruling out), notable (the metric's own line and row multiple), a ratio to the row's normal, within
+±15 % of it, a rise in APPL% points, a share of the pinned image's logical CPs, and "no history" (new work). A pin may
+serve one predicate in each recipe; a group pools its incidents' pins. Scoring is as above: 3 for the mechanism's
+complete recipe, 0.5 for one predicate, strong when the trigger's recipe completes too, nothing for an unaccepted
+claim. Where the build differs from the table:
+
+- **CPU_PRIORITY's consumer** must be *displaceable*: a period less important than the hurt work's (or
+  discretionary), which includes a lower period of the work's own class (ADHOC's DDFPRD#2 behind MOBILE's DDFPRD#1,
+  a `self` row), or a PROCU job whose service class (stored on the pin from the PROCU row, so batch jobs and TSO users
+  count too) is such a period; SYSTEM and SYSSTC never are. Without it any busy image proves priority. APPROX: importance is read from the
+  definition active at review time.
+- **CAPPING's symptom** is CP delay only (no zIIP delay): defined and group capacity limit general-CP MSU.
+- **DEPENDENCY** reads the server's delay where one is a recorded server (a CICS region class), or the work's own
+  other/UNK delay up ≥ 10 points over its normal (DDF's wait on a starved Db2 shows there, not as its CPU delay; a
+  healthy DDF row already spends 50–75 % there, so the table's fixed line would pass every DDF row), against its own CPU delay
+  < 10 % or a CICS class's READY < 5 %. SYSWKM velocity under goal is not an option: the pin does not carry the goal.
+- **THREAD_LIMIT's ruling-out half** and HARDWARE_FAULT's are *or*, not *and*: either normal reading counts, so the
+  recipe stays two pins. HARDWARE_FAULT's second half also accepts the work's own CPU delay low.
+- **Cost pins carry their row's rate** (`pin.rate`), so DEMAND_SURGE and a change regression are each provable from
+  one Workload Activity, Db2 101 or CICS 110 row. When two pins prove them, the second half must read the **same row**
+  as the first (`sameWork`: the same class on the same image, WLMGL or Monitor III, or the same workload's
+  accounting): a cost rise on one class and a normal rate on another are not one regression. RUNAWAY_WORK's "that
+  class's ended/s flat" is tied the same way; its "the hurt work's own cost normal" is deliberately another row. `CPU_PER_TXN` is new: APPL% CP ÷ END/S (RMF Report Analysis 3.1
+  [p.530](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=530) END/S,
+  [p.534](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=534) APPL% CP with IIPCP as its subset),
+  refused on a CICS transaction row, which reports no service consumption
+  ([p.524](https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=524)). Batch rows have none: the sim
+  counts a job end only for a period with a response-time goal (RF-07), and every shipped batch class has a velocity or
+  discretionary goal, so their END/S is 0 and the pin is refused there.
+- **An ended rate's baseline is the slot baseline** (§4.4): the same interval or SMF hour on earlier days the report
+  still holds (300 RMF intervals, 48 SMF hours), not the six preceding rows, which read the morning ramp as a 1.7×
+  surge (measured: MOBILE on PROD2 at noon on day 1, seed 7: 145 against 84 ended/s). Day 1 has no rate baseline. Other metrics keep RT-12's baseline.
+- **CF_SERVICE's and IO's symptoms** also accept the wait past its normal band (≥ 1.15 × the row's normal): in the
+  sim a CF link fault takes Db2 CF time 3.5 → 4.2 ms/txn and a DASD fault sync I/O 0.9 → 2.1 ms/txn, both under the
+  RT-10 lines, while the CF and DASD reports themselves are far past twice normal. Those reports' own lines are
+  RT-10's: two hours into a fault the row's six-interval normal holds the fault, so the fault's early rows prove it.
+- **NEW_WORKLOAD's "no history"** is read from the rows: the row (or the workload's SMF hour) first appears within
+  the day before the pin, after the report had held a full day without it. A day, because work with a daily shape
+  (the first batch night, a morning peak) first appears hours into the report and is not new; day 1 cannot show new
+  work this way.
+- **Every claim is proven from a replay** (`tests/game/proofRecipes.test.ts`): sim commands on midwest day 2, pins
+  through `addPin`. Most are a card's own commands; four are a card's command kind with another key or value (a
+  rate or cost modifier on MOBILE, SICK_AOR's region-failure modifier on RBANK) or a player lever (a defined capacity).
+  Some replays would pass without the change: evening batch alone gives the lock and batch-overlap proofs, and the
+  CPU delay on PROD2 alone gives POLICY and GROWTH, so those claims are shown from the scenario's own state. The ±15 % rate band is tight against day-to-day noise for some workloads (MOBILE's same
+  hour moves 10–16 % between days; RBANK's under 1 %).
+- **RUNAWAY_WORK**'s flat half is the runaway class's ended rate *or* the hurt work's own cost normal (a looping job
+  has no transactions); **BATCH_OVERLAP**'s discriminator is a batch class (one a JES rule assigns) at ≥ 10 % of the
+  image; **NEW_WORKLOAD**'s is a row with no history once the report has some; **POLICY** and **GROWTH** share one
+  recipe (hurt, with arrivals or cost at normal), since §4.4(4) says no data separates them.
+- **Three pins**: the symbolic solver (`tests/helpers/proofPins.ts`) shows 29 of the 108 pairs need four separate
+  facts; for the other 79 it finds no reason to need more than three, which is a lower bound (it ignores which rows
+  each incident kind has), not a demonstration with real rows. The 29 (e.g. CPU_CAPACITY ×
+  RUNAWAY_WORK: the work's CPU delay, a full processor, the runaway's rise, its flat rate); they earn the mechanism's 3
+  points but not strong evidence. BACKLOG RT-27 holds the design question.
 ### 4.7 Incidents caused by the player
 
 Covered by §4.4(4): the trigger is POLICY, the reply names the change, and under D1 nothing is gated (there is no
@@ -665,7 +762,11 @@ rule with the change as the "card".
   but costs an hour of sim (360 ticks) per qualifying card per incident, in the worker, against the 4 ms tick budget,
   and slows sweeps. Not recommended now. It is a good offline **validator** (built as RT-06:
   `npm run inspect -- <file> blame`): a headless tool that replays incidents both ways and reports where footprint
-  attribution and the counterfactual disagree would keep the footprints honest.
+  attribution and the counterfactual disagree would keep the footprints honest. RT-25 revises it: every card active
+  in the hour is ended, one at a time (so a card hurting work it never declares is found), and a card is a cause when
+  the hour's **attainment gain** clears a **noise floor** measured from red-herring cards (`CP_SPARING`, any card with
+  no declared `affects`), whether or not the SLA would then have been met (so a joint cause still counts). The RT-06
+  verdict stays in the output beside it, so the two can be compared.
 
 ## 5. D1 on top of it: fixes unlocked by proof
 
@@ -698,16 +799,16 @@ occurrence or with a tip. That is a visible nerf to preparation and needs the us
 | REGRESSION (REBIND_REVERT) | change regression on a package | CPU per transaction ≥ ×1.3 on the workload; its ended rate flat. The forewarning or Db2 Whisperer tip may stand in for the first | CICS_MON or DB2_ACCT; tier 0 with a per-workload report class: service per transaction from WLMGL |
 | BOT_ATTACK (BLOCK_BOTS) | surge of cheap requests | ended rate ≥ ×2; CPU per transaction ≤ ×0.7 | DB2_ACCT, or WLMGL service per transaction |
 | RETRY_STORM (MOBILE_BACKOFF) | surge that is retries | ended rate ≥ ×2 at flat CPU per transaction; **a retry discriminator that does not exist yet** (§5.3) | — |
-| XLOG_LOOP (CANCEL_XLOG) | runaway job in a class | STCHI APPL up ≥ half an engine with CICS ended rates flat; the job named as top consumer (new pin) | RMF_MON3 |
+| XLOG_LOOP (CANCEL_XLOG) | runaway job in a class | STCHI APPL up ≥ half an engine with CICS ended rates flat; the job named as top consumer (`JOB_APPL` since RT-11) | RMF_MON3 |
 | ENCRYPTION_MANDATE (SCOPE_ENCRYPTION), VENDOR_PRICE (NEGOTIATE_MLC_PRICE), SMF_AUDIT (SCOPE_SMF_AUDIT) | — | Not gated: these are negotiations with a stakeholder about an announced demand, not diagnoses | — |
-| REORG_OVERRUN (TERM_UTILITY) | utility I/O on the batch volumes | LCU 21 IOSQ up (new DASD pin); critical jobs' I/O wait share ≥ 25 % or batch class I/O delay | CF_DASD; SMF30_BATCH or WLMGL |
-| MONITOR_CREEP (ROLLBACK_MONITOR) | change regression in an agent | STCMED APPL up on every image; MONAGENT as top consumer (new pin). The forewarning stands in for one | RMF_MON3 |
+| REORG_OVERRUN (TERM_UTILITY) | utility I/O on the batch volumes | LCU 21 IOSQ up (`DASD_IOSQ`, since RT-10); critical jobs' I/O wait share ≥ 25 % or batch class I/O delay | CF_DASD; SMF30_BATCH or WLMGL |
+| MONITOR_CREEP (ROLLBACK_MONITOR) | change regression in an agent | STCMED APPL up on every image; MONAGENT as top consumer (`JOB_APPL` since RT-11). The forewarning stands in for one | RMF_MON3 |
 | LOCK_ESCALATION (COMMIT_SETTLEMENT_OFTEN) | batch holding locks | lock wait per transaction up; the hurt class's CPU delay low | DB2_ACCT; tier 0 |
 | SHADOW_IT (STOP_SHADOW_IT) | runaway or new TSO work | TSO APPL ≥ ×3 with ended rate flat; DEVT or PROD image share up (Partition Data) | PARTITION_DATA |
 | QR_RELEASE (ROLLBACK_TELLER_RELEASE) | QR TCB after a release | QR wait up on the PROD1 regions; PROD2 regions normal. The forewarning stands in for one | CICS_MON |
-| HSM_RECALL_STORM (HOLD_HSM_RECALLS) | I/O surge on the system LCU | LCU 30 IOSQ up; Db2 LCUs normal (new DASD pins) | CF_DASD |
-| ZIIP_LOSS (NATIVE_SQL_PROCS) | zIIP eligibility lost | DDFPRD CP APPL up and IIP APPL down (new split pin); ended rate flat. The forewarning stands in for one | tier 0 |
-| CICS_SOS (RECYCLE_PROD2_AORS) | short on storage | MXT wait up on PROD2 regions; EDSA at EDSALIM or SOS time (new pin) | CICS_MON |
+| HSM_RECALL_STORM (HOLD_HSM_RECALLS) | I/O surge on the system LCU | LCU 30 IOSQ up; Db2 LCUs normal (`DASD_IOSQ` per LCU, since RT-10) | CF_DASD |
+| ZIIP_LOSS (NATIVE_SQL_PROCS) | zIIP eligibility lost | DDFPRD CP APPL up and IIP APPL down (`APPL_CP`/`APPL_IIP`, since RT-05); ended rate flat. The forewarning stands in for one | tier 0 |
+| CICS_SOS (RECYCLE_PROD2_AORS) | short on storage | MXT wait up on PROD2 regions; EDSA at EDSALIM or SOS time (`SOS_MIN` since RT-11) | CICS_MON |
 | SICK_AOR (RECYCLE_SICK_AOR) | a region failing fast | failed share ≥ 1 % on one region; its response time normal or better | CICS_MON |
 
 Revenue's twins follow their originals. Harbourline's fix-less adaptations are unaffected.
@@ -810,7 +911,7 @@ judged against accepted sets and recipes, not against the primary label.
 | # | Question | Recommendation | Decision (user) | Unblocks |
 |---|---|---|---|---|
 | Q1 | §4.1: accept a set of answers at full credit, with the primary named in the reply? Add the 1-point family credit? | Yes; yes | Yes to accepted sets; **no** family credit (2026-11-10) | RT-07 |
-| Q2 | §4.4(5): relabel the two triggers and move five cards to "Change regression"? | Yes (labels only) | Yes (2026-11-10) | RT-09 |
+| Q2 | §4.4(5): relabel the two triggers and move five cards to "Change regression"? | Yes (labels only) | Yes (2026-11-10), and the user added a rename of the regression trigger's id (same day) | RT-09 |
 | Q3 | §4.6: evidence as two-predicate recipes, pin relations instead of `anySubject`? | Yes | Yes, and every common recipe needs a tier-0/1 path (2026-11-10) | RT-12, RT-13 |
 | Q4 | §4.5: group by cause identity; stop silent inheritance across different causes? | Yes | Yes, with two refinements: card causes group across the played day (the two-hour window applies only to non-card causes), and RT-15 lands after RT-14 (2026-11-10) | RT-15 |
 | Q5 | §4.4: card footprints, fresh-before-background ranking, accepted both ways for collateral victims; tested fallbacks (surge by rate, player change, GROWTH and POLICY both accepted)? | Yes | Yes (2026-11-10); the fallback half (RT-18) is parked until the playtest | RT-14, RT-18 |

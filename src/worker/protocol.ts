@@ -125,6 +125,8 @@ export type FromWorker =
   | { type: 'POLICY'; json: string }
   /** Restore the change basket (continuing a saved run, new run). */
   | { type: 'BASKET'; basket: Command[] }
+  /** The outcome of an IMPORT_RUN, so the import dialog does not have to read toast text. */
+  | { type: 'IMPORT_RESULT'; ok: boolean; message: string }
   | { type: 'RESULT'; ok: boolean; message: string };
 
 /** Sentinel speed: run the rest of the day as fast as the worker can, then drop back to the last speed. */

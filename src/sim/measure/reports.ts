@@ -6,6 +6,7 @@ import { CF_LOCK_CONTENTION } from '../../content/cf';
 import { billLines, type CostState } from '../cost/mlc';
 import { clockAt } from '../core/clock';
 import { BUCKET_BOUNDS } from '../wlm/goals';
+import { workManagerStatePct, type WorkManagerState } from '../wlm/reporting';
 import type { RmfInterval, WlmRecord } from './rmf';
 
 const pad = (s: string | number, n: number) => String(s).padStart(n);
@@ -139,11 +140,13 @@ export function renderWlmSummary(iv: RmfInterval, system = '*PLEX'): string {
 
 function workManagerLines(r: WlmRecord): string[] {
   const w = r.workManager!;
-  const total = w.active + w.ready + w.idle + w.waitingIo + w.waitingLock + w.waitingProd + w.waitingMisc;
-  const pct = (n: number) => pad(total > 0 ? ((100 * n) / total).toFixed(1) : '-', 7);
+  const pct = (state: WorkManagerState) => {
+    const v = workManagerStatePct(w, state);
+    return pad(v === null ? '-' : v.toFixed(1), 7);
+  };
   // RMF Report Analysis p.536–537 column order; CONV, DIST, LOCAL, SYSPL, REMOT and TIMER are not modelled.
   const cols = ['ACTIVE*', 'READY', 'IDLE', 'LOCK', 'I/O', 'CONV', 'PROD', 'MISC'];
-  const vals = [pct(w.active), pct(w.ready), pad('-', 7), pct(w.waitingLock), pct(w.waitingIo), pad('-', 7), pct(w.waitingProd), pct(w.waitingMisc)];
+  const vals = [pct('active'), pct('ready'), pad('-', 7), pct('lock'), pct('io'), pad('-', 7), pct('prod'), pct('misc')];
   return [
     'WORK MANAGER STATES: STATE SAMPLES BREAKDOWN (%) (ESTIMATED)',
     `${''.padEnd(10)}${''.padEnd(24)}${'-'.repeat(14)}WAITING FOR${'-'.repeat(15)}`,
@@ -301,9 +304,9 @@ export function renderDasdSummary(iv: RmfInterval): string {
   ];
   if ((iv.lcus ?? []).length) {
     out.push('', 'LOGICAL CONTROL UNIT SUMMARY (HyperPAV aliases are pooled per LCU)');
-    out.push('LCU  CONTENTS               VOLS  ALIASES  ACTIVITY RATE  AVG RESP(ms)   IOSQ(ms)  ALIASES/HOT VOL');
+    out.push('LCU  CONTENTS               VOLS  ALIASES  ACTIVITY RATE  AVG RESP(ms)   IOSQ(ms)  DISC(ms)  ALIASES/HOT VOL');
     for (const l of iv.lcus) {
-      out.push(`${padR(l.id, 4)} ${padR(l.label, 22)} ${f(l.volumes, 0, 4)} ${f(l.aliases, 0, 8)} ${f(l.iops, 0, 14)} ${f(l.rtMs, 3, 13)} ${f(l.iosqMs, 3, 10)} ${f(l.aliasesPerHotVol, 2, 16)}`);
+      out.push(`${padR(l.id, 4)} ${padR(l.label, 22)} ${f(l.volumes, 0, 4)} ${f(l.aliases, 0, 8)} ${f(l.iops, 0, 14)} ${f(l.rtMs, 3, 13)} ${f(l.iosqMs, 3, 10)} ${f(l.discMs, 3, 9)} ${f(l.aliasesPerHotVol, 2, 16)}`);
     }
   }
   return out.join('\n');

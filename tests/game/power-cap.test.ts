@@ -1,13 +1,17 @@
+import { cardMechanisms } from '../../src/content/footprint';
 import { ACQUIRED_APP } from '../../src/content/events/midwest-events';
 import { HARBOURLINE_GAME } from '../../src/content/game-harbourline';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { REVENUE_GAME } from '../../src/content/game-revenue';
 import { SCENARIOS } from '../../src/content/scenarios';
 import { advance, newRun, startDay } from '../../src/game/run';
-import { closeHour, newHour } from '../../src/game/run/hourly';
-import { triggerOf } from '../../src/game/sla';
+import { closeHour, accumulateHour, newHour } from '../../src/game/run/hourly';
+import { cappedForHour, triggerOf } from '../../src/game/sla';
 import { applyCommands, type Command } from '../../src/sim/core/commands';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
+
+/** No footprint scope: only cards that list the workload qualify. */
+const NO_SCOPE = { hosts: [] };
 
 const games = { midwest: MIDWEST_GAME, revenue: REVENUE_GAME, harbourline: HARBOURLINE_GAME };
 
@@ -22,7 +26,7 @@ function startCap(id: keyof typeof games, commands: Command[] = [], pendingComma
     pendingCommands: [...run.pendingCommands, ...pendingCommands],
     events: [{
       uid: 'POWER_CAP@0', defId: def.id, name: def.name, startTick: 0, endTick: 6 * TICKS_PER_HOUR,
-      trigger: def.trigger, affects: def.affects, mechanisms: def.mechanisms,
+      trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def),
       endCommands: def.end, started: false, ended: false,
     }],
   }, scenario, game, 1);
@@ -33,10 +37,10 @@ describe('power-cap RCA scope', () => {
     const run = startCap(id);
     const workload = SCENARIOS[id]!.workloads[0]!.id;
     for (const mechanism of ['CPU_CAPACITY', 'CPU_PRIORITY', 'CAPPING', 'DEPENDENCY'] as const) {
-      expect(triggerOf(workload, mechanism, run.events, newHour(0), false)).toBe('HARDWARE_FAULT');
+      expect(triggerOf(workload, mechanism, run.events, newHour(0), false, NO_SCOPE)).toBe('HARDWARE_FAULT');
     }
     for (const mechanism of ['IO', 'LOCK_CONTENTION', 'CF_SERVICE', 'STORAGE'] as const) {
-      expect(triggerOf(workload, mechanism, run.events, newHour(0), false)).toBe('GROWTH');
+      expect(triggerOf(workload, mechanism, run.events, newHour(0), false, NO_SCOPE)).toBe('GROWTH');
     }
     const closed = closeHour({
       ...run,
@@ -79,7 +83,7 @@ describe('power-cap RCA scope', () => {
     const run = startCap('midwest', [{ kind: 'ADD_WORKLOAD', workload: ACQUIRED_APP }]);
     expect(run.events[0]!.affects).toContain('ACQBANK');
     const ended = { ...run.events[0]!, ended: true, endTick: TICKS_PER_HOUR / 2 };
-    expect(triggerOf('ACQBANK', 'CPU_PRIORITY', [ended], newHour(0), true)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('ACQBANK', 'CPU_PRIORITY', [ended], newHour(0), true, NO_SCOPE)).toBe('HARDWARE_FAULT');
   });
 
   it('uses current positive routing and excludes workloads solely on a CPC that cannot drop further', () => {
@@ -94,9 +98,9 @@ describe('power-cap RCA scope', () => {
     expect(run.events[0]!.affects).toContain('MOBILE');
     for (const workload of ['CARDS', 'ADHOC']) {
       expect(run.events[0]!.affects).not.toContain(workload);
-      expect(triggerOf(workload, 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('POLICY');
+      expect(triggerOf(workload, 'CPU_PRIORITY', run.events, newHour(0), false, NO_SCOPE)).toBe('POLICY');
     }
-    expect(triggerOf('MOBILE', 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', run.events, newHour(0), false, NO_SCOPE)).toBe('HARDWARE_FAULT');
   });
 
   it('follows a routing change made during the cap', () => {
@@ -119,8 +123,8 @@ describe('power-cap RCA scope', () => {
     ] }, SCENARIOS.harbourline!, HARBOURLINE_GAME, 1);
     expect(moved.events[0]!.affects).toContain('CARDS');
     expect(moved.events[0]!.affects).not.toContain('MOBILE');
-    expect(triggerOf('CARDS', 'CPU_PRIORITY', moved.events, newHour(2 * TICKS_PER_HOUR), false)).toBe('HARDWARE_FAULT');
-    expect(triggerOf('MOBILE', 'CPU_PRIORITY', moved.events, newHour(2 * TICKS_PER_HOUR), false)).toBe('POLICY');
+    expect(triggerOf('CARDS', 'CPU_PRIORITY', moved.events, newHour(2 * TICKS_PER_HOUR), false, NO_SCOPE)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', moved.events, newHour(2 * TICKS_PER_HOUR), false, NO_SCOPE)).toBe('POLICY');
   });
 
   it('keeps the cap on work moved off a capped CPC during the hour', () => {
@@ -133,10 +137,10 @@ describe('power-cap RCA scope', () => {
     const beforeClose = advance(run, SCENARIOS.harbourline!, HARBOURLINE_GAME, TICKS_PER_HOUR - 2);
     const moved = advance({ ...beforeClose, pendingCommands: [{ kind: 'SET_ROUTING', workloadId: 'MOBILE', routing: { PRDC: 1 } }] }, SCENARIOS.harbourline!, HARBOURLINE_GAME, 1);
     expect(moved.events[0]!.affects).toContain('MOBILE');
-    expect(triggerOf('MOBILE', 'CPU_PRIORITY', moved.events, newHour(0), false)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', moved.events, newHour(0), false, NO_SCOPE)).toBe('HARDWARE_FAULT');
     // From the next hour it is not the cap's work any more.
     const next = advance(moved, SCENARIOS.harbourline!, HARBOURLINE_GAME, 1);
-    expect(triggerOf('MOBILE', 'CPU_PRIORITY', next.events, newHour(TICKS_PER_HOUR), false)).toBe('POLICY');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', next.events, newHour(TICKS_PER_HOUR), false, NO_SCOPE)).toBe('POLICY');
   });
 
   it('picks up a workload added during the cap', () => {
@@ -144,6 +148,33 @@ describe('power-cap RCA scope', () => {
     expect(run.events[0]!.affects).not.toContain('ACQBANK');
     const added = advance({ ...run, pendingCommands: [{ kind: 'ADD_WORKLOAD', workload: ACQUIRED_APP }] }, SCENARIOS.midwest!, MIDWEST_GAME, 1);
     expect(added.events[0]!.affects).toContain('ACQBANK');
+  });
+
+  it('counts the ticks an image was capped, not only its worst tick (RT-08)', () => {
+    const run = startCap('harbourline');
+    const played = advance(run, SCENARIOS.harbourline!, HARBOURLINE_GAME, TICKS_PER_HOUR - 2);
+    expect(played.hour!.ticks).toBe(TICKS_PER_HOUR - 1);
+    // One tick in which PRDA's CP demand was cut 20 %: the hour keeps the worst fraction, and counts the tick.
+    const capped = (r: typeof played) => ({
+      ...r,
+      sim: {
+        ...r.sim,
+        lpars: r.sim.lpars.map((l) => (l.id === 'PRDA'
+          ? { ...l, pools: l.pools.map((p) => (p.pool === 'CP' ? { ...p, cappedFrac: 0.2 } : p)) }
+          : l)),
+      },
+    });
+    const next = accumulateHour(capped(played));
+    expect(next.hour!.cappedByLpar.PRDA).toBe(0.2);
+    expect(next.hour!.cappedTicksByLpar?.PRDA).toBe(1);
+    expect(next.hour!.cappedTicksByLpar?.PRDC).toBeUndefined();
+    // 1 of 360 ticks is not 5 % of the hour: the CPU split decides, not CAPPING.
+    expect(cappedForHour(next.hour!, 'PRDA')).toBe(false);
+    // An hour accumulated before RT-08 has no count and keeps its worst-tick reading.
+    const { cappedTicksByLpar: _count, ...old } = played.hour!;
+    const nextOld = accumulateHour(capped({ ...played, hour: old }));
+    expect(nextOld.hour!.cappedTicksByLpar).toBeUndefined();
+    expect(cappedForHour(nextOld.hour!, 'PRDA')).toBe(true);
   });
 
   it('uses pending routing changes applied on the cap-start tick', () => {
@@ -161,7 +192,7 @@ describe('power-cap RCA scope', () => {
     expect(run.sim.routing.CARDS).toEqual({ PRDC: 1 });
     expect(run.events[0]!.affects).toContain('MOBILE');
     expect(run.events[0]!.affects).not.toContain('CARDS');
-    expect(triggerOf('MOBILE', 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('HARDWARE_FAULT');
-    expect(triggerOf('CARDS', 'CPU_PRIORITY', run.events, newHour(0), false)).toBe('POLICY');
+    expect(triggerOf('MOBILE', 'CPU_PRIORITY', run.events, newHour(0), false, NO_SCOPE)).toBe('HARDWARE_FAULT');
+    expect(triggerOf('CARDS', 'CPU_PRIORITY', run.events, newHour(0), false, NO_SCOPE)).toBe('POLICY');
   });
 });

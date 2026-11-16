@@ -110,6 +110,7 @@ html, body { margin: 0; background: var(--bg); color: var(--text); font-family: 
 button { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
 button:hover { border-color: var(--accent); }
 button.primary { background: var(--accent); color: var(--bg); border-color: var(--accent); font-weight: 600; }
+button.danger { background: var(--crit); color: var(--bg); border-color: var(--crit); font-weight: 600; }
 button.active { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: 0.45; cursor: default; }
 select, input, textarea { font: inherit; color: var(--text); background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; }
@@ -230,6 +231,10 @@ a { color: var(--accent); }
 .rc-advisor { margin: 6px 0 10px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; }
 .rc-advisor > summary { cursor: pointer; }
 .modal { position: relative; }
+/* A modal <dialog class="modal"> is placed and centred by the UA. The relative box above exists only for the
+   overlay card's absolutely positioned Close button; on a dialog it overrides that UA placement and the dialog
+   scrolls with the page (PR-07). Both dialogs are opened with showModal(), so this is not scoped to :modal. */
+dialog.modal { position: fixed; }
 .modal-close { position: absolute; top: 8px; right: 8px; padding: 2px 8px; }
 .sc-table tr.selected td { background: var(--panel-2); }
 .sc-table tbody tr:hover td { background: var(--panel-2); }
@@ -283,7 +288,7 @@ details.section[open] > summary { margin-bottom: 8px; }
   .gantt-track { border: 1px solid GrayText; }
   .sc-table tr.selected td { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .subtabs button.active { border-color: CanvasText; text-decoration: underline; }
-  button.primary { border: 2px solid ButtonText; }
+  button.primary, button.danger { border: 2px solid ButtonText; }
   .tag.bad, .tag.good, .tag.warn { border-style: double; border-width: 3px; }
   .pin { opacity: 1; }
   button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible { outline-color: Highlight; }

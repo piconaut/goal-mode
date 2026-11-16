@@ -34,5 +34,8 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     globals: true,
     testTimeout: 30_000,
+    // beforeAll hooks that play several sim hours (evidence, storageJobWmPins) take ~3 s alone and can exceed the
+    // 10 s default when a busy host runs the full suite in parallel.
+    hookTimeout: 30_000,
   },
 });

@@ -12,7 +12,11 @@ keep SLAs green and software cost down while workload grows and events pile up.
 - **`SPEC.md`** is the design source of truth. Read the relevant section before implementing
   anything. If you deviate, update SPEC.md in the same change and log why in PROGRESS.md.
 - **`PROGRESS.md`** tracks milestones, status, decisions and open questions. Update it at the
-  end of every working session: add decisions, note what's next.
+  end of every working session: add decisions, note what's next. It is a snapshot, not a log (user request
+  2026-11-16): keep it under 450 lines. "Current status" is one line per item (date, what, PR) for about the last ten
+  days; a new sweep replaces the M8.2 reference instead of adding a row; narratives, per-PR results and investigation
+  detail go in the PR body, `docs/` (e.g. `docs/audit-loops/`, `docs/playtests/`) or BACKLOG entries. A change that
+  would take it past 450 lines deletes the oldest status lines in the same change; Git history keeps them.
 - **`BACKLOG.md`** is the only list of work to pick up (user request 2026-11-09): scoped entries in named lists
   (`playtest-fixes`, `pr-followups`, `realism-fixes`, `cleanup`), each with a status. Implement only `status: ready`
   entries, and only from a list you were given; a vague request ("work through PROGRESS") isn't a list, so ask.
@@ -45,7 +49,7 @@ npm run play -- runs/a.json mon3 [system] [--json] [--at D2 10:40]   # Monitor I
 npm run play -- runs/a.json finance | capacity | batch   # bill and TFP pace per product (overage $/MSU-hour by LPAR); CPC MSU, LPARs, initiators, capacity changes; last batch night by stream
 npm run inspect -- runs/a.json dp PROD1 [--class ONL] [--from 'D19 20:00'] [--to 'D20 06:00']   # sim internals the player can't see (DPs per RMF interval): investigations only, never in player agents
 npm run inspect -- runs/a.json wlm PROD1 --at 'D19 22:00' [--ticks 6] [--class ONL]   # why WLM did or didn't move DPs: receivers in order, each trial and its verdict (play-CLI files replay to any past time; browser saves trace forward)
-npm run inspect -- runs/a.json blame [--json] [--incident N]   # counterfactual validator (RT-06): replay each online incident's opening hour once per card that affects the hurt workload, with the card ended at the hour start; report the game's blamed card against the cards whose removal met the SLA. Offline only (an hour of sim per card per incident); needs a play-CLI file
+npm run inspect -- runs/a.json blame [--json] [--incident N] [--floor <pp>]   # counterfactual validator (RT-06, RT-25): replay each online incident's opening hour once per card active in it, with the card ended at the hour start; report each card's attainment gain against a noise floor measured from red-herring cards, and the RT-06 verdict (removal met the SLA) beside it. Offline only (an hour of sim per card per incident); needs a play-CLI file
 npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--by-class] [--episodes] [--moves] [--json]   # policy adjustment statistics over a range (WT-01, the 2026-11 WLM audit's S-table, docs/archive/wlm-audit-2026-11.md §1): adjustments, candidates by outcome, trials by verdict, accepted and reversed moves, receivers assessed 30 adjustments without a move, and the DP ladder at a clock time; --by-class per period, --episodes lists the 30-assessment runs, --moves every accepted move. Needs a play-CLI file
 npm run repro -- runs/s2.json S-2 | --scenario midwest --days 8 [--seed 42] [--difficulty normal]   # hands-off play-CLI file (start, advance 24 to day end, draft none): S-1 Midwest 2 days, S-2 Revenue 3, S-3 Harbourline 3, for inspect wlm / wlm-stats / blame
 npm run compare -- [--base origin/dev] [--head <ref>] [--scenarios a,b] [--drop k1,k2]   # behaviour diff vs base: sim state (reporting excluded), game state, log, RMF report text/records, Monitor III views; exit 1 on any difference
@@ -118,6 +122,13 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 - **Golden runs** (`tests/golden/`): seeded scripted runs hashed per day. If you change model
   behaviour intentionally, regenerate the goldens in the same commit and explain why in the
   commit message.
+- **Cross-report invariants** (`tests/sim/report-invariants.test.ts`, SPEC §16): every figure a player can read in RMF,
+  Partition Data, Monitor III, the SMF views and Finance must agree with the others and with the sim state it comes
+  from, on every scenario in `SCENARIOS`. A new or changed report field joins an identity in
+  `tests/helpers/reportIdentities.ts` in the same change (real z/OS behaviour with book and page, or a stated game
+  rule; every tolerance with its reason; no scenario, LPAR, class or workload names). An identity that fails is a
+  finding: fix a small reporting bug in its own commit, or file a BACKLOG entry and leave that identity out with a
+  comment naming it. Never loosen or skip one to get green.
 - **Behaviour claims:** back "report-only", "pure refactor" or "output-identical" with `npm run compare` and paste its
   summary in the PR. `--drop` names new reporting-only state fields so they don't count as a sim difference.
 - Balance changes: run the headless strategy bots (SPEC §16) and record outcomes in

@@ -9,6 +9,7 @@ import type { AutomationState } from './automation';
 import type { PolicyBook } from './policies';
 import type { ProjectState } from './projects';
 import type { EvidencePin, PinVerdict } from './evidence';
+import type { ProofResult } from './proof';
 import type { Mon3ChartState } from './mon3Charts';
 import type { Command } from '../sim/core/commands';
 import type { SimState } from '../sim/core/types';
@@ -38,7 +39,7 @@ export type Mechanism =
 
 export type Trigger =
   | 'DEMAND_SURGE'
-  | 'ACCESS_PATH_REGRESSION'
+  | 'CHANGE_REGRESSION'
   | 'RUNAWAY_WORK'
   | 'BATCH_OVERLAP'
   | 'POLICY'
@@ -78,7 +79,15 @@ export interface ActiveEvent {
   /** null = persists until fixed. */
   endTick: number | null;
   trigger: Trigger;
+  /** The footprint's direct set (RT-14): the workloads whose own demand or path the card changes. */
   affects: string[];
+  /** The footprint's reach while the card runs: image ids, and `JOB@LPAR` for a region reach. Re-resolved every tick
+   * and kept as the union over the hour (`affectsHour`), like a power cap's scope (absent = direct only: saves from
+   * before RT-14, and cards that load nothing shared). */
+  reach?: string[];
+  /** Workloads that closed a met SLA hour (or BATCH a met night) with the card already running at its start: the card
+   * is background for them, and ranks after a fresh one (docs/rca-design.md §4.4(2)). Sorted. */
+  metWith?: string[];
   /** Mechanisms the card causes; it only takes the blame for incidents with one of these (absent = any). */
   mechanisms?: Mechanism[];
   /** Mechanism the card causes through failures rather than delay (copied from the card). */
@@ -89,7 +98,7 @@ export interface ActiveEvent {
    * from the effective routing every tick while the cap runs, and each hour keeps the union of the scopes seen
    * in it, so a mid-cap move or added workload is attributed for that hour. */
   capacityCpcs?: string[];
-  /** Start tick of the hour whose union `affects` holds (a power cap's scope follows the routing). */
+  /** Start tick of the hour whose union `affects` (a power cap's scope follows the routing) and `reach` hold. */
   affectsHour?: number;
   endCommands: Command[];
   started: boolean;
@@ -144,6 +153,9 @@ export interface HourAcc {
   maxCappedFrac: number;
   /** Max capped fraction per LPAR during the hour. */
   cappedByLpar: Record<string, number>;
+  /** Per LPAR: ticks of the hour in which the image's CP demand was capped (`cappedFrac > 0`). Absent in an hour
+   * accumulated before RT-08 (a save loaded mid-hour), which keeps the `cappedByLpar` reading of its worst tick. */
+  cappedTicksByLpar?: Record<string, number>;
   cpcBusySum: number;
   /** Per CPC: sum over the hour's ticks of general-CP busy (absent in older saves). */
   cpcBusyById?: Record<string, number>;
@@ -190,17 +202,25 @@ export interface IncidentSubjects {
   serverClasses?: string[];
 }
 
+/** The answers a fair expert could defend from visible data, always including the primary (RT-07): one incident's, or
+ * the union of a group's (RT-15). */
+export interface Accepted {
+  mechanisms: readonly Mechanism[];
+  triggers: readonly Trigger[];
+}
+
 /** An incident's hidden ground truth: the primary answer, the accepted set, and the cause's identity. */
 export interface IncidentTruth {
   mechanism: Mechanism;
   trigger: Trigger;
   /** Answers a fair expert could defend from visible data, always including the primary (RT-07). Absent in saves
    * written before RT-07: read it through `acceptedOf` (game/sla.ts), which falls back to the primary alone. */
-  accepted?: { mechanisms: Mechanism[]; triggers: Trigger[] };
+  accepted?: Accepted;
   /** One line per accepted answer that is not the primary, keyed by the answer, for the post-RCA reply. */
   notes?: Record<string, string>;
-  /** Identity of the cause for grouping (docs/rca-design.md §4.5): the blamed card's `uid`, `new:<workload>`, or
-   * `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. */
+  /** Identity of the cause for grouping (docs/rca-design.md §4.5): the blamed card's `uid`, `new:<workload>`,
+   * `change:<id>`, or `none:<mechanism family>:<host>`. Recorded here by RT-07; RT-15 groups incidents by it. Absent in
+   * saves written before RT-07, which group by equal mechanism and trigger. */
   cause?: string;
 }
 
@@ -220,10 +240,13 @@ export interface Incident {
   aiops?: Hypothesis[];
   /** Classes, images and serving regions as they were when the incident opened (RT-04; absent in old saves). */
   subjects?: IncidentSubjects;
-  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). */
-  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; explain?: string } | null;
+  /** `explain` is the CPU verdict's numbers, filled in when the RCA is filed (absent in old saves). `proof` is the
+   * filed claims' recipes over the attached pins (RT-13; absent in saves written before it and when no pin was
+   * attached). */
+  rca: { mechanism: Mechanism; trigger: Trigger; points: number; evidence?: PinVerdict[]; evidencePoints?: number; strong?: boolean; proof?: ProofResult; explain?: string } | null;
   trustLost: number;
-  /** Id of the first incident that day with the same root cause: one RCA covers the group, scored once (SPEC §10). */
+  /** Id of the group's lead, the first incident of its cause (docs/rca-design.md §4.5): one RCA covers the group,
+   * scored once (SPEC §10). Absent on a lead and on an incident listed as new. */
   rcaGroup?: number;
 }
 

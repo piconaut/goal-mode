@@ -5,7 +5,7 @@
 // Samples here are time-average concurrency (average number of users in each state), so RMF's
 // group formulas ∑ samples ÷ (# samples × avg # address spaces) become state ÷ active users.
 
-import { mergeWorkManager, noResources, reportedAccs, reportedTicks, type WorkManagerSamples } from '../sim/wlm/reporting';
+import { mergeWorkManager, noResources, reportedAccs, reportedTicks, workManagerStatePct, type WorkManagerSamples, type WorkManagerState } from '../sim/wlm/reporting';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
 import { capacityLossPct, msuPerCp } from '../sim/hw/cpc';
@@ -231,6 +231,22 @@ export interface Mon3ProcJob {
   eapplZiipEngines: number;
 }
 
+/** Each system's WLM accumulators as the reports show them: CICS transaction samples with the region classes, as
+ * in WLMGL (reporting.ts). Every PI the player sees (SYSSUM, the header heat map) is taken from these. */
+export function reportedBySystem(sim: RunState['sim']): Record<string, Record<string, ScpAcc>> {
+  return Object.fromEntries(
+    sim.wlm.systems.map((s) => [s.lparId, reportedAccs(Object.fromEntries(s.scps.map((p) => [p.scKey, p.acc])), sim.last.lpars.find((l) => l.lparId === s.lparId)?.cics)]),
+  );
+}
+
+/** WLM is soft-capping the image: its own R4HA is above its defined capacity, or its capacity group's is above the
+ * group limit (the two conditions `softCap` applies in the sim; MVS Planning: WLM 3.1 p.44–47). */
+export function softCapped(sim: RunState['sim'], lparId: string): boolean {
+  const l = sim.config.lpars.find((x) => x.id === lparId);
+  if (sim.capping.lpars.find((x) => x.id === lparId)?.capped && l?.definedCapacityMsu != null) return true;
+  return !!l?.capacityGroup && !!sim.capping.groups.find((g) => g.id === l.capacityGroup)?.capped;
+}
+
 /** The resource behind DELAY's Primary Reason: the largest % Delayed for above 2%, capping included (p.110). */
 export function primaryDelayOf(delay: Mon3Row['delay']): Mon3DelayResource | null {
   const by: [Mon3DelayResource, number][] = [
@@ -334,10 +350,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of reportedTicks(l.scps, l.cics, false, l.iipcpReported ?? true)) if (t.scKey === scKey) addSplit(o, t);
     return o;
   };
-  // CICS transaction samples shown with the region classes, as in WLMGL (reporting.ts).
-  const reported = Object.fromEntries(
-    sim.wlm.systems.map((s) => [s.lparId, reportedAccs(Object.fromEntries(s.scps.map((p) => [p.scKey, p.acc])), sim.last.lpars.find((l) => l.lparId === s.lparId)?.cics)]),
-  );
+  const reported = reportedBySystem(sim);
   const rows: Mon3Row[] = [];
   for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, reported[s.lparId]![p.scKey]!, lastBy(s.lparId, p.scKey)));
   // Sysplex rows, like Monitor III's sysplex-wide SYSSUM.
@@ -438,7 +451,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
         eapplPct: lcp > 0 ? (100 * eappl) / lcp : 0,
         applIipPct: lzi > 0 ? (100 * mine.reduce((a, r) => a + r.ziipEngines, 0)) / lzi : null,
         msu: rt?.msuRate ?? 0,
-        capped: sim.capping.lpars.find((x) => x.id === l.id)?.capped ?? false,
+        capped: softCapped(sim, l.id),
         worstPi: pis.length ? Math.max(...pis) : null,
       };
     });
@@ -819,8 +832,8 @@ function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[])
   return plex.map((r) => {
     const w = r.workManager!;
     const srv = servers(r.scKey);
-    const tot = w.active + w.ready + w.idle + w.waitingIo + w.waitingLock + w.waitingProd + w.waitingMisc;
-    const pct = (x: number) => (tot > 0 ? (100 * x) / tot : 0);
+    // The report's column and the RCA pin read this one helper (RT-11); a row with no samples shows 0.
+    const pct = (state: WorkManagerState) => workManagerStatePct(w, state) ?? 0;
     return {
       scKey: r.scKey,
       serviceClass: r.serviceClass,
@@ -829,7 +842,7 @@ function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[])
       avgRtMs: r.avgRtMs,
       endedPerSec: r.endedPerSec,
       pi: r.pi,
-      states: { active: pct(w.active), ready: pct(w.ready), idle: null, lock: pct(w.waitingLock), io: pct(w.waitingIo), conv: null, prod: pct(w.waitingProd), misc: pct(w.waitingMisc) },
+      states: { active: pct('active'), ready: pct('ready'), idle: null, lock: pct('lock'), io: pct('io'), conv: null, prod: pct('prod'), misc: pct('misc') },
       servers: srv,
       ...(w.managedToTxn
         ? { note: "The AORs serving this class are managed to its goal (TRANSACTION mode); their region class's own goal is not used (WLM Planning p.120, p.122)." }

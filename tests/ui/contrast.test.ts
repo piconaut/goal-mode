@@ -35,6 +35,7 @@ describe('theme contrast', () => {
     it(`${name}: text and status colours reach 4.5:1 on every surface`, () => {
       for (const fg of ['text', 'muted', 'accent', 'good', 'warn', 'bad', 'crit'])
         for (const bg of ['bg', 'panel', 'panel-2']) expect(contrast(t[fg]!, t[bg]!), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+      // `crit on bg` above is also the danger button's label pair (bg text on a crit fill), so it is covered already.
       expect(contrast(t.bg!, t.accent!), 'primary button label').toBeGreaterThanOrEqual(4.5);
     });
   }

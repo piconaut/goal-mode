@@ -4,7 +4,7 @@
 
 import { MON3_HISTORY } from '../content/tools';
 import { TICKS_PER_HOUR } from '../sim/core/units';
-import type { Mon3Cpc, Mon3Row, Mon3View, Mon3Wkm } from './mon3';
+import type { Mon3Cpc, Mon3ProcJob, Mon3Row, Mon3View, Mon3Wkm } from './mon3';
 
 /** What `addPin` reads from a Monitor III view: the full view (browser) or this trimmed one (CLI). */
 export interface Mon3PinView {
@@ -16,6 +16,8 @@ export interface Mon3PinView {
     Partial<Pick<Mon3Cpc, 'cpcId' | 'kind' | 'busyPct' | 'physLparPct' | 'physTotalPct' | 'capacityAdjPct'>>)[];
   /** SYSWKM server rows (full view only; the CLI's history doesn't keep them, so past SYSWKM pins need the browser). */
   wkm?: { scKey: string; servers: Pick<Mon3Wkm['servers'][number], 'system' | 'jobname' | 'velocity'>[] }[];
+  /** PROCU job rows (RT-11; full view only, like SYSWKM: the CLI's history keeps no job rows). */
+  procJobs?: Pick<Mon3ProcJob, 'system' | 'jobname' | 'serviceClass' | 'eapplCpEngines'>[];
 }
 
 /** The interval ending at or before a tick, or null when history doesn't reach back that far. */

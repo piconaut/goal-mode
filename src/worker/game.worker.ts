@@ -375,11 +375,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       post({ type: 'RUN_FILE', name: `goal-mode-${run.scenarioId}-${run.seed}-day${run.day + 1}.json`, text: runFileText() });
       break;
     case 'IMPORT_RUN':
+      // Its own message kind: the dialog must not infer the outcome from a toast's wording (PR-05).
       try {
         importRun(m.text);
-        post({ type: 'RESULT', ok: true, message: `Loaded run: ${run.scenarioId}, seed ${run.seed}, day ${run.day + 1}` });
+        post({ type: 'IMPORT_RESULT', ok: true, message: `Loaded run: ${run.scenarioId}, seed ${run.seed}, day ${run.day + 1}` });
       } catch (e) {
-        post({ type: 'RESULT', ok: false, message: `Import failed: ${(e as Error).message}` });
+        post({ type: 'IMPORT_RESULT', ok: false, message: `Import failed: ${(e as Error).message}` });
       }
       break;
     case 'CONTINUE_SAVED':

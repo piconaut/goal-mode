@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, rcaLeadId, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
@@ -25,13 +25,17 @@ import { idText } from '../src/game/ids';
 import { askAround, inquiriesView } from '../src/game/inquiries';
 import { projectsView, workOnProject } from '../src/game/projects';
 import { addPin, removePin, type PinRequest } from '../src/game/evidence';
-import { EVIDENCE_METRICS } from '../src/content/evidence';
+import { EVIDENCE, EVIDENCE_METRICS } from '../src/content/evidence';
+import { proofLines } from '../src/game/proof';
 import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, pendingBase, playerWlmEditError, type WlmEdit } from '../src/game/wlmEdit';
-import { policyEditSource } from '../src/game/policies';
+import { plannedPolicy, policyEditSource } from '../src/game/policies';
 import { buildView } from '../src/game/view';
-import { acceptedOf, hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
+import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
+import { alsoAcceptedOf, groupAcceptedOf, rcaGroupOf } from '../src/game/run/rca';
+import { TRIGGER_LABEL, canonicalTrigger, triggerLabel } from '../src/content/rca';
+import { normalizeRun } from '../src/game/tools';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
@@ -99,6 +103,13 @@ function needs(feature: ToolFeature, what: string): string {
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
 export const decodePlayFile = (text: string): PlayFile => decodeRunFileText<PlayFile>(text);
 
+/** Load a play file as the CLI does: a file written before RT-09 has its trigger ids mapped like the worker's import,
+ * so a replay scores the same answers rather than turning a formerly right one into a wrong one. */
+export const openPlayFile = (text: string): PlayFile => {
+  const f = decodePlayFile(text);
+  return { ...f, run: normalizeRun(f.run, packOf(f.run.scenarioId).scenario) };
+};
+
 export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', scenario = 'midwest'): PlayFile {
   const pack = packOf(scenario);
   return { version: 1, run: newRun(pack.scenario, pack.game, seed, difficulty), pendingPolicy: null, log: [{ cmd: 'new', seed, difficulty, ...(scenario !== 'midwest' ? { scenario } : {}) }] };
@@ -106,7 +117,9 @@ export function newPlayFile(seed: number, difficulty: DifficultyId = 'NORMAL', s
 
 export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
   const out = apply(file, c);
-  return out.ok ? { ...out, file: { ...out.file, log: [...file.log, c] } } : out;
+  // A log written before RT-09 names the old trigger id; replay accepts it and records the canonical one.
+  const logged = c.cmd === 'rca' && canonicalTrigger(c.trigger) ? { ...c, trigger: canonicalTrigger(c.trigger)! } : c;
+  return out.ok ? { ...out, file: { ...out.file, log: [...file.log, logged] } } : out;
 }
 
 function apply(file: PlayFile, c: PlayCommand): PlayResult {
@@ -174,25 +187,29 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(chooseDraft(run, content, c.optionId), c.optionId ? `Drafted ${c.optionId}.` : 'Draft skipped.');
     }
     case 'rca': {
-      if (!MECHANISMS.includes(c.mechanism) || !TRIGGERS.includes(c.trigger)) return fail(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
+      // Play files written before RT-09 log the old trigger id; replay accepts it.
+      const cTrigger = canonicalTrigger(c.trigger) ?? c.trigger;
+      if (!MECHANISMS.includes(c.mechanism) || !TRIGGERS.includes(cTrigger)) return fail(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
       const inc = run.incidents.find((i) => i.id === c.incidentId);
       if (!inc) return fail(`No incident ${idText('incident', c.incidentId)}`);
       if (inc.rca) return fail(`Incident ${idText('incident', c.incidentId)} already has an RCA`);
       const missing = (c.evidenceIds ?? []).filter((id) => !run.pins.some((p) => p.id === id));
       if (missing.length && !run.pins.length) return fail('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without --evidence.');
       if (missing.length) return fail(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${run.pins.map((p) => idText('pin', p.id)).join(' ')}`);
-      const r = submitRca(run, c.incidentId, c.mechanism, c.trigger, sc(run), c.evidenceIds ?? []);
-      const covered = r.incidents.filter((i) => i.id !== c.incidentId && i.rca && rcaLeadId(i) === rcaLeadId(inc))
-        .map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
+      const r = submitRca(run, c.incidentId, c.mechanism, cTrigger, sc(run), c.evidenceIds ?? []);
+      // One RCA covers the group: its primary is the lead's and its accepted answers are the union of the members'
+      // (RT-15, docs/rca-design.md §4.5).
+      const group = rcaGroupOf(r.incidents, c.incidentId);
+      const covered = group.filter((i) => i.id !== c.incidentId && i.rca).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
       const rca = r.incidents.find((i) => i.id === c.incidentId)?.rca;
-      const t = inc.truth;
-      const accepted = acceptedOf(t);
+      const t = group[0]!.truth;
+      const accepted = groupAcceptedOf(group);
       const pts = rca?.points ?? 0;
       const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
       // An accepted alternate is a right answer, so the reply must say so and give its reason (RT-07).
-      const also = [...accepted.mechanisms.filter((m) => m !== t.mechanism), ...accepted.triggers.filter((x) => x !== t.trigger)]
-        .map((answer) => (t.notes?.[answer] ? `${answer} (${t.notes[answer]})` : answer));
-      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(c.trigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${t.trigger})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}`);
+      // Answers are shown with the trigger's display name; the ids stay what a command types (RT-09).
+      const also = alsoAcceptedOf(group).map(({ answer, why }) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${why ? ` (${why})` : ''}`);
+      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cTrigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${rca?.proof ? `\n${proofLines(rca.proof, (id) => idText('pin', id)).join('\n')}` : ''}`);
     }
     case 'ask': {
       const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));
@@ -220,13 +237,13 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         if (!buildView(run, sc(run)).reports.some((x) => x.index === index)) return fail(`No RMF interval ${c.intervalId}; ${intervalList(run)}`);
         req = { ...req, index };
       }
-      if (req.source === 'DB2' || req.source === 'CICS') {
+      if (req.source === 'DB2' || req.source === 'CICS' || req.source === 'CICS_STORAGE') {
         const hour = smfHourKey(run, req.hour);
-        if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
+        if (hour === null) return fail(`No SMF hour ${req.hour}; hours as \`smf ${req.source === 'CICS_STORAGE' ? 'CICS' : req.source}\` lists them (\`10\` = newest 10:00, \`D3 10\` = day 3)`);
         req = { ...req, hour };
       }
       if (c.at !== undefined) {
-        if (req.source !== 'MON3' && !(req.source === 'CPC' && req.index === undefined)) return fail('--at takes a Monitor III time (pin MON3 or pin CPC without an interval id)');
+        if (req.source !== 'MON3' && req.source !== 'PROCU' && !(req.source === 'CPC' && req.index === undefined)) return fail('--at takes a Monitor III time (pin MON3, pin PROCU, or pin CPC without an interval id)');
         const tick = tickOfClock(c.at);
         if (tick === null) return fail(`No time ${c.at}; write it as clockText does, e.g. D2 10:40 (D1 = first played day, 06:00 to 06:00)`);
         if (tick > run.sim.tick) return fail(`${c.at} is in the future; it is ${clockText(run.sim.tick)}`);
@@ -349,6 +366,11 @@ function batchText(b: object): string {
   return [table([Object.fromEntries(scalars)]), ...lists.flatMap(([k, v]) => ['', k, table(v)]), '', legend].join('\n');
 }
 
+/** When the planned policy takes over (BRIEFING: at day start; LIVE: the next tick's queued command). */
+function plannedWhen(phase: RunState['phase']): string {
+  return phase === 'LIVE' ? 'queued; V WLM,POLICY= applies at the next tick' : 'activates when the day starts';
+}
+
 /** What the player can see: the same fields the browser shows, never the incident ground truth. */
 export function statusText(file: PlayFile): string {
   const run = file.run;
@@ -360,6 +382,7 @@ export function statusText(file: PlayFile): string {
   out.push(budgetLine(v.mlcEstimate, v.opexSpent, v.opexBudget), R4HA_BILLING_NOTE);
   if (run.sim.cost.bills.length > run.billsSeen) out.push(BUDGET_MONTH_BOUNDARY_NOTE);
   out.push(`policy ${v.policyName}${file.pendingPolicy ? `  (pending policy edits in ${file.pendingPolicy.policyName}: activate in BRIEFING or LIVE)` : ''}  tools ${v.tools.filter((t) => t.owned).map((t) => (t.trialLastDay !== null ? `${t.id}(trial to day ${t.trialLastDay + 1})` : t.id)).join(' ') || 'none'}`);
+  if (v.plannedPolicy) out.push(`planned policy ${v.plannedPolicy.policyName} (${plannedWhen(v.phase)})`);
   out.push(`CPC busy ${v.cpcBusyPct.toFixed(0)}%  ` + v.lpars.map((l) => `${l.id} ${l.cpBusyPct.toFixed(0)}%`).join('  '));
   if (v.phase === 'LIVE') {
     const hot = v.piHeat.filter((p) => p.pi !== null && p.pi > 1).map((p) => `${p.scKey} ${p.pi!.toFixed(2)}`);
@@ -395,7 +418,7 @@ export function statusText(file: PlayFile): string {
   }
   const open = v.incidents.filter((i) => !i.rca && i.rcaGroup === undefined);
   const linked = (id: number) => {
-    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
+    const ws = rcaGroupOf(v.incidents, id).slice(1).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
     return ws.length ? ` (same cause, one RCA covers: ${ws.join(', ')})` : '';
   };
   if (open.length) out.push('incidents without RCA: ' + open.map((i) => `${idText('incident', i.id)} ${i.workloadId} day ${i.day + 1} from ${clockText(i.startTick)} (RMF interval ${intervalAt(run, i.startTick)}) ${i.hours}h worst ${i.worstAttainmentPct.toFixed(1)}%${linked(i.id)}`).join('; '));
@@ -515,6 +538,9 @@ export function policyText(file: PlayFile, pending: boolean): string {
   if (pending && !file.pendingPolicy) return 'No pending policy edits.';
   const def = pending ? file.pendingPolicy! : run.sim.wlm.definition;
   const out = [`${pending ? 'pending' : 'active'} policy ${def.policyName}  I/O priority management ${def.ioPriorityManagement === false ? 'NO' : 'YES'}${def.cicsRegionMode === 'REGION' ? '  manage regions using goals of REGION (rules without their own setting)' : ''}`];
+  // The policy the WLM schedule or a queued activation will install, so `policy` says what `status` says.
+  const planned = plannedPolicy(run);
+  if (planned && (planned.policyName !== def.policyName || !pending)) out.push(`planned policy ${planned.policyName} (${plannedWhen(run.phase)})`);
   out.push('service classes (period: goal, duration SU):');
   for (const c of def.classes) {
     const periods = c.periods.map((p, i) => `#${i + 1} ${goalText(p)}${p.durationSu !== null ? ` DUR ${p.durationSu}` : ''}`).join('; ');

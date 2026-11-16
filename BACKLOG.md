@@ -176,135 +176,16 @@ RCA judging and incident truth: the work that makes RCA verdicts fair and eviden
 direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
-- **RT-00 … RT-15 and RT-25 (before RT-14) are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
-  in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 waits for the `wlm-truth` core
-  (WT-04 … WT-10, user decision 2026-11-10): run `dev-loop rca-truth,wlm-truth`, or `rca-truth` alone stops at RT-14
-  and "finishes" before RT-14 and RT-15 are done, which is not the playtest cue. RT-22 … RT-24 are D1 and wait for the user.
+- **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. RT-16 … RT-21 wait for a human playtest: the list
+  "finishing" in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 (card footprints) landed
+  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-08 · CAPPING is decided by one capped tick, not by 5 % of the hour
-`list: rca-truth · status: ready · priority: low · size: S · area: game`
-
-`accumulateHour` keeps `max(cappedFrac)` per LPAR and `mechanismOf` compares it with 0.05, so a single tick in which
-6 % of an image's demand was cut makes the hour's CPU incidents CAPPING (A6, U-9). SPEC §10 says "capped over 5 % of
-the hour". Accumulate the number of ticks in which the image was capped (`cappedFrac > 0`) and call it CAPPING when
-that is at least 5 % of the hour's ticks; keep `cappedByLpar` readable for old saves; the batch night
-(`addHour`) sums ticks. Put the 5 % in `content/incidents.ts`. Done when: a test with one capped tick in an hour
-gets the CPU split, one capped for 10 % of the hour gets CAPPING, and a sweep shows the bands hold.
-
-### RT-09 · Trigger and mechanism wording: "Change regression" (renamed id), "Policy or configuration"
-`list: rca-truth · status: blocked: after RT-00 · priority: low · size: M · area: content`
-
-User decision on Q2, 2026-11-10: yes, and rename the trigger id (user, 2026-11-10): `ACCESS_PATH_REGRESSION` becomes
-`CHANGE_REGRESSION`, shown as "Change regression", because once other cards move to it the old id is a misnomer
-that agents type in the play CLI and read in `--json` output. Other entries and docs that say
-`ACCESS_PATH_REGRESSION` mean this trigger; this PR updates every mention (code, BACKLOG.md, docs/rca-design.md,
-SPEC, Codex). §4.4(5):
-- Rename the id everywhere in `src/`, `tools/` and `tests/`. Saves map the old id on load (incidents, filed RCAs,
-  active cards). The play CLI's `rca` argument and command-log replay accept the old id as an alias, so older play
-  files replay unchanged.
-- Move ENCRYPTION_MANDATE, MONITOR_CREEP, QR_RELEASE, ZIIP_LOSS and SMF_AUDIT to `CHANGE_REGRESSION`. `POLICY` is
-  shown as "Policy or configuration" (label only). Widen STORAGE's and CAPPING's help.
-- This changes those cards' truth trigger, so goldens are regenerated with a Behaviour note and a three-scenario
-  sweep is run (RT-00 keeps the bots' fix choice independent of the label).
-
-Done when: `tests/game/rcaVocabulary.test.ts` covers the new texts, the Codex entries agree, a test loads a save and
-replays a play file written with the old id and gets the same state, and no `ACCESS_PATH_REGRESSION` remains outside
-the aliases.
-
-### RT-10 · Pin CF Activity and DASD Activity rows
-`list: rca-truth · status: ready · priority: low · size: M · area: game`
-
-CF_LINK, CF_FAILURE, F8, DASD_DEGRADED, HSM_RECALL_STORM and REORG_OVERRUN are told apart only in reports that have
-no pin source (A11). Add `CF_SYNC` (structure or CF sync service time, µs; CF_SERVICE, HARDWARE_FAULT),
-`CF_ASYNC_PCT` (requests converted to async; CF_SERVICE), `DASD_DISC`, `DASD_IOSQ` and `DASD_RESP` per LCU (ms; IO;
-`DASD_DISC` also HARDWARE_FAULT, `DASD_IOSQ` also DEMAND_SURGE and BATCH_OVERLAP), pinned from an RMF interval of the
-CF_DASD reports, subject the CF or LCU, counted as server-side clues for work that uses Db2 or does I/O. Notable
-lines are FICTIONAL and go in `content/evidence.ts` (start at twice the scenario's day-0 value). Done when: pinnable
-from the CLI and UI, tested, and listed in SPEC §10.
-
-### RT-11 · Pin CICS region storage, top-consumer jobs and work-manager states
-`list: rca-truth · status: ready · priority: low · size: M · area: game`
-
-Three more clues the cards' texts name but the board cannot hold (A11): `SOS_MIN` (minutes short on storage in the
-hour, from the SMF 110 region storage view; THREAD_LIMIT, STORAGE, APPLICATION_ERROR; notable 1), `JOB_APPL` (CPU of
-one address space from the Monitor III job rows, subject the jobname; CPU_PRIORITY, CPU_CAPACITY, RUNAWAY_WORK;
-notable 25 % of an engine), and the WLMGL work-manager states of a CICS transaction class (`WM_LOCK` waiting for
-lock → LOCK_CONTENTION; `WM_READY` → CPU_PRIORITY, CPU_CAPACITY, QR_TCB at half weight; RMF Report Analysis
-p.536–537). Done when: pinnable from the CLI and UI, tested, listed in SPEC §10.
-
-### RT-13 · Proof recipes: evidence as a discriminating pair
-`list: rca-truth · status: ready · priority: high · size: L · area: game`
-
-User decision on Q3, 2026-11-10: yes. After RT-12. Recipes per mechanism and trigger in
-`content/evidence.ts` (§4.6 table), judged over the up-to-three attached pins. Every common recipe (CPU family,
-DEPENDENCY, DEMAND_SURGE, change regression, RUNAWAY_WORK) has a path that needs only tier-0/1 tools, so early-game
-players can complete a proof. The CF, DASD and CICS-storage recipes need RT-10 and RT-11: whichever of RT-10, RT-11
-and RT-13 lands last adds them; a complete recipe for the filed, accepted mechanism replaces today's
-relevance sum, a second for the trigger makes the evidence strong; the reply shows each predicate ticked or not.
-Note: `ENDED_RATE` is `self`/`server` only today, so the DEMAND_SURGE recipe's "on the surging workload" and §4.4's
-collateral-victim surrogate (a co-hosted workload's rate) need it widened to `competitor` here.
-Done when: every mechanism and trigger has a recipe a test satisfies from a replayed incident, and one a test fails
-with look-alike pins (surge against regression, capacity against priority), and a test shows a tier-0/1 path for
-each common recipe.
-
-### RT-25 · The counterfactual validator tests every active card and measures attainment, against a noise floor
-`list: rca-truth · status: ready · priority: high · size: M · area: tooling`
-
-From the session review of RT-06 after WT-09 (2026-11-13). `inspect blame` (`src/game/counterfactual.ts`,
-`tools/inspect.ts`) ends only cards whose `affects` names the hurt workload, so it cannot find the error RT-14 fixes
-(a card hurting work it does not declare): 187 of 202 baseline incidents had no card to test. Its verdict is binary
-(SLA met with the card ended), so joint causes read as "not a cause" (the 3 baseline disagreements: Harbourline
-CAPPING hours, best 91.1 % against 95 %) and incidents near the line flip on small path effects. Change it to:
-- end **every card active in the hour**, one at a time (offline, so the extra hours of sim are acceptable);
-- report each card's **attainment gain** (the hour's SLA attainment with the card ended, less as-run), and call it a
-  cause when the gain clears the noise floor, whether or not the SLA would then have been met;
-- measure the **noise floor** from controls: red-herring cards that by design hurt nothing (CP_SPARING, any card
-  with empty `affects`) active in incident hours, reported per scenario; with fewer than 10 controls in the sample,
-  add seeds until there are, and say so in the output.
-Keep `--json` (RT-14 consumes it) and the old verdict as a field, so the change is comparable. Game attribution does
-not change. Done when: the output lists every active card per incident with its gain, the noise floor and its
-control count are reported, a test covers a joint cause counted as a cause and a red herring below the floor, and
-a new baseline (seeds 1–5 of the three scenarios, Normal) is recorded in PROGRESS.md for RT-14.
-
-### RT-14 · Card footprints: blame by resource and reach, fresh before background
-`list: rca-truth · status: blocked: after RT-25 · priority: high · size: L · area: game`
-
-Sequencing (user decision 2026-11-10, docs/archive/wlm-audit-2026-11.md §7): footprints are measured on the WLM core of `wlm-truth`
-(WT-04 … WT-10), which changes which work a card hurts; building them first would redo them.
-
-User decision on Q5, 2026-11-10: yes. After WT-09 and WT-10 (WT-10 landed 2026-11-12). Replace `affects` matching with `footprint { resource, reach, direct }` on every card
-(§4.4(1)), generalising PT-04's routing-based scope; rank direct before collateral, fresh before background, then
-overlap, and accept both on a tie (no `uid` order); collateral victims accept the card's trigger and the fallback;
-`disturbed` uses the footprint; BATCH is in reach like any workload; SMF_AUDIT gets a footprint. Moves truth
-triggers: sweep.
-Tests are built fixtures (a card, a footprint, an incident with a given mechanism on a given host), not replayed seed
-incidents: those move with every WLM change (WT-09 moved RT-06's online incidents 0/1/14 → 0/2/16). R-3, R-8 and R-9
-are checked once with the validator and the result recorded in the PR, not kept as standing assertions. Each
-validator disagreement is classified: **footprint wrong** (the card loaded its resource on the hurt work's host or
-its servers' hosts, and the footprint leaves it out, or the reverse) or **path effect** (the gain comes from a
-changed WLM path, e.g. sysplex PIs, with the card's resource not loaded where the work waited); only the first
-counts. Done when: U-1 … U-3 and the footprint fixtures are tests, R-3, R-8 and R-9 give the card's trigger to the
-collateral incidents (validator output in the PR), the validator (RT-25) on seeds 1–5 of the three scenarios shows
-fewer footprint-wrong disagreements than RT-25's baseline (path effects listed in the PR), and SPEC §9 and §10
-describe footprints.
-
-### RT-15 · Group incidents by cause, not by equal labels
-`list: rca-truth · status: blocked: after RT-14 · priority: high · size: M · area: game`
-
-User decision on Q4, 2026-11-10: yes, with two refinements. After RT-14 (before footprints, collateral victims
-have no card cause and would still split off). `rcaGroup` links incidents with the same `truth.cause`: for a card
-cause, any incident of the same played day; for the other causes (`new:`, `change:`, `none:`), incidents that
-overlap or follow within two hours. The group's accepted set is the union; an incident inherits a filed RCA only for the same card `uid` (A13). Done when:
-R-7 is one group, R-9's 13:00 incidents do not inherit a 10:00 RCA, R-6's batch night does not join the midday
-incident unless the card reached it, a 48-hour MONITOR_CREEP hurting MOBILE at 09:00 and RBANK at 15:00 is one group,
-and `tests/game/groupedRcaEvidence.test.ts` is updated.
-
 ### RT-16 · CPU split on the host of the delay, by displaceable CPU, with bands
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
 
 After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
 (prove with `npm run compare --drop`); judge on the host with the most excess, on the pool that queued (zIIP);
@@ -327,7 +208,7 @@ wins (A6). SMF "vs base" reads the slot. Moves truth mechanisms: sweep. Done whe
 `LOCK_CONTENTION/GROWTH` incidents are no longer lock contention, and PT-13's frozen "vs base" tests still pass.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
 
 After RT-14 and RT-17. DEMAND_SURGE without a card when arrivals are ≥ 1.25 × the slot baseline (payday, month-end,
 deadline week); POLICY primary, naming the change, when a player change in the last 24 h touched a lever of the
@@ -335,7 +216,7 @@ winning mechanism on the judged host; new-work collateral for two days. Threshol
 triggers: sweep. Done when: a Revenue deadline-week incident is DEMAND_SURGE and R-14/R-15 replies name the change.
 
 ### RT-19 · Server CPU starvation and the thread-limit reference
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.2(3)) · priority: low · size: M · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.2(3)) · priority: low · size: M · area: sim`
 
 After RT-17. Split the `dependency` part into `serverCpu` and `serverOther` (reporting-only); region CPU wait joins
 the CPU group, other servers' CPU starvation stays DEPENDENCY with the CPU refinement accepted; THREAD_LIMIT is
@@ -347,7 +228,7 @@ per-period split of region CPU wait and other waits; do this entry after them an
 zIIP, I/O in velocity, storage, queue) and `waitingFrac` (waits over all samples); reuse them.
 
 ### RT-20 · Failure-only misses from the failure's source, not from a card
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.2(4)) · priority: low · size: M · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.2(4)) · priority: low · size: M · area: sim`
 
 After RT-01. Record failed transactions by source per workload (slot-queue timeout, region abend, Db2 or MQ
 unavailable, backlog timeout; reporting-only) and map them to THREAD_LIMIT, ROUTING, DEPENDENCY and the CPU family;
@@ -355,7 +236,7 @@ unavailable, backlog timeout; reporting-only) and map them to THREAD_LIMIT, ROUT
 MAXCONQW-style DBAT timeout hour is THREAD_LIMIT.
 
 ### RT-21 · BATCH incidents under the same rules
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.4) · priority: low · size: M · area: game`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4) · priority: low · size: M · area: game`
 
 After RT-14 and RT-16. Cards whose footprint reaches the critical jobs' images or LCUs during the night qualify;
 JOB_FAILURE only when the ABEND's lost time is the largest cause or the job never finished; co-dominant causes
@@ -386,6 +267,18 @@ Q8a decides problem records (RT-22), Q8b the gating itself, including whether ar
 ladder of §5.5 with difficulty and Mentor; strategy bots diagnose from report data before fixing (§5.7). Balance: a
 three-scenario sweep and a re-tune call on the main agent. Start with REGRESSION and XLOG_LOOP. Done when: SPEC §9
 and §10 are rewritten for it, the sweep is recorded in PROGRESS.md, and the bands are restored or re-decided.
+
+### RT-27 · Strong evidence for the pairs three pins cannot prove
+`list: rca-truth · status: blocked: design · priority: low · size: S · area: game`
+
+Source: RT-13 (`tests/game/proofRecipes.test.ts` `FOUR_PIN_PAIRS`; docs/rca-design.md §4.6 "As built (RT-13)"). (RT-26
+is skipped: an open PR for the same entry uses it.) 29 of the 108 mechanism × trigger pairs need four separate facts,
+so with `EVIDENCE.perRca` = 3 they earn the mechanism's 3 points but never strong evidence. Those a shipped card can
+produce: CPU_CAPACITY, CAPPING and DEPENDENCY × RUNAWAY_WORK (RUNAWAY, SHADOW_IT), CPU_PRIORITY and CAPPING ×
+HARDWARE_FAULT (POWER_CAP, CF_LINK, CF_FAILURE), and the CPU family and DEPENDENCY × APPLICATION_ERROR (RETRY_STORM's
+alternate, unprovable anyway until RT-23). Options: a fourth pin for strong evidence only; a trigger predicate that a
+mechanism pin can also meet where the data honestly shows both; or accept the gap. Done when: the user decides and
+the test's list matches the decision.
 
 ## wlm-truth
 
@@ -442,49 +335,11 @@ edits are uninstalled and visible). Done when: the message says so.
 From #180. When a later install succeeds after an earlier one failed at day start, the play CLI's day-start text and
 the mail don't say that the earlier install's edits went live through the later one. Done when: both say so.
 
-### PR-04 · Planned-policy labels
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #178. CLASSIFY flags the planned policy only as `pending` (`src/worker/game.worker.ts` CLASSIFIED); the play CLI
-`status` and `policy` output don't show the planned (queued or briefing) policy at all. Done when: both show it.
-
-### PR-05 · The import dialog reads its result from toast wording
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #181. The dialog (`src/ui/RunFiles.tsx`) matches `Loaded run:` / `Import failed:` toast text. Since #185,
-`submittedToast.current = toast` (after the confirmation wait) stores the toast from before the prompt opened, which is
-harmless only because results are matched by prefix. Give the worker an explicit import-result message.
-Done when: the dialog no longer reads toasts.
-
-### PR-06 · Closing during an in-flight import still replaces the run
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #181, after the player has already confirmed. Done when: closing the dialog cancels the import, or the dialog
-can't be closed until the import ends.
-
-### PR-07 · The open modal scrolls with the page
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #181. `.modal { position: relative }` in `src/ui/styles.css`: the open modal dialog computes to position absolute
-and scrolls with the page instead of staying fixed. Done when: it stays fixed (check at phone width).
-
-### PR-08 · One unstyled frame on programmatic close
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #183. The `modal` class drops when state resets but `el.close()` runs in a passive `useEffect`; `useLayoutEffect`
-would avoid the frame. `close()` also runs twice on cancel (harmless).
-
 ### PR-09 · No automated test for the dialog lifecycle
 `list: pr-followups · status: ready · priority: low · size: M · area: ui`
 
 #181/#183/#185 were verified by hand with Playwright. Cover the save dialogs and the in-app confirmation
 (`src/ui/Confirmation.tsx`): open, close, Escape, reopen, delayed close events, confirm/cancel.
-
-### PR-10 · Confirmation polish
-`list: pr-followups · status: ready · priority: low · size: S · area: ui`
-
-From #185. During a file import the button still reads "Reading file…" while the prompt is open; the confirm button has
-no primary/danger styling.
 
 ### PR-13 · One abended-job set for the play CLI and the `inspect` replays
 `list: pr-followups · status: ready · priority: low · size: S · area: tooling`
@@ -646,6 +501,72 @@ choice is recorded in docs/wlm-design.md §5.10 and SPEC §5.5.4, a test shows a
 missing percentile period of equal importance traded on the chosen scale, and goldens, the S-1 … S-3 table and a
 three-scenario sweep (seeds 1–10) are recorded if behaviour changes.
 
+### RF-05 · MSU is counted from total dispatch time, LPAR management included
+`list: realism-fixes · status: blocked: balance · priority: low · size: M · area: sim`
+
+Source: cross-report invariant suite (2026-11-14; identity `mon3-sysinfo-cpc`, left-out part). Real RMF computes a
+partition's MSU from effective dispatch time: Partition Data `MSU ACT` is the "actual consumption based on the logical
+processor effective dispatch time", and Monitor III CPC `MSU Act` likewise (RMF Report Analysis 3.1 p.402, p.98). The
+sim's Monitor III CPC `msuAct` already does that, but `LparRuntime.msuRate` (`src/sim/core/tick/dispatch.ts`) is
+`deliveredEngines × msuPerCp`, total dispatch time with LPAR management and polarity loss in it, and it feeds the
+header MSU, Partition Data MSU AVG, the R4HA, soft capping, the SCRT-style bill and TFP MSU-hours. So one image has
+two MSU figures at one moment (Midwest seed 7, 11:20: PROD2 CPC MSU Act 644, header 663, LPAR management 2.9 %).
+Change: take `msuRate` from effective dispatch time; keep `deliveredEngines` for LPAR BUSY and physical busy. This
+lowers every R4HA and bill by the overhead share, so it is a balance change: goldens, a Behaviour change note and a
+three-scenario sweep. Done when: the identity "MSU Act = header MSU = Partition Data MSU AVG at the same time" is
+added to `tests/helpers/reportIdentities.ts`, the docs/research.md row says "Matches", SPEC §17 is updated and the
+sweep is recorded.
+
+### RF-06 · Partition Data WLM% is the share of demand removed, not the share of time capped
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
+
+Source: cross-report invariant suite (2026-11-14; identity `partition-capping`, left-out part). Real `WLM%` is the
+"Percentage of time when WLM capped the partition" (RMF Report Analysis 3.1 p.401–402): the samples in which "WLM
+considers to cap" over all samples (SMF70NSW ÷ SMF70DSA, RMF User's Guide 3.1 p.186). Monitor III CPC `WLM Capping %`
+has the same definition (p.98), and the Group Capacity report adds `ACT%` for the samples where capping actually
+limited usage (SMF70NCA, p.406). The sim's `wlmCappingPct` (`src/sim/measure/rmf.ts`) and Monitor III
+`wlmCappingPct` average `softCappedFrac`, the share of CP demand the cap removed. On Midwest seed 7 with a defined
+capacity at 60 % of the R4HA, PROD1 was capped for the whole interval and showed WLM% 57; DEVT, capped all interval
+but under its cap, showed 0. Change: carry "soft cap in force" on the image's CP pool runtime (a new `LparPoolRuntime`
+field, so sim state changes shape though no behaviour does), report WLM% as the share of ticks it was in force, and
+keep the share of demand removed as its own figure (the evidence metric and alerts read `cappedPct`, which does not
+change). Done when: the identity "WLM% = share of the interval the image was capped" is in
+`tests/helpers/reportIdentities.ts`, the Codex and clue texts that read WLM% as a size are checked, the
+docs/research.md row says "Matches", and `npm run compare` shows only the reporting difference.
+
+### RF-07 · WLMGL ENDED counts job ends only for batch classes with a response time goal
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
+
+Source: cross-report invariant suite (2026-11-14; identity `smf30-vs-wlmgl`, left-out part). "The number of batch
+transactions equals number of jobs" (WLM Planning 3.1 p.71) and RMF's ENDED is "the number of transactions that ended
+during the interval" with no condition on the goal type; the book's own velocity-goal sample shows ENDED 9 (RMF
+Report Analysis 3.1 p.530, p.522). The sim adds a completion, its response time and a bucket observation only when the
+job's period has an AVG or PCT goal (`src/sim/core/tick/dispatch.ts`, added with WT-12), so every shipped batch class
+(velocity or discretionary) shows ENDED 0 and no response time while SMF 30 lists its job ends (Midwest seed 7: 20
+jobs ended in a discretionary class, WLMGL ENDED 0). Change: count every ended job as an ended transaction with its
+queue + elapsed response time in its ending period and report class; response-time buckets stay for response time
+goals (RMF also prints a per-system distribution for velocity periods: docs/research.md, not modelled). `acc.completions`
+feeds no velocity PI, but it is WLM state, so goldens change: check with `npm run compare` that DPs, the WLM log and SLA
+results are unchanged. Done when: the left-out part of `smf30-vs-wlmgl` is restored for every goal type, Monitor III
+shows the ended rate, and docs/research.md and SPEC §17 "Batch response-time goals" are updated.
+
+### RF-08 · A capacity group's 4-hour average is on no report, and starts empty when the group is defined
+`list: realism-fixes · status: blocked: research · priority: low · size: M · area: sim`
+
+Source: cross-report invariant suite (2026-11-14; identity `soft-cap-flag`, left-out part). The Partition Data header
+shows GROUP NAME, LIMIT and `AVAILABLE`, the "long-term average of CPU service in MSUs/h which would be allowed by the
+limit of the capacity group but is not used by its members. If the value is negative, the group is capped" (RMF Report
+Analysis 3.1 p.399–400); LIMIT is flagged with `*` when the partition joined its group less than four hours ago. The
+game shows the group and its limit (Monitor III CPC header) but not the group's average, so a player cannot work out
+from any report why a group is or is not capping: the members' R4HAs do not add up to it, because the sim starts a
+new group's window empty (`newR4ha(g.id)` in `src/sim/core/tick/control.ts`), as if the group had been IPLed. In the
+suite's runs a group limit at 60 % of its members' summed R4HA never capped within an hour for that reason.
+Research first (zos-docs): how WLM builds the group's average when a group is defined or a member joins (WLM Planning
+3.1 p.46–47 says capping starts "when the 4-hour rolling average for the combined usage exceeds" the limit; whether
+that is the sum of the members' own averages is not stated on the pages read). Then: show AVAILABLE (and the `*`) on
+Partition Data and the CPC header, and build the group average as research says. Done when: the suite's `soft-cap-flag`
+reads the group's state from a report instead of the sim, and docs/research.md has the row.
+
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.
@@ -653,7 +574,7 @@ Tune after the RT entries that move truth labels have landed (RT-00, RT-02, RT-0
 the strategy bots do (docs/rca-design.md §4.8); tuning before them would be redone.
 
 ### BL-01 · Harbourline expert wins 5 of 10
-`list: balance · status: blocked: after RT-14 · priority: low · size: M · area: content`
+`list: balance · status: ready · priority: low · size: M · area: content`
 
 Release sweep 2026-11-10 (dev `1300e69`, Normal, seeds 1–10): expert 5/10. All five losses are trust losses, mostly
 on Markets (seeds 1, 2, 4, 7, 9); seed 4 (day 38) is new against the 6/10 the user accepted. Harbourline is gated
@@ -665,7 +586,7 @@ Cross-note: the `wlm-truth` core (WT-04 … WT-09) changes how equal-priority cr
 §6.2); tuning before WT-09 would be redone (§8 Q2).
 
 ### BL-02 · Revenue: do-nothing survives close to textbook
-`list: balance · status: blocked: after RT-14 · priority: low · size: M · area: content`
+`list: balance · status: ready · priority: low · size: M · area: content`
 
 Release sweep 2026-11-10: do-nothing median day 19 (p10 16, p90 23), textbook 27, expert 10/10. Do-nothing is inside
 its 8–22 band (it moved there with #167's G1 retune), but the gap to textbook is 8 days against Midwest's 11 and
@@ -709,3 +630,423 @@ the section heading which pin each column takes (`pin CPC <lpar> LPAR_BUSY|PRSM_
 `CAPACITY_ADJ`). Leave `--json`, `mon3PastText` (the pin-history dump) and the `Mon3Cpc` view model unchanged:
 agents and pins read `busyPct` there. Weight and polarity stay in `play capacity`. Done when: `play mon3` and `play
 mon3 PROD1` show the new CPC section, `--json` output is unchanged, and the docs/agents.md example (if any) matches.
+
+### CL-10 · Monitor III splits by the last tick's mix don't add up
+`list: cleanup · status: ready · priority: low · size: M · area: game`
+
+Source: cross-report invariant suite (2026-11-14; identities `mon3-sysplex-sum` and `mon3-delay-states`, left-out
+parts). WLM's smoothed accumulator keeps total Using and total CP time, so `row()` in `src/game/mon3.ts` splits them
+by the last tick's mix (APPROX, SPEC §17): zIIP and IIPCP engines, and the users using PROC and DEV. Two things then
+don't add up for the player: a sysplex row is split by the pooled mix, so it is not the sum of its systems' rows
+(Midwest seed 7, 06:30, DDFPRD#1 zIIP 0.06222 against 0.06225); and when the last tick had no using sample the users
+using PROC + DEV are 0 while USG % is not (DEVBAT#1 after its job ended: 0 users using, USG 30 %). PROCU and
+ENCLAVE inherit both. Change: keep the decayed components the views need (using CPU, zIIP and I/O; zIIP and IIPCP
+engines; the moved CICS parts with them) as reporting-only accumulator fields and read the split from them, dropping
+`LastSplit`. Not a model change: `npm run compare -- --base origin/dev --drop <new fields>` must show sim state, game
+state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
+restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.
+
+### CL-11 · Shorter `inspect wlm-stats` ABEND test (B1)
+`list: cleanup · status: ready · priority: high · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16, user request: cut CPU-heavy tests without losing coverage). The B1 test in
+`tests/tools/inspect.test.ts` (`does not invent hours after an ABEND cut the logged advance`) takes 45 s, the second
+slowest test in the suite. It plays 41 hours of Midwest seed 42 to reach STL004's day-2 ABEND, then replays the file
+twice. `replayAdvance` and `stoppedEarly` already have injected unit tests (same file, the tests before it). Change:
+reach an ABEND in the first batch night instead, with ordinary play commands (e.g. a `change` that forces an ABEND,
+or a seed or scenario whose first night abends), and keep all three assertions: the range is reported as not
+covered, its counters cover the hours played and not those requested, and a `restart` then lets the next advance run
+through. Done when: the test asserts the same three things, takes under 15 s locally (before and after timings in
+the PR), and `npm run check` is green.
+
+### CL-12 · Disk-cached test fixtures for shared start states
+`list: cleanup · status: ready · priority: high · size: M · area: tooling`
+
+Source: codebase survey (2026-11-16). Five files independently build the same start state: Midwest seed 7, content
+`{...MIDWEST_GAME, events: []}`, `startDay`, then 6 h to noon. They are `tests/game/evidence.test.ts`,
+`storageJobWmPins.test.ts`, `proofRecipes.test.ts`, `smf.test.ts` and `mon3.test.ts`. Evidence and storageJobWmPins
+then also apply the same `RBANK cpu=3` hour on top. `tests/game/counterfactual.test.ts` plays 29 h of Revenue seed 6
+in `beforeAll` (52 s file). Vitest runs each file in its own worker, so they can only share through disk.
+Change: add a `tests/helpers/fixtureCache.ts` that stores a named `RunState` as JSON under
+`node_modules/.cache/goal-mode-fixtures/`. The key is a hash of every file under `src/`, `tests/helpers/` and
+`package-lock.json`, so any code change rebuilds the cache. Writes go to a temporary file and are renamed into place,
+so parallel workers don't read a half-written file. Each read returns a fresh decoded copy. Use it for the noon state,
+the noon + `RBANK` state and counterfactual's start state. First confirm each file's start state is byte-identical to
+the shared one (`encodeRunJson`), and keep any file whose start differs on its own build. Done when: those files use
+the cache; a cold run passes and a warm run is faster; deleting the cache directory or editing a `src/` file rebuilds
+it; the per-file timings, cold and warm, are in the PR.
+
+### CL-13 · Build once per file: realism midday base, play-file prefixes
+`list: cleanup · status: ready · priority: high · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). `tests/sim/realism.test.ts` builds the seed-42 Midwest midday state four times
+(the `describe` blocks around `:194`, `:224`, `:242` and `:465`; 24 sim-hours). `tests/tools/play.test.ts` rebuilds
+"new file, seed 7, start, advance 1–2 h" in about 15 tests. Change: one lazily built, module-level copy of each,
+handed out as `structuredClone` copies (play files: decoded copies). Leave the `:689` base alone, because it sets
+`POLICY_ADJUST.skipClockMinMissing` first. Leave `tests/sim/wlm-realism.test.ts` unchanged too (user decision
+2026-11-16: the ladder test stays as it is for now). Done when: no test asserts against a state another test
+mutated; `npm run check` is green; the file timings, before and after, are in the PR.
+
+### CL-14 · One short determinism pair per scenario
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). Several files play the same run twice to check that it is deterministic:
+`tests/sim/harbourline.test.ts` (2 × 6 h), `multicpc` (2 × 3 h), `routing` (2 × 2 h), `tests/game/harbourline-pack`
+(2 × 3 h), `realism.test.ts:182` and `mon3Charts.test.ts:17`. The golden tests cover only Midwest. Change: keep one
+1-hour pair per scenario in `tests/sim/purity.test.ts` (or a new `determinism.test.ts`) with `SCENARIOS` as the loop,
+and drop the per-file pairs. First check that no other assertion reads the dropped runs' output. Done when: every
+scenario in `SCENARIOS` keeps a determinism check; `npm run check` is green; the timings are in the PR.
+
+### CL-15 · Measure and cut per-file test overhead
+`list: cleanup · status: ready · priority: high · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). One local full run (4 cores, `--reporter=json`) took 234 s of wall time for
+585 s of summed file time. That is well over the 146 s that 4 workers would need, so import, transform and collect
+time per file is probably large; each file imports the whole sim afresh. Change: measure first. Run vitest's default
+reporter and record its `Duration (transform … setup … collect … tests …)` line, then profile one cheap file. Based
+on the numbers, try what fits: `deps.optimizer` / `server.deps.inline` settings, `pool: 'threads'` against `forks`,
+`maxWorkers`, or merging the tiniest files. Don't use `isolate: false`: tests change module-level settings
+(`POLICY_ADJUST` overrides, `setWlmTraceSink`). Done when: the breakdown and every setting tried, each with its wall
+time, are in the PR and in docs/headless-performance-options.md "Results". Any config change that is kept is in
+`vite.config.ts`, and `npm run check` and `npm run test:remote` are green.
+
+### CL-16 · Hints dating test plays two days
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). `tests/game/hints.test.ts` (`are dated for the next morning…`, 17 s) plays two
+full Midwest days to check the dates on hints and forewarnings. Change: check which assertions really need day 2,
+and whether a shorter start (CL-12's cache, or the earliest hour that sends a hint) covers the same dates; if not, say
+why in the PR and close the entry. Done when: the assertions are unchanged or justified as equivalent, and the
+timings are in the PR.
+
+### CL-17 · One "advance N hours" loop for the worker and the tools
+`list: cleanup · status: blocked: after PR-13 · priority: high · size: M · area: game`
+
+Source: codebase survey (2026-11-16). The hour-by-hour advance is written out several times:
+- `tools/playCore.ts` `advance`: Monitor III recording every MINTIME, stop at the hour a job abends;
+- the advance loop in `tools/bot.ts`;
+- `tools/repro.ts`;
+- `src/worker/game.worker.ts` (`advanceSampled`, plus `recordMon3History` every `mintimeTicks`).
+
+Change: a `src/game/` helper `advanceHours(run, content, hours, hooks)`, with hooks for "after each MINTIME" (Monitor
+III recording) and "stop when" (PR-13's abended-job set), used by all four. `tools/compareDump.ts` runs inside the
+base worktree that `compare.ts` checks out, so it keeps its own loop (it must not import code the base doesn't have).
+Not in scope: the browser keeps `Mon3History` and the CLI keeps `Mon3PinHistory`; PT-18 deals with that.
+Done when: `npm run compare -- --base origin/dev` shows no difference, the bench hashes are unchanged, and the
+goldens and the play/bot tests pass unchanged.
+
+### CL-18 · One game command layer for the browser worker and the play CLI
+`list: cleanup · status: blocked: after CL-17 · priority: high · size: L · area: game`
+
+Source: codebase survey (2026-11-16). `src/worker/game.worker.ts` (47 message cases) and `tools/playCore.ts` `apply`
+both turn player commands into `RunState` changes by calling `src/game/*` themselves, each with its own validation
+and its own wording. They have already drifted:
+- only the CLI validates an RCA's mechanism, trigger, incident and evidence pins, and only its reply names the
+  same-cause incidents the RCA also covers (the spreading itself is shared, in `submitRca`);
+- the two word WLM-edit, activation and failed-policy results differently.
+
+Change: `src/game/commands.ts`, `applyGameCommand(run, pending, cmd, content, sc) → { run, pending, ok, message }`,
+covering start, change, restart, cancel, draft, rca, pin/unpin, WLM edit/activate/discard, buy, tfp, ask and project.
+The worker and `playCore` become thin adapters. Validation is the union of both sides. List every difference in
+validation or wording that this resolves in the PR, and say which side was kept. Done when: no game rule is left in
+either adapter; `npm run compare` differs only in the result texts listed in the PR; the browser and CLI tests pass.
+
+### CL-19 · One field table for the service-class accumulators
+`list: cleanup · status: blocked: after CL-10 · priority: high · size: M · area: sim`
+
+Source: codebase survey (2026-11-16). The fields of the per-period accumulator are listed by hand in four places,
+each with the same optional-field quirks (`delayQueue`, `usingIoNoVel`, `srvUsing`, `workManager`):
+`addScp` and `mergeAcc` in `src/sim/measure/rmf.ts`, `decayInto` and `addAccInto`/`sumAcc` in
+`src/sim/wlm/runtime.ts`. A new report field needs four edits in lockstep (CL-10 adds several). Change: drive all four
+from one field-spec table (additive, optional, decayed). `addScp` runs every tick and is written without spreads:
+generate the code, or measure that a table loop stays within budget. No behaviour change; label
+`perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
+difference; per-tick timing before and after (`npm run bench`) in the PR.
+
+### CL-20 · Delete legacy save fallbacks: game, tools and UI
+`list: cleanup · status: ready · priority: high · size: M · area: game`
+
+Source: codebase survey (2026-11-16). User decision 2026-11-16: old saves need not load; delete the compatibility code
+to keep things simple. About 35 comments in `src/game`, `src/ui` and `tools` explain a fallback for saves or play
+files "from before" a change. Examples:
+- `proof.ts` `accepted?`;
+- the RT-09 trigger alias: `canonicalTrigger` in `tools/playCore.ts` load and `rca`, and the worker's import mapping;
+- the `?? []` / `?? {}` guards on fields that `newRun` always sets (about 107 fallbacks in `src/game` in all; some are
+  genuinely optional).
+
+Change: make those `RunState` / `PlayFile` fields required, delete the guards and alias paths that exist only for old
+saves, and delete their tests (e.g. `tests/game/triggerAlias.test.ts`, if nothing else is in it). Add a save format
+version to the browser save and the play file. A file from an older build then fails to load with one clear message
+("saved by an older build; start a new run"), not a crash later on. Keep each optional field that is optional for a
+reason other than old saves, and say so in the PR. Done when: a grep for "before RT-", "old saves" and "written
+before" finds nothing in `src/game`, `src/ui` or `tools`; `npm run compare` shows no difference for new runs; an
+older play file gets the clear message (tested).
+
+### CL-21 · Delete legacy save fallbacks: sim state
+`list: cleanup · status: ready · priority: low · size: S · area: sim`
+
+Source: codebase survey (2026-11-16), user decision 2026-11-16 as CL-20. Fields marked "absent in old saves" in
+`src/sim/measure/rmf.ts` (MVS BUSY, the absolute capping limit), `src/sim/wlm/runtime.ts` (the capping delay) and
+`src/sim/core/types.ts` (the zIIP-eligible backlog) become required and lose their guards. Fields that are also absent
+for another reason stay optional, e.g. `runtime.ts`'s "absent in a period's first tick". Done when: bench hashes are
+unchanged for all three scenarios, `npm run compare` shows no difference, and those comments are gone.
+
+### CL-22 · Dead code and file-private exports
+`list: cleanup · status: ready · priority: low · size: S · area: game`
+
+Source: codebase survey (2026-11-16). The following have no importer at all (checked with grep over `src`, `tests` and
+`tools`): `BUILTIN_CLASSES` (`src/sim/wlm/types.ts`) and `codexEntry` (`src/content/codex/entries.ts`). The following
+are used only in their own file, so they should not be exported. Re-check each with grep, `tests/` and `tools/`
+included, first:
+- `src/game`: `capexFor`, `leadDaysFor` (catalog), `pinText` (evidence), `routedImages` (footprint),
+  `primaryDelayOf` (mon3), `sampleMon3` (mon3Charts), `effectCommands` (projects), `activeTools`, `onTrial`,
+  `buyBlocker`, `overheadText` (tools) and `nightWindow` (sla);
+- `src/content`: `cpcFor` (hardware-catalog);
+- `src/sim`: `DISCRETIONARY_PI`, `PI_MIN_PERCENTILE`, `R4HA_SLOT_SEC`, `POOLS`, `erlangB`, `classifyUncached`,
+  `calendarMultiplier`, `shapeAt`, `growthMultiplier`, `missingGoal`, `regionStat`, `routeCandidate`,
+  `managedDelays`, `sharesOf`, `holderDonorInfo`, `parseScKey`, `initialDp`, `resolveRgCapEngines`, and the memo
+  caches `jobClassCache`, `byIdCache`, `wlCache`, `asCache` and `usesDb2Cache`.
+
+Types that name an exported shape may stay exported. Done when: the symbols are deleted or un-exported, typecheck is
+clean and `npm run check` is green.
+
+### CL-23 · `src/content` imports from `src/game`; enforce the layering
+`list: cleanup · status: ready · priority: high · size: S · area: content`
+
+Source: codebase survey (2026-11-16). CLAUDE.md's layering is `content → sim ← game ← ui`, but ten content files
+import types from `game`: `game-midwest.ts`, `game-revenue.ts`, `game-harbourline.ts` and `packs.ts` (`GameContent`
+from `../game/run`); `rca.ts`, `evidence.ts`, `footprint.ts`, `hints.ts` and `events/midwest-events.ts`
+(`Mechanism`, `Trigger` from `../game/types`); `draft.ts` (`DraftOption`). Change: move those types, and the types they need, to a content-side
+module (e.g. `src/content/types.ts`), with `src/game` re-exporting them where convenient. Extend
+`tests/sim/purity.test.ts` so it also fails when `src/content` imports from `game`, `ui` or `worker`. Done when: the
+purity test covers `src/content` and passes, and typecheck is clean.
+
+### CL-24 · One argument parser for the tools
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). `tools/args.ts` exports a 4-line `arg()`. Private copies, or hand-rolled
+`argv` handling, live in `bench.ts`, `headless.ts` (which also skips values starting with `--`), `repro.ts` (`opt`),
+`inspect.ts` (`opt`), `compare.ts`, `sweepRemote.ts`, `testRemote.ts` and `play.ts`. Change: `arg`, `flag` and
+`num` in `tools/args.ts`, used everywhere except `tools/compareDump.ts`, which must stay self-contained (CL-17).
+Replace the `process.argv[1]?.endsWith('<file>.ts')` main-module guards (7 in `tools/`), which silently stop running
+when a file is renamed, with one `isMain(import.meta.url)` helper. Done when: every CLAUDE.md command line still
+works as documented (spot-check each tool's `--help` or a short run), `bench --hash` prints the same hash, and the
+tool tests pass.
+
+### CL-25 · One clock formatter
+`list: cleanup · status: ready · priority: low · size: S · area: sim`
+
+Source: codebase survey (2026-11-16). Zero-padded clock text is built in `src/sim/core/clock.ts`,
+`src/sim/core/tick/helpers.ts` (`instanceClock`), `src/sim/measure/reports.ts` (three places; its local `pad` pads
+with spaces), `tools/playCore.ts` (`clockText`), `src/ui/App.tsx` (`hhmm`), and by slicing `formatClock(…)` in
+`src/ui/Mon3Charts.tsx` and `src/ui/Monitor.tsx`. `src/game/view.ts` and `planner.ts` import `instanceClock` from
+`sim/core/step`. Change: `pad2`, `hhmm` and `instanceClock` live in `src/sim/core/clock.ts` and every copy uses them.
+Rename the reports `pad` to `padRight` (or similar), since it is not the same thing. Done when: `npm run compare`
+shows no difference, RMF report text included.
+
+### CL-26 · `basepol.ts` uses the shared WLM policy builders
+`list: cleanup · status: ready · priority: low · size: S · area: content`
+
+Source: codebase survey (2026-11-16). `src/content/wlm/basepol.ts` (lines 5–35) redefines `vel`, `pct`, `avg`,
+`disc`, `sc` and `rule`, which `src/content/wlm/policyBuilders.ts` exports and `revpol.ts` / `hbpol.ts` use. Only
+basepol's `sc` takes an `extra` argument. Change: add `extra` to the shared `sc` and import the builders in
+basepol. Done when: the Midwest base policy is unchanged (`npm run compare`; bench hashes).
+
+### CL-27 · Sim tunables into `src/content`
+`list: cleanup · status: ready · priority: low · size: S · area: sim`
+
+Source: codebase survey (2026-11-16). CLAUDE.md rule 3 puts coefficients in content, but these sit in sim code:
+- `MOSTLY_WAITING_FRAC` (`src/sim/wlm/adjust.ts`) and `MAX_QUEUE_RATIO` (`src/sim/wlm/eval/results.ts`);
+- `DEFAULT_EFF_RATIO`, `WLM_LOG_MAX` and `RMF_KEEP` (`src/sim/core/tick/ctx.ts`), and `MAX_TEMPLATE_SETS`
+  (`src/sim/workload/slices.ts`);
+- `MAX_RHO = 0.97` in `src/sim/io/dasd.ts`, beside another exported `MAX_RHO = 0.995` in `src/sim/zos/erlang.ts` with a
+  different meaning;
+- the bare `% 30` (`adjust.ts`, `tick/control.ts`), which repeats `CRITICAL_PROJECTION_EVERY`'s intent, and `% 360`
+  (`tick/control.ts`).
+
+Change: move the coefficients to content with `// FICTIONAL:` or `// APPROX:` notes. Rename the two `MAX_RHO`s
+(e.g. `DASD_MAX_RHO`, `QUEUE_MAX_RHO`). Name the literals. Keep every value as it is. Done when: bench hashes are
+unchanged and `npm run compare` shows no difference.
+
+### CL-28 · One identity-memo helper for the sim's caches
+`list: cleanup · status: blocked: after CL-07 · priority: low · size: M · area: sim`
+
+Source: codebase survey (2026-11-16). About a dozen `WeakMap` caches keyed by object identity are written in three
+different shapes:
+- `src/sim/core/tick/helpers.ts`: `jobClassCache`, `byIdCache`, `workloadScope`/`wlCache` and `asCache`;
+- `src/sim/core/tick/ctx.ts` (`usesDb2Cache`);
+- `src/sim/core/tick/plan.ts`'s nested cache;
+- `src/sim/hw/pools.ts`, `src/sim/wlm/classify.ts` and `src/sim/wlm/runtime.ts`;
+- `src/sim/workload/slices.ts` (four).
+
+Change: one `memoByIdentity` helper (single key and nested keys) in `src/sim/core`, used by all of them. Keep the
+semantics exactly: the cache is keyed by identity and never by value. Label `perf`. Done when: bench hashes are
+unchanged, `npm run compare` shows no difference, and the per-tick timing before and after is in the PR.
+
+### CL-29 · Split `tick/helpers.ts` by concern
+`list: cleanup · status: ready · priority: low · size: S · area: sim`
+
+Source: codebase survey (2026-11-16). `src/sim/core/tick/helpers.ts` (545 lines) holds job classification, swap-out,
+CICS routing (`updateRouting`, `regionStat`, `routeCandidate`, `cicsRegions`, `cicsHonorPriority`), workload and
+address-space scoping, and resource-group and discretionary caps. Change: move-only split into `tick/routing.ts`,
+`tick/scope.ts` and `tick/resourceGroups.ts`, with no logic change; `instanceClock` goes to clock.ts in CL-25. Done
+when: bench hashes are unchanged, and the diff is moves and imports only.
+
+### CL-30 · Split `policyAdjust`
+`list: cleanup · status: blocked: after PR-19 · priority: low · size: L · area: sim`
+
+Source: codebase survey (2026-11-16). `policyAdjust` in `src/sim/wlm/adjust.ts` is about 500 lines (368–868) with
+about 25 closures (`instPi`, `projectionBase`, `runaways`, `backlogCut`, `violatesCpuCritical`, `periodDonor`, `assess`,
+`candidates`, …). Change: build an explicit adjustment context once; move `assess` and the candidate and donor
+selection into their own modules (`src/sim/wlm/adjust/`); move the trace types and `setWlmTraceSink` (lines about
+113–205) and the delay-share helpers (about 24–75) to their own files. No logic change. PR-19 changes donor
+selection in this function, so it goes first. Done when: bench hashes are unchanged; `npm run compare` shows no
+difference, `inspect wlm` traces included; `tests/sim/adjust.test.ts` passes unchanged.
+
+### CL-31 · Split `advance()` in `game/run.ts`
+`list: cleanup · status: ready · priority: low · size: M · area: game`
+
+Source: codebase survey (2026-11-16). `advance` in `src/game/run.ts` is about 125 lines (163–287): the tick loop,
+with scheduled policy activation and event start and end (armed fixes included) written inline. It calls `closeHour`
+(already in `run/hourly.ts`) and `endDay`, which sits beside it with `batchMissIncident` and `logConnectFailures`
+(about 290–470). Change: move event activation into `src/game/run/events.ts`, and day close (`endDay`,
+`batchMissIncident`) into its own `src/game/run/` module, leaving `advance` as the loop that calls them. Fold the 16
+one-line re-exports at the file's end (lines 570–600) into grouped `export { … } from` statements. No logic change. Done when: `npm run compare` shows no difference, and the goldens
+and `tests/game/run.test.ts` pass unchanged.
+
+### CL-32 · One home for the RCA judging modules
+`list: cleanup · status: blocked: design · priority: low · size: L · area: game`
+
+Source: codebase survey (2026-11-16). RCA judging is spread across modules whose roles blur:
+- `src/game/sla.ts` (hour attainment, but also mechanism attribution, card qualification, the batch-miss logic and
+  accepted-answer scoring);
+- `rcaTruth.ts`, `rcaExplain.ts`, `proof.ts` and `evidence.ts` (which imports `buildMon3` and `BATCH_INCIDENT` from
+  sla);
+- `footprint.ts`, `counterfactual.ts` and `run/rca.ts`.
+
+A scoring change touches five or six files. Proposal: a `src/game/rca/` folder with truth (the accepted-answer
+rules from sla.ts, rcaTruth.ts and rcaExplain.ts), attribution (card qualification), evidence, proof and footprint;
+`sla.ts` keeps attainment and baselines; `counterfactual.ts` stays a separate offline tool. Blocked on design: the
+target map needs the user's or main agent's agreement, and the move should wait for a quiet spell in `rca-truth`
+(RT-16 … RT-27 edit these files), so it doesn't conflict with every open RT PR.
+
+### CL-33 · Split `mon3.ts`
+`list: cleanup · status: ready · priority: low · size: M · area: game`
+
+Source: codebase survey (2026-11-16). `src/game/mon3.ts` (852 lines) holds 13 view interfaces (lines 23–235),
+`buildMon3`, the PROCU job and classification logic (about 512–645), the speed and exception sections, and
+`explainWlmLog`, a text formatter (about 734). Change: move-only split into `mon3/types.ts`, `mon3/procu.ts`,
+`mon3/explainWlmLog.ts` and the builder. Done when: the diff is moves and imports only, and `npm run compare` shows no
+difference, Monitor III views included.
+
+### CL-34 · Split `playCore.ts`: commands and text
+`list: cleanup · status: blocked: after CL-18 · priority: low · size: M · area: tooling`
+
+Source: codebase survey (2026-11-16). `tools/playCore.ts` (751 lines) mixes the command layer (lines about 118–340)
+with text renderers: status, mon3, policy and catalog (about 375–600), and finance, capacity and batch (about
+648–751). Once CL-18 makes the command part thin, move the renderers to `tools/playText.ts`. Done when: the diff is
+moves and imports only, and the play tests pass unchanged.
+
+### CL-35 · Split `inspect.ts` by subcommand
+`list: cleanup · status: blocked: after PR-20 · priority: low · size: M · area: tooling`
+
+Source: codebase survey (2026-11-16). `tools/inspect.ts` (923 lines) holds the `dp`, `wlm`, `blame` and `wlm-stats`
+subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}.ts` with a thin dispatcher. PR-20
+edits `countSystem` in this file, so it goes first. Done when: the diff is moves and imports only, and
+`tests/tools/inspect.test.ts` passes unchanged.
+
+### CL-36 · Worker: message handlers as a typed table
+`list: cleanup · status: blocked: after CL-18 · priority: low · size: M · area: ui`
+
+Source: codebase survey (2026-11-16). `src/worker/game.worker.ts` is one `onmessage` switch with 47 cases, mixing game
+commands, `GET_*` view queries, the clock (`setInterval`, `speed`, `carry`, `speedBeforeAuto`) and storage. Change:
+after CL-18, a `Record<ToWorker['type'], handler>` table (exhaustive by type, from `src/worker/protocol.ts`), split
+into commands, queries, clock and storage modules. Done when: typecheck proves every message type is handled, and
+the UI tests and a manual or `tools/screenshot.mjs` smoke run pass.
+
+### CL-37 · Service class goal helpers out of the editor component
+`list: cleanup · status: ready · priority: low · size: S · area: ui`
+
+Source: codebase survey (2026-11-16). `goalOf`, `goalError` and `sameGoal` in `src/ui/ServiceClassEditor.tsx`
+(about 124–159) are pure goal-validation logic inside a React file, and have no tests. Change: move them to
+`src/game/` (next to `wlmEdit.ts`'s `serviceClassGoalIssues`, merging where they overlap), keeping `useGoalState` in
+the UI, and add unit tests. Done when: they are tested, and the editor behaves as before
+(`tests/ui/serviceClassGoals.test.ts` passes).
+
+### CL-38 · Split `Overlays.tsx` and `App.tsx`
+`list: cleanup · status: ready · priority: low · size: M · area: ui`
+
+Source: codebase survey (2026-11-16). `src/ui/Overlays.tsx` (667 lines) holds 16 components from five screens: the new
+run flow (`NewRun`, `StartingPerk`, `FirstDayDifficulty`, `SeedInput`, `CareerLine`), the end report (`EndReportView`,
+`ShareBox`), `Briefing`, `Review`, and the RCA form (`Rca`, `RcaVocabulary`, `ProofView`, `AlsoAccepted`).
+`src/ui/App.tsx` (481 lines) holds `Console` (about 165 lines), `Capacity`, `OpsLog`, `Inbox`, `TopBar`,
+`ThemeToggle` and `SoundToggle` next to the tab shell. Change: move-only split into `src/ui/newRun/`,
+`src/ui/endReport/` and `src/ui/rca/`, plus one file each for the App parts. Done when: the diff is moves and imports
+only; the build succeeds; `tools/screenshot.mjs` output matches before and after.
+
+### CL-39 · Scenario content without the boilerplate
+`list: cleanup · status: ready · priority: low · size: M · area: content`
+
+Source: codebase survey (2026-11-16). `src/content/scenarios/index.ts` (about 19–68) builds Revenue and Harbourline
+as `{...MIDWEST, …}` overrides, with the Midwest CF tunables inline. `game-midwest.ts`, `game-revenue.ts` and
+`game-harbourline.ts` repeat the same key set. Change: a named CF tunables constant with its `// FICTIONAL:` note,
+and a `defineGame()` that supplies the defaults (`maxDays`, `facets`, …) so each game file states only what differs.
+Done when: `npm run compare -- --scenarios midwest,revenue,harbourline` shows no difference, and the bench hashes are
+unchanged.
+
+### CL-40 · CLAUDE.md: everyday commands only, full list in docs/tools.md
+`list: cleanup · status: ready · priority: high · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). The CLAUDE.md commands block is about 5.1k characters, 28 % of the file that
+every session loads. Lines run to 560 characters, and many are investigation or CI-gate commands (`wlm-stats`,
+`blame`, `repro`, `tools/ci/*`). The heading still says "Stack (planned…)" and "Commands, once scaffolded".
+`npm run build` and `test:watch` are missing. Change: move the full list, unchanged, to `docs/tools.md` (add
+`build`, `test:watch` and `tools/lab-examples/`). In CLAUDE.md keep the everyday commands (`test`, `typecheck`,
+`check`, `bench --hash`, `play`, `compare`, `sweep:remote`, `test:remote`) and a link. Rename the heading. First grep
+skills, agents and docs for references to the CLAUDE.md commands list, and repoint them. Done when: CLAUDE.md is at
+least 3k characters shorter, nothing that pointed at the old list is left dangling, and docs/tools.md is linked from
+README.md.
+
+### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
+`list: cleanup · status: ready · priority: low · size: M · area: tooling`
+
+Source: codebase survey (2026-11-16). The PR workflow is stated in three places: CLAUDE.md "Working process",
+PROGRESS.md "Branch workflow" (about lines 553–582, with the CI gates and the GitHub settings) and AGENTS.md "Branch
+workflow", "Reviews" and "Attribution". The "check before you finish" list is restated in `.claude/agents/pr-fixer.md`
+and `realism-fixer.md`, and in the `dev-loop` and `audit-loop` skills. Change: `docs/workflow.md` becomes the single
+source (branches, PRs, CI gates, GitHub settings, definition of done). CLAUDE.md keeps a short summary and the link;
+PROGRESS.md, AGENTS.md, the agents and the skills link to it. Repoint every citation of "PROGRESS.md 'Branch
+workflow'": `.github/workflows/ci.yml` line 1, the `audit-loop` skill and CLAUDE.md. The loops match the exact
+strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the `<!-- pr-… -->` markers: keep them
+word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
+only the new doc and links to it, and the review header strings are unchanged.
+
+### CL-43 · Player persona agents share one body
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). The four personas `.claude/agents/goal-mode-{player,cost-cutter,
+cautious-operator,firefighter}.md` are 57–64 lines each, and 55 of those lines are the same in all four (rules of
+engagement, the day loop, the log format). Only "## Style" differs. Change: put the shared part in docs/agents.md
+("Persona rules"). Each persona keeps its front matter, a line telling it to read that section first, and its Style.
+Check that `.codex/config.toml` and `.codex/agents/*` still load what they need. Done when: each persona file holds
+only what is its own, and an agent playtest of one persona for one day (`goal-mode-player`, seed 42) still follows
+the rules.
+
+### CL-44 · Retire `pr-review-loop`
+`list: cleanup · status: blocked: user · priority: low · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). CLAUDE.md calls `pr-review-loop` "the older" review loop; `pr-fix-loop`
+replaced it, but still parses its `<!-- pr-review-loop … -->` markers for PRs that were in flight. The skill is also
+referenced from `.claude/skills/dev-loop`, `.claude/agents/pr-reviewer.md`, CLAUDE.md and AGENTS.md. Blocked on the
+user: is any scheduled task still running it, and may it go? If yes: once no open PR carries its marker, delete the
+skill, the marker handling in `pr-fix-loop` and the references.
+
+### CL-45 · README: where to start; SPEC §15 freshness
+`list: cleanup · status: ready · priority: low · size: S · area: tooling`
+
+Source: codebase survey (2026-11-16). README.md's "Develop" section doesn't say what to read or in which order, and
+it doesn't link CLAUDE.md, BACKLOG.md or docs/agents.md. SPEC §15 still calls parts of the stack "planned", and
+describes `.claude/agents/` as "game-playing agent definitions", though it also holds the reviewers and fixers.
+Change: a short "Where to start" block in README.md (play `npm run dev`, `npm run check`, SPEC §0–1, BACKLOG.md,
+docs/tools.md and docs/agents.md, CLAUDE.md), a one-paragraph index of `docs/`, and SPEC §15 brought up to date.
+Done when: every doc in the index exists, and no "planned" wording remains in §15 for things that are built.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
+import { openPlayFile, applyPlayCommand, batchStreamsText, capacityText, financeText, catalogText, clockText, decodePlayFile, tickOfClock, intervalId, mon3Text, encodePlayFile, newPlayFile, policyText, statusText, wlmLogText, type PlayCommand, type PlayFile } from '../../tools/playCore';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { startTfp } from '../../src/sim/cost/mlc';
 import { quoteTfp } from '../../src/game/tfp';
@@ -16,6 +16,36 @@ function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
   }
   return file;
 }
+
+describe('RT-09 trigger alias in play files', () => {
+  /** A capture of an old file: the incident and its AIOps hypothesis name the retired trigger id. */
+  const oldFile = (): PlayFile => {
+    const base = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
+    const incident: PlayFile['run']['incidents'][number] = {
+      id: 999, workloadId: 'RBANK', day: 0, startTick: 0, endTick: 360, hours: 1, worstAttainmentPct: 80,
+      truth: { mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never, accepted: { mechanisms: ['CPU_CAPACITY'], triggers: ['ACCESS_PATH_REGRESSION' as never] } },
+      aiops: [{ mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never, confidence: 0.6 }],
+      rca: null, trustLost: 0,
+    };
+    return { ...base, run: { ...base.run, incidents: [incident] }, log: [] };
+  };
+
+  it('loads an old file with its ids mapped, so a replay scores the answer right, not wrong', () => {
+    // The CLI's own load path (playCore.openPlayFile), not a hand-rolled normalize.
+    const loaded = openPlayFile(encodePlayFile(oldFile()));
+    const inc = loaded.run.incidents[0]!;
+    expect(inc.truth.trigger).toBe('CHANGE_REGRESSION');
+    expect(inc.truth.accepted!.triggers).toEqual(['CHANGE_REGRESSION']);
+    expect(inc.aiops![0]!.trigger).toBe('CHANGE_REGRESSION');
+    const filed = applyPlayCommand(loaded, { cmd: 'rca', incidentId: 999, mechanism: 'CPU_CAPACITY', trigger: 'ACCESS_PATH_REGRESSION' as never });
+    expect(filed.ok, filed.text).toBe(true);
+    expect(filed.text).not.toMatch(/trigger wrong/);
+    expect(filed.file.run.incidents[0]!.rca!.trigger).toBe('CHANGE_REGRESSION');
+    // The replayed log records the canonical id, so the file no longer carries the retired one.
+    expect(filed.file.log.at(-1)).toMatchObject({ cmd: 'rca', incidentId: 999, trigger: 'CHANGE_REGRESSION' });
+    expect(encodePlayFile(filed.file)).not.toContain('ACCESS_PATH_REGRESSION');
+  });
+});
 
 describe('headless play interface', () => {
   it('a run file round-trips bit-identically, Infinity included, and keeps the command log', () => {
@@ -276,6 +306,26 @@ describe('headless play interface', () => {
     expect(policyText(newPlayFile(7), true)).toBe('No pending policy edits.');
   });
 
+  it('status and policy name the planned policy, in the briefing and once it is queued', () => {
+    const edit: PlayCommand = {
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId: 'ONLHI', period: 0, goal: { kind: 'AVG', rtSec: 0.4 }, importance: 2 },
+    };
+    // BRIEFING: the activation is a planned change for today, so both say when it takes over.
+    let f = run(newPlayFile(7), [edit, { cmd: 'activate' }]);
+    expect(statusText(f)).toContain('planned policy BASEPOL2 (activates when the day starts)');
+    expect(policyText(f, false)).toContain('planned policy BASEPOL2 (activates when the day starts)');
+    // Day start queues it for the first tick: it is still not active, and both say it is queued.
+    f = run(f, [{ cmd: 'start' }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL');
+    expect(statusText(f)).toContain('planned policy BASEPOL2 (queued; V WLM,POLICY= applies at the next tick)');
+    expect(policyText(f, false)).toContain('planned policy BASEPOL2 (queued; V WLM,POLICY= applies at the next tick)');
+    // Once the tick runs, the policy is active and no longer planned.
+    f = run(f, [{ cmd: 'advance', hours: 1 / 360 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('BASEPOL2');
+    expect(statusText(f)).not.toContain('planned policy');
+    expect(policyText(f, false)).not.toContain('planned policy');
+  });
+
   it('notes are logged without touching the run; hour-by-hour advance (--pace) ends in the same state', () => {
     const base = run(newPlayFile(7), [{ cmd: 'start' }]);
     const noted = run(base, [{ cmd: 'note', text: 'watching PROD2' }]);
@@ -309,5 +359,18 @@ describe('headless play interface', () => {
     expect(applyPlayCommand(f, { cmd: 'pin', req: { source: 'MON3', system: 'PRDA', scKey: 'MKTORD', metric: 'PI' }, at: 'D1 09:00' }).text).toContain('in the future');
     expect(applyPlayCommand(f, { cmd: 'pin', req: { source: 'DB2', hour: '7', workloadId: 'X', metric: 'PI' }, at: 'D1 07:00' }).ok).toBe(false);
     expect(applyPlayCommand(f, { cmd: 'new', seed: 1 }).file.mon3).toBeUndefined();
+  });
+
+  it('pins region SOS minutes and a PROCU job row now, and refuses a past job row from the trimmed history', () => {
+    const f = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const sos = run(f, [{ cmd: 'pin', req: { source: 'CICS_STORAGE', hour: '7', region: 'CICSAOR1' } }]);
+    expect(sos.run.pins.at(-1)!.text).toMatch(/^CICS 110 D1 \d\d:00–\d\d:00 CICSAOR1 SOS minutes/);
+    const job = run(f, [{ cmd: 'pin', req: { source: 'PROCU', system: 'PROD1', jobname: 'CICSAOR1' } }]);
+    expect(job.run.pins.at(-1)!.text).toMatch(/^PROCU D1 \d\d:\d\d PROD1 CICSAOR1 job EAppl CPU/);
+    // The CLI's history keeps no job rows (like SYSWKM), so a past PROCU pin needs the browser.
+    const h = run(newPlayFile(7, 'NORMAL', 'harbourline'), [{ cmd: 'start' }, { cmd: 'advance', hours: 2 }]);
+    const past = applyPlayCommand(h, { cmd: 'pin', req: { source: 'PROCU', system: 'PRDA', jobname: 'CICSAOR1' }, at: 'D1 07:00' });
+    expect(past.ok).toBe(false);
+    expect(past.text).toContain('no job rows');
   });
 });

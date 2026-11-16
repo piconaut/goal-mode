@@ -1,10 +1,11 @@
+import { cardMechanisms } from '../../src/content/footprint';
 import { describe, expect, it } from 'vitest';
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { acceptedAnswers, truthCause, type TruthContext } from '../../src/game/rcaTruth';
 import { advance, newRun, startDay, submitRca } from '../../src/game/run';
 import { closeHour, newHour } from '../../src/game/run/hourly';
-import { acceptedOf, importanceRank, scoreRca } from '../../src/game/sla';
+import { acceptedOf, importanceRank, scoreAccepted } from '../../src/game/sla';
 import type { ActiveEvent } from '../../src/game/types';
 import { applyPlayCommand, newPlayFile } from '../../tools/playCore';
 import { classify } from '../../src/sim/wlm/classify';
@@ -17,7 +18,7 @@ function card(defId: string, startTick = 0, endTick: number | null = null): Acti
   const def = MIDWEST_GAME.events.find((d) => d.id === defId)!;
   return {
     uid: `${defId}@1`, defId, name: def.name, startTick, endTick, trigger: def.trigger,
-    affects: def.affects, mechanisms: def.mechanisms, endCommands: def.end, started: true, ended: false,
+    affects: def.affects, mechanisms: cardMechanisms(def), endCommands: def.end, started: true, ended: false,
   };
 }
 
@@ -62,10 +63,9 @@ describe('accepted answer sets (RT-07)', () => {
     const { accepted } = acceptedAnswers(ctx({
       mechanism: 'CPU_PRIORITY', trigger: 'HARDWARE_FAULT', basis: basis(), events: [card('POWER_CAP')],
     }));
-    const truth = { mechanism: 'CPU_PRIORITY' as const, trigger: 'HARDWARE_FAULT' as const, accepted };
     expect(accepted.mechanisms).toEqual(['CPU_PRIORITY', 'CPU_CAPACITY']);
     expect(accepted.triggers).toEqual(['HARDWARE_FAULT']);
-    expect(scoreRca(truth, { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
+    expect(scoreAccepted(accepted, { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
     // A capacity verdict also accepts priority inside the same band, and only the band widens it.
     const cap = acceptedAnswers(ctx({ mechanism: 'CPU_CAPACITY', basis: basis() }));
     expect(cap.accepted.mechanisms).toEqual(['CPU_CAPACITY', 'CPU_PRIORITY']);
@@ -134,8 +134,8 @@ describe('accepted answer sets (RT-07)', () => {
   it('a save written before RT-07 scores the primary alone', () => {
     const old = { mechanism: 'CPU_CAPACITY' as const, trigger: 'HARDWARE_FAULT' as const };
     expect(acceptedOf(old)).toEqual({ mechanisms: ['CPU_CAPACITY'], triggers: ['HARDWARE_FAULT'] });
-    expect(scoreRca(old, { mechanism: 'CPU_PRIORITY', trigger: 'HARDWARE_FAULT' })).toBe(2);
-    expect(scoreRca(old, { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
+    expect(scoreAccepted(acceptedOf(old), { mechanism: 'CPU_PRIORITY', trigger: 'HARDWARE_FAULT' })).toBe(2);
+    expect(scoreAccepted(acceptedOf(old), { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
   });
 
   it('names the cause: the blamed card, new work, or what was short', () => {
@@ -173,7 +173,7 @@ describe('accepted answer sets (RT-07)', () => {
       ...started,
       events: [{
         uid: 'POWER_CAP@0', defId: def.id, name: def.name, startTick: 0, endTick: 6 * TICKS_PER_HOUR,
-        trigger: def.trigger, affects: def.affects, mechanisms: def.mechanisms,
+        trigger: def.trigger, affects: def.affects, mechanisms: cardMechanisms(def),
         endCommands: def.end, started: false, ended: false,
       }],
     }, MIDWEST, MIDWEST_GAME, 1);
@@ -208,7 +208,7 @@ describe('accepted answer sets (RT-07)', () => {
     // 12 % at a rank below the hurt work's (or all of it, if that rank is already the lowest): either way the donor
     // line is crossed, so the hour is not a capacity verdict.
     expect(inc.basis!.donorPct).toBeGreaterThanOrEqual(10);
-    expect(scoreRca(inc.truth, { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
+    expect(scoreAccepted(acceptedOf(inc.truth), { mechanism: 'CPU_CAPACITY', trigger: 'HARDWARE_FAULT' })).toBe(5);
     const filed = submitRca(closed, inc.id, 'CPU_CAPACITY', 'HARDWARE_FAULT');
     expect(filed.incidents.find((i) => i.id === inc.id)!.rca!.points).toBe(5);
   });

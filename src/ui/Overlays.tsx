@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react';
 import { PACKS } from '../content/packs';
 import { DIFFICULTIES, type DifficultyId } from '../content/difficulty';
 import { EVIDENCE } from '../content/evidence';
-import { MECHANISM_HELP, TRIGGER_HELP } from '../content/rca';
+import { MECHANISM_HELP, TRIGGER_HELP, TRIGGER_LABEL, triggerLabel } from '../content/rca';
 import type { Hypothesis } from '../game/aiops';
 import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
-import type { IncidentTruth, Mechanism, Trigger } from '../game/types';
+import type { Incident, Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
+import { predicateText, recipeHeading, type ProofResult } from '../game/proof';
+import { idText } from '../game/ids';
+import { alsoAcceptedOf, rcaGroupOf } from '../game/run/rca';
 import type { ViewModel } from '../game/view';
 import { piColor, seriesColor } from './colors';
 import { LineChart } from './LineChart';
@@ -44,7 +47,7 @@ export function PhaseActions({ v, game, open, setOpen }: { v: ViewModel; game: G
           <button
           className={v.weekendDay ? '' : 'primary'}
           onClick={async () => {
-            if (game.savedRunDay !== null && v.day === 0 && !(await ask(`Start this new run? Your saved run (day ${game.savedRunDay + 1}) is replaced at the end of today. Continue it or export it first to keep it.`, 'Start new run'))) return;
+            if (game.savedRunDay !== null && v.day === 0 && !(await ask(`Start this new run? Your saved run (day ${game.savedRunDay + 1}) is replaced at the end of today. Continue it or export it first to keep it.`, 'Start new run', 'danger'))) return;
             game.send({ type: 'START_DAY' });
           }}
         >
@@ -330,7 +333,7 @@ function FirstDayDifficulty({ v, game }: { v: ViewModel; game: GameHandle }) {
   const plannedAny = v.changes.length > 0;
   const [seed, setSeed] = useState('');
   const restart = async (scenario: string, difficulty: DifficultyId, daily: boolean, typed = '') => {
-    if (plannedAny && !(await ask('Restart? Planned changes are discarded.', 'Restart run'))) return;
+    if (plannedAny && !(await ask('Restart? Planned changes are discarded.', 'Restart run', 'danger'))) return;
     const today = new Date().toISOString().slice(0, 10);
     game.send(
       daily
@@ -459,7 +462,7 @@ function DaySummary({ v }: { v: ViewModel }) {
 function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; investigate: () => void }) {
   const open = v.incidents.filter((i) => i.day === v.day && !i.rca && i.rcaGroup === undefined);
   const linked = (id: number) => {
-    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => i.workloadId);
+    const ws = rcaGroupOf(v.incidents, id).slice(1).map((i) => i.workloadId);
     return ws.length ? ` · same cause: ${ws.join(', ')}` : '';
   };
   return (
@@ -471,7 +474,8 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
           <h3>Root-cause analysis</h3>
           <p className="muted">
             Today&apos;s RMF data is now in the Reports tab. Name where the time went and what set it off, and attach up to {EVIDENCE.perRca} pinned
-            data points that prove it. Correct answers earn trust and Insight; evidence that points at the real cause earns more.
+            data points that prove it: the symptom on the hurt work, and the reading that tells the cause from its look-alike. Correct answers earn trust and Insight; a
+            proof of the right mechanism earns more, and proving the trigger too makes it strong.
           </p>
           <RcaVocabulary />
           <div className="form">
@@ -490,10 +494,10 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
             <div className="row">
               <span>
                 #{i.id} {i.workloadId}
-                {linked(i.id)}: you said {i.rca!.mechanism}/{i.rca!.trigger}
+                {linked(i.id)}: you said {i.rca!.mechanism}/{triggerLabel(i.rca!.trigger)}
               </span>
               <span className={`tag ${i.rca!.points >= 3 ? 'good' : 'bad'}`}>
-                +{i.rca!.points} (was {i.truth.mechanism}/{i.truth.trigger})
+                +{i.rca!.points} (was {i.truth.mechanism}/{triggerLabel(i.truth.trigger)})
               </span>
             </div>
             {i.rca!.explain && (
@@ -501,13 +505,19 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
                 {i.rca!.explain}
               </div>
             )}
-            <AlsoAccepted truth={i.truth} />
+            <AlsoAccepted group={rcaGroupOf(v.incidents, i.id)} />
             {(i.rca!.evidence ?? []).map((e) => (
               <div key={e.pinId} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
                 {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}
               </div>
             ))}
-            {(i.rca!.evidencePoints ?? 0) > 0 && <div style={{ fontSize: 12, paddingLeft: 12 }}>Evidence +{i.rca!.evidencePoints}</div>}
+            {i.rca!.proof && <ProofView proof={i.rca!.proof} />}
+            {(i.rca!.evidencePoints ?? 0) > 0 && (
+              <div style={{ fontSize: 12, paddingLeft: 12 }}>
+                Evidence +{i.rca!.evidencePoints}
+                {i.rca!.strong ? ` · strong evidence, +${EVIDENCE.strongInsight} Insight` : ''}
+              </div>
+            )}
           </div>
         ))}
       <h3>Pick one</h3>
@@ -523,20 +533,33 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
   );
 }
 
-/** The reply names the primary and the other accepted answers, one line of reasoning each (RT-07). */
-function AlsoAccepted({ truth }: { truth: IncidentTruth }) {
-  const accepted = truth.accepted;
-  if (!accepted) return null;
-  const rest: [string, string | undefined][] = [
-    ...accepted.mechanisms.filter((m) => m !== truth.mechanism).map((m): [string, string | undefined] => [m, truth.notes?.[m]]),
-    ...accepted.triggers.filter((t) => t !== truth.trigger).map((t): [string, string | undefined] => [t, truth.notes?.[t]]),
-  ];
+/** Each filed claim's proof recipe, its two predicates ticked or not (RT-13), worded as the play CLI's reply. */
+function ProofView({ proof }: { proof: ProofResult }) {
+  return (
+    <>
+      {([['Mechanism', proof.mechanism], ['Trigger', proof.trigger]] as const).map(([what, c]) => (
+        <div key={what} style={{ fontSize: 12, paddingLeft: 12 }}>
+          <div>{recipeHeading(c, what)}</div>
+          {c.predicates.map((x, k) => (
+            <div key={k} className="muted" style={{ paddingLeft: 12 }}>
+              {predicateText(x, (id) => idText('pin', id))}
+            </div>
+          ))}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** The reply names the group's primary and its other accepted answers, one line of reasoning each (RT-07, §4.5). */
+function AlsoAccepted({ group }: { group: readonly Incident[] }) {
+  const rest = alsoAcceptedOf(group);
   if (rest.length === 0) return null;
   return (
     <>
-      {rest.map(([answer, why]) => (
+      {rest.map(({ answer, why }) => (
         <div key={answer} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
-          also accepted: <b>{answer}</b>
+          also accepted: <b>{TRIGGER_LABEL[answer as Trigger] ?? answer}</b>
           {why ? ` — ${why}` : ''}
         </div>
       ))}
@@ -569,7 +592,7 @@ function RcaVocabulary() {
           <b>Trigger</b>
           {TRIGGERS.map((x) => (
             <div key={x} style={{ margin: '2px 0' }}>
-              <span className="tag">{x}</span> <span className="muted">{TRIGGER_HELP[x]}</span>
+              <b>{triggerLabel(x)}</b> <span className="tag">{x}</span> <span className="muted">{TRIGGER_HELP[x]}</span>
             </div>
           ))}
         </div>
@@ -604,7 +627,7 @@ function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; l
           <b>{m}</b>: {MECHANISM_HELP[m]}
         </div>
         <div>
-          <b>{t}</b>: {TRIGGER_HELP[t]}
+          <b>{triggerLabel(t)}</b>: {TRIGGER_HELP[t]}
         </div>
       </div>
       {hypotheses.length > 0 && (
@@ -613,7 +636,7 @@ function Rca({ incidentId, label, hypotheses, v, game }: { incidentId: number; l
           {hypotheses.map((h, k) => (
             <div key={k} className="form" style={{ margin: '2px 0' }}>
               <span>
-                {k + 1}. {h.mechanism} / {h.trigger} · {Math.round(h.confidence * 100)}%
+                {k + 1}. {h.mechanism} / {triggerLabel(h.trigger)} · {Math.round(h.confidence * 100)}%
               </span>
               <button
                 onClick={() => {

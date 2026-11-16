@@ -34,7 +34,7 @@ and fully processed.
    `register_repo_root`, and check `python3 <zos-docs skill>/scripts/books.py locate erbb500` prints a path in the
    clone. See "Books".
 2. `list_triggers`: if an enabled task named `audit-loop` exists, ask the user whether to replace it.
-3. Read PROGRESS.md (every "Audit round" section), BACKLOG.md list `realism-fixes` and `docs/research.md` to build the coverage list:
+3. Read `docs/audit-loops/` (every round), BACKLOG.md list `realism-fixes` and `docs/research.md` to build the coverage list:
    scenarios and seeds already audited and behaviours already tested or queued.
 4. `create_trigger` firing into this session: name `audit-loop`, `cron_expression` `0 */<H> * * *` (for 1h,
    `0 * * * *`), `initiation: human_request`, prompt:
@@ -79,7 +79,8 @@ For each **Mismatch** in the report:
 3. Drop duplicates of BACKLOG.md entries / `docs/research.md` rows, and APPROX behaviour the repo already admits.
 4. Classify: **fix now** (clear doc, contained change, keeps clues and lever costs), **needs user** (design call,
    balance-shifting, scenario puzzle affected: write the question, don't block the loop), **reject** (why).
-Write an "Audit round K" section in PROGRESS.md like the earlier ones (items, citations, audit numbers); it rides the
+Write an "Audit round K" section in the loop's `docs/audit-loops/<start date>.md` like the earlier ones (items, citations,
+audit numbers), plus one PROGRESS.md "Current status" line linking it; it rides the
 round's first fix PR, or its own small docs PR if the round has no fixes. Record **needs user** items as BACKLOG.md `realism-fixes` entries with `status: blocked: user`, and hold them for the Finish report; don't message the user about them
 mid-loop.
 
@@ -100,13 +101,13 @@ Link it from the BACKLOG.md entry and from the Finish report. Don't subscribe to
 
 1. `git fetch origin dev && git checkout -B <session branch> origin/dev`, `git cherry-pick <fixer SHA>`.
    On a `tests/golden/hashes.json` conflict take either side, then `UPDATE_GOLDEN=1 npx vitest run tests/golden`.
-2. Add the PROGRESS.md lines (decision row with before → after numbers) and delete the item's BACKLOG.md entry if it has one. `npm run check` (pass/fail
+2. Put the before → after numbers in the PR body and the round's audit-loops section (PROGRESS.md gets at most one line) and delete the item's BACKLOG.md entry if it has one. `npm run check` (pass/fail
    line only; failures to `log-reader`).
 3. Push, open the PR into `dev` per `.github/pull_request_template.md` (Behaviour change filled when goldens
    change), `subscribe_pr_activity`, keep CI green. If goldens changed, open it as a **draft** and go to Balance; it
    stays a draft until the sweeps are judged and any follow-up fixes are pushed to it. If goldens didn't change (no
    sweep needed), open it ready for review.
-4. After Balance passes: push the sweep numbers into the PR's PROGRESS.md decision row, mark it ready for review
+4. After Balance passes: push the sweep numbers into the PR body and the round's audit-loops section, mark it ready for review
    (`update_pull_request` `draft: false`), and keep CI green until the review loop merges it. Don't merge it or
    enable auto-merge yourself.
 5. The next fix waits until this one merges. Fixers already done wait as local branches.
@@ -125,13 +126,13 @@ npm run sweep:remote -- --ref <SHA> --bots donothing,textbook,expert --seeds 1-1
 It prints the summary and the balance gate report when done (`runs/remote/<sha7>/` keeps the CSV; read it for the
 expert seeds that did not end in victory). A non-zero exit with no summary is an infrastructure failure: rerun once.
 
-When a sweep finishes, compare with the last recorded sweep for that scenario in PROGRESS.md. Gate red or expert down by ≥ 2 victories: diagnose (bot gap like #107, or the fix itself), push the cure
+When a sweep finishes, compare with the latest reference sweep for that scenario in PROGRESS.md M8.2. Gate red or expert down by ≥ 2 victories: diagnose (a bot gap, or the fix itself), push the cure
 to the same draft PR and re-sweep the affected scenarios on the new head. When every scenario's sweep is judged
 fine, finish Land step 4 (ready for review).
 
 ## Finish
 
-`delete_trigger` the `audit-loop` task, make sure PROGRESS.md records every round,
+`delete_trigger` the `audit-loop` task, make sure `docs/audit-loops/` records every round,
 and send the user one summary: per round, scenario/seed, findings (fixed / needs user / rejected) with PR numbers,
 sweep results, then every needs-user question from all rounds, each with enough context to answer on its own.
 

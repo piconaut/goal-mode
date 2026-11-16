@@ -1,6 +1,7 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { GameHandle } from './useGame';
 import { useConfirmation } from './Confirmation';
+import { importOutcome } from './importDialog';
 
 export function RunFileButtons({ game }: { game: GameHandle }) {
   const ask = useConfirmation();
@@ -8,16 +9,21 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
   const fileInput = useRef<HTMLInputElement>(null);
   const exportText = useRef<HTMLTextAreaElement>(null);
   const session = useRef(0);
-  const submittedToast = useRef(game.toast);
+  const submittedResult = useRef(game.importResult);
   const titleId = useId();
   const [mode, setMode] = useState<'export' | 'import' | null>(null);
   const [text, setText] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [reading, setReading] = useState(false);
-  const { runFile, toast } = game;
+  const { runFile } = game;
 
   const close = () => {
+    // An import already confirmed cannot be abandoned half-done: the worker replaces the run on its own, so the
+    // dialog stays open until IMPORT_RESULT arrives (PR-06).
+    if (loading) return;
+    // Already closing: Escape calls close() and the resulting close event calls it again.
+    if (mode === null) return;
     session.current++;
     setMode(null);
     setLoading(false);
@@ -34,7 +40,9 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
     setMode(next);
   };
 
-  useEffect(() => {
+  // Layout effect: the open/close must land in the same commit that adds or drops the `modal` class. In a passive
+  // effect the class is already gone while the dialog is still open, so one frame paints with no dialog styling (PR-08).
+  useLayoutEffect(() => {
     const el = dialog.current;
     if (!el) return;
     if (mode && !el.open) el.showModal();
@@ -42,16 +50,15 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
   }, [mode]);
 
   useEffect(() => {
-    if (!loading || !toast || toast === submittedToast.current) return;
-    if (toast.ok && toast.message.startsWith('Loaded run:')) {
+    // The worker's explicit import outcome, not a toast's wording (PR-05).
+    const outcome = importOutcome(loading, game.importResult, submittedResult.current);
+    if (!outcome) return;
+    setLoading(false);
+    if ('close' in outcome) {
       session.current++;
-      setLoading(false);
       setMode(null);
-    } else if (toast.message.startsWith('Import failed:')) {
-      setNotice(toast.message);
-      setLoading(false);
-    }
-  }, [loading, toast]);
+    } else setNotice(outcome.notice);
+  }, [loading, game.importResult]);
 
   const selectText = () => {
     exportText.current?.focus();
@@ -78,8 +85,8 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
       return;
     }
     const opened = session.current;
-    if (!(await ask(`Load ${name}? It replaces the current run and the saved run.`, 'Load save')) || opened !== session.current) return;
-    submittedToast.current = toast;
+    if (!(await ask(`Load ${name}? It replaces the current run and the saved run.`, 'Load save', 'danger')) || opened !== session.current) return;
+    submittedResult.current = game.importResult;
     setNotice('');
     setLoading(true);
     game.send({ type: 'IMPORT_RUN', text: saveText });
@@ -96,14 +103,19 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
         className={mode ? 'modal' : undefined}
         aria-labelledby={titleId}
         style={{ maxHeight: '90vh', overflow: 'auto', color: 'var(--text)' }}
-        onCancel={close}
+        onCancel={(e) => {
+          if (loading) e.preventDefault();
+          else close();
+        }}
         onClose={() => {
           // A queued close event can arrive after the dialog has reopened.
           if (!dialog.current?.open) close();
         }}
       >
         <h2 id={titleId}>{mode === 'export' ? 'Export run' : 'Import run'}</h2>
-        <button className="modal-close" onClick={close}>Close</button>
+        <button className="modal-close" onClick={close} disabled={loading} title={loading ? 'Wait for the import to finish' : undefined}>
+          Close
+        </button>
         {mode === 'export' && (
           <>
             <p className="muted">Save this text to transfer or inspect your run. Past Monitor III ranges are not included.</p>
@@ -132,6 +144,7 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
             </div>
           </>
         )}
+        {loading && <p role="status">Loading the save; the dialog closes when the import finishes.</p>}
         {notice && <p role="status">{notice}</p>}
       </dialog>
       <input
@@ -150,6 +163,9 @@ export function RunFileButtons({ game }: { game: GameHandle }) {
             const fileText = await file.text();
             if (opened !== session.current) return;
             setText(fileText);
+            // The file is read: from here only the player's confirmation is pending, so the button must not go on
+            // saying "Reading file…" while the prompt is open (PR-10).
+            setReading(false);
             await load(fileText, file.name);
           } catch (error) {
             if (opened === session.current) setNotice(`Could not read ${file.name}: ${String(error)}`);
