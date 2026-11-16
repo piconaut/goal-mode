@@ -185,7 +185,7 @@ dependency order, and `blocked: after …` holds an entry until the entries it n
   image test.
 
 ### RT-16 · CPU split on the host of the delay, by displaceable CPU, with bands
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
 
 After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
 (prove with `npm run compare --drop`); judge on the host with the most excess, on the pool that queued (zIIP);
@@ -208,7 +208,7 @@ wins (A6). SMF "vs base" reads the slot. Moves truth mechanisms: sweep. Done whe
 `LOCK_CONTENTION/GROWTH` incidents are no longer lock contention, and PT-13's frozen "vs base" tests still pass.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
 
 After RT-14 and RT-17. DEMAND_SURGE without a card when arrivals are ≥ 1.25 × the slot baseline (payday, month-end,
 deadline week); POLICY primary, naming the change, when a player change in the last 24 h touched a lever of the
@@ -216,7 +216,7 @@ winning mechanism on the judged host; new-work collateral for two days. Threshol
 triggers: sweep. Done when: a Revenue deadline-week incident is DEMAND_SURGE and R-14/R-15 replies name the change.
 
 ### RT-19 · Server CPU starvation and the thread-limit reference
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.2(3)) · priority: low · size: M · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.2(3)) · priority: low · size: M · area: sim`
 
 After RT-17. Split the `dependency` part into `serverCpu` and `serverOther` (reporting-only); region CPU wait joins
 the CPU group, other servers' CPU starvation stays DEPENDENCY with the CPU refinement accepted; THREAD_LIMIT is
@@ -228,7 +228,7 @@ per-period split of region CPU wait and other waits; do this entry after them an
 zIIP, I/O in velocity, storage, queue) and `waitingFrac` (waits over all samples); reuse them.
 
 ### RT-20 · Failure-only misses from the failure's source, not from a card
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.2(4)) · priority: low · size: M · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.2(4)) · priority: low · size: M · area: sim`
 
 After RT-01. Record failed transactions by source per workload (slot-queue timeout, region abend, Db2 or MQ
 unavailable, backlog timeout; reporting-only) and map them to THREAD_LIMIT, ROUTING, DEPENDENCY and the CPU family;
@@ -236,7 +236,7 @@ unavailable, backlog timeout; reporting-only) and map them to THREAD_LIMIT, ROUT
 MAXCONQW-style DBAT timeout hour is THREAD_LIMIT.
 
 ### RT-21 · BATCH incidents under the same rules
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.4) · priority: low · size: M · area: game`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4) · priority: low · size: M · area: game`
 
 After RT-14 and RT-16. Cards whose footprint reaches the critical jobs' images or LCUs during the night qualify;
 JOB_FAILURE only when the ABEND's lost time is the largest cause or the job never finished; co-dominant causes

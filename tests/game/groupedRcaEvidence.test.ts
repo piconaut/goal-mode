@@ -86,6 +86,8 @@ describe('grouped RCA evidence verdicts', () => {
     const scored = submitRca(r, 1, 'DEPENDENCY', 'BATCH_OVERLAP');
     expect(scored.incidents[0]!.rca!.points).toBe(5);
     expect(scored.incidents[1]!.rca).toBe(scored.incidents[0]!.rca);
+    // The union is a product: a mechanism accepted by one victim with a trigger accepted by the other still scores 5.
+    expect(submitRca(r, 1, 'DEPENDENCY', 'POLICY').incidents[0]!.rca!.points).toBe(5);
   });
 
   it('selects evidence independently per pin and awards group points and bonuses once', () => {

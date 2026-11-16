@@ -7,7 +7,7 @@
 //  - the fallback causes are only the same episode while the incidents overlap or follow within two hours (R-9).
 // A card's later victims inherit a filed RCA: the same card is the same event. A fallback cause's later one does not
 // (A13: an RCA filed at 10:00 for a CARDAUTH miss used to cover four incidents at 13:00 unseen); it is listed as new.
-// Pure.
+// A group never crosses the 06:00 roll: the review files one RCA per played day. Pure.
 
 import { TICKS_PER_HOUR } from '../../sim/core/units';
 import { fallbackCause } from '../rcaTruth';
@@ -27,8 +27,10 @@ export function sameCause(a: CausedIncident, b: CausedIncident): boolean {
   if (ca === undefined || cb === undefined) {
     return a.day === b.day && a.truth.mechanism === b.truth.mechanism && a.truth.trigger === b.truth.trigger;
   }
-  if (ca !== cb) return false;
-  if (!fallbackCause(ca)) return a.day === b.day;
+  // One RCA per played day, so a group never crosses the 06:00 roll: an incident left open there is closed and the
+  // new day's continuation is written up on its own.
+  if (ca !== cb || a.day !== b.day) return false;
+  if (!fallbackCause(ca)) return true;
   // Overlap, or follow within GROUP_FOLLOW_HOURS: an incident still open overlaps any later one.
   const [first, later] = a.startTick <= b.startTick ? [a, b] : [b, a];
   return first.endTick === null || later.startTick <= first.endTick + GROUP_FOLLOW_HOURS * TICKS_PER_HOUR;

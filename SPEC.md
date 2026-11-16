@@ -1419,7 +1419,8 @@ four facts no row combines (listed in `tests/game/proofRecipes.test.ts`; BACKLOG
 (`truth.cause`: the blamed card's `uid`, `new:<workload>`, `change:<id>`, or `none:<family>:<host>`; `docs/rca-design.md`
 §4.5). A card's incidents group across the played day, whatever mechanisms its victims show (one power cap is one cause
 for a CPU-priority victim and a dependency one); a cause with no card groups only while the incidents overlap or follow
-within two hours. The review lists the group once ("same cause: MKTQRY, …"); one RCA covers every incident in it and is
+within two hours. No group crosses the 06:00 roll, where an open incident is closed and the new day's continuation is
+written up on its own. The review lists the group once ("same cause: MKTQRY, …"); one RCA covers every incident in it and is
 scored, rewarded and counted in the day score once, except its trust reward, which counts once per incident in the group
 at filing time (`EVIDENCE.groupTrustPerIncident`; a wrong RCA's penalty is not scaled; user decision 2026-10-27). The
 group's accepted answers are the union of its members', its primary is the lead's, so a mechanism or trigger accepted for

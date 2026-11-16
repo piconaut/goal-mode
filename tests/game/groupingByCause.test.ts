@@ -6,6 +6,7 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { advance, newRun, startDay } from '../../src/game/run';
 import { GROUP_FOLLOW_HOURS, groupLead, sameCause } from '../../src/game/run/grouping';
+import { fallbackCause } from '../../src/game/rcaTruth';
 import { closeHour, newHour } from '../../src/game/run/hourly';
 import type { Incident, IncidentTruth } from '../../src/game/types';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
@@ -76,6 +77,17 @@ describe('grouping incidents by cause (RT-15)', () => {
     expect(sameCause(inc(1, 'MOBILE', none, { startTick: at(9), endTick: null }), startAt(20, at(21)))).toBe(true);
   });
 
+  it('never groups across the 06:00 roll, where an open incident is closed and the new day needs its own RCA', () => {
+    const none: IncidentTruth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY', cause: 'none:CPU:PROD1' };
+    // Overlapping in time and the same cause: the only thing that separates them is the played day.
+    const before = inc(1, 'MOBILE', none, { day: 0, startTick: at(17), endTick: at(24) });
+    const after = inc(2, 'MOBILE', none, { day: 1, startTick: at(24), endTick: at(25) });
+    expect(sameCause(before, after)).toBe(false);
+    expect(groupLead([before], after)).toBeNull();
+    // An incident still open when the day rolls is closed there, so its endTick is the roll; the open form too.
+    expect(sameCause({ ...before, endTick: null }, after)).toBe(false);
+  });
+
   it('a 48-hour creep hurting MOBILE at 09:00 and RBANK at 15:00 is one group, and does not cross the played day', () => {
     const mobile = inc(1, 'MOBILE', { mechanism: 'CPU_PRIORITY', trigger: 'CHANGE_REGRESSION', cause: CREEP_CAUSE });
     const rbank = inc(2, 'RBANK', { mechanism: 'DEPENDENCY', trigger: 'CHANGE_REGRESSION', cause: CREEP_CAUSE }, { startTick: at(15), endTick: at(16) });
@@ -93,6 +105,12 @@ describe('grouping incidents by cause (RT-15)', () => {
     expect(groupLead([midday], night({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', cause: CREEP_CAUSE }))).toBe(midday);
     // It did not: the night's cause is what the critical path itself was short of.
     expect(sameCause(midday, night({ mechanism: 'CPU_PRIORITY', trigger: 'POLICY', cause: 'none:CPU:PROD2' }))).toBe(false);
+  });
+
+  it('reads every fallback cause prefix as a cause with no card, and a card uid as one', () => {
+    // `change:<id>` has no producer yet (RT-18); the grouping it will use is pinned here.
+    for (const cause of ['new:BOOKING', 'change:CH-1', 'none:CPU:PROD1']) expect(fallbackCause(cause)).toBe(true);
+    for (const cause of ['POWER_CAP@12', 'MONITOR_CREEP@6']) expect(fallbackCause(cause)).toBe(false);
   });
 
   it('keeps the labels’ grouping for saves written before RT-07 (no cause)', () => {
