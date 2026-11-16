@@ -66,7 +66,7 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
   }
   if (server) {
     const kept = prevSys?.servers?.find((x) => x.key === server)?.dp;
-    // A save from before server periods: the regions ran at the highest served DP.
+    // The server period is new (its first tick): the regions ran at the highest DP among the periods it serves.
     let top: number | undefined = kept;
     if (top === undefined) for (const k of servedKeys(topo)) if (held[k] !== undefined && (top === undefined || held[k]! > top)) top = held[k];
     if (top !== undefined) {
@@ -78,7 +78,7 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
   const dpMap = fresh ? placeNewPeriods(def, held, fresh, topo) : held;
   const dpOf = (k: string) => dpMap[k] ?? (dpMap[k] = placeLateDp(def, dpMap, k, topo));
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
-  const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog ?? {});
+  const overflowSlices = cicsHonorPriority(def, slices, workloadById, regions, prev.backlog, prev.ziipBacklog);
   const out: ImageEvalInput = {
     prevSys,
     slices: sysCfg && !sysCfg.iipHonorPriority ? overflowSlices.map((s) => ({ ...s, mayOverflow: false })) : overflowSlices,
@@ -114,7 +114,7 @@ function lparEvalInput(t: TickCtx, img: ImagePlan): LparEvalInput {
     cpPrsmDelayFrac: cpRt?.prsmDelayFrac ?? 0,
     slices,
     backlog: prev.backlog,
-    ziipBacklog: prev.ziipBacklog ?? {},
+    ziipBacklog: prev.ziipBacklog,
     dpOf,
     capOf: t.capOfBy[l.id],
     ...rgMin(def, slicesBy[l.id] ?? [], prevSys?.scps ?? [], cpRt, img.suPerCpuSec, plexShare),
@@ -138,7 +138,7 @@ export function reserveOverflow(t: TickCtx, lpars: readonly LparConfig[]): boole
   for (const l of lpars) {
     const img = t.plan.byLparId[l.id]!;
     if (!img.hasZiips) continue;
-    if (!imageInput(t, img).slices.some((s) => s.mayOverflow && (s.ziipEngines > 0 || (t.prev.ziipBacklog?.[s.key] ?? 0) > 0))) continue;
+    if (!imageInput(t, img).slices.some((s) => s.mayOverflow && (s.ziipEngines > 0 || (t.prev.ziipBacklog[s.key] ?? 0) > 0))) continue;
     const input = lparEvalInput(t, img);
     input.prepared = prepareLpar(input);
     t.evalInputs[l.id] = input;

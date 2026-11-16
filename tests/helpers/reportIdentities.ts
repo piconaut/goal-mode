@@ -283,7 +283,7 @@ export const IDENTITIES: Identity[] = [
     check: (run, c) => {
       for (const o of run.intervals) {
         for (const r of o.iv.cpu) {
-          for (const [name, x] of [['LPAR BUSY', r.logicalBusyPct], ['MVS BUSY', r.mvsBusyPct ?? 0], ['LPAR MGMT', r.overheadPct], ['CAPPED', r.cappedPct], ['WLM%', r.wlmCappingPct ?? 0], ['PR/SM DLY', r.prsmDelayPct]] as const)
+          for (const [name, x] of [['LPAR BUSY', r.logicalBusyPct], ['MVS BUSY', r.mvsBusyPct], ['LPAR MGMT', r.overheadPct], ['CAPPED', r.cappedPct], ['WLM%', r.wlmCappingPct ?? 0], ['PR/SM DLY', r.prsmDelayPct]] as const)
             c.ok(x >= -1e-9 && x <= 100 + 1e-9, () => `${at(o)} ${r.lparId} ${name} ${x} outside 0–100`);
           if (!o.steady || r.logicalCps === 0) continue;
           c.close((r.logicalBusyPct * r.logicalCps) / 100, r.physicalEngines, ROUNDING, () => `${at(o)} ${r.lparId} LPAR BUSY × LCPs vs PHYS ENG`);
@@ -418,7 +418,7 @@ export const IDENTITIES: Identity[] = [
           const soft = l.definedCapacityMsu !== null || l.capacityGroup !== null;
           if (wlm > 0) c.ok(soft, () => `${at(o)} ${r.lparId} WLM% ${wlm} with no defined capacity or group`);
           if (r.cappedPct > 0) c.ok(soft || cp?.absoluteCapEngines != null || !!cp?.initialCapping, () => `${at(o)} ${r.lparId} capped ${r.cappedPct} % with no cap defined`);
-          c.ok(r.definedCapacityMsu === l.definedCapacityMsu && (r.absoluteCapEngines ?? null) === (cp?.absoluteCapEngines ?? null), () => `${at(o)} ${r.lparId} DEF CAP / ABS CAP differ from the configuration`);
+          c.ok(r.definedCapacityMsu === l.definedCapacityMsu && r.absoluteCapEngines === (cp?.absoluteCapEngines ?? null), () => `${at(o)} ${r.lparId} DEF CAP / ABS CAP differ from the configuration`);
         }
       }
     },
@@ -492,7 +492,7 @@ export const IDENTITIES: Identity[] = [
     // in wait: LPAR BUSY = dispatch ÷ online, MVS BUSY = (online − wait − parked) ÷ (online − parked).
     source: 'Derived from the formulas of RMF Report Analysis 3.1 p.389; SPEC §17 "LPAR BUSY vs MVS BUSY"',
     check: (run, c) => {
-      for (const o of run.intervals) for (const r of o.iv.cpu) if (r.logicalCps > 0 && o.steady) c.atMost(r.logicalBusyPct, r.mvsBusyPct ?? 0, ROUNDING, () => `${at(o)} ${r.lparId} LPAR BUSY above MVS BUSY`);
+      for (const o of run.intervals) for (const r of o.iv.cpu) if (r.logicalCps > 0 && o.steady) c.atMost(r.logicalBusyPct, r.mvsBusyPct, ROUNDING, () => `${at(o)} ${r.lparId} LPAR BUSY above MVS BUSY`);
     },
   },
   // ---------------------------------------------------------------- Finance (SCRT-style bill)

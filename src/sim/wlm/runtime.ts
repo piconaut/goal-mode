@@ -30,16 +30,16 @@ export interface ScpAcc {
   delayIo: number;
   delayOther: number;
   delayCap: number;
-  /** Decayed storage (paging) and queue delay, both also in `delay` (WT-10: managed delays told apart). Absent in old
-   * saves: `decayInto` seeds storage with the part of `delay` no other component explains, queue with 0. */
-  delayStorage?: number;
+  /** Decayed storage (paging) delay, also in `delay` (WT-10: managed delays told apart). */
+  delayStorage: number;
+  /** Decayed queue delay, also in `delay`; absent from the RMF interval accumulator when the period queued nothing. */
   delayQueue?: number;
   cpuEngines: number;
   /** Decayed zIIP engines used (the zIIP counterpart of `cpuEngines`, for donors of a zIIP bottleneck; WT-07). Absent
-   * in a period's first tick and in old saves: seeded at steady state. */
+   * in a period's first tick: seeded at steady state. */
   ziipEngines?: number;
   /** Decayed arriving demand, engines, without backlog: × (1 − ACC_DECAY) is the sustained demand WLM projects
-   * with (docs/wlm-design.md §5.4). Absent in a period's first tick and in old saves: seeded at steady state. */
+   * with (docs/wlm-design.md §5.4). Absent in a period's first tick: seeded at steady state. */
   demandCp?: number;
   demandZi?: number;
   /** Parts of using / delay left out of velocity (I/O priority management off); absent when none. */
@@ -48,7 +48,7 @@ export interface ScpAcc {
   /** Velocity samples of transaction-server regions: reported, but not used to manage this period; absent when none. */
   srvUsing?: number;
   srvDelay?: number;
-  /** The capping delay inside `srvDelay` (the managed-delay test leaves capping out); absent in old saves. */
+  /** The capping delay inside `srvDelay` (the managed-delay test leaves capping out); present with `srvUsing`. */
   srvDelayCap?: number;
 }
 
@@ -56,10 +56,8 @@ export interface ScpAcc {
 export const velUsing = (a: { using: number; usingIoNoVel?: number }): number => a.using - (a.usingIoNoVel ?? 0);
 export const velDelay = (a: { delay: number; delayIoNoVel?: number }): number => a.delay - (a.delayIoNoVel ?? 0);
 
-/** The capping delay inside `srvDelay`. A save from before `srvDelayCap` holds server history without it: the most it
- * can be (all capping, up to `srvDelay`) is assumed, so the managed-delay test errs toward assessing the period. */
-export const srvDelayCapOf = (a: { delayCap: number; srvDelay?: number; srvDelayCap?: number }): number =>
-  a.srvDelayCap ?? Math.min(a.delayCap, a.srvDelay ?? 0);
+/** The capping delay inside `srvDelay`; a period with server samples carries it, one without them has none. */
+export const srvDelayCapOf = (a: { srvDelayCap?: number }): number => a.srvDelayCap ?? 0;
 
 export interface ScpState {
   scKey: string;
@@ -84,8 +82,8 @@ export interface ServerPeriodState {
 export interface WlmSystemState {
   lparId: string;
   scps: ScpState[];
-  /** Sorted by key. Absent with no server period, and in a save from before server periods: then created with the
-   * highest DP among the served periods, which is where the regions ran (docs/wlm-design.md §5.1). */
+  /** Sorted by key. Absent with no server period: created with the highest DP among the served periods, which is
+   * where the regions ran (docs/wlm-design.md §5.1). */
   servers?: ServerPeriodState[];
 }
 
@@ -263,7 +261,7 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
     delayIo: acc.delayIo * d + t.delayIo,
     delayOther: acc.delayOther * d + t.delayOther,
     delayCap: acc.delayCap * d + t.delayCap,
-    delayStorage: (acc.delayStorage ?? Math.max(0, acc.delay - acc.delayCpu - acc.delayZiip - acc.delayIo - acc.delayCap)) * d + t.delayStorage,
+    delayStorage: acc.delayStorage * d + t.delayStorage,
     delayQueue: (acc.delayQueue ?? 0) * d + (t.delayQueue ?? 0),
     cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
     ziipEngines: acc.ziipEngines === undefined ? t.ziipEngines / (1 - d) : acc.ziipEngines * d + t.ziipEngines,
@@ -308,7 +306,7 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   out.delayIo += a.delayIo;
   out.delayOther += a.delayOther;
   out.delayCap += a.delayCap;
-  if (a.delayStorage !== undefined) out.delayStorage = (out.delayStorage ?? 0) + a.delayStorage;
+  out.delayStorage += a.delayStorage;
   if (a.delayQueue !== undefined) out.delayQueue = (out.delayQueue ?? 0) + a.delayQueue;
   out.cpuEngines += a.cpuEngines;
   if (a.usingIoNoVel !== undefined) {
