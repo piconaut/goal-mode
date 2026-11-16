@@ -569,8 +569,9 @@ from failed and retried work, so LPAR busy does not move. In Db2, commits wait f
 prefetch, both done by MSTR/DBM1 system agents that "cannot tolerate significant CPU delay" (Db2 13 Managing
 Performance p.41, p.47, p.116); with those address spaces non-dispatchable nearly all the time, dependent work should
 mostly stop completing and pile up behind MXT and thread limits, its CPU falling rather than rising (inference: no
-page read describes this case). The sim's dependency delay is `latency × (1/max(health, 0.02) − 1)`
-(`src/sim/wlm/eval/results.ts:184`, SPEC §5.6 ε), at most 49 × the server latency per request.
+page read describes this case). The sim's dependency delay is
+`latency × (1/max(health, 0.02) − 1 + queueRatio)` (`src/sim/wlm/eval/results.ts:185`, SPEC §5.6 ε), with the
+server's queue ratio capped at 50 (`MAX_QUEUE_RATIO`), so at most 99 × the server latency per request.
 Change: below a starvation threshold (content coefficient with a `// FICTIONAL:` note), a server's dependents stop
 completing in proportion to the server's granted share (throughput-limited, not latency-limited), queue in their own
 limits (MXT, DBAT, slot queues) and time out there; their CPU follows completions. Keep the bounded-delay form above
