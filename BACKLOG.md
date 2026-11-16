@@ -680,19 +680,6 @@ Source: codebase survey (2026-11-16). Several files play the same run twice to c
 and drop the per-file pairs. First check that no other assertion reads the dropped runs' output. Done when: every
 scenario in `SCENARIOS` keeps a determinism check; `npm run check` is green; the timings are in the PR.
 
-### CL-15 · Measure and cut per-file test overhead
-`list: cleanup · status: ready · priority: high · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). One local full run (4 cores, `--reporter=json`) took 234 s of wall time for
-585 s of summed file time. That is well over the 146 s that 4 workers would need, so import, transform and collect
-time per file is probably large; each file imports the whole sim afresh. Change: measure first. Run vitest's default
-reporter and record its `Duration (transform … setup … collect … tests …)` line, then profile one cheap file. Based
-on the numbers, try what fits: `deps.optimizer` / `server.deps.inline` settings, `pool: 'threads'` against `forks`,
-`maxWorkers`, or merging the tiniest files. Don't use `isolate: false`: tests change module-level settings
-(`POLICY_ADJUST` overrides, `setWlmTraceSink`). Done when: the breakdown and every setting tried, each with its wall
-time, are in the PR and in docs/headless-performance-options.md "Results". Any config change that is kept is in
-`vite.config.ts`, and `npm run check` and `npm run test:remote` are green.
-
 ### CL-16 · Hints dating test plays two days
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 
