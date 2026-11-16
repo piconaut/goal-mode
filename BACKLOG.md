@@ -653,23 +653,6 @@ engines; the moved CICS parts with them) as reporting-only accumulator fields an
 state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
 restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.
 
-### CL-12 · Disk-cached test fixtures for shared start states
-`list: cleanup · status: ready · priority: high · size: M · area: tooling`
-
-Source: codebase survey (2026-11-16). Five files independently build the same start state: Midwest seed 7, content
-`{...MIDWEST_GAME, events: []}`, `startDay`, then 6 h to noon. They are `tests/game/evidence.test.ts`,
-`storageJobWmPins.test.ts`, `proofRecipes.test.ts`, `smf.test.ts` and `mon3.test.ts`. Evidence and storageJobWmPins
-then also apply the same `RBANK cpu=3` hour on top. `tests/game/counterfactual.test.ts` plays 29 h of Revenue seed 6
-in `beforeAll` (52 s file). Vitest runs each file in its own worker, so they can only share through disk.
-Change: add a `tests/helpers/fixtureCache.ts` that stores a named `RunState` as JSON under
-`node_modules/.cache/goal-mode-fixtures/`. The key is a hash of every file under `src/`, `tests/helpers/` and
-`package-lock.json`, so any code change rebuilds the cache. Writes go to a temporary file and are renamed into place,
-so parallel workers don't read a half-written file. Each read returns a fresh decoded copy. Use it for the noon state,
-the noon + `RBANK` state and counterfactual's start state. First confirm each file's start state is byte-identical to
-the shared one (`encodeRunJson`), and keep any file whose start differs on its own build. Done when: those files use
-the cache; a cold run passes and a warm run is faster; deleting the cache directory or editing a `src/` file rebuilds
-it; the per-file timings, cold and warm, are in the PR.
-
 ### CL-14 · One short determinism pair per scenario
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 
