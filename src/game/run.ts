@@ -27,6 +27,7 @@ import { ARMED, failRisk, NO_TARGET, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
 import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
+import { addGroupedIncident } from './run/grouping';
 import type { GameContent } from './run/shared';
 import { BASE_HOURS, clampTrust, facetOf, logLine, mapTrust, msg, overallTrust } from './run/shared';
 import { incidentSubjects } from './evidence';
@@ -324,7 +325,6 @@ function batchMissIncident(r: RunState, scenario: Scenario, night: NightSummary,
     ...(Object.keys(notes).length > 0 ? { notes } : {}),
     cause: truthCause(ctx),
   };
-  const lead = r.incidents.find((i) => i.day === r.day && i.rcaGroup === undefined && i.truth.mechanism === truth.mechanism && i.truth.trigger === truth.trigger);
   const inc: Incident = {
     id: r.nextId,
     workloadId: BATCH_INCIDENT,
@@ -336,11 +336,11 @@ function batchMissIncident(r: RunState, scenario: Scenario, night: NightSummary,
     truth,
     ...(basis ? { basis } : {}),
     subjects,
-    rca: lead?.rca ?? null,
+    rca: null,
     trustLost,
-    ...(lead ? { rcaGroup: lead.id } : {}),
   };
-  return logLine({ ...r, nextId: r.nextId + 1, incidents: [...r.incidents, inc] }, `INCIDENT ${BATCH_INCIDENT}: critical batch missed its window`);
+  // One RCA per root cause (RT-15): the night groups with the day's incidents only when the same card reached it (§4.5).
+  return logLine({ ...r, nextId: r.nextId + 1, incidents: addGroupedIncident(r.incidents, inc) }, `INCIDENT ${BATCH_INCIDENT}: critical batch missed its window`);
 }
 
 function endDay(run: RunState, scenario: Scenario, content: GameContent): RunState {

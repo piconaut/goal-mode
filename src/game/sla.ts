@@ -8,7 +8,7 @@ import { SYSOTHER, SYSSTC, SYSTEM, type ServiceDefinition } from '../sim/wlm/typ
 import { CAPPING, CPU_CAPACITY } from '../content/incidents';
 import { ALL_MECHANISMS } from '../content/footprint';
 import { regionKey } from './footprint';
-import type { ActiveEvent, CapacityBasis, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
+import type { Accepted, ActiveEvent, CapacityBasis, HourAcc, Incident, Mechanism, Trigger, WorkloadHour } from './types';
 
 export const BASELINE_DECAY = 0.8;
 
@@ -327,12 +327,12 @@ export const MECHANISMS: Mechanism[] = [...ALL_MECHANISMS];
 export const TRIGGERS: Trigger[] = ['DEMAND_SURGE', 'CHANGE_REGRESSION', 'RUNAWAY_WORK', 'BATCH_OVERLAP', 'POLICY', 'HARDWARE_FAULT', 'NEW_WORKLOAD', 'GROWTH', 'APPLICATION_ERROR'];
 
 /** The accepted answers of a truth: the primary alone in saves written before RT-07. */
-export function acceptedOf(truth: Incident['truth']): { mechanisms: Mechanism[]; triggers: Trigger[] } {
+export function acceptedOf(truth: Incident['truth']): Accepted {
   return truth.accepted ?? { mechanisms: [truth.mechanism], triggers: [truth.trigger] };
 }
 
-/** RCA scoring: 3 points for an accepted mechanism, 2 for an accepted trigger (RT-07; docs/rca-design.md §4.1). */
-export function scoreRca(truth: Incident['truth'], guess: { mechanism: Mechanism; trigger: Trigger }): number {
-  const accepted = acceptedOf(truth);
+/** RCA scoring: 3 points for an accepted mechanism, 2 for an accepted trigger (RT-07; docs/rca-design.md §4.1). For a
+ * group, `accepted` is the union of its members' (§4.5). */
+export function scoreAccepted(accepted: Accepted, guess: { mechanism: Mechanism; trigger: Trigger }): number {
   return (accepted.mechanisms.includes(guess.mechanism) ? 3 : 0) + (accepted.triggers.includes(guess.trigger) ? 2 : 0);
 }

@@ -8,10 +8,11 @@ import { dailySeed, shareText } from '../game/daily';
 import { formatClock } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
-import type { IncidentTruth, Mechanism, Trigger } from '../game/types';
+import type { Incident, Mechanism, Trigger } from '../game/types';
 import type { EndReport } from '../game/endReport';
 import { predicateText, recipeHeading, type ProofResult } from '../game/proof';
 import { idText } from '../game/ids';
+import { alsoAcceptedOf, rcaGroupOf } from '../game/run/rca';
 import type { ViewModel } from '../game/view';
 import { piColor, seriesColor } from './colors';
 import { LineChart } from './LineChart';
@@ -461,7 +462,7 @@ function DaySummary({ v }: { v: ViewModel }) {
 function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; investigate: () => void }) {
   const open = v.incidents.filter((i) => i.day === v.day && !i.rca && i.rcaGroup === undefined);
   const linked = (id: number) => {
-    const ws = v.incidents.filter((i) => i.rcaGroup === id).map((i) => i.workloadId);
+    const ws = rcaGroupOf(v.incidents, id).slice(1).map((i) => i.workloadId);
     return ws.length ? ` · same cause: ${ws.join(', ')}` : '';
   };
   return (
@@ -504,7 +505,7 @@ function Review({ v, game, investigate }: { v: ViewModel; game: GameHandle; inve
                 {i.rca!.explain}
               </div>
             )}
-            <AlsoAccepted truth={i.truth} />
+            <AlsoAccepted group={rcaGroupOf(v.incidents, i.id)} />
             {(i.rca!.evidence ?? []).map((e) => (
               <div key={e.pinId} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
                 {e.relevance > 0 ? '✓' : '✗'} {e.text}: {e.why}
@@ -550,18 +551,13 @@ function ProofView({ proof }: { proof: ProofResult }) {
   );
 }
 
-/** The reply names the primary and the other accepted answers, one line of reasoning each (RT-07). */
-function AlsoAccepted({ truth }: { truth: IncidentTruth }) {
-  const accepted = truth.accepted;
-  if (!accepted) return null;
-  const rest: [string, string | undefined][] = [
-    ...accepted.mechanisms.filter((m) => m !== truth.mechanism).map((m): [string, string | undefined] => [m, truth.notes?.[m]]),
-    ...accepted.triggers.filter((t) => t !== truth.trigger).map((t): [string, string | undefined] => [t, truth.notes?.[t]]),
-  ];
+/** The reply names the group's primary and its other accepted answers, one line of reasoning each (RT-07, §4.5). */
+function AlsoAccepted({ group }: { group: readonly Incident[] }) {
+  const rest = alsoAcceptedOf(group);
   if (rest.length === 0) return null;
   return (
     <>
-      {rest.map(([answer, why]) => (
+      {rest.map(({ answer, why }) => (
         <div key={answer} className="muted" style={{ fontSize: 12, paddingLeft: 12 }}>
           also accepted: <b>{TRIGGER_LABEL[answer as Trigger] ?? answer}</b>
           {why ? ` — ${why}` : ''}

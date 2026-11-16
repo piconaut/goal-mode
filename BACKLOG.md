@@ -176,27 +176,16 @@ RCA judging and incident truth: the work that makes RCA verdicts fair and eviden
 direction D1. Source for every entry: the RCA audit of 2026-11-09, [docs/rca-design.md](docs/rca-design.md) (finding
 and repro ids A-n, R-n, U-n are its); the user's decisions on its §7 are recorded there. Entries are numbered in
 dependency order, and `blocked: after …` holds an entry until the entries it names are merged (Rules).
-- **RT-00 … RT-15 are the committed work.** RT-16 … RT-21 wait for a human playtest after RT-15: the list "finishing"
-  in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 (card footprints) landed after the
-  `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
+- **RT-00 … RT-15 have landed**, RT-15 (grouping by cause) last. RT-16 … RT-21 wait for a human playtest: the list
+  "finishing" in `dev-loop` (only blocked entries left) is the cue for that playtest. RT-14 (card footprints) landed
+  after the `wlm-truth` core (user decision 2026-11-10). RT-22 … RT-24 are D1 and wait for the user.
 - Entries that move truth labels (RT-02, RT-09, RT-14 and the `sim` entries) need a three-scenario
   `npm run sweep:remote`, because the strategy bots read `inc.truth` (docs/rca-design.md §4.8). One at a time.
 - Interim fixes: RT-20 replaces the `failureMechanism` path; RT-12's relation test has replaced the RT-03 `anySubject`
   image test.
 
-### RT-15 · Group incidents by cause, not by equal labels
-`list: rca-truth · status: ready · priority: high · size: M · area: game`
-
-User decision on Q4, 2026-11-10: yes, with two refinements. After RT-14 (before footprints, collateral victims
-have no card cause and would still split off). `rcaGroup` links incidents with the same `truth.cause`: for a card
-cause, any incident of the same played day; for the other causes (`new:`, `change:`, `none:`), incidents that
-overlap or follow within two hours. The group's accepted set is the union; an incident inherits a filed RCA only for the same card `uid` (A13). Done when:
-R-7 is one group, R-9's 13:00 incidents do not inherit a 10:00 RCA, R-6's batch night does not join the midday
-incident unless the card reached it, a 48-hour MONITOR_CREEP hurting MOBILE at 09:00 and RBANK at 15:00 is one group,
-and `tests/game/groupedRcaEvidence.test.ts` is updated.
-
 ### RT-16 · CPU split on the host of the delay, by displaceable CPU, with bands
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.3, Q7) · priority: high · size: L · area: sim`
 
 After RT-08. Reporting-only sim fields for CPU wait per workload per LPAR and CP use by address-space role
 (prove with `npm run compare --drop`); judge on the host with the most excess, on the pool that queued (zIIP);
@@ -219,7 +208,7 @@ wins (A6). SMF "vs base" reads the slot. Moves truth mechanisms: sweep. Done whe
 `LOCK_CONTENTION/GROWTH` incidents are no longer lock contention, and PT-13's frozen "vs base" tests still pass.
 
 ### RT-18 · Fallback triggers that are tested: surge by rate, the player's own change
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4(4)) · priority: low · size: M · area: game`
 
 After RT-14 and RT-17. DEMAND_SURGE without a card when arrivals are ≥ 1.25 × the slot baseline (payday, month-end,
 deadline week); POLICY primary, naming the change, when a player change in the last 24 h touched a lever of the
@@ -227,7 +216,7 @@ winning mechanism on the judged host; new-work collateral for two days. Threshol
 triggers: sweep. Done when: a Revenue deadline-week incident is DEMAND_SURGE and R-14/R-15 replies name the change.
 
 ### RT-19 · Server CPU starvation and the thread-limit reference
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.2(3)) · priority: low · size: M · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.2(3)) · priority: low · size: M · area: sim`
 
 After RT-17. Split the `dependency` part into `serverCpu` and `serverOther` (reporting-only); region CPU wait joins
 the CPU group, other servers' CPU starvation stays DEPENDENCY with the CPU refinement accepted; THREAD_LIMIT is
@@ -239,7 +228,7 @@ per-period split of region CPU wait and other waits; do this entry after them an
 zIIP, I/O in velocity, storage, queue) and `waitingFrac` (waits over all samples); reuse them.
 
 ### RT-20 · Failure-only misses from the failure's source, not from a card
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.2(4)) · priority: low · size: M · area: sim`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.2(4)) · priority: low · size: M · area: sim`
 
 After RT-01. Record failed transactions by source per workload (slot-queue timeout, region abend, Db2 or MQ
 unavailable, backlog timeout; reporting-only) and map them to THREAD_LIMIT, ROUTING, DEPENDENCY and the CPU family;
@@ -247,7 +236,7 @@ unavailable, backlog timeout; reporting-only) and map them to THREAD_LIMIT, ROUT
 MAXCONQW-style DBAT timeout hour is THREAD_LIMIT.
 
 ### RT-21 · BATCH incidents under the same rules
-`list: rca-truth · status: blocked: playtest (after RT-15; docs/rca-design.md §4.4) · priority: low · size: M · area: game`
+`list: rca-truth · status: blocked: playtest (docs/rca-design.md §4.4) · priority: low · size: M · area: game`
 
 After RT-14 and RT-16. Cards whose footprint reaches the critical jobs' images or LCUs during the night qualify;
 JOB_FAILURE only when the ABEND's lost time is the largest cause or the job never finished; co-dominant causes
