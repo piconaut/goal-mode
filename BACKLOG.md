@@ -906,11 +906,12 @@ difference, `inspect wlm` traces included; `tests/sim/adjust.test.ts` passes unc
 ### CL-31 · Split `advance()` in `game/run.ts`
 `list: cleanup · status: ready · priority: low · size: M · area: game`
 
-Source: codebase survey (2026-11-16). `advance` in `src/game/run.ts` is about 308 lines (163–470). It does tick
-scheduling, event activation, hour close, day close, incident and RCA bookkeeping, and day end. Change: move hour close,
-day close and event activation into `src/game/run/` (next to `hourly.ts` and `events.ts`), leaving `advance` as the
-loop that calls them. Fold the 13 one-line re-exports at the file's end (lines 570–600) into grouped
-`export { … } from` statements. No logic change. Done when: `npm run compare` shows no difference, and the goldens
+Source: codebase survey (2026-11-16). `advance` in `src/game/run.ts` is about 125 lines (163–287): the tick loop,
+with scheduled policy activation and event start and end (armed fixes included) written inline. It calls `closeHour`
+(already in `run/hourly.ts`) and `endDay`, which sits beside it with `batchMissIncident` and `logConnectFailures`
+(about 290–470). Change: move event activation into `src/game/run/events.ts`, and day close (`endDay`,
+`batchMissIncident`) into its own `src/game/run/` module, leaving `advance` as the loop that calls them. Fold the 16
+one-line re-exports at the file's end (lines 570–600) into grouped `export { … } from` statements. No logic change. Done when: `npm run compare` shows no difference, and the goldens
 and `tests/game/run.test.ts` pass unchanged.
 
 ### CL-32 · One home for the RCA judging modules
