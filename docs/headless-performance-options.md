@@ -248,13 +248,13 @@ The command is the one `.github/workflows/test.yml` uses: `npx vitest run --repo
 
 | Setting | Duration | `transform` | `import` | per-file sum | Failures |
 |---|---:|---:|---:|---:|---|
-| default (forks, 8 workers) | 278.2 s | 11.8 s | 57.9 s | 1,849.6 s | 4 timeouts |
-| default (forks, 8 workers) | 319.7 s | 12.8 s | 68.5 s | 2,117.9 s | the same 4 |
+| default (forks, 7 workers) | 278.2 s | 11.8 s | 57.9 s | 1,849.6 s | 4 timeouts |
+| default (forks, 7 workers) | 319.7 s | 12.8 s | 68.5 s | 2,117.9 s | the same 4 |
 | `--pool=threads` | 297.1 s | 10.4 s | 62.4 s | 1,965.3 s | the same 4 |
 | `--maxWorkers=4` | 354.5 s | 9.0 s | 42.6 s | 1,343.9 s | none |
 
-Per-file times move with contention (the same file takes 206.5 s at 8 workers and 153.2 s at 4), so the per-file sum is
-not like-for-like between arms.
+Per-file times move with contention (the same file takes 206.5 s at the default 7 workers and 153.2 s at 4), so the
+per-file sum is not like-for-like between arms.
 
 **Where the time goes** (run 1; the reporter's per-file durations against the JSON's summed assertion durations):
 
@@ -264,30 +264,31 @@ not like-for-like between arms.
   (180.4 / 148.4) and `inspect` (64.8 / 44.1);
 - `transform` and `import` are 69.7 s together, 3.8 % of the file time;
 - 71 of 113 files finish in under 1 s, and the 10 UI files total 0.2 s;
-- 1,849.6 s over 8 × 278.2 s is 83 % utilisation.
+- vitest's node pool defaults to `availableParallelism() − 1`, so 7 workers here: 1,849.6 s over 7 × 278.2 s is 95 %
+  utilisation.
 
 **There is no wall floor in the longest file.** `tests/sim/realism.test.ts` is the longest at 206.5 s, but total work
-over 8 workers is 231 s, already above it, and the run took 278 s: the remaining 17 % is packing and contention, not one
-file. At `--maxWorkers=4` the same file measures 153.2 s and the suite reaches 95 % of 4 × 354.5 s. Splitting a file can
-help balance, but it cannot take the suite near `wlm-realism`'s 166.8 s, so no splitting entry was filed; re-measure
-after CL-12 changes the profile before deciding.
+over 7 workers is 264 s, already above it, and the run took 278 s: the remaining 5 % (14 s) is packing and contention,
+not one file. At `--maxWorkers=4` the same file measures 153.2 s and the suite reaches 95 % of 4 × 354.5 s. Splitting
+a file can help balance, but it cannot take the suite near `wlm-realism`'s 166.8 s, so no splitting entry was filed;
+re-measure after CL-12 changes the profile before deciding.
 
-Cheap-file profile: `tests/game/daily.test.ts` (4–5 ms of tests) took 197 / 198 / 207 ms in three solo runs — transform
-41–44 ms, import 53–57 ms, the rest runner startup. Three cheap files in one run take 270 ms together, with transform
+Cheap-file profile: `tests/game/daily.test.ts` (4–5 ms of tests) took 192 / 197 / 198 ms in three solo runs — transform
+41–43 ms, import 53–56 ms, the rest runner startup. Three cheap files in one run take 270 ms together, with transform
 189 ms and import 233 ms summed over parallel workers, so per-file cost is real but small at suite scale.
 
 **Settings tried.** `--pool=threads` is inside the 278–320 s spread of the two default runs (a two-sample range, not a
-measured noise distribution). `--maxWorkers=4` is 11 % slower than the 320 s default run and 28 % slower than the 279 s
+measured noise distribution). `--maxWorkers=4` is 11 % slower than the 320 s default run and 27 % slower than the 278 s
 one; the direction is clear, the size is not. `deps.optimizer` and `server.deps.inline` were not tried: they pre-bundle
 dependencies, and the UI files that would benefit total 0.2 s.
 
-The four timeouts (three in `counterfactual.test.ts`, one in `mon3Charts.test.ts`) are 30 s `testTimeout` misses at 8
-workers on a loaded host; the same tests pass at 4 workers and in the remote runs (43816581950, 43818914728, and
-43831168364 on this branch).
+The four timeouts (three in `counterfactual.test.ts`, one in `mon3Charts.test.ts`) are 30 s `testTimeout` misses at the
+default 7 workers on a loaded host; the same tests pass at 4 workers and in the remote runs (43816581950, 43818914728,
+and 43831168364, the first commit of this branch).
 
 **Conclusion:** no config change kept. The measured lever is the 287.7 s outside the assertions (most of it
-start-state hooks, which is CL-12's disk-cached fixtures), not the runner. Packing is a second, unquantified lever
-(231 s bound against 278 s observed).
+start-state hooks, which is CL-12's disk-cached fixtures), not the runner. Packing is nearly saturated
+(264 s bound against 278 s observed, a ~5 % residual).
 
 ## Reproduction
 
