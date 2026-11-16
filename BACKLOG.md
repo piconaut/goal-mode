@@ -558,6 +558,27 @@ that is the sum of the members' own averages is not stated on the pages read). T
 Partition Data and the CPC header, and build the group average as research says. Done when: the suite's `soft-cap-flag`
 reads the group's state from a report instead of the sim, and docs/research.md has the row.
 
+### RF-09 · A starved Db2 slows its dependents by a bounded factor instead of stalling them
+`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
+
+Source: playtest round 3 (2026-11-16, Midwest Normal seed 467203, dev `3da33f5`); ledger row "Db2 system agents in
+ssnmMSTR and ssnmDBM1" in docs/research.md. A/B, D1 06:00–12:00, RMF interval 11:30–12:00, no other changes: STCMED
+(Db2 MSTR, DBM1, DIST) in a type 1 resource group with max 1 SU/s takes STCMED APPL % from 75.4 to 0.0, but ONLHI
+still ends 845 transactions/s against 1034 (FAILED 0 → 937,621), and CICS region CPU rises from 354.5 % to 459.6 %
+from failed and retried work, so LPAR busy does not move. In Db2, commits wait for the log force and getpages wait for
+prefetch, both done by MSTR/DBM1 system agents that "cannot tolerate significant CPU delay" (Db2 13 Managing
+Performance p.41, p.47, p.116); with those address spaces non-dispatchable nearly all the time, dependent work should
+mostly stop completing and pile up behind MXT and thread limits, its CPU falling rather than rising (inference: no
+page read describes this case). The sim's dependency delay is `latency × (1/max(health, 0.02) − 1)`
+(`src/sim/wlm/eval/results.ts:184`, SPEC §5.6 ε), at most 49 × the server latency per request.
+Change: below a starvation threshold (content coefficient with a `// FICTIONAL:` note), a server's dependents stop
+completing in proportion to the server's granted share (throughput-limited, not latency-limited), queue in their own
+limits (MXT, DBAT, slot queues) and time out there; their CPU follows completions. Keep the bounded-delay form above
+the threshold. Check how a failed request's CPU is charged on the way. Done when: the A/B above gives ONLHI ended/s
+near the RG-capped Db2's share of its normal service and CICS CPU below the uncapped run's; a realism test in
+`tests/sim/realism.test.ts`; SPEC §5.6 and §17 updated; goldens regenerated with a "Behaviour change" note and a
+three-scenario sweep (bots rarely starve Db2, so bands should not move).
+
 ## balance
 
 Balance calls stay on the main agent (CLAUDE.md "Working process"); a loop may pick these only on the main agent.
