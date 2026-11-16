@@ -43,5 +43,5 @@ npx tsx tools/ci/balanceGate.ts runs/ci-sweep.csv 5 [scenario]   # CI gate: bot 
 ## Where the rest of the tooling lives
 
 - `tools/` — the headless runners above plus the strategy bots (`bot.ts`, `strategies.ts`, `tune.ts`).
-- `tools/ci/` — the gates `.github/workflows/ci.yml` runs on a PR.
+- `tools/ci/` — the PR gates: `balanceGate` (`ci.yml`) and `behaviourNote` (`pr-gates.yml`).
 - [`docs/agents.md`](agents.md) — the full play CLI reference and the agent roles that play through it.

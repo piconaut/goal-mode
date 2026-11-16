@@ -788,7 +788,7 @@ Source: codebase survey (2026-11-16). `tools/args.ts` exports a 4-line `arg()`. 
 `inspect.ts` (`opt`), `compare.ts`, `sweepRemote.ts`, `testRemote.ts` and `play.ts`. Change: `arg`, `flag` and
 `num` in `tools/args.ts`, used everywhere except `tools/compareDump.ts`, which must stay self-contained (CL-17).
 Replace the `process.argv[1]?.endsWith('<file>.ts')` main-module guards (7 in `tools/`), which silently stop running
-when a file is renamed, with one `isMain(import.meta.url)` helper. Done when: every CLAUDE.md command line still
+when a file is renamed, with one `isMain(import.meta.url)` helper. Done when: every `docs/tools.md` command line still
 works as documented (spot-check each tool's `--help` or a short run), `bench --hash` prints the same hash, and the
 tool tests pass.
 

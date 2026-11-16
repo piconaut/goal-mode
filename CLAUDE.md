@@ -38,7 +38,7 @@ npm test               # Vitest (unit + realism + golden)
 npm run typecheck      # tsc --noEmit
 npm run check          # typecheck + tests
 npm run bench -- --hash [--scenario harbourline]   # 1 headless day, timing + end-state hash (must not change for pure optimisations)
-npm run play -- runs/a.json status | advance 3 | report WLM_SUMMARY   # headless play CLI (docs/agents.md)
+npm run play -- runs/a.json new 42 | status | start | advance 3 | report WLM_SUMMARY   # headless play CLI (docs/agents.md)
 npm run compare -- --base origin/dev   # behaviour diff vs base; exit 1 on any difference
 npm run sweep:remote -- --bots donothing,textbook --seeds 1-20   # bot sweep on GitHub Actions
 npm run test:remote    # the full suite on GitHub Actions, on committed HEAD
