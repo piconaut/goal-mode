@@ -22,6 +22,7 @@ function run(file: PlayFile, cmds: PlayCommand[]): PlayFile {
 // (a reload between commands is what the persistence tests already do).
 const startedCache = new Map<string, PlayFile>();
 function started(hours: number, scenario = 'midwest'): PlayFile {
+  if (hours < 1) throw new Error('started() is for played starts; build a start-only file directly');
   const key = `${scenario}:${hours}`;
   let base = startedCache.get(key);
   if (!base) {
@@ -63,7 +64,8 @@ describe('RT-09 trigger alias in play files', () => {
 
 describe('headless play interface', () => {
   it('a run file round-trips bit-identically, Infinity included, and keeps the command log', () => {
-    const a = started(1);
+    // Built in memory on purpose: this is the guard that the encode/decode behind `started()` is lossless.
+    const a = run(newPlayFile(7), [{ cmd: 'start' }, { cmd: 'advance', hours: 1 }]);
     const b = decodePlayFile(encodePlayFile(a));
     const next = (f: PlayFile) => encodePlayFile(run(f, [{ cmd: 'advance', hours: 1 }]));
     expect(next(b)).toBe(next(a));
