@@ -166,12 +166,19 @@ export function advance(run: RunState, baseScenario: Scenario, content: GameCont
   let r = run;
   for (let i = 0; i < ticks && r.phase === 'LIVE'; i++) {
     const tick = r.sim.tick;
-    const cmds: Command[] = [...r.pendingCommands];
+    // The hour's scheduled switch is issued before the player's queued commands (PR-01): a queued install is the
+    // later act, so it wins the tick and the editor's "Queued for next tick" is what the player gets. A scheduled
+    // switch that the queue overrides still shows in the log, so it never disappears silently.
     const switchTo = scheduledActivation(r);
+    const cmds: Command[] = [];
     if (switchTo) {
+      const name = switchTo.kind === 'ACTIVATE_POLICY' ? switchTo.definition.policyName : '';
       cmds.push(switchTo);
-      r = logLine(r, `V WLM,POLICY=${switchTo.kind === 'ACTIVATE_POLICY' ? switchTo.definition.policyName : ''} (scheduled)`);
+      const queued = [...r.pendingCommands].reverse().find((c) => c.kind === 'ACTIVATE_POLICY');
+      const overridden = queued !== undefined && queued.definition.policyName !== name;
+      r = logLine(r, `V WLM,POLICY=${name} (scheduled)${overridden ? `, then the queued install ${queued.definition.policyName}` : ''}`);
     }
+    cmds.push(...r.pendingCommands);
     let events = r.events;
     // Fixes applied earlier today whose forewarned card had not started yet: they end the card when it starts.
     const armed = new Map<string, string>();
