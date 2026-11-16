@@ -757,7 +757,7 @@ Change: move the coefficients to content with `// FICTIONAL:` or `// APPROX:` no
 unchanged and `npm run compare` shows no difference.
 
 ### CL-28 · One identity-memo helper for the sim's caches
-`list: cleanup · status: blocked: after CL-07 · priority: low · size: M · area: sim`
+`list: cleanup · status: ready · priority: low · size: M · area: sim`
 
 Source: codebase survey (2026-11-16). About a dozen `WeakMap` caches keyed by object identity are written in three
 different shapes:
