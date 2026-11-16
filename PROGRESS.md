@@ -697,7 +697,9 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   day whatever mechanisms they show, and a cause with no card (`new:`, `change:`, `none:`) only while the incidents
   overlap or follow within two hours (`GROUP_FOLLOW_HOURS`). A filed RCA is inherited only through the same card; a
   later incident of a filed no-card cause is listed as new, so an RCA filed at 10:00 cannot silently cover four at
-  13:00. The group's accepted set is the union of its members' and its primary the lead's: `groupAcceptedOf` (scoring,
+  13:00. No group crosses the 06:00 roll (an incident left open there is closed and the new day's continuation is
+  written up on its own), which the pre-merge review caught: without it a day-1 incident could point at yesterday's lead
+  and never be listed for an RCA. The group's accepted set is the union of its members' and its primary the lead's: `groupAcceptedOf` (scoring,
   the reply and the review) and `alsoAcceptedOf` (the "also accepted" lines) replace the per-incident score, whose
   `scoreRca` wrapper is gone; `rcaGroupOf` reads a group lead-first from any member's id. Cause prefixes (`CAUSE_PREFIX`,
   `fallbackCause`) live beside `truthCause` so writing and parsing cannot drift, and `groupIncident` is the one place a
