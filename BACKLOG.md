@@ -648,15 +648,6 @@ generate the code, or measure that a table loop stays within budget. No behaviou
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
 difference; per-tick timing before and after (`npm run bench`) in the PR.
 
-### CL-21 · Delete legacy save fallbacks: sim state
-`list: cleanup · status: ready · priority: low · size: S · area: sim`
-
-Source: codebase survey (2026-11-16), user decision 2026-11-16 as CL-20. Fields marked "absent in old saves" in
-`src/sim/measure/rmf.ts` (MVS BUSY, the absolute capping limit), `src/sim/wlm/runtime.ts` (the capping delay) and
-`src/sim/core/types.ts` (the zIIP-eligible backlog) become required and lose their guards. Fields that are also absent
-for another reason stay optional, e.g. `runtime.ts`'s "absent in a period's first tick". Done when: bench hashes are
-unchanged for all three scenarios, `npm run compare` shows no difference, and those comments are gone.
-
 ### CL-22 · Dead code and file-private exports
 `list: cleanup · status: ready · priority: low · size: S · area: game`
 

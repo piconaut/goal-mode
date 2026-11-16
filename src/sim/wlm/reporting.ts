@@ -229,7 +229,7 @@ export function reportedAccs(accs: Readonly<Record<string, ScpAcc>>, targets: Ci
     for (const f of ACC_FIELDS) if (m[f] !== undefined && a[f] !== undefined) own[f] = net(a[f], m[f]);
     out[k] = own;
     for (const r of targets.regions) {
-      const reg = (out[r.scKey] = { ...(out[r.scKey] ?? { completions: 0, rtSumSec: 0, buckets: [], using: 0, delay: 0, delayCpu: 0, delayZiip: 0, delayIo: 0, delayOther: 0, delayCap: 0, cpuEngines: 0 }) });
+      const reg = (out[r.scKey] = { ...(out[r.scKey] ?? { completions: 0, rtSumSec: 0, buckets: [], using: 0, delay: 0, delayCpu: 0, delayZiip: 0, delayIo: 0, delayOther: 0, delayCap: 0, delayStorage: 0, cpuEngines: 0 }) });
       for (const f of ACC_FIELDS) if (m[f] !== undefined) reg[f] = (reg[f] ?? 0) + m[f] * r.share;
     }
   }

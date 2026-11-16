@@ -232,12 +232,12 @@ export function planLpar(t: TickCtx, l: LparConfig): void {
   const hasZiip = img.hasZiips;
   const plexShare = rgSysplexShares(def, slicesBy, config.lpars, cpcOf, l.id, prev.backlog, prev.ziipBacklog);
   const cpShare = { entitlementEngines: poolEntitlement(cpc, config.lpars, l.id, 'CP') };
-  const capOf = combineCaps(resourceGroupCaps(def, all, cpShare, img.suPerCpuSec, plexShare, workloadById, prev.backlog, prev.ziipBacklog ?? {}, !hasZiip), discretionaryCaps(def, all, atOrFind(prev.wlm.systems, img.zosIdx, (s) => s.lparId === l.id)?.scps ?? []));
+  const capOf = combineCaps(resourceGroupCaps(def, all, cpShare, img.suPerCpuSec, plexShare, workloadById, prev.backlog, prev.ziipBacklog, !hasZiip), discretionaryCaps(def, all, atOrFind(prev.wlm.systems, img.zosIdx, (s) => s.lparId === l.id)?.scps ?? []));
   t.capOfBy[l.id] = capOf;
   let cp = 0;
   let zi = 0;
   for (const s of all) {
-    const demand = dispatchableDemand(s, prev.backlog, prev.ziipBacklog ?? {}, capOf, !hasZiip);
+    const demand = dispatchableDemand(s, prev.backlog, prev.ziipBacklog, capOf, !hasZiip);
     cp += demand.cp;
     zi += demand.zi;
   }

@@ -6,7 +6,7 @@ import { emptyScpTick, evaluateLpar, sliceSpec, type SliceSpec } from '../../src
 import { jobCpuDemand, jobShape, type JobDef } from '../../src/sim/subsys/batch';
 
 const IO = { RANDOM: { rtSec: 0.0008, delaySec: 0.0002 }, SEQ: { rtSec: 0.0006, delaySec: 0.0001 } };
-import { ACC_DECAY, decayInto, emptyAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
+import { ACC_DECAY, decayInto, emptyAcc, sumAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
 
 // RPT job shapes and prior pacing from the saved D5 22:23 CP-only trial.
 const savedJobs = [
@@ -697,13 +697,11 @@ describe('managedDelayFrac (docs/wlm-design.md §5.7)', () => {
     // A capped server's capping delay is its own: the other members' CPU delay still counts.
     const capped = decayInto(emptyAcc(), { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
     expect(managedDelayFrac(capped)).toBeCloseTo(1 / 10, 12);
-    // A save from before srvDelayCap: the server history is there without it. Taking the server's capping off twice
-    // (inside srvDelay and again from delayCap) would leave no managed delay at all (#296 review B3).
-    const { srvDelayCap: _gone, ...legacy } = capped;
-    expect(managedDelayFrac(legacy)).toBeCloseTo(1 / 10, 12);
-    const next = decayInto(legacy, { ...emptyScpTick('MIXED#1', 0xe0), usingCpu: 14, delayCpu: 1, delayCap: 10, srvUsing: 5, srvDelay: 10, srvDelayCap: 10 });
-    expect(next.srvDelayCap).toBeCloseTo(10 * (1 + ACC_DECAY), 12);
-    expect(managedDelayFrac(next)).toBeCloseTo(1 / 10, 12);
+    // The server's capping delay travels with its other samples through decay and sum: a producer that set srvUsing
+    // without it would stop subtracting capping from the managed delay (#296 B3).
+    expect(capped.srvDelayCap).toBeCloseTo(10, 12);
+    expect(decayInto(capped, { ...emptyScpTick('MIXED#1', 0xe0), srvUsing: 5, srvDelay: 10, srvDelayCap: 10 }).srvDelayCap).toBeCloseTo(10 * (1 + ACC_DECAY), 12);
+    expect(sumAcc([capped, capped]).srvDelayCap).toBeCloseTo(20, 12);
     // Only server regions: nothing left to manage.
     expect(managedDelayFrac(decayInto(emptyAcc(), { ...emptyScpTick('TOR#1', 0xe0), usingCpu: 1, delayCpu: 1, srvUsing: 1, srvDelay: 1, srvDelayCap: 0 }))).toBe(0);
   });
@@ -979,10 +977,11 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
     expect(fixableBottlenecks(acc(0.1, 0.05, 0.85))).toEqual([]);
     // Waits take no part: the share is of the managed delay, not of all samples.
     expect(fixableBottlenecks(acc(0.2, 0, 0.1, 10))).toEqual(['CPU']);
-    // Storage and queue delay are managed delays; an old save without them has storage inside `delay`.
-    expect(fixableBottlenecks({ ...acc(0.1, 0, 0), delay: 1, delayStorage: undefined, delayQueue: undefined })).toEqual([]);
-    expect(largestManagedDelay({ ...acc(0.1, 0, 0), delay: 1, delayStorage: undefined, delayQueue: undefined })).toBe('STORAGE');
     expect(fixableBottlenecks(acc(0, 0, 0))).toEqual([]);
+    // Storage and queue delay are managed delays of their own: the largest is found from the recorded component, not
+    // derived from the part of `delay` nothing else explains.
+    expect(largestManagedDelay({ ...acc(0.1, 0, 0), delay: 1, delayStorage: 1, delayQueue: 0 })).toBe('STORAGE');
+    expect(largestManagedDelay({ ...acc(0.1, 0, 0), delay: 1, delayStorage: 0, delayQueue: 1 })).toBe('QUEUE');
     // A decayed history (an idle period after 142 quiet ticks) holds its whole delay below any fixed floor: still IO.
     const idle = { ...emptyAcc(), using: 9.49e-11, delay: 8.55e-10, delayIo: 8.55e-10, delayStorage: 0, delayQueue: 0 };
     expect(managedDelayFrac(idle)).toBeGreaterThan(0.85);

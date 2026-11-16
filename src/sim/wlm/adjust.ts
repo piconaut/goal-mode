@@ -28,14 +28,11 @@ type DelayAcc = Pick<ScpState['acc'], 'delay' | 'delayCpu' | 'delayZiip' | 'dela
 
 /**
  * The managed delays of a period (docs/wlm-design.md §5.7; SG24-6472-03 p.61, 63–64: processor, paging and swap, MPL,
- * I/O). I/O is the part in velocity. An old save without `delayStorage` has it inside `delay`: what no other
- * component explains. APPROX: the samples of transaction-server regions are included here (the totals have no per-
- * component server split); the needs-help test (`managedDelayFrac`) leaves them out.
+ * I/O). I/O is the part in velocity. APPROX: the samples of transaction-server regions are included here (the totals
+ * have no per-component server split); the needs-help test (`managedDelayFrac`) leaves them out.
  */
 export function managedDelays(acc: DelayAcc): Record<Exclude<Bottleneck, 'NONE'>, number> {
-  const queue = acc.delayQueue ?? 0;
-  const storage = acc.delayStorage ?? Math.max(0, acc.delay - acc.delayCpu - acc.delayZiip - acc.delayIo - acc.delayCap - queue);
-  return { CPU: acc.delayCpu, ZIIP: acc.delayZiip, IO: Math.max(0, acc.delayIo - (acc.delayIoNoVel ?? 0)), STORAGE: storage, QUEUE: queue };
+  return { CPU: acc.delayCpu, ZIIP: acc.delayZiip, IO: Math.max(0, acc.delayIo - (acc.delayIoNoVel ?? 0)), STORAGE: acc.delayStorage, QUEUE: acc.delayQueue ?? 0 };
 }
 
 /** The bottlenecks a receiver's plans are built for, in order: CPU and zIIP by delay, largest first, each kept when it

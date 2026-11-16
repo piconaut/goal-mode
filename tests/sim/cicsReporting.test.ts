@@ -82,6 +82,8 @@ it('applies the same attribution to WLM accumulators for Monitor III', () => {
   expect(rep['ONL#1']!.moved).toBeUndefined();
   const total = (k: 'using' | 'delay' | 'cpuEngines') => Object.values(accs).reduce((a, x) => a + x[k], 0);
   for (const k of ['using', 'delay', 'cpuEngines'] as const) expect(Object.values(rep).reduce((a, x) => a + x[k], 0)).toBeCloseTo(total(k), 9);
+  // Every reported accumulator carries the storage delay, so summing them is safe (CL-21).
+  expect(Number.isFinite(sumAcc(Object.values(rep)).delayStorage)).toBe(true);
   expect(rep['REG1#1']!.using).toBeCloseTo(accs['REG1#1']!.using + (accs['ONL#1']!.moved!.usingCpu + accs['ONL#1']!.moved!.usingZiip + accs['ONL#1']!.moved!.usingIo) / 2, 9);
 });
 

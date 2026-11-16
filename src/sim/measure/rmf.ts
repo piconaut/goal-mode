@@ -128,8 +128,8 @@ export interface CpuRecord {
   /** Average physical CP engines dispatched for this LPAR. */
   physicalEngines: number;
   logicalBusyPct: number;
-  /** RMF MVS BUSY (absent in old saves): non-wait share of unparked online time, ready-but-undispatched included. */
-  mvsBusyPct?: number;
+  /** RMF MVS BUSY: non-wait share of unparked online time, ready-but-undispatched included. */
+  mvsBusyPct: number;
   overheadPct: number;
   cappedPct: number;
   /** Time WLM soft-capped the partition (Partition Data WLM%, RMF Report Analysis p.401). */
@@ -138,8 +138,8 @@ export interface CpuRecord {
   msuAvg: number;
   r4ha: number;
   definedCapacityMsu: number | null;
-  /** PR/SM absolute capping limit on the CP pool, in engines (absent in old saves). */
-  absoluteCapEngines?: number | null;
+  /** PR/SM absolute capping limit on the CP pool, in engines; null when the partition has none. */
+  absoluteCapEngines: number | null;
   ziipEngines: number;
   icfEngines: number;
 }
