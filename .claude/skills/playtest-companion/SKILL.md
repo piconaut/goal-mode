@@ -13,8 +13,9 @@ answer is either a gap in the sim or something new about the real platform. Both
 - **No spoilers.** Don't look up or say which events or flaws this seed has, or an incident's true cause, until
   the player has filed the RCA or asks for the answer. That includes `inspect` output that names an event's effect.
 - **Hints in order:** the report to look at → what to look for in it → the answer. One step per ask.
-- **Don't change the game they're playing.** Never republish the artifact and don't push model or game changes to
-  `dev` during the playtest unless asked. Investigation code goes in the scratchpad.
+- **Don't change the game they're playing.** Never republish the game artifact they play (the round's checklist
+  artifact is yours to edit, Setup step 4) and don't push model or game changes to `dev` during the playtest unless
+  asked. Investigation code goes in the scratchpad.
 - **Be careful with dev:** `git fetch` before comparing; use a worktree for the build they play.
 - **Realism claims:** check `docs/research.md` first, verify with the `zos-docs` skill when it matters, otherwise
   say "not verified".
