@@ -1021,21 +1021,6 @@ strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the 
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
 
-### CL-42 · Archive PROGRESS.md history
-`list: cleanup · status: ready · priority: high · size: M · area: tooling`
-
-Source: codebase survey (2026-11-16). PROGRESS.md is 1,176 lines (about 111k characters), and many sessions read it.
-Most of it is a log of finished work:
-- "Current status" (about lines 9–134) is dated entries for merged work;
-- "Tooling lessons" (about 641–692) holds per-PR sweep results with run links;
-- "Remaining work" (about 148–463) repeats docs/rca-design.md for the design directions.
-
-Change: keep one line per item from the last ten days in "Current status", plus "Active decisions and
-conventions", "Open questions" and the milestone table. Move the rest to `docs/archive/progress-2026-11.md` and
-replace the design directions with one-line links. Keep every heading that other files cite (grep `tools/`, `tests/`,
-`.claude/`, `.github/` and `docs/` for "PROGRESS" first). Done when: PROGRESS.md is under 450 lines, no cited
-heading or anchor is broken, and the archive is linked from its header.
-
 ### CL-43 · Player persona agents share one body
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 
