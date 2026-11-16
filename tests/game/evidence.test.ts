@@ -1,13 +1,12 @@
 import { EVIDENCE, PROOF } from '../../src/content/evidence';
-import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, judgeEvidence, judgeGroupEvidence, pinRelation, type EvidencePin } from '../../src/game/evidence';
 import { buildMon3 } from '../../src/game/mon3';
 import { advance, requestChange, submitRca } from '../../src/game/run';
 import type { Incident, RunState } from '../../src/game/types';
-import { midwestNoonRbank } from '../helpers/fixtureCache';
+import { midwestContent, midwestNoonRbank } from '../helpers/fixtureCache';
 
-const content = { ...MIDWEST_GAME, events: [] };
+const content = midwestContent;
 const HOUR = 360;
 let regressed: RunState;
 let hourKey: string;

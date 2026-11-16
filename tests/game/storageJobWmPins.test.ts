@@ -1,14 +1,13 @@
 import { beforeAll, describe, expect, it } from 'vitest';
-import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, judgeEvidence, pinRelation } from '../../src/game/evidence';
 import { advance } from '../../src/game/run';
 import type { Incident, Mechanism, RunState, Trigger } from '../../src/game/types';
-import { midwestNoonRbank } from '../helpers/fixtureCache';
+import { midwestContent, midwestNoonRbank } from '../helpers/fixtureCache';
 import { renderWlmSummary } from '../../src/sim/measure/reports';
 import type { WorkManagerSamples } from '../../src/sim/wlm/reporting';
 
-const content = { ...MIDWEST_GAME, events: [] };
+const content = midwestContent;
 const HOUR = 360;
 let regressed: RunState;
 let hourKey: string;

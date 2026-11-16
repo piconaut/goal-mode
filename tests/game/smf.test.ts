@@ -1,13 +1,12 @@
-import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { lsprCategory } from '../../src/content/smf';
 import { advance, newRun, startDay } from '../../src/game/run';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../../src/game/smf';
 import type { RunState } from '../../src/game/types';
-import { midwestNoon } from '../helpers/fixtureCache';
+import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 
-const content = { ...MIDWEST_GAME, events: [] };
+const content = midwestContent;
 const HOUR = 360;
 let noon: RunState;
 

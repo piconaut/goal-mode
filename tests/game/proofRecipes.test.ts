@@ -14,7 +14,6 @@ import {
   type ProofPredicate,
   type ProofRecipe,
 } from '../../src/content/evidence';
-import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { addPin, incidentSubjects, type EvidencePin } from '../../src/game/evidence';
 import { judgeProof, proofLines } from '../../src/game/proof';
@@ -23,12 +22,12 @@ import { advance, chooseDraft, startDay, submitRca } from '../../src/game/run';
 import { TICKS_PER_DAY } from '../../src/sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../../src/game/sla';
 import type { Incident, IncidentSubjects, Mechanism, RunState, Trigger } from '../../src/game/types';
-import { midwestNoon } from '../helpers/fixtureCache';
+import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { minPins } from '../helpers/proofPins';
 import { MIDWEST_EVENTS } from '../../src/content/events/midwest-events';
 import type { Command } from '../../src/sim/core/commands';
 
-const content = { ...MIDWEST_GAME, events: [] };
+const content = midwestContent;
 const HOUR = 360;
 let noon: RunState;
 /** The fixture state: `day2` with a class row that only the last interval carries, new work's (a day of report

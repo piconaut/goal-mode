@@ -1,12 +1,11 @@
-import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { buildMon3, explainWlmLog, type Mon3Row } from '../../src/game/mon3';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
-import { midwestNoon } from '../helpers/fixtureCache';
+import { midwestContent, midwestNoon } from '../helpers/fixtureCache';
 import { buildView } from '../../src/game/view';
 
-const content = { ...MIDWEST_GAME, events: [] };
+const content = midwestContent;
 let noon: RunState;
 
 beforeAll(() => {
