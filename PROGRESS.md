@@ -8,6 +8,13 @@ Completed implementation details, superseded decisions, playtest rounds, and exp
 
 ## Current status
 
+- **Codebase survey for refactors and cheaper tests (2026-11-16, direct user request, not a BACKLOG pick).** Five
+  read-only researchers covered sim, game/content, ui/worker/tools, test cost and docs/process; findings are filed as
+  BACKLOG `cleanup` entries CL-11 … CL-45. A local full `vitest run` (4 cores) took 234 s wall for 585 s of summed file
+  time; the slowest tests are the WT-06 ladder test (49 s, left alone by user decision), inspect B1 (45 s, CL-11),
+  realism CCIMP (23 s), golden (22 s) and what-if (21 s). Overlaps with existing entries are set as `after`
+  dependencies (PR-13, CL-07, CL-10, PR-19, PR-20); PT-18 is related to CL-17 but stays separate.
+
 - **Agent instructions pruned of incident notes (2026-11-14, direct user request, not a BACKLOG pick).** Skills and
   agents state each rule on its own; the PR or entry that prompted a rule (#107, #331, #333, #345, WT-12) stays in git
   history and this file, not in the instructions, so the rule lists don't grow with every incident. Report-format
@@ -462,6 +469,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Tutorial for simplified mode; Codex entries linked from each bundle
 
 ## Active decisions and conventions
+
+- Legacy save compatibility (user decision 2026-11-16): old browser saves and play files need not load. Delete the
+  fallbacks that exist only for them (CL-20, CL-21) and give saves a format version, so an older file fails with
+  one clear message rather than loading half-migrated.
+- The WT-06 ladder test (`tests/sim/wlm-realism.test.ts`, Midwest to D8 12:00, ~49 s) stays as it is for now (user
+  decision 2026-11-16), even though it is the slowest test; test-time work (CL-11 … CL-16) leaves it alone.
 
 - Realism checks (user request 2026-11-05): work and reviews touching z/OS behaviour or report content use the
   `zos-docs` skill and cite book + page (CLAUDE.md "Realism policy"; `pr-reviewer`/`realism-fixer` have the Skill tool;
