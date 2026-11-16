@@ -32,17 +32,20 @@ describe('WLM policy schedule', () => {
     expect(r.log.some((l) => l.includes('V WLM,POLICY=NIGHTPOL'))).toBe(true);
   }, 60_000);
 
-  it('a queued install at a scheduled hour wins the tick, and the log says the schedule was overridden', () => {
+  it('a queued install at a scheduled hour wins the tick, and the log names the switch it overrode', () => {
     let r = newRun(MIDWEST, content, 7);
     const base = r.sim.wlm.definition;
     r = ok(savePolicy(r, { ...base, policyName: 'NIGHTPOL' }));
     r = ok(setSchedule(r, [{ hour: 7, policyName: 'NIGHTPOL' }]));
     r = advance(startDay(r, content), MIDWEST, content, TICKS_PER_HOUR); // paused at 07:00, the scheduled hour
+    // The editor's promise is the queue's latest install; requestChange's live path is the same shape, but its 3 %
+    // seeded risk would make this test about the RNG rather than the tick's ordering.
     r = { ...r, pendingCommands: [{ kind: 'ACTIVATE_POLICY', definition: { ...base, policyName: 'QUEUED' } }] };
     expect(buildView(r, MIDWEST).plannedPolicy?.policyName).toBe('QUEUED');
     r = advance(r, MIDWEST, content, 1); // the 07:00 tick, where the schedule switches
     expect(r.sim.wlm.definition.policyName).toBe('QUEUED');
-    expect(r.log.some((l) => l.includes('V WLM,POLICY=NIGHTPOL (scheduled), then the queued install QUEUED'))).toBe(true);
+    expect(buildView(r, MIDWEST).plannedPolicy).toBeNull();
+    expect(r.log.some((l) => l.includes('V WLM,POLICY=NIGHTPOL (scheduled), then the queued activation QUEUED'))).toBe(true);
   }, 60_000);
 
   it('a change applied at day start is not replaced by a 06:00 schedule entry', () => {
@@ -53,8 +56,30 @@ describe('WLM policy schedule', () => {
     r = ok(requestChange(r, content, { label: 'DAYPOL', commands: [{ kind: 'ACTIVATE_POLICY', definition: { ...base, policyName: 'DAYPOL' } }] }));
     r = advance(startDay(r, content), MIDWEST, content, 1); // 06:00, the scheduled hour
     expect(r.sim.wlm.definition.policyName).toBe('DAYPOL');
-    expect(r.log.some((l) => l.includes('V WLM,POLICY=NIGHTPOL (scheduled), then the queued install DAYPOL'))).toBe(true);
+    expect(r.log.some((l) => l.includes('V WLM,POLICY=NIGHTPOL (scheduled), then the queued activation DAYPOL'))).toBe(true);
   });
+
+  it('logs the scheduled switch alone when the queue holds no other activation', () => {
+    const atScheduledHour = () => {
+      let r = newRun(MIDWEST, content, 7);
+      const base = r.sim.wlm.definition;
+      r = ok(savePolicy(r, { ...base, policyName: 'NIGHTPOL' }));
+      r = ok(setSchedule(r, [{ hour: 7, policyName: 'NIGHTPOL' }]));
+      return { r: advance(startDay(r, content), MIDWEST, content, TICKS_PER_HOUR), base };
+    };
+    // A queued non-policy command: the switch goes through and is not described as overridden.
+    const a = atScheduledHour();
+    let r = advance({ ...a.r, pendingCommands: [{ kind: 'SET_WEIGHT' as const, lparId: 'PROD1', pool: 'CP' as const, weight: 400 }] }, MIDWEST, content, 1);
+    expect(r.sim.wlm.definition.policyName).toBe('NIGHTPOL');
+    const line = r.log.find((l) => l.includes('V WLM,POLICY=NIGHTPOL (scheduled)'));
+    expect(line).toBeDefined();
+    expect(line).not.toContain('then the queued activation');
+    // A queued activation of the planned policy itself: the switch is redundant, so it is not called overridden.
+    const b = atScheduledHour();
+    r = advance({ ...b.r, pendingCommands: [{ kind: 'ACTIVATE_POLICY', definition: { ...b.base, policyName: 'NIGHTPOL' } }] }, MIDWEST, content, 1);
+    expect(r.sim.wlm.definition.policyName).toBe('NIGHTPOL');
+    expect(r.log.find((l) => l.includes('V WLM,POLICY=NIGHTPOL (scheduled)'))).not.toContain('then the queued activation');
+  }, 60_000);
 
   it('validates the schedule and protects scheduled policies', () => {
     let r = newRun(MIDWEST, content, 7);

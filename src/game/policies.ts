@@ -79,7 +79,7 @@ export function setSchedule(run: RunState, schedule: ScheduleEntry[]): Out {
 }
 
 /** Activation command due at this tick (on the hour), if the schedule has one and it differs from the active policy. */
-export function scheduledActivation(run: RunState): Command | null {
+export function scheduledActivation(run: RunState): Extract<Command, { kind: 'ACTIVATE_POLICY' }> | null {
   const book = run.policies;
   if (!book || book.schedule.length === 0 || run.sim.tick % TICKS_PER_HOUR !== 0) return null;
   const hour = Math.round(clockAt(run.sim.tick).hourOfDay) % 24;
