@@ -108,15 +108,36 @@ describe('lookup plan invalidation', () => {
       { kind: 'ABEND_JOB', critical: false },
       { kind: 'SET_MQ', workloadId: mqWl.id, maxDepthMsgs: 50_000 },
       { kind: 'SET_MLC_PRICE', mult: 1.1 },
+      { kind: 'SET_PRICING', tfp: { baselineMsuHours: {}, pricePerMsuHour: {}, overageFrac: 1.2 } },
     ];
     for (const cmd of cmds) {
-      const r = applyCommand(base, cmd);
-      // A refusal (no job to abend at this hour, say) leaves the state as it is, which is just as good here.
-      if (cmd.kind !== 'ABEND_JOB') expect(r.ok, r.message).toBe(true);
+      // Read the key objects before the command, and keep a copy of them: a command that edited one in place would
+      // leave the identity the same and pass a check made only afterwards.
       const was = keyObjects(base);
+      const snapshot = structuredClone(was);
+      const r = applyCommand(base, cmd);
+      // A refusal (no job to abend at this hour, say) leaves the state as it is, which is just as good here: what
+      // the command must not do is replace or edit one of the plan's key objects.
+      if (cmd.kind !== 'ABEND_JOB') expect(r.ok, r.message).toBe(true);
+      expect(keyObjects(base)).toEqual(snapshot);
       for (const [k, v] of Object.entries(keyObjects(r.state))) expect(v, `${cmd.kind} ${k}`).toBe(was[k as keyof typeof was]);
       expect(planOf(r.state)).toBe(planOf(base));
     }
+  });
+
+  it('RESTART_JOB restarts an abended job without replacing or editing a plan input', () => {
+    // A restart needs an abended job; the batch night is hours away at this tick, so mark the first job failed.
+    const first = base.batch.jobs[0]!;
+    const abended = { ...base, batch: { ...base.batch, jobs: [{ ...first, status: 'ABENDED' as const, abended: true }, ...base.batch.jobs.slice(1)] } };
+    const was = keyObjects(abended);
+    const snapshot = structuredClone(was);
+    const restarted = applyCommand(abended, { kind: 'RESTART_JOB', day: first.day, name: first.def.name });
+    expect(restarted.ok, restarted.message).toBe(true);
+    expect(restarted.state.batch.jobs[0]!.status).toBe('QUEUED');
+    // The batch is not a plan input: the objects the plan is keyed on are untouched, and the plan still stands.
+    expect(keyObjects(abended)).toEqual(snapshot);
+    for (const [k, v] of Object.entries(keyObjects(restarted.state))) expect(v, `RESTART_JOB ${k}`).toBe(was[k as keyof typeof was]);
+    expect(planOf(restarted.state)).toBe(planOf(abended));
   });
 
   it('is reused while nothing changes and rebuilt when routing moves', () => {

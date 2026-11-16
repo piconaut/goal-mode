@@ -290,6 +290,31 @@ and 43831168364, the first commit of this branch).
 start-state hooks, which is CL-12's disk-cached fixtures), not the runner. Packing is nearly saturated
 (264 s bound against 278 s observed, a ~5 % residual).
 
+## Results: plan lookups (CL-07, 2026-11-16)
+
+Measured before deciding whether to add classification results and period indices to `LparPlan`: self time, per
+function, summed over samples whose stack runs through `dispatchLpar` or `lparDemand`; esbuild bundle of
+`tools/bench.ts`, `node --cpu-prof`, 3 days, seed 42, this host:
+
+| Function | Harbourline | Midwest |
+|---|---:|---:|
+| `classifyJob` | 0.03 % | 0.09 % |
+| `classify` (the WLM classifier it calls) | 0.14 % | 0.02 % |
+| `scKeyAtService` | 0.04 % | 0.04 % |
+| `parseScKey` | 0.04 % | 0.06 % |
+| `goalInfo` (memoised ladder info) | 0.09 % | 0.21 % |
+| **Sum (listed functions)** | **0.34 %** | **0.41 %** |
+
+The listed functions are the ones the entry names; their own callees (the slice-key and period parsers, the classifier
+on a cache miss) add at most ~0.1 pp each. Even the broadest set stays under 1 %, so **no plan fields were added**: the
+lookups are far below the bar, and a bigger `LparPlan` would only add invalidation risk.
+
+What did land is the test gap: `tests/sim/plan.test.ts` runs `SET_PRICING` in its no-plan-input loop and `RESTART_JOB`
+in its own test on an abended job; neither replaces or edits a key object, and the loop now reads those objects before
+the command (with a copy) so an in-place edit fails. Bench hashes are unchanged by the doc/test change: Midwest
+`ff6e21b2171a2586`, Harbourline `ad8889b13fe355cd`, Revenue `59a35d5be8f3e367`; `npm run compare -- --base origin/dev`
+reports no differences.
+
 ## Reproduction
 
 ```sh
