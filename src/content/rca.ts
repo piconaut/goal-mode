@@ -1,4 +1,4 @@
-import type { Mechanism, Trigger } from '../game/types';
+import type { Mechanism, Trigger } from './types';
 
 // Plain-language RCA vocabulary (SPEC §10): what each mechanism and trigger option means, shown in the
 // RCA form. These describe the category, not which answer is right for an incident.

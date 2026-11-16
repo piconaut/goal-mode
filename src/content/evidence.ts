@@ -1,4 +1,4 @@
-import type { Mechanism, Trigger } from '../game/types';
+import type { Mechanism, Trigger } from './types';
 
 /** How a pinned value relates to the incident it is filed against (RT-12, docs/rca-design.md §4.6). A pin can only be
  * evidence for the relation its metric accepts: the hurt work's own delay is not another class's delay, and another

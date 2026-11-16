@@ -3,7 +3,7 @@
 // direct set (the card's `affects`: the workloads whose own demand or path it changes) or collateral to it (the work's
 // hosts, or its servers' hosts, meet the reach). A game rule for attribution; the sim does not read it.
 
-import type { Mechanism } from '../game/types';
+import type { Mechanism } from './types';
 
 export type FootprintResource =
   | 'CP' // general CP demand on the reach's images

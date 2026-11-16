@@ -1,4 +1,4 @@
-import type { Mechanism } from '../game/types';
+import type { Mechanism } from './types';
 
 // Morning hints (SPEC §11.2): point at the report and the question to ask, never the cause or the fix.
 // `{w}` is replaced by the hurt workload's id.
