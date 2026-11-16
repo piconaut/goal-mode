@@ -604,15 +604,6 @@ engines; the moved CICS parts with them) as reporting-only accumulator fields an
 state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
 restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.
 
-### CL-16 · Hints dating test plays two days
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). `tests/game/hints.test.ts` (`are dated for the next morning…`, 17 s) plays two
-full Midwest days to check the dates on hints and forewarnings. Change: check which assertions really need day 2,
-and whether a shorter start (CL-12's cache, or the earliest hour that sends a hint) covers the same dates; if not, say
-why in the PR and close the entry. Done when: the assertions are unchanged or justified as equivalent, and the
-timings are in the PR.
-
 ### CL-17 · One "advance N hours" loop for the worker and the tools
 `list: cleanup · status: blocked: after PR-13 · priority: high · size: M · area: game`
 
