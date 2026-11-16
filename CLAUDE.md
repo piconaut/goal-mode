@@ -29,7 +29,8 @@ keep SLAs green and software cost down while workload grows and events pile up.
 TypeScript (strict) · Vite · React + Zustand · uPlot · Vitest · sim in a Web Worker · Node
 headless runner for balancing. SPEC §15 has the stack plan.
 
-The everyday commands (every other script and tool, with its flags, is in [`docs/tools.md`](docs/tools.md)):
+Everyday commands (the full list, including every investigation and CI tool, is in
+[`docs/tools.md`](docs/tools.md)):
 ```
 npm install
 npm run dev            # Vite dev server
