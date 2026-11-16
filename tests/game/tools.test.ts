@@ -2,11 +2,20 @@ import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { MIDWEST } from '../../src/content/scenarios';
 import { INSIGHT } from '../../src/content/tools';
 import { advance, chooseDraft, newRun, startDay } from '../../src/game/run';
-import { buyTool, features, measurementCommands, noteReportOpened, setToolActive } from '../../src/game/tools';
+import { buyTool, features, measurementCommands, normalizeDefinition, noteReportOpened, setToolActive } from '../../src/game/tools';
 import type { RunState } from '../../src/game/types';
 
 const content = { ...MIDWEST_GAME, events: [] };
 const fresh = (insight = 0): RunState => ({ ...newRun(MIDWEST, content, 7), insight });
+
+describe('normalizeDefinition', () => {
+  it('fills a hand-edited policy period without durationSu with null, and leaves a complete one as is', () => {
+    const def = structuredClone(newRun(MIDWEST, content, 3).sim.wlm.definition);
+    expect(normalizeDefinition(def)).toBe(def);
+    delete (def.classes[0]!.periods[0] as { durationSu?: number | null }).durationSu;
+    expect(normalizeDefinition(def).classes[0]!.periods[0]!.durationSu).toBeNull();
+  });
+});
 
 describe('tool tree', () => {
   it('enforces Insight and prerequisites', () => {
