@@ -48,7 +48,8 @@ function imageInput(t: TickCtx, img: ImagePlan): ImageEvalInput {
   const server = topo.serverKey;
   let fresh: string[] | null = null;
   // A period's DP is carried by key, but a policy activation can change what the period is (PR-15): a period that is
-  // no longer goal-managed gets its fixed DP back, and a goal period whose carried DP is off the managed ladder (it was
+  // no longer goal-managed gets its fixed DP back (discretionary work runs below the managed range, 192–201; goal
+  // periods use 203–247: SG24-6472 p.66), and a goal period whose carried DP is off the managed ladder (it was
   // discretionary) is placed as new by its importance below. A server period and the periods it serves (the region
   // classes and the transactions inside those regions) keep following their holder: the sim dispatches a region's
   // transactions at the holder's DP (WT-09), so a discretionary transaction period does not become 196.

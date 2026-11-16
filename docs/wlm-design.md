@@ -533,7 +533,7 @@ a period seen for the first time: the level of the lowest period of its importan
   - a new server period is placed by its most important class.
 - **A policy edit.** DPs are carried by period key across an activation (the ladder belongs to the image, not the
   policy), so an activation reconciles what the edit changed: a period now defined as discretionary returns to the
-  fixed 196, and a period now goal-managed whose carried DP is off the managed ladder (it was discretionary) is
+  fixed 196 (real WLM runs discretionary work at 192–201, below the 203–247 goal range: [SG24-6472 p.66](https://www.redbooks.ibm.com/redbooks/pdfs/sg246472.pdf#page=66)), and a period now goal-managed whose carried DP is off the managed ladder (it was discretionary) is
   placed as new. A CICS transaction period keeps following its holder even when its own goal becomes discretionary —
   the one place a discretionary period does not run at 196, because the sim dispatches a region's transactions at the
   holder's DP (§5.8) — and a goal whose kind changes while staying managed keeps its level: placement depends on
