@@ -44,10 +44,13 @@ export function groupLead(incidents: readonly Incident[], candidate: CausedIncid
   const cause = candidate.truth.cause;
   const fallback = cause !== undefined && fallbackCause(cause);
   for (const lead of incidents) {
-    if (lead.rcaGroup !== undefined || !sameCause(lead, candidate)) continue;
+    if (lead.rcaGroup !== undefined) continue;
     // A filed fallback group is no longer the same episode (A13), so a later incident joins an unfiled one of it.
     if (fallback && lead.rca !== null) continue;
-    return lead;
+    // A fallback episode is as long as its group: a later incident that overlaps or follows any member joins it, not
+    // only one near the lead.
+    const joins = sameCause(lead, candidate) || (fallback && incidents.some((m) => m.rcaGroup === lead.id && m.truth.cause === cause && sameCause(m, candidate)));
+    if (joins) return lead;
   }
   return null;
 }

@@ -77,6 +77,20 @@ describe('grouping incidents by cause (RT-15)', () => {
     expect(sameCause(inc(1, 'MOBILE', none, { startTick: at(9), endTick: null }), startAt(20, at(21)))).toBe(true);
   });
 
+  it('a fallback episode runs as long as its group: a later incident near any member joins the lead', () => {
+    const none: IncidentTruth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY', cause: 'none:CPU:PROD1' };
+    const morning = inc(1, 'MOBILE', none, { startTick: at(9), endTick: at(10) });
+    // RBANK joined at 11:00 and is still open, so CARDAUTH at 14:00 overlaps the episode though it is four hours
+    // after MOBILE ended.
+    const rbank = inc(2, 'RBANK', none, { startTick: at(11), endTick: null, rcaGroup: 1 });
+    const cardauth = inc(3, 'CARDAUTH', none, { startTick: at(14), endTick: at(15) });
+    expect(sameCause(morning, cardauth)).toBe(false);
+    expect(groupLead([morning, rbank], cardauth)).toBe(morning);
+    // The member must share the cause: another cause's open incident does not stretch this one.
+    const other = { ...rbank, truth: { ...none, cause: 'none:CPU:PROD2' } };
+    expect(groupLead([morning, other], cardauth)).toBeNull();
+  });
+
   it('never groups across the 06:00 roll, where an open incident is closed and the new day needs its own RCA', () => {
     const none: IncidentTruth = { mechanism: 'CPU_PRIORITY', trigger: 'POLICY', cause: 'none:CPU:PROD1' };
     // Overlapping in time and the same cause: the only thing that separates them is the played day.
