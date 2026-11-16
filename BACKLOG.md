@@ -604,16 +604,6 @@ engines; the moved CICS parts with them) as reporting-only accumulator fields an
 state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
 restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.
 
-### CL-14 · One short determinism pair per scenario
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). Several files play the same run twice to check that it is deterministic:
-`tests/sim/harbourline.test.ts` (2 × 6 h), `multicpc` (2 × 3 h), `routing` (2 × 2 h), `tests/game/harbourline-pack`
-(2 × 3 h), `realism.test.ts:182` and `mon3Charts.test.ts:17`. The golden tests cover only Midwest. Change: keep one
-1-hour pair per scenario in `tests/sim/purity.test.ts` (or a new `determinism.test.ts`) with `SCENARIOS` as the loop,
-and drop the per-file pairs. First check that no other assertion reads the dropped runs' output. Done when: every
-scenario in `SCENARIOS` keeps a determinism check; `npm run check` is green; the timings are in the PR.
-
 ### CL-16 · Hints dating test plays two days
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 

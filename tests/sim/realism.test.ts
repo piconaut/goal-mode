@@ -188,18 +188,6 @@ describe('zIIP offload flaw F7', () => {
   });
 });
 
-describe('determinism', () => {
-  it('same seed gives identical state', () => {
-    let a = initState(11, MIDWEST);
-    let b = initState(11, MIDWEST);
-    for (let i = 0; i < 400; i++) {
-      a = step(a, [], MIDWEST);
-      b = step(b, [], MIDWEST);
-    }
-    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
-  });
-});
-
 describe('CF structure placement', () => {
   // Midday state once, then three placements for 30 minutes each.
   let base: SimState;
