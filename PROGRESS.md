@@ -10,7 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-16: PROGRESS history deleted (CL-42).
+- 2026-11-16: milestone #363 merged to `main`; release and preview artifacts rebuilt. PROGRESS history deleted (CL-42, #364).
 - 2026-11-15: codebase survey filed as BACKLOG `cleanup` CL-11 … CL-45 (#362).
 - 2026-11-15: RCA truth: RT-13 proof recipes (#357), RT-14 card footprints (#359), RT-15 grouping by cause (#361).
 - 2026-11-14: cross-report invariant suite, 43 identities per scenario (#347); RF-05 … RF-08 and CL-10 filed.
@@ -27,12 +27,13 @@ Recent work, one line each (details in the PRs and Git history):
   The 27-card event deck is complete; add events only if a playtest asks for them.
 - **Published builds** (republish on request):
   - **Release (main):** [artifact](https://claude.ai/artifact/GD8gCYCtcpRMvdT9JybCVv) (sharing is "anyone with the
-    link"), "GOAL MODE (release · main 0008a76)", rebuilt 2026-11-10 from `main` at `0008a76` (merge of #260).
+    link"), "GOAL MODE (release · main 4a3a590)", rebuilt 2026-11-16 from `main` at `4a3a590` (merge of #363).
   - **Preview (dev):** [artifact](https://claude.ai/artifact/MbFdETzQXwuj87CvtiQyNW) (private until shared),
-    "GOAL MODE (preview · dev a77884a)", built 2026-11-13 from `dev` at `a77884a` (#338).
+    "GOAL MODE (preview · dev 3da33f5)", built 2026-11-16 from `dev` at `3da33f5` (#364; the same game as the
+    release, since #364 changed docs only).
 - **Latest verified dev:** `71a0685` (#288); 83 test files / 913 tests pass (single-worker `vitest`, 2026-11-11).
-- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `1300e69`, 2026-11-10):** Midwest `bde6d147471ece9f`;
-  Harbourline `ec94548d8283d76c`; Revenue `fb563b38750d988f`. Host timings vary; use adjacent comparisons rather than
+- **Seed-42 one-day hashes (`npm run bench -- --hash`, dev `8501087`, 2026-11-16; unchanged at `3da33f5`):** Midwest
+  `ff6e21b2171a2586`; Harbourline `ad8889b13fe355cd`; Revenue `59a35d5be8f3e367`. Host timings vary; use adjacent comparisons rather than
   old absolute timings.
 - **Try it:** `npm run dev`; `npm run sim -- --days 2 --hourly --report 12 --detail ONLHI#1`.
   CLI reference: [docs/agents.md](docs/agents.md).
