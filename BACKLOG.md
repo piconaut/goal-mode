@@ -448,6 +448,17 @@ sysplex PI and keep the worse-of only for the "more important and missing its go
 shows the choice either way. Done when: SPEC §5.5.4, docs/wlm-design.md §5.5 and the `docs/research.md` sysplex-PI
 row agree with the code, and the test exists.
 
+### PR-22 · A replay that silently skips a `restart` passes its tests
+`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
+
+Source: [#368 review, N2](https://github.com/piconaut/goal-mode/pull/368) (2026-11-16, CL-11/PR-21). The
+restart-replay test in `tests/tools/inspect.test.ts` pins that the replay does not stop at the restarted job and
+counts the hours across it, but not that it *applied* the restart: replacing `replayTraces`' `restart` application
+with a skip still passes both tests, because the job is already abended so the stop rule cannot notice. Nothing
+else inspects the replay's final batch state either. Change: have `replayTraces` (or a thin wrapper the report can
+read) expose the abended set at the end of the replay, and assert in that test that the restarted job is gone from
+it. Done when: skipping the restart in the replay fails the test, with the mutation recorded in the PR.
+
 ## realism-fixes
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header

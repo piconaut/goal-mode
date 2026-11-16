@@ -323,20 +323,19 @@ describe('inspect … wlm-stats over a play file', () => {
 
 describe('inspect … wlm-stats stops where the play CLI stopped', () => {
   // Both tests read one played log: the 15 hours to the abend are the expensive part, so they are played once and
-  // each test replays the same file for its own claim. Played lazily, because the first test to run builds it.
+  // each test replays the same file for its own claim. Built in a hook, so a failure names the fixture rather than
+  // whichever test asked for it first.
   interface Played {
     /** The file where the CLI stopped at the abend (D1 21:00, 15 hours in). */
     atStop: PlayFile;
     /** The file after the restart and the three hours that followed. */
     final: PlayFile;
-    stopped: string;
     after: string;
     abended: string;
     stopTick: number;
   }
-  let played: Played | null = null;
+  let played!: Played;
   const playToAbend = (): Played => {
-    if (played) return played;
     let f = newPlayFile(7);
     const run = (c: Extract<PlayCommand, { cmd: 'start' | 'advance' | 'restart' | 'change' }>) => {
       const out = applyPlayCommand(f, c);
@@ -362,12 +361,15 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     run({ cmd: 'restart', name: abended });
     classA({ PROD1: 12, PROD2: 10 });
     const after = run({ cmd: 'advance', hours: 3 }).text;
-    played = { atStop, final: f, stopped, after, abended, stopTick };
-    return played;
+    return { atStop, final: f, after, abended, stopTick };
   };
 
+  beforeAll(() => {
+    played = playToAbend();
+  });
+
   it('does not invent hours after an ABEND cut the logged advance (B1)', () => {
-    const p = playToAbend();
+    const p = played;
     // One replay of where the CLI stopped: the range reports that the log, not the request, ended it, and the
     // counters cover the 15 hours the CLI actually played, not the 24 asked for.
     const stats = JSON.parse(wlmStatsText(encodePlayFile(p.atStop), { to: 'D2 06:00', json: true }));
@@ -384,12 +386,14 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
   }, 120_000);
 
   it('replays a log that restarts the abended job without stopping there (PR-21)', () => {
-    const p = playToAbend();
+    const p = played;
     // The replay crosses the restart: it reaches the CLI's own clock (midnight) rather than stopping at the 21:00
     // abend, and counts all 18 played hours across the restart. replayAdvance's stop rule around a restart has an
     // injected test (PR-12); this is the one that runs replayTraces over a log that restarts.
     const stats = JSON.parse(wlmStatsText(encodePlayFile(p.final), { to: 'D2 06:00', json: true }));
     expect(stats.range.to).toBe(clockText(p.final.run.sim.tick));
+    // All four images reported, so the count below cannot shrink with a lost system.
+    expect(stats.systems.map((x: { lparId: string }) => x.lparId).sort()).toEqual(['DEVT', 'PROD1', 'PROD2', 'SYSP']);
     expect(stats.total.adjustments).toBe(stats.systems.length * 18 * 360);
   }, 120_000);
 });
