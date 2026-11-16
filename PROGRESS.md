@@ -2,15 +2,24 @@
 
 Current status, milestones, active decisions and open questions for **GOAL MODE**. Update at the end of a working
 session. **Work ready to pick up is in [BACKLOG.md](BACKLOG.md)**, not here: nothing in this file is a task to start.
-Dated status notes, maintenance logs, per-entry sweeps and playtest rounds 1–2 up to 2026-11-16 are archived in
-[docs/archive/progress-2026-11.md](docs/archive/progress-2026-11.md) (reference only); older detail is in Git history:
-`git log -p -- PROGRESS.md`. The last full trackers are at `1d9d5a2:PROGRESS.md` and, before the backlog split,
-`3fd1762:PROGRESS.md`. Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/research.md).
+Completed implementation details, superseded decisions, playtest rounds, sweep rows and maintenance notes are in Git
+history: `git log -p -- PROGRESS.md`. The dated notes up to 2026-11-16 were deleted by the commit "PROGRESS: delete
+dated history (CL-42)"; read them at its parent. Older full trackers: `1d9d5a2:PROGRESS.md`, `3fd1762:PROGRESS.md`.
+Design: [SPEC.md](SPEC.md). Research and citations: [docs/research.md](docs/research.md).
 
 ## Current status
 
-- **Recent work:** the dated notes up to 2026-11-16 (cross-report invariant suite, WT-11 … WT-17, CL-09, PR-07,
-  the codebase survey) are in [docs/archive/progress-2026-11.md](docs/archive/progress-2026-11.md).
+Recent work, one line each (details in the PRs and Git history):
+- 2026-11-16: PROGRESS history deleted (CL-42).
+- 2026-11-15: codebase survey filed as BACKLOG `cleanup` CL-11 … CL-45 (#362).
+- 2026-11-15: RCA truth: RT-13 proof recipes (#357), RT-14 card footprints (#359), RT-15 grouping by cause (#361).
+- 2026-11-14: cross-report invariant suite, 43 identities per scenario (#347); RF-05 … RF-08 and CL-10 filed.
+- 2026-11-14: agent instructions pruned of incident notes (#355); PR-04 … PR-08, PR-10 UI fixes (#348–#352, #358).
+- 2026-11-13 … 11-14: RT-10 and RT-11 pin sources (#344, #345); RT-08 capping as share of the hour (#342); RT-25
+  validator (#341).
+- 2026-11-13: `wlm-truth` closed (WT-11, WT-12, WT-16, WT-17; WT-14 dropped); docs/wlm-design.md is the living design.
+- 2026-11-10 … 11-12: WLM policy adjustment rebuilt (WT-04 … WT-10, RF-03) and lookup plans (CL-05, CL-06); milestone #340.
+
 - **Phase:** M0–M7 and M8.9 complete; M8 follow-ups remain. The M9 hold was lifted on 2026-10-26;
   simplified mode is planned (requirements below).
 - **Held for the user:** the finance feedback loop, the full-day tutorial, M9. Proposals are under "Proposals awaiting
@@ -45,52 +54,17 @@ Dated status notes, maintenance logs, per-entry sweeps and playtest rounds 1–2
 
 ### Design directions (user, 2026-11-05; not scheduled, still being thought through; don't implement)
 
-**D1. Targeted fixes unlocked by a correct RCA.** Make analysis somewhat easier, but don't offer an event's quick
-operations fix until the player has pinned an accurate RCA. Example: Db2 retry storm. If an unannounced event has
-been running for a while, inbox hints arrive that start vague and get more specific (the app team notices many
-duplicate request IDs). "Turn on retry backoff in the API gateway" (`MOBILE_BACKOFF`) becomes available only once the
-player has pinned evidence that identifies a retry storm, such as a transaction rate metric. There may be a better
-form of proof that isn't in the game yet.
-Design draft: [docs/rca-design.md](docs/rca-design.md) §5 (unlock recipes per card, cost of a wrong diagnosis, hint
-ladder, open levers, bots), on top of the truth model it proposes in §4.
-Notes from discussion:
-- **Prerequisite: RCA judging must be trustworthy first. Reviewed 2026-11-09; what remains:** the whole chain was
-  audited (docs/rca-design.md §2 truth inventory for every card and flaw, §3 fourteen rule findings with repros). It
-  is not yet trustworthy, for structural reasons: one label where two answers are defensible, blame through
-  hand-written `affects` lists (collateral victims get `POLICY`/`GROWTH`), long-running cards and an alphabetical
-  tie-break, a capacity/priority test that takes the policy's importances as given, and evidence that does not
-  discriminate. The work is BACKLOG.md list `rca-truth` (user decisions on §7 Q1–Q5 and Q10, 2026-11-10, recorded
-  in docs/rca-design.md §7):
-  1. RT-00 … RT-15, committed: bot fix lookup by card (RT-00), bugs and missing pin sources, the counterfactual validator (RT-06), accepted answer
-     sets (RT-07), wording (RT-09), pin relations and proof recipes (RT-12, RT-13), card footprints (RT-14),
-     grouping by cause (RT-15);
-  2. a human playtest when RT-15 is merged. RT-14 waits for the `wlm-truth` core (WT-04 … WT-10; docs/archive/wlm-audit-2026-11.md
-     §7), so run `dev-loop rca-truth,wlm-truth`: `rca-truth` alone "finishes" at RT-14. WT-04, WT-08 and WT-09 are
-     gated for attended sessions (`blocked: user`), so the loop stops before them and "both lists finished" means
-     WT-04's turn;
-  3. RT-16 … RT-21 parked until that playtest (CPU split first; hour-of-day baselines deferred);
-  4. then D1 itself (Q8a/Q8b, Q9, PT-20): problem records (RT-22) and proof-gated fixes (RT-24). The retry storm,
-     D1's example, cannot be proven with any data the game has (it is identical to a campaign in every report);
-     RT-23 researches a discriminator and until then its fix stays ungated.
-- Proof should be a mechanism, not a single pin. A rate pin alone can't tell a retry storm from a demand surge. The
-  discriminator is END/S up at unchanged CPU per transaction, so the unlock might take a rate pin plus a pin that
-  rules out a surge, judged by the existing evidence matcher (`src/content/evidence.ts`).
-- Only the targeted, cheap fix is gated. Generic levers (capacity, capping, WLM changes, "protect and ride it out")
-  stay open, so the choice is between paying to mitigate now and diagnosing to get the cheap fix.
-- Wrong guesses need a cost (Trust/Insight per wrong draft, or limited drafts per incident), or players will
-  brute-force the RCA form to unlock fixes.
-- The hint ladder interacts with difficulty (Story/Normal/Hard hint clarity) and the Mentor perk. A clue source must
-  not be too generous (2026-11-05: no gateway retries view).
-- Bots apply fixes directly today, so textbook and expert bots would need to diagnose first, and the balance bands
-  would move.
-- When settled, this rewrites SPEC §10 (RCA mini-game) and parts of §9 (events); move it to its own design doc if it
-  grows.
+**D1. Targeted fixes unlocked by a correct RCA.** An event's cheap operations fix (e.g. `MOBILE_BACKOFF` for a Db2
+retry storm) is offered only once the player has pinned proof of the cause; generic levers stay open, and wrong
+guesses cost something. Design, notes and user decisions: [docs/rca-design.md](docs/rca-design.md) §5 (on the truth
+model of §4; Q1–Q10 in §7). Plan: BACKLOG list `rca-truth` RT-00 … RT-15 are done; next a human playtest; RT-16 …
+RT-21 are parked until it; then D1 itself (RT-22 problem records, RT-24 proof-gated fixes). The retry storm cannot
+yet be told from a demand surge in any report, so RT-23 researches a discriminator and its fix stays ungated.
 
 ### WLM policy adjustment audit (2026-11-10 … 2026-11-13): closed
 
 The `wlm-truth` list is closed. Living design: [docs/wlm-design.md](docs/wlm-design.md); history:
-[docs/archive/wlm-audit-2026-11.md](docs/archive/wlm-audit-2026-11.md); this file's summary of it is in
-[docs/archive/progress-2026-11.md](docs/archive/progress-2026-11.md).
+[docs/archive/wlm-audit-2026-11.md](docs/archive/wlm-audit-2026-11.md).
 
 ### Proposals awaiting the user (written 2026-11-03; not implemented)
 
@@ -159,44 +133,21 @@ level or a separate toggle.
 
 ### M8.2 Balance harness & targets
 
-- Per-entry sweeps for WT-04 … WT-12 (2026-11-11 … 2026-11-13) are in
-  [docs/archive/progress-2026-11.md](docs/archive/progress-2026-11.md).
-
-- WT-16 correction (2026-11-13, model `624c8bb`; remote, Normal, seeds 1–10, all three bots):
-
-  | Scenario | Do-nothing median day, before → after | Textbook median day, before → after | Expert victories |
-  |---|---:|---:|---:|
-  | [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43397599539) | 16.5 → 16.5 | 28 → 28 | 10 → 10 of 10 |
-  | [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43397617988) | 20.5 → 20.5 | 27 → 27 | 10 → 10 of 10 |
-  | [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43397637534) | 10 → 10.5 | 29 → 30 | 7 → 7 of 10 |
-
-  Before is WT-15's seeds 1–10 reference below. Every bot is inside its CI band; no coefficient was tuned and no
-  balance entry is needed. I13's separate stability criterion: S-1 … S-3 quick reversals change 1/0/4 → 1/0/8, short
-  of the 80 % reduction on Harbourline; accepted by the user on 2026-11-13 (#331, docs/archive/wlm-audit-2026-11.md §9.14).
-
 - Balance targets closed on 2026-10-27. Sweeps are regression checks: CI uses 5 seeds; use 20 to confirm
   balance-affecting changes. Textbook's day-27/28 batch wall is intended pressure, not a tuning target.
-- Latest sweep: Normal, seeds 1–10, `dev` `1300e69` (2026-11-10, remote, for the `dev` → `main` release #260):
-
-| Scenario | Do-nothing median day | Textbook median day | Expert victories |
-| --- | ---: | ---: | ---: |
-| Midwest | 16.5 | 27.5 | 10/10 |
-| Harbourline | 9.5 | 29 | 5/10 (seeds 1, 2, 4, 7, 9: trust) |
-| Revenue | 19 | 27 | 10/10 |
-
-- Changes against the previous reference (`b8d835e`, 2026-11-02: Midwest 16.5 / 27 / 8 of 10, Harbourline 9 / 29 /
-  6 of 10, Revenue 8.5 / 28 / 10 of 10):
-  - Revenue do-nothing 8.5 → 19 comes from #167 (2026-11-03, compliance analytics restoring G1's pressure; its own
-    sweep gave 19).
-  - Harbourline expert 6/10 → 5/10: seed 4 is a new trust loss on day 38 (Markets). This is awaiting the user's call;
-    Harbourline is gated against Midwest's bands for reference only.
-  - The earlier 6/10 was accepted by the user: seed 1 is marginal; seed 9 crowded Db2 out at equal dispatch priority
-    (at the time of that sweep), and the expert bot never moves Db2 above CICS.
-- Historical 20-seed Normal reference (2026-10-27): expert victories Midwest 19/20, Revenue 20/20,
-  Harbourline 16/20. These predate later model changes; full difficulty distributions are in Git history.
+- Latest reference, WT-16 correction (2026-11-13, model `624c8bb`; remote, Normal, seeds 1–10): do-nothing /
+  textbook median day, expert victories: [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43397599539)
+  16.5 / 28 / 10, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43397617988) 20.5 / 27 / 10,
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43397637534) 10.5 / 30 / 7. All inside the CI
+  bands. I13: S-1 … S-3 quick reversals 1/0/8, accepted by the user (2026-11-13, #331).
+- Latest 20-seed reference, WT-15 (2026-11-13, `dd52ba8`): [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208)
+  17 / 27 / 20 of 20, [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) 20.5 / 27 / 20 of 20,
+  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43381747813) 10 / 31 / 15 of 20 (expert losses
+  all trust; textbook wins 2 of 20).
 - Nonblocking follow-ups: Revenue textbook day-22 PREFILL losses; Hard Harbourline expert has no victories
   in the recorded sweep before its $1.6M budget; Story Midwest textbook reaches the batch wall, while
   Story Harbourline textbook wins 18/20. Recheck before drawing new tuning conclusions.
+- Per-entry sweeps (WT-04 … WT-16, RF-03) are in their PRs and Git history.
 
 ### M8.4 Content and M8.6 playtesting/progression
 
@@ -210,8 +161,7 @@ Roadmap, not scoped: these become BACKLOG.md entries once designed.
 
 ### Playtest rounds 1 and 2 (2026-11-03, 2026-11-04)
 
-Archived in [docs/archive/progress-2026-11.md](docs/archive/progress-2026-11.md); open findings are BACKLOG.md
-entries (source "playtest round 2").
+Details are in Git history; open findings are BACKLOG.md entries (source "playtest round 2").
 
 ### M8.7 Realism fixes
 
@@ -248,6 +198,11 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Active decisions and conventions
 
+- Batch response-time goals (user decision 2026-11-13, WT-12): a fair few installations use them despite IBM's
+  advice, and players may want to try them, so they stay supported and modelled; the editor warns, it doesn't forbid.
+- RCA baselines (user decision 2026-11-15, #359 review B1): `disturbed` stays footprint-based, so collateral work's
+  baseline also freezes while a card reaches it. If a playtest shows odd mechanisms first, the fallback is to freeze
+  collateral work only for narrow reaches, not sysplex-wide ones.
 - Legacy save compatibility (user decision 2026-11-16): old browser saves and play files need not load. Delete the
   fallbacks that exist only for them (CL-20, CL-21) and give saves a format version, so an older file fails with
   one clear message rather than loading half-migrated.
@@ -439,43 +394,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   scenarios). `play … mon3` now prints SYSWKM too; use the play CLI for report and Monitor III questions.
 - Keep new session updates brief: current status, changed decisions, unresolved work, and latest validation.
   Use commit/PR links for completed detail rather than rebuilding a chronological transcript.
-- WT-10 sweep (2026-11-12, remote, Normal, seeds 1–10, `44a35ab`; the PR head differs only in log text): Midwest
-  16.5 / 28 / 10 and Revenue 20.5 / 27 / 10, unchanged; Harbourline 9.5 / 30 / 7 (textbook 1 victory), from
-  10.5 / 30 / 7. All inside the CI bands ([Midwest](https://github.com/piconaut/goal-mode/actions/runs/43277480009),
-  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43277480117),
-  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43277481255)). Harbourline expert seed 7 is still lost
-  on day 39: its D29 is a saturated PRDA, not W7 (docs/archive/wlm-audit-2026-11.md §9.10).
-- RF-03 (2026-11-12): the skip clock is IBM's 3 cycles and is not kept or started while five or fewer goal periods
-  on the image miss their goals (Sinram, SHARE 2010 session 7777 p.11; APPROX per image). S-1 … S-3 assessed
-  254/777/1 429 → 1 317/5 701/5 751, projections 1 241/2 953/4 820 → 6 700/20 624/19 648, `BUDGET` 0/0/1 →
-  0/3/22; S-1/S-2 lose their clocks (1 162/3 701 → 0), S-3 keeps 552. Bench 9.41 → 10.76 s/day (+14 %).
-  Quick reversals rise 0/0/0 → 1/0/1 within two minutes (recorded in docs/archive/wlm-audit-2026-11.md §9.11; the affected
-  realism tests allow the measured donor-at-goal boundary). The clock expiry is the first tick it may be assessed
-  again (`now + 3 + 1`), so a rejection at tick 1 skips 2, 3 and 4; the review caught that `now + 3` skipped only
-  two. Sweep, remote Normal seeds 1–10:
-  [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43327916254) 16.5/28/10,
-  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43327920681) 20.5/27/10,
-  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43327924751) 9/30/8 (expert 7 → 8), all inside
-  their bands. Full suite 1 044/1 044 (`npm run test:remote`); goldens regenerated.
-- WT-09 sweep (2026-11-13, remote, Normal, seeds 1–10, `5595de1`; later commits change tests and docs only):
-  [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43362925863) 16.5/28/10 and
-  [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43362926036) 20.5/27/10, unchanged;
-  [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43362925676) 10/29/7 (textbook 1 victory), from
-  9/30/8. Expert loses seeds 1 (day 40), 2 and 7, as under WT-10. All inside the CI bands.
-- WT-15 closing sweep (2026-11-13, remote, Normal, **seeds 1–20**, `dev` `dd52ba8`, the sim WT-15 ships; its commits
-  change docs, Codex text and a test only). Do-nothing / textbook median day, expert victories:
-
-  | Scenario | Seeds 1–20 | Seeds 1–10 | Before WT-04 (`40b81dc`, seeds 1–10) |
-  | --- | --- | --- | --- |
-  | [Midwest](https://github.com/piconaut/goal-mode/actions/runs/43381673208) | 17 / 27 / 20 of 20 | 16.5 / 28 / 10 | 16.5 / 28 / 10 |
-  | [Revenue](https://github.com/piconaut/goal-mode/actions/runs/43381709546) | 20.5 / 27 / 20 of 20 | 20.5 / 27 / 10 | 19 / 27 / 10 |
-  | [Harbourline](https://github.com/piconaut/goal-mode/actions/runs/43381747813) | 10 / 31 / 15 of 20 | 10 / 29 / 7 | 9.5 / 29 / 5 |
-
-  Every bot is inside its CI band in all three; no median is out of band, so no `balance` entry. Seeds 1–10 equal
-  WT-09's sweep exactly (the #324 review fixes changed no golden). Harbourline expert loses seeds 1 (day 40), 2 (33),
-  7 (39), 15 (37) and 20 (38), all trust; textbook wins 2 of 20. Midwest do-nothing (17) is inside SPEC §16's day
-  12–18 design target. Against the 2026-10-27 20-seed reference (older model): expert Midwest 19 → 20, Revenue
-  20 → 20, Harbourline 16 → 15 of 20.
 - zos-docs searches (2026-11-12): map hits with `pdf_find.py --grep … --pages-only` before reading, never cut search
   output with `head`, read the section that owns the topic (hit page ±1) and search in the book's words as well as
   the user's. A WLM answer missed ieaw100 3.1 p.61 ("no goals for CICS ⇒ region velocity goals") because the
@@ -483,5 +401,4 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 
 ## Latest maintenance
 
-Short dated notes on recent work, newest first. Notes up to 2026-11-16 are in
-[docs/archive/progress-2026-11.md](docs/archive/progress-2026-11.md).
+Short dated notes on recent work, newest first. Older notes are in Git history.
