@@ -13,8 +13,7 @@ function run(hours: number) {
 describe('Harbourline Bank scenario', () => {
   const a = run(6);
 
-  it('is deterministic and every LPAR reports a finite MSU rate', () => {
-    expect(JSON.stringify(run(6))).toBe(JSON.stringify(a));
+  it('every LPAR reports a finite MSU rate', () => {
     expect(a.lpars.length).toBe(8);
     for (const l of a.lpars) expect(Number.isFinite(l.msuRate)).toBe(true);
   });

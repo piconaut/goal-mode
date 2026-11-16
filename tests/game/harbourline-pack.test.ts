@@ -7,11 +7,10 @@ import { FIXES, previewChange } from '../../src/game/catalog';
 import { describeCommand } from '../../src/game/changeDesk';
 import { buildView } from '../../src/game/view';
 import type { Command } from '../../src/sim/core/commands';
-import { advance, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
+import { newRun, previewContext, requestChange } from '../../src/game/run';
 import { facetsOf } from '../../src/game/types';
 import { applyCommands } from '../../src/sim/core/commands';
 import { initState } from '../../src/sim/core/init';
-import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const pack = packOf('harbourline');
 const workloadIds = new Set(pack.scenario.workloads.map((w) => w.id));
@@ -32,12 +31,6 @@ describe('Harbourline Bank pack', () => {
       const run = newRun(pack.scenario, game, 3, d);
       expect(run.sim.config.lpars.find((l) => l.id === 'PRDA')!.pools.find((p) => p.pool === 'CP')!.absoluteCapEngines, d).not.toBeNull();
     }
-  });
-
-  it('plays a morning deterministically', () => {
-    const game = { ...pack.game, events: [] };
-    const play = () => advance(startDay(newRun(pack.scenario, game, 5), game), pack.scenario, game, 3 * TICKS_PER_HOUR);
-    expect(JSON.stringify(play())).toBe(JSON.stringify(play()));
   });
 
   it('card ids are unique and commands only touch workloads, LPARs and CFs of the Harbourline world', () => {

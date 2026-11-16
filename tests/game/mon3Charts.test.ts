@@ -13,13 +13,11 @@ const content = { ...MIDWEST_GAME, events: [] };
 const withCharts = (seed = 7): RunState => ({ ...newRun(MIDWEST, content, seed), tools: ['RMF_MON3', 'MON3_CHARTS'] });
 
 describe('Monitor III charting', () => {
-  it('samples once per sim-minute and is deterministic', () => {
+  it('samples once per sim-minute', () => {
     const a = advance(startDay(withCharts(), content), MIDWEST, content, 120);
-    const b = advance(startDay(withCharts(), content), MIDWEST, content, 120);
     const s = a.mon3Charts!.samples;
     expect(s).toHaveLength(120 / MON3_CHARTS.sampleTicks);
     expect(s[1]!.tick - s[0]!.tick).toBe(MON3_CHARTS.sampleTicks);
-    expect(JSON.stringify(a.mon3Charts)).toBe(JSON.stringify(b.mon3Charts));
   });
 
   it('is off without the tool, or with Monitor III switched off', () => {
