@@ -65,7 +65,7 @@ describe('a policy activation reconciles carried DPs (PR-15)', () => {
     let s = played(book);
     expect(goalInfo(book, 'DDFBI#2')?.goal.kind).toBe('DISC');
     expect(dpOf(s, 'DDFBI#2')).toBe(196);
-    s = step(s, [policy(s, 'DDFBI', 1, { kind: 'VEL', velocity: 0.6 }, 2)], MIDWEST);
+    s = step(s, [policy(s, 'DDFBI', 1, { kind: 'VEL', velocity: 60 }, 2)], MIDWEST);
     // It shares its importance's level with DDFPRD#1 (also importance 2), not the bottom it would keep at 196.
     expect(dpOf(s, 'DDFBI#2')).toBe(dpOf(s, 'DDFPRD#1'));
     expect(dpOf(s, 'DDFBI#2')).toBeLessThan(dpOf(s, 'ONLHI#1')!);
