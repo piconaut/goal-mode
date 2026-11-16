@@ -10,6 +10,8 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-16: playtest round 3 (RCA truth and WLM) started on preview `3da33f5`; `playtest-companion` now publishes an
+  interactive checklist artifact per round ([round 3](https://claude.ai/artifact/4kPyWy6vcipRe76UwbVsA4)).
 - 2026-11-16: milestone #363 merged to `main`; release and preview artifacts rebuilt. PROGRESS history deleted (CL-42, #364).
 - 2026-11-15: codebase survey filed as BACKLOG `cleanup` CL-11 … CL-45 (#362).
 - 2026-11-15: RCA truth: RT-13 proof recipes (#357), RT-14 card footprints (#359), RT-15 grouping by cause (#361).
