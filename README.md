@@ -31,6 +31,11 @@ and the run is autosaved in the browser (IndexedDB).
 
 ## Develop
 
+New to the code? Play a day with `npm run dev`, then run `npm run check`. Read SPEC.md §0–2 (what the game is, then
+how a day works), [`CLAUDE.md`](CLAUDE.md) (layering, content and review rules) and
+[`BACKLOG.md`](BACKLOG.md) (the scoped work, by list); [`docs/tools.md`](docs/tools.md) lists every script and
+[`docs/agents.md`](docs/agents.md) the headless play CLI.
+
 ```
 npm test               # Vitest: unit, realism and golden tests
 npm run typecheck      # tsc --noEmit
@@ -55,8 +60,13 @@ the sim in a Web Worker; `tools/` holds the headless runners and strategy bots.
 - [`PROGRESS.md`](PROGRESS.md): milestones, decisions, balance results and open questions.
 - [`BACKLOG.md`](BACKLOG.md): scoped work ready to pick up, in named lists.
 - [`CLAUDE.md`](CLAUDE.md): architecture rules and conventions for contributors (human or AI).
-- [`docs/tools.md`](docs/tools.md): every npm script and headless tool, with its flags.
-- [`AGENTS.md`](AGENTS.md): Codex entry point; [`docs/codex.md`](docs/codex.md) explains native agent roles.
-- [`docs/agents.md`](docs/agents.md): the headless play CLI and the AI agents that play the game through it.
-- [`docs/wlm-design.md`](docs/wlm-design.md): WLM policy adjustment, real z/OS against the sim's model as built,
-  with its invariants, approximations and known gaps.
+- [`AGENTS.md`](AGENTS.md): Codex entry point.
+
+The rest of `docs/` is the long-form material: [`tools.md`](docs/tools.md) (every npm script and headless tool, with
+its flags), [`agents.md`](docs/agents.md) (the headless play CLI and the agent roles), [`codex.md`](docs/codex.md)
+(the Codex host's roles), [`wlm-design.md`](docs/wlm-design.md) (policy adjustment against real WLM, with invariants
+and gaps), [`rca-design.md`](docs/rca-design.md) (incident truth and RCA judging), [`research.md`](docs/research.md)
+(the IBM fact ledger with sources), [`playtest-checklist.md`](docs/playtest-checklist.md) (a human playtest
+script) and the dated performance analyses in [`headless-performance.md`](docs/headless-performance.md) and
+[`headless-performance-options.md`](docs/headless-performance-options.md); `archive/`, `audit-loops/` and
+`performance/` keep dated notes and measurements.

@@ -712,12 +712,3 @@ strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the 
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
 
-### CL-45 · README: where to start; SPEC §15 freshness
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). README.md's "Develop" section doesn't say what to read or in which order, and
-it doesn't link CLAUDE.md, BACKLOG.md or docs/agents.md. SPEC §15 still calls parts of the stack "planned", and
-describes `.claude/agents/` as "game-playing agent definitions", though it also holds the reviewers and fixers.
-Change: a short "Where to start" block in README.md (play `npm run dev`, `npm run check`, SPEC §0–1, BACKLOG.md,
-docs/tools.md and docs/agents.md, CLAUDE.md), a one-paragraph index of `docs/`, and SPEC §15 brought up to date.
-Done when: every doc in the index exists, and no "planned" wording remains in §15 for things that are built.

@@ -1815,8 +1815,8 @@ keyboard-first.
 
 ## 15. Technical architecture
 
-- **Language:** TypeScript (strict). **Build:** Vite. **UI:** React plus Zustand for UI state.
-  **Charts:** uPlot for dense time series (fast), plus lightweight SVG for small widgets.
+- **Language:** TypeScript (strict). **Build:** Vite. **UI:** React; state lives in hooks fed by the worker's
+  snapshot stream. **Charts:** lightweight SVG (no chart library).
   **Tests:** Vitest.
 - **Sim core runs in a Web Worker**; the UI receives a snapshot stream (per tick at ≤ 15 Hz,
   coalesced) and sends **commands**. Headless runner via Node for balancing.
@@ -1854,10 +1854,12 @@ tools/
   headless.ts          # run N days with a scripted/autopilot policy → text RMF reports (`npm run sim`)
   bot.ts, strategies.ts, sweep.ts   # strategy bots and balance sweeps
   bench.ts, compare.ts, lab.ts      # timing + hash, behaviour diff vs base, realism A/B lab
-  ci/                  # CI gates (balanceGate.ts, behaviourNote.ts)
+  ci/                  # CI gates (balanceGate.ts, behaviourNote.ts) and the remote sweep/test sharding and report tools
   play.ts              # text play interface for AI agents (PROGRESS M8.9)
-.claude/agents/        # game-playing agent definitions (PROGRESS M8.9)
-docs/agents.md         # how to run the agents
+.claude/agents/        # agent definitions: ten roles, players to reviewers and fixers (docs/codex.md)
+.claude/skills/        # agent skills: the dev, review-and-fix and audit loops; playtest, WLM and z/OS docs
+.codex/                # Codex host configuration (docs/codex.md)
+docs/                  # design notes, the research ledger, the playtest checklist (README "Documents")
 tests/
   sim/…                # unit + "realism" property tests
   golden/              # golden-run snapshots (seeded) to detect unintended model drift
