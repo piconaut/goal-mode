@@ -347,15 +347,6 @@ separated by their five clock skips still count as one existing episode. The rec
 30 checks over about five minutes, with one periodic log entry. Targeted inspect tests cover those distinctions,
 and `npm run compare` confirms unchanged sim/game behaviour, logs and reports.
 
-### PR-16 · `placeLateDp` can return MANAGED_MAX
-`list: pr-followups · status: ready · priority: low · size: S · area: sim`
-
-From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. `src/sim/wlm/runtime.ts` `placeLateDp` caps at `DP.MANAGED_MAX` (`Math.min(goal[down]! + 1, DP.MANAGED_MAX)`):
-`placeLateDp(BASEPOL, { 'STCMED#1': 246 }, 'STCHI#1')` is 247 for one interval, until the next canonical pass. It is
-the fallback for a key `dpOf` meets after `placeNewPeriods` (a region key not in `slices`). Cap at `MANAGED_MAX − 1`
-(join the top level). Done when: unit tests for `placeLateDp` and `placeNewPeriods` (neither has one), including
-this case.
-
 ### PR-17 · Invariant I15 is stated for every resource-group minimum but holds only for goal members
 `list: pr-followups · status: ready · priority: low · size: S · area: tooling`
 

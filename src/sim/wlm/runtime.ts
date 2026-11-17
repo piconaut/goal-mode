@@ -203,7 +203,9 @@ export function placeNewPeriods(
 
 /**
  * The DP of one new period once the tick's other DPs are in use, so nothing else may be renumbered: its level's DP,
- * or for a new level the free priority below the level above it (above the level below it on top). APPROX: with no
+ * or for a new level the free priority below the level above it (above the level below it on top). There is no free
+ * priority above the top level (MANAGED_MAX is kept free, docs/wlm-design.md §5.6), so a period placed above it joins
+ * the top level, sharing it with the less important period there until a policy move separates them. APPROX: with no
  * free priority there (two new levels in one gap in one tick) it shares the level below until the next move. A served
  * period takes its server period's DP.
  */
@@ -219,7 +221,8 @@ export function placeLateDp(def: ServiceDefinition, dps: Readonly<Record<string,
   const up = L[i - 1]?.[0];
   const down = L[i + 1]?.[0];
   if (up !== undefined) return Math.max(goal[up]! - 1, DP.MANAGED_MIN);
-  if (down !== undefined) return Math.min(goal[down]! + 1, DP.MANAGED_MAX);
+  // MANAGED_MAX stays free above the top level (I9): there the new period joins the top level instead.
+  if (down !== undefined) return Math.min(goal[down]! + 1, levelDp(0));
   return levelDp(0);
 }
 
