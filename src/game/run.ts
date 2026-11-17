@@ -23,7 +23,7 @@ import { deliverInquiries } from './inquiries';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
 import { emptyPolicyBook, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
-import { ARMED, failRisk, NO_TARGET, requestChange } from './run/changes';
+import { ARMED, failRisk, NO_TARGET, policyFailuresWithLaterToday, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
 import { armableEvents, drawEvents, endEventByFix, eventEndLog, eventStartLog, hasEventForFix, storyFor } from './run/events';
 import { accumulateHour, closeHour, newHour } from './run/hourly';
@@ -117,6 +117,9 @@ export function newRun(baseScenario: Scenario, content: GameContent, seed: numbe
   return storyFor(run, content, 0);
 }
 
+const FAILED_TAIL = ' Hours were spent; try again tomorrow.';
+const POLICY_RETRY_TAIL = ' Its edits go back to the pending policy (unless newer edits are pending or a later activation succeeds); activate to reschedule.';
+
 /** BRIEFING → LIVE: activate planned changes due today (with failure risk). */
 export function startDay(run: RunState, content: GameContent): RunState {
   if (run.phase !== 'BRIEFING') return run;
@@ -128,12 +131,12 @@ export function startDay(run: RunState, content: GameContent): RunState {
       const failed = streamRng(r.seed, 'activate', r.day, c.label, attempt).chance(failRisk(r));
       if (failed) {
         changes.push({ ...c, status: 'FAILED' });
-        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? ' Its edits go back to the pending policy (unless newer edits are pending or a later activation succeeds); activate to reschedule.' : '';
+        const policy = c.commands.some((x) => x.kind === 'ACTIVATE_POLICY') ? POLICY_RETRY_TAIL : '';
         r = msg(
           r,
           'Change board',
           `Change failed: ${c.label}`,
-          `Implementation backed out (risk was ${Math.round(failRisk(r) * 100)} %; tired teams and rushed changes fail more often). Hours were spent; try again tomorrow.${policy}`,
+          `Implementation backed out (risk was ${Math.round(failRisk(r) * 100)} %; tired teams and rushed changes fail more often).${FAILED_TAIL}${policy}`,
         );
         continue;
       }
@@ -153,6 +156,25 @@ export function startDay(run: RunState, content: GameContent): RunState {
     }
   }
   r = { ...r, changes, phase: 'LIVE', hour: newHour(r.sim.tick), mon3Charts: null };
+  // A failed policy activation followed by a later install today: the failure mail was written before the later
+  // change was known to succeed, so correct it. Only claim the edits are live when the later policy carries them.
+  const laterInstalls = policyFailuresWithLaterToday(r);
+  if (laterInstalls.length > 0) {
+    const todo = [...laterInstalls];
+    r = {
+      ...r,
+      inbox: r.inbox.map((m) => {
+        if (m.day !== r.day) return m;
+        const k = todo.findIndex((x) => m.subject === `Change failed: ${x.failed.label}` && m.body.includes(FAILED_TAIL + POLICY_RETRY_TAIL));
+        if (k < 0) return m;
+        const [hit] = todo.splice(k, 1);
+        const outcome = hit!.editsLive
+          ? ` Later activation ${hit!.laterName} went live with the edits this request made, so there is nothing to reschedule.`
+          : ` Later activation ${hit!.laterName} also went live today, but it did not carry this request's edits; activate to reschedule.`;
+        return { ...m, body: m.body.replace(FAILED_TAIL + POLICY_RETRY_TAIL, outcome) };
+      }),
+    };
+  }
   // Today's chart history starts at 06:00 and shows the planned changes just applied.
   if (chartsActive(r)) r = { ...r, mon3Charts: { ...emptyCharts(r), logSeen: run.log.length } };
   return r;
@@ -593,7 +615,7 @@ export { dryRunRefusal } from './run/changes';
 
 export { cancelChange } from './run/changes';
 
-export { failedPolicyToday } from './run/changes';
+export { failedPolicyToday, policyFailuresWithLaterToday } from './run/changes';
 
 export { wlmHidSlides } from './run/diagnostics';
 

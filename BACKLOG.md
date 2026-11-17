@@ -308,12 +308,6 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
-### PR-03 · A suppressed install failure is silent
-`list: pr-followups · status: ready · priority: low · size: S · area: game`
-
-From #180. When a later install succeeds after an earlier one failed at day start, the play CLI's day-start text and
-the mail don't say that the earlier install's edits went live through the later one. Done when: both say so.
-
 ### PR-09 · No automated test for the dialog lifecycle
 `list: pr-followups · status: ready · priority: low · size: M · area: ui`
 

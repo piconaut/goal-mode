@@ -227,6 +227,79 @@ function policyOf(change: PlannedChange): ServiceDefinition | null {
   return null;
 }
 
+/** Plain-data leaf paths where `after` differs from `before`; array positions are compared by index. */
+function changedLeaves(after: unknown, before: unknown, path = ''): [string, unknown][] {
+  if (sameValue(after, before)) return [];
+  const bothObjects = after !== null && before !== null && typeof after === 'object' && typeof before === 'object';
+  if (!bothObjects || Array.isArray(after) !== Array.isArray(before)) return [[path, after]];
+  if (Array.isArray(after) && Array.isArray(before)) {
+    const out: [string, unknown][] = [];
+    for (let i = 0; i < Math.max(after.length, before.length); i++) out.push(...changedLeaves(after[i], before[i], `${path}.${i}`));
+    return out;
+  }
+  const a = after as Record<string, unknown>, b = before as Record<string, unknown>;
+  const out: [string, unknown][] = [];
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) out.push(...changedLeaves(a[k], b[k], `${path}.${k}`));
+  return out;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  if (Array.isArray(a)) return a.length === (b as unknown[]).length && a.every((x, i) => sameValue(x, (b as unknown[])[i]));
+  const ao = a as Record<string, unknown>, bo = b as Record<string, unknown>;
+  const keys = Object.keys(ao);
+  return keys.length === Object.keys(bo).length && keys.every((k) => sameValue(ao[k], bo[k]));
+}
+
+function valueAt(root: unknown, path: string): unknown {
+  let cur = root;
+  for (const part of path.split('.').slice(1)) {
+    if (cur === null || typeof cur !== 'object') return undefined;
+    cur = (cur as Record<string, unknown>)[part];
+  }
+  return cur;
+}
+
+/** Whether `later` holds every value `failed` changes relative to the briefing's active policy: its edits are live. */
+function carriesEdits(base: ServiceDefinition, failed: ServiceDefinition, later: ServiceDefinition): boolean {
+  // The policy name is the activation's own name, not an edit; every activation has a new one.
+  return changedLeaves(failed, base)
+    .filter(([path]) => path !== '.policyName')
+    .every(([path, value]) => sameValue(valueAt(later, path), value));
+}
+
+export interface LaterPolicyToday {
+  failed: PlannedChange;
+  /** Name of the later activation that applied today. */
+  laterName: string;
+  /** Whether that policy carries every edit the failed request made (it was drafted on the failed request's policy). */
+  editsLive: boolean;
+}
+
+/** Every policy activation that failed at today's start while a later same-day activation applied. */
+export function policyFailuresWithLaterToday(run: RunState, base: ServiceDefinition = run.sim.wlm.definition): LaterPolicyToday[] {
+  const out: LaterPolicyToday[] = [];
+  for (let i = 0; i < run.changes.length; i++) {
+    const c = run.changes[i]!;
+    if (c.status !== 'FAILED' || c.activateDay !== run.day) continue;
+    const failedPolicy = policyOf(c);
+    if (!failedPolicy) continue;
+    // Several installs can apply; the last one is the policy in effect after the queued commands run.
+    let last: LaterPolicyToday | null = null;
+    for (let j = i + 1; j < run.changes.length; j++) {
+      const later = run.changes[j]!;
+      if (later.activateDay !== run.day || later.status !== 'APPLIED') continue;
+      const laterPolicy = policyOf(later);
+      if (!laterPolicy) continue;
+      last = { failed: c, laterName: laterPolicy.policyName, editsLive: carriesEdits(base, failedPolicy, laterPolicy) };
+    }
+    if (last) out.push(last);
+  }
+  return out;
+}
+
 /** Restore only the latest policy attempt today; an older failure must not replace a later success. */
 export function failedPolicyToday(run: RunState): ServiceDefinition | null {
   for (const c of [...run.changes].reverse()) {

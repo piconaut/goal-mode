@@ -63,6 +63,64 @@ describe('changes', () => {
     expect(failedPolicyToday({ ...r, changes: [{ ...first!, status: 'FAILED' }, { ...second!, status: 'APPLIED', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }] })?.policyName).toBe('FIRST');
   });
 
+  it("says a failed activation's edits went live through a later successful one", () => {
+    let r = newRun(MIDWEST, content, 43); // seed 43: the first activation fails at 06:00, the second succeeds
+    const first = structuredClone(r.sim.wlm.definition);
+    first.policyName = 'BASEPOL2';
+    first.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal = { kind: 'AVG', rtSec: 0.4 };
+    const second = structuredClone(first);
+    second.policyName = 'BASEPOL3';
+    second.classes.find((c) => c.id === 'ONLMED')!.periods[0]!.goal = { kind: 'AVG', rtSec: 0.6 };
+    r = requestChange(r, content, { label: 'Activate policy BASEPOL2', commands: [{ kind: 'ACTIVATE_POLICY', definition: first }] }).run;
+    r = requestChange(r, content, { label: 'Activate policy BASEPOL3', commands: [{ kind: 'ACTIVATE_POLICY', definition: second }] }).run;
+    const started = startDay(r, content);
+    expect(started.changes.map((c) => c.status)).toEqual(['FAILED', 'APPLIED']);
+    const mail = started.inbox.find((m) => m.subject === 'Change failed: Activate policy BASEPOL2')!;
+    expect(mail.body).toContain('Later activation BASEPOL3 went live with the edits this request made');
+    expect(mail.body).not.toContain('did not carry');
+  });
+
+  it('names the last install when several apply after a failure', () => {
+    let r = newRun(MIDWEST, content, 43);
+    const first = structuredClone(r.sim.wlm.definition);
+    first.policyName = 'BASEPOL2';
+    first.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal = { kind: 'AVG', rtSec: 0.4 };
+    const second = structuredClone(first);
+    second.policyName = 'BASEPOL3';
+    second.classes.find((c) => c.id === 'ONLMED')!.periods[0]!.goal = { kind: 'AVG', rtSec: 0.6 };
+    // A third install built from the active policy: it applies last and is the policy in effect.
+    const third = { ...structuredClone(r.sim.wlm.definition), policyName: 'BASEPOL4' };
+    third.classes.find((c) => c.id === 'TSO')!.periods[0]!.goal = { kind: 'AVG', rtSec: 3 };
+    for (const [name, definition] of [['BASEPOL2', first], ['BASEPOL3', second], ['BASEPOL4', third]] as const) {
+      r = requestChange(r, content, { label: `Activate policy ${name}`, commands: [{ kind: 'ACTIVATE_POLICY', definition }] }).run;
+    }
+    const started = startDay(r, content);
+    expect(started.changes.map((c) => c.status)).toEqual(['FAILED', 'APPLIED', 'APPLIED']);
+    const mail = started.inbox.find((m) => m.subject === 'Change failed: Activate policy BASEPOL2')!;
+    expect(mail.body).toContain('Later activation BASEPOL4');
+    expect(mail.body).toContain('did not carry this request');
+    expect(advance(started, MIDWEST, content, 1).sim.wlm.definition.policyName).toBe('BASEPOL4');
+  });
+
+  it('does not claim a later activation carries edits it does not have', () => {
+    let r = newRun(MIDWEST, content, 43);
+    const first = structuredClone(r.sim.wlm.definition);
+    first.policyName = 'BASEPOL2';
+    first.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal = { kind: 'AVG', rtSec: 0.4 };
+    // Built from the active policy, not from the failed request's planned one: ONLHI keeps its shipped goal.
+    const second = { ...structuredClone(r.sim.wlm.definition), policyName: 'BASEPOL3' };
+    r = requestChange(r, content, { label: 'Activate policy BASEPOL2', commands: [{ kind: 'ACTIVATE_POLICY', definition: first }] }).run;
+    r = requestChange(r, content, { label: 'Activate policy BASEPOL3', commands: [{ kind: 'ACTIVATE_POLICY', definition: second }] }).run;
+    const started = startDay(r, content);
+    expect(started.changes.map((c) => c.status)).toEqual(['FAILED', 'APPLIED']);
+    const mail = started.inbox.find((m) => m.subject === 'Change failed: Activate policy BASEPOL2')!;
+    expect(mail.body).toContain('did not carry this request');
+    expect(mail.body).not.toContain('went live with the edits');
+    // The shipped ONLHI goal, not the failed request's edit, is what the later install queued.
+    const active = advance(started, MIDWEST, content, 1).sim.wlm.definition;
+    expect(active.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal).not.toEqual({ kind: 'AVG', rtSec: 0.4 });
+  });
+
   it('hardware orders spend capex and arrive after their lead time', () => {
     const out = requestChange(fresh(), content, { label: 'zIIP', hardwareId: 'ADD_ZIIP' });
     expect(out.ok).toBe(true);
