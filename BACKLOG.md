@@ -573,15 +573,6 @@ selection into their own modules (`src/sim/wlm/adjust/`); move the trace types a
 selection in this function, so it goes first. Done when: bench hashes are unchanged; `npm run compare` shows no
 difference, `inspect wlm` traces included; `tests/sim/adjust.test.ts` passes unchanged.
 
-### CL-33 · Split `mon3.ts`
-`list: cleanup · status: ready · priority: low · size: M · area: game`
-
-Source: codebase survey (2026-11-16). `src/game/mon3.ts` (852 lines) holds 13 view interfaces (lines 23–235),
-`buildMon3`, the PROCU job and classification logic (about 512–645), the speed and exception sections, and
-`explainWlmLog`, a text formatter (about 734). Change: move-only split into `mon3/types.ts`, `mon3/procu.ts`,
-`mon3/explainWlmLog.ts` and the builder. Done when: the diff is moves and imports only, and `npm run compare` shows no
-difference, Monitor III views included.
-
 ### CL-35 · Split `inspect.ts` by subcommand
 `list: cleanup · status: blocked: after PR-20 · priority: low · size: M · area: tooling`
 
