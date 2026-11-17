@@ -909,6 +909,18 @@ describe('donor order (WT-07, docs/wlm-design.md §5.5)', () => {
     expect(donorOrder('R', 'CPU', { R: 242, HAPPY: 246, STRUGGLING: 244 }, info)).toEqual(['HAPPY', 'STRUGGLING']);
   });
 
+  it('two images: a donor must meet its goal locally and across the plex (the worse of the two)', () => {
+    // WLM Services p.138 makes the sysplex PI the primary criterion for selecting donors, but a donation is judged
+    // on this image's projection: with the plex PI alone, PLEX_GOOD (missing here, 1.4, but happy across the plex,
+    // 0.5) would be offered first, and on the one-day bench a donor ordered that way was raised back within two
+    // minutes (the RF-03 realism invariant, tests/sim/wlm-realism.test.ts). So a donor must be happy on both.
+    const info = { R: atRest(3, 2), PLEX_GOOD: atRest(5, 1.4, 0.5), LOCAL_GOOD: atRest(5, 0.8, 1.2) };
+    const dps = { R: 240, PLEX_GOOD: 246, LOCAL_GOOD: 242 };
+    expect(donorOrder('R', 'CPU', dps, info, all)).toEqual(['LOCAL_GOOD', 'PLEX_GOOD']);
+    // Still excluded as more important and missing its goal on either image: happy across the plex but missing here.
+    expect(donorOrder('R', 'CPU', { ...dps, IMPORTANT: 246 }, { ...info, IMPORTANT: atRest(1, 1.2, 0.8) }, all)).toEqual(['LOCAL_GOOD', 'PLEX_GOOD']);
+  });
+
   it('orders happy periods by the worse local/sysplex PI, ignoring importance and CPU size', () => {
     const info = { R: atRest(2, 2), A: atRest(1, .2, .8, .1), B: atRest(5, .6, .3, 2), C: atRest(3, .1, .9, 4) };
     expect(donorOrder('R', 'CPU', { R: 240, A: 246, B: 244, C: 242 }, info)).toEqual(['B', 'A', 'C']);

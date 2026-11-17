@@ -526,7 +526,7 @@ Modelled on SG24-7621 §3.12–3.15 and the WLM patents. Two kinds of PI, each w
 
 | PI | Computed from | Used for |
 |---|---|---|
-| management PI: local | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list, donor "happy" test, "missing its goal", resource-group minimum, discretionary capping |
+| management PI: local | this image's accumulator, without transaction-server regions' samples (`goalPi`) | receiver list (second), donor "happy" test (the worse of local and plex, §5.5.4 "Donor order"), "missing its goal", resource-group minimum, discretionary capping |
 | management PI: sysplex | all images' accumulators summed, then one PI (`sysplexPis`) | receiver list (first), "missing its goal", the WLM Activity log's `PI=` |
 | projected PI | the dispatcher model on the projection input (sustained demand, below), percentile goals through `projectedPercentilePi` (past 4.0 from the mean RT), velocity before the reporting ceiling of 99 (WT-16; existing 0.1% velocity floor retained): `base` at the current DPs, `after` at a trial's | every test a trial is judged on: receiver value, donor harm, net value |
 
@@ -628,10 +628,13 @@ for importance in 1..5:
   Ties use the period key; at most `donorsPerReceiver` (3) are tried. A happy more important donor still must pass
   CPU protection and the projected harm check. Discretionary work is below the managed ladder and cannot donate
   through a DP move. Sources: WLM Services p.138 and p.147, SG24-6472-03 (March 2008) p.59–60; resource use,
-  SG24-7621 p.105. APPROX: the worse local/sysplex PI, exponential use history, threshold and donor limit; a
-  period with no PI yet counts as missing its goal (last at its importance, never when more important; one rule,
-  `managementWorstPi`, also used below). The pool is holders: a server period (WT-09) is one donor for the CICS
-  classes it serves, judged by the worst of their PIs and the most important of them.
+  SG24-7621 p.105. APPROX: exponential use history, threshold and donor limit; a period with no PI yet counts as
+  missing its goal (last at its importance, never when more important; one rule, `managementWorstPi`, also used
+  below). Happiness takes the worse of the local and sysplex PI although IBM names the sysplex PI the primary
+  criterion: a donation is judged on this image's projection, and ordering on the plex PI alone let a locally
+  missing period donate and be raised back within two minutes (the RF-03 invariant, `tests/sim/wlm-realism.test.ts`;
+  PR-19, 2026-11-17). The pool is holders: a server period (WT-09) is one donor for the CICS classes it serves,
+  judged by the worst of their PIs and the most important of them.
 - **Missing goals are not passed.** A less important receiver never moves to or above more important work that is
   missing its goal (or has no PI yet) and uses at least `donorMinEngines` of processor, whatever the projection says: a period at the
   floor of the queueing model shows no further projected harm (the 1994 patent p.19, FIG. 8; Enrico slide 52;

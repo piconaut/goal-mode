@@ -498,6 +498,12 @@ donorOrder(r, b, L, info, C):
   return the first C.donorsPerReceiver
 ```
 
+**Why the worse of the two PIs.** WLM Services p.138 makes the sysplex PI the primary criterion for selecting
+receivers and donors, and the receiver list uses it first indeed. Donor happiness and order use the worse of the
+local and sysplex PI instead: a donation is judged on this image's projected harm, and with the plex PI alone a
+period that misses its goal here but meets it across the plex donates and is raised back within two minutes, which
+the RF-03 invariant forbids (`tests/sim/wlm-realism.test.ts`; PR-19, 2026-11-17).
+
 **The pool is holders.** A server period's entry (`holderDonorInfo`) combines the classes it serves:
 - **importance:** the most important of them;
 - **PI:** the worst of their PIs;
