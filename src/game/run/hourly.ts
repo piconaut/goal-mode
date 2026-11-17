@@ -124,7 +124,8 @@ function hourPeaks(r: RunState, h: HourAcc): CapacityDay {
   const busy = online && h.ticks > 0 ? (100 * h.cpcBusySum) / h.ticks : 0;
   // MSU demand: each CPC's hour-average busy share of its own installed CP capacity, so a capacity change moves
   // demand and limit together instead of changing the percentage alone, and a multi-CPC box does not average two
-  // different MSU ratings together.
+  // different MSU ratings together. Real RMF reads MSU consumption against CPC capacity in MSU/h the same way (RMF
+  // Report Analysis 3.1: CPC Capacity report p.96-97, CPC CAPACITY on the CPU Activity report p.391).
   const installedMsu = r.sim.config.cpcs.reduce((a, c) => a + msuPerCp(c) * c.engines.CP, 0);
   let demandMsu = 0;
   for (const c of r.sim.config.cpcs) demandMsu += (h.ticks > 0 ? (h.cpcBusyById[c.id] ?? 0) / h.ticks : 0) * c.engines.CP * msuPerCp(c);
