@@ -10,6 +10,8 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-17: `cleanup` list reviewed: CL-28/29/31/32/34/43 dropped, CL-27 and CL-36 narrowed, CL-10 moved to
+  `pr-followups` as PR-21, CL-44 unblocked (no scheduled task runs `pr-review-loop`).
 - 2026-11-16: round 3 finding: a starved Db2 only slows its dependents by a bounded factor (BACKLOG RF-09).
 - 2026-11-16: playtest round 3 (RCA truth and WLM) started on preview `3da33f5`; `playtest-companion` now publishes an
   interactive checklist artifact per round ([round 3](https://claude.ai/artifact/4kPyWy6vcipRe76UwbVsA4)).

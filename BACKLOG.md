@@ -427,6 +427,22 @@ sysplex PI and keep the worse-of only for the "more important and missing its go
 shows the choice either way. Done when: SPEC §5.5.4, docs/wlm-design.md §5.5 and the `docs/research.md` sysplex-PI
 row agree with the code, and the test exists.
 
+### PR-21 · Monitor III splits by the last tick's mix don't add up
+`list: pr-followups · status: ready · priority: low · size: M · area: game`
+
+Source: cross-report invariant suite (2026-11-14, #347; filed as CL-10, moved here 2026-11-17 because it changes
+Monitor III figures, which the cleanup list excludes; identities `mon3-sysplex-sum` and `mon3-delay-states`, left-out
+parts). WLM's smoothed accumulator keeps total Using and total CP time, so `row()` in `src/game/mon3.ts` splits them
+by the last tick's mix (APPROX, SPEC §17): zIIP and IIPCP engines, and the users using PROC and DEV. Two things then
+don't add up for the player: a sysplex row is split by the pooled mix, so it is not the sum of its systems' rows
+(Midwest seed 7, 06:30, DDFPRD#1 zIIP 0.06222 against 0.06225); and when the last tick had no using sample the users
+using PROC + DEV are 0 while USG % is not (DEVBAT#1 after its job ended: 0 users using, USG 30 %). PROCU and
+ENCLAVE inherit both. Change: keep the decayed components the views need (using CPU, zIIP and I/O; zIIP and IIPCP
+engines; the moved CICS parts with them) as reporting-only accumulator fields and read the split from them, dropping
+`LastSplit`. Not a model change: `npm run compare -- --base origin/dev --drop <new fields>` must show sim state, game
+state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
+restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.
+
 ## realism-fixes
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header
@@ -589,21 +605,6 @@ Cross-note: as BL-01, tune after WT-09 (docs/archive/wlm-audit-2026-11.md §6.2,
 
 ## cleanup
 
-### CL-10 · Monitor III splits by the last tick's mix don't add up
-`list: cleanup · status: ready · priority: low · size: M · area: game`
-
-Source: cross-report invariant suite (2026-11-14; identities `mon3-sysplex-sum` and `mon3-delay-states`, left-out
-parts). WLM's smoothed accumulator keeps total Using and total CP time, so `row()` in `src/game/mon3.ts` splits them
-by the last tick's mix (APPROX, SPEC §17): zIIP and IIPCP engines, and the users using PROC and DEV. Two things then
-don't add up for the player: a sysplex row is split by the pooled mix, so it is not the sum of its systems' rows
-(Midwest seed 7, 06:30, DDFPRD#1 zIIP 0.06222 against 0.06225); and when the last tick had no using sample the users
-using PROC + DEV are 0 while USG % is not (DEVBAT#1 after its job ended: 0 users using, USG 30 %). PROCU and
-ENCLAVE inherit both. Change: keep the decayed components the views need (using CPU, zIIP and I/O; zIIP and IIPCP
-engines; the moved CICS parts with them) as reporting-only accumulator fields and read the split from them, dropping
-`LastSplit`. Not a model change: `npm run compare -- --base origin/dev --drop <new fields>` must show sim state, game
-state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
-restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.
-
 ### CL-17 · One "advance N hours" loop for the worker and the tools
 `list: cleanup · status: blocked: after PR-13 · priority: high · size: M · area: game`
 
@@ -637,12 +638,12 @@ validation or wording that this resolves in the PR, and say which side was kept.
 either adapter; `npm run compare` differs only in the result texts listed in the PR; the browser and CLI tests pass.
 
 ### CL-19 · One field table for the service-class accumulators
-`list: cleanup · status: blocked: after CL-10 · priority: high · size: M · area: sim`
+`list: cleanup · status: blocked: after PR-21 · priority: high · size: M · area: sim`
 
 Source: codebase survey (2026-11-16). The fields of the per-period accumulator are listed by hand in four places,
 each with the same optional-field quirks (`delayQueue`, `usingIoNoVel`, `srvUsing`, `workManager`):
 `addScp` and `mergeAcc` in `src/sim/measure/rmf.ts`, `decayInto` and `addAccInto`/`sumAcc` in
-`src/sim/wlm/runtime.ts`. A new report field needs four edits in lockstep (CL-10 adds several). Change: drive all four
+`src/sim/wlm/runtime.ts`. A new report field needs four edits in lockstep (PR-21 adds several). Change: drive all four
 from one field-spec table (additive, optional, decayed). `addScp` runs every tick and is written without spreads:
 generate the code, or measure that a table loop stays within budget. No behaviour change; label
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
@@ -655,7 +656,7 @@ Source: codebase survey (2026-11-16). Zero-padded clock text is built in `src/si
 `src/sim/core/tick/helpers.ts` (`instanceClock`), `src/sim/measure/reports.ts` (three places; its local `pad` pads
 with spaces), `tools/playCore.ts` (`clockText`), `src/ui/App.tsx` (`hhmm`), and by slicing `formatClock(…)` in
 `src/ui/Mon3Charts.tsx` and `src/ui/Monitor.tsx`. `src/game/view.ts` and `planner.ts` import `instanceClock` from
-`sim/core/step`. Change: `pad2`, `hhmm` and `instanceClock` live in `src/sim/core/clock.ts` and every copy uses them.
+`sim/core/step`; it moves out of `tick/helpers.ts`. Change: `pad2`, `hhmm` and `instanceClock` live in `src/sim/core/clock.ts` and every copy uses them.
 Rename the reports `pad` to `padRight` (or similar), since it is not the same thing. Done when: `npm run compare`
 shows no difference, RMF report text included.
 
@@ -672,40 +673,17 @@ basepol. Done when: the Midwest base policy is unchanged (`npm run compare`; ben
 
 Source: codebase survey (2026-11-16). CLAUDE.md rule 3 puts coefficients in content, but these sit in sim code:
 - `MOSTLY_WAITING_FRAC` (`src/sim/wlm/adjust.ts`) and `MAX_QUEUE_RATIO` (`src/sim/wlm/eval/results.ts`);
-- `DEFAULT_EFF_RATIO`, `WLM_LOG_MAX` and `RMF_KEEP` (`src/sim/core/tick/ctx.ts`), and `MAX_TEMPLATE_SETS`
-  (`src/sim/workload/slices.ts`);
+- `DEFAULT_EFF_RATIO` (`src/sim/core/tick/ctx.ts`);
 - `MAX_RHO = 0.97` in `src/sim/io/dasd.ts`, beside another exported `MAX_RHO = 0.995` in `src/sim/zos/erlang.ts` with a
   different meaning;
 - the bare `% 30` (`adjust.ts`, `tick/control.ts`), which repeats `CRITICAL_PROJECTION_EVERY`'s intent, and `% 360`
   (`tick/control.ts`).
 
+Not in scope: `WLM_LOG_MAX`, `RMF_KEEP` (`tick/ctx.ts`) and `MAX_TEMPLATE_SETS` (`slices.ts`) are history and
+cache limits, not model coefficients, so they stay in sim (user decision 2026-11-17).
 Change: move the coefficients to content with `// FICTIONAL:` or `// APPROX:` notes. Rename the two `MAX_RHO`s
 (e.g. `DASD_MAX_RHO`, `QUEUE_MAX_RHO`). Name the literals. Keep every value as it is. Done when: bench hashes are
 unchanged and `npm run compare` shows no difference.
-
-### CL-28 · One identity-memo helper for the sim's caches
-`list: cleanup · status: ready · priority: low · size: M · area: sim`
-
-Source: codebase survey (2026-11-16). About a dozen `WeakMap` caches keyed by object identity are written in three
-different shapes:
-- `src/sim/core/tick/helpers.ts`: `jobClassCache`, `byIdCache`, `workloadScope`/`wlCache` and `asCache`;
-- `src/sim/core/tick/ctx.ts` (`usesDb2Cache`);
-- `src/sim/core/tick/plan.ts`'s nested cache;
-- `src/sim/hw/pools.ts`, `src/sim/wlm/classify.ts` and `src/sim/wlm/runtime.ts`;
-- `src/sim/workload/slices.ts` (four).
-
-Change: one `memoByIdentity` helper (single key and nested keys) in `src/sim/core`, used by all of them. Keep the
-semantics exactly: the cache is keyed by identity and never by value. Label `perf`. Done when: bench hashes are
-unchanged, `npm run compare` shows no difference, and the per-tick timing before and after is in the PR.
-
-### CL-29 · Split `tick/helpers.ts` by concern
-`list: cleanup · status: ready · priority: low · size: S · area: sim`
-
-Source: codebase survey (2026-11-16). `src/sim/core/tick/helpers.ts` (545 lines) holds job classification, swap-out,
-CICS routing (`updateRouting`, `regionStat`, `routeCandidate`, `cicsRegions`, `cicsHonorPriority`), workload and
-address-space scoping, and resource-group and discretionary caps. Change: move-only split into `tick/routing.ts`,
-`tick/scope.ts` and `tick/resourceGroups.ts`, with no logic change; `instanceClock` goes to clock.ts in CL-25. Done
-when: bench hashes are unchanged, and the diff is moves and imports only.
 
 ### CL-30 · Split `policyAdjust`
 `list: cleanup · status: blocked: after PR-19 · priority: low · size: L · area: sim`
@@ -718,33 +696,6 @@ selection into their own modules (`src/sim/wlm/adjust/`); move the trace types a
 selection in this function, so it goes first. Done when: bench hashes are unchanged; `npm run compare` shows no
 difference, `inspect wlm` traces included; `tests/sim/adjust.test.ts` passes unchanged.
 
-### CL-31 · Split `advance()` in `game/run.ts`
-`list: cleanup · status: ready · priority: low · size: M · area: game`
-
-Source: codebase survey (2026-11-16). `advance` in `src/game/run.ts` is about 125 lines (163–287): the tick loop,
-with scheduled policy activation and event start and end (armed fixes included) written inline. It calls `closeHour`
-(already in `run/hourly.ts`) and `endDay`, which sits beside it with `batchMissIncident` and `logConnectFailures`
-(about 290–470). Change: move event activation into `src/game/run/events.ts`, and day close (`endDay`,
-`batchMissIncident`) into its own `src/game/run/` module, leaving `advance` as the loop that calls them. Fold the 16
-one-line re-exports at the file's end (lines 570–600) into grouped `export { … } from` statements. No logic change. Done when: `npm run compare` shows no difference, and the goldens
-and `tests/game/run.test.ts` pass unchanged.
-
-### CL-32 · One home for the RCA judging modules
-`list: cleanup · status: blocked: design · priority: low · size: L · area: game`
-
-Source: codebase survey (2026-11-16). RCA judging is spread across modules whose roles blur:
-- `src/game/sla.ts` (hour attainment, but also mechanism attribution, card qualification, the batch-miss logic and
-  accepted-answer scoring);
-- `rcaTruth.ts`, `rcaExplain.ts`, `proof.ts` and `evidence.ts` (which imports `buildMon3` and `BATCH_INCIDENT` from
-  sla);
-- `footprint.ts`, `counterfactual.ts` and `run/rca.ts`.
-
-A scoring change touches five or six files. Proposal: a `src/game/rca/` folder with truth (the accepted-answer
-rules from sla.ts, rcaTruth.ts and rcaExplain.ts), attribution (card qualification), evidence, proof and footprint;
-`sla.ts` keeps attainment and baselines; `counterfactual.ts` stays a separate offline tool. Blocked on design: the
-target map needs the user's or main agent's agreement, and the move should wait for a quiet spell in `rca-truth`
-(RT-16 … RT-27 edit these files), so it doesn't conflict with every open RT PR.
-
 ### CL-33 · Split `mon3.ts`
 `list: cleanup · status: ready · priority: low · size: M · area: game`
 
@@ -754,14 +705,6 @@ Source: codebase survey (2026-11-16). `src/game/mon3.ts` (852 lines) holds 13 vi
 `mon3/explainWlmLog.ts` and the builder. Done when: the diff is moves and imports only, and `npm run compare` shows no
 difference, Monitor III views included.
 
-### CL-34 · Split `playCore.ts`: commands and text
-`list: cleanup · status: blocked: after CL-18 · priority: low · size: M · area: tooling`
-
-Source: codebase survey (2026-11-16). `tools/playCore.ts` (751 lines) mixes the command layer (lines about 118–340)
-with text renderers: status, mon3, policy and catalog (about 375–600), and finance, capacity and batch (about
-648–751). Once CL-18 makes the command part thin, move the renderers to `tools/playText.ts`. Done when: the diff is
-moves and imports only, and the play tests pass unchanged.
-
 ### CL-35 · Split `inspect.ts` by subcommand
 `list: cleanup · status: blocked: after PR-20 · priority: low · size: M · area: tooling`
 
@@ -770,14 +713,14 @@ subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}
 edits `countSystem` in this file, so it goes first. Done when: the diff is moves and imports only, and
 `tests/tools/inspect.test.ts` passes unchanged.
 
-### CL-36 · Worker: message handlers as a typed table
-`list: cleanup · status: blocked: after CL-18 · priority: low · size: M · area: ui`
+### CL-36 · Worker: an exhaustive message switch
+`list: cleanup · status: ready · priority: low · size: S · area: ui`
 
-Source: codebase survey (2026-11-16). `src/worker/game.worker.ts` is one `onmessage` switch with 47 cases, mixing game
-commands, `GET_*` view queries, the clock (`setInterval`, `speed`, `carry`, `speedBeforeAuto`) and storage. Change:
-after CL-18, a `Record<ToWorker['type'], handler>` table (exhaustive by type, from `src/worker/protocol.ts`), split
-into commands, queries, clock and storage modules. Done when: typecheck proves every message type is handled, and
-the UI tests and a manual or `tools/screenshot.mjs` smoke run pass.
+Source: codebase survey (2026-11-16), narrowed 2026-11-17 (user decision: no handler table or module split).
+The `onmessage` switch in `src/worker/game.worker.ts` (47 cases) has no `default`, so a message type added to
+`ToWorker` in `src/worker/protocol.ts` without a case compiles silently. Change: a `default` branch that assigns `m`
+to `never` (an `assertNever` helper), so typecheck fails on an unhandled type. Done when: typecheck passes, and
+removing one case makes it fail.
 
 ### CL-37 · Service class goal helpers out of the editor component
 `list: cleanup · status: ready · priority: low · size: S · area: ui`
@@ -823,25 +766,16 @@ strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the 
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
 
-### CL-43 · Player persona agents share one body
+### CL-44 · Retire `pr-review-loop`
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 
-Source: codebase survey (2026-11-16). The four personas `.claude/agents/goal-mode-{player,cost-cutter,
-cautious-operator,firefighter}.md` are 57–64 lines each, and 55 of those lines are the same in all four (rules of
-engagement, the day loop, the log format). Only "## Style" differs. Change: put the shared part in docs/agents.md
-("Persona rules"). Each persona keeps its front matter, a line telling it to read that section first, and its Style.
-Check that `.codex/config.toml` and `.codex/agents/*` still load what they need. Done when: each persona file holds
-only what is its own, and an agent playtest of one persona for one day (`goal-mode-player`, seed 42) still follows
-the rules.
-
-### CL-44 · Retire `pr-review-loop`
-`list: cleanup · status: blocked: user · priority: low · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). CLAUDE.md calls `pr-review-loop` "the older" review loop; `pr-fix-loop`
-replaced it, but still parses its `<!-- pr-review-loop … -->` markers for PRs that were in flight. The skill is also
-referenced from `.claude/skills/dev-loop`, `.claude/agents/pr-reviewer.md`, CLAUDE.md and AGENTS.md. Blocked on the
-user: is any scheduled task still running it, and may it go? If yes: once no open PR carries its marker, delete the
-skill, the marker handling in `pr-fix-loop` and the references.
+Source: codebase survey (2026-11-16); unblocked 2026-11-17 (user: no scheduled task runs `pr-review-loop` any more,
+and it may go). `pr-fix-loop` replaced it, but still parses its `<!-- pr-review-loop … -->` markers for PRs that were
+in flight. The skill is also referenced from `.claude/skills/dev-loop`, `.claude/agents/pr-reviewer.md`, CLAUDE.md and
+AGENTS.md. Change: check that no open PR carries a `pr-review-loop` marker (if one does, leave the marker handling
+and say so in the PR); delete `.claude/skills/pr-review-loop/`, the marker handling in `pr-fix-loop`, and every
+reference. Keep the `Automated pr-reviewer report` header: `pr-fix-loop` and the `pr-reviewer` agent still use it.
+Done when: a grep for `pr-review-loop` finds nothing outside Git history and PROGRESS.md's dated lines.
 
 ### CL-45 · README: where to start; SPEC §15 freshness
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`

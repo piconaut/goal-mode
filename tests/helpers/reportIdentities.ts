@@ -974,7 +974,7 @@ export const IDENTITIES: Identity[] = [
     basis: 'z/OS',
     // Sysplex reports show an *ALL summary line over one row per system.
     // Left out: zIIP and IIPCP engines and the users using PROC and DEV, which the sim splits by the last tick's mix,
-    // per row, so the sysplex row is not the sum of the systems' (BACKLOG CL-10).
+    // per row, so the sysplex row is not the sum of the systems' (BACKLOG PR-21).
     source: 'RMF Report Analysis 3.1 p.62, p.229–240',
     check: (run, c) => {
       for (const o of run.intervals) {
@@ -1000,7 +1000,7 @@ export const IDENTITIES: Identity[] = [
     // delayed for another in one sample, so the book has no such sum; the sim's samples are exclusive states. That
     // DLY % exceeds the delay columns by the WLM capping delay is RMF's (p.109).
     // Left out: users using PROC + DEV equal to USG, which the last tick's mix breaks when that tick had no using
-    // sample (BACKLOG CL-10).
+    // sample (BACKLOG PR-21).
     source: 'SPEC §17 "WLM samples", "Monitor III views"; RMF Report Analysis 3.1 p.106–110',
     check: (run, c) => {
       for (const o of run.intervals) {
