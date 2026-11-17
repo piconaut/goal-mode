@@ -5,11 +5,7 @@ import { SCENARIOS } from '../src/content/scenarios';
 import { initState } from '../src/sim/core/init';
 import { step } from '../src/sim/core/step';
 import { TICKS_PER_DAY } from '../src/sim/core/units';
-
-const arg = (name: string, dflt: string) => {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1]! : dflt;
-};
+import { arg, flag } from './args';
 const days = Number(arg('days', '1'));
 const scenario = SCENARIOS[arg('scenario', 'midwest')]!;
 let s = initState(Number(arg('seed', '42')), scenario);
@@ -21,4 +17,4 @@ for (let d = 0; d < days; d++) {
 }
 console.log(`total ${((performance.now() - t0) / 1000).toFixed(2)} s for ${days} day(s)`);
 // Optimisations must not change behaviour: compare this hash before and after.
-if (process.argv.includes('--hash')) console.log('state hash', createHash('sha256').update(JSON.stringify(s)).digest('hex').slice(0, 16));
+if (flag('hash')) console.log('state hash', createHash('sha256').update(JSON.stringify(s)).digest('hex').slice(0, 16));

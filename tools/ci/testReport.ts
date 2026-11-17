@@ -80,6 +80,8 @@ export function summarize(json: VitestJson | null, root = ''): Summary {
   return { markdown: lines, ok };
 }
 
+// Self-contained on purpose: the remote runners overlay this file into the ref they test or sweep, and that
+// ref may predate tools/args.ts, so the entry guard is a suffix check rather than isMain().
 if (process.argv[1]?.endsWith('testReport.ts')) {
   const [file = 'runs/test/report.json', root] = process.argv.slice(2);
   let json: VitestJson | null = null;

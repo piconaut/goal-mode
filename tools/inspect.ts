@@ -31,13 +31,9 @@ import { BATCH_INCIDENT } from '../src/game/sla';
 import type { Incident, RunState } from '../src/game/types';
 import { setWlmTraceSink, type WlmAdjustTrace, type WlmCandidateTrace, type WlmTrialVerdict } from '../src/sim/wlm/adjust';
 import { formatPlanMoves } from '../src/sim/wlm/plan';
+import { isMain, takeFlag, taker } from './args';
 
 process.stdout.on('error', (e: NodeJS.ErrnoException) => { if (e.code === 'EPIPE') process.exit(0); throw e; });
-
-function opt(args: string[], name: string): string | undefined {
-  const i = args.indexOf(name);
-  return i >= 0 ? args.splice(i, 2)[1] : undefined;
-}
 
 /** DP per scKey per RMF interval on one system: one line per interval, `CLASS#p=HEX` pairs. */
 export function dpText(text: string, system: string, opts: { cls?: string; from?: string; to?: string } = {}): string {
@@ -880,15 +876,16 @@ export function blameText(text: string, opts: { json?: boolean; incident?: numbe
   return lines.join('\n');
 }
 
-if (process.argv[1]?.endsWith('inspect.ts')) {
-  const args = process.argv.slice(2);
-  const json = args.includes('--json');
-  const rest = args.filter((a) => a !== '--json');
-  const cls = opt(rest, '--class'), from = opt(rest, '--from'), to = opt(rest, '--to'), at = opt(rest, '--at'), ticks = opt(rest, '--ticks');
-  const incident = opt(rest, '--incident');
-  const [path, verb, system] = rest;
+if (isMain(import.meta.url)) {
+  const argv = process.argv.slice(2);
+  const json = takeFlag(argv, 'json');
+  const take = taker(argv);
+  const cls = take('class') ?? '', from = take('from') ?? '', to = take('to') ?? '', at = take('at') ?? '', ticks = take('ticks') ?? '';
+  const incident = take('incident');
+  const floor = take('floor'), ladder = take('ladder');
+  const details = { byClass: takeFlag(argv, 'by-class'), episodes: takeFlag(argv, 'episodes'), moves: takeFlag(argv, 'moves') };
+  const [path, verb, system] = argv;
   if (path && verb === 'blame') {
-    const floor = opt(rest, '--floor');
     try {
       console.log(blameText(readFileSync(path, 'utf8'), { json, ...(incident ? { incident: Number(incident) } : {}), ...(floor ? { floorPct: Number(floor) } : {}) }));
     } catch (e) {
@@ -898,12 +895,8 @@ if (process.argv[1]?.endsWith('inspect.ts')) {
     process.exit(0);
   }
   if (path && verb === 'wlm-stats') {
-    const ladder = opt(rest, '--ladder');
-    const flag = (name: string) => (rest.includes(name) ? true : undefined);
-    const details = { byClass: flag('--by-class'), episodes: flag('--episodes'), moves: flag('--moves') };
-    const sys = system?.startsWith('--') ? undefined : system;
     try {
-      console.log(wlmStatsText(readFileSync(path, 'utf8'), { ...(sys ? { system: sys } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(ladder ? { ladder } : {}), json,
+      console.log(wlmStatsText(readFileSync(path, 'utf8'), { ...(system ? { system } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(ladder ? { ladder } : {}), json,
         ...Object.fromEntries(Object.entries(details).filter(([, v]) => v)) }));
     } catch (e) {
       console.error(`wlm-stats: ${(e as Error).message}`);

@@ -10,12 +10,7 @@ import { goalInfo, tickPi } from '../src/sim/wlm/runtime';
 import { velocityOf } from '../src/sim/wlm/goals';
 import { estimateMonth } from '../src/sim/cost/mlc';
 import { renderCfActivity, renderDasdSummary, renderPartitionData, renderWlmDetail, renderWlmSummary } from '../src/sim/measure/reports';
-
-function arg(name: string, dflt: string): string {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] && !process.argv[i + 1]!.startsWith('--') ? process.argv[i + 1]! : dflt;
-}
-const flag = (name: string) => process.argv.includes(`--${name}`);
+import { arg, flag } from './args';
 
 const scenario = SCENARIOS[arg('scenario', 'midwest')]!;
 const days = Number(arg('days', '1'));
