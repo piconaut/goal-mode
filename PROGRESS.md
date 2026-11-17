@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-17: `pr-review-loop` retired; `pr-fix-loop` is the only review loop (CL-44, #391).
 - 2026-11-17: `cleanup` list reviewed: CL-28/29/31/32/34/43 dropped, CL-27 and CL-36 narrowed, CL-10 moved to
   `pr-followups` as PR-21, CL-44 unblocked (no scheduled task runs `pr-review-loop`).
 - 2026-11-16: round 3 finding: a starved Db2 only slows its dependents by a bounded factor (BACKLOG RF-09).
@@ -239,12 +240,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
 - Realism audit loop: paced audit → main-agent vetting → isolated fix → scenario sweeps; one golden-changing
   PR at a time. Agents/host adaptations: [AGENTS.md](AGENTS.md), [docs/codex.md](docs/codex.md), `.claude/agents/`.
 
-- PR review (user request 2026-11-04): a scheduled task starts a fresh session per tick (no longer strictly hourly,
-  commit 6040718) that runs `.claude/skills/pr-review-loop/`. First pass merges only a PR with no findings at all; a held PR merges once a
-  follow-up review shows every earlier finding fixed and nothing new blocking; second-pass non-blocking leftovers
-  go to BACKLOG.md list `pr-followups`. State is the hidden `pr-review-loop` marker in each review comment.
-  A follow-up whose earlier findings were all non-blocking is reviewed on Sonnet instead of Opus (user request
-  2026-11-05).
+- PR review (user request 2026-11-04): the first review loop, `pr-review-loop`, held a PR on any finding and merged
+  it after a follow-up review. Retired 2026-11-17 (CL-44): `pr-fix-loop` (below) is the only review loop.
 
 - Reviewers don't repeat CI (user request 2026-11-06): `pr-reviewer` (and `pr-fixer`, which follows its checks)
   no longer runs `npm run check` while reviewing; CI's required `check` job runs it on the merge ref, so the review
@@ -279,7 +276,6 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   balance, bench hashes or needs a design call holds the PR for its author with no partial fixes. Fixes must keep the
   PR head's bench hashes. A Sonnet fix-check of the fix commits replaces the second review; fixes over 150 lines
   get a full Sonnet review instead. Two failed fix-checks hold the PR. Label a PR `no-autofix` to keep it out.
-  Open: compare cost per merged PR against `pr-review-loop` over a week before retiring it.
   Fix-check widened (user request 2026-11-09): it reads the fix commits against the whole PR diff at the fix head,
   checks each fix cures the cause (not a test bent to fit) and that the triage held, and reports blocking `Missed:`
   items as a FAIL. Why: the same agent finds, triages and fixes, so the fixes got the weakest review.
