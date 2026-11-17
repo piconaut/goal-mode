@@ -3,7 +3,7 @@
 // hidden growth rates or tomorrow's events.
 
 import { PLANNER } from '../content/planner';
-import { instanceClock } from '../sim/core/step';
+import { instanceClock } from '../sim/core/clock';
 import type { RunState } from './types';
 
 export interface ForecastPoint {

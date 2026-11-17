@@ -27,7 +27,7 @@ import { atOrFind, lparPlan } from './tick/plan';
 import { byIdOf, effectiveAddressSpaces, effectiveWorkloads, updateRouting } from './tick/helpers';
 
 export type { Command } from './commands';
-export { instanceClock, swapOut, rgSysplexShares, discretionaryCaps, cicsRegions, cicsHonorPriority, rgMin, resourceGroupCaps } from './tick/helpers';
+export { swapOut, rgSysplexShares, discretionaryCaps, cicsRegions, cicsHonorPriority, rgMin, resourceGroupCaps } from './tick/helpers';
 
 export function step(before: SimState, commands: readonly Command[], scenario: Scenario): SimState {
   const prev = updateRouting(applyCommands(before, commands), scenario);

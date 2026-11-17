@@ -13,15 +13,7 @@ import { ACC_DECAY, goalPi, goalInfo, type ScpState } from '../../wlm/runtime';
 import type { Scenario } from '../scenario';
 import type { AddressSpaceDef, WorkloadDef } from '../../workload/types';
 import type { CpcConfig, LparConfig, LparPoolRuntime, PoolType, SimState } from '../types';
-import { DAY_SEC, TICK_SEC } from '../units';
-
-/** Seconds after a played day's 06:00 start → wall-clock text. */
-export function instanceClock(secAfterStart: number): string {
-  const s = Math.round(secAfterStart + 6 * 3600) % DAY_SEC;
-  const pad = (n: number) => String(n).padStart(2, '0');
-  const dayOffset = secAfterStart >= DAY_SEC - 6 * 3600 ? '+1' : '';
-  return `${pad(Math.floor(s / 3600))}:${pad(Math.floor((s % 3600) / 60))}${dayOffset}`;
-}
+import { TICK_SEC } from '../units';
 
 // A running job is classified every tick; remember the last answer per job definition (the service
 // definition is replaced, never edited, so identity is a safe key; classify itself is pure).

@@ -21,9 +21,8 @@ import { smfHourRefs, type SmfHourRef } from './smf';
 import { buildMon3, reportedBySystem, softCapped, type Mon3View } from './mon3';
 import { features, toolsView, type ToolView } from './tools';
 import { db2AboveItsClients, installedPolicy } from './tutorial';
-import { formatClock, clockAt } from '../sim/core/clock';
+import { formatClock, clockAt, hhmm, instanceClock } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
-import { instanceClock } from '../sim/core/step';
 import { TICKS_PER_DAY } from '../sim/core/units';
 import { estimateMonth } from '../sim/cost/mlc';
 import { accPi, goalInfo, sumAcc } from '../sim/wlm/runtime';
@@ -292,7 +291,7 @@ export function buildView(run: RunState, scenario: Scenario): ViewModel {
   const feats = features(run);
   const visibleUntil = run.phase === 'LIVE' && !feats.has('MON3') ? run.day * TICKS_PER_DAY : sim.tick;
   const reports: ReportRef[] = sim.rmf.intervals
-    .map((iv, index) => ({ index, endTick: iv.endTick, reportClasses: (iv.wlmRc ?? []).filter((r) => r.lparId === '*PLEX').map((r) => r.scKey).sort(), label: `D${clockAt(iv.startTick).day + 1} ${formatClock(iv.startTick).slice(-8, -3)}–${formatClock(iv.endTick).slice(-8, -3)}` }))
+    .map((iv, index) => ({ index, endTick: iv.endTick, reportClasses: (iv.wlmRc ?? []).filter((r) => r.lparId === '*PLEX').map((r) => r.scKey).sort(), label: `D${clockAt(iv.startTick).day + 1} ${hhmm(iv.startTick)}–${hhmm(iv.endTick)}` }))
     .filter((r) => r.endTick <= visibleUntil);
 
   return {

@@ -2,7 +2,7 @@
 // schedule that switches between them (V WLM,POLICY=name issued by operations automation).
 
 import { POLICY_SCHEDULE } from '../content/alerts';
-import { clockAt } from '../sim/core/clock';
+import { clockAt, pad2 } from '../sim/core/clock';
 import type { Command } from '../sim/core/commands';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -72,7 +72,7 @@ export function setSchedule(run: RunState, schedule: ScheduleEntry[]): Out {
   if (run.hoursLeft < POLICY_SCHEDULE.editHours) return { run, ok: false, message: `Needs ${POLICY_SCHEDULE.editHours}h` };
   const sorted = [...schedule].sort((a, b) => a.hour - b.hour);
   return {
-    run: { ...run, hoursLeft: run.hoursLeft - POLICY_SCHEDULE.editHours, policies: { ...book, schedule: sorted }, log: [...run.log, `Policy schedule: ${sorted.map((e) => `${String(e.hour).padStart(2, '0')}:00 ${e.policyName}`).join(', ') || 'none'}`] },
+    run: { ...run, hoursLeft: run.hoursLeft - POLICY_SCHEDULE.editHours, policies: { ...book, schedule: sorted }, log: [...run.log, `Policy schedule: ${sorted.map((e) => `${pad2(e.hour)}:00 ${e.policyName}`).join(', ') || 'none'}`] },
     ok: true,
     message: `Schedule updated (${POLICY_SCHEDULE.editHours}h)`,
   };
