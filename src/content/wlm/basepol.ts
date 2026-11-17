@@ -1,42 +1,7 @@
 // Starting WLM service definition for Midwest Mutual (SPEC §13.1). Flaws F1–F6 are deliberate.
 
-import type { ClassificationRule, PeriodDef, ServiceClassDef, ServiceDefinition } from '../../sim/wlm/types';
-
-const vel = (velocity: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({
-  goal: { kind: 'VEL', velocity },
-  importance,
-  durationSu,
-});
-const pct = (p: number, rtSec: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({
-  goal: { kind: 'PCT', pct: p, rtSec },
-  importance,
-  durationSu,
-});
-const avg = (rtSec: number, importance: 1 | 2 | 3 | 4 | 5, durationSu: number | null = null): PeriodDef => ({
-  goal: { kind: 'AVG', rtSec },
-  importance,
-  durationSu,
-});
-const disc = (): PeriodDef => ({ goal: { kind: 'DISC' }, importance: 5, durationSu: null });
-
-const sc = (id: string, description: string, periods: PeriodDef[], extra: Partial<ServiceClassDef> = {}): ServiceClassDef => ({
-  id,
-  description,
-  periods,
-  cpuCritical: false,
-  storageCritical: false,
-  resourceGroup: null,
-  honorPriority: true,
-  ...extra,
-});
-
-const rule = (
-  qualifier: ClassificationRule['qualifier'],
-  pattern: string,
-  serviceClass: string | null,
-  reportClass: string | null = null,
-  children: ClassificationRule[] = [],
-): ClassificationRule => ({ qualifier, pattern, serviceClass, reportClass, children });
+import type { ServiceDefinition } from '../../sim/wlm/types';
+import { avg, disc, pct, rule, sc, vel } from './policyBuilders';
 
 export const BASEPOL: ServiceDefinition = {
   policyName: 'BASEPOL',
