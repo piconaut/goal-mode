@@ -677,15 +677,6 @@ subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}
 edits `countSystem` in this file, so it goes first. Done when: the diff is moves and imports only, and
 `tests/tools/inspect.test.ts` passes unchanged.
 
-### CL-37 · Service class goal helpers out of the editor component
-`list: cleanup · status: ready · priority: low · size: S · area: ui`
-
-Source: codebase survey (2026-11-16). `goalOf`, `goalError` and `sameGoal` in `src/ui/ServiceClassEditor.tsx`
-(about 124–159) are pure goal-validation logic inside a React file, and have no tests. Change: move them to
-`src/game/` (next to `wlmEdit.ts`'s `serviceClassGoalIssues`, merging where they overlap), keeping `useGoalState` in
-the UI, and add unit tests. Done when: they are tested, and the editor behaves as before
-(`tests/ui/serviceClassGoals.test.ts` passes).
-
 ### CL-38 · Split `Overlays.tsx` and `App.tsx`
 `list: cleanup · status: ready · priority: low · size: M · area: ui`
 
