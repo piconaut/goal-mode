@@ -9,7 +9,8 @@ import { jobCpuDemand } from '../../subsys/batch';
 import { sysplexPis, type WlmSystemState } from '../../wlm/runtime';
 import { clockAt } from '../clock';
 import type { LparConfig, EnvState, SimState } from '../types';
-import { TICK_SEC } from '../units';
+import { CLUE_LOG_EVERY } from '../../../content/wlm/tuning';
+import { TICKS_PER_HOUR, TICK_SEC } from '../units';
 import { RMF_KEEP, type TickCtx, WLM_LOG_MAX } from './ctx';
 import { atOrFind } from './plan';
 
@@ -74,7 +75,7 @@ export function repeatsClue(log: readonly string[], note: string): boolean {
     const l = log[i]!;
     if (!l.includes(named) && !l.includes(received)) continue;
     const p = LINE_HEAD.exec(l);
-    return p !== null && lineTick(m) - lineTick(p) < 30 && clueOf(l) === clueOf(note);
+    return p !== null && lineTick(m) - lineTick(p) < CLUE_LOG_EVERY && clueOf(l) === clueOf(note);
   }
   return false;
 }
@@ -118,7 +119,7 @@ export function adjustPolicies(t: TickCtx, clockText: string): { adjusted: WlmSy
       if (log === prev.wlm.log) log = [...log];
       log.push(note);
     }
-    if (out.log && !out.clockNotes.includes(out.log) && (out.log.includes('RCVR=') || prev.tick % 30 === 0)) {
+    if (out.log && !out.clockNotes.includes(out.log) && (out.log.includes('RCVR=') || prev.tick % CLUE_LOG_EVERY === 0)) {
       if (log === prev.wlm.log) log = [...log];
       log.push(out.log);
     }
@@ -162,7 +163,7 @@ export function stepCapping(t: TickCtx, zosLpars: readonly LparConfig[]) {
 export function stepCost(t: TickCtx, zosLpars: readonly LparConfig[], msuBy: Record<string, number>, r4haBy: Record<string, number>, nextTick: number): SimState['cost'] {
   const { prev, scenario, config, clock } = t;
   let cost = prev.cost.tfp ? accrueTfp(prev.cost, scenario.products, msuBy, TICK_SEC) : prev.cost;
-  if (nextTick % 360 === 0) {
+  if (nextTick % TICKS_PER_HOUR === 0) {
     const dcBy: Record<string, number | null> = {};
     for (const l of zosLpars) dcBy[l.id] = l.definedCapacityMsu;
     const groupLimits = config.capacityGroups.map((g) => ({ limitMsu: g.limitMsu, members: config.lpars.filter((l) => l.capacityGroup === g.id).map((l) => l.id) }));

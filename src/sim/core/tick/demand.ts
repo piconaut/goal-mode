@@ -9,7 +9,8 @@ import { dispatchableDemand, sliceSpec } from '../../wlm/evaluate';
 import { pagingDelayFrac } from '../../zos/storage';
 import type { LparConfig, CicsStorageTick } from '../types';
 import { TICK_SEC } from '../units';
-import { type BatchSliceRef, DEFAULT_EFF_RATIO, type TickCtx, usesDb2 } from './ctx';
+import { DEFAULT_EFF_RATIO } from '../../../content/sim-tuning';
+import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
 import { atOrFind } from './plan';
 import { applyCpuModifiers, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
 
