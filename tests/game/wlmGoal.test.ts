@@ -36,6 +36,7 @@ describe('service-class goal drafts', () => {
     expect(sameGoal({ kind: 'AVG', rtSec: 0.5 }, { kind: 'AVG', rtSec: 0.6 })).toBe(false);
     expect(sameGoal({ kind: 'PCT', rtSec: 0.25, pct: 95 }, { kind: 'PCT', rtSec: 0.25, pct: 95 })).toBe(true);
     expect(sameGoal({ kind: 'PCT', rtSec: 0.25, pct: 95 }, { kind: 'PCT', rtSec: 0.25, pct: 90 })).toBe(false);
+    expect(sameGoal({ kind: 'PCT', rtSec: 0.25, pct: 95 }, { kind: 'PCT', rtSec: 0.3, pct: 95 })).toBe(false);
     expect(sameGoal({ kind: 'VEL', velocity: 60 }, { kind: 'AVG', rtSec: 60 })).toBe(false);
     expect(sameGoal({ kind: 'DISC' }, { kind: 'DISC' })).toBe(true);
   });
