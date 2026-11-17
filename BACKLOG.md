@@ -677,15 +677,6 @@ subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}
 edits `countSystem` in this file, so it goes first. Done when: the diff is moves and imports only, and
 `tests/tools/inspect.test.ts` passes unchanged.
 
-### CL-36 · Worker: an exhaustive message switch
-`list: cleanup · status: ready · priority: low · size: S · area: ui`
-
-Source: codebase survey (2026-11-16), narrowed 2026-11-17 (user decision: no handler table or module split).
-The `onmessage` switch in `src/worker/game.worker.ts` (47 cases) has no `default`, so a message type added to
-`ToWorker` in `src/worker/protocol.ts` without a case compiles silently. Change: a `default` branch that assigns `m`
-to `never` (an `assertNever` helper), so typecheck fails on an unhandled type. Done when: typecheck passes, and
-removing one case makes it fail.
-
 ### CL-37 · Service class goal helpers out of the editor component
 `list: cleanup · status: ready · priority: low · size: S · area: ui`
 
