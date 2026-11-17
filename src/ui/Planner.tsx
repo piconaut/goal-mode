@@ -56,6 +56,14 @@ function ForecastChart({ f }: { f: Forecast }) {
       <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
         {verdict(f)} Last measured {f1(lastHist.value)} {f.unit}.
       </div>
+      {(f.capacityChanges?.length || f.skippedWeekends) && (
+        <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>
+          {f.capacityChanges?.length
+            ? `Installed MSU at day close changed on ${f.capacityChanges.map((c) => `D${c.day + 1} (${Math.round(c.from)} → ${Math.round(c.to)} MSU)`).join(', ')}.`
+            : null}
+          {f.skippedWeekends ? `${f.capacityChanges?.length ? ' ' : ''}${f.skippedWeekends} weekend day${f.skippedWeekends === 1 ? '' : 's'} shown but not fitted.` : null}
+        </div>
+      )}
       <LineChart
         title={f.title}
         unit={f.unit}

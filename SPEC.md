@@ -1148,8 +1148,10 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 - **SMF 30 batch analytics**: critical-path Gantt with per-job CPU/I-O/wait.
 
 **Tier 3:**
-- **Capacity planner**: forecast R4HA, utilisation and SLA risk *N* days ahead from growth
-  trends, with confidence bands that widen with horizon.
+- **Capacity planner**: forecast R4HA, MSU demand against installed capacity and SLA risk *N* days ahead from growth
+  trends, with confidence bands that widen with horizon. The CPC series is MSU demand (online peak busy × installed
+  CP MSU), fitted on weekdays only (weekend peaks stay on the chart but not in the fit), and capacity changes are
+  marked (PT-16).
 - **What-if simulator**: during the briefing, fork the run and play *today* twice (as planned, and with
   the change basket), using *forecast* arrivals: no hidden events and a re-seeded noise stream. Compares
   SLA breach hours, incidents, batch end, CPC and R4HA peaks and the MLC estimate. 1 engineer-hour per run.
