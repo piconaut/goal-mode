@@ -649,23 +649,6 @@ generate the code, or measure that a table loop stays within budget. No behaviou
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
 difference; per-tick timing before and after (`npm run bench`) in the PR.
 
-### CL-27 · Sim tunables into `src/content`
-`list: cleanup · status: ready · priority: low · size: S · area: sim`
-
-Source: codebase survey (2026-11-16). CLAUDE.md rule 3 puts coefficients in content, but these sit in sim code:
-- `MOSTLY_WAITING_FRAC` (`src/sim/wlm/adjust.ts`) and `MAX_QUEUE_RATIO` (`src/sim/wlm/eval/results.ts`);
-- `DEFAULT_EFF_RATIO` (`src/sim/core/tick/ctx.ts`);
-- `MAX_RHO = 0.97` in `src/sim/io/dasd.ts`, beside another exported `MAX_RHO = 0.995` in `src/sim/zos/erlang.ts` with a
-  different meaning;
-- the bare `% 30` (`adjust.ts`, `tick/control.ts`), which repeats `CRITICAL_PROJECTION_EVERY`'s intent, and `% 360`
-  (`tick/control.ts`).
-
-Not in scope: `WLM_LOG_MAX`, `RMF_KEEP` (`tick/ctx.ts`) and `MAX_TEMPLATE_SETS` (`slices.ts`) are history and
-cache limits, not model coefficients, so they stay in sim (user decision 2026-11-17).
-Change: move the coefficients to content with `// FICTIONAL:` or `// APPROX:` notes. Rename the two `MAX_RHO`s
-(e.g. `DASD_MAX_RHO`, `QUEUE_MAX_RHO`). Name the literals. Keep every value as it is. Done when: bench hashes are
-unchanged and `npm run compare` shows no difference.
-
 ### CL-30 · Split `policyAdjust`
 `list: cleanup · status: blocked: after PR-19 · priority: low · size: L · area: sim`
 

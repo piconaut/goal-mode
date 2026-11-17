@@ -10,7 +10,6 @@ import type { LparPlan } from './plan';
 import type { CpcConfig, EnvState, LparPoolRuntime, LparRuntime, CicsStorageTick, LparTick, SimState, WorkloadTick } from '../types';
 
 export const WLM_LOG_MAX = 400;
-export const DEFAULT_EFF_RATIO = 0.93;
 export const DEFAULT_IO: Record<IoClass, IoService> = {
   RANDOM: { rtSec: 0.0003, delaySec: 0.00005 },
   SEQ: { rtSec: 0.0004, delaySec: 0.00005 },

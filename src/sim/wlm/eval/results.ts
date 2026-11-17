@@ -1,6 +1,7 @@
 // Result stage: server health per role, then every slice's granted engines, sampled
 // states, response time and (unless this is a projection) its SLA attainment.
 
+import { MAX_QUEUE_RATIO } from '../../../content/wlm/tuning';
 import { lognormCdf } from '../../core/math';
 import { TICK_SEC } from '../../core/units';
 import type { IoClass } from '../../io/dasd';
@@ -8,8 +9,6 @@ import type { LparGrants } from './grants';
 import { ioUsingSec } from './io';
 import { SRV } from './prepare';
 import type { IoService, LparEvalInput, PreparedLpar, SliceResult } from './types';
-
-const MAX_QUEUE_RATIO = 50;
 
 export interface SliceHealth {
   want: number[];

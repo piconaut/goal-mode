@@ -6,7 +6,7 @@
 // accumulators); every trial is judged on projected PIs, `base` at the current DPs against `after` at the trial's,
 // both from the dispatcher model at sustained demand (projection.ts).
 
-import { PCT_PROJECTION_SIGMA, POLICY_ADJUST } from '../../content/wlm/tuning';
+import { CLUE_LOG_EVERY, MOSTLY_WAITING_FRAC, PCT_PROJECTION_SIGMA, POLICY_ADJUST } from '../../content/wlm/tuning';
 import { formatClock } from '../core/clock';
 import { canonical, ladderOf, levelOf, moveToLevel, type Ladder } from './ladder';
 import { evaluateLpar, prepareLpar, type LparEvalInput, type ScpTick } from './evaluate';
@@ -68,9 +68,6 @@ function sharesOf(acc: DelayAcc & Pick<ScpState['acc'], 'using' | 'delayOther'>)
   const m = managedDelays(acc);
   return { CPU: share(m.CPU), ZIIP: share(m.ZIIP), IO: share(m.IO), STORAGE: share(m.STORAGE), QUEUE: share(m.QUEUE), CAP: share(acc.delayCap), OTHER: share(acc.delayOther) };
 }
-
-/** A period whose waits are over half its samples is "mostly waiting": its note says so instead of naming a delay. */
-const MOSTLY_WAITING_FRAC = 0.5;
 
 export interface AdjustInput {
   def: ServiceDefinition;
@@ -844,7 +841,7 @@ export function policyAdjust(input: AdjustInput): AdjustOutput {
       // starts. At the cadence, `clockNotes` carries every receiver's clue, not only the first (`out.log`).
       const note = `${receiver} PI=${pi} ${noAction}`;
       notes.push(note);
-      if (nowTick % 30 === 0) clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
+      if (nowTick % CLUE_LOG_EVERY === 0) clockNotes.push(`${input.clockText} ${system.lparId} ${note}`);
     }
     if (outOfBudget) {
       // A budget hog is normally clocked, so the next search starts at it only to trace SKIP_CLOCK and move on. With

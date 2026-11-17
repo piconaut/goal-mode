@@ -2,6 +2,7 @@
 // IOSQ comes from device queueing with HyperPAV aliases; PEND from fabric/host-adapter
 // utilisation; DISC from cache misses against a back end; CONN from transfer size.
 
+import { DASD_MAX_RHO } from '../../content/sim-tuning';
 import { queueDelayRatio } from '../zos/erlang';
 
 export type IoClass = 'RANDOM' | 'SEQ';
@@ -68,17 +69,15 @@ export interface DasdResult {
   lcus: LcuResult[];
 }
 
-const MAX_RHO = 0.97;
-
 export function evaluateDasd(cfg: DasdConfig, iops: Record<IoClass, number>): DasdResult {
   const CLASSES = ['RANDOM', 'SEQ'] as const;
   const extraOf = (l: LcuConfig) => ({ RANDOM: l.extraIops?.RANDOM ?? 0, SEQ: l.extraIops?.SEQ ?? 0 });
   const lcuIops = cfg.lcus.map((l) => ({ RANDOM: iops.RANDOM * l.ioShare.RANDOM + extraOf(l).RANDOM, SEQ: iops.SEQ * l.ioShare.SEQ + extraOf(l).SEQ }));
   const byClass = { RANDOM: lcuIops.reduce((a, x) => a + x.RANDOM, 0), SEQ: lcuIops.reduce((a, x) => a + x.SEQ, 0) };
   const total = byClass.RANDOM + byClass.SEQ;
-  const fabricBusy = Math.min(MAX_RHO, total / cfg.fabricCapacityIops);
+  const fabricBusy = Math.min(DASD_MAX_RHO, total / cfg.fabricCapacityIops);
   const misses = byClass.RANDOM * (1 - cfg.cacheHitFrac.RANDOM) + byClass.SEQ * (1 - cfg.cacheHitFrac.SEQ);
-  const backendBusy = Math.min(MAX_RHO, misses / cfg.backendCapacityIops);
+  const backendBusy = Math.min(DASD_MAX_RHO, misses / cfg.backendCapacityIops);
   const pend = cfg.pendBaseSec / (1 - fabricBusy);
   const backend = (cfg.backendLatencySec * cfg.backendDegrade) / (1 - backendBusy);
   const service = {} as Record<IoClass, { disc: number; conn: number; svc: number }>;

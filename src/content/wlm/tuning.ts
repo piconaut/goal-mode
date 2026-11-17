@@ -54,6 +54,18 @@ export const BATCH_PROJECTION = { maxRecoveryRounds: 8, demandToleranceEngines: 
 
 // Policy adjustment (docs/wlm-design.md §5.10). IBM publishes none of these numbers; each note says where the
 // starting value comes from, not that IBM uses it.
+/** FICTIONAL: WLM repeats an unchanged receiver clue, and logs the no-action note, at most every five minutes
+ *  (30 policy adjustment cycles; adjust.ts's notes and RF-03). Shape: a stuck receiver's log does not fill every tick. */
+export const CLUE_LOG_EVERY = 30;
+
+/** FICTIONAL: ceiling on a slice's queue-time ratio (CPU or zIIP queue, in multiples of service time). Shape: a
+ *  saturated pool's queue cannot dominate the result without bound; it counts as very unhealthy. */
+export const MAX_QUEUE_RATIO = 50;
+
+/** FICTIONAL: a period whose waits are over this share of its samples is "mostly waiting": its note names the
+ *  wait instead of a delay. Shape: a class that mostly waits is described by the wait's size, not its cause. */
+export const MOSTLY_WAITING_FRAC = 0.5;
+
 export const POLICY_ADJUST = {
   // FICTIONAL: per-tick decay of WLM's accumulators. Shape: the management PI looks back about a minute.
   accDecay: 0.85,
