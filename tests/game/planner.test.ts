@@ -80,5 +80,8 @@ describe('capacity history', () => {
     expect(cpc.limit).toBe(1080);
     expect(cpc.limitLabel).toBe('90% of installed 1200 MSU');
     expect(cpc.capacityChanges).toEqual([{ day: 4, from: 1000, to: 1200 }]);
+    // Days 5 and 6 are the run's first weekend on the game calendar: shown, not fitted.
+    expect(cpc.history).toHaveLength(7);
+    expect(cpc.skippedWeekends).toBe(2);
   }, 60_000);
 });
