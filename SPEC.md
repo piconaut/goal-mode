@@ -1907,7 +1907,7 @@ never touches the DOM.
   LPAR, class or workload, an identity whose feature a scenario lacks makes no comparison there, and two coverage
   tests fail if an identity or a stress situation is reached by no scenario. A new report field joins an identity
   in the same change. Identities that do not hold yet are left out with a comment naming their BACKLOG entry
-  (RF-05 … RF-08, CL-10).
+  (RF-05 … RF-08, PR-21).
 - **Golden runs:** fixed seed + scripted commands → hashed day summaries; changes that alter
   them must be intentional (update the golden file in the same commit with an explanation).
 - **Strategy bots** for balance (headless):
