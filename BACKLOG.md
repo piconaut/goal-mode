@@ -104,13 +104,6 @@ Done when: each chart can be hidden and shown again, the choice survives a reloa
 storage is blocked), the CP busy chart says what each line is measured against, and the new chart is in the picker.
 UI only: `npm run compare` shows no difference.
 
-### PT-16 · CPC busy forecast ignores weekends and capacity changes
-`list: playtest-fixes · status: ready · priority: low · size: S · area: game`
-
-The forecast is a 10-day log-linear fit of daily peak busy as % of installed CPs. Weekends (47 %, 34 %) and added
-capacity pull it down. Fit weekdays (or add a weekday term), forecast MSU demand against capacity, and mark capacity
-changes. Done when: the fit skips weekends and uses MSU, with a test.
-
 ### PT-17 · Browser saves can't be traced into the past
 `list: playtest-fixes · status: ready · priority: low · size: M · area: tooling`
 

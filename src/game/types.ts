@@ -116,6 +116,11 @@ export interface CapacityDay {
   day: number;
   /** Highest hourly CPC busy during the online prime shift. */
   peakCpcBusyPct: number;
+  /** Highest hourly MSU demand in the online prime shift (busy × installed capacity). Absent on days recorded
+   *  before PT-16, so readers derive or skip it. */
+  peakDemandMsu?: number;
+  /** Installed CP MSU capacity at the end of the day (Σ msuPerCp × CP engines). Absent before PT-16. */
+  installedMsu?: number;
   peakR4ha: Record<string, number>;
   /** Peak of the sum of R4HAs across LPARs (what the MLC bill uses). */
   peakR4haSum: number;

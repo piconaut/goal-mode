@@ -151,7 +151,7 @@ export const TOOLS: ToolDef[] = [
     prereqs: ['PARTITION_DATA', 'SMF30_BATCH'],
     unlocks: ['CAPACITY_PLANNER'],
     overhead: null,
-    reveals: 'Two-week trend forecast of peak CPC busy, R4HA (vs defined capacity and for MLC) and the batch window, with 90% bands.',
+    reveals: 'Two-week trend forecast of peak CPC MSU demand against installed capacity (weekends shown, not fitted), R4HA (vs defined capacity and for MLC) and the batch window, with 90% bands.',
   },
   {
     id: 'WHAT_IF',
