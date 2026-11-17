@@ -167,8 +167,7 @@ npm run test:remote    # the full suite on GitHub Actions, on committed HEAD
   own `Co-Authored-By` line.
 - Loops (each tick of a scheduled task runs one skill, with its state in PR comment markers):
   - Review: `pr-fix-loop` (the Opus `pr-fixer` reviews each PR, fixes up to 5 mechanical findings itself or holds the
-    PR for its author, then a Sonnet fix-check of the fixes against the whole PR, then it merges), or the older
-    `pr-review-loop` (holds a PR on any finding, merges after a follow-up review shows them fixed).
+    PR for its author, then a Sonnet fix-check of the fixes against the whole PR, then it merges).
   - Author: `dev-loop` implements the next ready entry of the named BACKLOG.md lists, answers a HOLD on its open PR,
     or skips.
 - Review comments: every review report an agent posts on a PR (any agent or vendor, any tool, a subagent or a
