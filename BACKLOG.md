@@ -345,7 +345,7 @@ and `npm run compare` confirms unchanged sim/game behaviour, logs and reports.
 
 Source: cross-report invariant suite (2026-11-14, #347; filed as CL-10, moved here 2026-11-17 because it changes
 Monitor III figures, which the cleanup list excludes; identities `mon3-sysplex-sum` and `mon3-delay-states`, left-out
-parts). WLM's smoothed accumulator keeps total Using and total CP time, so `row()` in `src/game/mon3.ts` splits them
+parts). WLM's smoothed accumulator keeps total Using and total CP time, so `row()` in `src/game/mon3/index.ts` splits them
 by the last tick's mix (APPROX, SPEC §17): zIIP and IIPCP engines, and the users using PROC and DEV. Two things then
 don't add up for the player: a sysplex row is split by the pooled mix, so it is not the sum of its systems' rows
 (Midwest seed 7, 06:30, DDFPRD#1 zIIP 0.06222 against 0.06225); and when the last tick had no using sample the users
