@@ -7,6 +7,7 @@ import { SU_PER_SEC_PER_MSU } from '../sim/hw/cpc';
 import { CodexHints } from './CodexHint';
 import { Empty } from './Empty';
 import type { GameHandle } from './useGame';
+import { goalDraftError, goalOf, sameGoal } from '../game/wlmGoal';
 import { rgLimitEquiv, type CpcSpeed } from './units';
 
 const IMPS: Importance[] = [1, 2, 3, 4, 5];
@@ -121,26 +122,6 @@ function GoalFields({ kind, setKind, val, setVal, pct, setPct, imp, setImp, allo
   );
 }
 
-function goalOf(kind: Goal['kind'], val: string, pct: string): Goal {
-  return kind === 'VEL' ? { kind, velocity: Number(val) } : kind === 'AVG' ? { kind, rtSec: Number(val) } : kind === 'PCT' ? { kind, rtSec: Number(val), pct: Number(pct) } : { kind: 'DISC' };
-}
-
-function goalError(kind: Goal['kind'], val: number, pct: number): string | null {
-  if (kind === 'DISC') return null;
-  if (kind === 'VEL') return val >= 1 && val <= 99 ? null : 'Velocity is 1–99';
-  if (!(val > 0)) return 'Response time must be > 0 s';
-  if (kind === 'PCT' && !(pct >= 1 && pct <= 99)) return 'Percentile is 1–99';
-  return null;
-}
-
-function sameGoal(a: Goal, b: Goal): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === 'VEL' && b.kind === 'VEL') return a.velocity === b.velocity;
-  if (a.kind === 'PCT' && b.kind === 'PCT') return a.rtSec === b.rtSec && a.pct === b.pct;
-  if (a.kind === 'AVG' && b.kind === 'AVG') return a.rtSec === b.rtSec;
-  return true;
-}
-
 function useGoalState(p?: PeriodDef) {
   const g = p?.goal;
   const [kind, setKind] = useState<Goal['kind']>(g?.kind ?? 'VEL');
@@ -154,7 +135,7 @@ function useGoalState(p?: PeriodDef) {
     setPct(q.goal.kind === 'PCT' ? String(q.goal.pct) : '90');
     setImp(q.importance);
   };
-  return { kind, setKind, val, setVal, pct, setPct, imp, setImp, reset, err: goalError(kind, Number(val), Number(pct)), goal: () => goalOf(kind, val, pct) };
+  return { kind, setKind, val, setVal, pct, setPct, imp, setImp, reset, err: goalDraftError(kind, Number(val), Number(pct)), goal: () => goalOf(kind, val, pct) };
 }
 
 function PeriodRow({ c, i, send }: { c: ServiceClassDef; i: number; send: (e: Edit) => void }) {
