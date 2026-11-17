@@ -116,6 +116,10 @@ describe('changes', () => {
     const mail = started.inbox.find((m) => m.subject === 'Change failed: Activate policy BASEPOL2')!;
     expect(mail.body).toContain('did not carry this request');
     expect(mail.body).not.toContain('went live with the edits');
+    // Nothing restores the failed edits once a later install applies, so the mail must not offer a reschedule.
+    expect(failedPolicyToday(started)).toBeNull();
+    expect(mail.body).not.toContain('activate to reschedule');
+    expect(mail.body).toContain('not pending again');
     // The shipped ONLHI goal, not the failed request's edit, is what the later install queued.
     const active = advance(started, MIDWEST, content, 1).sim.wlm.definition;
     expect(active.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal).not.toEqual({ kind: 'AVG', rtSec: 0.4 });

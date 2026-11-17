@@ -170,7 +170,7 @@ export function startDay(run: RunState, content: GameContent): RunState {
         const [hit] = todo.splice(k, 1);
         const outcome = hit!.editsLive
           ? ` Later activation ${hit!.laterName} went live with the edits this request made, so there is nothing to reschedule.`
-          : ` Later activation ${hit!.laterName} also went live today, but it did not carry this request's edits; activate to reschedule.`;
+          : ` Later activation ${hit!.laterName} also went live today, but it did not carry this request's edits, and they are not pending again: make them again and activate.`;
         return { ...m, body: m.body.replace(FAILED_TAIL + POLICY_RETRY_TAIL, outcome) };
       }),
     };

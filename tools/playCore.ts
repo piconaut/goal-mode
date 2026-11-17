@@ -139,7 +139,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         : live
           ? ` Policy activation failed earlier, but later activation ${live.laterName} went live with its edits.`
           : later.length > 0
-            ? ` Policy activation failed earlier; later activation ${later[0]!.laterName} also went live, but without this request's edits.`
+            ? ` Policy activation failed earlier; later activation ${later[0]!.laterName} also went live, but without this request's edits; they are not pending again (make them again and activate).`
             : '';
       return done(started, `Day started (06:00).${note}`, true, failed ?? file.pendingPolicy);
     }
