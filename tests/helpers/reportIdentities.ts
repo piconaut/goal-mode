@@ -960,7 +960,7 @@ export const IDENTITIES: Identity[] = [
           c.close(share((m) => m.avgUsers.active * m.usingFrac), usingOf(r), DECAYED_PCT, where('USG vs USING %'));
           c.close(share((m) => m.avgUsers.delayProc), r.delayPct.cpu + r.delayPct.ziip, DECAYED_PCT, where('delay PRC vs DELAY % CPU + IIP'));
           c.close(share((m) => m.avgUsers.delayDev), r.delayPct.io, DECAYED_PCT, where('delay DEV vs DELAY % I/O'));
-          // Initiation queue delay has no Monitor III column and shows with STR (mon3.ts, APPROX).
+          // Initiation queue delay has no Monitor III column and shows with STR (mon3/index.ts, APPROX).
           c.close(share((m) => m.avgUsers.delayStor), r.delayPct.storage + (r.delayPct.queue ?? 0), DECAYED_PCT, where('delay STR vs DELAY % STO + QMPL'));
           c.close(share((m) => m.avgUsers.active * m.delay.cap), r.delayPct.cap, DECAYED_PCT, where('capping vs DELAY % CAP'));
           c.close(share((m) => m.avgUsers.active * m.unknownFrac), r.delayPct.other, DECAYED_PCT, where('UKN vs unknown'));
