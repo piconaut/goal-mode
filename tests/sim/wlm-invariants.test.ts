@@ -565,6 +565,15 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
         expect(out.dps[k]).toBeLessThan(DP.MANAGED_MAX);
         expect(out.dps[k]).toBeGreaterThanOrEqual(DP.MANAGED_MIN);
       }
+      // Order preservation: an interval with no move may renumber the ladder but must not reorder it. Compare the
+      // order of the DPs going in with the order coming out, each by its own values.
+      if (!out.log?.includes('RCVR=') && out.protect === null) {
+        const before = input.system.scps.filter((p) => goalInfo(def, p.scKey)?.goal.kind !== 'DISC' && goalInfo(def, p.scKey) !== null)
+          .sort((a, b) => b.dp - a.dp || (a.scKey < b.scKey ? -1 : 1)).map((p) => p.scKey);
+        const after = Object.keys(out.dps).filter((k) => goalInfo(def, k)?.goal.kind !== 'DISC' && goalInfo(def, k) !== null)
+          .sort((a, b) => out.dps[b]! - out.dps[a]! || (a < b ? -1 : 1));
+        expect(after, `seed ${seed}`).toEqual(before);
+      }
     }
     expect(moved).toBeGreaterThan(10);
   });

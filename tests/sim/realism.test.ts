@@ -1103,6 +1103,9 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     for (const r of s.wlm.definition.subsystems.find((x) => x.subsystem === 'STC')!.rules) if (r.pattern === 'DB*') r.serviceClass = 'STCHI';
     const lines: string[] = [];
     const traces: WlmAdjustTrace[] = [];
+    /** The state after each step in the window: the trace's `dps` is recorded before its move. */
+    const afterStep: { clockText: string; heldBy?: Record<string, string>; dps: Record<string, number> }[] = [];
+    let stepTraces: WlmAdjustTrace[] = [];
     const samples: { cp: number; zi: number; pi: number }[] = [];
     const adjust = wlmAdjust.policyAdjust;
     const probe = vi.spyOn(wlmAdjust, 'policyAdjust').mockImplementation((input) => {
@@ -1119,11 +1122,20 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       }
       return adjust(input);
     });
-    setWlmTraceSink((t) => { if (t.lparId === 'PROD1' && / 1\d:\d\d:\d\d$/.test(t.clockText)) traces.push(t); });
+    setWlmTraceSink((t) => {
+      if (t.lparId !== 'PROD1') return;
+      stepTraces.push(t);
+      if (/ 1\d:\d\d:\d\d$/.test(t.clockText)) traces.push(t);
+    });
     try {
       for (let t = 0; t < 10 * 360; t++) {
         const prev = s.wlm.log;
+        stepTraces = [];
         s = step(s, [], MIDWEST);
+        const after = s.wlm.systems.find((x) => x.lparId === 'PROD1');
+        if (after && stepTraces[0] !== undefined) {
+          afterStep.push({ clockText: stepTraces[0].clockText, heldBy: stepTraces[0].heldBy, dps: Object.fromEntries(after.scps.map((p) => [p.scKey, p.dp])) });
+        }
         if (s.wlm.log === prev) continue;
         const last = prev[prev.length - 1];
         const from = last === undefined ? 0 : s.wlm.log.lastIndexOf(last) + 1;
@@ -1174,6 +1186,34 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
       return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && !sameHolder && t.dps[k]! >= t.dps['ONLHI#1']!;
     }).map((k) => `${t.clockText} ${k}`));
     expect(reachedOnlhi).toEqual([]);
+    // PR-18: the trace records `dps` before the move, so a move accepted in the last interval would be missed.
+    // Check the state after the step too.
+    expect(afterStep.length).toBeGreaterThan(1_000); // every step in the window, not only the traced ones
+    const reachedAfter = afterStep.flatMap(({ clockText, heldBy, dps }) => Object.keys(dps).filter((k) => {
+      const g = goalInfo(s.wlm.definition, k);
+      const sameHolder = heldBy?.[k] !== undefined && heldBy[k] === heldBy['ONLHI#1'];
+      return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && !sameHolder && dps[k]! >= dps['ONLHI#1']!;
+    }).map((k) => `${clockText} ${k}`));
+    expect(reachedAfter).toEqual([]);
+    // PR-18: the first rejection here is unnamed ("no gain for the receiver") and a later trial harms ONLHI; the
+    // clue must name what stood in the way, not the first trial's reason.
+    const clueWindows = traces.filter((t) => t.candidates.some((c) => {
+      if (c.scKey !== 'ONLMED#1') return false;
+      const rej = c.trials.filter((x) => x.verdict !== 'RETAINED' && x.verdict !== 'ACCEPTED');
+      const firstNamed = rej.findIndex((x) => x.blockedBy !== undefined || x.verdict === 'CPU_CRITICAL' || x.verdict === 'PROJECTION_DISAGREES');
+      const harmed = rej.findIndex((x) => x.verdict === 'MORE_IMPORTANT_HARMED');
+      return harmed > 0 && firstNamed === harmed;
+    }));
+    expect(clueWindows.length).toBeGreaterThan(0);
+    // Not every such interval logs (the clue is written when the clock is set or at the five-minute cadence), but
+    // every logged one names the harm rather than the first trial's reason.
+    const clueLines = clueWindows.map((t) => lines.find((l) => l.startsWith(`${t.clockText} PROD1 ONLMED#1`)))
+      .filter((l): l is string => l !== undefined);
+    expect(clueLines.length).toBeGreaterThan(0);
+    for (const line of clueLines) {
+      expect(line).toContain('rejected: harms ONLHI#1, more important');
+      expect(line).not.toContain('no gain for the receiver');
+    }
     // WT-16: at this fixture's fixed demand, joining the regions' level restores Db2 CPU and improves velocity.
     expect(samples).toHaveLength(3);
     expect(samples[0]!.cp).toBeLessThan(samples[1]!.cp);
