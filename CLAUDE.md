@@ -26,8 +26,8 @@ keep SLAs green and software cost down while workload grows and events pile up.
 
 ## Stack and commands
 
-TypeScript (strict) · Vite · React + Zustand · uPlot · Vitest · sim in a Web Worker · Node
-headless runner for balancing. SPEC §15 has the stack plan.
+TypeScript (strict) · Vite · React (hooks; SVG charts) · Vitest · sim in a Web Worker · Node
+headless runner for balancing. SPEC §15 has the architecture.
 
 Everyday commands (the full list, including every investigation and CI tool, is in
 [`docs/tools.md`](docs/tools.md)):
