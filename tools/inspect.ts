@@ -20,7 +20,7 @@
 //     measured on a wider seed sample.
 
 import { readFileSync } from 'node:fs';
-import { applyPlayCommand, decodePlayFile, clockText, newPlayFile, type PlayFile } from './playCore';
+import { abendedSet, applyPlayCommand, decodePlayFile, clockText, newPlayFile, type PlayFile } from './playCore';
 import { formatClock, tickOfClock } from '../src/sim/core/clock';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
 import { packOf } from '../src/content/packs';
@@ -677,7 +677,7 @@ export function replayTraces(file: PlayFile, from: number, to: number, sink: (t:
         // A log whose next command is an advance while the day is not live cannot be replayed any further.
         if (f.run.phase !== 'LIVE') break;
         const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
-        replayAdvance(hours, () => abendedNames(f.run), step);
+        replayAdvance(hours, () => abendedSet(f.run), step);
       } else {
         const out = applyPlayCommand(f, c);
         if (!out.ok) throw new Error(`replay failed at ${JSON.stringify(c)}: ${out.text}`);
@@ -737,9 +737,6 @@ export function wlmStatsText(
 
 const scOfRun = (run: RunState) => scenarioFor(packOf(run.scenarioId).scenario, run.difficulty);
 
-/** Names of the jobs abended at this moment, to see where the play CLI's `advance` stopped. */
-const abendedNames = (run: RunState) => new Set(run.sim.batch.jobs.filter((j) => j.status === 'ABENDED').map((j) => `${j.day}:${j.def.name}`));
-
 /** Replay a play log once, calling `at` at each wanted incident hour start (nothing is kept between calls). */
 function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (run: RunState, here: readonly Incident[]) => void): void {
   const first = file.log[0];
@@ -780,7 +777,7 @@ function walkToIncidents(file: PlayFile, incidents: readonly Incident[], at: (ru
       const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
       // One hour at a time, so each incident hour start is a state we can branch from. The CLI stops an advance at
       // the hour a job newly abends; the commands after it in the log were issued there, so this must stop too.
-      replayAdvance(hours, () => abendedNames(f.run), () => {
+      replayAdvance(hours, () => abendedSet(f.run), () => {
         if (f.run.phase !== 'LIVE') return false;
         flush();
         stepHour();
