@@ -113,6 +113,26 @@ describe('cancel', () => {
     expect(again.message).toContain(`CHG${id}`);
   });
 
+  it("says a cancelled activation's edits go back to the pending policy", () => {
+    let r = fresh();
+    const definition = r.sim.wlm.definition;
+    r = requestChange(r, content, { label: 'A', commands: [{ kind: 'ACTIVATE_POLICY', definition: { ...definition, policyName: 'A' } }] }).run;
+    r = requestChange(r, content, { label: 'B', commands: [{ kind: 'ACTIVATE_POLICY', definition: { ...definition, policyName: 'B' } }] }).run;
+    // Cancel B first (its policy becomes the pending edits), then A; both messages name the pending policy.
+    const b = cancelChange(r, r.changes[1]!.id);
+    expect(b.restoredPolicy?.policyName).toBe('B');
+    expect(b.message).toContain('Its edits go back to the pending policy');
+    const a = cancelChange(b.run, b.run.changes[0]!.id);
+    expect(a.restoredPolicy?.policyName).toBe('A');
+    expect(a.message).toContain('Its edits go back to the pending policy');
+    // A hardware/weight change has no policy to hand back, so no pending-policy sentence.
+    const wrun = requestChange(fresh(), content, { label: 'w', commands: [weight(500)] }).run;
+    const w = cancelChange(wrun, wrun.changes[0]!.id);
+    expect(w.ok).toBe(true);
+    expect(w.restoredPolicy).toBeUndefined();
+    expect(w.message).not.toContain('pending policy');
+  });
+
   it('does not restore an older policy when a later activation for the same day is kept', () => {
     let r = fresh();
     for (const name of ['FIRST', 'SECOND']) {

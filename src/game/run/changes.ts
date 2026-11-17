@@ -204,14 +204,15 @@ export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
     if (later.activateDay === c.activateDay && (later.status === 'PLANNED' || later.status === 'APPLIED'))
       laterPolicy = policyOf(later) ?? laterPolicy;
   }
+  const restored = activation && !laterPolicy ? activation : null;
   return {
-    ...(activation && !laterPolicy ? { restoredPolicy: activation } : {}),
+    ...(restored ? { restoredPolicy: restored } : {}),
     run: logLine(
       { ...run, changes: run.changes.filter((x) => x.id !== changeId), capexRemaining: run.capexRemaining + c.capex, hoursLeft: run.hoursLeft + refundHours },
       `Change cancelled: ${c.label}`,
     ),
     ok: true,
-    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}${laterPolicy ? `. Later policy ${laterPolicy.policyName} keeps its current edits, including any copied from this request.` : ''}`,
+    message: `Cancelled: ${c.label}${refundHours ? ` (${refundHours}h back)` : ''}${c.capex ? ` ($${Math.round(c.capex / 1000)}k capex back)` : ''}${laterPolicy ? `. Later policy ${laterPolicy.policyName} keeps its current edits, including any copied from this request.` : restored ? '. Its edits go back to the pending policy (unless newer edits are pending).' : ''}`,
   };
 }
 
