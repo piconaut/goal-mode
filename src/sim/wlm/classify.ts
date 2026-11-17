@@ -83,7 +83,7 @@ export function classify(def: ServiceDefinition, work: WorkAttributes): Classifi
   return res;
 }
 
-export function classifyUncached(def: ServiceDefinition, work: WorkAttributes): ClassificationResult {
+function classifyUncached(def: ServiceDefinition, work: WorkAttributes): ClassificationResult {
   if (work.subsystem === 'STC' && work.TN && FORCED_SYSTEM_JOBNAMES.includes(work.TN.toUpperCase())) {
     return { serviceClass: SYSTEM, reportClass: null, path: ['forced SYSTEM'] };
   }

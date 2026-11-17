@@ -17,7 +17,7 @@ export interface ProjectState {
 
 type Out = { run: RunState; ok: boolean; message: string };
 
-export function effectCommands(effects: readonly ProjectEffect[], sim: SimState): Command[] {
+function effectCommands(effects: readonly ProjectEffect[], sim: SimState): Command[] {
   const out: Command[] = [];
   const scaled = (mod: 'efficiency' | 'ioPerTxn', id: string, f: number): Command => ({ kind: 'SET_MODIFIER', mod, key: id, value: (sim.mods[mod]?.[id] ?? 1) * f });
   for (const e of effects) {

@@ -21,7 +21,7 @@ export interface HardwareItem {
 }
 
 /** The target CPC of a per-CPC item: the named one, else the first. */
-export const cpcFor = (s: SimState, cpcId?: string): CpcConfig => s.config.cpcs.find((c) => c.id === cpcId) ?? s.config.cpcs[0]!;
+const cpcFor = (s: SimState, cpcId?: string): CpcConfig => s.config.cpcs.find((c) => c.id === cpcId) ?? s.config.cpcs[0]!;
 const cpc = cpcFor;
 
 export const HARDWARE: HardwareItem[] = [

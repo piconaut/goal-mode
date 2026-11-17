@@ -12,7 +12,7 @@ export function normalizeDefinition(d: ServiceDefinition): ServiceDefinition {
   return { ...d, classes: d.classes.map((c) => ({ ...c, periods: c.periods.map((p) => ({ ...p, durationSu: p.durationSu ?? null })) })) };
 }
 
-export const activeTools = (run: RunState): string[] => run.tools.filter((t) => !run.toolsOff.includes(t));
+const activeTools = (run: RunState): string[] => run.tools.filter((t) => !run.toolsOff.includes(t));
 
 export function features(run: RunState): Set<ToolFeature> {
   const out = new Set<ToolFeature>();
@@ -22,7 +22,7 @@ export function features(run: RunState): Set<ToolFeature> {
 
 export const hasFeature = (run: RunState, f: ToolFeature): boolean => features(run).has(f);
 
-export const onTrial = (run: RunState, id: string): boolean => (run.toolTrials ?? []).some((t) => t.id === id);
+const onTrial = (run: RunState, id: string): boolean => (run.toolTrials ?? []).some((t) => t.id === id);
 
 /**
  * The tool a vendor trial would lend: the costliest buyable-by-prereqs tool with no measurement overhead (a
@@ -49,7 +49,7 @@ export function expireToolTrials(run: RunState, day: number): RunState {
 }
 
 /** Why a tool can't be bought right now, or null. */
-export function buyBlocker(run: RunState, tool: ToolDef): string | null {
+function buyBlocker(run: RunState, tool: ToolDef): string | null {
   if (run.tools.includes(tool.id) && !onTrial(run, tool.id)) return 'Owned';
   if (tool.comingSoon) return 'Not available yet';
   if (run.phase === 'GAMEOVER') return 'The run is over';
@@ -133,7 +133,7 @@ export interface ToolView {
   trialLastDay: number | null;
 }
 
-export function overheadText(t: ToolDef): string | null {
+function overheadText(t: ToolDef): string | null {
   const o = t.overhead;
   if (!o) return null;
   const parts: string[] = [];

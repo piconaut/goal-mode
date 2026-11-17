@@ -66,7 +66,7 @@ export function accumulateMon3(run: RunState): RunState {
   return { ...run, mon3Charts: { ...st, acc, accTicks: (st.accTicks ?? 0) + 1 } };
 }
 
-export function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'] = {}, accTicks = 0): Mon3Sample {
+function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'] = {}, accTicks = 0): Mon3Sample {
   const m = buildMon3(run, scenario);
   const def = run.sim.wlm.definition;
   const byRc: Record<string, { completions: number; rtSumSec: number }> = {};

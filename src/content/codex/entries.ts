@@ -500,4 +500,3 @@ export const CODEX: CodexEntry[] = [
   },
 ];
 
-export const codexEntry = (id: string): CodexEntry | undefined => CODEX.find((e) => e.id === id);

@@ -31,7 +31,7 @@ type DelayAcc = Pick<ScpState['acc'], 'delay' | 'delayCpu' | 'delayZiip' | 'dela
  * I/O). I/O is the part in velocity. APPROX: the samples of transaction-server regions are included here (the totals
  * have no per-component server split); the needs-help test (`managedDelayFrac`) leaves them out.
  */
-export function managedDelays(acc: DelayAcc): Record<Exclude<Bottleneck, 'NONE'>, number> {
+function managedDelays(acc: DelayAcc): Record<Exclude<Bottleneck, 'NONE'>, number> {
   return { CPU: acc.delayCpu, ZIIP: acc.delayZiip, IO: Math.max(0, acc.delayIo - (acc.delayIoNoVel ?? 0)), STORAGE: acc.delayStorage, QUEUE: acc.delayQueue ?? 0 };
 }
 
@@ -62,7 +62,7 @@ export function waitingFrac(acc: Pick<ScpState['acc'], 'using' | 'delay' | 'dela
 }
 
 /** A period's delay shares (`WlmDelayShares`): each component over `using + delay`. */
-export function sharesOf(acc: DelayAcc & Pick<ScpState['acc'], 'using' | 'delayOther'>): WlmDelayShares {
+function sharesOf(acc: DelayAcc & Pick<ScpState['acc'], 'using' | 'delayOther'>): WlmDelayShares {
   const denom = acc.using + acc.delay;
   const share = (v: number) => (denom > 0 ? v / denom : 0);
   const m = managedDelays(acc);
@@ -343,7 +343,7 @@ export function donorOrder(
 /** A holder's donor entry from the goal periods it serves: the most important of them, the worst of their PIs (none
  * counts as missing, as `managementWorstPi`) and the sum of their processor use. APPROX: the regions' own overhead
  * stays in the region class's accumulators and is not counted. */
-export function holderDonorInfo(served: readonly DonorInfo[]): DonorInfo {
+function holderDonorInfo(served: readonly DonorInfo[]): DonorInfo {
   let importance = served[0]!.importance;
   let local: number | null = null;
   let plex: number | null = null;

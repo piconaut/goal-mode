@@ -249,7 +249,7 @@ export function softCapped(sim: RunState['sim'], lparId: string): boolean {
 }
 
 /** The resource behind DELAY's Primary Reason: the largest % Delayed for above 2%, capping included (p.110). */
-export function primaryDelayOf(delay: Mon3Row['delay']): Mon3DelayResource | null {
+function primaryDelayOf(delay: Mon3Row['delay']): Mon3DelayResource | null {
   const by: [Mon3DelayResource, number][] = [
     ['PRC', delay.cpu + delay.ziip],
     ['DEV', delay.io],

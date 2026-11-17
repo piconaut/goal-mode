@@ -291,7 +291,7 @@ export function batchMissMechanism(night: NightSummary, nightHour: HourAcc, host
 
 /** A played day's batch night starts at 18:00, twelve hours after the day's 06:00 start, and runs to the day end. */
 export const nightStartTick = (day: number): number => day * TICKS_PER_DAY + 12 * TICKS_PER_HOUR;
-export const nightWindow = (startTick: number) => ({ startTick, endTick: startTick + 12 * TICKS_PER_HOUR });
+const nightWindow = (startTick: number) => ({ startTick, endTick: startTick + 12 * TICKS_PER_HOUR });
 
 /** A card blamed for a missed night: one whose footprint reaches BATCH (listed, or on a critical job's image), causes
  * this mechanism and ran during the night (RT-14: BATCH is a workload like any other). */
