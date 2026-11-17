@@ -58,7 +58,7 @@ describe('policy adjustment', () => {
     scps: cur.scps.map((t) => ({ scKey: t.scKey, dp: dps[t.scKey]!, starvedSec: 0, acc: decayInto(emptyAcc(), t) })),
   };
 
-  it('helps the important unhappy class by moving it above the less important one', () => {
+  it("helps the important unhappy class by joining the less important one's level", () => {
     const out = policyAdjust({ def: BASEPOL, system, evalInput, current: cur.scps, sysplexPi: {}, clockText: 'T' });
     expect(out.log).toContain('RCVR=ONLHI#1');
     // One step: alone below batch, it joins batch's level (WLM Services p.707, code 620).

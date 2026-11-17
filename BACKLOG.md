@@ -347,22 +347,6 @@ separated by their five clock skips still count as one existing episode. The rec
 30 checks over about five minutes, with one periodic log entry. Targeted inspect tests cover those distinctions,
 and `npm run compare` confirms unchanged sim/game behaviour, logs and reports.
 
-### PR-18 · WT-06 test gaps
-`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
-
-From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. Tests only; no behaviour change:
-- S-4 (`tests/sim/wlm-realism.test.ts`) checks ≥ 4 distinct DPs below `MANAGED_MAX` at D8 12:00; assert canonical
-  spacing (`levelDp`) and the "7–8 levels from D1 to D8" of docs/archive/wlm-audit-2026-11.md §9.7.
-- R-4 ("MKTDDF#2 second from the bottom on PRDD at D1 14:17", §9.7) has no test.
-- The capped-PROD1 realism test (`tests/sim/realism.test.ts`, "nothing less important is raised past it") reads the
-  trace's `dps`, which `finish` records before the move; a move accepted in the last interval is missed. Check the
-  state after the step.
-- The log clue ("first rejection that names what stood in the way") has no test: first trial `SMALL_GAIN`, a later
-  one `MORE_IMPORTANT_HARMED`.
-- I9 checks the set of goal DPs only; add order preservation across an interval with no move.
-- `tests/sim/adjust.test.ts` "moving it above the less important one" asserts a join; rename it.
-Done when: each is covered (or named here as not worth it).
-
 ### PR-19 · Donor happiness uses the worse of local and sysplex PI, not the sysplex PI first
 `list: pr-followups · status: ready · priority: low · size: S · area: sim`
 
