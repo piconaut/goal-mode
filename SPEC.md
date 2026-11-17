@@ -631,9 +631,11 @@ for importance in 1..5:
   SG24-7621 p.105. APPROX: exponential use history, threshold and donor limit; a period with no PI yet counts as
   missing its goal (last at its importance, never when more important; one rule, `managementWorstPi`, also used
   below). Happiness takes the worse of the local and sysplex PI although IBM names the sysplex PI the primary
-  criterion: a donation is judged on this image's projection, and ordering on the plex PI alone let a locally
-  missing period donate and be raised back within two minutes (the RF-03 invariant, `tests/sim/wlm-realism.test.ts`;
-  PR-19, 2026-11-17). The pool is holders: a server period (WT-09) is one donor for the CICS classes it serves,
+  criterion (WLM Services p.138): the local PI "is always used and not overruled by the sysplex PI", and a period
+  happy across the plex but missing locally is a receiver (SG24-6472-03 p.54–55), so it is not a happy donor; a
+  donation is also judged on this image's projection. A plex-first revision tried for PR-19 (local PI as the
+  tie-break) gave two DDFPRD#1 reversals within two minutes on the Midwest one-day run, where RF-03 allows one
+  (`tests/sim/wlm-realism.test.ts`; without the tie-break it gave one, as the worse-of does; 2026-11-17). The pool is holders: a server period (WT-09) is one donor for the CICS classes it serves,
   judged by the worst of their PIs and the most important of them.
 - **Missing goals are not passed.** A less important receiver never moves to or above more important work that is
   missing its goal (or has no PI yet) and uses at least `donorMinEngines` of processor, whatever the projection says: a period at the

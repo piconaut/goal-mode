@@ -500,9 +500,12 @@ donorOrder(r, b, L, info, C):
 
 **Why the worse of the two PIs.** WLM Services p.138 makes the sysplex PI the primary criterion for selecting
 receivers and donors, and the receiver list uses it first indeed. Donor happiness and order use the worse of the
-local and sysplex PI instead: a donation is judged on this image's projected harm, and with the plex PI alone a
-period that misses its goal here but meets it across the plex donates and is raised back within two minutes, which
-the RF-03 invariant forbids (`tests/sim/wlm-realism.test.ts`; PR-19, 2026-11-17).
+local and sysplex PI instead. SG24-6472-03 (March 2008) p.54–55: both PIs are used for adjusting resources, "the local
+PI is always used and not overruled by the sysplex PI", and a period whose sysplex PI is below 1 but local PI above 1
+is a receiver, so it is not a happy donor here. A donation is also judged on this image's projected harm. A
+plex-first revision tried for PR-19 (local PI as the tie-break) gave two DDFPRD#1 reversals within two minutes on the
+Midwest one-day run, where the RF-03 invariant allows one (`tests/sim/wlm-realism.test.ts`); without the tie-break it
+gave one, as the worse-of does, so the run alone does not decide the choice (2026-11-17).
 
 **The pool is holders.** A server period's entry (`holderDonorInfo`) combines the classes it serves:
 - **importance:** the most important of them;
