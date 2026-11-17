@@ -9,6 +9,7 @@ import { rmSync } from 'node:fs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { applyPlayCommand, clockText, newPlayFile, type PlayCommand, type PlayFile } from './playCore';
 import { writeSpectateFile } from './spectateFile';
+import { arg, isMain, num } from './args';
 
 /** The audit's statistics runs (docs/archive/wlm-audit-2026-11.md §1, the S-table). */
 export const REPRO_RUNS: Record<string, { scenario: string; days: number }> = {
@@ -39,21 +40,17 @@ export function reproFile(opts: { scenario: string; days: number; seed?: number;
   return f;
 }
 
-if (process.argv[1]?.endsWith('repro.ts')) {
+if (isMain(import.meta.url)) {
   const [path, preset] = process.argv.slice(2);
-  const opt = (name: string) => {
-    const i = process.argv.indexOf(`--${name}`);
-    return i >= 0 ? process.argv[i + 1] : undefined;
-  };
   const named = preset && !preset.startsWith('--') ? REPRO_RUNS[preset] : undefined;
   if (!path || (preset && !preset.startsWith('--') && !named)) {
     console.error(`usage: npm run repro -- <file.json> (${Object.keys(REPRO_RUNS).join(' | ')} | --scenario <id> --days <n>) [--seed 42] [--difficulty normal]`);
     process.exit(2);
   }
-  const scenario = opt('scenario') ?? named?.scenario ?? 'midwest';
-  const days = Number(opt('days') ?? named?.days ?? 1);
-  const seed = Number(opt('seed') ?? 42);
-  const difficulty = (opt('difficulty') ?? 'normal').toUpperCase() as DifficultyId;
+  const scenario = arg('scenario', named?.scenario ?? 'midwest');
+  const days = num('days', named?.days ?? 1);
+  const seed = num('seed', 42);
+  const difficulty = arg('difficulty', 'normal').toUpperCase() as DifficultyId;
   const t0 = Date.now();
   const f = reproFile({ scenario, days, seed, difficulty });
   // Same layout as the play CLI: the Monitor III history goes beside the run file.

@@ -19,7 +19,7 @@ import { writeSpectateFile } from './spectateFile';
 import { buyTool, noteReportOpened } from '../src/game/tools';
 import { INSIGHT, TOOLS } from '../src/content/tools';
 
-import { arg } from './args';
+import { arg, flag, num } from './args';
 import { applyTune } from './tune';
 import { addTrace, candidateDump, dumpDay, emptyHour, hourLines } from './botTrace';
 import { setWlmTraceSink } from '../src/sim/wlm/adjust';
@@ -38,7 +38,7 @@ const bot = STRATEGIES[botName];
 if (!bot) throw new Error(`Unknown bot ${botName}; have ${Object.keys(STRATEGIES).join(', ')}`);
 
 /** `--spectate runs/<name>.json [--pace 2]`: write the run after every simulated hour for `?spectate=<name>`. */
-const spectatePath = process.argv.includes('--spectate') ? arg('spectate', 'runs/bot.json') : null;
+const spectatePath = flag('spectate') ? arg('spectate', 'runs/bot.json') : null;
 const paceSec = Number(arg('pace', '0'));
 const spectateLog: { cmd: string; text?: string }[] = [];
 let seenChanges = 0;
@@ -58,7 +58,7 @@ function spectate(r: RunState) {
  * Opens the day's capped number of reports each briefing and buys tools in catalog order (cheap tier 1 first, as
  * the playtesters did) whenever the next one is affordable; `toolDays` says when CICS_MON (playtest finding D) came.
  */
-const reader = process.argv.includes('--reader');
+const reader = flag('reader');
 const READER_KINDS = ['WLMGL', 'PARTITION', 'CF', 'DASD', 'SYSINFO', 'DELAY', 'CPC'];
 const READER_ORDER = TOOLS.filter((t) => !t.comingSoon).map((t) => t.id);
 const toolDays: Record<string, number> = {};
@@ -76,9 +76,9 @@ function readerBriefing(r: RunState): RunState {
 
 const tuneSpec = arg('tune', '');
 const tune = tuneSpec ? applyTune(tuneSpec) : null;
-const showChanges = process.argv.includes('--changes');
-const traceDay = process.argv.includes('--trace-day') ? Number(arg('trace-day', '0')) : null;
-const dumpPrefix = process.argv.includes('--dump') ? arg('dump', '') : null;
+const showChanges = flag('changes');
+const traceDay = flag('trace-day') ? num('trace-day', 0) : null;
+const dumpPrefix = flag('dump') ? arg('dump', '') : null;
 const dumpOn = dumpPrefix ? dumpDay(dumpPrefix) : null;
 if (traceDay !== null && !(traceDay >= 1)) throw new Error('--trace-day takes a played day, 1 or more');
 if (dumpPrefix !== null && dumpOn === null) throw new Error("--dump takes '<system> D<day> <clock prefix>', e.g. 'PRDA D29 10:0'");
@@ -143,7 +143,7 @@ console.log(`month ${run.sim.cost.month + 1} to date: $${Math.round(run.reports.
 void chooseDraft;
 
 // One machine-readable summary line for tools/sweep.ts.
-if (process.argv.includes('--json')) {
+if (flag('json')) {
   const reason = run.endReason ?? '';
   const cause = run.phase === 'VICTORY' ? 'victory' : /trust/i.test(reason) ? 'trust' : /batch/i.test(reason) ? 'batch' : /opex|outsourc/i.test(reason) ? 'opex' : run.phase === 'GAMEOVER' ? 'other' : 'unfinished';
   const byMech: Record<string, number> = {};

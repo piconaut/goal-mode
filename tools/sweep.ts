@@ -9,7 +9,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } fr
 import { availableParallelism } from 'node:os';
 import { dirname } from 'node:path';
 
-import { arg } from './args';
+import { arg, flag } from './args';
 import { parseTune } from './tune';
 
 const bots = arg('bots', 'donothing,textbook').split(',');
@@ -24,7 +24,7 @@ const tune = arg('tune', '');
 if (tune) parseTune(tune); // fail before spawning anything
 // Each finished run is appended here at once, so a killed sweep keeps its results; --resume skips them.
 const partial = `${out}.partial.jsonl`;
-const resume = process.argv.includes('--resume');
+const resume = flag('resume');
 mkdirSync(dirname(out), { recursive: true }); // CI checks out without runs/ (gitignored)
 
 interface Result {
@@ -45,7 +45,7 @@ interface Result {
 
 function runOne(bot: string, seed: number): Promise<Result> {
   return new Promise((resolve, reject) => {
-    const args = ['--import', 'tsx', 'tools/bot.ts', '--bot', bot, '--seed', String(seed), '--json', ...(days ? ['--days', days] : []), ...(difficulty ? ['--difficulty', difficulty] : []), ...(scenarioId ? ['--scenario', scenarioId] : []), ...(process.argv.includes('--reader') ? ['--reader'] : []), ...(tune ? ['--tune', tune] : [])];
+    const args = ['--import', 'tsx', 'tools/bot.ts', '--bot', bot, '--seed', String(seed), '--json', ...(days ? ['--days', days] : []), ...(difficulty ? ['--difficulty', difficulty] : []), ...(scenarioId ? ['--scenario', scenarioId] : []), ...(flag('reader') ? ['--reader'] : []), ...(tune ? ['--tune', tune] : [])];
     const p = spawn(process.execPath, args, { stdio: ['ignore', 'pipe', 'inherit'] });
     let text = '';
     p.stdout.on('data', (d: Buffer) => (text += d.toString()));

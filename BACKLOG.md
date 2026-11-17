@@ -648,18 +648,6 @@ generate the code, or measure that a table loop stays within budget. No behaviou
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
 difference; per-tick timing before and after (`npm run bench`) in the PR.
 
-### CL-24 · One argument parser for the tools
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16). `tools/args.ts` exports a 4-line `arg()`. Private copies, or hand-rolled
-`argv` handling, live in `bench.ts`, `headless.ts` (which also skips values starting with `--`), `repro.ts` (`opt`),
-`inspect.ts` (`opt`), `compare.ts`, `sweepRemote.ts`, `testRemote.ts` and `play.ts`. Change: `arg`, `flag` and
-`num` in `tools/args.ts`, used everywhere except `tools/compareDump.ts`, which must stay self-contained (CL-17).
-Replace the `process.argv[1]?.endsWith('<file>.ts')` main-module guards (7 in `tools/`), which silently stop running
-when a file is renamed, with one `isMain(import.meta.url)` helper. Done when: every `docs/tools.md` command line still
-works as documented (spot-check each tool's `--help` or a short run), `bench --hash` prints the same hash, and the
-tool tests pass.
-
 ### CL-25 · One clock formatter
 `list: cleanup · status: ready · priority: low · size: S · area: sim`
 

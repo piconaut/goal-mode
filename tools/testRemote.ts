@@ -20,18 +20,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { planTest } from './ci/testPlan';
+import { takeFlag, taker } from './args';
 
 const argv = process.argv.slice(2);
-const take = (name: string): string | undefined => {
-  const i = argv.indexOf(`--${name}`);
-  if (i < 0) return undefined;
-  const v = argv[i + 1];
-  argv.splice(i, v && !v.startsWith('--') ? 2 : 1);
-  return v && !v.startsWith('--') ? v : '';
-};
+const take = taker(argv);
 const fetchSha = take('fetch');
 const label = take('name');
-const noWait = take('no-wait') !== undefined;
+const noWait = takeFlag(argv, 'no-wait');
 const ref = take('ref') || 'HEAD';
 const testArgs = argv.join(' ');
 if (fetchSha === '') throw new Error('--fetch needs the commit sha printed by a --no-wait run');
