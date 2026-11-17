@@ -9,6 +9,7 @@ import { cpuProtected } from '../../src/sim/wlm/adjust';
 import { ladderOf, levelDp } from '../../src/sim/wlm/ladder';
 import { DP } from '../../src/sim/zos/dispatcher';
 import { evaluateLpar, sliceSpec, type ScpTick, type SliceSpec } from '../../src/sim/wlm/evaluate';
+import { RG_MIN_DISC_DP } from '../../src/sim/wlm/eval/grants';
 import { projectedPercentilePi } from '../../src/sim/wlm/goals';
 import { projectBatchRtPi } from '../../src/sim/wlm/batchRt';
 import { ACC_DECAY, decayInto, emptyAcc, goalInfo, goalPi, tickPi, type ScpAcc, type WlmSystemState } from '../../src/sim/wlm/runtime';
@@ -588,7 +589,7 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     expect(protectedPairs).toBeGreaterThan(50);
   });
 
-  it('I15 minimum above goal work: a resource-group minimum and promotion are dispatched above every goal period', () => {
+  it('I15 minimum placement: a goal member\'s resource-group minimum and promotion are dispatched above every goal period', () => {
     expect(DP.RG_MINIMUM).toBeGreaterThan(DP.MANAGED_MAX);
     expect(DP.PROMOTED).toBeGreaterThan(DP.RG_MINIMUM);
     // C-4: a period low on the ladder with a 1-engine minimum gets it from a hog on the top level.
@@ -601,5 +602,33 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     const got = (r: ReturnType<typeof evaluateLpar>) => r.slices[1]!.cpGranted;
     expect(got(evaluateLpar(base))).toBeLessThan(0.1);
     expect(got(evaluateLpar({ ...base, minOf: { 'MIN#1': 1 } }))).toBeCloseTo(1, 2);
+  });
+
+  it("I15 minimum placement: a discretionary member's minimum yields to goal work: above discretionary work only", () => {
+    // grants.ts: the minimum of a discretionary member runs at MANAGED_MIN − 1 (202), above the discretionary range
+    // (192–201) and below every goal period, while an outside goal period misses; at RG_MINIMUM (249) otherwise.
+    expect(DP.MANAGED_MIN - 1).toBe(202);
+    expect(DP.MANAGED_MIN - 1).toBeGreaterThan(DP.DISCRETIONARY_MAX);
+    // Pinned to the constant the dispatch uses, so a move inside or above the discretionary range fails here.
+    expect(RG_MIN_DISC_DP).toBe(DP.MANAGED_MIN - 1);
+    const grants = (slices: ReturnType<typeof sliceSpec>[], dps: Record<string, number>, extra: Record<string, unknown>) =>
+      evaluateLpar({
+        cpCapacityEngines: 4, cpServers: 4, ziipCapacityEngines: 0, ziipServers: 0, cpPrsmDelayFrac: 0,
+        slices, backlog: {}, io: IO, pagingFrac: 0, dpOf: (k: string) => dps[k]!, ...extra,
+      }).slices.map((x) => x.cpGranted);
+    const hog = sliceSpec({ key: 'hog', scKey: 'HOG#1', kind: 'AS', cpEngines: 4, units: 8 });
+    const dev = sliceSpec({ key: 'dev', scKey: 'DEVBAT#1', kind: 'AS', cpEngines: 2, units: 4 });
+    const minOf = { minOf: { 'DEVBAT#1': 1 } };
+    // No outside goal period misses: the discretionary minimum keeps RG_MINIMUM and takes an engine from the hog.
+    expect(grants([hog, dev], { 'HOG#1': levelDp(0), 'DEVBAT#1': 196 }, minOf)[1]).toBeCloseTo(1, 2);
+    // An outside goal period misses: the share drops below goal work (202), so the hog keeps the capacity.
+    expect(grants([hog, dev], { 'HOG#1': levelDp(0), 'DEVBAT#1': 196 }, { ...minOf, discMin: new Set(['DEVBAT#1']) })[1]).toBeLessThan(0.1);
+    // Above discretionary work: the 202 share is served before equal-priority 196 work, where sharing by units
+    // alone gives this slice less than its minimum.
+    const other = sliceSpec({ key: 'other', scKey: 'OTHER#1', kind: 'AS', cpEngines: 4, units: 8 });
+    const light = sliceSpec({ key: 'dev', scKey: 'DEVBAT#1', kind: 'AS', cpEngines: 1, units: 1 });
+    const discDps = { 'OTHER#1': 196, 'DEVBAT#1': 196 };
+    expect(grants([other, light], discDps, {})[1]).toBeLessThan(0.5);
+    expect(grants([other, light], discDps, { ...minOf, discMin: new Set(['DEVBAT#1']) })[1]).toBeCloseTo(1, 2);
   });
 });
