@@ -23,6 +23,22 @@ describe('tool argument parser', () => {
     expect(num('seed', 42)).toBe(42);
   });
 
+  it('reads a malformed number as NaN and a trailing flag as absent', () => {
+    set('--days', 'three', '--seed');
+    expect(num('days', 1)).toBeNaN();
+    expect(num('seed', 42)).toBe(42);
+    expect(arg('seed', '42')).toBe('42');
+  });
+
+  it('a value flag with no value is taken alone and reads as empty', () => {
+    const argv = ['--fetch', '--no-wait', 'extra', '--ref'];
+    const take = taker(argv);
+    expect(take('fetch')).toBe('');
+    expect(argv).toEqual(['--no-wait', 'extra', '--ref']);
+    expect(take('ref')).toBe('');
+    expect(argv).toEqual(['--no-wait', 'extra']);
+  });
+
   it('takes flags and their values out of a forwarded argv, leaving positionals', () => {
     const argv = ['--suite', 'tools', '--no-wait', '--filter', 'plan', 'extra'];
     const take = taker(argv);
