@@ -359,17 +359,6 @@ separated by their five clock skips still count as one existing episode. The rec
 30 checks over about five minutes, with one periodic log entry. Targeted inspect tests cover those distinctions,
 and `npm run compare` confirms unchanged sim/game behaviour, logs and reports.
 
-### PR-11 · Match the RCA evidence example to its accepted mechanisms
-`list: pr-followups · status: ready · priority: low · size: S · area: content`
-
-Source: [#288 independent fix-check, M1](https://github.com/piconaut/goal-mode/pull/288#issuecomment-6796163086)
-(2026-11-11). `docs/rca-design.md` §3 A9 says two `DELAY_ZIIP` pins can reach strong evidence for any CPU or
-dependency incident, but `src/content/evidence.ts` accepts that metric only for `CPU_CAPACITY` and `CPU_PRIORITY`;
-`DELAY_CPU` also accepts `DEPENDENCY`. Verify the intended example against the metric definitions and judge, then
-use `DELAY_CPU` or restrict the example to the CPU mechanisms. This is a documentation correction, not a scoring
-change. Done when: A9's example matches the accepted mechanisms and relation/notability rules, preserving its
-explanation of the remaining proof-recipe gap.
-
 ### PR-16 · `placeLateDp` can return MANAGED_MAX
 `list: pr-followups · status: ready · priority: low · size: S · area: sim`
 
