@@ -1104,7 +1104,7 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     const lines: string[] = [];
     const traces: WlmAdjustTrace[] = [];
     /** The state after each step in the window: the trace's `dps` is recorded before its move. */
-    const afterStep: { heldBy?: Record<string, string>; dps: Record<string, number> }[] = [];
+    const afterStep: { clockText: string; heldBy?: Record<string, string>; dps: Record<string, number> }[] = [];
     let stepTraces: WlmAdjustTrace[] = [];
     const samples: { cp: number; zi: number; pi: number }[] = [];
     const adjust = wlmAdjust.policyAdjust;
@@ -1134,7 +1134,7 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
         s = step(s, [], MIDWEST);
         const after = s.wlm.systems.find((x) => x.lparId === 'PROD1');
         if (after && stepTraces[0] !== undefined) {
-          afterStep.push({ heldBy: stepTraces[0].heldBy, dps: Object.fromEntries(after.scps.map((p) => [p.scKey, p.dp])) });
+          afterStep.push({ clockText: stepTraces[0].clockText, heldBy: stepTraces[0].heldBy, dps: Object.fromEntries(after.scps.map((p) => [p.scKey, p.dp])) });
         }
         if (s.wlm.log === prev) continue;
         const last = prev[prev.length - 1];
@@ -1189,11 +1189,11 @@ describe('most important work missing its goal is helped first (WLM Planning ch.
     // PR-18: the trace records `dps` before the move, so a move accepted in the last interval would be missed.
     // Check the state after the step too.
     expect(afterStep.length).toBeGreaterThan(1_000); // every step in the window, not only the traced ones
-    const reachedAfter = afterStep.flatMap(({ heldBy, dps }) => Object.keys(dps).filter((k) => {
+    const reachedAfter = afterStep.flatMap(({ clockText, heldBy, dps }) => Object.keys(dps).filter((k) => {
       const g = goalInfo(s.wlm.definition, k);
       const sameHolder = heldBy?.[k] !== undefined && heldBy[k] === heldBy['ONLHI#1'];
       return g !== null && g.goal.kind !== 'DISC' && g.importance > 1 && !sameHolder && dps[k]! >= dps['ONLHI#1']!;
-    }).map((k) => k));
+    }).map((k) => `${clockText} ${k}`));
     expect(reachedAfter).toEqual([]);
     // PR-18: the first rejection here is unnamed ("no gain for the receiver") and a later trial harms ONLHI; the
     // clue must name what stood in the way, not the first trial's reason.
