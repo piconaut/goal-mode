@@ -3,7 +3,7 @@
 // emergency trust cost, but each one can misfire.
 
 import { AUTOMATION } from '../content/alerts';
-import { formatClock } from '../sim/core/clock';
+import { hhmm } from '../sim/core/clock';
 import type { GameContent } from './run';
 import type { RunState } from './types';
 
@@ -70,7 +70,7 @@ export function runAutomation(run: RunState, content: GameContent, fired: readon
   let r: RunState = { ...run, automation: st };
   const note = (rr: RunState, text: string): RunState => {
     const a = rr.automation;
-    return { ...rr, automation: { ...a, log: [...a.log, { tick: rr.sim.tick, text: `${formatClock(rr.sim.tick).slice(-8, -3)} ${text}` }].slice(-AUTOMATION.logKept) } };
+    return { ...rr, automation: { ...a, log: [...a.log, { tick: rr.sim.tick, text: `${hhmm(rr.sim.tick)} ${text}` }].slice(-AUTOMATION.logKept) } };
   };
   const bump = (rr: RunState, id: number): RunState => ({ ...rr, automation: { ...rr.automation, doneToday: { ...rr.automation.doneToday, [id]: (rr.automation.doneToday[id] ?? 0) + 1 } } });
   for (const rule of st.rules) {

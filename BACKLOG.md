@@ -649,17 +649,6 @@ generate the code, or measure that a table loop stays within budget. No behaviou
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
 difference; per-tick timing before and after (`npm run bench`) in the PR.
 
-### CL-25 · One clock formatter
-`list: cleanup · status: ready · priority: low · size: S · area: sim`
-
-Source: codebase survey (2026-11-16). Zero-padded clock text is built in `src/sim/core/clock.ts`,
-`src/sim/core/tick/helpers.ts` (`instanceClock`), `src/sim/measure/reports.ts` (three places; its local `pad` pads
-with spaces), `tools/playCore.ts` (`clockText`), `src/ui/App.tsx` (`hhmm`), and by slicing `formatClock(…)` in
-`src/ui/Mon3Charts.tsx` and `src/ui/Monitor.tsx`. `src/game/view.ts` and `planner.ts` import `instanceClock` from
-`sim/core/step`; it moves out of `tick/helpers.ts`. Change: `pad2`, `hhmm` and `instanceClock` live in `src/sim/core/clock.ts` and every copy uses them.
-Rename the reports `pad` to `padRight` (or similar), since it is not the same thing. Done when: `npm run compare`
-shows no difference, RMF report text included.
-
 ### CL-26 · `basepol.ts` uses the shared WLM policy builders
 `list: cleanup · status: ready · priority: low · size: S · area: content`
 

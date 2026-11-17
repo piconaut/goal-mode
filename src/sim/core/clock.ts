@@ -36,11 +36,27 @@ export function clockAt(tick: number): ClockInfo {
   };
 }
 
+/** A clock field to two digits: `pad2(7)` → `07`, the zero-padded form every clock text is built from. */
+export const pad2 = (n: number): string => String(n).padStart(2, '0');
+
 export function formatClock(tick: number): string {
   const c = clockAt(tick);
   const secOfDay = Math.round(c.hourOfDay * 3600);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `D${c.day + 1} ${pad(Math.floor(secOfDay / 3600))}:${pad(Math.floor((secOfDay % 3600) / 60))}:${pad(secOfDay % 60)}`;
+  return `D${c.day + 1} ${pad2(Math.floor(secOfDay / 3600))}:${pad2(Math.floor((secOfDay % 3600) / 60))}:${pad2(secOfDay % 60)}`;
+}
+
+/** `HH:MM` of a tick: formatClock's day and time without the day or seconds (chart axes, log lines). */
+export function hhmm(tick: number): string {
+  const c = clockAt(tick);
+  const secOfDay = Math.round(c.hourOfDay * 3600);
+  return `${pad2(Math.floor(secOfDay / 3600))}:${pad2(Math.floor((secOfDay % 3600) / 60))}`;
+}
+
+/** Seconds after a played day's 06:00 start → `HH:MM`, with `+1` after midnight (a batch deadline). */
+export function instanceClock(secAfterStart: number): string {
+  const s = Math.round(secAfterStart + DAY_START_HOUR * 3600) % DAY_SEC;
+  const dayOffset = secAfterStart >= DAY_SEC - DAY_START_HOUR * 3600 ? '+1' : '';
+  return `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor((s % 3600) / 60))}${dayOffset}`;
 }
 
 /** `D2 10:40` or `D2 Tue 10:40` (formatClock's day and time) → tick; the small hours belong to the played day before. */

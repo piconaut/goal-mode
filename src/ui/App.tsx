@@ -1,4 +1,5 @@
 import { piColor, seriesColor } from './colors';
+import { hhmm } from '../sim/core/clock';
 import { useEffect, useRef, useState } from 'react';
 import { CodexHints } from './CodexHint';
 import type { ViewModel } from '../game/view';
@@ -224,12 +225,6 @@ function useShortcuts(game: GameHandle, setTab: (t: Tab) => void) {
 
 const trustColor = (t: number) => (t >= 60 ? 'var(--good)' : t >= 35 ? 'var(--warn)' : 'var(--crit)');
 
-function hhmm(h: number): string {
-  const hh = Math.floor(h);
-  const mm = Math.round((h - hh) * 60) % 60;
-  return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-}
-
 /** Day (0-based) a history sample belongs to: the day's ticks run (day·T, (day+1)·T]. */
 const sampleDay = (tick: number, ticksPerDay: number) => Math.max(0, Math.ceil(tick / ticksPerDay) - 1);
 
@@ -238,7 +233,7 @@ function Capacity({ v, history }: { v: ViewModel; history: HistoryPoint[] }) {
   const last = history.at(-1);
   const day = last && !history.some((p) => sampleDay(p.tick, v.ticksPerDay) === v.day) ? sampleDay(last.tick, v.ticksPerDay) : v.day;
   const pts = history.filter((p) => sampleDay(p.tick, v.ticksPerDay) === day);
-  const xLabels = pts.map((p) => hhmm(p.hourOfDay));
+  const xLabels = pts.map((p) => hhmm(p.tick));
   const lpars = v.lpars.filter((l) => l.kind === 'ZOS');
   // Colours follow the LPAR across the per-CPC MSU charts and the R4HA chart.
   const series = (key: 'msu' | 'r4ha', ids: string[]) =>

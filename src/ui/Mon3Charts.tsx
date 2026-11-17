@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { firstSeen, type ChartMarker, type Mon3Sample } from '../game/mon3Charts';
 import type { ViewModel } from '../game/view';
-import { formatClock } from '../sim/core/clock';
+import { hhmm } from '../sim/core/clock';
 import { LineChart, type Series } from './LineChart';
 import type { GameHandle } from './useGame';
 import { AnalyticsLink, Empty } from './Empty';
@@ -58,7 +58,7 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
   const lo = zoom ? zoom[0] : 0;
   const hi = zoom ? Math.min(zoom[1], all.length - 1) : all.length - 1;
   const samples = all.slice(lo, hi + 1);
-  const xLabels = samples.map((s) => formatClock(s.tick).slice(-8, -3));
+  const xLabels = samples.map((s) => hhmm(s.tick));
   const firstTick = samples[0]?.tick ?? 0;
   const lastTick = samples.at(-1)?.tick ?? 0;
   // A marker belongs to the first sample at or after it.

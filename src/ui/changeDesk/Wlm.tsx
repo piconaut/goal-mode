@@ -5,6 +5,7 @@ import { serviceClassGoalIssues, cicsTransactionClasses } from '../../game/wlmEd
 import { CodexHints } from '../CodexHint';
 import { ServiceClasses } from '../ServiceClassEditor';
 import type { GameHandle } from '../useGame';
+import { pad2 } from '../../sim/core/clock';
 import { ACTIVATE_PREVIEW, costText, preview } from './shared';
 
 /** "Where does this work go?" against the pending (or active) policy. */
@@ -175,7 +176,7 @@ export function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) 
             <select aria-label="Switch hour" value={r.hour} onChange={(e) => setRows(rows.map((x, j) => (j === i ? { ...x, hour: Number(e.target.value) } : x)))}>
               {hours.map((h) => (
                 <option key={h} value={h}>
-                  {String(h).padStart(2, '0')}:00
+                  {pad2(h)}:00
                 </option>
               ))}
             </select>

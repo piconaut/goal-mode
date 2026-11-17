@@ -3,7 +3,7 @@
 
 import { hostImages } from './footprint';
 import { EVIDENCE, EVIDENCE_METRICS, JOB_DELAY_METRICS, type EvidenceMetric, type PinRelation } from '../content/evidence';
-import { clockAt, formatClock } from '../sim/core/clock';
+import { clockAt, formatClock, hhmm } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../sim/core/units';
 import { classify } from '../sim/wlm/classify';
@@ -426,7 +426,7 @@ const fmtValue = (m: EvidenceMetric, v: number) => {
 // Db2 101 and CICS 110 pins sit at their SMF hour's end tick; label the hour itself (10:00–11:00).
 const pinWhen = (p: Located): string =>
   p.source === 'Db2 101' || p.source === 'CICS 110'
-    ? `${formatClock(p.tick - TICKS_PER_HOUR).slice(0, -3)}–${formatClock(p.tick).slice(-8, -3)}`
+    ? `${formatClock(p.tick - TICKS_PER_HOUR).slice(0, -3)}–${hhmm(p.tick)}`
     : formatClock(p.tick).slice(0, -3);
 
 function pinText(p: Located): string {
