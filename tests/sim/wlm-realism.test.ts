@@ -194,10 +194,11 @@ describe('the ladder does not collapse (docs/archive/wlm-audit-2026-11.md W2, S-
       samples.push(goal.map((p) => p.dp));
     }
     // §9.7: PROD2 is on 7–8 levels from D1 to D8 — the ladder neither collapses onto a few levels nor climbs past
-    // the top of the managed range.
+    // the top of the managed range. Checked on each day, not only across them, so one day's collapse fails it
+    // (measured: D1 has 6 levels at 12:00, D2–D8 have 7–8).
+    samples.forEach((dps, day) => expect(new Set(dps).size, `D${day + 1} 12:00`).toBeGreaterThanOrEqual(day === 0 ? 6 : 7));
     expect(new Set(samples.flat()).size).toBeGreaterThanOrEqual(7);
     expect(new Set(samples.flat()).size).toBeLessThanOrEqual(8);
-    expect(new Set(samples[7]).size).toBeGreaterThanOrEqual(4);
   }, 300_000);
 
   // §9.7: "R-4 is gone: at D1 14:17 on PRDD MKTDDF#2 is second from the bottom." Before WT-06 the importance-4
