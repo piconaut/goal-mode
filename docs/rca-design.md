@@ -368,9 +368,11 @@ clue. A competitor's row must also name a host image, so a `*PLEX` roll-up is re
 show which image the class ran on"). `LOCK_WAIT` and `CF_WAIT` are only ever pinned from Db2 101, whose subject is the
 workload itself, so their relation is always `self`.
 
-What remains open is the *combination*: two `DELAY_ZIIP` rows of the work's own class still reach "strong evidence"
-(relevance ≥ 2, +5 Insight) for any CPU or dependency incident, because nothing checks that the pins, taken together,
-separate the cause from its look-alikes. That is RT-13's proof recipes.
+What remains open is the *combination*: two notable `DELAY_CPU` rows of the work's own class (10 % or more) still
+reach "strong evidence" (relevance ≥ 2, +5 Insight) for a `CPU_CAPACITY`, `CPU_PRIORITY` or `DEPENDENCY` incident,
+because nothing checks that the pins, taken together, separate the cause from its look-alikes. That is RT-13's proof
+recipes. (`DELAY_CPU` is accepted for those three mechanisms; `DELAY_ZIIP`, which the example used, only for the two
+CPU mechanisms in its metric definition.)
 
 The reverse also holds: a ruling-out pin cannot count. "CPU per transaction unchanged" is the discriminator for a
 surge against a regression or bot traffic, and `CPU_VS_BASE` near ×1.0 (or ×0.4 for bots) is below `notableAt`.
