@@ -344,6 +344,12 @@ function spectate(text: string) {
   postPolicy();
 }
 
+/** Exhaustiveness guard for the message switch: an unhandled `ToWorker` type is a type error here. An untyped
+ *  sender's unknown type throws, where the switch used to fall through to `sendView()`. */
+function assertNever(x: never): never {
+  throw new Error(`Unhandled worker message: ${JSON.stringify(x)}`);
+}
+
 self.onmessage = (e: MessageEvent<ToWorker>) => {
   const m = e.data;
   if (spectating && !SPECTATOR_OK.has(m.type)) return;
@@ -640,6 +646,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       post({ type: 'REPORT', text: renderReport(iv, m.kind, m.scKey, m.system) });
       break;
     }
+    default:
+      assertNever(m);
   }
   if (!m.type.startsWith('GET_')) persistSoon();
   sendView();
