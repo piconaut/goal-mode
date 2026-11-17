@@ -589,7 +589,7 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     expect(protectedPairs).toBeGreaterThan(50);
   });
 
-  it('I15 minimum above goal work: a goal member\'s resource-group minimum and promotion are dispatched above every goal period', () => {
+  it('I15 minimum placement: a goal member\'s resource-group minimum and promotion are dispatched above every goal period', () => {
     expect(DP.RG_MINIMUM).toBeGreaterThan(DP.MANAGED_MAX);
     expect(DP.PROMOTED).toBeGreaterThan(DP.RG_MINIMUM);
     // C-4: a period low on the ladder with a 1-engine minimum gets it from a hog on the top level.
@@ -604,7 +604,7 @@ describe('WLM policy adjustment invariants (docs/wlm-design.md §5.9)', () => {
     expect(got(evaluateLpar({ ...base, minOf: { 'MIN#1': 1 } }))).toBeCloseTo(1, 2);
   });
 
-  it("I15 a discretionary member's minimum yields to goal work: above discretionary work only", () => {
+  it("I15 minimum placement: a discretionary member's minimum yields to goal work: above discretionary work only", () => {
     // grants.ts: the minimum of a discretionary member runs at MANAGED_MIN − 1 (202), above the discretionary range
     // (192–201) and below every goal period, while an outside goal period misses; at RG_MINIMUM (249) otherwise.
     expect(DP.MANAGED_MIN - 1).toBe(202);
