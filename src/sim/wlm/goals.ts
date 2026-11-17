@@ -6,8 +6,8 @@ import type { Goal, PeriodDef } from './types';
 /** Upper bounds of the 14 RMF/WLM buckets as multiples of the goal; the last is open (SG24-7621 §3.10). */
 export const BUCKET_BOUNDS = [0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 2.0, 4.0, Infinity] as const;
 export const BUCKETS = BUCKET_BOUNDS.length;
-export const DISCRETIONARY_PI = 0.81;
-export const PI_MIN_PERCENTILE = 0.5;
+const DISCRETIONARY_PI = 0.81;
+const PI_MIN_PERCENTILE = 0.5;
 export const PI_MAX_PERCENTILE = 4.0;
 /** The existing velocity floor: keeps zero-service projections finite (0.1 %). */
 export const VELOCITY_FLOOR = 0.1;

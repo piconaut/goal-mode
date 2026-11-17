@@ -102,7 +102,7 @@ export interface ScpGoalInfo {
   resourceGroup: string | null;
 }
 
-export function parseScKey(scKey: string): { serviceClass: string; period: number } {
+function parseScKey(scKey: string): { serviceClass: string; period: number } {
   const i = scKey.lastIndexOf('#');
   return { serviceClass: scKey.slice(0, i), period: Number(scKey.slice(i + 1)) - 1 };
 }

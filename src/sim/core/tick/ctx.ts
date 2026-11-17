@@ -26,7 +26,7 @@ export function servers(rt: LparPoolRuntime | undefined, logical: number, hiperD
 }
 
 // Whether a workload calls Db2, memoised per definition object (asked per slice per tick).
-export const usesDb2Cache = new WeakMap<WorkloadDef, boolean>();
+const usesDb2Cache = new WeakMap<WorkloadDef, boolean>();
 export function usesDb2(w: WorkloadDef): boolean {
   let v = usesDb2Cache.get(w);
   if (v === undefined) usesDb2Cache.set(w, (v = w.servers.some((s) => s.role.startsWith('DB2.'))));

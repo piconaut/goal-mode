@@ -22,7 +22,7 @@ export function hostImages(routing: Readonly<Record<string, number>>): string[] 
 }
 
 /** Images the workload is routed to under the effective routing. */
-export function routedImages(world: Pick<ReachWorld, 'sim' | 'workloads'>, workloadId: string): string[] {
+function routedImages(world: Pick<ReachWorld, 'sim' | 'workloads'>, workloadId: string): string[] {
   const w = world.workloads.find((x) => x.id === workloadId);
   return hostImages(world.sim.routing[workloadId] ?? w?.routing ?? {});
 }

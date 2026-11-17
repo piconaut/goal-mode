@@ -11,20 +11,20 @@ function bump(hour: number, peakHour: number, width: number): number {
   return Math.exp(-(d * d) / (2 * width * width));
 }
 
-export function shapeAt(shape: ArrivalShape, hour: number): number {
+function shapeAt(shape: ArrivalShape, hour: number): number {
   let raw = 0;
   for (const p of shape.peaks) raw += p.height * bump(hour, p.hour, p.widthHours);
   return shape.floor + (1 - shape.floor) * Math.min(1, raw);
 }
 
-export function calendarMultiplier(shape: ArrivalShape, clock: ClockInfo): number {
+function calendarMultiplier(shape: ArrivalShape, clock: ClockInfo): number {
   let m = shape.weekly[clock.dayOfWeek] ?? 1;
   if (clock.dayOfMonth === 1 || clock.dayOfMonth === 15) m *= shape.payday;
   if (clock.dayOfMonth >= 29) m *= shape.monthEnd;
   return m;
 }
 
-export function growthMultiplier(w: WorkloadDef, playedDay: number): number {
+function growthMultiplier(w: WorkloadDef, playedDay: number): number {
   return Math.pow(1 + w.growthPerDay, playedDay);
 }
 

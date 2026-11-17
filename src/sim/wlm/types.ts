@@ -84,7 +84,6 @@ export interface ServiceDefinition {
 export const SYSTEM = 'SYSTEM';
 export const SYSSTC = 'SYSSTC';
 export const SYSOTHER = 'SYSOTHER';
-export const BUILTIN_CLASSES = [SYSTEM, SYSSTC, SYSOTHER] as const;
 
 /** Address spaces z/OS keeps in SYSTEM regardless of classification (SG24-7621 §3.13). */
 export const FORCED_SYSTEM_JOBNAMES = [

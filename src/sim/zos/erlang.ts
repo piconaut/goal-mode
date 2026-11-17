@@ -2,7 +2,7 @@
 // is preemptive-priority and far more complex; Erlang-C captures the engine-count effect.
 
 /** Erlang B blocking probability for c servers and offered load a (Erlangs). */
-export function erlangB(c: number, a: number): number {
+function erlangB(c: number, a: number): number {
   let b = 1;
   for (let k = 1; k <= c; k++) b = (a * b) / (k + a * b);
   return b;

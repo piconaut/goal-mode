@@ -648,25 +648,6 @@ generate the code, or measure that a table loop stays within budget. No behaviou
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
 difference; per-tick timing before and after (`npm run bench`) in the PR.
 
-### CL-22 · Dead code and file-private exports
-`list: cleanup · status: ready · priority: low · size: S · area: game`
-
-Source: codebase survey (2026-11-16). The following have no importer at all (checked with grep over `src`, `tests` and
-`tools`): `BUILTIN_CLASSES` (`src/sim/wlm/types.ts`) and `codexEntry` (`src/content/codex/entries.ts`). The following
-are used only in their own file, so they should not be exported. Re-check each with grep, `tests/` and `tools/`
-included, first:
-- `src/game`: `capexFor`, `leadDaysFor` (catalog), `pinText` (evidence), `routedImages` (footprint),
-  `primaryDelayOf` (mon3), `sampleMon3` (mon3Charts), `effectCommands` (projects), `activeTools`, `onTrial`,
-  `buyBlocker`, `overheadText` (tools) and `nightWindow` (sla);
-- `src/content`: `cpcFor` (hardware-catalog);
-- `src/sim`: `DISCRETIONARY_PI`, `PI_MIN_PERCENTILE`, `R4HA_SLOT_SEC`, `POOLS`, `erlangB`, `classifyUncached`,
-  `calendarMultiplier`, `shapeAt`, `growthMultiplier`, `missingGoal`, `regionStat`, `routeCandidate`,
-  `managedDelays`, `sharesOf`, `holderDonorInfo`, `parseScKey`, `initialDp`, `resolveRgCapEngines`, and the memo
-  caches `jobClassCache`, `byIdCache`, `wlCache`, `asCache` and `usesDb2Cache`.
-
-Types that name an exported shape may stay exported. Done when: the symbols are deleted or un-exported, typecheck is
-clean and `npm run check` is green.
-
 ### CL-24 · One argument parser for the tools
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 

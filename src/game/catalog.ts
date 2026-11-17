@@ -121,11 +121,11 @@ export interface ChangePreview {
 }
 
 /** Hardware capex after perks (the zIIP promotion discounts specialty engines). */
-export function capexFor(hardwareId: string, capex: number, perks: readonly string[]): number {
+function capexFor(hardwareId: string, capex: number, perks: readonly string[]): number {
   return perks.includes('ZIIP_PROMO') && hardwareId === 'ADD_ZIIP' ? Math.round(capex * DRAFT_TUNING.ziipPromoCapexMult) : capex;
 }
 
-export function leadDaysFor(leadDays: number, perks: readonly string[]): number {
+function leadDaysFor(leadDays: number, perks: readonly string[]): number {
   return perks.includes('VENDOR_FRIEND') && leadDays >= 2 ? leadDays - DRAFT_TUNING.vendorFriendDays : leadDays;
 }
 

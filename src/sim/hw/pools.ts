@@ -15,7 +15,7 @@ import {
   type PoolClaim,
 } from './prsm';
 
-export const POOLS: readonly PoolType[] = ['CP', 'ZIIP', 'ICF'];
+const POOLS: readonly PoolType[] = ['CP', 'ZIIP', 'ICF'];
 
 export interface PoolDemand {
   lparId: string;
