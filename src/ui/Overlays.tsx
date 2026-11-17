@@ -5,7 +5,7 @@ import { EVIDENCE } from '../content/evidence';
 import { MECHANISM_HELP, TRIGGER_HELP, TRIGGER_LABEL, triggerLabel } from '../content/rca';
 import type { Hypothesis } from '../game/aiops';
 import { dailySeed, shareText } from '../game/daily';
-import { formatClock } from '../sim/core/clock';
+import { hhmm } from '../sim/core/clock';
 import { TICKS_PER_HOUR } from '../sim/core/units';
 import { MECHANISMS, TRIGGERS } from '../game/sla';
 import type { Incident, Mechanism, Trigger } from '../game/types';
@@ -569,7 +569,7 @@ function AlsoAccepted({ group }: { group: readonly Incident[] }) {
 
 /** When the SLA was breached, so evidence can be taken from the right intervals. */
 const windowText = (i: { startTick: number; hours: number }) =>
-  `breached ${formatClock(i.startTick).slice(-8, -3)}–${formatClock(i.startTick + i.hours * TICKS_PER_HOUR).slice(-8, -3)}`;
+  `breached ${hhmm(i.startTick)}–${hhmm(i.startTick + i.hours * TICKS_PER_HOUR)}`;
 
 /** Plain-language definitions for the RCA selectors (content/rca.ts), opened once above the incidents. */
 function RcaVocabulary() {

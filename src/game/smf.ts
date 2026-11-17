@@ -2,7 +2,7 @@
 // batch job analytics (SMF 30) and CPU MF counters (SMF 113), built from what the sim measures.
 
 import { DB2_PACKAGES, lsprCategory, SMF113 } from '../content/smf';
-import { clockAt, formatClock } from '../sim/core/clock';
+import { clockAt, hhmm, pad2 } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC, TICKS_PER_DAY } from '../sim/core/units';
 import type { WorkloadDef } from '../sim/workload/types';
@@ -17,12 +17,10 @@ export interface SmfHourRef {
 /** Selectable hours: the current (open) hour, then closed hours newest first. */
 export function smfHourRefs(run: RunState): SmfHourRef[] {
   const out: SmfHourRef[] = [];
-  if (run.hour && run.phase === 'LIVE') out.push({ key: 'current', label: `${hh(Math.floor(clockAt(run.sim.tick).hourOfDay))}:00 (this hour, so far)` });
-  for (const h of [...run.smfHours].reverse()) out.push({ key: `${h.day}:${h.hourOfDay}`, label: `D${h.day + 1} ${hh(h.hourOfDay)}:00–${hh((h.hourOfDay + 1) % 24)}:00` });
+  if (run.hour && run.phase === 'LIVE') out.push({ key: 'current', label: `${pad2(Math.floor(clockAt(run.sim.tick).hourOfDay))}:00 (this hour, so far)` });
+  for (const h of [...run.smfHours].reverse()) out.push({ key: `${h.day}:${h.hourOfDay}`, label: `D${h.day + 1} ${pad2(h.hourOfDay)}:00–${pad2((h.hourOfDay + 1) % 24)}:00` });
   return out;
 }
-
-const hh = (h: number) => String(h).padStart(2, '0');
 
 function hourData(run: RunState, key: string): { workloads: Record<string, WorkloadHour>; seconds: number; cpuVsBase?: Record<string, number> } | null {
   if (key === 'current') return run.hour ? { workloads: run.hour.workloads, seconds: Math.max(1, run.hour.ticks) * TICK_SEC } : null;
@@ -204,7 +202,7 @@ export function batchNight(run: RunState): BatchNight | null {
   return out;
 }
 
-export const nightClock = (n: BatchNight, sec: number) => formatClock(n.dayStartTick + Math.round(sec / TICK_SEC)).slice(-8, -3);
+export const nightClock = (n: BatchNight, sec: number) => hhmm(n.dayStartTick + Math.round(sec / TICK_SEC));
 
 export interface Smf113Row {
   lparId: string;

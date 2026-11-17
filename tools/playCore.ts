@@ -17,7 +17,7 @@ import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
 import { MON3_HISTORY, TOOLS, type ToolFeature } from '../src/content/tools';
 import { applyReportClassAdvice } from '../src/game/rcAdvisor';
-import { clockAt, formatClock, tickOfClock } from '../src/sim/core/clock';
+import { clockAt, hhmm, pad2, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads, runWorkItems } from '../src/game/workloads';
 import { decideTfp } from '../src/game/tfp';
 import { SAVE_VERSION, assertSaveVersion, decodeRunFileText, encodeRunJson } from '../src/game/runFile';
@@ -393,7 +393,7 @@ export function statusText(file: PlayFile): string {
         const a = h ? hourAttainment(w, h) : null;
         return a ? [`${w.id} ${a.attainmentPct.toFixed(1)}%${a.met ? '' : '!'}`] : [];
       });
-      out.push(`SLA last hour (${String(prev.hourOfDay).padStart(2, '0')}:00): ${rows.join('  ') || 'none'}`);
+      out.push(`SLA last hour (${pad2(prev.hourOfDay)}:00): ${rows.join('  ') || 'none'}`);
     }
   }
   const lastIv = v.reports.at(-1);
@@ -671,8 +671,8 @@ const intervalIndex = (run: RunState, id: number): number => run.sim.rmf.interva
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 /** formatClock plus the calendar weekday: the played day runs 06:00 to 06:00, so 00:30 after D1's evening is "D1 Tue 00:30". */
 export function clockText(tick: number): string {
-  const f = formatClock(tick);
-  return `${f.slice(0, f.indexOf(' '))} ${WEEKDAYS[clockAt(tick).dayOfWeek]} ${f.slice(-8, -3)}`;
+  const c = clockAt(tick);
+  return `D${c.day + 1} ${WEEKDAYS[c.dayOfWeek]} ${hhmm(tick)}`;
 }
 export { tickOfClock };
 
@@ -681,7 +681,7 @@ function mon3RangeText(file: PlayFile): string {
   return r ? `history covers ${clockText(r.firstTick)} to ${clockText(r.lastTick)}, one range every ${(MON3_HISTORY.mintimeTicks * TICK_SEC).toFixed(0)}s` : 'no Monitor III history yet (it is recorded while the day runs, once RMF_MON3 is owned)';
 }
 
-const intervalLabel = (iv: { startTick: number; endTick: number }) => `${clockText(iv.startTick)}–${clockText(iv.endTick).slice(-5)}`;
+const intervalLabel = (iv: { startTick: number; endTick: number }) => `${clockText(iv.startTick)}–${hhmm(iv.endTick)}`;
 
 function intervalList(run: RunState): string {
   const all = run.sim.rmf.intervals;

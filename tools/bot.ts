@@ -12,7 +12,7 @@ import { advance, chooseDraft, newRun, overallTrust, startDay } from '../src/gam
 import type { RunState } from '../src/game/types';
 import { FACETS, facetsOf } from '../src/game/types';
 import { TICKS_PER_DAY } from '../src/sim/core/units';
-import { instanceClock } from '../src/sim/core/step';
+import { instanceClock } from '../src/sim/core/clock';
 import { STRATEGIES } from './strategies';
 import { decideTfp } from '../src/game/tfp';
 import { writeSpectateFile } from './spectateFile';

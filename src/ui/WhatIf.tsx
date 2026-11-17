@@ -1,10 +1,11 @@
 import { INSIGHT } from '../content/tools';
+import { pad2 } from '../sim/core/clock';
 import type { WhatIfSummary } from '../game/whatif';
 import type { ViewModel } from '../game/view';
 import type { Command } from '../sim/core/commands';
 import type { GameHandle } from './useGame';
 
-const hhmm = (sec: number | null) => (sec === null ? 'unfinished' : `${String(Math.floor((6 + sec / 3600) % 24)).padStart(2, '0')}:${String(Math.floor((sec % 3600) / 60)).padStart(2, '0')}${sec >= 18 * 3600 ? ' (+1)' : ''}`);
+const hhmm = (sec: number | null) => (sec === null ? 'unfinished' : `${pad2(Math.floor((6 + sec / 3600) % 24))}:${pad2(Math.floor((sec % 3600) / 60))}${sec >= 18 * 3600 ? ' (+1)' : ''}`);
 
 /** What-if: simulate today with and without the basket (tool WHAT_IF, briefing only). */
 export function WhatIf({ v, game, basket, label }: { v: ViewModel; game: GameHandle; basket: Command[]; label: string }) {
