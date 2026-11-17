@@ -1885,7 +1885,7 @@ never touches the DOM.
   - WLM policy adjustment holds its invariants I1 … I17 (docs/wlm-design.md §5.9): property tests over generated
     images in `tests/sim/wlm-invariants.test.ts` (determinism, one change per interval, receiver order, receiver value,
     no harm to more important work, equal-importance convergence, donor order, one PI basis, the canonical ladder, CPU
-    protection, skip clock without starvation, settling, not fixable not moved, minimums above goal work, the
+    protection, skip clock without starvation, settling, not fixable not moved, minimum placement, the
     projection cost bound, an honest projection at rest), server periods in `tests/sim/wlm-servers.test.ts` (I11), and
     scenario assertions in `tests/sim/wlm-realism.test.ts` (a happy more important donor is not pushed past its
     goal; at most one move undone within two minutes on Midwest PROD2; PROD2's goal periods on at least four levels on

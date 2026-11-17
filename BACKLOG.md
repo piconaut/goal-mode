@@ -347,15 +347,6 @@ separated by their five clock skips still count as one existing episode. The rec
 30 checks over about five minutes, with one periodic log entry. Targeted inspect tests cover those distinctions,
 and `npm run compare` confirms unchanged sim/game behaviour, logs and reports.
 
-### PR-17 · Invariant I15 is stated for every resource-group minimum but holds only for goal members
-`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
-
-From the post-merge review of #302 (WT-06, comment 6813880925, 2026-11-12), checked against `dev` `b2a9903`. docs/wlm-design.md I15 says a minimum's share "is dispatched above every goal period"; a discretionary member's
-runs at `MANAGED_MIN − 1` = 202 (`src/sim/wlm/eval/grants.ts`), below all goal work and above discretionary work, by
-design. The I15 test (`tests/sim/wlm-invariants.test.ts`) only covers the goal-member path. Split the invariant
-(goal member above goal work; discretionary member above discretionary work, below goal work) and test both. Done
-when: the doc and the test cover both paths.
-
 ### PR-18 · WT-06 test gaps
 `list: pr-followups · status: ready · priority: low · size: S · area: tooling`
 
