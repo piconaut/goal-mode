@@ -91,6 +91,15 @@ export interface PlayResult {
 
 const sc = (run: RunState) => scenarioFor(packOf(run.scenarioId).scenario, run.difficulty);
 
+/** The view's key for an abended job. One definition, so the CLI's before/after comparison cannot drift from the
+ *  helper that builds the replays' set. */
+export const abendedKey = (a: { day: number; name: string }): string => `${a.day}:${a.name}`;
+
+/** Jobs abended at this moment, as the view reports them. The CLI's advance stop rule and the inspect replays share
+ *  this, so a change to the view's list cannot desynchronise a replay from the CLI. */
+export const abendedJobs = (run: RunState) => buildView(run, sc(run)).batch.abended;
+export const abendedSet = (run: RunState): Set<string> => new Set(abendedJobs(run).map(abendedKey));
+
 /** Real RMF report names an agent may reach for. */
 const REPORT_ALIASES: Record<string, ReportKind> = { WLMGL: 'WLM_SUMMARY', WORKLOAD: 'WLM_SUMMARY', CPU: 'PARTITION', CFACT: 'CF', CF_ACTIVITY: 'CF', DEVICE: 'DASD' };
 
@@ -161,13 +170,12 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         }
         return x;
       };
-      const abended = (x: RunState) => new Set(buildView(x, sc(x)).batch.abended.map((a) => `${a.day}:${a.name}`));
-      const before = abended(run);
+      const before = abendedSet(run);
       let fresh: string[] = [];
       // Stop at the hour a job abends, as an operator would be paged.
       for (let h = 0; h < hours && r.phase === 'LIVE' && fresh.length === 0; h++) {
         r = step(r);
-        if (r.phase === 'LIVE') fresh = buildView(r, sc(r)).batch.abended.filter((a) => !before.has(`${a.day}:${a.name}`)).map((a) => a.name);
+        if (r.phase === 'LIVE') fresh = abendedJobs(r).filter((a) => !before.has(abendedKey(a))).map((a) => a.name);
       }
       const mail = r.inbox.slice(run.inbox.length).map((m) => `\n  mail: ${m.from}: ${m.subject}`).join('');
       const page = fresh.length ? `\nSTOPPED: ${fresh.join(' ')} ABENDED. restart ${fresh[0]} (0.5h) or let it miss the window.` : '';
