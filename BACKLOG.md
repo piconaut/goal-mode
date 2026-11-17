@@ -347,17 +347,6 @@ separated by their five clock skips still count as one existing episode. The rec
 30 checks over about five minutes, with one periodic log entry. Targeted inspect tests cover those distinctions,
 and `npm run compare` confirms unchanged sim/game behaviour, logs and reports.
 
-### PR-19 · Donor happiness uses the worse of local and sysplex PI, not the sysplex PI first
-`list: pr-followups · status: ready · priority: low · size: S · area: sim`
-
-From the second review of #307 (WT-07, comment 6815514698, 2026-11-12), B5. `managementWorstPi`
-(`src/sim/wlm/adjust.ts`) takes `max(local, sysplex)`, so a donor meeting its goal across the sysplex but missing
-it on this image counts as unhappy, and the converse. WLM Services p.138 makes the sysplex PI the primary criterion
-for selecting donors. Either justify the worse-of (a donor must be happy on both) with a source, or order by the
-sysplex PI and keep the worse-of only for the "more important and missing its goal" exclusion; a two-image test
-shows the choice either way. Done when: SPEC §5.5.4, docs/wlm-design.md §5.5 and the `docs/research.md` sysplex-PI
-row agree with the code, and the test exists.
-
 ### PR-21 · Monitor III splits by the last tick's mix don't add up
 `list: pr-followups · status: ready · priority: low · size: M · area: game`
 
