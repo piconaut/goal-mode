@@ -649,14 +649,6 @@ generate the code, or measure that a table loop stays within budget. No behaviou
 `perf`. Done when: bench hashes unchanged for Midwest, Harbourline and Revenue; `npm run compare` shows no
 difference; per-tick timing before and after (`npm run bench`) in the PR.
 
-### CL-26 · `basepol.ts` uses the shared WLM policy builders
-`list: cleanup · status: ready · priority: low · size: S · area: content`
-
-Source: codebase survey (2026-11-16). `src/content/wlm/basepol.ts` (lines 5–35) redefines `vel`, `pct`, `avg`,
-`disc`, `sc` and `rule`, which `src/content/wlm/policyBuilders.ts` exports and `revpol.ts` / `hbpol.ts` use. Only
-basepol's `sc` takes an `extra` argument. Change: add `extra` to the shared `sc` and import the builders in
-basepol. Done when: the Midwest base policy is unchanged (`npm run compare`; bench hashes).
-
 ### CL-27 · Sim tunables into `src/content`
 `list: cleanup · status: ready · priority: low · size: S · area: sim`
 
