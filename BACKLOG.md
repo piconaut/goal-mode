@@ -712,17 +712,6 @@ strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the 
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
 
-### CL-44 · Retire `pr-review-loop`
-`list: cleanup · status: ready · priority: low · size: S · area: tooling`
-
-Source: codebase survey (2026-11-16); unblocked 2026-11-17 (user: no scheduled task runs `pr-review-loop` any more,
-and it may go). `pr-fix-loop` replaced it, but still parses its `<!-- pr-review-loop … -->` markers for PRs that were
-in flight. The skill is also referenced from `.claude/skills/dev-loop`, `.claude/agents/pr-reviewer.md` and CLAUDE.md
-(AGENTS.md does not name it). Change: check that no open PR carries a `pr-review-loop` marker (if one does, leave the marker handling
-and say so in the PR); delete `.claude/skills/pr-review-loop/`, the marker handling in `pr-fix-loop`, and every
-reference. Keep the `Automated pr-reviewer report` header: `pr-fix-loop` and the `pr-reviewer` agent still use it.
-Done when: a grep for `pr-review-loop` finds nothing outside Git history and PROGRESS.md's dated lines.
-
 ### CL-45 · README: where to start; SPEC §15 freshness
 `list: cleanup · status: ready · priority: low · size: S · area: tooling`
 

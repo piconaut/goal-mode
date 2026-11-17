@@ -20,9 +20,9 @@ usual.
 ## 1. Review
 
 Do the review exactly as `.claude/agents/pr-reviewer.md` describes (read it first): setup in throwaway worktrees
-(never switch branches in the main checkout), checks 1–9, review-loop finding IDs (`B1…` blocking, `N1…`
-non-blocking; on a follow-up, mark each previous ID fixed / not fixed and continue the numbering). Skip its
-"Post the review" step: you post one combined report at the end (step 5).
+(never switch branches in the main checkout), checks 1–9, the finding IDs from `pr-reviewer`'s **full review
+mode** (`B1…` blocking, `N1…` non-blocking; on a follow-up, mark each previous ID fixed / not fixed and continue the
+numbering). Skip its "Post the review" step: you post one combined report at the end (step 5).
 
 Differences from pr-reviewer:
 
