@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
@@ -132,7 +132,16 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (run.phase !== 'BRIEFING') return fail(`Cannot start a day in phase ${run.phase}`);
       const started = startDay(run, content);
       const failed = file.pendingPolicy ? null : failedPolicyToday(started);
-      return done(started, `Day started (06:00).${failed ? ` Policy activation failed; its edits are pending again (activate to reschedule).` : ''}`, true, failed ?? file.pendingPolicy);
+      const later = failed ? [] : policyFailuresWithLaterToday(started);
+      const live = later.find((x) => x.editsLive);
+      const note = failed
+        ? ' Policy activation failed; its edits are pending again (activate to reschedule).'
+        : live
+          ? ` Policy activation failed earlier, but later activation ${live.laterName} went live with its edits.`
+          : later.length > 0
+            ? ` Policy activation failed earlier; later activation ${later[0]!.laterName} also went live, but without this request's edits; they are not pending again (make them again and activate).`
+            : '';
+      return done(started, `Day started (06:00).${note}`, true, failed ?? file.pendingPolicy);
     }
     case 'note':
       return c.text.trim() ? done(run, 'Noted.') : fail('Empty note');

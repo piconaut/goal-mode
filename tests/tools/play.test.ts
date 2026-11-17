@@ -349,6 +349,19 @@ describe('headless play interface', () => {
     }
   });
 
+  it('the day-start text says a failed activation went live through the later one', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    // Seed 43 fails BASEPOL2 at 06:00; BASEPOL3, drafted on its planned policy, installs with the copied edit.
+    const f = run(newPlayFile(43), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }]);
+    const out = applyPlayCommand(f, { cmd: 'start' });
+    expect(out.ok).toBe(true);
+    expect(out.text).toContain('later activation BASEPOL3 went live with its edits');
+    expect(out.text).not.toContain('edits are pending again');
+    expect(out.file.pendingPolicy).toBeNull();
+  });
+
   it('does not restore a failed earlier install over a later successful policy', () => {
     const edit = (classId: string, rtSec: number): PlayCommand => ({
       cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
