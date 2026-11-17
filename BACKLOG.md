@@ -308,12 +308,6 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
-### PR-02 · Cancel B then A leaves A's edit pending silently
-`list: pr-followups · status: ready · priority: low · size: S · area: game`
-
-From #180. A's edit stays in the pending policy and A's cancel message doesn't say so (also true before #180; the
-edits are uninstalled and visible). Done when: the message says so.
-
 ### PR-03 · A suppressed install failure is silent
 `list: pr-followups · status: ready · priority: low · size: S · area: game`
 

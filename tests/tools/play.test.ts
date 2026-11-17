@@ -383,6 +383,28 @@ describe('headless play interface', () => {
     }
   });
 
+  it('cancelling the later and then the earlier install leaves the edits pending', () => {
+    const edit = (classId: string, rtSec: number): PlayCommand => ({
+      cmd: 'wlm', edit: { op: 'SET_PERIOD', classId, period: 0, goal: { kind: 'AVG', rtSec }, importance: 2 },
+    });
+    let f = run(newPlayFile(7), [edit('ONLHI', 0.4), { cmd: 'activate' }, edit('ONLMED', 0.6), { cmd: 'activate' }]);
+    // B was drafted on A's planned policy, so its definition carries A's edit too.
+    const cancelB = applyPlayCommand(f, { cmd: 'cancel', changeId: f.run.changes[1]!.id });
+    expect(cancelB.ok).toBe(true);
+    expect(cancelB.text).toContain('Its edits go back to the pending policy');
+    expect(cancelB.text).not.toContain('pending again');
+    f = cancelB.file;
+    for (const [id, rtSec] of [['ONLHI', 0.4], ['ONLMED', 0.6]] as const) {
+      expect(f.pendingPolicy!.classes.find((c) => c.id === id)!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec });
+    }
+    const cancelA = applyPlayCommand(f, { cmd: 'cancel', changeId: f.run.changes[0]!.id });
+    expect(cancelA.ok).toBe(true);
+    expect(cancelA.text).toContain('Its edits go back to the pending policy');
+    f = cancelA.file;
+    // A's own request is gone, but its edit is still staged in the pending policy.
+    expect(f.pendingPolicy!.classes.find((c) => c.id === 'ONLHI')!.periods[0]!.goal).toEqual({ kind: 'AVG', rtSec: 0.4 });
+  });
+
   it('policy shows the service definition, its rules and the processors it runs on', () => {
     const text = policyText(newPlayFile(7, 'NORMAL', 'harbourline'), false);
     expect(text).toMatch(/active policy \S+/);
