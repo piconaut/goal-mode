@@ -519,7 +519,7 @@ Cross-note: as BL-01, tune after WT-09 (docs/archive/wlm-audit-2026-11.md §6.2,
 ## cleanup
 
 ### CL-17 · One "advance N hours" loop for the worker and the tools
-`list: cleanup · status: blocked: after PR-13 · priority: high · size: M · area: game`
+`list: cleanup · status: ready · priority: high · size: M · area: game`
 
 Source: codebase survey (2026-11-16). The hour-by-hour advance is written out several times:
 - `tools/playCore.ts` `advance`: Monitor III recording every MINTIME, stop at the hour a job abends;
