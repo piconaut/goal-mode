@@ -317,7 +317,7 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[],
     const moved = new Map<string, 1 | -1>();
     const receiverMoved = new Set<string>();
     // A candidate absent from this image's next adjustment breaks its streak; an assessment or a different
-    // bottleneck/outcome breaks it too. A skipped adjustment that still lists the candidate does not.
+    // bottleneck/outcome breaks it too, including SKIP_CLOCK when the candidate is still listed.
     const here = new Set(t.candidates.map((cand) => cand.scKey));
     for (const period of [...noTrial.keys()]) if (!here.has(period)) closeStreak(period, t.clockText);
     for (const cand of t.candidates) {
