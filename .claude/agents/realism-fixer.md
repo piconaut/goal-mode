@@ -27,9 +27,10 @@ Do the fix:
 - Update SPEC §17 (and §18 if a new source), and the finding's row in `docs/research.md`. Not PROGRESS.md.
 
 Check and commit:
-1. Verify against the definition of done in `docs/workflow.md` (`npm run check`, bench hashes, goldens and sweep
-   where applicable). If goldens change on purpose, regenerate with `UPDATE_GOLDEN=1 npx vitest run tests/golden`,
-   then verify again.
+1. `npm run check`. If goldens changed on purpose, `UPDATE_GOLDEN=1 npx vitest run tests/golden`, then
+   `npm run check` again. Run `npm run bench -- --hash` and `npm run bench -- --hash --scenario harbourline`.
+   These are part of the shared definition of done in `docs/workflow.md`; the balance sweep and the PROGRESS.md
+   update listed there are the main agent's job, not yours.
 2. Read your diff adversarially before committing; remove anything the fix doesn't need.
 3. Commit on your branch (message: what changed, why, source; say if goldens were regenerated). Never push.
 
