@@ -622,6 +622,7 @@ export { dryRunRefusal } from './run/changes';
 
 export { cancelChange } from './run/changes';
 export { deactivateCod } from './run/changes';
+export { codDeactivatable } from './run/changes';
 
 export { failedPolicyToday, policyFailuresWithLaterToday } from './run/changes';
 

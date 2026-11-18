@@ -6,6 +6,7 @@ import type { ViewModel } from '../../game/view';
 import type { Command } from '../../sim/core/commands';
 import { Empty } from '../Empty';
 import { WhatIf } from '../WhatIf';
+import { codDeactivatable } from '../../game/run';
 import type { GameHandle } from '../useGame';
 import type { Desk } from './shared';
 import { ACTIVATE_PREVIEW, costText, preview } from './shared';
@@ -110,7 +111,7 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
             Cancel
           </button>
         )}
-        {c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > v.day + 1 && (
+        {codDeactivatable(c, v.phase, v.day) && (
           <button title={`End the On/Off CoD lease at 06:00 tomorrow (${COD_DEACTIVATE_HOURS}h)`} onClick={() => game.send({ type: 'DEACTIVATE_COD', changeId: c.id })}>
             Deactivate tomorrow
           </button>
