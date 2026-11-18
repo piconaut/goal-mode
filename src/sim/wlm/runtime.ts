@@ -38,6 +38,16 @@ export interface ScpAcc {
   /** Decayed zIIP engines used (the zIIP counterpart of `cpuEngines`, for donors of a zIIP bottleneck; WT-07). Absent
    * in a period's first tick: seeded at steady state. */
   ziipEngines?: number;
+  /** Reporting-only decayed components of `using` and `cpuEngines` (PR-21): the Monitor III split of PROC/DEV
+   * users and CP/zIIP/IIPCP engines is read from these instead of the last tick's mix, so a sysplex row is the sum
+   * of its systems. Absent in an accumulator that has no samples yet. */
+  usingCpu?: number;
+  usingZiip?: number;
+  usingIo?: number;
+  iipcpEngines?: number;
+  /** Decayed zIIP engines as Monitor III reports them (PR-21): unlike the management `ziipEngines`, this starts at
+   * zero rather than a steady-state seed, so it reports only sampled zIIP service and the sysplex totals add up. */
+  ziipEnginesView?: number;
   /** Decayed arriving demand, engines, without backlog: × (1 − ACC_DECAY) is the sustained demand WLM projects
    * with (docs/wlm-design.md §5.4). Absent in a period's first tick: seeded at steady state. */
   demandCp?: number;
@@ -268,6 +278,11 @@ export function decayInto(acc: ScpAcc, t: ScpTick): ScpAcc {
     delayQueue: (acc.delayQueue ?? 0) * d + (t.delayQueue ?? 0),
     cpuEngines: acc.cpuEngines * d + t.cpEngines + t.iipcpEngines,
     ziipEngines: acc.ziipEngines === undefined ? t.ziipEngines / (1 - d) : acc.ziipEngines * d + t.ziipEngines,
+    ziipEnginesView: (acc.ziipEnginesView ?? 0) * d + t.ziipEngines,
+    usingCpu: (acc.usingCpu ?? 0) * d + t.usingCpu,
+    usingZiip: (acc.usingZiip ?? 0) * d + t.usingZiip,
+    usingIo: (acc.usingIo ?? 0) * d + t.usingIo,
+    iipcpEngines: (acc.iipcpEngines ?? 0) * d + t.iipcpEngines,
     demandCp: acc.demandCp === undefined ? (t.demandCp ?? 0) / (1 - d) : acc.demandCp * d + (t.demandCp ?? 0),
     demandZi: acc.demandZi === undefined ? (t.demandZi ?? 0) / (1 - d) : acc.demandZi * d + (t.demandZi ?? 0),
     ...(acc.usingIoNoVel !== undefined || t.usingIoNoVel !== undefined
@@ -312,6 +327,14 @@ function addAccInto(out: ScpAcc, a: ScpAcc): void {
   out.delayStorage += a.delayStorage;
   if (a.delayQueue !== undefined) out.delayQueue = (out.delayQueue ?? 0) + a.delayQueue;
   out.cpuEngines += a.cpuEngines;
+  if (a.ziipEngines !== undefined) out.ziipEngines = (out.ziipEngines ?? 0) + a.ziipEngines;
+  if (a.ziipEnginesView !== undefined) out.ziipEnginesView = (out.ziipEnginesView ?? 0) + a.ziipEnginesView;
+  if (a.usingCpu !== undefined) {
+    out.usingCpu = (out.usingCpu ?? 0) + a.usingCpu;
+    out.usingZiip = (out.usingZiip ?? 0) + (a.usingZiip ?? 0);
+    out.usingIo = (out.usingIo ?? 0) + (a.usingIo ?? 0);
+  }
+  if (a.iipcpEngines !== undefined) out.iipcpEngines = (out.iipcpEngines ?? 0) + a.iipcpEngines;
   if (a.usingIoNoVel !== undefined) {
     out.usingIoNoVel = (out.usingIoNoVel ?? 0) + a.usingIoNoVel;
     out.delayIoNoVel = (out.delayIoNoVel ?? 0) + (a.delayIoNoVel ?? 0);

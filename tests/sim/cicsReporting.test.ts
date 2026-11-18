@@ -87,6 +87,16 @@ it('applies the same attribution to WLM accumulators for Monitor III', () => {
   expect(rep['REG1#1']!.using).toBeCloseTo(accs['REG1#1']!.using + (accs['ONL#1']!.moved!.usingCpu + accs['ONL#1']!.moved!.usingZiip + accs['ONL#1']!.moved!.usingIo) / 2, 9);
 });
 
+it.each([undefined, { regions: [], regionKeys: [] }])('preserves source IIPCP samples when the reporting projection hides them (%j)', (targets) => {
+  const source = Object.freeze({ ...emptyAcc(), cpuEngines: 4, iipcpEngines: 1 });
+  const accs = { 'OTHER#1': source };
+  const hidden = reportedAccs(accs, targets, false)['OTHER#1']!;
+  expect(hidden.iipcpEngines).toBe(0);
+  expect(hidden.cpuEngines).toBe(4);
+  expect(source.iipcpEngines).toBe(1);
+  expect(reportedAccs(accs, targets, true)['OTHER#1']!.iipcpEngines).toBe(1);
+});
+
 it('averages work manager concurrency per tick and sums it across systems in RMF service/report classes', async () => {
   const { accumulateTick, newRmfAcc, closeInterval } = await import('../../src/sim/measure/rmf');
   const { MIDWEST } = await import('../../src/content/scenarios');
