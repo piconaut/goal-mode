@@ -10,7 +10,26 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-18: PR-20 no-trial streak reporting opened, awaiting review (#411).
 - 2026-11-18: PR-09 automated jsdom coverage for run-file and confirmation dialog lifecycles (#410).
+- 2026-11-18: CL-41 workflow doc closed after a second hold; the workflow needs a user-attended session (#409).
+- 2026-11-17: CL-39 named CF tunables and `defineGame()` defaults (#407).
+- 2026-11-17: CL-17 one `advanceHours` loop for the worker, play CLI and bots (#406).
+- 2026-11-17: CL-17 unblocked after PR-13 (#403).
+- 2026-11-17: loops unblock `blocked: after` dependants in the fixing PR (#405).
+- 2026-11-17: CL-38 split `Overlays.tsx` and `App.tsx` into screen and part files (#404).
+- 2026-11-17: CL-33 split `mon3.ts` into types, PROCU, log explainer and builder (#402).
+- 2026-11-17: PT-16 CPC forecast fits weekdays and forecasts MSU demand (#401).
+- 2026-11-17: PR-19 donor order keeps the worse of local and sysplex PI (#400).
+- 2026-11-17: PR-18 covers the WT-06 test gaps (#399).
+- 2026-11-17: PR-17 I15 covers both kinds of resource-group minimum (#398).
+- 2026-11-17: PR-16 a late period above the top level joins MANAGED_MAX (#397).
+- 2026-11-17: PR-13 one abended-job set for the play CLI and inspect replays (#396).
+- 2026-11-17: PR-11 A9 evidence example uses a metric its mechanisms accept (#395).
+- 2026-11-17: PR-03 failed install says its edits went live anyway (#394).
+- 2026-11-17: PR-02 cancelled activation says its edits stay pending (#393).
+- 2026-11-17: CL-45 README start-here and SPEC §15 freshness (#392).
+- 2026-11-17: CL-37 service-class goal helpers out of the editor (#390).
 - 2026-11-17: `pr-review-loop` retired; `pr-fix-loop` is the only review loop (CL-44, #391).
 - 2026-11-17: `cleanup` list reviewed: CL-28/29/31/32/34/43 dropped, CL-27 and CL-36 narrowed, CL-10 moved to
   `pr-followups` as PR-21, CL-44 unblocked (no scheduled task runs `pr-review-loop`).
