@@ -266,7 +266,7 @@ describe('headless play interface', () => {
       expect(line.trim().split(/\s+/), label).toEqual([label, ...sums(kind)]);
     }
     // *IIP lists the images with zIIPs online, and every group closes with its PHYSICAL line.
-    const iip = rows.filter((r) => r.iip !== undefined).map((r) => r.iip as Record<string, number>);
+    const iip = rows.filter((r) => r.iip !== undefined).map((r) => r.iip as unknown as Record<string, number>);
     expect(iip.length).toBeGreaterThan(0);
     const iipSums = (k: string) => iip.reduce((a, r) => a + (r[k] as number), 0).toFixed(1);
     expect(s.find((l) => l.startsWith('*IIP '))!.trim().split(/\s+/)).toEqual(['*IIP', iipSums('procNum'), iipSums('physLparPct'), iipSums('physEffectPct'), iipSums('physTotalPct')]);
