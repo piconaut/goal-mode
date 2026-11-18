@@ -10,7 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
-- 2026-11-18: PT-11 live lead-time hardware plans without emergency trust; CoD deactivates from tomorrow (#417).
+- 2026-11-18: PT-11 live lead-time hardware plans without emergency trust; CoD deactivates from tomorrow (#417); review reconciled IBM sources, content tunables, live wording and tested overlapping-lease billing through early and original expiry.
 - 2026-11-18: PT-10 saved-policy "Activate now" and "Load into editor" in browser and play CLI (#416); review reconciled SPEC and the research ledger with the shipped actions and checked IBM's installed-policy requirement.
 - 2026-11-18: PT-08 CICS short-on-storage alert metric and region subject; evaluation requires active CICS monitoring (#415).
 - 2026-11-18: PR-21 Monitor III splits read from decayed components; sysplex rows sum their systems and reporting preserves source accumulators (#413).

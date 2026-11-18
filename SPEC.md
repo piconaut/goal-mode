@@ -1075,7 +1075,9 @@ activation for the same day; the notice explains that edits already copied into 
 The last failed or cancelled activation can still return its edits, and uninstalled player edits take precedence.
 
 **Change windows & CAB.** Planned changes submitted in the morning briefing are normal changes
-and cost no trust. Changes during the live day are **emergency changes**: they cost
+and cost no trust. Hardware orders with a lead time also remain planned when submitted during
+the live day: they cost hours and capex, arrive at 06:00 on their activation day and carry the normal
+planned failure roll, with no emergency trust cost. Same-day changes during the live day are **emergency changes**: they cost
 Trust ×(1 if an incident is active, ×3 otherwise). Every change has a small **failure risk**
 (scaled by complexity and by "Team Fatigue"): a mistyped classification rule, a policy
 that doesn't validate, a weight change that fails on the HMC. A **validation** tool (unlock)
