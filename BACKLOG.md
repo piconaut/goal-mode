@@ -301,24 +301,6 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
-### PR-21 · Monitor III splits by the last tick's mix don't add up
-`list: pr-followups · status: ready · priority: low · size: M · area: game`
-
-Source: cross-report invariant suite (2026-11-14, #347; filed as CL-10, moved here 2026-11-17 because it changes
-Monitor III figures, which the cleanup list excludes; identities `mon3-sysplex-sum` and `mon3-delay-states`, left-out
-parts). WLM's smoothed accumulator keeps total Using and total CP time, so `row()` in `src/game/mon3/index.ts` splits them
-by the last tick's mix (APPROX, SPEC §17): zIIP and IIPCP engines, and the users using PROC and DEV. Two things then
-don't add up for the player: a sysplex row is split by the pooled mix, so it is not the sum of its systems' rows
-(Midwest seed 7, 06:30, DDFPRD#1 zIIP 0.06222 against 0.06225); and when the last tick had no using sample the users
-using PROC + DEV are 0 while USG % is not (DEVBAT#1 after its job ended: 0 users using, USG 30 %). PROCU and
-ENCLAVE inherit both. Change: keep the decayed components the views need (using CPU, zIIP and I/O; zIIP and IIPCP
-engines; the moved CICS parts with them) as reporting-only accumulator fields and read the split from them, dropping
-`LastSplit`. Not a model change: `npm run compare -- --base origin/dev --drop <new fields>` must show sim state, game
-state and RMF unchanged, with Monitor III differing only in the split figures. Done when: the left-out lines are
-restored in both identities, and SPEC §17 "Monitor III views" no longer lists the last-tick split.
-
-## realism-fixes
-
 ### RF-01 · CPU Activity report with the CHANGE REASON header
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
@@ -496,7 +478,7 @@ validation or wording that this resolves in the PR, and say which side was kept.
 either adapter; `npm run compare` differs only in the result texts listed in the PR; the browser and CLI tests pass.
 
 ### CL-19 · One field table for the service-class accumulators
-`list: cleanup · status: blocked: after PR-21 · priority: high · size: M · area: sim`
+`list: cleanup · status: ready · priority: high · size: M · area: sim`
 
 Source: codebase survey (2026-11-16). The fields of the per-period accumulator are listed by hand in four places,
 each with the same optional-field quirks (`delayQueue`, `usingIoNoVel`, `srvUsing`, `workManager`):
