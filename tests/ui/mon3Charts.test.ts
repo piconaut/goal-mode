@@ -34,11 +34,11 @@ const game = { charts: { samples: [sample(0), sample(60)], markers: [] }, send: 
 
 let container: HTMLDivElement;
 let root: Root;
-const mount = () => {
+const mount = (g: GameHandle = game) => {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
-  act(() => root.render(createElement(Mon3Charts, { v, game, openAnalytics: () => {} })));
+  act(() => root.render(createElement(Mon3Charts, { v, game: g, openAnalytics: () => {} })));
   return container;
 };
 const text = () => container.textContent ?? '';
@@ -105,12 +105,23 @@ describe('Monitor III chart picker', () => {
     expect(text()).toContain('ONLHI#1 (engines)');
   });
 
+  it('charts samples saved before the new fields as gaps instead of failing', () => {
+    // A save from the previous build keeps its samples; the newest one has no `cpu` map.
+    const old = { ...sample(120) } as Record<string, unknown>;
+    delete old.cpu;
+    mount({ charts: { samples: [sample(0), old], markers: [] }, send: () => {} } as unknown as GameHandle);
+    click('CPU by service class');
+    expect(text()).toContain('ONLHI#1 (engines)');
+    expect(text()).toContain('06:000.401.20');
+    expect(text()).toContain('06:20--'); // the legacy sample is a gap, not a crash
+  });
+
   it('labels the CP busy lines and can plot every LPAR against the CPC', () => {
     mount();
     expect(text()).toContain('PROD1 (% of its logical CPs)');
     expect(text()).toContain('CPC (% of physical CPs)');
-    click("% of CPC (each LPAR against the CPC's physical CPs)");
-    expect(text()).toContain('PROD1 (% of CPC)');
+    click("% of its CPC (each LPAR against its own CPC's physical CPs)");
+    expect(text()).toContain('PROD1 (% of its CPC)');
     expect(text()).toContain('CPC (% of physical CPs)');
   });
 });

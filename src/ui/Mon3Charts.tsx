@@ -111,7 +111,7 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
   const systems = firstSeen(all, (s) => s.sys);
   const busySeries: Series[] = [
     ...systems.map((id, i) => ({
-      id: ofCpc ? `${id} (% of CPC)` : `${id} (% of its logical CPs)`,
+      id: ofCpc ? `${id} (% of its CPC)` : `${id} (% of its logical CPs)`,
       color: color(i),
       values: samples.map((s) => (ofCpc ? (s.sys[id]?.cpcPct ?? null) : (s.sys[id]?.cpPct ?? null))),
     })),
@@ -146,7 +146,7 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
   }));
   // CPU engines by service class: colour by first appearance, chart the eight biggest at the latest sample.
   const cpuKeys = firstSeen(all, (s) => s.cpu);
-  const cpuLatest = new Map(cpuKeys.map((k) => [k, samples.at(-1)?.cpu[k] ?? 0]));
+  const cpuLatest = new Map(cpuKeys.map((k) => [k, samples.at(-1)?.cpu?.[k] ?? 0]));
   const shownCpu = [...cpuKeys].sort((a, b) => (cpuLatest.get(b)! - cpuLatest.get(a)!) || a.localeCompare(b)).slice(0, 8);
   // `cpu` is absent on samples saved before the chart existed: they chart as gaps, not errors.
   const cpuSeries: Series[] = shownCpu.map((k) => ({ id: k, color: color(cpuKeys.indexOf(k)), values: samples.map((s) => s.cpu?.[k] ?? null) }));
@@ -197,11 +197,11 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
             <div className="form">
               <b style={{ fontSize: 13 }}>CP busy</b>
               <label className="muted" style={{ fontSize: 12 }}>
-                <input type="checkbox" checked={ofCpc} onChange={(e) => setOfCpc(e.target.checked)} /> % of CPC (each LPAR against the CPC&apos;s physical CPs)
+                <input type="checkbox" checked={ofCpc} onChange={(e) => setOfCpc(e.target.checked)} /> % of its CPC (each LPAR against its own CPC&apos;s physical CPs)
               </label>
             </div>
             <LineChart
-              title={ofCpc ? 'CP busy: % of the CPC’s physical CPs' : 'CP busy: % of each image’s logical CPs (CPC line: % of physical CPs)'}
+              title={ofCpc ? 'CP busy: % of each image’s CPC physical CPs' : 'CP busy: % of each image’s logical CPs (CPC line: % of physical CPs)'}
               unit="%"
               series={busySeries}
               reference={{ value: 100, label: '100%' }}
