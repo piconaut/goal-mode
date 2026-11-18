@@ -29,16 +29,16 @@ const sample = (tick: number) => ({
   ddf: {},
   cpu: { 'ONLHI#1': 1.2, 'BATCHHI#1': 0.4 },
 });
-const v = { mon3Charts: { samples: 2, markers: 0, firstTick: 0 }, mon3: { rows: [] } } as unknown as ViewModel;
+const v = { mon3Charts: { samples: 2, markers: 0, firstTick: 0 }, mon3: { rows: [] }, config: { cpcs: [{ id: 'CPC1' }] } } as unknown as ViewModel;
 const game = { charts: { samples: [sample(0), sample(60)], markers: [] }, send: () => {} } as unknown as GameHandle;
 
 let container: HTMLDivElement;
 let root: Root;
-const mount = (g: GameHandle = game) => {
+const mount = (g: GameHandle = game, view = v) => {
   container = document.createElement('div');
   document.body.append(container);
   root = createRoot(container);
-  act(() => root.render(createElement(Mon3Charts, { v, game: g, openAnalytics: () => {} })));
+  act(() => root.render(createElement(Mon3Charts, { v: view, game: g, openAnalytics: () => {} })));
   return container;
 };
 const text = () => container.textContent ?? '';
@@ -120,8 +120,17 @@ describe('Monitor III chart picker', () => {
     mount();
     expect(text()).toContain('PROD1 (% of its logical CPs)');
     expect(text()).toContain('CPC (% of physical CPs)');
+    const busyChart = container.querySelector('svg[aria-label^="CP busy"]')!.closest('.chart')!;
+    expect(busyChart.querySelector('svg')?.textContent).not.toContain('(% of its logical CPs)');
+    expect(busyChart.querySelector('tbody tr')?.children[1]?.textContent).toBe('30.0');
     click("% of its CPC (each LPAR against its own CPC's physical CPs)");
     expect(text()).toContain('PROD1 (% of its CPC)');
     expect(text()).toContain('CPC (% of physical CPs)');
+    expect(busyChart.querySelector('tbody tr')?.children[1]?.textContent).toBe('12.0');
+  });
+
+  it('identifies the physical CP line as a combined figure on a multi-CPC run', () => {
+    mount(game, { ...v, config: { ...v.config, cpcs: [...v.config.cpcs, { ...v.config.cpcs[0]!, id: 'CPC2' }] } });
+    expect(text()).toContain('All CPCs (% of combined physical CPs)');
   });
 });

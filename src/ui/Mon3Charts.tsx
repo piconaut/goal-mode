@@ -109,13 +109,20 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
   const shownPi = piKeys.filter((k) => allPeriods || (importance[k] ?? 9) <= 2);
   const piSeries: Series[] = shownPi.slice(0, 8).map((k) => ({ id: k, color: color(piKeys.indexOf(k)), values: samples.map((s) => s.pi[k] ?? null) }));
   const systems = firstSeen(all, (s) => s.sys);
+  const multipleCpcs = v.config.cpcs.length > 1;
   const busySeries: Series[] = [
     ...systems.map((id, i) => ({
       id: ofCpc ? `${id} (% of its CPC)` : `${id} (% of its logical CPs)`,
+      endLabel: id,
       color: color(i),
       values: samples.map((s) => (ofCpc ? (s.sys[id]?.cpcPct ?? null) : (s.sys[id]?.cpPct ?? null))),
     })),
-    { id: 'CPC (% of physical CPs)', color: color(systems.length), values: samples.map((s) => s.cpcBusyPct) },
+    {
+      id: multipleCpcs ? 'All CPCs (% of combined physical CPs)' : 'CPC (% of physical CPs)',
+      endLabel: multipleCpcs ? 'All CPCs' : 'CPC',
+      color: color(systems.length),
+      values: samples.map((s) => s.cpcBusyPct),
+    },
   ];
   const delayKeys = [...new Set(all.flatMap((s) => Object.keys(s.delay)))].sort();
   const dk = delayKey && delayKeys.includes(delayKey) ? delayKey : (delayKeys.find((k) => k.startsWith('ONLHI')) ?? delayKeys[0] ?? '');
@@ -201,7 +208,7 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
               </label>
             </div>
             <LineChart
-              title={ofCpc ? 'CP busy: % of each image’s CPC physical CPs' : 'CP busy: % of each image’s logical CPs (CPC line: % of physical CPs)'}
+              title={ofCpc ? 'CP busy as a percentage of physical CPs' : 'CP busy as a percentage of logical and physical CPs'}
               unit="%"
               series={busySeries}
               reference={{ value: 100, label: '100%' }}
