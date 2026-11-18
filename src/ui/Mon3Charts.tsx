@@ -5,10 +5,35 @@ import { hhmm } from '../sim/core/clock';
 import { LineChart, type Series } from './LineChart';
 import type { GameHandle } from './useGame';
 import { AnalyticsLink, Empty } from './Empty';
+import { useStored } from './useStored';
 
 const color = (i: number) => (i < 8 ? `var(--series-${i + 1})` : 'var(--muted)');
 const MAX_PICKED = 8;
 const OPEN_KEY = 'goalmode.mon3charts.open';
+
+/** Every chart in the panel, in display order: the picker hides and shows these. */
+export const CHARTS = [
+  { id: 'pi', label: 'PI by period' },
+  { id: 'busy', label: 'CP busy' },
+  { id: 'delay', label: 'Delay breakdown' },
+  { id: 'prsm', label: 'PR/SM delay' },
+  { id: 'cap', label: 'Capping' },
+  { id: 'rt', label: 'Response time' },
+  { id: 'arr', label: 'Arrival rate' },
+  { id: 'ddf', label: 'DDF engines' },
+  { id: 'svcCpu', label: 'CPU by service class' },
+] as const;
+export type ChartId = (typeof CHARTS)[number]['id'];
+/** Today's set: everything except the service-class CPU chart (hidden until picked). */
+const DEFAULT_CHARTS: readonly ChartId[] = ['pi', 'busy', 'delay', 'prsm', 'cap', 'rt', 'arr', 'ddf'];
+export const DEFAULT_CHART_SELECTION = DEFAULT_CHARTS.join(',');
+const CHARTS_KEY = 'goalmode.mon3charts.shown';
+
+/** A stored chart selection as known chart ids in display order (unknown and stale ids are dropped). */
+export function parseChartSelection(csv: string): ChartId[] {
+  const picked = new Set(csv.split(','));
+  return CHARTS.map((c) => c.id).filter((id) => picked.has(id));
+}
 
 const RC = 'RC ';
 const DELAYS: { key: keyof Mon3Sample['delay'][string]; label: string }[] = [
@@ -39,6 +64,17 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
     }
   });
   const [allPeriods, setAllPeriods] = useState(false);
+  // Which charts this viewer shows (localStorage; the default is today's set if storage is blocked).
+  const [shownCsv, setShownCsv] = useStored(CHARTS_KEY, DEFAULT_CHART_SELECTION);
+  const shown = new Set(parseChartSelection(shownCsv));
+  const toggleChart = (id: ChartId) => {
+    const next = new Set(shown);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setShownCsv(CHARTS.map((c) => c.id).filter((x) => next.has(x)).join(','));
+  };
+  // CP busy: by default each LPAR is % of its own logical CPs; this plots every LPAR against the CPC's physical CPs.
+  const [ofCpc, setOfCpc] = useState(false);
   // Response-time picker: each picked class keeps its colour slot until it is unpicked.
   const [picked, setPicked] = useState<Record<string, number> | null>(null);
   const [pickedArr, setPickedArr] = useState<Record<string, number> | null>(null);
@@ -74,8 +110,12 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
   const piSeries: Series[] = shownPi.slice(0, 8).map((k) => ({ id: k, color: color(piKeys.indexOf(k)), values: samples.map((s) => s.pi[k] ?? null) }));
   const systems = firstSeen(all, (s) => s.sys);
   const busySeries: Series[] = [
-    ...systems.map((id, i) => ({ id, color: color(i), values: samples.map((s) => s.sys[id]?.cpPct ?? null) })),
-    { id: 'CPC', color: color(systems.length), values: samples.map((s) => s.cpcBusyPct) },
+    ...systems.map((id, i) => ({
+      id: ofCpc ? `${id} (% of CPC)` : `${id} (% of its logical CPs)`,
+      color: color(i),
+      values: samples.map((s) => (ofCpc ? (s.sys[id]?.cpcPct ?? null) : (s.sys[id]?.cpPct ?? null))),
+    })),
+    { id: 'CPC (% of physical CPs)', color: color(systems.length), values: samples.map((s) => s.cpcBusyPct) },
   ];
   const delayKeys = [...new Set(all.flatMap((s) => Object.keys(s.delay)))].sort();
   const dk = delayKey && delayKeys.includes(delayKey) ? delayKey : (delayKeys.find((k) => k.startsWith('ONLHI')) ?? delayKeys[0] ?? '');
@@ -104,6 +144,12 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
     color: color(slots[k]!),
     values: samples.map((s) => (k.startsWith(RC) ? (s.rcRt?.[k.slice(RC.length)] ?? null) : (s.rt?.[k] ?? null))),
   }));
+  // CPU engines by service class: colour by first appearance, chart the eight biggest at the latest sample.
+  const cpuKeys = firstSeen(all, (s) => s.cpu);
+  const cpuLatest = new Map(cpuKeys.map((k) => [k, samples.at(-1)?.cpu[k] ?? 0]));
+  const shownCpu = [...cpuKeys].sort((a, b) => (cpuLatest.get(b)! - cpuLatest.get(a)!) || a.localeCompare(b)).slice(0, 8);
+  // `cpu` is absent on samples saved before the chart existed: they chart as gaps, not errors.
+  const cpuSeries: Series[] = shownCpu.map((k) => ({ id: k, color: color(cpuKeys.indexOf(k)), values: samples.map((s) => s.cpu?.[k] ?? null) }));
   const ddfEng: Series[] = [
     { id: 'zIIP', color: color(0), values: samples.map((s) => Object.values(s.ddf).reduce((a, d) => a + d.ziipEngines, 0)) },
     { id: 'IIPCP (zIIP work on CPs)', color: color(1), values: samples.map((s) => Object.values(s.ddf).reduce((a, d) => a + d.iipcpEngines, 0)) },
@@ -132,85 +178,115 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
           ▴ WLM decision · ┆ change · ⁝ event or incident (hover for details). Drag across any chart to zoom all of them.{zoom ? ` Showing ${xLabels[0]}–${xLabels.at(-1)}.` : ''}
         </span>
         {zoom && <button onClick={() => setZoom(null)}>Reset zoom</button>}
+        <ChartPicker shown={shown} toggle={toggleChart} />
       </div>
       <div className="grid">
-        <div>
-          <div className="form">
-            <b style={{ fontSize: 13 }}>Performance index</b>
-            <label className="muted" style={{ fontSize: 12 }}>
-              <input type="checkbox" checked={allPeriods} onChange={(e) => setAllPeriods(e.target.checked)} /> all periods (default: importance 1–2)
-            </label>
-          </div>
-          <LineChart title="PI by service-class period" unit="PI" series={piSeries} reference={{ value: 1, label: 'goal (PI 1)' }} {...common} />
-        </div>
-        <div>
-          <div className="form">
-            <b style={{ fontSize: 13 }}>CP busy per system</b>
-          </div>
-          <LineChart title="CP busy %" unit="%" series={busySeries} reference={{ value: 100, label: '100%' }} {...common} />
-        </div>
-        <div>
-          <div className="form">
-            <b style={{ fontSize: 13 }}>Delay breakdown</b>
-            <select aria-label="Period for delay breakdown" value={dk} onChange={(e) => setDelayKey(e.target.value)}>
-              {delayKeys.map((k) => (
-                <option key={k}>{k}</option>
-              ))}
-            </select>
-          </div>
-          <LineChart title={`Delay % of samples for ${dk}`} unit="%" series={delaySeries} stacked {...common} />
-        </div>
-        <div>
-          <div className="form">
-            <b style={{ fontSize: 13 }}>PR/SM dispatch delay</b>
-          </div>
-          <LineChart title="PR/SM delay %" unit="%" series={prsmSeries} {...common} />
-        </div>
-        <div>
-          <div className="form">
-            <b style={{ fontSize: 13 }}>Capping</b>
-          </div>
-          {anyCap ? <LineChart title="% capped" unit="%" series={capSeries} {...common} /> : <div className="muted">No LPAR has been capped today.</div>}
-        </div>
-        <div>
-          <div className="form">
-            <b style={{ fontSize: 13 }}>Response time</b>
-            <ClassPicker
-              label="Classes to chart"
-              slots={slots}
-              toggle={toggle}
-              groups={[
-                { title: 'Service class periods', keys: rtPeriods },
-                { title: 'Report classes', keys: rtReports, empty: 'None yet. Give a classification rule a report class (Change Desk › WLM › Classification rules).' },
-              ]}
-            />
-          </div>
-          {rtSeries.length ? <LineChart title="Response time" unit="ms" series={rtSeries} {...common} /> : <div className="muted">Pick classes to chart.</div>}
-        </div>
-        <div>
-          <div className="form">
-            <b style={{ fontSize: 13 }}>Transaction arrival rate</b>
-            <ClassPicker
-              label="Classes to chart arrivals for"
-              slots={arrSlots}
-              toggle={(k) => setPickedArr(toggleSlot(arrSlots, k))}
-              groups={[
-                { title: 'Service classes', keys: arrClasses },
-                { title: 'Report classes', keys: arrReports, empty: 'None yet. Give a classification rule a report class (Change Desk › WLM › Classification rules).' },
-              ]}
-            />
-          </div>
-          {arrSeries.length ? <LineChart title="Arrivals per second" unit="/s" series={arrSeries} {...common} /> : <div className="muted">Pick classes to chart.</div>}
-        </div>
-        {ddfKeys.length > 0 && (
-          <>
-            <div>
-              <div className="form">
-                <b style={{ fontSize: 13 }}>DDF engines: zIIP vs on CPs</b>
-              </div>
-              <LineChart title="DDF engines" unit="engines" series={ddfEng} stacked {...common} />
+        {shown.has('pi') && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>Performance index</b>
+              <label className="muted" style={{ fontSize: 12 }}>
+                <input type="checkbox" checked={allPeriods} onChange={(e) => setAllPeriods(e.target.checked)} /> all periods (default: importance 1–2)
+              </label>
             </div>
-          </>
+            <LineChart title="PI by service-class period" unit="PI" series={piSeries} reference={{ value: 1, label: 'goal (PI 1)' }} {...common} />
+          </div>
+        )}
+        {shown.has('busy') && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>CP busy</b>
+              <label className="muted" style={{ fontSize: 12 }}>
+                <input type="checkbox" checked={ofCpc} onChange={(e) => setOfCpc(e.target.checked)} /> % of CPC (each LPAR against the CPC&apos;s physical CPs)
+              </label>
+            </div>
+            <LineChart
+              title={ofCpc ? 'CP busy: % of the CPC’s physical CPs' : 'CP busy: % of each image’s logical CPs (CPC line: % of physical CPs)'}
+              unit="%"
+              series={busySeries}
+              reference={{ value: 100, label: '100%' }}
+              {...common}
+            />
+          </div>
+        )}
+        {shown.has('delay') && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>Delay breakdown</b>
+              <select aria-label="Period for delay breakdown" value={dk} onChange={(e) => setDelayKey(e.target.value)}>
+                {delayKeys.map((k) => (
+                  <option key={k}>{k}</option>
+                ))}
+              </select>
+            </div>
+            <LineChart title={`Delay % of samples for ${dk}`} unit="%" series={delaySeries} stacked {...common} />
+          </div>
+        )}
+        {shown.has('prsm') && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>PR/SM dispatch delay</b>
+            </div>
+            <LineChart title="PR/SM delay %" unit="%" series={prsmSeries} {...common} />
+          </div>
+        )}
+        {shown.has('cap') && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>Capping</b>
+            </div>
+            {anyCap ? <LineChart title="% capped" unit="%" series={capSeries} {...common} /> : <div className="muted">No LPAR has been capped today.</div>}
+          </div>
+        )}
+        {shown.has('rt') && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>Response time</b>
+              <ClassPicker
+                label="Classes to chart"
+                slots={slots}
+                toggle={toggle}
+                groups={[
+                  { title: 'Service class periods', keys: rtPeriods },
+                  { title: 'Report classes', keys: rtReports, empty: 'None yet. Give a classification rule a report class (Change Desk › WLM › Classification rules).' },
+                ]}
+              />
+            </div>
+            {rtSeries.length ? <LineChart title="Response time" unit="ms" series={rtSeries} {...common} /> : <div className="muted">Pick classes to chart.</div>}
+          </div>
+        )}
+        {shown.has('arr') && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>Transaction arrival rate</b>
+              <ClassPicker
+                label="Classes to chart arrivals for"
+                slots={arrSlots}
+                toggle={(k) => setPickedArr(toggleSlot(arrSlots, k))}
+                groups={[
+                  { title: 'Service classes', keys: arrClasses },
+                  { title: 'Report classes', keys: arrReports, empty: 'None yet. Give a classification rule a report class (Change Desk › WLM › Classification rules).' },
+                ]}
+              />
+            </div>
+            {arrSeries.length ? <LineChart title="Arrivals per second" unit="/s" series={arrSeries} {...common} /> : <div className="muted">Pick classes to chart.</div>}
+          </div>
+        )}
+        {shown.has('ddf') && ddfKeys.length > 0 && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>DDF engines: zIIP vs on CPs</b>
+            </div>
+            <LineChart title="DDF engines" unit="engines" series={ddfEng} stacked {...common} />
+          </div>
+        )}
+        {shown.has('svcCpu') && (
+          <div>
+            <div className="form">
+              <b style={{ fontSize: 13 }}>CPU by service class</b>
+            </div>
+            <LineChart title="CPU engines (CP + zIIP) per service-class period" unit="engines" series={cpuSeries} {...common} />
+          </div>
         )}
       </div>
     </details>
@@ -228,6 +304,24 @@ function toggleSlot(slots: Record<string, number>, k: string): Record<string, nu
     next[k] = slot;
   }
   return next;
+}
+
+/** Drop-down checklist of every chart in the panel; the choice is kept per viewer. */
+function ChartPicker({ shown, toggle }: { shown: Set<string>; toggle: (id: ChartId) => void }) {
+  return (
+    <details className="picker">
+      <summary>
+        Charts ({shown.size}/{CHARTS.length}) ▾
+      </summary>
+      <div className="picker-menu" role="group" aria-label="Charts to show">
+        {CHARTS.map((c) => (
+          <label key={c.id}>
+            <input type="checkbox" checked={shown.has(c.id)} onChange={() => toggle(c.id)} /> {c.label}
+          </label>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 /** Drop-down checklist of service/report classes (at most MAX_PICKED at once). */

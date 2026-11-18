@@ -1170,7 +1170,10 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
 
 **Tier 2:**
 - **Monitor III charting** (requires Monitor III): today's PI, busy, delay breakdown, PR/SM delay,
-  capping and DDF over time at 1-minute resolution, with WLM decisions and changes marked.
+  capping, DDF engines and CPU engines per service class over time at 1-minute resolution, with WLM
+  decisions and changes marked. The player picks which charts to show (kept per viewer; the
+  service-class CPU chart starts hidden), and CP busy plots each image's share of its logical CPs or,
+  with one option, of the CPC's physical CPs.
 - **CF Activity** and **DASD/Cache** reports.
 - **SMF 113 counters** (RNI, CPI, L1MP; LSPR workload classification).
 - **Db2 accounting** (SMF 101; CPU cost when on).
