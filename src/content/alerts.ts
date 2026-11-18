@@ -1,13 +1,13 @@
 // Alerting rules (tool ALERTS): what a rule can watch, and what a page costs.
 
-export type AlertMetric = 'PI' | 'CPC_BUSY' | 'CAPPED' | 'R4HA_DC' | 'BATCH_SLACK';
+export type AlertMetric = 'PI' | 'CPC_BUSY' | 'CAPPED' | 'R4HA_DC' | 'BATCH_SLACK' | 'CICS_SOS';
 
 export interface AlertMetricDef {
   label: string;
   unit: string;
   /** Fires when the value is above (or below) the threshold. */
   op: '>' | '<';
-  subject: 'period' | 'lpar' | 'none';
+  subject: 'period' | 'lpar' | 'region' | 'none';
   defaultThreshold: number;
   help: string;
 }
@@ -18,6 +18,7 @@ export const ALERT_METRICS: Record<AlertMetric, AlertMetricDef> = {
   CAPPED: { label: 'LPAR soft-capped', unit: '%', op: '>', subject: 'lpar', defaultThreshold: 0, help: 'Share of the last interval the LPAR was capped.' },
   R4HA_DC: { label: 'R4HA as % of defined capacity', unit: '%', op: '>', subject: 'lpar', defaultThreshold: 95, help: 'Capping starts at 100%.' },
   BATCH_SLACK: { label: 'Batch slack to the 06:00 deadline', unit: 'min', op: '<', subject: 'none', defaultThreshold: 30, help: 'Projected critical-path end vs the deadline.' },
+  CICS_SOS: { label: 'CICS region short on storage', unit: 'min', op: '>', subject: 'region', defaultThreshold: 1, help: 'Seconds short on storage so far this hour ÷ 60 (SMF 110 storage manager, needs CICS monitoring). Response times cover ended transactions only, so a stalling region can keep a fine PI.' },
 };
 
 // FICTIONAL: alert economy.

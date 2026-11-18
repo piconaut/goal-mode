@@ -17,7 +17,8 @@ export function Alerts({ v, game, openAnalytics }: { v: ViewModel; game: GameHan
   const def = ALERT_METRICS[metric];
   const periods = (v.mon3?.rows ?? []).filter((r) => r.system === '*PLEX' && r.importance !== null).map((r) => r.scKey);
   const lpars = v.lpars.filter((l) => l.kind === 'ZOS').map((l) => l.id);
-  const subjects = def.subject === 'period' ? periods : def.subject === 'lpar' ? lpars : [];
+  const regions = v.features.includes('CICS_MONITORING') ? v.config.cics.map((c) => c.name) : [];
+  const subjects = def.subject === 'period' ? periods : def.subject === 'lpar' ? lpars : def.subject === 'region' ? regions : [];
   const [subject, setSubject] = useState('');
   const [threshold, setThreshold] = useState(String(def.defaultThreshold));
   const [forMin, setForMin] = useState('5');
