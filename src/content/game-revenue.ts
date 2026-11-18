@@ -1,4 +1,4 @@
-import { defineGame } from './game';
+import { defineGame } from './defineGame';
 import { REVENUE_EVENTS, REVENUE_STORY } from './events/revenue-events';
 
 /** FICTIONAL budgets for the State Revenue Agency run. */

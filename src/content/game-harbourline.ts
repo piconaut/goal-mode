@@ -1,4 +1,4 @@
-import { defineGame } from './game';
+import { defineGame } from './defineGame';
 import { HARBOURLINE_EVENTS, HARBOURLINE_STORY } from './events/harbourline-events';
 
 /** FICTIONAL budgets for the Harbourline Bank run: a larger estate with two CPCs, so roughly double Midwest's. Opex is set so

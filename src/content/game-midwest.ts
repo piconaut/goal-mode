@@ -1,4 +1,4 @@
-import { defineGame } from './game';
+import { defineGame } from './defineGame';
 import { MIDWEST_EVENTS, MIDWEST_STORY } from './events/midwest-events';
 
 /** FICTIONAL budgets for the Midwest Mutual run. */
