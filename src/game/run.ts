@@ -21,7 +21,7 @@ import { difficultyOf, scaleEventCommands, scenarioFor } from './difficulty';
 import { hintLevelFor, morningHints } from './hints';
 import { deliverInquiries } from './inquiries';
 import { accumulateMon3, emptyCharts, recordMon3 } from './mon3Charts';
-import { emptyPolicyBook, scheduledActivation } from './policies';
+import { emptyPolicyBook, savedPolicy, scheduledActivation } from './policies';
 import { grantProjectHours } from './projects';
 import { ARMED, failRisk, NO_TARGET, policyFailuresWithLaterToday, requestChange } from './run/changes';
 import { strainedClasses, sysotherByLpar, wlmHidSlides, worstPiOfDay } from './run/diagnostics';
@@ -52,6 +52,13 @@ import { effectiveAddressSpaces, effectiveWorkloads } from '../sim/core/tick/hel
 
 export type { GameContent } from './run/shared';
 export { allWorkloads } from './workloads';
+
+/** Activate a saved policy now: an ordinary Change Desk activation (emergency when the day is live). */
+export function activateSavedPolicy(run: RunState, content: GameContent, name: string): { run: RunState; ok: boolean; message: string } {
+  const def = savedPolicy(run, name);
+  if (!def) return { run, ok: false, message: `No saved policy ${name}` };
+  return requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: structuredClone(def) }] });
+}
 
 export function newRun(baseScenario: Scenario, content: GameContent, seed: number, difficulty: DifficultyId = 'NORMAL', daily?: string): RunState {
   const diff = difficultyOf(difficulty);

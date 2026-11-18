@@ -101,6 +101,8 @@ export type ToWorker =
   | { type: 'AUTO_ADD'; rule: Omit<AutoRule, 'id'> }
   | { type: 'AUTO_REMOVE'; id: number }
   | { type: 'SAVE_POLICY'; name: string }
+  | { type: 'ACTIVATE_SAVED_POLICY'; name: string }
+  | { type: 'LOAD_SAVED_POLICY'; name: string }
   | { type: 'DELETE_POLICY'; name: string }
   | { type: 'SET_POLICY_SCHEDULE'; schedule: ScheduleEntry[] }
   | { type: 'BUY_TOOL'; toolId: string }

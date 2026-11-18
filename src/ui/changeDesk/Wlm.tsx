@@ -123,6 +123,7 @@ export function Wlm({ v, game, rulesOpen, toggleRules }: { v: ViewModel; game: G
 /** Saved service policies and the daily V WLM,POLICY= schedule. */
 export function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) {
   const { saved, schedule } = v.policies;
+  const activation = preview(v, { commands: ACTIVATE_PREVIEW });
   const [name, setName] = useState('');
   const [rows, setRows] = useState(schedule);
   // Re-sync the editor when the stored schedule changes.
@@ -161,6 +162,19 @@ export function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) 
                 </summary>
                 <div className="muted" style={{ fontSize: 11, whiteSpace: 'normal' }}>{p.summary}</div>
               </details>
+              <span className="form" style={{ gap: 6 }}>
+                <button
+                  aria-label={`Activate policy ${p.name} now`}
+                  disabled={!activation.ok || p.name === (v.plannedPolicy?.policyName ?? v.policyName)}
+                  title={activation.reason ?? undefined}
+                  onClick={() => game.send({ type: 'ACTIVATE_SAVED_POLICY', name: p.name })}
+                >
+                  Activate now · {costText(activation)}
+                </button>
+                <button aria-label={`Load policy ${p.name} into the editor`} onClick={() => game.send({ type: 'LOAD_SAVED_POLICY', name: p.name })}>
+                  Load into editor
+                </button>
+              </span>
               <button aria-label={`Delete policy ${p.name}`} onClick={() => game.send({ type: 'DELETE_POLICY', name: p.name })}>
                 ✕
               </button>

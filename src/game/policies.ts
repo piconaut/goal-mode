@@ -52,6 +52,10 @@ export function savePolicy(run: RunState, def: ServiceDefinition): Out {
   return { run: { ...run, policies: { ...book, saved } }, ok: true, message: `Policy ${def.policyName} saved` };
 }
 
+/** A saved policy by name, or null. */
+export const savedPolicy = (run: RunState, name: string): ServiceDefinition | null =>
+  run.policies?.saved.find((p) => p.policyName === name) ?? null;
+
 export function deletePolicy(run: RunState, name: string): Out {
   const book = run.policies ?? emptyPolicyBook();
   if (book.schedule.some((e) => e.policyName === name)) return { run, ok: false, message: `${name} is in the schedule; remove it there first` };

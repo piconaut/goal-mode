@@ -40,6 +40,20 @@ function withMon3(base: PlayFile): PlayFile {
   return buy.ok ? buy.file : f;
 }
 
+describe('saved policy actions', () => {
+  it('loads a saved policy into the editor and activates it now', () => {
+    let f = started(1);
+    const def = { ...f.run.sim.wlm.definition, policyName: 'NIGHTPOL' };
+    f = { ...f, run: { ...f.run, policies: { saved: [def], schedule: [] } } };
+    f = run(f, [{ cmd: 'policy-load', name: 'nightpol' }]);
+    expect(f.pendingPolicy?.policyName).toBe('NIGHTPOL');
+    f = run(f, [{ cmd: 'policy-activate', name: 'NIGHTPOL' }]);
+    expect(f.pendingPolicy).toBeNull();
+    f = run(f, [{ cmd: 'advance', hours: 1 }]);
+    expect(f.run.sim.wlm.definition.policyName).toBe('NIGHTPOL');
+  });
+});
+
 describe('save version', () => {
   it('refuses a play file from an older build with one message, not a partial load', () => {
     const old = { ...newPlayFile(7), version: 1 } as unknown as PlayFile;
