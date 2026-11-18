@@ -146,6 +146,14 @@ changes, balance calls and cross-layer work on the main agent as the shared work
 - In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent; vetting and balance calls
   stay on the main agent.
 
+### Claude commit trailers
+
+The shared attribution rule is in `docs/workflow.md`; the Codex form is in `AGENTS.md`. Claude sessions use the
+trailer their host provides: `Co-Authored-By: Claude <Model> <noreply@anthropic.com>`, followed by a `Claude-Session:`
+line, on every agent-written commit and at the end of every review report or PR comment. Where the host's own
+instructions rule out a model name, the host's rule wins and the model is omitted. Coordinators pass subagents only
+the session link and the PR/comment footer, never their own `Co-Authored-By` line.
+
 Hand reading long test and bench outputs (a failing `npm run check`, sweep/bot logs) to `log-reader`; don't read them
 in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
 
