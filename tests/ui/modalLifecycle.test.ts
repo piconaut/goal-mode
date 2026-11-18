@@ -1,6 +1,7 @@
 // PR-08: `mode` resets the dialog's class and `el.close()` must land in the same commit, or the browser paints one
-// frame with an open, unstyled <dialog>. That is why the effect is a layout effect. The paint itself needs a browser
-// (PR-09 owns the real lifecycle test); these checks guard the timing and the double close().
+// frame with an open, unstyled <dialog>. That is why the effect is a layout effect. The paint itself needs a
+// browser; PR-09's `tests/ui/dialogLifecycle.test.ts` drives the component lifecycle in jsdom. These checks guard
+// the timing and the double close().
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 

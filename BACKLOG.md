@@ -301,12 +301,6 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
-### PR-09 · No automated test for the dialog lifecycle
-`list: pr-followups · status: ready · priority: low · size: M · area: ui`
-
-#181/#183/#185 were verified by hand with Playwright. Cover the save dialogs and the in-app confirmation
-(`src/ui/Confirmation.tsx`): open, close, Escape, reopen, delayed close events, confirm/cancel.
-
 ### PR-20 · Repeated non-fixable checks are invisible to the assessment episode counter
 `list: pr-followups · status: ready · priority: low · size: M · area: tooling`
 
