@@ -228,5 +228,6 @@ describe('run-file dialog lifecycle', () => {
     expect(send).toHaveBeenCalledWith({ type: 'IMPORT_RUN', text: '{"seed":7}' });
     expect(confirm.open).toBe(false);
     expect(dialogs()[0]!.textContent).toContain('Loading the save');
+    expect(dialogs()[0]!.open).toBe(true);
   });
 });
