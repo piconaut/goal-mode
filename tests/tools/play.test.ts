@@ -145,6 +145,17 @@ describe('headless play interface', () => {
     expect(per.PROD1).toBeGreaterThan(per.SYSP! * 2);
   });
 
+  it('finance lists the TFP offer per product and its run-rate projection', () => {
+    let f = started(2);
+    const offer = quoteTfp(f.run, scenarioFor(packOf('midwest').scenario, f.run.difficulty));
+    f = { ...f, run: { ...f.run, tfpOffer: offer } };
+    const t = financeText(f);
+    expect(t).toContain('TFP offer OFFERED');
+    expect(t).toMatch(/peak [\d,]+ MSU, sub-capacity \$[\d,.]+\/month \(\$\d+\/MSU\)/);
+    expect(t).toMatch(/baseline [\d,]+ MSU-hours at \$[\d.]+\/MSU-hour; used [\d,]+ MSU-hours/);
+    expect(t).toMatch(/run rate: [\d,]+ MSU-hours against a [\d,]+ baseline/);
+  });
+
   it('status and finance show the same combined software/CoD estimate and unrounded limit warning', () => {
     const f = newPlayFile(7);
     const products = packOf(f.run.scenarioId).scenario.products;

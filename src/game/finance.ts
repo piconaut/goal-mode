@@ -56,7 +56,7 @@ export function financeView(run: RunState, scenario: Scenario): FinanceView {
     scrt: renderScrt(cost, scenario.products, 'current', clock),
     pricing: cost.tfp ? 'TFP' : 'SUBCAP',
     offer: offer
-      ? { status: offer.status, untilDay: offer.untilDay, baselineMonthly: offer.baselineMonthly, subcapMonthly: offer.subcapMonthly, overageFrac: offer.terms.overageFrac, acceptHours: TFP_OFFER.acceptHours, canDecide: offer.status === 'OFFERED' && run.phase !== 'LIVE' }
+      ? { status: offer.status, untilDay: offer.untilDay, baselineMonthly: offer.baselineMonthly, subcapMonthly: offer.subcapMonthly, overageFrac: offer.terms.overageFrac, acceptHours: TFP_OFFER.acceptHours, canDecide: offer.status === 'OFFERED' && run.phase !== 'LIVE', ...(offer.products ? { products: offer.products } : {}), ...(offer.projection ? { projection: offer.projection } : {}) }
       : null,
     tfp: cost.tfp
       ? lines.map((l) => ({ id: l.product, name: scenario.products.find((p) => p.id === l.product)!.name, msuHours: l.msuHours ?? 0, baselineMsuHours: l.baselineMsuHours ?? 0, charge: l.cost }))

@@ -46,14 +46,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-12 · The TFP offer lacks the numbers
-`list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
-
-The offer shows baseline $/month, the sub-capacity bill at the peak and overage %. The per-product terms are stripped
-from the view, and nothing projects TFP against sub-capacity from history. Add a per-product table (peak MSU and
-$/MSU, baseline MSU-hours and $/MSU-hour, MSU-hours used) and a run-rate projection. Done when: the offer shows both,
-in the browser and `play finance`.
-
 ### PT-14 · Monitor III CPC report: per-type groups
 `list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
 

@@ -755,6 +755,10 @@ export function financeText(file: PlayFile): string {
   const out = [`month ${f.month + 1}  pricing ${f.pricing}  month to date ${usd(f.monthToDate)}${f.cfoTarget !== null ? `  CFO target <= ${usd(f.cfoTarget)}` : ''}`];
   out.push(budgetLine(f.monthToDate, f.opexSpent, f.opexBudget), R4HA_BILLING_NOTE, BUDGET_MONTH_BOUNDARY_NOTE);
   if (f.offer) out.push(`TFP offer ${f.offer.status} (decide by day ${f.offer.untilDay + 1}): baseline ${usd(f.offer.baselineMonthly)}/month vs sub-capacity ${usd(f.offer.subcapMonthly)}/month, overage at ${Math.round(100 * f.offer.overageFrac)}% of price`);
+  for (const p of f.offer?.products ?? [])
+    out.push(`  ${p.name}: peak ${Math.round(p.peakMsu).toLocaleString()} MSU, sub-capacity ${usd(p.subcapMonthly)}/month ($${p.pricePerMsu.toFixed(0)}/MSU); baseline ${Math.round(p.baselineMsuHours).toLocaleString()} MSU-hours at $${p.pricePerMsuHour.toFixed(2)}/MSU-hour; used ${Math.round(p.msuHoursUsed).toLocaleString()} MSU-hours`);
+  if (f.offer?.projection)
+    out.push(`  run rate: ${Math.round(f.offer.projection.msuHours).toLocaleString()} MSU-hours against a ${Math.round(f.offer.projection.baselineMsuHours).toLocaleString()} baseline (${Math.round(f.offer.projection.overageMsuHours).toLocaleString()} over) -> TFP ${usd(f.offer.projection.tfpMonthly)}/month vs sub-capacity ${usd(f.offer.projection.subcapMonthly)}/month (${usd(f.offer.projection.savings)} lower)`);
   const tfp = run.sim.cost.tfp;
   if (f.tfp && tfp) {
     // The baseline is prorated over the TFP part of the month; project consumption over that same part.
