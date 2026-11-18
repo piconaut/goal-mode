@@ -84,7 +84,7 @@ describe('change preview', () => {
     const p = previewChange(previewContext(live), { hardwareId: 'PERM_CP' });
     expect(p.emergency).toBe(false);
     expect(p.trustCostEach).toBe(0);
-    expect(p.failRisk).toBe(0);
+    expect(p.failRisk).toBeGreaterThan(0); // planned changes still roll at 06:00
     const out = requestChange(live, content, { label: 'Permanent CP', hardwareId: 'PERM_CP' });
     expect(out.ok, out.message).toBe(true);
     const c = out.run.changes.at(-1)!;

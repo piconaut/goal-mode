@@ -156,7 +156,7 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
     leadDays,
     emergency,
     trustCostEach: emergency && !fix?.operational ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
-    failRisk: emergency && !fix ? failRiskFor(ctx.fatigue, ctx.perks) : 0,
+    failRisk: fix ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
     ok: true,
     reason: null,
   };
