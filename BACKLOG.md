@@ -279,6 +279,20 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+### PR-22 · Disable CoD deactivation outside actionable phases
+`list: pr-followups · status: ready · priority: low · size: S · area: ui`
+
+Source: #417 fix-check M1. The CoD deactivation button remains enabled in REVIEW and terminal phases even though the
+handler refuses the action. Change: gate the button on BRIEFING or LIVE, matching the handler. Done when: the button
+is unavailable in REVIEW, GAMEOVER and VICTORY and remains available for eligible leases in BRIEFING and LIVE.
+
+### PR-23 · Reconcile the PT-11 pull request description
+`list: pr-followups · status: ready · priority: low · size: S · area: tooling`
+
+Source: #417 fix-check M2. The merged PR description retains obsolete statements about missing IBM documentation, an
+arrival message in the change bar and unresolved N1–N3. Change: update the description to reflect the final merged
+implementation and checked IBM source. Done when: the PR summary accurately describes the shipped behavior and fixes.
+
 ## realism-fixes
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header
