@@ -6,6 +6,7 @@ import { clockAt, hhmm } from '../sim/core/clock';
 import type { Scenario } from '../sim/core/scenario';
 import { TICK_SEC } from '../sim/core/units';
 import { buildMon3 } from './mon3';
+import { hasFeature } from './tools';
 import type { RunState } from './types';
 
 export interface AlertRule {
@@ -67,6 +68,7 @@ export function alertValue(run: RunState, scenario: Scenario, rule: Pick<AlertRu
       return proj === null ? null : (run.batchDeadlineSec - proj) / 60;
     }
     case 'CICS_SOS': {
+      if (!hasFeature(run, 'CICS_MONITORING')) return null;
       const st = run.hour?.cicsStorage?.[rule.subject];
       return st === undefined ? null : st.sosSec / 60;
     }

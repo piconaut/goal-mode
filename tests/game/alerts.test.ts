@@ -53,12 +53,19 @@ describe('alert rules', () => {
     r = advance(r, MIDWEST, content, 6);
     expect(r.hour).not.toBeNull();
     r = { ...r, hour: { ...r.hour!, cicsStorage: { PROD2AOR: { peakMb: 800, limitMb: 800, sosSec: 120 } } } };
+    expect(alertValue(r, MIDWEST, { metric: 'CICS_SOS', subject: 'PROD2AOR' })).toBeNull();
+    r = { ...r, tools: [...tools, 'CICS_MON'] };
     expect(alertValue(r, MIDWEST, { metric: 'CICS_SOS', subject: 'PROD2AOR' })).toBe(2);
     expect(alertValue(r, MIDWEST, { metric: 'CICS_SOS', subject: 'MISSING' })).toBeNull();
     r = add(r, { metric: 'CICS_SOS', subject: 'PROD2AOR', threshold: 1, forMin: 0, pause: false });
     r = evaluateAlerts(r, MIDWEST);
     expect(r.alerts.firing).toHaveLength(1);
     expect(r.alerts.log.at(-1)!.text).toMatch(/PAGE: CICS region short on storage PROD2AOR > 1min/);
+    const off = { ...r, toolsOff: ['CICS_MON'] };
+    expect(alertValue(off, MIDWEST, { metric: 'CICS_SOS', subject: 'PROD2AOR' })).toBeNull();
+    const cleared = evaluateAlerts(off, MIDWEST);
+    expect(cleared.alerts.firing).toEqual([]);
+    expect(cleared.alerts.log.at(-1)!.kind).toBe('CLEARED');
   }, 60_000);
 
   it('validates rules', () => {
