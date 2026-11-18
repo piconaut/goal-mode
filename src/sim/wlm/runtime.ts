@@ -46,7 +46,7 @@ export interface ScpAcc {
   usingIo?: number;
   iipcpEngines?: number;
   /** Decayed zIIP engines as Monitor III reports them (PR-21): unlike the management `ziipEngines`, this starts at
-   * zero rather than a steady-state seed, so it is a true component of `cpuEngines` and the sysplex split adds up. */
+   * zero rather than a steady-state seed, so it reports only sampled zIIP service and the sysplex totals add up. */
   ziipEnginesView?: number;
   /** Decayed arriving demand, engines, without backlog: × (1 − ACC_DECAY) is the sustained demand WLM projects
    * with (docs/wlm-design.md §5.4). Absent in a period's first tick: seeded at steady state. */
