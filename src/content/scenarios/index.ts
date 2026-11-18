@@ -1,3 +1,4 @@
+import type { CfTunables } from '../../sim/cf/cf';
 import type { Scenario } from '../../sim/core/scenario';
 import { BASEPOL } from '../wlm/basepol';
 import { MIDWEST_BATCH_GROWTH_PER_DAY, generateMidwestNetwork } from '../batch/midwest-batch';
@@ -13,6 +14,20 @@ import { HARBOURLINE_BATCH_GROWTH_PER_DAY, generateHarbourlineNetwork } from '..
 import { HARBOURLINE_CF_BASE_ENGINES, HARBOURLINE_MEMORY, HARBOURLINE_WORLD } from './harbourline';
 import { HARBOURLINE_ADDRESS_SPACES, HARBOURLINE_WORKLOADS } from './harbourline-workloads';
 
+/**
+ * FICTIONAL CF costs: shape follows IBM guidance (shared CF engines stretch sync
+ * service times and drive async conversion; sync requests spin the z/OS CP).
+ * Revenue and Harbourline share Midwest's software stack and CF costs.
+ */
+const MIDWEST_CF_TUNABLES: CfTunables = {
+  cpuSecPerRequest: 12e-6,
+  linkSyncSec: 5e-6,
+  asyncBaseSec: 60e-6,
+  asyncZosCpuSec: 15e-6,
+  syncThresholdSec: 26e-6,
+  sharedDispatchWaitSec: { thin: 0.00015, polling: 0.0015 },
+};
+
 export const MIDWEST: Scenario = {
   id: 'midwest',
   world: MIDWEST_WORLD,
@@ -20,16 +35,7 @@ export const MIDWEST: Scenario = {
   workloads: MIDWEST_WORKLOADS,
   addressSpaces: MIDWEST_ADDRESS_SPACES,
   cfBaseEngines: MIDWEST_CF_BASE_ENGINES,
-  // FICTIONAL CF costs: shape follows IBM guidance (shared CF engines stretch sync
-  // service times and drive async conversion; sync requests spin the z/OS CP).
-  cfTunables: {
-    cpuSecPerRequest: 12e-6,
-    linkSyncSec: 5e-6,
-    asyncBaseSec: 60e-6,
-    asyncZosCpuSec: 15e-6,
-    syncThresholdSec: 26e-6,
-    sharedDispatchWaitSec: { thin: 0.00015, polling: 0.0015 },
-  },
+  cfTunables: MIDWEST_CF_TUNABLES,
   memory: MIDWEST_MEMORY,
   products: MIDWEST_PRODUCTS,
   batchNetwork: generateMidwestNetwork,
