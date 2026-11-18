@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-18: PR-23 reconciled the merged PT-11 description with the shipped CoD/hardware changes (#420).
 - 2026-11-18: PR-22 CoD deactivation button follows the handler phases (#419).
 - 2026-11-18: PT-11 live lead-time hardware plans without emergency trust; CoD deactivates from tomorrow (#417); review reconciled IBM sources, content tunables, live wording and tested overlapping-lease billing through early and original expiry.
 - 2026-11-18: PT-10 saved-policy "Activate now" and "Load into editor" in browser and play CLI (#416); review reconciled SPEC and the research ledger with the shipped actions and checked IBM's installed-policy requirement.
