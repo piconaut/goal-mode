@@ -56,9 +56,11 @@ agent briefs keep their own operational steps and link here for the shared rules
 
 ## Reviews and attribution
 
-- Every review report posted on a PR (any agent or vendor, any tool) starts with a header line naming its role. The
-  loops find their own reports by the exact `pr-reviewer` and `pr-fixer` strings kept word for word in
-  `.claude/agents/pr-reviewer.md` and `.claude/agents/pr-fixer.md`; every other reviewer uses another role name.
+- Every review report posted on a PR (any agent or vendor, any tool) starts with the exact header line
+  `Automated <role> report (reference only, not a GitHub approval)`, naming its role (`pr-reviewer`, `pr-fixer`, or
+  e.g. `coordinated-review` / `codex-review`). The loops find their own reports by the exact `pr-reviewer` and
+  `pr-fixer` strings kept word for word in `.claude/agents/pr-reviewer.md` and `.claude/agents/pr-fixer.md`; every
+  other reviewer uses another role name.
   Comments are posted under the user's account, so a comment without such a header reads as the user's own decision.
 - Reviewers read CI's results instead of rerunning `npm run check`; when a rerun is needed, use `npm run test:remote`
   rather than the full suite locally.
