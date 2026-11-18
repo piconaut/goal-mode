@@ -294,6 +294,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   itself, so only HOLDs make the round trip. Both push fast-forward only, so a rare overlap fails one push and that
   side retries next tick. Reviewers reject a `dev-loop` PR that doesn't fix a ready BACKLOG entry (pr-reviewer check
   10, the backlog rule), and dev-loop closes a PR held on it.
+  The PR that fixes an entry also unblocks its `blocked: after` dependants (dev-loop step 5.3, pr-reviewer check 11,
+  pr-fixer fixes a miss; 2026-11-18, after CL-17 was stranded by #396 and #403).
 
 - Manage Region Using Goals Of is fixed at TRANSACTION for the player (user decision 2026-11-05): the sim keeps
   REGION/BOTH (lab, tests); the Rules view drops the column and `playerWlmEditError` refuses `SET_RULE_REGION_MODE`

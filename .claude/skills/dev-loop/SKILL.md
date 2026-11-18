@@ -126,6 +126,9 @@ PR other than `needs-user` ones: the lists are finished.
    You may hand well-scoped content, test or small UI parts to the `implementer` subagent (review its diff). Keep
    `sim` work, balance calls and cross-layer work yourself.
    - In the same PR, delete the entry from BACKLOG.md; a partial fix rewrites it to what remains.
+   - In the same PR, unblock its dependants (BACKLOG.md Rules): every entry that is `blocked: after` only this entry
+     goes to `status: ready`; an entry whose `after` list names others too loses this ID from the list. A partial fix
+     unblocks nothing. List each status change in the PR body.
    - Record durable facts in SPEC §17/§18, docs/research.md, or a PROGRESS.md decision.
    - A **status mark** you set in a doc is a claim. That includes a finding marked fixed, partial or open (e.g. a
      finding marked fixed in a design doc) and a ledger row set to modelled. List each mark in the PR body, with the finding's own
