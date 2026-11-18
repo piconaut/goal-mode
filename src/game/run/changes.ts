@@ -10,6 +10,7 @@ import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange } fr
 import { placementRefusal } from '../workloads';
 import { idText } from '../ids';
 import {
+  type Phase,
   type PlannedChange,
   type RunState
 } from '../types';
@@ -188,6 +189,10 @@ function targetHint(s: RunState['sim'], cmd: Command): string {
     default: return '';
   }
 }
+
+/** Whether the change row offers "Deactivate tomorrow": the same conditions as deactivateCod. */
+export const codDeactivatable = (c: Pick<PlannedChange, 'status' | 'opexPerDay' | 'revertDay'>, phase: Phase, day: number): boolean =>
+  (phase === 'BRIEFING' || phase === 'LIVE') && c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > day + 1;
 
 /**
  * Deactivate an active On/Off CoD order from the next day: its lease's revert day becomes tomorrow, so the
