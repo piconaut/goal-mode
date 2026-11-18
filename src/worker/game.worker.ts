@@ -5,7 +5,7 @@ import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { packOf } from '../content/packs';
 import { MIDWEST } from '../content/scenarios';
-import { activateSavedPolicy, advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
+import { activateSavedPolicy, advance, cancelChange, chooseDraft, continueEndless, deactivateCod, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
 import { advanceHours } from '../game/advance';
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeDefinition, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
@@ -555,6 +555,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'BUY_TOOL':
     case 'SET_TOOL_ACTIVE': {
       settle(m.type === 'BUY_TOOL' ? buyTool(run, sc(), m.toolId) : setToolActive(run, sc(), m.toolId, m.active));
+      break;
+    }
+    case 'DEACTIVATE_COD': {
+      settle(deactivateCod(run, m.changeId));
       break;
     }
     case 'CANCEL_CHANGE': {

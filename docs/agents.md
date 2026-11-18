@@ -32,6 +32,7 @@ npm run -s play -- runs/a.json draft <id|none>    # closes the end-of-day review
 npm run -s play -- runs/a.json json '{"cmd":"change","req":{"label":"+1 CP","hardwareId":"PERM_CP"}}'
 npm run -s play -- runs/a.json json '{"cmd":"wlm","edit":{...}}'   # then: activate (or discard)
 npm run -s play -- runs/a.json policy-activate NIGHTPOL   # activate a saved policy now (emergency when live)
+npm run -s play -- runs/a.json cod-deactivate CHG7      # end an active On/Off CoD lease at 06:00 tomorrow (0.5h)
 npm run -s play -- runs/a.json policy-load NIGHTPOL       # load it into the pending editor
 ```
 

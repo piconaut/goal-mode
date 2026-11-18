@@ -145,20 +145,24 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   const live = ctx.phase === 'LIVE';
   const hours = fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks);
   const capex = hw ? capexFor(hw.id, hw.capex, ctx.perks) : 0;
+  const leadDays = leadDaysFor(hw?.leadDays ?? 0, ctx.perks);
+  // A lead-time order placed during the live day arrives later, so it is a plan for a future day, not an emergency
+  // change made now (PT-11). Only changes that take effect this day pay the trust and failure cost.
+  const emergency = live && leadDays === 0;
   const base: ChangePreview = {
     hours,
     capex,
     opexPerDay: hw?.opexPerDay ?? 0,
-    leadDays: leadDaysFor(hw?.leadDays ?? 0, ctx.perks),
-    emergency: live,
-    trustCostEach: live && !fix?.operational ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
+    leadDays,
+    emergency,
+    trustCostEach: emergency && !fix?.operational ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
     failRisk: fix ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
     ok: true,
     reason: null,
   };
   const no = (reason: string): ChangePreview => ({ ...base, ok: false, reason });
   if (ctx.phase !== 'BRIEFING' && ctx.phase !== 'LIVE') return no('Changes are made during the briefing or the live day');
-  if (!live && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
+  if (!emergency && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
   if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
   if (req.fixId && (!fix || (ctx.fixIds && !ctx.fixIds.includes(fix.id)))) return no(`Unknown fix ${req.fixId}`);
   // A fix or a hardware order is a self-contained action: picture the fix on a live day that also sneaks in

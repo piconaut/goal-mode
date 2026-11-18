@@ -4,10 +4,11 @@ import { cardMechanisms } from '../../src/content/footprint';
 import { DASD_REBALANCE } from '../../src/content/hardware-catalog';
 import { previewChange } from '../../src/game/catalog';
 import { addToBasket, basketAfterFailure, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../../src/game/changeDesk';
-import { cancelChange, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
+import { advance, cancelChange, chooseDraft, deactivateCod, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
 import { buildView } from '../../src/game/view';
 import type { Command } from '../../src/sim/core/commands';
 import type { Mechanism } from '../../src/game/types';
+import { TICKS_PER_DAY } from '../../src/sim/core/units';
 
 const content = { ...MIDWEST_GAME, events: [] };
 const fresh = () => newRun(MIDWEST, content, 7);
@@ -77,6 +78,90 @@ describe('change preview', () => {
     expect(op.hours).toBeGreaterThan(0);
     expect(previewChange(previewContext(live, MIDWEST_GAME), { fixId: 'REBIND_REVERT' }).trustCostEach).toBeGreaterThan(0);
   });
+
+  it('a lead-time hardware order during the live day is planned, not an emergency change', () => {
+    const live = startDay(fresh(), content);
+    const trust = live.trust;
+    const p = previewChange(previewContext(live), { hardwareId: 'PERM_CP' });
+    expect(p.emergency).toBe(false);
+    expect(p.trustCostEach).toBe(0);
+    expect(p.failRisk).toBeGreaterThan(0); // planned changes still roll at 06:00
+    const out = requestChange(live, content, { label: 'Permanent CP', hardwareId: 'PERM_CP' });
+    expect(out.ok, out.message).toBe(true);
+    const c = out.run.changes.at(-1)!;
+    expect(c.status).toBe('PLANNED');
+    expect(c.emergency).toBe(false);
+    expect(c.activateDay).toBe(live.day + p.leadDays);
+    expect(out.run.trust).toEqual(trust);
+    // An immediate change is still an emergency: CoD would apply today.
+    const cod = previewChange(previewContext(live), { hardwareId: 'COD_CP' });
+    expect(cod.emergency).toBe(true);
+    expect(cod.trustCostEach).toBeGreaterThan(0);
+  });
+
+  it('a live freeze refuses a lead-time order but keeps same-day emergencies', () => {
+    const live = { ...startDay(fresh(), content), constraints: ['FREEZE'] };
+    expect(previewChange(previewContext(live), { hardwareId: 'PERM_CP' }).reason).toMatch(/freeze/i);
+    expect(previewChange(previewContext(live), { hardwareId: 'COD_CP' }).ok).toBe(true);
+  });
+
+  it('deactivates an active On/Off CoD lease from tomorrow for 0.5h', () => {
+    let r = requestChange(fresh(), content, { label: 'CoD', hardwareId: 'COD_CP' }).run;
+    r = startDay(r, content);
+    const cod = r.changes.find((c) => c.opexPerDay > 0 && c.status === 'APPLIED')!;
+    const hours = r.hoursLeft;
+    const out = deactivateCod(r, cod.id);
+    expect(out.ok, out.message).toBe(true);
+    expect(out.run.changes.find((c) => c.id === cod.id)!.revertDay).toBe(r.day + 1);
+    expect(out.run.hoursLeft).toBeCloseTo(hours - 0.5);
+    expect(deactivateCod(out.run, cod.id).ok).toBe(true); // already tomorrow
+    expect(deactivateCod(r, 999).ok).toBe(false);
+    for (const phase of ['REVIEW', 'GAMEOVER', 'VICTORY'] as const)
+      expect(deactivateCod({ ...r, phase }, cod.id).ok).toBe(false);
+  });
+
+  it('removes an early-ended lease once, preserves its overlap and stops its daily fees', () => {
+    let r = fresh();
+    const cpcId = r.sim.config.cpcs[0]!.id;
+    const engines = () => r.sim.config.cpcs.find((c) => c.id === cpcId)!.engines.CP;
+    const baseline = engines();
+    r = requestChange(r, content, { label: 'CoD', hardwareId: 'COD_CP', cpcId }).run;
+    r = requestChange(r, content, { label: 'CoD overlap', hardwareId: 'COD_CP', cpcId }).run;
+    r = startDay(r, content);
+    expect(r.changes.map((c) => c.status)).toEqual(['APPLIED', 'APPLIED']);
+    const [early, overlap] = r.changes;
+    const originalExpiry = early!.revertDay!;
+    r = advance(r, MIDWEST, content, 1);
+    expect(engines()).toBe(baseline + 2);
+
+    const scheduled = deactivateCod(r, early!.id);
+    expect(scheduled.ok, scheduled.message).toBe(true);
+    r = scheduled.run;
+    expect(engines()).toBe(baseline + 2); // capacity stays for the rest of today
+    const repeated = deactivateCod(r, early!.id);
+    expect(repeated.run).toBe(r); // no repeated engineer-hours charge
+
+    const dailyFee = early!.opexPerDay;
+    const expectedFees = [2 * dailyFee, dailyFee, dailyFee, 0];
+    for (let day = 0; day <= originalExpiry; day++) {
+      if (day > 0) {
+        r = startDay(chooseDraft(r, content, null), content);
+        expect(r.day).toBe(day);
+        r = advance(r, MIDWEST, content, 1); // execute the normal 06:00 queue
+        expect(engines()).toBe(baseline + (day < originalExpiry ? 1 : 0));
+        expect(r.changes.find((c) => c.id === overlap!.id)!.revertDay).toBe(originalExpiry);
+      }
+      const feesBefore = r.opexSpentThisMonth;
+      r = advance(r, MIDWEST, content, TICKS_PER_DAY - (r.sim.tick % TICKS_PER_DAY));
+      expect(r.phase).toBe('REVIEW');
+      expect(r.opexSpentThisMonth - feesBefore).toBe(expectedFees[day]);
+      expect(engines()).toBe(baseline + (day === 0 ? 2 : day < originalExpiry ? 1 : 0));
+      const refused = deactivateCod(r, early!.id);
+      expect(refused.ok).toBe(false);
+      expect(refused.run).toBe(r);
+    }
+    expect(r.opexSpentThisMonth).toBe(4 * dailyFee);
+  }, 120_000);
 
   it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {
     const r = fresh();

@@ -5,7 +5,7 @@
 //   npm run play -- runs/a.json start | advance 3 | report WLM_SUMMARY [id] | report WLM_DETAIL 312 ONLHI#1   (interval ids from status)
 //   npm run play -- runs/a.json draft <optionId|none> | rca <incident> <MECHANISM> <TRIGGER> | buy <toolId>
 //   npm run play -- runs/a.json rca INC<n> <MECHANISM> <TRIGGER> --evidence PIN<n>,PIN<n>   (bare numbers work too)
-//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n> | restart <JOB>
+//   npm run play -- runs/a.json ask <TOPIC> [workloadId] | project <id> <hours> | unpin PIN<n> | cancel CHG<n> | cod-deactivate CHG<n> | restart <JOB>
 //   npm run play -- runs/a.json pin WLMGL <interval id> <system> <scKey> <metric> | pin MON3 <system> <scKey> <metric> [--at D2 10:40]
 //   npm run play -- runs/a.json pin CPC <lparId> PRSM_DELAY|CAPPED|LPAR_BUSY|CPC_BUSY|CAPACITY_ADJ [interval id: Partition Data; none = Monitor III now or --at] | pin DB2|CICS <hour, e.g. 10 or "D3 10"> <workloadId> <metric>
 //   npm run play -- runs/a.json pin CF <cfLparId> CF_SYNC|CF_ASYNC_PCT [interval id; none = latest] | pin DASD <LCU|ALL> DASD_DISC|DASD_IOSQ|DASD_RESP [interval id; none = latest]   (RMF CF/DASD Activity)
@@ -136,6 +136,7 @@ function parse(): PlayCommand | ReadOnly {
     case 'unpin': return { cmd: 'unpin', id: parseIdText('pin', rest[0] ?? '') };
     case 'restart': return { cmd: 'restart', name: rest[0] ?? '' };
     case 'cancel': return { cmd: 'cancel', changeId: parseIdText('change', rest[0] ?? '') };
+    case 'cod-deactivate': return { cmd: 'cod-deactivate', changeId: parseIdText('change', rest[0] ?? '') };
     case 'pin': return pinCommand(rest);
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
     case 'activate': return { cmd: 'activate' };

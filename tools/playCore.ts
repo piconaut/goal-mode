@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { activateSavedPolicy, cancelChange, chooseDraft, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { activateSavedPolicy, cancelChange, chooseDraft, deactivateCod, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import { advanceHours } from '../src/game/advance';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
@@ -52,6 +52,8 @@ export type PlayCommand =
   | { cmd: 'change'; req: ChangeRequest }
   /** Withdraw a planned change (ids in status); capex back, hours back on the day they were spent. */
   | { cmd: 'cancel'; changeId: number }
+  /** End an active On/Off CoD lease at 06:00 tomorrow. */
+  | { cmd: 'cod-deactivate'; changeId: number }
   | { cmd: 'draft'; optionId: string | null }
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
@@ -189,6 +191,10 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const a = buildView(run, sc(run)).batch.abended.find((x) => x.name === c.name.toUpperCase());
       if (!a) return fail(`${c.name} is not abended now. Abended jobs: ${buildView(run, sc(run)).batch.abended.map((x) => x.name).join(' ') || 'none'} (a job can be restarted only during its batch night).`);
       const o = requestChange(run, content, { label: `Restart ${a.name}`, commands: [{ kind: 'RESTART_JOB', day: a.day, name: a.name }] });
+      return done(o.run, o.message, o.ok);
+    }
+    case 'cod-deactivate': {
+      const o = deactivateCod(run, c.changeId);
       return done(o.run, o.message, o.ok);
     }
     case 'cancel': {

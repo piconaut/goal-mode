@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { COD_DEACTIVATE_HOURS } from '../../content/hardware-catalog';
 import { basketLabel, commandTarget, describeCommand, orderBasket } from '../../game/changeDesk';
 import type { PlannedChange } from '../../game/types';
 import type { ViewModel } from '../../game/view';
@@ -36,7 +37,7 @@ export function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
       <h3>Change board</h3>
       <div className="muted">
         {live
-          ? 'Live day: changes are EMERGENCY changes, applied within seconds, at a trust cost.'
+          ? 'Live day: immediate changes are emergencies, applied within seconds, at a trust cost. Hardware with a lead time is planned for its arrival day without emergency trust cost.'
           : v.phase === 'BRIEFING'
             ? 'Briefing: changes are planned and take effect at 06:00 when the day starts.'
             : 'Changes can be made during the briefing or the live day.'}{' '}
@@ -107,6 +108,11 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
         {cancellable && (
           <button title={`Cancel (${refund}${c.capex ? `, $${Math.round(c.capex / 1000)}k capex back` : ''})`} onClick={() => game.send({ type: 'CANCEL_CHANGE', changeId: c.id })}>
             Cancel
+          </button>
+        )}
+        {c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > v.day + 1 && (
+          <button title={`End the On/Off CoD lease at 06:00 tomorrow (${COD_DEACTIVATE_HOURS}h)`} onClick={() => game.send({ type: 'DEACTIVATE_COD', changeId: c.id })}>
+            Deactivate tomorrow
           </button>
         )}
       </td>

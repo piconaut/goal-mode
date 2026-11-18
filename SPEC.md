@@ -951,7 +951,7 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
 
 | Item | Lead time | Cost model |
 |---|---|---|
-| **On/Off CoD** temporary CP/zIIP | immediate (activation in minutes) | per engine-day, plus its MLC impact |
+| **On/Off CoD** temporary CP/zIIP | immediate (activation in minutes); early deactivation at the next 06:00 (APPROX) | per engine-day, plus its MLC impact |
 | **CBU** (capacity backup) | immediate, disaster events only | test/activation limited per year |
 | Permanent upgrade (**MCU**: add engines or raise capacity setting) | 3–5 days | capex |
 | Add zIIPs / ICFs | 3–5 days | capex (zIIPs cheap relative to CPs) |
@@ -964,6 +964,11 @@ than one; default the first). A capacity step at setting 7 or a new generation o
 
 Rule from IBM: capacity provisioning should not be used with hard-capped LPARs
 ([IBM z/OS Capacity Provisioning](https://www-03.ibm.com/systems/z/os/zos/features/cpm)).
+
+Real On/Off CoD capacity stays active until it is deactivated, exhausted or the record expires, and is charged on a
+24-hour basis; manual deactivation removes the processors (SG24-8579-00, July 2025, PDF p.370, p.372). The game's
+lease is a fixed three days and early deactivation takes effect at the next 06:00 — both APPROX versus real
+operator-controlled deactivation.
 
 ### 5.12 Measurement: SMF/RMF data generation
 
@@ -1038,7 +1043,7 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 | PR/SM | Logical CPs (online/reserved) | dynamic if reserved defined, else next IPL | 1 | |
 | PR/SM | Capping: initial/absolute cap, defined capacity, group capacity | dynamic | 0.5 | |
 | PR/SM | Memory (reserved → online) | dynamic if reserved, else IPL | 1 | |
-| Hardware | On/Off CoD activate/deactivate | ~immediate | 0.5 | Daily cost |
+| Hardware | On/Off CoD activate; deactivate at the next 06:00 (APPROX timing; manual deactivation: SG24-8579-00 PDF p.372) | activation ~immediate; deactivation next 06:00 | 0.5 | Daily cost |
 | Hardware | Order permanent upgrade / new CPC | lead time | 2 | Capex approval may be needed |
 | Subsystem | CICS: add/remove AOR, MXT, EDSALIM, routing algorithm | next day (region restart) | 2 | Needs memory |
 | Subsystem | Db2: BP sizes, MAXDBAT/CONDBAT, REBIND (revert access path) | dynamic / next day | 1–2 | |
@@ -1070,7 +1075,9 @@ activation for the same day; the notice explains that edits already copied into 
 The last failed or cancelled activation can still return its edits, and uninstalled player edits take precedence.
 
 **Change windows & CAB.** Planned changes submitted in the morning briefing are normal changes
-and cost no trust. Changes during the live day are **emergency changes**: they cost
+and cost no trust. Hardware orders with a lead time also remain planned when submitted during
+the live day: they cost hours and capex, arrive at 06:00 on their activation day and carry the normal
+planned failure roll, with no emergency trust cost. Same-day changes during the live day are **emergency changes**: they cost
 Trust ×(1 if an incident is active, ×3 otherwise). Every change has a small **failure risk**
 (scaled by complexity and by "Team Fatigue"): a mistyped classification rule, a policy
 that doesn't validate, a weight change that fails on the HMC. A **validation** tool (unlock)
@@ -1970,6 +1977,7 @@ The confirmed facts behind these ratings, with page links and where the sim diff
 | Temporary started-task lifecycle (`XLOG_LOOP`) | **Approximation** | Start creates an extra address space; expiry or cancellation removes it, and a later occurrence starts at its base CPU demand. MVS System Commands 3.1, PDF p.50, p.188. APPROX: cleanup on the command tick assumes cancellation succeeds; real cancellation issues an asynchronous ABEND and can require repeated CANCEL commands. Old-save duplicates and zero-CPU modifiers are cleared on the next start |
 | DP ranges, SYSTEM/SYSSTC/SYSOTHER behaviour, forced-SYSTEM address spaces | **Real** | The table as of z/OS 1.8 (SG24-6472 p.65; Enrico slide 49): 255 SYSTEM, 254 SYSSTC, 253–249 reserved (the sim: promotion 253, resource-group minimum 249, APPROX), 248 small consumer, 247–203 managed, 201–192 discretionary. Goal periods sit on a canonical ladder (246, 244, …; unbunching, WLM Services p.139), so 247 is never occupied (WT-06). The sim runs every discretionary period at 196 and has no small consumers (row "Small consumer, mean-time-to-wait") |
 | Capacity adjustment (SMF70CAI/SMF70CCR, CHANGE REASON) | **Approximation** | A capacity-setting reduction (the site power cap, an operator downgrade) keeps the setting it replaced and the reason code (SMF70CCR 1 = operator, 2 = external, MVS SMF p.589); Partition Data shows `CHANGE REASON=POWERSAVE (initiated by the user)` or `MACHINE (initiated by the machine)`. APPROX: real RMF puts CHANGE REASON on the CPU Activity report header (RMF Report Analysis p.391–392), which the sim does not render, and the Monitor III CPC Capacity report has no capacity-adjustment field (p.97–98); SMF70CAI is kept on the interval for tooling but not printed. A power cap does not slow cycle speed |
+| On/Off CoD early deactivation | **Approximation** | An active lease can be ended early and reverts at 06:00 the next day. Real capacity remains active until deactivated, exhausted or the record expires, and bills on a 24-hour basis; manual deactivation removes the processors (SG24-8579-00 Jul 2025 p.370, p.372). APPROX: the game's fixed three-day lease and next-06:00 boundary stand in for operator-controlled deactivation and daily windows |
 | Batch response-time goals | **Modelled** | Each finished job adds one queue-plus-elapsed response time and one bucket observation to its ending period and assigned report class (WLM Planning 3.1 p.71, p.113), but only when that period has a response time goal: a velocity or discretionary batch class shows ENDED 0 (APPROX; RMF counts ended jobs for any goal type, RF-07). Measured AVG/PCT PIs expire at decayed completions ≤ 1e-9; tick-boundary timing, fixed decay and the cutoff are approximations. JES RT goals carry the three-completions-per-20-minutes editor advice. Batch-only AVG/PCT base/trial projections scale the measured PI by the projected execution-speed change of the elapsed part (queue held; `rtQueueSumSec`; APPROX, docs/wlm-design.md §5.8), so a batch RT period can be a receiver or a donor. Started tasks have no transaction completions |
 | PI window | **Simplified** | One exponential decay of 0.85 per tick (about 67 s), for every period; the sysplex PI sums the systems' accumulators. No longer window for sparse completions, and no small-sample variability for transactions (fluid completions). See [`docs/research.md`](docs/research.md) (sysplex PI; three completions per 20 minutes) and SPEC §5.5.3 |
 | Small consumer, mean-time-to-wait | **Not modelled** | No period is ever a small consumer; every discretionary period runs at DP 196 rather than 201–192 by mean time to wait. See [`docs/research.md`](docs/research.md) and SPEC §5.4 |
@@ -2045,6 +2053,9 @@ This is the bibliography. Individual facts, with page links, are in [`docs/resea
 page links point at the z/OS 3.1 editions.
 
 Primary IBM sources:
+- IBM Redbook **SG24-8579-00**, *IBM z17 (9175) Technical Guide* (July 2025): On/Off CoD active capacity,
+  24-hour billing windows and manual deactivation (p.370, p.372).
+  https://www.redbooks.ibm.com/redbooks/pdfs/sg248579.pdf
 - IBM Redbook **SG24-7621**, *ABCs of z/OS System Programming Volume 12* (WLM): PI formulas,
   percentile buckets, sampling (250 ms), policy adjustment (10 s), DP ranges, special service
   classes, resource groups, soft/group capping, discretionary capping, CICS topology.
