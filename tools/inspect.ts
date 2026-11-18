@@ -7,11 +7,12 @@
 //     Why WLM did or didn't move DPs: per policy adjustment (10 s), the receiver candidates in order, each trial
 //     move and why it was accepted or rejected. A play-CLI run (seed + log) replays to any past time; a browser save
 //     has no log, so it traces forward from the saved moment (live day only).
-//   npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--by-class] [--episodes] [--moves] [--json]
+//   npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--by-class] [--episodes] [--streaks] [--moves] [--json]
 //     Policy adjustment statistics over a range of a play file (WT-01): adjustments, candidates by outcome, trials by
 //     verdict, accepted moves, receivers assessed on 30 adjustments without a move, and the DP ladder at a clock
-//     time. --by-class adds each period's outcomes, --episodes lists those 30-assessment runs, --moves lists every
-//     accepted move. A whole-run replay costs about 6 s per played day, like `blame`.
+//     time. --by-class adds each period's outcomes, --episodes lists those 30-assessment runs, --streaks lists
+//     runs of 30+ no-trial checks, --moves lists every accepted move. A whole-run replay costs about 6 s per played
+//     day, like `blame`.
 //   npm run inspect -- runs/a.json blame [--json] [--incident N] [--floor <pp>]
 //     Counterfactual validator (RT-06, RT-25): every online incident's opening hour is replayed once per card active
 //     in it with that card ended at the hour start. Reports each card's attainment gain against a noise floor
@@ -210,6 +211,8 @@ export interface WlmStatsCounters {
    * on the period does not reset the run, and neither does an adjustment that skipped it: the count is of
    * assessments, in the order they happened. */
   episodes: number;
+  /** Runs of 30+ consecutive no-trial candidates (`NOT_FIXABLE` / `RECOVERING`) on one period of one image. */
+  noTrialStreaks: number;
 }
 
 export interface WlmStats {
@@ -218,16 +221,17 @@ export interface WlmStats {
   /** With `ladder`, each system's DP ladder (hex, highest first) at that clock time each played day. */
   ladder: { lparId: string; lines: string[] }[];
   ladderTime: string | null;
-  /** With `byClass`, `episodes` or `moves` (the CLI's `--by-class`, `--episodes`, `--moves`). */
+  /** With `byClass`, `episodes`, `streaks` or `moves` (the CLI's `--by-class`, `--episodes`, `--streaks`, `--moves`). */
   byClass?: WlmClassRow[];
   episodes?: WlmEpisode[];
+  streaks?: WlmStreak[];
   moves?: WlmMoveRow[];
 }
 
 const emptyCounters = (): WlmStatsCounters => ({
   adjustments: 0, noCandidate: 0, assessed: 0, notFixable: { IO: 0, STORAGE: 0, QUEUE: 0 }, budget: 0, recovering: 0, skipClock: 0, noManagedDelay: 0, waitingNoDelay: 0, waitingAssessed: 0, waitingNotFixable: 0, waitingRecovering: 0, clocksSet: 0, trials: 0, projections: 0, acceptedPlans: 0, acceptedSteps: 0, acceptedCarry: 0,
   verdicts: { ACCEPTED: 0, RETAINED: 0, CPU_CRITICAL: 0, NO_RECEIVER_GAIN: 0, SMALL_GAIN: 0, MORE_IMPORTANT_HARMED: 0, EQUAL_DISPARITY: 0, NO_NET_VALUE: 0, PROJECTION_DISAGREES: 0 },
-  acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, reversedAfterHarm: 0, episodes: 0,
+  acceptedReceiverUp: 0, acceptedDonor: 0, rejectedPiUnder09: 0, rejectedPiNull: 0, reversed: 0, reversedWithin2Min: 0, reversedAfterHarm: 0, episodes: 0, noTrialStreaks: 0,
 });
 
 const VERDICT_ORDER: WlmTrialVerdict[] = ['ACCEPTED', 'RETAINED', 'CPU_CRITICAL', 'NO_RECEIVER_GAIN', 'SMALL_GAIN', 'MORE_IMPORTANT_HARMED', 'EQUAL_DISPARITY', 'NO_NET_VALUE', 'PROJECTION_DISAGREES'];
@@ -262,9 +266,26 @@ export interface WlmEpisode {
   end: string | null;
 }
 
-/** Count one system's adjustments in trace order: totals, and the two cross-adjustment patterns (reversals, runs).
- * `episodes`, when given, receives each episode the counter counts, in the order they end. */
-function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[]): WlmStatsCounters {
+/** A streak (`--streaks`): one period on one image checked 30+ times in a row with no trials built. These are
+ * candidate checks, not assessment episodes: a `NOT_FIXABLE` or `RECOVERING` outcome sets no skip clock and runs no
+ * trial search, so it contributes nothing to `episodes` (PR-20). */
+export interface WlmStreak {
+  lparId: string;
+  scKey: string;
+  outcome: 'NOT_FIXABLE' | 'RECOVERING';
+  bottleneck: WlmCandidateTrace['bottleneck'];
+  /** Clock of the first and last check in the streak. */
+  first: string;
+  last: string;
+  checks: number;
+  /** Clock where the outcome/bottleneck changed or the candidate vanished, or null at the range end. */
+  end: string | null;
+}
+
+/** Count one system's adjustments in trace order: totals, and the three cross-adjustment patterns (reversals,
+ * assessment episodes and no-trial streaks). `episodes`/`streaks`, when given, receive the runs that reach 30, in
+ * the order they end. */
+function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[], streaks?: WlmStreak[]): WlmStatsCounters {
   const c = emptyCounters();
   const lastDirection = new Map<string, { dir: 1 | -1; at: number }>();
   /** The last adjustment at which another receiver's accepted plan projected the period past its goal. */
@@ -276,6 +297,18 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
     if (run?.counted && episodes) episodes.push({ lparId: traces[0]!.lparId, scKey: period, first: run.first, last: run.last, assessments: run.n, verdicts: run.verdicts, end });
     runs.delete(period);
   };
+  type StreakRun = { outcome: 'NOT_FIXABLE' | 'RECOVERING'; bottleneck: WlmCandidateTrace['bottleneck']; n: number; first: string; last: string; counted: boolean };
+  const noTrial = new Map<string, StreakRun>();
+  const lparId = traces[0]?.lparId ?? '';
+  const closeStreak = (period: string, end: string | null) => {
+    const run = noTrial.get(period);
+    if (!run) return;
+    if (run.counted) {
+      c.noTrialStreaks++;
+      streaks?.push({ lparId, scKey: period, outcome: run.outcome, bottleneck: run.bottleneck, first: run.first, last: run.last, checks: run.n, end });
+    }
+    noTrial.delete(period);
+  };
   for (const t of traces) {
     c.adjustments++;
     at++;
@@ -283,8 +316,19 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
     const assessed = new Set<string>();
     const moved = new Map<string, 1 | -1>();
     const receiverMoved = new Set<string>();
+    // A candidate absent from this image's next adjustment breaks its streak; an assessment or a different
+    // bottleneck/outcome breaks it too, including SKIP_CLOCK when the candidate is still listed.
+    const here = new Set(t.candidates.map((cand) => cand.scKey));
+    for (const period of [...noTrial.keys()]) if (!here.has(period)) closeStreak(period, t.clockText);
     for (const cand of t.candidates) {
       const waiting = (cand.waitingFrac ?? 0) > 0.5;
+      if (cand.trials.length === 0 && (cand.outcome === 'NOT_FIXABLE' || cand.outcome === 'RECOVERING')) {
+        const run = noTrial.get(cand.scKey);
+        if (run && (run.outcome !== cand.outcome || run.bottleneck !== cand.bottleneck)) closeStreak(cand.scKey, t.clockText);
+        const current = noTrial.get(cand.scKey) ?? { outcome: cand.outcome, bottleneck: cand.bottleneck, n: 0, first: t.clockText, last: t.clockText, counted: false };
+        const n = current.n + 1;
+        noTrial.set(cand.scKey, { ...current, n, last: t.clockText, counted: current.counted || n >= 30 });
+      } else closeStreak(cand.scKey, t.clockText);
       if (cand.outcome === 'NOT_FIXABLE') {
         c.notFixable[notFixableKey(cand.bottleneck)]++;
         if (waiting) c.waitingNotFixable++;
@@ -372,6 +416,7 @@ function countSystem(traces: readonly WlmAdjustTrace[], episodes?: WlmEpisode[])
     }
   }
   for (const period of [...runs.keys()].sort()) close(period, null);
+  for (const period of [...noTrial.keys()].sort()) closeStreak(period, null);
   return c;
 }
 
@@ -458,6 +503,7 @@ const sumCounters = (all: readonly WlmStatsCounters[]): WlmStatsCounters => {
     total.reversedWithin2Min += c.reversedWithin2Min;
     total.reversedAfterHarm += c.reversedAfterHarm;
     total.episodes += c.episodes;
+    total.noTrialStreaks += c.noTrialStreaks;
   }
   return total;
 };
@@ -510,7 +556,7 @@ function ladderLines(traces: readonly WlmAdjustTrace[], time: string): string[] 
  * `ladderTraces` lets the ladder read a wider replay than the counted range (the CLI passes the whole first day). */
 export function wlmStats(
   traces: readonly WlmAdjustTrace[],
-  opts: { ladder?: string; ladderTraces?: readonly WlmAdjustTrace[]; byClass?: boolean; episodes?: boolean; moves?: boolean } = {},
+  opts: { ladder?: string; ladderTraces?: readonly WlmAdjustTrace[]; byClass?: boolean; episodes?: boolean; streaks?: boolean; moves?: boolean } = {},
 ): WlmStats {
   const bySystem = new Map<string, WlmAdjustTrace[]>();
   for (const t of traces) {
@@ -519,7 +565,8 @@ export function wlmStats(
     else bySystem.set(t.lparId, [t]);
   }
   const episodes: WlmEpisode[] = [];
-  const systems = [...bySystem.keys()].sort().map((lparId) => ({ lparId, counters: countSystem(bySystem.get(lparId)!, episodes) }));
+  const streaks: WlmStreak[] = [];
+  const systems = [...bySystem.keys()].sort().map((lparId) => ({ lparId, counters: countSystem(bySystem.get(lparId)!, episodes, streaks) }));
   let ladder: WlmStats['ladder'] = [];
   if (opts.ladder) {
     const ladderBySystem = new Map<string, WlmAdjustTrace[]>();
@@ -537,6 +584,7 @@ export function wlmStats(
     ladderTime: opts.ladder ?? null,
     ...(opts.byClass ? { byClass: classRows(traces) } : {}),
     ...(opts.episodes ? { episodes } : {}),
+    ...(opts.streaks ? { streaks } : {}),
     ...(opts.moves ? { moves: moveRows(traces) } : {}),
   };
 }
@@ -546,7 +594,7 @@ const verdictText = (v: Partial<Record<WlmTrialVerdict, number>>) =>
   VERDICT_ORDER.filter((k) => v[k]).map((k) => `${k} ${v[k]}`).join(', ') || 'no trials';
 const CLASS_OUTCOMES: WlmCandidateTrace['outcome'][] = ['ASSESSED', 'SKIP_CLOCK', 'RECOVERING', 'NOT_FIXABLE', 'NO_MANAGED_DELAY', 'BUDGET'];
 
-/** The optional `--by-class`, `--episodes` and `--moves` sections, in that order. */
+/** The optional `--by-class`, `--episodes`, `--streaks` and `--moves` sections, in that order. */
 function detailLines(stats: WlmStats): string[] {
   const lines: string[] = [];
   if (stats.byClass) {
@@ -565,6 +613,12 @@ function detailLines(stats: WlmStats): string[] {
       lines.push(`  ${e.lparId} ${e.scKey}  ${e.first} → ${e.last}  ${e.assessments} assessments, ${e.end ? `ended by a move at ${e.end}` : 'still open at the end of the range'}`);
       lines.push(`    trials: ${verdictText(e.verdicts)}`);
     }
+  }
+  if (stats.streaks) {
+    lines.push('', 'No-trial streaks (30+ consecutive checks with no trials; first → last check)');
+    if (stats.streaks.length === 0) lines.push('  none');
+    for (const k of stats.streaks)
+      lines.push(`  ${k.lparId} ${k.scKey}  ${k.outcome} ${k.bottleneck ?? 'no bottleneck'}  ${k.first} → ${k.last}  ${k.checks} checks, ${k.end ? `ended at ${k.end}` : 'still open at the end of the range'}`);
   }
   if (stats.moves) {
     lines.push('', 'Accepted moves (receiver, move, receiver PI before → projected)');
@@ -612,6 +666,7 @@ export function statsText(stats: WlmStats): string {
     ['  … within two minutes', [...stats.systems.map((s) => s.counters.reversedWithin2Min), stats.total.reversedWithin2Min]],
     ['  … within two minutes, after another plan pushed it past its goal', [...stats.systems.map((s) => s.counters.reversedAfterHarm), stats.total.reversedAfterHarm]],
     ['assessed on 30 adjustments without a move (episodes)', [...stats.systems.map((s) => s.counters.episodes), stats.total.episodes]],
+    ['no-trial streaks of 30+ checks (notfix/recovering)', [...stats.systems.map((s) => s.counters.noTrialStreaks), stats.total.noTrialStreaks]],
   ];
   const labelWidth = Math.max(...rows.map(([label]) => label.length));
   const cell = (x: number) => n0(x).padStart(8);
@@ -693,7 +748,7 @@ export function replayTraces(file: PlayFile, from: number, to: number, sink: (t:
 /** `inspect … wlm-stats`: the audit's policy adjustment counters over a play file's range (WT-01). */
 export function wlmStatsText(
   text: string,
-  opts: { system?: string; from?: string; to?: string; ladder?: string; json?: boolean; byClass?: boolean; episodes?: boolean; moves?: boolean } = {},
+  opts: { system?: string; from?: string; to?: string; ladder?: string; json?: boolean; byClass?: boolean; episodes?: boolean; streaks?: boolean; moves?: boolean } = {},
 ): string {
   const file = decodePlayFile(text);
   const from = tickOfClock(opts.from ?? 'D1 06:00');
@@ -725,6 +780,7 @@ export function wlmStatsText(
     ...(opts.ladder ? { ladder: opts.ladder, ladderTraces: all } : {}),
     ...(opts.byClass ? { byClass: true } : {}),
     ...(opts.episodes ? { episodes: true } : {}),
+    ...(opts.streaks ? { streaks: true } : {}),
     ...(opts.moves ? { moves: true } : {}),
   });
   const systems = stats.systems.map((s) => s.lparId).join(' ');
@@ -880,7 +936,7 @@ if (isMain(import.meta.url)) {
   const cls = take('class') ?? '', from = take('from') ?? '', to = take('to') ?? '', at = take('at') ?? '', ticks = take('ticks') ?? '';
   const incident = take('incident');
   const floor = take('floor'), ladder = take('ladder');
-  const details = { byClass: takeFlag(argv, 'by-class'), episodes: takeFlag(argv, 'episodes'), moves: takeFlag(argv, 'moves') };
+  const details = { byClass: takeFlag(argv, 'by-class'), episodes: takeFlag(argv, 'episodes'), streaks: takeFlag(argv, 'streaks'), moves: takeFlag(argv, 'moves') };
   const [path, verb, system] = argv;
   if (path && verb === 'blame') {
     try {

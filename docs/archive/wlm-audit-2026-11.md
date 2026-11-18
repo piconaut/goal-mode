@@ -928,6 +928,16 @@ plan or a `BUDGET` stop between them. `wlm-stats` shows it as skip clocks set = 
 stops (S-1 at WT-08: 231 = 250 − 19). That holds by construction, since the code sets a clock in exactly those cases,
 so it is a regression check, not evidence on its own. Episodes of 30 assessments are listed with their cause; each
 should be a receiver no CPU or zIIP move helps.
+**PR-20 — candidate checks are not assessment episodes (reporting only).** In #307's capped-PROD1 fixture
+(`202d90d`, Midwest seed 7, PROD1 defined capacity 200 MSU, Db2 in STCHI), ONLHI is `NOT_FIXABLE` with waits
+dominating (`BTLNK=OTHER`) on 30 successive adjustments, D1 14:00:00–14:04:50. Each is a check of a candidate with
+no trials and no skip clock, so it contributes zero to `wlm-stats`' 30-assessment episodes and zero trials.
+`--streaks` reports it as one non-fixable streak of 30 checks over about five minutes; changing the outcome or
+bottleneck, or omitting the candidate from the image's next adjustment, ends the streak. A skip-clock retry is a
+different gate (the candidate is listed but not assessed), and the no-action note printed every 30 ticks is one
+log entry, not one check or a deduplication. `NOT_FIXABLE` and `RECOVERING` streaks are counted alike; no skip clock
+or bottleneck choice was changed by this reporting work.
+
 Does real WLM also clock a receiver with no fixable bottleneck? Answered (2026-11-12): no. A period whose delays
 are all for resources WLM does not manage (capping, locks, enqueue, operator) "cannot be helped, and is not a receiver" (SG24-6472-03 p.61, 64); only an assessed receiver
 whose actions are all rejected is clocked (WLM Services p.145). The clock lasts 3 cycles, and since z/OS 1.11 it is
@@ -1035,6 +1045,11 @@ the 0.02 noise tolerance ran before the goal-crossing test. Crossing from ≤ 1 
 size (§5.3, I5; SG24-6472-03 p.60); a three-period case in `tests/sim/wlm-realism.test.ts` covers it. The
 "missing goals are not passed" rule now reads a period with no PI as missing, like the donor order. Seed-42
 one-day hashes for Midwest, Revenue and Harbourline are unchanged by both.
+
+PR-20's `--streaks` view (§9.6) keeps the capped-PROD1 case distinct from the 30-assessment episode counter:
+ONLHI's repeated wait-bound checks have no trials, so they are reported as a non-fixable streak, while the trial
+searches that end in rejected plans remain in the episodes. The Db2 donation and the PI-floor harm verdict above are
+unchanged; this is a trace-reporting distinction, not a sim change.
 
 **Sweep** (remote, Normal, seeds 1–10; do-nothing median day / textbook median day / expert victories): Midwest 9.5 /
 28 / 10 and Revenue 20 / 27 / 10, both unchanged; Harbourline 10.5 / 30.5 / 7 → 10 / 30.5 / 7 (textbook gains a
@@ -1165,8 +1180,8 @@ logged at most every five minutes, and a new reason or a move logs it again: 33/
   never helped; and carries accepted.
 - *Midwest's swing* rides on W7 in both directions (§9.7 correction); WT-10 now goes before WT-09. At WT-10 the
   median is unchanged (16.5, §9.10).
-- *Still unmeasured:* `RECOVERING` (225 / 1 703 / 5 636 on S-1 … S-3, more than assessed) is not checked to recover;
-  a streak count belongs with PR-20.
+- *Measured since PR-20:* `RECOVERING` (225 / 1 703 / 5 636 on S-1 … S-3, more than assessed) has a streak count in
+  `wlm-stats --streaks`; the count shows repeated no-trial checks, not whether the period's PI actually recovers.
 
 ### 9.10 WT-10: managed bottlenecks in turn
 
@@ -1198,7 +1213,8 @@ The other column is gone: no candidate is dropped for its waits. The periods it 
 recovering by the projection, which at sustained demand does not see the waits that keep their measured PI up
 (S-3's `RECOVERING` grows by 3 972; Midwest seed 7's ONLHI is recovering on 1 390 checks in five hours at 93 %
 waits). Both outcomes leave the DPs alone, as `NOT_FIXABLE` did; the log keeps the waiting clue. Whether
-`RECOVERING` periods recover is PR-20's streak count. S-3 doubles its plans: Harbourline's DDF and CICS periods,
+`RECOVERING` periods recover is not settled by PR-20's streak count, which reports the repeated no-trial checks
+(S-3: 9 608 in all). S-3 doubles its plans: Harbourline's DDF and CICS periods,
 which mostly wait on Db2 and their regions, are now raised when their CPU delay is a real share. The reversal within
 two minutes (S-3 PRDD, MKTDDF#1, importance 2) is three plans in a minute, not a donor projection gone wrong: at
 11:35:00 DDFPRD#2's plan lowers MKTDDF#1 as a happy donor (EE→E8), projected to PI 1.00, its goal; at 11:35:30

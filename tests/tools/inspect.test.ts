@@ -401,3 +401,65 @@ describe('inspect … wlm-stats stops where the play CLI stopped', () => {
     expect(stats.total.adjustments).toBe(stats.systems.length * 18 * 360);
   }, 120_000);
 });
+
+describe('PR-20: no-trial streaks are not assessment episodes', () => {
+  const clk = (i: number) => `D1 ${String(6 + Math.floor(i / 360)).padStart(2, '0')}:${String(Math.floor((i % 360) / 6)).padStart(2, '0')}:${String((i % 6) * 10).padStart(2, '0')}`;
+  /** A candidate checked every 10 s with no trials: NOT_FIXABLE on a mostly-waiting (OTHER) image. */
+  const checked = (i: number, over: Partial<WlmCandidateTrace> = {}) => trace({
+    clockText: clk(i),
+    candidates: [candidate({ outcome: 'NOT_FIXABLE', bottleneck: 'QUEUE', waitingFrac: 0.8, ...over })],
+  });
+  const run = (n: number, from = 0, over: Partial<WlmCandidateTrace> = {}) => Array.from({ length: n }, (_, i) => checked(from + i, over));
+
+  it('reports 30 consecutive no-trial checks as one streak, with zero assessments or episodes', () => {
+    const stats = wlmStats(run(30), { episodes: true, streaks: true });
+    expect(stats.total.assessed).toBe(0);
+    expect(stats.total.episodes).toBe(0);
+    expect(stats.total.waitingNotFixable).toBe(30);
+    expect(stats.total.noTrialStreaks).toBe(1);
+    expect(stats.streaks).toEqual([{
+      lparId: 'PROD1', scKey: 'A#1', outcome: 'NOT_FIXABLE', bottleneck: 'QUEUE',
+      first: clk(0), last: clk(29), checks: 30, end: null,
+    }]);
+    const text = statsText(stats);
+    expect(text).toContain('no-trial streaks of 30+ checks');
+    expect(text).toContain('No-trial streaks (30+ consecutive checks with no trials');
+    expect(text).toContain(`PROD1 A#1  NOT_FIXABLE QUEUE  ${clk(0)} → ${clk(29)}  30 checks, still open at the end of the range`);
+  });
+
+  it('ends a streak on a changed bottleneck, outcome or a missing candidate', () => {
+    expect(wlmStats([...run(29), checked(29, { bottleneck: 'IO' })], { streaks: true }).total.noTrialStreaks).toBe(0);
+    expect(wlmStats([...run(20), ...run(10, 20, { outcome: 'RECOVERING' })], { streaks: true }).total.noTrialStreaks).toBe(0);
+    expect(wlmStats([...run(20), trace({ clockText: clk(20), candidates: [] }), ...run(10, 21)], { streaks: true }).streaks).toEqual([]);
+    // A SKIP_CLOCK candidate keeps the assessment episode logic but does not start a no-trial streak.
+    expect(wlmStats([...run(29), checked(29, { outcome: 'SKIP_CLOCK' })], { streaks: true }).total.noTrialStreaks).toBe(0);
+  });
+
+  it('counts RECOVERING streaks too, not just NOT_FIXABLE', () => {
+    const stats = wlmStats(run(30, 0, { outcome: 'RECOVERING', bottleneck: null }), { streaks: true });
+    expect(stats.streaks).toEqual([{
+      lparId: 'PROD1', scKey: 'A#1', outcome: 'RECOVERING', bottleneck: null,
+      first: clk(0), last: clk(29), checks: 30, end: null,
+    }]);
+  });
+
+  it('keeps rejected-search episodes separate when skip clocks space the assessments', () => {
+    // 30 rejected-search assessments, each followed by five skip-clock adjustments.
+    const rows = Array.from({ length: 180 }, (_, i) => trace({
+      clockText: clk(i),
+      candidates: [candidate(i % 6 === 0 ? { trials: [trial()] } : { outcome: 'SKIP_CLOCK' })],
+    }));
+    const stats = wlmStats(rows, { episodes: true, streaks: true });
+    expect(stats.total.assessed).toBe(30);
+    expect(stats.total.episodes).toBe(1);
+    expect(stats.total.noTrialStreaks).toBe(0);
+    expect(stats.episodes).toHaveLength(1);
+  });
+
+  it('only exposes streaks when asked, including in JSON', () => {
+    const rows = run(30);
+    expect('streaks' in wlmStats(rows)).toBe(false);
+    const stats = wlmStats(rows, { streaks: true });
+    expect(JSON.parse(JSON.stringify(stats)).streaks).toHaveLength(1);
+  });
+});
