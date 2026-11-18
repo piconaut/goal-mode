@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-18: PR-21 Monitor III splits read from decayed components; sysplex rows sum their systems (#413).
 - 2026-11-18: PR-20 separates consecutive no-trial candidate streaks from trial-search assessment episodes in `inspect … wlm-stats` (#411); simulation behaviour unchanged.
 - 2026-11-18: PR-09 automated jsdom coverage for run-file and confirmation dialog lifecycles (#410).
 - 2026-11-17: `pr-review-loop` retired; `pr-fix-loop` is the only review loop (CL-44, #391).
