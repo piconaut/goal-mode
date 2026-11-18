@@ -26,7 +26,7 @@ const sample = (tick: number) => ({
   arr: { ONLHI: 3 },
   rcArr: {},
   delay: { 'ONLHI#1': { cpu: 2, ziip: 0, io: 1, cap: 0, other: 0 } },
-  ddf: {},
+  ddf: { 'DDF#1': { endedPerSec: 4, rtMs: 40, ziipEngines: 1.2, iipcpEngines: 0.4 } },
   cpu: { 'ONLHI#1': 1.2, 'BATCHHI#1': 0.4 },
 });
 const v = { mon3Charts: { samples: 2, markers: 0, firstTick: 0 }, mon3: { rows: [] }, config: { cpcs: [{ id: 'CPC1' }] } } as unknown as ViewModel;
@@ -73,19 +73,35 @@ describe('Monitor III chart picker', () => {
 
   it('hides and shows every chart, and keeps the choice in localStorage', () => {
     mount();
-    click('CPU by service class');
-    expect(text()).toContain(`Charts (9/${CHARTS.length})`);
-    expect(text()).toContain('ONLHI#1 (engines)');
+    const grid = container.querySelector('.section > .grid')!;
+    const headings = () => Array.from(grid.querySelectorAll(':scope > div > .form > b'), (heading) => heading.textContent);
+    const charts = [
+      ['PI by period', 'Performance index'],
+      ['CP busy', 'CP busy'],
+      ['Delay breakdown', 'Delay breakdown'],
+      ['PR/SM delay', 'PR/SM dispatch delay'],
+      ['Capping', 'Capping'],
+      ['Response time', 'Response time'],
+      ['Arrival rate', 'Transaction arrival rate'],
+      ['DDF engines', 'DDF engines: zIIP vs on CPs'],
+      ['CPU by service class', 'CPU by service class'],
+    ] as const;
+    for (const [label, heading] of charts) {
+      if (!checkbox(label).checked) click(label);
+      expect(headings(), label).toContain(heading);
+      click(label);
+      expect(headings(), label).not.toContain(heading);
+      click(label);
+      expect(headings(), label).toContain(heading);
+    }
     expect(localStorage.getItem(CHART_KEY)!.split(',')).toContain('svcCpu');
     click('Arrival rate');
-    expect(text()).not.toContain('Transaction arrival rate');
-    click('Arrival rate');
-    expect(text()).toContain('Transaction arrival rate');
     // A fresh mount reads the stored selection (a reload keeps it).
     act(() => root.unmount());
     container.remove();
     mount();
-    expect(text()).toContain(`Charts (9/${CHARTS.length})`);
+    expect(text()).toContain(`Charts (8/${CHARTS.length})`);
+    expect(checkbox('Arrival rate').checked).toBe(false);
     expect(text()).toContain('ONLHI#1 (engines)');
   });
 
