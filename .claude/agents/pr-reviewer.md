@@ -110,6 +110,12 @@ Remove both when done: `git worktree remove --force <dir>/head` (and `/base`).
     Anything else is a blocking finding titled **backlog rule**: no `Backlog:` line, an unknown or non-ready entry,
     an entry another open PR already claims, or scope well beyond the entry. The `dev-loop` skill closes a PR held
     on this finding, so name the exact reason. Other PRs are not subject to this rule.
+11. **Dependants unblocked (any PR whose `Backlog:` line names an entry it deletes).** Every entry in
+    `git show origin/<base>:BACKLOG.md` that is `blocked: after` that entry must, at the head, be `status: ready` if
+    the deleted entry was its only `after` ID (and nothing else in its status is still open), or have the ID removed
+    from its `after` list otherwise. A partial fix (entry rewritten, not deleted) unblocks nothing. A miss is a
+    blocking finding titled **dependants**, naming each entry and the status it should have. It is mechanical
+    (a BACKLOG.md status edit), not a backlog rule finding.
 
 Keep long outputs out of your reply and the comment: grep or tail logs, quote exact lines and numbers.
 
