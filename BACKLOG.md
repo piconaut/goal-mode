@@ -566,7 +566,7 @@ edits `countSystem` in this file, so it goes first. Done when: the diff is moves
 `tests/tools/inspect.test.ts` passes unchanged.
 
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
-`list: cleanup · status: ready · priority: low · size: M · area: tooling`
+`list: cleanup · status: blocked: needs user-attended session · priority: low · size: M · area: tooling`
 
 Source: codebase survey (2026-11-16). The PR workflow is stated in three places: CLAUDE.md "Working process",
 PROGRESS.md "Branch workflow" (about lines 553–582, with the CI gates and the GitHub settings) and AGENTS.md "Branch
