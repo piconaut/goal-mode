@@ -46,15 +46,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-11 · Hardware orders and On/Off CoD during the live day
-`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
-
-Every live change is an emergency (−1.5 trust per stakeholder, fail roll). That includes lead-time items (CP/zIIP/ICF,
-4 days) that arrive later anyway, and there's no "plan for tomorrow" while live. CoD costs $9k/day for 3 days per order,
-with no early end. Fix: allow plan-for-tomorrow during the live day without the trust cost, or exempt lead-time items;
-add "Deactivate CoD" from the next day (check real early deactivation with zos-docs first; if unverified, mark it
-APPROX). Done when: implemented with tests; bot sweeps are unaffected (bots don't use emergencies).
-
 ### PT-12 · The TFP offer lacks the numbers
 `list: playtest-fixes · status: ready · priority: low · size: M · area: ui`
 

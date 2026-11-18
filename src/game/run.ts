@@ -621,6 +621,7 @@ export { requestChange } from './run/changes';
 export { dryRunRefusal } from './run/changes';
 
 export { cancelChange } from './run/changes';
+export { deactivateCod } from './run/changes';
 
 export { failedPolicyToday, policyFailuresWithLaterToday } from './run/changes';
 

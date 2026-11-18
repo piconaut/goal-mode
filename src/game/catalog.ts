@@ -145,14 +145,18 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   const live = ctx.phase === 'LIVE';
   const hours = fix ? fix.hours : hw ? 2 : hoursFor(req.commands ?? [], ctx.perks);
   const capex = hw ? capexFor(hw.id, hw.capex, ctx.perks) : 0;
+  const leadDays = leadDaysFor(hw?.leadDays ?? 0, ctx.perks);
+  // A lead-time order placed during the live day arrives later, so it is a plan for a future day, not an emergency
+  // change made now (PT-11). Only changes that take effect this day pay the trust and failure cost.
+  const emergency = live && leadDays === 0;
   const base: ChangePreview = {
     hours,
     capex,
     opexPerDay: hw?.opexPerDay ?? 0,
-    leadDays: leadDaysFor(hw?.leadDays ?? 0, ctx.perks),
-    emergency: live,
-    trustCostEach: live && !fix?.operational ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
-    failRisk: fix ? 0 : failRiskFor(ctx.fatigue, ctx.perks),
+    leadDays,
+    emergency,
+    trustCostEach: emergency && !fix?.operational ? (ctx.incidentOpen ? 0.5 : 1.5) * (ctx.perks.includes('NIGHT_OWL') ? 0.5 : 1) : 0,
+    failRisk: emergency && !fix ? failRiskFor(ctx.fatigue, ctx.perks) : 0,
     ok: true,
     reason: null,
   };

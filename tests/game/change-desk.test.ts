@@ -4,7 +4,7 @@ import { cardMechanisms } from '../../src/content/footprint';
 import { DASD_REBALANCE } from '../../src/content/hardware-catalog';
 import { previewChange } from '../../src/game/catalog';
 import { addToBasket, basketAfterFailure, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../../src/game/changeDesk';
-import { cancelChange, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
+import { cancelChange, deactivateCod, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
 import { buildView } from '../../src/game/view';
 import type { Command } from '../../src/sim/core/commands';
 import type { Mechanism } from '../../src/game/types';
@@ -76,6 +76,39 @@ describe('change preview', () => {
     expect(op.trustCostEach).toBe(0);
     expect(op.hours).toBeGreaterThan(0);
     expect(previewChange(previewContext(live, MIDWEST_GAME), { fixId: 'REBIND_REVERT' }).trustCostEach).toBeGreaterThan(0);
+  });
+
+  it('a lead-time hardware order during the live day is planned, not an emergency change', () => {
+    const live = startDay(fresh(), content);
+    const trust = live.trust;
+    const p = previewChange(previewContext(live), { hardwareId: 'PERM_CP' });
+    expect(p.emergency).toBe(false);
+    expect(p.trustCostEach).toBe(0);
+    expect(p.failRisk).toBe(0);
+    const out = requestChange(live, content, { label: 'Permanent CP', hardwareId: 'PERM_CP' });
+    expect(out.ok, out.message).toBe(true);
+    const c = out.run.changes.at(-1)!;
+    expect(c.status).toBe('PLANNED');
+    expect(c.emergency).toBe(false);
+    expect(c.activateDay).toBe(live.day + p.leadDays);
+    expect(out.run.trust).toEqual(trust);
+    // An immediate change is still an emergency: CoD would apply today.
+    const cod = previewChange(previewContext(live), { hardwareId: 'COD_CP' });
+    expect(cod.emergency).toBe(true);
+    expect(cod.trustCostEach).toBeGreaterThan(0);
+  });
+
+  it('deactivates an active On/Off CoD lease from tomorrow for 0.5h', () => {
+    let r = requestChange(fresh(), content, { label: 'CoD', hardwareId: 'COD_CP' }).run;
+    r = startDay(r, content);
+    const cod = r.changes.find((c) => c.opexPerDay > 0 && c.status === 'APPLIED')!;
+    const hours = r.hoursLeft;
+    const out = deactivateCod(r, cod.id);
+    expect(out.ok, out.message).toBe(true);
+    expect(out.run.changes.find((c) => c.id === cod.id)!.revertDay).toBe(r.day + 1);
+    expect(out.run.hoursLeft).toBeCloseTo(hours - 0.5);
+    expect(deactivateCod(out.run, cod.id).ok).toBe(true); // already tomorrow
+    expect(deactivateCod(r, 999).ok).toBe(false);
   });
 
   it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {

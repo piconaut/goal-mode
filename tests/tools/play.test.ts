@@ -40,6 +40,26 @@ function withMon3(base: PlayFile): PlayFile {
   return buy.ok ? buy.file : f;
 }
 
+describe('On/Off CoD deactivation', () => {
+  it('moves an active lease to tomorrow', () => {
+    let f = started(1);
+    const day = f.run.day;
+    f = {
+      ...f,
+      run: {
+        ...f.run,
+        changes: [{
+          id: 99, label: 'CPM: On/Off CoD +1 CP', commands: [], hours: 0, capex: 0, opexPerDay: 9000,
+          activateDay: day, plannedDay: day, emergency: false, status: 'APPLIED', revertDay: day + 3,
+          revertCommands: [{ kind: 'ADD_CPC_ENGINES', cpcId: f.run.sim.config.cpcs[0]!.id, pool: 'CP', delta: -1 }], endsEvent: null,
+        }],
+      },
+    };
+    f = run(f, [{ cmd: 'cod-deactivate', changeId: 99 }]);
+    expect(f.run.changes[0]!.revertDay).toBe(day + 1);
+  });
+});
+
 describe('saved policy actions', () => {
   it('loads a saved policy into the editor and activates it now', () => {
     let f = started(1);

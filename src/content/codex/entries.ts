@@ -338,7 +338,7 @@ export const CODEX: CodexEntry[] = [
     id: 'cod',
     title: 'On/Off Capacity on Demand and Capacity Provisioning',
     category: 'Capacity & cost',
-    body: 'On/Off CoD temporarily activates spare engines for a daily fee. z/OS Capacity Provisioning Manager can activate it automatically by rule, but it should not be combined with hard-capped LPARs.',
+    body: 'On/Off CoD temporarily activates spare engines for a daily fee. z/OS Capacity Provisioning Manager can activate it automatically by rule, but it should not be combined with hard-capped LPARs. A lease can be ended early; in this game the deactivation takes effect at 06:00 the next day (APPROX: the IBM books checked do not describe early lease deactivation).',
     sources: [{ label: 'IBM: z/OS Capacity Provisioning', url: 'https://www-03.ibm.com/systems/z/os/zos/features/cpm' }],
     discover: { tools: ['AUTOMATION'] },
   },

@@ -86,6 +86,7 @@ export type ToWorker =
   /** Stage the advisor's suggestion for one workload (or all) into the pending policy. */
   | { type: 'RC_ADVICE_APPLY'; workloadId: string | null }
   | { type: 'CANCEL_CHANGE'; changeId: number }
+  | { type: 'DEACTIVATE_COD'; changeId: number }
   | { type: 'GET_SMF'; kind: SmfKind; hour: string }
   | { type: 'GET_FINANCE' }
   | { type: 'ASK_AROUND'; topic: InquiryKind; workloadId: string | null }

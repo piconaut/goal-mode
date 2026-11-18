@@ -1038,7 +1038,7 @@ point (now, next policy activation, next IPL, after a hardware lead time) and a 
 | PR/SM | Logical CPs (online/reserved) | dynamic if reserved defined, else next IPL | 1 | |
 | PR/SM | Capping: initial/absolute cap, defined capacity, group capacity | dynamic | 0.5 | |
 | PR/SM | Memory (reserved → online) | dynamic if reserved, else IPL | 1 | |
-| Hardware | On/Off CoD activate/deactivate | ~immediate | 0.5 | Daily cost |
+| Hardware | On/Off CoD activate; deactivate at the next 06:00 (APPROX: the IBM books checked do not cover early lease deactivation) | ~immediate | 0.5 | Daily cost |
 | Hardware | Order permanent upgrade / new CPC | lead time | 2 | Capex approval may be needed |
 | Subsystem | CICS: add/remove AOR, MXT, EDSALIM, routing algorithm | next day (region restart) | 2 | Needs memory |
 | Subsystem | Db2: BP sizes, MAXDBAT/CONDBAT, REBIND (revert access path) | dynamic / next day | 1–2 | |

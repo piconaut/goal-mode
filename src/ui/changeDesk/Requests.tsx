@@ -109,6 +109,11 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
             Cancel
           </button>
         )}
+        {c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > v.day + 1 && (
+          <button title="End the On/Off CoD lease at 06:00 tomorrow (0.5h)" onClick={() => game.send({ type: 'DEACTIVATE_COD', changeId: c.id })}>
+            Deactivate tomorrow
+          </button>
+        )}
       </td>
     </tr>
   );
@@ -126,7 +131,7 @@ export function ChangeRequestBar({ desk, setBasket, game }: { desk: Desk; setBas
   const ordered = orderBasket(cfg, basket);
   const p = preview(v, { commands: ordered });
   const request = [
-    p.emergency ? (p.trustCostEach > 0 ? `emergency: −${p.trustCostEach} trust each` : 'emergency') : 'planned: takes effect at 06:00',
+    p.emergency ? (p.trustCostEach > 0 ? `emergency: −${p.trustCostEach} trust each` : 'emergency') : p.leadDays > 0 ? `planned: arrives in ${p.leadDays} days` : 'planned: takes effect at 06:00',
     ...(p.failRisk > 0 ? [`${(p.failRisk * 100).toFixed(0)}% fail risk (one roll)`] : []),
   ].join(' · ');
   return (

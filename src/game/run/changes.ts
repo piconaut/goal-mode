@@ -90,7 +90,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
     opexPerDay: hw?.opexPerDay ?? 0,
     activateDay: run.day + preview.leadDays,
     plannedDay: run.day,
-    emergency: live,
+    emergency: preview.emergency,
     status: 'PLANNED',
     revertDay: hw?.durationDays ? run.day + preview.leadDays + hw.durationDays : null,
     revertCommands: hw?.durationDays ? hw.revert(run.sim, req.cpcId) : [],
@@ -98,7 +98,7 @@ export function requestChange(run: RunState, content: GameContent, req: ChangeRe
   };
   r = { ...r, nextId: r.nextId + 1 };
 
-  if (live) {
+  if (preview.emergency) {
     // Emergency change board: costs trust, more when no incident justifies it.
     const trustCost = req.automated ? 0 : preview.trustCostEach;
     r = { ...r, trust: mapTrust(r, (t) => t - trustCost) };
@@ -189,7 +189,26 @@ function targetHint(s: RunState['sim'], cmd: Command): string {
   }
 }
 
-/** End every active event whose card names this fix. */
+/** Engineer time for an early On/Off CoD deactivation (SPEC §5.11.3); APPROX, see deactivateCod. */
+export const COD_DEACTIVATE_HOURS = 0.5;
+
+/**
+ * Deactivate an active On/Off CoD order from the next day: its lease's revert day becomes tomorrow, so the
+ * existing 06:00 revert applies then and the daily fee stops. APPROX: the IBM books checked for PT-11
+ * (WLM Planning, SMF, PARMLIB, RMF Programmer's Guide, SG24-6472) do not describe early deactivation of a lease.
+ */
+export function deactivateCod(run: RunState, changeId: number): ChangeOutcome {
+  const c = run.changes.find((x) => x.id === changeId);
+  if (!c || c.status !== 'APPLIED' || c.opexPerDay <= 0 || c.revertDay === null) return { run, ok: false, message: 'No active On/Off CoD order with that id' };
+  if (c.revertDay <= run.day + 1) return { run, ok: true, message: 'On/Off CoD already deactivates by tomorrow' };
+  if (run.hoursLeft < COD_DEACTIVATE_HOURS) return { run, ok: false, message: `Needs ${COD_DEACTIVATE_HOURS}h` };
+  return {
+    run: spendHours(logLine({ ...run, changes: run.changes.map((x) => (x.id === changeId ? { ...x, revertDay: run.day + 1 } : x)) }, `On/Off CoD: deactivation scheduled for 06:00 tomorrow (APPROX)`), COD_DEACTIVATE_HOURS),
+    ok: true,
+    message: `On/Off CoD deactivates at 06:00 tomorrow (${COD_DEACTIVATE_HOURS}h)`,
+  };
+}
+
 /** Cancel a change that has not taken effect yet. Capex is refunded; hours only on the day they were spent. */
 export function cancelChange(run: RunState, changeId: number): ChangeOutcome {
   const index = run.changes.findIndex((x) => x.id === changeId);
