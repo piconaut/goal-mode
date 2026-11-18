@@ -67,10 +67,28 @@ export interface Mon3System {
   worstPi: number | null;
 }
 
+/** The partition's zIIP figures for the CPC report's *IIP group (RMF Report Analysis p.97–99): the same column
+ * formulas as the CP group, against the image's zIIPs and the CPC's IIP engines. MSU columns stay blank (the
+ * report gives them for general purpose processors only). */
+export interface Mon3CpcIip {
+  /** Logical zIIPs online during the range (Proc Num). */
+  procNum: number;
+  logicalEffectPct: number;
+  logicalTotalPct: number;
+  physLparPct: number;
+  physEffectPct: number;
+  physTotalPct: number;
+  /** The zIIP pool's short-engine wait and capping share (the report has no such columns; the CP ones are ours). */
+  prsmDelayPct: number;
+  cappedPct: number;
+}
+
 export interface Mon3Cpc {
   lparId: string;
   cpcId: string;
   kind: 'ZOS' | 'CF';
+  /** Present when the image has zIIPs online: its row in the *IIP group. */
+  iip?: Mon3CpcIip;
   /** CPC Capacity report columns. */
   msuDef: number | null;
   msuAct: number | null;
@@ -177,12 +195,24 @@ export interface Mon3Wkm {
   note?: string;
 }
 
+/** A processor group's PHYSICAL line (p.97–99): physical CPU busy time that could not be attributed to any
+ * partition. Empty logical columns; Physical Util % LPAR and Total are both this figure, and Effect is 0.
+ * APPROX: every busy engine-second in the sim comes from a partition's dispatch (PR/SM overhead is charged inside
+ * it, as each partition's Physical Util % LPAR shows), so the sim has no unattributed busy time and this is 0. */
+export interface Mon3CpcPhysical {
+  cpcId: string;
+  kind: 'CP' | 'IIP' | 'ICF';
+  physPct: number;
+}
+
 export interface Mon3View {
   rangeSec: number;
   policy: string;
   systems: Mon3System[];
   rows: Mon3Row[];
   cpc: Mon3Cpc[];
+  /** One PHYSICAL line per processor group that has partitions (CP always; IIP and ICF when they have any). */
+  cpcPhysical: Mon3CpcPhysical[];
   cpcHeaders: Mon3CpcHeader[];
   /** Shared z/OS logical CPs per physical CP, per CPC (the aggregate is logicalToPhysical). */
   logicalToPhysicalByCpc: Record<string, number>;

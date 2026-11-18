@@ -145,6 +145,29 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
     }
   });
 
+  it('CPC groups by processor type: *IIP rows for images with online zIIPs and a PHYSICAL line per group', () => {
+    const m = buildMon3(noon, MIDWEST);
+    const zos = m.cpc.filter((c) => c.kind === 'ZOS');
+    // PROD1 has two zIIPs online; PROD2's zIIP is reserved only, so it has no *IIP row (Proc Num counts online).
+    expect(zos.find((c) => c.lparId === 'PROD1')!.iip).toBeDefined();
+    expect(zos.find((c) => c.lparId === 'PROD2')!.iip).toBeUndefined();
+    for (const c of zos.filter((x) => x.iip)) {
+      const i = c.iip!;
+      expect(i.procNum).toBeGreaterThan(0);
+      expect(i.physTotalPct).toBeCloseTo(i.physEffectPct + i.physLparPct, 6);
+      expect(i.logicalTotalPct).toBeGreaterThanOrEqual(i.logicalEffectPct - 1e-9);
+      expect(i.physTotalPct).toBeLessThanOrEqual(100 + 1e-9); // against the CPC's two IIP engines
+    }
+    // PHYSICAL is *unattributed* physical busy time, not the partitions' LPAR-management column. Every busy
+    // engine-second in the sim comes from a partition's dispatch, so each group's line is 0.0 (and adds nothing
+    // to the group's summary totals).
+    expect(m.cpcPhysical.map((x) => x.kind)).toEqual(['CP', 'IIP', 'ICF']);
+    for (const line of m.cpcPhysical) {
+      expect(line.cpcId).toBe('CPCA');
+      expect(line.physPct).toBe(0);
+    }
+  });
+
   it('CPC rows and headers carry their CPC id; L:P is reported per CPC', () => {
     const m = buildMon3(noon, MIDWEST);
     const ids = new Set(m.cpc.map((c) => c.cpcId));

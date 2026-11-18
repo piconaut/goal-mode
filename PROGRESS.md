@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-18: PT-14 Monitor III CPC report groups by processor type (*CP, *IIP, *ICF) with PHYSICAL lines in the browser and `play mon3 CPC` (#422).
 - 2026-11-18: PT-12 TFP offer per-product terms and run-rate projection in Finance and `play finance` (#421).
 - 2026-11-18: PR-23 reconciled the merged PT-11 description with the shipped CoD/hardware changes (#420).
 - 2026-11-18: PR-22 CoD deactivation button follows the handler phases (#419).
