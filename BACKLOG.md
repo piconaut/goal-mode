@@ -480,7 +480,14 @@ validation or wording that this resolves in the PR, and say which side was kept.
 either adapter; `npm run compare` differs only in the result texts listed in the PR; the browser and CLI tests pass.
 
 ### CL-19 · One field table for the service-class accumulators
-`list: cleanup · status: ready · priority: high · size: M · area: sim`
+`list: cleanup · status: blocked: design · priority: high · size: M · area: sim`
+
+**Design question (2026-11-18):** `addScp` runs once per period per tick. Should the single field-spec table *generate*
+the four accumulator functions as static code at build time (checked by a regeneration test), or should all four use a
+table loop, accepting whatever per-tick cost it adds? The entry itself leaves this open ("generate the code, or measure
+that a table loop stays within budget"). Recommend generating static code: it keeps the exact object key order that
+the golden and bench hashes depend on and leaves the hot path unchanged, at the cost of a generated file in `src/sim/`.
+Waiting on the user or main agent's choice before building.
 
 Source: codebase survey (2026-11-16). The fields of the per-period accumulator are listed by hand in four places,
 each with the same optional-field quirks (`delayQueue`, `usingIoNoVel`, `srvUsing`, `workManager`):
