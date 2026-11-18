@@ -15,9 +15,9 @@ export interface Mon3Sample {
   sys: Record<
     string,
     {
-      /** CPU busy as % of the image's logical CPs. */
+      /** CPU busy as % of the image's logical CPs (z/OS 3.1 RMF Report Analysis, p.99). */
       cpPct: number;
-      /** The image's CP dispatch as % of its CPC's physical CPs (the CPC report's Physical Util % Total). */
+      /** The CPC report's Physical Util % Total for CPs (z/OS 3.1 RMF Report Analysis, p.99). */
       cpcPct?: number;
       ziipPct: number | null;
       cappedPct: number;
@@ -118,6 +118,7 @@ function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'
     if (r.importance !== null) pi[r.scKey] = r.pi === null ? null : Math.round(r.pi * 100) / 100;
     if (r.avgRtMs !== null && r.endedPerSec > 0) rt[r.scKey] = Math.round(r.avgRtMs);
     if (r.goal !== 'system') delay[r.scKey] = { cpu: r1(100 * r.delay.cpu), ziip: r1(100 * r.delay.ziip), io: r1(100 * r.delay.io), cap: r1(100 * r.delay.cap), other: r1(100 * r.delay.other) };
+    // Count CP and zIIP usage once each. zIIP-eligible work on CPs is already in CP time (RMF Report Analysis 3.1, p.534).
     const engines = Math.round((r.cpuEngines + r.ziipEngines) * 100) / 100;
     if (engines > 0) cpu[r.scKey] = engines;
   }

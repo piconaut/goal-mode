@@ -1173,7 +1173,9 @@ You start **half blind**. That is the roguelike "fog of war" and the progression
   capping, DDF engines and CPU engines per service class over time at 1-minute resolution, with WLM
   decisions and changes marked. The player picks which charts to show (kept per viewer; the
   service-class CPU chart starts hidden), and CP busy plots each image's share of its logical CPs or,
-  with one option, of the CPC's physical CPs.
+  with one option, of its CPC's physical CPs (RMF Report Analysis 3.1 p.99). On multi-CPC runs,
+  the aggregate line uses physical CPs across all CPCs. The service-class CPU chart sums CP and
+  zIIP occupancy in engines, with zIIP-eligible work on CPs already counted in CP (p.534).
 - **CF Activity** and **DASD/Cache** reports.
 - **SMF 113 counters** (RNI, CPI, L1MP; LSPR workload classification).
 - **Db2 accounting** (SMF 101; CPU cost when on).
