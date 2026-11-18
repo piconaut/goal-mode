@@ -281,8 +281,9 @@ describe('headless play interface', () => {
       const at = s.findIndex((l) => l.startsWith(label + ' '));
       const end = labels.slice(i + 1).map((x) => s.findIndex((l) => l.startsWith(x + ' '))).filter((x) => x > at)[0] ?? s.length;
       const line = s.slice(at + 1, end).find((l) => l.startsWith('PHYSICAL '))!;
-      const pct = physical.find((x) => x.kind === label.slice(1))!.physPct.toFixed(1);
-      expect(line.trim().split(/\s+/), label).toEqual(['PHYSICAL', pct, '0.0', pct]);
+      // PHYSICAL: no unattributed physical busy time is modelled, so LPAR = Effect = Total = 0.
+      expect(physical.find((x) => x.kind === label.slice(1))!.physPct, label).toBe(0);
+      expect(line.trim().split(/\s+/), label).toEqual(['PHYSICAL', '0.0', '0.0', '0.0']);
     }
     // The capacity-adjusted line appears once per CPC and names the pin that reads it.
     const adj = s.filter((l) => l.includes('capacity adjusted'));

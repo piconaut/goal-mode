@@ -200,16 +200,18 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     };
   });
 
-  // Each group's PHYSICAL line: partition LPAR management time is physical time the report cannot attribute, so
-  // the line is the group's summed Physical Util % LPAR against that type's engines (p.97-99).
+  // Each group's PHYSICAL line: physical busy time no partition can claim (p.97-99). It is NOT the partitions'
+  // LPAR-management column, which is already their own Total - Effective share: Time PHYSICAL is busy time outside
+  // any partition's dispatch. Every busy engine-second in the sim comes from a partition's dispatch (PR/SM overhead
+  // is charged inside it), so the sim has none and the line is 0.00 % (APPROX, docs/research.md).
   const cpcPhysical: Mon3CpcPhysical[] = sim.config.cpcs.flatMap((box) => {
     const mine = cpc.filter((c) => c.cpcId === box.id);
-    const line = (kind: Mon3CpcPhysical['kind'], engine: number, part: Mon3Cpc[], frac: (c: Mon3Cpc) => number) =>
-      engine > 0 && part.length ? [{ cpcId: box.id, kind, physPct: part.reduce((a, c) => a + frac(c), 0) }] : [];
+    const line = (kind: Mon3CpcPhysical['kind'], engine: number, part: Mon3Cpc[]) =>
+      engine > 0 && part.length ? [{ cpcId: box.id, kind, physPct: 0 }] : [];
     return [
-      ...line('CP', box.engines.CP, mine.filter((c) => c.kind === 'ZOS'), (c) => c.physLparPct),
-      ...line('IIP', box.engines.ZIIP, mine.filter((c) => c.iip), (c) => c.iip!.physLparPct),
-      ...line('ICF', box.engines.ICF, mine.filter((c) => c.kind === 'CF'), (c) => c.physLparPct),
+      ...line('CP', box.engines.CP, mine.filter((c) => c.kind === 'ZOS')),
+      ...line('IIP', box.engines.ZIIP, mine.filter((c) => c.iip)),
+      ...line('ICF', box.engines.ICF, mine.filter((c) => c.kind === 'CF')),
     ];
   });
 

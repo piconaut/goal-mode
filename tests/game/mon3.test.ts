@@ -158,13 +158,14 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
       expect(i.logicalTotalPct).toBeGreaterThanOrEqual(i.logicalEffectPct - 1e-9);
       expect(i.physTotalPct).toBeLessThanOrEqual(100 + 1e-9); // against the CPC's two IIP engines
     }
-    // PHYSICAL is each group's unattributed physical time: the partition LPAR management shares.
-    const sum = (xs: number[]) => xs.reduce((a, x) => a + x, 0);
-    const phys = (kind: string) => m.cpcPhysical.filter((x) => x.kind === kind);
-    expect(phys('CP').map((x) => x.cpcId)).toEqual(['CPCA']);
-    expect(phys('CP')[0]!.physPct).toBeCloseTo(sum(zos.map((c) => c.physLparPct)), 6);
-    expect(phys('IIP')[0]!.physPct).toBeCloseTo(sum(zos.filter((c) => c.iip).map((c) => c.iip!.physLparPct)), 6);
-    expect(phys('ICF')[0]!.physPct).toBeCloseTo(sum(m.cpc.filter((c) => c.kind === 'CF').map((c) => c.physLparPct)), 6);
+    // PHYSICAL is *unattributed* physical busy time, not the partitions' LPAR-management column. Every busy
+    // engine-second in the sim comes from a partition's dispatch, so each group's line is 0.0 (and adds nothing
+    // to the group's summary totals).
+    expect(m.cpcPhysical.map((x) => x.kind)).toEqual(['CP', 'IIP', 'ICF']);
+    for (const line of m.cpcPhysical) {
+      expect(line.cpcId).toBe('CPCA');
+      expect(line.physPct).toBe(0);
+    }
   });
 
   it('CPC rows and headers carry their CPC id; L:P is reported per CPC', () => {

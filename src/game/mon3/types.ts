@@ -195,8 +195,10 @@ export interface Mon3Wkm {
   note?: string;
 }
 
-/** A processor group's PHYSICAL line (p.97–98): physical CPU time that could not be attributed to a partition
- * (LPAR management time in the sim). Empty logical columns; Physical Util % LPAR and Total are both this figure. */
+/** A processor group's PHYSICAL line (p.97–99): physical CPU busy time that could not be attributed to any
+ * partition. Empty logical columns; Physical Util % LPAR and Total are both this figure, and Effect is 0.
+ * APPROX: every busy engine-second in the sim comes from a partition's dispatch (PR/SM overhead is charged inside
+ * it, as each partition's Physical Util % LPAR shows), so the sim has no unattributed busy time and this is 0. */
 export interface Mon3CpcPhysical {
   cpcId: string;
   kind: 'CP' | 'IIP' | 'ICF';

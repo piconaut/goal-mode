@@ -171,7 +171,7 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
         </tbody>
       </table>
       <div className={ratio > 2 ? 'err' : 'muted'} style={{ fontSize: 12, marginTop: 4 }}>
-        Logical:physical (shared z/OS CPs) {ratio.toFixed(2)}:1{ratio > 2 ? ', above the 2:1 rule of thumb' : ''}. *PR/SM delay is the game's direct reading of the short-engine wait; on a real system you infer it from MVS Util% above CPU Util%.
+        Logical:physical (shared z/OS CPs) {ratio.toFixed(2)}:1{ratio > 2 ? ', above the 2:1 rule of thumb' : ''}. *PR/SM delay is the game's direct reading of the short-engine wait; on a real system you infer it from MVS Util% above CPU Util%. PHYSICAL lines are 0.0: every busy engine-second is charged to a partition (APPROX).
       </div>
     </>
   );

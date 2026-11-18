@@ -481,7 +481,7 @@ function delayRow(r: Mon3Row): object {
 }
 
 const CPC_HEAD =
-  'CPC (RMF Report Analysis p.97–99): partitions are grouped by processor type (*CP, *IIP, *ICF), each group ending in its PHYSICAL line (physical time no partition can claim; Logical Util % Effect/Total = effective/total dispatch ÷ online logicals, Physical Util % = engine-time ÷ the type\'s physical engines). Pin CPC <lpar> LPAR_BUSY for Logical Util % Total, PRSM_DELAY for PR/SM delay % (the game\'s short-engine wait, not an RMF column) and CAPPED for capped %; CPC <lpar> CPC_BUSY is the *CP row\'s Physical Util % Total, CAPACITY_ADJ the capacity-adjusted line. --json has every field; weight is in `play capacity`, weight and polarity are in the Partition Data report.';
+  'CPC (RMF Report Analysis p.97–99): partitions are grouped by processor type (*CP, *IIP, *ICF), each group ending in its PHYSICAL line (physical busy time outside any partition\'s dispatch; the sim attributes all busy time to partitions, so it is 0.0; Logical Util % Effect/Total = effective/total dispatch ÷ online logicals, Physical Util % = engine-time ÷ the type\'s physical engines). Pin CPC <lpar> LPAR_BUSY for Logical Util % Total, PRSM_DELAY for PR/SM delay % (the game\'s short-engine wait, not an RMF column) and CAPPED for capped %; CPC <lpar> CPC_BUSY is the *CP row\'s Physical Util % Total, CAPACITY_ADJ the capacity-adjusted line. --json has every field; weight is in `play capacity`, weight and polarity are in the Partition Data report.';
 
 /**
  * The browser's single CPC table (src/ui/monitor/Cpc.tsx) as text: RMF's two-level header (Partition, MSU, Proc Num,
