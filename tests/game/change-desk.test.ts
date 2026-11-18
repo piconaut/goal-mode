@@ -4,10 +4,11 @@ import { cardMechanisms } from '../../src/content/footprint';
 import { DASD_REBALANCE } from '../../src/content/hardware-catalog';
 import { previewChange } from '../../src/game/catalog';
 import { addToBasket, basketAfterFailure, basketLabel, describeCommand, nextAorName, validateDefinedCapacity, validateLogical, validateMemory, validateRouting, validateWeight } from '../../src/game/changeDesk';
-import { cancelChange, deactivateCod, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
+import { advance, cancelChange, chooseDraft, deactivateCod, newRun, previewContext, requestChange, startDay } from '../../src/game/run';
 import { buildView } from '../../src/game/view';
 import type { Command } from '../../src/sim/core/commands';
 import type { Mechanism } from '../../src/game/types';
+import { TICKS_PER_DAY } from '../../src/sim/core/units';
 
 const content = { ...MIDWEST_GAME, events: [] };
 const fresh = () => newRun(MIDWEST, content, 7);
@@ -118,6 +119,49 @@ describe('change preview', () => {
     for (const phase of ['REVIEW', 'GAMEOVER', 'VICTORY'] as const)
       expect(deactivateCod({ ...r, phase }, cod.id).ok).toBe(false);
   });
+
+  it('removes an early-ended lease once, preserves its overlap and stops its daily fees', () => {
+    let r = fresh();
+    const cpcId = r.sim.config.cpcs[0]!.id;
+    const engines = () => r.sim.config.cpcs.find((c) => c.id === cpcId)!.engines.CP;
+    const baseline = engines();
+    r = requestChange(r, content, { label: 'CoD', hardwareId: 'COD_CP', cpcId }).run;
+    r = requestChange(r, content, { label: 'CoD overlap', hardwareId: 'COD_CP', cpcId }).run;
+    r = startDay(r, content);
+    expect(r.changes.map((c) => c.status)).toEqual(['APPLIED', 'APPLIED']);
+    const [early, overlap] = r.changes;
+    const originalExpiry = early!.revertDay!;
+    r = advance(r, MIDWEST, content, 1);
+    expect(engines()).toBe(baseline + 2);
+
+    const scheduled = deactivateCod(r, early!.id);
+    expect(scheduled.ok, scheduled.message).toBe(true);
+    r = scheduled.run;
+    expect(engines()).toBe(baseline + 2); // capacity stays for the rest of today
+    const repeated = deactivateCod(r, early!.id);
+    expect(repeated.run).toBe(r); // no repeated engineer-hours charge
+
+    const dailyFee = early!.opexPerDay;
+    const expectedFees = [2 * dailyFee, dailyFee, dailyFee, 0];
+    for (let day = 0; day <= originalExpiry; day++) {
+      if (day > 0) {
+        r = startDay(chooseDraft(r, content, null), content);
+        expect(r.day).toBe(day);
+        r = advance(r, MIDWEST, content, 1); // execute the normal 06:00 queue
+        expect(engines()).toBe(baseline + (day < originalExpiry ? 1 : 0));
+        expect(r.changes.find((c) => c.id === overlap!.id)!.revertDay).toBe(originalExpiry);
+      }
+      const feesBefore = r.opexSpentThisMonth;
+      r = advance(r, MIDWEST, content, TICKS_PER_DAY - (r.sim.tick % TICKS_PER_DAY));
+      expect(r.phase).toBe('REVIEW');
+      expect(r.opexSpentThisMonth - feesBefore).toBe(expectedFees[day]);
+      expect(engines()).toBe(baseline + (day === 0 ? 2 : day < originalExpiry ? 1 : 0));
+      const refused = deactivateCod(r, early!.id);
+      expect(refused.ok).toBe(false);
+      expect(refused.run).toBe(r);
+    }
+    expect(r.opexSpentThisMonth).toBe(4 * dailyFee);
+  }, 120_000);
 
   it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {
     const r = fresh();
