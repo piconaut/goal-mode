@@ -279,6 +279,8 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+## realism-fixes
+
 ### RF-01 · CPU Activity report with the CHANGE REASON header
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 
