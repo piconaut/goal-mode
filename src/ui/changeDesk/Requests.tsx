@@ -37,7 +37,7 @@ export function Board({ v, game }: { v: ViewModel; game: GameHandle }) {
       <h3>Change board</h3>
       <div className="muted">
         {live
-          ? 'Live day: changes are EMERGENCY changes, applied within seconds, at a trust cost.'
+          ? 'Live day: immediate changes are emergencies, applied within seconds, at a trust cost. Hardware with a lead time is planned for its arrival day without emergency trust cost.'
           : v.phase === 'BRIEFING'
             ? 'Briefing: changes are planned and take effect at 06:00 when the day starts.'
             : 'Changes can be made during the briefing or the live day.'}{' '}
@@ -132,7 +132,7 @@ export function ChangeRequestBar({ desk, setBasket, game }: { desk: Desk; setBas
   const ordered = orderBasket(cfg, basket);
   const p = preview(v, { commands: ordered });
   const request = [
-    p.emergency ? (p.trustCostEach > 0 ? `emergency: −${p.trustCostEach} trust each` : 'emergency') : p.leadDays > 0 ? `planned: arrives in ${p.leadDays} days` : 'planned: takes effect at 06:00',
+    p.emergency ? (p.trustCostEach > 0 ? `emergency: −${p.trustCostEach} trust each` : 'emergency') : 'planned: takes effect at 06:00',
     ...(p.failRisk > 0 ? [`${(p.failRisk * 100).toFixed(0)}% fail risk (one roll)`] : []),
   ].join(' · ');
   return (
