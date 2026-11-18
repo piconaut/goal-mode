@@ -5,7 +5,7 @@ import type { Scenario } from '../../sim/core/scenario';
 import { effectiveAddressSpaces } from '../../sim/core/tick/helpers';
 import type { SimState } from '../../sim/core/types';
 import type { ServiceDefinition } from '../../sim/wlm/types';
-import { DASD_REBALANCE } from '../../content/hardware-catalog';
+import { COD_DEACTIVATE_HOURS, DASD_REBALANCE } from '../../content/hardware-catalog';
 import { CHANGE_DESK_KINDS, failRiskFor, FIXES, hardwareItem, previewChange } from '../catalog';
 import { placementRefusal } from '../workloads';
 import { idText } from '../ids';
@@ -188,9 +188,6 @@ function targetHint(s: RunState['sim'], cmd: Command): string {
     default: return '';
   }
 }
-
-/** Engineer time for an early On/Off CoD deactivation (SPEC §5.11.3); APPROX, see deactivateCod. */
-export const COD_DEACTIVATE_HOURS = 0.5;
 
 /**
  * Deactivate an active On/Off CoD order from the next day: its lease's revert day becomes tomorrow, so the

@@ -3,6 +3,9 @@
 import type { Command } from '../sim/core/commands';
 import type { CpcConfig, SimState } from '../sim/core/types';
 
+// FICTIONAL: early CoD deactivation takes a short operator task (engineer-hours, SPEC §6).
+export const COD_DEACTIVATE_HOURS = 0.5;
+
 export interface HardwareItem {
   id: string;
   name: string;

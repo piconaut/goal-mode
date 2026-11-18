@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { COD_DEACTIVATE_HOURS } from '../../content/hardware-catalog';
 import { basketLabel, commandTarget, describeCommand, orderBasket } from '../../game/changeDesk';
 import type { PlannedChange } from '../../game/types';
 import type { ViewModel } from '../../game/view';
@@ -110,7 +111,7 @@ function ChangeRow({ c, v, game }: { c: PlannedChange; v: ViewModel; game: GameH
           </button>
         )}
         {c.status === 'APPLIED' && c.opexPerDay > 0 && c.revertDay !== null && c.revertDay > v.day + 1 && (
-          <button title="End the On/Off CoD lease at 06:00 tomorrow (0.5h)" onClick={() => game.send({ type: 'DEACTIVATE_COD', changeId: c.id })}>
+          <button title={`End the On/Off CoD lease at 06:00 tomorrow (${COD_DEACTIVATE_HOURS}h)`} onClick={() => game.send({ type: 'DEACTIVATE_COD', changeId: c.id })}>
             Deactivate tomorrow
           </button>
         )}
