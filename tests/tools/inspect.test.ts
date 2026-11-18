@@ -444,10 +444,10 @@ describe('PR-20: no-trial streaks are not assessment episodes', () => {
   });
 
   it('keeps rejected-search episodes separate when skip clocks space the assessments', () => {
-    // 30 rejected-search assessments, with a skip-clock adjustment after every five of them.
-    const rows = Array.from({ length: 36 }, (_, i) => trace({
+    // 30 rejected-search assessments, each followed by five skip-clock adjustments.
+    const rows = Array.from({ length: 180 }, (_, i) => trace({
       clockText: clk(i),
-      candidates: [candidate(i % 6 === 5 ? { outcome: 'SKIP_CLOCK' } : { trials: [trial()] })],
+      candidates: [candidate(i % 6 === 0 ? { trials: [trial()] } : { outcome: 'SKIP_CLOCK' })],
     }));
     const stats = wlmStats(rows, { episodes: true, streaks: true });
     expect(stats.total.assessed).toBe(30);
