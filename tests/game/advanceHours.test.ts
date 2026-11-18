@@ -3,7 +3,7 @@ import { MIDWEST } from '../../src/content/scenarios';
 import { HISTORY_EVERY_TICKS } from '../../src/game/history';
 import { advanceHours } from '../../src/game/advance';
 import { advance, newRun, startDay } from '../../src/game/run';
-import { TICKS_PER_HOUR } from '../../src/sim/core/units';
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from '../../src/sim/core/units';
 
 const content = { ...MIDWEST_GAME, events: [] };
 const live = (seed = 7, mon3 = false) => {
@@ -18,6 +18,46 @@ describe('advanceHours', () => {
     const out = advanceHours(run, content, 2);
     expect(out.sim.tick).toBe(run.sim.tick + 2 * TICKS_PER_HOUR);
     expect(out).toEqual(base);
+  });
+
+  it('produces identical state when hooks split the advance into chunks', () => {
+    const run = live(7, true);
+    let chunks = 0;
+    let minTimes = 0;
+    const out = advanceHours(run, content, 1, {
+      onChunk: () => chunks++,
+      onMintime: () => minTimes++,
+    });
+    // Same ticks, same state as one unchunked call: splitting advance() cannot change the tick loop.
+    expect(out).toEqual(advance(run, MIDWEST, content, TICKS_PER_HOUR));
+    expect(chunks).toBe(TICKS_PER_HOUR / HISTORY_EVERY_TICKS);
+    expect(minTimes).toBe(TICKS_PER_HOUR / 12);
+  });
+
+  it('matches the old sampled loop through the day-end phase flip with both hooks active', () => {
+    const start = advance(live(7, true), MIDWEST, content, 7);
+    const n = TICKS_PER_DAY - 7;
+    // The loop advanceSampled used before CL-17, with its two boundary calculations.
+    let old = start;
+    const samples: number[] = [];
+    const minTimes: number[] = [];
+    for (let left = n; left > 0 && old.phase === 'LIVE'; ) {
+      const k = Math.min(left, HISTORY_EVERY_TICKS - (old.sim.tick % HISTORY_EVERY_TICKS), 12 - (old.sim.tick % 12));
+      old = advance(old, MIDWEST, content, k);
+      left -= k;
+      if (old.sim.tick % HISTORY_EVERY_TICKS === 0) samples.push(old.sim.tick);
+      if (old.sim.tick % 12 === 0) minTimes.push(old.sim.tick);
+    }
+    const gotSamples: number[] = [];
+    const gotMinTimes: number[] = [];
+    const made = advanceHours(start, content, n / TICKS_PER_HOUR, {
+      onChunk: (x) => gotSamples.push(x.sim.tick),
+      onMintime: (x) => gotMinTimes.push(x.sim.tick),
+    });
+    expect(made).toEqual(old);
+    expect(gotSamples).toEqual(samples);
+    expect(gotMinTimes).toEqual(minTimes);
+    expect(old.phase).not.toBe('LIVE');
   });
 
   it('calls the hooks on the chart and MINTIME boundaries from any starting tick', () => {
