@@ -11,7 +11,7 @@
 //   npm run play -- runs/a.json pin CF <cfLparId> CF_SYNC|CF_ASYNC_PCT [interval id; none = latest] | pin DASD <LCU|ALL> DASD_DISC|DASD_IOSQ|DASD_RESP [interval id; none = latest]   (RMF CF/DASD Activity)
 //   npm run play -- runs/a.json pin CICS <hour> <AOR region> SOS_MIN   (SMF 110 region storage) | pin PROCU <system> <jobname> [--at "D2 10:40"]   (Monitor III job rows; no --at = now)
 //   npm run play -- runs/a.json pin BATCH <D2|2> JOB_CPU|JOB_IO|JOB_LOCK|JOB_DB2|JOB_SWAP|JOB_INIT|JOB_ABEND   (night of day D2 as labelled in smf BATCH; SMF 30)
-//   npm run play -- runs/a.json activate | discard | tfp yes|no | rcadvice [workloadId]
+//   npm run play -- runs/a.json activate | discard | policy-activate <name> | policy-load <name> | tfp yes|no | rcadvice [workloadId]
 //   npm run play -- runs/a.json note "why I'm doing this"   (shown in the spectator banner)
 //   npm run play -- runs/a.json advance 3 --pace 2s   (one hour at a time, saving and pausing between, for spectators)
 //   npm run play -- runs/a.json json '{"cmd":"change","req":{...}}'   (any PlayCommand, e.g. wlm edits)
@@ -139,6 +139,8 @@ function parse(): PlayCommand | ReadOnly {
     case 'pin': return pinCommand(rest);
     case 'buy': return { cmd: 'buy', toolId: rest[0] ?? '' };
     case 'activate': return { cmd: 'activate' };
+    case 'policy-activate': return { cmd: 'policy-activate', name: rest[0] ?? '' };
+    case 'policy-load': return { cmd: 'policy-load', name: rest[0] ?? '' };
     case 'rcadvice': return { cmd: 'rcadvice', workloadId: rest[0] ?? null };
     case 'discard': return { cmd: 'discard' };
     case 'tfp': return { cmd: 'tfp', accept: rest[0] === 'yes' };

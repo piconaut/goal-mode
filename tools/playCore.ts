@@ -5,7 +5,7 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { cancelChange, chooseDraft, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { activateSavedPolicy, cancelChange, chooseDraft, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import { advanceHours } from '../src/game/advance';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
@@ -31,7 +31,7 @@ import { proofLines } from '../src/game/proof';
 import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
 import { applyWlmEdit, pendingBase, playerWlmEditError, type WlmEdit } from '../src/game/wlmEdit';
-import { plannedPolicy, policyEditSource } from '../src/game/policies';
+import { plannedPolicy, policyEditSource, savedPolicy } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
 import { alsoAcceptedOf, groupAcceptedOf, rcaGroupOf } from '../src/game/run/rca';
@@ -63,6 +63,10 @@ export type PlayCommand =
   | { cmd: 'unpin'; id: number }
   | { cmd: 'wlm'; edit: WlmEdit }
   | { cmd: 'activate' }
+  /** Activate a saved policy by name (ordinary activation; emergency when the day is live). */
+  | { cmd: 'policy-activate'; name: string }
+  /** Load a saved policy into the pending editor without installing it. */
+  | { cmd: 'policy-load'; name: string }
   | { cmd: 'discard' }
   | { cmd: 'buy'; toolId: string }
   | { cmd: 'tfp'; accept: boolean }
@@ -282,6 +286,17 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (!def) return fail('No pending policy edits');
       const o = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
       return done(o.run, o.message, o.ok, o.ok ? null : def);
+    }
+    case 'policy-load': {
+      const name = c.name.trim().toUpperCase();
+      const def = savedPolicy(run, name);
+      if (!def) return fail(`No saved policy ${name || '(none)'}`);
+      return done(run, `Loaded ${def.policyName} into the editor`, true, structuredClone(def));
+    }
+    case 'policy-activate': {
+      const name = c.name.trim().toUpperCase();
+      const o = activateSavedPolicy(run, content, name);
+      return done(o.run, o.message, o.ok, o.ok ? null : file.pendingPolicy);
     }
     case 'discard':
       return done(run, 'Pending policy discarded', true, null);

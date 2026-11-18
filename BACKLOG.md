@@ -46,12 +46,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-10 · Activate a saved policy now
-`list: playtest-fixes · status: ready · priority: low · size: M · area: game`
-
-Saved policies can only be scheduled; real `V WLM,POLICY=` exists. Add "Activate now" (an ordinary activation,
-emergency when live) and "Load into editor". Done when: both are in the browser and the play CLI, with tests.
-
 ### PT-11 · Hardware orders and On/Off CoD during the live day
 `list: playtest-fixes · status: ready · priority: low · size: M · area: game`
 

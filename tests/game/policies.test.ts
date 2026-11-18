@@ -1,8 +1,8 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { POLICY_SCHEDULE } from '../../src/content/alerts';
 import { MIDWEST } from '../../src/content/scenarios';
-import { deletePolicy, plannedPolicy, policyEditSource, savePolicy, setSchedule } from '../../src/game/policies';
-import { advance, cancelChange, newRun, requestChange, startDay } from '../../src/game/run';
+import { deletePolicy, plannedPolicy, policyEditSource, savePolicy, savedPolicy, setSchedule } from '../../src/game/policies';
+import { activateSavedPolicy, advance, cancelChange, newRun, requestChange, startDay } from '../../src/game/run';
 import { TICKS_PER_HOUR } from '../../src/sim/core/units';
 import { buildView } from '../../src/game/view';
 import type { RunState } from '../../src/game/types';
@@ -30,6 +30,24 @@ describe('WLM policy schedule', () => {
     r = advance(startDay(r, content), MIDWEST, content, 14 * 360 + 1); // 06:00 → 20:00 (+1 tick)
     expect(r.sim.wlm.definition.policyName).toBe('NIGHTPOL');
     expect(r.log.some((l) => l.includes('V WLM,POLICY=NIGHTPOL'))).toBe(true);
+  }, 60_000);
+
+  it('activates a saved policy now, and looks it up by name', () => {
+    let r = newRun(MIDWEST, content, 7);
+    const def = { ...r.sim.wlm.definition, policyName: 'NIGHTPOL' };
+    r = ok(savePolicy(r, def));
+    expect(savedPolicy(r, 'NIGHTPOL')?.policyName).toBe('NIGHTPOL');
+    expect(savedPolicy(r, 'MISSING')).toBeNull();
+    expect(activateSavedPolicy(r, content, 'MISSING').ok).toBe(false);
+    const hours = r.hoursLeft;
+    const out = activateSavedPolicy(r, content, 'NIGHTPOL');
+    expect(out.ok, out.message).toBe(true);
+    expect(out.run.hoursLeft).toBeLessThan(hours);
+    const change = out.run.changes.at(-1)!;
+    expect(change.label).toBe('Activate policy NIGHTPOL');
+    expect(change.commands[0]!.kind).toBe('ACTIVATE_POLICY');
+    r = advance(startDay(out.run, content), MIDWEST, content, 1);
+    expect(r.sim.wlm.definition.policyName).toBe('NIGHTPOL');
   }, 60_000);
 
   it('a queued install at a scheduled hour wins the tick, and the log names the switch it overrode', () => {

@@ -161,6 +161,18 @@ export function PolicySchedule({ v, game }: { v: ViewModel; game: GameHandle }) 
                 </summary>
                 <div className="muted" style={{ fontSize: 11, whiteSpace: 'normal' }}>{p.summary}</div>
               </details>
+              <span className="form" style={{ gap: 6 }}>
+                <button
+                  aria-label={`Activate policy ${p.name} now`}
+                  disabled={p.name === (v.plannedPolicy?.policyName ?? v.policyName)}
+                  onClick={() => game.send({ type: 'ACTIVATE_SAVED_POLICY', name: p.name })}
+                >
+                  Activate now
+                </button>
+                <button aria-label={`Load policy ${p.name} into the editor`} onClick={() => game.send({ type: 'LOAD_SAVED_POLICY', name: p.name })}>
+                  Load into editor
+                </button>
+              </span>
               <button aria-label={`Delete policy ${p.name}`} onClick={() => game.send({ type: 'DELETE_POLICY', name: p.name })}>
                 ✕
               </button>

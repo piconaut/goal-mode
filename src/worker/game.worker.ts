@@ -5,14 +5,14 @@ import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { packOf } from '../content/packs';
 import { MIDWEST } from '../content/scenarios';
-import { advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
+import { activateSavedPolicy, advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
 import { advanceHours } from '../game/advance';
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeDefinition, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
-import { deletePolicy, policyEditSource, savePolicy, setSchedule } from '../game/policies';
+import { deletePolicy, policyEditSource, savePolicy, savedPolicy, setSchedule } from '../game/policies';
 import { addPin, removePin } from '../game/evidence';
 import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
@@ -496,6 +496,36 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'ALERT_ADD': {
       settle(addAlertRule(run, m.rule));
+      break;
+    }
+    case 'ACTIVATE_SAVED_POLICY': {
+      const def = savedPolicy(run, m.name);
+      if (!def) {
+        post({ type: 'RESULT', ok: false, message: `No saved policy ${m.name}` });
+        break;
+      }
+      const err = serviceClassGoalIssues(def).find((i) => i.severity === 'error');
+      if (err) {
+        post({ type: 'RESULT', ok: false, message: `Policy not installed: ${err.message}` });
+        break;
+      }
+      const out = activateSavedPolicy(run, pack().game, m.name);
+      settle(out);
+      if (out.ok) {
+        pendingPolicy = null;
+        postPolicy();
+      }
+      break;
+    }
+    case 'LOAD_SAVED_POLICY': {
+      const def = savedPolicy(run, m.name);
+      if (!def) {
+        post({ type: 'RESULT', ok: false, message: `No saved policy ${m.name}` });
+        break;
+      }
+      pendingPolicy = structuredClone(def);
+      post({ type: 'RESULT', ok: true, message: `Loaded ${def.policyName} into the editor` });
+      postPolicy();
       break;
     }
     case 'SAVE_POLICY':
