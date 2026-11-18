@@ -7,14 +7,13 @@
 // Split from `mon3.ts` (CL-33): the builder and its sections; types are in `types.ts`, PROCU in
 // `procu.ts`, the log explainer in `explainWlmLog.ts`.
 
-import { mergeWorkManager, noResources, reportedAccs, reportedTicks, workManagerStatePct, type WorkManagerState } from '../../sim/wlm/reporting';
+import { mergeWorkManager, noResources, reportedAccs, workManagerStatePct, type WorkManagerState } from '../../sim/wlm/reporting';
 import type { Scenario } from '../../sim/core/scenario';
 import { TICK_SEC } from '../../sim/core/units';
 import { capacityLossPct, msuPerCp } from '../../sim/hw/cpc';
 import { classify } from '../../sim/wlm/classify';
 import { BUCKET_BOUNDS, goalText, velocityOf } from '../../sim/wlm/goals';
 import { ACC_DECAY, accPi, goalInfo, sumAcc, velDelay, velUsing, type ScpAcc } from '../../sim/wlm/runtime';
-import type { ScpTick } from '../../sim/wlm/evaluate';
 import type { RunState } from '../types';
 import { allWorkloads } from '../workloads';
 import { primaryReasons, procuJobs } from './procu';
@@ -30,7 +29,7 @@ const NORM = 1 - ACC_DECAY;
  * in WLMGL (reporting.ts). Every PI the player sees (SYSSUM, the header heat map) is taken from these. */
 export function reportedBySystem(sim: RunState['sim']): Record<string, Record<string, ScpAcc>> {
   return Object.fromEntries(
-    sim.wlm.systems.map((s) => [s.lparId, reportedAccs(Object.fromEntries(s.scps.map((p) => [p.scKey, p.acc])), sim.last.lpars.find((l) => l.lparId === s.lparId)?.cics)]),
+    sim.wlm.systems.map((s) => [s.lparId, reportedAccs(Object.fromEntries(s.scps.map((p) => [p.scKey, p.acc])), sim.last.lpars.find((l) => l.lparId === s.lparId)?.cics, sim.last.lpars.find((l) => l.lparId === s.lparId)?.iipcpReported ?? true)]),
   );
 }
 
@@ -53,16 +52,6 @@ function primaryDelayOf(delay: Mon3Row['delay']): Mon3DelayResource | null {
   return by.reduce<[Mon3DelayResource, number] | null>((best, x) => (x[1] > 0.02 && (!best || x[1] > best[1]) ? x : best), null)?.[0] ?? null;
 }
 
-type LastSplit = { usingCpu: number; usingZiip: number; usingIo: number; cpEngines: number; ziipEngines: number; iipcpEngines: number };
-const noSplit = (): LastSplit => ({ usingCpu: 0, usingZiip: 0, usingIo: 0, cpEngines: 0, ziipEngines: 0, iipcpEngines: 0 });
-function addSplit(o: LastSplit, t: ScpTick): void {
-  o.usingCpu += t.usingCpu;
-  o.usingZiip += t.usingZiip;
-  o.usingIo += t.usingIo;
-  o.cpEngines += t.cpEngines;
-  o.ziipEngines += t.ziipEngines;
-  o.iipcpEngines += t.iipcpEngines;
-}
 const ratio = (x: number, of: number) => (of > 1e-12 ? x / of : 0);
 
 /** % of ended transactions within the goal time: buckets up to 100% of goal (SYSSUM). */
@@ -74,7 +63,7 @@ export function withinGoalPct(buckets: readonly number[]): number | null {
   return (100 * within) / total;
 }
 
-function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: LastSplit): Mon3Row {
+function row(run: RunState, system: string, scKey: string, a: ScpAcc): Mon3Row {
   const def = run.sim.wlm.definition;
   const g = goalInfo(def, scKey);
   const per = g ? def.classes.find((c) => c.id === g.serviceClass)?.periods[g.period] : undefined;
@@ -90,11 +79,11 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
   const v = velocityOf(velUsing(a), velDelay(a));
   const goal = g?.goal;
   const rtGoal = goal && (goal.kind === 'AVG' || goal.kind === 'PCT');
-  // APPROX: the smoothed accumulator keeps total Using and CP time only; split them by the last tick's mix.
-  const usingAll = last.usingCpu + last.usingZiip + last.usingIo;
+  // The split comes from the decayed reporting components of this accumulator (PR-21), so a sysplex row sums its
+  // systems and a period with no using samples keeps the earlier mix instead of losing it to the last tick.
+  const usingAll = (a.usingCpu ?? 0) + (a.usingZiip ?? 0) + (a.usingIo ?? 0);
   const usingAvg = a.using * NORM;
   const cpuEngines = a.cpuEngines * NORM;
-  const cpLast = last.cpEngines + last.iipcpEngines;
   return {
     ...(a.workManager ? { workManager: mergeWorkManager(a.workManager, undefined, NORM) } : {}),
     ...(a.workManager || a.moved ? { resourceSamples: !noResources(a) } : {}),
@@ -115,12 +104,13 @@ function row(run: RunState, system: string, scKey: string, a: ScpAcc, last: Last
     endedPerSec: (a.completions * NORM) / TICK_SEC,
     avgRtMs: a.completions > 0 ? (1000 * a.rtSumSec) / a.completions : null,
     cpuEngines,
-    ziipEngines: cpuEngines * ratio(last.ziipEngines, cpLast),
-    iipcpEngines: cpuEngines * ratio(last.iipcpEngines, cpLast),
+    // zIIP engines are a separate column, not a share of CP engines; IIPCP is a part of the CP total.
+    ziipEngines: (a.ziipEnginesView ?? 0) * NORM,
+    iipcpEngines: (a.iipcpEngines ?? 0) * NORM,
     avgUsers: {
       active: samples * NORM,
-      proc: usingAvg * ratio(last.usingCpu + last.usingZiip, usingAll),
-      dev: usingAvg * ratio(last.usingIo, usingAll),
+      proc: usingAvg * ratio((a.usingCpu ?? 0) + (a.usingZiip ?? 0), usingAll),
+      dev: usingAvg * ratio(a.usingIo ?? 0, usingAll),
       delayProc: (delayCpu + delayZiip) * NORM,
       delayDev: delayIo * NORM,
       delayStor: delayStor * NORM,
@@ -140,18 +130,13 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
   const def = sim.wlm.definition;
   const workloads = allWorkloads(scenario, run);
   const ddfClasses = new Set(workloads.filter((w) => w.subsystem === 'DDF').map((w) => classify(def, w.work).serviceClass));
-  const lastBy = (lparId: string | null, scKey: string): LastSplit => {
-    const o = noSplit();
-    for (const l of sim.last.lpars) if (lparId === null || l.lparId === lparId) for (const t of reportedTicks(l.scps, l.cics, false, l.iipcpReported ?? true)) if (t.scKey === scKey) addSplit(o, t);
-    return o;
-  };
   const reported = reportedBySystem(sim);
   const rows: Mon3Row[] = [];
-  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, reported[s.lparId]![p.scKey]!, lastBy(s.lparId, p.scKey)));
+  for (const s of sim.wlm.systems) for (const p of s.scps) rows.push(row(run, s.lparId, p.scKey, reported[s.lparId]![p.scKey]!));
   // Sysplex rows, like Monitor III's sysplex-wide SYSSUM.
   const keys = [...new Set(rows.map((r) => r.scKey))].sort();
   for (const k of keys)
-    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => (reported[s.lparId]![k] ? [reported[s.lparId]![k]!] : []))), lastBy(null, k)));
+    rows.push(row(run, '*PLEX', k, sumAcc(sim.wlm.systems.flatMap((s) => (reported[s.lparId]![k] ? [reported[s.lparId]![k]!] : [])))));
   primaryReasons(run, scenario, rows, ddfClasses);
   const procJobs = procuJobs(run, scenario, rows, ddfClasses);
 
@@ -410,13 +395,7 @@ function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[])
       const cls = classify(def, { subsystem: a.subsystem, TN: a.jobname, SY: a.lparId });
       const acc = sys.acc;
       const samples = acc.using + acc.delay + acc.delayOther;
-      const last = { usingCpu: 0, usingZiip: 0, usingIo: 0 };
-      for (const l of sim.last.lpars) if (l.lparId === a.lparId) for (const t of l.scps) if (cicsKeys.has(t.scKey)) {
-        last.usingCpu += t.usingCpu;
-        last.usingZiip += t.usingZiip;
-        last.usingIo += t.usingIo;
-      }
-      const usingAll = last.usingCpu + last.usingZiip + last.usingIo;
+      const usingAll = (acc.usingCpu ?? 0) + (acc.usingZiip ?? 0) + (acc.usingIo ?? 0);
       const usingFrac = samples > 0 ? acc.using / samples : 0;
       out.push({
         jobname: a.jobname,
@@ -426,8 +405,8 @@ function wkmSection(run: RunState, scenario: Scenario, rows: readonly Mon3Row[])
         rowKey: rows.find((r) => r.system === a.lparId && r.serviceClass === cls.serviceClass)?.scKey ?? null,
         servicePct: sys.cpu > 1e-12 ? (100 * sys.cpuByKey[scKey]!) / sys.cpu : 100 / Math.max(1, Object.keys(sys.cpuByKey).length),
         velocity: velocityOf(velUsing(acc), velDelay(acc)),
-        procUsgPct: 100 * usingFrac * ratio(last.usingCpu + last.usingZiip, usingAll),
-        ioUsgPct: 100 * usingFrac * ratio(last.usingIo, usingAll),
+        procUsgPct: 100 * usingFrac * ratio((acc.usingCpu ?? 0) + (acc.usingZiip ?? 0), usingAll),
+        ioUsgPct: 100 * usingFrac * ratio(acc.usingIo ?? 0, usingAll),
         cappPct: samples > 0 ? (100 * acc.delayCap) / samples : 0,
         quiescePct: 0,
       });

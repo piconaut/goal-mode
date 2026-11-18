@@ -973,8 +973,6 @@ export const IDENTITIES: Identity[] = [
     title: 'Monitor III: a sysplex row is the sum of its systems (CPU, ended rate, active and delayed users)',
     basis: 'z/OS',
     // Sysplex reports show an *ALL summary line over one row per system.
-    // Left out: zIIP and IIPCP engines and the users using PROC and DEV, which the sim splits by the last tick's mix,
-    // per row, so the sysplex row is not the sum of the systems' (BACKLOG PR-21).
     source: 'RMF Report Analysis 3.1 p.62, p.229–240',
     check: (run, c) => {
       for (const o of run.intervals) {
@@ -983,8 +981,12 @@ export const IDENTITIES: Identity[] = [
           const w = (f: string) => () => `${at(o)} ${p.scKey} ${f}`;
           const add = (f: (r: Mon3Row) => number) => sum(parts.map(f));
           c.close(p.cpuEngines, add((r) => r.cpuEngines), DECAYED, w('CP engines'));
+          c.close(p.ziipEngines, add((r) => r.ziipEngines), DECAYED, w('zIIP engines'));
+          c.close(p.iipcpEngines, add((r) => r.iipcpEngines), DECAYED, w('IIPCP engines'));
           c.close(p.endedPerSec, add((r) => r.endedPerSec), DECAYED, w('ended/s'));
           c.close(p.avgUsers.active, add((r) => r.avgUsers.active), DECAYED, w('active users'));
+          c.close(p.avgUsers.proc, add((r) => r.avgUsers.proc), DECAYED, w('users using PROC'));
+          c.close(p.avgUsers.dev, add((r) => r.avgUsers.dev), DECAYED, w('users using DEV'));
           c.close(p.avgUsers.delayProc, add((r) => r.avgUsers.delayProc), DECAYED, w('users delayed PROC'));
           c.close(p.avgUsers.delayDev, add((r) => r.avgUsers.delayDev), DECAYED, w('users delayed DEV'));
           c.close(p.avgUsers.delayStor, add((r) => r.avgUsers.delayStor), DECAYED, w('users delayed STOR'));
@@ -999,8 +1001,6 @@ export const IDENTITIES: Identity[] = [
     // RMF gives USG %, DLY % and IDL % the same sample count as denominator but lets a job be using one resource and
     // delayed for another in one sample, so the book has no such sum; the sim's samples are exclusive states. That
     // DLY % exceeds the delay columns by the WLM capping delay is RMF's (p.109).
-    // Left out: users using PROC + DEV equal to USG, which the last tick's mix breaks when that tick had no using
-    // sample (BACKLOG PR-21).
     source: 'SPEC §17 "WLM samples", "Monitor III views"; RMF Report Analysis 3.1 p.106–110',
     check: (run, c) => {
       for (const o of run.intervals) {
@@ -1012,7 +1012,7 @@ export const IDENTITIES: Identity[] = [
           c.close(r.usingFrac + r.delayFrac + r.unknownFrac, 1, DECAYED, w('USG + DLY + UKN'));
           c.close(r.delay.cpu + r.delay.ziip + r.delay.io + r.delay.stor + r.delay.cap, r.delayFrac, DECAYED, w('delay columns + capping vs DLY'));
           c.close(r.delay.other, r.unknownFrac, DECAYED, w('UKN'));
-          c.atMost(r.avgUsers.proc + r.avgUsers.dev, r.usingFrac * a, DECAYED, w('users using above USG'));
+          c.close(r.avgUsers.proc + r.avgUsers.dev, r.usingFrac * a, DECAYED, w('users using PROC + DEV vs USG'));
           c.close(r.avgUsers.delayProc, (r.delay.cpu + r.delay.ziip) * a, DECAYED, w('users delayed PROC'));
           c.close(r.avgUsers.delayDev, r.delay.io * a, DECAYED, w('users delayed DEV'));
           c.close(r.avgUsers.delayStor, r.delay.stor * a, DECAYED, w('users delayed STOR'));
