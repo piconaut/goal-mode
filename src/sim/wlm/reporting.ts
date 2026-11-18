@@ -245,7 +245,7 @@ export function reportedAccs(accs: Readonly<Record<string, ScpAcc>>, targets: Ci
 /** On an image with no zIIP defined, IIPCP time is reported as CP time (reportedTicks' withoutIipcp). */
 function foldIipcp(accs: Record<string, ScpAcc>, reported: boolean): Record<string, ScpAcc> {
   if (reported) return accs;
-  for (const a of Object.values(accs)) if (a.iipcpEngines) a.iipcpEngines = 0;
+  for (const [key, a] of Object.entries(accs)) if (a.iipcpEngines) accs[key] = { ...a, iipcpEngines: 0 };
   return accs;
 }
 
