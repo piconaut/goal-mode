@@ -1,4 +1,4 @@
-import { type Mon3Cpc, type Mon3View } from '../../game/mon3';
+import type { Mon3View } from '../../game/mon3';
 import { PinButton } from '../Evidence';
 import type { GameHandle } from '../useGame';
 import { n1 } from './shared';
@@ -80,64 +80,94 @@ function CpcTables({ m, system, game, cpcId }: { m: Mon3View; system: string; ga
           </tr>
         </thead>
         <tbody>
-          {(['ZOS', 'CF'] as const).map((kind) => {
-            const part = cpcRows.filter((c) => c.kind === kind);
-            if (part.length === 0) return null;
-            const sum = (f: (c: Mon3Cpc) => number) => part.reduce((a, c) => a + f(c), 0);
-            const anyPart = part[0];
-            return [
-              <tr key={kind}>
-                <td>{kind === 'ZOS' ? '*CP' : '*ICF'}</td>
-                <td />
-                <td />
-                <td className="num">{n1(sum((c) => c.procNum))}</td>
-                <td />
-                <td />
-                <td className="num">{n1(sum((c) => c.physLparPct))}</td>
-                <td className="num">{n1(sum((c) => c.physEffectPct))}</td>
-                <td className="num">
-                  {n1(sum((c) => c.physTotalPct))}
-                  {kind === 'ZOS' && anyPart && (
-                    <PinButton game={game} req={{ source: 'CPC', lparId: anyPart.lparId, metric: 'CPC_BUSY' }} label={`CPC ${anyPart.cpcId} busy`} />
-                  )}
-                </td>
-                <td />
-                <td />
-              </tr>,
-              ...part.map((c) => (
-                <tr key={c.lparId}>
-                  <td>{c.lparId}</td>
-                  <td className="num">{c.kind === 'CF' ? '' : c.msuDef ?? 'N/A'}</td>
-                  <td className="num">{c.msuAct === null ? '' : c.msuAct.toFixed(0)}</td>
-                  <td className="num">{n1(c.procNum)}</td>
-                  <td className="num">{n1(c.logicalEffectPct)}</td>
-                  <td className="num">
-                    {n1(c.logicalTotalPct)}
-                    {c.kind === 'ZOS' && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'LPAR_BUSY' }} label={`${c.lparId} busy`} />}
-                  </td>
-                  <td className="num">{n1(c.physLparPct)}</td>
-                  <td className="num">{n1(c.physEffectPct)}</td>
-                  <td className="num">{n1(c.physTotalPct)}</td>
-                  <td className="num">
-                    {c.kind === 'ZOS' && (
-                      <>
-                        {c.prsmDelayPct.toFixed(1)}
-                        <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'PRSM_DELAY' }} label={`${c.lparId} PR/SM delay`} />
-                      </>
-                    )}
-                  </td>
-                  <td className="num">
-                    {c.kind === 'ZOS' && (
-                      <>
-                        {c.cappedPct.toFixed(0)}
-                        {c.cappedPct > 0 && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'CAPPED' }} label={`${c.lparId} capped`} />}
-                      </>
-                    )}
-                  </td>
-                </tr>
-              )),
+          {(() => {
+            // RMF groups the partitions by processor type (p.97-98): *CP, *IIP and *ICF, each with its summary row,
+            // its partitions and a PHYSICAL line for physical time no partition can claim.
+            const groups = [
+              { kind: 'CP' as const, label: '*CP', rows: cpcRows.filter((c) => c.kind === 'ZOS') },
+              { kind: 'IIP' as const, label: '*IIP', rows: cpcRows.filter((c) => c.iip) },
+              { kind: 'ICF' as const, label: '*ICF', rows: cpcRows.filter((c) => c.kind === 'CF') },
             ];
-          })}
+            const cpcOf = cpcRows[0]?.cpcId ?? '';
+            return groups.flatMap((g) => {
+              if (g.rows.length === 0) return [];
+              const vals = g.rows.map((c) => (g.kind === 'IIP' ? c.iip! : c));
+              const sum = (f: (v: (typeof vals)[number]) => number) => vals.reduce((a, v) => a + f(v), 0);
+              const physical = m.cpcPhysical.find((x) => x.cpcId === cpcOf && x.kind === g.kind);
+              return [
+                <tr key={g.kind}>
+                  <td>{g.label}</td>
+                  <td />
+                  <td />
+                  <td className="num">{n1(sum((v) => v.procNum))}</td>
+                  <td />
+                  <td />
+                  <td className="num">{n1(sum((v) => v.physLparPct))}</td>
+                  <td className="num">{n1(sum((v) => v.physEffectPct))}</td>
+                  <td className="num">
+                    {n1(sum((v) => v.physTotalPct))}
+                    {g.kind === 'CP' && (
+                      <PinButton game={game} req={{ source: 'CPC', lparId: g.rows[0]!.lparId, metric: 'CPC_BUSY' }} label={`CPC ${g.rows[0]!.cpcId} busy`} />
+                    )}
+                  </td>
+                  <td />
+                  <td />
+                </tr>,
+                ...g.rows.map((c, i) => {
+                  const v = vals[i]!;
+                  return (
+                    <tr key={`${g.kind}-${c.lparId}`}>
+                      <td>{c.lparId}</td>
+                      <td className="num">{g.kind === 'CP' ? c.msuDef ?? 'N/A' : ''}</td>
+                      <td className="num">{g.kind === 'CP' && c.msuAct !== null ? c.msuAct.toFixed(0) : ''}</td>
+                      <td className="num">{n1(v.procNum)}</td>
+                      <td className="num">{n1(v.logicalEffectPct)}</td>
+                      <td className="num">
+                        {n1(v.logicalTotalPct)}
+                        {g.kind === 'CP' && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'LPAR_BUSY' }} label={`${c.lparId} busy`} />}
+                      </td>
+                      <td className="num">{n1(v.physLparPct)}</td>
+                      <td className="num">{n1(v.physEffectPct)}</td>
+                      <td className="num">{n1(v.physTotalPct)}</td>
+                      <td className="num">
+                        {g.kind === 'CP' && (
+                          <>
+                            {v.prsmDelayPct.toFixed(1)}
+                            <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'PRSM_DELAY' }} label={`${c.lparId} PR/SM delay`} />
+                          </>
+                        )}
+                      </td>
+                      <td className="num">
+                        {g.kind === 'CP' && (
+                          <>
+                            {v.cappedPct.toFixed(0)}
+                            {v.cappedPct > 0 && <PinButton game={game} req={{ source: 'CPC', lparId: c.lparId, metric: 'CAPPED' }} label={`${c.lparId} capped`} />}
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                }),
+                ...(physical
+                  ? [
+                      <tr key={`${g.kind}-PHYSICAL`}>
+                        <td>PHYSICAL</td>
+                        <td />
+                        <td />
+                        <td />
+                        <td />
+                        <td />
+                        <td className="num">{n1(physical.physPct)}</td>
+                        <td className="num">{n1(0)}</td>
+                        <td className="num">{n1(physical.physPct)}</td>
+                        <td />
+                        <td />
+                      </tr>,
+                    ]
+                  : []),
+              ];
+            });
+          })()}
         </tbody>
       </table>
       <div className={ratio > 2 ? 'err' : 'muted'} style={{ fontSize: 12, marginTop: 4 }}>

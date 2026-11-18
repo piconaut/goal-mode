@@ -40,7 +40,7 @@ import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
 import { TICK_SEC } from '../src/sim/core/units';
-import { buildMon3, type Mon3Cpc, type Mon3Row } from '../src/game/mon3';
+import { buildMon3, type Mon3Cpc, type Mon3CpcPhysical, type Mon3Row } from '../src/game/mon3';
 import { emptyMon3PinHistory, mon3PinRange, mon3PinsAt, recordMon3Pins, type Mon3PinHistory } from '../src/game/mon3PinHistory';
 import type { SmfKind } from '../src/worker/protocol';
 
@@ -481,27 +481,28 @@ function delayRow(r: Mon3Row): object {
 }
 
 const CPC_HEAD =
-  'CPC (RMF Report Analysis p.97–98): *CP and *ICF group the partitions by processor type. Pin CPC <lpar> LPAR_BUSY for Logical Util % Total, PRSM_DELAY for PR/SM delay % (the game\'s short-engine wait, not an RMF column) and CAPPED for capped %; CPC <lpar> CPC_BUSY is the *CP row\'s Physical Util % Total, CAPACITY_ADJ the capacity-adjusted line. --json has every field; weight is in `play capacity`, weight and polarity are in the Partition Data report.';
+  'CPC (RMF Report Analysis p.97–99): partitions are grouped by processor type (*CP, *IIP, *ICF), each group ending in its PHYSICAL line (physical time no partition can claim; Logical Util % Effect/Total = effective/total dispatch ÷ online logicals, Physical Util % = engine-time ÷ the type\'s physical engines). Pin CPC <lpar> LPAR_BUSY for Logical Util % Total, PRSM_DELAY for PR/SM delay % (the game\'s short-engine wait, not an RMF column) and CAPPED for capped %; CPC <lpar> CPC_BUSY is the *CP row\'s Physical Util % Total, CAPACITY_ADJ the capacity-adjusted line. --json has every field; weight is in `play capacity`, weight and polarity are in the Partition Data report.';
 
 /**
- * The browser's single CPC table (src/ui/monitor/Cpc.tsx) as text: one group row per processor type with the
- * partition rows under it, and RMF's two-level header (Partition, MSU, Proc Num, Logical/Physical Util %).
+ * The browser's single CPC table (src/ui/monitor/Cpc.tsx) as text: RMF's two-level header (Partition, MSU, Proc Num,
+ * Logical/Physical Util %) over one block per processor type — *CP, *IIP, *ICF — each with its partitions and its
+ * PHYSICAL line (p.97–99).
  */
-function cpcText(rows: Mon3Cpc[]): string[] {
+function cpcText(rows: Mon3Cpc[], physical: Mon3CpcPhysical[]): string[] {
   if (!rows.length) return ['none'];
   const ids = [...new Set(rows.map((c) => c.cpcId))];
   const out: string[] = [];
   for (const id of ids) {
     const part = rows.filter((c) => c.cpcId === id);
     if (ids.length > 1) out.push(`CPC ${id}`);
-    out.push(cpcTable(part));
+    out.push(cpcTable(part, physical.filter((x) => x.cpcId === id)));
     const first = part.find((c) => c.kind === 'ZOS');
     if (first) out.push(`CPC ${id}: capacity adjusted ${(first.capacityAdjPct ?? 0).toFixed(1)} % (pin CPC ${first.lparId} CAPACITY_ADJ)`);
   }
   return out;
 }
 
-function cpcTable(rows: Mon3Cpc[]): string {
+function cpcTable(rows: Mon3Cpc[], physical: Mon3CpcPhysical[]): string {
   const groups = [
     { label: 'Partition', cols: [''] },
     { label: 'MSU', cols: ['Def', 'Act'] },
@@ -512,28 +513,41 @@ function cpcTable(rows: Mon3Cpc[]): string {
     { label: 'capped %', cols: [''] },
   ];
   const n1 = (x: number) => x.toFixed(1);
-  const partRow = (c: Mon3Cpc) => [
-    c.lparId,
-    c.kind === 'CF' ? '' : c.msuDef == null ? 'N/A' : String(c.msuDef),
-    c.msuAct === null ? '' : c.msuAct.toFixed(0),
-    n1(c.procNum),
-    n1(c.logicalEffectPct),
-    n1(c.logicalTotalPct),
-    n1(c.physLparPct),
-    n1(c.physEffectPct),
-    n1(c.physTotalPct),
-    c.kind === 'ZOS' ? n1(c.prsmDelayPct) : '',
-    c.kind === 'ZOS' ? c.cappedPct.toFixed(0) : '',
-  ];
-  const groupRow = (kind: 'ZOS' | 'CF', label: string) => {
-    const part = rows.filter((c) => c.kind === kind);
-    if (!part.length) return null;
-    const sum = (f: (c: Mon3Cpc) => number) => part.reduce((a, c) => a + f(c), 0);
-    return [label, '', '', n1(sum((c) => c.procNum)), '', '', n1(sum((c) => c.physLparPct)), n1(sum((c) => c.physEffectPct)), n1(sum((c) => c.physTotalPct)), '', ''];
+  type Group = 'CP' | 'IIP' | 'ICF';
+  const partRow = (g: Group, c: Mon3Cpc) => {
+    const v = g === 'IIP' ? c.iip! : c;
+    return [
+      c.lparId,
+      g !== 'CP' ? '' : c.msuDef == null ? 'N/A' : String(c.msuDef),
+      g !== 'CP' || c.msuAct === null ? '' : c.msuAct.toFixed(0),
+      n1(v.procNum),
+      n1(v.logicalEffectPct),
+      n1(v.logicalTotalPct),
+      n1(v.physLparPct),
+      n1(v.physEffectPct),
+      n1(v.physTotalPct),
+      g === 'CP' ? n1(v.prsmDelayPct) : '',
+      g === 'CP' ? v.cappedPct.toFixed(0) : '',
+    ];
   };
-  const body = (['ZOS', 'CF'] as const).flatMap((kind) => {
-    const g = groupRow(kind, kind === 'ZOS' ? '*CP' : '*ICF');
-    return g ? [g, ...rows.filter((c) => c.kind === kind).map(partRow)] : [];
+  const groupRow = (g: Group, label: string, part: Mon3Cpc[]) => {
+    const vals = part.map((c) => (g === 'IIP' ? c.iip! : c));
+    const sum = (f: (v: (typeof vals)[number]) => number) => vals.reduce((a, v) => a + f(v), 0);
+    return [label, '', '', n1(sum((v) => v.procNum)), '', '', n1(sum((v) => v.physLparPct)), n1(sum((v) => v.physEffectPct)), n1(sum((v) => v.physTotalPct)), '', ''];
+  };
+  const types: { kind: Group; label: string; part: Mon3Cpc[] }[] = [
+    { kind: 'CP', label: '*CP', part: rows.filter((c) => c.kind === 'ZOS') },
+    { kind: 'IIP', label: '*IIP', part: rows.filter((c) => c.iip) },
+    { kind: 'ICF', label: '*ICF', part: rows.filter((c) => c.kind === 'CF') },
+  ];
+  const body = types.flatMap(({ kind, label, part }) => {
+    if (!part.length) return [];
+    const phys = physical.find((x) => x.kind === kind);
+    return [
+      groupRow(kind, label, part),
+      ...part.map((c) => partRow(kind, c)),
+      ...(phys ? [['PHYSICAL', '', '', '', '', '', n1(phys.physPct), n1(0), n1(phys.physPct), '', '']] : []),
+    ];
   });
   const leaf = groups.flatMap((g) => g.cols.map((c) => c || g.label));
   const width = leaf.map((h, i) => Math.max(h.length, ...body.map((r) => r[i]!.length)));
@@ -567,8 +581,8 @@ export function mon3Text(file: PlayFile, opts: { system?: string; json?: boolean
   if (sys && !systems.length && !cpc.length) return `No system ${opts.system}; systems: ${m.systems.map((x) => x.system).join(' ')}`;
   const when = run.phase === 'LIVE' ? `range ending ${clockText(run.sim.tick)}` : `snapshot from ${clockText(run.sim.tick)} (not live: phase ${run.phase})`;
   const head = `Monitor III, last ${m.rangeSec}s, ${when}. Policy ${m.policy}. CPC logical:physical CP ratio ${m.logicalToPhysical.toFixed(2)}.`;
-  if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...(m.wkm ?? []).map((x) => 'SYSWKM ' + JSON.stringify(x)), ...pick(m.procJobs ?? [], (x) => x.system).map((x) => 'PROCU ' + JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
-  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', CPC_HEAD, ...cpcText(cpcRows), '', DELAY_HEAD, table(rows.filter((r) => r.resourceSamples !== false).map(delayRow))];
+  if (opts.json) return [head, ...systems.map((x) => JSON.stringify(x)), ...cpc.map((x) => JSON.stringify(x)), ...m.cpcPhysical.map((x) => 'CPC_PHYSICAL ' + JSON.stringify(x)), ...rows.map((x) => JSON.stringify(x)), ...m.enclaves.map((x) => JSON.stringify(x)), ...(m.wkm ?? []).map((x) => 'SYSWKM ' + JSON.stringify(x)), ...pick(m.procJobs ?? [], (x) => x.system).map((x) => 'PROCU ' + JSON.stringify(x)), ...m.exceptions.map((x) => 'EXCEPTION ' + JSON.stringify(x))].join('\n');
+  const out = [head, `History (mon3 [system] --at D2 10:40; pin MON3|CPC ... --at D2 10:40): ${mon3RangeText(file)}.`, '', 'SYSINFO', table(systems), '', 'CPC', CPC_HEAD, ...cpcText(cpcRows, m.cpcPhysical), '', DELAY_HEAD, table(rows.filter((r) => r.resourceSamples !== false).map(delayRow))];
   // PROCU lists jobs by EAppl % CP (RMF Report Analysis p.188); percentages are of one engine.
   const procu = pick(m.procJobs ?? [], (x) => x.system).filter((j) => j.eapplCpEngines + j.eapplZiipEngines > 0.0005);
   const p1 = (e: number) => Number((e * 100).toFixed(1));

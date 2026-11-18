@@ -265,6 +265,25 @@ describe('headless play interface', () => {
       const line = s.find((l) => l.startsWith(label + ' '))!;
       expect(line.trim().split(/\s+/), label).toEqual([label, ...sums(kind)]);
     }
+    // *IIP lists the images with zIIPs online, and every group closes with its PHYSICAL line.
+    const iip = rows.filter((r) => r.iip !== undefined).map((r) => r.iip as Record<string, number>);
+    expect(iip.length).toBeGreaterThan(0);
+    const iipSums = (k: string) => iip.reduce((a, r) => a + (r[k] as number), 0).toFixed(1);
+    expect(s.find((l) => l.startsWith('*IIP '))!.trim().split(/\s+/)).toEqual(['*IIP', iipSums('procNum'), iipSums('physLparPct'), iipSums('physEffectPct'), iipSums('physTotalPct')]);
+    const physical = mon3Text(f, { json: true })
+      .split('\n')
+      .filter((l) => l.startsWith('CPC_PHYSICAL '))
+      .map((l) => JSON.parse(l.slice('CPC_PHYSICAL '.length)) as { cpcId: string; kind: string; physPct: number });
+    const labels = ['*CP', '*IIP', '*ICF'];
+    const physLines = s.filter((l) => l.startsWith('PHYSICAL '));
+    expect(physLines, 'one PHYSICAL line per group').toHaveLength(labels.length);
+    for (const [i, label] of labels.entries()) {
+      const at = s.findIndex((l) => l.startsWith(label + ' '));
+      const end = labels.slice(i + 1).map((x) => s.findIndex((l) => l.startsWith(x + ' '))).filter((x) => x > at)[0] ?? s.length;
+      const line = s.slice(at + 1, end).find((l) => l.startsWith('PHYSICAL '))!;
+      const pct = physical.find((x) => x.kind === label.slice(1))!.physPct.toFixed(1);
+      expect(line.trim().split(/\s+/), label).toEqual(['PHYSICAL', pct, '0.0', pct]);
+    }
     // The capacity-adjusted line appears once per CPC and names the pin that reads it.
     const adj = s.filter((l) => l.includes('capacity adjusted'));
     expect(adj).toHaveLength(1);

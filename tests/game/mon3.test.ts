@@ -145,6 +145,28 @@ describe('Monitor III field formulas (RMF Report Analysis)', () => {
     }
   });
 
+  it('CPC groups by processor type: *IIP rows for images with online zIIPs and a PHYSICAL line per group', () => {
+    const m = buildMon3(noon, MIDWEST);
+    const zos = m.cpc.filter((c) => c.kind === 'ZOS');
+    // PROD1 has two zIIPs online; PROD2's zIIP is reserved only, so it has no *IIP row (Proc Num counts online).
+    expect(zos.find((c) => c.lparId === 'PROD1')!.iip).toBeDefined();
+    expect(zos.find((c) => c.lparId === 'PROD2')!.iip).toBeUndefined();
+    for (const c of zos.filter((x) => x.iip)) {
+      const i = c.iip!;
+      expect(i.procNum).toBeGreaterThan(0);
+      expect(i.physTotalPct).toBeCloseTo(i.physEffectPct + i.physLparPct, 6);
+      expect(i.logicalTotalPct).toBeGreaterThanOrEqual(i.logicalEffectPct - 1e-9);
+      expect(i.physTotalPct).toBeLessThanOrEqual(100 + 1e-9); // against the CPC's two IIP engines
+    }
+    // PHYSICAL is each group's unattributed physical time: the partition LPAR management shares.
+    const sum = (xs: number[]) => xs.reduce((a, x) => a + x, 0);
+    const phys = (kind: string) => m.cpcPhysical.filter((x) => x.kind === kind);
+    expect(phys('CP').map((x) => x.cpcId)).toEqual(['CPCA']);
+    expect(phys('CP')[0]!.physPct).toBeCloseTo(sum(zos.map((c) => c.physLparPct)), 6);
+    expect(phys('IIP')[0]!.physPct).toBeCloseTo(sum(zos.filter((c) => c.iip).map((c) => c.iip!.physLparPct)), 6);
+    expect(phys('ICF')[0]!.physPct).toBeCloseTo(sum(m.cpc.filter((c) => c.kind === 'CF').map((c) => c.physLparPct)), 6);
+  });
+
   it('CPC rows and headers carry their CPC id; L:P is reported per CPC', () => {
     const m = buildMon3(noon, MIDWEST);
     const ids = new Set(m.cpc.map((c) => c.cpcId));

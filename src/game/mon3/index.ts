@@ -17,7 +17,7 @@ import { ACC_DECAY, accPi, goalInfo, sumAcc, velDelay, velUsing, type ScpAcc } f
 import type { RunState } from '../types';
 import { allWorkloads } from '../workloads';
 import { primaryReasons, procuJobs } from './procu';
-import type { Mon3Cpc, Mon3CpcHeader, Mon3DelayResource, Mon3Enclave, Mon3Exception, Mon3Row, Mon3Server, Mon3Speed, Mon3System, Mon3View, Mon3Wkm } from './types';
+import type { Mon3Cpc, Mon3CpcHeader, Mon3CpcPhysical, Mon3DelayResource, Mon3Enclave, Mon3Exception, Mon3Row, Mon3Server, Mon3Speed, Mon3System, Mon3View, Mon3Wkm } from './types';
 
 export * from './types';
 export * from './explainWlmLog';
@@ -157,6 +157,25 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     // Effective dispatch excludes LPAR management time (RMF Report Analysis, CPC report).
     const effect = total * (1 - (rt?.overheadFrac ?? 0));
     const logical = cfg?.logical ?? 0;
+    // The *IIP group's row: zIIPs online only (a reserved-but-offline zIIP is not part of the range's Proc Num).
+    const ziCfg = l.kind === 'ZOS' ? l.pools.find((p) => p.pool === 'ZIIP') : undefined;
+    const ziRt = sim.lpars.find((x) => x.id === l.id)?.pools.find((p) => p.pool === 'ZIIP');
+    const ziPhys = box?.engines.ZIIP ?? 0;
+    const ziTotal = ziRt?.deliveredEngines ?? 0;
+    const ziEffect = ziTotal * (1 - (ziRt?.overheadFrac ?? 0));
+    const iip =
+      ziCfg && ziCfg.logical > 0
+        ? {
+            procNum: ziCfg.logical,
+            logicalEffectPct: (100 * ziEffect) / ziCfg.logical,
+            logicalTotalPct: (100 * ziTotal) / ziCfg.logical,
+            physLparPct: ziPhys > 0 ? (100 * (ziTotal - ziEffect)) / ziPhys : 0,
+            physEffectPct: ziPhys > 0 ? (100 * ziEffect) / ziPhys : 0,
+            physTotalPct: ziPhys > 0 ? (100 * ziTotal) / ziPhys : 0,
+            prsmDelayPct: 100 * (ziRt?.prsmDelayFrac ?? 0),
+            cappedPct: 100 * (ziRt?.cappedFrac ?? 0),
+          }
+        : undefined;
     return {
       lparId: l.id,
       cpcId: l.cpcId,
@@ -177,7 +196,21 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
       prsmDelayPct: 100 * (rt?.prsmDelayFrac ?? 0),
       overheadPct: 100 * (rt?.overheadFrac ?? 0),
       cappedPct: 100 * (rt?.cappedFrac ?? 0),
+      ...(iip ? { iip } : {}),
     };
+  });
+
+  // Each group's PHYSICAL line: partition LPAR management time is physical time the report cannot attribute, so
+  // the line is the group's summed Physical Util % LPAR against that type's engines (p.97-99).
+  const cpcPhysical: Mon3CpcPhysical[] = sim.config.cpcs.flatMap((box) => {
+    const mine = cpc.filter((c) => c.cpcId === box.id);
+    const line = (kind: Mon3CpcPhysical['kind'], engine: number, part: Mon3Cpc[], frac: (c: Mon3Cpc) => number) =>
+      engine > 0 && part.length ? [{ cpcId: box.id, kind, physPct: part.reduce((a, c) => a + frac(c), 0) }] : [];
+    return [
+      ...line('CP', box.engines.CP, mine.filter((c) => c.kind === 'ZOS'), (c) => c.physLparPct),
+      ...line('IIP', box.engines.ZIIP, mine.filter((c) => c.iip), (c) => c.iip!.physLparPct),
+      ...line('ICF', box.engines.ICF, mine.filter((c) => c.kind === 'CF'), (c) => c.physLparPct),
+    ];
   });
 
   const cpcHeaders: Mon3CpcHeader[] = sim.config.lpars
@@ -272,6 +305,7 @@ export function buildMon3(run: RunState, scenario: Scenario): Mon3View {
     systems,
     rows,
     cpc,
+    cpcPhysical,
     cpcHeaders,
     logicalToPhysicalByCpc: Object.fromEntries(sim.config.cpcs.map((c) => [c.id, c.engines.CP > 0 ? (logicalByCpc[c.id] ?? 0) / c.engines.CP : 0])),
     logicalToPhysical: cpcEngines > 0 ? totalLogical / cpcEngines : 0,
