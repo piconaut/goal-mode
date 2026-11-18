@@ -45,7 +45,7 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
                     <th className="num">sub-capacity $/MSU</th>
                     <th className="num">baseline MSU-hours</th>
                     <th className="num">$/MSU-hour</th>
-                    <th className="num">MSU-hours used</th>
+                    <th className="num">used this month</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -56,19 +56,28 @@ export function Finance({ v, game }: { v: ViewModel; game: GameHandle }) {
                       <td className="num">{p.pricePerMsu > 0 ? `$${p.pricePerMsu.toFixed(0)}` : '-'}</td>
                       <td className="num">{Math.round(p.baselineMsuHours).toLocaleString()}</td>
                       <td className="num">${p.pricePerMsuHour.toFixed(2)}</td>
-                      <td className="num">{Math.round(p.msuHoursUsed).toLocaleString()}</td>
+                      <td className="num">
+                        {p.usageEstimated ? '≈' : ''}
+                        {Math.round(p.msuHoursUsed).toLocaleString()}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               {o.projection && (
                 <div className="help">
-                  Run rate at this month&apos;s pace: {Math.round(o.projection.msuHours).toLocaleString()} MSU-hours against a{' '}
+                  Run rate at the month-to-date consumption pace: {Math.round(o.projection.msuHours).toLocaleString()} MSU-hours against a{' '}
                   {Math.round(o.projection.baselineMsuHours).toLocaleString()} baseline ({Math.round(o.projection.overageMsuHours).toLocaleString()} over) →{' '}
                   <b>{k$(o.projection.tfpMonthly)}</b>/month under TFP vs <b>{k$(o.projection.subcapMonthly)}</b> sub-capacity
                   {o.projection.savings >= 0 ? ` (${k$(o.projection.savings)} lower)` : ` (${k$(-o.projection.savings)} higher)`}.
                 </div>
               )}
+              <div className="help">
+                {o.quotedAt ? `Usage and pace as quoted on ${o.quotedAt}; the terms do not move after the quote.` : 'Usage and pace as quoted; the terms do not move after the quote.'}
+                {o.products.some((p) => p.usageEstimated)
+                  ? ' ≈ this run predates consumption tracking, so its usage is estimated from the hourly R4HA samples.'
+                  : ''}
+              </div>
             </div>
           )}
           <div className="row" style={{ gap: 8, marginTop: 8, justifyContent: 'flex-start' }}>

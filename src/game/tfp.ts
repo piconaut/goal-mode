@@ -17,10 +17,12 @@ export interface TfpOfferProduct {
   pricePerMsu: number;
   baselineMsuHours: number;
   pricePerMsuHour: number;
-  /** MSU-hours consumed so far this month. */
+  /** MSU-hours actually consumed this month at the quote (not the R4HA samples). */
   msuHoursUsed: number;
-  /** Month at the current hourly pace (mean of the samples so far × 720). */
+  /** The month extended at the consumption pace so far. */
   projectedMsuHours: number;
+  /** Set when the run predates consumption tracking, so `msuHoursUsed` is an R4HA-sample estimate. */
+  usageEstimated?: boolean;
 }
 
 export interface TfpOffer {
@@ -35,6 +37,8 @@ export interface TfpOffer {
   products?: TfpOfferProduct[];
   /** Run-rate projection at the sampled pace (absent on older offers). */
   projection?: { msuHours: number; baselineMsuHours: number; overageMsuHours: number; tfpMonthly: number; subcapMonthly: number; savings: number };
+  /** Tick the quote was taken. Usage and pace are that snapshot; the terms never move after the quote. */
+  quotedTick?: number;
 }
 
 type Out = { run: RunState; ok: boolean; message: string };
@@ -52,13 +56,19 @@ export function quoteTfp(run: RunState, scenario: Scenario): TfpOffer {
   let baselineMsuHours = 0;
   let overageMsuHours = 0;
   const products: TfpOfferProduct[] = [];
+  // The month's consumption so far is integrated from actual MSU; the R4HA samples are a 4-hour average
+  // limited by defined capacity, so they are only the fallback for a run saved before usage was tracked.
   for (const pk of cost.peaks) {
     const p = scenario.products.find((x) => x.id === pk.product)!;
     const h = cost.hourly[pk.product] ?? [];
-    // APPROX: the mean of hourly R4HA samples ≈ mean consumption over the month so far.
-    const used = h.reduce((a, x) => a + x, 0);
-    const avg = h.length > 0 ? used / h.length : pk.peakMsu;
-    const projected = avg * 720;
+    // APPROX: the baseline (a committed contract figure) uses the mean hourly R4HA sample × 720 h × growth.
+    const sampled = h.reduce((a, x) => a + x, 0);
+    const avg = h.length > 0 ? sampled / h.length : pk.peakMsu;
+    const actual = cost.usage?.[p.id];
+    const used = actual ?? sampled;
+    // Pace over the played hours the usage covers (one sample per hour for a legacy estimate).
+    const tracked = cost.usageHours ?? h.length;
+    const projected = tracked > 1e-9 ? (used / tracked) * 720 : used;
     const base = avg * 720 * (1 + TFP_OFFER.baselineGrowthFrac);
     const subcap = tieredMonthlyCost(pk.peakMsu, p.priceFactor) * (cost.priceMult ?? 1);
     const monthly = subcap * (1 - TFP_OFFER.discountFrac);
@@ -75,6 +85,7 @@ export function quoteTfp(run: RunState, scenario: Scenario): TfpOffer {
       pricePerMsuHour: perHour,
       msuHoursUsed: used,
       projectedMsuHours: projected,
+      ...(actual === undefined ? { usageEstimated: true } : {}),
     });
     baselineMonthly += monthly;
     subcapMonthly += subcap;
@@ -92,6 +103,7 @@ export function quoteTfp(run: RunState, scenario: Scenario): TfpOffer {
     subcapMonthly,
     products,
     projection: { msuHours: projectedMsuHours, baselineMsuHours, overageMsuHours, tfpMonthly, subcapMonthly, savings: subcapMonthly - tfpMonthly },
+    quotedTick: run.sim.tick,
   };
 }
 
