@@ -155,8 +155,12 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
   const cpuKeys = firstSeen(all, (s) => s.cpu);
   const cpuLatest = new Map(cpuKeys.map((k) => [k, samples.at(-1)?.cpu?.[k] ?? 0]));
   const shownCpu = [...cpuKeys].sort((a, b) => (cpuLatest.get(b)! - cpuLatest.get(a)!) || a.localeCompare(b)).slice(0, 8);
-  // `cpu` is absent on samples saved before the chart existed: they chart as gaps, not errors.
-  const cpuSeries: Series[] = shownCpu.map((k) => ({ id: k, color: color(cpuKeys.indexOf(k)), values: samples.map((s) => s.cpu?.[k] ?? null) }));
+  // Only legacy samples lack the CPU map. Missing entries in a recorded map mean zero usage.
+  const cpuSeries: Series[] = shownCpu.map((k) => ({
+    id: k,
+    color: color(cpuKeys.indexOf(k)),
+    values: samples.map((s) => (s.cpu ? (s.cpu[k] ?? 0) : null)),
+  }));
   const ddfEng: Series[] = [
     { id: 'zIIP', color: color(0), values: samples.map((s) => Object.values(s.ddf).reduce((a, d) => a + d.ziipEngines, 0)) },
     { id: 'IIPCP (zIIP work on CPs)', color: color(1), values: samples.map((s) => Object.values(s.ddf).reduce((a, d) => a + d.iipcpEngines, 0)) },

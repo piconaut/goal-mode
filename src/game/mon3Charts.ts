@@ -18,7 +18,7 @@ export interface Mon3Sample {
       /** CPU busy as % of the image's logical CPs. */
       cpPct: number;
       /** The image's CP dispatch as % of its CPC's physical CPs (the CPC report's Physical Util % Total). */
-      cpcPct: number;
+      cpcPct?: number;
       ziipPct: number | null;
       cappedPct: number;
       prsmDelayPct: number;
@@ -38,8 +38,8 @@ export interface Mon3Sample {
   rcArr?: Record<string, number>;
   /** DDF periods (enclaves). */
   ddf: Record<string, { endedPerSec: number; rtMs: number | null; ziipEngines: number; iipcpEngines: number }>;
-  /** CPU engines (general CP + zIIP) per sysplex service-class period, from the Monitor III rows. */
-  cpu: Record<string, number>;
+  /** CPU engines (general CP + zIIP) per sysplex service-class period. Zero entries are omitted. */
+  cpu?: Record<string, number>;
 }
 
 export type MarkerKind = 'WLM' | 'CHANGE' | 'EVENT';
@@ -112,14 +112,14 @@ function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'
   const pi: Mon3Sample['pi'] = {};
   const rt: Mon3Sample['rt'] = {};
   const delay: Mon3Sample['delay'] = {};
-  const cpu: Mon3Sample['cpu'] = {};
+  const cpu: NonNullable<Mon3Sample['cpu']> = {};
   for (const r of m.rows) {
     if (r.system !== '*PLEX') continue;
     if (r.importance !== null) pi[r.scKey] = r.pi === null ? null : Math.round(r.pi * 100) / 100;
     if (r.avgRtMs !== null && r.endedPerSec > 0) rt[r.scKey] = Math.round(r.avgRtMs);
     if (r.goal !== 'system') delay[r.scKey] = { cpu: r1(100 * r.delay.cpu), ziip: r1(100 * r.delay.ziip), io: r1(100 * r.delay.io), cap: r1(100 * r.delay.cap), other: r1(100 * r.delay.other) };
-    const engines = r.cpuEngines + r.ziipEngines;
-    if (engines > 0.005) cpu[r.scKey] = Math.round(engines * 100) / 100;
+    const engines = Math.round((r.cpuEngines + r.ziipEngines) * 100) / 100;
+    if (engines > 0) cpu[r.scKey] = engines;
   }
   const ddf: Mon3Sample['ddf'] = {};
   for (const e of m.enclaves) {

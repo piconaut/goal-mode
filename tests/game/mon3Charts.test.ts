@@ -46,14 +46,15 @@ describe('Monitor III charting', () => {
       expect(last.sys[c.lparId]!.cpcPct).toBeCloseTo(Math.round(c.physTotalPct * 10) / 10, 6);
     }
     // Midwest has one CPC, so the images' shares add up to the CPC busy line.
-    const sum = Object.values(last.sys).reduce((a, x) => a + x.cpcPct, 0);
+    const sum = Object.values(last.sys).reduce((a, x) => a + x.cpcPct!, 0);
     expect(sum).toBeCloseTo(last.cpcBusyPct, 0);
     // CPU engines per sysplex period: general CP plus zIIP, from the Monitor III rows.
+    expect(last.cpu).toBeDefined();
     for (const row of m.rows.filter((x) => x.system === '*PLEX')) {
-      const engines = row.cpuEngines + row.ziipEngines;
+      const engines = Math.round((row.cpuEngines + row.ziipEngines) * 100) / 100;
       // Idle periods are left out of the sample (the chart draws engines actually in use).
-      if (engines > 0.005) expect(last.cpu[row.scKey], row.scKey).toBe(Math.round(engines * 100) / 100);
-      else expect(last.cpu[row.scKey], row.scKey).toBeUndefined();
+      if (engines > 0) expect(last.cpu![row.scKey], row.scKey).toBe(engines);
+      else expect(last.cpu![row.scKey], row.scKey).toBeUndefined();
     }
   });
 

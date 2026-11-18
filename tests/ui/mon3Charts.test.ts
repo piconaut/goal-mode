@@ -105,14 +105,16 @@ describe('Monitor III chart picker', () => {
     expect(text()).toContain('ONLHI#1 (engines)');
   });
 
-  it('charts samples saved before the new fields as gaps instead of failing', () => {
+  it('charts idle periods as zero and legacy samples as gaps', () => {
     // A save from the previous build keeps its samples; the newest one has no `cpu` map.
     const old = { ...sample(120) } as Record<string, unknown>;
     delete old.cpu;
-    mount({ charts: { samples: [sample(0), old], markers: [] }, send: () => {} } as unknown as GameHandle);
+    const idle = { ...sample(60), cpu: {} };
+    mount({ charts: { samples: [sample(0), idle, old], markers: [] }, send: () => {} } as unknown as GameHandle);
     click('CPU by service class');
     expect(text()).toContain('ONLHI#1 (engines)');
     expect(text()).toContain('06:000.401.20');
+    expect(text()).toContain('06:1000');
     expect(text()).toContain('06:20--'); // the legacy sample is a gap, not a crash
   });
 
