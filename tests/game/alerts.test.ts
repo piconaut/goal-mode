@@ -1,7 +1,7 @@
 import { MIDWEST_GAME } from '../../src/content/game-midwest';
 import { ALERTS } from '../../src/content/alerts';
 import { MIDWEST } from '../../src/content/scenarios';
-import { addAlertRule, alertValue, removeAlertRule } from '../../src/game/alerts';
+import { addAlertRule, alertValue, evaluateAlerts, removeAlertRule } from '../../src/game/alerts';
 import { advance, newRun, startDay } from '../../src/game/run';
 import type { RunState } from '../../src/game/types';
 
@@ -46,6 +46,19 @@ describe('alert rules', () => {
     expect(on.fatigue).toBeCloseTo(base.fatigue + ALERTS.nightFatigue);
     const off = advance(add(base, rule), MIDWEST, content, 12);
     expect(off.alerts.firing).toHaveLength(0);
+  }, 60_000);
+
+  it('watches CICS short-on-storage minutes per region', () => {
+    let r = startDay({ ...newRun(MIDWEST, content, 7), tools }, content);
+    r = advance(r, MIDWEST, content, 6);
+    expect(r.hour).not.toBeNull();
+    r = { ...r, hour: { ...r.hour!, cicsStorage: { PROD2AOR: { peakMb: 800, limitMb: 800, sosSec: 120 } } } };
+    expect(alertValue(r, MIDWEST, { metric: 'CICS_SOS', subject: 'PROD2AOR' })).toBe(2);
+    expect(alertValue(r, MIDWEST, { metric: 'CICS_SOS', subject: 'MISSING' })).toBeNull();
+    r = add(r, { metric: 'CICS_SOS', subject: 'PROD2AOR', threshold: 1, forMin: 0, pause: false });
+    r = evaluateAlerts(r, MIDWEST);
+    expect(r.alerts.firing).toHaveLength(1);
+    expect(r.alerts.log.at(-1)!.text).toMatch(/PAGE: CICS region short on storage PROD2AOR > 1min/);
   }, 60_000);
 
   it('validates rules', () => {

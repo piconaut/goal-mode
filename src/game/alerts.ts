@@ -66,6 +66,10 @@ export function alertValue(run: RunState, scenario: Scenario, rule: Pick<AlertRu
       const proj = sim.batch.projectedCriticalEndSec;
       return proj === null ? null : (run.batchDeadlineSec - proj) / 60;
     }
+    case 'CICS_SOS': {
+      const st = run.hour?.cicsStorage?.[rule.subject];
+      return st === undefined ? null : st.sosSec / 60;
+    }
   }
 }
 

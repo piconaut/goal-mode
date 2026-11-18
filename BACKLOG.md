@@ -46,13 +46,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-08 · No alert for CICS short-on-storage stalls
-`list: playtest-fixes · status: ready · priority: low · size: M · area: content`
-
-Response times are for ended transactions only, so PI looking fine while transactions stall is real (RMF Report
-Analysis 3.1 p.148; SG24-6472 p.190). The game has no alert on what does show it: ended-rate drop, SOS time, MXT waits.
-Done when: an Analytics/automation alert rule for it exists in `src/content/`, with a test and a Codex mention.
-
 ### PT-10 · Activate a saved policy now
 `list: playtest-fixes · status: ready · priority: low · size: M · area: game`
 
