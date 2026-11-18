@@ -581,17 +581,6 @@ subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}
 edits `countSystem` in this file, so it goes first. Done when: the diff is moves and imports only, and
 `tests/tools/inspect.test.ts` passes unchanged.
 
-### CL-38 · Split `Overlays.tsx` and `App.tsx`
-`list: cleanup · status: ready · priority: low · size: M · area: ui`
-
-Source: codebase survey (2026-11-16). `src/ui/Overlays.tsx` (667 lines) holds 16 components from five screens: the new
-run flow (`NewRun`, `StartingPerk`, `FirstDayDifficulty`, `SeedInput`, `CareerLine`), the end report (`EndReportView`,
-`ShareBox`), `Briefing`, `Review`, and the RCA form (`Rca`, `RcaVocabulary`, `ProofView`, `AlsoAccepted`).
-`src/ui/App.tsx` (481 lines) holds `Console` (about 165 lines), `Capacity`, `OpsLog`, `Inbox`, `TopBar`,
-`ThemeToggle` and `SoundToggle` next to the tab shell. Change: move-only split into `src/ui/newRun/`,
-`src/ui/endReport/` and `src/ui/rca/`, plus one file each for the App parts. Done when: the diff is moves and imports
-only; the build succeeds; `tools/screenshot.mjs` output matches before and after.
-
 ### CL-39 · Scenario content without the boilerplate
 `list: cleanup · status: ready · priority: low · size: M · area: content`
 
