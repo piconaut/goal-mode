@@ -71,12 +71,11 @@ In the head worktree, on `pr-<n>-fix`:
 
 In the head worktree:
 
-1. `npm run check`: must pass.
+1. Verify against the shared definition of done in `docs/workflow.md` (`npm run check`, UI build where relevant).
 2. `npm run bench -- --hash` and `npm run bench -- --hash --scenario harbourline`: both hashes must equal the PR
    head's hashes from your review. Any change means a fix changed behaviour: `git reset --hard <reviewed head>`,
    and switch the outcome to `HOLD` (say which fix changed the hash).
-3. UI touched: `npx vite build` succeeds.
-4. `git diff --shortstat <reviewed head>..HEAD -- . ':!tests/golden' ':!package-lock.json'`: record the changed
+3. `git diff --shortstat <reviewed head>..HEAD -- . ':!tests/golden' ':!package-lock.json'`: record the changed
    line count (the caller uses it to pick the follow-up check).
 5. Push with a plain fast-forward: `git push origin HEAD:<head branch>`. If it is rejected because the branch
    moved, don't force, don't retry: `git reset --hard <reviewed head>`, outcome `HOLD` with reason `head moved`.
@@ -97,7 +96,7 @@ head: <full SHA now on the branch: your last pushed commit, or the reviewed SHA 
 pass: first | followup
 attempt: <n>
 outcome: MERGE | FIXED | HOLD
-fixlines: <changed line count from step 4.4, or 0>
+fixlines: <changed line count from step 3, or 0>
 fixed:
 - B1: <one line>
 open:

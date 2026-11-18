@@ -60,6 +60,7 @@ the sim in a Web Worker; `tools/` holds the headless runners and strategy bots.
 - [`PROGRESS.md`](PROGRESS.md): milestones, decisions, balance results and open questions.
 - [`BACKLOG.md`](BACKLOG.md): scoped work ready to pick up, in named lists.
 - [`CLAUDE.md`](CLAUDE.md): architecture rules and conventions for contributors (human or AI).
+- [`docs/workflow.md`](docs/workflow.md): the single source for branches, PRs, CI gates and definition of done.
 - [`AGENTS.md`](AGENTS.md): Codex entry point.
 
 The rest of `docs/` is the long-form material: [`tools.md`](docs/tools.md) (every npm script and headless tool, with

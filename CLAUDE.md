@@ -131,60 +131,29 @@ npm run test:remote    # the full suite on GitHub Actions, on committed HEAD
 
 ## Working process
 
-- Work milestone by milestone (PROGRESS.md), picking tasks from BACKLOG.md. Keep the sim runnable headless at every step.
-- Small, focused commits. Don't mix model changes with UI changes.
-- Branches and PRs: one session branch per task, cut from `dev`; CI is the merge gate (PROGRESS.md "Branch workflow").
-  Open a pull request for every task without waiting to be asked. When the task is done and pushed (check green
-  locally, PROGRESS.md updated):
-  1. Open a PR from the session branch into `dev` (never `main`; `dev` → `main` is the milestone PR in PROGRESS.md),
-     with the body following `.github/pull_request_template.md`. Fill in "Behaviour change" whenever goldens change;
-     label pure optimisations `perf`.
-  2. Don't merge it or enable auto-merge: the review loop (below) reviews and merges PRs into `dev`. Open it as a
-     draft when it isn't ready for review yet. (The `dev` → `main` milestone PR follows PROGRESS.md.)
-  3. Subscribe to the PR's activity and keep CI green: fix red checks and review findings, and push again.
-  Don't push to or merge anyone else's PR; report it to the user. The `pr-fix-loop` skill is the exception: it may push
-  review fixes to, and merge, any open non-draft PR into `dev` not labelled `no-autofix` (plain fast-forward pushes
-  only; never rebase or force-push).
-  After your PR is merged, further work in the same session starts again from the latest `dev` on the same branch
-  name, as a new PR.
-- Before finishing a session: tests pass, typecheck clean, PROGRESS.md updated.
-- Delegation (to save usage): hand well-scoped tasks to the subagents in `.claude/agents/`:
-  - Sonnet `implementer`: content/data entries, tests for existing pure functions, small UI changes, from a precise
-    brief.
-  - Sonnet `log-reader`: digests bot/sweep logs, test failures, long reports.
-  - Opus `pr-reviewer`: checks out a PR in a worktree, reads CI rather than rerunning `npm run check`, runs bench
-    hashes (and a sweep for milestones), verifies the PR's claims, posts its report and returns a merge verdict.
-  Keep sim model changes, balance decisions and cross-layer work on the main agent, and review every subagent diff
-  before committing. In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent;
-  vetting and balance calls stay on the main agent.
-  Commit trailers: every agent-written commit (including a subagent's) ends with a `Co-Authored-By:` line naming the
-  agent and the model it is itself running as, read from its own system prompt or environment. Never copy a trailer
-  from a coordinator's brief or reminder, and if the agent can't tell which model it is, it omits the model name
-  rather than guessing. For Claude sessions the line is `Co-Authored-By: Claude <Model> <noreply@anthropic.com>`,
-  followed by a `Claude-Session:` line; the Anthropic address and `Claude-Session:` are specific to Claude sessions.
-  Other agents (e.g. Codex) use their own name, model and vendor address (none if they have none), and no
-  `Claude-Session:` line. Coordinators pass subagents only the session link and the PR/comment footer, never their
-  own `Co-Authored-By` line.
-- Loops (each tick of a scheduled task runs one skill, with its state in PR comment markers):
-  - Review: `pr-fix-loop` (the Opus `pr-fixer` reviews each PR, fixes up to 5 mechanical findings itself or holds the
-    PR for its author, then a Sonnet fix-check of the fixes against the whole PR, then it merges).
-  - Author: `dev-loop` implements the next ready entry of the named BACKLOG.md lists, answers a HOLD on its open PR,
-    or skips.
-- Review comments: every review report an agent posts on a PR (any agent or vendor, any tool, a subagent or a
-  coordinator) starts with a header line `Automated <role> report (reference only, not a GitHub approval)`, naming
-  its role (`pr-reviewer`, `pr-fixer`, or e.g. `coordinated-review`). The loops find their reports by the exact
-  `pr-reviewer` and `pr-fixer` headers, so other reviewers use another role name. Agents' comments are posted under
-  the user's account, so a comment without such a header reads as the user's own decision.
-- Hand reading long test and bench outputs (failing `npm run check`, sweep/bot logs) to `log-reader`; don't read
-  them in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
-- Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
-  `nohup … &` inside another command: tracked tasks show up for the user and notify on exit,
-  so there's no need to poll or guess with timed wakeups.
-- Sweeps of more than a few seeds go to `npm run sweep:remote`: GitHub's runners do the work in
-  parallel shards, so the session's cores stay free and no worker session is needed. It sweeps the committed HEAD,
-  pushed or not, through a throwaway `sweep/*` branch the workflow deletes. Start it with `run_in_background` (~10 min for 20 seeds);
-  the summary prints when it finishes. Local `npm run sweep` stays for quick checks and offline work.
-- Full test runs go to `npm run test:remote` the same way (`--suite`/`--filter` narrow it, one job): it tests the
-  committed HEAD through a throwaway `test/*` branch and prints one summary. A busy shared host makes the full suite
-  hit its hook/test timeouts, so local `npm test` stays for quick checks.
-- After publishing an artifact, unwatch it.
+Work milestone by milestone from `BACKLOG.md`, with small, focused commits. Branches, PRs, CI gates, review reports,
+attribution and the definition of done are in [**docs/workflow.md**](docs/workflow.md) — follow that document rather
+than a summary here.
+
+Delegation (to save usage): hand well-scoped tasks to the Claude subagents in `.claude/agents/`, and keep model
+changes, balance calls and cross-layer work on the main agent as the shared workflow says:
+
+- Sonnet `implementer`: content/data entries, tests for existing pure functions, small UI changes, from a precise
+  brief.
+- Sonnet `log-reader`: digests bot/sweep logs, test failures, long reports.
+- Opus `pr-reviewer`: checks out a PR in a worktree, reads CI instead of rerunning the suite, runs bench hashes
+  (and a sweep for milestones), verifies the PR's claims, posts its report and returns a merge verdict.
+- In the `audit-loop` skill, vetted realism fixes go to the Opus `realism-fixer` subagent; vetting and balance calls
+  stay on the main agent.
+
+Hand reading long test and bench outputs (a failing `npm run check`, sweep/bot logs) to `log-reader`; don't read them
+in the main context. Short checks (pass/fail summary line, bench hashes) are fine to read directly.
+
+Start long runs (sweeps, bot batches) with the Bash tool's `run_in_background` in a call of their own, never
+`nohup … &` inside another command: tracked tasks show up for the user and notify on exit, so there's no need to poll
+or guess with timed wakeups. Sweeps of more than a few seeds go to `npm run sweep:remote` (GitHub's runners do the
+work in parallel shards), and full test runs to `npm run test:remote` on the committed HEAD; both are started with
+`run_in_background` and print one summary. Local `npm run sweep` stays for quick checks and offline work; local
+`npm test` stays for quick checks because a busy shared host makes the full suite hit timeouts.
+
+After publishing an artifact, unwatch it.

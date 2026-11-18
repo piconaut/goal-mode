@@ -226,8 +226,8 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   which is work to start until it is scoped into a BACKLOG entry. The PR that fixes an entry deletes it. Why: the
   old tracker mixed ready fixes with held designs and questions, so an agent told to "work through PROGRESS"
   couldn't tell them apart. Migrated 2026-11-09 from `3fd1762:PROGRESS.md`.
-- Architecture, deterministic simulation rules, units, validation, and contribution workflow are in
-  [CLAUDE.md](CLAUDE.md); design and modeling details belong in SPEC and docs/research.md.
+- Architecture, deterministic simulation rules, units and validation are in [CLAUDE.md](CLAUDE.md); the branch
+  and PR workflow in [docs/workflow.md](docs/workflow.md); design and modeling details in SPEC and docs/research.md.
 - Real z/OS mechanics with fictional tunable numbers; no real LSPR/MSU/pricing data. Tick = 10 sim-seconds;
   played day = 06:00–06:00; standard run ≈40 business days with weekends auto-simulated.
 - Game randomness uses independent keyed streams for events, drafts, failures, AIOps, and inquiries.
@@ -301,35 +301,12 @@ feature branch (e.g. `feature/simplified-mode`), not on `main`.
   REGION/BOTH (lab, tests); the Rules view drops the column and `playerWlmEditError` refuses `SET_RULE_REGION_MODE`
   in the worker and play CLI. All three scenarios start at TRANSACTION (`tests/game/scenarioRegionMode.test.ts`).
 
-## Branch workflow
+## Workflow
 
-- **Dev loop (user request 2026-11-09; replaces the 2026-11-04 playtest fix loop):** a scheduled task runs
-  `/dev-loop <list>` (`.claude/skills/dev-loop/`). Each tick does one of three things: it implements the next ready
-  entry of the named BACKLOG.md list(s) and opens a PR labelled `dev-loop`; it answers the review loop's HOLD on that
-  PR; or it skips. One `dev-loop` PR is open at a time (`needs-user` ones aren't counted). Branches are
-  `dev-loop/<ID>-<slug>`. It never merges, enables auto-merge or force-pushes; the review loop merges. When the lists
-  have no ready, unclaimed entry left, it disables its scheduled task. An invalid or missing list does nothing.
-
-- **PRs to `main` (user request 2026-10-21):** open a PR `dev` → `main` at sensible milestones: a PROGRESS item or
-  milestone ticked done (e.g. a scenario playable and swept, a model feature with goldens and sweep recorded), not for
-  docs-only or in-progress work. Before opening: `npm run check` green, bench hash recorded, PROGRESS updated. Body:
-  what changed since the last merge to `main`, test count, hashes, sweep results, anything waiting on the user. At most
-  one open `dev` → `main` PR; later pushes to `dev` update it, so retitle/re-describe it instead of opening another.
-  The body also needs a "## Behaviour change" section listing the golden changes since the last merge to `main` (CI
-  `behaviour-note` gate). Each one gets a `pr-reviewer` review (base `main`, head `dev`), which it also posts on the PR
-  as a reference comment. When the verdict is MERGE and all required checks are green, merge it with a **merge commit**
-  (not squash, so `dev` and `main` keep shared history); otherwise fix or comment. No human approval is needed (user
-  decision 2026-10-26). NEEDS USER verdicts go to the user.
-- **Branch workflow (user request 2026-10-23):** each session works on its own branch cut from `dev`, opens a PR into
-  `dev`, and the review loop merges it once reviewed and green (no auto-merge by default, user request 2026-11-09). CI (`.github/workflows/`): `check` (typecheck + all tests,
-  goldens included); `behaviour-note` (a PR that changes `tests/golden/hashes.json` needs a filled-in
-  "## Behaviour change" section, see the PR template); `perf-hash` (a PR labelled `perf` or titled "perf…" must keep
-  the Midwest and Harbourline 1-day bench hashes of its base); `balance` (when goldens change: donothing/textbook/expert
-  over seeds 1–5 must stay inside the loose bands in `tools/ci/balanceGate.ts`). After a rebase that conflicts on
-  `hashes.json`, regenerate it with `UPDATE_GOLDEN=1`, never merge it by hand. Run one golden-changing PR at a time.
-  GitHub settings (user): default branch `dev`; protect `dev` and `main` with these four checks required; allow
-  auto-merge; delete head branches on merge. `main` requires the same checks but no approval: GitHub records Claude's
-  PRs as authored by the user, who can't approve their own PR (user decision 2026-10-26).
+Branch, PR, CI and definition-of-done rules live in [**docs/workflow.md**](docs/workflow.md). This file keeps the
+milestones, decisions and open questions that the rules govern; earlier versions of the rules remain in Git history.
+Decisions recorded here (e.g. why reviewers do not repeat CI, or why a milestone PR is a merge commit) explain the
+rules; the rules themselves are stated once in the workflow doc.
 
 ## Open questions
 

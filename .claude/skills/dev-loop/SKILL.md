@@ -135,7 +135,7 @@ PR other than `needs-user` ones: the lists are finished.
      text you checked it against. A partial fix is marked partial, not fixed.
    - Commit with the attribution lines.
 4. **Verify:**
-   - `npm run check` must pass.
+   - Verify against the definition of done in `docs/workflow.md`.
    - Run `npm run bench -- --hash` and `-- --hash --scenario harbourline`.
    - Goldens changed: say why in the "Behaviour change" section, and run `npm run sweep:remote -- --bots
      donothing,textbook,expert --seeds 1-10` (with `run_in_background`; record the summary).

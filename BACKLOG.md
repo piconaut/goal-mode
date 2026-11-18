@@ -564,18 +564,3 @@ Source: codebase survey (2026-11-16). `tools/inspect.ts` (923 lines) holds the `
 subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}.ts` with a thin dispatcher. PR-20
 edits `countSystem` in this file, so it goes first. Done when: the diff is moves and imports only, and
 `tests/tools/inspect.test.ts` passes unchanged.
-
-### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
-`list: cleanup · status: ready · priority: low · size: M · area: tooling`
-
-Source: codebase survey (2026-11-16). The PR workflow is stated in three places: CLAUDE.md "Working process",
-PROGRESS.md "Branch workflow" (about lines 553–582, with the CI gates and the GitHub settings) and AGENTS.md "Branch
-workflow", "Reviews" and "Attribution". The "check before you finish" list is restated in `.claude/agents/pr-fixer.md`
-and `realism-fixer.md`, and in the `dev-loop` and `audit-loop` skills. Change: `docs/workflow.md` becomes the single
-source (branches, PRs, CI gates, GitHub settings, definition of done). CLAUDE.md keeps a short summary and the link;
-PROGRESS.md, AGENTS.md, the agents and the skills link to it. Repoint every citation of "PROGRESS.md 'Branch
-workflow'": `.github/workflows/ci.yml` line 1, the `audit-loop` skill and CLAUDE.md. The loops match the exact
-strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the `<!-- pr-… -->` markers: keep them
-word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
-only the new doc and links to it, and the review header strings are unchanged.
-

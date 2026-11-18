@@ -16,7 +16,7 @@ and fully processed.
 | Audit | `goal-mode-realism-auditor` subagent (Sonnet), background | Light CPU (play CLI); report lands here as a notification, files stay in `runs/lab/` |
 | Vet findings | You | Judgment: is the doc read right, is it a dup, does the fix keep the game's clue paths and lever costs |
 | Develop fix | `realism-fixer` subagent (Opus), background, `isolation: "worktree"` | Model change needs a strong model; worktree lets it run while other audits continue |
-| Land fix (PR, CI, merge) | You, on your session branch | One golden-changing PR at a time (PROGRESS "Branch workflow"); PR events must reach this session |
+| Land fix (PR, CI, merge) | You, on your session branch | One golden-changing PR at a time (docs/workflow.md); PR events must reach this session |
 | Balance sweep | `npm run sweep:remote`, one background Bash task per scenario | Runs sharded on GitHub's runners (user request 2026-11-06): no worker session, no local cores used |
 | Balance decision | You | CLAUDE.md: balance stays on the main agent |
 | Reading long logs | `log-reader` subagent | Keeps this context small |
@@ -101,8 +101,8 @@ Link it from the BACKLOG.md entry and from the Finish report. Don't subscribe to
 
 1. `git fetch origin dev && git checkout -B <session branch> origin/dev`, `git cherry-pick <fixer SHA>`.
    On a `tests/golden/hashes.json` conflict take either side, then `UPDATE_GOLDEN=1 npx vitest run tests/golden`.
-2. Put the before → after numbers in the PR body and the round's audit-loops section (PROGRESS.md gets at most one line) and delete the item's BACKLOG.md entry if it has one. `npm run check` (pass/fail
-   line only; failures to `log-reader`).
+2. Put the before → after numbers in the PR body and the round's audit-loops section (PROGRESS.md gets at most one line) and delete the item's BACKLOG.md entry if it has one. Verify the definition of done in docs/workflow.md
+   (pass/fail line only; failures to `log-reader`).
 3. Push, open the PR into `dev` per `.github/pull_request_template.md` (Behaviour change filled when goldens
    change), `subscribe_pr_activity`, keep CI green. If goldens changed, open it as a **draft** and go to Balance; it
    stays a draft until the sweeps are judged and any follow-up fixes are pushed to it. If goldens didn't change (no

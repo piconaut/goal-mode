@@ -1,4 +1,4 @@
-# Merge gate for dev and main (PROGRESS.md "Branch workflow"). Required status checks: `check` and `balance`.
+# Merge gate for dev and main (docs/workflow.md). Required status checks: `check` and `balance`.
 name: CI
 on:
   pull_request:
