@@ -98,6 +98,12 @@ describe('change preview', () => {
     expect(cod.trustCostEach).toBeGreaterThan(0);
   });
 
+  it('a live freeze refuses a lead-time order but keeps same-day emergencies', () => {
+    const live = { ...startDay(fresh(), content), constraints: ['FREEZE'] };
+    expect(previewChange(previewContext(live), { hardwareId: 'PERM_CP' }).reason).toMatch(/freeze/i);
+    expect(previewChange(previewContext(live), { hardwareId: 'COD_CP' }).ok).toBe(true);
+  });
+
   it('deactivates an active On/Off CoD lease from tomorrow for 0.5h', () => {
     let r = requestChange(fresh(), content, { label: 'CoD', hardwareId: 'COD_CP' }).run;
     r = startDay(r, content);
@@ -109,6 +115,8 @@ describe('change preview', () => {
     expect(out.run.hoursLeft).toBeCloseTo(hours - 0.5);
     expect(deactivateCod(out.run, cod.id).ok).toBe(true); // already tomorrow
     expect(deactivateCod(r, 999).ok).toBe(false);
+    for (const phase of ['REVIEW', 'GAMEOVER', 'VICTORY'] as const)
+      expect(deactivateCod({ ...r, phase }, cod.id).ok).toBe(false);
   });
 
   it('a running power-budget card refuses On/Off CoD but not permanent hardware', () => {

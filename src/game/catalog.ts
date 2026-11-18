@@ -162,7 +162,7 @@ export function previewChange(ctx: PreviewContext, req: { commands?: Command[]; 
   };
   const no = (reason: string): ChangePreview => ({ ...base, ok: false, reason });
   if (ctx.phase !== 'BRIEFING' && ctx.phase !== 'LIVE') return no('Changes are made during the briefing or the live day');
-  if (!live && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
+  if (!emergency && ctx.constraints.includes('FREEZE') && !req.fixId) return no('Change freeze: only emergency changes during the live day');
   if (req.hardwareId && !hw) return no(`Unknown hardware item ${req.hardwareId}`);
   if (req.fixId && (!fix || (ctx.fixIds && !ctx.fixIds.includes(fix.id)))) return no(`Unknown fix ${req.fixId}`);
   // A fix or a hardware order is a self-contained action: picture the fix on a live day that also sneaks in

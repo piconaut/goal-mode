@@ -198,6 +198,7 @@ export const COD_DEACTIVATE_HOURS = 0.5;
  * (WLM Planning, SMF, PARMLIB, RMF Programmer's Guide, SG24-6472) do not describe early deactivation of a lease.
  */
 export function deactivateCod(run: RunState, changeId: number): ChangeOutcome {
+  if (run.phase !== 'BRIEFING' && run.phase !== 'LIVE') return { run, ok: false, message: 'On/Off CoD can be changed during the briefing or the live day' };
   const c = run.changes.find((x) => x.id === changeId);
   if (!c || c.status !== 'APPLIED' || c.opexPerDay <= 0 || c.revertDay === null) return { run, ok: false, message: 'No active On/Off CoD order with that id' };
   if (c.revertDay <= run.day + 1) return { run, ok: true, message: 'On/Off CoD already deactivates by tomorrow' };
