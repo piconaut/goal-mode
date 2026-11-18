@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 const confirmation = () => readFileSync('src/ui/Confirmation.tsx', 'utf8');
 const runFiles = () => readFileSync('src/ui/RunFiles.tsx', 'utf8');
-const overlays = () => readFileSync('src/ui/Overlays.tsx', 'utf8');
+const overlays = () => ['src/ui/Overlays.tsx', 'src/ui/newRun/FirstDayDifficulty.tsx'].map((f) => readFileSync(f, 'utf8')).join('\n');
 const css = () => readFileSync('src/ui/styles.css', 'utf8');
 
 describe('confirmation polish', () => {
