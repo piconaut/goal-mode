@@ -6,6 +6,7 @@ import { MIDWEST_GAME } from '../content/game-midwest';
 import { packOf } from '../content/packs';
 import { MIDWEST } from '../content/scenarios';
 import { advance, cancelChange, chooseDraft, continueEndless, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
+import { advanceHours } from '../game/advance';
 import type { RunState } from '../game/types';
 import { buyTool, noteReportOpened, normalizeDefinition, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../game/smf';
@@ -29,11 +30,10 @@ import { basketAfterFailure } from '../game/changeDesk';
 import { HISTORY_EVERY_TICKS, HISTORY_MAX, samplePoint, type HistoryPoint } from '../game/history';
 import { buildMon3 } from '../game/mon3';
 import { emptyMon3History, mon3At, mon3HistoryRange, recordMon3History } from '../game/mon3History';
-import { MON3_HISTORY } from '../content/tools';
 import { classify } from '../sim/wlm/classify';
 import { explainClassification } from '../game/classifyExplain';
 import { runWorkItems } from '../game/workloads';
-import { TICKS_PER_DAY } from '../sim/core/units';
+import { TICKS_PER_HOUR, TICKS_PER_DAY } from '../sim/core/units';
 import { goalText } from '../sim/wlm/goals';
 import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type ToWorker } from './protocol';
 import { loadCareer, loadDesk, loadRun, saveCareer, saveRun, type DeskState } from './storage';
@@ -156,19 +156,17 @@ const sendView = () => {
 
 /** Advance in chunks so the chart history gets a sample every five minutes. */
 function advanceSampled(n: number) {
-  let left = n;
-  while (left > 0 && run.phase === 'LIVE') {
-    const toSample = HISTORY_EVERY_TICKS - (run.sim.tick % HISTORY_EVERY_TICKS);
-    const toMon3 = MON3_HISTORY.mintimeTicks - (run.sim.tick % MON3_HISTORY.mintimeTicks);
-    const k = Math.min(left, toSample, toMon3);
-    run = advance(run, sc(), pack().game, k);
-    left -= k;
-    if (run.sim.tick % HISTORY_EVERY_TICKS === 0) {
-      history = [...history, samplePoint(run)].slice(-HISTORY_MAX);
-      historyDirty = true;
-    }
-    if (run.sim.tick % MON3_HISTORY.mintimeTicks === 0 && hasFeature(run, 'MON3')) mon3Hist = recordMon3History(mon3Hist, run.sim.tick, buildMon3(run, sc()));
-  }
+  run = advanceHours(run, pack().game, n / TICKS_PER_HOUR, {
+    onChunk: (r) => {
+      if (r.sim.tick % HISTORY_EVERY_TICKS === 0) {
+        history = [...history, samplePoint(r)].slice(-HISTORY_MAX);
+        historyDirty = true;
+      }
+    },
+    onMintime: (r) => {
+      mon3Hist = recordMon3History(mon3Hist, r.sim.tick, buildMon3(r, scenarioFor(pack().scenario, r.difficulty)));
+    },
+  });
   autosave();
 }
 

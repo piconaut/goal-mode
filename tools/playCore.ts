@@ -5,7 +5,8 @@
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import { scenarioFor } from '../src/game/difficulty';
-import { advance, cancelChange, chooseDraft, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { cancelChange, chooseDraft, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { advanceHours } from '../src/game/advance';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
@@ -38,7 +39,7 @@ import { TRIGGER_LABEL, triggerLabel } from '../src/content/rca';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
-import { TICK_SEC, TICKS_PER_HOUR } from '../src/sim/core/units';
+import { TICK_SEC } from '../src/sim/core/units';
 import { buildMon3, type Mon3Cpc, type Mon3Row } from '../src/game/mon3';
 import { emptyMon3PinHistory, mon3PinRange, mon3PinsAt, recordMon3Pins, type Mon3PinHistory } from '../src/game/mon3PinHistory';
 import type { SmfKind } from '../src/worker/protocol';
@@ -157,26 +158,20 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     case 'advance': {
       if (run.phase !== 'LIVE') return fail(`Nothing to advance in phase ${run.phase}; use start.`);
       const hours = Math.max(1, Math.min(24, Math.floor(c.hours)));
-      let r = run;
       let mon3 = file.mon3;
-      // Record a Monitor III range every MINTIME, as the browser's worker does.
-      const step = (x: RunState): RunState => {
-        if (!hasFeature(x, 'MON3')) return advance(x, sc(x), content, TICKS_PER_HOUR);
-        for (let left = TICKS_PER_HOUR; left > 0 && x.phase === 'LIVE'; ) {
-          const k = Math.min(left, MON3_HISTORY.mintimeTicks - (x.sim.tick % MON3_HISTORY.mintimeTicks));
-          x = advance(x, sc(x), content, k);
-          left -= k;
-          if (x.sim.tick % MON3_HISTORY.mintimeTicks === 0) mon3 = recordMon3Pins(mon3 ?? emptyMon3PinHistory(), x.sim.tick, buildMon3(x, sc(x)));
-        }
-        return x;
-      };
       const before = abendedSet(run);
       let fresh: string[] = [];
-      // Stop at the hour a job abends, as an operator would be paged.
-      for (let h = 0; h < hours && r.phase === 'LIVE' && fresh.length === 0; h++) {
-        r = step(r);
-        if (r.phase === 'LIVE') fresh = abendedJobs(r).filter((a) => !before.has(abendedKey(a))).map((a) => a.name);
-      }
+      // One MINTIME hook records a Monitor III range, as the browser's worker does; the other stops
+      // at the hour a job abends, as an operator would be paged.
+      const r = advanceHours(run, content, hours, {
+        onMintime: hasFeature(run, 'MON3') ? (x) => {
+          mon3 = recordMon3Pins(mon3 ?? emptyMon3PinHistory(), x.sim.tick, buildMon3(x, sc(x)));
+        } : undefined,
+        stopWhen: (x) => {
+          fresh = abendedJobs(x).filter((a) => !before.has(abendedKey(a))).map((a) => a.name);
+          return fresh.length > 0;
+        },
+      });
       const mail = r.inbox.slice(run.inbox.length).map((m) => `\n  mail: ${m.from}: ${m.subject}`).join('');
       const page = fresh.length ? `\nSTOPPED: ${fresh.join(' ')} ABENDED. restart ${fresh[0]} (0.5h) or let it miss the window.` : '';
       const d = done(r, `${r.phase === 'LIVE' ? `Advanced to ${buildView(r, sc(r)).clock}.` : `Day over: ${r.phase}.`}${mail}${page}`);

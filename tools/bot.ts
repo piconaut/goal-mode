@@ -8,7 +8,8 @@
 //   --tune rejectedSkipTicks=0,maxProjectionsPerInterval=24   override POLICY_ADJUST for this run (tools/tune.ts)
 
 import { packOf } from '../src/content/packs';
-import { advance, chooseDraft, newRun, overallTrust, startDay } from '../src/game/run';
+import { chooseDraft, newRun, overallTrust, startDay } from '../src/game/run';
+import { advanceHours } from '../src/game/advance';
 import type { RunState } from '../src/game/types';
 import { FACETS, facetsOf } from '../src/game/types';
 import { TICKS_PER_DAY } from '../src/sim/core/units';
@@ -110,7 +111,7 @@ while (run.day < days && (run.phase === 'BRIEFING' || run.phase === 'REVIEW')) {
     run = startDay(run, content);
     spectate(run);
     while (run.phase === 'LIVE') {
-      run = advance(run, scenario, content, 360);
+      run = advanceHours(run, content, 1);
       if (traced) {
         for (const l of hourLines(clockText(run.sim.tick), hour, run, scenario)) console.log(l);
         Object.assign(hour, emptyHour());

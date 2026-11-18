@@ -518,24 +518,8 @@ Cross-note: as BL-01, tune after WT-09 (docs/archive/wlm-audit-2026-11.md §6.2,
 
 ## cleanup
 
-### CL-17 · One "advance N hours" loop for the worker and the tools
-`list: cleanup · status: ready · priority: high · size: M · area: game`
-
-Source: codebase survey (2026-11-16). The hour-by-hour advance is written out several times:
-- `tools/playCore.ts` `advance`: Monitor III recording every MINTIME, stop at the hour a job abends;
-- the advance loop in `tools/bot.ts`;
-- `tools/repro.ts`;
-- `src/worker/game.worker.ts` (`advanceSampled`, plus `recordMon3History` every `mintimeTicks`).
-
-Change: a `src/game/` helper `advanceHours(run, content, hours, hooks)`, with hooks for "after each MINTIME" (Monitor
-III recording) and "stop when" (PR-13's abended-job set), used by all four. `tools/compareDump.ts` runs inside the
-base worktree that `compare.ts` checks out, so it keeps its own loop (it must not import code the base doesn't have).
-Not in scope: the browser keeps `Mon3History` and the CLI keeps `Mon3PinHistory`; PT-18 deals with that.
-Done when: `npm run compare -- --base origin/dev` shows no difference, the bench hashes are unchanged, and the
-goldens and the play/bot tests pass unchanged.
-
 ### CL-18 · One game command layer for the browser worker and the play CLI
-`list: cleanup · status: blocked: after CL-17 · priority: high · size: L · area: game`
+`list: cleanup · status: ready · priority: high · size: L · area: game`
 
 Source: codebase survey (2026-11-16). `src/worker/game.worker.ts` (47 message cases) and `tools/playCore.ts` `apply`
 both turn player commands into `RunState` changes by calling `src/game/*` themselves, each with its own validation
