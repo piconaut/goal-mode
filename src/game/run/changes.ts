@@ -194,8 +194,8 @@ export const COD_DEACTIVATE_HOURS = 0.5;
 
 /**
  * Deactivate an active On/Off CoD order from the next day: its lease's revert day becomes tomorrow, so the
- * existing 06:00 revert applies then and the daily fee stops. APPROX: the IBM books checked for PT-11
- * (WLM Planning, SMF, PARMLIB, RMF Programmer's Guide, SG24-6472) do not describe early deactivation of a lease.
+ * existing 06:00 revert applies then and the daily fee stops. SG24-8579-00 (July 2025), PDF pp.370/372,
+ * documents 24-hour billing and manual deactivation. APPROX: the game defers removal to the next 06:00.
  */
 export function deactivateCod(run: RunState, changeId: number): ChangeOutcome {
   if (run.phase !== 'BRIEFING' && run.phase !== 'LIVE') return { run, ok: false, message: 'On/Off CoD can be changed during the briefing or the live day' };
