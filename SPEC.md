@@ -531,7 +531,18 @@ Modelled on SG24-7621 §3.12–3.15 and the WLM patents. Two kinds of PI, each w
 | projected PI | the dispatcher model on the projection input (sustained demand, below), percentile goals through `projectedPercentilePi` (past 4.0 from the mean RT), velocity before the reporting ceiling of 99 (WT-16; existing 0.1% velocity floor retained): `base` at the current DPs, `after` at a trial's | every test a trial is judged on: receiver value, donor harm, net value |
 
 No test mixes them. A candidate whose `base` is already ≤ 1 (or unknown) is recovering by itself: it is traced
-`RECOVERING`, gets no trials and uses no projection budget. Real WLM uses the sysplex PI as the primary criterion
+`RECOVERING`, gets no trials and uses no projection budget.
+
+**Counting checks (PR-20, reporting only).** A candidate checked on an adjustment without a trial search is a
+candidate check, not an assessment: `NOT_FIXABLE` (no CPU or zIIP delay reaches the bottleneck fraction) and
+`RECOVERING` both set no skip clock and run no projections. `inspect … wlm-stats --streaks` reports runs of 30+
+consecutive such checks on one period of one image, with the bottleneck, first/last check and count; the outcome and
+bottleneck must stay the same and the period must be present in each image's adjustment. These streaks are separate
+from the 30-assessment episodes, which count only trial-search assessments. A skip-clock retry is an adjustment where
+the candidate is listed but not assessed; the player's no-action note every 30 ticks is one log entry, not one check
+or a deduplication. None of this changes skip clocks or bottleneck selection.
+
+Real WLM uses the sysplex PI as the primary criterion
 for receivers, donors and assessing a change ([`docs/research.md`](docs/research.md) "The sysplex PI is the primary
 criterion…"); the sim chooses receivers on it and judges a change on projections, as WLM Services p.144 describes.
 
