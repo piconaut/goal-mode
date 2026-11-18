@@ -6,6 +6,25 @@ import type { Scenario } from "../sim/core/scenario";
 import type { TfpTerms } from "../sim/cost/mlc";
 import type { RunState } from "./types";
 
+/** One product's offer row: what the peak costs now, what the baseline buys, and the month's pace. */
+export interface TfpOfferProduct {
+  id: string;
+  name: string;
+  peakMsu: number;
+  /** Sub-capacity monthly charge at the quoted peak (before the baseline discount). */
+  subcapMonthly: number;
+  /** That charge per peak MSU. */
+  pricePerMsu: number;
+  baselineMsuHours: number;
+  pricePerMsuHour: number;
+  /** MSU-hours actually consumed this month at the quote (not the R4HA samples). */
+  msuHoursUsed: number;
+  /** The month extended at the consumption pace so far. */
+  projectedMsuHours: number;
+  /** Set when the run predates consumption tracking, so `msuHoursUsed` is an R4HA-sample estimate. */
+  usageEstimated?: boolean;
+}
+
 export interface TfpOffer {
   status: "OFFERED" | "ACCEPTED" | "DECLINED" | "EXPIRED";
   /** Last played day it can be accepted on. */
@@ -14,6 +33,12 @@ export interface TfpOffer {
   /** What the baseline costs per month vs the sub-capacity bill at the peak when quoted. */
   baselineMonthly: number;
   subcapMonthly: number;
+  /** Per-product terms and pace (absent on offers saved by an older build). */
+  products?: TfpOfferProduct[];
+  /** Run-rate projection at the sampled pace (absent on older offers). */
+  projection?: { msuHours: number; baselineMsuHours: number; overageMsuHours: number; tfpMonthly: number; subcapMonthly: number; savings: number };
+  /** Tick the quote was taken. Usage and pace are that snapshot; the terms never move after the quote. */
+  quotedTick?: number;
 }
 
 type Out = { run: RunState; ok: boolean; message: string };
@@ -27,26 +52,58 @@ export function quoteTfp(run: RunState, scenario: Scenario): TfpOffer {
   };
   let baselineMonthly = 0;
   let subcapMonthly = 0;
+  let projectedMsuHours = 0;
+  let baselineMsuHours = 0;
+  let overageMsuHours = 0;
+  const products: TfpOfferProduct[] = [];
+  // The month's consumption so far is integrated from actual MSU; the R4HA samples are a 4-hour average
+  // limited by defined capacity, so they are only the fallback for a run saved before usage was tracked.
   for (const pk of cost.peaks) {
     const p = scenario.products.find((x) => x.id === pk.product)!;
     const h = cost.hourly[pk.product] ?? [];
-    // APPROX: the mean of hourly R4HA samples ≈ mean consumption over the month so far.
-    const avg =
-      h.length > 0 ? h.reduce((a, x) => a + x, 0) / h.length : pk.peakMsu;
+    // APPROX: the baseline (a committed contract figure) uses the mean hourly R4HA sample × 720 h × growth.
+    const sampled = h.reduce((a, x) => a + x, 0);
+    const avg = h.length > 0 ? sampled / h.length : pk.peakMsu;
+    const actual = cost.usage?.[p.id];
+    const used = actual ?? sampled;
+    // Pace over the played hours the usage covers (one sample per hour for a legacy estimate).
+    const tracked = cost.usageHours ?? h.length;
+    const projected = tracked > 1e-9 ? (used / tracked) * 720 : used;
     const base = avg * 720 * (1 + TFP_OFFER.baselineGrowthFrac);
     const subcap = tieredMonthlyCost(pk.peakMsu, p.priceFactor) * (cost.priceMult ?? 1);
     const monthly = subcap * (1 - TFP_OFFER.discountFrac);
     terms.baselineMsuHours[p.id] = base;
-    terms.pricePerMsuHour[p.id] = base > 0 ? monthly / base : 0;
+    const perHour = base > 0 ? monthly / base : 0;
+    terms.pricePerMsuHour[p.id] = perHour;
+    products.push({
+      id: p.id,
+      name: p.name,
+      peakMsu: pk.peakMsu,
+      subcapMonthly: subcap,
+      pricePerMsu: pk.peakMsu > 0 ? subcap / pk.peakMsu : 0,
+      baselineMsuHours: base,
+      pricePerMsuHour: perHour,
+      msuHoursUsed: used,
+      projectedMsuHours: projected,
+      ...(actual === undefined ? { usageEstimated: true } : {}),
+    });
     baselineMonthly += monthly;
     subcapMonthly += subcap;
+    projectedMsuHours += projected;
+    baselineMsuHours += base;
+    overageMsuHours += Math.max(0, projected - base);
   }
+  const overage = products.reduce((a, x) => a + Math.max(0, x.projectedMsuHours - x.baselineMsuHours) * x.pricePerMsuHour * TFP_OFFER.overageFrac, 0);
+  const tfpMonthly = baselineMonthly + overage;
   return {
     status: "OFFERED",
     untilDay: run.day + TFP_OFFER.openDays,
     terms,
     baselineMonthly,
     subcapMonthly,
+    products,
+    projection: { msuHours: projectedMsuHours, baselineMsuHours, overageMsuHours, tfpMonthly, subcapMonthly, savings: subcapMonthly - tfpMonthly },
+    quotedTick: run.sim.tick,
   };
 }
 

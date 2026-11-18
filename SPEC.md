@@ -946,6 +946,10 @@ DASD response time, per RMF's standard decomposition: **IOSQ + PEND + DISC + CON
   × 1.03, priced at 97% of the sub-capacity bill at the current peak; growth above it at 50% of
   the price; unused baseline is lost (APPROX: real contracts roll it over). The rest of the
   signing month stays sub-capacity, prorated (`content/pricing.ts` TFP_OFFER, `game/tfp.ts`).
+  The offer shows, per product, the peak and its sub-capacity $/MSU, the baseline MSU-hours and
+  $/MSU-hour, and the month's **actually consumed** MSU-hours (CP MSU integrated over time, not
+  the DC-limited R4HA samples), with a run-rate projection; those numbers are the quote snapshot
+  and the terms never move after it.
 
 #### 5.11.3 Hardware economics (fictional prices)
 

@@ -1,5 +1,5 @@
 import type { CfSystemResult } from '../../cf/cf';
-import { accrueTfp, closeMonth, recordHour } from '../../cost/mlc';
+import { accrueTfp, accrueUsage, closeMonth, recordHour } from '../../cost/mlc';
 import { groupShares, newR4ha, stepR4ha } from '../../cost/r4ha';
 import { accumulateTick, closeInterval, newRmfAcc, type JobEndRecord } from '../../measure/rmf';
 import { msuPerCp } from '../../hw/cpc';
@@ -162,7 +162,8 @@ export function stepCapping(t: TickCtx, zosLpars: readonly LparConfig[]) {
 /** MLC: hourly SCRT-style sample, monthly bill. */
 export function stepCost(t: TickCtx, zosLpars: readonly LparConfig[], msuBy: Record<string, number>, r4haBy: Record<string, number>, nextTick: number): SimState['cost'] {
   const { prev, scenario, config, clock } = t;
-  let cost = prev.cost.tfp ? accrueTfp(prev.cost, scenario.products, msuBy, TICK_SEC) : prev.cost;
+  let cost = accrueUsage(prev.cost, scenario.products, msuBy, TICK_SEC);
+  if (cost.tfp) cost = accrueTfp(cost, scenario.products, msuBy, TICK_SEC);
   if (nextTick % TICKS_PER_HOUR === 0) {
     const dcBy: Record<string, number | null> = {};
     for (const l of zosLpars) dcBy[l.id] = l.definedCapacityMsu;

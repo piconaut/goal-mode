@@ -1,6 +1,6 @@
 import { MIDWEST } from '../../src/content/scenarios';
 import { MIDWEST_PRODUCTS, tieredMonthlyCost } from '../../src/content/pricing';
-import { closeMonth, estimateMonth, newCost, recordHour, startTfp } from '../../src/sim/cost/mlc';
+import { accrueUsage, closeMonth, estimateMonth, newCost, recordHour, startTfp } from '../../src/sim/cost/mlc';
 import { groupShares, newR4ha, stepR4ha } from '../../src/sim/cost/r4ha';
 import { initState } from '../../src/sim/core/init';
 import { step } from '../../src/sim/core/step';
@@ -98,6 +98,22 @@ describe('MLC', () => {
     const closed = closeMonth(c, MIDWEST_PRODUCTS);
     expect(closed.bills[0]!.total).toBeGreaterThan(0);
     expect(closed.peaks.every((p) => p.peakMsu === 0)).toBe(true);
+  });
+
+  it('tracks actual monthly MSU-hours, month to month and independently of R4HA and TFP', () => {
+    let c = newCost(MIDWEST_PRODUCTS);
+    // One hour (12 five-minute ticks) at PROD1 100, PROD2 20, SYSP 50 MSU; DEVT idle.
+    for (let i = 0; i < 12; i++) c = accrueUsage(c, MIDWEST_PRODUCTS, { PROD1: 100, PROD2: 20, DEVT: 0, SYSP: 50 }, 300);
+    expect(c.usage).toEqual({ ZOS: 170, DB2: 120, CICS: 120, MQ: 120 });
+    expect(c.usageHours).toBeCloseTo(1);
+    expect(c.tfp).toBeUndefined();
+    // A state from a build that did not track usage stays untracked rather than counting from load.
+    const legacy = accrueUsage({ ...c, usage: undefined }, MIDWEST_PRODUCTS, { PROD1: 100, PROD2: 20, DEVT: 0, SYSP: 50 }, 300);
+    expect(legacy.usage).toBeUndefined();
+    // The counter is this month's only: closing the month resets it, and it is not billable history.
+    const closed = closeMonth(c, MIDWEST_PRODUCTS);
+    expect(closed.usage).toEqual({ ZOS: 0, DB2: 0, CICS: 0, MQ: 0 });
+    expect(closed.usageHours).toBe(0);
   });
 
   it('a vendor price multiplier scales sub-capacity MLC, persists across months, and spares TFP', () => {

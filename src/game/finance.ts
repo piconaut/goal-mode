@@ -24,7 +24,7 @@ export interface FinanceView {
   scrt: string;
   /** Billing model in force this month. */
   pricing: 'SUBCAP' | 'TFP';
-  offer: (Omit<TfpOffer, 'terms'> & { overageFrac: number; acceptHours: number; canDecide: boolean }) | null;
+  offer: (Omit<TfpOffer, 'terms'> & { overageFrac: number; acceptHours: number; canDecide: boolean; quotedAt: string | null }) | null;
   /** Under TFP: consumption so far vs the (prorated) baseline, per product. */
   tfp: { id: string; name: string; msuHours: number; baselineMsuHours: number; charge: number }[] | null;
 }
@@ -56,7 +56,7 @@ export function financeView(run: RunState, scenario: Scenario): FinanceView {
     scrt: renderScrt(cost, scenario.products, 'current', clock),
     pricing: cost.tfp ? 'TFP' : 'SUBCAP',
     offer: offer
-      ? { status: offer.status, untilDay: offer.untilDay, baselineMonthly: offer.baselineMonthly, subcapMonthly: offer.subcapMonthly, overageFrac: offer.terms.overageFrac, acceptHours: TFP_OFFER.acceptHours, canDecide: offer.status === 'OFFERED' && run.phase !== 'LIVE' }
+      ? { status: offer.status, untilDay: offer.untilDay, baselineMonthly: offer.baselineMonthly, subcapMonthly: offer.subcapMonthly, overageFrac: offer.terms.overageFrac, acceptHours: TFP_OFFER.acceptHours, canDecide: offer.status === 'OFFERED' && run.phase !== 'LIVE', quotedAt: offer.quotedTick !== undefined ? clock(offer.quotedTick) : null, ...(offer.products ? { products: offer.products } : {}), ...(offer.projection ? { projection: offer.projection } : {}) }
       : null,
     tfp: cost.tfp
       ? lines.map((l) => ({ id: l.product, name: scenario.products.find((p) => p.id === l.product)!.name, msuHours: l.msuHours ?? 0, baselineMsuHours: l.baselineMsuHours ?? 0, charge: l.cost }))
