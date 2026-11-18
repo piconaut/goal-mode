@@ -565,16 +565,6 @@ subcommands with their renderers. Change: `tools/inspect/{dp,wlm,blame,wlmStats}
 edits `countSystem` in this file, so it goes first. Done when: the diff is moves and imports only, and
 `tests/tools/inspect.test.ts` passes unchanged.
 
-### CL-39 · Scenario content without the boilerplate
-`list: cleanup · status: ready · priority: low · size: M · area: content`
-
-Source: codebase survey (2026-11-16). `src/content/scenarios/index.ts` (about 19–68) builds Revenue and Harbourline
-as `{...MIDWEST, …}` overrides, with the Midwest CF tunables inline. `game-midwest.ts`, `game-revenue.ts` and
-`game-harbourline.ts` repeat the same key set. Change: a named CF tunables constant with its `// FICTIONAL:` note,
-and a `defineGame()` that supplies the defaults (`maxDays`, `facets`, …) so each game file states only what differs.
-Done when: `npm run compare -- --scenarios midwest,revenue,harbourline` shows no difference, and the bench hashes are
-unchanged.
-
 ### CL-41 · One workflow doc; AGENTS.md keeps only what is Codex-specific
 `list: cleanup · status: ready · priority: low · size: M · area: tooling`
 
