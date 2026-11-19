@@ -10,7 +10,7 @@ import { newRun, type ChangeRequest } from '../src/game/run';
 import { applyGameCommand } from '../src/game/commands';
 import { advanceHours } from '../src/game/advance';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
-import { hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
+import { hasFeature, needsText, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
 import { financeView } from '../src/game/finance';
 import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
@@ -18,7 +18,7 @@ import { monthElapsedFrac } from '../src/sim/cost/mlc';
 import { msuPerCp } from '../src/sim/hw/cpc';
 import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
-import { MON3_HISTORY, TOOLS, type ToolFeature } from '../src/content/tools';
+import { MON3_HISTORY } from '../src/content/tools';
 
 import { clockAt, hhmm, pad2, tickOfClock } from '../src/sim/core/clock';
 import { allWorkloads } from '../src/game/workloads';
@@ -112,11 +112,6 @@ export const abendedSet = (run: RunState): Set<string> => new Set(abendedJobs(ru
 /** Real RMF report names an agent may reach for. */
 const REPORT_ALIASES: Record<string, ReportKind> = { WLMGL: 'WLM_SUMMARY', WORKLOAD: 'WLM_SUMMARY', CPU: 'PARTITION', CFACT: 'CF', CF_ACTIVITY: 'CF', DEVICE: 'DASD' };
 
-/** Name the tool to buy, not the internal feature it unlocks. */
-function needs(feature: ToolFeature, what: string): string {
-  const tools = TOOLS.filter((t) => t.unlocks.includes(feature)).map((t) => t.id);
-  return `${what} needs the ${tools.join(' or ') || feature} tool (buy ${tools[0] ?? feature}; see catalog).`;
-}
 
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
 export const decodePlayFile = (text: string): PlayFile => {
@@ -213,7 +208,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       let req = c.req;
       // Same gate as the view the browser pins from.
       const view = req.source === 'DB2' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
-      if (view && !hasFeature(run, view)) return fail(needs(view, `A ${req.source} pin`));
+      if (view && !hasFeature(run, view)) return fail(needsText(view, `A ${req.source} pin`));
       if (req.source === 'WLMGL') {
         const index = c.intervalId !== undefined ? intervalIndex(run, c.intervalId) : req.index;
         const iv = buildView(run, sc(run)).reports.some((x) => x.index === index) ? run.sim.rmf.intervals[index] : undefined;
@@ -291,7 +286,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (!iv) return fail(visible.length ? `No RMF interval ${c.id ?? c.index}; ${intervalList(run)}` : 'No RMF intervals yet: without Monitor III, the Postprocessor shows intervals that ended before the day started.');
       const id = intervalId(iv);
       const need = REPORT_FEATURE[kind];
-      if (need && !hasFeature(run, need)) return fail(needs(need, 'This report'));
+      if (need && !hasFeature(run, need)) return fail(needsText(need, 'This report'));
       const rcs = [...new Set((iv.wlmRc ?? []).map((r) => r.scKey))].sort();
       const rcLine = rcs.length
         ? `\nReport classes in this interval: ${rcs.join(' ')} (report WLM_DETAIL ${id} <name>)`
@@ -309,7 +304,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
     case 'smf': {
       const need = SMF_FEATURE[c.kind];
       if (!need) return fail(`SMF kinds: ${Object.keys(SMF_FEATURE).join(' ')}`);
-      if (!hasFeature(run, need)) return fail(needs(need, 'This SMF view'));
+      if (!hasFeature(run, need)) return fail(needsText(need, 'This SMF view'));
       const hourly = c.kind === 'DB2' || c.kind === 'CICS';
       const hours = smfHourRefs(run);
       const hour = hourly ? smfHourKey(run, c.hour) : undefined;
@@ -805,7 +800,7 @@ export function capacityText(file: PlayFile): string {
 /** The latest batch night from SMF 30, rolled up by stream (needs the same tool as smf BATCH). */
 export function batchStreamsText(file: PlayFile): string {
   const run = file.run;
-  if (!hasFeature(run, SMF_FEATURE.BATCH)) return needs(SMF_FEATURE.BATCH, 'The batch view');
+  if (!hasFeature(run, SMF_FEATURE.BATCH)) return needsText(SMF_FEATURE.BATCH, 'The batch view');
   const n = batchNight(run);
   if (!n) return 'No batch jobs have ended yet.';
   const rows = [...new Set(n.jobs.map((j) => j.stream))].sort().map((s) => {

@@ -631,7 +631,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = command({ kind: 'RCA', incidentId: m.incidentId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] }).run;
       break;
     case 'PIN': {
-      const out = command({ kind: 'PIN', req: m.req });
+      // The Monitor III history a past-range pin resolves against; the CLI passes its side file the same way.
+      const out = applyGameCommand(run, pendingPolicy, { kind: 'PIN', req: m.req }, pack().game, sc(), { mon3History: (t) => mon3At(mon3Hist, t) });
       trace({ cmd: 'pin', req: m.req, pin: out.ok ? out.run.pins.at(-1)! : null });
       settleGame(out);
       break;

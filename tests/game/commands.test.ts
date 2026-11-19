@@ -75,6 +75,26 @@ describe('the shared command layer (CL-18)', () => {
     expect(o.pending?.policyName).toBe('CL18CXL');
   });
 
+  it('hands a past-range Monitor III pin the history the adapter supplies, and refuses one without it', () => {
+    // The browser passes its live history, the CLI its side file: the layer must consult it (B1 of the review:
+    // the worker's pin lost it in the first cut of this refactor).
+    const run = live(2);
+    const tick = run.sim.tick - 60;
+    const req = { source: 'MON3' as const, system: 'CPC1', scKey: 'ONLHI#1', metric: 'PI' as const, tick };
+    const asked: number[] = [];
+    const withHistory = applyGameCommand(run, null, { kind: 'PIN', req }, MIDWEST_GAME, sc(), {
+      mon3History: (t) => {
+        asked.push(t);
+        return null;
+      },
+    });
+    expect(asked).toContain(tick);
+    expect(withHistory.message).toMatch(/Monitor III history does not reach back that far/);
+    const without = applyGameCommand(run, null, { kind: 'PIN', req }, MIDWEST_GAME, sc());
+    expect(without.message).toMatch(/Monitor III history does not reach back that far/);
+    expect(without.ok).toBe(false);
+  });
+
   it('refuses an unknown unpin and a draft outside the review, which the worker silently ignored', () => {
     const run = live();
     expect(applyGameCommand(run, null, { kind: 'UNPIN', id: 424242 }, MIDWEST_GAME, sc())).toMatchObject({ ok: false, message: 'No pin PIN424242' });

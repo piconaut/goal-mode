@@ -177,9 +177,9 @@ export function applyGameCommand(
     }
     case 'ACTIVATE':
       if (!pending) return no('No pending policy edits');
-      return activate(run, pending, content);
+      return activate(run, pending, pending, content);
     case 'ACTIVATE_DEFINITION':
-      return activate(run, cmd.definition, content);
+      return activate(run, pending, cmd.definition, content);
     case 'DISCARD':
       return yes(run, 'Pending policy discarded', null);
     case 'POLICY_LOAD': {
@@ -228,11 +228,12 @@ export function applyGameCommand(
   }
 }
 
-/** Activate a policy (pasted JSON included): the goal-issue gate first, so a policy that cannot meet its goals
- *  is not installed; the pending edits stay for the player to fix. */
-function activate(run: RunState, def: ServiceDefinition, content: GameContent): GameCommandResult {
+/** Activate a policy (a pasted definition included): the goal-issue gate first, so a policy that cannot meet its
+ *  goals is not installed. A failure (the gate or the request) leaves the pending edits exactly as they were, for
+ *  the player to fix; only a successful request consumes them. */
+function activate(run: RunState, pending: ServiceDefinition | null, def: ServiceDefinition, content: GameContent): GameCommandResult {
   const err = serviceClassGoalIssues(def).find((i) => i.severity === 'error');
-  if (err) return { run, pending: def, ok: false, message: `Policy not installed: ${err.message}` };
+  if (err) return { run, pending, ok: false, message: `Policy not installed: ${err.message}` };
   const o = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
-  return { run: o.run, pending: o.ok ? null : def, ok: o.ok, message: o.message };
+  return { run: o.run, pending: o.ok ? null : pending, ok: o.ok, message: o.message };
 }
