@@ -110,7 +110,7 @@ export const abendedJobs = (run: RunState) => buildView(run, sc(run)).batch.aben
 export const abendedSet = (run: RunState): Set<string> => new Set(abendedJobs(run).map(abendedKey));
 
 /** Real RMF report names an agent may reach for. */
-const REPORT_ALIASES: Record<string, ReportKind> = { WLMGL: 'WLM_SUMMARY', WORKLOAD: 'WLM_SUMMARY', CPU: 'PARTITION', CFACT: 'CF', CF_ACTIVITY: 'CF', DEVICE: 'DASD' };
+const REPORT_ALIASES: Record<string, ReportKind> = { WLMGL: 'WLM_SUMMARY', WORKLOAD: 'WLM_SUMMARY', CPU: 'CPU_ACTIVITY', CFACT: 'CF', CF_ACTIVITY: 'CF', DEVICE: 'DASD' };
 
 
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
