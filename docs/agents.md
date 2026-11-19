@@ -13,7 +13,7 @@ npm run -s play -- runs/a.json start              # start the day (BRIEFING → 
 npm run -s play -- runs/a.json advance 2          # advance the live day 1–24 sim hours (stops early when a job abends; lists new mail)
 npm run -s play -- runs/a.json restart SET016     # restart an abended batch job from its checkpoint (only during its batch night)
 npm run -s play -- runs/a.json policy [pending]   # the WLM service definition, classification rules, LPAR CP/zIIP counts, CICS regions
-npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CF, DASD; id from status
+npm run -s play -- runs/a.json report WLM_SUMMARY [id] [scKey] [system]   # also WLM_DETAIL, PARTITION, CPU_ACTIVITY (alias CPU), CF, DASD; id from status
 npm run -s play -- runs/a.json smf DB2|CICS|BATCH|SMF113 [hour] [--json]   # hour: 12 (newest 12:00), 'D8 12', current
 npm run -s play -- runs/a.json mon3 [system] [--json]   # Monitor III tables incl. PROCU jobs (needs the RMF_MON3 tool)
 npm run -s play -- runs/a.json mon3 PRDA --at D1 09:40   # a past range from the history (the values a pin reads; kept 48 h in runs/a.mon3.json)
