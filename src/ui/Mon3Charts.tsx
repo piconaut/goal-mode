@@ -156,9 +156,10 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
   const cpuLatest = new Map(cpuKeys.map((k) => [k, samples.at(-1)?.cpu?.[k] ?? 0]));
   const shownCpu = [...cpuKeys].sort((a, b) => (cpuLatest.get(b)! - cpuLatest.get(a)!) || a.localeCompare(b)).slice(0, 8);
   // Only legacy samples lack the CPU map. Missing entries in a recorded map mean zero usage.
+  const cpuSlots = assignColourSlots(shownCpu, cpuKeys);
   const cpuSeries: Series[] = shownCpu.map((k) => ({
     id: k,
-    color: color(cpuKeys.indexOf(k)),
+    color: color(cpuSlots.get(k) ?? 0),
     values: samples.map((s) => (s.cpu ? (s.cpu[k] ?? 0) : null)),
   }));
   const ddfEng: Series[] = [
@@ -302,6 +303,34 @@ export function Mon3Charts({ v, game, openAnalytics }: { v: ViewModel; game: Gam
       </div>
     </details>
   );
+}
+
+/** Colour slots for the series a chart actually shows: an entity keeps the palette slot its first appearance gave
+ * it while it holds one, and a period first seen after the last slot takes a slot no other shown series uses. */
+export function assignColourSlots(shown: readonly string[], firstSeenOrder: readonly string[], max = 8): Map<string, number> {
+  const picked = new Set(shown);
+  const used = new Set<number>();
+  const out = new Map<string, number>();
+  const free = () => {
+    for (let i = 0; i < max; i++) if (!used.has(i)) return i;
+    return null;
+  };
+  const take = (k: string, slot: number) => {
+    used.add(slot);
+    out.set(k, slot);
+  };
+  firstSeenOrder.forEach((k, i) => {
+    if (!picked.has(k) || out.has(k)) return;
+    const natural = i < max && !used.has(i) ? i : free();
+    if (natural !== null) take(k, natural);
+  });
+  // A shown key the day's first-seen order somehow lacks (defensive) still gets a free slot.
+  for (const k of shown) {
+    if (out.has(k)) continue;
+    const slot = free();
+    if (slot !== null) take(k, slot);
+  }
+  return out;
 }
 
 /** Toggle a key in a colour-slot map; a new key takes the lowest free slot. */

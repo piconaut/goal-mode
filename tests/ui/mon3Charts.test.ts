@@ -9,6 +9,7 @@ import {
   CHARTS,
   DEFAULT_CHART_SELECTION,
   Mon3Charts,
+  assignColourSlots,
   parseChartSelection,
 } from '../../src/ui/Mon3Charts';
 import type { GameHandle } from '../../src/ui/useGame';
@@ -50,8 +51,8 @@ const checkbox = (label: string): HTMLInputElement => {
 const click = (label: string) => act(() => checkbox(label).click());
 
 afterEach(() => {
-  act(() => root.unmount());
-  container.remove();
+  if (root) act(() => root.unmount());
+  if (container) container.remove();
   localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -132,6 +133,34 @@ describe('Monitor III chart picker', () => {
     expect(text()).toContain('06:000.401.20');
     expect(text()).toContain('06:1000');
     expect(text()).toContain('06:20--'); // the legacy sample is a gap, not a crash
+  });
+
+  it('gives every displayed CPU series a distinct colour, including periods found after the eighth', () => {
+    const order = Array.from({ length: 10 }, (_, i) => `C${i}#1`);
+    // Natural slots for C0-C5 survive; C8 and C9 (first seen after the palette) take the free slots.
+    const slots = assignColourSlots(['C8#1', 'C9#1', 'C0#1', 'C1#1', 'C2#1', 'C3#1', 'C4#1', 'C5#1'], order);
+    expect(new Set(slots.values()).size).toBe(8);
+    expect(slots.get('C0#1')).toBe(0);
+    expect(slots.get('C5#1')).toBe(5);
+    expect([slots.get('C8#1'), slots.get('C9#1')].sort()).toEqual([6, 7]);
+    // When earlier periods drop out, the first eight keep their slots and a later period moves into the lowest
+    // slot no shown series holds: with C0 and C1 only, C8 takes slot 2.
+    const after = assignColourSlots(['C8#1', 'C0#1', 'C1#1'], order);
+    expect(after.get('C0#1')).toBe(0);
+    expect(after.get('C8#1')).toBe(2);
+    // All ten periods carry engines; the top eight by the latest value include C8 and C9, so the chart draws eight
+    // distinct strokes (periods found after the eighth included).
+    const many = (tick: number) => ({
+      ...sample(tick),
+      cpu: Object.fromEntries(order.map((k, i) => [k, i >= 8 ? 2 + i : i * 0.1 + 0.1])),
+    });
+    mount({ charts: { samples: [many(0), many(60)], markers: [] }, send: () => {} } as unknown as GameHandle);
+    click('CPU by service class');
+    const card = [...container.querySelectorAll('.grid > div')].find((d) => d.textContent?.includes('CPU by service class'))!;
+    const strokes = [...card.querySelectorAll('path[stroke]')].map((p) => p.getAttribute('stroke'));
+    expect(strokes).toHaveLength(8);
+    expect(new Set(strokes).size).toBe(8);
+    expect(strokes.every((c) => c?.startsWith('var(--series-'))).toBe(true);
   });
 
   it('labels the CP busy lines and can plot every LPAR against the CPC', () => {
