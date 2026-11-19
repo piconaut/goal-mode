@@ -6,10 +6,11 @@ import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
 import type { DayTrace } from '../src/game/dayTrace';
 import { scenarioFor } from '../src/game/difficulty';
-import { activateSavedPolicy, cancelChange, chooseDraft, deactivateCod, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
+import { newRun, type ChangeRequest } from '../src/game/run';
+import { applyGameCommand } from '../src/game/commands';
 import { advanceHours } from '../src/game/advance';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
-import { buyTool, hasFeature, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
+import { hasFeature, needsText, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
 import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
 import { financeView } from '../src/game/finance';
 import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
@@ -17,26 +18,23 @@ import { monthElapsedFrac } from '../src/sim/cost/mlc';
 import { msuPerCp } from '../src/sim/hw/cpc';
 import { FIXES } from '../src/game/catalog';
 import { HARDWARE } from '../src/content/hardware-catalog';
-import { MON3_HISTORY, TOOLS, type ToolFeature } from '../src/content/tools';
-import { applyReportClassAdvice } from '../src/game/rcAdvisor';
+import { MON3_HISTORY } from '../src/content/tools';
+
 import { clockAt, hhmm, pad2, tickOfClock } from '../src/sim/core/clock';
-import { allWorkloads, runWorkItems } from '../src/game/workloads';
-import { decideTfp } from '../src/game/tfp';
+import { allWorkloads } from '../src/game/workloads';
 import { SAVE_VERSION, assertSaveVersion, decodeRunFileText, encodeRunJson } from '../src/game/runFile';
 import { idText } from '../src/game/ids';
-import { askAround, inquiriesView } from '../src/game/inquiries';
-import { projectsView, workOnProject } from '../src/game/projects';
-import { addPin, removePin, type PinRequest } from '../src/game/evidence';
-import { EVIDENCE, EVIDENCE_METRICS } from '../src/content/evidence';
-import { proofLines } from '../src/game/proof';
+import { inquiriesView } from '../src/game/inquiries';
+import { projectsView } from '../src/game/projects';
+import type { PinRequest } from '../src/game/evidence';
+import { EVIDENCE_METRICS } from '../src/content/evidence';
 import { HINT_SENDER } from '../src/content/hints';
 import type { InquiryKind } from '../src/content/inquiries';
-import { applyWlmEdit, pendingBase, playerWlmEditError, type WlmEdit } from '../src/game/wlmEdit';
-import { plannedPolicy, policyEditSource, savedPolicy } from '../src/game/policies';
+import type { WlmEdit } from '../src/game/wlmEdit';
+import { plannedPolicy } from '../src/game/policies';
 import { buildView } from '../src/game/view';
 import { hourAttainment, MECHANISMS, TRIGGERS } from '../src/game/sla';
-import { alsoAcceptedOf, groupAcceptedOf, rcaGroupOf } from '../src/game/run/rca';
-import { TRIGGER_LABEL, triggerLabel } from '../src/content/rca';
+import { rcaGroupOf } from '../src/game/run/rca';
 import type { ClassificationRule, ServiceDefinition } from '../src/sim/wlm/types';
 import { goalText } from '../src/sim/wlm/goals';
 import { renderReport, REPORT_KINDS, type ReportKind } from '../src/sim/measure/reports';
@@ -114,11 +112,6 @@ export const abendedSet = (run: RunState): Set<string> => new Set(abendedJobs(ru
 /** Real RMF report names an agent may reach for. */
 const REPORT_ALIASES: Record<string, ReportKind> = { WLMGL: 'WLM_SUMMARY', WORKLOAD: 'WLM_SUMMARY', CPU: 'PARTITION', CFACT: 'CF', CF_ACTIVITY: 'CF', DEVICE: 'DASD' };
 
-/** Name the tool to buy, not the internal feature it unlocks. */
-function needs(feature: ToolFeature, what: string): string {
-  const tools = TOOLS.filter((t) => t.unlocks.includes(feature)).map((t) => t.id);
-  return `${what} needs the ${tools.join(' or ') || feature} tool (buy ${tools[0] ?? feature}; see catalog).`;
-}
 
 export const encodePlayFile = (f: PlayFile): string => encodeRunJson(f);
 export const decodePlayFile = (text: string): PlayFile => {
@@ -152,19 +145,8 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
   const fail = (text: string): PlayResult => ({ file, ok: false, text });
   switch (c.cmd) {
     case 'start': {
-      if (run.phase !== 'BRIEFING') return fail(`Cannot start a day in phase ${run.phase}`);
-      const started = startDay(run, content);
-      const failed = file.pendingPolicy ? null : failedPolicyToday(started);
-      const later = failed ? [] : policyFailuresWithLaterToday(started);
-      const live = later.find((x) => x.editsLive);
-      const note = failed
-        ? ' Policy activation failed; its edits are pending again (activate to reschedule).'
-        : live
-          ? ` Policy activation failed earlier, but later activation ${live.laterName} went live with its edits.`
-          : later.length > 0
-            ? ` Policy activation failed earlier; later activation ${later[0]!.laterName} also went live, but without this request's edits; they are not pending again (make them again and activate).`
-            : '';
-      return done(started, `Day started (06:00).${note}`, true, failed ?? file.pendingPolicy);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'START' }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'note':
       return c.text.trim() ? done(run, 'Noted.') : fail('Empty note');
@@ -191,65 +173,42 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return mon3 ? { ...d, file: { ...d.file, mon3 } } : d;
     }
     case 'change': {
-      const o = requestChange(run, content, c.req);
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'CHANGE', req: c.req }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'restart': {
-      const a = buildView(run, sc(run)).batch.abended.find((x) => x.name === c.name.toUpperCase());
-      if (!a) return fail(`${c.name} is not abended now. Abended jobs: ${buildView(run, sc(run)).batch.abended.map((x) => x.name).join(' ') || 'none'} (a job can be restarted only during its batch night).`);
-      const o = requestChange(run, content, { label: `Restart ${a.name}`, commands: [{ kind: 'RESTART_JOB', day: a.day, name: a.name }] });
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'RESTART', name: c.name }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'cod-deactivate': {
-      const o = deactivateCod(run, c.changeId);
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'COD_DEACTIVATE', changeId: c.changeId }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'cancel': {
-      const o = cancelChange(run, c.changeId);
-      if (o.restoredPolicy && !file.pendingPolicy) return done(o.run, `${o.message} Activate to reschedule.`, o.ok, o.restoredPolicy);
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'CANCEL', changeId: c.changeId }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'draft': {
-      if (run.phase !== 'REVIEW') return fail('Drafts are chosen in the end-of-day review.');
-      return done(chooseDraft(run, content, c.optionId), c.optionId ? `Drafted ${c.optionId}.` : 'Draft skipped.');
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'DRAFT', optionId: c.optionId }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'rca': {
-      const cTrigger = c.trigger;
-      if (!MECHANISMS.includes(c.mechanism) || !TRIGGERS.includes(cTrigger)) return fail(`Mechanism one of ${MECHANISMS.join(' ')}; trigger one of ${TRIGGERS.join(' ')}`);
-      const inc = run.incidents.find((i) => i.id === c.incidentId);
-      if (!inc) return fail(`No incident ${idText('incident', c.incidentId)}`);
-      if (inc.rca) return fail(`Incident ${idText('incident', c.incidentId)} already has an RCA`);
-      const missing = (c.evidenceIds ?? []).filter((id) => !run.pins.some((p) => p.id === id));
-      if (missing.length && !run.pins.length) return fail('No pins yet. Pin report rows first (e.g. pin WLMGL <interval id> *PLEX ONLHI#1 PI; see catalog), or file the RCA without --evidence.');
-      if (missing.length) return fail(`No pinned evidence ${missing.map((id) => idText('pin', id)).join(' ')}; pins: ${run.pins.map((p) => idText('pin', p.id)).join(' ')}`);
-      const r = submitRca(run, c.incidentId, c.mechanism, cTrigger, sc(run), c.evidenceIds ?? []);
-      // One RCA covers the group: its primary is the lead's and its accepted answers are the union of the members'
-      // (RT-15, docs/rca-design.md §4.5).
-      const group = rcaGroupOf(r.incidents, c.incidentId);
-      const covered = group.filter((i) => i.id !== c.incidentId && i.rca).map((i) => `${idText('incident', i.id)} ${i.workloadId}`);
-      const rca = r.incidents.find((i) => i.id === c.incidentId)?.rca;
-      const t = group[0]!.truth;
-      const accepted = groupAcceptedOf(group);
-      const pts = rca?.points ?? 0;
-      const trustNote = pts >= 3 ? 'trust +1 on every facet' : pts > 0 ? 'trust +0.25 on every facet' : 'trust -0.5 on every facet';
-      // An accepted alternate is a right answer, so the reply must say so and give its reason (RT-07).
-      // Answers are shown with the trigger's display name; the ids stay what a command types (RT-09).
-      const also = alsoAcceptedOf(group).map(({ answer, why }) => `${TRIGGER_LABEL[answer as Trigger] ?? answer}${why ? ` (${why})` : ''}`);
-      return done(r, `RCA filed for incident ${idText('incident', c.incidentId)}: ${pts} points${rca?.evidencePoints ? ` (${rca.evidencePoints} from evidence)` : ''}. Mechanism ${accepted.mechanisms.includes(c.mechanism) ? 'right' : 'wrong'}, trigger ${accepted.triggers.includes(cTrigger) ? 'right' : 'wrong'} (primary ${t.mechanism}/${triggerLabel(t.trigger)})${also.length ? `; also accepted: ${also.join('; ')}` : ''}; ${trustNote}.${rca?.explain ? ` ${rca.explain}` : ''}${covered.length ? ` Also covers the same-cause incidents ${covered.join(', ')}.` : ''}${rca?.strong ? ` Strong evidence: +${EVIDENCE.strongInsight} Insight.` : ''}${rca?.proof ? `\n${proofLines(rca.proof, (id) => idText('pin', id)).join('\n')}` : ''}`);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'RCA', incidentId: c.incidentId, mechanism: c.mechanism, trigger: c.trigger, evidenceIds: c.evidenceIds }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'ask': {
-      const o = askAround(run, c.topic, c.workloadId ?? null, sc(run));
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'ASK', topic: c.topic, workloadId: c.workloadId ?? null }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'project': {
-      const o = workOnProject(run, c.id, c.hours);
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'PROJECT', id: c.id, hours: c.hours }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'pin': {
       let req = c.req;
       // Same gate as the view the browser pins from.
       const view = req.source === 'DB2' || req.source === 'CICS' || req.source === 'BATCH' ? SMF_FEATURE[req.source] : undefined;
-      if (view && !hasFeature(run, view)) return fail(needs(view, `A ${req.source} pin`));
+      if (view && !hasFeature(run, view)) return fail(needsText(view, `A ${req.source} pin`));
       if (req.source === 'WLMGL') {
         const index = c.intervalId !== undefined ? intervalIndex(run, c.intervalId) : req.index;
         const iv = buildView(run, sc(run)).reports.some((x) => x.index === index) ? run.sim.rmf.intervals[index] : undefined;
@@ -282,44 +241,40 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
         const keys = (req.tick !== undefined ? history(req.tick)?.view.rows : buildView(run, sc(run)).mon3?.rows)?.map((x) => x.scKey) ?? [];
         req = { ...req, scKey: resolveKey(req.scKey, keys) };
       }
-      const o = addPin(run, sc(run), req, history);
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'PIN', req }, content, sc(run), { mon3History: history });
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'unpin': {
-      if (!run.pins.some((p) => p.id === c.id)) return fail(`No pin ${idText('pin', c.id)}`);
-      return done(removePin(run, c.id), `Unpinned ${idText('pin', c.id)}.`);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'UNPIN', id: c.id }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'wlm': {
-      const res = playerWlmEditError(c.edit) ?? applyWlmEdit(pendingBase(file.pendingPolicy, policyEditSource(run)), c.edit);
-      if (typeof res === 'string') return fail(res);
-      return done(run, `Pending policy ${res.policyName} updated. ${run.phase === 'REVIEW' ? "close the day (draft <id|none>), then activate at tomorrow's briefing to install it." : 'activate to install it.'}`, true, res);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'WLM_EDIT', edit: c.edit }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'activate': {
-      const def = file.pendingPolicy;
-      if (!def) return fail('No pending policy edits');
-      const o = requestChange(run, content, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
-      return done(o.run, o.message, o.ok, o.ok ? null : def);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'ACTIVATE' }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'policy-load': {
-      const name = c.name.trim().toUpperCase();
-      const def = savedPolicy(run, name);
-      if (!def) return fail(`No saved policy ${name || '(none)'}`);
-      return done(run, `Loaded ${def.policyName} into the editor`, true, structuredClone(def));
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'POLICY_LOAD', name: c.name }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'policy-activate': {
-      const name = c.name.trim().toUpperCase();
-      const o = activateSavedPolicy(run, content, name);
-      return done(o.run, o.message, o.ok, o.ok ? null : file.pendingPolicy);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'POLICY_ACTIVATE', name: c.name }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
-    case 'discard':
-      return done(run, 'Pending policy discarded', true, null);
+    case 'discard': {
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'DISCARD' }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
+    }
     case 'buy': {
-      const o = buyTool(run, sc(run), c.toolId);
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'BUY', toolId: c.toolId }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'tfp': {
-      const o = decideTfp(run, c.accept);
-      return done(o.run, o.message, o.ok);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'TFP', accept: c.accept }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'report': {
       const kind = REPORT_ALIASES[c.kind.toUpperCase()] ?? (c.kind.toUpperCase() as ReportKind);
@@ -331,7 +286,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       if (!iv) return fail(visible.length ? `No RMF interval ${c.id ?? c.index}; ${intervalList(run)}` : 'No RMF intervals yet: without Monitor III, the Postprocessor shows intervals that ended before the day started.');
       const id = intervalId(iv);
       const need = REPORT_FEATURE[kind];
-      if (need && !hasFeature(run, need)) return fail(needs(need, 'This report'));
+      if (need && !hasFeature(run, need)) return fail(needsText(need, 'This report'));
       const rcs = [...new Set((iv.wlmRc ?? []).map((r) => r.scKey))].sort();
       const rcLine = rcs.length
         ? `\nReport classes in this interval: ${rcs.join(' ')} (report WLM_DETAIL ${id} <name>)`
@@ -343,16 +298,13 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       return done(noteReportOpened(run, `${kind}:${index}`), text);
     }
     case 'rcadvice': {
-      if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) return fail(needs('REPORT_CLASS_ADVISOR', 'Report class advice'));
-      const res = applyReportClassAdvice(pendingBase(file.pendingPolicy, policyEditSource(run)), runWorkItems(sc(run), run), c.workloadId || null);
-      if (typeof res === 'string') return fail(res);
-      if (!res.added.length) return fail('No report class advice left.');
-      return done(run, `Report classes for ${res.added.join(' ')} staged in ${res.def.policyName}. ${run.phase === 'REVIEW' ? 'close the day (draft <id|none>), then activate at tomorrow\'s briefing (takes effect next day).' : 'activate to install (takes effect next day).'}`, true, res.def);
+      const o = applyGameCommand(run, file.pendingPolicy, { kind: 'RC_ADVICE', workloadId: c.workloadId || null }, content, sc(run));
+      return done(o.run, o.message, o.ok, o.pending);
     }
     case 'smf': {
       const need = SMF_FEATURE[c.kind];
       if (!need) return fail(`SMF kinds: ${Object.keys(SMF_FEATURE).join(' ')}`);
-      if (!hasFeature(run, need)) return fail(needs(need, 'This SMF view'));
+      if (!hasFeature(run, need)) return fail(needsText(need, 'This SMF view'));
       const hourly = c.kind === 'DB2' || c.kind === 'CICS';
       const hours = smfHourRefs(run);
       const hour = hourly ? smfHourKey(run, c.hour) : undefined;
@@ -848,7 +800,7 @@ export function capacityText(file: PlayFile): string {
 /** The latest batch night from SMF 30, rolled up by stream (needs the same tool as smf BATCH). */
 export function batchStreamsText(file: PlayFile): string {
   const run = file.run;
-  if (!hasFeature(run, SMF_FEATURE.BATCH)) return needs(SMF_FEATURE.BATCH, 'The batch view');
+  if (!hasFeature(run, SMF_FEATURE.BATCH)) return needsText(SMF_FEATURE.BATCH, 'The batch view');
   const n = batchNight(run);
   if (!n) return 'No batch jobs have ended yet.';
   const rows = [...new Set(n.jobs.map((j) => j.stream))].sort().map((s) => {
