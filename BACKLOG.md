@@ -243,6 +243,14 @@ ids W-n, repro ids R-n, S-n, C-n and its section numbers); the model as built an
 Non-blocking findings from PR reviews. Entries PR-01–PR-10 came from #178–#185 (2026-11-04), each still present
 on `dev` at 7fbeffa; later entries name their source.
 
+### PR-24 · Distinguish CPU chart colors for later service-class periods
+`list: pr-followups · status: ready · priority: low · size: S · area: ui`
+
+Source: #423 fix-check M1. CPU periods after the first eight encountered share one muted color, so multiple later
+periods in the displayed top eight can be indistinguishable. Change: assign distinguishable colors to displayed
+series while keeping colors stable as practical. Done when: multiple later periods that appear together in the
+CPU-by-service-class chart have distinct colors, with a regression case covering more than eight periods.
+
 ## realism-fixes
 
 ### RF-01 · CPU Activity report with the CHANGE REASON header
