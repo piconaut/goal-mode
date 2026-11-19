@@ -13,7 +13,7 @@ import { noteReportOpened, normalizeDefinition, REPORT_FEATURE, hasFeature, SMF_
 import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
-import { policyEditSource } from '../game/policies';
+import { policyEditSource, savedPolicy } from '../game/policies';
 import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
 import { financeView } from '../game/finance';
@@ -523,22 +523,27 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       settle(addAlertRule(run, m.rule));
       break;
     }
+    // The day trace (PT-17) records only what the replay (src/game/dayTrace.ts) can apply as the layer did: the
+    // saved-policy name as the layer resolved it, and no action the layer refused.
     case 'ACTIVATE_SAVED_POLICY': {
-      trace({ cmd: 'activateSaved', name: m.name });
+      const name = m.name.trim().toUpperCase();
+      if (savedPolicy(run, name)) trace({ cmd: 'activateSaved', name });
       settleGame(command({ kind: 'POLICY_ACTIVATE', name: m.name }));
       break;
     }
     case 'LOAD_SAVED_POLICY': {
-      trace({ cmd: 'loadSaved', name: m.name });
-      settleGame(command({ kind: 'POLICY_LOAD', name: m.name }));
+      const out = command({ kind: 'POLICY_LOAD', name: m.name });
+      if (out.ok) trace({ cmd: 'loadSaved', name: m.name.trim().toUpperCase() });
+      settleGame(out);
       break;
     }
     case 'SAVE_POLICY':
     case 'DELETE_POLICY':
     case 'SET_POLICY_SCHEDULE': {
       if (m.type === 'SAVE_POLICY') {
-        trace({ cmd: 'savePolicy', name: m.name });
-        settleGame(command({ kind: 'POLICY_SAVE', name: m.name }));
+        const out = command({ kind: 'POLICY_SAVE', name: m.name });
+        if (out.ok) trace({ cmd: 'savePolicy', name: m.name.trim().toUpperCase() });
+        settleGame(out);
       } else if (m.type === 'DELETE_POLICY') {
         trace({ cmd: 'deletePolicy', name: m.name });
         settleGame(command({ kind: 'POLICY_DELETE', name: m.name }));
@@ -627,10 +632,12 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       autosave();
       break;
     }
-    case 'RCA':
-      trace({ cmd: 'rca', incidentId: m.incidentId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] });
-      run = command({ kind: 'RCA', incidentId: m.incidentId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] }).run;
+    case 'RCA': {
+      const out = command({ kind: 'RCA', incidentId: m.incidentId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] });
+      if (out.ok) trace({ cmd: 'rca', incidentId: m.incidentId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] });
+      run = out.run;
       break;
+    }
     case 'PIN': {
       // The Monitor III history a past-range pin resolves against; the CLI passes its side file the same way.
       const out = applyGameCommand(run, pendingPolicy, { kind: 'PIN', req: m.req }, pack().game, sc(), { mon3History: (t) => mon3At(mon3Hist, t) });
