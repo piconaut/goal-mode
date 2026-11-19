@@ -132,11 +132,12 @@ const command = (cmd: GameCommand) => applyGameCommand(run, pendingPolicy, cmd, 
 /** Adopt a shared command's outcome and post its reply. The layer owns the rule; this adapter records the action
  *  (for the day trace) and shows the result. */
 function settleGame(out: GameCommandResult) {
+  // The policy views show the pending edits or, without them, the planned policy: an activation or a cancel with no
+  // pending edits changes the second, so compare what is shown, not only the pending policy.
+  const shown = pendingPolicy ?? policyEditSource(run);
   settle(out);
-  if (out.pending !== pendingPolicy) {
-    pendingPolicy = out.pending;
-    postPolicy();
-  }
+  pendingPolicy = out.pending;
+  if ((pendingPolicy ?? policyEditSource(run)) !== shown) postPolicy();
 }
 
 function postRules() {
