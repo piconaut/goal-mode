@@ -441,10 +441,11 @@ export function addPin(run: RunState, scenario: Scenario, req: PinRequest, histo
   const pins = run.pins ?? [];
   if (pins.some((p) => p.source === loc.source && p.metric === loc.metric && p.subject === loc.subject && p.system === loc.system && p.tick === loc.tick)) return { run, ok: false, message: 'Already pinned' };
   const pin: EvidencePin = { ...loc, id: run.nextId, text: pinText(loc) };
-  // Oldest pins fall off the board.
-  const kept = [...pins, pin].slice(-EVIDENCE.maxPins);
-  return { run: { ...run, pins: kept, nextId: run.nextId + 1 }, ok: true, message: `Pinned ${idText('pin', pin.id)}: ${pin.text}` };
+  return { run: placePin(run, pin), ok: true, message: `Pinned ${idText('pin', pin.id)}: ${pin.text}` };
 }
+
+/** Put a located pin (id `run.nextId`) on the board; the oldest pins fall off it. */
+export const placePin = (run: RunState, pin: EvidencePin): RunState => ({ ...run, pins: [...(run.pins ?? []), pin].slice(-EVIDENCE.maxPins), nextId: run.nextId + 1 });
 
 export const removePin = (run: RunState, id: number): RunState => ({ ...run, pins: (run.pins ?? []).filter((p) => p.id !== id) });
 

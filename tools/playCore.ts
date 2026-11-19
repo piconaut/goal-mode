@@ -4,6 +4,7 @@
 
 import { PACKS, packOf } from '../src/content/packs';
 import type { DifficultyId } from '../src/content/difficulty';
+import type { DayTrace } from '../src/game/dayTrace';
 import { scenarioFor } from '../src/game/difficulty';
 import { activateSavedPolicy, cancelChange, chooseDraft, deactivateCod, failedPolicyToday, newRun, policyFailuresWithLaterToday, requestChange, startDay, submitRca, type ChangeRequest } from '../src/game/run';
 import { advanceHours } from '../src/game/advance';
@@ -88,6 +89,9 @@ export interface PlayFile {
   log: PlayCommand[];
   /** Monitor III history for pins (play.ts keeps it in a file beside the run file, not in it). */
   mon3?: Mon3PinHistory;
+  /** A browser save only (PT-17): its live day's 06:00 start state and the actions the browser took during it,
+   *  so `inspect … wlm --at` can replay to any time in that day. A play-CLI file replays from seed + log instead. */
+  dayTrace?: DayTrace;
 }
 
 export interface PlayResult {
@@ -137,6 +141,9 @@ export function applyPlayCommand(file: PlayFile, c: PlayCommand): PlayResult {
 }
 
 function apply(file: PlayFile, c: PlayCommand): PlayResult {
+  // A browser save's day trace describes what the browser did during its live day; once this CLI mutates the
+  // file, the trace no longer describes that day, so drop it rather than replay a day the browser did not play.
+  if (file.dayTrace && file.log[0]?.cmd !== 'new') file = { ...file, dayTrace: undefined };
   if (c.cmd === 'new' && c.scenario && !PACKS[c.scenario]) return { file, ok: false, text: `Unknown scenario ${c.scenario}; one of ${Object.keys(PACKS).join(' ')}` };
   if (c.cmd === 'new') return { file: newPlayFile(c.seed, c.difficulty, c.scenario), ok: true, text: `New run, seed ${c.seed}${c.scenario ? `, ${packOf(c.scenario).name}` : ''}` };
   const run = file.run;

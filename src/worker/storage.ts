@@ -2,6 +2,7 @@
 // private window or blocked storage just means no save.
 
 import type { CareerState } from '../game/career';
+import type { DayTrace } from '../game/dayTrace';
 import type { RunState } from '../game/types';
 import type { Command } from '../sim/core/commands';
 import type { ServiceDefinition } from '../sim/wlm/types';
@@ -12,10 +13,12 @@ const KEY = 'current';
 const DESK_KEY = 'desk';
 const CAREER_KEY = 'career';
 
-/** Work in progress at the Change Desk that isn't part of the run yet. */
+/** Work in progress at the Change Desk that isn't part of the run yet, plus the live day's trace (PT-17):
+ *  keeping it in the desk save means a reload cannot cost the day its past. */
 export interface DeskState {
   pendingPolicy: ServiceDefinition | null;
   basket: Command[];
+  dayTrace: DayTrace | null;
 }
 
 function open(): Promise<IDBDatabase> {

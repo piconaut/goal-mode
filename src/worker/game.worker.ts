@@ -38,6 +38,7 @@ import { goalText } from '../sim/wlm/goals';
 import { AUTO_SPEED, type FromWorker, type PendingPolicyView, type SmfData, type ToWorker } from './protocol';
 import { loadCareer, loadDesk, loadRun, saveCareer, saveRun, type DeskState } from './storage';
 import { EMPTY_CAREER, recordRun, runXp, setStartingPerk, type CareerState } from '../game/career';
+import type { DayTrace, DayTraceCommand } from '../game/dayTrace';
 
 /** The run's scenario pack (sim scenario + game content). */
 const pack = () => packOf(run.scenarioId);
@@ -77,6 +78,16 @@ const LIVE_SAVE_MIN_MS = 2000;
 let lastLiveSaveMs = 0;
 /** Mirror of the UI's change basket, so it can be saved with the run. */
 let basket: Command[] = [];
+/** The live day's trace (PT-17): the 06:00 start state and every action during the day, so `inspect … wlm --at`
+ *  can replay a browser save to any time in its current day. Kept in the desk save, so a reload keeps it. */
+let dayTrace: DayTrace | null = null;
+/** Record one action of the live day (the tick it is applied at). Outside a live day nothing records: briefing
+ *  actions are part of the next day's start state, and the ended day's trace is kept as it was. Dev fast-forwards
+ *  (DEV_*) do not record; the states they skip past are not replayable. */
+function trace(command: DayTraceCommand) {
+  if (!dayTrace || run.phase !== 'LIVE') return;
+  dayTrace = { ...dayTrace, commands: [...dayTrace.commands, { tick: run.sim.tick, command }] };
+}
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 /** False until the previous save has been read: nothing may overwrite it before then. */
 let storageReady = false;
@@ -211,7 +222,7 @@ function autosave() {
   }
 }
 
-const desk = (): DeskState => ({ pendingPolicy, basket });
+const desk = (): DeskState => ({ pendingPolicy, basket, dayTrace });
 
 /** Save soon after any action (planned changes, purchases, project hours, the basket, pending WLM edits), live day
  * included: outside it shortly after the last action, during it at most every few seconds. Never while an older save
@@ -237,13 +248,14 @@ function saveNow() {
   void saveRun(run, desk());
 }
 
-/** Same shape as tools/playCore.ts PlayFile, so `npm run play -- <file> status` and spectator mode can read it. */
+/** Same shape as tools/playCore.ts PlayFile, so `npm run play -- <file> status` and spectator mode can read it.
+ *  The day trace rides along (PT-17): it is what makes `inspect … wlm --at` work on a browser save. */
 function runFileText(): string {
-  return encodeRunJson({ version: SAVE_VERSION, run, pendingPolicy, log: [{ cmd: 'note', text: `Exported from the browser on day ${run.day + 1}` }] });
+  return encodeRunJson({ version: SAVE_VERSION, run, pendingPolicy, ...(dayTrace ? { dayTrace } : {}), log: [{ cmd: 'note', text: `Exported from the browser on day ${run.day + 1}` }] });
 }
 
 function importRun(text: string) {
-  const f = decodeRunFileText<{ run?: RunState; pendingPolicy?: ServiceDefinition | null }>(text);
+  const f = decodeRunFileText<{ run?: RunState; pendingPolicy?: ServiceDefinition | null; dayTrace?: DayTrace | null }>(text);
   if (!f?.run?.sim || !f.run.scenarioId) throw new Error('Not a GOAL MODE run file');
   assertSaveVersion(f.run);
   run = f.run;
@@ -258,6 +270,8 @@ function importRun(text: string) {
   savedDesk = null;
   pendingPolicy = f.pendingPolicy ? normalizeDefinition(f.pendingPolicy) : null;
   basket = [];
+  // Keep the imported day's trace when it belongs to this run, so the day stays traceable into its past.
+  dayTrace = f.dayTrace && f.dayTrace.start.seed === run.seed ? f.dayTrace : null;
   postPolicy();
   post({ type: 'BASKET', basket });
   saveNow();
@@ -321,7 +335,7 @@ let spectating = false;
 const SPECTATOR_OK = new Set<ToWorker['type']>(['SPECTATE', 'EXPORT_RUN', 'SPECTATE_ADOPT', 'GET_REPORT', 'GET_POLICY', 'GET_RULES', 'GET_SMF', 'GET_FINANCE', 'GET_MON3_CHARTS', 'GET_MON3_AT', 'CLASSIFY', 'SET_BASKET']);
 
 function spectate(text: string) {
-  const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null }>(text);
+  const f = decodeRunJson<{ run: RunState; pendingPolicy: ServiceDefinition | null; dayTrace?: DayTrace | null }>(text);
   assertSaveVersion(f.run);
   const next = f.run;
   // Same run moving forward: extend the charts; otherwise (new run, earlier file) start them over.
@@ -339,6 +353,8 @@ function spectate(text: string) {
   if (run.phase === 'LIVE' && history.at(-1)?.tick !== run.sim.tick) history = [...history, samplePoint(run)].slice(-HISTORY_MAX);
   historyDirty = true;
   pendingPolicy = f.pendingPolicy ? normalizeDefinition(f.pendingPolicy) : null;
+  // Follow the watched file's own trace (a browser save it may carry), so adopting it keeps its day traceable.
+  dayTrace = f.dayTrace && f.dayTrace.start.seed === run.seed ? f.dayTrace : null;
   postPolicy();
 }
 
@@ -369,6 +385,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       whatIf = null;
       pendingPolicy = null;
       basket = [];
+      dayTrace = null;
       post({ type: 'BASKET', basket });
       postPolicy();
       run = newRun(packOf(m.scenario).scenario, packOf(m.scenario).game, m.seed, m.difficulty, m.daily);
@@ -404,6 +421,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         saved = null;
         pendingPolicy = savedDesk?.pendingPolicy ? normalizeDefinition(savedDesk.pendingPolicy) : null;
         basket = savedDesk?.basket ?? [];
+        // The resumed day keeps its trace (seed-checked), so a reload does not cost the day its past.
+        dayTrace = savedDesk?.dayTrace && savedDesk.dayTrace.start.seed === run.seed ? savedDesk.dayTrace : null;
         savedDesk = null;
         postPolicy();
         post({ type: 'BASKET', basket });
@@ -467,14 +486,17 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'PROJECT_WORK': {
+      trace({ cmd: 'project', id: m.id, hours: m.hours });
       settle(workOnProject(run, m.id, m.hours));
       break;
     }
     case 'ASK_AROUND': {
+      trace({ cmd: 'ask', topic: m.topic, workloadId: m.workloadId });
       settle(askAround(run, m.topic, m.workloadId, sc()));
       break;
     }
     case 'TFP_DECIDE': {
+      trace({ cmd: 'tfp', accept: m.accept });
       settle(decideTfp(run, m.accept));
       post({ type: 'FINANCE', finance: financeView(run, sc()) });
       break;
@@ -485,7 +507,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'GET_SMF': {
       const need = SMF_FEATURE[m.kind];
       if (!hasFeature(run, need)) break;
-      if (m.kind !== 'SMF113' && m.kind !== 'BATCH') run = noteReportOpened(run, `SMF:${m.kind}:${m.hour}`);
+      if (m.kind !== 'SMF113' && m.kind !== 'BATCH') {
+        trace({ cmd: 'reportOpened', key: `SMF:${m.kind}:${m.hour}` });
+        run = noteReportOpened(run, `SMF:${m.kind}:${m.hour}`);
+      }
       const data: SmfData =
         m.kind === 'DB2' ? { kind: 'DB2', hour: m.hour, rows: db2Accounting(run, sc(), m.hour) }
         : m.kind === 'CICS' ? { kind: 'CICS', hour: m.hour, rows: cicsMonitoring(run, sc(), m.hour), storage: cicsStorageStats(run, m.hour) }
@@ -495,6 +520,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'ALERT_ADD': {
+      trace({ cmd: 'alertAdd', rule: m.rule });
       settle(addAlertRule(run, m.rule));
       break;
     }
@@ -509,6 +535,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         post({ type: 'RESULT', ok: false, message: `Policy not installed: ${err.message}` });
         break;
       }
+      trace({ cmd: 'activateSaved', name: m.name });
       const out = activateSavedPolicy(run, pack().game, m.name);
       settle(out);
       if (out.ok) {
@@ -523,6 +550,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         post({ type: 'RESULT', ok: false, message: `No saved policy ${m.name}` });
         break;
       }
+      trace({ cmd: 'loadSaved', name: m.name });
       pendingPolicy = structuredClone(def);
       post({ type: 'RESULT', ok: true, message: `Loaded ${def.policyName} into the editor` });
       postPolicy();
@@ -534,34 +562,48 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       let out;
       if (m.type === 'SAVE_POLICY') {
         const name = m.name.trim().toUpperCase();
-        out = /^[A-Z][A-Z0-9#@$]{0,7}$/.test(name)
-          ? savePolicy(run, { ...(pendingPolicy ?? policyEditSource(run)), policyName: name })
-          : { run, ok: false, message: 'Policy names are 1–8 characters, starting with a letter' };
-      } else if (m.type === 'DELETE_POLICY') out = deletePolicy(run, m.name);
-      else out = setSchedule(run, m.schedule);
+        if (!/^[A-Z][A-Z0-9#@$]{0,7}$/.test(name)) out = { run, ok: false, message: 'Policy names are 1–8 characters, starting with a letter' };
+        else {
+          trace({ cmd: 'savePolicy', name });
+          out = savePolicy(run, { ...(pendingPolicy ?? policyEditSource(run)), policyName: name });
+        }
+      } else if (m.type === 'DELETE_POLICY') {
+        trace({ cmd: 'deletePolicy', name: m.name });
+        out = deletePolicy(run, m.name);
+      } else {
+        trace({ cmd: 'setPolicySchedule', schedule: m.schedule });
+        out = setSchedule(run, m.schedule);
+      }
       settle(out);
       break;
     }
     case 'AUTO_ADD': {
+      trace({ cmd: 'autoAdd', rule: m.rule });
       settle(addAutoRule(run, m.rule));
       break;
     }
     case 'AUTO_REMOVE':
+      trace({ cmd: 'autoRemove', id: m.id });
       run = removeAutoRule(run, m.id);
       break;
     case 'ALERT_REMOVE':
+      trace({ cmd: 'alertRemove', id: m.id });
       run = removeAlertRule(run, m.id);
       break;
     case 'BUY_TOOL':
     case 'SET_TOOL_ACTIVE': {
+      if (m.type === 'BUY_TOOL') trace({ cmd: 'buy', toolId: m.toolId });
+      else trace({ cmd: 'toolActive', toolId: m.toolId, active: m.active });
       settle(m.type === 'BUY_TOOL' ? buyTool(run, sc(), m.toolId) : setToolActive(run, sc(), m.toolId, m.active));
       break;
     }
     case 'DEACTIVATE_COD': {
+      trace({ cmd: 'deactivateCod', changeId: m.changeId });
       settle(deactivateCod(run, m.changeId));
       break;
     }
     case 'CANCEL_CHANGE': {
+      trace({ cmd: 'cancel', changeId: m.changeId });
       const o = cancelChange(run, m.changeId);
       if (o.restoredPolicy && !pendingPolicy) pendingPolicy = o.restoredPolicy;
       settle(o);
@@ -582,6 +624,8 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       run = startDay(run, pack().game);
       returnFailed(before);
       pendingPolicy ??= failedPolicyToday(run);
+      // PT-17: the live day's trace starts here — the state the day starts from, then every action during it.
+      dayTrace = run.phase === 'LIVE' ? { start: run, pendingPolicy, commands: [] } : null;
       if (m.auto && run.phase === 'LIVE') {
         if (speed !== AUTO_SPEED) speedBeforeAuto = speed > 0 ? speed : 1;
         speed = AUTO_SPEED;
@@ -598,6 +642,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       }
       break;
     case 'CHANGE': {
+      trace({ cmd: 'change', req: m.req });
       const before = run;
       settle(requestChange(run, pack().game, m.req));
       returnFailed(before);
@@ -608,13 +653,17 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       autosave();
       break;
     case 'RCA':
+      trace({ cmd: 'rca', incidentId: m.incidentId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] });
       run = submitRca(run, m.incidentId, m.mechanism, m.trigger, sc(), m.evidenceIds ?? []);
       break;
     case 'PIN': {
-      settle(addPin(run, sc(), m.req, (t) => mon3At(mon3Hist, t)));
+      const out = addPin(run, sc(), m.req, (t) => mon3At(mon3Hist, t));
+      trace({ cmd: 'pin', req: m.req, pin: out.ok ? out.run.pins.at(-1)! : null });
+      settle(out);
       break;
     }
     case 'UNPIN':
+      trace({ cmd: 'unpin', id: m.id });
       run = removePin(run, m.id);
       break;
     case 'WLM_EDIT': {
@@ -625,6 +674,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       else {
         const had = new Set(serviceClassGoalIssues(base).map((i) => i.message));
         const warn = serviceClassGoalIssues(res).find((i) => !had.has(i.message));
+        trace({ cmd: 'wlm', edit: m.edit });
         pendingPolicy = res;
         postPolicy();
         post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.${warn ? ` Warning: ${warn.message}` : ''}` });
@@ -637,6 +687,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
       else if (res.added.length > 0) {
         const n = res.added.length;
+        trace({ cmd: 'rcadvice', workloadId: m.workloadId });
         pendingPolicy = res.def;
         postPolicy();
         post({ type: 'RESULT', ok: true, message: `${n} report class${n > 1 ? 'es' : ''} staged in ${res.def.policyName}. Activate it to take effect.` });
@@ -644,10 +695,14 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'ACTIVATE_PENDING':
-      if (pendingPolicy) activate(pendingPolicy);
+      if (pendingPolicy) {
+        trace({ cmd: 'activate' });
+        activate(pendingPolicy);
+      }
       else post({ type: 'RESULT', ok: false, message: 'No pending policy edits' });
       break;
     case 'DISCARD_PENDING':
+      trace({ cmd: 'discard' });
       pendingPolicy = null;
       postPolicy();
       post({ type: 'RESULT', ok: true, message: 'Pending policy discarded' });
@@ -663,6 +718,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         post({ type: 'RESULT', ok: false, message: 'Policy JSON does not parse' });
         break;
       }
+      trace({ cmd: 'activateJson', json: m.json });
       activate(def);
       break;
     }
@@ -674,6 +730,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         post({ type: 'REPORT', text: `This report needs an analytics tool (${need}). See the Analytics tab.` });
         break;
       }
+      trace({ cmd: 'reportOpened', key: `${m.kind}:${m.index}` });
       run = noteReportOpened(run, `${m.kind}:${m.index}`);
       post({ type: 'REPORT', text: renderReport(iv, m.kind, m.scKey, m.system) });
       break;
