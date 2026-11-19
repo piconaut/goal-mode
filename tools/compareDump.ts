@@ -33,7 +33,7 @@ function rmfText(iv: Parameters<typeof reports.renderWlmSummary>[0]): string {
   const systems = ['*PLEX', ...new Set(iv.wlm.map((w) => w.lparId).filter((s) => s !== '*PLEX'))];
   const parts = systems.map((s) => reports.renderWlmSummary(iv, s));
   for (const w of [...iv.wlm, ...(iv.wlmRc ?? [])]) parts.push(reports.renderWlmDetail(iv, w.scKey, w.lparId));
-  for (const name of ['renderPartitionData', 'renderCfActivity', 'renderDasdSummary']) if (r[name]) parts.push(r[name]!(iv));
+  for (const name of ['renderPartitionData', 'renderCpuActivity', 'renderCfActivity', 'renderDasdSummary']) if (r[name]) parts.push(r[name]!(iv));
   return parts.join('\n');
 }
 

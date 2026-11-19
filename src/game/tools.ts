@@ -163,6 +163,7 @@ export function toolsView(run: RunState): ToolView[] {
 export const REPORT_FEATURE: Record<string, ToolFeature | null> = {
   WLM_SUMMARY: null,
   WLM_DETAIL: null,
+  CPU_ACTIVITY: null,
   PARTITION: 'PARTITION_REPORT',
   CF: 'CF_REPORT',
   DASD: 'DASD_REPORT',

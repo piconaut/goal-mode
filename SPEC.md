@@ -981,7 +981,7 @@ contents simplified):
 
 | Record | Report | Content in game |
 |---|---|---|
-| SMF 70.1 | CPU Activity, **Partition Data** | Per-LPAR physical busy, LPAR BUSY and MVS BUSY, weights, LCPs, polarity, effective/total dispatch, LPAR mgmt overhead, capping %, R4HA |
+| SMF 70.1 | **CPU Activity** (CHANGE REASON), Partition Data | Per-LPAR physical busy, LPAR BUSY and MVS BUSY, weights, LCPs, polarity, effective/total dispatch, LPAR mgmt overhead, capping %, R4HA |
 | SMF 72.3 | **Workload Activity (WLMGL)** | Per service/report class period: transactions (AVG, MPL, ENDED, END/S), ACTUAL/EXECUTION/QUEUED time, APPL% CP/IIPCP/IIP, service units, using/delay %, EX VEL, PI, RT distribution buckets, PROMOTED (BLK/ENQ/LCK) |
 | SMF 74.1 | DASD Activity | Per volume/LCU: rate, IOSQ/PEND/DISC/CONN, alias use |
 | SMF 74.4 | **CF Activity** | CF util, per-structure rates, sync/async service times, conversion %, contention |

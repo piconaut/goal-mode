@@ -6,7 +6,7 @@ import type { CapacityBasis, Incident } from '../../src/game/types';
 import { applyCommand } from '../../src/sim/core/commands';
 import { initState } from '../../src/sim/core/init';
 import { accumulateTick, closeInterval, newRmfAcc } from '../../src/sim/measure/rmf';
-import { renderPartitionData } from '../../src/sim/measure/reports';
+import { renderCpuActivity, renderPartitionData } from '../../src/sim/measure/reports';
 import { EMPTY_SUBJECTS, truthOf } from '../helpers/truth';
 
 const incumbent = (mechanism: Incident['truth']['mechanism'], basis?: CapacityBasis): Incident => ({
@@ -96,15 +96,18 @@ describe('a capacity reduction shows as CHANGE REASON and SMF70CAI/SMF70CCR (MVS
     const row = iv.cpcBusy.find((c) => c.cpcId === cpc.id && c.pool === 'CP')!;
     expect(row.capacityAdjustmentPct).toBe(69);
     expect(row.capacityReasonCode).toBe(2);
-    expect(renderPartitionData(iv)).toContain('CHANGE REASON=MACHINE (initiated by the machine)');
+    // Real RMF prints CHANGE REASON on the CPU Activity report header, not on Partition Data.
+    expect(renderCpuActivity(iv)).toContain('CHANGE REASON=MACHINE (cycle steering, initiated by the machine)');
+    expect(renderPartitionData(iv)).not.toContain('CHANGE REASON');
     // An operator downgrade defaults to the user-initiated reason.
     const manual = closeInterval(accumulateTick(newRmfAcc(0), [], [], null, []), { def: BASEPOL, config: down().config, r4haByLpar: {}, jobs: [], endTick: 1 });
-    expect(renderPartitionData(manual)).toContain('CHANGE REASON=POWERSAVE (initiated by the user)');
+    expect(renderCpuActivity(manual)).toContain('CHANGE REASON=POWERSAVE (initiated by the user)');
 
     const up = applyCommand(s, { kind: 'SET_CPC_CAPACITY', cpcId: cpc.id, capacitySetting: cpc.capacitySetting }).state;
     expect(up.config.cpcs[0]!.peakCapacitySetting).toBeUndefined();
     const back = closeInterval(accumulateTick(newRmfAcc(0), [], [], null, []), { def: BASEPOL, config: up.config, r4haByLpar: {}, jobs: [], endTick: 1 });
     expect(back.cpcBusy.find((c) => c.cpcId === cpc.id && c.pool === 'CP')!.capacityAdjustmentPct).toBeUndefined();
+    expect(renderCpuActivity(back)).toContain('CHANGE REASON=NONE');
     expect(renderPartitionData(back)).not.toContain('CHANGE REASON');
   });
 
