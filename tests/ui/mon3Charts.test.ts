@@ -143,11 +143,13 @@ describe('Monitor III chart picker', () => {
     expect(slots.get('C0#1')).toBe(0);
     expect(slots.get('C5#1')).toBe(5);
     expect([slots.get('C8#1'), slots.get('C9#1')].sort()).toEqual([6, 7]);
-    // Dropping a later period keeps the other's colour (stable as practical).
+    // When earlier periods drop out, the first eight keep their slots and a later period moves into the lowest
+    // slot no shown series holds: with C0 and C1 only, C8 takes slot 2.
     const after = assignColourSlots(['C8#1', 'C0#1', 'C1#1'], order);
     expect(after.get('C0#1')).toBe(0);
-    expect(after.get('C8#1')).toBe(2); // the lowest slot no shown series holds
-    // Idle classes are charted too, so the chart draws eight distinct strokes.
+    expect(after.get('C8#1')).toBe(2);
+    // All ten periods carry engines; the top eight by the latest value include C8 and C9, so the chart draws eight
+    // distinct strokes (periods found after the eighth included).
     const many = (tick: number) => ({
       ...sample(tick),
       cpu: Object.fromEntries(order.map((k, i) => [k, i >= 8 ? 2 + i : i * 0.1 + 0.1])),
