@@ -6,7 +6,8 @@
 //   npm run inspect -- runs/a.json wlm <system> --at 'D19 22:00' [--ticks 6] [--class ONL]
 //     Why WLM did or didn't move DPs: per policy adjustment (10 s), the receiver candidates in order, each trial
 //     move and why it was accepted or rejected. A play-CLI run (seed + log) replays to any past time; a browser save
-//     has no log, so it traces forward from the saved moment (live day only).
+//     carries its live day's 06:00 start and that day's actions (PT-17), so any time in its current day replays;
+//     a save without either traces forward from the saved moment (live day only).
 //   npm run inspect -- runs/a.json wlm-stats [system] [--from 'D1 06:00'] [--to 'D3 06:00'] [--ladder '12:00'] [--by-class] [--episodes] [--streaks] [--moves] [--json]
 //     Policy adjustment statistics over a range of a play file (WT-01): adjustments, candidates by outcome, trials by
 //     verdict, accepted moves, receivers assessed on 30 adjustments without a move, and the DP ladder at a clock
@@ -22,6 +23,7 @@
 
 import { readFileSync } from 'node:fs';
 import { abendedSet, applyPlayCommand, decodePlayFile, clockText, newPlayFile, type PlayFile } from './playCore';
+import { replayDayTrace, traceCovers } from '../src/game/dayTrace';
 import { formatClock, tickOfClock } from '../src/sim/core/clock';
 import { TICK_SEC, TICKS_PER_DAY, TICKS_PER_HOUR } from '../src/sim/core/units';
 import { packOf } from '../src/content/packs';
@@ -106,7 +108,8 @@ export function traceText(t: WlmAdjustTrace, cls?: string): string[] {
 
 const scOf = (run: RunState) => scenarioFor(packOf(run.scenarioId).scenario, run.difficulty);
 
-/** Run to `target` (replaying the play log when the file has one) and return that point's run state. */
+/** Run to `target` (replaying the play log when the file has one, the browser's day trace when it carries
+ *  one, and otherwise forward from the saved moment) and return that point's run state. */
 function runTo(file: PlayFile, target: number): { run: RunState; mode: string } {
   const first = file.log[0];
   if (first?.cmd === 'new') {
@@ -120,6 +123,11 @@ function runTo(file: PlayFile, target: number): { run: RunState; mode: string } 
     }
     return { run: f.run, mode: 'replayed from seed + log' };
   }
+  // A browser save's day trace (PT-17): a time earlier than the saved moment replays from the day's 06:00 start.
+  // Later times are exact from the saved state already, so they keep tracing forward from it.
+  if (file.dayTrace && target < file.run.sim.tick && traceCovers(file.dayTrace, file.run.seed, target)) {
+    return { run: replayDayTrace(file.dayTrace, target).run, mode: 'replayed from the live day start (browser day trace)' };
+  }
   return { run: file.run, mode: 'forward from the saved moment (no log to replay)' };
 }
 
@@ -131,7 +139,13 @@ export function wlmText(text: string, system: string, opts: { at: string; ticks?
   const ticks = Math.max(1, Math.min(360, opts.ticks ?? 6));
   const { run: start, mode } = runTo(file, target);
   if (start.phase !== 'LIVE') return `${clockText(start.sim.tick)} is not a live day (phase ${start.phase}); pick a time inside a played day.`;
-  if (start.sim.tick > target) return `The save is at ${clockText(start.sim.tick)}; a save without a play log can only be traced forward from there.`;
+  if (start.sim.tick > target) {
+    // Only reachable without a covering trace: with one, runTo replayed to the target already.
+    const t = file.dayTrace;
+    return t
+      ? `${clockText(target)} is outside the day this save traces (${clockText(t.start.sim.tick)} to ${clockText(t.start.sim.tick + TICKS_PER_DAY)}); only its current day replays, and earlier days need a play-CLI file.`
+      : `The save is at ${clockText(start.sim.tick)}; a save without a play log can only be traced forward from there.`;
+  }
   const content = packOf(start.scenarioId).game;
   let r = start;
   if (target > r.sim.tick) r = advance(r, scOf(r), content, target - r.sim.tick);

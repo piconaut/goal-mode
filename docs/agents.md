@@ -116,9 +116,10 @@ behind it, and candidates skipped as not CPU/zIIP-fixable or over the two-receiv
 counters over a range (adjustments, candidates by outcome, trials by verdict, accepted and reversed moves, periods
 assessed on 30 adjustments without a receiver move, and the DP ladder at a clock time each day); it needs a play-CLI
 file, replays a logged `advance` only as far as the CLI ran it (an ABEND stops it), and costs about 6 s per played day.
-A play-CLI file replays from its seed and log to any past time; a browser save has no log, so `wlm` is traced forward
-from the saved moment and `wlm-stats` refuses it. Player agents must not use any of these verbs: none is something a
-player can see.
+A play-CLI file replays from its seed and log to any past time; a browser save carries its current live day's 06:00
+start state and that day's actions, so `wlm` replays to any time in its current day and is traced forward from the
+saved moment outside it; `wlm-stats` refuses a browser save. Player agents must not use any of these verbs: none is
+something a player can see.
 
 ## What an agent can see
 
