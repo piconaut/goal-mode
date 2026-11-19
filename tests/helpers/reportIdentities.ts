@@ -86,7 +86,7 @@ const goalOf = (def: ServiceDefinition, r: WlmRecord): Goal | null => goalInfo(d
  * response time ÷ goal, percentile from the distribution's bucket bounds), without the sim's PI code. */
 function piFromRow(goal: Goal, r: { velocity: number | null; avgRtSec: number | null; ended: number; buckets: readonly number[] }): number | null {
   if (goal.kind === 'DISC') return 0.81;
-  if (goal.kind === 'VEL') return r.velocity === null ? null : Math.min(99, goal.velocity / Math.max(r.velocity, 0.1));
+  if (goal.kind === 'VEL') return r.velocity === null ? null : Math.min(99, goal.velocity / Math.max(r.velocity, VELOCITY_FLOOR));
   // Fluid completions: a remainder below a billionth of a transaction is no transaction (the report shows ENDED 0).
   if (r.ended <= 1e-9) return null;
   if (goal.kind === 'AVG') return r.avgRtSec === null ? null : r.avgRtSec / goal.rtSec;

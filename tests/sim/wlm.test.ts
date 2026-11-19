@@ -124,20 +124,22 @@ describe('performance index', () => {
     expect(performanceIndex({ kind: 'DISC' }, { completions: 0, rtSumSec: 0, buckets: [], usingSamples: 0, delaySamples: 0 })).toBe(0.81);
   });
 
-  it('starved velocity period outweighs an equal-importance missing percentile period (RF-04)', () => {
-    // The 0.1 % velocity floor is a content coefficient (src/content/wlm/tuning.ts), not a real-WLM bound:
-    // real WLM publishes no ceiling on velocity PI near zero service, so projected harm is NOT bounded to match
-    // percentile's 4.0 ceiling. A starved velocity period (VEL 74, velocity ≈ 0) projects at goal.velocity / 0.1
-    // = 740 (projections pass Infinity as the velocity ceiling), while a missing percentile period caps at 4.0 —
-    // two orders of magnitude apart on the same scale.
+  it('velocity PI is capped at 10 x goal by the floor; percentile PI extrapolates past 4.0 (RF-04)', () => {
+    // The 0.1 % velocity floor caps velocity PI at goal.velocity / 0.1 = 10 x goal (VEL 74 -> 740),
+    // while percentile projections extrapolate past the 4.0 reporting ceiling from the mean RT.
+    // Consistent input: 100 completions, goal 0.25 s, sigma 0.5; percentile PI = lognormal quantile(0.95) / goal.
     const starved = performanceIndex({ kind: 'VEL', velocity: 74 }, { completions: 0, rtSumSec: 0, buckets: [], usingSamples: 0, delaySamples: 1000 }, Infinity);
     expect(starved).toBeCloseTo(740);
-    // A missing percentile period: all completions past the last bounded bucket → PI 4.0.
     const open = [...emptyBuckets()];
-    open[open.length - 1] = 100;
-    const missing = projectedPercentilePi(open, 95, 0, 0, 0.25, 0.5);
-    expect(missing).toBe(4.0);
-    expect(starved!).toBeGreaterThan(missing! * 100);
+    open[open.length - 1] = 100; // all completions in the open (> 4 x goal) bucket
+    const p5 = projectedPercentilePi(open, 95, 100, 125, 0.25, 0.5)!;  // mean RT 1.25 s = 5 x goal
+    const p20 = projectedPercentilePi(open, 95, 100, 500, 0.25, 0.5)!;  // mean RT 5.0 s = 20 x goal
+    const p100 = projectedPercentilePi(open, 95, 100, 2500, 0.25, 0.5)!; // mean RT 25 s = 100 x goal
+    expect(p5).toBeCloseTo(10.0, 1);
+    expect(p20).toBeCloseTo(40.2, 1);
+    expect(p100).toBeCloseTo(200.9, 1);
+    expect(p100).toBeGreaterThan(4.0); // extrapolated past the reporting ceiling
+    // Neither side is universally larger: velocity caps at 740, percentile grows with mean RT.
   });
   it('average-RT PI is actual/goal', () => {
     expect(performanceIndex({ kind: 'AVG', rtSec: 0.5 }, { completions: 10, rtSumSec: 7.5, buckets: [], usingSamples: 0, delaySamples: 0 })).toBeCloseTo(1.5);

@@ -10,8 +10,8 @@ export const BUCKETS = BUCKET_BOUNDS.length;
 const DISCRETIONARY_PI = 0.81;
 const PI_MIN_PERCENTILE = 0.5;
 export const PI_MAX_PERCENTILE = 4.0;
-/** The velocity floor lives in content tuning (`src/content/wlm/tuning.ts`, `VELOCITY_FLOOR`): it keeps
- *  zero-service projections finite (0.1 %). */
+// Velocity floor lives in content tuning (`src/content/wlm/tuning.ts`, `VELOCITY_FLOOR`): it keeps
+// zero-service projections finite (0.1 %).
 
 // Literal (packed) rather than new Array(n).fill(0), which is holey and slower to build and sum.
 export const emptyBuckets = (): number[] => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
@@ -109,7 +109,8 @@ export function velocityOf(usingSamples: number, delaySamples: number): number |
 }
 
 /** PI for a goal; null when there is no activity to judge. Projections pass Infinity for the velocity ceiling;
- * reported/management PIs keep 99. The existing 0.1% velocity floor keeps zero-service projections finite. */
+ * reported/management PIs keep 99. The velocity floor (`VELOCITY_FLOOR` in `src/content/wlm/tuning.ts`) keeps
+ * zero-service projections finite. */
 export function performanceIndex(goal: Goal, x: PiInputs, velocityPiMax = 99): number | null {
   switch (goal.kind) {
     case 'DISC':
