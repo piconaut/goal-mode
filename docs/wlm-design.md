@@ -691,6 +691,7 @@ produce. IBM publishes none of them, so the "Origin" column says where a value c
 | `demandUpliftMax` | 2 | a quiet tick is lifted to at most twice its demand | invented |
 | `backlogBoostFrac` | 0.5 | work that fell behind wants up to 1.5 × its rate | invented |
 | `projectionTrustMax` | 4 | a receiver whose backlog the bound cut and that is measured over 4 × its `base` is not raised (§5.4) | invented |
+| `velocityFloor` | 0.1 | a starved period's projected PI = goal.velocity ÷ max(velocity, 0.1), unbounded like percentile's 4.0 ceiling is not | invented; real WLM publishes no bound on velocity PI near zero service (RF-04) |
 
 Don't tune a coefficient to move a balance band. Balance is tuned through scenario pressure in the `balance` list
 (user decision 2026-11-10).

@@ -123,6 +123,22 @@ describe('performance index', () => {
     expect(v).toBeCloseTo(2);
     expect(performanceIndex({ kind: 'DISC' }, { completions: 0, rtSumSec: 0, buckets: [], usingSamples: 0, delaySamples: 0 })).toBe(0.81);
   });
+
+  it('starved velocity period outweighs an equal-importance missing percentile period (RF-04)', () => {
+    // The 0.1 % velocity floor is a content coefficient (src/content/wlm/tuning.ts), not a real-WLM bound:
+    // real WLM publishes no ceiling on velocity PI near zero service, so projected harm is NOT bounded to match
+    // percentile's 4.0 ceiling. A starved velocity period (VEL 74, velocity ≈ 0) projects at goal.velocity / 0.1
+    // = 740 (projections pass Infinity as the velocity ceiling), while a missing percentile period caps at 4.0 —
+    // two orders of magnitude apart on the same scale.
+    const starved = performanceIndex({ kind: 'VEL', velocity: 74 }, { completions: 0, rtSumSec: 0, buckets: [], usingSamples: 0, delaySamples: 1000 }, Infinity);
+    expect(starved).toBeCloseTo(740);
+    // A missing percentile period: all completions past the last bounded bucket → PI 4.0.
+    const open = [...emptyBuckets()];
+    open[open.length - 1] = 100;
+    const missing = projectedPercentilePi(open, 95, 0, 0, 0.25, 0.5);
+    expect(missing).toBe(4.0);
+    expect(starved!).toBeGreaterThan(missing! * 100);
+  });
   it('average-RT PI is actual/goal', () => {
     expect(performanceIndex({ kind: 'AVG', rtSec: 0.5 }, { completions: 10, rtSumSec: 7.5, buckets: [], usingSamples: 0, delaySamples: 0 })).toBeCloseTo(1.5);
   });

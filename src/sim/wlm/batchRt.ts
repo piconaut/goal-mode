@@ -5,9 +5,9 @@
 // formula). APPROX: whole-life response times, mixed periods use all their samples, and the velocity floor carries
 // RF-04's extreme into donor harm.
 
-import { PCT_PROJECTION_SIGMA } from '../../content/wlm/tuning';
+import { PCT_PROJECTION_SIGMA, VELOCITY_FLOOR } from '../../content/wlm/tuning';
 import type { ScpTick } from './eval/types';
-import { projectedPercentilePi, VELOCITY_FLOOR, velocityOf } from './goals';
+import { projectedPercentilePi, velocityOf } from './goals';
 import { velDelay, velUsing, type ScpAcc } from './runtime';
 import type { Goal } from './types';
 

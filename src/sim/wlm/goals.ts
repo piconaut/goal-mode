@@ -1,6 +1,7 @@
 // Performance index and response-time distribution buckets (SG24-7621 §3.10–3.11).
 
 import { lognormCdf, lognormQuantile, normCdf } from '../core/math';
+import { VELOCITY_FLOOR } from '../../content/wlm/tuning';
 import type { Goal, PeriodDef } from './types';
 
 /** Upper bounds of the 14 RMF/WLM buckets as multiples of the goal; the last is open (SG24-7621 §3.10). */
@@ -9,8 +10,8 @@ export const BUCKETS = BUCKET_BOUNDS.length;
 const DISCRETIONARY_PI = 0.81;
 const PI_MIN_PERCENTILE = 0.5;
 export const PI_MAX_PERCENTILE = 4.0;
-/** The existing velocity floor: keeps zero-service projections finite (0.1 %). */
-export const VELOCITY_FLOOR = 0.1;
+/** The velocity floor lives in content tuning (`src/content/wlm/tuning.ts`, `VELOCITY_FLOOR`): it keeps
+ *  zero-service projections finite (0.1 %). */
 
 // Literal (packed) rather than new Array(n).fill(0), which is holey and slower to build and sum.
 export const emptyBuckets = (): number[] => [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
