@@ -53,7 +53,7 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
             {o.label}
           </button>
         ))}
-        {(k === 'DB2' || k === 'CICS') && (
+        {(k === 'DB2' || k === 'CICS' || k === 'DB2_STATS') && (
           <select aria-label="Hour" value={h} onChange={(e) => setHour(e.target.value)}>
             {v.smfHours.map((x) => (
               <option key={x.key} value={x.key}>
@@ -135,7 +135,9 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                     <td>{r.lparId}</td>
                     <td>{r.ssid}</td>
                     <td className="num">{r.dbatQueued.toFixed(0)}</td>
-                    <PinButton game={game} req={{ source: 'DB2_STATS', hour: h, lparId: r.lparId, metric: 'DBAT_QUEUE' }} label={`${r.ssid} DBAT queue`} />
+                    <td className="num">
+                      <PinButton game={game} req={{ source: 'DB2_STATS', hour: h, lparId: r.lparId, metric: 'DBAT_QUEUE' }} label={`${r.ssid} DBAT queue`} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
