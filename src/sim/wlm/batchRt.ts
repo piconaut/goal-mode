@@ -2,8 +2,8 @@
 // (docs/wlm-design.md §5.8). The projection uses only data WLM and RMF have: the completed jobs' queue and
 // execution times and the period's using/delay samples. No per-job forecast of remaining work (RMF reports ended
 // transactions only, RMF Report Analysis 3.1 p.148; IBM names the plots, SG24-6472 p.62, but no book gives the
-// formula). APPROX: whole-life response times, mixed periods use all their samples, and the velocity floor carries
-// RF-04's extreme into donor harm.
+// formula). APPROX: whole-life response times, mixed periods use all their samples, and the velocity floor
+// (`VELOCITY_FLOOR`, docs/wlm-design.md §5.10) carries its 10 × goal velocity PI into donor harm.
 
 import { PCT_PROJECTION_SIGMA, VELOCITY_FLOOR } from '../../content/wlm/tuning';
 import type { ScpTick } from './eval/types';
