@@ -397,22 +397,6 @@ Cross-note: as BL-01, tune after WT-09 (docs/archive/wlm-audit-2026-11.md §6.2,
 
 ## cleanup
 
-### CL-18 · One game command layer for the browser worker and the play CLI
-`list: cleanup · status: ready · priority: high · size: L · area: game`
-
-Source: codebase survey (2026-11-16). `src/worker/game.worker.ts` (47 message cases) and `tools/playCore.ts` `apply`
-both turn player commands into `RunState` changes by calling `src/game/*` themselves, each with its own validation
-and its own wording. They have already drifted:
-- only the CLI validates an RCA's mechanism, trigger, incident and evidence pins, and only its reply names the
-  same-cause incidents the RCA also covers (the spreading itself is shared, in `submitRca`);
-- the two word WLM-edit, activation and failed-policy results differently.
-
-Change: `src/game/commands.ts`, `applyGameCommand(run, pending, cmd, content, sc) → { run, pending, ok, message }`,
-covering start, change, restart, cancel, draft, rca, pin/unpin, WLM edit/activate/discard, buy, tfp, ask and project.
-The worker and `playCore` become thin adapters. Validation is the union of both sides. List every difference in
-validation or wording that this resolves in the PR, and say which side was kept. Done when: no game rule is left in
-either adapter; `npm run compare` differs only in the result texts listed in the PR; the browser and CLI tests pass.
-
 ### CL-19 · One field table for the service-class accumulators
 `list: cleanup · status: blocked: design · priority: high · size: M · area: sim`
 

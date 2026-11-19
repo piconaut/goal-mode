@@ -5,24 +5,22 @@ import type { Command } from '../sim/core/commands';
 import { MIDWEST_GAME } from '../content/game-midwest';
 import { packOf } from '../content/packs';
 import { MIDWEST } from '../content/scenarios';
-import { activateSavedPolicy, advance, cancelChange, chooseDraft, continueEndless, deactivateCod, failedPolicyToday, newRun, requestChange, startDay, submitRca } from '../game/run';
+import { advance, chooseDraft, continueEndless, newRun, startDay } from '../game/run';
+import { applyGameCommand, type GameCommand, type GameCommandResult } from '../game/commands';
 import { advanceHours } from '../game/advance';
 import type { RunState } from '../game/types';
-import { buyTool, noteReportOpened, normalizeDefinition, REPORT_FEATURE, setToolActive, hasFeature, SMF_FEATURE } from '../game/tools';
+import { noteReportOpened, normalizeDefinition, REPORT_FEATURE, hasFeature, SMF_FEATURE } from '../game/tools';
 import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../game/smf';
 import { addAlertRule, removeAlertRule } from '../game/alerts';
 import { addAutoRule, removeAutoRule } from '../game/automation';
-import { deletePolicy, policyEditSource, savePolicy, savedPolicy, setSchedule } from '../game/policies';
-import { addPin, removePin } from '../game/evidence';
+import { policyEditSource } from '../game/policies';
 import { forkForWhatIf, summarizeWhatIf, whatIfContent } from '../game/whatif';
 import { INSIGHT } from '../content/tools';
 import { financeView } from '../game/finance';
-import { decideTfp, offerTfp } from '../game/tfp';
-import { askAround } from '../game/inquiries';
-import { adviseReportClasses, applyReportClassAdvice } from '../game/rcAdvisor';
-import { workOnProject } from '../game/projects';
+import { offerTfp } from '../game/tfp';
+import { adviseReportClasses } from '../game/rcAdvisor';
 import { buildView } from '../game/view';
-import { applyWlmEdit, serviceClassGoalIssues, cicsTransactionClasses, pendingBase, playerWlmEditError } from '../game/wlmEdit';
+import { cicsTransactionClasses, serviceClassGoalIssues } from '../game/wlmEdit';
 import type { ServiceDefinition } from '../sim/wlm/types';
 import { renderReport } from '../sim/measure/reports';
 import { OLD_SAVE_MESSAGE, SAVE_VERSION, assertSaveVersion, decodeRunFileText, decodeRunJson, encodeRunJson } from '../game/runFile';
@@ -128,6 +126,19 @@ function settle(out: { run: RunState; ok: boolean; message: string }) {
   post({ type: 'RESULT', ok: out.ok, message: out.message });
 }
 
+/** Run a command of the shared layer (src/game/commands.ts) against the current run and pending policy. */
+const command = (cmd: GameCommand) => applyGameCommand(run, pendingPolicy, cmd, pack().game, sc());
+
+/** Adopt a shared command's outcome and post its reply. The layer owns the rule; this adapter records the action
+ *  (for the day trace) and shows the result. */
+function settleGame(out: GameCommandResult) {
+  settle(out);
+  if (out.pending !== pendingPolicy) {
+    pendingPolicy = out.pending;
+    postPolicy();
+  }
+}
+
 function postRules() {
   const items = currentItems();
   const def = pendingPolicy ?? policyEditSource(run);
@@ -146,19 +157,6 @@ const postPolicy = () => {
   postRules();
 };
 
-function activate(def: ServiceDefinition) {
-  const err = serviceClassGoalIssues(def).find((i) => i.severity === 'error');
-  if (err) {
-    post({ type: 'RESULT', ok: false, message: `Policy not installed: ${err.message}` });
-    return;
-  }
-  const out = requestChange(run, pack().game, { label: `Activate policy ${def.policyName}`, commands: [{ kind: 'ACTIVATE_POLICY', definition: def }] });
-  settle(out);
-  if (out.ok) {
-    pendingPolicy = null;
-    postPolicy();
-  }
-}
 
 const sendView = () => {
   post({ type: 'VIEW', view: buildView(run, sc()), history: historyDirty ? history : null, savedRunDay: saved ? saved.day : null, pending: pendingView(), speed, mon3Range: mon3HistoryRange(mon3Hist) });
@@ -487,17 +485,17 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     }
     case 'PROJECT_WORK': {
       trace({ cmd: 'project', id: m.id, hours: m.hours });
-      settle(workOnProject(run, m.id, m.hours));
+      settleGame(command({ kind: 'PROJECT', id: m.id, hours: m.hours }));
       break;
     }
     case 'ASK_AROUND': {
       trace({ cmd: 'ask', topic: m.topic, workloadId: m.workloadId });
-      settle(askAround(run, m.topic, m.workloadId, sc()));
+      settleGame(command({ kind: 'ASK', topic: m.topic, workloadId: m.workloadId ?? null }));
       break;
     }
     case 'TFP_DECIDE': {
       trace({ cmd: 'tfp', accept: m.accept });
-      settle(decideTfp(run, m.accept));
+      settleGame(command({ kind: 'TFP', accept: m.accept }));
       post({ type: 'FINANCE', finance: financeView(run, sc()) });
       break;
     }
@@ -525,56 +523,28 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     }
     case 'ACTIVATE_SAVED_POLICY': {
-      const def = savedPolicy(run, m.name);
-      if (!def) {
-        post({ type: 'RESULT', ok: false, message: `No saved policy ${m.name}` });
-        break;
-      }
-      const err = serviceClassGoalIssues(def).find((i) => i.severity === 'error');
-      if (err) {
-        post({ type: 'RESULT', ok: false, message: `Policy not installed: ${err.message}` });
-        break;
-      }
       trace({ cmd: 'activateSaved', name: m.name });
-      const out = activateSavedPolicy(run, pack().game, m.name);
-      settle(out);
-      if (out.ok) {
-        pendingPolicy = null;
-        postPolicy();
-      }
+      settleGame(command({ kind: 'POLICY_ACTIVATE', name: m.name }));
       break;
     }
     case 'LOAD_SAVED_POLICY': {
-      const def = savedPolicy(run, m.name);
-      if (!def) {
-        post({ type: 'RESULT', ok: false, message: `No saved policy ${m.name}` });
-        break;
-      }
       trace({ cmd: 'loadSaved', name: m.name });
-      pendingPolicy = structuredClone(def);
-      post({ type: 'RESULT', ok: true, message: `Loaded ${def.policyName} into the editor` });
-      postPolicy();
+      settleGame(command({ kind: 'POLICY_LOAD', name: m.name }));
       break;
     }
     case 'SAVE_POLICY':
     case 'DELETE_POLICY':
     case 'SET_POLICY_SCHEDULE': {
-      let out;
       if (m.type === 'SAVE_POLICY') {
-        const name = m.name.trim().toUpperCase();
-        if (!/^[A-Z][A-Z0-9#@$]{0,7}$/.test(name)) out = { run, ok: false, message: 'Policy names are 1–8 characters, starting with a letter' };
-        else {
-          trace({ cmd: 'savePolicy', name });
-          out = savePolicy(run, { ...(pendingPolicy ?? policyEditSource(run)), policyName: name });
-        }
+        trace({ cmd: 'savePolicy', name: m.name });
+        settleGame(command({ kind: 'POLICY_SAVE', name: m.name }));
       } else if (m.type === 'DELETE_POLICY') {
         trace({ cmd: 'deletePolicy', name: m.name });
-        out = deletePolicy(run, m.name);
+        settleGame(command({ kind: 'POLICY_DELETE', name: m.name }));
       } else {
         trace({ cmd: 'setPolicySchedule', schedule: m.schedule });
-        out = setSchedule(run, m.schedule);
+        settleGame(command({ kind: 'POLICY_SCHEDULE', schedule: m.schedule }));
       }
-      settle(out);
       break;
     }
     case 'AUTO_ADD': {
@@ -592,22 +562,23 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'BUY_TOOL':
     case 'SET_TOOL_ACTIVE': {
-      if (m.type === 'BUY_TOOL') trace({ cmd: 'buy', toolId: m.toolId });
-      else trace({ cmd: 'toolActive', toolId: m.toolId, active: m.active });
-      settle(m.type === 'BUY_TOOL' ? buyTool(run, sc(), m.toolId) : setToolActive(run, sc(), m.toolId, m.active));
+      if (m.type === 'BUY_TOOL') {
+        trace({ cmd: 'buy', toolId: m.toolId });
+        settleGame(command({ kind: 'BUY', toolId: m.toolId }));
+      } else {
+        trace({ cmd: 'toolActive', toolId: m.toolId, active: m.active });
+        settleGame(command({ kind: 'TOOL_ACTIVE', toolId: m.toolId, active: m.active }));
+      }
       break;
     }
     case 'DEACTIVATE_COD': {
       trace({ cmd: 'deactivateCod', changeId: m.changeId });
-      settle(deactivateCod(run, m.changeId));
+      settleGame(command({ kind: 'COD_DEACTIVATE', changeId: m.changeId }));
       break;
     }
     case 'CANCEL_CHANGE': {
       trace({ cmd: 'cancel', changeId: m.changeId });
-      const o = cancelChange(run, m.changeId);
-      if (o.restoredPolicy && !pendingPolicy) pendingPolicy = o.restoredPolicy;
-      settle(o);
-      postPolicy();
+      settleGame(command({ kind: 'CANCEL', changeId: m.changeId }));
       break;
     }
     case 'GET_RULES':
@@ -621,9 +592,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       break;
     case 'START_DAY': {
       const before = run;
-      run = startDay(run, pack().game);
+      const o = command({ kind: 'START' });
+      run = o.run;
+      pendingPolicy = o.pending;
       returnFailed(before);
-      pendingPolicy ??= failedPolicyToday(run);
       // PT-17: the live day's trace starts here — the state the day starts from, then every action during it.
       dayTrace = run.phase === 'LIVE' ? { start: run, pendingPolicy, commands: [] } : null;
       if (m.auto && run.phase === 'LIVE') {
@@ -644,68 +616,49 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'CHANGE': {
       trace({ cmd: 'change', req: m.req });
       const before = run;
-      settle(requestChange(run, pack().game, m.req));
+      settleGame(command({ kind: 'CHANGE', req: m.req }));
       returnFailed(before);
       break;
     }
-    case 'DRAFT':
-      run = chooseDraft(run, pack().game, m.optionId);
+    case 'DRAFT': {
+      const o = command({ kind: 'DRAFT', optionId: m.optionId });
+      run = o.run;
       autosave();
       break;
+    }
     case 'RCA':
       trace({ cmd: 'rca', incidentId: m.incidentId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] });
-      run = submitRca(run, m.incidentId, m.mechanism, m.trigger, sc(), m.evidenceIds ?? []);
+      run = command({ kind: 'RCA', incidentId: m.incidentId, mechanism: m.mechanism, trigger: m.trigger, evidenceIds: m.evidenceIds ?? [] }).run;
       break;
     case 'PIN': {
-      const out = addPin(run, sc(), m.req, (t) => mon3At(mon3Hist, t));
+      const out = command({ kind: 'PIN', req: m.req });
       trace({ cmd: 'pin', req: m.req, pin: out.ok ? out.run.pins.at(-1)! : null });
-      settle(out);
+      settleGame(out);
       break;
     }
     case 'UNPIN':
       trace({ cmd: 'unpin', id: m.id });
-      run = removePin(run, m.id);
+      run = command({ kind: 'UNPIN', id: m.id }).run;
       break;
     case 'WLM_EDIT': {
-      // After a briefing install, subsequent edits retain its queued changes.
-      const base = pendingBase(pendingPolicy, policyEditSource(run));
-      const res = playerWlmEditError(m.edit) ?? applyWlmEdit(base, m.edit);
-      if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
-      else {
-        const had = new Set(serviceClassGoalIssues(base).map((i) => i.message));
-        const warn = serviceClassGoalIssues(res).find((i) => !had.has(i.message));
-        trace({ cmd: 'wlm', edit: m.edit });
-        pendingPolicy = res;
-        postPolicy();
-        post({ type: 'RESULT', ok: true, message: `Pending policy ${res.policyName} updated. Activate it to take effect.${warn ? ` Warning: ${warn.message}` : ''}` });
-      }
+      const out = command({ kind: 'WLM_EDIT', edit: m.edit });
+      if (out.ok) trace({ cmd: 'wlm', edit: m.edit });
+      settleGame(out);
       break;
     }
     case 'RC_ADVICE_APPLY': {
-      if (!hasFeature(run, 'REPORT_CLASS_ADVISOR')) break;
-      const res = applyReportClassAdvice(pendingBase(pendingPolicy, policyEditSource(run)), currentItems(), m.workloadId);
-      if (typeof res === 'string') post({ type: 'RESULT', ok: false, message: res });
-      else if (res.added.length > 0) {
-        const n = res.added.length;
-        trace({ cmd: 'rcadvice', workloadId: m.workloadId });
-        pendingPolicy = res.def;
-        postPolicy();
-        post({ type: 'RESULT', ok: true, message: `${n} report class${n > 1 ? 'es' : ''} staged in ${res.def.policyName}. Activate it to take effect.` });
-      }
+      const out = command({ kind: 'RC_ADVICE', workloadId: m.workloadId });
+      if (out.ok) trace({ cmd: 'rcadvice', workloadId: m.workloadId });
+      settleGame(out);
       break;
     }
     case 'ACTIVATE_PENDING':
-      if (pendingPolicy) {
-        trace({ cmd: 'activate' });
-        activate(pendingPolicy);
-      }
-      else post({ type: 'RESULT', ok: false, message: 'No pending policy edits' });
+      if (pendingPolicy) trace({ cmd: 'activate' });
+      settleGame(command({ kind: 'ACTIVATE' }));
       break;
     case 'DISCARD_PENDING':
       trace({ cmd: 'discard' });
-      pendingPolicy = null;
-      postPolicy();
-      post({ type: 'RESULT', ok: true, message: 'Pending policy discarded' });
+      settleGame(command({ kind: 'DISCARD' }));
       break;
     case 'GET_POLICY':
       postPolicy();
@@ -719,7 +672,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         break;
       }
       trace({ cmd: 'activateJson', json: m.json });
-      activate(def);
+      settleGame(command({ kind: 'ACTIVATE_DEFINITION', definition: def }));
       break;
     }
     case 'GET_REPORT': {
