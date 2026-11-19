@@ -193,7 +193,10 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand, mon3AtTick
 
 /** Replay the day to `target`: advance from the 06:00 start, apply the recorded actions at their ticks, and
  *  stop at `target`. The advance records Monitor III history and clears a pausing alert exactly as the worker
- *  does, so a pin or a paused alert replays to the same state. `target` must be inside the traced day. */
+ *  does, so a pin taken from today's history and a paused alert replay identically. A pin from a Monitor III
+ *  interval before the day's 06:00 start cannot replay (the trace begins at the start, while the worker keeps
+ *  48 h of history), so it is refused as out of history and does not consume its id: later integer ids can
+ *  shift, which matters to nothing `inspect … wlm` reads. `target` must be inside the traced day. */
 export function replayDayTrace(trace: DayTrace, target: number): TraceState {
   const content = contentOf(trace.start);
   let st: TraceState = { run: trace.start, pendingPolicy: trace.pendingPolicy };

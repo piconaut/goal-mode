@@ -46,14 +46,6 @@ milestone roadmaps and open questions, is **not** work to start until it has bee
 Sources: playtest round 2 (2026-11-04, Midwest Normal seed 467203, builds `2253b11` / `d8ada51`; narrative in
 PROGRESS.md) unless stated. Investigation facts are in docs/research.md.
 
-### PT-17 · Browser saves can't be traced into the past
-`list: playtest-fixes · status: ready · priority: low · size: M · area: tooling`
-
-`inspect wlm` replays a play-CLI file from seed + log, but a browser save holds only the current state, so a question
-about an earlier moment (INC126 D29, asked from the D40 save) can't be answered. Option: keep the live day's
-start-of-day state and its commands in the save. Measure the size cost first and put the numbers in the PR.
-Done when: `inspect wlm --at` works on a browser save for any time in its current day.
-
 ### PT-19 · Inbox change notices are always bad news
 `list: playtest-fixes · status: blocked: design · priority: low · size: M · area: content`
 
