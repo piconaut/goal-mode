@@ -183,8 +183,9 @@ export function applyGameCommand(
     case 'DISCARD':
       return yes(run, 'Pending policy discarded', null);
     case 'POLICY_LOAD': {
-      const def = savedPolicy(run, cmd.name.trim().toUpperCase());
-      if (!def) return no(`No saved policy ${cmd.name}`);
+      const name = cmd.name.trim().toUpperCase();
+      const def = savedPolicy(run, name);
+      if (!def) return no(`No saved policy ${name || '(none)'}`);
       return yes(run, `Loaded ${def.policyName} into the editor`, structuredClone(def));
     }
     case 'POLICY_ACTIVATE': {
