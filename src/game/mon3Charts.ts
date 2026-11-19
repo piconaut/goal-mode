@@ -12,7 +12,18 @@ export interface Mon3Sample {
   tick: number;
   cpcBusyPct: number;
   /** Per z/OS image. */
-  sys: Record<string, { cpPct: number; ziipPct: number | null; cappedPct: number; prsmDelayPct: number }>;
+  sys: Record<
+    string,
+    {
+      /** CPU busy as % of the image's logical CPs (z/OS 3.1 RMF Report Analysis, p.99). */
+      cpPct: number;
+      /** The CPC report's Physical Util % Total for CPs (z/OS 3.1 RMF Report Analysis, p.99). */
+      cpcPct?: number;
+      ziipPct: number | null;
+      cappedPct: number;
+      prsmDelayPct: number;
+    }
+  >;
   /** Sysplex PI per goal-bearing period. */
   pi: Record<string, number | null>;
   /** Sysplex delay % of samples per period, by reason. */
@@ -27,6 +38,8 @@ export interface Mon3Sample {
   rcArr?: Record<string, number>;
   /** DDF periods (enclaves). */
   ddf: Record<string, { endedPerSec: number; rtMs: number | null; ziipEngines: number; iipcpEngines: number }>;
+  /** CPU engines (general CP + zIIP) per sysplex service-class period. Zero entries are omitted. */
+  cpu?: Record<string, number>;
 }
 
 export type MarkerKind = 'WLM' | 'CHANGE' | 'EVENT';
@@ -94,16 +107,20 @@ function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'
   const sys: Mon3Sample['sys'] = {};
   for (const s of m.systems) {
     const c = m.cpc.find((x) => x.lparId === s.system);
-    sys[s.system] = { cpPct: r1(s.cpBusyPct), ziipPct: s.ziipBusyPct === null ? null : r1(s.ziipBusyPct), cappedPct: r1(c?.cappedPct ?? 0), prsmDelayPct: r1(c?.prsmDelayPct ?? 0) };
+    sys[s.system] = { cpPct: r1(s.cpBusyPct), cpcPct: r1(c?.physTotalPct ?? 0), ziipPct: s.ziipBusyPct === null ? null : r1(s.ziipBusyPct), cappedPct: r1(c?.cappedPct ?? 0), prsmDelayPct: r1(c?.prsmDelayPct ?? 0) };
   }
   const pi: Mon3Sample['pi'] = {};
   const rt: Mon3Sample['rt'] = {};
   const delay: Mon3Sample['delay'] = {};
+  const cpu: NonNullable<Mon3Sample['cpu']> = {};
   for (const r of m.rows) {
     if (r.system !== '*PLEX') continue;
     if (r.importance !== null) pi[r.scKey] = r.pi === null ? null : Math.round(r.pi * 100) / 100;
     if (r.avgRtMs !== null && r.endedPerSec > 0) rt[r.scKey] = Math.round(r.avgRtMs);
     if (r.goal !== 'system') delay[r.scKey] = { cpu: r1(100 * r.delay.cpu), ziip: r1(100 * r.delay.ziip), io: r1(100 * r.delay.io), cap: r1(100 * r.delay.cap), other: r1(100 * r.delay.other) };
+    // Count CP and zIIP usage once each. zIIP-eligible work on CPs is already in CP time (RMF Report Analysis 3.1, p.534).
+    const engines = Math.round((r.cpuEngines + r.ziipEngines) * 100) / 100;
+    if (engines > 0) cpu[r.scKey] = engines;
   }
   const ddf: Mon3Sample['ddf'] = {};
   for (const e of m.enclaves) {
@@ -111,7 +128,7 @@ function sampleMon3(run: RunState, scenario: Scenario, acc: Mon3ChartState['acc'
   }
   const cpcEngines = run.sim.config.cpcs.reduce((a, c) => a + c.engines.CP, 0);
   const delivered = run.sim.lpars.reduce((a, l) => a + (l.pools.find((p) => p.pool === 'CP')?.deliveredEngines ?? 0), 0);
-  return { tick: run.sim.tick, cpcBusyPct: r1(cpcEngines > 0 ? (100 * delivered) / cpcEngines : 0), sys, pi, rt, rcRt, arr, rcArr, delay, ddf };
+  return { tick: run.sim.tick, cpcBusyPct: r1(cpcEngines > 0 ? (100 * delivered) / cpcEngines : 0), sys, pi, rt, rcRt, arr, rcArr, delay, ddf, cpu };
 }
 
 function newMarkers(run: RunState, st: Mon3ChartState): { markers: ChartMarker[]; lastWlmLine: string | null; logSeen: number } {

@@ -37,6 +37,27 @@ describe('Monitor III charting', () => {
     }
   });
 
+  it('samples each image\'s share of the CPC and the CPU engines per service class', () => {
+    const r = advance(startDay(withCharts(), content), MIDWEST, content, 6 * 360);
+    const last = r.mon3Charts!.samples.at(-1)!;
+    const m = buildMon3(r, MIDWEST);
+    // % of the CPC's physical CPs comes from the CPC report's Physical Util % Total.
+    for (const c of m.cpc.filter((x) => x.kind === 'ZOS')) {
+      expect(last.sys[c.lparId]!.cpcPct).toBeCloseTo(Math.round(c.physTotalPct * 10) / 10, 6);
+    }
+    // Midwest has one CPC, so the images' shares add up to the CPC busy line.
+    const sum = Object.values(last.sys).reduce((a, x) => a + x.cpcPct!, 0);
+    expect(sum).toBeCloseTo(last.cpcBusyPct, 0);
+    // CPU engines per sysplex period: general CP plus zIIP, from the Monitor III rows.
+    expect(last.cpu).toBeDefined();
+    for (const row of m.rows.filter((x) => x.system === '*PLEX')) {
+      const engines = Math.round((row.cpuEngines + row.ziipEngines) * 100) / 100;
+      // Idle periods are left out of the sample (the chart draws engines actually in use).
+      if (engines > 0) expect(last.cpu![row.scKey], row.scKey).toBe(engines);
+      else expect(last.cpu![row.scKey], row.scKey).toBeUndefined();
+    }
+  });
+
   it('marks emergency changes and resets at the next day', () => {
     let r = advance(startDay(withCharts(), content), MIDWEST, content, 60);
     r = requestChange(r, content, { label: 'RMF 15', commands: [{ kind: 'SET_RMF_INTERVAL', minutes: 15 }] }).run;
