@@ -12,6 +12,7 @@ import { addAlertRule, removeAlertRule } from '../../src/game/alerts';
 import { addAutoRule, removeAutoRule } from '../../src/game/automation';
 import { scenarioFor } from '../../src/game/difficulty';
 import { addPin, removePin } from '../../src/game/evidence';
+import { buildMon3 } from '../../src/game/mon3';
 import { deletePolicy, policyEditSource, savePolicy, savedPolicy, setSchedule } from '../../src/game/policies';
 import { cancelChange, newRun, requestChange, startDay, activateSavedPolicy, type ChangeRequest } from '../../src/game/run';
 import { applyWlmEdit, pendingBase, playerWlmEditError, serviceClassGoalIssues } from '../../src/game/wlmEdit';
@@ -165,8 +166,10 @@ function playedDay(): {
   const iv = cur.sim.rmf.intervals.length - 1;
   const row = cur.sim.rmf.intervals.at(-1)!.wlm.find((r) => r.lparId === 'PROD1')!;
   const pinReq = { source: 'WLMGL', index: iv, system: 'PROD1', scKey: row.scKey, metric: 'PI' } as const;
-  apply({ cmd: 'pin', req: pinReq }, () => {
-    cur = addPin(cur, sc(), pinReq, (t) => null).run;
+  // The worker records the pin's outcome (the pin it placed), not just the request.
+  const pinned = addPin(cur, sc(), pinReq, () => null);
+  apply({ cmd: 'pin', req: pinReq, pin: pinned.ok ? pinned.run.pins.at(-1)! : null }, () => {
+    cur = pinned.run;
   });
   const pinId = cur.pins!.at(-1)!.id;
   apply({ cmd: 'unpin', id: pinId }, () => {
@@ -204,6 +207,38 @@ describe('a browser save\'s day trace (PT-17)', () => {
     // The recorded actions matter: before the activation the policy is the day-start one, at the end it is not.
     expect(midday.sim.wlm.definition).toEqual(definitionBeforeActivation);
     expect(final.sim.wlm.definition).not.toEqual(definitionBeforeActivation);
+  });
+
+  it('replays a pin from its recorded outcome, whatever Monitor III history the worker had', () => {
+    // The worker keeps 48 h of Monitor III history (a pin may read yesterday's), and a reload empties it (a pin of
+    // this morning is refused); the replay has neither history. Pins share run.nextId with alert rules, changes and
+    // incidents, so replaying the request instead of its outcome would shift the rule id the removal names.
+    const sc = () => scenarioFor(MIDWEST, 'NORMAL');
+    let cur = startDay(newRun(MIDWEST, MIDWEST_GAME, 42, 'NORMAL'), MIDWEST_GAME);
+    const dayTrace: DayTrace = { start: cur, pendingPolicy: null, commands: [] };
+    const rec = (command: DayTraceCommand) => dayTrace.commands.push({ tick: cur.sim.tick, command });
+    cur = advanceHours(cur, MIDWEST_GAME, 1, {});
+    const scKey = buildMon3(cur, sc()).rows.find((r) => r.system === 'PROD1')!.scKey;
+    const yesterday = dayTrace.start.sim.tick - 30;
+    const req = { source: 'MON3', system: 'PROD1', scKey, metric: 'PI', tick: yesterday } as const;
+    const out = addPin(cur, sc(), req, (t) => ({ tick: t, view: buildMon3(cur, sc()) }));
+    expect(out.ok).toBe(true);
+    rec({ cmd: 'pin', req, pin: out.run.pins.at(-1)! });
+    cur = out.run;
+    const rule = { metric: 'PI' as const, subject: scKey, threshold: 2, forMin: 10, pause: false };
+    rec({ cmd: 'alertAdd', rule });
+    cur = addAlertRule(cur, rule).run;
+    expect(cur.alerts!.rules).toHaveLength(1);
+    const ruleId = cur.alerts!.rules.at(-1)!.id;
+    cur = advanceHours(cur, MIDWEST_GAME, 1, {});
+    rec({ cmd: 'alertRemove', id: ruleId });
+    cur = removeAlertRule(cur, ruleId);
+    cur = advanceHours(cur, MIDWEST_GAME, 1, {});
+    if (cur.alerts?.pauseRequested) cur = { ...cur, alerts: { ...cur.alerts, pauseRequested: false } };
+    const end = replayDayTrace(dayTrace, cur.sim.tick).run;
+    expect(end.pins).toEqual(cur.pins);
+    expect(end.alerts!.rules).toEqual(cur.alerts!.rules);
+    expect(end).toEqual(cur);
   });
 
   it('makes `inspect … wlm --at` answer from a browser save for any time in its current day', () => {

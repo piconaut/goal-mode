@@ -15,9 +15,7 @@ import { advanceHours } from './advance';
 import { addAlertRule, removeAlertRule, type AlertRule } from './alerts';
 import { addAutoRule, removeAutoRule, type AutoRule } from './automation';
 import { scenarioFor } from './difficulty';
-import { addPin, removePin, type PinRequest } from './evidence';
-import { emptyMon3History, mon3At, recordMon3History, type Mon3History } from './mon3History';
-import { buildMon3 } from './mon3';
+import { placePin, removePin, type EvidencePin, type PinRequest } from './evidence';
 import { policyEditSource, savePolicy, deletePolicy, savedPolicy, setSchedule, type ScheduleEntry } from './policies';
 import { runWorkItems } from './workloads';
 import { cancelChange, requestChange, submitRca, activateSavedPolicy, deactivateCod, type ChangeRequest } from './run';
@@ -27,7 +25,6 @@ import { askAround } from './inquiries';
 import { workOnProject } from './projects';
 import { buyTool, noteReportOpened, normalizeDefinition, setToolActive } from './tools';
 import { decideTfp } from './tfp';
-import type { Mon3PinLookup } from './mon3PinHistory';
 import type { Mechanism, RunState, Trigger } from './types';
 import type { ServiceDefinition } from '../sim/wlm/types';
 
@@ -39,7 +36,8 @@ export type DayTraceCommand =
   | { cmd: 'rca'; incidentId: number; mechanism: Mechanism; trigger: Trigger; evidenceIds?: number[] }
   | { cmd: 'ask'; topic: InquiryKind; workloadId?: string | null }
   | { cmd: 'project'; id: string; hours: number }
-  | { cmd: 'pin'; req: PinRequest }
+  /** pin: the pin the worker placed, or null when it refused the request (its outcome, not a re-run: see below). */
+  | { cmd: 'pin'; req: PinRequest; pin: EvidencePin | null }
   | { cmd: 'unpin'; id: number }
   | { cmd: 'tfp'; accept: boolean }
   | { cmd: 'buy'; toolId: string }
@@ -108,7 +106,7 @@ function activate(st: TraceState, def: ServiceDefinition): TraceState {
 
 /** Apply one recorded action exactly as the worker applied it (the case bodies of src/worker/game.worker.ts;
  *  the basket and the posted messages are browser-only and stay behind). A throw means the trace is corrupt. */
-export function applyTraceCommand(st: TraceState, c: DayTraceCommand, mon3AtTick?: Mon3PinLookup): TraceState {
+export function applyTraceCommand(st: TraceState, c: DayTraceCommand): TraceState {
   const run = st.run;
   const settled = (out: { run: RunState }): TraceState => ({ ...st, run: out.run });
   switch (c.cmd) {
@@ -125,7 +123,12 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand, mon3AtTick
     case 'project':
       return settled(workOnProject(run, c.id, c.hours));
     case 'pin':
-      return settled(addPin(run, scOf(run), c.req, mon3AtTick));
+      // The worker's outcome, not the request again: a past-tick pin reads the worker's Monitor III history (48 h,
+      // emptied by a reload or an import), which the replay does not have, and a pin takes run.nextId, which
+      // changes, rules and incidents share, so a different outcome would shift every later id the trace names.
+      if (!c.pin) return st;
+      if (c.pin.id !== run.nextId) return corrupt(`a recorded pin has id ${c.pin.id} where the replay is at ${run.nextId}`);
+      return { ...st, run: placePin(run, c.pin) };
     case 'unpin':
       return { ...st, run: removePin(run, c.id) };
     case 'tfp':
@@ -192,28 +195,20 @@ export function applyTraceCommand(st: TraceState, c: DayTraceCommand, mon3AtTick
 }
 
 /** Replay the day to `target`: advance from the 06:00 start, apply the recorded actions at their ticks, and
- *  stop at `target`. The advance records Monitor III history and clears a pausing alert exactly as the worker
- *  does, so a pin taken from today's history and a paused alert replay identically. A pin from a Monitor III
- *  interval before the day's 06:00 start cannot replay (the trace begins at the start, while the worker keeps
- *  48 h of history), so it is refused as out of history and does not consume its id: later integer ids can
- *  shift, which matters to nothing `inspect … wlm` reads. `target` must be inside the traced day. */
+ *  stop at `target`. The advance clears a pausing alert as the worker does; pins replay from their recorded
+ *  outcome, so no Monitor III history is needed. `target` must be inside the traced day. */
 export function replayDayTrace(trace: DayTrace, target: number): TraceState {
   const content = contentOf(trace.start);
   let st: TraceState = { run: trace.start, pendingPolicy: trace.pendingPolicy };
-  let mon3: Mon3History = emptyMon3History();
   const advanceTo = (tick: number) => {
     if (tick <= st.run.sim.tick) return;
-    st.run = advanceHours(st.run, content, (tick - st.run.sim.tick) / TICKS_PER_HOUR, {
-      onMintime: (r) => {
-        mon3 = recordMon3History(mon3, r.sim.tick, buildMon3(r, scenarioFor(packOf(r.scenarioId).scenario, r.difficulty)));
-      },
-    });
+    st.run = advanceHours(st.run, content, (tick - st.run.sim.tick) / TICKS_PER_HOUR);
     if (st.run.alerts?.pauseRequested) st.run = { ...st.run, alerts: { ...st.run.alerts, pauseRequested: false } };
   };
   for (const e of trace.commands) {
     if (e.tick > target) break;
     advanceTo(e.tick);
-    st = applyTraceCommand(st, e.command, (t) => mon3At(mon3, t));
+    st = applyTraceCommand(st, e.command);
   }
   advanceTo(target);
   return st;
