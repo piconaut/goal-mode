@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-19: CL-18 one game command layer (`src/game/commands.ts`) shared by the browser worker and the play CLI, with the validation/wording drift between them resolved (#427).
 - 2026-11-19: PT-17 browser saves carry their live day's start state and actions, so `inspect wlm --at` replays any time in the current day (cost: the save doubles, measured in the PR).
 - 2026-11-19: PR-24 CPU-by-service-class chart gives every displayed period a distinct colour (#425).
 - 2026-11-18: PT-15 Monitor III chart picker (per-viewer, stored), CP busy labels with a % of its CPC option, and a CPU-by-service-class chart (#423).
