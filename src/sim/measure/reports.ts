@@ -214,12 +214,7 @@ function hms(sec: number): string {
 export function renderPartitionData(iv: RmfInterval): string {
   const out = header('PARTITION DATA REPORT', iv);
   for (const c of iv.cpcBusy) {
-    // A capacity change shows as CHANGE REASON on the CPU Activity header (RMF Report Analysis p.391–392);
-    // this sim renders it on Partition Data instead (APPROX, SPEC §17). SMF70CCR: 1 = operator, >1 = external.
-    const adj = c.capacityReasonCode !== undefined && c.pool === 'CP'
-      ? `   CHANGE REASON=${c.capacityReasonCode === 1 ? 'POWERSAVE (initiated by the user)' : 'MACHINE (initiated by the machine)'}`
-      : '';
-    out.push(`CPC ${c.cpcId}  ${padRight(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%${adj}`);
+    out.push(`CPC ${c.cpcId}  ${padRight(c.pool, 4)} PHYSICAL BUSY ${c.physicalBusyPct.toFixed(1)}%`);
   }
   out.push('');
   // APPROX: the ABS CAP column's name and place; the real report's layout for absolute capping is an open question.
@@ -247,6 +242,23 @@ export function renderPartitionData(iv: RmfInterval): string {
   }
   const cfs = iv.cpu.filter((x) => x.logicalCps === 0 && x.icfEngines > 0);
   for (const r of cfs) out.push(`${padRight(r.lparId, 8)}  ICF ENGINES ${r.icfEngines.toFixed(2)}`);
+  return out.join('\n');
+}
+
+/** CPU Activity report: one header line per CPC with the capacity-change reason
+ *  (RMF Report Analysis p.391–392: NONE / POWERSAVE (initiated by the user) /
+ *  MACHINE (cycle steering, initiated by the machine)). */
+export function renderCpuActivity(iv: RmfInterval): string {
+  const out = header('CPU ACTIVITY', iv);
+  out.push('');
+  for (const c of iv.cpcBusy.filter((x) => x.pool === 'CP')) {
+    const reason = c.capacityReasonCode === undefined
+      ? 'NONE'
+      : c.capacityReasonCode === 1
+        ? 'POWERSAVE (initiated by the user)'
+        : 'MACHINE (cycle steering, initiated by the machine)';
+    out.push(`CPC ${c.cpcId}  ${padRight(c.pool, 4)} CHANGE REASON=${reason}`);
+  }
   return out.join('\n');
 }
 
@@ -313,7 +325,7 @@ export function renderDasdSummary(iv: RmfInterval): string {
   return out.join('\n');
 }
 
-export const REPORT_KINDS = ['WLM_SUMMARY', 'WLM_DETAIL', 'PARTITION', 'CF', 'DASD'] as const;
+export const REPORT_KINDS = ['WLM_SUMMARY', 'WLM_DETAIL', 'PARTITION', 'CPU_ACTIVITY', 'CF', 'DASD'] as const;
 export type ReportKind = (typeof REPORT_KINDS)[number];
 
 /** One interval report by kind; WLM_DETAIL defaults to ONLHI#1 and the WLM reports to the sysplex view. */
@@ -325,6 +337,8 @@ export function renderReport(iv: RmfInterval, kind: ReportKind, scKey = 'ONLHI#1
       return renderWlmDetail(iv, scKey, system);
     case 'PARTITION':
       return renderPartitionData(iv);
+    case 'CPU_ACTIVITY':
+      return renderCpuActivity(iv);
     case 'CF':
       return renderCfActivity(iv);
     case 'DASD':

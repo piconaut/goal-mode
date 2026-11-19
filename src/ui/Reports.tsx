@@ -10,6 +10,7 @@ import { Empty } from './Empty';
 const KINDS: { kind: ReportKind; label: string }[] = [
   { kind: 'WLM_SUMMARY', label: 'Workload Activity' },
   { kind: 'WLM_DETAIL', label: 'WLMGL detail' },
+  { kind: 'CPU_ACTIVITY', label: 'CPU Activity' },
   { kind: 'PARTITION', label: 'Partition Data' },
   { kind: 'CF', label: 'CF Activity' },
   { kind: 'DASD', label: 'DASD Activity' },

@@ -304,7 +304,7 @@ const DEMAND_NORMAL: ProofPredicate = {
 
 export const MECHANISM_RECIPES: Readonly<Record<Mechanism, ProofRecipe>> = {
   CPU_CAPACITY: { predicates: [CPU_DELAYED, {
-    label: 'the processor full: CPC or image busy ≥ 90 %, or a capacity adjustment below 100 (Partition Data, CPC)',
+    label: 'the processor full: CPC or image busy ≥ 90 %, or a capacity adjustment below 100 (CPU Activity, CPC)',
     options: [at('CPC_BUSY', PROOF.busyPct, HOST_ONLY), at('LPAR_BUSY', PROOF.busyPct, HOST_ONLY), at('CAPACITY_ADJ', 1, HOST_ONLY)],
   }] },
   // A less important period of the work's own class counts too (ADHOC's long queries in DDFPRD#2 behind MOBILE's
