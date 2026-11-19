@@ -130,5 +130,8 @@ describe('the shared command layer (CL-18)', () => {
     expect(applyGameCommand(run, null, { kind: 'POLICY_LOAD', name: ' cl18pol ' }, MIDWEST_GAME, sc()).ok).toBe(true);
     expect(applyGameCommand(run, null, { kind: 'POLICY_LOAD', name: 'nope' }, MIDWEST_GAME, sc()).message).toBe('No saved policy NOPE');
     expect(applyGameCommand(run, null, { kind: 'POLICY_LOAD', name: ' ' }, MIDWEST_GAME, sc()).message).toBe('No saved policy (none)');
+    const deleted = applyGameCommand(run, null, { kind: 'POLICY_DELETE', name: 'cl18pol' }, MIDWEST_GAME, sc());
+    expect(deleted.ok, deleted.message).toBe(true);
+    expect(deleted.run.policies?.saved.some((p) => p.policyName === 'CL18POL')).toBe(false);
   });
 });

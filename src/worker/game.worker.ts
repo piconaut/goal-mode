@@ -545,7 +545,7 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
         if (out.ok) trace({ cmd: 'savePolicy', name: m.name.trim().toUpperCase() });
         settleGame(out);
       } else if (m.type === 'DELETE_POLICY') {
-        trace({ cmd: 'deletePolicy', name: m.name });
+        trace({ cmd: 'deletePolicy', name: m.name.trim().toUpperCase() });
         settleGame(command({ kind: 'POLICY_DELETE', name: m.name }));
       } else {
         trace({ cmd: 'setPolicySchedule', schedule: m.schedule });

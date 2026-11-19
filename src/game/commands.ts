@@ -203,7 +203,7 @@ export function applyGameCommand(
       return result(savePolicy(run, { ...(pending ?? policyEditSource(run)), policyName: name }));
     }
     case 'POLICY_DELETE':
-      return result(deletePolicy(run, cmd.name));
+      return result(deletePolicy(run, cmd.name.trim().toUpperCase()));
     case 'POLICY_SCHEDULE':
       return result(setSchedule(run, cmd.schedule));
     case 'TOOL_ACTIVE':
