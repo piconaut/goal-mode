@@ -35,6 +35,7 @@ export const newHour = (tick: number): HourAcc => ({
   lparBusyById: {},
   cpByImportance: {},
   lockIndexSum: 0,
+  dbatQueuedByLpar: {},
 });
 
 export function accumulateHour(run: RunState): RunState {
@@ -51,6 +52,14 @@ export function accumulateHour(run: RunState): RunState {
       rtSumSec: a.rtSumSec + w.rtSumSec,
       parts,
     };
+  }
+  // Peak DBAT requests queued at MAXDBAT during the hour, per LPAR running a Db2 member.
+  const dbatQueuedByLpar = { ...h.dbatQueuedByLpar };
+  for (const [key, queued] of Object.entries(run.sim.env.slotQueue ?? {})) {
+    if (key.endsWith(':DBAT')) {
+      const lparId = key.slice(0, key.length - 5);
+      dbatQueuedByLpar[lparId] = Math.max(dbatQueuedByLpar[lparId] ?? 0, queued);
+    }
   }
   let capped = 0;
   let delivered = 0;
@@ -263,6 +272,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     workloads: h.workloads,
     ...(Object.keys(cpuVsBase).length > 0 ? { cpuVsBase } : {}),
     ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}),
+    ...(Object.keys(h.dbatQueuedByLpar).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
   }].slice(-SMF_HOURS_KEPT);
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }

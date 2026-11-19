@@ -260,6 +260,8 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
   };
   const cappedByLpar = { ...acc.cappedByLpar };
   for (const [k, v] of Object.entries(h.cappedByLpar)) cappedByLpar[k] = Math.max(cappedByLpar[k] ?? 0, v);
+  const dbatQueuedByLpar = { ...acc.dbatQueuedByLpar };
+  for (const [k, v] of Object.entries(h.dbatQueuedByLpar)) dbatQueuedByLpar[k] = Math.max(dbatQueuedByLpar[k] ?? 0, v);
   const cappedTicksByLpar = sum(acc.cappedTicksByLpar, h.cappedTicksByLpar);
   const cpByImportance = { ...acc.cpByImportance };
   for (const [k, v] of Object.entries(h.cpByImportance)) cpByImportance[k] = v.map((x, i) => x + (cpByImportance[k]?.[i] ?? 0));
@@ -275,6 +277,7 @@ export function addHour(acc: HourAcc | null | undefined, h: HourAcc): HourAcc {
     lparBusyById: sum(acc.lparBusyById, h.lparBusyById),
     cpByImportance,
     lockIndexSum: acc.lockIndexSum + h.lockIndexSum,
+    dbatQueuedByLpar,
   };
 }
 

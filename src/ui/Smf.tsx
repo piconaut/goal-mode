@@ -9,7 +9,8 @@ import type { GameHandle } from './useGame';
 import { AnalyticsLink, Empty } from './Empty';
 
 const KINDS: { kind: SmfKind; label: string; help: string }[] = [
-  { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF), and DBAT queueing.' },
+  { kind: 'DB2', label: 'Db2 accounting (101)', help: 'Per package: class 1 elapsed, CPU per transaction vs its healthy baseline, class 3 suspensions (lock, sync I/O, CF).' },
+  { kind: 'DB2_STATS', label: 'Db2 statistics (DISPLAY DDF)', help: 'Peak DBAT requests queued at MAXDBAT per Db2 member during the hour (QDSTQDBT). Db2 does not trace the wait for a thread at MAXDBAT in SMF 101.' },
   { kind: 'CICS', label: 'CICS monitoring (110)', help: 'Per transaction: CPU vs baseline, QR TCB wait (non-threadsafe code), MXT wait, dispatched but not on a CP (DISP−CPU), failed share. Per region: EDSA peak against EDSALIM and time short on storage (SOS).' },
   { kind: 'BATCH', label: 'Batch (SMF 30)', help: 'Last night’s jobs: initiator queue time (grey) and elapsed (bar), critical jobs highlighted.' },
   { kind: 'SMF113', label: 'CPU MF (113)', help: 'Hardware counters per image: L1 misses, Relative Nest Intensity, cycles per instruction, LSPR category. Work on VM/VL engines loses cache affinity.' },
@@ -82,7 +83,6 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                   <th className="num">sync I/O ms</th>
                   <th className="num">CF ms</th>
                   <th className="num">not acct ms</th>
-                  <th className="num">DBAT queue ms</th>
                 </tr>
               </thead>
               <tbody>
@@ -112,61 +112,30 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                       <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'CF_WAIT' }} label={`${r.package} CF time`} />
                     </td>
                     <td className="num">{f1(r.notAccountedMs)}</td>
-                    <td className="num">
-                      {f1(r.dbatQueueMs)}
-                      {r.connType === 'DDF' && <PinButton game={game} req={{ source: 'DB2', hour: h, workloadId: r.workloadId, metric: 'DBAT_QUEUE' }} label={`${r.package} DBAT queue`} />}
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           ))}
-        {d?.kind === 'CICS' &&
+        {d?.kind === 'DB2_STATS' &&
           (d.rows.length === 0 ? (
-            <div className="muted">No CICS work in this hour.</div>
+            <div className="muted">No Db2 statistics for this hour.</div>
           ) : (
             <table>
               <thead>
                 <tr>
-                  <th>Tran</th>
-                  <th className="num">txn/s</th>
-                  <th className="num">resp ms</th>
-                  <th className="num">CPU ms</th>
-                  <th className="num">vs base</th>
-                  <th className="num">QR wait ms</th>
-                  <th className="num">MXT wait ms</th>
-                  <th className="num" title="Dispatched but not on a CP (USRDISPT − USRCPUT): z/OS CPU queueing">DISP−CPU ms</th>
-                  <th className="num">failed</th>
-                  <th className="num">failed %</th>
+                  <th>Image</th>
+                  <th>Db2 ssid</th>
+                  <th className="num">DBAT queued</th>
                 </tr>
               </thead>
               <tbody>
                 {d.rows.map((r) => (
-                  <tr key={r.workloadId}>
-                    <td>
-                      {r.tranId}* <span className="muted">({r.workloadId})</span>
-                    </td>
-                    <td className="num">{f1(r.txnPerSec)}</td>
-                    <td className="num">{f1(r.avgRtMs)}</td>
-                    <td className="num">{f1(r.cpuMs)}</td>
-                    <td className="num">
-                      {ratio(r.cpuVsBaseline)}
-                      {r.cpuVsBaseline !== null && <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'CPU_VS_BASE' }} label={`${r.tranId} CPU vs baseline`} />}
-                    </td>
-                    <td className="num">
-                      {f1(r.qrWaitMs)}
-                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'QR_WAIT' }} label={`${r.tranId} QR wait`} />
-                    </td>
-                    <td className="num">
-                      {f1(r.mxtWaitMs)}
-                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'MXT_WAIT' }} label={`${r.tranId} MXT wait`} />
-                    </td>
-                    <td className="num">{f1(r.dispMinusCpuMs)}</td>
-                    <td className="num">{Math.round(r.failed)}</td>
-                    <td className="num">
-                      {f1(r.failedPct)}
-                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'FAIL_PCT' }} label={`${r.tranId} failed %`} />
-                    </td>
+                  <tr key={r.lparId}>
+                    <td>{r.lparId}</td>
+                    <td>{r.ssid}</td>
+                    <td className="num">{r.dbatQueued.toFixed(0)}</td>
+                    <PinButton game={game} req={{ source: 'DB2_STATS', hour: h, lparId: r.lparId, metric: 'DBAT_QUEUE' }} label={`${r.ssid} DBAT queue`} />
                   </tr>
                 ))}
               </tbody>

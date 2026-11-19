@@ -57,6 +57,20 @@ describe('evidence pins', () => {
     expect(c.value).toBe(regressed.sim.rmf.intervals[iv]!.cpu.find((x) => x.lparId === 'PROD1')!.cappedPct);
   });
 
+  it('pins DBAT queue from the Db2 statistics view, not the accounting view', () => {
+    const h = regressed.smfHours.at(-1)!;
+    const key = `${h.day}:${h.hourOfDay}`;
+    const r = pin(regressed, { source: 'DB2_STATS', hour: key, lparId: 'PROD1', metric: 'DBAT_QUEUE' });
+    const p = r.pins.at(-1)!;
+    expect(p.source).toBe('Db2 statistics');
+    expect(p.subject).toBe('PROD1');
+    expect(p.metric).toBe('DBAT_QUEUE');
+    expect(p.text).toMatch(/^Db2 statistics D1 \d\d:00–\d\d:00 PROD1 DBAT queue /);
+    expect(typeof p.value).toBe('number');
+    // Db2 101 no longer carries DBAT queue: the old column is gone.
+    expect(addPin(regressed, MIDWEST, { source: 'DB2', hour: key, workloadId: 'RBANK', metric: 'DBAT_QUEUE' }).ok).toBe(false);
+  });
+
   it('keeps at most the configured number of pins', () => {
     let r = regressed;
     for (let i = 0; i < EVIDENCE.maxPins + 3; i++) r = { ...r, pins: [...r.pins, { id: 1000 + i, source: 'x', metric: 'PI', subject: 'X', system: '*PLEX', tick: i, value: 1, text: 'x' }] };

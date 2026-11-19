@@ -884,7 +884,7 @@ export const IDENTITIES: Identity[] = [
             c.close(x.avgRtMs, r.class1Ms, ROUNDING, where(`${r.workloadId} response time 110 vs class 1`));
             c.close(x.cpuMs, r.cpuMs, ROUNDING, where(`${r.workloadId} CPU 110 vs 101`));
           }
-          c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs + r.dbatQueueMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
+          c.atMost(r.cpuMs + r.lockMs + r.syncIoMs + r.cfMs + r.notAccountedMs, r.class1Ms, ROUNDING, where(`${r.workloadId} SMF 101 components above class 1 elapsed`));
         }
         for (const x of cics) {
           const w = h.workloads[x.workloadId];

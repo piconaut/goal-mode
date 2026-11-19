@@ -237,18 +237,6 @@ on `dev` at 7fbeffa; later entries name their source.
 
 ## realism-fixes
 
-### RF-02 · DBAT queue time is not in Db2 accounting
-`list: realism-fixes · status: ready · priority: low · size: M · area: game`
-
-The SMF 101 view shows "DBAT queue ms/txn" and the `DBAT_QUEUE` evidence metric is pinned from it. Db2 does not trace
-the wait for a thread at MAXDBAT (Db2 13 Managing Performance p.143); the analyst's clue is the count of requests
-queued at the limit, QDSTQDBT in the statistics record, shown by `-DISPLAY DDF DETAIL` (Db2 13 Command Reference
-p.303). Source: RCA audit 2026-11-09 (docs/rca-design.md §3 A14). Change: drop the column from the accounting view,
-show queued DBAT requests per hour per Db2 member in a Db2 statistics / DISPLAY DDF view under the same tool, and pin
-`DBAT_QUEUE` from there (count per hour; THREAD_LIMIT; FICTIONAL notable line in `content/evidence.ts`). The sim's
-queue model does not change. Done when: the view, the pin and the clue texts that name the old column are updated,
-`tests/game/smf.test.ts` and the evidence tests cover it, and the two `docs/research.md` rows say "Matches".
-
 ### RF-05 · MSU is counted from total dispatch time, LPAR management included
 `list: realism-fixes · status: blocked: balance · priority: low · size: M · area: sim`
 
