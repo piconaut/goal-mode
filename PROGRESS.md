@@ -12,7 +12,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 Recent work, one line each (details in the PRs and Git history):
 - 2026-11-19: CL-18 one game command layer (`src/game/commands.ts`) shared by the browser worker and the play CLI, with the validation/wording drift between them resolved (#427).
 - 2026-11-19: RF-01 CPU Activity report renders the capacity-change reason (`CHANGE REASON=NONE | POWERSAVE | MACHINE`) in its header; Partition Data drops the line; clue texts, codex entry, SPEC §17 and docs/research.md updated (#428).
-- 2026-11-19: RF-04 velocity floor moved to `src/content/wlm/tuning.ts` `VELOCITY_FLOOR` (0.1 %, FICTIONAL); projected velocity PI kept unbounded vs percentile's 4.0 ceiling — a documented model choice, real WLM publishes no near-zero bound (zo-docs verified) (#429).
+- 2026-11-19: RF-04 velocity floor moved to `src/content/wlm/tuning.ts` `VELOCITY_FLOOR` (0.1 %, FICTIONAL); projected velocity PI kept unbounded vs percentile's 4.0 ceiling — a documented model choice; no near-zero PI bound found in the WLM books checked (zo-docs: ieaw100 p.70-73, sg246472 p.54-56) (#429).
 - 2026-11-19: PT-17 browser saves carry their live day's start state and actions, so `inspect wlm --at` replays any time in the current day (cost: the save doubles, measured in the PR).
 - 2026-11-19: PR-24 CPU-by-service-class chart gives every displayed period a distinct colour (#425).
 - 2026-11-18: PT-15 Monitor III chart picker (per-viewer, stored), CP busy labels with a % of its CPC option, and a CPU-by-service-class chart (#423).
