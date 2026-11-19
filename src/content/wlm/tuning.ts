@@ -54,6 +54,14 @@ export const BATCH_PROJECTION = { maxRecoveryRounds: 8, demandToleranceEngines: 
 
 // Policy adjustment (docs/wlm-design.md §5.10). IBM publishes none of these numbers; each note says where the
 // starting value comes from, not that IBM uses it.
+/** FICTIONAL: velocity floor below which a starved period's execution velocity is clamped when computing its
+ *  projected PI (goal.velocity ÷ max(velocity, VELOCITY_FLOOR), e.g. VEL 74 → 740 at 0.1 %). Shape: keeps
+ *  zero-service projections finite instead of infinite; velocity PI is capped at 10 × goal by this floor,
+ *  while percentile projections extrapolate past the 4.0 reporting ceiling from the mean RT
+ *  (`projectedPercentilePi`). Which can outweigh the other depends on the starvation level — no fixed
+ *  ordering (RF-04). No near-zero bound documented in the WLM books checked, not real WLM behaviour. */
+export const VELOCITY_FLOOR = 0.1;
+
 /** FICTIONAL: WLM repeats an unchanged receiver clue, and logs the no-action note, at most every five minutes
  *  (30 policy adjustment cycles; adjust.ts's notes and RF-03). Shape: a stuck receiver's log does not fill every tick. */
 export const CLUE_LOG_EVERY = 30;

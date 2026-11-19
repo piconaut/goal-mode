@@ -8,6 +8,7 @@
 // `source`). A new report field must join an identity here (CLAUDE.md, Testing expectations).
 
 import { tieredMonthlyCost } from '../../src/content/pricing';
+import { VELOCITY_FLOOR } from '../../src/content/wlm/tuning';
 import { financeView } from '../../src/game/finance';
 import type { Mon3Row } from '../../src/game/mon3';
 import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../../src/game/smf';
@@ -85,7 +86,7 @@ const goalOf = (def: ServiceDefinition, r: WlmRecord): Goal | null => goalInfo(d
  * response time ÷ goal, percentile from the distribution's bucket bounds), without the sim's PI code. */
 function piFromRow(goal: Goal, r: { velocity: number | null; avgRtSec: number | null; ended: number; buckets: readonly number[] }): number | null {
   if (goal.kind === 'DISC') return 0.81;
-  if (goal.kind === 'VEL') return r.velocity === null ? null : Math.min(99, goal.velocity / Math.max(r.velocity, 0.1));
+  if (goal.kind === 'VEL') return r.velocity === null ? null : Math.min(99, goal.velocity / Math.max(r.velocity, VELOCITY_FLOOR));
   // Fluid completions: a remainder below a billionth of a transaction is no transaction (the report shows ENDED 0).
   if (r.ended <= 1e-9) return null;
   if (goal.kind === 'AVG') return r.avgRtSec === null ? null : r.avgRtSec / goal.rtSec;
@@ -1038,7 +1039,7 @@ export const IDENTITIES: Identity[] = [
           if (io && r.velocity !== null) c.close(r.velocity, (100 * r.usingFrac) / (r.usingFrac + r.delayFrac), DECAYED_PCT, w('velocity vs USG ÷ (USG + DLY)'));
           c.ok(r.velocityAct === (r.workManager ? null : r.velocity), w('Exec Vel Act'));
           if (r.pi === null) continue;
-          if (r.goalVelocity !== null && r.velocity !== null) c.close(r.pi, Math.min(99, r.goalVelocity / Math.max(r.velocity, 0.1)), ROUNDING, w('velocity PI'));
+          if (r.goalVelocity !== null && r.velocity !== null) c.close(r.pi, Math.min(99, r.goalVelocity / Math.max(r.velocity, VELOCITY_FLOOR)), ROUNDING, w('velocity PI'));
           else if (r.goalRtMs !== null && r.goalPct === null && r.avgRtMs !== null) c.close(r.pi, r.avgRtMs / r.goalRtMs, ROUNDING, w('average response time PI'));
           else if (r.goalPct !== null && r.withinGoalPct !== null) c.ok(r.pi <= 1 === r.withinGoalPct >= r.goalPct - 1e-9, w(`percentile PI ${r.pi} with ${r.withinGoalPct} % in goal (goal ${r.goalPct} %)`));
         }
