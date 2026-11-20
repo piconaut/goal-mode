@@ -67,7 +67,7 @@ export type PinRequest =
   | { source: 'DASD'; lcuId: string; metric: DasdMetric; index?: number }
   | { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric }
   /** Db2 statistics (DISPLAY DDF): the cumulative count of DBAT requests that waited for a slot during the hour,
-   * subject the Db2 member's LPAR. Without `index`, the latest interval. */
+   * subject the Db2 member's LPAR. `hour` is an SMF hour key or `current` for the open hour. */
   | { source: 'DB2_STATS'; hour: string; lparId: string; metric: EvidenceMetric }
   /** SMF 110 region storage (RT-11): an AOR's minutes short on storage in that hour, subject the region. */
   | { source: 'CICS_STORAGE'; hour: string; region: string }
