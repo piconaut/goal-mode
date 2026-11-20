@@ -10,9 +10,30 @@ import { pagingDelayFrac } from '../../zos/storage';
 import type { LparConfig, CicsStorageTick } from '../types';
 import { TICK_SEC } from '../units';
 import { DEFAULT_EFF_RATIO } from '../../../content/sim-tuning';
+import { SERVER_STARVATION } from '../../../content/wlm/tuning';
 import { type BatchSliceRef, type TickCtx, usesDb2 } from './ctx';
 import { atOrFind } from './plan';
 import { applyCpuModifiers, classifyJob, combineCaps, discretionaryCaps, jobServiceSu, queuedMsgGb, resourceGroupCaps, rgSysplexShares, swapOut, wlLparKey, workloadScope } from './helpers';
+
+/** Share of its offered work a dependent can complete this tick: 1, unless one of its server roles was granted
+ * less than `SERVER_STARVATION.healthBelow` of its demand on the previous tick *and* the shortfall came from a cap
+ * on that role (RF-09). Then the dependents complete at the server's granted share — throughput-limited, as a
+ * starved MSTR/DBM1 holds commits and getpages and the work piles up behind its own limits — and the rest of the
+ * arrivals time out there instead of all completing late. An image-wide CP shortage is not a capped role: it keeps
+ * the bounded-delay form, because it takes the dependents' own CPU with it. Only roles recorded on this image's own
+ * tick are seen, so a dependent served by another image keeps the latency form. */
+export function starvedShare(
+  servers: readonly { role: string }[] | undefined,
+  roleHealth: Readonly<Record<string, { health: number; capped?: boolean }>> | undefined,
+): number {
+  if (!servers || !roleHealth) return 1;
+  let share = 1;
+  for (const srv of servers) {
+    const h = roleHealth[srv.role];
+    if (h?.capped && h.health < SERVER_STARVATION.healthBelow) share = Math.min(share, h.health);
+  }
+  return share;
+}
 
 /** 3–4. One z/OS image's slices (online + batch), storage state and pool demand. */
 export function lparDemand(t: TickCtx, l: LparConfig): void {
@@ -137,6 +158,10 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     failFrac = Math.max(failFrac, abendFrac);
     if (t.failByWorkloadLpar) s.abendFrac = abendFrac;
     if (w.mq && s.mqQueueFrac !== undefined) s.maxQueueMsgs = (prev.mqMaxDepth?.[w.id] ?? w.mq.maxDepthMsgs) * s.mqQueueFrac;
+    // RF-09: a starved server carries its dependents at its granted share, so that part of the arrivals times out
+    // in the dependent queue instead of every arrival completing late (SPEC §5.6).
+    const share = starvedShare(w.servers, prev.last.lpars.find((x) => x.lparId === l.id)?.roleHealth);
+    if (share < 1) failFrac = Math.max(failFrac, 1 - share);
     s.ioPerTxn = ioPerTxn;
     s.extraParts = parts;
     s.extraOtherSec = extra;
@@ -145,6 +170,11 @@ export function lparDemand(t: TickCtx, l: LparConfig): void {
     s.failFrac = failFrac;
     s.cpEngines = s.cpEngines + s.rate * cpuAdd;
     s.cpuSecPerTxn = s.cpuSecPerTxn + cpuAdd;
+    if (share < 1) {
+      // Their CPU follows completions: work that times out waiting for the starved server does not run above it.
+      s.cpEngines *= share;
+      s.ziipEngines *= share;
+    }
   }
   const slices = base;
 

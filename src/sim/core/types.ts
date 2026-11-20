@@ -203,7 +203,9 @@ export interface LparTick {
   iipcpReported?: boolean;
   /** CICS AOR dynamic storage this tick (SOS = in-flight tasks no longer fit under EDSALIM). */
   cicsStorage?: CicsStorageTick[];
-  roleHealth: Record<string, { health: number; queueRatio: number }>;
+  /** `capped`: this role's CPU was withheld by a resource-group or discretionary cap (RF-09); absent on ticks and
+   * saves from before RF-09, which keeps the bounded-delay form. */
+  roleHealth: Record<string, { health: number; queueRatio: number; capped?: boolean }>;
 }
 
 /** Cross-tick environment carried forward to break circular dependencies (prev-tick values). */
