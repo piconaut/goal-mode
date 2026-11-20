@@ -32,6 +32,8 @@ export interface LparSum {
   msu: number;
   cappedTicks: number;
   softCappedTicks: number;
+  /** Ticks WLM considered to cap the image (soft cap in force), for Partition Data WLM%. */
+  wlmCapTicks: number;
   /** Ticks the image entered with its soft cap on (the capping decision of the previous 5-minute boundary). */
   capFlagTicks: number;
   /** Highest MSU rate in a tick the image entered soft-capped, and the limit in force then. */
@@ -353,7 +355,7 @@ function batchResponseGoal(scenario: Scenario, run: RunState): Command[] {
   return [{ kind: 'ACTIVATE_POLICY', definition: next }];
 }
 
-const emptyLparSum = (): LparSum => ({ deliveredCp: 0, effectiveCp: 0, deliveredZiip: 0, effectiveZiip: 0, deliveredIcf: 0, msu: 0, cappedTicks: 0, softCappedTicks: 0, capFlagTicks: 0, cappedMsuMax: 0 });
+const emptyLparSum = (): LparSum => ({ deliveredCp: 0, effectiveCp: 0, deliveredZiip: 0, effectiveZiip: 0, deliveredIcf: 0, msu: 0, cappedTicks: 0, softCappedTicks: 0, wlmCapTicks: 0, capFlagTicks: 0, cappedMsuMax: 0 });
 
 /** Runs the scenario from 06:00 through the stress phases, then on into the evening batch until `nightUntilHour`
  * hours after the day's start. */
@@ -398,6 +400,7 @@ export function runReportScenario(scenario: Scenario, seed = 7, nightUntilHour =
       s.msu += l.msuRate;
       if ((cp?.cappedFrac ?? 0) > 0) s.cappedTicks++;
       if ((cp?.softCappedFrac ?? 0) > 0) s.softCappedTicks++;
+      if (cp?.softCapInForce) s.wlmCapTicks++;
       if (before.sim.capping.lpars.find((x) => x.id === l.id)?.capped) {
         s.capFlagTicks++;
         s.cappedMsuMax = Math.max(s.cappedMsuMax, l.msuRate);

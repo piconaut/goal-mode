@@ -265,23 +265,6 @@ three-scenario sweep. Done when: the identity "MSU Act = header MSU = Partition 
 added to `tests/helpers/reportIdentities.ts`, the docs/research.md row says "Matches", SPEC §17 is updated and the
 sweep is recorded.
 
-### RF-06 · Partition Data WLM% is the share of demand removed, not the share of time capped
-`list: realism-fixes · status: ready · priority: low · size: M · area: sim`
-
-Source: cross-report invariant suite (2026-11-14; identity `partition-capping`, left-out part). Real `WLM%` is the
-"Percentage of time when WLM capped the partition" (RMF Report Analysis 3.1 p.401–402): the samples in which "WLM
-considers to cap" over all samples (SMF70NSW ÷ SMF70DSA, RMF User's Guide 3.1 p.186). Monitor III CPC `WLM Capping %`
-has the same definition (p.98), and the Group Capacity report adds `ACT%` for the samples where capping actually
-limited usage (SMF70NCA, p.406). The sim's `wlmCappingPct` (`src/sim/measure/rmf.ts`) and Monitor III
-`wlmCappingPct` average `softCappedFrac`, the share of CP demand the cap removed. On Midwest seed 7 with a defined
-capacity at 60 % of the R4HA, PROD1 was capped for the whole interval and showed WLM% 57; DEVT, capped all interval
-but under its cap, showed 0. Change: carry "soft cap in force" on the image's CP pool runtime (a new `LparPoolRuntime`
-field, so sim state changes shape though no behaviour does), report WLM% as the share of ticks it was in force, and
-keep the share of demand removed as its own figure (the evidence metric and alerts read `cappedPct`, which does not
-change). Done when: the identity "WLM% = share of the interval the image was capped" is in
-`tests/helpers/reportIdentities.ts`, the Codex and clue texts that read WLM% as a size are checked, the
-docs/research.md row says "Matches", and `npm run compare` shows only the reporting difference.
-
 ### RF-07 · WLMGL ENDED counts job ends only for batch classes with a response time goal
 `list: realism-fixes · status: ready · priority: low · size: M · area: sim`
 

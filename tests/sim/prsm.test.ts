@@ -155,6 +155,16 @@ describe('capped fraction counts only binding caps (RMF Report Analysis p.401)',
     const r = resolveCpc(cpc, MIDWEST_WORLD.lpars, busy(1.5))['PROD1:CP']!;
     expect(r.softCappedFrac).toBeGreaterThan(0);
     expect(r.softCappedFrac).toBe(r.cappedFrac);
+    expect(r.softCapInForce).toBe(true);
+  });
+  it('WLM capping is in force when the soft cap removes nothing (SMF70NSW counts the decision, not the cut)', () => {
+    const r = resolveCpc(cpc, MIDWEST_WORLD.lpars, busy(50))['PROD1:CP']!;
+    expect(r.softCapInForce).toBe(true);
+    expect(r.softCappedFrac).toBe(0);
+  });
+  it('WLM capping is not in force without a soft cap, nor for an absolute cap alone', () => {
+    expect(resolveCpc(cpc, MIDWEST_WORLD.lpars, busy(Infinity))['PROD1:CP']!.softCapInForce).toBe(false);
+    expect(resolveCpc(cpc, withAbsCap(1.5), busy())['PROD1:CP']!.softCapInForce).toBe(false);
   });
 });
 
