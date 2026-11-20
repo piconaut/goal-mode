@@ -409,12 +409,17 @@ export const IDENTITIES: Identity[] = [
           const wlm = r.wlmCappingPct ?? 0;
           const s = o.lpars[r.lparId]!;
           c.close(wlm, (100 * s.wlmCapTicks) / n, ROUNDING, () => `${at(o)} ${r.lparId} WLM% vs the ticks the soft cap was in force`);
+          // The soft cap removes demand only while WLM is capping.
+          c.ok(s.softCappedTicks <= s.wlmCapTicks, () => `${at(o)} ${r.lparId} ${s.softCappedTicks} soft-capped ticks, ${s.wlmCapTicks} with the soft cap in force`);
           // The share of demand a cap removed is at most the share of the time it bound.
           c.atMost(r.cappedPct, (100 * s.cappedTicks) / n, ROUNDING, () => `${at(o)} ${r.lparId} capping % above the time capped`);
           if (!o.steady) continue;
           const l = o.config.lpars.find((x) => x.id === r.lparId)!;
           const cp = l.pools.find((p) => p.pool === 'CP');
           const soft = l.definedCapacityMsu !== null || l.capacityGroup !== null;
+          // With a defined capacity alone, the cap is in force exactly while the image entered the tick capped
+          // (WLM Planning 3.1 p.44).
+          if (l.definedCapacityMsu !== null && l.capacityGroup === null) c.ok(s.wlmCapTicks === s.capFlagTicks, () => `${at(o)} ${r.lparId} soft cap in force ${s.wlmCapTicks} ticks, capped flag ${s.capFlagTicks}`);
           if (wlm > 0) c.ok(soft, () => `${at(o)} ${r.lparId} WLM% ${wlm} with no defined capacity or group`);
           if (r.cappedPct > 0) c.ok(soft || cp?.absoluteCapEngines != null || !!cp?.initialCapping, () => `${at(o)} ${r.lparId} capped ${r.cappedPct} % with no cap defined`);
           c.ok(r.definedCapacityMsu === l.definedCapacityMsu && r.absoluteCapEngines === (cp?.absoluteCapEngines ?? null), () => `${at(o)} ${r.lparId} DEF CAP / ABS CAP differ from the configuration`);
