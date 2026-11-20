@@ -374,9 +374,10 @@ Source: bug hunt 2026-11-20. `scaleEventCommands` scales every `SET_MODIFIER` va
 over 1 (`rate`, `ziipEligMult`) but wrong for an absolute fraction. SICK_AOR sets `regionFailFrac 0.35`
 (`src/content/events/harbourline-events.ts:35`): Story (`eventSeverityMult 0.7`) turns it into 0.545 — a 55 % failure
 rate on the easy difficulty — and Hard (1.25) into 0.1875, so a harder game makes the sick AOR milder. Measured with
-`scaleEventCommands`: 0.35 → 0.5450 (Story), 0.3500 (Normal), 0.1875 (Hard). Change: scale a fraction by its
-shortfall from 1 (`1 − (1 − value) × mult`) or leave fractions unscaled, and keep `scaleExcess` for multipliers;
-only `regionFailFrac` is affected today. Done when: a test pins Story/Normal/Hard for a `regionFailFrac` card and the
+`scaleEventCommands`: 0.35 → 0.5450 (Story), 0.3500 (Normal), 0.1875 (Hard). Change: scale a fraction in proportion
+(`min(1, value × mult)`: 0.245 on Story, 0.4375 on Hard) or leave fractions unscaled, and keep `scaleExcess` for
+multipliers; only `regionFailFrac` is affected today. (Scaling by the shortfall from 1, `1 − (1 − value) × mult`, is
+the same expression as `scaleExcess` and changes nothing.) Done when: a test pins Story/Normal/Hard for a `regionFailFrac` card and the
 scaling of the other `SET_MODIFIER` cards (`rate`, `ziipEligMult`) is unchanged.
 
 ### CL-48 · PROCU service classes show the EAppl figure under "Time on CP % Total" too
