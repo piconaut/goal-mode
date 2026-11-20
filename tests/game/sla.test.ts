@@ -220,13 +220,15 @@ describe('missed batch window truth', () => {
   });
 
   it('sums night hours, keeping the worst capping', () => {
-    const h = (capped: number) => ({ ...hour, ticks: 360, cappedByLpar: { A1: capped }, cpcBusyById: { C: 300 }, cpByImportance: { A1: [1, 2] }, lockIndexSum: 10 });
-    const acc = addHour(addHour(null, h(0.2)), h(0.1));
+    const h = (capped: number, dbat = 0) => ({ ...hour, ticks: 360, cappedByLpar: { A1: capped }, dbatQueuedByLpar: { A1: dbat }, cpcBusyById: { C: 300 }, cpByImportance: { A1: [1, 2] }, lockIndexSum: 10 });
+    const acc = addHour(addHour(null, h(0.2, 3)), h(0.1, 4));
     expect(acc.ticks).toBe(720);
     expect(acc.cappedByLpar.A1).toBe(0.2);
     expect(acc.cpcBusyById!.C).toBe(600);
     expect(acc.cpByImportance!.A1).toEqual([2, 4]);
     expect(acc.lockIndexSum).toBe(20);
+    // QUEDBAT is a count over the window: two hours add, they do not keep the busier one.
+    expect(acc.dbatQueuedByLpar).toEqual({ A1: 7 });
   });
 
   it('sums the ticks each night hour was capped, so the night is judged as time', () => {
