@@ -387,7 +387,11 @@ Source: bug hunt 2026-11-20. In the PROCU "Service classes" table (`src/ui/monit
 "Time on CP % Total" cell and the "EAppl % CP" cell both render `p2(r.cpuEngines)`, so one number appears under two
 different headers. A class row (`Mon3Row`, `src/game/mon3/types.ts:28-31`) carries only `cpuEngines` (EAppl ÷ 100),
 `ziipEngines` and `iipcpEngines`; the jobs table above it has the distinct pair (`cpEngines` vs `eapplCpEngines`,
-`WorkloadViews.tsx:108-112`). Change: label the column for what the row carries (drop the duplicate, or show EAppl %
+`WorkloadViews.tsx:108-112`). The two real columns differ: Time on CP % Total is CPU time on general CPs consumed
+on behalf of the address space, EAppl % CP adds the enclave CPU time consumed within it; real PROCU reports jobs
+only, "all jobs within a job group are reported individually" (z/OS 3.1 RMF Report Analysis, SC34-2665, p.189,
+Table 63; https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=189), so the class table is a game
+summary. Change: label the column for what the row carries (drop the duplicate, or show EAppl %
 CP once with its IIP subset), or add a class-level time-on-CP figure if one is worth adding to `Mon3Row`. Done when:
 no table shows one value under two headers, and the UI tests that read the PROCU view pass.
 
