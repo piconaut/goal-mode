@@ -83,6 +83,11 @@ npm run test:remote    # the full suite on GitHub Actions, on committed HEAD
   RMF/SMF/Monitor III report content (sim mechanics, report fields, Codex text, event clues). Cite book and page.
   Agents and subagents included: briefs for such work must say so. If the books aren't available, mark the claim
   unverified; don't guess.
+- **Page citations** (user decision 2026-11-20): cite the PDF page index, labelled, with the printed page number in
+  parentheses and the book's edition: `SG24-6472-03 PDF p.201 (printed 183)`; links use the same index
+  (`#page=201`). The PDF index is what `#page=` links, `pdf_find.py --page` and viewers open; printed numbers differ
+  from it by a per-book offset and can repeat. Never write a bare `p.N`. Older citations mix both conventions, so an
+  existing one is wrong only when neither reading supports it; relabel it when you touch it.
 - The *mechanics* should behave like real z/OS. The *numbers* are fictional but plausible.
 - When modelling a behaviour, cite the source (IBM doc, Redbook, or expert publication) in a
   comment or in SPEC §18. Prefer IBM docs, then established practitioners (Watson & Walker
