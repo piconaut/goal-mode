@@ -119,6 +119,8 @@ describe('a starved server carries its dependents at its granted share, not at e
     }
     let completions = 0;
     let failed = 0;
+    // CPU the images gave every class but the capped one (engines × ticks). The workloads' completion-weighted
+    // `parts.cpu` would fall with completions alone, so it can't show whether the dependents' demand followed them.
     let cpu = 0;
     for (let i = 0; i < 120; i++) {
       s = step(s, [], MIDWEST);
@@ -126,8 +128,8 @@ describe('a starved server carries its dependents at its granted share, not at e
         if (!db2Work.has(w.id)) continue;
         completions += w.completions;
         failed += w.failed;
-        cpu += w.parts.cpu ?? 0;
       }
+      for (const l of s.last.lpars) for (const p of l.scps) if (!p.scKey.startsWith('STCMED#')) cpu += p.cpEngines + p.ziipEngines;
     }
     const health = Math.min(...s.last.lpars.flatMap((l) => Object.entries(l.roleHealth).filter(([r]) => r.startsWith('DB2.')).map(([, h]) => h.health)));
     return { completions, failed, cpu, health };
@@ -142,8 +144,9 @@ describe('a starved server carries its dependents at its granted share, not at e
     expect(starved.completions).toBeLessThan(0.25 * free.completions);
     // The rest times out in the dependent's limits instead of completing late ...
     expect(starved.failed).toBeGreaterThan(3 * starved.completions);
-    // ... and the CPU of the dependents falls with them: work waiting for the agent does not run above it.
-    expect(starved.cpu).toBeLessThan(0.25 * free.cpu);
+    // ... and the CPU of the dependents falls with them instead of rising with failed and retried work: work waiting
+    // for the agent does not run above it.
+    expect(starved.cpu).toBeLessThan(0.6 * free.cpu);
   }, 120_000);
 });
 
