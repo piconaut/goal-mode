@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-20: RF-06 Partition Data WLM% is the share of the interval the soft cap was in force (SMF70NSW ÷ SMF70DSA), not the share of demand it removed (that stays CAPPED); Monitor III WLM Capping % shows the instant state; new `LparPoolRuntime.softCapInForce`, identity restored (docs/research.md, SPEC §17).
 - 2026-11-19: CL-18 one game command layer (`src/game/commands.ts`) shared by the browser worker and the play CLI, with the validation/wording drift between them resolved (#427).
 - 2026-11-19: RF-01 CPU Activity report renders the capacity-change reason (`CHANGE REASON=NONE | POWERSAVE | MACHINE`) in its header; Partition Data drops the line; clue texts, codex entry, SPEC §17 and docs/research.md updated (#428).
 - 2026-11-19: RF-04 velocity floor moved to `src/content/wlm/tuning.ts` `VELOCITY_FLOOR` (0.1 %, FICTIONAL); velocity PI capped at 10 × goal, percentile projections extrapolate past 4.0 — which outweighs the other depends on starvation; no near-zero PI bound found in the WLM books checked (zos-docs: ieaw100 p.70-73, sg246472 p.54-56) (#429).
