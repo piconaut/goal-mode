@@ -121,12 +121,26 @@ describe('batch response-time goals (WLM Planning 3.1 p.71)', () => {
     }
   });
 
-  it.each<Goal>([{ kind: 'VEL', velocity: 30 }, { kind: 'DISC' }])('keeps non-RT job accounting unchanged: $kind', (goal) => {
+  it.each<Goal>([{ kind: 'VEL', velocity: 30 }, { kind: 'DISC' }])('counts a non-RT job end in its period and report class, without a bucket: $kind', (goal) => {
     const { state, scenario } = fixture(goal);
+    state.wlm.definition.reportClasses.push('BATCHRC');
+    const jes = state.wlm.definition.subsystems.find((s) => s.subsystem === 'JES')!;
+    jes.rules.unshift({ qualifier: 'TN', pattern: 'ONEJOB', serviceClass: 'BATCHPRD', reportClass: 'BATCHRC', children: [] });
     const next = step(state, [], scenario);
     expect(next.batch.jobs[0]!.status).toBe('DONE');
-    expect(measured(next).completions).toBe(0);
-    expect(measured(next).rtSumSec).toBe(0);
-    expect(measured(next).buckets.every((n) => n === 0)).toBe(true);
+    const acc = measured(next);
+    // ENDED has no goal-type condition (RMF Report Analysis 3.1 p.530-531): the job is one ended transaction.
+    expect([acc.completions, acc.rtSumSec]).toEqual([1, 60]);
+    // The queue split and the buckets stay with response-time goals (RMF's velocity distribution is not modelled).
+    expect(acc.rtQueueSumSec).toBeUndefined();
+    expect(acc.buckets.every((n) => n === 0)).toBe(true);
+    // Neither a velocity nor a discretionary PI reads completions.
+    expect(accPi(goal, acc)).toBe(accPi(goal, { ...acc, completions: 0, rtSumSec: 0 }));
+    const iv = closeInterval(next.rmf.acc, { def: next.wlm.definition, config: next.config, r4haByLpar: {}, jobs: [], endTick: next.tick });
+    for (const system of ['PROD1', '*PLEX']) {
+      const row = iv.wlmRc!.find((r) => r.lparId === system && r.scKey === 'BATCHRC')!;
+      expect([row.ended, row.avgRtSec]).toEqual([1, 60]);
+      expect(row.buckets.every((n) => n === 0)).toBe(true);
+    }
   });
 });

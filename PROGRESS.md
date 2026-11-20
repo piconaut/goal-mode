@@ -10,6 +10,7 @@ Size rule (under 450 lines, one line per status item): CLAUDE.md. Design: [SPEC.
 ## Current status
 
 Recent work, one line each (details in the PRs and Git history):
+- 2026-11-20: RF-07 every batch job that ends is one WLMGL/SMF 30 ended transaction with its queue-plus-elapsed response time in its ending period and report class, whatever the goal (velocity/discretionary classes no longer show ENDED 0); Monitor III ended rate and the `smf30-vs-wlmgl` identity cover every goal type; buckets stay for RT goals (docs/research.md, SPEC §17) (#432).
 - 2026-11-20: RF-06 Partition Data WLM% is the share of the interval the soft cap was in force (SMF70NSW ÷ SMF70DSA), not the share of demand it removed (that stays CAPPED); Monitor III WLM Capping % shows the instant state; new `LparPoolRuntime.softCapInForce`, identity restored (docs/research.md, SPEC §17) (#431).
 - 2026-11-19: CL-18 one game command layer (`src/game/commands.ts`) shared by the browser worker and the play CLI, with the validation/wording drift between them resolved (#427).
 - 2026-11-19: RF-01 CPU Activity report renders the capacity-change reason (`CHANGE REASON=NONE | POWERSAVE | MACHINE`) in its header; Partition Data drops the line; clue texts, codex entry, SPEC §17 and docs/research.md updated (#428).
