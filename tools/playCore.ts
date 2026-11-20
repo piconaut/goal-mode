@@ -11,7 +11,7 @@ import { applyGameCommand } from '../src/game/commands';
 import { advanceHours } from '../src/game/advance';
 import type { Mechanism, RunState, Trigger } from '../src/game/types';
 import { hasFeature, needsText, noteReportOpened, REPORT_FEATURE, SMF_FEATURE } from '../src/game/tools';
-import { batchNight, cicsMonitoring, db2Accounting, smf113, smfHourRefs } from '../src/game/smf';
+import { batchNight, cicsMonitoring, db2Accounting, db2Statistics, smf113, smfHourRefs } from '../src/game/smf';
 import { financeView } from '../src/game/finance';
 import { budgetDelta, BUDGET_MONTH_BOUNDARY_NOTE, R4HA_BILLING_NOTE } from '../src/game/budget';
 import { monthElapsedFrac } from '../src/sim/cost/mlc';
@@ -305,7 +305,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const need = SMF_FEATURE[c.kind];
       if (!need) return fail(`SMF kinds: ${Object.keys(SMF_FEATURE).join(' ')}`);
       if (!hasFeature(run, need)) return fail(needsText(need, 'This SMF view'));
-      const hourly = c.kind === 'DB2' || c.kind === 'CICS';
+      const hourly = c.kind === 'DB2' || c.kind === 'CICS' || c.kind === 'DB2_STATS';
       const hours = smfHourRefs(run);
       const hour = hourly ? smfHourKey(run, c.hour) : undefined;
       const list = `hours (smf ${c.kind} <hour>; \`12\` = newest 12:00, \`D8 12\` = day 8): ${hours.slice(0, 8).map((h) => h.label).join(', ') || 'none yet'}${hours.length > 8 ? `, … (${hours.length} hours, oldest ${hours.at(-1)!.label})` : ''}`;
@@ -313,6 +313,7 @@ function apply(file: PlayFile, c: PlayCommand): PlayResult {
       const rows =
         c.kind === 'DB2' ? (hour ? db2Accounting(run, sc(run), hour) : [])
         : c.kind === 'CICS' ? (hour ? cicsMonitoring(run, sc(run), hour) : [])
+        : c.kind === 'DB2_STATS' ? (hour ? db2Statistics(run, sc(run), hour) : [])
         : c.kind === 'BATCH' ? batchNight(run)
         : smf113(run);
       const label = hours.find((h) => h.key === hour)?.label;

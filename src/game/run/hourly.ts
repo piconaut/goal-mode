@@ -272,7 +272,7 @@ export function closeHour(run: RunState, scenario: Scenario, content: GameConten
     workloads: h.workloads,
     ...(Object.keys(cpuVsBase).length > 0 ? { cpuVsBase } : {}),
     ...(h.cicsStorage ? { cicsStorage: h.cicsStorage } : {}),
-    ...(Object.keys(h.dbatQueuedByLpar).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
+    ...(Object.keys(h.dbatQueuedByLpar ?? {}).length > 0 ? { dbatQueuedByLpar: h.dbatQueuedByLpar } : {}),
   }].slice(-SMF_HOURS_KEPT);
   return { ...r, trust, incidents, baselines, smfHours, hour: newHour(r.sim.tick) };
 }

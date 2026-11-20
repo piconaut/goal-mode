@@ -11,7 +11,7 @@ import { tieredMonthlyCost } from '../../src/content/pricing';
 import { VELOCITY_FLOOR } from '../../src/content/wlm/tuning';
 import { financeView } from '../../src/game/finance';
 import type { Mon3Row } from '../../src/game/mon3';
-import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, smf113 } from '../../src/game/smf';
+import { batchNight, cicsMonitoring, cicsStorageStats, db2Accounting, db2Statistics, smf113 } from '../../src/game/smf';
 import type { RunState } from '../../src/game/types';
 import { buildView } from '../../src/game/view';
 import { allWorkloads } from '../../src/game/workloads';
@@ -895,6 +895,11 @@ export const IDENTITIES: Identity[] = [
         }
         for (const s of cicsStorageStats(h.end, key)) {
           c.ok(s.peakMb >= 0 && s.sosSec >= 0 && s.sosSec <= 3600, where(`${s.region} storage statistics`));
+        }
+        for (const s of db2Statistics(h.end, run.scenario, key)) {
+          const expected = last.dbatQueuedByLpar?.[s.lparId] ?? 0;
+          c.close(s.dbatQueued, expected, ROUNDING, where(`${s.lparId} ${s.ssid} DBAT queued vs SmfHour`));
+          c.ok(s.dbatQueued >= 0, where(`${s.lparId} ${s.ssid} DBAT queued non-negative`));
         }
       }
     },

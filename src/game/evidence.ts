@@ -143,6 +143,36 @@ function cpuMetric(r: CpuRecord, metric: EvidenceMetric): number | null {
 const knownClass = (run: RunState, c: string): boolean =>
   c === 'SYSTEM' || c === 'SYSSTC' || c === 'SYSOTHER' || run.sim.wlm.definition.classes.some((x) => x.id === c);
 
+/** Shared reader for hourly Db2 101 / CICS 110 evidence rows: resolves the hour, reads the row, computes the
+ * baseline window and rate, and returns the located evidence or an error message. Keeps the DB2 and CICS cases
+ * from duplicating the hour/baseline/rate logic (N5). */
+function hourlyEvidence(
+  run: RunState,
+  scenario: Scenario,
+  req: { source: 'DB2' | 'CICS'; hour: string; workloadId: string; metric: EvidenceMetric },
+  read: (key: string) => Partial<Record<EvidenceMetric, number | null>> | null,
+  missing: string,
+  notFound: string,
+  source: 'Db2 101' | 'CICS 110',
+): Located | string {
+  const tick = hourEndTick(run, req.hour);
+  if (tick === null) return 'No such hour';
+  const row = read(req.hour);
+  if (!row) return missing;
+  const value = row[req.metric];
+  if (value === undefined || value === null) return notFound;
+  const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
+  const upto = i < 0 ? run.smfHours.length : i;
+  const pinned = run.smfHours[upto] ?? (i < 0 ? { day: run.day, hourOfDay: Math.floor(clockAt(run.sim.tick).hourOfDay) } : undefined);
+  const hoursFor = (m: EvidenceMetric) => EVIDENCE_METRICS[m].baseline === 'slot'
+    ? (pinned ? run.smfHours.slice(0, upto).filter((h) => h.hourOfDay === pinned.hourOfDay && h.day < pinned.day) : [])
+    : run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
+  const earlierOf = (m: EvidenceMetric) => median(hoursFor(m).map((h) => read(`${h.day}:${h.hourOfDay}`)?.[m]).filter(NUM));
+  const baseline = req.metric === 'CPU_VS_BASE' ? 1 : earlierOf(req.metric);
+  const rate = req.metric === 'CPU_VS_BASE' && NUM(row.ENDED_RATE) ? { rate: withBaseline(row.ENDED_RATE, earlierOf('ENDED_RATE')) } : {};
+  return { source, metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, ...withBaseline(value, baseline), ...rate };
+}
+
 function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mon3PinLookup): Located | string {
   const sim = run.sim;
   const mon3 = (tick: number | undefined): { tick: number; view: Mon3PinView } | string => {
@@ -279,27 +309,11 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       return { source: 'DASD', metric: req.metric, subject: req.lcuId, system: '*PLEX', tick: iv.endTick, value, ...(baseline !== undefined ? { baseline } : {}) };
     }
     case 'DB2': {
-      const tick = hourEndTick(run, req.hour);
-      if (tick === null) return 'No such hour';
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
         const r = db2Accounting(run, scenario, key).find((x) => x.workloadId === req.workloadId);
         return r ? { CPU_VS_BASE: r.cpuVsBaseline, LOCK_WAIT: r.lockMs, SYNC_IO: r.syncIoMs, CF_WAIT: r.cfMs, ENDED_RATE: r.txnPerSec } : null;
       };
-      const row = read(req.hour);
-      const missing = 'No such package row';
-      if (!row) return missing;
-      const value = row[req.metric];
-      if (value === undefined || value === null) return 'That metric is not in Db2 accounting';
-      const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
-      const upto = i < 0 ? run.smfHours.length : i;
-      const pinned = run.smfHours[upto] ?? (i < 0 ? { day: run.day, hourOfDay: Math.floor(clockAt(run.sim.tick).hourOfDay) } : undefined);
-      const hoursFor = (m: EvidenceMetric) => EVIDENCE_METRICS[m].baseline === 'slot'
-        ? (pinned ? run.smfHours.slice(0, upto).filter((h) => h.hourOfDay === pinned.hourOfDay && h.day < pinned.day) : [])
-        : run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
-      const earlierOf = (m: EvidenceMetric) => median(hoursFor(m).map((h) => read(`${h.day}:${h.hourOfDay}`)?.[m]).filter(NUM));
-      const baseline = req.metric === 'CPU_VS_BASE' ? 1 : earlierOf(req.metric);
-      const rate = req.metric === 'CPU_VS_BASE' && NUM(row.ENDED_RATE) ? { rate: withBaseline(row.ENDED_RATE, earlierOf('ENDED_RATE')) } : {};
-      return { source: 'Db2 101', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, ...withBaseline(value, baseline), ...rate };
+      return hourlyEvidence(run, scenario, req, read, 'No such package row', 'That metric is not in Db2 accounting', 'Db2 101');
     }
     case 'DB2_STATS': {
       const tick = hourEndTick(run, req.hour);
@@ -324,27 +338,11 @@ function locate(run: RunState, scenario: Scenario, req: PinRequest, history?: Mo
       return { source: 'Db2 statistics', metric: req.metric, subject: req.lparId, system: '*PLEX', tick, ...withBaseline(value, baseline) };
     }
     case 'CICS': {
-      const tick = hourEndTick(run, req.hour);
-      if (tick === null) return 'No such hour';
       const read = (key: string): Partial<Record<EvidenceMetric, number | null>> | null => {
         const r = cicsMonitoring(run, scenario, key).find((x) => x.workloadId === req.workloadId);
         return r ? { CPU_VS_BASE: r.cpuVsBaseline, QR_WAIT: r.qrWaitMs, MXT_WAIT: r.mxtWaitMs, FAIL_PCT: r.failedPct, ENDED_RATE: r.txnPerSec } : null;
       };
-      const row = read(req.hour);
-      const missing = 'No such transaction row';
-      if (!row) return missing;
-      const value = row[req.metric];
-      if (value === undefined || value === null) return 'That metric is not in CICS monitoring';
-      const i = run.smfHours.findIndex((h) => `${h.day}:${h.hourOfDay}` === req.hour);
-      const upto = i < 0 ? run.smfHours.length : i;
-      const pinned = run.smfHours[upto] ?? (i < 0 ? { day: run.day, hourOfDay: Math.floor(clockAt(run.sim.tick).hourOfDay) } : undefined);
-      const hoursFor = (m: EvidenceMetric) => EVIDENCE_METRICS[m].baseline === 'slot'
-        ? (pinned ? run.smfHours.slice(0, upto).filter((h) => h.hourOfDay === pinned.hourOfDay && h.day < pinned.day) : [])
-        : run.smfHours.slice(Math.max(0, upto - EVIDENCE.baselineRows), upto);
-      const earlierOf = (m: EvidenceMetric) => median(hoursFor(m).map((h) => read(`${h.day}:${h.hourOfDay}`)?.[m]).filter(NUM));
-      const baseline = req.metric === 'CPU_VS_BASE' ? 1 : earlierOf(req.metric);
-      const rate = req.metric === 'CPU_VS_BASE' && NUM(row.ENDED_RATE) ? { rate: withBaseline(row.ENDED_RATE, earlierOf('ENDED_RATE')) } : {};
-      return { source: 'CICS 110', metric: req.metric, subject: req.workloadId, system: '*PLEX', tick, ...withBaseline(value, baseline), ...rate };
+      return hourlyEvidence(run, scenario, req, read, 'No such transaction row', 'That metric is not in CICS monitoring', 'CICS 110');
     }
     case 'CICS_STORAGE': {
       const tick = hourEndTick(run, req.hour);

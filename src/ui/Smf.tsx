@@ -134,9 +134,60 @@ export function Smf({ v, game, openAnalytics }: { v: ViewModel; game: GameHandle
                   <tr key={r.lparId}>
                     <td>{r.lparId}</td>
                     <td>{r.ssid}</td>
-                    <td className="num">{r.dbatQueued.toFixed(0)}</td>
                     <td className="num">
+                      {r.dbatQueued.toFixed(0)}
                       <PinButton game={game} req={{ source: 'DB2_STATS', hour: h, lparId: r.lparId, metric: 'DBAT_QUEUE' }} label={`${r.ssid} DBAT queue`} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ))}
+        {d?.kind === 'CICS' &&
+          (d.rows.length === 0 ? (
+            <div className="muted">No CICS work in this hour.</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Tran</th>
+                  <th className="num">txn/s</th>
+                  <th className="num">resp ms</th>
+                  <th className="num">CPU ms</th>
+                  <th className="num">vs base</th>
+                  <th className="num">QR wait ms</th>
+                  <th className="num">MXT wait ms</th>
+                  <th className="num" title="Dispatched but not on a CP (USRDISPT − USRCPUT): z/OS CPU queueing">DISP−CPU ms</th>
+                  <th className="num">failed</th>
+                  <th className="num">failed %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {d.rows.map((r) => (
+                  <tr key={r.workloadId}>
+                    <td>
+                      {r.tranId}* <span className="muted">({r.workloadId})</span>
+                    </td>
+                    <td className="num">{f1(r.txnPerSec)}</td>
+                    <td className="num">{f1(r.avgRtMs)}</td>
+                    <td className="num">{f1(r.cpuMs)}</td>
+                    <td className="num">
+                      {ratio(r.cpuVsBaseline)}
+                      {r.cpuVsBaseline !== null && <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'CPU_VS_BASE' }} label={`${r.tranId} CPU vs baseline`} />}
+                    </td>
+                    <td className="num">
+                      {f1(r.qrWaitMs)}
+                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'QR_WAIT' }} label={`${r.tranId} QR wait`} />
+                    </td>
+                    <td className="num">
+                      {f1(r.mxtWaitMs)}
+                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'MXT_WAIT' }} label={`${r.tranId} MXT wait`} />
+                    </td>
+                    <td className="num">{f1(r.dispMinusCpuMs)}</td>
+                    <td className="num">{Math.round(r.failed)}</td>
+                    <td className="num">
+                      {f1(r.failedPct)}
+                      <PinButton game={game} req={{ source: 'CICS', hour: h, workloadId: r.workloadId, metric: 'FAIL_PCT' }} label={`${r.tranId} failed %`} />
                     </td>
                   </tr>
                 ))}
