@@ -900,11 +900,19 @@ export const IDENTITIES: Identity[] = [
           c.ok(s.peakMb >= 0 && s.sosSec >= 0 && s.sosSec <= 3600, where(`${s.region} storage statistics`));
         }
         for (const s of db2Statistics(h.end, run.scenario, key)) {
-          // A new report field joins an identity. The sim keeps only the current tick's DBAT-waited count, so a
-          // closed hour cannot be cross-checked against per-tick state; check non-negativity and the fallback
-          // (a closed hour with no DBAT queueing reports 0).
+          // A new report field joins an identity. QUEDBAT counts the hour's waits, and the run keeps only the last
+          // tick's share, so a closed hour can prove the non-negativity and the absent -> 0 fallback.
           c.ok(s.dbatQueued >= 0, where(`${s.lparId} ${s.ssid} DBAT waited non-negative`));
           if (last.dbatQueuedByLpar?.[s.lparId] === undefined) c.close(s.dbatQueued, 0, ROUNDING, where(`${s.lparId} ${s.ssid} DBAT waited absent -> 0`));
+        }
+      }
+      // The open hour's count includes every tick so far, the last one included, and the run state keeps that
+      // tick's share (LparTick.dbatWaited): the report can never be below it (RF-02 B1).
+      const open = run.final.hour;
+      if (open && open.ticks > 0) {
+        for (const s of db2Statistics(run.final, run.scenario, 'current')) {
+          const tick = run.final.sim.last.lpars.find((l) => l.lparId === s.lparId)?.dbatWaited ?? 0;
+          c.atMost(tick, s.dbatQueued, ROUNDING, () => `open hour ${s.lparId} ${s.ssid} DBAT waited vs its last tick`);
         }
       }
     },
