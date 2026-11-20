@@ -352,3 +352,55 @@ strings `Automated pr-reviewer report` and `Automated pr-fixer report`, and the 
 word for word where the loops read them. Done when: each rule is stated once, a grep for "Branch workflow" finds
 only the new doc and links to it, and the review header strings are unchanged.
 
+
+### CL-46 · Monitor III chart markers stop once the run log reaches its 300-line cap
+`list: cleanup · status: ready · priority: high · size: S · area: game`
+
+Source: bug hunt 2026-11-20. `newMarkers` scans new lines with `run.log.slice(st.logSeen)`
+(`src/game/mon3Charts.ts:140`), but `logLine` keeps only the last 300 lines (`[...run.log, text].slice(-300)`,
+`src/game/run/shared.ts:33`) while `recordMon3` stores `logSeen = run.log.length` (`mon3Charts.ts:145`) and the day
+start resets it to `run.log.length` too (`src/game/run.ts:186`). At the cap the length never grows past 300, so
+`slice(300)` is always empty: no EVENT or CHANGE marker is recorded again, silently, for the rest of the run.
+Measured: a 300-line log, then one appended `EVENT …` line, gives 0 → 0 markers across two `recordMon3` calls.
+Change: scan by a count of lines seen from the front that the trim can maintain (or dedupe new marker lines against
+the markers already kept) so a front-trim cannot hide a new line. Done when: a unit test appends an `EVENT` line to a
+300-line log and `recordMon3` records the marker, and the tests that read `markers` pass.
+
+### CL-47 · The sick-AOR failure fraction gets harsher on Story and milder on Hard
+`list: cleanup · status: ready · priority: high · size: S · area: game`
+
+Source: bug hunt 2026-11-20. `scaleEventCommands` scales every `SET_MODIFIER` value with
+`scaleExcess = max(0.05, 1 + (value − 1) × mult)` (`src/game/difficulty.ts:39`), which is right for a multiplier
+(`rate` over 1, `ziipEligMult 0.3` below it) but wrong for an absolute fraction. SICK_AOR sets `regionFailFrac 0.35`
+(`src/content/events/harbourline-events.ts:35`): Story (`eventSeverityMult 0.7`) turns it into 0.545 — a 55 % failure
+rate on the easy difficulty — and Hard (1.25) into 0.1875, so a harder game makes the sick AOR milder. Measured with
+`scaleEventCommands`: 0.35 → 0.5450 (Story), 0.3500 (Normal), 0.1875 (Hard). Change: scale a fraction in proportion
+(`min(1, value × mult)`: 0.245 on Story, 0.4375 on Hard) or leave fractions unscaled, and keep `scaleExcess` for
+multipliers; only `regionFailFrac` is affected today. (Scaling by the shortfall from 1, `1 − (1 − value) × mult`, is
+the same expression as `scaleExcess` and changes nothing.) Done when: a test pins Story/Normal/Hard for a `regionFailFrac` card and the
+scaling of the other `SET_MODIFIER` cards (`rate`, `ziipEligMult`) is unchanged.
+
+### CL-48 · PROCU service classes show the EAppl figure under "Time on CP % Total" too
+`list: cleanup · status: ready · priority: low · size: S · area: ui`
+
+Source: bug hunt 2026-11-20. In the PROCU "Service classes" table (`src/ui/monitor/WorkloadViews.tsx:129-153`) the
+"Time on CP % Total" cell and the "EAppl % CP" cell both render `p2(r.cpuEngines)`, so one number appears under two
+different headers. A class row (`Mon3Row`, `src/game/mon3/types.ts:28-31`) carries only `cpuEngines` (EAppl ÷ 100),
+`ziipEngines` and `iipcpEngines`; the jobs table above it has the distinct pair (`cpEngines` vs `eapplCpEngines`,
+`WorkloadViews.tsx:108-112`). The two real columns differ: Time on CP % Total is CPU time on general CPs consumed
+on behalf of the address space, EAppl % CP adds the enclave CPU time consumed within it; real PROCU reports jobs
+only, "all jobs within a job group are reported individually" (z/OS 3.1 RMF Report Analysis, SC34-2665, p.189,
+Table 63; https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/erbb500_v3r1.pdf#page=189), so the class table is a game
+summary. Change: label the column for what the row carries (drop the duplicate, or show EAppl %
+CP once with its IIP subset), or add a class-level time-on-CP figure if one is worth adding to `Mon3Row`. Done when:
+no table shows one value under two headers, and the UI tests that read the PROCU view pass.
+
+### CL-49 · A Db2/CICS/statistics pin on the open hour is labelled with the previous hour
+`list: cleanup · status: ready · priority: low · size: S · area: game`
+
+Source: bug hunt 2026-11-20. `hourEndTick` returns `run.sim.tick` for the open hour (`src/game/evidence.ts:420`), and
+`pinWhen` labels every Db2 101, CICS 110 and Db2 statistics pin as `tick − 1 h → tick` (`evidence.ts:453-455`),
+which holds for a closed hour (its tick is the interval end) but not for `hour: 'current'` mid-hour: measured at tick
+2190 (12:05) the pin reads "CICS 110 D1 11:05–12:05" for the open hour's row. Change: label the open hour from its
+start (the hour the clock is in), or as "this hour, so far", and keep the closed-hour label as it is. Done when: a
+test pins a current-hour Db2/CICS row mid-hour and asserts the window starts at the open hour's `:00`.
