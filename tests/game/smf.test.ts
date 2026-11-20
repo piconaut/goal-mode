@@ -96,7 +96,7 @@ describe('Db2 accounting', () => {
     const key = `${h.day}:${h.hourOfDay}`;
     // Db2 accounting no longer carries DBAT queue ms/txn.
     for (const row of db2Accounting(r, MIDWEST, key)) expect(row).not.toHaveProperty('dbatQueueMs');
-    // Db2 statistics reports the peak queued count per Db2 member for the hour.
+    // Db2 statistics reports the cumulative count of DBAT requests that waited, per Db2 member, for the hour.
     const stats = db2Statistics(r, MIDWEST, key);
     for (const m of MIDWEST.world.db2) {
       const row = stats.find((x) => x.ssid === m.ssid);
