@@ -933,7 +933,7 @@ export const IDENTITIES: Identity[] = [
           return classify(def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;
         })));
         for (const group of workloadGroups(run, h.end, def)) {
-          // A batch job that ended in a class with a response time goal is a transaction there too (smf30-vs-wlmgl).
+          // A batch job that ended in a class is a transaction there too, whatever the goal (smf30-vs-wlmgl, RF-07).
           if (group.classes.some((sc) => jobClasses.has(sc))) continue;
           const rows = ivs.flatMap((o) => o.iv.wlm.filter((r) => r.lparId === '*PLEX' && group.classes.includes(r.serviceClass)));
           const recs = group.workloads.map((id) => last.workloads[id]).filter((x) => !!x);
@@ -1237,10 +1237,10 @@ export const CONDITIONS: Record<string, (run: ReportRun) => boolean> = {
   'I/O priority management off': (run) => run.intervals.some((o) => o.steady && o.def.ioPriorityManagement === false),
   'RMF intervals of two lengths': (run) => new Set(run.intervals.map((o) => o.iv.intervalSec)).size > 1,
   'Tailored Fit Pricing over the baseline rate, with a list-price change': (run) => !!run.final.sim.cost.tfp && run.final.sim.cost.priceMult !== undefined,
-  'batch jobs ended in a class with a response time goal': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
+  'batch jobs ended in a class': (run) => run.intervals.some((o) => o.steady && o.iv.jobs.some((j) => {
     const rt = o.end.sim.batch.jobs.find((x) => x.def.name === j.name && x.endTick === j.endTick);
     const sc = rt && classify(o.def, { subsystem: 'JES', TN: rt.def.name, TC: rt.def.jobClass, SY: j.lparId }).serviceClass;
-    return !!o.def.classes.find((x) => x.id === sc)?.periods.every((p) => p.goal.kind === 'AVG' || p.goal.kind === 'PCT');
+    return !!o.def.classes.find((x) => x.id === sc);
   })),
   'failed transactions': (run) => run.intervals.some((o) => o.iv.wlm.some((r) => r.failed > 1)),
   'a closed SMF hour with CICS and Db2 rows': (run) => run.hours.some((h) => { const last = h.end.smfHours.at(-1); return !!last && cicsMonitoring(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0 && db2Accounting(h.end, run.scenario, `${last.day}:${last.hourOfDay}`).length > 0; }),
